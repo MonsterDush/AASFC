@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: axelio_db
+    environment:
+      POSTGRES_USER: axelio
+      POSTGRES_PASSWORD: axelio_pass
+      POSTGRES_DB: axelio_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - axelio_pgdata:/var/lib/postgresql/data
+
+volumes:
+  axelio_pgdata:
+

@@ -1,0 +1,7 @@
+**/.venv/
+**/__pycache__/
+*.pyc
+.env
+axelio_pgdata/
+.DS_Store
+
