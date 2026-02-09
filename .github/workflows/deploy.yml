@@ -1,0 +1,42 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ "develop", "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            if [ "${{ github.ref_name }}" = "develop" ]; then
+              cd /var/www/axelio/dev/repo
+              git fetch origin
+              git checkout develop
+              git pull origin develop
+              cd /var/www/axelio/dev
+              source venv/bin/activate
+              pip install -r repo/backend/requirements.txt
+              sudo systemctl restart axelio-api-dev
+              sudo systemctl reload nginx
+              echo "Deployed develop -> dev"
+            else
+              cd /var/www/axelio/prod/repo
+              git fetch origin
+              git checkout main
+              git pull origin main
+              cd /var/www/axelio/prod
+              source venv/bin/activate
+              pip install -r repo/backend/requirements.txt
+              sudo systemctl restart axelio-api-prod
+              sudo systemctl reload nginx
+              echo "Deployed main -> prod"
+            fi
