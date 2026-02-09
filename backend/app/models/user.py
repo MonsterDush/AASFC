@@ -11,3 +11,5 @@ class User(Base):
     tg_user_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     tg_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # храним строкой, а в коде валидируем enum-ом
+    system_role: Mapped[str] = mapped_column(String(32), default="NONE", nullable=False)
