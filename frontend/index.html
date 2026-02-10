@@ -19,8 +19,53 @@
 
     <button id="btn">Проверить API /health</button>
     <p id="out">—</p>
+    <button id="btn-login">1) Войти (Telegram)</button>
+    <button id="btn-create">2) Создать заведение</button>
+    <pre id="out2"></pre>
   </div>
+    <script>
+        const out2 = document.getElementById("out2");
 
+        async function login() {
+            const initData = window.Telegram?.WebApp?.initData;
+            if (!initData) {
+            out.textContent = "initData нет. Открывай через Telegram Mini App.";
+            return;
+            }
+
+            const r1 = await fetch("https://api-dev.axelio.ru/auth/telegram", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ initData }),
+            });
+
+            if (!r1.ok) {
+            out.textContent = "Login error: " + r1.status + " " + await r1.text();
+            return;
+            }
+
+            const r2 = await fetch("https://api-dev.axelio.ru/me", {
+            credentials: "include",
+            });
+
+            out.textContent = "ME: " + r2.status + "\n" + await r2.text();
+        }
+
+        async function createVenue() {
+            const r = await fetch("https://api-dev.axelio.ru/venues", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ name: "Test Venue" }),
+            });
+
+            out.textContent = "CREATE VENUE: " + r.status + "\n" + await r.text();
+        }
+
+        document.getElementById("btn-login").onclick = login;
+        document.getElementById("btn-create").onclick = createVenue;
+    </script>
   <script>
     const API = "https://api-dev.axelio.ru";
     const out = document.getElementById("out");

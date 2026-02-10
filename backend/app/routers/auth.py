@@ -38,6 +38,12 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
 
     # upsert user
     user = db.query(User).filter(User.tg_user_id == tg_user_id).one_or_none()
+    # Авто-назначение SUPER_ADMIN для dev по whitelist
+    if tg_user_id in settings.super_admin_ids():
+        if user.system_role != "SUPER_ADMIN":
+            user.system_role = "SUPER_ADMIN"
+            db.commit()
+
     if user is None:
         user = User(tg_user_id=tg_user_id, tg_username=tg_username, system_role="NONE")
         db.add(user)
