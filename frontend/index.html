@@ -23,6 +23,8 @@
     <button id="btn-login">1) Войти (Telegram)</button>
     <button id="btn-create">2) Создать заведение</button>
     <pre id="out2"></pre>
+    <button id="btn-debug">Debug Telegram</button>
+    <pre id="dbg"></pre>
   </div>
     <script>
         const out2 = document.getElementById("out2");
@@ -67,43 +69,42 @@
         document.getElementById("btn-login").onclick = login;
         document.getElementById("btn-create").onclick = createVenue;
     </script>
-  <script>
-    const API = "https://api-dev.axelio.ru";
-    const out = document.getElementById("out");
-    document.getElementById("btn").onclick = async () => {
-      out.textContent = "Запрос...";
-      try {
-        const r = await fetch(API + "/health", { cache: "no-store" });
-        const j = await r.json();
-        out.innerHTML = `<span class="ok">OK</span> ` + JSON.stringify(j);
-      } catch (e) {
-        out.innerHTML = `<span class="bad">Ошибка</span> ` + (e?.message || e);
-      }
+    <script>
+        const API = "https://api-dev.axelio.ru";
+        const out = document.getElementById("out");
+        document.getElementById("btn").onclick = async () => {
+        out.textContent = "Запрос...";
+        try {
+            const r = await fetch(API + "/health", { cache: "no-store" });
+            const j = await r.json();
+            out.innerHTML = `<span class="ok">OK</span> ` + JSON.stringify(j);
+        } catch (e) {
+            out.innerHTML = `<span class="bad">Ошибка</span> ` + (e?.message || e);
+        }
+        };
+    </script>
+
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+    const dbg = document.getElementById("dbg");
+
+    document.getElementById("btn-debug").onclick = () => {
+        const t = window.Telegram;
+        const wa = t?.WebApp;
+
+        dbg.textContent =
+        "window.Telegram: " + !!t + "\n" +
+        "Telegram.WebApp: " + !!wa + "\n" +
+        "initData length: " + (wa?.initData?.length ?? 0) + "\n" +
+        "initDataUnsafe: " + JSON.stringify(wa?.initDataUnsafe ?? null, null, 2) + "\n" +
+        "location.href: " + location.href + "\n" +
+        "userAgent: " + navigator.userAgent;
     };
-  </script>
-<button id="btn-debug">Debug Telegram</button>
-<pre id="dbg"></pre>
 
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script>
-  const dbg = document.getElementById("dbg");
-
-  document.getElementById("btn-debug").onclick = () => {
-    const t = window.Telegram;
-    const wa = t?.WebApp;
-
-    dbg.textContent =
-      "window.Telegram: " + !!t + "\n" +
-      "Telegram.WebApp: " + !!wa + "\n" +
-      "initData length: " + (wa?.initData?.length ?? 0) + "\n" +
-      "initDataUnsafe: " + JSON.stringify(wa?.initDataUnsafe ?? null, null, 2) + "\n" +
-      "location.href: " + location.href + "\n" +
-      "userAgent: " + navigator.userAgent;
-  };
-
-  // полезно вызвать сразу
-  document.getElementById("btn-debug").click();
-</script>
+    // полезно вызвать сразу
+    document.getElementById("btn-debug").click();
+    </script>
 
 </body>
 </html>
