@@ -37,8 +37,26 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
         raise HTTPException(status_code=400, detail="Invalid user payload")
 
     # upsert user
+# 1) ищем пользователя
     user = db.query(User).filter(User.tg_user_id == tg_user_id).one_or_none()
-    # Авто-назначение SUPER_ADMIN для dev по whitelist
+
+    # 2) если нет — создаём
+    if user is None:
+        user = User(
+            tg_user_id=tg_user_id,
+            tg_username=tg_username,
+            system_role="NONE",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        # если есть — обновим username (не обязательно, но полезно)
+        if tg_username and user.tg_username != tg_username:
+            user.tg_username = tg_username
+            db.commit()
+
+    # 3) DEV: авто-SUPER_ADMIN по whitelist (если ты это добавлял)
     if tg_user_id in settings.super_admin_ids():
         if user.system_role != "SUPER_ADMIN":
             user.system_role = "SUPER_ADMIN"
