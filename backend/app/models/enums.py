@@ -9,5 +9,5 @@ class SystemRole(str, enum.Enum):
 
 class VenueRole(str, enum.Enum):
     OWNER = "OWNER"
+    MANAGER = "MANAGER"
     STAFF = "STAFF"
-

@@ -14,6 +14,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+from app.routers import auth, me
+
+app.include_router(auth.router)
+app.include_router(me.router)
 
 @app.get("/health")
 def health():
