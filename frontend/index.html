@@ -62,7 +62,17 @@
         }
       }
 
+      async function health() {
+        try {
+          const r = await fetch(`${API}/health`, { credentials: "include" });
+          log(`HEALTH ${r.status}\n` + await r.text());
+        } catch (e) {
+          log("HEALTH ERROR: " + (e?.message || String(e)));
+        }
+      }
+
       // Вешаем обработчики ТОЛЬКО после загрузки DOM
+      document.getElementById("btn-health").addEventListener("click", health);
       document.getElementById("btn-login").addEventListener("click", login);
       document.getElementById("btn-me").addEventListener("click", me);
       document.getElementById("btn-create-venue").addEventListener("click", createVenue);
@@ -78,9 +88,10 @@
 </head>
 
 <body>
-  <button id="btn-login">1) Login</button>
-  <button id="btn-me">2) Me</button>
-  <button id="btn-create-venue">3) Create venue</button>
-  <pre id="out"></pre>
+    <button id="btn-health">0) Health</button>
+    <button id="btn-login">1) Login</button>
+    <button id="btn-me">2) Me</button>
+    <button id="btn-create-venue">3) Create venue</button>
+    <pre id="out"></pre>
 </body>
 </html>
