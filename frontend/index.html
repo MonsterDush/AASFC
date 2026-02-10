@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="ru">
 <head>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Axelio Dev</title>
@@ -80,5 +81,29 @@
       }
     };
   </script>
+<button id="btn-debug">Debug Telegram</button>
+<pre id="dbg"></pre>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+  const dbg = document.getElementById("dbg");
+
+  document.getElementById("btn-debug").onclick = () => {
+    const t = window.Telegram;
+    const wa = t?.WebApp;
+
+    dbg.textContent =
+      "window.Telegram: " + !!t + "\n" +
+      "Telegram.WebApp: " + !!wa + "\n" +
+      "initData length: " + (wa?.initData?.length ?? 0) + "\n" +
+      "initDataUnsafe: " + JSON.stringify(wa?.initDataUnsafe ?? null, null, 2) + "\n" +
+      "location.href: " + location.href + "\n" +
+      "userAgent: " + navigator.userAgent;
+  };
+
+  // полезно вызвать сразу
+  document.getElementById("btn-debug").click();
+</script>
+
 </body>
 </html>
