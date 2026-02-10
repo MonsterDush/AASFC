@@ -18,90 +18,54 @@
     <div>WebApp URL: <code>app-dev.axelio.ru</code></div>
     <div>API URL: <code>api-dev.axelio.ru</code></div>
 
-    <button id="btn">Проверить API /health</button>
-    <p id="out">—</p>
-    <button id="btn-login">11) Войти (Telegram)</button>
-    <button id="btn-create">2) Создать заведение</button>
-    <pre id="out2"></pre>
-    <button id="btn-debug">Debug Telegram</button>
-    <pre id="dbg"></pre>
+    <button id="btn-login">1) Login</button>
+    <button id="btn-me">2) Me</button>
+    <button id="btn-create-venue">3) Create venue</button>
+    <pre id="out">-</pre>
+
+    <script>
+    const out = document.getElementById("out");
+    const API = "https://api-dev.axelio.ru";
+
+    async function login() {
+        const initData = window.Telegram?.WebApp?.initData;
+        if (!initData || initData.length === 0) {
+        out.textContent = "NO initData. Open via Telegram Mini App button.";
+        return;
+        }
+
+        const r = await fetch(`${API}/auth/telegram`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ initData }),
+        });
+
+        out.textContent = `LOGIN ${r.status}\n` + (await r.text());
+    }
+
+    async function me() {
+        const r = await fetch(`${API}/me`, {
+        credentials: "include",
+        });
+        out.textContent = `ME ${r.status}\n` + (await r.text());
+    }
+
+    async function createVenue() {
+        const r = await fetch(`${API}/venues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: "Test Venue" }),
+        });
+        out.textContent = `CREATE VENUE ${r.status}\n` + (await r.text());
+    }
+
+    document.getElementById("btn-login").onclick = login;
+    document.getElementById("btn-me").onclick = me;
+    document.getElementById("btn-create-venue").onclick = createVenue;
+    </script>
   </div>
-    <script>
-        const out2 = document.getElementById("out2");
-
-        async function login() {
-            const initData = window.Telegram?.WebApp?.initData;
-            if (!initData) {
-            out.textContent = "initData нет. Открывай через Telegram Mini App.";
-            return;
-            }
-
-            const r1 = await fetch("https://api-dev.axelio.ru/auth/telegram", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ initData }),
-            });
-
-            if (!r1.ok) {
-            out.textContent = "Login error: " + r1.status + " " + await r1.text();
-            return;
-            }
-
-            const r2 = await fetch("https://api-dev.axelio.ru/me", {
-            credentials: "include",
-            });
-
-            out.textContent = "ME: " + r2.status + "\n" + await r2.text();
-        }
-
-        async function createVenue() {
-            const r = await fetch("https://api-dev.axelio.ru/venues", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ name: "Test Venue" }),
-            });
-
-            out.textContent = "CREATE VENUE: " + r.status + "\n" + await r.text();
-        }
-
-        document.getElementById("btn-login").onclick = login;
-        document.getElementById("btn-create").onclick = createVenue;
-    </script>
-    <script>
-        const API = "https://api-dev.axelio.ru";
-        const out = document.getElementById("out");
-        document.getElementById("btn").onclick = async () => {
-        out.textContent = "Запрос...";
-        try {
-            const r = await fetch(API + "/health", { cache: "no-store" });
-            const j = await r.json();
-            out.innerHTML = `<span class="ok">OK</span> ` + JSON.stringify(j);
-        } catch (e) {
-            out.innerHTML = `<span class="bad">Ошибка</span> ` + (e?.message || e);
-        }
-        };
-    </script>
-    <script>
-    const dbg = document.getElementById("dbg");
-
-    document.getElementById("btn-debug").onclick = () => {
-        const t = window.Telegram;
-        const wa = t?.WebApp;
-
-        dbg.textContent =
-        "window.Telegram: " + !!t + "\n" +
-        "Telegram.WebApp: " + !!wa + "\n" +
-        "initData length: " + (wa?.initData?.length ?? 0) + "\n" +
-        "initDataUnsafe: " + JSON.stringify(wa?.initDataUnsafe ?? null, null, 2) + "\n" +
-        "location.href: " + location.href + "\n" +
-        "userAgent: " + navigator.userAgent;
-    };
-
-    // полезно вызвать сразу
-    document.getElementById("btn-debug").click();
-    </script>
 
 </body>
 </html>
