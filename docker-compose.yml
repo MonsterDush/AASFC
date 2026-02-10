@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: axelio_pass
       POSTGRES_DB: axelio_dev
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
       - axelio_pgdata:/var/lib/postgresql/data
 
