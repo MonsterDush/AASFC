@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Invites & Members</b>
-          <div class="muted">по venue_id</div>
+          <div class="muted">manage by venue</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -27,16 +27,36 @@
         <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
       </div>
 
-      <div class="itemcard" style="margin-top:12px">
-        <b>Venue</b>
-        <div class="mono" id="venueMeta">…</div>
+      <!-- Venue selector (shown when no venue_id) -->
+      <div id="selectorCard" class="itemcard" style="margin-top:12px; display:none;">
+        <b>Choose venue</b>
         <div class="muted" style="margin-top:6px">
-          Открой эту страницу из Owners по ссылке “Invites & Members” — она добавит <span class="mono">?venue_id=...</span>.
+          Ты открыл страницу без <span class="mono">venue_id</span>. Как SUPER_ADMIN ты можешь выбрать любое заведение.
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <select id="venueSelect" style="min-width:380px">
+            <option value="">Loading venues…</option>
+          </select>
+          <button class="btn primary" id="btnUseVenue">Use</button>
+          <a class="link" id="openLink" href="/invites.html" style="display:none;">Open link →</a>
+        </div>
+
+        <div class="muted" style="margin-top:6px">
+          Требуется endpoint <span class="mono">GET /venues</span> (SUPER_ADMIN).
         </div>
       </div>
 
+      <!-- Venue meta -->
       <div class="itemcard" style="margin-top:12px">
-        <b>Создать приглашение</b>
+        <b>Venue</b>
+        <div class="mono" id="venueMeta">…</div>
+        <div class="muted" style="margin-top:6px" id="venueHint"></div>
+      </div>
+
+      <!-- Invite form -->
+      <div class="itemcard" style="margin-top:12px">
+        <b>Create invite</b>
         <div class="row" style="margin-top:10px">
           <input id="tg" placeholder="tg username (с @ или без)" />
           <select id="role">
@@ -46,23 +66,22 @@
           <button class="btn primary" id="btnInvite">Invite</button>
         </div>
         <div class="muted" style="margin-top:6px">
-          Вызывает <span class="mono">POST /venues/{venue_id}/invites</span>
+          <span class="mono">POST /venues/{venue_id}/invites</span>
         </div>
       </div>
 
+      <!-- Lists -->
       <div class="grid" style="grid-template-columns:1fr 1fr; margin-top:12px">
         <div class="itemcard">
-          <b>Pending</b>
+          <b>Pending invites</b>
           <div id="pending" style="margin-top:10px">
-            <div class="skeleton"></div>
-            <div class="skeleton"></div>
+            <div class="skeleton"></div><div class="skeleton"></div>
           </div>
         </div>
         <div class="itemcard">
           <b>Members</b>
           <div id="members" style="margin-top:10px">
-            <div class="skeleton"></div>
-            <div class="skeleton"></div>
+            <div class="skeleton"></div><div class="skeleton"></div>
           </div>
         </div>
       </div>
@@ -96,19 +115,57 @@
 
     applyTelegramTheme();
     mountCommonUI("invites");
-
     ensureLogin({ silent:true });
 
     const params = new URLSearchParams(location.search);
-    const venueId = params.get("venue_id");
+    let venueId = params.get("venue_id");
+
+    const selectorCard = document.getElementById("selectorCard");
+    const venueSelect = document.getElementById("venueSelect");
+    const btnUseVenue = document.getElementById("btnUseVenue");
+    const openLink = document.getElementById("openLink");
 
     const venueMeta = document.getElementById("venueMeta");
+    const venueHint = document.getElementById("venueHint");
     const pending = document.getElementById("pending");
     const members = document.getElementById("members");
 
-    venueMeta.textContent = venueId ? `venue_id=${venueId}` : "venue_id not provided";
+    const btnLogin = document.getElementById("btnLogin");
+    const btnReload = document.getElementById("btnReload");
+    const btnInvite = document.getElementById("btnInvite");
 
     function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+
+    function setVenueMeta() {
+      venueMeta.textContent = venueId ? `venue_id=${venueId}` : "venue_id not provided";
+      venueHint.textContent = venueId
+        ? "Можно приглашать участников и смотреть pending/members."
+        : "Выбери venue ниже (SUPER_ADMIN) или открой страницу из Owners.";
+    }
+
+    async function loadVenuesForSelector() {
+      selectorCard.style.display = "block";
+      venueSelect.innerHTML = `<option value="">Loading venues…</option>`;
+      openLink.style.display = "none";
+
+      try {
+        const venues = await api("/venues"); // SUPER_ADMIN endpoint
+        window.__lastJson = venues;
+
+        venueSelect.innerHTML = `<option value="">Select venue…</option>`;
+        venues.forEach(v => {
+          const opt = document.createElement("option");
+          opt.value = String(v.id);
+          opt.textContent = `${v.name} (id=${v.id})`;
+          venueSelect.appendChild(opt);
+        });
+
+        toast("Venues loaded", "ok");
+      } catch (e) {
+        venueSelect.innerHTML = `<option value="">Error loading venues</option>`;
+        toast("GET /venues error: " + e.message, "err");
+      }
+    }
 
     function renderPending(items) {
       pending.innerHTML = "";
@@ -131,7 +188,7 @@
           try {
             await api(`/venues/${venueId}/invites/${i.id}`, { method:"DELETE" });
             toast("Invite cancelled", "ok");
-            await load();
+            await loadMembers();
           } catch (e) {
             toast("Cancel error: " + e.message, "err");
           }
@@ -159,10 +216,10 @@
       });
     }
 
-    async function load() {
+    async function loadMembers() {
       if (!venueId) {
-        pending.innerHTML = `<div class="muted">Нужен venue_id. Открой из Owners.</div>`;
-        members.innerHTML = `<div class="muted">Нужен venue_id. Открой из Owners.</div>`;
+        pending.innerHTML = `<div class="muted">Нужен venue_id (выбери venue)</div>`;
+        members.innerHTML = `<div class="muted">Нужен venue_id (выбери venue)</div>`;
         return;
       }
 
@@ -182,14 +239,20 @@
       }
     }
 
-    document.getElementById("btnLogin").onclick = async () => {
+    // --- UI hooks ---
+    btnLogin.onclick = async () => {
       const r = await ensureLogin({ silent:false });
       if (r.ok) toast("Login OK", "ok");
     };
-    document.getElementById("btnReload").onclick = load;
 
-    document.getElementById("btnInvite").onclick = async () => {
-      if (!venueId) { toast("Нет venue_id", "warn"); return; }
+    btnReload.onclick = async () => {
+      setVenueMeta();
+      if (!venueId) await loadVenuesForSelector();
+      await loadMembers();
+    };
+
+    btnInvite.onclick = async () => {
+      if (!venueId) { toast("Нет venue_id — выбери venue", "warn"); return; }
       const tg = document.getElementById("tg").value.trim();
       const role = document.getElementById("role").value;
       if (!tg) { toast("Введи username", "warn"); return; }
@@ -201,13 +264,35 @@
         });
         document.getElementById("tg").value = "";
         toast("Invite sent", "ok");
-        await load();
+        await loadMembers();
       } catch (e) {
         toast("Invite error: " + e.message, "err");
       }
     };
 
-    load();
+    btnUseVenue.onclick = async () => {
+      const v = venueSelect.value;
+      if (!v) { toast("Select a venue", "warn"); return; }
+      venueId = v;
+
+      // Покажем ссылку для шаринга/перехода
+      openLink.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
+      openLink.style.display = "inline";
+
+      toast("Venue selected: " + venueId, "ok");
+      setVenueMeta();
+      await loadMembers();
+    };
+
+    // --- initial ---
+    setVenueMeta();
+
+    if (!venueId) {
+      // показать селектор, если мы без venue_id
+      loadVenuesForSelector();
+    }
+    // и попробовать загрузить members (покажет подсказку, если venueId нет)
+    loadMembers();
   </script>
 </body>
 </html>

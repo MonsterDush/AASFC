@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · Owners</title>
+  <title>Axelio · Admin Venues</title>
 </head>
 <body>
   <div class="container">
@@ -13,8 +13,8 @@
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <b>Owners & Venues</b>
-          <div class="muted">твои заведения</div>
+          <b>Admin · Venues</b>
+          <div class="muted">SUPER_ADMIN panel</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -27,8 +27,20 @@
         <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
       </div>
 
-      <div class="muted" style="margin-top:10px;">
-        Загружаю <span class="mono">GET /me/venues</span>. Переход к invites делается по venue_id.
+      <div class="itemcard" style="margin-top:12px">
+        <b>Create venue</b>
+        <div class="muted" style="margin-top:6px">
+          Создаёт venue и сразу создаёт OWNER members/приглашения по usernames (если user ещё не логинился).
+        </div>
+        <div class="row" style="margin-top:10px">
+          <input id="vname" placeholder="Venue name" />
+          <input id="owners" placeholder="Owners usernames: owner1, @owner2" style="min-width:320px" />
+          <button class="btn primary" id="btnCreate">Create</button>
+        </div>
+      </div>
+
+      <div class="muted" style="margin-top:12px;">
+        Список всех venues: <span class="mono">GET /venues</span>
       </div>
 
       <div id="list" class="list">
@@ -61,17 +73,21 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, openModal, mountCommonUI } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
 
     applyTelegramTheme();
     mountCommonUI("owners");
-
-    // авто-логин тихо (поставить cookie)
-    ensureLogin({ silent: true });
+    ensureLogin({ silent:true });
 
     const list = document.getElementById("list");
-    const btnLogin = document.getElementById("btnLogin");
-    const btnReload = document.getElementById("btnReload");
+
+    function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+    function parseOwners(text){
+      return (text || "")
+        .split(",")
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
 
     function venueCard(v) {
       const div = document.createElement("div");
@@ -79,91 +95,57 @@
       div.innerHTML = `
         <div class="row" style="justify-content:space-between;align-items:flex-start">
           <div>
-            <b>${escapeHtml(v.name)}</b>
-            <div class="small">id=${v.id} · my_role=${escapeHtml(v.my_role || "")}</div>
+            <b>${esc(v.name)}</b>
+            <div class="small">id=${v.id}</div>
           </div>
-          <a class="link" href="/invites.html?venue_id=${v.id}">Invites & Members →</a>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <input data-name value="${escapeAttr(v.name)}" />
-          <button class="btn" data-rename>Rename</button>
-          <button class="btn danger" data-delete>Delete</button>
-        </div>
-
-        <div class="muted" style="margin-top:6px">
-          Rename/Delete требуют твоих endpoint-ов <span class="mono">PATCH/DELETE /venues/{id}</span>.
-          Если ещё не добавил — увидишь ошибку.
+          <a class="link" href="/invites.html?venue_id=${v.id}">Manage invites →</a>
         </div>
       `;
-
-      div.querySelector("[data-rename]").onclick = async () => {
-        const name = div.querySelector("[data-name]").value.trim();
-        try {
-          const res = await fetch("https://api-dev.axelio.ru/venues/" + v.id, {
-            method:"PATCH",
-            credentials:"include",
-            headers:{ "Content-Type":"application/json" },
-            body: JSON.stringify({ name })
-          });
-          const text = await res.text();
-          if (!res.ok) throw new Error(text);
-          toast("Renamed", "ok");
-          await load();
-        } catch (e) {
-          toast("Rename error: " + e.message, "err");
-        }
-      };
-
-      div.querySelector("[data-delete]").onclick = async () => {
-        if (!confirm("Delete venue?")) return;
-        try {
-          const res = await fetch("https://api-dev.axelio.ru/venues/" + v.id, {
-            method:"DELETE",
-            credentials:"include",
-          });
-          const text = await res.text();
-          if (!res.ok) throw new Error(text);
-          toast("Deleted", "ok");
-          await load();
-        } catch (e) {
-          toast("Delete error: " + e.message, "err");
-        }
-      };
-
       return div;
     }
 
-    function escapeHtml(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
-    function escapeAttr(s){ return escapeHtml(s).replaceAll('"',"&quot;"); }
-
     async function load() {
-      list.innerHTML = `
-        <div class="skeleton"></div>
-        <div class="skeleton"></div>
-      `;
+      list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
       try {
-        const data = await api("/me/venues");
+        const data = await api("/venues"); // <-- нужен endpoint GET /venues (SUPER_ADMIN)
         window.__lastJson = data;
-
         list.innerHTML = "";
         if (!data.length) {
-          list.innerHTML = `<div class="muted">Нет заведений. Если ты SUPER_ADMIN — создай venue. Если ты OWNER — дождись инвайта.</div>`;
+          list.innerHTML = `<div class="muted">Пока нет заведений</div>`;
           return;
         }
         data.forEach(v => list.appendChild(venueCard(v)));
         toast("Loaded venues", "ok");
       } catch (e) {
-        list.innerHTML = `<div class="muted">Ошибка загрузки: ${escapeHtml(e.message)}</div>`;
+        list.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
         toast("Load error: " + e.message, "err");
       }
     }
 
-    btnLogin.onclick = async () => {
+    document.getElementById("btnLogin").onclick = async () => {
       const r = await ensureLogin({ silent:false });
       if (r.ok) toast("Login OK", "ok");
     };
-    btnReload.onclick = load;
+
+    document.getElementById("btnReload").onclick = load;
+
+    document.getElementById("btnCreate").onclick = async () => {
+      const name = document.getElementById("vname").value.trim();
+      const owners = parseOwners(document.getElementById("owners").value);
+      if (!name) { toast("Venue name required", "warn"); return; }
+
+      try {
+        const payload = { name, owner_usernames: owners.length ? owners : null };
+        const data = await api("/venues", { method:"POST", body: JSON.stringify(payload) });
+        window.__lastJson = data;
+        toast("Venue created", "ok");
+        document.getElementById("vname").value = "";
+        // owners можно не чистить
+        await load();
+      } catch (e) {
+        toast("Create error: " + e.message, "err");
+      }
+    };
 
     load();
   </script>

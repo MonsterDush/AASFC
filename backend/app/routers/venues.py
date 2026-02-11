@@ -15,6 +15,7 @@ from app.core.tg import normalize_tg_username
 from app.models.user import User
 from app.models.venue_member import VenueMember
 from app.models.venue_invite import VenueInvite
+from app.models.venue import Venue
 
 from app.services.venues import create_venue
 
@@ -81,6 +82,13 @@ def create_venue_admin_only(
     )
     return {"id": venue.id, "name": venue.name}
 
+@router.get("")
+def list_venues_admin_only(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    rows = db.query(Venue.id, Venue.name).order_by(Venue.id.desc()).all()
+    return [{"id": r.id, "name": r.name} for r in rows]
 
 @router.get("/{venue_id}/members")
 def get_members(
