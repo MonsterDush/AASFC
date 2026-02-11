@@ -76,6 +76,17 @@
       <a href="/app-venues.html" data-tab="app">App</a>
     </div>
   </div>
+<div class="itemcard" style="margin-top:12px">
+  <b>Boot debug</b>
+  <div class="mono" id="boot">loading…</div>
+</div>
+<script>
+  const el = document.getElementById("boot");
+  el.textContent = "inline script ok; now loading module…";
+  window.addEventListener("error", (e) => {
+    el.textContent = "JS error: " + (e.message || e.type);
+  });
+</script>
 
   <script type="module">
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
