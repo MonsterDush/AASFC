@@ -6,14 +6,20 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Admin Venues</title>
+
   <style>
+    /* если в styles.css уже есть похожее — это не мешает */
     .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
-    .card { border:1px solid rgba(0,0,0,.12); border-radius:12px; padding:10px 12px; margin:8px 0; }
+    .card { border:1px solid rgba(0,0,0,.12); border-radius:12px; padding:10px 12px; margin:10px 0; }
     .row { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
     .muted { opacity:.7; }
     .btn { cursor:pointer; }
-    input[type="text"] { padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.2); min-width:240px; }
+    input[type="text"], input[type="search"] { padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.2); min-width:240px; }
+    .pill { padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.15); }
+    .skeleton { border-radius:12px; height:64px; background:rgba(0,0,0,.06); margin:10px 0; }
     pre { white-space:pre-wrap; word-break:break-word; }
+    .danger { border-color: rgba(255,0,0,.35); }
+    .right { margin-left:auto; }
   </style>
 </head>
 
@@ -22,21 +28,32 @@
     <div class="topbar">
       <div class="brand">Axelio · Admin</div>
       <div class="muted">Venues</div>
+      <div class="right pill muted" data-userpill>—</div>
     </div>
 
     <div class="toolbar">
       <button id="btnLogin" class="btn">Login</button>
-      <button id="btnLoadActive" class="btn">Load active</button>
-      <button id="btnLoadArchived" class="btn">Load archived</button>
+      <button id="btnActive" class="btn">Active</button>
+      <button id="btnArchived" class="btn">Archived</button>
       <span id="status" class="muted"></span>
+      <button id="btnDetails" class="btn right" title="Last JSON">Details</button>
+    </div>
+
+    <div id="banner" class="card" style="display:none">
+      <b>Not logged in</b>
+      <div class="muted" style="margin-top:6px">
+        Открой страницу через Telegram Mini App и нажми <b>Login</b>.
+      </div>
     </div>
 
     <div class="card">
       <div class="row">
         <div>
-          <div class="muted">Create venue (name + owner usernames через запятую)</div>
+          <div><b>Create venue</b></div>
+          <div class="muted">name + owner usernames через запятую</div>
         </div>
       </div>
+
       <div class="toolbar">
         <input id="vName" type="text" placeholder="Venue name" />
         <input id="owners" type="text" placeholder="owner_usernames: ivan, petr" />
@@ -45,129 +62,142 @@
       <div id="createResult" class="muted"></div>
     </div>
 
-    <div id="list"></div>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search by name / id..." />
+      <span class="muted" id="count">0</span>
+    </div>
 
-    <div class="card">
-      <div class="muted">Debug</div>
-      <pre id="debug"></pre>
+    <div id="list"></div>
+  </div>
+
+  <!-- Toast (если styles.css уже задаёт — отлично) -->
+  <div id="toast" class="toast" aria-live="polite">
+    <div class="toast__text"></div>
+  </div>
+
+  <!-- Modal (используется openModal/confirmModal из app.js) -->
+  <div id="modal" class="modal">
+    <div class="modal__backdrop"></div>
+    <div class="modal__panel">
+      <div class="row">
+        <div class="modal__title"><b>Modal</b></div>
+        <button class="btn" data-close>×</button>
+      </div>
+      <div class="modal__body"></div>
     </div>
   </div>
 
-<script>
-(() => {
-  const API = "https://api-dev.axelio.ru";
+<script type="module">
+  import {
+    applyTelegramTheme,
+    mountCommonUI,
+    ensureLogin,
+    api,
+    toast,
+    confirmModal,
+    openModal
+  } from "/app.js";
+
+  // безопасное экранирование (без replaceAll)
+  function esc(s){
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+  function escAttr(s){ return esc(s).replace(/"/g, "&quot;"); }
+
   const statusEl = document.getElementById("status");
   const listEl = document.getElementById("list");
-  const debugEl = document.getElementById("debug");
+  const bannerEl = document.getElementById("banner");
   const createResultEl = document.getElementById("createResult");
+  const searchEl = document.getElementById("search");
+  const countEl = document.getElementById("count");
 
-  function setStatus(s) { statusEl.textContent = s || ""; }
-  function logDebug(obj) {
-    try { debugEl.textContent = JSON.stringify(obj, null, 2); }
-    catch { debugEl.textContent = String(obj); }
-  }
-  function safeText(x) { return (x === null || x === undefined) ? "" : String(x); }
+  let currentArchived = false;
+  let allVenues = [];
 
-  function getInitData() {
-    try {
-      const tg = window.Telegram && window.Telegram.WebApp;
-      tg && tg.ready && tg.ready();
-      return (tg && typeof tg.initData === "string") ? tg.initData : "";
-    } catch {
-      return "";
-    }
+  function setStatus(s){ statusEl.textContent = s || ""; }
+
+  function renderSkeleton() {
+    listEl.innerHTML = `
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+    `;
   }
 
-  async function apiFetch(path, opts = {}) {
-    const url = API + path;
-    const res = await fetch(url, {
-      method: opts.method || "GET",
-      headers: Object.assign({ "Content-Type": "application/json" }, opts.headers || {}),
-      credentials: "include",
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
+  function filteredVenues() {
+    const q = (searchEl.value || "").trim().toLowerCase();
+    if (!q) return allVenues;
+    return allVenues.filter(v => {
+      const id = String(v?.id ?? "").toLowerCase();
+      const name = String(v?.name ?? "").toLowerCase();
+      return id.includes(q) || name.includes(q);
     });
-
-    const text = await res.text();
-    let data;
-    try { data = text ? JSON.parse(text) : null; }
-    catch { data = text; }
-
-    if (!res.ok) {
-      const err = new Error(`HTTP ${res.status} ${res.statusText}`);
-      err.status = res.status;
-      err.data = data;
-      throw err;
-    }
-    return data;
   }
 
-  async function login() {
-    setStatus("Logging in...");
-    const initData = getInitData();
-    if (!initData) {
-      setStatus("No initData. Open via Telegram Mini App.");
-      logDebug({ error: "NO_INITDATA", hint: "Open page from Telegram Mini App, not regular browser." });
-      return { ok: false };
-    }
-    try {
-      const data = await apiFetch("/auth/telegram", {
-        method: "POST",
-        body: { initData: initData }
-      });
-      setStatus("Login OK");
-      logDebug({ login: "OK", response: data });
-      return { ok: true, data };
-    } catch (e) {
-      setStatus("Login failed");
-      logDebug({ login: "FAILED", message: e.message, status: e.status, data: e.data });
-      return { ok: false, error: e };
-    }
-  }
+  function renderVenues() {
+    const items = filteredVenues();
+    countEl.textContent = String(items.length);
 
-  function renderVenues(items) {
-    listEl.innerHTML = "";
     if (!Array.isArray(items) || items.length === 0) {
       listEl.innerHTML = `<div class="muted">No venues</div>`;
       return;
     }
 
-    for (const v of items) {
-      const id = safeText(v.id);
-      const name = safeText(v.name);
+    listEl.innerHTML = items.map(v => {
+      const id = escAttr(v.id);
+      const name = esc(v.name);
       const isArchived = !!v.is_archived;
+      const badge = isArchived ? `<span class="pill">archived</span>` : `<span class="pill muted">active</span>`;
 
-      const div = document.createElement("div");
-      div.className = "card";
-      div.innerHTML = `
-        <div class="row">
-          <div>
-            <div><b>${name}</b></div>
-            <div class="muted">id=${id} · archived=${isArchived}</div>
-          </div>
-          <div class="toolbar">
-            <button class="btn" data-action="rename" data-id="${id}">Rename</button>
-            <button class="btn" data-action="toggleArchive" data-id="${id}" data-arch="${isArchived ? "1":"0"}">
-              ${isArchived ? "Unarchive" : "Archive"}
-            </button>
-            <button class="btn" data-action="delete" data-id="${id}">Delete</button>
+      return `
+        <div class="card">
+          <div class="row">
+            <div>
+              <div><b>${name}</b> ${badge}</div>
+              <div class="muted">id=${esc(v.id)}${v.archived_at ? " · archived_at=" + esc(v.archived_at) : ""}</div>
+            </div>
+            <div class="toolbar">
+              <button class="btn" data-action="rename" data-id="${id}">Rename</button>
+              <button class="btn" data-action="toggleArchive" data-id="${id}" data-arch="${isArchived ? "1":"0"}">
+                ${isArchived ? "Unarchive" : "Archive"}
+              </button>
+              <button class="btn danger" data-action="delete" data-id="${id}">Delete</button>
+            </div>
           </div>
         </div>
       `;
-      listEl.appendChild(div);
-    }
+    }).join("");
+  }
+
+  function setLastJson(obj){
+    window.__lastJson = obj;
   }
 
   async function loadVenues(archived) {
-    setStatus("Loading venues...");
+    currentArchived = !!archived;
+    setStatus("Loading...");
+    renderSkeleton();
+
     try {
-      const items = await apiFetch(`/venues?archived=${archived ? "true" : "false"}`);
-      renderVenues(items);
-      setStatus("Loaded");
-      logDebug({ load: "OK", count: Array.isArray(items) ? items.length : null });
+      const items = await api(`/venues?archived=${currentArchived ? "true" : "false"}`);
+      allVenues = Array.isArray(items) ? items : [];
+      setLastJson({ load: "OK", archived: currentArchived, items: allVenues });
+      setStatus(`Loaded (${allVenues.length})`);
+      renderVenues();
     } catch (e) {
+      setLastJson({ load: "FAILED", message: e?.message, status: e?.status, data: e?.data, url: e?.url });
       setStatus("Load failed");
-      listEl.innerHTML = `<div class="card"><b>Error</b><pre>${safeText(e.message)}\n\n${safeText(JSON.stringify(e.data, null, 2))}</pre></div>`;
-      logDebug({ load: "FAILED", message: e.message, status: e.status, data: e.data });
+      listEl.innerHTML = `
+        <div class="card">
+          <b>Error loading venues</b>
+          <pre>${esc(e?.message || "Unknown error")}</pre>
+          <div class="muted">Нажми <b>Details</b> чтобы посмотреть JSON.</div>
+        </div>
+      `;
+      toast(e?.message || "Load failed", "err");
     }
   }
 
@@ -175,95 +205,131 @@
     const name = document.getElementById("vName").value.trim();
     const ownersRaw = document.getElementById("owners").value.trim();
     const owner_usernames = ownersRaw
-      ? ownersRaw.split(",").map(s => s.trim()).filter(Boolean)
+      ? ownersRaw.split(",").map(s => s.trim().replace(/^@/, "")).filter(Boolean)
       : [];
 
+    if (!name) { toast("Venue name required", "warn"); return; }
+
     createResultEl.textContent = "";
-    setStatus("Creating venue...");
+    setStatus("Creating...");
 
     try {
-      const out = await apiFetch("/venues", {
-        method: "POST",
-        body: { name, owner_usernames }
-      });
+      const out = await api("/venues", { method: "POST", body: { name, owner_usernames } });
+      setLastJson({ create: "OK", response: out });
       setStatus("Created");
-      createResultEl.textContent = "Created: " + safeText(out && (out.id || out.name || JSON.stringify(out)));
+      createResultEl.textContent = out?.id ? `Created id=${out.id}` : "Created";
+      toast("Venue created", "ok");
       await loadVenues(false);
-      logDebug({ create: "OK", response: out });
     } catch (e) {
+      setLastJson({ create: "FAILED", message: e?.message, status: e?.status, data: e?.data });
       setStatus("Create failed");
-      createResultEl.textContent = `Error: ${safeText(e.message)} ${e.status ? "(HTTP " + e.status + ")" : ""}`;
-      logDebug({ create: "FAILED", message: e.message, status: e.status, data: e.data });
+      createResultEl.textContent = e?.message || "Create failed";
+      toast(e?.message || "Create failed", "err");
     }
   }
 
-  async function handleAction(ev) {
+  async function renameVenue(id) {
+    const newName = prompt("New venue name?");
+    if (!newName) return;
+
+    setStatus("Renaming...");
+    try {
+      const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "PATCH", body: { name: newName } });
+      setLastJson({ rename: "OK", response: out });
+      setStatus("Renamed");
+      toast("Renamed", "ok");
+      await loadVenues(currentArchived);
+    } catch (e) {
+      setLastJson({ rename: "FAILED", message: e?.message, status: e?.status, data: e?.data });
+      setStatus("Rename failed");
+      toast(e?.message || "Rename failed", "err");
+    }
+  }
+
+  async function toggleArchiveVenue(id, isArchived) {
+    setStatus(isArchived ? "Unarchiving..." : "Archiving...");
+    try {
+      const out = await api(`/venues/${encodeURIComponent(id)}/${isArchived ? "unarchive" : "archive"}`, { method: "POST" });
+      setLastJson({ archiveToggle: "OK", response: out });
+      setStatus("OK");
+      toast(isArchived ? "Unarchived" : "Archived", "ok");
+      await loadVenues(currentArchived);
+    } catch (e) {
+      setLastJson({ archiveToggle: "FAILED", message: e?.message, status: e?.status, data: e?.data });
+      setStatus("Archive toggle failed");
+      toast(e?.message || "Archive toggle failed", "err");
+    }
+  }
+
+  async function deleteVenue(id) {
+    const ok = await confirmModal({
+      title: "Delete venue",
+      text: "Удаление разрешено только для archived venue. Продолжить?",
+      confirmText: "Delete",
+      danger: true
+    });
+    if (!ok) return;
+
+    setStatus("Deleting...");
+    try {
+      const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "DELETE" });
+      setLastJson({ delete: "OK", response: out });
+      setStatus("Deleted");
+      toast("Deleted", "ok");
+      await loadVenues(true);
+    } catch (e) {
+      setLastJson({ delete: "FAILED", message: e?.message, status: e?.status, data: e?.data });
+      setStatus("Delete failed");
+      toast(e?.message || "Delete failed", "err");
+    }
+  }
+
+  // UI wiring
+  document.getElementById("btnLogin").addEventListener("click", async () => {
+    const r = await ensureLogin({ silent: false });
+    bannerEl.style.display = r.ok ? "none" : "";
+    if (r.ok) await loadVenues(false);
+  });
+
+  document.getElementById("btnActive").addEventListener("click", () => loadVenues(false));
+  document.getElementById("btnArchived").addEventListener("click", () => loadVenues(true));
+  document.getElementById("btnCreate").addEventListener("click", createVenue);
+
+  document.getElementById("btnDetails").addEventListener("click", () => {
+    openModal("Last JSON", window.__lastJson || { info: "No data yet" });
+  });
+
+  searchEl.addEventListener("input", renderVenues);
+
+  listEl.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("button[data-action]");
     if (!btn) return;
 
     const action = btn.dataset.action;
     const id = btn.dataset.id;
 
-    if (action === "rename") {
-      const newName = prompt("New venue name?");
-      if (!newName) return;
-      setStatus("Renaming...");
-      try {
-        const out = await apiFetch(`/venues/${encodeURIComponent(id)}`, { method: "PATCH", body: { name: newName }});
-        setStatus("Renamed");
-        logDebug({ rename: "OK", response: out });
-        await loadVenues(false);
-      } catch (e) {
-        setStatus("Rename failed");
-        logDebug({ rename: "FAILED", message: e.message, status: e.status, data: e.data });
-        alert(`Rename failed: ${e.message}`);
-      }
-    }
-
+    if (action === "rename") return renameVenue(id);
     if (action === "toggleArchive") {
       const isArchived = btn.dataset.arch === "1";
-      setStatus(isArchived ? "Unarchiving..." : "Archiving...");
-      try {
-        const out = await apiFetch(`/venues/${encodeURIComponent(id)}/${isArchived ? "unarchive" : "archive"}`, { method: "POST" });
-        setStatus("OK");
-        logDebug({ archiveToggle: "OK", response: out });
-        await loadVenues(isArchived); // после unarchive остаёмся на archived, после archive остаёмся на active — норм
-      } catch (e) {
-        setStatus("Archive toggle failed");
-        logDebug({ archiveToggle: "FAILED", message: e.message, status: e.status, data: e.data });
-        alert(`Archive toggle failed: ${e.message}`);
-      }
+      return toggleArchiveVenue(id, isArchived);
     }
+    if (action === "delete") return deleteVenue(id);
+  });
 
-    if (action === "delete") {
-      if (!confirm("Delete venue? (only should work if archived)")) return;
-      setStatus("Deleting...");
-      try {
-        const out = await apiFetch(`/venues/${encodeURIComponent(id)}`, { method: "DELETE" });
-        setStatus("Deleted");
-        logDebug({ delete: "OK", response: out });
-        await loadVenues(true);
-      } catch (e) {
-        setStatus("Delete failed");
-        logDebug({ delete: "FAILED", message: e.message, status: e.status, data: e.data });
-        alert(`Delete failed: ${e.message}`);
-      }
-    }
-  }
-
-  // Wire buttons
-  document.getElementById("btnLogin").addEventListener("click", login);
-  document.getElementById("btnLoadActive").addEventListener("click", () => loadVenues(false));
-  document.getElementById("btnLoadArchived").addEventListener("click", () => loadVenues(true));
-  document.getElementById("btnCreate").addEventListener("click", createVenue);
-  listEl.addEventListener("click", handleAction);
-
-  // Auto-boot: login -> load active
+  // boot
   (async () => {
-    const r = await login();
-    if (r.ok) await loadVenues(false);
+    applyTelegramTheme();
+    mountCommonUI("admin-venues");
+
+    // ВАЖНО: ждём логин (фикс гонки cookie)
+    const r = await ensureLogin({ silent: true });
+    bannerEl.style.display = r.ok ? "none" : "";
+
+    // Даже если не залогинен — грузим, чтобы показать реальную ошибку (401/403) вместо вечного скелетона
+    await loadVenues(false);
+
+    if (!r.ok) setStatus("Not logged in (press Login)");
   })();
-})();
 </script>
 </body>
 </html>

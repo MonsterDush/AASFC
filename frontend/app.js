@@ -1,13 +1,19 @@
 export const API_BASE = "https://api-dev.axelio.ru";
 
-export function wa() { return window.Telegram?.WebApp || null; }
+export function wa() {
+  return window.Telegram?.WebApp || null;
+}
 
 export function applyTelegramTheme() {
   const w = wa();
   const el = document.querySelector("[data-userpill]");
-  if (!w) { if (el) el.textContent = "not in Telegram"; return; }
+  if (!w) {
+    if (el) el.textContent = "not in Telegram";
+    return;
+  }
 
   w.ready();
+
   const t = w.themeParams || {};
   const set = (k, v) => v && document.documentElement.style.setProperty(k, v);
 
@@ -22,24 +28,34 @@ export function applyTelegramTheme() {
   if (el) el.textContent = u ? `@${u.username || "no_username"}` : "unknown";
 }
 
-export function toast(msg, type="info") {
+export function toast(msg, type = "info") {
   const box = document.getElementById("toast");
   if (!box) return alert(msg);
+
   box.className = "toast show " + type;
   box.querySelector(".toast__text").textContent = msg;
+
   clearTimeout(box._t);
-  box._t = setTimeout(() => box.className = "toast", 2400);
+  box._t = setTimeout(() => (box.className = "toast"), 2400);
 }
 
 export function openModal(title, jsonOrText) {
   const m = document.getElementById("modal");
   if (!m) return;
+
   m.querySelector(".modal__title").textContent = title;
+
   const body = m.querySelector(".modal__body");
+  if (!body) return;
+
   body.textContent = "";
   const pre = document.createElement("pre");
   pre.className = "json";
-  pre.textContent = typeof jsonOrText === "string" ? jsonOrText : JSON.stringify(jsonOrText, null, 2);
+  pre.textContent =
+    typeof jsonOrText === "string"
+      ? jsonOrText
+      : JSON.stringify(jsonOrText, null, 2);
+
   body.appendChild(pre);
   m.classList.add("open");
 }
@@ -50,64 +66,133 @@ export function closeModal() {
 }
 
 export function mountCommonUI(activeTab) {
-  document.querySelectorAll("[data-tab]").forEach(a => {
+  document.querySelectorAll("[data-tab]").forEach((a) => {
     if (a.getAttribute("data-tab") === activeTab) a.classList.add("active");
   });
 
   const modal = document.getElementById("modal");
   if (modal) {
-    modal.querySelector("[data-close]").onclick = closeModal;
-    modal.querySelector(".modal__backdrop").onclick = closeModal;
+    const closeBtn = modal.querySelector("[data-close]");
+    const backdrop = modal.querySelector(".modal__backdrop");
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (backdrop) backdrop.onclick = closeModal;
   }
 
-  document.querySelectorAll("[data-viewjson]").forEach(btn => {
-    btn.onclick = () => openModal(btn.getAttribute("data-title") || "JSON", window.__lastJson || {});
+  document.querySelectorAll("[data-viewjson]").forEach((btn) => {
+    btn.onclick = () =>
+      openModal(btn.getAttribute("data-title") || "JSON", window.__lastJson || {});
   });
 }
 
+function isPlainObject(v) {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    !(v instanceof FormData) &&
+    !(v instanceof Blob) &&
+    !(v instanceof ArrayBuffer)
+  );
+}
+
+function extractErrorMessage(data) {
+  if (typeof data === "string") return data;
+
+  // FastAPI часто отдаёт {detail: ...}
+  if (data && typeof data === "object") {
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail)) {
+      // pydantic validation errors
+      return data.detail.map((x) => x?.msg || JSON.stringify(x)).join("; ");
+    }
+  }
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return String(data);
+  }
+}
+
+/**
+ * api("/path", { method:"POST", body: {a:1} })  // body-объект можно
+ * api("/path", { method:"POST", body: JSON.stringify({a:1}) }) // тоже ок
+ */
 export async function api(path, opts = {}) {
-  const r = await fetch(API_BASE + path, {
+  const url = API_BASE + path;
+
+  // auto-jsonify object body (если передали объект)
+  let body = opts.body;
+  if (isPlainObject(body)) body = JSON.stringify(body);
+
+  const r = await fetch(url, {
     ...opts,
+    body,
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(opts.headers||{}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(opts.headers || {}),
+    },
   });
+
   const text = await r.text();
   let data;
-  try { data = JSON.parse(text); } catch { data = text; }
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
 
   if (!r.ok) {
-    const err = new Error(`HTTP ${r.status} ${r.statusText}`);
+    const err = new Error(`HTTP ${r.status} ${r.statusText}: ${extractErrorMessage(data)}`);
     err.status = r.status;
     err.data = data;
+    err.url = r.url;
     throw err;
   }
+
   return data;
 }
 
-export async function ensureLogin({ silent=true } = {}) {
+export async function ensureLogin({ silent = true } = {}) {
   const w = wa();
   const initData = w?.initData || "";
+
   if (!initData) {
     if (!silent) toast("Нет initData. Открой через Telegram Mini App.", "warn");
-    return { ok:false };
+    return { ok: false, reason: "NO_INITDATA" };
   }
+
   try {
-    await api("/auth/telegram", { method:"POST", body: JSON.stringify({ initData }) });
+    const out = await api("/auth/telegram", {
+      method: "POST",
+      body: { initData }, // <-- ключ initData
+    });
+
     if (!silent) toast("Login OK", "ok");
-    return { ok:true };
+    return { ok: true, data: out };
   } catch (e) {
-    if (!silent) toast("Login error: " + e.message, "err");
-    return { ok:false };
+    if (!silent) {
+      const msg = e?.message || "Login error";
+      toast(msg, "err");
+    }
+    return {
+      ok: false,
+      status: e?.status,
+      data: e?.data,
+      message: e?.message,
+    };
   }
 }
 
-export function confirmModal({ title, text, confirmText="Confirm", danger=false }) {
+export function confirmModal({ title, text, confirmText = "Confirm", danger = false }) {
   return new Promise((resolve) => {
     const m = document.getElementById("modal");
     if (!m) return resolve(false);
 
-    m.querySelector(".modal__title").textContent = title;
+    const titleEl = m.querySelector(".modal__title");
     const body = m.querySelector(".modal__body");
+    if (!titleEl || !body) return resolve(false);
+
+    titleEl.textContent = title;
     body.textContent = "";
 
     const p = document.createElement("div");
