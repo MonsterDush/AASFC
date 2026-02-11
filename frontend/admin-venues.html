@@ -19,6 +19,10 @@
     pre { white-space:pre-wrap; word-break:break-word; }
     .danger { border-color: rgba(255,0,0,.35); }
     .right { margin-left:auto; }
+    .bottom-nav { position:sticky; bottom:0; background:var(--bg, #fff); padding:10px 0; border-top:1px solid rgba(0,0,0,.08); }
+    .bottom-nav .container { display:flex; gap:10px; justify-content:space-between; }
+    .bottom-nav a { flex:1; text-align:center; padding:10px; border-radius:12px; border:1px solid rgba(0,0,0,.12); text-decoration:none; color:inherit; }
+    .bottom-nav a.active { border-color: rgba(0,0,0,.35); font-weight:600; }
   </style>
 </head>
 
@@ -69,10 +73,12 @@
     <div id="list"></div>
   </div>
 
+  <!-- Toast -->
   <div id="toast" class="toast" aria-live="polite">
     <div class="toast__text"></div>
   </div>
 
+  <!-- Modal -->
   <div id="modal" class="modal">
     <div class="modal__backdrop"></div>
     <div class="modal__panel">
@@ -81,6 +87,16 @@
         <button class="btn" data-close>×</button>
       </div>
       <div class="modal__body"></div>
+    </div>
+  </div>
+
+  <!-- Bottom nav -->
+  <div class="bottom-nav">
+    <div class="container">
+      <a href="/index.html" data-tab="home">Home</a>
+      <a href="/app-venues.html" data-tab="app-venues">App</a>
+      <a href="/admin-venues.html" data-tab="admin-venues">Admin Venues</a>
+      <a href="/admin-invites.html" data-tab="admin-invites">Admin Invites</a>
     </div>
   </div>
 
@@ -110,13 +126,12 @@
   const searchEl = document.getElementById("search");
   const countEl = document.getElementById("count");
 
-  // режимы
-  // "active" = показываем только is_archived=false
-  // "archived" = показываем только is_archived=true
-  let currentMode = "active";
+  // режимы: active | archived
+  let mode = "active";
   let allVenues = [];
 
   function setStatus(s){ statusEl.textContent = s || ""; }
+  function setLastJson(obj){ window.__lastJson = obj; }
 
   function renderSkeleton() {
     listEl.innerHTML = `
@@ -127,7 +142,7 @@
   }
 
   function modeFilter(items){
-    if (currentMode === "archived") return items.filter(v => !!v.is_archived);
+    if (mode === "archived") return items.filter(v => !!v.is_archived);
     return items.filter(v => !v.is_archived);
   }
 
@@ -139,10 +154,6 @@
       const name = String(v?.name ?? "").toLowerCase();
       return id.includes(q) || name.includes(q);
     });
-  }
-
-  function setLastJson(obj){
-    window.__lastJson = obj;
   }
 
   function renderVenues() {
@@ -160,6 +171,14 @@
       const isArchived = !!v.is_archived;
       const badge = isArchived ? `<span class="pill">archived</span>` : `<span class="pill muted">active</span>`;
 
+      // важное: delete только для archived (иначе сервер справедливо откажет)
+      const deleteBtn = isArchived
+        ? `<button class="btn danger" data-action="delete" data-id="${id}">Delete</button>`
+        : `<button class="btn danger" disabled title="Delete allowed only for archived">Delete</button>`;
+
+      // rename запрещён для archived (как у тебя в backend)
+      const renameDisabled = isArchived ? "disabled title='Unarchive first'" : "";
+
       return `
         <div class="card">
           <div class="row">
@@ -168,11 +187,11 @@
               <div class="muted">id=${esc(v.id)}${v.archived_at ? " · archived_at=" + esc(v.archived_at) : ""}</div>
             </div>
             <div class="toolbar">
-              <button class="btn" data-action="rename" data-id="${id}" ${isArchived ? "disabled" : ""}>Rename</button>
+              <button class="btn" data-action="rename" data-id="${id}" ${renameDisabled}>Rename</button>
               <button class="btn" data-action="toggleArchive" data-id="${id}" data-arch="${isArchived ? "1":"0"}">
                 ${isArchived ? "Unarchive" : "Archive"}
               </button>
-              <button class="btn danger" data-action="delete" data-id="${id}">Delete</button>
+              ${deleteBtn}
             </div>
           </div>
         </div>
@@ -185,11 +204,11 @@
     renderSkeleton();
 
     try {
-      // ВАЖНО: в backend параметр называется include_archived :contentReference[oaicite:4]{index=4}
-      const include_archived = (currentMode === "archived"); // для archived режима должны видеть архивы
+      // ключевой момент: чтобы увидеть archived — нужно include_archived=true
+      const include_archived = (mode === "archived");
       const items = await api(`/venues?include_archived=${include_archived ? "true" : "false"}`);
       allVenues = Array.isArray(items) ? items : [];
-      setLastJson({ load: "OK", mode: currentMode, include_archived, items: allVenues });
+      setLastJson({ load: "OK", mode, include_archived, count: allVenues.length, items: allVenues });
       setStatus(`Loaded (${allVenues.length})`);
       renderVenues();
     } catch (e) {
@@ -224,7 +243,7 @@
       setStatus("Created");
       createResultEl.textContent = out?.id ? `Created id=${out.id}` : "Created";
       toast("Venue created", "ok");
-      currentMode = "active";
+      mode = "active";
       await loadVenues();
     } catch (e) {
       setLastJson({ create: "FAILED", message: e?.message, status: e?.status, data: e?.data });
@@ -240,7 +259,6 @@
 
     setStatus("Renaming...");
     try {
-      // PATCH /venues/{id} :contentReference[oaicite:5]{index=5}
       const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "PATCH", body: { name: newName } });
       setLastJson({ rename: "OK", response: out });
       setStatus("Renamed");
@@ -256,7 +274,6 @@
   async function toggleArchiveVenue(id, isArchived) {
     setStatus(isArchived ? "Unarchiving..." : "Archiving...");
     try {
-      // POST /venues/{id}/archive | /unarchive :contentReference[oaicite:6]{index=6}
       const out = await api(`/venues/${encodeURIComponent(id)}/${isArchived ? "unarchive" : "archive"}`, { method: "POST" });
       setLastJson({ archiveToggle: "OK", response: out });
       setStatus("OK");
@@ -280,12 +297,12 @@
 
     setStatus("Deleting...");
     try {
-      // DELETE /venues/{id} (только если archived) :contentReference[oaicite:7]{index=7}
       const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "DELETE" });
       setLastJson({ delete: "OK", response: out });
       setStatus("Deleted");
       toast("Deleted", "ok");
-      currentMode = "archived";
+      // после удаления логично оставаться в archived
+      mode = "archived";
       await loadVenues();
     } catch (e) {
       setLastJson({ delete: "FAILED", message: e?.message, status: e?.status, data: e?.data });
@@ -301,12 +318,12 @@
   });
 
   document.getElementById("btnActive").addEventListener("click", async () => {
-    currentMode = "active";
+    mode = "active";
     await loadVenues();
   });
 
   document.getElementById("btnArchived").addEventListener("click", async () => {
-    currentMode = "archived";
+    mode = "archived";
     await loadVenues();
   });
 
@@ -320,7 +337,7 @@
 
   listEl.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("button[data-action]");
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
 
     const action = btn.dataset.action;
     const id = btn.dataset.id;
@@ -335,7 +352,7 @@
 
   (async () => {
     applyTelegramTheme();
-    mountCommonUI("admin-venues");
+    mountCommonUI("admin-venues"); // подсветит нижнее меню по data-tab
 
     const r = await ensureLogin({ silent: true });
     bannerEl.style.display = r.ok ? "none" : "";
