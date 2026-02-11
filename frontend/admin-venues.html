@@ -8,7 +8,6 @@
   <title>Axelio · Admin Venues</title>
 
   <style>
-    /* если в styles.css уже есть похожее — это не мешает */
     .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
     .card { border:1px solid rgba(0,0,0,.12); border-radius:12px; padding:10px 12px; margin:10px 0; }
     .row { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
@@ -70,12 +69,10 @@
     <div id="list"></div>
   </div>
 
-  <!-- Toast (если styles.css уже задаёт — отлично) -->
   <div id="toast" class="toast" aria-live="polite">
     <div class="toast__text"></div>
   </div>
 
-  <!-- Modal (используется openModal/confirmModal из app.js) -->
   <div id="modal" class="modal">
     <div class="modal__backdrop"></div>
     <div class="modal__panel">
@@ -98,7 +95,6 @@
     openModal
   } from "/app.js";
 
-  // безопасное экранирование (без replaceAll)
   function esc(s){
     return String(s ?? "")
       .replace(/&/g, "&amp;")
@@ -114,7 +110,10 @@
   const searchEl = document.getElementById("search");
   const countEl = document.getElementById("count");
 
-  let currentArchived = false;
+  // режимы
+  // "active" = показываем только is_archived=false
+  // "archived" = показываем только is_archived=true
+  let currentMode = "active";
   let allVenues = [];
 
   function setStatus(s){ statusEl.textContent = s || ""; }
@@ -127,21 +126,30 @@
     `;
   }
 
-  function filteredVenues() {
+  function modeFilter(items){
+    if (currentMode === "archived") return items.filter(v => !!v.is_archived);
+    return items.filter(v => !v.is_archived);
+  }
+
+  function searchFilter(items){
     const q = (searchEl.value || "").trim().toLowerCase();
-    if (!q) return allVenues;
-    return allVenues.filter(v => {
+    if (!q) return items;
+    return items.filter(v => {
       const id = String(v?.id ?? "").toLowerCase();
       const name = String(v?.name ?? "").toLowerCase();
       return id.includes(q) || name.includes(q);
     });
   }
 
+  function setLastJson(obj){
+    window.__lastJson = obj;
+  }
+
   function renderVenues() {
-    const items = filteredVenues();
+    const items = searchFilter(modeFilter(allVenues));
     countEl.textContent = String(items.length);
 
-    if (!Array.isArray(items) || items.length === 0) {
+    if (!items.length) {
       listEl.innerHTML = `<div class="muted">No venues</div>`;
       return;
     }
@@ -160,7 +168,7 @@
               <div class="muted">id=${esc(v.id)}${v.archived_at ? " · archived_at=" + esc(v.archived_at) : ""}</div>
             </div>
             <div class="toolbar">
-              <button class="btn" data-action="rename" data-id="${id}">Rename</button>
+              <button class="btn" data-action="rename" data-id="${id}" ${isArchived ? "disabled" : ""}>Rename</button>
               <button class="btn" data-action="toggleArchive" data-id="${id}" data-arch="${isArchived ? "1":"0"}">
                 ${isArchived ? "Unarchive" : "Archive"}
               </button>
@@ -172,19 +180,16 @@
     }).join("");
   }
 
-  function setLastJson(obj){
-    window.__lastJson = obj;
-  }
-
-  async function loadVenues(archived) {
-    currentArchived = !!archived;
+  async function loadVenues() {
     setStatus("Loading...");
     renderSkeleton();
 
     try {
-      const items = await api(`/venues?archived=${currentArchived ? "true" : "false"}`);
+      // ВАЖНО: в backend параметр называется include_archived :contentReference[oaicite:4]{index=4}
+      const include_archived = (currentMode === "archived"); // для archived режима должны видеть архивы
+      const items = await api(`/venues?include_archived=${include_archived ? "true" : "false"}`);
       allVenues = Array.isArray(items) ? items : [];
-      setLastJson({ load: "OK", archived: currentArchived, items: allVenues });
+      setLastJson({ load: "OK", mode: currentMode, include_archived, items: allVenues });
       setStatus(`Loaded (${allVenues.length})`);
       renderVenues();
     } catch (e) {
@@ -219,7 +224,8 @@
       setStatus("Created");
       createResultEl.textContent = out?.id ? `Created id=${out.id}` : "Created";
       toast("Venue created", "ok");
-      await loadVenues(false);
+      currentMode = "active";
+      await loadVenues();
     } catch (e) {
       setLastJson({ create: "FAILED", message: e?.message, status: e?.status, data: e?.data });
       setStatus("Create failed");
@@ -234,11 +240,12 @@
 
     setStatus("Renaming...");
     try {
+      // PATCH /venues/{id} :contentReference[oaicite:5]{index=5}
       const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "PATCH", body: { name: newName } });
       setLastJson({ rename: "OK", response: out });
       setStatus("Renamed");
       toast("Renamed", "ok");
-      await loadVenues(currentArchived);
+      await loadVenues();
     } catch (e) {
       setLastJson({ rename: "FAILED", message: e?.message, status: e?.status, data: e?.data });
       setStatus("Rename failed");
@@ -249,11 +256,12 @@
   async function toggleArchiveVenue(id, isArchived) {
     setStatus(isArchived ? "Unarchiving..." : "Archiving...");
     try {
+      // POST /venues/{id}/archive | /unarchive :contentReference[oaicite:6]{index=6}
       const out = await api(`/venues/${encodeURIComponent(id)}/${isArchived ? "unarchive" : "archive"}`, { method: "POST" });
       setLastJson({ archiveToggle: "OK", response: out });
       setStatus("OK");
       toast(isArchived ? "Unarchived" : "Archived", "ok");
-      await loadVenues(currentArchived);
+      await loadVenues();
     } catch (e) {
       setLastJson({ archiveToggle: "FAILED", message: e?.message, status: e?.status, data: e?.data });
       setStatus("Archive toggle failed");
@@ -272,11 +280,13 @@
 
     setStatus("Deleting...");
     try {
+      // DELETE /venues/{id} (только если archived) :contentReference[oaicite:7]{index=7}
       const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "DELETE" });
       setLastJson({ delete: "OK", response: out });
       setStatus("Deleted");
       toast("Deleted", "ok");
-      await loadVenues(true);
+      currentMode = "archived";
+      await loadVenues();
     } catch (e) {
       setLastJson({ delete: "FAILED", message: e?.message, status: e?.status, data: e?.data });
       setStatus("Delete failed");
@@ -284,15 +294,22 @@
     }
   }
 
-  // UI wiring
   document.getElementById("btnLogin").addEventListener("click", async () => {
     const r = await ensureLogin({ silent: false });
     bannerEl.style.display = r.ok ? "none" : "";
-    if (r.ok) await loadVenues(false);
+    if (r.ok) await loadVenues();
   });
 
-  document.getElementById("btnActive").addEventListener("click", () => loadVenues(false));
-  document.getElementById("btnArchived").addEventListener("click", () => loadVenues(true));
+  document.getElementById("btnActive").addEventListener("click", async () => {
+    currentMode = "active";
+    await loadVenues();
+  });
+
+  document.getElementById("btnArchived").addEventListener("click", async () => {
+    currentMode = "archived";
+    await loadVenues();
+  });
+
   document.getElementById("btnCreate").addEventListener("click", createVenue);
 
   document.getElementById("btnDetails").addEventListener("click", () => {
@@ -316,17 +333,14 @@
     if (action === "delete") return deleteVenue(id);
   });
 
-  // boot
   (async () => {
     applyTelegramTheme();
     mountCommonUI("admin-venues");
 
-    // ВАЖНО: ждём логин (фикс гонки cookie)
     const r = await ensureLogin({ silent: true });
     bannerEl.style.display = r.ok ? "none" : "";
 
-    // Даже если не залогинен — грузим, чтобы показать реальную ошибку (401/403) вместо вечного скелетона
-    await loadVenues(false);
+    await loadVenues();
 
     if (!r.ok) setStatus("Not logged in (press Login)");
   })();
