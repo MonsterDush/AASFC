@@ -71,11 +71,16 @@ export async function api(path, opts = {}) {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(opts.headers||{}) },
   });
-  console.log("API", path, r.status, r.url);
   const text = await r.text();
   let data;
   try { data = JSON.parse(text); } catch { data = text; }
-  if (!r.ok) throw new Error(typeof data === "string" ? data : JSON.stringify(data));
+
+  if (!r.ok) {
+    const err = new Error(`HTTP ${r.status} ${r.statusText}`);
+    err.status = r.status;
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 
