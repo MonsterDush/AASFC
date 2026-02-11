@@ -115,9 +115,6 @@ def update_venue(
     if venue is None:
         raise HTTPException(404, "Venue not found")
 
-    if venue.is_archived:
-        raise HTTPException(400, "Venue is archived. Unarchive first.")
-
     venue.name = payload.name.strip()
     db.commit()
     return {"id": venue.id, "name": venue.name}

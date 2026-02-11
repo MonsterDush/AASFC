@@ -6,24 +6,6 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Admin Venues</title>
-
-  <style>
-    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
-    .card { border:1px solid rgba(0,0,0,.12); border-radius:12px; padding:10px 12px; margin:10px 0; }
-    .row { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
-    .muted { opacity:.7; }
-    .btn { cursor:pointer; }
-    input[type="text"], input[type="search"] { padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.2); min-width:240px; }
-    .pill { padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.15); }
-    .skeleton { border-radius:12px; height:64px; background:rgba(0,0,0,.06); margin:10px 0; }
-    pre { white-space:pre-wrap; word-break:break-word; }
-    .danger { border-color: rgba(255,0,0,.35); }
-    .right { margin-left:auto; }
-    .bottom-nav { position:sticky; bottom:0; background:var(--bg, #fff); padding:10px 0; border-top:1px solid rgba(0,0,0,.08); }
-    .bottom-nav .container { display:flex; gap:10px; justify-content:space-between; }
-    .bottom-nav a { flex:1; text-align:center; padding:10px; border-radius:12px; border:1px solid rgba(0,0,0,.12); text-decoration:none; color:inherit; }
-    .bottom-nav a.active { border-color: rgba(0,0,0,.35); font-weight:600; }
-  </style>
 </head>
 
 <body>
@@ -91,11 +73,11 @@
   </div>
 
   <!-- Bottom nav -->
-  <div class="bottom-nav">
-    <div class="container">
+  <div class="nav">
+    <div class="wrap">
       <a href="/index.html" data-tab="home">Home</a>
-      <a href="/app-venues.html" data-tab="app-venues">App</a>
-      <a href="/admin-venues.html" data-tab="admin-venues">Admin Venues</a>
+      <a href="/app-venues.html" data-tab="app">App</a>
+      <a href="/admin-venues.html" data-tab="admin">Admin Venues</a>
       <a href="/admin-invites.html" data-tab="admin-invites">Admin Invites</a>
     </div>
   </div>
