@@ -86,6 +86,13 @@ def create_venue_admin_only(
     return {"id": venue.id, "name": venue.name}
 
 @router.get("")
+def list_venues_admin_only(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    rows = db.query(Venue.id, Venue.name).order_by(Venue.id.desc()).all()
+    return [{"id": r.id, "name": r.name} for r in rows]
+
 def list_venues(
     q: str | None = Query(default=None),
     include_archived: bool = Query(default=False),
