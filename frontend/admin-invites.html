@@ -76,19 +76,17 @@
 
   <div class="nav">
     <div class="wrap">
-      <a href="/index.html" data-tab="home">Home</a>
-      <a href="/app-venues.html" data-tab="app">App</a>
-      <a href="/admin-venues.html" data-tab="admin">Admin Venues</a>
-      <a href="/admin-invites.html" data-tab="admin-invites">Admin Invites</a>
+      <div id="nav"></div>
     </div>
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, mountNav } from "/app.js";
 
     applyTelegramTheme();
-    mountCommonUI("admin");
-    ensureLogin({ silent:true });
+    mountCommonUI("admin-invites");
+    await ensureLogin({ silent:true });
+    await mountNav({ activeTab: "admin-invites" });
 
     const params = new URLSearchParams(location.search);
     let venueId = params.get("venue_id") || "";

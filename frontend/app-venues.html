@@ -49,18 +49,17 @@
 
   <div class="nav">
     <div class="wrap">
-      <a href="/index.html" data-tab="home">Home</a>
-      <a href="/app-venues.html" data-tab="app">App</a>
-      <a href="/admin-venues.html" data-tab="admin">Admin Venues</a>
-      <a href="/admin-invites.html" data-tab="admin-invites">Admin Invites</a>
+      <div id="nav"></div>
     </div>
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountVenueSwitcher } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountVenueSwitcher, mountNav } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("app");
+
+await mountNav({ activeTab: "app" });
 
 const list = document.getElementById("list");
 function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }

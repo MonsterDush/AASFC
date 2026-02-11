@@ -383,3 +383,138 @@ export async function mountVenueSwitcher({ containerSelector = "#venueSwitcher",
       }),
   });
 }
+
+// ------------------------------
+// Permissions + dynamic navigation (A2/A3)
+// ------------------------------
+
+function normalizePermList(permissions) {
+  if (!permissions) return [];
+  if (Array.isArray(permissions)) {
+    // may be ["CODE", ...] or [{code:"CODE"}, ...]
+    return permissions
+      .map((p) => (typeof p === "string" ? p : p?.code))
+      .filter(Boolean)
+      .map((s) => String(s));
+  }
+  // may be {CODE:true} or {permissions:[...]}
+  if (permissions && typeof permissions === "object") {
+    if (Array.isArray(permissions.permissions)) return normalizePermList(permissions.permissions);
+    return Object.keys(permissions).filter((k) => permissions[k]);
+  }
+  return [];
+}
+
+export function can(permCode, venuePerms) {
+  if (!permCode) return false;
+  const list = normalizePermList(venuePerms?.permissions || venuePerms);
+  return list.includes(String(permCode));
+}
+
+function setActiveNavTab(activeTab) {
+  document.querySelectorAll("[data-tab]").forEach((a) => {
+    if (a.getAttribute("data-tab") === activeTab) a.classList.add("active");
+    else a.classList.remove("active");
+  });
+}
+
+function renderNavLinks({ container, links, activeTab }) {
+  if (!container) return;
+  container.innerHTML = "";
+
+  links.forEach((l) => {
+    const a = document.createElement("a");
+    a.href = l.href;
+    a.textContent = l.title;
+    a.setAttribute("data-tab", l.tab);
+    if (l.tab === activeTab) a.classList.add("active");
+    container.appendChild(a);
+  });
+}
+
+/**
+ * Mounts a bottom nav with only allowed items.
+ *
+ * Rules (MVP):
+ * - SUPER_ADMIN: admin pages only
+ * - Others: Venues + (if active venue) Venue/Invites
+ *
+ * Later we'll extend links as we add pages (Shifts/Salary/Adjustments/Reports).
+ */
+export async function mountNav({ activeTab = "app", containerSelector = "#nav", requireVenue = false } = {}) {
+  const container = document.querySelector(containerSelector);
+  if (!container) {
+    // still update active classes if nav is static
+    setActiveNavTab(activeTab);
+    return { ok: false, reason: "NO_CONTAINER" };
+  }
+
+  await ensureLogin({ silent: true });
+
+  let me = null;
+  try {
+    me = await getMe();
+  } catch {
+    // if /me fails, keep minimal nav
+    renderNavLinks({
+      container,
+      links: [{ title: "Venues", href: "/app-venues.html", tab: "app" }],
+      activeTab,
+    });
+    return { ok: false, reason: "NO_ME" };
+  }
+
+  if (me?.system_role === "SUPER_ADMIN") {
+    renderNavLinks({
+      container,
+      links: [
+        { title: "Admin Venues", href: "/admin-venues.html", tab: "admin" },
+        { title: "Admin Invites", href: "/admin-invites.html", tab: "admin-invites" },
+      ],
+      activeTab,
+    });
+    return { ok: true, me };
+  }
+
+  // Non-admin (OWNER/STAFF): build nav from active venue
+  let venues = [];
+  try {
+    venues = await getMyVenues();
+  } catch {
+    venues = [];
+  }
+
+  let activeVenueId = getActiveVenueId();
+  if (!activeVenueId && Array.isArray(venues) && venues.length === 1) {
+    activeVenueId = String(venues[0].id);
+    setActiveVenueId(activeVenueId);
+  }
+
+  if (requireVenue && !activeVenueId) {
+    // caller expects a venue context
+    renderNavLinks({
+      container,
+      links: [{ title: "Venues", href: "/app-venues.html", tab: "app" }],
+      activeTab,
+    });
+    return { ok: false, me, venues, activeVenueId: "" };
+  }
+
+  const links = [{ title: "Venues", href: "/app-venues.html", tab: "app" }];
+
+  if (activeVenueId) {
+    links.push({
+      title: "Venue",
+      href: `/app-venue.html?venue_id=${encodeURIComponent(activeVenueId)}`,
+      tab: "venue",
+    });
+    links.push({
+      title: "Invites",
+      href: `/invites.html?venue_id=${encodeURIComponent(activeVenueId)}`,
+      tab: "invites",
+    });
+  }
+
+  renderNavLinks({ container, links, activeTab });
+  return { ok: true, me, venues, activeVenueId };
+}

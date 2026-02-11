@@ -96,10 +96,7 @@
   <!-- Bottom nav -->
   <div class="nav">
     <div class="wrap">
-      <a href="/index.html" data-tab="home">Home</a>
-      <a href="/app-venues.html" data-tab="app">App</a>
-      <a href="/admin-venues.html" data-tab="admin">Admin Venues</a>
-      <a href="/admin-invites.html" data-tab="admin-invites">Admin Invites</a>
+      <div id="nav"></div>
     </div>
   </div>
 
@@ -111,7 +108,8 @@
     api,
     toast,
     confirmModal,
-    openModal
+    openModal,
+    mountNav
   } from "/app.js";
 
   // без replaceAll (Telegram WebView)
@@ -383,7 +381,8 @@
 
   async function boot() {
     applyTelegramTheme();
-    mountCommonUI("admin-venues");
+    mountCommonUI("admin");
+    await mountNav({ activeTab: "admin" });
 
     // важно: ждём логин, чтобы не было "иногда Load Failed" из-за гонки cookie
     const r = await ensureLogin({ silent: true });
