@@ -71,6 +71,7 @@ export async function api(path, opts = {}) {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(opts.headers||{}) },
   });
+  console.log("API", path, r.status, r.url);
   const text = await r.text();
   let data;
   try { data = JSON.parse(text); } catch { data = text; }

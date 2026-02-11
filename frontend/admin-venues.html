@@ -80,16 +80,33 @@
   <b>Boot debug</b>
   <div class="mono" id="boot">loading…</div>
 </div>
+
 <script>
-  const el = document.getElementById("boot");
-  el.textContent = "inline script ok; now loading module…";
-  window.addEventListener("error", (e) => {
-    el.textContent = "JS error: " + (e.message || e.type);
-  });
+  const bootEl = document.getElementById("boot");
+  window.bootLog = (s) => {
+    if (!bootEl) return;
+    bootEl.textContent += "\n" + String(s);
+  };
+
+  bootEl.textContent = "inline script: OK";
+  window.addEventListener("error", (e) => window.bootLog("window.error: " + (e.message || e.type)));
+  window.addEventListener("unhandledrejection", (e) => window.bootLog("unhandledrejection: " + (e.reason?.message || e.reason)));
+
+  window.bootLog("Telegram.WebApp: " + (!!window.Telegram?.WebApp));
+  window.bootLog("initData length: " + (window.Telegram?.WebApp?.initData?.length || 0));
 </script>
+
+
 
   <script type="module">
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
+
+    const boot = document.getElementById("boot");
+
+    const mLog = (s) => window.bootLog && window.bootLog("module: " + s);
+    mLog("loaded");
+
+
 
     applyTelegramTheme();
     mountCommonUI("admin-venues");
@@ -180,27 +197,33 @@
     }
 
     async function load() {
-      const q = document.getElementById("search").value.trim();
-      const include_archived = document.getElementById("incArch").checked;
+    mLog("load(): start");
 
-      list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
-      try {
+    const q = document.getElementById("search").value.trim();
+    const include_archived = document.getElementById("incArch").checked;
+
+    list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+
+    try {
         const qs = new URLSearchParams();
         if (q) qs.set("q", q);
         if (include_archived) qs.set("include_archived", "true");
 
-        const data = await api("/venues" + (qs.toString() ? `?${qs}` : ""));
-        window.__lastJson = data;
+        mLog("fetch: /venues" + (qs.toString() ? `?${qs}` : ""));
 
+        const data = await api("/venues" + (qs.toString() ? `?${qs}` : ""));
+        mLog("fetch: ok, items=" + (data?.length ?? "null"));
+
+        window.__lastJson = data;
         list.innerHTML = "";
         if (!data.length) list.innerHTML = `<div class="muted">No venues</div>`;
         data.forEach(v => list.appendChild(venueCard(v)));
-      } catch (e) {
-        // ВАЖНО: если ты не SUPER_ADMIN — тут будет 403. Покажем норм сообщение.
-        list.innerHTML = `<div class="muted">Access error: ${esc(e.message)}<br/>Эта страница только для SUPER_ADMIN.</div>`;
-        toast("Access error", "warn");
-      }
+    } catch (e) {
+        mLog("fetch: error => " + e.message);
+        list.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
     }
+    }
+
 
     document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
     document.getElementById("btnReload").onclick = load;
