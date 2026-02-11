@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Invites</title>
 </head>
@@ -27,7 +27,6 @@
         <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
       </div>
 
-      <!-- Venue selector (shown when no venue_id) -->
       <div id="selectorCard" class="itemcard" style="margin-top:12px; display:none;">
         <b>Choose venue</b>
         <div class="muted" style="margin-top:6px">
@@ -41,20 +40,14 @@
           <button class="btn primary" id="btnUseVenue">Use</button>
           <a class="link" id="openLink" href="/invites.html" style="display:none;">Open link →</a>
         </div>
-
-        <div class="muted" style="margin-top:6px">
-          Требуется endpoint <span class="mono">GET /venues</span> (SUPER_ADMIN).
-        </div>
       </div>
 
-      <!-- Venue meta -->
       <div class="itemcard" style="margin-top:12px">
         <b>Venue</b>
         <div class="mono" id="venueMeta">…</div>
         <div class="muted" style="margin-top:6px" id="venueHint"></div>
       </div>
 
-      <!-- Invite form -->
       <div class="itemcard" style="margin-top:12px">
         <b>Create invite</b>
         <div class="row" style="margin-top:10px">
@@ -70,7 +63,6 @@
         </div>
       </div>
 
-      <!-- Lists -->
       <div class="grid" style="grid-template-columns:1fr 1fr; margin-top:12px">
         <div class="itemcard">
           <b>Pending invites</b>
@@ -88,7 +80,6 @@
     </div>
   </div>
 
-  <!-- Toast + Modal -->
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div id="modal" class="modal">
     <div class="modal__backdrop"></div>
@@ -101,7 +92,6 @@
     </div>
   </div>
 
-  <!-- Bottom nav -->
   <div class="nav">
     <div class="wrap">
       <a href="/index.html" data-tab="home">Home</a>
@@ -116,7 +106,13 @@
 
     applyTelegramTheme();
     mountCommonUI("invites");
-    ensureLogin({ silent:true });
+
+    function esc(s){
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
 
     const params = new URLSearchParams(location.search);
     let venueId = params.get("venue_id");
@@ -135,13 +131,11 @@
     const btnReload = document.getElementById("btnReload");
     const btnInvite = document.getElementById("btnInvite");
 
-    function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
-
     function setVenueMeta() {
       venueMeta.textContent = venueId ? `venue_id=${venueId}` : "venue_id not provided";
       venueHint.textContent = venueId
         ? "Можно приглашать участников и смотреть pending/members."
-        : "Выбери venue ниже (SUPER_ADMIN) или открой страницу из Owners.";
+        : "Выбери venue ниже (SUPER_ADMIN) или открой страницу из карточки заведения.";
     }
 
     async function loadVenuesForSelector() {
@@ -150,7 +144,7 @@
       openLink.style.display = "none";
 
       try {
-        const venues = await api("/venues"); // SUPER_ADMIN endpoint
+        const venues = await api("/venues"); // SUPER_ADMIN endpoint :contentReference[oaicite:7]{index=7}
         window.__lastJson = venues;
 
         venueSelect.innerHTML = `<option value="">Select venue…</option>`;
@@ -160,8 +154,6 @@
           opt.textContent = `${v.name} (id=${v.id})`;
           venueSelect.appendChild(opt);
         });
-
-        toast("Venues loaded", "ok");
       } catch (e) {
         venueSelect.innerHTML = `<option value="">Error loading venues</option>`;
         toast("GET /venues error: " + e.message, "err");
@@ -232,7 +224,6 @@
         window.__lastJson = data;
         renderPending(data.pending_invites);
         renderMembers(data.members);
-        toast("Loaded members", "ok");
       } catch (e) {
         pending.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
         members.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
@@ -240,7 +231,6 @@
       }
     }
 
-    // --- UI hooks ---
     btnLogin.onclick = async () => {
       const r = await ensureLogin({ silent:false });
       if (r.ok) toast("Login OK", "ok");
@@ -259,10 +249,7 @@
       if (!tg) { toast("Введи username", "warn"); return; }
 
       try {
-        await api(`/venues/${venueId}/invites`, {
-          method:"POST",
-          body: JSON.stringify({ tg_username: tg, venue_role: role })
-        });
+        await api(`/venues/${venueId}/invites`, { method:"POST", body: { tg_username: tg, venue_role: role } });
         document.getElementById("tg").value = "";
         toast("Invite sent", "ok");
         await loadMembers();
@@ -276,24 +263,20 @@
       if (!v) { toast("Select a venue", "warn"); return; }
       venueId = v;
 
-      // Покажем ссылку для шаринга/перехода
       openLink.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
       openLink.style.display = "inline";
 
-      toast("Venue selected: " + venueId, "ok");
       setVenueMeta();
       await loadMembers();
     };
 
-    // --- initial ---
-    setVenueMeta();
-
-    if (!venueId) {
-      // показать селектор, если мы без venue_id
-      loadVenuesForSelector();
+    async function boot(){
+      setVenueMeta();
+      await ensureLogin({ silent:true });
+      if (!venueId) await loadVenuesForSelector();
+      await loadMembers();
     }
-    // и попробовать загрузить members (покажет подсказку, если venueId нет)
-    loadMembers();
+    boot();
   </script>
 </body>
 </html>

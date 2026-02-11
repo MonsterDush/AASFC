@@ -185,7 +185,12 @@
         <div class="card">
           <div class="row">
             <div>
-              <div><b>${name}</b> ${badge}</div>
+              <div>
+                <a class="link" href="/app-venue.html?venue_id=${encodeURIComponent(v.id)}" data-open-venue="${escAttr(v.id)}">
+                    <b>${name}</b>
+                </a>
+                ${badge}
+                </div>
               <div class="muted">id=${esc(v.id)}${v.archived_at ? " · archived_at=" + esc(v.archived_at) : ""}</div>
             </div>
             <div class="toolbar">
@@ -344,6 +349,24 @@
   searchEl.addEventListener("input", renderVenues);
 
   listEl.addEventListener("click", async (ev) => {
+  // 1) переход в карточку
+    const a = ev.target.closest("a[data-open-venue]");
+    if (a) {
+        ev.preventDefault();
+        const url = a.getAttribute("href");
+
+        // Telegram WebApp: лучше openLink
+        try {
+        const tg = window.Telegram?.WebApp;
+        if (tg?.openLink) tg.openLink(url);
+        else location.href = url;
+        } catch {
+        location.href = url;
+        }
+        return;
+    }
+
+    // 2) действия (Rename/Archive/Delete)
     const btn = ev.target.closest("button[data-action]");
     if (!btn || btn.disabled) return;
 

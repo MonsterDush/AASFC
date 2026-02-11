@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Venue</title>
 </head>
@@ -13,8 +13,8 @@
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <b>Venue</b>
-          <div class="muted">members</div>
+          <b id="title">Venue</b>
+          <div class="muted">details</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -24,16 +24,53 @@
       <div class="row">
         <button class="btn primary" id="btnLogin">Login</button>
         <button class="btn" id="btnReload">Reload</button>
+        <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
       </div>
 
       <div class="itemcard" style="margin-top:12px">
         <b>Venue meta</b>
-        <div class="mono" id="meta" style="margin-top:8px"></div>
+        <div class="mono" id="meta" style="margin-top:8px">…</div>
+
+        <div class="row" style="margin-top:10px; gap:8px; flex-wrap:wrap">
+          <button class="btn" id="btnRename">Rename</button>
+          <button class="btn" id="btnArchive">Archive</button>
+          <button class="btn" id="btnUnarchive">Unarchive</button>
+          <button class="btn danger" id="btnDelete">Delete</button>
+          <a class="link" id="openInvites" href="/invites.html" style="margin-left:auto">Invites →</a>
+        </div>
+
+        <div class="muted" style="margin-top:6px" id="metaHint"></div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:1fr 1fr; margin-top:12px">
+        <div class="itemcard">
+          <b>Create invite</b>
+          <div class="row" style="margin-top:10px">
+            <input id="tg" placeholder="tg username (с @ или без)" />
+            <select id="role">
+              <option value="STAFF">STAFF</option>
+              <option value="OWNER">OWNER</option>
+            </select>
+            <button class="btn primary" id="btnInvite">Invite</button>
+          </div>
+          <div class="muted" style="margin-top:6px">
+            <span class="mono">POST /venues/{venue_id}/invites</span>
+          </div>
+        </div>
+
+        <div class="itemcard">
+          <b>Pending invites</b>
+          <div id="pending" style="margin-top:10px">
+            <div class="skeleton"></div><div class="skeleton"></div>
+          </div>
+        </div>
       </div>
 
       <div class="itemcard" style="margin-top:12px">
         <b>Members</b>
-        <div id="members" style="margin-top:10px"><div class="skeleton"></div><div class="skeleton"></div></div>
+        <div id="members" style="margin-top:10px">
+          <div class="skeleton"></div><div class="skeleton"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -60,44 +97,264 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
+
+    // без replaceAll — Telegram WebView иногда капризничает
+    function esc(s){
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
 
     applyTelegramTheme();
     mountCommonUI("app");
-    ensureLogin({ silent:true });
 
     const params = new URLSearchParams(location.search);
     const venueId = params.get("venue_id") || "";
-    document.getElementById("meta").textContent = venueId ? `venue_id=${venueId}` : "no venue_id";
 
-    const box = document.getElementById("members");
-    function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+    const titleEl = document.getElementById("title");
+    const metaEl = document.getElementById("meta");
+    const metaHint = document.getElementById("metaHint");
 
-    async function load(){
+    const pendingEl = document.getElementById("pending");
+    const membersEl = document.getElementById("members");
+
+    const btnLogin = document.getElementById("btnLogin");
+    const btnReload = document.getElementById("btnReload");
+
+    const btnRename = document.getElementById("btnRename");
+    const btnArchive = document.getElementById("btnArchive");
+    const btnUnarchive = document.getElementById("btnUnarchive");
+    const btnDelete = document.getElementById("btnDelete");
+
+    const btnInvite = document.getElementById("btnInvite");
+    const openInvites = document.getElementById("openInvites");
+
+    let last = { is_archived: false, name: "" };
+
+    function setMeta() {
+      if (!venueId) {
+        titleEl.textContent = "Venue";
+        metaEl.textContent = "no venue_id";
+        metaHint.textContent = "Открой страницу как /app-venue.html?venue_id=123";
+        openInvites.href = "/invites.html";
+        return;
+      }
+      openInvites.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
+      metaEl.textContent = `venue_id=${venueId}`;
+      metaHint.textContent = "";
+    }
+
+    function renderPending(items) {
+      pendingEl.innerHTML = "";
+      if (!items?.length) {
+        pendingEl.innerHTML = `<div class="muted">Нет ожидающих приглашений</div>`;
+        return;
+      }
+      items.forEach(i => {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
+        row.innerHTML = `
+          <div>
+            <b>@${esc(i.tg_username)}</b> <span class="mono">role=${esc(i.venue_role)}</span><br/>
+            <span class="mono">${esc(i.created_at || "")}</span>
+          </div>
+          <button class="btn danger" data-cancel>Cancel</button>
+        `;
+        row.querySelector("[data-cancel]").onclick = async () => {
+          try {
+            await api(`/venues/${venueId}/invites/${i.id}`, { method:"DELETE" });
+            toast("Invite cancelled", "ok");
+            await load();
+          } catch (e) {
+            toast("Cancel error: " + e.message, "err");
+          }
+        };
+        pendingEl.appendChild(row);
+      });
+    }
+
+    function renderMembers(items) {
+      membersEl.innerHTML = "";
+      if (!items?.length) {
+        membersEl.innerHTML = `<div class="muted">Участников пока нет</div>`;
+        return;
+      }
+      items.forEach(m => {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
+        row.innerHTML = `
+          <div>
+            <b>@${esc(m.tg_username || "-")}</b> <span class="mono">role=${esc(m.venue_role)}</span><br/>
+            <span class="mono">user_id=${esc(m.user_id)} · tg_user_id=${esc(m.tg_user_id || "-")}</span>
+          </div>
+          <button class="btn danger" data-remove>Remove</button>
+        `;
+
+        row.querySelector("[data-remove]").onclick = async () => {
+          const ok = await confirmModal({
+            title: "Remove member?",
+            text: `Remove @${m.tg_username || "-"} from venue?`,
+            confirmText: "Remove",
+            danger: true,
+          });
+          if (!ok) return;
+
+          try {
+            await api(`/venues/${venueId}/members/${m.user_id}`, { method:"DELETE" });
+            toast("Member removed", "ok");
+            await load();
+          } catch (e) {
+            toast("Remove error: " + e.message, "err");
+          }
+        };
+
+        membersEl.appendChild(row);
+      });
+    }
+
+    function applyButtons() {
+      // delete только если archived (так требует backend) :contentReference[oaicite:4]{index=4}
+      btnDelete.disabled = !last.is_archived;
+      btnArchive.style.display = last.is_archived ? "none" : "";
+      btnUnarchive.style.display = last.is_archived ? "" : "none";
+    }
+
+    async function load() {
       if (!venueId) return;
-      box.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
-      try{
-        const data = await api(`/me/venues/${venueId}/members`);
+
+      pendingEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+      membersEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+
+      try {
+        const data = await api(`/venues/${venueId}/members`);
         window.__lastJson = data;
-        const items = data.members || [];
-        box.innerHTML = "";
-        if (!items.length) return box.innerHTML = `<div class="muted">No members</div>`;
-        items.forEach(m => {
-          const row = document.createElement("div");
-          row.style = "border-bottom:1px solid var(--border); padding:10px 0;";
-          row.innerHTML = `<b>@${esc(m.tg_username || "-")}</b> <span class="mono">role=${esc(m.venue_role)}</span>`;
-          box.appendChild(row);
-        });
-      }catch(e){
-        box.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
+
+        // name/is_archived тут не приходит, поэтому сохраняем только списки.
+        // Статус archived будем брать “опционально” через /venues (если SUPER_ADMIN) — ниже.
+        renderPending(data.pending_invites);
+        renderMembers(data.members);
+
+        toast("Loaded", "ok");
+      } catch (e) {
+        pendingEl.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
+        membersEl.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
         toast("Load error: " + e.message, "err");
+      }
+
+      // Опционально: если ты SUPER_ADMIN, подтянем имя/archived из /venues?include_archived=true
+      // (иначе будет 403 — просто игнорируем)
+      try {
+        const all = await api(`/venues?include_archived=true`);
+        const v = Array.isArray(all) ? all.find(x => String(x.id) === String(venueId)) : null;
+        if (v) {
+          last.name = v.name || "";
+          last.is_archived = !!v.is_archived;
+          titleEl.textContent = v.name || `Venue ${venueId}`;
+          metaEl.textContent = `venue_id=${venueId} · ${last.is_archived ? "archived" : "active"}${v.archived_at ? " · archived_at=" + v.archived_at : ""}`;
+          applyButtons();
+        }
+      } catch (e) {
+        // не SUPER_ADMIN — ок
+        titleEl.textContent = `Venue ${venueId}`;
+        applyButtons();
       }
     }
 
-    document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
-    document.getElementById("btnReload").onclick = load;
+    // --- Actions ---
+    btnLogin.onclick = async () => {
+      const r = await ensureLogin({ silent:false });
+      if (r.ok) toast("Login OK", "ok");
+    };
 
-    load();
+    btnReload.onclick = load;
+
+    btnInvite.onclick = async () => {
+      if (!venueId) return toast("Нет venue_id", "warn");
+      const tg = document.getElementById("tg").value.trim();
+      const role = document.getElementById("role").value;
+      if (!tg) return toast("Введи username", "warn");
+
+      try {
+        await api(`/venues/${venueId}/invites`, { method:"POST", body: { tg_username: tg, venue_role: role } });
+        document.getElementById("tg").value = "";
+        toast("Invite sent", "ok");
+        await load();
+      } catch (e) {
+        toast("Invite error: " + e.message, "err");
+      }
+    };
+
+    btnRename.onclick = async () => {
+      if (!venueId) return;
+      const current = last.name || "";
+      const name = prompt("New venue name:", current);
+      if (!name) return;
+
+      try {
+        await api(`/venues/${venueId}`, { method:"PATCH", body: { name: name.trim() } });
+        toast("Renamed", "ok");
+        await load();
+      } catch (e) {
+        toast("Rename error: " + e.message, "err");
+      }
+    };
+
+    btnArchive.onclick = async () => {
+      const ok = await confirmModal({
+        title: "Archive venue?",
+        text: "Venue will be moved to archived.",
+        confirmText: "Archive",
+        danger: false,
+      });
+      if (!ok) return;
+
+      try {
+        await api(`/venues/${venueId}/archive`, { method:"POST" });
+        toast("Archived", "ok");
+        await load();
+      } catch (e) {
+        toast("Archive error: " + e.message, "err");
+      }
+    };
+
+    btnUnarchive.onclick = async () => {
+      try {
+        await api(`/venues/${venueId}/unarchive`, { method:"POST" });
+        toast("Unarchived", "ok");
+        await load();
+      } catch (e) {
+        toast("Unarchive error: " + e.message, "err");
+      }
+    };
+
+    btnDelete.onclick = async () => {
+      const ok = await confirmModal({
+        title: "Delete permanently?",
+        text: "Delete venue permanently? (Only allowed if archived)",
+        confirmText: "Delete",
+        danger: true,
+      });
+      if (!ok) return;
+
+      try {
+        await api(`/venues/${venueId}`, { method:"DELETE" });
+        toast("Deleted", "ok");
+        location.href = "/admin-venues.html";
+      } catch (e) {
+        toast("Delete error: " + e.message, "err");
+      }
+    };
+
+    async function boot(){
+      setMeta();
+      await ensureLogin({ silent:true });
+      await load();
+    }
+    boot();
   </script>
 </body>
 </html>
