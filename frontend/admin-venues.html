@@ -1,16 +1,11 @@
 <!doctype html>
 <html lang="ru">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="/styles.css" />
-    <title>Axelio · Admin Venues</title>
-    <script>
-        window.onerror = function(msg, src, line, col) {
-            alert("JS error: " + msg + "\n" + src + ":" + line + ":" + col);
-        };
-    </script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Admin Venues</title>
 </head>
 <body>
   <div class="container">
@@ -55,25 +50,30 @@
       <div id="list" class="list">
         <div class="skeleton"></div><div class="skeleton"></div>
       </div>
+
+      <div class="itemcard" style="margin-top:12px">
+        <b>Hint</b>
+        <div class="muted" style="margin-top:6px">
+          Эта страница работает только для <span class="mono">SUPER_ADMIN</span>.
+          Открывай через Telegram Mini App, чтобы был <span class="mono">initData</span>.
+        </div>
+      </div>
     </div>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
 
-  <!-- FIX: добавили modal__body -->
-<div id="modal" class="modal">
-  <div class="modal__backdrop"></div>
-  <div class="modal__panel">
-    <div class="modal__head">
-      <div class="modal__title">Confirm</div>
-      <button class="btn" data-close>Close</button>
+  <div id="modal" class="modal">
+    <div class="modal__backdrop"></div>
+    <div class="modal__panel">
+      <div class="modal__head">
+        <div class="modal__title">Confirm</div>
+        <button class="btn" data-close>Close</button>
+      </div>
+      <div class="modal__body"></div>
     </div>
-    <div class="modal__body"></div>
   </div>
-</div>
 
-
-  <!-- FIX: вернули Invites в навигацию -->
   <div class="nav">
     <div class="wrap">
       <a href="/index.html" data-tab="home">Home</a>
@@ -86,15 +86,10 @@
   <script type="module">
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
 
-    const boot = document.getElementById("boot");
-
-    const mLog = (s) => window.bootLog && window.bootLog("module: " + s);
-    mLog("loaded");
-
-
-
     applyTelegramTheme();
     mountCommonUI("admin-venues");
+
+    // если не в Telegram — просто не логинимся автоматически
     ensureLogin({ silent:true });
 
     const list = document.getElementById("list");
@@ -182,33 +177,26 @@
     }
 
     async function load() {
-    mLog("load(): start");
+      const q = document.getElementById("search").value.trim();
+      const include_archived = document.getElementById("incArch").checked;
 
-    const q = document.getElementById("search").value.trim();
-    const include_archived = document.getElementById("incArch").checked;
+      list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
 
-    list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
-
-    try {
+      try {
         const qs = new URLSearchParams();
         if (q) qs.set("q", q);
         if (include_archived) qs.set("include_archived", "true");
 
-        mLog("fetch: /venues" + (qs.toString() ? `?${qs}` : ""));
-
         const data = await api("/venues" + (qs.toString() ? `?${qs}` : ""));
-        mLog("fetch: ok, items=" + (data?.length ?? "null"));
-
         window.__lastJson = data;
+
         list.innerHTML = "";
         if (!data.length) list.innerHTML = `<div class="muted">No venues</div>`;
         data.forEach(v => list.appendChild(venueCard(v)));
-    } catch (e) {
-        mLog("fetch: error => " + e.message);
+      } catch (e) {
         list.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
+      }
     }
-    }
-
 
     document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
     document.getElementById("btnReload").onclick = load;
