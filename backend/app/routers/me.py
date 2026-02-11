@@ -5,6 +5,7 @@ from app.auth.deps import get_current_user
 from app.models import User
 
 from sqlalchemy import select
+from app.models import Venue
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -22,6 +23,65 @@ def me(user: User = Depends(get_current_user)):
         "tg_user_id": user.tg_user_id,
         "tg_username": user.tg_username,
         "system_role": user.system_role,
+    }
+
+@router.get("/me/venues")
+def my_venues(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    rows = db.execute(
+        select(Venue.id, Venue.name, VenueMember.venue_role)
+        .join(VenueMember, VenueMember.venue_id == Venue.id)
+        .where(
+            VenueMember.user_id == user.id,
+            VenueMember.is_active.is_(True),
+        )
+        .order_by(Venue.id.desc())
+    ).all()
+
+    return [{"id": r.id, "name": r.name, "my_role": r.venue_role} for r in rows]
+
+@router.get("/me/venues/{venue_id}/members")
+def my_venue_members(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    # доступ: любой активный member этого venue
+    vm = db.execute(
+        select(VenueMember).where(
+            VenueMember.venue_id == venue_id,
+            VenueMember.user_id == user.id,
+            VenueMember.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+
+    if vm is None and user.system_role not in ("SUPER_ADMIN", "MODERATOR"):
+        # можно 403 — так правильнее
+        return {"venue_id": venue_id, "members": []}
+
+    rows = db.execute(
+        select(User.id, User.tg_user_id, User.tg_username, VenueMember.venue_role)
+        .join(VenueMember, VenueMember.user_id == User.id)
+        .where(
+            VenueMember.venue_id == venue_id,
+            VenueMember.is_active.is_(True),
+        )
+        .order_by(VenueMember.venue_role.asc(), User.id.asc())
+    ).all()
+
+    return {
+        "venue_id": venue_id,
+        "members": [
+            {
+                "user_id": r.id,
+                "tg_user_id": r.tg_user_id,
+                "tg_username": r.tg_username,
+                "venue_role": r.venue_role,
+            }
+            for r in rows
+        ],
     }
 
 @router.get("/me/venues/{venue_id}/permissions")

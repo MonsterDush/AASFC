@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · My Venues</title>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>My Venues</b>
+          <div class="muted">OWNER/STAFF</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <button class="btn primary" id="btnLogin">Login</button>
+        <button class="btn" id="btnReload">Reload</button>
+      </div>
+
+      <div class="muted" style="margin-top:10px">
+        Беру <span class="mono">GET /me/venues</span>. Нажми на заведение → список участников.
+      </div>
+
+      <div id="list" class="list"><div class="skeleton"></div><div class="skeleton"></div></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <div id="modal" class="modal">
+    <div class="modal__backdrop"></div>
+    <div class="modal__panel">
+      <div class="modal__head">
+        <div class="modal__title">JSON</div>
+        <button class="btn" data-close>Close</button>
+      </div>
+      <div class="modal__body"></div>
+    </div>
+  </div>
+
+  <div class="nav">
+    <div class="wrap">
+      <a href="/index.html" data-tab="home">Home</a>
+      <a href="/admin-venues.html" data-tab="admin">Admin</a>
+      <a href="/app-venues.html" data-tab="app">App</a>
+    </div>
+  </div>
+
+  <script type="module">
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
+
+    applyTelegramTheme();
+    mountCommonUI("app");
+    ensureLogin({ silent:true });
+
+    const list = document.getElementById("list");
+    function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+
+    function card(v){
+      const div = document.createElement("div");
+      div.className = "itemcard";
+      div.innerHTML = `
+        <div class="row" style="justify-content:space-between;align-items:flex-start">
+          <div>
+            <b>${esc(v.name)}</b>
+            <div class="small">id=${v.id} · my_role=${esc(v.my_role || "")}</div>
+          </div>
+          <a class="link" href="/app-venue.html?venue_id=${v.id}">Open →</a>
+        </div>
+      `;
+      return div;
+    }
+
+    async function load(){
+      list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+      try{
+        const data = await api("/me/venues");
+        list.innerHTML = "";
+        if (!data.length) list.innerHTML = `<div class="muted">No venues yet</div>`;
+        data.forEach(v => list.appendChild(card(v)));
+      }catch(e){
+        list.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
+        toast("Load error: " + e.message, "err");
+      }
+    }
+
+    document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
+    document.getElementById("btnReload").onclick = load;
+
+    load();
+  </script>
+</body>
+</html>

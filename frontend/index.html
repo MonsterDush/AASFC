@@ -22,42 +22,31 @@
 
     <div class="grid">
       <div class="card">
-        <h3 style="margin:0 0 10px;">Панель</h3>
-        <div class="muted">Единое приложение: снизу всегда навигация. Cookie-auth через initData.</div>
+        <b>Панель</b>
+        <div class="muted" style="margin-top:6px">Login через initData → cookie JWT.</div>
 
-        <div class="row" style="margin-top:12px;">
+        <div class="row" style="margin-top:12px">
           <button class="btn primary" id="btnLogin">Login</button>
           <button class="btn" id="btnMe">Me</button>
-          <button class="btn" id="btnHealth">Health</button>
           <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
         </div>
 
-        <div class="itemcard" style="margin-top:12px;">
-          <b>Куда идти дальше</b>
-          <div class="muted" style="margin-top:6px;">
-            • Owners & Venues — список твоих заведений<br/>
-            • Invites & Members — приглашения/участники конкретного venue
+        <div class="itemcard" style="margin-top:12px">
+          <b>Навигация</b>
+          <div class="muted" style="margin-top:6px">
+            SUPER_ADMIN: Admin Venues / Admin Invites<br/>
+            OWNER/STAFF: My Venues / Venue
           </div>
         </div>
       </div>
 
       <div class="card">
-        <h3 style="margin:0 0 10px;">Авто-логин</h3>
-        <div class="muted">
-          При открытии страницы я тихо вызываю <span class="mono">POST /auth/telegram</span> (если есть initData),
-          чтобы поставить cookie. Можно нажать Login вручную.
-        </div>
-        <div class="itemcard" style="margin-top:12px;">
-          <b>Важно</b>
-          <div class="muted" style="margin-top:6px;">
-            Если открыть страницу не из Telegram — initData нет, login не сработает.
-          </div>
-        </div>
+        <b>Debug</b>
+        <div class="mono" id="dbg" style="margin-top:10px"></div>
       </div>
     </div>
   </div>
 
-  <!-- Toast + Modal (общие) -->
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div id="modal" class="modal">
     <div class="modal__backdrop"></div>
@@ -70,52 +59,37 @@
     </div>
   </div>
 
-  <!-- Bottom nav -->
   <div class="nav">
     <div class="wrap">
       <a href="/index.html" data-tab="home">Home</a>
-      <a href="/owners.html" data-tab="owners">Owners</a>
-      <a href="/invites.html" data-tab="invites">Invites</a>
+      <a href="/admin-venues.html" data-tab="admin">Admin</a>
+      <a href="/app-venues.html" data-tab="app">App</a>
     </div>
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, openModal, mountCommonUI } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
 
     applyTelegramTheme();
     mountCommonUI("home");
 
-    // авто-логин тихо
-    ensureLogin({ silent: true });
+    ensureLogin({ silent:true });
 
-    const btnLogin = document.getElementById("btnLogin");
-    const btnMe = document.getElementById("btnMe");
-    const btnHealth = document.getElementById("btnHealth");
+    const w = window.Telegram?.WebApp;
+    document.getElementById("dbg").textContent =
+      "Telegram.WebApp: " + (!!w) + "\n" +
+      "initData length: " + (w?.initData?.length || 0) + "\n" +
+      "platform: " + (w?.platform || "-");
 
-    btnLogin.onclick = async () => {
-      const res = await ensureLogin({ silent: false });
-      if (res.ok) toast("Login OK", "ok");
-    };
+    document.getElementById("btnLogin").onclick = async () => ensureLogin({ silent:false });
 
-    btnMe.onclick = async () => {
+    document.getElementById("btnMe").onclick = async () => {
       try {
         const data = await api("/me");
         window.__lastJson = data;
         toast("Loaded /me", "ok");
-        openModal("GET /me", data);
       } catch (e) {
         toast("ME error: " + e.message, "err");
-      }
-    };
-
-    btnHealth.onclick = async () => {
-      try {
-        const data = await api("/health");
-        window.__lastJson = data;
-        toast("Health OK", "ok");
-        openModal("GET /health", data);
-      } catch (e) {
-        toast("Health error: " + e.message, "err");
       }
     };
   </script>

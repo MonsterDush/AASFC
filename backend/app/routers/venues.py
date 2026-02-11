@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
 from app.auth.guards import require_super_admin
@@ -33,6 +34,8 @@ class InviteCreateIn(BaseModel):
     tg_username: str
     venue_role: str = "STAFF"  # "OWNER" | "STAFF"
 
+class VenueUpdateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
 
 # ---------- Helpers ----------
 
@@ -83,12 +86,26 @@ def create_venue_admin_only(
     return {"id": venue.id, "name": venue.name}
 
 @router.get("")
-def list_venues_admin_only(
+def list_venues(
+    q: str | None = Query(default=None),
+    include_archived: bool = Query(default=False),
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    rows = db.query(Venue.id, Venue.name).order_by(Venue.id.desc()).all()
-    return [{"id": r.id, "name": r.name} for r in rows]
+    stmt = select(Venue.id, Venue.name, Venue.is_archived, Venue.archived_at).order_by(Venue.id.desc())
+
+    if q:
+        # поиск по названию (case-insensitive)
+        stmt = stmt.where(Venue.name.ilike(f"%{q.strip()}%"))
+
+    if not include_archived:
+        stmt = stmt.where(Venue.is_archived.is_(False))
+
+    rows = db.execute(stmt).all()
+    return [
+        {"id": r.id, "name": r.name, "is_archived": r.is_archived, "archived_at": r.archived_at.isoformat() if r.archived_at else None}
+        for r in rows
+    ]
 
 @router.get("/{venue_id}/members")
 def get_members(
@@ -141,6 +158,62 @@ def get_members(
         ],
     }
 
+@router.post("/{venue_id}/archive")
+def archive_venue(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(404, "Venue not found")
+
+    if not venue.is_archived:
+        venue.is_archived = True
+        venue.archived_at = datetime.now(timezone.utc)
+        db.commit()
+
+    return {"ok": True}
+
+@router.post("/{venue_id}/unarchive")
+def unarchive_venue(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(404, "Venue not found")
+
+    if venue.is_archived:
+        venue.is_archived = False
+        venue.archived_at = None
+        db.commit()
+
+    return {"ok": True}
+
+@router.delete("/{venue_id}")
+def delete_venue(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(404, "Venue not found")
+
+    if not venue.is_archived:
+        raise HTTPException(400, "Archive venue before delete")
+
+    db.delete(venue)
+    db.commit()
+    return {"ok": True}
 
 @router.post("/{venue_id}/invites")
 def create_invite(
@@ -196,6 +269,77 @@ def create_invite(
     db.commit()
     return {"ok": True, "mode": "invited"}
 
+@router.patch("/{venue_id}")
+def update_venue(
+    venue_id: int,
+    payload: VenueUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(404, "Venue not found")
+
+    if venue.is_archived:
+        raise HTTPException(400, "Venue is archived. Unarchive first.")
+
+    venue.name = payload.name.strip()
+    db.commit()
+    return {"id": venue.id, "name": venue.name}
+
+@router.delete("/{venue_id}")
+def delete_venue(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+
+    db.delete(venue)
+    db.commit()
+    return {"ok": True}
+
+@router.delete("/{venue_id}/members/{member_user_id}")
+def remove_member(
+    venue_id: int,
+    member_user_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    vm = db.execute(
+        select(VenueMember).where(
+            VenueMember.venue_id == venue_id,
+            VenueMember.user_id == member_user_id,
+            VenueMember.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+
+    if vm is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    # защита: нельзя “выкинуть” последнего OWNER (минимальный вариант)
+    if vm.venue_role == "OWNER":
+        owners_count = db.execute(
+            select(VenueMember).where(
+                VenueMember.venue_id == venue_id,
+                VenueMember.venue_role == "OWNER",
+                VenueMember.is_active.is_(True),
+            )
+        ).scalars().all()
+        if len(owners_count) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove last OWNER")
+
+    vm.is_active = False
+    db.commit()
+    return {"ok": True}
 
 @router.delete("/{venue_id}/invites/{invite_id}")
 def cancel_invite(

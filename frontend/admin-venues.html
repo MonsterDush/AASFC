@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Admin Venues</title>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Admin · Venues</b>
+          <div class="muted">search · archive · delete</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <button class="btn primary" id="btnLogin">Login</button>
+        <button class="btn" id="btnReload">Reload</button>
+        <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
+      </div>
+
+      <div class="itemcard" style="margin-top:12px">
+        <b>Create venue</b>
+        <div class="row" style="margin-top:10px">
+          <input id="vname" placeholder="Venue name" />
+          <input id="owners" placeholder="Owners: owner1, @owner2" style="min-width:320px" />
+          <button class="btn primary" id="btnCreate">Create</button>
+        </div>
+        <div class="muted" style="margin-top:6px">
+          Создаёт invites/members OWNER по usernames.
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <input id="search" placeholder="Search venues by name…" style="min-width:320px" />
+        <label class="muted" style="display:flex;gap:8px;align-items:center">
+          <input type="checkbox" id="incArch" />
+          include archived
+        </label>
+      </div>
+
+      <div id="list" class="list">
+        <div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <div id="modal" class="modal">
+    <div class="modal__backdrop"></div>
+    <div class="modal__panel">
+      <div class="modal__head">
+        <div class="modal__title">Confirm</div>
+        <button class="btn" data-close>Close</button>
+      </div>
+      <div class="modal__body"></div>
+    </div>
+  </div>
+
+  <div class="nav">
+    <div class="wrap">
+      <a href="/index.html" data-tab="home">Home</a>
+      <a href="/admin-venues.html" data-tab="admin">Admin</a>
+      <a href="/app-venues.html" data-tab="app">App</a>
+    </div>
+  </div>
+
+  <script type="module">
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
+
+    applyTelegramTheme();
+    mountCommonUI("admin");
+    ensureLogin({ silent:true });
+
+    const list = document.getElementById("list");
+
+    function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+    function escAttr(s){ return esc(s).replaceAll('"',"&quot;"); }
+    function parseOwners(text){
+      return (text || "").split(",").map(s => s.trim()).filter(Boolean);
+    }
+
+    function venueCard(v) {
+      const div = document.createElement("div");
+      div.className = "itemcard";
+      const archived = !!v.is_archived;
+
+      div.innerHTML = `
+        <div class="row" style="justify-content:space-between;align-items:flex-start">
+          <div>
+            <b>${esc(v.name)}</b>
+            <div class="small">id=${v.id} · ${archived ? "archived" : "active"}</div>
+            ${archived && v.archived_at ? `<div class="mono">archived_at=${esc(v.archived_at)}</div>` : ""}
+          </div>
+          <a class="link" href="/admin-invites.html?venue_id=${v.id}">Manage invites →</a>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <input data-name value="${escAttr(v.name)}" ${archived ? "disabled" : ""} />
+          <button class="btn" data-rename ${archived ? "disabled" : ""}>Rename</button>
+          ${archived
+            ? `<button class="btn" data-unarchive>Unarchive</button>
+               <button class="btn danger" data-delete>Delete</button>`
+            : `<button class="btn" data-archive>Archive</button>`
+          }
+        </div>
+      `;
+
+      div.querySelector("[data-rename]")?.onclick = async () => {
+        const name = div.querySelector("[data-name]").value.trim();
+        try {
+          await api(`/venues/${v.id}`, { method:"PATCH", body: JSON.stringify({ name }) });
+          toast("Renamed", "ok");
+          await load();
+        } catch (e) { toast("Rename error: " + e.message, "err"); }
+      };
+
+      div.querySelector("[data-archive]")?.onclick = async () => {
+        const ok = await confirmModal({
+          title: "Archive venue?",
+          text: `Archive “${v.name}”? It will move to archived list.`,
+          confirmText: "Archive",
+          danger: false,
+        });
+        if (!ok) return;
+        try {
+          await api(`/venues/${v.id}/archive`, { method:"POST" });
+          toast("Archived", "ok");
+          await load();
+        } catch (e) { toast("Archive error: " + e.message, "err"); }
+      };
+
+      div.querySelector("[data-unarchive]")?.onclick = async () => {
+        try {
+          await api(`/venues/${v.id}/unarchive`, { method:"POST" });
+          toast("Unarchived", "ok");
+          await load();
+        } catch (e) { toast("Unarchive error: " + e.message, "err"); }
+      };
+
+      div.querySelector("[data-delete]")?.onclick = async () => {
+        const ok = await confirmModal({
+          title: "Delete permanently?",
+          text: `Delete “${v.name}”? This cannot be undone.`,
+          confirmText: "Delete",
+          danger: true,
+        });
+        if (!ok) return;
+        try {
+          await api(`/venues/${v.id}`, { method:"DELETE" });
+          toast("Deleted", "ok");
+          await load();
+        } catch (e) { toast("Delete error: " + e.message, "err"); }
+      };
+
+      return div;
+    }
+
+    async function load() {
+      const q = document.getElementById("search").value.trim();
+      const include_archived = document.getElementById("incArch").checked;
+
+      list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+      try {
+        const qs = new URLSearchParams();
+        if (q) qs.set("q", q);
+        if (include_archived) qs.set("include_archived", "true");
+
+        const data = await api("/venues" + (qs.toString() ? `?${qs}` : ""));
+        window.__lastJson = data;
+
+        list.innerHTML = "";
+        if (!data.length) list.innerHTML = `<div class="muted">No venues</div>`;
+        data.forEach(v => list.appendChild(venueCard(v)));
+      } catch (e) {
+        list.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
+      }
+    }
+
+    document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
+    document.getElementById("btnReload").onclick = load;
+
+    document.getElementById("btnCreate").onclick = async () => {
+      const name = document.getElementById("vname").value.trim();
+      const owners = parseOwners(document.getElementById("owners").value);
+      if (!name) return toast("Venue name required", "warn");
+
+      try {
+        const payload = { name, owner_usernames: owners.length ? owners : null };
+        const data = await api("/venues", { method:"POST", body: JSON.stringify(payload) });
+        window.__lastJson = data;
+        toast("Created", "ok");
+        document.getElementById("vname").value = "";
+        await load();
+      } catch (e) { toast("Create error: " + e.message, "err"); }
+    };
+
+    document.getElementById("search").addEventListener("input", () => {
+      clearTimeout(window._st);
+      window._st = setTimeout(load, 250);
+    });
+    document.getElementById("incArch").addEventListener("change", load);
+
+    load();
+  </script>
+</body>
+</html>
