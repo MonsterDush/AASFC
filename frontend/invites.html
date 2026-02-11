@@ -17,6 +17,7 @@
           <div class="muted">manage by venue</div>
         </div>
       </div>
+      <div id="venueSwitcher"></div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
@@ -102,10 +103,20 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountVenueSwitcher, getActiveVenueId } from "/app.js";
 
-    applyTelegramTheme();
-    mountCommonUI("invites");
+applyTelegramTheme();
+mountCommonUI("invites");
+
+(async () => {
+  await ensureLogin({ silent:true });
+  if (getActiveVenueId()) {
+    await mountVenueSwitcher({ onChange: (id) => location.href = `/invites.html?venue_id=${encodeURIComponent(id)}` });
+  }
+
+
+    
+    
 
     function esc(s){
       return String(s ?? "")
@@ -115,7 +126,9 @@
     }
 
     const params = new URLSearchParams(location.search);
-    let venueId = params.get("venue_id");
+    let venueId = params.get("venue_id") || getActiveVenueId();
+
+    if (venueId) setActiveVenueId(venueId);
 
     const selectorCard = document.getElementById("selectorCard");
     const venueSelect = document.getElementById("venueSelect");
@@ -277,6 +290,7 @@
       await loadMembers();
     }
     boot();
-  </script>
+})();
+</script>
 </body>
 </html>

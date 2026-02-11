@@ -230,3 +230,156 @@ export function confirmModal({ title, text, confirmText = "Confirm", danger = fa
     m.classList.add("open");
   });
 }
+
+
+// ------------------------------
+// Venue context + simple routing helpers (frontend MVP)
+// ------------------------------
+const LS_ACTIVE_VENUE = "axelio.activeVenueId";
+
+export function getActiveVenueId() {
+  try { return localStorage.getItem(LS_ACTIVE_VENUE) || ""; } catch { return ""; }
+}
+
+export function setActiveVenueId(id) {
+  try {
+    if (id === null || id === undefined || String(id).trim() === "") {
+      localStorage.removeItem(LS_ACTIVE_VENUE);
+      return;
+    }
+    localStorage.setItem(LS_ACTIVE_VENUE, String(id));
+  } catch {}
+}
+
+export async function getMe() {
+  return api("/me");
+}
+
+export async function getMyVenues() {
+  return api("/me/venues");
+}
+
+export async function getMyVenuePermissions(venueId) {
+  if (!venueId) return { venue_id: null, role: null, permissions: [] };
+  return api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
+}
+
+/**
+ * Boots a page: ensures login (cookie), loads /me,
+ * optionally enforces an active venue (from LS or query).
+ */
+export async function bootPage({ requireVenue = false, silentLogin = true } = {}) {
+  await ensureLogin({ silent: silentLogin });
+
+  let me = null;
+  try {
+    me = await getMe();
+  } catch (e) {
+    return { ok: false, me: null, error: e };
+  }
+
+  let venues = null;
+  if (requireVenue) {
+    try {
+      venues = await getMyVenues();
+    } catch {
+      venues = [];
+    }
+
+    let activeVenueId = getActiveVenueId();
+    // If user has exactly one venue and none selected — auto-select
+    if (!activeVenueId && Array.isArray(venues) && venues.length === 1) {
+      activeVenueId = String(venues[0].id);
+      setActiveVenueId(activeVenueId);
+    }
+
+    // Still no venue — go to venues picker
+    if (!activeVenueId) {
+      location.href = "/app-venues.html";
+      return { ok: false, me, venues, redirected: true };
+    }
+
+    return { ok: true, me, venues, activeVenueId };
+  }
+
+  return { ok: true, me };
+}
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/**
+ * Renders a venue switcher <select> into container (or returns null if 0/1 venues).
+ * onChange receives (newVenueId).
+ */
+export function renderVenueSwitcher({ container, venues, activeVenueId, onChange }) {
+  if (!container) return null;
+  if (!Array.isArray(venues) || venues.length <= 1) {
+    container.innerHTML = "";
+    return null;
+  }
+
+  container.innerHTML = "";
+
+  const wrap = document.createElement("div");
+  wrap.className = "venue-switch";
+
+  const label = document.createElement("span");
+  label.className = "venue-switch__label";
+  label.textContent = "Venue:";
+
+  const sel = document.createElement("select");
+  sel.className = "venue-switch__select";
+
+  venues.forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = String(v.id);
+    opt.textContent = v.name ? v.name : `Venue #${v.id}`;
+    sel.appendChild(opt);
+  });
+
+  sel.value = String(activeVenueId || venues[0].id || "");
+
+  sel.onchange = () => {
+    const id = sel.value;
+    setActiveVenueId(id);
+    if (typeof onChange === "function") onChange(id);
+  };
+
+  wrap.appendChild(label);
+  wrap.appendChild(sel);
+  container.appendChild(wrap);
+
+  return sel;
+}
+
+/**
+ * Convenience: loads /me/venues, renders switcher, and keeps URL in sync via onChange.
+ * If current page uses ?venue_id=, we update that param and reload.
+ */
+export async function mountVenueSwitcher({ containerSelector = "#venueSwitcher", venues = null, onChange = null } = {}) {
+  const el = document.querySelector(containerSelector);
+  if (!el) return null;
+
+  const v = venues || (await getMyVenues().catch(() => []));
+  const active = getActiveVenueId() || (v[0] ? String(v[0].id) : "");
+
+  return renderVenueSwitcher({
+    container: el,
+    venues: v,
+    activeVenueId: active,
+    onChange:
+      onChange ||
+      ((newId) => {
+        const url = new URL(location.href);
+        if (url.searchParams.has("venue_id")) url.searchParams.set("venue_id", newId);
+        location.href = url.pathname + url.search;
+      }),
+  });
+}

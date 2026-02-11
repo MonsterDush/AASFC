@@ -17,6 +17,7 @@
           <div class="muted">details</div>
         </div>
       </div>
+      <div id="venueSwitcher"></div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
@@ -97,7 +98,17 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountVenueSwitcher } from "/app.js";
+
+applyTelegramTheme();
+mountCommonUI("app");
+
+(async () => {
+  await ensureLogin({ silent:true });
+  await mountVenueSwitcher({
+    onChange: (id) => location.href = `/app-venue.html?venue_id=${encodeURIComponent(id)}`
+  });
+
 
     // без replaceAll — Telegram WebView иногда капризничает
     function esc(s){
@@ -107,11 +118,14 @@
         .replace(/>/g, "&gt;");
     }
 
-    applyTelegramTheme();
-    mountCommonUI("app");
+    
+    
 
     const params = new URLSearchParams(location.search);
     const venueId = params.get("venue_id") || "";
+
+    // keep active venue in sync
+    if (venueId) setActiveVenueId(venueId);
 
     const titleEl = document.getElementById("title");
     const metaEl = document.getElementById("meta");
@@ -355,6 +369,8 @@
       await load();
     }
     boot();
-  </script>
+
+})();
+</script>
 </body>
 </html>

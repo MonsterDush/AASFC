@@ -69,30 +69,51 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
 
-    applyTelegramTheme();
-    mountCommonUI("home");
+applyTelegramTheme();
+mountCommonUI("home");
 
-    ensureLogin({ silent:true });
+(async () => {
+  // Try silent login and route user to the right start page
+  const login = await ensureLogin({ silent: true });
+  if (!login.ok) {
+    // stay on page — user can press Login manually
+    return;
+  }
 
-    const w = window.Telegram?.WebApp;
-    document.getElementById("dbg").textContent =
-      "Telegram.WebApp: " + (!!w) + "\n" +
-      "initData length: " + (w?.initData?.length || 0) + "\n" +
-      "platform: " + (w?.platform || "-");
+  try {
+    const me = await api("/me");
+    // SUPER_ADMIN → admin panel
+    if (me?.system_role === "SUPER_ADMIN") {
+      location.replace("/admin-venues.html");
+      return;
+    }
+    // Everyone else → app venues (picker / entry point)
+    location.replace("/app-venues.html");
+  } catch (e) {
+    // stay on page; allow debug buttons
+    toast("Cannot load /me: " + (e?.message || e), "err");
+  }
+})();
 
-    document.getElementById("btnLogin").onclick = async () => ensureLogin({ silent:false });
+const w = window.Telegram?.WebApp;
+document.getElementById("dbg").textContent =
+  "Telegram.WebApp: " + (!!w) + "\n" +
+  "initData length: " + (w?.initData?.length || 0) + "\n" +
+  "platform: " + (w?.platform || "-");
 
-    document.getElementById("btnMe").onclick = async () => {
-      try {
-        const data = await api("/me");
-        window.__lastJson = data;
-        toast("Loaded /me", "ok");
-      } catch (e) {
-        toast("ME error: " + e.message, "err");
-      }
-    };
-  </script>
+document.getElementById("btnLogin").onclick = async () => ensureLogin({ silent:false });
+
+document.getElementById("btnMe").onclick = async () => {
+  try {
+    const data = await api("/me");
+    window.__lastJson = data;
+    toast("Loaded /me", "ok");
+  } catch (e) {
+    toast("ME error: " + e.message, "err");
+  }
+};
+</script>
 </body>
 </html>

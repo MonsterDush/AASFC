@@ -17,6 +17,7 @@
           <div class="muted">OWNER/STAFF</div>
         </div>
       </div>
+      <div id="venueSwitcher"></div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
@@ -56,47 +57,61 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountVenueSwitcher } from "/app.js";
 
-    applyTelegramTheme();
-    mountCommonUI("app");
-    ensureLogin({ silent:true });
+applyTelegramTheme();
+mountCommonUI("app");
 
-    const list = document.getElementById("list");
-    function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+const list = document.getElementById("list");
+function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
 
-    function card(v){
-      const div = document.createElement("div");
-      div.className = "itemcard";
-      div.innerHTML = `
-        <div class="row" style="justify-content:space-between;align-items:flex-start">
-          <div>
-            <b>${esc(v.name)}</b>
-            <div class="small">id=${v.id} · my_role=${esc(v.my_role || "")}</div>
-          </div>
-          <a class="link" href="/app-venue.html?venue_id=${v.id}">Open →</a>
-        </div>
-      `;
-      return div;
-    }
+function card(v){
+  const div = document.createElement("div");
+  div.className = "itemcard";
+  div.innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div>
+        <b>${esc(v.name)}</b>
+        <div class="small">id=${v.id} · my_role=${esc(v.my_role || "")}</div>
+      </div>
+      <a class="link" href="/app-venue.html?venue_id=${v.id}" data-open>Open →</a>
+    </div>
+  `;
+  div.querySelector("[data-open]").onclick = (e) => {
+    e.preventDefault();
+    setActiveVenueId(v.id);
+    location.href = `/app-venue.html?venue_id=${encodeURIComponent(v.id)}`;
+  };
+  return div;
+}
 
-    async function load(){
-      list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
-      try{
-        const data = await api("/me/venues");
-        list.innerHTML = "";
-        if (!data.length) list.innerHTML = `<div class="muted">No venues yet</div>`;
-        data.forEach(v => list.appendChild(card(v)));
-      }catch(e){
-        list.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
-        toast("Load error: " + e.message, "err");
-      }
-    }
+async function load(){
+  list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+  try{
+    const data = await api("/me/venues");
+    window.__lastJson = data;
+    list.innerHTML = "";
+    if (!data.length) list.innerHTML = `<div class="muted">No venues yet</div>`;
+    data.forEach(v => list.appendChild(card(v)));
 
-    document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
-    document.getElementById("btnReload").onclick = load;
+    // Show switcher in topbar if user has multiple venues
+    await mountVenueSwitcher({
+      venues: data,
+      onChange: (id) => location.href = `/app-venue.html?venue_id=${encodeURIComponent(id)}`
+    });
+  }catch(e){
+    list.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
+    toast("Load error: " + e.message, "err");
+  }
+}
 
-    load();
-  </script>
+(async () => {
+  await ensureLogin({ silent:true });
+  await load();
+})();
+
+document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
+document.getElementById("btnReload").onclick = load;
+</script>
 </body>
 </html>

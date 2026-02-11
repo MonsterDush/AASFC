@@ -54,3 +54,16 @@ select{min-width:160px}
 .skeleton{border-radius:14px;border:1px solid var(--border);background:rgba(255,255,255,.04);height:64px;position:relative;overflow:hidden}
 .skeleton::after{content:"";position:absolute;inset:-40px;background:linear-gradient(90deg, transparent, rgba(255,255,255,.10), transparent);transform:translateX(-60%);animation: shimmer 1.1s infinite}
 @keyframes shimmer{100%{transform:translateX(60%)}}
+
+
+/* Venue switcher */
+.venue-switch{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.04)}
+.venue-switch__label{font-size:12px;color:var(--muted)}
+.venue-switch__select{
+  background:transparent;color:var(--text);
+  border:none;outline:none;
+  font-size:12px;
+  padding:2px 0;
+  max-width:240px;
+}
+.venue-switch__select option{color:#000}
