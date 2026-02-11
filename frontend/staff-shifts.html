@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Смены</title>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Смены</b>
+          <div class="muted" id="subtitle">панель сотрудника</div>
+        </div>
+      </div>
+      <div id="venueMenu"></div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+  <b>Смены</b>
+  <div class="muted" style="margin-top:6px">Раздел в разработке</div>
+</div>
+
+    <div class="nav">
+      <div class="wrap">
+        <div id="nav"></div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"><div class="toast__text"></div></div>
+    <div class="modal" id="modal">
+      <div class="modal__backdrop"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <b class="modal__title">JSON</b>
+          <button class="btn" data-close>Close</button>
+        </div>
+        <div class="modal__body"></div>
+      </div>
+    </div>
+  </div>
+
+  
+  <script type="module">
+import { applyTelegramTheme, ensureLogin, mountCommonUI, mountNav, mountVenueMenu, setActiveVenueId, getActiveVenueId } from "/app.js";
+
+applyTelegramTheme();
+mountCommonUI("shifts");
+
+await ensureLogin({ silent: true });
+
+const params = new URLSearchParams(location.search);
+const venueId = params.get("venue_id") || getActiveVenueId();
+if (venueId) setActiveVenueId(venueId);
+
+await mountVenueMenu();
+await mountNav({ activeTab: "shifts", requireVenue: true });
+</script>
+</body>
+</html>
+

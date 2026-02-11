@@ -74,3 +74,7 @@ select{min-width:160px}
 .splash__logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,var(--accent),#7c3aed);box-shadow:0 10px 30px rgba(0,0,0,.25);margin-bottom:14px}
 .spinner{width:34px;height:34px;border-radius:50%;border:3px solid rgba(127,127,127,.25);border-top-color:var(--accent);animation:spin 1s linear infinite;margin-top:10px}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Nav icon button */
+.nav a.icon{flex:0 0 auto; width:48px; padding:10px 0;}
+

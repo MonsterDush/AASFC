@@ -17,7 +17,7 @@
           <div class="muted">details</div>
         </div>
       </div>
-      <div id="venueSwitcher"></div>
+      <div id="venueMenu"></div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
@@ -95,15 +95,15 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountVenueSwitcher, mountNav } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountVenueMenu, mountNav } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("venue");
 
 (async () => {
   await ensureLogin({ silent:true });
-  await mountNav({ activeTab: "venue", requireVenue: true });
-  await mountVenueSwitcher({
+  await mountNav({ activeTab: "none", requireVenue: true });
+  await mountVenueMenu({
     onChange: (id) => location.href = `/app-venue.html?venue_id=${encodeURIComponent(id)}`
   });
 

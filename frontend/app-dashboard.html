@@ -17,7 +17,7 @@
           <div class="muted" id="subtitle">панель сотрудника</div>
         </div>
       </div>
-      <div id="venueSwitcher"></div>
+      <div id="venueMenu"></div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
@@ -75,7 +75,7 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, toast, mountCommonUI, mountNav, mountVenueSwitcher, setActiveVenueId, getActiveVenueId, getMyVenues, api } from "/app.js";
+import { applyTelegramTheme, ensureLogin, toast, mountCommonUI, mountNav, mountVenueMenu, setActiveVenueId, getActiveVenueId, getMyVenues, api } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("dashboard");
@@ -88,9 +88,7 @@ const venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
 await mountNav({ activeTab: "dashboard", requireVenue: true });
-await mountVenueSwitcher("#venueSwitcher", {
-  onChange: (newId) => location.href = `/app-dashboard.html?venue_id=${encodeURIComponent(newId)}`
-});
+await mountVenueMenu();
 
 let venues = [];
 try { venues = await getMyVenues(); } catch {}
@@ -111,13 +109,14 @@ try {
   }
 } catch {}
 
-const comingSoon = () => toast("Скоро сделаем 🙂", "info");
+const vid = getActiveVenueId();
 
-document.getElementById("goAdjustments").onclick = comingSoon;
-document.getElementById("goShifts").onclick = comingSoon;
-document.getElementById("goSalary").onclick = comingSoon;
+document.getElementById("goAdjustments").onclick = () => location.href = `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
+document.getElementById("goShifts").onclick = () => location.href = `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`;
+document.getElementById("goSalary").onclick = () => location.href = `/staff-salary.html?venue_id=${encodeURIComponent(vid)}`;
 const repBtn = document.getElementById("goReport");
-if (repBtn) repBtn.onclick = comingSoon;
+if (repBtn) repBtn.onclick = () => location.href = `/staff-report.html?venue_id=${encodeURIComponent(vid)}`;
+
   </script>
 </body>
 </html>

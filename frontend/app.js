@@ -1,5 +1,50 @@
 export const API_BASE = "https://api-dev.axelio.ru";
 
+// ------------------------------
+// i18n (RU/EN) MVP
+// ------------------------------
+const LS_LANG = "axelio.lang";
+const DICT = {
+  ru: {
+    venue: "Заведение",
+    manage_venues: "Управление заведениями",
+    leave_venue: "Выйти из заведения",
+    settings: "Настройки",
+    adjustments: "Штрафы",
+    shifts: "Смены",
+    salary: "Зарплата",
+    report: "Отчёт",
+    admin_venues: "Заведения",
+    admin_invites: "Инвайты",
+  },
+  en: {
+    venue: "Venue",
+    manage_venues: "Manage venues",
+    leave_venue: "Leave venue",
+    settings: "Settings",
+    adjustments: "Adjustments",
+    shifts: "Shifts",
+    salary: "Salary",
+    report: "Report",
+    admin_venues: "Venues",
+    admin_invites: "Invites",
+  },
+};
+
+export function getLang() {
+  try { return localStorage.getItem(LS_LANG) || "ru"; } catch { return "ru"; }
+}
+
+export function setLang(lang) {
+  try { localStorage.setItem(LS_LANG, lang); } catch {}
+}
+
+export function t(key) {
+  const lang = getLang();
+  return (DICT[lang] && DICT[lang][key]) || (DICT.ru && DICT.ru[key]) || key;
+}
+
+
 export function wa() {
   return window.Telegram?.WebApp || null;
 }
@@ -183,7 +228,7 @@ export async function ensureLogin({ silent = true } = {}) {
   }
 }
 
-export function confirmModal({ title, text, confirmText = "Confirm", danger = false }) {
+export function confirmModal({ title, text, confirmText = "Подтвердить", danger = false }) {
   return new Promise((resolve) => {
     const m = document.getElementById("modal");
     if (!m) return resolve(false);
@@ -207,7 +252,7 @@ export function confirmModal({ title, text, confirmText = "Confirm", danger = fa
 
     const btnCancel = document.createElement("button");
     btnCancel.className = "btn";
-    btnCancel.textContent = "Cancel";
+    btnCancel.textContent = "Отмена";
 
     const btnOk = document.createElement("button");
     btnOk.className = "btn " + (danger ? "danger" : "primary");
@@ -426,6 +471,7 @@ function renderNavLinks({ container, links, activeTab }) {
     const a = document.createElement("a");
     a.href = l.href;
     a.textContent = l.title;
+    if (l.className) a.className = l.className;
     a.setAttribute("data-tab", l.tab);
     if (l.tab === activeTab) a.classList.add("active");
     container.appendChild(a);
@@ -441,92 +487,177 @@ function renderNavLinks({ container, links, activeTab }) {
  *
  * Later we'll extend links as we add pages (Shifts/Salary/Adjustments/Reports).
  */
-export async function mountNav({ activeTab = "app", containerSelector = "#nav", requireVenue = false } = {}) {
+export async function mountNav({ activeTab = "dashboard", containerSelector = "#nav" } = {}) {
   const container = document.querySelector(containerSelector);
-  if (!container) {
-    // still update active classes if nav is static
-    setActiveNavTab(activeTab);
-    return { ok: false, reason: "NO_CONTAINER" };
-  }
+  if (!container) return { ok: false, reason: "NO_CONTAINER" };
 
   await ensureLogin({ silent: true });
 
   let me = null;
-  try {
-    me = await getMe();
-  } catch {
-    // if /me fails, keep minimal nav
-    renderNavLinks({
-      container,
-      links: [{ title: "Venues", href: "/app-venues.html", tab: "app" }],
-      activeTab,
-    });
+  try { me = await getMe(); } catch {
+    container.innerHTML = "";
     return { ok: false, reason: "NO_ME" };
   }
 
+  // SUPER_ADMIN bottom nav
   if (me?.system_role === "SUPER_ADMIN") {
     renderNavLinks({
       container,
       links: [
-        { title: "Admin Venues", href: "/admin-venues.html", tab: "admin" },
-        { title: "Admin Invites", href: "/admin-invites.html", tab: "admin-invites" },
+        { title: t("admin_venues"), href: "/admin-venues.html", tab: "admin-venues" },
+        { title: t("admin_invites"), href: "/admin-invites.html", tab: "admin-invites" },
+        { title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" },
       ],
       activeTab,
     });
     return { ok: true, me };
   }
 
-  // Non-admin (OWNER/STAFF): build nav from active venue
+  // Regular users (OWNER/STAFF)
   let venues = [];
-  try {
-    venues = await getMyVenues();
-  } catch {
-    venues = [];
-  }
+  try { venues = await getMyVenues(); } catch { venues = []; }
 
   let activeVenueId = getActiveVenueId();
-  if (!activeVenueId && Array.isArray(venues) && venues.length === 1) {
+  if (!activeVenueId && venues.length === 1) {
     activeVenueId = String(venues[0].id);
     setActiveVenueId(activeVenueId);
   }
 
-  const myRole = activeVenueId ? (venues.find(v => String(v.id)===String(activeVenueId))?.my_role || "") : "";
-
-  if (requireVenue && !activeVenueId) {
-    // caller expects a venue context
-    renderNavLinks({
-      container,
-      links: [{ title: "Venues", href: "/app-venues.html", tab: "app" }],
-      activeTab,
-    });
-    return { ok: false, me, venues, activeVenueId: "" };
-  }
-
-  const links = [{ title: "Venues", href: "/app-venues.html", tab: "app" }];
-
+  // Determine if report tab should be shown (best-effort)
+  let showReport = false;
   if (activeVenueId) {
-    // Staff-first: dashboard as main entry inside venue
-    links.push({
-      title: "Dashboard",
-      href: `/app-dashboard.html?venue_id=${encodeURIComponent(activeVenueId)}`,
-      tab: "dashboard",
-    });
-
-    // Owner/privileged: keep management pages visible
-    if (String(myRole).toUpperCase() !== "STAFF") {
-      links.push({
-        title: "Venue",
-        href: `/app-venue.html?venue_id=${encodeURIComponent(activeVenueId)}`,
-        tab: "venue",
-      });
-      links.push({
-        title: "Invites",
-        href: `/invites.html?venue_id=${encodeURIComponent(activeVenueId)}`,
-        tab: "invites",
-      });
+    try {
+      const perms = await getMyVenuePermissions(activeVenueId);
+      const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
+      showReport = perms?.can_make_reports === true || has("SHIFT_REPORTS_CREATE") || has("SHIFT_REPORTS_EDIT");
+    } catch {
+      showReport = false;
     }
   }
 
+  const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : "";
+  const links = [];
+
+  if (activeVenueId) {
+    links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
+    links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
+    links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
+    if (showReport) links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
+  }
+  links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
+
   renderNavLinks({ container, links, activeTab });
-  return { ok: true, me, venues, activeVenueId, myRole };
+  return { ok: true, me, venues, activeVenueId };
+}
+
+
+
+// ------------------------------
+// Venue dropdown menu (topbar)
+// ------------------------------
+export async function leaveVenue(venueId) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/leave`, { method: "POST" });
+}
+
+export async function mountVenueMenu({ containerSelector = "#venueMenu", onVenueChanged = null } = {}) {
+  const el = document.querySelector(containerSelector);
+  if (!el) return null;
+
+  let venues = [];
+  try { venues = await getMyVenues(); } catch { venues = []; }
+
+  // Always show, even if 0/1 venues
+  const active = getActiveVenueId() || (venues[0] ? String(venues[0].id) : "");
+  if (active) setActiveVenueId(active);
+
+  el.innerHTML = "";
+
+  const wrap = document.createElement("div");
+  wrap.className = "venue-switch";
+
+  const label = document.createElement("span");
+  label.className = "venue-switch__label";
+  label.textContent = t("venue") + ":";
+
+  const sel = document.createElement("select");
+  sel.className = "venue-switch__select";
+
+  if (!venues.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "—";
+    sel.appendChild(opt);
+  } else {
+    for (const v of venues) {
+      const opt = document.createElement("option");
+      opt.value = String(v.id);
+      opt.textContent = v.name ? v.name : `#${v.id}`;
+      sel.appendChild(opt);
+    }
+  }
+
+  // action items
+  const optManage = document.createElement("option");
+  optManage.value = "__manage__";
+  optManage.textContent = "────────";
+  optManage.disabled = true;
+  sel.appendChild(optManage);
+
+  const optManage2 = document.createElement("option");
+  optManage2.value = "__manage2__";
+  optManage2.textContent = t("manage_venues");
+  sel.appendChild(optManage2);
+
+  const optLeave = document.createElement("option");
+  optLeave.value = "__leave__";
+  optLeave.textContent = t("leave_venue");
+  sel.appendChild(optLeave);
+
+  sel.value = active || (venues[0] ? String(venues[0].id) : "");
+
+  sel.onchange = async () => {
+    const val = sel.value;
+    if (val === "__manage2__") {
+      location.href = "/app-venues.html";
+      return;
+    }
+    if (val === "__leave__") {
+      const vid = getActiveVenueId();
+      if (!vid) { toast("Нет активного заведения", "warn"); return; }
+      const ok = await confirmModal({
+        title: t("leave_venue"),
+        text: "Вы уверены, что хотите выйти из заведения?",
+        confirmText: t("leave_venue"),
+        danger: true,
+      });
+      if (!ok) { sel.value = getActiveVenueId(); return; }
+      try {
+        await leaveVenue(vid);
+        toast("Вы вышли из заведения", "ok");
+        // clear active venue and go to venues
+        setActiveVenueId("");
+        location.href = "/app-venues.html";
+      } catch (e) {
+        const msg = e?.data?.detail || e?.message || "Ошибка";
+        toast(msg, "err");
+        sel.value = getActiveVenueId();
+      }
+      return;
+    }
+
+    // normal venue switch
+    setActiveVenueId(val);
+    if (typeof onVenueChanged === "function") onVenueChanged(val);
+    else {
+      const url = new URL(location.href);
+      if (url.searchParams.has("venue_id")) url.searchParams.set("venue_id", val);
+      location.href = url.pathname + url.search;
+    }
+  };
+
+  wrap.appendChild(label);
+  wrap.appendChild(sel);
+  el.appendChild(wrap);
+  return sel;
 }

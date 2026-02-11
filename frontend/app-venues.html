@@ -17,7 +17,7 @@
           <div class="muted">OWNER/STAFF</div>
         </div>
       </div>
-      <div id="venueSwitcher"></div>
+      <div id="venueMenu"></div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
@@ -54,12 +54,12 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountVenueSwitcher, mountNav } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountVenueMenu, mountNav } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("app");
 
-await mountNav({ activeTab: "app" });
+await mountNav({ activeTab: "none" });
 
 const list = document.getElementById("list");
 function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
@@ -96,7 +96,7 @@ async function load(){
     data.forEach(v => list.appendChild(card(v)));
 
     // Show switcher in topbar if user has multiple venues
-    await mountVenueSwitcher({
+    await mountVenueMenu({
       venues: data,
       onChange: (id) => location.href = `/app-venue.html?venue_id=${encodeURIComponent(id)}`
     });
