@@ -2,96 +2,225 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- Telegram SDK: ВАЖНО defer -->
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
 
-  <!-- Твой скрипт: тоже defer -->
+  <title>Axelio Dev</title>
+  <style>
+    :root{
+      --bg:#0b1220; --card:#111a2e; --text:#e6e8ee; --muted:#aab1c5;
+      --accent:#5b8cff; --accentText:#0b1220; --danger:#ff5b5b; --border:rgba(255,255,255,.10);
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius:16px;
+      --pad:14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:var(--sans);
+      background:var(--bg); color:var(--text);
+      padding:18px 14px 22px;
+    }
+
+    .container{max-width:920px; margin:0 auto;}
+    .topbar{
+      display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    .brand{display:flex; align-items:center; gap:10px;}
+    .logo{
+      width:38px; height:38px; border-radius:12px;
+      background: linear-gradient(135deg, var(--accent), rgba(255,255,255,.15));
+      box-shadow:var(--shadow);
+    }
+    .title{line-height:1.1}
+    .title b{font-size:16px}
+    .title div{font-size:12px; color:var(--muted)}
+    .userpill{
+      padding:8px 10px; border-radius:999px; border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
+      font-size:12px; color:var(--muted);
+    }
+
+    .grid{display:grid; gap:12px; grid-template-columns: 1.1fr .9fr;}
+    @media (max-width:860px){ .grid{grid-template-columns: 1fr;} }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:16px;
+    }
+    .card h2{margin:0 0 10px; font-size:15px}
+    .muted{color:var(--muted); font-size:13px; line-height:1.35}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+    .row + .row{margin-top:10px}
+
+    .btn{
+      appearance:none; border:0; cursor:pointer;
+      padding:11px 12px;
+      border-radius:12px;
+      background:rgba(255,255,255,.08);
+      color:var(--text);
+      border:1px solid var(--border);
+      font-weight:600;
+    }
+    .btn.primary{
+      background:var(--accent);
+      color:var(--accentText);
+      border-color:transparent;
+    }
+    .btn.danger{
+      background:rgba(255,91,91,.12);
+      border-color:rgba(255,91,91,.35);
+      color:#ffd1d1;
+    }
+    .btn:active{transform:translateY(1px)}
+    a.link{color:var(--accent); text-decoration:none; font-weight:600}
+
+    .out{
+      margin-top:12px;
+      padding:12px;
+      border-radius:12px;
+      background:rgba(0,0,0,.22);
+      border:1px solid var(--border);
+      font-family:var(--mono);
+      font-size:12px;
+      white-space:pre-wrap;
+      max-height:340px;
+      overflow:auto;
+    }
+
+    .kbd{
+      font-family:var(--mono); font-size:12px;
+      padding:2px 6px; border-radius:8px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+    }
+  </style>
+
   <script defer>
     document.addEventListener("DOMContentLoaded", () => {
-      const out = document.getElementById("out");
       const API = "https://api-dev.axelio.ru";
+      const out = document.getElementById("out");
+      const userpill = document.getElementById("userpill");
 
-      function log(s) { out.textContent = s; }
-
-      async function login() {
-        try {
-          const wa = window.Telegram?.WebApp;
-          const initData = wa?.initData || "";
-          log("initData length: " + initData.length);
-
-          if (!initData) {
-            log("NO initData. Open via Telegram Mini App button.");
-            return;
-          }
-
-          const r = await fetch(`${API}/auth/telegram`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ initData }),
-          });
-
-          log(`LOGIN ${r.status}\n` + await r.text());
-        } catch (e) {
-          log("LOGIN ERROR: " + (e?.message || String(e)));
-        }
-      }
-
-      async function me() {
-        try {
-          const r = await fetch(`${API}/me`, { credentials: "include" });
-          log(`ME ${r.status}\n` + await r.text());
-        } catch (e) {
-          log("ME ERROR: " + (e?.message || String(e)));
-        }
-      }
-
-      async function createVenue() {
-        try {
-          const r = await fetch(`${API}/venues`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ name: "Test Venue" }),
-          });
-          log(`CREATE VENUE ${r.status}\n` + await r.text());
-        } catch (e) {
-          log("CREATE ERROR: " + (e?.message || String(e)));
-        }
-      }
-
-      async function health() {
-        try {
-          const r = await fetch(`${API}/health`, { credentials: "include" });
-          log(`HEALTH ${r.status}\n` + await r.text());
-        } catch (e) {
-          log("HEALTH ERROR: " + (e?.message || String(e)));
-        }
-      }
-
-      // Вешаем обработчики ТОЛЬКО после загрузки DOM
-      document.getElementById("btn-health").addEventListener("click", health);
-      document.getElementById("btn-login").addEventListener("click", login);
-      document.getElementById("btn-me").addEventListener("click", me);
-      document.getElementById("btn-create-venue").addEventListener("click", createVenue);
-
-      // Лёгкая диагностика
       const wa = window.Telegram?.WebApp;
+      if (wa) {
+        wa.ready();
+        // Подтянуть тему Telegram → CSS variables
+        const t = wa.themeParams || {};
+        const set = (k,v)=>document.documentElement.style.setProperty(k, v);
+        if (t.bg_color) set("--bg", t.bg_color);
+        if (t.secondary_bg_color) set("--card", t.secondary_bg_color);
+        if (t.text_color) set("--text", t.text_color);
+        if (t.hint_color) set("--muted", t.hint_color);
+        if (t.button_color) set("--accent", t.button_color);
+        if (t.button_text_color) set("--accentText", t.button_text_color);
+
+        const u = wa.initDataUnsafe?.user;
+        const label = u
+          ? `@${u.username || "no_username"} · ${u.first_name || ""} ${u.last_name || ""}`.trim()
+          : "Telegram user: unknown";
+        userpill.textContent = label;
+      } else {
+        userpill.textContent = "Telegram.WebApp недоступен (открой через Mini App)";
+      }
+
+      function log(s){ out.textContent = s; }
+      function pretty(x){
+        try { return JSON.stringify(x, null, 2); } catch { return String(x); }
+      }
+
+      async function api(path, opts={}) {
+        const r = await fetch(API + path, {
+          ...opts,
+          credentials: "include",
+          headers: { "Content-Type": "application/json", ...(opts.headers||{}) },
+        });
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        if (!r.ok) throw new Error(typeof data === "string" ? data : pretty(data));
+        return { status: r.status, data };
+      }
+
+      async function login(){
+        const initData = wa?.initData || "";
+        if (!initData) { log("NO initData. Открой через Telegram Mini App кнопку."); return; }
+        const { status, data } = await api("/auth/telegram", {
+          method:"POST",
+          body: JSON.stringify({ initData }),
+        });
+        log(`LOGIN ${status}\n` + pretty(data));
+      }
+
+      async function me(){
+        const { status, data } = await api("/me");
+        log(`ME ${status}\n` + pretty(data));
+      }
+
+      async function health(){
+        const { status, data } = await api("/health");
+        log(`HEALTH ${status}\n` + pretty(data));
+      }
+
+      document.getElementById("btn-login").onclick = () => login().catch(e => log("LOGIN ERROR: " + e.message));
+      document.getElementById("btn-me").onclick = () => me().catch(e => log("ME ERROR: " + e.message));
+      document.getElementById("btn-health").onclick = () => health().catch(e => log("HEALTH ERROR: " + e.message));
+
       log(
+        "Axelio Dev UI\n" +
         "Telegram.WebApp: " + !!wa + "\n" +
-        "initData length: " + (wa?.initData?.length || 0)
+        "initData length: " + (wa?.initData?.length || 0) + "\n\n" +
+        "Подсказка: нажми Login → Me.\n" +
+        "Дальше управляй заведениями в Owners & Venues."
       );
     });
   </script>
 </head>
-
 <body>
-    <button id="btn-health">0) Health</button>
-    <button id="btn-login">11) Login</button>
-    <button id="btn-me">2) Me</button>
-    <button id="btn-create-venue">3) Create venue</button>
-    <pre id="out"></pre>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Axelio</b>
+          <div>dev · Mini App</div>
+        </div>
+      </div>
+      <div id="userpill" class="userpill">…</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Быстрые действия</h2>
+        <div class="muted">Cookie-auth через Telegram initData. На всех страницах есть Login на случай, если куки ещё не поставлены.</div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary" id="btn-login">Login</button>
+          <button class="btn" id="btn-me">Me</button>
+          <button class="btn" id="btn-health">Health</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <a class="link" href="/owners.html">Owners & Venues →</a>
+        </div>
+        <div id="out" class="out"></div>
+      </div>
+
+      <div class="card">
+        <h2>Как это выглядит для разных людей</h2>
+        <div class="muted">
+          Цвета/фон/кнопки берутся из Telegram темы пользователя:
+          <span class="kbd">themeParams</span>. Поэтому у каждого будут свои оттенки (светлая/тёмная тема, кастомные темы).
+          <br><br>
+          Внутри владельцы видят только свои заведения, SUPER_ADMIN — управляет созданием venues.
+        </div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

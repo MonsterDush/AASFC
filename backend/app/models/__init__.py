@@ -4,6 +4,7 @@ from .venue import Venue
 from .venue_member import VenueMember
 from .permission import Permission
 from .role_permission_default import RolePermissionDefault
+from .venue_invite import VenueInvite
 
 __all__ = [
     "SystemRole",
@@ -13,4 +14,5 @@ __all__ = [
     "VenueMember",
     "Permission",
     "RolePermissionDefault",
+    "VenueInvite",
 ]

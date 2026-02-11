@@ -33,6 +33,8 @@ jobs:
               cd /var/www/axelio/dev
               source venv/bin/activate
               pip install -r repo/backend/requirements.txt
+              cd repo/backend
+              alembic upgrade head
               sudo systemctl restart axelio-api-dev
               sudo systemctl reload nginx
               echo "Deployed develop -> dev"
@@ -44,6 +46,8 @@ jobs:
               cd /var/www/axelio/prod
               source venv/bin/activate
               pip install -r repo/backend/requirements.txt
+              cd repo/backend
+              alembic upgrade head
               sudo systemctl restart axelio-api-prod
               sudo systemctl reload nginx
               echo "Deployed main -> prod"

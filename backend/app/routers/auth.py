@@ -10,6 +10,10 @@ from app.auth.telegram_webapp import TelegramInitDataError, verify_init_data
 from app.core.db import get_db
 from app.models import User
 from app.settings import settings
+from app.core.tg import normalize_tg_username
+from app.services.invites import accept_invites_for_user
+
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -33,6 +37,7 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
         tg_user = json.loads(user_raw)
         tg_user_id = int(tg_user["id"])
         tg_username = tg_user.get("username")
+        tg_username = normalize_tg_username(tg_username)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user payload")
 
@@ -71,6 +76,8 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
         if tg_username and user.tg_username != tg_username:
             user.tg_username = tg_username
             db.commit()
+
+    accept_invites_for_user(db, user_id=user.id, tg_username=user.tg_username)
 
     jwt_cfg = JwtConfig(
         secret=settings.JWT_SECRET,

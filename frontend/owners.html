@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+  <title>Owners & Venues</title>
+
+  <style>
+    :root{--bg:#0b1220;--card:#111a2e;--text:#e6e8ee;--muted:#aab1c5;--accent:#5b8cff;--accentText:#0b1220;--danger:#ff5b5b;--border:rgba(255,255,255,.10);--shadow:0 10px 30px rgba(0,0,0,.35);--radius:16px;--mono:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;--sans:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);padding:18px 14px 22px}
+    .container{max-width:920px;margin:0 auto}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .brand{display:flex;align-items:center;gap:10px}
+    .logo{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--accent),rgba(255,255,255,.15));box-shadow:var(--shadow)}
+    .title{line-height:1.1}
+    .title b{font-size:16px}
+    .title div{font-size:12px;color:var(--muted)}
+    .userpill{padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.04);font-size:12px;color:var(--muted)}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btn{appearance:none;border:0;cursor:pointer;padding:11px 12px;border-radius:12px;background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--border);font-weight:600}
+    .btn.primary{background:var(--accent);color:var(--accentText);border-color:transparent}
+    .btn.danger{background:rgba(255,91,91,.12);border-color:rgba(255,91,91,.35);color:#ffd1d1}
+    .btn:active{transform:translateY(1px)}
+    a.link{color:var(--accent);text-decoration:none;font-weight:600}
+    input{padding:10px 10px;border-radius:12px;border:1px solid var(--border);background:rgba(0,0,0,.18);color:var(--text);min-width:260px}
+    .muted{color:var(--muted);font-size:13px;line-height:1.35}
+    .list{margin-top:12px;display:grid;gap:10px}
+    .venue{border:1px solid var(--border);border-radius:14px;padding:14px;background:rgba(255,255,255,.03)}
+    .venue-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+    .venue b{font-size:14px}
+    .small{font-size:12px;color:var(--muted)}
+    .out{margin-top:12px;padding:12px;border-radius:12px;background:rgba(0,0,0,.22);border:1px solid var(--border);font-family:var(--mono);font-size:12px;white-space:pre-wrap;max-height:240px;overflow:auto}
+  </style>
+
+  <script defer>
+    document.addEventListener("DOMContentLoaded", () => {
+      const API = "https://api-dev.axelio.ru";
+      const out = document.getElementById("out");
+      const list = document.getElementById("list");
+      const userpill = document.getElementById("userpill");
+
+      const wa = window.Telegram?.WebApp;
+      if (wa) {
+        wa.ready();
+        const t = wa.themeParams || {};
+        const set = (k,v)=>document.documentElement.style.setProperty(k, v);
+        if (t.bg_color) set("--bg", t.bg_color);
+        if (t.secondary_bg_color) set("--card", t.secondary_bg_color);
+        if (t.text_color) set("--text", t.text_color);
+        if (t.hint_color) set("--muted", t.hint_color);
+        if (t.button_color) set("--accent", t.button_color);
+        if (t.button_text_color) set("--accentText", t.button_text_color);
+
+        const u = wa.initDataUnsafe?.user;
+        userpill.textContent = u ? `@${u.username || "no_username"}` : "unknown";
+      }
+
+      function log(s){ out.textContent = s; }
+      function pretty(x){ try { return JSON.stringify(x, null, 2); } catch { return String(x); } }
+
+      async function api(path, opts={}) {
+        const r = await fetch(API + path, {
+          ...opts,
+          credentials:"include",
+          headers:{ "Content-Type":"application/json", ...(opts.headers||{}) },
+        });
+        const text = await r.text();
+        let data; try{ data = JSON.parse(text); } catch{ data = text; }
+        if(!r.ok) throw new Error(typeof data==="string" ? data : pretty(data));
+        return data;
+      }
+
+      async function login(){
+        const initData = wa?.initData || "";
+        if (!initData) { log("NO initData. Открой через Telegram."); return; }
+        const data = await api("/auth/telegram", { method:"POST", body: JSON.stringify({ initData }) });
+        log("LOGIN OK\n" + pretty(data));
+      }
+
+      function venueCard(v){
+        const div = document.createElement("div");
+        div.className = "venue";
+        div.innerHTML = `
+          <div class="venue-head">
+            <div>
+              <b>${v.name}</b>
+              <div class="small">id=${v.id} · my_role=${v.my_role}</div>
+            </div>
+            <div class="row">
+              <a class="link" href="/invites.html?venue_id=${v.id}">Invites & Members →</a>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:10px">
+            <input value="${v.name.replaceAll('"',"&quot;")}" data-name />
+            <button class="btn" data-rename>Rename</button>
+            <button class="btn danger" data-delete>Delete</button>
+          </div>
+
+          <div class="muted" style="margin-top:6px">
+            Rename/Delete требуют твоих endpoints <span style="font-family:var(--mono)">PATCH/DELETE /venues/{id}</span>.
+            Если их ещё нет — кнопки будут возвращать ошибку.
+          </div>
+        `;
+
+        div.querySelector("[data-rename]").onclick = async () => {
+          const name = div.querySelector("[data-name]").value.trim();
+          const res = await fetch(API + `/venues/${v.id}`, {
+            method:"PATCH",
+            credentials:"include",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify({ name })
+          });
+          const text = await res.text();
+          if (!res.ok) throw new Error(text);
+          await load();
+        };
+
+        div.querySelector("[data-delete]").onclick = async () => {
+          if (!confirm("Delete venue?")) return;
+          const res = await fetch(API + `/venues/${v.id}`, { method:"DELETE", credentials:"include" });
+          const text = await res.text();
+          if (!res.ok) throw new Error(text);
+          await load();
+        };
+
+        return div;
+      }
+
+      async function load(){
+        list.innerHTML = "";
+        const venues = await api("/me/venues");
+        if (!venues.length) {
+          list.innerHTML = `<div class="muted">Пока нет заведений. Если ты SUPER_ADMIN — создай venue через API или кнопку в админ-части.</div>`;
+          return;
+        }
+        venues.forEach(v => list.appendChild(venueCard(v)));
+      }
+
+      document.getElementById("btn-login").onclick = () => login().catch(e => log("LOGIN ERROR: " + e.message));
+      document.getElementById("btn-reload").onclick = () => load().catch(e => log("LOAD ERROR: " + e.message));
+
+      log("Owners & Venues\nНажми Login (если нужно), затем Reload.");
+      load().catch(e => log("LOAD ERROR: " + e.message));
+    });
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Owners & Venues</b>
+          <div><a class="link" href="/index.html">← Home</a></div>
+        </div>
+      </div>
+      <div id="userpill" class="userpill">…</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <button class="btn primary" id="btn-login">Login</button>
+        <button class="btn" id="btn-reload">Reload</button>
+      </div>
+
+      <div id="list" class="list"></div>
+
+      <div id="out" class="out"></div>
+    </div>
+  </div>
+</body>
+</html>
