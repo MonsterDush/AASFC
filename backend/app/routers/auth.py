@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.auth.jwt_tokens import JwtConfig, create_access_token
@@ -19,7 +19,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class TelegramAuthIn(BaseModel):
-    initData: str
+    model_config = ConfigDict(populate_by_name=True)
+    initData: str = Field(alias="init_data")
 
 
 @router.post("/telegram", status_code=status.HTTP_204_NO_CONTENT)

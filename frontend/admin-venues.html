@@ -112,7 +112,7 @@
     try {
       const data = await apiFetch("/auth/telegram", {
         method: "POST",
-        body: { init_data: initData }
+        body: { initData: initData }
       });
       setStatus("Login OK");
       logDebug({ login: "OK", response: data });
