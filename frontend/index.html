@@ -8,6 +8,12 @@
   <title>Axelio · Home</title>
 </head>
 <body>
+  <div class="splash" id="splash">
+    <div class="splash__logo"></div>
+    <b>Axelio</b>
+    <div class="muted" style="margin-top:4px">Загружаю…</div>
+    <div class="spinner"></div>
+  </div>
   <div class="container">
     <div class="topbar">
       <div class="brand">
@@ -62,6 +68,9 @@
   <script type="module">
 import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
 
+
+const splash = document.getElementById("splash");
+const hideSplash = () => splash && (splash.style.display = "none");
 applyTelegramTheme();
 mountCommonUI("home");
 
@@ -102,7 +111,8 @@ document.getElementById("btnMe").onclick = async () => {
     window.__lastJson = data;
     toast("Loaded /me", "ok");
   } catch (e) {
-    toast("ME error: " + e.message, "err");
+  hideSplash();
+  toast("ME error: " + e.message, "err");
   }
 };
 </script>

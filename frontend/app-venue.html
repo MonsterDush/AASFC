@@ -125,6 +125,16 @@ mountCommonUI("venue");
     // keep active venue in sync
     if (venueId) setActiveVenueId(venueId);
 
+// if staff - redirect to dashboard
+try {
+  const perms = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
+  const role = (perms?.venue_role || perms?.my_role || "").toString().toUpperCase();
+  if (role === "STAFF") {
+    location.replace(`/app-dashboard.html?venue_id=${encodeURIComponent(venueId)}`);
+    return;
+  }
+} catch {}
+
     const titleEl = document.getElementById("title");
     const metaEl = document.getElementById("meta");
     const metaHint = document.getElementById("metaHint");

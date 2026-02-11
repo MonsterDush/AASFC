@@ -79,7 +79,9 @@ function card(v){
   div.querySelector("[data-open]").onclick = (e) => {
     e.preventDefault();
     setActiveVenueId(v.id);
-    location.href = `/app-venue.html?venue_id=${encodeURIComponent(v.id)}`;
+    location.href = (String(v.my_role||"").toUpperCase()==="STAFF")
+      ? `/app-dashboard.html?venue_id=${encodeURIComponent(v.id)}`
+      : `/app-venue.html?venue_id=${encodeURIComponent(v.id)}`;
   };
   return div;
 }

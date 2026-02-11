@@ -490,6 +490,8 @@ export async function mountNav({ activeTab = "app", containerSelector = "#nav", 
     setActiveVenueId(activeVenueId);
   }
 
+  const myRole = activeVenueId ? (venues.find(v => String(v.id)===String(activeVenueId))?.my_role || "") : "";
+
   if (requireVenue && !activeVenueId) {
     // caller expects a venue context
     renderNavLinks({
@@ -503,18 +505,28 @@ export async function mountNav({ activeTab = "app", containerSelector = "#nav", 
   const links = [{ title: "Venues", href: "/app-venues.html", tab: "app" }];
 
   if (activeVenueId) {
+    // Staff-first: dashboard as main entry inside venue
     links.push({
-      title: "Venue",
-      href: `/app-venue.html?venue_id=${encodeURIComponent(activeVenueId)}`,
-      tab: "venue",
+      title: "Dashboard",
+      href: `/app-dashboard.html?venue_id=${encodeURIComponent(activeVenueId)}`,
+      tab: "dashboard",
     });
-    links.push({
-      title: "Invites",
-      href: `/invites.html?venue_id=${encodeURIComponent(activeVenueId)}`,
-      tab: "invites",
-    });
+
+    // Owner/privileged: keep management pages visible
+    if (String(myRole).toUpperCase() !== "STAFF") {
+      links.push({
+        title: "Venue",
+        href: `/app-venue.html?venue_id=${encodeURIComponent(activeVenueId)}`,
+        tab: "venue",
+      });
+      links.push({
+        title: "Invites",
+        href: `/invites.html?venue_id=${encodeURIComponent(activeVenueId)}`,
+        tab: "invites",
+      });
+    }
   }
 
   renderNavLinks({ container, links, activeTab });
-  return { ok: true, me, venues, activeVenueId };
+  return { ok: true, me, venues, activeVenueId, myRole };
 }
