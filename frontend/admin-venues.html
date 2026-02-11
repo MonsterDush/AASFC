@@ -94,8 +94,15 @@
 
     const list = document.getElementById("list");
 
-    function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
-    function escAttr(s){ return esc(s).replaceAll('"',"&quot;"); }
+    function esc(s){
+        return String(s ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+    function escAttr(s){
+        return esc(s).replace(/"/g, "&quot;");
+    }
     function parseOwners(text){
       return (text || "").split(",").map(s => s.trim()).filter(Boolean);
     }
@@ -221,7 +228,11 @@
       window._st = setTimeout(load, 250);
     });
     document.getElementById("incArch").addEventListener("change", load);
-
+    const login = await ensureLogin({ silent:true });
+    if (!login.ok) {
+        list.innerHTML = `<div class="muted">Нет initData/сессии. Открой через Telegram Mini App и нажми Login.</div>`;
+        return;
+    }
     load();
   </script>
 </body>
