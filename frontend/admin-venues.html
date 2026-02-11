@@ -6,6 +6,27 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Admin Venues</title>
+
+  <style>
+    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+    .card { border:1px solid rgba(0,0,0,.12); border-radius:12px; padding:10px 12px; margin:10px 0; }
+    .row { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
+    .muted { opacity:.7; }
+    .btn { cursor:pointer; }
+    input[type="text"], input[type="search"] { padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.2); min-width:240px; }
+    .pill { padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.15); }
+    .skeleton { border-radius:12px; height:64px; background:rgba(0,0,0,.06); margin:10px 0; }
+    pre { white-space:pre-wrap; word-break:break-word; }
+    .danger { border-color: rgba(255,0,0,.35); }
+    .right { margin-left:auto; }
+
+    .bottom-nav { position:sticky; bottom:0; background:var(--bg, #fff); padding:10px 0; border-top:1px solid rgba(0,0,0,.08); }
+    .bottom-nav .container { display:flex; gap:10px; justify-content:space-between; }
+    .bottom-nav a { flex:1; text-align:center; padding:10px; border-radius:12px; border:1px solid rgba(0,0,0,.12); text-decoration:none; color:inherit; }
+    .bottom-nav a.active { border-color: rgba(0,0,0,.35); font-weight:600; }
+
+    .tag { font-size: 12px; padding:2px 8px; border-radius:999px; border:1px solid rgba(0,0,0,.15); }
+  </style>
 </head>
 
 <body>
@@ -73,11 +94,11 @@
   </div>
 
   <!-- Bottom nav -->
-  <div class="nav">
-    <div class="wrap">
+  <div class="bottom-nav">
+    <div class="container">
       <a href="/index.html" data-tab="home">Home</a>
-      <a href="/app-venues.html" data-tab="app">App</a>
-      <a href="/admin-venues.html" data-tab="admin">Admin Venues</a>
+      <a href="/app-venues.html" data-tab="app-venues">App</a>
+      <a href="/admin-venues.html" data-tab="admin-venues">Admin Venues</a>
       <a href="/admin-invites.html" data-tab="admin-invites">Admin Invites</a>
     </div>
   </div>
@@ -93,6 +114,7 @@
     openModal
   } from "/app.js";
 
+  // без replaceAll (Telegram WebView)
   function esc(s){
     return String(s ?? "")
       .replace(/&/g, "&amp;")
@@ -108,7 +130,7 @@
   const searchEl = document.getElementById("search");
   const countEl = document.getElementById("count");
 
-  // режимы: active | archived
+  // mode: "active" | "archived"
   let mode = "active";
   let allVenues = [];
 
@@ -151,15 +173,13 @@
       const id = escAttr(v.id);
       const name = esc(v.name);
       const isArchived = !!v.is_archived;
-      const badge = isArchived ? `<span class="pill">archived</span>` : `<span class="pill muted">active</span>`;
+      const badge = isArchived
+        ? `<span class="tag">archived</span>`
+        : `<span class="tag muted">active</span>`;
 
-      // важное: delete только для archived (иначе сервер справедливо откажет)
       const deleteBtn = isArchived
         ? `<button class="btn danger" data-action="delete" data-id="${id}">Delete</button>`
         : `<button class="btn danger" disabled title="Delete allowed only for archived">Delete</button>`;
-
-      // rename запрещён для archived (как у тебя в backend)
-      const renameDisabled = isArchived ? "disabled title='Unarchive first'" : "";
 
       return `
         <div class="card">
@@ -169,7 +189,7 @@
               <div class="muted">id=${esc(v.id)}${v.archived_at ? " · archived_at=" + esc(v.archived_at) : ""}</div>
             </div>
             <div class="toolbar">
-              <button class="btn" data-action="rename" data-id="${id}" ${renameDisabled}>Rename</button>
+              <button class="btn" data-action="rename" data-id="${id}">Rename</button>
               <button class="btn" data-action="toggleArchive" data-id="${id}" data-arch="${isArchived ? "1":"0"}">
                 ${isArchived ? "Unarchive" : "Archive"}
               </button>
@@ -186,7 +206,7 @@
     renderSkeleton();
 
     try {
-      // ключевой момент: чтобы увидеть archived — нужно include_archived=true
+      // чтобы увидеть archived — include_archived=true
       const include_archived = (mode === "archived");
       const items = await api(`/venues?include_archived=${include_archived ? "true" : "false"}`);
       allVenues = Array.isArray(items) ? items : [];
@@ -236,12 +256,19 @@
   }
 
   async function renameVenue(id) {
-    const newName = prompt("New venue name?");
+    // найдём текущее имя из allVenues
+    const v = allVenues.find(x => String(x?.id) === String(id));
+    const current = v?.name || "";
+
+    const newName = prompt("New venue name:", current);
     if (!newName) return;
+
+    const name = newName.trim();
+    if (!name) return;
 
     setStatus("Renaming...");
     try {
-      const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "PATCH", body: { name: newName } });
+      const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "PATCH", body: { name } });
       setLastJson({ rename: "OK", response: out });
       setStatus("Renamed");
       toast("Renamed", "ok");
@@ -283,7 +310,6 @@
       setLastJson({ delete: "OK", response: out });
       setStatus("Deleted");
       toast("Deleted", "ok");
-      // после удаления логично оставаться в archived
       mode = "archived";
       await loadVenues();
     } catch (e) {
@@ -332,17 +358,19 @@
     if (action === "delete") return deleteVenue(id);
   });
 
-  (async () => {
+  async function boot() {
     applyTelegramTheme();
-    mountCommonUI("admin-venues"); // подсветит нижнее меню по data-tab
+    mountCommonUI("admin-venues");
 
+    // важно: ждём логин, чтобы не было "иногда Load Failed" из-за гонки cookie
     const r = await ensureLogin({ silent: true });
     bannerEl.style.display = r.ok ? "none" : "";
 
     await loadVenues();
 
     if (!r.ok) setStatus("Not logged in (press Login)");
-  })();
+  }
+  boot();
 </script>
 </body>
 </html>
