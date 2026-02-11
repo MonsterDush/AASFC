@@ -1,11 +1,16 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · Admin Venues</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Axelio · Admin Venues</title>
+    <script>
+        window.onerror = function(msg, src, line, col) {
+            alert("JS error: " + msg + "\n" + src + ":" + line + ":" + col);
+        };
+    </script>
 </head>
 <body>
   <div class="container">
@@ -56,16 +61,17 @@
   <div id="toast" class="toast"><div class="toast__text"></div></div>
 
   <!-- FIX: добавили modal__body -->
-  <div id="modal" class="modal">
-    <div class="modal__backdrop"></div>
-    <div class="modal__panel">
-      <div class="modal__head">
-        <div class="modal__title">Confirm</div>
-        <button class="btn" data-close>Close</button>
-      </div>
-      <div class="modal__body"></div>
+<div id="modal" class="modal">
+  <div class="modal__backdrop"></div>
+  <div class="modal__panel">
+    <div class="modal__head">
+      <div class="modal__title">Confirm</div>
+      <button class="btn" data-close>Close</button>
     </div>
+    <div class="modal__body"></div>
   </div>
+</div>
+
 
   <!-- FIX: вернули Invites в навигацию -->
   <div class="nav">
@@ -76,27 +82,6 @@
       <a href="/app-venues.html" data-tab="app">App</a>
     </div>
   </div>
-<div class="itemcard" style="margin-top:12px">
-  <b>Boot debug</b>
-  <div class="mono" id="boot">loading…</div>
-</div>
-
-<script>
-  const bootEl = document.getElementById("boot");
-  window.bootLog = (s) => {
-    if (!bootEl) return;
-    bootEl.textContent += "\n" + String(s);
-  };
-
-  bootEl.textContent = "inline script: OK";
-  window.addEventListener("error", (e) => window.bootLog("window.error: " + (e.message || e.type)));
-  window.addEventListener("unhandledrejection", (e) => window.bootLog("unhandledrejection: " + (e.reason?.message || e.reason)));
-
-  window.bootLog("Telegram.WebApp: " + (!!window.Telegram?.WebApp));
-  window.bootLog("initData length: " + (window.Telegram?.WebApp?.initData?.length || 0));
-</script>
-
-
 
   <script type="module">
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
