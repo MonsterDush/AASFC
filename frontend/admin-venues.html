@@ -54,6 +54,8 @@
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
+
+  <!-- FIX: добавили modal__body -->
   <div id="modal" class="modal">
     <div class="modal__backdrop"></div>
     <div class="modal__panel">
@@ -65,10 +67,12 @@
     </div>
   </div>
 
+  <!-- FIX: вернули Invites в навигацию -->
   <div class="nav">
     <div class="wrap">
       <a href="/index.html" data-tab="home">Home</a>
-      <a href="/admin-venues.html" data-tab="admin">Admin</a>
+      <a href="/admin-venues.html" data-tab="admin-venues">Admin Venues</a>
+      <a href="/admin-invites.html" data-tab="admin-invites">Admin Invites</a>
       <a href="/app-venues.html" data-tab="app">App</a>
     </div>
   </div>
@@ -77,7 +81,7 @@
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
 
     applyTelegramTheme();
-    mountCommonUI("admin");
+    mountCommonUI("admin-venues");
     ensureLogin({ silent:true });
 
     const list = document.getElementById("list");
@@ -181,7 +185,9 @@
         if (!data.length) list.innerHTML = `<div class="muted">No venues</div>`;
         data.forEach(v => list.appendChild(venueCard(v)));
       } catch (e) {
-        list.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
+        // ВАЖНО: если ты не SUPER_ADMIN — тут будет 403. Покажем норм сообщение.
+        list.innerHTML = `<div class="muted">Access error: ${esc(e.message)}<br/>Эта страница только для SUPER_ADMIN.</div>`;
+        toast("Access error", "warn");
       }
     }
 
