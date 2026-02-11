@@ -90,7 +90,15 @@
     mountCommonUI("admin-venues");
 
     // если не в Telegram — просто не логинимся автоматически
-    ensureLogin({ silent:true });
+    async function boot() {
+        const login = await ensureLogin({ silent: true });
+        if (!login.ok) {
+            list.innerHTML = `<div class="muted">Нет initData/сессии. Открой через Telegram Mini App и нажми Login.</div>`;
+            return;
+        }
+        await load();
+    }
+    boot();
 
     const list = document.getElementById("list");
 
@@ -200,9 +208,11 @@
         list.innerHTML = "";
         if (!data.length) list.innerHTML = `<div class="muted">No venues</div>`;
         data.forEach(v => list.appendChild(venueCard(v)));
-      } catch (e) {
-        list.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
-      }
+        } catch (e) {
+            const msg = (e && e.message) ? String(e.message) : String(e);
+            list.innerHTML = `<div class="muted">Error: ${msg}</div>`;
+        }
+
     }
 
     document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
@@ -233,7 +243,6 @@
         list.innerHTML = `<div class="muted">Нет initData/сессии. Открой через Telegram Mini App и нажми Login.</div>`;
         return;
     }
-    load();
   </script>
 </body>
 </html>
