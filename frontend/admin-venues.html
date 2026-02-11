@@ -6,243 +6,264 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Admin Venues</title>
+  <style>
+    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+    .card { border:1px solid rgba(0,0,0,.12); border-radius:12px; padding:10px 12px; margin:8px 0; }
+    .row { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
+    .muted { opacity:.7; }
+    .btn { cursor:pointer; }
+    input[type="text"] { padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.2); min-width:240px; }
+    pre { white-space:pre-wrap; word-break:break-word; }
+  </style>
 </head>
+
 <body>
   <div class="container">
     <div class="topbar">
-      <div class="brand">
-        <div class="logo"></div>
-        <div class="title">
-          <b>Admin · Venues</b>
-          <div class="muted">search · archive · delete</div>
-        </div>
-      </div>
-      <div class="userpill" data-userpill>…</div>
+      <div class="brand">Axelio · Admin</div>
+      <div class="muted">Venues</div>
+    </div>
+
+    <div class="toolbar">
+      <button id="btnLogin" class="btn">Login</button>
+      <button id="btnLoadActive" class="btn">Load active</button>
+      <button id="btnLoadArchived" class="btn">Load archived</button>
+      <span id="status" class="muted"></span>
     </div>
 
     <div class="card">
       <div class="row">
-        <button class="btn primary" id="btnLogin">Login</button>
-        <button class="btn" id="btnReload">Reload</button>
-        <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
-      </div>
-
-      <div class="itemcard" style="margin-top:12px">
-        <b>Create venue</b>
-        <div class="row" style="margin-top:10px">
-          <input id="vname" placeholder="Venue name" />
-          <input id="owners" placeholder="Owners: owner1, @owner2" style="min-width:320px" />
-          <button class="btn primary" id="btnCreate">Create</button>
-        </div>
-        <div class="muted" style="margin-top:6px">
-          Создаёт invites/members OWNER по usernames.
+        <div>
+          <div class="muted">Create venue (name + owner usernames через запятую)</div>
         </div>
       </div>
-
-      <div class="row" style="margin-top:12px">
-        <input id="search" placeholder="Search venues by name…" style="min-width:320px" />
-        <label class="muted" style="display:flex;gap:8px;align-items:center">
-          <input type="checkbox" id="incArch" />
-          include archived
-        </label>
+      <div class="toolbar">
+        <input id="vName" type="text" placeholder="Venue name" />
+        <input id="owners" type="text" placeholder="owner_usernames: ivan, petr" />
+        <button id="btnCreate" class="btn">Create</button>
       </div>
+      <div id="createResult" class="muted"></div>
+    </div>
 
-      <div id="list" class="list">
-        <div class="skeleton"></div><div class="skeleton"></div>
-      </div>
+    <div id="list"></div>
 
-      <div class="itemcard" style="margin-top:12px">
-        <b>Hint</b>
-        <div class="muted" style="margin-top:6px">
-          Эта страница работает только для <span class="mono">SUPER_ADMIN</span>.
-          Открывай через Telegram Mini App, чтобы был <span class="mono">initData</span>.
-        </div>
-      </div>
+    <div class="card">
+      <div class="muted">Debug</div>
+      <pre id="debug"></pre>
     </div>
   </div>
 
-  <div id="toast" class="toast"><div class="toast__text"></div></div>
+<script>
+(() => {
+  const API = "https://api-dev.axelio.ru";
+  const statusEl = document.getElementById("status");
+  const listEl = document.getElementById("list");
+  const debugEl = document.getElementById("debug");
+  const createResultEl = document.getElementById("createResult");
 
-  <div id="modal" class="modal">
-    <div class="modal__backdrop"></div>
-    <div class="modal__panel">
-      <div class="modal__head">
-        <div class="modal__title">Confirm</div>
-        <button class="btn" data-close>Close</button>
-      </div>
-      <div class="modal__body"></div>
-    </div>
-  </div>
+  function setStatus(s) { statusEl.textContent = s || ""; }
+  function logDebug(obj) {
+    try { debugEl.textContent = JSON.stringify(obj, null, 2); }
+    catch { debugEl.textContent = String(obj); }
+  }
+  function safeText(x) { return (x === null || x === undefined) ? "" : String(x); }
 
-  <div class="nav">
-    <div class="wrap">
-      <a href="/index.html" data-tab="home">Home</a>
-      <a href="/admin-venues.html" data-tab="admin-venues">Admin Venues</a>
-      <a href="/admin-invites.html" data-tab="admin-invites">Admin Invites</a>
-      <a href="/app-venues.html" data-tab="app">App</a>
-    </div>
-  </div>
-
-  <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal } from "/app.js";
-
-    applyTelegramTheme();
-    mountCommonUI("admin-venues");
-
-    // если не в Telegram — просто не логинимся автоматически
-    async function boot() {
-        const login = await ensureLogin({ silent: true });
-        if (!login.ok) {
-            list.innerHTML = `<div class="muted">Нет initData/сессии. Открой через Telegram Mini App и нажми Login.</div>`;
-            return;
-        }
-        await load();
+  function getInitData() {
+    try {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      tg && tg.ready && tg.ready();
+      return (tg && typeof tg.initData === "string") ? tg.initData : "";
+    } catch {
+      return "";
     }
-    boot();
+  }
 
-    const list = document.getElementById("list");
+  async function apiFetch(path, opts = {}) {
+    const url = API + path;
+    const res = await fetch(url, {
+      method: opts.method || "GET",
+      headers: Object.assign({ "Content-Type": "application/json" }, opts.headers || {}),
+      credentials: "include",
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
 
-    function esc(s){
-        return String(s ?? "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;");
+    const text = await res.text();
+    let data;
+    try { data = text ? JSON.parse(text) : null; }
+    catch { data = text; }
+
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status} ${res.statusText}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
     }
-    function escAttr(s){
-        return esc(s).replace(/"/g, "&quot;");
+    return data;
+  }
+
+  async function login() {
+    setStatus("Logging in...");
+    const initData = getInitData();
+    if (!initData) {
+      setStatus("No initData. Open via Telegram Mini App.");
+      logDebug({ error: "NO_INITDATA", hint: "Open page from Telegram Mini App, not regular browser." });
+      return { ok: false };
     }
-    function parseOwners(text){
-      return (text || "").split(",").map(s => s.trim()).filter(Boolean);
+    try {
+      const data = await apiFetch("/auth/telegram", {
+        method: "POST",
+        body: { init_data: initData }
+      });
+      setStatus("Login OK");
+      logDebug({ login: "OK", response: data });
+      return { ok: true, data };
+    } catch (e) {
+      setStatus("Login failed");
+      logDebug({ login: "FAILED", message: e.message, status: e.status, data: e.data });
+      return { ok: false, error: e };
+    }
+  }
+
+  function renderVenues(items) {
+    listEl.innerHTML = "";
+    if (!Array.isArray(items) || items.length === 0) {
+      listEl.innerHTML = `<div class="muted">No venues</div>`;
+      return;
     }
 
-    function venueCard(v) {
+    for (const v of items) {
+      const id = safeText(v.id);
+      const name = safeText(v.name);
+      const isArchived = !!v.is_archived;
+
       const div = document.createElement("div");
-      div.className = "itemcard";
-      const archived = !!v.is_archived;
-
+      div.className = "card";
       div.innerHTML = `
-        <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div class="row">
           <div>
-            <b>${esc(v.name)}</b>
-            <div class="small">id=${v.id} · ${archived ? "archived" : "active"}</div>
-            ${archived && v.archived_at ? `<div class="mono">archived_at=${esc(v.archived_at)}</div>` : ""}
+            <div><b>${name}</b></div>
+            <div class="muted">id=${id} · archived=${isArchived}</div>
           </div>
-          <a class="link" href="/admin-invites.html?venue_id=${v.id}">Manage invites →</a>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <input data-name value="${escAttr(v.name)}" ${archived ? "disabled" : ""} />
-          <button class="btn" data-rename ${archived ? "disabled" : ""}>Rename</button>
-          ${archived
-            ? `<button class="btn" data-unarchive>Unarchive</button>
-               <button class="btn danger" data-delete>Delete</button>`
-            : `<button class="btn" data-archive>Archive</button>`
-          }
+          <div class="toolbar">
+            <button class="btn" data-action="rename" data-id="${id}">Rename</button>
+            <button class="btn" data-action="toggleArchive" data-id="${id}" data-arch="${isArchived ? "1":"0"}">
+              ${isArchived ? "Unarchive" : "Archive"}
+            </button>
+            <button class="btn" data-action="delete" data-id="${id}">Delete</button>
+          </div>
         </div>
       `;
-
-      div.querySelector("[data-rename]")?.onclick = async () => {
-        const name = div.querySelector("[data-name]").value.trim();
-        try {
-          await api(`/venues/${v.id}`, { method:"PATCH", body: JSON.stringify({ name }) });
-          toast("Renamed", "ok");
-          await load();
-        } catch (e) { toast("Rename error: " + e.message, "err"); }
-      };
-
-      div.querySelector("[data-archive]")?.onclick = async () => {
-        const ok = await confirmModal({
-          title: "Archive venue?",
-          text: `Archive “${v.name}”? It will move to archived list.`,
-          confirmText: "Archive",
-          danger: false,
-        });
-        if (!ok) return;
-        try {
-          await api(`/venues/${v.id}/archive`, { method:"POST" });
-          toast("Archived", "ok");
-          await load();
-        } catch (e) { toast("Archive error: " + e.message, "err"); }
-      };
-
-      div.querySelector("[data-unarchive]")?.onclick = async () => {
-        try {
-          await api(`/venues/${v.id}/unarchive`, { method:"POST" });
-          toast("Unarchived", "ok");
-          await load();
-        } catch (e) { toast("Unarchive error: " + e.message, "err"); }
-      };
-
-      div.querySelector("[data-delete]")?.onclick = async () => {
-        const ok = await confirmModal({
-          title: "Delete permanently?",
-          text: `Delete “${v.name}”? This cannot be undone.`,
-          confirmText: "Delete",
-          danger: true,
-        });
-        if (!ok) return;
-        try {
-          await api(`/venues/${v.id}`, { method:"DELETE" });
-          toast("Deleted", "ok");
-          await load();
-        } catch (e) { toast("Delete error: " + e.message, "err"); }
-      };
-
-      return div;
+      listEl.appendChild(div);
     }
+  }
 
-    async function load() {
-      const q = document.getElementById("search").value.trim();
-      const include_archived = document.getElementById("incArch").checked;
+  async function loadVenues(archived) {
+    setStatus("Loading venues...");
+    try {
+      const items = await apiFetch(`/venues?archived=${archived ? "true" : "false"}`);
+      renderVenues(items);
+      setStatus("Loaded");
+      logDebug({ load: "OK", count: Array.isArray(items) ? items.length : null });
+    } catch (e) {
+      setStatus("Load failed");
+      listEl.innerHTML = `<div class="card"><b>Error</b><pre>${safeText(e.message)}\n\n${safeText(JSON.stringify(e.data, null, 2))}</pre></div>`;
+      logDebug({ load: "FAILED", message: e.message, status: e.status, data: e.data });
+    }
+  }
 
-      list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+  async function createVenue() {
+    const name = document.getElementById("vName").value.trim();
+    const ownersRaw = document.getElementById("owners").value.trim();
+    const owner_usernames = ownersRaw
+      ? ownersRaw.split(",").map(s => s.trim()).filter(Boolean)
+      : [];
 
+    createResultEl.textContent = "";
+    setStatus("Creating venue...");
+
+    try {
+      const out = await apiFetch("/venues", {
+        method: "POST",
+        body: { name, owner_usernames }
+      });
+      setStatus("Created");
+      createResultEl.textContent = "Created: " + safeText(out && (out.id || out.name || JSON.stringify(out)));
+      await loadVenues(false);
+      logDebug({ create: "OK", response: out });
+    } catch (e) {
+      setStatus("Create failed");
+      createResultEl.textContent = `Error: ${safeText(e.message)} ${e.status ? "(HTTP " + e.status + ")" : ""}`;
+      logDebug({ create: "FAILED", message: e.message, status: e.status, data: e.data });
+    }
+  }
+
+  async function handleAction(ev) {
+    const btn = ev.target.closest("button[data-action]");
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+    const id = btn.dataset.id;
+
+    if (action === "rename") {
+      const newName = prompt("New venue name?");
+      if (!newName) return;
+      setStatus("Renaming...");
       try {
-        const qs = new URLSearchParams();
-        if (q) qs.set("q", q);
-        if (include_archived) qs.set("include_archived", "true");
-
-        const data = await api("/venues" + (qs.toString() ? `?${qs}` : ""));
-        window.__lastJson = data;
-
-        list.innerHTML = "";
-        if (!data.length) list.innerHTML = `<div class="muted">No venues</div>`;
-        data.forEach(v => list.appendChild(venueCard(v)));
-        } catch (e) {
-            const msg = (e && e.message) ? String(e.message) : String(e);
-            list.innerHTML = `<div class="muted">Error: ${msg}</div>`;
-        }
-
+        const out = await apiFetch(`/venues/${encodeURIComponent(id)}`, { method: "PATCH", body: { name: newName }});
+        setStatus("Renamed");
+        logDebug({ rename: "OK", response: out });
+        await loadVenues(false);
+      } catch (e) {
+        setStatus("Rename failed");
+        logDebug({ rename: "FAILED", message: e.message, status: e.status, data: e.data });
+        alert(`Rename failed: ${e.message}`);
+      }
     }
 
-    document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
-    document.getElementById("btnReload").onclick = load;
-
-    document.getElementById("btnCreate").onclick = async () => {
-      const name = document.getElementById("vname").value.trim();
-      const owners = parseOwners(document.getElementById("owners").value);
-      if (!name) return toast("Venue name required", "warn");
-
+    if (action === "toggleArchive") {
+      const isArchived = btn.dataset.arch === "1";
+      setStatus(isArchived ? "Unarchiving..." : "Archiving...");
       try {
-        const payload = { name, owner_usernames: owners.length ? owners : null };
-        const data = await api("/venues", { method:"POST", body: JSON.stringify(payload) });
-        window.__lastJson = data;
-        toast("Created", "ok");
-        document.getElementById("vname").value = "";
-        await load();
-      } catch (e) { toast("Create error: " + e.message, "err"); }
-    };
-
-    document.getElementById("search").addEventListener("input", () => {
-      clearTimeout(window._st);
-      window._st = setTimeout(load, 250);
-    });
-    document.getElementById("incArch").addEventListener("change", load);
-    const login = await ensureLogin({ silent:true });
-    if (!login.ok) {
-        list.innerHTML = `<div class="muted">Нет initData/сессии. Открой через Telegram Mini App и нажми Login.</div>`;
-        return;
+        const out = await apiFetch(`/venues/${encodeURIComponent(id)}/${isArchived ? "unarchive" : "archive"}`, { method: "POST" });
+        setStatus("OK");
+        logDebug({ archiveToggle: "OK", response: out });
+        await loadVenues(isArchived); // после unarchive остаёмся на archived, после archive остаёмся на active — норм
+      } catch (e) {
+        setStatus("Archive toggle failed");
+        logDebug({ archiveToggle: "FAILED", message: e.message, status: e.status, data: e.data });
+        alert(`Archive toggle failed: ${e.message}`);
+      }
     }
-  </script>
+
+    if (action === "delete") {
+      if (!confirm("Delete venue? (only should work if archived)")) return;
+      setStatus("Deleting...");
+      try {
+        const out = await apiFetch(`/venues/${encodeURIComponent(id)}`, { method: "DELETE" });
+        setStatus("Deleted");
+        logDebug({ delete: "OK", response: out });
+        await loadVenues(true);
+      } catch (e) {
+        setStatus("Delete failed");
+        logDebug({ delete: "FAILED", message: e.message, status: e.status, data: e.data });
+        alert(`Delete failed: ${e.message}`);
+      }
+    }
+  }
+
+  // Wire buttons
+  document.getElementById("btnLogin").addEventListener("click", login);
+  document.getElementById("btnLoadActive").addEventListener("click", () => loadVenues(false));
+  document.getElementById("btnLoadArchived").addEventListener("click", () => loadVenues(true));
+  document.getElementById("btnCreate").addEventListener("click", createVenue);
+  listEl.addEventListener("click", handleAction);
+
+  // Auto-boot: login -> load active
+  (async () => {
+    const r = await login();
+    if (r.ok) await loadVenues(false);
+  })();
+})();
+</script>
 </body>
 </html>
