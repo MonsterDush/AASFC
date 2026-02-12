@@ -20,9 +20,7 @@ await ensureLogin({ silent: true });
 const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 
-if (!venueId) {
-  toast("Сначала выбери заведение в «Настройках»", "warn");
-}
+if (!venueId) toast("Сначала выбери заведение в «Настройках»", "warn");
 if (venueId) setActiveVenueId(venueId);
 
 await mountNav({ activeTab: "shifts", requireVenue: true });
@@ -38,7 +36,6 @@ const el = {
 function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
-
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 let me = null;
@@ -62,6 +59,48 @@ function normalizeList(out) {
   return [];
 }
 
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+// ---- display name helpers ----
+function pickShortName(obj) {
+  // obj may be: assignment row, member, user
+  const sn = (obj?.short_name || obj?.member?.short_name || obj?.user?.short_name || "").trim();
+  if (sn) return sn;
+  const fn = (obj?.full_name || obj?.member?.full_name || obj?.user?.full_name || "").trim();
+  if (fn) return fn.split(/\s+/)[0]; // fallback: first word
+  const un = (obj?.tg_username || obj?.member_username || obj?.user_username || obj?.user?.tg_username || obj?.username || "").trim();
+  if (un) return un.replace(/^@/, "");
+  const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
+  return uid ? `user#${uid}` : "—";
+}
+
+// "Фамилия И.О." из full_name
+function fioInitials(fullName) {
+  const s = (fullName || "").trim();
+  if (!s) return "";
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0];
+  const surname = parts[0];
+  const initials = parts.slice(1).map(p => (p[0] ? p[0].toUpperCase() + "." : "")).join("");
+  return `${surname} ${initials}`.trim();
+}
+
+function displayPerson(obj) {
+  const fn = (obj?.full_name || obj?.member?.full_name || "").trim();
+  const fi = fioInitials(fn);
+  if (fi) return fi;
+  const sn = (obj?.short_name || obj?.member?.short_name || "").trim();
+  if (sn) return sn;
+  const un = (obj?.tg_username || obj?.member?.tg_username || "").trim();
+  if (un) return un.startsWith("@") ? un : `@${un}`;
+  const uid = obj?.member_user_id ?? obj?.member?.user_id ?? obj?.user_id;
+  return uid ? `user#${uid}` : "—";
+}
+
 async function loadContext() {
   if (!venueId) return;
 
@@ -78,21 +117,15 @@ async function loadContext() {
     !!flags.can_edit_schedule ||
     !!posObj.can_edit_schedule;
 
-  // intervals
   try {
     const out = await api(`/venues/${encodeURIComponent(venueId)}/shift-intervals`);
-    intervals = normalizeList(out).filter((x) => x && (x.is_active === undefined || x.is_active));
-  } catch {
-    intervals = [];
-  }
+    intervals = normalizeList(out).filter(x => x && (x.is_active === undefined || x.is_active));
+  } catch { intervals = []; }
 
-  // positions (for assigning)
   try {
     const out = await getVenuePositions(venueId);
-    positions = normalizeList(out).filter((p) => p && (p.is_active === undefined || p.is_active));
-  } catch {
-    positions = [];
-  }
+    positions = normalizeList(out).filter(p => p && (p.is_active === undefined || p.is_active));
+  } catch { positions = []; }
 }
 
 async function loadMonth() {
@@ -137,9 +170,20 @@ function monthTitle(d) {
   return m.charAt(0).toUpperCase() + m.slice(1);
 }
 
+function shiftIntervalTitle(s) {
+  const i = s.interval || s.shift_interval || {};
+  return i.title || s.interval_title || "Смена";
+}
+
+function shiftTimeLabel(s) {
+  const i = s.interval || s.shift_interval || {};
+  const st = i.start_time || s.start_time || "";
+  const et = i.end_time || s.end_time || "";
+  return (st && et) ? `${st}-${et}` : (st || "");
+}
+
 function renderMonth() {
   el.monthLabel.textContent = monthTitle(curMonth);
-
   el.grid.innerHTML = "";
 
   const head = document.createElement("div");
@@ -181,19 +225,44 @@ function renderMonth() {
     const badges = document.createElement("div");
     badges.className = "cal-badges";
 
-    const myId = me?.id ?? null;
-    for (const s of list.slice(0, 3)) {
-      const badge = document.createElement("div");
-      badge.className = "badge";
-      badge.textContent = shiftLabel(s);
+    // Требование: на дне показывать "Интервал-КраткоеИмя" (Бар-Вова)
+    // Если в смене несколько людей — несколько бейджей.
+    let badgeCount = 0;
+    const maxBadges = 4;
 
-      if (myId && isAssignedTo(s, myId)) badge.classList.add("badge--me");
-      badges.appendChild(badge);
+    for (const s of list) {
+      const itTitle = shiftIntervalTitle(s);
+      const assigns = (s.assignments || s.shift_assignments || []).slice();
+
+      if (!assigns.length) {
+        const b = document.createElement("div");
+        b.className = "badge";
+        b.textContent = itTitle;
+        badges.appendChild(b);
+        badgeCount++;
+      } else {
+        for (const a of assigns) {
+          if (badgeCount >= maxBadges) break;
+          const short = pickShortName(a);
+          const b = document.createElement("div");
+          b.className = "badge";
+          b.textContent = `${itTitle}-${short}`;
+          badges.appendChild(b);
+          badgeCount++;
+        }
+      }
+      if (badgeCount >= maxBadges) break;
     }
-    if (list.length > 3) {
+
+    const totalBadges = list.reduce((acc, s) => {
+      const assigns = (s.assignments || s.shift_assignments || []);
+      return acc + Math.max(1, assigns.length);
+    }, 0);
+
+    if (totalBadges > maxBadges) {
       const more = document.createElement("div");
       more.className = "badge badge--more";
-      more.textContent = `+${list.length - 3}`;
+      more.textContent = `+${totalBadges - maxBadges}`;
       badges.appendChild(more);
     }
 
@@ -205,65 +274,34 @@ function renderMonth() {
   el.grid.appendChild(body);
 }
 
-function shiftLabel(s) {
-  const i = s.interval || s.shift_interval || {};
-  const title = i.title || s.interval_title || "Смена";
-  const st = i.start_time || s.start_time || "";
-  const et = i.end_time || s.end_time || "";
-  const time = st && et ? `${st}-${et}` : (st || "");
-  return time ? `${title} ${time}` : title;
-}
-
-function isAssignedTo(s, userId) {
-  const arr = s.assignments || s.shift_assignments || s.members || [];
-  for (const a of arr) {
-    const uid = a.member_user_id ?? a.user_id ?? a.user?.id;
-    if (uid === userId) return true;
-  }
-  return false;
-}
-
 function clearDayPanel() {
   el.dayPanel.innerHTML = `<div class="muted">Выбери день в календаре</div>`;
 }
 
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[c]));
-}
-
 function renderShiftCard(s) {
-  const i = s.interval || s.shift_interval || {};
-  const title = i.title || "Смена";
-  const st = i.start_time || s.start_time || "";
-  const et = i.end_time || s.end_time || "";
-  const time = (st && et) ? `${st}–${et}` : "";
+  const title = shiftIntervalTitle(s);
+  const time = shiftTimeLabel(s);
   const shiftId = s.id;
 
   const assignments = s.assignments || s.shift_assignments || [];
-  const people = assignments.map((a) => {
-    const posTitle = a.position_title || a.title || a.position?.title || "";
-    const uname = a.member_username || a.user_username || a.user?.tg_username || a.username || "";
-    const uid = a.member_user_id ?? a.user_id ?? a.user?.id;
-    const label = uname ? `@${uname}` : `user#${uid}`;
-    return { uid, label, posTitle };
-  });
-
   let peopleHtml = "";
-  if (!people.length) {
+  if (!assignments.length) {
     peopleHtml = `<div class="muted" style="margin-top:8px">Пока никто не назначен</div>`;
   } else {
     peopleHtml =
       `<div class="list" style="margin-top:8px">` +
-      people.map((p) => `
-        <div class="list__row">
-          <div class="list__main">
-            <div><b>${escapeHtml(p.label)}</b>${p.posTitle ? `<span class="muted"> · ${escapeHtml(p.posTitle)}</span>` : ""}</div>
+      assignments.map((a) => {
+        const label = displayPerson(a);
+        const uname = (a.tg_username || "").trim();
+        return `
+          <div class="list__row">
+            <div class="list__main">
+              <div><b>${escapeHtml(label)}</b>${uname ? `<span class="muted"> · ${escapeHtml(uname.startsWith("@") ? uname : "@"+uname)}</span>` : ""}</div>
+            </div>
+            ${canEdit ? `<button class="btn danger sm" data-unassign data-shift="${shiftId}" data-user="${a.member_user_id}">Удалить</button>` : ""}
           </div>
-          ${canEdit ? `<button class="btn danger sm" data-unassign data-shift="${shiftId}" data-user="${p.uid}">Удалить</button>` : ""}
-        </div>
-      `).join("") +
+        `;
+      }).join("") +
       `</div>`;
   }
 
@@ -279,7 +317,7 @@ function renderShiftCard(s) {
 
   return `
     <div class="card" data-shiftcard="${shiftId}">
-      <b>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time)})</span>` : ""}</b>
+      <b>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time.replace("-", "–"))})</span>` : ""}</b>
       ${peopleHtml}
       ${editorHtml}
     </div>
@@ -307,9 +345,11 @@ function wireShiftEditor(dateStr, shift) {
       for (const p of positions) {
         const opt = document.createElement("option");
         opt.value = p.id;
-        const memberId = p.member_user_id ?? p.user_id;
-        const name = p.member_username ? `@${p.member_username}` : (memberId ? `user#${memberId}` : "");
-        opt.textContent = `${p.title} · ${name} · ставка ${p.rate}, % ${p.percent}`;
+
+        const mem = p.member || {};
+        const name = fioInitials(mem.full_name) || mem.short_name || (mem.tg_username ? mem.tg_username.replace(/^@/, "") : "");
+        opt.textContent = `${p.title} · ${name || "—"}`; // убрали ставку/% как просил
+
         sel.appendChild(opt);
       }
       sel.disabled = false;
@@ -379,30 +419,30 @@ function openDay(dateStr) {
 
   if (canEdit) {
     html += `
-        <div class="card" style="margin-top:12px; display:none" id="addShiftCard">
-            <b>Новая смена</b>
-            <div class="muted" style="margin-top:6px">Выбери промежуток и создай смену на этот день</div>
+      <div class="card" style="margin-top:12px; display:none" id="addShiftCard">
+        <b>Новая смена</b>
+        <div class="muted" style="margin-top:6px">Выбери промежуток и создай смену на этот день</div>
 
-            <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
-            <select class="input" id="intervalSelect" style="flex:1; min-width:220px"></select>
-            <button class="btn primary" id="createShiftBtn">Создать смену</button>
-            </div>
-
-            <div id="createIntervalBox" class="card" style="margin-top:10px; display:none; background: rgba(255,255,255,0.04)">
-            <b>Новый промежуток</b>
-            <div class="grid2" style="margin-top:10px">
-                <input class="input" id="newIntTitle" placeholder="Название (например, День)" />
-                <div class="row" style="gap:10px">
-                <input class="input" id="newIntStart" placeholder="Начало (HH:MM)" />
-                <input class="input" id="newIntEnd" placeholder="Конец (HH:MM)" />
-                </div>
-            </div>
-            <div class="row" style="margin-top:10px; gap:10px; justify-content:flex-end">
-                <button class="btn" id="cancelCreateInterval">Отмена</button>
-                <button class="btn primary" id="createIntervalBtn">Создать промежуток</button>
-            </div>
-            </div>
+        <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
+          <select class="input" id="intervalSelect" style="flex:1; min-width:220px"></select>
+          <button class="btn primary" id="createShiftBtn">Создать смену</button>
         </div>
+
+        <div id="createIntervalBox" class="card" style="margin-top:10px; display:none; background: rgba(255,255,255,0.04)">
+          <b>Новый промежуток</b>
+          <div class="grid2" style="margin-top:10px">
+            <input class="input" id="newIntTitle" placeholder="Название (например, Бар)" />
+            <div class="row" style="gap:10px">
+              <input class="input" id="newIntStart" placeholder="Начало (HH:MM)" />
+              <input class="input" id="newIntEnd" placeholder="Конец (HH:MM)" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px; gap:10px; justify-content:flex-end">
+            <button class="btn" id="cancelCreateInterval">Отмена</button>
+            <button class="btn primary" id="createIntervalBtn">Создать промежуток</button>
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -421,79 +461,74 @@ function openDay(dateStr) {
     }
 
     if (sel) {
-  sel.innerHTML = "";
+      sel.innerHTML = "";
 
-  // 1) Обычные интервалы
-  for (const i of intervals) {
-    const opt = document.createElement("option");
-    opt.value = String(i.id);
-    opt.textContent = `${i.title} · ${i.start_time}-${i.end_time}`;
-    sel.appendChild(opt);
-  }
+      for (const i of intervals) {
+        const opt = document.createElement("option");
+        opt.value = String(i.id);
+        opt.textContent = `${i.title} · ${i.start_time}-${i.end_time}`;
+        sel.appendChild(opt);
+      }
 
-  // 2) Пункт "Создать"
-  const optCreate = document.createElement("option");
-  optCreate.value = "__create__";
-  optCreate.textContent = "➕ Создать промежуток…";
-  sel.appendChild(optCreate);
+      const optCreate = document.createElement("option");
+      optCreate.value = "__create__";
+      optCreate.textContent = "➕ Создать промежуток…";
+      sel.appendChild(optCreate);
 
-  // Если интервалов нет — сразу открываем создание
-  if (!intervals.length) {
-    sel.value = "__create__";
-  }
+      if (!intervals.length) sel.value = "__create__";
 
-  const box = document.getElementById("createIntervalBox");
-  const btnCancel = document.getElementById("cancelCreateInterval");
-  const btnCreateInt = document.getElementById("createIntervalBtn");
+      const box = document.getElementById("createIntervalBox");
+      const btnCancel = document.getElementById("cancelCreateInterval");
+      const btnCreateInt = document.getElementById("createIntervalBtn");
 
-  const syncBox = () => {
-    const isCreate = sel.value === "__create__";
-    if (box) box.style.display = isCreate ? "block" : "none";
-    if (createBtn) createBtn.disabled = isCreate; // нельзя создать смену, пока в режиме создания интервала
-  };
+      const syncBox = () => {
+        const isCreate = sel.value === "__create__";
+        if (box) box.style.display = isCreate ? "block" : "none";
+        if (createBtn) createBtn.disabled = isCreate;
+      };
 
-  sel.onchange = syncBox;
-  syncBox();
-
-  if (btnCancel) {
-    btnCancel.onclick = () => {
-      // вернёмся на первый интервал, если есть
-      if (intervals.length) sel.value = String(intervals[0].id);
+      sel.onchange = syncBox;
       syncBox();
-    };
-  }
 
-    if (btnCreateInt) {
+      if (btnCancel) {
+        btnCancel.onclick = () => {
+          if (intervals.length) sel.value = String(intervals[0].id);
+          syncBox();
+        };
+      }
+
+      if (btnCreateInt) {
         btnCreateInt.onclick = async () => {
-        const title = document.getElementById("newIntTitle")?.value?.trim();
-        const start = document.getElementById("newIntStart")?.value?.trim();
-        const end = document.getElementById("newIntEnd")?.value?.trim();
+          const title = document.getElementById("newIntTitle")?.value?.trim();
+          const start = document.getElementById("newIntStart")?.value?.trim();
+          const end = document.getElementById("newIntEnd")?.value?.trim();
 
-        if (!title) return toast("Укажи название", "warn");
-        if (!/^\d{2}:\d{2}$/.test(start || "")) return toast("Начало в формате HH:MM", "warn");
-        if (!/^\d{2}:\d{2}$/.test(end || "")) return toast("Конец в формате HH:MM", "warn");
+          if (!title) return toast("Укажи название", "warn");
+          if (!/^\d{2}:\d{2}$/.test(start || "")) return toast("Начало в формате HH:MM", "warn");
+          if (!/^\d{2}:\d{2}$/.test(end || "")) return toast("Конец в формате HH:MM", "warn");
 
-        try {
+          try {
             await api(`/venues/${encodeURIComponent(venueId)}/shift-intervals`, {
-            method: "POST",
-            body: { title, start_time: start, end_time: end }
+              method: "POST",
+              body: { title, start_time: start, end_time: end }
             });
             toast("Промежуток создан", "ok");
-            await loadContext();  // перезагрузит intervals
+            await loadContext();
             await loadMonth();
             openDay(dateStr);
-        } catch (e) {
+          } catch (e) {
             toast(e?.data?.detail || e?.message || "Не удалось создать промежуток", "err");
-        }
+          }
         };
+      }
     }
-    }
-
 
     if (createBtn) {
       createBtn.onclick = async () => {
         const intervalId = document.getElementById("intervalSelect")?.value;
+        if (!intervalId) return toast("Выбери промежуток", "warn");
         if (intervalId === "__create__") return toast("Сначала создай промежуток", "warn");
+
         try {
           await api(`/venues/${encodeURIComponent(venueId)}/shifts`, {
             method: "POST",

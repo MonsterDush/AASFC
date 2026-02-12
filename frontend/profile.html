@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Профиль</title>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">Профиль</div>
+      <div class="userpill" id="userpill"></div>
+    </div>
+
+    <div class="card">
+      <b>Редактирование профиля</b>
+      <div class="muted" style="margin-top:6px">
+        Краткое имя используется в интерфейсе вместо логина. Логин остаётся дополнением.
+      </div>
+
+      <div class="stack" style="margin-top:12px">
+        <div>
+          <div class="muted">ФИО</div>
+          <input class="input" id="fullName" placeholder="Например: Иванов Иван Иванович" />
+        </div>
+
+        <div>
+          <div class="muted">Краткое имя</div>
+          <input class="input" id="shortName" placeholder="Например: Вова" />
+        </div>
+
+        <button class="btn primary" id="saveBtn">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { applyTelegramTheme, ensureLogin, mountNav, api, toast, mountUserPill } from "/app.js";
+
+    applyTelegramTheme();
+    await ensureLogin({ silent: true });
+    await mountNav({ activeTab: "settings" });
+
+    mountUserPill?.("userpill");
+
+    try {
+      const p = await api("/me/profile");
+      document.getElementById("fullName").value = p?.full_name || "";
+      document.getElementById("shortName").value = p?.short_name || "";
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || "Не удалось загрузить профиль", "err");
+    }
+
+    document.getElementById("saveBtn").onclick = async () => {
+      const full_name = document.getElementById("fullName").value;
+      const short_name = document.getElementById("shortName").value;
+      try {
+        await api("/me/profile", { method: "PATCH", body: { full_name, short_name } });
+        toast("Сохранено", "ok");
+        history.back();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось сохранить", "err");
+      }
+    };
+  </script>
+</body>
+</html>
