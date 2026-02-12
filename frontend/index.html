@@ -24,39 +24,63 @@
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
-  <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast } from "/app.js";
+ <script type="module">
+  import { applyTelegramTheme, ensureLogin, api, toast, wa } from "/app.js";
 
+  const splash = document.getElementById("splash");
+  const fallback = document.getElementById("fallback");
+  const hideSplash = () => splash && (splash.style.display = "none");
 
-const splash = document.getElementById("splash");
-const hideSplash = () => splash && (splash.style.display = "none");
-applyTelegramTheme();
+  applyTelegramTheme();
 
-(async () => {
-  // Try silent login and route user to the right start page
-  const login = await ensureLogin({ silent: true });
-  if (!login.ok) {
-    // show fallback
-    hideSplash();
-    document.getElementById("fallback").style.display = "block";
-    return;
-  }
-
-  try {
-    const me = await api("/me");
-    // SUPER_ADMIN → admin panel
-    if (me?.system_role === "SUPER_ADMIN") {
-      location.replace("/admin-venues.html");
-      return;
+  async function waitInitData() {
+    // Ждём, пока Telegram.WebApp станет доступен и появится initData
+    for (let i = 0; i < 30; i++) {
+      const w = wa();
+      const initData = w?.initData || "";
+      if (initData) return true;
+      await new Promise((r) => setTimeout(r, 50));
     }
-    // Everyone else → app venues (picker / entry point)
-    location.replace("/app-venues.html");
-  } catch (e) {
-    hideSplash();
-    document.getElementById("fallback").style.display = "block";
-    toast("Не удалось загрузить профиль: " + (e?.message || e), "err");
+    return false;
   }
-})();
+
+  (async () => {
+    try {
+      const okInit = await waitInitData();
+      if (!okInit) {
+        hideSplash();
+        fallback.style.display = "block";
+        toast("Не удалось получить initData. Откройте Mini App через Telegram.", "err");
+        return;
+      }
+
+      const login = await ensureLogin({ silent: true });
+
+      if (!login.ok) {
+        hideSplash();
+        fallback.style.display = "block";
+        // Покажем понятную причину (если есть)
+        const msg =
+          login.reason === "NO_INITDATA"
+            ? "Нет initData. Откройте Mini App через Telegram."
+            : (login.data?.detail || login.message || "Ошибка авторизации");
+        toast(msg, "err");
+        return;
+      }
+
+      const me = await api("/me");
+      if (me?.system_role === "SUPER_ADMIN") {
+        location.replace("/admin-venues.html");
+        return;
+      }
+      location.replace("/app-venues.html");
+    } catch (e) {
+      hideSplash();
+      fallback.style.display = "block";
+      toast("Ошибка загрузки: " + (e?.data?.detail || e?.message || e), "err");
+    }
+  })();
 </script>
+
 </body>
 </html>
