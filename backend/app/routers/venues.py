@@ -84,7 +84,7 @@ class ShiftCreateIn(BaseModel):
 
 
 class ShiftUpdateIn(BaseModel):
-    date: date | None = None
+    date: date | Optional[date] = None
     interval_id: int | None = Field(default=None, gt=0)
     is_active: bool | None = None
 
