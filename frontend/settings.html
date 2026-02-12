@@ -21,19 +21,22 @@
     </div>
 
     <div class="card" style="margin-top:12px">
-      <b>Заведение</b>
-      <div class="muted" style="margin-top:6px">Выберите активное заведение или перейдите в управление</div>
-      <div id="venueMenuMount" style="margin-top:10px"></div>
-    </div>
-    <div class="card" style="margin-top:12px">
       <b>Профиль</b>
+      <div class="muted" style="margin-top:6px">Привет, <span id="helloName">…</span></div>
       <div class="row" style="margin-top:10px">
         <button class="btn" onclick="location.href='/profile.html'"> Редактировать профиль </button>
       </div>
     </div>
+
+    <div class="card" style="margin-top:12px">
+      <b>Заведение</b>
+      <div class="muted" style="margin-top:6px">Выберите активное заведение или перейдите в управление</div>
+      <div id="venueMenuMount" style="margin-top:10px"></div>
+    </div>
+
     <div class="card" style="margin-top:12px">
       <b>Язык интерфейса</b>
-      <div class="muted" style="margin-top:6px">Русский / English</div>
+      <div class="muted" style="margin-top:6px">Выберите язык интерфейса. Не волнуйтесь, это не повлияет на язык Telegram.</div>
       <div class="row" style="margin-top:10px">
         <button class="btn" id="langRu">Русский</button>
         <button class="btn" id="langEn">English</button>
@@ -61,23 +64,48 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, mountCommonUI, mountNav, mountVenueMenu, ensureLogin, getLang, setLang, t } from "/app.js";
+    import { applyTelegramTheme, mountCommonUI, mountNav, mountVenueMenu, ensureLogin, getLang, setLang, t } from "/app.js";
 
-applyTelegramTheme();
-mountCommonUI("settings");
-await ensureLogin({ silent: true });
-await mountNav({ activeTab: "settings" });
-await mountVenueMenu({ containerSelector: "#venueMenuMount" });
+    applyTelegramTheme();
+    mountCommonUI("settings");
+    await ensureLogin({ silent: true });
+    await mountNav({ activeTab: "settings" });
+    await mountVenueMenu({ containerSelector: "#venueMenuMount" });
 
-const hint = document.getElementById("langHint");
-const paint = () => {
-  const l = getLang();
-  hint.textContent = l === 'en' ? 'Current language: English' : 'Текущий язык: Русский';
-};
-paint();
+    const hint = document.getElementById("langHint");
+    const paint = () => {
+      const l = getLang();
+      hint.textContent = l === 'en' ? 'Current language: English' : 'Текущий язык: Русский';
+    };
+    paint();
 
-document.getElementById("langRu").onclick = () => { setLang('ru'); location.reload(); };
-document.getElementById("langEn").onclick = () => { setLang('en'); location.reload(); };
+    document.getElementById("langRu").onclick = () => { setLang('ru'); location.reload(); };
+    document.getElementById("langEn").onclick = () => { setLang('en'); location.reload(); };
+
+    import { getMe } from "/app.js";
+
+    function displayName(u) {
+      const shortName = (u?.short_name || "").trim();
+      if (shortName) return shortName;
+
+      // если хочешь как fallback первое слово из ФИО
+      const full = (u?.full_name || "").trim();
+      if (full) return full.split(/\s+/)[0];
+
+      const username = (u?.tg_username || "").trim();
+      if (username) return username.startsWith("@") ? username : "@" + username;
+
+      // последний fallback
+      return "друг";
+    }
+
+    try {
+      const me = await getMe();
+      const el = document.getElementById("helloName");
+      if (el) el.textContent = displayName(me);
+    } catch {
+      // ничего страшного
+    }
 </script>
 </body>
 </html>

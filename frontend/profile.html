@@ -11,7 +11,7 @@
   <div class="container">
     <div class="topbar">
       <div class="brand">Профиль</div>
-      <div class="userpill" id="userpill"></div>
+      <div class="userpill" id="userpill" data-userpill></div>
     </div>
 
     <div class="card">
@@ -27,23 +27,21 @@
         </div>
 
         <div>
-          <div class="muted">Краткое имя</div>
+          <div class="muted" style="margin-top:6px">Краткое имя</div>
           <input class="input" id="shortName" placeholder="Например: Вова" />
         </div>
 
-        <button class="btn primary" id="saveBtn">Сохранить</button>
+        <button class="btn primary" id="saveBtn" style="margin-top:6px">Сохранить</button>
       </div>
     </div>
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, mountNav, api, toast, mountUserPill } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, mountNav, api, toast, getMe } from "/app.js";
 
     applyTelegramTheme();
     await ensureLogin({ silent: true });
     await mountNav({ activeTab: "settings" });
-
-    mountUserPill?.("userpill");
 
     try {
       const p = await api("/me/profile");
