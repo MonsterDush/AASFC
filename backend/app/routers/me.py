@@ -20,14 +20,52 @@ from app.models import (
 router = APIRouter(tags=["me"])
 
 
+from pydantic import BaseModel, Field
+
+class ProfileUpdateIn(BaseModel):
+    full_name: str | None = Field(default=None, max_length=128)
+    short_name: str | None = Field(default=None, max_length=64)
+
+
+
 @router.get("/me")
 def me(user: User = Depends(get_current_user)):
     return {
         "id": user.id,
         "tg_user_id": user.tg_user_id,
         "tg_username": user.tg_username,
+        "full_name": user.full_name,
+        "short_name": user.short_name,
         "system_role": user.system_role,
     }
+
+
+
+@router.get("/me/profile")
+def get_profile(user: User = Depends(get_current_user)):
+    return {
+        "id": user.id,
+        "tg_username": user.tg_username,
+        "full_name": user.full_name,
+        "short_name": user.short_name,
+    }
+
+
+@router.patch("/me/profile")
+def update_profile(
+    payload: ProfileUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    # пустые строки считаем как None
+    if payload.full_name is not None:
+        v = payload.full_name.strip()
+        user.full_name = v or None
+    if payload.short_name is not None:
+        v = payload.short_name.strip()
+        user.short_name = v or None
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/me/venues")
@@ -68,7 +106,7 @@ def my_venue_members(
         return {"venue_id": venue_id, "members": []}
 
     rows = db.execute(
-        select(User.id, User.tg_user_id, User.tg_username, VenueMember.venue_role)
+        select(User.id, User.tg_user_id, User.tg_username, User.full_name, User.short_name, VenueMember.venue_role)
         .join(VenueMember, VenueMember.user_id == User.id)
         .where(
             VenueMember.venue_id == venue_id,
@@ -84,6 +122,8 @@ def my_venue_members(
                 "user_id": r.id,
                 "tg_user_id": r.tg_user_id,
                 "tg_username": r.tg_username,
+                "full_name": r.full_name,
+                "short_name": r.short_name,
                 "venue_role": r.venue_role,
             }
             for r in rows

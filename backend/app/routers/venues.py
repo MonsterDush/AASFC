@@ -299,7 +299,11 @@ def get_members(
 
     return {
         "members": [
-            {"user_id": r.id, "tg_user_id": r.tg_user_id, "tg_username": r.tg_username, "venue_role": r.venue_role}
+            {"user_id": r.id, "tg_user_id": r.tg_user_id, "tg_username": r.tg_username,
+                    "full_name": r.full_name,
+                    "short_name": r.short_name,
+                "full_name": r.full_name,
+                "short_name": r.short_name, "venue_role": r.venue_role}
             for r in members
         ],
         "pending_invites": [
@@ -337,6 +341,8 @@ def list_positions(
             VenuePosition.is_active,
             User.tg_user_id,
             User.tg_username,
+            User.full_name,
+            User.short_name,
             VenueMember.venue_role,
         )
         .join(User, User.id == VenuePosition.member_user_id)
@@ -359,6 +365,10 @@ def list_positions(
                 "user_id": r.member_user_id,
                 "tg_user_id": r.tg_user_id,
                 "tg_username": r.tg_username,
+                    "full_name": r.full_name,
+                    "short_name": r.short_name,
+                "full_name": r.full_name,
+                "short_name": r.short_name,
                 "venue_role": r.venue_role,
             },
         }
@@ -808,6 +818,8 @@ def list_shifts(
                 ShiftAssignment.venue_position_id,
                 VenuePosition.title,
                 User.tg_username,
+                User.full_name,
+                User.short_name,
             )
             .join(VenuePosition, VenuePosition.id == ShiftAssignment.venue_position_id)
             .join(User, User.id == ShiftAssignment.member_user_id)
@@ -821,6 +833,10 @@ def list_shifts(
                     "venue_position_id": r.venue_position_id,
                     "position_title": r.title,
                     "tg_username": r.tg_username,
+                    "full_name": r.full_name,
+                    "short_name": r.short_name,
+                "full_name": r.full_name,
+                "short_name": r.short_name,
                 }
             )
 
@@ -971,6 +987,8 @@ def get_shift(
             ShiftAssignment.venue_position_id,
             User.tg_user_id,
             User.tg_username,
+            User.full_name,
+            User.short_name,
             VenuePosition.title.label("position_title"),
         )
         .join(User, User.id == ShiftAssignment.member_user_id)

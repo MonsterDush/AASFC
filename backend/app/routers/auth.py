@@ -39,6 +39,11 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
         tg_user_id = int(tg_user["id"])
         tg_username = tg_user.get("username")
         tg_username = normalize_tg_username(tg_username)
+        first_name = (tg_user.get("first_name") or "").strip()
+        last_name = (tg_user.get("last_name") or "").strip()
+        # дефолты профиля (пользователь потом сможет отредактировать в Настройках)
+        default_full_name = " ".join([p for p in [last_name, first_name] if p]) or None
+        default_short_name = first_name or (tg_username.lstrip("@") if tg_username else None)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user payload")
 
@@ -51,6 +56,8 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
         user = User(
             tg_user_id=tg_user_id,
             tg_username=tg_username,
+            full_name=default_full_name,
+            short_name=default_short_name,
             system_role="NONE",
         )
         db.add(user)
@@ -61,6 +68,16 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
         if tg_username and user.tg_username != tg_username:
             user.tg_username = tg_username
             db.commit()
+        # заполним профиль дефолтами, если ещё не заполнен
+        changed = False
+        if user.full_name is None and default_full_name:
+            user.full_name = default_full_name
+            changed = True
+        if user.short_name is None and default_short_name:
+            user.short_name = default_short_name
+            changed = True
+        if changed:
+            db.commit()
 
     # 3) DEV: авто-SUPER_ADMIN по whitelist (если ты это добавлял)
     if tg_user_id in settings.super_admin_ids():
@@ -69,13 +86,23 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
             db.commit()
 
     if user is None:
-        user = User(tg_user_id=tg_user_id, tg_username=tg_username, system_role="NONE")
+        user = User(tg_user_id=tg_user_id, tg_username=tg_username, full_name=default_full_name, short_name=default_short_name, system_role="NONE")
         db.add(user)
         db.commit()
         db.refresh(user)
     else:
         if tg_username and user.tg_username != tg_username:
             user.tg_username = tg_username
+            db.commit()
+        # заполним профиль дефолтами, если ещё не заполнен
+        changed = False
+        if user.full_name is None and default_full_name:
+            user.full_name = default_full_name
+            changed = True
+        if user.short_name is None and default_short_name:
+            user.short_name = default_short_name
+            changed = True
+        if changed:
             db.commit()
 
     accept_invites_for_user(db, user_id=user.id, tg_username=user.tg_username)
