@@ -17,19 +17,24 @@
           <div class="muted" id="subtitle"></div>
         </div>
       </div>
-      <div id="venueMenu"></div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
     <div class="card" style="margin-top:12px">
-  <b>Язык интерфейса</b>
-  <div class="muted" style="margin-top:6px">Русский / English</div>
-  <div class="row" style="margin-top:10px">
-    <button class="btn" id="langRu">Русский</button>
-    <button class="btn" id="langEn">English</button>
-  </div>
-  <div class="muted" id="langHint" style="margin-top:10px"></div>
-</div>
+      <b>Заведение</b>
+      <div class="muted" style="margin-top:6px">Выберите активное заведение или перейдите в управление</div>
+      <div id="venueMenuMount" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <b>Язык интерфейса</b>
+      <div class="muted" style="margin-top:6px">Русский / English</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="langRu">Русский</button>
+        <button class="btn" id="langEn">English</button>
+      </div>
+      <div class="muted" id="langHint" style="margin-top:10px"></div>
+    </div>
 
 <div class="nav">
       <div class="wrap">
@@ -57,7 +62,7 @@ applyTelegramTheme();
 mountCommonUI("settings");
 await ensureLogin({ silent: true });
 await mountNav({ activeTab: "settings" });
-await mountVenueMenu();
+await mountVenueMenu({ containerSelector: "#venueMenuMount" });
 
 const hint = document.getElementById("langHint");
 const paint = () => {

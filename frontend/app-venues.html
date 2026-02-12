@@ -17,7 +17,6 @@
           <div class="muted">персонал · владелец</div>
         </div>
       </div>
-      <div id="venueMenu"></div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
@@ -49,7 +48,7 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountVenueMenu, mountNav } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountNav } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("app");
@@ -90,11 +89,7 @@ async function load(){
     if (!data.length) list.innerHTML = `<div class="muted">Пока нет заведений</div>`;
     data.forEach(v => list.appendChild(card(v)));
 
-    // Show switcher in topbar if user has multiple venues
-    await mountVenueMenu({
-      venues: data,
-      onChange: (id) => location.href = `/app-venue.html?venue_id=${encodeURIComponent(id)}`
-    });
+
   }catch(e){
     list.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
     toast("Ошибка загрузки: " + e.message, "err");

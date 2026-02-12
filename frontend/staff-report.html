@@ -17,7 +17,6 @@
           <div class="muted" id="subtitle">панель сотрудника</div>
         </div>
       </div>
-      <div id="venueMenu"></div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
@@ -47,7 +46,7 @@
 
   
   <script type="module">
-import { applyTelegramTheme, ensureLogin, mountCommonUI, mountNav, mountVenueMenu, setActiveVenueId, getActiveVenueId } from "/app.js";
+import { applyTelegramTheme, ensureLogin, mountCommonUI, mountNav, setActiveVenueId, getActiveVenueId } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("report");
@@ -58,7 +57,7 @@ const params = new URLSearchParams(location.search);
 const venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
-await mountVenueMenu();
+
 await mountNav({ activeTab: "report", requireVenue: true });
 </script>
 </body>
