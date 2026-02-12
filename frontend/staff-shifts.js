@@ -33,10 +33,41 @@ const el = {
   dayPanel: document.getElementById("dayPanel"),
 };
 
+const modal = document.getElementById("modal");
+const modalTitle = modal?.querySelector(".modal__title");
+const modalBody = modal?.querySelector(".modal__body");
+
+function closeModal() {
+  if (!modal) return;
+  modal.classList.remove("open");
+}
+function openModal(title, bodyHtml) {
+  if (!modal) return;
+  if (modalTitle) modalTitle.textContent = title || "Смены";
+  if (modalBody) modalBody.innerHTML = bodyHtml || "";
+  modal.classList.add("open");
+}
+
+// close handlers
+modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
+modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
+
 function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+function dateOnly(d) {
+  const x = new Date(d);
+  x.setHours(0,0,0,0);
+  return x;
+}
+function cmpDateStr(dateStr) {
+  const today = dateOnly(new Date());
+  const d = dateOnly(new Date(dateStr));
+  if (d.getTime() === today.getTime()) return 0;   // today
+  return d.getTime() < today.getTime() ? -1 : 1;   // past / future
+}
 
 let me = null;
 let perms = null;
@@ -211,9 +242,13 @@ function renderMonth() {
     const inMonth = d.getMonth() === curMonth.getMonth();
     const dateStr = ymd(d);
 
+    const listAll = shiftsByDate.get(dateStr) || [];
+    const rel = cmpDateStr(dateStr); // -1 past, 0 today, 1 future
+    const todayStr = ymd(new Date());
+
     const cell = document.createElement("button");
     cell.type = "button";
-    cell.className = "cal-cell" + (inMonth ? "" : " cal-cell--out");
+    cell.className = "cal-cell" + (inMonth ? "" : " cal-cell--out") + (dateStr === todayStr ? " cal-cell--today" : "");
     cell.setAttribute("data-date", dateStr);
 
     const top = document.createElement("div");
@@ -221,52 +256,102 @@ function renderMonth() {
     top.textContent = String(d.getDate());
     cell.appendChild(top);
 
-    const list = shiftsByDate.get(dateStr) || [];
-    const badges = document.createElement("div");
-    badges.className = "cal-badges";
+    const box = document.createElement("div");
+    box.className = "cal-badges";
 
-    // Требование: на дне показывать "Интервал-КраткоеИмя" (Бар-Вова)
-    // Если в смене несколько людей — несколько бейджей.
-    let badgeCount = 0;
-    const maxBadges = 4;
+    // Если нет прав редактировать — показываем на календаре ТОЛЬКО мои смены
+    const myId = me?.id ?? null;
 
-    for (const s of list) {
-      const itTitle = shiftIntervalTitle(s);
-      const assigns = (s.assignments || s.shift_assignments || []).slice();
+    const list = (!canEdit && myId)
+      ? listAll
+          .map(s => {
+            const assigns = (s.assignments || s.shift_assignments || []).filter(a => (a.member_user_id ?? a.user_id) === myId);
+            if (!assigns.length) return null;
+            // копия смены, но с моими assignments
+            return { ...s, assignments: assigns };
+          })
+          .filter(Boolean)
+      : listAll;
 
-      if (!assigns.length) {
-        const b = document.createElement("div");
-        b.className = "badge";
-        b.textContent = itTitle;
-        badges.appendChild(b);
-        badgeCount++;
-      } else {
-        for (const a of assigns) {
-          if (badgeCount >= maxBadges) break;
-          const short = pickShortName(a);
+    // Будущее: кружочки (dots). Прошедшее/сегодня: овальчики с текстом.
+    if (rel === 1) {
+      const dotrow = document.createElement("div");
+      dotrow.className = "dotrow";
+
+      let count = 0;
+      const max = 8;
+
+      for (const s of list) {
+        const itTitle = shiftIntervalTitle(s);
+        const assigns = (s.assignments || s.shift_assignments || []);
+        const n = Math.max(1, assigns.length);
+
+        for (let k = 0; k < n && count < max; k++) {
+          const dot = document.createElement("div");
+          dot.className = "dot dot--accent";
+          dot.title = itTitle; // подсказка по интервалу
+          dotrow.appendChild(dot);
+          count++;
+        }
+        if (count >= max) break;
+      }
+
+      const total = list.reduce((acc, s) => {
+        const assigns = (s.assignments || s.shift_assignments || []);
+        return acc + Math.max(1, assigns.length);
+      }, 0);
+
+      if (total > max) {
+        const more = document.createElement("div");
+        more.className = "dot dot--more";
+        more.textContent = `+${total - max}`;
+        dotrow.appendChild(more);
+      }
+
+      box.appendChild(dotrow);
+    } else {
+      // past / today: компактные “овальчики” с текстом
+      let badgeCount = 0;
+      const maxBadges = 3;
+
+      for (const s of list) {
+        const itTitle = shiftIntervalTitle(s);
+        const assigns = (s.assignments || s.shift_assignments || []).slice();
+
+        if (!assigns.length) {
           const b = document.createElement("div");
           b.className = "badge";
-          b.textContent = `${itTitle}-${short}`;
-          badges.appendChild(b);
+          b.textContent = itTitle;
+          box.appendChild(b);
           badgeCount++;
+        } else {
+          for (const a of assigns) {
+            if (badgeCount >= maxBadges) break;
+            const short = pickShortName(a);
+            const b = document.createElement("div");
+            b.className = "badge";
+            b.textContent = `${itTitle}-${short}`;
+            box.appendChild(b);
+            badgeCount++;
+          }
         }
+        if (badgeCount >= maxBadges) break;
       }
-      if (badgeCount >= maxBadges) break;
+
+      const totalBadges = list.reduce((acc, s) => {
+        const assigns = (s.assignments || s.shift_assignments || []);
+        return acc + Math.max(1, assigns.length);
+      }, 0);
+
+      if (totalBadges > maxBadges) {
+        const more = document.createElement("div");
+        more.className = "badge badge--more";
+        more.textContent = `+${totalBadges - maxBadges}`;
+        box.appendChild(more);
+      }
     }
 
-    const totalBadges = list.reduce((acc, s) => {
-      const assigns = (s.assignments || s.shift_assignments || []);
-      return acc + Math.max(1, assigns.length);
-    }, 0);
-
-    if (totalBadges > maxBadges) {
-      const more = document.createElement("div");
-      more.className = "badge badge--more";
-      more.textContent = `+${totalBadges - maxBadges}`;
-      badges.appendChild(more);
-    }
-
-    cell.appendChild(badges);
+    cell.appendChild(box);
     cell.onclick = () => openDay(dateStr);
     body.appendChild(cell);
   }
@@ -275,8 +360,10 @@ function renderMonth() {
 }
 
 function clearDayPanel() {
-  el.dayPanel.innerHTML = `<div class="muted">Выбери день в календаре</div>`;
+  // больше не используем нижнюю панель
+  if (el.dayPanel) el.dayPanel.innerHTML = "";
 }
+
 
 function renderShiftCard(s) {
   const title = shiftIntervalTitle(s);
@@ -446,7 +533,8 @@ function openDay(dateStr) {
     `;
   }
 
-  el.dayPanel.innerHTML = html;
+  openModal("Смена", html);
+
 
   if (canEdit) {
     const btn = document.getElementById("btnAddShift");

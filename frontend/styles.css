@@ -103,3 +103,95 @@ select{min-width:160px}
   .cal-cell{min-height:66px;padding:7px}
   .badge{font-size:10px}
 }
+/* ---- SHIFTS CALENDAR FIX ---- */
+.cal { width: 100%; }
+
+.cal-head, .cal-body {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cal-hcell {
+  text-align: center;
+  font-size: 12px;
+  opacity: .7;
+}
+
+.cal-cell {
+  min-width: 0;              /* важно для grid */
+  width: 100%;
+  text-align: left;
+  border-radius: 14px;
+  padding: 8px;
+  min-height: 74px;
+  overflow: hidden;           /* не даём “овальчикам” вылезать */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-cell--out { opacity: .45; }
+
+.cal-daynum {
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.cal-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.15;
+  border-radius: 999px;
+}
+
+/* Сегодня */
+.cal-cell--today {
+  outline: 2px solid rgba(255,255,255,.28);
+  outline-offset: -2px;
+}
+
+/* Кружочки для будущих назначений */
+.dotrow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.55);
+  flex: 0 0 auto;
+}
+
+.dot--accent { background: rgba(130,200,255,.85); }
+.dot--more {
+  width: auto;
+  height: 18px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: rgba(255,255,255,.12);
+  font-size: 11px;
+}
+
+/* На очень узких экранах чуть уменьшим gap */
+@media (max-width: 380px) {
+  .cal-head, .cal-body { gap: 6px; }
+  .cal-cell { padding: 7px; min-height: 68px; }
+  .badge { font-size: 10px; }
+}
