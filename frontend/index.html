@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · Home</title>
+  <title>Axelio · Загрузка</title>
 </head>
 <body>
   <div class="splash" id="splash">
@@ -14,71 +14,31 @@
     <div class="muted" style="margin-top:4px">Загружаю…</div>
     <div class="spinner"></div>
   </div>
-  <div class="container">
-    <div class="topbar">
-      <div class="brand">
-        <div class="logo"></div>
-        <div class="title">
-          <b>Axelio</b>
-          <div>dev · Mini App</div>
-        </div>
-      </div>
-      <div class="userpill" data-userpill>…</div>
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <b>Панель</b>
-        <div class="muted" style="margin-top:6px">Login через initData → cookie JWT.</div>
-
-        <div class="row" style="margin-top:12px">
-          <button class="btn primary" id="btnLogin">Login</button>
-          <button class="btn" id="btnMe">Me</button>
-          <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
-        </div>
-
-        <div class="itemcard" style="margin-top:12px">
-          <b>Навигация</b>
-          <div class="muted" style="margin-top:6px">
-            SUPER_ADMIN: Admin Venues / Admin Invites<br/>
-            OWNER/STAFF: My Venues / Venue
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <b>Debug</b>
-        <div class="mono" id="dbg" style="margin-top:10px"></div>
+  <div class="container" id="fallback" style="display:none">
+    <div class="card">
+      <b>Не удалось загрузить приложение</b>
+      <div class="muted" style="margin-top:8px">
+        Пожалуйста, откройте Mini App через Telegram и попробуйте ещё раз.
       </div>
     </div>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
-  <div id="modal" class="modal">
-    <div class="modal__backdrop"></div>
-    <div class="modal__panel">
-      <div class="modal__head">
-        <div class="modal__title">JSON</div>
-        <button class="btn" data-close>Close</button>
-      </div>
-      <div class="modal__body"></div>
-    </div>
-  </div>
-
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast } from "/app.js";
 
 
 const splash = document.getElementById("splash");
 const hideSplash = () => splash && (splash.style.display = "none");
 applyTelegramTheme();
-mountCommonUI("home");
 
 (async () => {
   // Try silent login and route user to the right start page
   const login = await ensureLogin({ silent: true });
   if (!login.ok) {
-    // stay on page — user can press Login manually
+    // show fallback
+    hideSplash();
+    document.getElementById("fallback").style.display = "block";
     return;
   }
 
@@ -92,29 +52,11 @@ mountCommonUI("home");
     // Everyone else → app venues (picker / entry point)
     location.replace("/app-venues.html");
   } catch (e) {
-    // stay on page; allow debug buttons
-    toast("Cannot load /me: " + (e?.message || e), "err");
+    hideSplash();
+    document.getElementById("fallback").style.display = "block";
+    toast("Не удалось загрузить профиль: " + (e?.message || e), "err");
   }
 })();
-
-const w = window.Telegram?.WebApp;
-document.getElementById("dbg").textContent =
-  "Telegram.WebApp: " + (!!w) + "\n" +
-  "initData length: " + (w?.initData?.length || 0) + "\n" +
-  "platform: " + (w?.platform || "-");
-
-document.getElementById("btnLogin").onclick = async () => ensureLogin({ silent:false });
-
-document.getElementById("btnMe").onclick = async () => {
-  try {
-    const data = await api("/me");
-    window.__lastJson = data;
-    toast("Loaded /me", "ok");
-  } catch (e) {
-  hideSplash();
-  toast("ME error: " + e.message, "err");
-  }
-};
 </script>
 </body>
 </html>

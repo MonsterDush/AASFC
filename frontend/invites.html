@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · Invites</title>
+  <title>Axelio · Приглашения</title>
 </head>
 <body>
   <div class="container">
@@ -13,8 +13,8 @@
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <b>Invites & Members</b>
-          <div class="muted">manage by venue</div>
+          <b>Приглашения и участники</b>
+          <div class="muted">управление по заведению</div>
         </div>
       </div>
       <div id="venueMenu"></div>
@@ -22,11 +22,7 @@
     </div>
 
     <div class="card">
-      <div class="row">
-        <button class="btn primary" id="btnLogin">Login</button>
-        <button class="btn" id="btnReload">Reload</button>
-        <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
-      </div>
+      <div class="muted">Приглашения и участники заведения.</div>
 
       <div id="selectorCard" class="itemcard" style="margin-top:12px; display:none;">
         <b>Choose venue</b>
@@ -138,20 +134,18 @@ await mountNav({ activeTab: "none" });
     const pending = document.getElementById("pending");
     const members = document.getElementById("members");
 
-    const btnLogin = document.getElementById("btnLogin");
-    const btnReload = document.getElementById("btnReload");
     const btnInvite = document.getElementById("btnInvite");
 
     function setVenueMeta() {
-      venueMeta.textContent = venueId ? `venue_id=${venueId}` : "venue_id not provided";
+      venueMeta.textContent = venueId ? `venue_id=${venueId}` : "Заведение не выбрано";
       venueHint.textContent = venueId
-        ? "Можно приглашать участников и смотреть pending/members."
-        : "Выбери venue ниже (SUPER_ADMIN) или открой страницу из карточки заведения.";
+        ? "Можно приглашать участников и смотреть список участников."
+        : "Выберите заведение ниже (для SUPER_ADMIN) или откройте страницу из карточки заведения.";
     }
 
     async function loadVenuesForSelector() {
       selectorCard.style.display = "block";
-      venueSelect.innerHTML = `<option value="">Loading venues…</option>`;
+      venueSelect.innerHTML = `<option value="">Загружаю заведения…</option>`;
       openLink.style.display = "none";
 
       try {
@@ -238,20 +232,9 @@ await mountNav({ activeTab: "none" });
       } catch (e) {
         pending.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
         members.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
-        toast("Load error: " + e.message, "err");
+        toast("Ошибка загрузки: " + e.message, "err");
       }
     }
-
-    btnLogin.onclick = async () => {
-      const r = await ensureLogin({ silent:false });
-      if (r.ok) toast("Login OK", "ok");
-    };
-
-    btnReload.onclick = async () => {
-      setVenueMeta();
-      if (!venueId) await loadVenuesForSelector();
-      await loadMembers();
-    };
 
     btnInvite.onclick = async () => {
       if (!venueId) { toast("Нет venue_id — выбери venue", "warn"); return; }

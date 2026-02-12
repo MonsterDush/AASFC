@@ -53,7 +53,7 @@ export function applyTelegramTheme() {
   const w = wa();
   const el = document.querySelector("[data-userpill]");
   if (!w) {
-    if (el) el.textContent = "not in Telegram";
+    if (el) el.textContent = "не в Telegram";
     return;
   }
 
@@ -70,7 +70,7 @@ export function applyTelegramTheme() {
   set("--accentText", t.button_text_color);
 
   const u = w.initDataUnsafe?.user;
-  if (el) el.textContent = u ? `@${u.username || "no_username"}` : "unknown";
+  if (el) el.textContent = u ? `@${u.username || "без_username"}` : "неизвестно";
 }
 
 export function toast(msg, type = "info") {
@@ -212,11 +212,11 @@ export async function ensureLogin({ silent = true } = {}) {
       body: { initData }, // <-- ключ initData
     });
 
-    if (!silent) toast("Login OK", "ok");
+    if (!silent) toast("Вход выполнен", "ok");
     return { ok: true, data: out };
   } catch (e) {
     if (!silent) {
-      const msg = e?.message || "Login error";
+      const msg = e?.message || "Ошибка входа";
       toast(msg, "err");
     }
     return {

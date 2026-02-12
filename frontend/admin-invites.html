@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · Admin Invites</title>
+  <title>Axelio · Админ · Приглашения</title>
 </head>
 <body>
   <div class="container">
@@ -13,49 +13,42 @@
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <b>Admin · Invites</b>
-          <div class="muted">members · pending · remove</div>
+          <b>Админ · Приглашения</b>
+          <div class="muted">участники · ожидание · удаление</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
     <div class="card">
-      <div class="row">
-        <button class="btn primary" id="btnLogin">Login</button>
-        <button class="btn" id="btnReload">Reload</button>
-        <button class="btn" data-viewjson data-title="Last JSON">View JSON</button>
-      </div>
-
       <div class="itemcard" style="margin-top:12px">
-        <b>Choose venue</b>
+        <b>Выберите заведение</b>
         <div class="row" style="margin-top:10px">
-          <select id="venueSelect" style="min-width:380px"></select>
-          <button class="btn primary" id="btnUseVenue">Use</button>
-          <a class="link" id="openLink" href="#" style="display:none">Open link →</a>
+          <select id="venueSelect" style="min-width:0; flex:1 1 220px; max-width:100%"></select>
+          <button class="btn primary" id="btnUseVenue">Выбрать</button>
         </div>
         <div class="mono" id="venueMeta" style="margin-top:8px"></div>
       </div>
 
       <div class="itemcard" style="margin-top:12px">
-        <b>Create invite</b>
+        <b>Создать приглашение</b>
         <div class="row" style="margin-top:10px">
-          <input id="tg" placeholder="tg username (с @ или без)" />
+          <input id="tg" placeholder="username в Telegram (с @ или без)" />
           <select id="role">
-            <option value="STAFF">STAFF</option>
-            <option value="OWNER">OWNER</option>
+            <option value="STAFF">Персонал</option>
+            <option value="OWNER">Владелец</option>
           </select>
-          <button class="btn primary" id="btnInvite">Invite</button>
+          <button class="btn primary" id="btnInvite">Пригласить</button>
         </div>
       </div>
 
       <div class="grid" style="margin-top:12px">
         <div class="itemcard">
-          <b>Pending invites</b>
+          <b>Приглашения в ожидании</b>
           <div id="pending" style="margin-top:10px"><div class="skeleton"></div><div class="skeleton"></div></div>
         </div>
         <div class="itemcard">
-          <b>Members</b>
+          <b>Участники</b>
           <div id="members" style="margin-top:10px"><div class="skeleton"></div><div class="skeleton"></div></div>
         </div>
       </div>
@@ -67,8 +60,8 @@
     <div class="modal__backdrop"></div>
     <div class="modal__panel">
       <div class="modal__head">
-        <div class="modal__title">Confirm</div>
-        <button class="btn" data-close>Close</button>
+        <div class="modal__title">Подтверждение</div>
+        <button class="btn" data-close>Закрыть</button>
       </div>
       <div class="modal__body"></div>
     </div>
@@ -93,7 +86,7 @@
 
     const venueSelect = document.getElementById("venueSelect");
     const venueMeta = document.getElementById("venueMeta");
-    const openLink = document.getElementById("openLink");
+    // openLink removed (лишняя кнопка)
 
     const pending = document.getElementById("pending");
     const members = document.getElementById("members");
@@ -101,38 +94,32 @@
     function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
 
     async function loadVenues() {
-      venueSelect.innerHTML = `<option value="">Loading venues…</option>`;
+      venueSelect.innerHTML = `<option value="">Загружаю заведения…</option>`;
       try {
         const data = await api("/venues?include_archived=true");
         window.__lastJson = data;
 
-        venueSelect.innerHTML = `<option value="">Select venue…</option>`;
+        venueSelect.innerHTML = `<option value="">Выберите заведение…</option>`;
         data.forEach(v => {
           const opt = document.createElement("option");
           opt.value = String(v.id);
-          opt.textContent = `${v.name} (id=${v.id})${v.is_archived ? " [archived]" : ""}`;
+          opt.textContent = `${v.name} (id=${v.id})${v.is_archived ? " [архив]" : ""}`;
           if (String(v.id) === String(venueId)) opt.selected = true;
           venueSelect.appendChild(opt);
         });
       } catch (e) {
-        venueSelect.innerHTML = `<option value="">Error: ${esc(e.message)}</option>`;
-        toast("Load venues error: " + e.message, "err");
+        venueSelect.innerHTML = `<option value="">Ошибка: ${esc(e.message)}</option>`;
+        toast("Ошибка загрузки заведений: " + e.message, "err");
       }
     }
 
     function setVenueMeta() {
-      venueMeta.textContent = venueId ? `venue_id=${venueId}` : "venue_id not selected";
-      if (venueId) {
-        openLink.href = `/admin-invites.html?venue_id=${encodeURIComponent(venueId)}`;
-        openLink.style.display = "inline";
-      } else {
-        openLink.style.display = "none";
-      }
+      venueMeta.textContent = venueId ? `venue_id=${venueId}` : "Заведение не выбрано";
     }
 
     function renderPending(items) {
       pending.innerHTML = "";
-      if (!items?.length) return pending.innerHTML = `<div class="muted">No pending invites</div>`;
+      if (!items?.length) return pending.innerHTML = `<div class="muted">Нет приглашений</div>`;
       items.forEach(i => {
         const row = document.createElement("div");
         row.className = "row";
@@ -142,22 +129,22 @@
             <b>@${esc(i.tg_username)}</b> <span class="mono">role=${esc(i.venue_role)}</span><br/>
             <span class="mono">${esc(i.created_at || "")}</span>
           </div>
-          <button class="btn danger" data-cancel>Cancel</button>
+          <button class="btn danger" data-cancel>Отменить</button>
         `;
         row.querySelector("[data-cancel]").onclick = async () => {
           const ok = await confirmModal({
-            title: "Cancel invite?",
-            text: `Cancel invite for @${i.tg_username}?`,
-            confirmText: "Cancel invite",
+            title: "Отменить приглашение?",
+            text: `Отменить приглашение для @${i.tg_username}?`,
+            confirmText: "Отменить",
             danger: true,
           });
           if (!ok) return;
 
           try {
             await api(`/venues/${venueId}/invites/${i.id}`, { method:"DELETE" });
-            toast("Invite cancelled", "ok");
+            toast("Приглашение отменено", "ok");
             await loadMembers();
-          } catch (e) { toast("Cancel error: " + e.message, "err"); }
+          } catch (e) { toast("Ошибка отмены: " + e.message, "err"); }
         };
         pending.appendChild(row);
       });
@@ -165,7 +152,7 @@
 
     function renderMembers(items) {
       members.innerHTML = "";
-      if (!items?.length) return members.innerHTML = `<div class="muted">No members</div>`;
+      if (!items?.length) return members.innerHTML = `<div class="muted">Нет участников</div>`;
       items.forEach(m => {
         const row = document.createElement("div");
         row.style = "border-bottom:1px solid var(--border); padding:10px 0;";
@@ -175,23 +162,23 @@
               <b>@${esc(m.tg_username || "-")}</b> <span class="mono">role=${esc(m.venue_role)}</span><br/>
               <span class="mono">user_id=${esc(m.user_id)} · tg_user_id=${esc(m.tg_user_id || "-")}</span>
             </div>
-            <button class="btn danger" data-remove>Remove</button>
+            <button class="btn danger" data-remove>Удалить</button>
           </div>
         `;
         row.querySelector("[data-remove]").onclick = async () => {
           const ok = await confirmModal({
-            title: "Remove member?",
-            text: `Remove @${m.tg_username || "-"} from venue?`,
-            confirmText: "Remove",
+            title: "Удалить участника?",
+            text: `Удалить @${m.tg_username || "-"} из заведения?`,
+            confirmText: "Удалить",
             danger: true,
           });
           if (!ok) return;
 
           try {
             await api(`/venues/${venueId}/members/${m.user_id}`, { method:"DELETE" });
-            toast("Member removed", "ok");
+            toast("Участник удалён", "ok");
             await loadMembers();
-          } catch (e) { toast("Remove error: " + e.message, "err"); }
+          } catch (e) { toast("Ошибка удаления: " + e.message, "err"); }
         };
         members.appendChild(row);
       });
@@ -199,8 +186,8 @@
 
     async function loadMembers() {
       if (!venueId) {
-        pending.innerHTML = `<div class="muted">Select venue</div>`;
-        members.innerHTML = `<div class="muted">Select venue</div>`;
+        pending.innerHTML = `<div class="muted">Выберите заведение</div>`;
+        members.innerHTML = `<div class="muted">Выберите заведение</div>`;
         return;
       }
       pending.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
@@ -211,14 +198,12 @@
         renderPending(data.pending_invites);
         renderMembers(data.members);
       } catch (e) {
-        pending.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
-        members.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
-        toast("Load members error: " + e.message, "err");
+        pending.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
+        members.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
+        toast("Ошибка загрузки участников: " + e.message, "err");
       }
     }
 
-    document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
-    document.getElementById("btnReload").onclick = async () => { await loadVenues(); setVenueMeta(); await loadMembers(); };
 
     document.getElementById("btnUseVenue").onclick = async () => {
       venueId = venueSelect.value || "";
@@ -227,17 +212,17 @@
     };
 
     document.getElementById("btnInvite").onclick = async () => {
-      if (!venueId) return toast("Select venue first", "warn");
+      if (!venueId) return toast("Сначала выберите заведение", "warn");
       const tg = document.getElementById("tg").value.trim();
       const role = document.getElementById("role").value;
-      if (!tg) return toast("Enter username", "warn");
+      if (!tg) return toast("Введите username", "warn");
 
       try {
         await api(`/venues/${venueId}/invites`, { method:"POST", body: JSON.stringify({ tg_username: tg, venue_role: role }) });
         document.getElementById("tg").value = "";
-        toast("Invite sent", "ok");
+        toast("Приглашение отправлено", "ok");
         await loadMembers();
-      } catch (e) { toast("Invite error: " + e.message, "err"); }
+      } catch (e) { toast("Ошибка приглашения: " + e.message, "err"); }
     };
 
     await loadVenues();

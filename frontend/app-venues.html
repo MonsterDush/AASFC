@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · My Venues</title>
+  <title>Axelio · Мои заведения</title>
 </head>
 <body>
   <div class="container">
@@ -13,8 +13,8 @@
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <b>My Venues</b>
-          <div class="muted">OWNER/STAFF</div>
+          <b>Мои заведения</b>
+          <div class="muted">персонал · владелец</div>
         </div>
       </div>
       <div id="venueMenu"></div>
@@ -22,13 +22,8 @@
     </div>
 
     <div class="card">
-      <div class="row">
-        <button class="btn primary" id="btnLogin">Login</button>
-        <button class="btn" id="btnReload">Reload</button>
-      </div>
-
-      <div class="muted" style="margin-top:10px">
-        Беру <span class="mono">GET /me/venues</span>. Нажми на заведение → список участников.
+      <div class="muted">
+        Выберите заведение, чтобы открыть панель.
       </div>
 
       <div id="list" class="list"><div class="skeleton"></div><div class="skeleton"></div></div>
@@ -40,8 +35,8 @@
     <div class="modal__backdrop"></div>
     <div class="modal__panel">
       <div class="modal__head">
-        <div class="modal__title">JSON</div>
-        <button class="btn" data-close>Close</button>
+        <div class="modal__title">Данные</div>
+        <button class="btn" data-close>Закрыть</button>
       </div>
       <div class="modal__body"></div>
     </div>
@@ -73,7 +68,7 @@ function card(v){
         <b>${esc(v.name)}</b>
         <div class="small">id=${v.id} · my_role=${esc(v.my_role || "")}</div>
       </div>
-      <a class="link" href="/app-venue.html?venue_id=${v.id}" data-open>Open →</a>
+      <a class="link" href="/app-venue.html?venue_id=${v.id}" data-open>Открыть →</a>
     </div>
   `;
   div.querySelector("[data-open]").onclick = (e) => {
@@ -92,7 +87,7 @@ async function load(){
     const data = await api("/me/venues");
     window.__lastJson = data;
     list.innerHTML = "";
-    if (!data.length) list.innerHTML = `<div class="muted">No venues yet</div>`;
+    if (!data.length) list.innerHTML = `<div class="muted">Пока нет заведений</div>`;
     data.forEach(v => list.appendChild(card(v)));
 
     // Show switcher in topbar if user has multiple venues
@@ -101,18 +96,16 @@ async function load(){
       onChange: (id) => location.href = `/app-venue.html?venue_id=${encodeURIComponent(id)}`
     });
   }catch(e){
-    list.innerHTML = `<div class="muted">Error: ${esc(e.message)}</div>`;
-    toast("Load error: " + e.message, "err");
+    list.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
+    toast("Ошибка загрузки: " + e.message, "err");
   }
 }
 
 (async () => {
-  await ensureLogin({ silent:true });
+  const ok = await ensureLogin({ silent:true });
+  if (!ok.ok) return;
   await load();
 })();
-
-document.getElementById("btnLogin").onclick = () => ensureLogin({ silent:false });
-document.getElementById("btnReload").onclick = load;
 </script>
 </body>
 </html>

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · Admin Venues</title>
+  <title>Axelio · Админ · Заведения</title>
 
   <style>
     .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
@@ -32,44 +32,47 @@
 <body>
   <div class="container">
     <div class="topbar">
-      <div class="brand">Axelio · Admin</div>
-      <div class="muted">Venues</div>
-      <div class="right pill muted" data-userpill>—</div>
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Админ · Заведения</b>
+          <div class="muted">создание · архив · поиск</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>—</div>
     </div>
 
     <div class="toolbar">
-      <button id="btnLogin" class="btn">Login</button>
-      <button id="btnActive" class="btn">Active</button>
-      <button id="btnArchived" class="btn">Archived</button>
+      <button id="btnActive" class="btn">Активные</button>
+      <button id="btnArchived" class="btn">Архив</button>
       <span id="status" class="muted"></span>
-      <button id="btnDetails" class="btn right" title="Last JSON">Details</button>
     </div>
 
     <div id="banner" class="card" style="display:none">
-      <b>Not logged in</b>
+      <b>Не удалось авторизоваться</b>
       <div class="muted" style="margin-top:6px">
-        Открой страницу через Telegram Mini App и нажми <b>Login</b>.
+        Пожалуйста, открой Mini App через Telegram и попробуй ещё раз.
       </div>
     </div>
 
     <div class="card">
       <div class="row">
         <div>
-          <div><b>Create venue</b></div>
-          <div class="muted">name + owner usernames через запятую</div>
+          <div><b>Создать заведение</b></div>
+          <div class="muted">название + usernames владельцев через запятую</div>
         </div>
       </div>
 
       <div class="toolbar">
-        <input id="vName" type="text" placeholder="Venue name" />
-        <input id="owners" type="text" placeholder="owner_usernames: ivan, petr" />
-        <button id="btnCreate" class="btn">Create</button>
+        <input id="vName" type="text" placeholder="Название заведения" />
+        <input id="owners" type="text" placeholder="usernames владельцев: ivan, petr" />
+        <button id="btnCreate" class="btn">Создать</button>
       </div>
       <div id="createResult" class="muted"></div>
     </div>
 
     <div class="toolbar">
-      <input id="search" type="search" placeholder="Search by name / id..." />
+      <input id="search" type="search" placeholder="Поиск по названию / id..." />
       <span class="muted" id="count">0</span>
     </div>
 
@@ -312,21 +315,15 @@
       const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "DELETE" });
       setLastJson({ delete: "OK", response: out });
       setStatus("Deleted");
-      toast("Deleted", "ok");
+      toast("Удалено", "ok");
       mode = "archived";
       await loadVenues();
     } catch (e) {
       setLastJson({ delete: "FAILED", message: e?.message, status: e?.status, data: e?.data });
-      setStatus("Delete failed");
-      toast(e?.message || "Delete failed", "err");
+      setStatus("Ошибка удаления");
+      toast(e?.message || "Ошибка удаления", "err");
     }
   }
-
-  document.getElementById("btnLogin").addEventListener("click", async () => {
-    const r = await ensureLogin({ silent: false });
-    bannerEl.style.display = r.ok ? "none" : "";
-    if (r.ok) await loadVenues();
-  });
 
   document.getElementById("btnActive").addEventListener("click", async () => {
     mode = "active";
@@ -340,9 +337,6 @@
 
   document.getElementById("btnCreate").addEventListener("click", createVenue);
 
-  document.getElementById("btnDetails").addEventListener("click", () => {
-    openModal("Last JSON", window.__lastJson || { info: "No data yet" });
-  });
 
   searchEl.addEventListener("input", renderVenues);
 
@@ -387,10 +381,12 @@
     // важно: ждём логин, чтобы не было "иногда Load Failed" из-за гонки cookie
     const r = await ensureLogin({ silent: true });
     bannerEl.style.display = r.ok ? "none" : "";
+    if (!r.ok) {
+      setStatus("Нет авторизации");
+      return;
+    }
 
     await loadVenues();
-
-    if (!r.ok) setStatus("Not logged in (press Login)");
   }
   boot();
 </script>
