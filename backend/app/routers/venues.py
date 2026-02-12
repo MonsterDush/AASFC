@@ -17,6 +17,7 @@ from app.models.user import User
 from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.models.venue_invite import VenueInvite
+from app.models.venue_position import VenuePosition
 
 from app.services.venues import create_venue
 
@@ -37,6 +38,27 @@ class VenueUpdateIn(BaseModel):
 class InviteCreateIn(BaseModel):
     tg_username: str
     venue_role: str = "STAFF"  # "OWNER" | "STAFF"
+
+
+
+class PositionCreateIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+    member_user_id: int = Field(..., gt=0)
+    rate: int = Field(0, ge=0)
+    percent: int = Field(0, ge=0, le=100)
+    can_make_reports: bool = False
+    can_edit_schedule: bool = False
+    is_active: bool = True
+
+
+class PositionUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    member_user_id: int | None = Field(default=None, gt=0)
+    rate: int | None = Field(default=None, ge=0)
+    percent: int | None = Field(default=None, ge=0, le=100)
+    can_make_reports: bool | None = None
+    can_edit_schedule: bool | None = None
+    is_active: bool | None = None
 
 
 # ---------- Helpers ----------
@@ -221,6 +243,188 @@ def get_members(
             for r in invites
         ],
     }
+
+
+
+# ---------- Positions (job roles inside venue) ----------
+
+@router.get("/{venue_id}/positions")
+def list_positions(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    rows = db.execute(
+        select(
+            VenuePosition.id,
+            VenuePosition.title,
+            VenuePosition.member_user_id,
+            VenuePosition.rate,
+            VenuePosition.percent,
+            VenuePosition.can_make_reports,
+            VenuePosition.can_edit_schedule,
+            VenuePosition.is_active,
+            User.tg_user_id,
+            User.tg_username,
+            VenueMember.venue_role,
+        )
+        .join(User, User.id == VenuePosition.member_user_id)
+        .join(VenueMember, (VenueMember.venue_id == VenuePosition.venue_id) & (VenueMember.user_id == VenuePosition.member_user_id))
+        .where(VenuePosition.venue_id == venue_id)
+        .order_by(VenuePosition.id.desc())
+    ).all()
+
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "member_user_id": r.member_user_id,
+            "rate": r.rate,
+            "percent": r.percent,
+            "can_make_reports": bool(r.can_make_reports),
+            "can_edit_schedule": bool(r.can_edit_schedule),
+            "is_active": bool(r.is_active),
+            "member": {
+                "user_id": r.member_user_id,
+                "tg_user_id": r.tg_user_id,
+                "tg_username": r.tg_username,
+                "venue_role": r.venue_role,
+            },
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{venue_id}/positions")
+def create_position(
+    venue_id: int,
+    payload: PositionCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    # validate member exists in this venue (active)
+    vm = db.execute(
+        select(VenueMember).where(
+            VenueMember.venue_id == venue_id,
+            VenueMember.user_id == payload.member_user_id,
+            VenueMember.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if vm is None:
+        raise HTTPException(status_code=400, detail="Member not found in venue")
+
+    existing = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == payload.member_user_id,
+        )
+    ).scalar_one_or_none()
+
+    if existing is None:
+        pos = VenuePosition(
+            venue_id=venue_id,
+            member_user_id=payload.member_user_id,
+            title=payload.title.strip(),
+            rate=payload.rate,
+            percent=payload.percent,
+            can_make_reports=payload.can_make_reports,
+            can_edit_schedule=payload.can_edit_schedule,
+            is_active=payload.is_active,
+        )
+        db.add(pos)
+        db.commit()
+        db.refresh(pos)
+        return {"id": pos.id}
+
+    # update-in-place
+    existing.title = payload.title.strip()
+    existing.rate = payload.rate
+    existing.percent = payload.percent
+    existing.can_make_reports = payload.can_make_reports
+    existing.can_edit_schedule = payload.can_edit_schedule
+    existing.is_active = payload.is_active
+    db.commit()
+    return {"id": existing.id, "mode": "updated"}
+
+
+@router.patch("/{venue_id}/positions/{position_id}")
+def update_position(
+    venue_id: int,
+    position_id: int,
+    payload: PositionUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    pos = db.execute(
+        select(VenuePosition).where(VenuePosition.id == position_id, VenuePosition.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if pos is None:
+        raise HTTPException(status_code=404, detail="Position not found")
+
+    if payload.member_user_id is not None and payload.member_user_id != pos.member_user_id:
+        # validate member exists
+        vm = db.execute(
+            select(VenueMember).where(
+                VenueMember.venue_id == venue_id,
+                VenueMember.user_id == payload.member_user_id,
+                VenueMember.is_active.is_(True),
+            )
+        ).scalar_one_or_none()
+        if vm is None:
+            raise HTTPException(status_code=400, detail="Member not found in venue")
+
+        clash = db.execute(
+            select(VenuePosition).where(
+                VenuePosition.venue_id == venue_id,
+                VenuePosition.member_user_id == payload.member_user_id,
+            )
+        ).scalar_one_or_none()
+        if clash is not None and clash.id != pos.id:
+            raise HTTPException(status_code=409, detail="Position for this member already exists")
+
+        pos.member_user_id = payload.member_user_id
+
+    if payload.title is not None:
+        pos.title = payload.title.strip()
+    if payload.rate is not None:
+        pos.rate = payload.rate
+    if payload.percent is not None:
+        pos.percent = payload.percent
+    if payload.can_make_reports is not None:
+        pos.can_make_reports = payload.can_make_reports
+    if payload.can_edit_schedule is not None:
+        pos.can_edit_schedule = payload.can_edit_schedule
+    if payload.is_active is not None:
+        pos.is_active = payload.is_active
+
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{venue_id}/positions/{position_id}")
+def delete_position(
+    venue_id: int,
+    position_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    pos = db.execute(
+        select(VenuePosition).where(VenuePosition.id == position_id, VenuePosition.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if pos is None:
+        raise HTTPException(status_code=404, detail="Position not found")
+
+    pos.is_active = False
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/{venue_id}/invites")
