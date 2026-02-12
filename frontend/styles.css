@@ -82,3 +82,24 @@ select{min-width:160px}
 /* Nav icon button */
 .nav a.icon{flex:0 0 auto; width:48px; padding:10px 0;}
 
+
+
+/* Shifts calendar */
+.cal{width:100%}
+.cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+.cal-hcell{font-size:12px;color:var(--muted);text-align:center;padding:6px 0}
+.cal-body{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-cell{border:1px solid var(--border);background:rgba(255,255,255,.03);border-radius:14px;padding:8px;min-height:76px;display:flex;flex-direction:column;gap:6px;text-align:left}
+.cal-cell:active{transform:scale(.995)}
+.cal-cell--out{opacity:.45}
+.cal-daynum{font-size:12px;color:var(--muted)}
+.cal-badges{display:flex;flex-direction:column;gap:4px}
+.badge{font-size:11px;line-height:1.1;padding:4px 6px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.04);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge--me{border-color:rgba(124,58,237,.5);background:rgba(124,58,237,.12)}
+.badge--more{opacity:.8}
+.daypanel .stack{display:flex;flex-direction:column;gap:10px}
+.btn.sm{padding:8px 10px;font-size:12px}
+@media (max-width:420px){
+  .cal-cell{min-height:66px;padding:7px}
+  .badge{font-size:10px}
+}

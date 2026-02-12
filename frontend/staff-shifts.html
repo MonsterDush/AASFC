@@ -14,16 +14,26 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Смены</b>
-          <div class="muted" id="subtitle">панель сотрудника</div>
+          <div class="muted" id="subtitle">календарь и назначения</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card" style="margin-top:12px">
-  <b>Смены</b>
-  <div class="muted" style="margin-top:6px">Раздел в разработке</div>
-</div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div class="row" style="gap:10px;align-items:center">
+          <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
+          <b id="monthLabel">…</b>
+          <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
+        </div>
+        <div class="muted" style="font-size:12px">Назначения отображаются по дням</div>
+      </div>
+
+      <div id="calGrid" class="cal" style="margin-top:10px"></div>
+    </div>
+
+    <div id="dayPanel" class="daypanel" style="margin-top:12px"></div>
 
     <div class="nav">
       <div class="wrap">
@@ -36,30 +46,15 @@
       <div class="modal__backdrop"></div>
       <div class="modal__panel">
         <div class="modal__head">
-          <b class="modal__title">JSON</b>
-          <button class="btn" data-close>Close</button>
+          <b class="modal__title">Подтверждение</b>
+          <button class="btn" data-close>Закрыть</button>
         </div>
         <div class="modal__body"></div>
       </div>
     </div>
   </div>
 
-  
-  <script type="module">
-import { applyTelegramTheme, ensureLogin, mountCommonUI, mountNav, setActiveVenueId, getActiveVenueId } from "/app.js";
-
-applyTelegramTheme();
-mountCommonUI("shifts");
-
-await ensureLogin({ silent: true });
-
-const params = new URLSearchParams(location.search);
-const venueId = params.get("venue_id") || getActiveVenueId();
-if (venueId) setActiveVenueId(venueId);
-
-
-await mountNav({ activeTab: "shifts", requireVenue: true });
-</script>
+  <div id="shiftsRoot" style="display:none"></div>
+  <script type="module" src="/staff-shifts.js"></script>
 </body>
 </html>
-
