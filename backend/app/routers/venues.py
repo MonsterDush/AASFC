@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, time
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -18,6 +18,9 @@ from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.models.venue_invite import VenueInvite
 from app.models.venue_position import VenuePosition
+from app.models.shift_interval import ShiftInterval
+from app.models.shift import Shift
+from app.models.shift_assignment import ShiftAssignment
 
 from app.services.venues import create_venue
 
@@ -60,6 +63,36 @@ class PositionUpdateIn(BaseModel):
     can_edit_schedule: bool | None = None
     is_active: bool | None = None
 
+class ShiftIntervalCreateIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+    start_time: time
+    end_time: time
+    is_active: bool = True
+
+
+class ShiftIntervalUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    start_time: time | None = None
+    end_time: time | None = None
+    is_active: bool | None = None
+
+
+class ShiftCreateIn(BaseModel):
+    date: date
+    interval_id: int = Field(..., gt=0)
+    is_active: bool = True
+
+
+class ShiftUpdateIn(BaseModel):
+    date: date | None = None
+    interval_id: int | None = Field(default=None, gt=0)
+    is_active: bool | None = None
+
+
+class ShiftAssignmentAddIn(BaseModel):
+    venue_position_id: int = Field(..., gt=0)
+
+
 
 # ---------- Helpers ----------
 
@@ -79,6 +112,42 @@ def _is_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> bool:
 def _require_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _is_active_member_or_admin(db: Session, *, venue_id: int, user: User) -> bool:
+    if user.system_role in ("SUPER_ADMIN", "MODERATOR"):
+        return True
+    m = db.query(VenueMember).filter(
+        VenueMember.venue_id == venue_id,
+        VenueMember.user_id == user.id,
+        VenueMember.is_active.is_(True),
+    ).one_or_none()
+    return bool(m)
+
+
+def _require_active_member_or_admin(db: Session, *, venue_id: int, user: User) -> None:
+    if not _is_active_member_or_admin(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _is_schedule_editor(db: Session, *, venue_id: int, user: User) -> bool:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return True
+
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == user.id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    return bool(pos and pos.can_edit_schedule)
+
+
+def _require_schedule_editor(db: Session, *, venue_id: int, user: User) -> None:
+    if not _is_schedule_editor(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
 
 
 # ---------- Routes ----------
@@ -575,3 +644,447 @@ def leave_venue(
     db.commit()
 
     return None
+# ---------- Schedule: shift intervals & shifts ----------
+
+@router.get("/{venue_id}/shift-intervals")
+def list_shift_intervals(
+    venue_id: int,
+    include_inactive: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List reusable time intervals for shifts.
+
+    Accessible to any active member of the venue (or system admin roles).
+    """
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    stmt = select(ShiftInterval).where(ShiftInterval.venue_id == venue_id)
+    if not include_inactive:
+        stmt = stmt.where(ShiftInterval.is_active.is_(True))
+
+    rows = db.execute(stmt.order_by(ShiftInterval.start_time.asc(), ShiftInterval.id.asc())).scalars().all()
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "start_time": r.start_time.strftime("%H:%M"),
+            "end_time": r.end_time.strftime("%H:%M"),
+            "is_active": bool(r.is_active),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{venue_id}/shift-intervals")
+def create_shift_interval(
+    venue_id: int,
+    payload: ShiftIntervalCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Create a reusable shift interval (schedule editor only)."""
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+
+    obj = ShiftInterval(
+        venue_id=venue_id,
+        title=payload.title.strip(),
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        is_active=payload.is_active,
+    )
+    db.add(obj)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(obj)
+    return {"id": obj.id}
+
+
+@router.patch("/{venue_id}/shift-intervals/{interval_id}")
+def update_shift_interval(
+    venue_id: int,
+    interval_id: int,
+    payload: ShiftIntervalUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+
+    obj = db.execute(
+        select(ShiftInterval).where(ShiftInterval.id == interval_id, ShiftInterval.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Shift interval not found")
+
+    if payload.title is not None:
+        obj.title = payload.title.strip()
+    if payload.start_time is not None:
+        obj.start_time = payload.start_time
+    if payload.end_time is not None:
+        obj.end_time = payload.end_time
+    if payload.is_active is not None:
+        obj.is_active = payload.is_active
+
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{venue_id}/shift-intervals/{interval_id}")
+def delete_shift_interval(
+    venue_id: int,
+    interval_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+
+    obj = db.execute(
+        select(ShiftInterval).where(ShiftInterval.id == interval_id, ShiftInterval.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Shift interval not found")
+
+    obj.is_active = False
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/{venue_id}/shifts")
+def list_shifts(
+    venue_id: int,
+    month: str | None = Query(default=None, description="YYYY-MM"),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List shifts for a venue.
+
+    Accessible to any active member of the venue (or system admin roles).
+    """
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    stmt = select(Shift).where(Shift.venue_id == venue_id, Shift.is_active.is_(True))
+
+    if month:
+        try:
+            y, m = month.split("-")
+            y = int(y)
+            m = int(m)
+            start = date(y, m, 1)
+            if m == 12:
+                end = date(y + 1, 1, 1)
+            else:
+                end = date(y, m + 1, 1)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+        stmt = stmt.where(Shift.date >= start, Shift.date < end)
+    else:
+        if date_from:
+            stmt = stmt.where(Shift.date >= date_from)
+        if date_to:
+            stmt = stmt.where(Shift.date <= date_to)
+
+    shifts = db.execute(stmt.order_by(Shift.date.asc(), Shift.id.asc())).scalars().all()
+
+    # preload intervals
+    interval_ids = {s.interval_id for s in shifts}
+    intervals = {}
+    if interval_ids:
+        rows = db.execute(select(ShiftInterval).where(ShiftInterval.id.in_(interval_ids))).scalars().all()
+        intervals = {r.id: r for r in rows}
+
+    # preload assignments
+    shift_ids = [s.id for s in shifts]
+    assignments_by_shift = {sid: [] for sid in shift_ids}
+    if shift_ids:
+        arows = db.execute(
+            select(
+                ShiftAssignment.shift_id,
+                ShiftAssignment.member_user_id,
+                ShiftAssignment.venue_position_id,
+                VenuePosition.title,
+                User.tg_username,
+            )
+            .join(VenuePosition, VenuePosition.id == ShiftAssignment.venue_position_id)
+            .join(User, User.id == ShiftAssignment.member_user_id)
+            .where(ShiftAssignment.shift_id.in_(shift_ids))
+            .order_by(ShiftAssignment.id.asc())
+        ).all()
+        for r in arows:
+            assignments_by_shift.setdefault(r.shift_id, []).append(
+                {
+                    "member_user_id": r.member_user_id,
+                    "venue_position_id": r.venue_position_id,
+                    "position_title": r.title,
+                    "tg_username": r.tg_username,
+                }
+            )
+
+    def interval_payload(interval_id: int):
+        it = intervals.get(interval_id)
+        if not it:
+            return None
+        return {
+            "id": it.id,
+            "title": it.title,
+            "start_time": it.start_time.strftime("%H:%M"),
+            "end_time": it.end_time.strftime("%H:%M"),
+        }
+
+    return [
+        {
+            "id": s.id,
+            "date": s.date.isoformat(),
+            "interval": interval_payload(s.interval_id),
+            "interval_id": s.interval_id,
+            "is_active": bool(s.is_active),
+            "assignments": assignments_by_shift.get(s.id, []),
+        }
+        for s in shifts
+    ]
+
+
+@router.post("/{venue_id}/shifts")
+def create_shift(
+    venue_id: int,
+    payload: ShiftCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Create a shift for a specific date+interval (schedule editor only)."""
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+
+    interval = db.execute(
+        select(ShiftInterval).where(
+            ShiftInterval.id == payload.interval_id,
+            ShiftInterval.venue_id == venue_id,
+            ShiftInterval.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if interval is None:
+        raise HTTPException(status_code=400, detail="Shift interval not found")
+
+    obj = Shift(
+        venue_id=venue_id,
+        date=payload.date,
+        interval_id=payload.interval_id,
+        is_active=payload.is_active,
+        created_by_user_id=user.id,
+    )
+
+    db.add(obj)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        # likely unique constraint
+        raise HTTPException(status_code=409, detail="Shift already exists for this date and interval")
+
+    db.refresh(obj)
+    return {"id": obj.id}
+
+
+@router.patch("/{venue_id}/shifts/{shift_id}")
+def update_shift(
+    venue_id: int,
+    shift_id: int,
+    payload: ShiftUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+
+    obj = db.execute(
+        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    if payload.date is not None:
+        obj.date = payload.date
+    if payload.interval_id is not None:
+        interval = db.execute(
+            select(ShiftInterval).where(
+                ShiftInterval.id == payload.interval_id,
+                ShiftInterval.venue_id == venue_id,
+                ShiftInterval.is_active.is_(True),
+            )
+        ).scalar_one_or_none()
+        if interval is None:
+            raise HTTPException(status_code=400, detail="Shift interval not found")
+        obj.interval_id = payload.interval_id
+    if payload.is_active is not None:
+        obj.is_active = payload.is_active
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Shift already exists for this date and interval")
+
+    return {"ok": True}
+
+
+@router.delete("/{venue_id}/shifts/{shift_id}")
+def delete_shift(
+    venue_id: int,
+    shift_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+
+    obj = db.execute(
+        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    obj.is_active = False
+    db.commit()
+    return {"ok": True}
+
+@router.get("/{venue_id}/shifts/{shift_id}")
+def get_shift(
+    venue_id: int,
+    shift_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    obj = db.execute(
+        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    interval = db.execute(select(ShiftInterval).where(ShiftInterval.id == obj.interval_id)).scalar_one()
+    assigns = db.execute(
+        select(
+            ShiftAssignment.id,
+            ShiftAssignment.member_user_id,
+            ShiftAssignment.venue_position_id,
+            User.tg_user_id,
+            User.tg_username,
+            VenuePosition.title.label("position_title"),
+        )
+        .join(User, User.id == ShiftAssignment.member_user_id)
+        .join(VenuePosition, VenuePosition.id == ShiftAssignment.venue_position_id)
+        .where(ShiftAssignment.shift_id == obj.id)
+        .order_by(User.id.asc())
+    ).all()
+
+    return {
+        "id": obj.id,
+        "venue_id": obj.venue_id,
+        "date": obj.date.isoformat(),
+        "is_active": bool(obj.is_active),
+        "interval": {
+            "id": interval.id,
+            "title": interval.title,
+            "start_time": interval.start_time.isoformat(timespec="minutes"),
+            "end_time": interval.end_time.isoformat(timespec="minutes"),
+        },
+        "assignments": [
+            {
+                "id": r.id,
+                "member_user_id": r.member_user_id,
+                "venue_position_id": r.venue_position_id,
+                "member": {"user_id": r.member_user_id, "tg_user_id": r.tg_user_id, "tg_username": r.tg_username},
+                "position_title": r.position_title,
+            }
+            for r in assigns
+        ],
+    }
+
+
+@router.post("/{venue_id}/shifts/{shift_id}/assignments")
+def add_shift_assignment(
+    venue_id: int,
+    shift_id: int,
+    payload: ShiftAssignmentAddIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Assign one venue position (member) to a shift.
+
+    You can call this multiple times to assign several people to the same shift.
+    """
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+
+    shift = db.execute(
+        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))
+    ).scalar_one_or_none()
+    if shift is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.id == payload.venue_position_id,
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if pos is None:
+        raise HTTPException(status_code=400, detail="Position not found")
+
+    # validate member exists & active in venue
+    vm = db.execute(
+        select(VenueMember).where(
+            VenueMember.venue_id == venue_id,
+            VenueMember.user_id == pos.member_user_id,
+            VenueMember.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if vm is None:
+        raise HTTPException(status_code=400, detail="Member not found in venue")
+
+    existing = db.execute(
+        select(ShiftAssignment).where(
+            ShiftAssignment.shift_id == shift_id,
+            ShiftAssignment.member_user_id == pos.member_user_id,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return {"id": existing.id, "mode": "exists"}
+
+    a = ShiftAssignment(
+        shift_id=shift_id,
+        member_user_id=pos.member_user_id,
+        venue_position_id=pos.id,
+    )
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    return {"id": a.id}
+
+
+@router.delete("/{venue_id}/shifts/{shift_id}/assignments/{member_user_id}")
+def remove_shift_assignment(
+    venue_id: int,
+    shift_id: int,
+    member_user_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+
+    a = db.execute(
+        select(ShiftAssignment).join(Shift, Shift.id == ShiftAssignment.shift_id).where(
+            ShiftAssignment.shift_id == shift_id,
+            ShiftAssignment.member_user_id == member_user_id,
+            Shift.venue_id == venue_id,
+        )
+    ).scalar_one_or_none()
+
+    if a is None:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    db.delete(a)
+    db.commit()
+    return {"ok": True}

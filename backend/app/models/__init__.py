@@ -6,6 +6,9 @@ from .permission import Permission
 from .role_permission_default import RolePermissionDefault
 from .venue_invite import VenueInvite
 from .venue_position import VenuePosition
+from .shift_interval import ShiftInterval
+from .shift import Shift
+from .shift_assignment import ShiftAssignment
 
 __all__ = [
     "SystemRole",
@@ -17,4 +20,7 @@ __all__ = [
     "RolePermissionDefault",
     "VenueInvite",
     "VenuePosition",
+    "ShiftInterval",
+    "Shift",
+    "ShiftAssignment",
 ]
