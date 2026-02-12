@@ -379,14 +379,30 @@ function openDay(dateStr) {
 
   if (canEdit) {
     html += `
-      <div class="card" style="margin-top:12px; display:none" id="addShiftCard">
-        <b>Новая смена</b>
-        <div class="muted" style="margin-top:6px">Выбери промежуток и создай смену на этот день</div>
-        <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
-          <select class="input" id="intervalSelect" style="flex:1; min-width:220px"></select>
-          <button class="btn primary" id="createShiftBtn">Создать</button>
+        <div class="card" style="margin-top:12px; display:none" id="addShiftCard">
+            <b>Новая смена</b>
+            <div class="muted" style="margin-top:6px">Выбери промежуток и создай смену на этот день</div>
+
+            <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
+            <select class="input" id="intervalSelect" style="flex:1; min-width:220px"></select>
+            <button class="btn primary" id="createShiftBtn">Создать смену</button>
+            </div>
+
+            <div id="createIntervalBox" class="card" style="margin-top:10px; display:none; background: rgba(255,255,255,0.04)">
+            <b>Новый промежуток</b>
+            <div class="grid2" style="margin-top:10px">
+                <input class="input" id="newIntTitle" placeholder="Название (например, День)" />
+                <div class="row" style="gap:10px">
+                <input class="input" id="newIntStart" placeholder="Начало (HH:MM)" />
+                <input class="input" id="newIntEnd" placeholder="Конец (HH:MM)" />
+                </div>
+            </div>
+            <div class="row" style="margin-top:10px; gap:10px; justify-content:flex-end">
+                <button class="btn" id="cancelCreateInterval">Отмена</button>
+                <button class="btn primary" id="createIntervalBtn">Создать промежуток</button>
+            </div>
+            </div>
         </div>
-      </div>
     `;
   }
 
@@ -405,30 +421,79 @@ function openDay(dateStr) {
     }
 
     if (sel) {
-      sel.innerHTML = "";
-      if (!intervals.length) {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = "Нет промежутков (создай сначала)";
-        sel.appendChild(opt);
-        sel.disabled = true;
-        if (createBtn) createBtn.disabled = true;
-      } else {
-        for (const i of intervals) {
-          const opt = document.createElement("option");
-          opt.value = i.id;
-          opt.textContent = `${i.title} · ${i.start_time}-${i.end_time}`;
-          sel.appendChild(opt);
+  sel.innerHTML = "";
+
+  // 1) Обычные интервалы
+  for (const i of intervals) {
+    const opt = document.createElement("option");
+    opt.value = String(i.id);
+    opt.textContent = `${i.title} · ${i.start_time}-${i.end_time}`;
+    sel.appendChild(opt);
+  }
+
+  // 2) Пункт "Создать"
+  const optCreate = document.createElement("option");
+  optCreate.value = "__create__";
+  optCreate.textContent = "➕ Создать промежуток…";
+  sel.appendChild(optCreate);
+
+  // Если интервалов нет — сразу открываем создание
+  if (!intervals.length) {
+    sel.value = "__create__";
+  }
+
+  const box = document.getElementById("createIntervalBox");
+  const btnCancel = document.getElementById("cancelCreateInterval");
+  const btnCreateInt = document.getElementById("createIntervalBtn");
+
+  const syncBox = () => {
+    const isCreate = sel.value === "__create__";
+    if (box) box.style.display = isCreate ? "block" : "none";
+    if (createBtn) createBtn.disabled = isCreate; // нельзя создать смену, пока в режиме создания интервала
+  };
+
+  sel.onchange = syncBox;
+  syncBox();
+
+  if (btnCancel) {
+    btnCancel.onclick = () => {
+      // вернёмся на первый интервал, если есть
+      if (intervals.length) sel.value = String(intervals[0].id);
+      syncBox();
+    };
+  }
+
+    if (btnCreateInt) {
+        btnCreateInt.onclick = async () => {
+        const title = document.getElementById("newIntTitle")?.value?.trim();
+        const start = document.getElementById("newIntStart")?.value?.trim();
+        const end = document.getElementById("newIntEnd")?.value?.trim();
+
+        if (!title) return toast("Укажи название", "warn");
+        if (!/^\d{2}:\d{2}$/.test(start || "")) return toast("Начало в формате HH:MM", "warn");
+        if (!/^\d{2}:\d{2}$/.test(end || "")) return toast("Конец в формате HH:MM", "warn");
+
+        try {
+            await api(`/venues/${encodeURIComponent(venueId)}/shift-intervals`, {
+            method: "POST",
+            body: { title, start_time: start, end_time: end }
+            });
+            toast("Промежуток создан", "ok");
+            await loadContext();  // перезагрузит intervals
+            await loadMonth();
+            openDay(dateStr);
+        } catch (e) {
+            toast(e?.data?.detail || e?.message || "Не удалось создать промежуток", "err");
         }
-        sel.disabled = false;
-        if (createBtn) createBtn.disabled = false;
-      }
+        };
     }
+    }
+
 
     if (createBtn) {
       createBtn.onclick = async () => {
         const intervalId = document.getElementById("intervalSelect")?.value;
-        if (!intervalId) return toast("Выбери промежуток", "warn");
+        if (intervalId === "__create__") return toast("Сначала создай промежуток", "warn");
         try {
           await api(`/venues/${encodeURIComponent(venueId)}/shifts`, {
             method: "POST",
