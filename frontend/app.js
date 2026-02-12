@@ -309,6 +309,45 @@ export async function getMyVenuePermissions(venueId) {
   return api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
 }
 
+// ------------------------------
+// Venues: members + positions
+// ------------------------------
+
+export async function getVenueMembers(venueId) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/members`);
+}
+
+export async function getVenuePositions(venueId) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/positions`);
+}
+
+export async function createVenuePosition(venueId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/positions`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function updateVenuePosition(venueId, positionId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!positionId) throw new Error("NO_POSITION");
+  return api(`/venues/${encodeURIComponent(venueId)}/positions/${encodeURIComponent(positionId)}`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export async function deleteVenuePosition(venueId, positionId) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!positionId) throw new Error("NO_POSITION");
+  return api(`/venues/${encodeURIComponent(venueId)}/positions/${encodeURIComponent(positionId)}`, {
+    method: "DELETE",
+  });
+}
+
 /**
  * Boots a page: ensures login (cookie), loads /me,
  * optionally enforces an active venue (from LS or query).

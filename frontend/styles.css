@@ -21,7 +21,8 @@ body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);pad
 .userpill{padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.04);font-size:12px;color:var(--muted)}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
 .grid{display:grid;gap:12px;grid-template-columns:1.1fr .9fr}
-@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.grid2{grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:900px){.grid{grid-template-columns:1fr}.grid2{grid-template-columns:1fr}}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .muted{color:var(--muted);font-size:13px;line-height:1.35}
 .btn{appearance:none;border:0;cursor:pointer;padding:11px 12px;border-radius:12px;background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--border);font-weight:800}

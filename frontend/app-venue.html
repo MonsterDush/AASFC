@@ -31,9 +31,10 @@
           <button class="btn" id="btnRename">Переименовать</button>
           <button class="btn" id="btnArchive">В архив</button>
           <button class="btn" id="btnUnarchive">Вернуть</button>
+          <a class="link" id="openPositions" href="#" style="margin-left:auto">Должности →</a>
+          <a class="link" id="openInvites" href="/invites.html">Приглашения →</a>
           <button class="btn danger" id="btnLeave">Выйти из заведения</button>
           <button class="btn danger" id="btnDelete">Удалить</button>
-          <a class="link" id="openInvites" href="/invites.html" style="margin-left:auto">Приглашения →</a>
         </div>
 
         <div class="muted" style="margin-top:6px" id="metaHint"></div>
@@ -78,7 +79,7 @@
     <div class="modal__panel">
       <div class="modal__head">
         <div class="modal__title">JSON</div>
-        <button class="btn" data-close>Close</button>
+        <button class="btn" data-close>Закрыть</button>
       </div>
       <div class="modal__body"></div>
     </div>
@@ -145,6 +146,7 @@ try {
 
     const btnInvite = document.getElementById("btnInvite");
     const openInvites = document.getElementById("openInvites");
+    const openPositions = document.getElementById("openPositions");
 
     let last = { is_archived: false, name: "" };
 
@@ -157,6 +159,7 @@ try {
         return;
       }
       openInvites.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
+      openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
       metaEl.textContent = `venue_id=${venueId}`;
       metaHint.textContent = "";
     }
@@ -206,21 +209,21 @@ try {
               <b>@${esc(m.tg_username || "-")}</b> <span class="mono">роль=${esc(m.venue_role)}</span><br/>
             <span class="mono">user_id=${esc(m.user_id)} · tg_user_id=${esc(m.tg_user_id || "-")}</span>
           </div>
-          <button class="btn danger" data-remove>Remove</button>
+          <button class="btn danger" data-remove>Удалить</button>
         `;
 
         row.querySelector("[data-remove]").onclick = async () => {
           const ok = await confirmModal({
-            title: "Remove member?",
-            text: `Remove @${m.tg_username || "-"} from venue?`,
-            confirmText: "Remove",
+            title: "Удалить участника?",
+            text: `Удалить @${m.tg_username || "-"} из заведения?`,
+            confirmText: "Удалить",
             danger: true,
           });
           if (!ok) return;
 
           try {
             await api(`/venues/${venueId}/members/${m.user_id}`, { method:"DELETE" });
-            toast("Member removed", "ok");
+            toast("Участник удалён", "ok");
             await load();
           } catch (e) {
             toast("Ошибка удаления: " + e.message, "err");
