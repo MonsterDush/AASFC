@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -323,3 +323,51 @@ def remove_member(
     vm.is_active = False
     db.commit()
     return {"ok": True}
+
+@router.post("/{venue_id}/leave", status_code=204)
+def leave_venue(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Находим активное членство пользователя в заведении
+    membership = (
+        db.query(VenueMember)
+        .filter(
+            VenueMember.venue_id == venue_id,
+            VenueMember.user_id == current_user.id,
+            VenueMember.is_active.is_(True),
+        )
+        .one_or_none()
+    )
+
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Вы не являетесь участником этого заведения",
+        )
+
+    # Если это OWNER — проверяем, что он не последний владелец
+    if membership.venue_role == "OWNER":
+        owners_count = (
+            db.query(VenueMember)
+            .filter(
+                VenueMember.venue_id == venue_id,
+                VenueMember.venue_role == "OWNER",
+                VenueMember.is_active.is_(True),
+            )
+            .count()
+        )
+
+        if owners_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Нельзя выйти из заведения: вы последний владелец",
+            )
+
+    # Деактивируем membership
+    membership.is_active = False
+    db.add(membership)
+    db.commit()
+
+    return None

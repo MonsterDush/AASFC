@@ -609,40 +609,12 @@ export async function mountVenueMenu({ containerSelector = "#venueMenu", onVenue
   optManage2.textContent = t("manage_venues");
   sel.appendChild(optManage2);
 
-  const optLeave = document.createElement("option");
-  optLeave.value = "__leave__";
-  optLeave.textContent = t("leave_venue");
-  sel.appendChild(optLeave);
-
   sel.value = active || (venues[0] ? String(venues[0].id) : "");
 
   sel.onchange = async () => {
     const val = sel.value;
     if (val === "__manage2__") {
       location.href = "/app-venues.html";
-      return;
-    }
-    if (val === "__leave__") {
-      const vid = getActiveVenueId();
-      if (!vid) { toast("Нет активного заведения", "warn"); return; }
-      const ok = await confirmModal({
-        title: t("leave_venue"),
-        text: "Вы уверены, что хотите выйти из заведения?",
-        confirmText: t("leave_venue"),
-        danger: true,
-      });
-      if (!ok) { sel.value = getActiveVenueId(); return; }
-      try {
-        await leaveVenue(vid);
-        toast("Вы вышли из заведения", "ok");
-        // clear active venue and go to venues
-        setActiveVenueId("");
-        location.href = "/app-venues.html";
-      } catch (e) {
-        const msg = e?.data?.detail || e?.message || "Ошибка";
-        toast(msg, "err");
-        sel.value = getActiveVenueId();
-      }
       return;
     }
 

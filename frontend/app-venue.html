@@ -36,6 +36,7 @@
           <button class="btn" id="btnRename">Rename</button>
           <button class="btn" id="btnArchive">Archive</button>
           <button class="btn" id="btnUnarchive">Unarchive</button>
+          <button class="btn danger" id="btnLeave">Выйти из заведения</button>
           <button class="btn danger" id="btnDelete">Delete</button>
           <a class="link" id="openInvites" href="/invites.html" style="margin-left:auto">Invites →</a>
         </div>
@@ -95,7 +96,7 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountVenueMenu, mountNav } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountVenueMenu, mountNav, leaveVenue } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("venue");
@@ -148,6 +149,7 @@ try {
     const btnRename = document.getElementById("btnRename");
     const btnArchive = document.getElementById("btnArchive");
     const btnUnarchive = document.getElementById("btnUnarchive");
+    const btnLeave = document.getElementById("btnLeave");
     const btnDelete = document.getElementById("btnDelete");
 
     const btnInvite = document.getElementById("btnInvite");
@@ -350,6 +352,26 @@ try {
         await load();
       } catch (e) {
         toast("Unarchive error: " + e.message, "err");
+      }
+    };
+
+    btnLeave.onclick = async () => {
+      if (!venueId) return toast("Нет venue_id", "warn");
+      const ok = await confirmModal({
+        title: "Выйти из заведения",
+        text: "Вы уверены, что хотите выйти из заведения?",
+        confirmText: "Выйти",
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await leaveVenue(venueId);
+        toast("Вы вышли из заведения", "ok");
+        setActiveVenueId("");
+        location.href = "/app-venues.html";
+      } catch (e) {
+        const msg = e?.data?.detail || e?.message || "Ошибка";
+        toast(msg, "err");
       }
     };
 
