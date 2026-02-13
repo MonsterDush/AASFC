@@ -21,6 +21,7 @@ from app.models.venue_position import VenuePosition
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
 from app.models.shift_assignment import ShiftAssignment
+from app.models.daily_report import DailyReport
 
 from app.services.venues import create_venue
 
@@ -49,8 +50,15 @@ class PositionCreateIn(BaseModel):
     member_user_id: int = Field(..., gt=0)
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
+
+    # Reports permissions
     can_make_reports: bool = False
+    can_view_reports: bool = False
+    can_view_revenue: bool = False
+
+    # Schedule permissions
     can_edit_schedule: bool = False
+
     is_active: bool = True
 
 
@@ -59,9 +67,24 @@ class PositionUpdateIn(BaseModel):
     member_user_id: int | None = Field(default=None, gt=0)
     rate: int | None = Field(default=None, ge=0)
     percent: int | None = Field(default=None, ge=0, le=100)
+
+    # Reports permissions
     can_make_reports: bool | None = None
+    can_view_reports: bool | None = None
+    can_view_revenue: bool | None = None
+
+    # Schedule permissions
     can_edit_schedule: bool | None = None
+
     is_active: bool | None = None
+
+
+class DailyReportUpsertIn(BaseModel):
+    date: date
+    cash: int = Field(0, ge=0)
+    cashless: int = Field(0, ge=0)
+    revenue_total: int = Field(0, ge=0)
+
 
 class ShiftIntervalCreateIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
@@ -147,6 +170,65 @@ def _is_schedule_editor(db: Session, *, venue_id: int, user: User) -> bool:
 def _require_schedule_editor(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_schedule_editor(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _is_report_maker(db: Session, *, venue_id: int, user: User) -> bool:
+    # Owners / system admins are always allowed
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return True
+
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == user.id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    return bool(pos and pos.can_make_reports)
+
+
+def _require_report_maker(db: Session, *, venue_id: int, user: User) -> None:
+    if not _is_report_maker(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _is_report_viewer(db: Session, *, venue_id: int, user: User) -> bool:
+    # Owners / system admins are always allowed
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return True
+
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == user.id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+
+    # Makers can always view reports too
+    return bool(pos and (pos.can_view_reports or pos.can_make_reports))
+
+
+def _require_report_viewer(db: Session, *, venue_id: int, user: User) -> None:
+    if not _is_report_viewer(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
+    # Owners / system admins are always allowed
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return True
+
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == user.id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+
+    # Makers can always view numbers
+    return bool(pos and (pos.can_view_revenue or pos.can_make_reports))
 
 
 
@@ -362,6 +444,8 @@ def list_positions(
             VenuePosition.rate,
             VenuePosition.percent,
             VenuePosition.can_make_reports,
+            VenuePosition.can_view_reports,
+            VenuePosition.can_view_revenue,
             VenuePosition.can_edit_schedule,
             VenuePosition.is_active,
             User.tg_user_id,
@@ -394,6 +478,8 @@ def list_positions(
             "rate": r.rate,
             "percent": r.percent,
             "can_make_reports": bool(r.can_make_reports),
+            "can_view_reports": bool(r.can_view_reports),
+            "can_view_revenue": bool(r.can_view_revenue),
             "can_edit_schedule": bool(r.can_edit_schedule),
             "is_active": bool(r.is_active),
             "member": {
@@ -445,6 +531,8 @@ def create_position(
             rate=payload.rate,
             percent=payload.percent,
             can_make_reports=payload.can_make_reports,
+            can_view_reports=payload.can_view_reports,
+            can_view_revenue=payload.can_view_revenue,
             can_edit_schedule=payload.can_edit_schedule,
             is_active=payload.is_active,
         )
@@ -458,6 +546,8 @@ def create_position(
     existing.rate = payload.rate
     existing.percent = payload.percent
     existing.can_make_reports = payload.can_make_reports
+    existing.can_view_reports = payload.can_view_reports
+    existing.can_view_revenue = payload.can_view_revenue
     existing.can_edit_schedule = payload.can_edit_schedule
     existing.is_active = payload.is_active
     db.commit()
@@ -538,6 +628,112 @@ def delete_position(
     pos.is_active = False
     db.commit()
     return {"ok": True}
+
+
+
+# ---------- Daily reports ----------
+
+@router.post("/{venue_id}/reports")
+def upsert_daily_report(
+    venue_id: int,
+    payload: DailyReportUpsertIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_maker(db, venue_id=venue_id, user=user)
+
+    obj = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == payload.date)
+    ).scalar_one_or_none()
+
+    if obj is None:
+        obj = DailyReport(
+            venue_id=venue_id,
+            date=payload.date,
+            cash=payload.cash,
+            cashless=payload.cashless,
+            revenue_total=payload.revenue_total,
+            created_by_user_id=user.id,
+        )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return {"id": obj.id, "date": obj.date.isoformat(), "mode": "created"}
+
+    obj.cash = payload.cash
+    obj.cashless = payload.cashless
+    obj.revenue_total = payload.revenue_total
+    obj.updated_by_user_id = user.id
+    obj.updated_at = datetime.utcnow()
+    db.commit()
+    return {"id": obj.id, "date": obj.date.isoformat(), "mode": "updated"}
+
+
+@router.get("/{venue_id}/reports")
+def list_daily_reports(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+
+    try:
+        y_str, m_str = month.split("-")
+        y = int(y_str)
+        m = int(m_str)
+        start = date(y, m, 1)
+        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+
+    rows = db.execute(
+        select(DailyReport)
+        .where(DailyReport.venue_id == venue_id, DailyReport.date >= start, DailyReport.date < end)
+        .order_by(DailyReport.date.asc())
+    ).scalars().all()
+
+    show_numbers = _can_view_revenue(db, venue_id=venue_id, user=user)
+
+    return [
+        {
+            "id": r.id,
+            "date": r.date.isoformat(),
+            "cash": r.cash if show_numbers else None,
+            "cashless": r.cashless if show_numbers else None,
+            "revenue_total": r.revenue_total if show_numbers else None,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/{venue_id}/reports/{report_date}")
+def get_daily_report(
+    venue_id: int,
+    report_date: date,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+
+    r = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+    ).scalar_one_or_none()
+    if r is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    show_numbers = _can_view_revenue(db, venue_id=venue_id, user=user)
+
+    return {
+        "id": r.id,
+        "date": r.date.isoformat(),
+        "cash": r.cash if show_numbers else None,
+        "cashless": r.cashless if show_numbers else None,
+        "revenue_total": r.revenue_total if show_numbers else None,
+    }
 
 
 @router.post("/{venue_id}/invites")
