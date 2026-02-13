@@ -345,12 +345,13 @@ def get_members(
 @router.get("/{venue_id}/positions")
 def list_positions(
     venue_id: int,
+    include_inactive: bool = Query(False, description="If true, return inactive members/positions too (owner/admin only)."),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
 
-    rows = db.execute(
+    stmt = (
         select(
             VenuePosition.id,
             VenuePosition.title,
@@ -365,12 +366,22 @@ def list_positions(
             User.full_name,
             User.short_name,
             VenueMember.venue_role,
+            VenueMember.is_active.label("member_is_active"),
         )
         .join(User, User.id == VenuePosition.member_user_id)
-        .join(VenueMember, (VenueMember.venue_id == VenuePosition.venue_id) & (VenueMember.user_id == VenuePosition.member_user_id))
+        .join(
+            VenueMember,
+            (VenueMember.venue_id == VenuePosition.venue_id)
+            & (VenueMember.user_id == VenuePosition.member_user_id),
+        )
         .where(VenuePosition.venue_id == venue_id)
         .order_by(VenuePosition.id.desc())
-    ).all()
+    )
+
+    if not include_inactive:
+        stmt = stmt.where(VenuePosition.is_active.is_(True), VenueMember.is_active.is_(True))
+
+    rows = db.execute(stmt).all()
 
     return [
         {
@@ -386,11 +397,10 @@ def list_positions(
                 "user_id": r.member_user_id,
                 "tg_user_id": r.tg_user_id,
                 "tg_username": r.tg_username,
-                    "full_name": r.full_name,
-                    "short_name": r.short_name,
                 "full_name": r.full_name,
                 "short_name": r.short_name,
                 "venue_role": r.venue_role,
+                "is_active": bool(r.member_is_active),
             },
         }
         for r in rows

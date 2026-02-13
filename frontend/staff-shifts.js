@@ -597,7 +597,7 @@ function openDay(dateStr) {
           <b>Новый промежуток</b>
           <div class="grid2" style="margin-top:10px">
             <input class="input" id="newIntTitle" placeholder="Название (например, Бар)" />
-            <div class="row" style="gap:10px">
+            <div class="row" style="margin-top:10px">
               <input class="input" id="newIntStart" placeholder="Начало (HH:MM)" />
               <input class="input" id="newIntEnd" placeholder="Конец (HH:MM)" />
             </div>
