@@ -14,112 +14,139 @@ applyTelegramTheme();
 mountCommonUI("report");
 
 await ensureLogin({ silent: true });
+await mountNav({ activeTab: "report" });
 
 const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
-
-await mountNav({ activeTab: "report", requireVenue: true });
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
   prev: document.getElementById("monthPrev"),
   next: document.getElementById("monthNext"),
   grid: document.getElementById("calGrid"),
+  dayPanel: document.getElementById("dayPanel"),
 };
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
 const modalBody = modal?.querySelector(".modal__body");
-const modalSubtitleEl = document.getElementById("modalSubtitle");
 
-function closeModal() { modal?.classList.remove("open"); }
-modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
-modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
+function openModal(title, html) {
+  if (!modal || !modalTitle || !modalBody) return;
+  modalTitle.textContent = title || "Окно";
+  modalBody.innerHTML = html;
+  modal.classList.add("open");
+}
+function closeModal() {
+  modal?.classList.remove("open");
+}
+document.querySelector("#modal [data-close]")?.addEventListener("click", closeModal);
+document.querySelector("#modal .modal__backdrop")?.addEventListener("click", closeModal);
 
-function openModal(title, subtitle, bodyHtml) {
-  if (modalTitle) modalTitle.textContent = title || "Отчёт";
-  if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle || "";
-  if (modalBody) modalBody.innerHTML = bodyHtml || "";
-  modal?.classList.add("open");
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
-function pad2(n) { return String(n).padStart(2, "0"); }
-function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
-function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function ymd(d) {
+  const dt = new Date(d);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+function ym(d) {
+  const dt = new Date(d);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+function monthTitle(d) {
+  const dt = new Date(d);
+  const m = dt.toLocaleString("ru-RU", { month: "long" });
+  const y = dt.getFullYear();
+  return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${y}`;
+}
+
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 let curMonth = new Date();
 curMonth.setDate(1);
 
-let perms = { can_make_reports: false, can_view_reports: false, can_view_revenue: false };
-    permsUnknown = true;
-let permsUnknown = true; // if we can't reliably detect perms, allow attempting save (backend will enforce)
-let reportsByDate = new Map(); // dateISO -> report row (may contain null numbers)
+let reportsByDate = new Map(); // dateISO -> report
+let perms = {
+  can_make_reports: false,
+  can_view_reports: false,
+  can_view_revenue: false,
+  is_owner: false, // если вдруг появится
+};
 
-function monthTitle(d) {
-  const m = d.toLocaleString("ru-RU", { month: "long" });
-  return `${m[0].toUpperCase()}${m.slice(1)} ${d.getFullYear()}`;
-}
+async function loadPermsBestEffort() {
+  // best-effort: если не получилось — не блокируем UI
+  perms = { can_make_reports: false, can_view_reports: false, can_view_revenue: false, is_owner: false };
 
-function canMakeReports() { return !!perms.can_make_reports || permsUnknown; }
-function canViewReports() { return !!perms.can_view_reports || !!perms.can_make_reports || permsUnknown; }
-function canViewRevenue() { return !!perms.can_view_revenue || !!perms.can_make_reports; }
-
-function parsePerms(obj) {
-  // Backend may return a list of permission codes OR direct boolean flags.
-  const role = obj?.role || obj?.venue_role || "";
-  const isOwner = role === "OWNER";
-
-  const list = obj?.permissions || obj?.permission_codes || obj?.codes || [];
-  const has = (code) => Array.isArray(list) && list.includes(code);
-
-  const boolMake = obj?.can_make_reports === true;
-  const boolView = obj?.can_view_reports === true;
-  const boolRevenue = obj?.can_view_revenue === true;
-
-  // If we can't see explicit report permissions, we allow "try save" mode.
-  // This is important when permissions are stored on venue_position rather than in /me/venues/.../permissions.
-  permsUnknown = !(
-    isOwner ||
-    boolMake || boolView || boolRevenue ||
-    has("can_make_reports") || has("can_view_reports") || has("can_view_revenue")
-  );
-
-  perms = {
-    can_make_reports: isOwner || boolMake || has("can_make_reports"),
-    can_view_reports: isOwner || boolView || boolMake || has("can_view_reports") || has("can_make_reports"),
-    can_view_revenue: isOwner || boolRevenue || boolMake || has("can_view_revenue") || has("can_make_reports"),
-  };
-}
-
-async function loadPerms() {
   if (!venueId) return;
+
   try {
     const p = await getMyVenuePermissions(venueId);
-    parsePerms(p);
+
+    // разные варианты структуры: поддержим все
+    const flags = p?.position_flags || p?.position || {};
+    const hasList = Array.isArray(p?.permissions) ? p.permissions : [];
+
+    const has = (code) => hasList.includes(code);
+
+    const canMake =
+      p?.can_make_reports === true ||
+      flags.can_make_reports === true ||
+      has("SHIFT_REPORTS_CREATE") ||
+      has("SHIFT_REPORTS_EDIT");
+
+    const canView =
+      p?.can_view_reports === true ||
+      flags.can_view_reports === true ||
+      canMake ||
+      has("SHIFT_REPORTS_VIEW");
+
+    const canRevenue =
+      p?.can_view_revenue === true ||
+      flags.can_view_revenue === true ||
+      canMake ||
+      has("SHIFT_REVENUE_VIEW");
+
+    perms.can_make_reports = !!canMake;
+    perms.can_view_reports = !!canView;
+    perms.can_view_revenue = !!canRevenue;
+
+    // если у тебя где-то прокидывается owner-флаг — тоже учтём
+    perms.is_owner = p?.is_owner === true;
   } catch {
-    // если не получилось — оставим false, бэк всё равно не даст лишнего
-    perms = { can_make_reports: false, can_view_reports: false, can_view_revenue: false };
-    permsUnknown = true;
+    // молча — но UI не блокируем
   }
 }
 
 async function loadMonthReports() {
-  if (!venueId) return;
   reportsByDate = new Map();
+  if (!venueId) return;
+
   const m = ym(curMonth);
   try {
     const list = await api(`/venues/${encodeURIComponent(venueId)}/reports?month=${encodeURIComponent(m)}`);
-    (list || []).forEach(r => { if (r?.date) reportsByDate.set(r.date, r); });
+    (list || []).forEach((r) => {
+      if (r?.date) reportsByDate.set(r.date, r);
+    });
   } catch (e) {
-    // если нет права видеть отчёты — покажем тост и пустой календарь
-    toast(e?.message || "Не удалось загрузить отчёты", "err");
+    // если нет права — просто покажем пустой календарь, но не сломаем UI
     reportsByDate = new Map();
   }
 }
 
 function renderMonth() {
+  if (!el.grid || !el.monthLabel) return;
+
   el.monthLabel.textContent = monthTitle(curMonth);
   el.grid.innerHTML = "";
 
@@ -137,122 +164,142 @@ function renderMonth() {
   body.className = "cal-body";
 
   const first = new Date(curMonth);
-  const jsDow = first.getDay();
-  const mondayBased = (jsDow + 6) % 7;
+  const jsDow = first.getDay(); // 0 Sun..6 Sat
+  const mondayBased = (jsDow + 6) % 7; // Mon=0..Sun=6
   const start = new Date(first);
   start.setDate(first.getDate() - mondayBased);
 
   const todayStr = ymd(new Date());
+  const monthStr = ym(curMonth);
 
   for (let i = 0; i < 42; i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
-    const inMonth = d.getMonth() === curMonth.getMonth();
-    const dateStr = ymd(d);
+    const dStr = ymd(d);
 
     const cell = document.createElement("button");
     cell.type = "button";
-    cell.className =
-      "cal-cell" +
-      (inMonth ? "" : " cal-cell--out") +
-      (dateStr === todayStr ? " cal-cell--today" : "");
-    cell.setAttribute("data-date", dateStr);
+    cell.className = "cal-cell";
+    cell.innerHTML = `
+      <div class="cal-num">${d.getDate()}</div>
+      <div class="cal-sub muted" style="font-size:11px">${esc(reportsByDate.has(dStr) ? "есть отчёт" : "")}</div>
+    `;
 
-    const top = document.createElement("div");
-    top.className = "cal-daynum";
-    top.textContent = String(d.getDate());
-    cell.appendChild(top);
+    if (ym(d) !== monthStr) cell.classList.add("is-out");
+    if (dStr === todayStr) cell.classList.add("is-today");
+    if (reportsByDate.has(dStr)) cell.classList.add("has-report");
 
-    const box = document.createElement("div");
-    box.className = "cal-badges";
-
-    if (reportsByDate.has(dateStr)) {
-      const pill = document.createElement("div");
-      pill.className = "pill";
-      pill.textContent = "Отчёт";
-      box.appendChild(pill);
-    } else {
-      const hint = document.createElement("div");
-      hint.className = "muted";
-      hint.style.fontSize = "11px";
-      hint.textContent = "";
-      box.appendChild(hint);
-    }
-
-    cell.appendChild(box);
-
-    cell.addEventListener("click", async () => {
-      if (!canViewReports()) {
-        toast("Нет доступа к отчётам", "warn");
-        return;
-      }
-      await openReportModal(dateStr);
-    });
-
+    cell.addEventListener("click", () => openDay(dStr));
     body.appendChild(cell);
   }
 
   el.grid.appendChild(body);
 }
 
-function esc(s){
-  return String(s ?? "")
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
+async function openDay(dayISO) {
+  if (!venueId) return;
 
-function numOrZero(x) {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : 0;
-}
-
-async function openReportModal(dateStr) {
-  let report = null;
-  try {
-    report = await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dateStr)}`);
-  } catch (e) {
-    // 404 = нет отчёта
-    if (!String(e?.message || "").includes("404")) throw e;
-  }
-
-  const canEdit = canMakeReports();
-  const showNumbers = canViewRevenue() && report !== null;
-
-  const cash = report?.cash ?? "";
-  const cashless = report?.cashless ?? "";
-  const total = report?.revenue_total ?? "";
-
-  openModal(
-    `Отчёт за ${dateStr}`,
-    report ? "Отчёт найден" : "Отчёта нет",
-    `
+  // короткая панель на странице (не форма)
+  if (el.dayPanel) {
+    const exists = reportsByDate.has(dayISO);
+    const canEdit = perms.is_owner || perms.can_make_reports || true; // best-effort: пусть бэк решит
+    el.dayPanel.innerHTML = `
       <div class="itemcard">
-        <div class="row" style="gap:12px;flex-wrap:wrap">
-          <label style="min-width:170px;display:block">
-            <div class="muted" style="font-size:12px;margin-bottom:4px">Наличка</div>
-            <input id="repCash" type="number" min="0" value="${esc(String(cash))}" ${canEdit ? "" : "disabled"} placeholder="${canEdit ? "0" : (showNumbers ? "0" : "нет доступа")}" />
-          </label>
-
-          <label style="min-width:170px;display:block">
-            <div class="muted" style="font-size:12px;margin-bottom:4px">Безнал</div>
-            <input id="repCashless" type="number" min="0" value="${esc(String(cashless))}" ${canEdit ? "" : "disabled"} placeholder="${canEdit ? "0" : (showNumbers ? "0" : "нет доступа")}" />
-          </label>
-
-          <label style="min-width:210px;display:block">
-            <div class="muted" style="font-size:12px;margin-bottom:4px">Выручка (итого)</div>
-            <input id="repTotal" type="number" min="0" value="${esc(String(total))}" ${canEdit ? "" : "disabled"} placeholder="${canEdit ? "0" : (showNumbers ? "0" : "нет доступа")}" />
-          </label>
-        </div>
-
-        <div class="row" style="justify-content:space-between;align-items:center;margin-top:12px;gap:10px;flex-wrap:wrap">
-          <div class="muted" style="font-size:12px">
-            ${canEdit ? "Можно сохранить изменения." : "Нет права на создание/редактирование отчётов."}
+        <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div>
+            <b>${esc(dayISO)}</b>
+            <div class="muted" style="margin-top:4px">${exists ? "Отчёт уже есть" : "Отчёта нет"}</div>
           </div>
           <div class="row" style="gap:10px">
-            <button class="btn" id="btnCloseRep">Закрыть</button>
-            ${canEdit ? `<button class="btn primary" id="btnSaveRep">${report ? "Сохранить" : "Создать"}</button>` : ""}
+            <button class="btn ${canEdit ? "primary" : ""}" id="btnOpenReport">
+              ${exists ? "Открыть отчёт" : "Создать отчёт"}
+            </button>
           </div>
         </div>
       </div>
+    `;
+    el.dayPanel.querySelector("#btnOpenReport")?.addEventListener("click", () => showReportModal(dayISO));
+  }
+
+  // можно сразу открывать модалку по клику на день — но оставим через кнопку
+}
+
+function numOr0(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function showReportModal(dayISO) {
+  if (!venueId) return;
+
+  // Попробуем получить отчёт. Если 404 — будем создавать.
+  let report = null;
+  let exists = false;
+  try {
+    report = await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}`);
+    exists = true;
+  } catch (e) {
+    // 404 — ок, создаём новый
+    exists = false;
+  }
+
+  // Если бэк вернул числа как null (нет права видеть выручку) — поля отображаем как read-only/placeholder
+  const canSeeNumbers = (report?.revenue_total !== null && report?.revenue_total !== undefined) || perms.can_view_revenue || perms.can_make_reports || perms.is_owner;
+
+  // best-effort: позволяем редактировать, но если прав реально нет — получим 403 на save
+  const canEdit = perms.can_make_reports || perms.is_owner || true;
+
+  const cashVal = report?.cash ?? "";
+  const cashlessVal = report?.cashless ?? "";
+  const totalVal = report?.revenue_total ?? "";
+
+  openModal(
+    `Отчёт за ${dayISO}`,
+    `
+    <div class="itemcard">
+      <div class="muted" style="margin-bottom:10px">
+        ${exists ? "Редактирование/просмотр отчёта" : "Создание отчёта"}
+      </div>
+
+      <div class="row" style="gap:10px;flex-wrap:wrap">
+        <label style="min-width:180px;display:block">
+          <div class="muted" style="font-size:12px;margin-bottom:4px">Наличка</div>
+          <input id="repCash" type="number" min="0"
+            value="${esc(cashVal)}"
+            ${(!canEdit || !canSeeNumbers) ? "disabled" : "" }
+            placeholder="${canSeeNumbers ? "0" : "нет доступа"}"
+          />
+        </label>
+
+        <label style="min-width:180px;display:block">
+          <div class="muted" style="font-size:12px;margin-bottom:4px">Безнал</div>
+          <input id="repCashless" type="number" min="0"
+            value="${esc(cashlessVal)}"
+            ${(!canEdit || !canSeeNumbers) ? "disabled" : "" }
+            placeholder="${canSeeNumbers ? "0" : "нет доступа"}"
+          />
+        </label>
+
+        <label style="min-width:220px;display:block">
+          <div class="muted" style="font-size:12px;margin-bottom:4px">Выручка (итого)</div>
+          <input id="repTotal" type="number" min="0"
+            value="${esc(totalVal)}"
+            ${(!canEdit || !canSeeNumbers) ? "disabled" : "" }
+            placeholder="${canSeeNumbers ? "0" : "нет доступа"}"
+          />
+        </label>
+      </div>
+
+      <div class="row" style="justify-content:space-between;align-items:center;margin-top:12px;gap:10px;flex-wrap:wrap">
+        <div class="muted" style="font-size:12px">
+          ${canEdit ? "Сохранение доступно (права проверит сервер)" : "Нет прав на редактирование"}
+        </div>
+        <div class="row" style="gap:10px">
+          <button class="btn" id="btnCloseRep">Закрыть</button>
+          ${canEdit ? `<button class="btn primary" id="btnSaveRep">${exists ? "Сохранить" : "Создать"}</button>` : ""}
+        </div>
+      </div>
+    </div>
     `
   );
 
@@ -260,19 +307,28 @@ async function openReportModal(dateStr) {
 
   if (canEdit) {
     document.getElementById("btnSaveRep")?.addEventListener("click", async () => {
-      const cash = numOrZero(document.getElementById("repCash")?.value);
-      const cashless = numOrZero(document.getElementById("repCashless")?.value);
-      const revenue_total = numOrZero(document.getElementById("repTotal")?.value);
+      // Если нет доступа к цифрам — не дадим отправлять мусор
+      if (!canSeeNumbers) {
+        toast("Нет доступа к суммам отчёта", "err");
+        return;
+      }
+
+      const cash = Math.max(0, numOr0(document.getElementById("repCash")?.value));
+      const cashless = Math.max(0, numOr0(document.getElementById("repCashless")?.value));
+      const revenue_total = Math.max(0, numOr0(document.getElementById("repTotal")?.value));
 
       try {
         await api(`/venues/${encodeURIComponent(venueId)}/reports`, {
           method: "POST",
-          body: { date: dateStr, cash, cashless, revenue_total },
+          body: { date: dayISO, cash, cashless, revenue_total },
         });
+
         toast("Отчёт сохранён", "ok");
         closeModal();
+
         await loadMonthReports();
         renderMonth();
+        await openDay(dayISO);
       } catch (e) {
         toast("Ошибка сохранения: " + (e?.message || "неизвестно"), "err");
       }
@@ -280,19 +336,50 @@ async function openReportModal(dateStr) {
   }
 }
 
-async function boot() {
-  await loadPerms();
-  await loadMonthReports();
-  renderMonth();
+function renderNoVenue() {
+  if (el.grid) {
+    el.grid.innerHTML = `
+      <div class="itemcard">
+        <b>Не выбрано заведение</b>
+        <div class="muted" style="margin-top:6px">
+          Открой страницу из меню приложения или добавь <span class="mono">?venue_id=...</span>.
+        </div>
+      </div>
+    `;
+  }
+  if (el.dayPanel) el.dayPanel.innerHTML = "";
 }
 
-el.prev.addEventListener("click", async () => {
+async function boot() {
+  if (!el.grid || !el.monthLabel) {
+    // если сломалась разметка
+    toast("Ошибка: не найден календарь на странице", "err");
+    return;
+  }
+
+  if (!venueId) {
+    renderNoVenue();
+    return;
+  }
+
+  try {
+    await loadPermsBestEffort();
+    await loadMonthReports();
+    renderMonth();
+  } catch (e) {
+    // главное — не оставить пустую страницу
+    toast("Ошибка загрузки отчётов: " + (e?.message || "неизвестно"), "err");
+    renderMonth();
+  }
+}
+
+el.prev?.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() - 1);
   curMonth.setDate(1);
   await loadMonthReports();
   renderMonth();
 });
-el.next.addEventListener("click", async () => {
+el.next?.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() + 1);
   curMonth.setDate(1);
   await loadMonthReports();
