@@ -558,7 +558,7 @@ function wireShiftEditor(dateStr, shift) {
 
 function openDay(dateStr) {
   const listAll = shiftsByDate.get(dateStr) || [];
-  // В модалке дня ВСЕГДА показываем всех назначенных (как ты хотел)
+  // В модалке дня ВСЕГДА показываем всех назначенных
   const list = listAll;
 
   const d = new Date(dateStr);

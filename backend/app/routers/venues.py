@@ -1116,7 +1116,6 @@ def add_shift_assignment(
         select(VenuePosition).where(
             VenuePosition.id == payload.venue_position_id,
             VenuePosition.venue_id == venue_id,
-            VenuePosition.is_active.is_(True),
         )
     ).scalar_one_or_none()
     if pos is None:
