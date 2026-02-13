@@ -304,6 +304,14 @@ export async function getMyVenues() {
   return api("/me/venues");
 }
 
+
+export async function getVenueById(venueId) {
+  if (!venueId) return null;
+  const venues = await getMyVenues();
+  if (!Array.isArray(venues)) return null;
+  return venues.find(v => String(v.id) === String(venueId)) || null;
+}
+
 export async function getMyVenuePermissions(venueId) {
   if (!venueId) return { venue_id: null, role: null, permissions: [] };
   return api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);

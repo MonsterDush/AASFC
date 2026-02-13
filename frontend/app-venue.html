@@ -13,7 +13,7 @@
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <b id="title">Заведение</b>
+          <b id="title">…</b>
           <div class="muted">управление</div>
         </div>
       </div>
@@ -31,35 +31,17 @@
           <button class="btn" id="btnRename">Переименовать</button>
           <button class="btn" id="btnArchive">В архив</button>
           <button class="btn" id="btnUnarchive">Вернуть</button>
-          <a class="link" id="openPositions" href="#" style="margin-left:auto">Должности →</a>
-          <a class="link" id="openInvites" href="/invites.html">Приглашения →</a>
-          <button class="btn danger" id="btnLeave">Выйти из заведения</button>
+                    <button class="btn danger" id="btnLeave">Выйти из заведения</button>
           <button class="btn danger" id="btnDelete">Удалить</button>
         </div>
 
         <div class="muted" style="margin-top:6px" id="metaHint"></div>
-      </div>
 
-        <div class="itemcard" style="margin-top:12px">
-          <b>Создать приглашение</b>
-          <div class="row" style="margin-top:10px">
-            <input id="tg" placeholder="tg username (с @ или без)" />
-            <select id="role">
-              <option value="STAFF">Персонал</option>
-              <option value="OWNER">Владелец</option>
-            </select>
-            <button class="btn primary" id="btnInvite">Пригласить</button>
-          </div>
-          <div class="muted" style="margin-top:6px">
-            <span class="mono">POST /venues/{venue_id}/invites</span>
-          </div>
+        <div class="row" style="margin-top:12px; gap:8px; flex-wrap:wrap">
+          <a class="btn" id="openPositions" href="#">Должности</a>
+          <a class="btn" id="openInvites" href="/invites.html">Приглашения</a>
         </div>
-
-        <div class="itemcard" style="margin-top:12px">
-          <b>Приглашения в ожидании</b>
-          <div id="pending" style="margin-top:10px">
-            <div class="skeleton"></div><div class="skeleton"></div>
-          </div>
+      </div>
         </div>
 
 
@@ -91,7 +73,7 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("venue");
@@ -132,8 +114,6 @@ try {
     const titleEl = document.getElementById("title");
     const metaEl = document.getElementById("meta");
     const metaHint = document.getElementById("metaHint");
-
-    const pendingEl = document.getElementById("pending");
     const membersEl = document.getElementById("members");
 
 
@@ -142,8 +122,6 @@ try {
     const btnUnarchive = document.getElementById("btnUnarchive");
     const btnLeave = document.getElementById("btnLeave");
     const btnDelete = document.getElementById("btnDelete");
-
-    const btnInvite = document.getElementById("btnInvite");
     const openInvites = document.getElementById("openInvites");
     const openPositions = document.getElementById("openPositions");
 
@@ -162,13 +140,6 @@ try {
       metaEl.textContent = `venue_id=${venueId}`;
       metaHint.textContent = "";
     }
-
-    function renderPending(items) {
-      pendingEl.innerHTML = "";
-      if (!items?.length) {
-        pendingEl.innerHTML = `<div class="muted">Нет ожидающих приглашений</div>`;
-        return;
-      }
       items.forEach(i => {
         const row = document.createElement("div");
         row.className = "row";
@@ -189,7 +160,6 @@ try {
             toast("Ошибка отмены: " + e.message, "err");
           }
         };
-        pendingEl.appendChild(row);
       });
     }
 
@@ -234,8 +204,8 @@ try {
     }
 
     function applyButtons() {
-      // delete только если archived (так требует backend) :contentReference[oaicite:4]{index=4}
-      btnDelete.disabled = !last.is_archived;
+      // Удаление разрешено только для архивного заведения
+      btnDelete.style.display = last.is_archived ? "" : "none";
       btnArchive.style.display = last.is_archived ? "none" : "";
       btnUnarchive.style.display = last.is_archived ? "" : "none";
     }
@@ -243,7 +213,6 @@ try {
     async function load() {
       if (!venueId) return;
 
-      pendingEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
       membersEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
 
       try {
@@ -252,93 +221,73 @@ try {
 
         // name/is_archived тут не приходит, поэтому сохраняем только списки.
         // Статус archived будем брать “опционально” через /venues (если SUPER_ADMIN) — ниже.
-        renderPending(data.pending_invites);
         renderMembers(data.members);
 
-        toast("Loaded", "ok");
+        toast("Загружено", "ok");
       } catch (e) {
-        pendingEl.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
         membersEl.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
         toast("Ошибка загрузки: " + e.message, "err");
       }
 
-      // Опционально: если ты SUPER_ADMIN, подтянем имя/archived из /venues?include_archived=true
-      // (иначе будет 403 — просто игнорируем)
+            // Подтянем имя/статус заведения из списка моих заведений
       try {
-        const all = await api(`/venues?include_archived=true`);
-        const v = Array.isArray(all) ? all.find(x => String(x.id) === String(venueId)) : null;
+        const v = await getVenueById(venueId);
         if (v) {
           last.name = v.name || "";
           last.is_archived = !!v.is_archived;
           titleEl.textContent = v.name || `Заведение ${venueId}`;
-          metaEl.textContent = `venue_id=${venueId} · ${last.is_archived ? "archived" : "active"}${v.archived_at ? " · archived_at=" + v.archived_at : ""}`;
-          applyButtons();
+          metaEl.textContent = `venue_id=${venueId} · ${last.is_archived ? "в архиве" : "активно"}` + (v.archived_at ? ` · archived_at=${v.archived_at}` : "");
+        } else {
+          titleEl.textContent = `Заведение ${venueId}`;
         }
-      } catch (e) {
-        // не SUPER_ADMIN — ок
+      } catch {
         titleEl.textContent = `Заведение ${venueId}`;
-        applyButtons();
       }
+      applyButtons();
     }
 
     // --- Actions ---
 
-    btnInvite.onclick = async () => {
-      if (!venueId) return toast("Нет venue_id", "warn");
-      const tg = document.getElementById("tg").value.trim();
-      const role = document.getElementById("role").value;
-      if (!tg) return toast("Введи username", "warn");
-
-      try {
-        await api(`/venues/${venueId}/invites`, { method:"POST", body: { tg_username: tg, venue_role: role } });
-        document.getElementById("tg").value = "";
-        toast("Приглашение отправлено", "ok");
-        await load();
-      } catch (e) {
-        toast("Ошибка приглашения: " + e.message, "err");
-      }
-    };
-
     btnRename.onclick = async () => {
       if (!venueId) return;
       const current = last.name || "";
-      const name = prompt("New venue name:", current);
+      const name = prompt("Новое название заведения:", current);
       if (!name) return;
 
       try {
         await api(`/venues/${venueId}`, { method:"PATCH", body: { name: name.trim() } });
-        toast("Renamed", "ok");
+        toast("Переименовано", "ok");
         await load();
       } catch (e) {
-        toast("Rename error: " + e.message, "err");
+        toast("Ошибка переименования: " + e.message, "err");
       }
     };
 
     btnArchive.onclick = async () => {
       const ok = await confirmModal({
-        title: "Archive venue?",
-        text: "Заведение будет перемещено в архив.",
-        confirmText: "Archive",
+        title: "Архивировать заведение?",
+        text: "Заведение будет перемещено в архив. Продолжить?",
+        confirmText: "В архив",
         danger: false,
       });
       if (!ok) return;
 
       try {
         await api(`/venues/${venueId}/archive`, { method:"POST" });
-        toast("Archived", "ok");
+        toast("Перемещено в архив", "ok");
         await load();
       } catch (e) {
-        toast("Archive error: " + e.message, "err");
+        toast("Ошибка архивации: " + e.message, "err");
       }
     };
 
     btnUnarchive.onclick = async () => {
       try {
         await api(`/venues/${venueId}/unarchive`, { method:"POST" });
-        toast("Unarchived", "ok");
+        toast("Возвращено из архива", "ok");
         await load();
       } catch (e) {
-        toast("Unarchive error: " + e.message, "err");
+        toast("Ошибка возврата: " + e.message, "err");
       }
     };
 
@@ -364,19 +313,19 @@ try {
 
     btnDelete.onclick = async () => {
       const ok = await confirmModal({
-        title: "Delete permanently?",
-        text: "Delete venue permanently? (Only allowed if archived)",
-        confirmText: "Delete",
+        title: "Удалить навсегда?",
+        text: "Удалить заведение навсегда? (разрешено только если оно в архиве)",
+        confirmText: "Удалить",
         danger: true,
       });
       if (!ok) return;
 
       try {
         await api(`/venues/${venueId}`, { method:"DELETE" });
-        toast("Deleted", "ok");
-        location.href = "/admin-venues.html";
+        toast("Удалено", "ok");
+        location.href = "/app-venues.html";
       } catch (e) {
-        toast("Delete error: " + e.message, "err");
+        toast("Ошибка удаления: " + e.message, "err");
       }
     };
 
