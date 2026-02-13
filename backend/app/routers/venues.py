@@ -271,6 +271,10 @@ def delete_venue(
     db.execute(delete(VenueMember).where(VenueMember.venue_id == venue_id))
     db.execute(delete(VenueInvite).where(VenueInvite.venue_id == venue_id))
     db.execute(delete(DailyReport).where(DailyReport.venue_id == venue_id))
+    db.execute(delete(VenuePosition).where(VenuePosition.venue_id == venue_id))
+    db.execute(delete(ShiftAssignment).where(ShiftAssignment.venue_id == venue_id))
+    db.execute(delete(Shift).where(Shift.venue_id == venue_id))
+    db.execute(delete(ShiftInterval).where(ShiftInterval.venue_id == venue_id))
 
 # и т.д. по вашим зависимостям (shifts/assignments/positions...)
 # после bulk delete — можно удалить сам venue:
