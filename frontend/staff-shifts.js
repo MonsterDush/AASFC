@@ -146,6 +146,8 @@ let intervals = [];
 let positions = [];
 let shifts = [];
 let shiftsByDate = new Map();
+let salaryByDate = new Map(); // dateISO -> total my_salary for the day
+
 
 function shiftIntervalTitle(s) {
   const i = s.interval || s.shift_interval || {};
@@ -339,6 +341,14 @@ function renderMonth() {
 
     const listAll = shiftsByDate.get(dateStr) || [];
     const list = filterForCalendar(listAll, dateStr);
+
+    const daySalary = salaryByDate.get(dateStr);
+    if (Number.isFinite(daySalary)) {
+      const sal = document.createElement('div');
+      sal.className = 'day-salary';
+      sal.textContent = `+${Math.round(daySalary)}`;
+      box.appendChild(sal);
+    }
 
     if (rel === 1) {
       // future -> dots

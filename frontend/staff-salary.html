@@ -14,42 +14,38 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Зарплата</b>
-          <div class="muted" id="subtitle">панель сотрудника</div>
+          <div class="muted" id="subtitle">сводка за месяц</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card" style="margin-top:12px">
+    <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div class="row" style="gap:10px;align-items:center">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
-        <div class="muted" style="font-size:12px">Зарплата считается только при наличии отчёта за день</div>
+        <div class="muted" style="font-size:12px">Зарплата считается только в дни, где есть отчёт</div>
       </div>
 
-      <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap">
-        <div class="pill" style="flex:1;min-width:160px">
-          <div class="muted" style="font-size:12px">Всего за месяц</div>
-          <div style="font-size:22px"><b id="sumTotal">—</b></div>
-        </div>
-        <div class="pill" style="flex:1;min-width:160px">
-          <div class="muted" style="font-size:12px">Смен</div>
-          <div style="font-size:22px"><b id="sumShifts">—</b></div>
-        </div>
-        <div class="pill" style="flex:1;min-width:160px">
-          <div class="muted" style="font-size:12px">Дней без отчёта</div>
-          <div style="font-size:22px"><b id="sumNoReport">—</b></div>
+      <div class="itemcard" style="margin-top:12px">
+        <div class="row" style="justify-content:space-between"><div class="muted">Начислено</div><b id="sumSalary">0</b></div>
+        <div class="row" style="justify-content:space-between"><div class="muted">Штрафы</div><b id="sumPenalties">0</b></div>
+        <div class="row" style="justify-content:space-between"><div class="muted">Премии</div><b id="sumBonuses">0</b></div>
+        <div class="row" style="justify-content:space-between;display:none" id="rowWriteoffs"><div class="muted">Списания</div><b id="sumWriteoffs">0</b></div>
+        <div class="row" style="justify-content:space-between; margin-top:8px; border-top:1px solid var(--border); padding-top:10px">
+          <div class="muted">Итого</div><b id="sumTotal">0</b>
         </div>
       </div>
-    </div>
 
-    <div class="card" style="margin-top:12px">
-      <b>Дни</b>
-      <div class="muted" style="margin-top:6px">Нажми на день, чтобы посмотреть детали</div>
-      <div id="daysList" style="margin-top:10px"></div>
+      <div class="itemcard" style="margin-top:12px">
+        <b>По дням</b>
+        <div id="daysList" style="margin-top:10px">
+          <div class="skeleton"></div><div class="skeleton"></div>
+        </div>
+      </div>
     </div>
 
     <div class="nav">
@@ -59,20 +55,22 @@
     </div>
 
     <div class="toast" id="toast"><div class="toast__text"></div></div>
+
     <div class="modal" id="modal">
       <div class="modal__backdrop"></div>
       <div class="modal__panel">
         <div class="modal__head">
-          <b class="modal__title">JSON</b>
-          <button class="btn" data-close>Close</button>
+          <div>
+            <b class="modal__title">День</b>
+            <div class="modal__subtitle" id="modalSubtitle"></div>
+          </div>
+          <button class="btn" data-close>Закрыть</button>
         </div>
         <div class="modal__body"></div>
       </div>
     </div>
   </div>
 
-  
   <script type="module" src="/staff-salary.js"></script>
 </body>
 </html>
-

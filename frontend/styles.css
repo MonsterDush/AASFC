@@ -299,3 +299,15 @@ select{min-width:160px}
   .cal-cell{padding:7px;min-height:68px}
   .badge{font-size:10px}
 }
+
+
+.day-salary{
+  margin-top:6px;
+  display:inline-block;
+  font-size:12px;
+  font-weight:700;
+  padding:2px 8px;
+  border-radius:999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+}

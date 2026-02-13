@@ -7,8 +7,6 @@ import {
   api,
   getActiveVenueId,
   setActiveVenueId,
-  getMe,
-  getMyVenuePermissions,
 } from "/app.js";
 
 applyTelegramTheme();
@@ -18,7 +16,6 @@ await ensureLogin({ silent: true });
 
 const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
-if (!venueId) toast("Сначала выбери заведение в «Настройках»", "warn");
 if (venueId) setActiveVenueId(venueId);
 
 await mountNav({ activeTab: "salary", requireVenue: true });
@@ -27,214 +24,179 @@ const el = {
   monthLabel: document.getElementById("monthLabel"),
   prev: document.getElementById("monthPrev"),
   next: document.getElementById("monthNext"),
+  sumSalary: document.getElementById("sumSalary"),
+  sumPenalties: document.getElementById("sumPenalties"),
+  sumBonuses: document.getElementById("sumBonuses"),
+  rowWriteoffs: document.getElementById("rowWriteoffs"),
+  sumWriteoffs: document.getElementById("sumWriteoffs"),
   sumTotal: document.getElementById("sumTotal"),
-  sumShifts: document.getElementById("sumShifts"),
-  sumNoReport: document.getElementById("sumNoReport"),
   daysList: document.getElementById("daysList"),
 };
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
 const modalBody = modal?.querySelector(".modal__body");
+const modalSubtitleEl = document.getElementById("modalSubtitle");
 function closeModal() { modal?.classList.remove("open"); }
 modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
 modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
-function openModal(title, bodyHtml) {
-  if (modalTitle) modalTitle.textContent = title || "Зарплата";
+function openModal(title, subtitle, bodyHtml) {
+  if (modalTitle) modalTitle.textContent = title || "День";
+  if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle || "";
   if (modalBody) modalBody.innerHTML = bodyHtml || "";
   modal?.classList.add("open");
 }
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
+let curMonth = new Date(); curMonth.setDate(1);
+
 function monthTitle(d) {
-  const m = d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
-  return m.charAt(0).toUpperCase() + m.slice(1);
+  const m = d.toLocaleString("ru-RU", { month: "long" });
+  return `${m[0].toUpperCase()}${m.slice(1)} ${d.getFullYear()}`;
 }
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[c]));
+function formatMoney(x) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return "0";
+  return Math.round(n).toString();
 }
-
-let me = null;
-let perms = null;
-let canViewRevenue = false;
-
-let curMonth = new Date();
-curMonth.setDate(1);
-
-async function loadContext() {
-  me = await getMe().catch(() => null);
-  perms = await getMyVenuePermissions(venueId).catch(() => null);
-  const flags = perms?.position_flags || {};
-  const posObj = perms?.position || {};
-  const role = perms?.role || perms?.venue_role || perms?.my_role || null;
-
-  canViewRevenue =
-    role === "OWNER" ||
-    role === "SUPER_ADMIN" ||
-    flags.can_view_revenue === true ||
-    flags.can_make_reports === true ||
-    posObj.can_view_revenue === true ||
-    posObj.can_make_reports === true;
+function esc(s){
+  return String(s ?? "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
-function intervalLabel(s) {
-  const i = s.interval || s.shift_interval || {};
-  const t = i.title || s.interval_title || "Смена";
-  const st = i.start_time || "";
-  const et = i.end_time || "";
-  return (st && et) ? `${t} (${st}-${et})` : t;
-}
-
-function groupByDate(shifts) {
-  const by = new Map();
-  for (const s of shifts) {
-    const dateStr = s.date;
-    if (!by.has(dateStr)) by.set(dateStr, []);
-    by.get(dateStr).push(s);
-  }
-  // sort shifts within day by interval time if exists
-  for (const [k, arr] of by.entries()) {
-    arr.sort((a, b) => String(a.interval?.start_time || "").localeCompare(String(b.interval?.start_time || "")));
-    by.set(k, arr);
-  }
-  return by;
-}
+let shifts = [];
+let days = []; // [{date, salary, hasReport, shifts:[] }]
 
 async function loadMonth() {
   if (!venueId) return;
 
-  el.monthLabel.textContent = monthTitle(curMonth);
-
   const m = ym(curMonth);
-  let shifts = [];
+  el.monthLabel.textContent = monthTitle(curMonth);
+  el.daysList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+
   try {
     const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m)}`);
-    shifts = Array.isArray(out) ? out : (out?.shifts || out?.items || out?.data || []);
+    shifts = Array.isArray(out) ? out : (out?.items || []);
   } catch (e) {
-    toast(e?.message || "Не удалось загрузить смены", "err");
     shifts = [];
+    toast(e?.message || "Не удалось загрузить смены", "err");
   }
 
-  // only my shifts
-  const myId = me?.id ?? null;
-  const myShifts = shifts.filter((s) => {
-    const assigns = (s.assignments || s.shift_assignments || []);
-    return assigns.some((a) => (a.member_user_id ?? a.user_id) === myId);
-  });
+  // group by date
+  const map = new Map(); // date -> {salary, hasReport, shifts:[]}
+  for (const s of shifts) {
+    const d = s.date;
+    if (!d) continue;
+    const row = map.get(d) || { date: d, salary: 0, hasReport: !!s.report_exists, shifts: [] };
+    row.hasReport = row.hasReport || !!s.report_exists;
+    row.shifts.push(s);
 
-  const byDate = groupByDate(myShifts);
-  const days = Array.from(byDate.keys()).sort();
+    const val = Number(s.my_salary);
+    if (Number.isFinite(val)) row.salary += val;
 
-  // totals
-  let total = 0;
-  let shiftsCount = 0;
-  let noReportDays = 0;
-
-  const dayRows = [];
-  for (const d of days) {
-    const list = byDate.get(d) || [];
-    shiftsCount += list.length;
-
-    const reportExists = list.some((s) => !!s.report_exists);
-    const salaries = list.map((s) => s.my_salary).filter((x) => x != null);
-    const sum = salaries.reduce((acc, x) => acc + Number(x), 0);
-
-    if (!reportExists) noReportDays += 1;
-    total += sum;
-
-    const revenueTotal = canViewRevenue ? (list.find((s) => s.revenue_total != null)?.revenue_total ?? null) : null;
-    dayRows.push({ date: d, list, reportExists, sum, revenueTotal });
+    map.set(d, row);
   }
 
-  if (el.sumTotal) el.sumTotal.textContent = total.toLocaleString("ru-RU") + "₽";
-  if (el.sumShifts) el.sumShifts.textContent = String(shiftsCount);
-  if (el.sumNoReport) el.sumNoReport.textContent = String(noReportDays);
+  days = Array.from(map.values()).sort((a,b)=>a.date.localeCompare(b.date));
 
-  renderDays(dayRows);
+  renderSummary();
+  renderDays();
 }
 
-function renderDays(dayRows) {
-  if (!el.daysList) return;
-  el.daysList.innerHTML = "";
+function renderSummary() {
+  const totalSalary = days.reduce((acc, d) => acc + (Number.isFinite(d.salary) ? d.salary : 0), 0);
 
-  if (!dayRows.length) {
-    const empty = document.createElement("div");
-    empty.className = "muted";
-    empty.textContent = "В этом месяце у тебя нет смен.";
-    el.daysList.appendChild(empty);
+  // Пока G1 не сделан — нули (но UI готов)
+  const totalPenalties = 0;
+  const totalBonuses = 0;
+
+  // Флаг удержания списаний (позже будет настройка заведения)
+  const holdWriteoffs = false;
+  const totalWriteoffs = 0;
+
+  el.sumSalary.textContent = formatMoney(totalSalary);
+  el.sumPenalties.textContent = formatMoney(totalPenalties);
+  el.sumBonuses.textContent = formatMoney(totalBonuses);
+
+  if (holdWriteoffs) {
+    el.rowWriteoffs.style.display = "flex";
+    el.sumWriteoffs.textContent = formatMoney(totalWriteoffs);
+  } else {
+    el.rowWriteoffs.style.display = "none";
+  }
+
+  const total = totalSalary - totalPenalties + totalBonuses - (holdWriteoffs ? totalWriteoffs : 0);
+  el.sumTotal.textContent = formatMoney(total);
+}
+
+function renderDays() {
+  el.daysList.innerHTML = "";
+  if (!days.length) {
+    el.daysList.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
     return;
   }
 
-  for (const r of dayRows) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "row";
-    btn.style.width = "100%";
-    btn.style.justifyContent = "space-between";
-    btn.style.alignItems = "center";
-    btn.style.gap = "10px";
-    btn.style.padding = "10px";
-    btn.style.borderRadius = "12px";
-    btn.style.border = "1px solid rgba(255,255,255,.08)";
-    btn.style.background = "transparent";
-    btn.style.cursor = "pointer";
-
-    const left = document.createElement("div");
-    left.innerHTML = `<b>${escapeHtml(r.date)}</b><div class="muted" style="font-size:12px">Смен: ${r.list.length}</div>`;
-
-    let rightText = "—";
-    if (!r.reportExists) rightText = "нет отчёта";
-    else rightText = (r.sum || 0).toLocaleString("ru-RU") + "₽";
-
-    const right = document.createElement("div");
-    right.style.textAlign = "right";
-    right.innerHTML = `<b>${escapeHtml(rightText)}</b>` +
-      (canViewRevenue && r.revenueTotal != null ? `<div class="muted" style="font-size:12px">Выручка: ${Number(r.revenueTotal).toLocaleString("ru-RU")}₽</div>` : "");
-
-    btn.appendChild(left);
-    btn.appendChild(right);
-    btn.addEventListener("click", () => openDayModal(r));
-
-    el.daysList.appendChild(btn);
+  for (const d of days) {
+    const card = document.createElement("div");
+    card.className = "dayrow";
+    card.innerHTML = `
+      <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
+        <div>
+          <b>${esc(d.date)}</b>
+          <div class="muted" style="font-size:12px">${d.hasReport ? "Есть отчёт" : "Нет отчёта"}</div>
+        </div>
+        <div class="dayrow__right">
+          <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "—"}</div>
+          <button class="btn" data-open>Подробнее</button>
+        </div>
+      </div>
+    `;
+    card.querySelector("[data-open]").addEventListener("click", () => openDayModal(d));
+    el.daysList.appendChild(card);
   }
 }
 
-function openDayModal(r) {
-  const lines = [];
-  for (const s of r.list) {
-    const label = intervalLabel(s);
-    const sal = s.my_salary != null ? `${Number(s.my_salary).toLocaleString("ru-RU")}₽` : (s.report_exists ? "—" : "нет отчёта");
-    lines.push(`<div class="row" style="justify-content:space-between;gap:10px"><div>${escapeHtml(label)}</div><b>${escapeHtml(sal)}</b></div>`);
-  }
-
-  const revenueLine = (canViewRevenue && r.revenueTotal != null)
-    ? `<div class="row" style="justify-content:space-between;gap:10px;margin-top:8px"><div class="muted">Выручка за день</div><b>${Number(r.revenueTotal).toLocaleString("ru-RU")}₽</b></div>`
-    : "";
+function openDayModal(d) {
+  const shiftsHtml = (d.shifts || []).map(s => {
+    const interval = s.interval?.title || s.interval_title || s.interval?.id || "Смена";
+    const sal = Number(s.my_salary);
+    const salText = Number.isFinite(sal) ? ("+"+formatMoney(sal)) : "—";
+    return `
+      <div style="border-bottom:1px solid var(--border); padding:10px 0;">
+        <div class="row" style="justify-content:space-between; align-items:center; gap:10px">
+          <div>
+            <b>${esc(interval)}</b>
+            <div class="muted" style="font-size:12px">${s.report_exists ? "Отчёт есть" : "Нет отчёта"}</div>
+          </div>
+          <div class="day-salary" style="${Number.isFinite(sal) ? "" : "opacity:.45"}">${esc(salText)}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
 
   openModal(
-    `День ${escapeHtml(r.date)}`,
-    `<div style="display:flex;flex-direction:column;gap:10px">
-       ${!r.reportExists ? `<div class="muted">Отчёта за день нет — зарплата не считается.</div>` : ""}
-       <div style="display:flex;flex-direction:column;gap:8px">${lines.join("")}</div>
-       ${revenueLine}
-     </div>`
+    `День ${d.date}`,
+    "",
+    `<div class="itemcard">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div class="muted">Итого за день</div>
+          <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "—"}</div>
+        </div>
+        <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
+      </div>`
   );
 }
 
-// month navigation
-el.prev?.addEventListener("click", async () => {
+el.prev.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() - 1);
   curMonth.setDate(1);
   await loadMonth();
 });
-el.next?.addEventListener("click", async () => {
+el.next.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() + 1);
   curMonth.setDate(1);
   await loadMonth();
 });
 
-await loadContext();
-await loadMonth();
+loadMonth();
