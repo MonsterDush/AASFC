@@ -223,8 +223,8 @@ def my_venue_permissions(
             "rate": pos.rate,
             "percent": pos.percent,
             "can_make_reports": bool(pos.can_make_reports),
-            "can_view_reports": bool(pos.can_view_reports),
-            "can_view_revenue": bool(pos.can_view_revenue),
+            "can_view_reports": bool(pos.can_view_reports or pos.can_make_reports),
+            "can_view_revenue": bool(pos.can_view_revenue or pos.can_make_reports),
             "can_edit_schedule": bool(pos.can_edit_schedule),
             "is_active": bool(pos.is_active),
         }
