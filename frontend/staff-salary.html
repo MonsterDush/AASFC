@@ -21,9 +21,36 @@
     </div>
 
     <div class="card" style="margin-top:12px">
-  <b>Зарплата</b>
-  <div class="muted" style="margin-top:6px">Раздел в разработке</div>
-</div>
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div class="row" style="gap:10px;align-items:center">
+          <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
+          <b id="monthLabel">…</b>
+          <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
+        </div>
+        <div class="muted" style="font-size:12px">Зарплата считается только при наличии отчёта за день</div>
+      </div>
+
+      <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap">
+        <div class="pill" style="flex:1;min-width:160px">
+          <div class="muted" style="font-size:12px">Всего за месяц</div>
+          <div style="font-size:22px"><b id="sumTotal">—</b></div>
+        </div>
+        <div class="pill" style="flex:1;min-width:160px">
+          <div class="muted" style="font-size:12px">Смен</div>
+          <div style="font-size:22px"><b id="sumShifts">—</b></div>
+        </div>
+        <div class="pill" style="flex:1;min-width:160px">
+          <div class="muted" style="font-size:12px">Дней без отчёта</div>
+          <div style="font-size:22px"><b id="sumNoReport">—</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <b>Дни</b>
+      <div class="muted" style="margin-top:6px">Нажми на день, чтобы посмотреть детали</div>
+      <div id="daysList" style="margin-top:10px"></div>
+    </div>
 
     <div class="nav">
       <div class="wrap">
@@ -45,21 +72,7 @@
   </div>
 
   
-  <script type="module">
-import { applyTelegramTheme, ensureLogin, mountCommonUI, mountNav, setActiveVenueId, getActiveVenueId } from "/app.js";
-
-applyTelegramTheme();
-mountCommonUI("salary");
-
-await ensureLogin({ silent: true });
-
-const params = new URLSearchParams(location.search);
-const venueId = params.get("venue_id") || getActiveVenueId();
-if (venueId) setActiveVenueId(venueId);
-
-
-await mountNav({ activeTab: "salary", requireVenue: true });
-</script>
+  <script type="module" src="/staff-salary.js"></script>
 </body>
 </html>
 

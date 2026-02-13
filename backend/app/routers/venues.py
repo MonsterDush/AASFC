@@ -50,15 +50,10 @@ class PositionCreateIn(BaseModel):
     member_user_id: int = Field(..., gt=0)
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
-
-    # Reports permissions
     can_make_reports: bool = False
     can_view_reports: bool = False
     can_view_revenue: bool = False
-
-    # Schedule permissions
     can_edit_schedule: bool = False
-
     is_active: bool = True
 
 
@@ -67,15 +62,10 @@ class PositionUpdateIn(BaseModel):
     member_user_id: int | None = Field(default=None, gt=0)
     rate: int | None = Field(default=None, ge=0)
     percent: int | None = Field(default=None, ge=0, le=100)
-
-    # Reports permissions
     can_make_reports: bool | None = None
     can_view_reports: bool | None = None
     can_view_revenue: bool | None = None
-
-    # Schedule permissions
     can_edit_schedule: bool | None = None
-
     is_active: bool | None = None
 
 
@@ -84,7 +74,6 @@ class DailyReportUpsertIn(BaseModel):
     cash: int = Field(0, ge=0)
     cashless: int = Field(0, ge=0)
     revenue_total: int = Field(0, ge=0)
-
 
 class ShiftIntervalCreateIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
@@ -173,7 +162,6 @@ def _require_schedule_editor(db: Session, *, venue_id: int, user: User) -> None:
 
 
 def _is_report_maker(db: Session, *, venue_id: int, user: User) -> bool:
-    # Owners / system admins are always allowed
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
 
@@ -193,7 +181,6 @@ def _require_report_maker(db: Session, *, venue_id: int, user: User) -> None:
 
 
 def _is_report_viewer(db: Session, *, venue_id: int, user: User) -> bool:
-    # Owners / system admins are always allowed
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
 
@@ -204,8 +191,7 @@ def _is_report_viewer(db: Session, *, venue_id: int, user: User) -> bool:
             VenuePosition.is_active.is_(True),
         )
     ).scalar_one_or_none()
-
-    # Makers can always view reports too
+    # report maker can always view
     return bool(pos and (pos.can_view_reports or pos.can_make_reports))
 
 
@@ -215,7 +201,6 @@ def _require_report_viewer(db: Session, *, venue_id: int, user: User) -> None:
 
 
 def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
-    # Owners / system admins are always allowed
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
 
@@ -226,8 +211,7 @@ def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
             VenuePosition.is_active.is_(True),
         )
     ).scalar_one_or_none()
-
-    # Makers can always view numbers
+    # report maker can always view numbers
     return bool(pos and (pos.can_view_revenue or pos.can_make_reports))
 
 
@@ -366,6 +350,9 @@ def delete_venue(
     db.execute(delete(VenuePosition).where(VenuePosition.venue_id == venue_id))
     db.execute(delete(VenueInvite).where(VenueInvite.venue_id == venue_id))
     db.execute(delete(VenueMember).where(VenueMember.venue_id == venue_id))
+
+    # Daily reports
+    db.execute(delete(DailyReport).where(DailyReport.venue_id == venue_id))
 
     # Venue itself
     db.execute(delete(Venue).where(Venue.id == venue_id))
@@ -601,6 +588,10 @@ def update_position(
         pos.percent = payload.percent
     if payload.can_make_reports is not None:
         pos.can_make_reports = payload.can_make_reports
+    if payload.can_view_reports is not None:
+        pos.can_view_reports = payload.can_view_reports
+    if payload.can_view_revenue is not None:
+        pos.can_view_revenue = payload.can_view_revenue
     if payload.can_edit_schedule is not None:
         pos.can_edit_schedule = payload.can_edit_schedule
     if payload.is_active is not None:
@@ -628,7 +619,6 @@ def delete_position(
     pos.is_active = False
     db.commit()
     return {"ok": True}
-
 
 
 # ---------- Daily reports ----------
@@ -681,9 +671,9 @@ def list_daily_reports(
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
     try:
-        y_str, m_str = month.split("-")
-        y = int(y_str)
-        m = int(m_str)
+        y_s, m_s = month.split("-")
+        y = int(y_s)
+        m = int(m_s)
         start = date(y, m, 1)
         end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
     except Exception:
@@ -696,7 +686,6 @@ def list_daily_reports(
     ).scalars().all()
 
     show_numbers = _can_view_revenue(db, venue_id=venue_id, user=user)
-
     return [
         {
             "id": r.id,
@@ -726,7 +715,6 @@ def get_daily_report(
         raise HTTPException(status_code=404, detail="Report not found")
 
     show_numbers = _can_view_revenue(db, venue_id=venue_id, user=user)
-
     return {
         "id": r.id,
         "date": r.date.isoformat(),
@@ -1070,6 +1058,17 @@ def list_shifts(
 
     shifts = db.execute(stmt.order_by(Shift.date.asc(), Shift.id.asc())).scalars().all()
 
+    # preload daily reports for these shift dates (for report_exists + salary calculation)
+    shift_dates = {s.date for s in shifts}
+    report_by_date: dict[date, DailyReport] = {}
+    if shift_dates:
+        rrows = db.execute(
+            select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date.in_(shift_dates))
+        ).scalars().all()
+        report_by_date = {r.date: r for r in rrows}
+
+    show_revenue = _can_view_revenue(db, venue_id=venue_id, user=user)
+
     # preload intervals
     interval_ids = {s.interval_id for s in shifts}
     intervals = {}
@@ -1121,6 +1120,23 @@ def list_shifts(
             "end_time": it.end_time.strftime("%H:%M"),
         }
 
+    # preload my assignments (so we can compute my_salary without leaking others' rates)
+    my_assignment_by_shift: dict[int, dict] = {}
+    if shift_ids:
+        my_rows = db.execute(
+            select(
+                ShiftAssignment.shift_id,
+                VenuePosition.rate,
+                VenuePosition.percent,
+            )
+            .join(VenuePosition, VenuePosition.id == ShiftAssignment.venue_position_id)
+            .where(
+                ShiftAssignment.shift_id.in_(shift_ids),
+                ShiftAssignment.member_user_id == user.id,
+            )
+        ).all()
+        my_assignment_by_shift = {r.shift_id: {"rate": int(r.rate), "percent": int(r.percent)} for r in my_rows}
+
     return [
         {
             "id": s.id,
@@ -1129,6 +1145,17 @@ def list_shifts(
             "interval_id": s.interval_id,
             "is_active": bool(s.is_active),
             "assignments": assignments_by_shift.get(s.id, []),
+            "report_exists": bool(report_by_date.get(s.date)),
+            "revenue_total": (
+                report_by_date.get(s.date).revenue_total
+                if (show_revenue and report_by_date.get(s.date))
+                else None
+            ),
+            "my_salary": (
+                (my_assignment_by_shift.get(s.id)["rate"] + (my_assignment_by_shift.get(s.id)["percent"] / 100.0) * report_by_date.get(s.date).revenue_total)
+                if (report_by_date.get(s.date) and my_assignment_by_shift.get(s.id))
+                else None
+            ),
         }
         for s in shifts
     ]

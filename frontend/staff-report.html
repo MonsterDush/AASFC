@@ -21,9 +21,19 @@
     </div>
 
     <div class="card" style="margin-top:12px">
-  <b>Отчёт</b>
-  <div class="muted" style="margin-top:6px">Раздел в разработке</div>
-</div>
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div class="row" style="gap:10px;align-items:center">
+          <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
+          <b id="monthLabel">…</b>
+          <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
+        </div>
+        <div class="muted" style="font-size:12px">Открывай день, чтобы посмотреть/создать отчёт</div>
+      </div>
+
+      <div id="calGrid" class="cal" style="margin-top:10px"></div>
+    </div>
+
+    <div id="dayPanel" class="daypanel" style="margin-top:12px"></div>
 
     <div class="nav">
       <div class="wrap">
@@ -45,21 +55,7 @@
   </div>
 
   
-  <script type="module">
-import { applyTelegramTheme, ensureLogin, mountCommonUI, mountNav, setActiveVenueId, getActiveVenueId } from "/app.js";
-
-applyTelegramTheme();
-mountCommonUI("report");
-
-await ensureLogin({ silent: true });
-
-const params = new URLSearchParams(location.search);
-const venueId = params.get("venue_id") || getActiveVenueId();
-if (venueId) setActiveVenueId(venueId);
-
-
-await mountNav({ activeTab: "report", requireVenue: true });
-</script>
+  <script type="module" src="/staff-report.js"></script>
 </body>
 </html>
 

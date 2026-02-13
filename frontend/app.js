@@ -568,7 +568,16 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
     try {
       const perms = await getMyVenuePermissions(activeVenueId);
       const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
-      showReport = perms?.can_make_reports === true || has("SHIFT_REPORTS_CREATE") || has("SHIFT_REPORTS_EDIT");
+      const flags = perms?.position_flags || {};
+      const posObj = perms?.position || {};
+      showReport =
+        perms?.can_make_reports === true ||
+        flags.can_make_reports === true ||
+        flags.can_view_reports === true ||
+        posObj.can_make_reports === true ||
+        posObj.can_view_reports === true ||
+        has("SHIFT_REPORTS_CREATE") ||
+        has("SHIFT_REPORTS_EDIT");
     } catch {
       showReport = false;
     }
