@@ -21,11 +21,11 @@
     </div>
 
     <div class="card">
-      
+
       <div id="selectorCard" class="itemcard" style="margin-top:12px; display:none;">
         <b>Выбрать заведение</b>
         <div class="muted" style="margin-top:6px">
-          Ты открыл страницу без <span class="mono">venue_id</span>. Как SUPER_ADMIN ты можешь выбрать любое заведение.
+          Ты открыл страницу без <span class="mono">venue_id</span>. Выбери заведение из списка.
         </div>
 
         <div class="row" style="margin-top:10px">
@@ -39,6 +39,10 @@
 
       <div class="itemcard" style="margin-top:12px">
         <b id="inviteTitle">Пригласить участника</b>
+
+        <!-- ✅ ДОБАВЛЕНО: venueMeta, чтобы JS не падал -->
+        <div id="venueMeta" class="muted mono" style="margin-top:6px"></div>
+
         <div class="row" style="margin-top:10px">
           <input id="tg" placeholder="tg username (с @ или без)" />
           <select id="role">
@@ -51,18 +55,21 @@
           <span class="mono">POST /venues/{venue_id}/invites</span>
         </div>
       </div>
-        <div class="itemcard" style="margin-top:12px">
-          <b>Приглашения в ожидании</b>
-          <div id="pending" style="margin-top:10px">
-            <div class="skeleton"></div><div class="skeleton"></div>
-          </div>
+
+      <div class="itemcard" style="margin-top:12px">
+        <b>Приглашения в ожидании</b>
+        <div id="pending" style="margin-top:10px">
+          <div class="skeleton"></div><div class="skeleton"></div>
         </div>
-        <div class="itemcard" style="margin-top:12px">
-          <b>Участники</b>
-          <div id="members" style="margin-top:10px">
-            <div class="skeleton"></div><div class="skeleton"></div>
-          </div>
+      </div>
+
+      <div class="itemcard" style="margin-top:12px">
+        <b>Участники</b>
+        <div id="members" style="margin-top:10px">
+          <div class="skeleton"></div><div class="skeleton"></div>
         </div>
+      </div>
+
     </div>
   </div>
 
@@ -85,194 +92,204 @@
   </div>
 
   <script type="module">
+    import {
+      applyTelegramTheme,
+      ensureLogin,
+      api,
+      toast,
+      mountCommonUI,
+      setActiveVenueId,
+      getActiveVenueId,
+      mountNav,
+      getVenueById
+    } from "/app.js";
 
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, getActiveVenueId, mountNav, getVenueById } from "/app.js";
+    applyTelegramTheme();
+    mountCommonUI("invites");
 
-applyTelegramTheme();
-mountCommonUI("invites");
+    await ensureLogin({ silent:true });
+    await mountNav({ activeTab: "none" });
 
-await ensureLogin({ silent:true });
-await mountNav({ activeTab: "none" });
-
-(async () => {
-
-
-    
-    
-
-    function esc(s){
-      return String(s ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-    }
-
-    const params = new URLSearchParams(location.search);
-    let venueId = params.get("venue_id") || getActiveVenueId();
-    let venueName = "";
-
-    if (venueId) setActiveVenueId(venueId);
-
-    const selectorCard = document.getElementById("selectorCard");
-    const venueSelect = document.getElementById("venueSelect");
-    const btnUseVenue = document.getElementById("btnUseVenue");
-    const openLink = document.getElementById("openLink");
-
-    const venueMeta = document.getElementById("venueMeta");
-    const pending = document.getElementById("pending");
-    const members = document.getElementById("members");
-
-    const btnInvite = document.getElementById("btnInvite");
-
-    function setVenueMeta() {
-      venueMeta.textContent = venueId ? `venue_id=${venueId}` : "Заведение не выбрано";
-      // Заголовок формы приглашения
-      const t = document.getElementById("inviteTitle");
-      if (t) t.textContent = venueName ? `Пригласить участника в ${venueName}` : "Пригласить участника";
-    }
-
-    async function loadVenuesForSelector() {
-      selectorCard.style.display = "block";
-      venueSelect.innerHTML = `<option value="">Загружаю заведения…</option>`;
-      openLink.style.display = "none";
-
-      try {
-        const venues = await api("/venues");
-        window.__lastJson = venues;
-
-        venueSelect.innerHTML = `<option value="">Выберите заведение…</option>`;
-        venues.forEach(v => {
-          const opt = document.createElement("option");
-          opt.value = String(v.id);
-          opt.textContent = `${v.name} (id=${v.id})`;
-          venueSelect.appendChild(opt);
-        });
-      } catch (e) {
-        venueSelect.innerHTML = `<option value="">Ошибка загрузки заведений</option>`;
-        toast("Ошибка загрузки заведений: " + e.message, "err");
+    (async () => {
+      function esc(s){
+        return String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
       }
-    }
 
-    function renderPending(items) {
-      pending.innerHTML = "";
-      if (!items?.length) {
-        pending.innerHTML = `<div class="muted">Нет ожидающих приглашений</div>`;
-        return;
+      const params = new URLSearchParams(location.search);
+      let venueId = params.get("venue_id") || getActiveVenueId();
+      let venueName = "";
+
+      if (venueId) setActiveVenueId(venueId);
+
+      const selectorCard = document.getElementById("selectorCard");
+      const venueSelect = document.getElementById("venueSelect");
+      const btnUseVenue = document.getElementById("btnUseVenue");
+      const openLink = document.getElementById("openLink");
+
+      const venueMeta = document.getElementById("venueMeta");
+      const pending = document.getElementById("pending");
+      const members = document.getElementById("members");
+      const btnInvite = document.getElementById("btnInvite");
+
+      function setVenueMeta() {
+        if (venueMeta) {
+          venueMeta.textContent = venueId ? `venue_id=${venueId}` : "Заведение не выбрано";
+        }
+        const t = document.getElementById("inviteTitle");
+        if (t) t.textContent = venueName ? `Пригласить участника в ${venueName}` : "Пригласить участника";
       }
-      items.forEach(i => {
-        const row = document.createElement("div");
-        row.className = "row";
-        row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
-        row.innerHTML = `
-          <div>
-            <b>@${esc(i.tg_username)}</b> <span class="mono">роль=${esc(i.venue_role)}</span><br/>
-            <span class="mono">${esc(i.created_at || "")}</span>
-          </div>
-          <button class="btn danger" data-cancel>Отменить</button>
-        `;
-        row.querySelector("[data-cancel]").onclick = async () => {
-          try {
-            await api(`/venues/${venueId}/invites/${i.id}`, { method:"DELETE" });
-            toast("Приглашение отменено", "ok");
-            await loadMembers();
-          } catch (e) {
-            toast("Ошибка отмены: " + e.message, "err");
+
+      async function loadVenuesForSelector() {
+        selectorCard.style.display = "block";
+        venueSelect.innerHTML = `<option value="">Загружаю заведения…</option>`;
+        openLink.style.display = "none";
+
+        try {
+          // ✅ ВАЖНО: для обычного пользователя — /me/venues
+          const venues = await api("/me/venues");
+          window.__lastJson = venues;
+
+          if (!Array.isArray(venues) || venues.length === 0) {
+            venueSelect.innerHTML = `<option value="">Нет доступных заведений</option>`;
+            return;
           }
-        };
-        pending.appendChild(row);
-      });
-    }
 
-    function renderMembers(items) {
-      members.innerHTML = "";
-      if (!items?.length) {
-        members.innerHTML = `<div class="muted">Участников пока нет</div>`;
-        return;
-      }
-      items.forEach(m => {
-        const row = document.createElement("div");
-        row.style = "border-bottom:1px solid var(--border); padding:10px 0;";
-        row.innerHTML = `
-          <div>
-            <b>@${esc(m.tg_username || "-")}</b> <span class="mono">роль=${esc(m.venue_role)}</span><br/>
-            <span class="mono">user_id=${esc(m.user_id)} · tg_user_id=${esc(m.tg_user_id || "-")}</span>
-          </div>
-        `;
-        members.appendChild(row);
-      });
-    }
-
-    async function ensureVenueName() {
-      if (!venueId) { venueName = ""; return; }
-      try {
-        const v = await getVenueById(venueId);
-        venueName = v?.name || "";
-      } catch { venueName = ""; }
-    }
-
-    async function loadMembers() {
-      if (!venueId) {
-        pending.innerHTML = `<div class="muted">Нужен venue_id (выбери venue)</div>`;
-        members.innerHTML = `<div class="muted">Нужен venue_id (выбери venue)</div>`;
-        return;
+          venueSelect.innerHTML = `<option value="">Выберите заведение…</option>`;
+          venues.forEach(v => {
+            const opt = document.createElement("option");
+            opt.value = String(v.id);
+            opt.textContent = `${v.name} (id=${v.id})`;
+            venueSelect.appendChild(opt);
+          });
+        } catch (e) {
+          venueSelect.innerHTML = `<option value="">Ошибка загрузки заведений</option>`;
+          toast("Ошибка загрузки заведений: " + e.message, "err");
+        }
       }
 
-      await ensureVenueName();
-      setVenueMeta();
-
-      pending.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
-      members.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
-
-      try {
-        const data = await api(`/venues/${venueId}/members`);
-        window.__lastJson = data;
-        renderPending(data.pending_invites);
-        renderMembers(data.members);
-      } catch (e) {
-        pending.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
-        members.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
-        toast("Ошибка загрузки: " + e.message, "err");
+      function renderPending(items) {
+        pending.innerHTML = "";
+        if (!items?.length) {
+          pending.innerHTML = `<div class="muted">Нет ожидающих приглашений</div>`;
+          return;
+        }
+        items.forEach(i => {
+          const row = document.createElement("div");
+          row.className = "row";
+          row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
+          row.innerHTML = `
+            <div>
+              <b>@${esc(i.tg_username)}</b> <span class="mono">роль=${esc(i.venue_role)}</span><br/>
+              <span class="mono">${esc(i.created_at || "")}</span>
+            </div>
+            <button class="btn danger" data-cancel>Отменить</button>
+          `;
+          row.querySelector("[data-cancel]").onclick = async () => {
+            try {
+              await api(`/venues/${venueId}/invites/${i.id}`, { method:"DELETE" });
+              toast("Приглашение отменено", "ok");
+              await loadMembers();
+            } catch (e) {
+              toast("Ошибка отмены: " + e.message, "err");
+            }
+          };
+          pending.appendChild(row);
+        });
       }
-    }
 
-    btnInvite.onclick = async () => {
-      if (!venueId) { toast("Нет заведения — выбери заведение", "warn"); return; }
-      const tg = document.getElementById("tg").value.trim();
-      const role = document.getElementById("role").value;
-      if (!tg) { toast("Введи username", "warn"); return; }
+      function renderMembers(items) {
+        members.innerHTML = "";
+        if (!items?.length) {
+          members.innerHTML = `<div class="muted">Участников пока нет</div>`;
+          return;
+        }
+        items.forEach(m => {
+          const row = document.createElement("div");
+          row.style = "border-bottom:1px solid var(--border); padding:10px 0;";
+          row.innerHTML = `
+            <div>
+              <b>@${esc(m.tg_username || "-")}</b> <span class="mono">роль=${esc(m.venue_role)}</span><br/>
+              <span class="mono">user_id=${esc(m.user_id)} · tg_user_id=${esc(m.tg_user_id || "-")}</span>
+            </div>
+          `;
+          members.appendChild(row);
+        });
+      }
 
-      try {
-        await api(`/venues/${venueId}/invites`, { method:"POST", body: { tg_username: tg, venue_role: role } });
-        document.getElementById("tg").value = "";
-        toast("Приглашение отправлено", "ok");
+      async function ensureVenueName() {
+        if (!venueId) { venueName = ""; return; }
+        try {
+          const v = await getVenueById(venueId);
+          venueName = v?.name || "";
+        } catch { venueName = ""; }
+      }
+
+      async function loadMembers() {
+        if (!venueId) {
+          pending.innerHTML = `<div class="muted">Нужен venue_id (выбери заведение)</div>`;
+          members.innerHTML = `<div class="muted">Нужен venue_id (выбери заведение)</div>`;
+          return;
+        }
+
+        await ensureVenueName();
+        setVenueMeta();
+
+        pending.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+        members.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+
+        try {
+          const data = await api(`/venues/${venueId}/members`);
+          window.__lastJson = data;
+          renderPending(data.pending_invites);
+          renderMembers(data.members);
+        } catch (e) {
+          pending.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
+          members.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
+          toast("Ошибка загрузки: " + e.message, "err");
+        }
+      }
+
+      btnInvite.onclick = async () => {
+        if (!venueId) { toast("Нет заведения — выбери заведение", "warn"); return; }
+        const tg = document.getElementById("tg").value.trim();
+        const role = document.getElementById("role").value;
+        if (!tg) { toast("Введи username", "warn"); return; }
+
+        try {
+          await api(`/venues/${venueId}/invites`, { method:"POST", body: { tg_username: tg, venue_role: role } });
+          document.getElementById("tg").value = "";
+          toast("Приглашение отправлено", "ok");
+          await loadMembers();
+        } catch (e) {
+          toast("Ошибка приглашения: " + e.message, "err");
+        }
+      };
+
+      btnUseVenue.onclick = async () => {
+        const v = venueSelect.value;
+        if (!v) { toast("Выбери заведение", "warn"); return; }
+        venueId = v;
+        setActiveVenueId(venueId);
+
+        openLink.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
+        openLink.style.display = "inline";
+
+        await ensureVenueName();
+        setVenueMeta();
         await loadMembers();
-      } catch (e) {
-        toast("Ошибка приглашения: " + e.message, "err");
+      };
+
+      async function boot(){
+        await ensureVenueName();
+        setVenueMeta();
+        if (!venueId) await loadVenuesForSelector();
+        await loadMembers();
       }
-    };
-
-    btnUseVenue.onclick = async () => {
-      const v = venueSelect.value;
-      if (!v) { toast("Выбери заведение", "warn"); return; }
-      venueId = v;
-
-      openLink.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
-      openLink.style.display = "inline";
-
-      await ensureVenueName();
-      setVenueMeta();
-      await loadMembers();
-    };
-
-    async function boot(){
-      await ensureVenueName();
-      setVenueMeta();
-      if (!venueId) await loadVenuesForSelector();
-      await loadMembers();
-    }
-    boot();
-})();
-
-</script>
+      boot();
+    })();
+  </script>
 </body>
 </html>
