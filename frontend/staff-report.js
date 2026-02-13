@@ -8,326 +8,216 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenuePermissions,
+  getVenueById,
 } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("report");
-
 await ensureLogin({ silent: true });
-await mountNav({ activeTab: "report" });
 
 const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
-const el = {
+await mountNav({ activeTab: "report" });
+
+const els = {
   monthLabel: document.getElementById("monthLabel"),
   prev: document.getElementById("monthPrev"),
   next: document.getElementById("monthNext"),
   grid: document.getElementById("calGrid"),
   dayPanel: document.getElementById("dayPanel"),
+  venueMeta: document.getElementById("venueMeta"),
 };
 
-const modal = document.getElementById("modal");
-const modalTitle = modal?.querySelector(".modal__title");
-const modalBody = modal?.querySelector(".modal__body");
+const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 
-function openModal(title, html) {
-  if (!modal || !modalTitle || !modalBody) return;
-  modalTitle.textContent = title || "Окно";
-  modalBody.innerHTML = html;
-  modal.classList.add("open");
-}
-function closeModal() {
-  modal?.classList.remove("open");
-}
-document.querySelector("#modal [data-close]")?.addEventListener("click", closeModal);
-document.querySelector("#modal .modal__backdrop")?.addEventListener("click", closeModal);
-
-function esc(s) {
+function esc(s){
   return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
-
-function ymd(d) {
-  const dt = new Date(d);
+function ymd(d){
+  const dt = (d instanceof Date) ? d : new Date(d);
   const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getDate()).padStart(2, "0");
+  const m = String(dt.getMonth()+1).padStart(2,"0");
+  const dd = String(dt.getDate()).padStart(2,"0");
   return `${y}-${m}-${dd}`;
 }
-function ym(d) {
-  const dt = new Date(d);
+function ym(d){
+  const dt = (d instanceof Date) ? d : new Date(d);
   const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const m = String(dt.getMonth()+1).padStart(2,"0");
   return `${y}-${m}`;
 }
-function monthTitle(d) {
-  const dt = new Date(d);
+function monthTitle(d){
+  const dt = (d instanceof Date) ? d : new Date(d);
   const m = dt.toLocaleString("ru-RU", { month: "long" });
   const y = dt.getFullYear();
   return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${y}`;
 }
 
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
 let curMonth = new Date();
 curMonth.setDate(1);
 
-let reportsByDate = new Map(); // dateISO -> report
-let perms = {
-  can_make_reports: false,
-  can_view_reports: false,
-  can_view_revenue: false,
-  is_owner: false, // если вдруг появится
-};
+let venueName = "";
+let perms = { role: null, flags: {} };
+let reportsByDate = new Map();
+let selectedDay = null;
 
-async function loadPermsBestEffort() {
-  // best-effort: если не получилось — не блокируем UI
-  perms = { can_make_reports: false, can_view_reports: false, can_view_revenue: false, is_owner: false };
+async function loadVenueMeta(){
+  if (!venueId) {
+    els.venueMeta.textContent = "Заведение не выбрано";
+    return;
+  }
+  try {
+    const v = await getVenueById(venueId);
+    venueName = v?.name || "";
+  } catch { venueName = ""; }
+  els.venueMeta.textContent = venueName ? `Заведение: ${venueName}` : `venue_id=${venueId}`;
+}
 
+async function loadPerms(){
+  perms = { role: null, flags: {} };
   if (!venueId) return;
-
   try {
     const p = await getMyVenuePermissions(venueId);
-
-    // разные варианты структуры: поддержим все
-    const flags = p?.position_flags || p?.position || {};
-    const hasList = Array.isArray(p?.permissions) ? p.permissions : [];
-
-    const has = (code) => hasList.includes(code);
-
-    const canMake =
-      p?.can_make_reports === true ||
-      flags.can_make_reports === true ||
-      has("SHIFT_REPORTS_CREATE") ||
-      has("SHIFT_REPORTS_EDIT");
-
-    const canView =
-      p?.can_view_reports === true ||
-      flags.can_view_reports === true ||
-      canMake ||
-      has("SHIFT_REPORTS_VIEW");
-
-    const canRevenue =
-      p?.can_view_revenue === true ||
-      flags.can_view_revenue === true ||
-      canMake ||
-      has("SHIFT_REVENUE_VIEW");
-
-    perms.can_make_reports = !!canMake;
-    perms.can_view_reports = !!canView;
-    perms.can_view_revenue = !!canRevenue;
-
-    // если у тебя где-то прокидывается owner-флаг — тоже учтём
-    perms.is_owner = p?.is_owner === true;
-  } catch {
-    // молча — но UI не блокируем
-  }
+    perms.role = p?.role || null;
+    perms.flags = p?.position_flags || p?.position || {};
+    if (perms.flags.can_make_reports) {
+      perms.flags.can_view_reports = true;
+      perms.flags.can_view_revenue = true;
+    }
+  } catch { perms = { role: null, flags: {} }; }
 }
+const canViewReports = () => perms.role === "OWNER" || !!perms.flags.can_view_reports || !!perms.flags.can_make_reports;
+const canEditReports = () => perms.role === "OWNER" || !!perms.flags.can_make_reports;
+const canViewRevenue = () => perms.role === "OWNER" || !!perms.flags.can_view_revenue || !!perms.flags.can_make_reports;
 
-async function loadMonthReports() {
+async function loadMonthReports(){
   reportsByDate = new Map();
-  if (!venueId) return;
-
-  const m = ym(curMonth);
+  if (!venueId || !canViewReports()) return;
+  const month = ym(curMonth);
   try {
-    const list = await api(`/venues/${encodeURIComponent(venueId)}/reports?month=${encodeURIComponent(m)}`);
-    (list || []).forEach((r) => {
-      if (r?.date) reportsByDate.set(r.date, r);
-    });
-  } catch (e) {
-    // если нет права — просто покажем пустой календарь, но не сломаем UI
-    reportsByDate = new Map();
-  }
+    const list = await api(`/venues/${encodeURIComponent(venueId)}/reports?month=${encodeURIComponent(month)}`);
+    (list || []).forEach(r => { if (r?.date) reportsByDate.set(r.date, r); });
+  } catch { reportsByDate = new Map(); }
 }
 
-function renderMonth() {
-  if (!el.grid || !el.monthLabel) return;
-
-  el.monthLabel.textContent = monthTitle(curMonth);
-  el.grid.innerHTML = "";
+function renderMonth(){
+  els.monthLabel.textContent = monthTitle(curMonth);
+  els.grid.innerHTML = "";
 
   const head = document.createElement("div");
   head.className = "cal-head";
-  for (const wd of WEEKDAYS) {
+  WEEKDAYS.forEach(w => {
     const c = document.createElement("div");
     c.className = "cal-hcell";
-    c.textContent = wd;
+    c.textContent = w;
     head.appendChild(c);
-  }
-  el.grid.appendChild(head);
+  });
+  els.grid.appendChild(head);
 
   const body = document.createElement("div");
   body.className = "cal-body";
 
   const first = new Date(curMonth);
-  const jsDow = first.getDay(); // 0 Sun..6 Sat
-  const mondayBased = (jsDow + 6) % 7; // Mon=0..Sun=6
+  const jsDow = first.getDay();
+  const mondayBased = (jsDow + 6) % 7;
   const start = new Date(first);
   start.setDate(first.getDate() - mondayBased);
 
-  const todayStr = ymd(new Date());
   const monthStr = ym(curMonth);
+  const todayStr = ymd(new Date());
 
-  for (let i = 0; i < 42; i++) {
+  for (let i=0;i<42;i++){
     const d = new Date(start);
-    d.setDate(start.getDate() + i);
+    d.setDate(start.getDate()+i);
     const dStr = ymd(d);
 
     const cell = document.createElement("button");
     cell.type = "button";
     cell.className = "cal-cell";
+    const hasReport = reportsByDate.has(dStr);
+
     cell.innerHTML = `
       <div class="cal-num">${d.getDate()}</div>
-      <div class="cal-sub muted" style="font-size:11px">${esc(reportsByDate.has(dStr) ? "есть отчёт" : "")}</div>
+      <div class="cal-sub muted" style="font-size:11px">${hasReport ? "отчёт" : ""}</div>
     `;
 
     if (ym(d) !== monthStr) cell.classList.add("is-out");
     if (dStr === todayStr) cell.classList.add("is-today");
-    if (reportsByDate.has(dStr)) cell.classList.add("has-report");
+    if (hasReport) cell.classList.add("has-report");
+    if (selectedDay === dStr) cell.classList.add("is-selected");
 
     cell.addEventListener("click", () => openDay(dStr));
     body.appendChild(cell);
   }
 
-  el.grid.appendChild(body);
+  els.grid.appendChild(body);
 }
 
-async function openDay(dayISO) {
-  if (!venueId) return;
+async function fetchReport(dayISO){
+  try {
+    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}`);
+  } catch { return null; }
+}
 
-  // короткая панель на странице (не форма)
-  if (el.dayPanel) {
-    const exists = reportsByDate.has(dayISO);
-    const canEdit = perms.is_owner || perms.can_make_reports || true; // best-effort: пусть бэк решит
-    el.dayPanel.innerHTML = `
-      <div class="itemcard">
-        <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-          <div>
-            <b>${esc(dayISO)}</b>
-            <div class="muted" style="margin-top:4px">${exists ? "Отчёт уже есть" : "Отчёта нет"}</div>
-          </div>
-          <div class="row" style="gap:10px">
-            <button class="btn ${canEdit ? "primary" : ""}" id="btnOpenReport">
-              ${exists ? "Открыть отчёт" : "Создать отчёт"}
-            </button>
-          </div>
+function renderDayPanel(dayISO, report){
+  const exists = !!report;
+  const edit = canEditReports();
+  const viewRevenue = canViewRevenue();
+
+  const cash = report?.cash ?? "";
+  const cashless = report?.cashless ?? "";
+  const total = report?.revenue_total ?? "";
+
+  els.dayPanel.innerHTML = `
+    <div class="itemcard">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div>
+          <b>${esc(dayISO)}</b>
+          <div class="muted" style="margin-top:4px">${exists ? "Отчёт есть" : "Отчёта нет"}</div>
+        </div>
+        <div class="row" style="gap:10px;flex-wrap:wrap">
+          ${edit ? `<button class="btn primary" id="btnSave">${exists ? "Сохранить" : "Создать"}</button>` : ""}
         </div>
       </div>
-    `;
-    el.dayPanel.querySelector("#btnOpenReport")?.addEventListener("click", () => showReportModal(dayISO));
-  }
 
-  // можно сразу открывать модалку по клику на день — но оставим через кнопку
-}
-
-function numOr0(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-async function showReportModal(dayISO) {
-  if (!venueId) return;
-
-  // Попробуем получить отчёт. Если 404 — будем создавать.
-  let report = null;
-  let exists = false;
-  try {
-    report = await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}`);
-    exists = true;
-  } catch (e) {
-    // 404 — ок, создаём новый
-    exists = false;
-  }
-
-  // Если бэк вернул числа как null (нет права видеть выручку) — поля отображаем как read-only/placeholder
-  const canSeeNumbers = (report?.revenue_total !== null && report?.revenue_total !== undefined) || perms.can_view_revenue || perms.can_make_reports || perms.is_owner;
-
-  // best-effort: позволяем редактировать, но если прав реально нет — получим 403 на save
-  const canEdit = perms.can_make_reports || perms.is_owner || true;
-
-  const cashVal = report?.cash ?? "";
-  const cashlessVal = report?.cashless ?? "";
-  const totalVal = report?.revenue_total ?? "";
-
-  openModal(
-    `Отчёт за ${dayISO}`,
-    `
-    <div class="itemcard">
-      <div class="muted" style="margin-bottom:10px">
-        ${exists ? "Редактирование/просмотр отчёта" : "Создание отчёта"}
-      </div>
-
-      <div class="row" style="gap:10px;flex-wrap:wrap">
+      <div class="row" style="gap:10px;flex-wrap:wrap;margin-top:12px">
         <label style="min-width:180px;display:block">
           <div class="muted" style="font-size:12px;margin-bottom:4px">Наличка</div>
-          <input id="repCash" type="number" min="0"
-            value="${esc(cashVal)}"
-            ${(!canEdit || !canSeeNumbers) ? "disabled" : "" }
-            placeholder="${canSeeNumbers ? "0" : "нет доступа"}"
-          />
+          <input id="cash" type="number" min="0" value="${esc(cash)}" ${edit && viewRevenue ? "" : "disabled"} />
         </label>
-
         <label style="min-width:180px;display:block">
           <div class="muted" style="font-size:12px;margin-bottom:4px">Безнал</div>
-          <input id="repCashless" type="number" min="0"
-            value="${esc(cashlessVal)}"
-            ${(!canEdit || !canSeeNumbers) ? "disabled" : "" }
-            placeholder="${canSeeNumbers ? "0" : "нет доступа"}"
-          />
+          <input id="cashless" type="number" min="0" value="${esc(cashless)}" ${edit && viewRevenue ? "" : "disabled"} />
         </label>
-
         <label style="min-width:220px;display:block">
           <div class="muted" style="font-size:12px;margin-bottom:4px">Выручка (итого)</div>
-          <input id="repTotal" type="number" min="0"
-            value="${esc(totalVal)}"
-            ${(!canEdit || !canSeeNumbers) ? "disabled" : "" }
-            placeholder="${canSeeNumbers ? "0" : "нет доступа"}"
-          />
+          <input id="total" type="number" min="0" value="${esc(total)}" ${edit && viewRevenue ? "" : "disabled"} />
         </label>
       </div>
 
-      <div class="row" style="justify-content:space-between;align-items:center;margin-top:12px;gap:10px;flex-wrap:wrap">
-        <div class="muted" style="font-size:12px">
-          ${canEdit ? "Сохранение доступно (права проверит сервер)" : "Нет прав на редактирование"}
-        </div>
-        <div class="row" style="gap:10px">
-          <button class="btn" id="btnCloseRep">Закрыть</button>
-          ${canEdit ? `<button class="btn primary" id="btnSaveRep">${exists ? "Сохранить" : "Создать"}</button>` : ""}
-        </div>
+      <div class="muted" style="margin-top:8px;font-size:12px">
+        ${edit ? (viewRevenue ? "Можно редактировать и сохранять отчёт." : "Нет доступа к суммам — редактирование отключено.") : "Нет права на создание/редактирование отчётов."}
       </div>
     </div>
-    `
-  );
+  `;
 
-  document.getElementById("btnCloseRep")?.addEventListener("click", closeModal);
-
-  if (canEdit) {
-    document.getElementById("btnSaveRep")?.addEventListener("click", async () => {
-      // Если нет доступа к цифрам — не дадим отправлять мусор
-      if (!canSeeNumbers) {
-        toast("Нет доступа к суммам отчёта", "err");
-        return;
-      }
-
-      const cash = Math.max(0, numOr0(document.getElementById("repCash")?.value));
-      const cashless = Math.max(0, numOr0(document.getElementById("repCashless")?.value));
-      const revenue_total = Math.max(0, numOr0(document.getElementById("repTotal")?.value));
+  if (edit) {
+    els.dayPanel.querySelector("#btnSave")?.addEventListener("click", async () => {
+      if (!viewRevenue) { toast("Нет доступа к суммам отчёта", "err"); return; }
+      const cashV = Number(els.dayPanel.querySelector("#cash")?.value || 0);
+      const cashlessV = Number(els.dayPanel.querySelector("#cashless")?.value || 0);
+      const totalV = Number(els.dayPanel.querySelector("#total")?.value || 0);
 
       try {
         await api(`/venues/${encodeURIComponent(venueId)}/reports`, {
           method: "POST",
-          body: { date: dayISO, cash, cashless, revenue_total },
+          body: { date: dayISO, cash: cashV, cashless: cashlessV, revenue_total: totalV },
         });
-
         toast("Отчёт сохранён", "ok");
-        closeModal();
-
-        await loadMonthReports();
-        renderMonth();
+        await reload();
         await openDay(dayISO);
       } catch (e) {
         toast("Ошибка сохранения: " + (e?.message || "неизвестно"), "err");
@@ -336,54 +226,55 @@ async function showReportModal(dayISO) {
   }
 }
 
-function renderNoVenue() {
-  if (el.grid) {
-    el.grid.innerHTML = `
+async function openDay(dayISO){
+  selectedDay = dayISO;
+  renderMonth();
+
+  if (!canViewReports()) {
+    els.dayPanel.innerHTML = `
       <div class="itemcard">
-        <b>Не выбрано заведение</b>
-        <div class="muted" style="margin-top:6px">
-          Открой страницу из меню приложения или добавь <span class="mono">?venue_id=...</span>.
-        </div>
+        <b>${esc(dayISO)}</b>
+        <div class="muted" style="margin-top:6px">Нет прав на просмотр отчётов.</div>
       </div>
     `;
-  }
-  if (el.dayPanel) el.dayPanel.innerHTML = "";
-}
-
-async function boot() {
-  if (!el.grid || !el.monthLabel) {
-    // если сломалась разметка
-    toast("Ошибка: не найден календарь на странице", "err");
     return;
   }
 
+  els.dayPanel.innerHTML = `<div class="itemcard"><div class="muted">Загрузка отчёта…</div></div>`;
+  const report = await fetchReport(dayISO);
+  renderDayPanel(dayISO, report);
+}
+
+async function reload(){
+  await loadPerms();
+  await loadVenueMeta();
+  await loadMonthReports();
+  renderMonth();
+}
+
+els.prev?.addEventListener("click", async () => {
+  curMonth.setMonth(curMonth.getMonth()-1);
+  curMonth.setDate(1);
+  await loadMonthReports();
+  renderMonth();
+});
+els.next?.addEventListener("click", async () => {
+  curMonth.setMonth(curMonth.getMonth()+1);
+  curMonth.setDate(1);
+  await loadMonthReports();
+  renderMonth();
+});
+
+(async function boot(){
   if (!venueId) {
-    renderNoVenue();
+    els.grid.innerHTML = `
+      <div class="itemcard">
+        <b>Не выбрано заведение</b>
+        <div class="muted" style="margin-top:6px">Открой отчёты из меню заведения или добавь <span class="mono">?venue_id=...</span>.</div>
+      </div>
+    `;
     return;
   }
-
-  try {
-    await loadPermsBestEffort();
-    await loadMonthReports();
-    renderMonth();
-  } catch (e) {
-    // главное — не оставить пустую страницу
-    toast("Ошибка загрузки отчётов: " + (e?.message || "неизвестно"), "err");
-    renderMonth();
-  }
-}
-
-el.prev?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() - 1);
-  curMonth.setDate(1);
-  await loadMonthReports();
-  renderMonth();
-});
-el.next?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() + 1);
-  curMonth.setDate(1);
-  await loadMonthReports();
-  renderMonth();
-});
-
-boot();
+  await reload();
+  await openDay(ymd(new Date()));
+})();

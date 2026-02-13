@@ -304,14 +304,6 @@ export async function getMyVenues() {
   return api("/me/venues");
 }
 
-
-export async function getVenueById(venueId) {
-  if (!venueId) return null;
-  const venues = await getMyVenues();
-  if (!Array.isArray(venues)) return null;
-  return venues.find(v => String(v.id) === String(venueId)) || null;
-}
-
 export async function getMyVenuePermissions(venueId) {
   if (!venueId) return { venue_id: null, role: null, permissions: [] };
   return api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
@@ -571,33 +563,26 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   }
 
   // Determine if report tab should be shown (best-effort)
+  // OWNER always has access to reports on backend; for STAFF use position flags / permissions.
   let showReport = false;
-  let hideSalaryForOwner = false;
-
+  let isOwner = false;
   if (activeVenueId) {
     try {
       const perms = await getMyVenuePermissions(activeVenueId);
+      isOwner = perms?.role === "OWNER";
+      const flags = perms?.position_flags || perms?.position || {};
       const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
-      const flags = perms?.position_flags || {};
-      const posObj = perms?.position || {};
-      const isOwner = perms?.role === "OWNER";
-
-      // Owner всегда имеет доступ к отчётам, зарплата владельцу не нужна
-      hideSalaryForOwner = isOwner;
 
       showReport =
         isOwner ||
-        perms?.can_make_reports === true ||
-        flags.can_make_reports === true ||
         flags.can_view_reports === true ||
-        posObj.can_make_reports === true ||
-        posObj.can_view_reports === true ||
+        flags.can_make_reports === true ||
+        has("SHIFT_REPORTS_VIEW") ||
         has("SHIFT_REPORTS_CREATE") ||
-        has("SHIFT_REPORTS_EDIT") ||
-        has("SHIFT_REPORTS_VIEW");
+        has("SHIFT_REPORTS_EDIT");
     } catch {
       showReport = false;
-      hideSalaryForOwner = false;
+      isOwner = false;
     }
   }
 
@@ -607,15 +592,8 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   if (activeVenueId) {
     links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
     links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
-
-    // Владелец: вместо зарплаты показываем отчёты (и показываем всегда)
-    if (!hideSalaryForOwner) {
-      links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
-    }
-
-    if (showReport) {
-      links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
-    }
+    if (!isOwner) links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
+    if (showReport) links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
   }
   links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
 

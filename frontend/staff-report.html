@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Отчёты</b>
-          <div class="muted" id="subtitle">выручка по дням</div>
+          <div class="muted" id="subtitle">выручка и отчёт за день</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -23,14 +23,15 @@
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div class="row" style="gap:10px;align-items:center">
-          <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
+          <button class="btn" id="monthPrev">←</button>
           <b id="monthLabel">…</b>
-          <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
+          <button class="btn" id="monthNext">→</button>
         </div>
-        <div class="muted" style="font-size:12px">Нажми на день, чтобы открыть отчёт</div>
+        <div class="muted mono" id="venueMeta"></div>
       </div>
 
-      <div id="calGrid" class="cal" style="margin-top:10px"></div>
+      <div id="calGrid" style="margin-top:12px"></div>
+      <div id="dayPanel" style="margin-top:12px"></div>
     </div>
 
     <div class="nav">
@@ -40,15 +41,11 @@
     </div>
 
     <div class="toast" id="toast"><div class="toast__text"></div></div>
-
     <div class="modal" id="modal">
       <div class="modal__backdrop"></div>
       <div class="modal__panel">
         <div class="modal__head">
-          <div>
-            <b class="modal__title">Отчёт</b>
-            <div class="modal__subtitle" id="modalSubtitle"></div>
-          </div>
+          <b class="modal__title">JSON</b>
           <button class="btn" data-close>Закрыть</button>
         </div>
         <div class="modal__body"></div>
