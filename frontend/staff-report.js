@@ -53,6 +53,8 @@ let curMonth = new Date();
 curMonth.setDate(1);
 
 let perms = { can_make_reports: false, can_view_reports: false, can_view_revenue: false };
+    permsUnknown = true;
+let permsUnknown = true; // if we can't reliably detect perms, allow attempting save (backend will enforce)
 let reportsByDate = new Map(); // dateISO -> report row (may contain null numbers)
 
 function monthTitle(d) {
@@ -60,20 +62,34 @@ function monthTitle(d) {
   return `${m[0].toUpperCase()}${m.slice(1)} ${d.getFullYear()}`;
 }
 
-function canMakeReports() { return !!perms.can_make_reports; }
-function canViewReports() { return !!perms.can_view_reports || !!perms.can_make_reports; }
+function canMakeReports() { return !!perms.can_make_reports || permsUnknown; }
+function canViewReports() { return !!perms.can_view_reports || !!perms.can_make_reports || permsUnknown; }
 function canViewRevenue() { return !!perms.can_view_revenue || !!perms.can_make_reports; }
 
 function parsePerms(obj) {
-  const list = obj?.permissions || obj?.permission_codes || obj?.codes || [];
-  const has = (code) => Array.isArray(list) && list.includes(code);
-  // Owner обычно придёт как роль OWNER — но даже если нет, бэк всё равно пустит.
+  // Backend may return a list of permission codes OR direct boolean flags.
   const role = obj?.role || obj?.venue_role || "";
   const isOwner = role === "OWNER";
+
+  const list = obj?.permissions || obj?.permission_codes || obj?.codes || [];
+  const has = (code) => Array.isArray(list) && list.includes(code);
+
+  const boolMake = obj?.can_make_reports === true;
+  const boolView = obj?.can_view_reports === true;
+  const boolRevenue = obj?.can_view_revenue === true;
+
+  // If we can't see explicit report permissions, we allow "try save" mode.
+  // This is important when permissions are stored on venue_position rather than in /me/venues/.../permissions.
+  permsUnknown = !(
+    isOwner ||
+    boolMake || boolView || boolRevenue ||
+    has("can_make_reports") || has("can_view_reports") || has("can_view_revenue")
+  );
+
   perms = {
-    can_make_reports: isOwner || has("can_make_reports"),
-    can_view_reports: isOwner || has("can_view_reports") || has("can_make_reports"),
-    can_view_revenue: isOwner || has("can_view_revenue") || has("can_make_reports"),
+    can_make_reports: isOwner || boolMake || has("can_make_reports"),
+    can_view_reports: isOwner || boolView || boolMake || has("can_view_reports") || has("can_make_reports"),
+    can_view_revenue: isOwner || boolRevenue || boolMake || has("can_view_revenue") || has("can_make_reports"),
   };
 }
 
@@ -85,6 +101,7 @@ async function loadPerms() {
   } catch {
     // если не получилось — оставим false, бэк всё равно не даст лишнего
     perms = { can_make_reports: false, can_view_reports: false, can_view_revenue: false };
+    permsUnknown = true;
   }
 }
 
