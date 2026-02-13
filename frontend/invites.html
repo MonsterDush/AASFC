@@ -142,7 +142,7 @@ await mountNav({ activeTab: "none" });
       openLink.style.display = "none";
 
       try {
-        const venues = await api("/me/venues");
+        const venues = await api("/venues");
         window.__lastJson = venues;
 
         venueSelect.innerHTML = `<option value="">Выберите заведение…</option>`;
