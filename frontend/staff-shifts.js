@@ -133,7 +133,7 @@ let me = null;
 let perms = null;
 let canEdit = false;
 
-// позже сделаем отдельное право, сейчас привязка к can_make_reports (как ты просил)
+// позже сделаем отдельное право, сейчас привязка к can_make_reports
 let canViewRevenue = false;
 
 const LS_SHOW_ALL = "axelio.shifts.showAll";
