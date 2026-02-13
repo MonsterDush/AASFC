@@ -27,7 +27,14 @@
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
-        <div class="muted" style="font-size:12px">Назначения отображаются по дням</div>
+        <div class="row" style="gap:10px;align-items:center;justify-content:flex-end">
+          <div id="calendarMode" class="shift-toggle" style="display:none">
+            <button type="button" id="modeAll">Все</button>
+            <button type="button" id="modeMine">Только мои</button>
+          </div>
+          <div class="muted" style="font-size:12px">Назначения отображаются по дням</div>
+</div>
+
       </div>
 
       <div id="calGrid" class="cal" style="margin-top:10px"></div>
@@ -46,9 +53,13 @@
       <div class="modal__backdrop"></div>
       <div class="modal__panel">
         <div class="modal__head">
-          <b class="modal__title">Подтверждение</b>
+          <div>
+            <b class="modal__title">Подтверждение</b>
+            <div class="modal__subtitle" id="modalSubtitle"></div>
+          </div>
           <button class="btn" data-close>Закрыть</button>
-        </div>
+</div>
+
         <div class="modal__body"></div>
       </div>
     </div>

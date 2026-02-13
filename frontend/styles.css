@@ -195,3 +195,107 @@ select{min-width:160px}
   .cal-cell { padding: 7px; min-height: 68px; }
   .badge { font-size: 10px; }
 }
+
+/* ===== Shifts calendar ===== */
+.cal { width: 100%; }
+
+.cal-head, .cal-body{
+  display:grid;
+  grid-template-columns:repeat(7, minmax(0, 1fr));
+  gap:8px;
+}
+
+.cal-hcell{
+  text-align:center;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.cal-cell{
+  min-width:0;
+  width:100%;
+  text-align:left;
+  border-radius:14px;
+  padding:8px;
+  min-height:74px;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+}
+
+.cal-cell--out{opacity:.45}
+.cal-daynum{font-weight:700;font-size:13px;line-height:1}
+
+.cal-cell--today{
+  outline:2px solid rgba(255,255,255,.28);
+  outline-offset:-2px;
+}
+
+.cal-badges{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+
+.badge{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+  line-height:1.15;
+  border-radius:999px;
+  padding:4px 8px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.10);
+}
+
+.badge--more{opacity:.8}
+
+/* future dots */
+.dotrow{display:flex;gap:6px;flex-wrap:wrap}
+.dot{
+  width:10px;height:10px;border-radius:999px;
+  background:rgba(255,255,255,.55);
+  flex:0 0 auto;
+}
+.dot--more{
+  width:auto;height:18px;padding:0 8px;
+  display:inline-flex;align-items:center;
+  border-radius:999px;
+  background:rgba(255,255,255,.12);
+  font-size:11px;color:var(--muted);
+}
+
+/* toggle */
+.shift-toggle{
+  display:inline-flex;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.10);
+}
+.shift-toggle button{
+  border:0;background:transparent;
+  padding:6px 10px;
+  font-size:12px;
+  color:var(--muted);
+}
+.shift-toggle button.active{
+  background:rgba(255,255,255,.14);
+  color:var(--text);
+}
+
+/* modal subtitle */
+.modal__subtitle{margin-top:4px;font-size:12px;color:var(--muted);}
+
+/* mobile tighter */
+@media (max-width:380px){
+  .cal-head,.cal-body{gap:6px}
+  .cal-cell{padding:7px;min-height:68px}
+  .badge{font-size:10px}
+}

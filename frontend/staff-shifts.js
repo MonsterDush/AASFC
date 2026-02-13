@@ -33,24 +33,27 @@ const el = {
   dayPanel: document.getElementById("dayPanel"),
 };
 
+const mode = {
+  box: document.getElementById("calendarMode"),
+  all: document.getElementById("modeAll"),
+  mine: document.getElementById("modeMine"),
+};
+
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
 const modalBody = modal?.querySelector(".modal__body");
+const modalSubtitleEl = document.getElementById("modalSubtitle");
 
-function closeModal() {
-  if (!modal) return;
-  modal.classList.remove("open");
-}
-function openModal(title, bodyHtml) {
-  if (!modal) return;
-  if (modalTitle) modalTitle.textContent = title || "Смены";
-  if (modalBody) modalBody.innerHTML = bodyHtml || "";
-  modal.classList.add("open");
-}
-
-// close handlers
+function closeModal() { modal?.classList.remove("open"); }
 modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
 modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
+
+function openModal(title, subtitle, bodyHtml) {
+  if (modalTitle) modalTitle.textContent = title || "Смены";
+  if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle || "";
+  if (modalBody) modalBody.innerHTML = bodyHtml || "";
+  modal?.classList.add("open");
+}
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
@@ -65,21 +68,57 @@ function dateOnly(d) {
 function cmpDateStr(dateStr) {
   const today = dateOnly(new Date());
   const d = dateOnly(new Date(dateStr));
-  if (d.getTime() === today.getTime()) return 0;   // today
-  return d.getTime() < today.getTime() ? -1 : 1;   // past / future
+  if (d.getTime() === today.getTime()) return 0;
+  return d.getTime() < today.getTime() ? -1 : 1;
 }
 
-let me = null;
-let perms = null;
-let canEdit = false;
+function hashHue(x) {
+  const s = String(x ?? "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+function dotStyleForInterval(intervalId) {
+  const hue = hashHue(intervalId);
+  return `background:hsl(${hue} 70% 60%);`;
+}
 
-let curMonth = new Date();
-curMonth.setDate(1);
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
 
-let intervals = [];
-let positions = [];
-let shifts = [];
-let shiftsByDate = new Map();
+function pickShortName(obj) {
+  const sn = (obj?.short_name || obj?.member?.short_name || obj?.user?.short_name || "").trim();
+  if (sn) return sn;
+  const fn = (obj?.full_name || obj?.member?.full_name || obj?.user?.full_name || "").trim();
+  if (fn) return fn.split(/\s+/)[0];
+  const un = (obj?.tg_username || obj?.member_username || obj?.user_username || obj?.user?.tg_username || obj?.username || "").trim();
+  if (un) return un.replace(/^@/, "");
+  const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
+  return uid ? `user#${uid}` : "—";
+}
+function fioInitials(fullName) {
+  const s = (fullName || "").trim();
+  if (!s) return "";
+  const p = s.split(/\s+/).filter(Boolean);
+  if (p.length === 1) return p[0];
+  const surname = p[0];
+  const initials = p.slice(1).map(x => x[0] ? x[0].toUpperCase() + "." : "").join("");
+  return `${surname} ${initials}`.trim();
+}
+function displayPerson(obj) {
+  const fn = (obj?.full_name || obj?.member?.full_name || "").trim();
+  const fi = fioInitials(fn);
+  if (fi) return fi;
+  const sn = (obj?.short_name || obj?.member?.short_name || "").trim();
+  if (sn) return sn;
+  const un = (obj?.tg_username || obj?.member?.tg_username || "").trim();
+  if (un) return un.startsWith("@") ? un : `@${un}`;
+  const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
+  return uid ? `user#${uid}` : "—";
+}
 
 function normalizeList(out) {
   if (!out) return [];
@@ -90,46 +129,62 @@ function normalizeList(out) {
   return [];
 }
 
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[c]));
+let me = null;
+let perms = null;
+let canEdit = false;
+
+// позже сделаем отдельное право, сейчас привязка к can_make_reports (как ты просил)
+let canViewRevenue = false;
+
+const LS_SHOW_ALL = "axelio.shifts.showAll";
+let showAllOnCalendar = false;
+
+let curMonth = new Date();
+curMonth.setDate(1);
+
+let intervals = [];
+let positions = [];
+let shifts = [];
+let shiftsByDate = new Map();
+
+function shiftIntervalTitle(s) {
+  const i = s.interval || s.shift_interval || {};
+  return i.title || s.interval_title || "Смена";
+}
+function shiftIntervalId(s) {
+  return (s.interval?.id ?? s.shift_interval?.id ?? s.interval_id ?? s.intervalId ?? "x");
+}
+function shiftTimeLabel(s) {
+  const i = s.interval || s.shift_interval || {};
+  const st = i.start_time || s.start_time || "";
+  const et = i.end_time || s.end_time || "";
+  return (st && et) ? `${st}-${et}` : (st || "");
 }
 
-// ---- display name helpers ----
-function pickShortName(obj) {
-  // obj may be: assignment row, member, user
-  const sn = (obj?.short_name || obj?.member?.short_name || obj?.user?.short_name || "").trim();
-  if (sn) return sn;
-  const fn = (obj?.full_name || obj?.member?.full_name || obj?.user?.full_name || "").trim();
-  if (fn) return fn.split(/\s+/)[0]; // fallback: first word
-  const un = (obj?.tg_username || obj?.member_username || obj?.user_username || obj?.user?.tg_username || obj?.username || "").trim();
-  if (un) return un.replace(/^@/, "");
-  const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
-  return uid ? `user#${uid}` : "—";
-}
+// --- toggle ---
+function renderModeToggle() {
+  if (!mode.box) return;
+  if (!canEdit) { mode.box.style.display = "none"; return; }
+  mode.box.style.display = "inline-flex";
 
-// "Фамилия И.О." из full_name
-function fioInitials(fullName) {
-  const s = (fullName || "").trim();
-  if (!s) return "";
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0];
-  const surname = parts[0];
-  const initials = parts.slice(1).map(p => (p[0] ? p[0].toUpperCase() + "." : "")).join("");
-  return `${surname} ${initials}`.trim();
-}
+  const setActive = () => {
+    mode.all?.classList.toggle("active", !!showAllOnCalendar);
+    mode.mine?.classList.toggle("active", !showAllOnCalendar);
+  };
+  setActive();
 
-function displayPerson(obj) {
-  const fn = (obj?.full_name || obj?.member?.full_name || "").trim();
-  const fi = fioInitials(fn);
-  if (fi) return fi;
-  const sn = (obj?.short_name || obj?.member?.short_name || "").trim();
-  if (sn) return sn;
-  const un = (obj?.tg_username || obj?.member?.tg_username || "").trim();
-  if (un) return un.startsWith("@") ? un : `@${un}`;
-  const uid = obj?.member_user_id ?? obj?.member?.user_id ?? obj?.user_id;
-  return uid ? `user#${uid}` : "—";
+  mode.all.onclick = () => {
+    showAllOnCalendar = true;
+    localStorage.setItem(LS_SHOW_ALL, "1");
+    setActive();
+    renderMonth();
+  };
+  mode.mine.onclick = () => {
+    showAllOnCalendar = false;
+    localStorage.setItem(LS_SHOW_ALL, "0");
+    setActive();
+    renderMonth();
+  };
 }
 
 async function loadContext() {
@@ -147,6 +202,13 @@ async function loadContext() {
     role === "SUPER_ADMIN" ||
     !!flags.can_edit_schedule ||
     !!posObj.can_edit_schedule;
+
+  canViewRevenue = !!flags.can_make_reports || !!posObj.can_make_reports;
+
+  // default: editor sees all
+  showAllOnCalendar = canEdit ? true : false;
+  const saved = localStorage.getItem(LS_SHOW_ALL);
+  if (saved !== null) showAllOnCalendar = saved === "1";
 
   try {
     const out = await api(`/venues/${encodeURIComponent(venueId)}/shift-intervals`);
@@ -173,7 +235,7 @@ async function loadMonth() {
 
   buildIndex();
   renderMonth();
-  clearDayPanel();
+  if (el.dayPanel) el.dayPanel.innerHTML = ""; // больше не используем
 }
 
 function buildIndex() {
@@ -187,10 +249,8 @@ function buildIndex() {
 
   for (const [d, arr] of shiftsByDate.entries()) {
     arr.sort((a, b) => {
-      const ai = a.interval || a.shift_interval || {};
-      const bi = b.interval || b.shift_interval || {};
-      const at = ai.start_time || a.start_time || "";
-      const bt = bi.start_time || b.start_time || "";
+      const at = (a.interval?.start_time || a.shift_interval?.start_time || a.start_time || "");
+      const bt = (b.interval?.start_time || b.shift_interval?.start_time || b.start_time || "");
       return String(at).localeCompare(String(bt));
     });
   }
@@ -201,16 +261,32 @@ function monthTitle(d) {
   return m.charAt(0).toUpperCase() + m.slice(1);
 }
 
-function shiftIntervalTitle(s) {
-  const i = s.interval || s.shift_interval || {};
-  return i.title || s.interval_title || "Смена";
-}
+function filterForCalendar(listAll, dateStr) {
+  const myId = me?.id ?? null;
 
-function shiftTimeLabel(s) {
-  const i = s.interval || s.shift_interval || {};
-  const st = i.start_time || s.start_time || "";
-  const et = i.end_time || s.end_time || "";
-  return (st && et) ? `${st}-${et}` : (st || "");
+  // staff w/o edit -> only mine
+  if (!canEdit && myId) {
+    return listAll
+      .map(s => {
+        const assigns = (s.assignments || s.shift_assignments || []).filter(a => (a.member_user_id ?? a.user_id) === myId);
+        if (!assigns.length) return null;
+        return { ...s, assignments: assigns };
+      })
+      .filter(Boolean);
+  }
+
+  // editor toggle -> mine
+  if (canEdit && !showAllOnCalendar && myId) {
+    return listAll
+      .map(s => {
+        const assigns = (s.assignments || s.shift_assignments || []).filter(a => (a.member_user_id ?? a.user_id) === myId);
+        if (!assigns.length) return null;
+        return { ...s, assignments: assigns };
+      })
+      .filter(Boolean);
+  }
+
+  return listAll;
 }
 
 function renderMonth() {
@@ -231,24 +307,26 @@ function renderMonth() {
   body.className = "cal-body";
 
   const first = new Date(curMonth);
-  const jsDow = first.getDay(); // 0 Sun
-  const mondayBased = (jsDow + 6) % 7; // 0 Mon
+  const jsDow = first.getDay();
+  const mondayBased = (jsDow + 6) % 7;
   const start = new Date(first);
   start.setDate(first.getDate() - mondayBased);
+
+  const todayStr = ymd(new Date());
 
   for (let i = 0; i < 42; i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
     const inMonth = d.getMonth() === curMonth.getMonth();
     const dateStr = ymd(d);
-
-    const listAll = shiftsByDate.get(dateStr) || [];
-    const rel = cmpDateStr(dateStr); // -1 past, 0 today, 1 future
-    const todayStr = ymd(new Date());
+    const rel = cmpDateStr(dateStr);
 
     const cell = document.createElement("button");
     cell.type = "button";
-    cell.className = "cal-cell" + (inMonth ? "" : " cal-cell--out") + (dateStr === todayStr ? " cal-cell--today" : "");
+    cell.className =
+      "cal-cell" +
+      (inMonth ? "" : " cal-cell--out") +
+      (dateStr === todayStr ? " cal-cell--today" : "");
     cell.setAttribute("data-date", dateStr);
 
     const top = document.createElement("div");
@@ -259,47 +337,38 @@ function renderMonth() {
     const box = document.createElement("div");
     box.className = "cal-badges";
 
-    // Если нет прав редактировать — показываем на календаре ТОЛЬКО мои смены
-    const myId = me?.id ?? null;
+    const listAll = shiftsByDate.get(dateStr) || [];
+    const list = filterForCalendar(listAll, dateStr);
 
-    const list = (!canEdit && myId)
-      ? listAll
-          .map(s => {
-            const assigns = (s.assignments || s.shift_assignments || []).filter(a => (a.member_user_id ?? a.user_id) === myId);
-            if (!assigns.length) return null;
-            // копия смены, но с моими assignments
-            return { ...s, assignments: assigns };
-          })
-          .filter(Boolean)
-      : listAll;
-
-    // Будущее: кружочки (dots). Прошедшее/сегодня: овальчики с текстом.
     if (rel === 1) {
+      // future -> dots
       const dotrow = document.createElement("div");
       dotrow.className = "dotrow";
 
       let count = 0;
-      const max = 8;
+      const max = 10;
+
+      const total = list.reduce((acc, s) => {
+        const assigns = (s.assignments || s.shift_assignments || []);
+        return acc + Math.max(1, assigns.length);
+      }, 0);
 
       for (const s of list) {
+        const intervalId = shiftIntervalId(s);
         const itTitle = shiftIntervalTitle(s);
         const assigns = (s.assignments || s.shift_assignments || []);
         const n = Math.max(1, assigns.length);
 
         for (let k = 0; k < n && count < max; k++) {
           const dot = document.createElement("div");
-          dot.className = "dot dot--accent";
-          dot.title = itTitle; // подсказка по интервалу
+          dot.className = "dot";
+          dot.setAttribute("style", dotStyleForInterval(intervalId));
+          dot.title = itTitle;
           dotrow.appendChild(dot);
           count++;
         }
         if (count >= max) break;
       }
-
-      const total = list.reduce((acc, s) => {
-        const assigns = (s.assignments || s.shift_assignments || []);
-        return acc + Math.max(1, assigns.length);
-      }, 0);
 
       if (total > max) {
         const more = document.createElement("div");
@@ -310,7 +379,7 @@ function renderMonth() {
 
       box.appendChild(dotrow);
     } else {
-      // past / today: компактные “овальчики” с текстом
+      // past/today -> compact pills
       let badgeCount = 0;
       const maxBadges = 3;
 
@@ -327,10 +396,24 @@ function renderMonth() {
         } else {
           for (const a of assigns) {
             if (badgeCount >= maxBadges) break;
+
             const short = pickShortName(a);
+            let txt = `${itTitle}-${short}`;
+
+            // Зарплата на прошедших днях (только моя, только если report exists) — появится если backend отдаст поля
+            const myId = me?.id ?? null;
+            const isMe = (a.member_user_id ?? a.user_id) === myId;
+
+            const reportExists = !!(s.report_exists ?? s.day_report_exists ?? s.report);
+            const mySalary = s.my_salary ?? s.salary_my ?? null;
+
+            if (rel === -1 && isMe && reportExists && mySalary != null) {
+              txt += ` · ${Number(mySalary).toLocaleString("ru-RU")}₽`;
+            }
+
             const b = document.createElement("div");
             b.className = "badge";
-            b.textContent = `${itTitle}-${short}`;
+            b.textContent = txt;
             box.appendChild(b);
             badgeCount++;
           }
@@ -359,15 +442,9 @@ function renderMonth() {
   el.grid.appendChild(body);
 }
 
-function clearDayPanel() {
-  // больше не используем нижнюю панель
-  if (el.dayPanel) el.dayPanel.innerHTML = "";
-}
-
-
 function renderShiftCard(s) {
   const title = shiftIntervalTitle(s);
-  const time = shiftTimeLabel(s);
+  const time = shiftTimeLabel(s).replace("-", "–");
   const shiftId = s.id;
 
   const assignments = s.assignments || s.shift_assignments || [];
@@ -379,11 +456,12 @@ function renderShiftCard(s) {
       `<div class="list" style="margin-top:8px">` +
       assignments.map((a) => {
         const label = displayPerson(a);
-        const uname = (a.tg_username || "").trim();
+        const uname = (a.tg_username || a.member_username || "").trim();
+        const unameTxt = uname ? (uname.startsWith("@") ? uname : "@"+uname) : "";
         return `
           <div class="list__row">
             <div class="list__main">
-              <div><b>${escapeHtml(label)}</b>${uname ? `<span class="muted"> · ${escapeHtml(uname.startsWith("@") ? uname : "@"+uname)}</span>` : ""}</div>
+              <div><b>${escapeHtml(label)}</b>${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
             </div>
             ${canEdit ? `<button class="btn danger sm" data-unassign data-shift="${shiftId}" data-user="${a.member_user_id}">Удалить</button>` : ""}
           </div>
@@ -404,7 +482,7 @@ function renderShiftCard(s) {
 
   return `
     <div class="card" data-shiftcard="${shiftId}">
-      <b>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time.replace("-", "–"))})</span>` : ""}</b>
+      <b>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time)})</span>` : ""}</b>
       ${peopleHtml}
       ${editorHtml}
     </div>
@@ -432,11 +510,9 @@ function wireShiftEditor(dateStr, shift) {
       for (const p of positions) {
         const opt = document.createElement("option");
         opt.value = p.id;
-
         const mem = p.member || {};
         const name = fioInitials(mem.full_name) || mem.short_name || (mem.tg_username ? mem.tg_username.replace(/^@/, "") : "");
-        opt.textContent = `${p.title} · ${name || "—"}`; // убрали ставку/% как просил
-
+        opt.textContent = `${p.title} · ${name || "—"}`; // без ставки/%
         sel.appendChild(opt);
       }
       sel.disabled = false;
@@ -481,15 +557,17 @@ function wireShiftEditor(dateStr, shift) {
 }
 
 function openDay(dateStr) {
-  const list = shiftsByDate.get(dateStr) || [];
-  const title = new Date(dateStr).toLocaleDateString("ru-RU", {
-    weekday: "long", day: "2-digit", month: "long", year: "numeric"
-  });
+  const listAll = shiftsByDate.get(dateStr) || [];
+  // В модалке дня ВСЕГДА показываем всех назначенных (как ты хотел)
+  const list = listAll;
+
+  const d = new Date(dateStr);
+  const title = d.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
+  const subtitle = canEdit ? "Редактирование" : "Просмотр";
 
   let html = `
     <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div>
-        <b>${title.charAt(0).toUpperCase() + title.slice(1)}</b>
         <div class="muted" style="margin-top:4px">${canEdit ? "Можно редактировать график" : "Просмотр графика"}</div>
       </div>
       ${canEdit ? `<button class="btn primary" id="btnAddShift">+ Добавить смену</button>` : ``}
@@ -533,8 +611,7 @@ function openDay(dateStr) {
     `;
   }
 
-  openModal("Смена", html);
-
+  openModal(title.charAt(0).toUpperCase() + title.slice(1), subtitle, html);
 
   if (canEdit) {
     const btn = document.getElementById("btnAddShift");
@@ -649,5 +726,5 @@ el.next.onclick = async () => {
 
 // boot
 await loadContext();
+renderModeToggle();
 await loadMonth();
-clearDayPanel();
