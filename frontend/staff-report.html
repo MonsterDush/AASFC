@@ -14,44 +14,37 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Отчёты</b>
-          <div class="muted" id="subtitle">выручка и отчёт за день</div>
+          <div class="muted" id="subtitle">по дням</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
     <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div class="row" style="gap:10px;align-items:center">
-          <button class="btn" id="monthPrev">←</button>
+      <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center">
+        <div>
           <b id="monthLabel">…</b>
+          <div class="muted" style="font-size:12px">Кликни на день, чтобы посмотреть или заполнить отчёт</div>
+        </div>
+        <div class="row" style="gap:8px">
+          <button class="btn" id="monthPrev">←</button>
           <button class="btn" id="monthNext">→</button>
         </div>
-        <div class="muted mono" id="venueMeta"></div>
       </div>
 
-      <div id="calGrid" style="margin-top:12px"></div>
-      <div id="dayPanel" style="margin-top:12px"></div>
+      <div id="calGrid" class="cal" style="margin-top:10px"></div>
     </div>
+
+    <div id="dayPanel" class="daypanel" style="margin-top:12px"></div>
 
     <div class="nav">
       <div class="wrap">
         <div id="nav"></div>
       </div>
     </div>
-
-    <div class="toast" id="toast"><div class="toast__text"></div></div>
-    <div class="modal" id="modal">
-      <div class="modal__backdrop"></div>
-      <div class="modal__panel">
-        <div class="modal__head">
-          <b class="modal__title">JSON</b>
-          <button class="btn" data-close>Закрыть</button>
-        </div>
-        <div class="modal__body"></div>
-      </div>
-    </div>
   </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
 
   <script type="module" src="/staff-report.js"></script>
 </body>

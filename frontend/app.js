@@ -562,16 +562,18 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
     setActiveVenueId(activeVenueId);
   }
 
+
   // Determine if report tab should be shown (best-effort)
-  // OWNER always has access to reports on backend; for STAFF use position flags / permissions.
+  // OWNER всегда имеет доступ к отчётам, даже если permissions registry пустой.
   let showReport = false;
   let isOwner = false;
   if (activeVenueId) {
     try {
       const perms = await getMyVenuePermissions(activeVenueId);
       isOwner = perms?.role === "OWNER";
-      const flags = perms?.position_flags || perms?.position || {};
+
       const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
+      const flags = perms?.position_flags || {};
 
       showReport =
         isOwner ||
@@ -587,12 +589,18 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   }
 
   const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : "";
+
   const links = [];
 
   if (activeVenueId) {
     links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
     links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
-    if (!isOwner) links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
+
+    // OWNER: вместо "Зарплата" показываем "Отчёты"
+    if (!isOwner) {
+      links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
+    }
+
     if (showReport) links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
   }
   links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
