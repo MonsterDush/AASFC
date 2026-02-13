@@ -468,6 +468,14 @@ export async function mountVenueSwitcher({ containerSelector = "#venueSwitcher",
   });
 }
 
+export async function getVenueById(venueId) {
+  if (!venueId) return null;
+
+  // Берём из "моих заведений" (это доступно OWNER/STAFF)
+  const list = await api("/me/venues");
+  const v = (list || []).find(x => String(x.id) === String(venueId));
+  return v || null;
+}
 // ------------------------------
 // Permissions + dynamic navigation (A2/A3)
 // ------------------------------
