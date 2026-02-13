@@ -31,9 +31,7 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("EXPENSE_CATEGORIES_MANAGE", "Expenses", "Статьи расходов", "Настраивать статьи расходов"),
 
     # Reports
-    PermissionDef("REPORTS_DAILY_MANAGE", "Reports", "Создание отчётов", "Создавать/редактировать отчёт за день"),
-    PermissionDef("REPORTS_DAILY_VIEW", "Reports", "Просмотр отчётов", "Просматривать отчёт за выбранный день"),
-    PermissionDef("REPORTS_REVENUE_VIEW", "Reports", "Просмотр выручки", "Видеть суммы (наличка/безнал/выручка) в отчётах"),
+    PermissionDef("REPORTS_VIEW_DAILY", "Reports", "Отчёты за день", "Просматривать отчёт за выбранный день"),
     PermissionDef("REPORTS_VIEW_MONTHLY", "Reports", "Отчёты за месяц", "Просматривать отчёты за месяц"),
     PermissionDef("REPORTS_VIEW_PNL", "Reports", "P&L", "Просматривать прибыль/убытки"),
 ]

@@ -21,7 +21,6 @@ from app.models.venue_position import VenuePosition
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
 from app.models.shift_assignment import ShiftAssignment
-from app.models.daily_report import DailyReport
 
 from app.services.venues import create_venue
 
@@ -254,11 +253,15 @@ def unarchive_venue(
 
 @router.delete("/{venue_id}")
 def delete_venue(
-    
     venue_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """Hard-delete venue (allowed only when archived).
+
+    We delete dependent rows explicitly using bulk deletes to avoid SQLAlchemy
+    trying to NULL-out NOT NULL FKs (e.g. venue_members.venue_id).
+    """
     _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
 
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
@@ -268,15 +271,21 @@ def delete_venue(
     if not venue.is_archived:
         raise HTTPException(400, "Archive venue before delete")
 
-    db.execute(delete(VenueMember).where(VenueMember.venue_id == venue_id))
-    db.execute(delete(VenueInvite).where(VenueInvite.venue_id == venue_id))
-    db.execute(delete(DailyReport).where(DailyReport.venue_id == venue_id))
-    db.execute(delete(VenuePosition).where(VenuePosition.venue_id == venue_id))
+    venue_shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+
+    # Shift assignments
+    db.execute(delete(ShiftAssignment).where(ShiftAssignment.shift_id.in_(venue_shift_ids)))
+
+    # Shifts & intervals
     db.execute(delete(Shift).where(Shift.venue_id == venue_id))
     db.execute(delete(ShiftInterval).where(ShiftInterval.venue_id == venue_id))
 
-# и т.д. по вашим зависимостям (shifts/assignments/positions...)
-# после bulk delete — можно удалить сам venue:
+    # Positions / invites / members
+    db.execute(delete(VenuePosition).where(VenuePosition.venue_id == venue_id))
+    db.execute(delete(VenueInvite).where(VenueInvite.venue_id == venue_id))
+    db.execute(delete(VenueMember).where(VenueMember.venue_id == venue_id))
+
+    # Venue itself
     db.execute(delete(Venue).where(Venue.id == venue_id))
 
     db.commit()
@@ -616,6 +625,26 @@ def remove_member(
             raise HTTPException(status_code=400, detail="Cannot remove last OWNER")
 
     vm.is_active = False
+
+    # Deactivate member's position (if exists) and remove their assignments in this venue
+    venue_shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+
+    # Remove their assignments first (FK depends on venue_positions)
+    db.execute(
+        delete(ShiftAssignment).where(
+            ShiftAssignment.member_user_id == member_user_id,
+            ShiftAssignment.shift_id.in_(venue_shift_ids),
+        )
+    )
+
+    # Remove member's position (if exists)
+    db.execute(
+        delete(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == member_user_id,
+        )
+    )
+
     db.commit()
     return {"ok": True}
 
@@ -663,6 +692,26 @@ def leave_venue(
     # Деактивируем membership
     membership.is_active = False
     db.add(membership)
+
+    # Deactivate user's position (if exists) and remove their assignments in this venue
+    venue_shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+
+    # Remove assignments first
+    db.execute(
+        delete(ShiftAssignment).where(
+            ShiftAssignment.member_user_id == current_user.id,
+            ShiftAssignment.shift_id.in_(venue_shift_ids),
+        )
+    )
+
+    # Remove user's position (if exists)
+    db.execute(
+        delete(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == current_user.id,
+        )
+    )
+
     db.commit()
 
     return None
