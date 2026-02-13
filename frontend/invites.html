@@ -267,7 +267,6 @@ await mountNav({ activeTab: "none" });
     async function boot(){
       await ensureVenueName();
       setVenueMeta();
-      await ensureLogin({ silent:true });
       if (!venueId) await loadVenuesForSelector();
       await loadMembers();
     }
