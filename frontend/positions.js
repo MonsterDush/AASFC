@@ -6,7 +6,6 @@ import {
   mountCommonUI,
   toast,
   confirmModal,
-  api,
   setActiveVenueId,
   getMyVenuePermissions,
   getVenueMembers,
@@ -25,7 +24,7 @@ function esc(s) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/\\"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
 
@@ -34,6 +33,37 @@ function money(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return String(n);
   return x.toLocaleString("ru-RU");
+}
+
+function fioInitials(fullName) {
+  const s = String(fullName || "").trim();
+  if (!s) return "";
+  const p = s.split(/\s+/).filter(Boolean);
+  if (p.length === 1) return p[0];
+  const surname = p[0];
+  const initials = p
+    .slice(1)
+    .map((x) => (x[0] ? x[0].toUpperCase() + "." : ""))
+    .join("");
+  return `${surname} ${initials}`.trim();
+}
+
+function memberNiceName(m) {
+  const shortName = (m?.short_name || "").trim();
+  if (shortName) return shortName;
+  const fi = fioInitials(m?.full_name);
+  if (fi) return fi;
+  const u = (m?.tg_username || "").trim();
+  if (u) return u.startsWith("@") ? u : `@${u}`;
+  return m?.user_id ? `user#${m.user_id}` : "—";
+}
+
+function memberLabel(m) {
+  const name = memberNiceName(m);
+  const u = (m?.tg_username || "").trim();
+  const uTxt = u ? (u.startsWith("@") ? u : `@${u}`) : "";
+  const role = m?.venue_role || "";
+  return `${name}${uTxt && !name.includes("@") ? ` · ${uTxt}` : ""}${role ? ` · ${role}` : ""}`;
 }
 
 function renderShell() {
@@ -52,47 +82,11 @@ function renderShell() {
     <div class="card">
       <div class="muted">Создайте должности, назначьте сотрудников и задайте условия оплаты.</div>
 
-      <div class="itemcard" style="margin-top:12px" id="formCard">
-        <b id="formTitle">Создать должность</b>
-        <div class="grid grid2" style="margin-top:10px">
-          <div>
-            <div class="muted" style="margin-bottom:6px">Название должности</div>
-            <input id="f_title" placeholder="Например: Бармен" />
-          </div>
-          <div>
-            <div class="muted" style="margin-bottom:6px">Сотрудник</div>
-            <select id="f_member"></select>
-          </div>
-          <div>
-            <div class="muted" style="margin-bottom:6px">Ставка</div>
-            <input id="f_rate" inputmode="decimal" placeholder="0" />
-          </div>
-          <div>
-            <div class="muted" style="margin-bottom:6px">Процент от продаж</div>
-            <input id="f_percent" inputmode="decimal" placeholder="0" />
-          </div>
-        </div>
-
-        <div style="margin-top:10px">
-          <label class="row" style="gap:10px; align-items:center; margin:6px 0">
-            <input type="checkbox" id="f_can_reports" />
-            <span>Может заполнять отчёты</span>
-          </label>
-          <label class="row" style="gap:10px; align-items:center; margin:6px 0">
-            <input type="checkbox" id="f_can_schedule" />
-            <span>Может редактировать график</span>
-          </label>
-        </div>
-
-        <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">
-          <button class="btn primary" id="btnSave">Сохранить</button>
-          <button class="btn" id="btnReset">Сбросить</button>
-          <span class="muted" id="formHint" style="margin-left:auto"></span>
-        </div>
-      </div>
-
       <div class="itemcard" style="margin-top:12px">
-        <b>Список должностей</b>
+        <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
+          <b>Список должностей</b>
+          <button class="btn primary" id="btnCreate">+ Создать</button>
+        </div>
         <div id="list" style="margin-top:10px">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
@@ -105,6 +99,7 @@ function renderShell() {
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
 
+    <!-- confirm modal used by confirmModal() -->
     <div id="modal" class="modal">
       <div class="modal__backdrop"></div>
       <div class="modal__panel">
@@ -116,85 +111,251 @@ function renderShell() {
       </div>
     </div>
 
+    <!-- editor modal -->
+    <div id="posModal" class="modal">
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <div>
+            <div class="modal__title" id="posModalTitle">Должность</div>
+            <div class="muted" style="margin-top:4px;font-size:12px" id="posModalHint"></div>
+          </div>
+          <button class="btn" data-close>Закрыть</button>
+        </div>
+        <div class="modal__body" id="posModalBody"></div>
+      </div>
+    </div>
+
     <div class="nav">
       <div class="wrap"><div id="nav"></div></div>
     </div>
   `;
-
   mountCommonUI("none");
 }
 
-function parseVenueId() {
-  const params = new URLSearchParams(location.search);
-  const venueId = params.get("venue_id") || "";
-  if (venueId) setActiveVenueId(venueId);
-  return venueId;
-}
-
-let state = {
-  venueId: "",
+const state = {
+  venueId: null,
+  perms: null,
   members: [],
   positions: [],
-  editingId: null,
 };
 
-function memberLabel(m) {
-  const u = m?.tg_username ? `@${m.tg_username}` : `user_id=${m.user_id}`;
-  return `${u} (${m.venue_role})`;
+function parseVenueId() {
+  const qs = new URLSearchParams(location.search);
+  const vid = qs.get("venue_id");
+  return vid ? Number(vid) : null;
 }
 
-function fillMemberSelect() {
-  const sel = document.getElementById("f_member");
-  sel.innerHTML = "";
+// --- modal helpers ---
+function posModalEls() {
+  return {
+    modal: document.getElementById("posModal"),
+    body: document.getElementById("posModalBody"),
+    title: document.getElementById("posModalTitle"),
+    hint: document.getElementById("posModalHint"),
+  };
+}
 
-  // показываем только активных участников, кроме OWNER? — можно и OWNER, вдруг надо
-  for (const m of state.members) {
-    const opt = document.createElement("option");
-    opt.value = String(m.user_id);
-    opt.textContent = memberLabel(m);
-    sel.appendChild(opt);
+function openPosModal({ title, hint, bodyHtml }) {
+  const { modal, body, title: t, hint: h } = posModalEls();
+  if (t) t.textContent = title || "Должность";
+  if (h) h.textContent = hint || "";
+  if (body) body.innerHTML = bodyHtml || "";
+  modal?.classList.add("open");
+}
+
+function closePosModal() {
+  document.getElementById("posModal")?.classList.remove("open");
+}
+
+function wirePosModalClose() {
+  const modal = document.getElementById("posModal");
+  if (!modal) return;
+  modal.querySelectorAll("[data-close]").forEach((x) => x.addEventListener("click", closePosModal));
+}
+
+// --- suggestions ---
+function uniqueTitles() {
+  const set = new Set();
+  for (const p of state.positions) {
+    const t = String(p.title || "").trim();
+    if (t) set.add(t);
   }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"));
 }
 
-function setFormMode(editing) {
-  const title = document.getElementById("formTitle");
-  const hint = document.getElementById("formHint");
-  const btnSave = document.getElementById("btnSave");
+function renderPositionForm({ mode, position }) {
+  const titles = uniqueTitles();
+  const membersOptions = state.members
+    .map((m) => `<option value="${esc(String(m.user_id))}">${esc(memberLabel(m))}</option>`)
+    .join("");
 
-  if (editing) {
-    title.textContent = "Редактировать должность";
-    btnSave.textContent = "Сохранить";
-    hint.textContent = "";
-  } else {
-    title.textContent = "Создать должность";
-    btnSave.textContent = "Создать";
-    hint.textContent = "";
-  }
+  const pTitle = position?.title ?? "";
+  const rate = position?.rate ?? "";
+  const percent = position?.percent ?? "";
+  const canReports = !!position?.can_make_reports;
+  const canSchedule = !!position?.can_edit_schedule;
+
+  const titleHint = titles.length ? "Начни вводить — будут подсказки" : "Пока нет шаблонов названий";
+
+  return `
+    <datalist id="titleHints">
+      ${titles.map((t) => `<option value="${esc(t)}"></option>`).join("")}
+    </datalist>
+
+    <div class="grid grid2" style="margin-top:10px">
+      <div>
+        <div class="muted" style="margin-bottom:6px">Название должности</div>
+        <input id="f_title" placeholder="Например: Бармен" list="titleHints" value="${esc(pTitle)}" />
+        <div class="muted" style="margin-top:6px;font-size:12px">${esc(titleHint)}</div>
+      </div>
+      <div>
+        <div class="muted" style="margin-bottom:6px">Сотрудник</div>
+        <select id="f_member">
+          ${membersOptions}
+        </select>
+      </div>
+      <div>
+        <div class="muted" style="margin-bottom:6px">Ставка</div>
+        <input id="f_rate" inputmode="decimal" placeholder="0" value="${esc(rate)}" />
+      </div>
+      <div>
+        <div class="muted" style="margin-bottom:6px">Процент от продаж</div>
+        <input id="f_percent" inputmode="decimal" placeholder="0" value="${esc(percent)}" />
+      </div>
+    </div>
+
+    <div style="margin-top:10px">
+      <label class="row" style="gap:10px; align-items:center; margin:6px 0">
+        <input type="checkbox" id="f_can_reports" ${canReports ? "checked" : ""} />
+        <span>Может заполнять отчёты</span>
+      </label>
+      <label class="row" style="gap:10px; align-items:center; margin:6px 0">
+        <input type="checkbox" id="f_can_schedule" ${canSchedule ? "checked" : ""} />
+        <span>Может редактировать график</span>
+      </label>
+    </div>
+
+    <div class="row" style="gap:8px; margin-top:12px; flex-wrap:wrap">
+      <button class="btn primary" id="btnSavePos">Сохранить</button>
+      <button class="btn" id="btnCancelPos">Отмена</button>
+      ${
+        mode === "edit"
+          ? `<button class="btn danger" id="btnDeletePos" style="margin-left:auto">Удалить</button>`
+          : `<span class="muted" style="margin-left:auto">Можно создавать несколько сотрудников с одной должностью</span>`
+      }
+    </div>
+  `;
 }
 
-function resetForm() {
-  state.editingId = null;
-  document.getElementById("f_title").value = "";
-  document.getElementById("f_rate").value = "";
-  document.getElementById("f_percent").value = "";
-  document.getElementById("f_can_reports").checked = false;
-  document.getElementById("f_can_schedule").checked = false;
-  // member select оставить как есть
-  setFormMode(false);
+function collectPayload() {
+  const title = document.getElementById("f_title")?.value?.trim();
+  const member = document.getElementById("f_member")?.value;
+  const rateRaw = document.getElementById("f_rate")?.value;
+  const percentRaw = document.getElementById("f_percent")?.value;
+  const canReports = !!document.getElementById("f_can_reports")?.checked;
+  const canSchedule = !!document.getElementById("f_can_schedule")?.checked;
+
+  if (!title) throw new Error("Укажите название должности");
+  if (!member) throw new Error("Выберите сотрудника");
+
+  const rate = Number(String(rateRaw ?? "").replace(",", "."));
+  const percent = Number(String(percentRaw ?? "").replace(",", "."));
+
+  if (!Number.isFinite(rate)) throw new Error("Ставка должна быть числом");
+  if (!Number.isFinite(percent)) throw new Error("Процент должен быть числом");
+
+  return {
+    title,
+    member_user_id: Number(member),
+    rate,
+    percent,
+    can_make_reports: canReports,
+    can_edit_schedule: canSchedule,
+  };
 }
 
-function populateFormFromPosition(p) {
-  state.editingId = p.id;
-  document.getElementById("f_title").value = p.title || "";
-  document.getElementById("f_rate").value = p.rate ?? "";
-  document.getElementById("f_percent").value = p.percent ?? "";
-  document.getElementById("f_can_reports").checked = !!p.can_make_reports;
-  document.getElementById("f_can_schedule").checked = !!p.can_edit_schedule;
+function openCreateModal() {
+  openPosModal({
+    title: "Создать должность",
+    hint: "Можно создать одну должность (например, «Бармен») для нескольких сотрудников.",
+    bodyHtml: renderPositionForm({ mode: "create", position: null }),
+  });
 
   const sel = document.getElementById("f_member");
-  if (p.member_user_id) sel.value = String(p.member_user_id);
+  if (sel && sel.options.length) sel.value = sel.options[0].value;
 
-  setFormMode(true);
+  document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
+
+  document.getElementById("btnSavePos")?.addEventListener("click", async () => {
+    let payload;
+    try {
+      payload = collectPayload();
+    } catch (e) {
+      toast(e?.message || "Ошибка формы", "warn");
+      return;
+    }
+
+    try {
+      await createVenuePosition(state.venueId, payload);
+      toast("Должность создана", "ok");
+      closePosModal();
+      await load();
+    } catch (e) {
+      toast("Ошибка сохранения: " + (e?.message || e), "err");
+    }
+  });
+}
+
+function openEditModal(p) {
+  openPosModal({
+    title: "Изменить должность",
+    hint: "Меняй должность/условия для выбранного сотрудника.",
+    bodyHtml: renderPositionForm({ mode: "edit", position: p }),
+  });
+
+  const sel = document.getElementById("f_member");
+  if (sel) sel.value = String(p.member_user_id ?? "");
+
+  document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
+
+  document.getElementById("btnSavePos")?.addEventListener("click", async () => {
+    let payload;
+    try {
+      payload = collectPayload();
+    } catch (e) {
+      toast(e?.message || "Ошибка формы", "warn");
+      return;
+    }
+
+    try {
+      await updateVenuePosition(state.venueId, p.id, payload);
+      toast("Изменения сохранены", "ok");
+      closePosModal();
+      await load();
+    } catch (e) {
+      toast("Ошибка сохранения: " + (e?.message || e), "err");
+    }
+  });
+
+  document.getElementById("btnDeletePos")?.addEventListener("click", async () => {
+    const ok = await confirmModal({
+      title: "Удалить должность?",
+      text: `Удалить должность «${p.title || ""}» для сотрудника?`,
+      confirmText: "Удалить",
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      await deleteVenuePosition(state.venueId, p.id);
+      toast("Должность удалена", "ok");
+      closePosModal();
+      await load();
+    } catch (e) {
+      toast("Ошибка удаления: " + (e?.message || e), "err");
+    }
+  });
 }
 
 function renderPositions() {
@@ -210,7 +371,7 @@ function renderPositions() {
 
   for (const p of state.positions) {
     const m = memberById.get(String(p.member_user_id || ""));
-    const who = m ? memberLabel(m) : (p.member_user_id ? `user_id=${p.member_user_id}` : "—");
+    const who = m ? memberLabel(m) : p.member_user_id ? `user_id=${p.member_user_id}` : "—";
 
     const card = document.createElement("div");
     card.className = "itemcard";
@@ -235,11 +396,7 @@ function renderPositions() {
       </div>
     `;
 
-    card.querySelector("[data-edit]").onclick = () => {
-      populateFormFromPosition(p);
-      toast("Режим редактирования", "info");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    };
+    card.querySelector("[data-edit]").onclick = () => openEditModal(p);
 
     card.querySelector("[data-del]").onclick = async () => {
       const ok = await confirmModal({
@@ -264,51 +421,22 @@ function renderPositions() {
 }
 
 async function load() {
-  // members
+  state.perms = await getMyVenuePermissions(state.venueId).catch(() => null);
+
   const m = await getVenueMembers(state.venueId);
-  state.members = (m?.members || []).slice().sort((a, b) => {
-    const aa = (a.tg_username || "").toLowerCase();
-    const bb = (b.tg_username || "").toLowerCase();
-    return aa.localeCompare(bb);
-  });
+  state.members = m?.members || m || [];
 
-  fillMemberSelect();
-
-  // positions
-  const pos = await getVenuePositions(state.venueId);
-  state.positions = Array.isArray(pos) ? pos : (pos?.items || []);
+  const p = await getVenuePositions(state.venueId);
+  state.positions = p?.positions || p || [];
 
   renderPositions();
 }
 
-function collectPayload() {
-  const title = document.getElementById("f_title").value.trim();
-  const member_user_id = Number(document.getElementById("f_member").value);
-  const rate = Number(document.getElementById("f_rate").value);
-  const percent = Number(document.getElementById("f_percent").value);
-  const can_make_reports = document.getElementById("f_can_reports").checked;
-  const can_edit_schedule = document.getElementById("f_can_schedule").checked;
-
-  if (!title) throw new Error("Укажите название должности");
-  if (!Number.isFinite(member_user_id)) throw new Error("Выберите сотрудника");
-  if (!Number.isFinite(rate)) throw new Error("Укажите корректную ставку (число)");
-  if (!Number.isFinite(percent)) throw new Error("Укажите корректный процент (число)");
-
-  return {
-    title,
-    member_user_id,
-    rate,
-    percent,
-    can_make_reports,
-    can_edit_schedule,
-  };
-}
-
 async function main() {
   renderShell();
-  await ensureLogin({ silent: true });
+  wirePosModalClose();
 
-  // mount bottom nav
+  await ensureLogin({ silent: true });
   await mountNav({ activeTab: "none" });
 
   const venueId = parseVenueId() || (await bootPage({ requireVenue: true, silentLogin: true })).activeVenueId;
@@ -320,54 +448,15 @@ async function main() {
     return;
   }
 
-  // access check: owner or super_admin
-  try {
-    const me = await api("/me");
-    if (me?.system_role !== "SUPER_ADMIN") {
-      const perms = await getMyVenuePermissions(state.venueId);
-      const role = String(perms?.venue_role || perms?.my_role || perms?.role || "").toUpperCase();
-      if (role !== "OWNER") {
-        toast("Нет доступа к должностям", "err");
-        location.replace(`/app-dashboard.html?venue_id=${encodeURIComponent(state.venueId)}`);
-        return;
-      }
-    }
-  } catch {
-    // best-effort
-  }
+  setActiveVenueId(state.venueId);
 
-  // back link
-  const back = document.getElementById("back");
-  back.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
-
-  // form actions
-  document.getElementById("btnReset").onclick = resetForm;
-
-  document.getElementById("btnSave").onclick = async () => {
-    let payload;
-    try {
-      payload = collectPayload();
-    } catch (e) {
-      toast(e?.message || "Ошибка формы", "warn");
-      return;
-    }
-
-    try {
-      if (state.editingId) {
-        await updateVenuePosition(state.venueId, state.editingId, payload);
-        toast("Изменения сохранены", "ok");
-      } else {
-        await createVenuePosition(state.venueId, payload);
-        toast("Должность создана", "ok");
-      }
-      resetForm();
-      await load();
-    } catch (e) {
-      toast("Ошибка сохранения: " + (e?.message || e), "err");
-    }
+  document.getElementById("back").onclick = (e) => {
+    e.preventDefault();
+    location.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
   };
 
-  // initial load
+  document.getElementById("btnCreate").onclick = () => openCreateModal();
+
   try {
     await load();
   } catch (e) {
