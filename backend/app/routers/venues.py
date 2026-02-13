@@ -5,7 +5,7 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
@@ -21,6 +21,7 @@ from app.models.venue_position import VenuePosition
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
 from app.models.shift_assignment import ShiftAssignment
+from app.models.daily_report import DailyReport
 
 from app.services.venues import create_venue
 
@@ -253,6 +254,7 @@ def unarchive_venue(
 
 @router.delete("/{venue_id}")
 def delete_venue(
+    
     venue_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -266,7 +268,14 @@ def delete_venue(
     if not venue.is_archived:
         raise HTTPException(400, "Archive venue before delete")
 
-    db.delete(venue)
+    db.execute(delete(VenueMember).where(VenueMember.venue_id == venue_id))
+    db.execute(delete(VenueInvite).where(VenueInvite.venue_id == venue_id))
+    db.execute(delete(DailyReport).where(DailyReport.venue_id == venue_id))
+
+# и т.д. по вашим зависимостям (shifts/assignments/positions...)
+# после bulk delete — можно удалить сам venue:
+    db.execute(delete(Venue).where(Venue.id == venue_id))
+
     db.commit()
     return {"ok": True}
 
