@@ -572,22 +572,32 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
 
   // Determine if report tab should be shown (best-effort)
   let showReport = false;
+  let hideSalaryForOwner = false;
+
   if (activeVenueId) {
     try {
       const perms = await getMyVenuePermissions(activeVenueId);
       const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
       const flags = perms?.position_flags || {};
       const posObj = perms?.position || {};
+      const isOwner = perms?.role === "OWNER";
+
+      // Owner всегда имеет доступ к отчётам, зарплата владельцу не нужна
+      hideSalaryForOwner = isOwner;
+
       showReport =
+        isOwner ||
         perms?.can_make_reports === true ||
         flags.can_make_reports === true ||
         flags.can_view_reports === true ||
         posObj.can_make_reports === true ||
         posObj.can_view_reports === true ||
         has("SHIFT_REPORTS_CREATE") ||
-        has("SHIFT_REPORTS_EDIT");
+        has("SHIFT_REPORTS_EDIT") ||
+        has("SHIFT_REPORTS_VIEW");
     } catch {
       showReport = false;
+      hideSalaryForOwner = false;
     }
   }
 
@@ -597,8 +607,15 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   if (activeVenueId) {
     links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
     links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
-    links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
-    if (showReport) links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
+
+    // Владелец: вместо зарплаты показываем отчёты (и показываем всегда)
+    if (!hideSalaryForOwner) {
+      links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
+    }
+
+    if (showReport) {
+      links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
+    }
   }
   links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
 
