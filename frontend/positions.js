@@ -233,16 +233,45 @@ function renderPositionForm({ mode, position }) {
       </div>
     </div>
 
-    <div style="margin-top:10px">
-      <label class="row" style="gap:10px; align-items:center; margin:6px 0">
-        <input type="checkbox" id="f_can_reports" ${p.can_make_reports ? "checked" : ""} />
-        <span>Может заполнять отчёты</span>
-      </label>
+    <div style="margin-top:12px; display:grid; grid-template-columns: 1fr; gap:10px">
+      <div class="card" style="padding:12px">
+        <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+          <b>Права для отчётов</b>
+          <span class="muted" style="font-size:12px">Можно включать выборочно</span>
+        </div>
 
-      <label class="row" style="gap:10px; align-items:center; margin:6px 0">
-        <input type="checkbox" id="f_can_schedule" ${p.can_edit_schedule ? "checked" : ""} />
-        <span>Может редактировать график</span>
-      </label>
+        <label class="row" style="gap:10px; align-items:center; margin:8px 0 6px">
+          <input type="checkbox" id="f_rep_create" ${p.can_make_reports ? "checked" : ""} />
+          <span>Может создавать отчёты</span>
+        </label>
+
+        <label class="row" style="gap:10px; align-items:center; margin:6px 0">
+          <input type="checkbox" id="f_rep_edit" ${p.can_make_reports ? "checked" : ""} />
+          <span>Может редактировать отчёты</span>
+        </label>
+
+        <label class="row" style="gap:10px; align-items:center; margin:6px 0">
+          <input type="checkbox" id="f_rep_view" ${(p.can_view_reports || p.can_make_reports) ? "checked" : ""} />
+          <span>Может просматривать отчёты</span>
+        </label>
+
+        <label class="row" style="gap:10px; align-items:center; margin:6px 0">
+          <input type="checkbox" id="f_rep_revenue" ${(p.can_view_revenue || p.can_make_reports) ? "checked" : ""} />
+          <span>Может видеть выручку (суммы)</span>
+        </label>
+
+        <div class="muted" style="font-size:12px; margin-top:6px">
+          Владелец видит отчёты всегда, независимо от должности.
+        </div>
+      </div>
+
+      <div class="card" style="padding:12px">
+        <b>Права для графика</b>
+        <label class="row" style="gap:10px; align-items:center; margin:8px 0 0">
+          <input type="checkbox" id="f_can_schedule" ${p.can_edit_schedule ? "checked" : ""} />
+          <span>Может редактировать график</span>
+        </label>
+      </div>
     </div>
 
     <div class="row" style="gap:8px; margin-top:12px; flex-wrap:wrap">
@@ -262,7 +291,11 @@ function collectPayload() {
   const member_user_id = Number(document.getElementById("f_member")?.value);
   const rate = Number(String(document.getElementById("f_rate")?.value ?? "").replace(",", "."));
   const percent = Number(String(document.getElementById("f_percent")?.value ?? "").replace(",", "."));
-  const can_make_reports = !!document.getElementById("f_can_reports")?.checked;
+    const rep_create = !!document.getElementById("f_rep_create")?.checked;
+  const rep_edit = !!document.getElementById("f_rep_edit")?.checked;
+  const can_view_reports = !!document.getElementById("f_rep_view")?.checked;
+  const can_view_revenue = !!document.getElementById("f_rep_revenue")?.checked;
+  const can_make_reports = rep_create || rep_edit;
   const can_edit_schedule = !!document.getElementById("f_can_schedule")?.checked;
 
   if (!title) throw new Error("Укажите название должности");

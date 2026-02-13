@@ -42,8 +42,6 @@
           <a class="btn" id="openInvites" href="/invites.html">Приглашения</a>
         </div>
       </div>
-        </div>
-
 
       <div class="itemcard" style="margin-top:12px">
         <b>Участники</b>
@@ -140,28 +138,7 @@ try {
       metaEl.textContent = `venue_id=${venueId}`;
       metaHint.textContent = "";
     }
-      items.forEach(i => {
-        const row = document.createElement("div");
-        row.className = "row";
-        row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
-        row.innerHTML = `
-          <div>
-            <b>@${esc(i.tg_username)}</b> <span class="mono">роль=${esc(i.venue_role)}</span><br/>
-            <span class="mono">${esc(i.created_at || "")}</span>
-          </div>
-          <button class="btn danger" data-cancel>Отменить</button>
-        `;
-        row.querySelector("[data-cancel]").onclick = async () => {
-          try {
-            await api(`/venues/${venueId}/invites/${i.id}`, { method:"DELETE" });
-            toast("Приглашение отменено", "ok");
-            await load();
-          } catch (e) {
-            toast("Ошибка отмены: " + e.message, "err");
-          }
-        };
-      });
-    }
+      
 
     function renderMembers(items) {
       membersEl.innerHTML = "";
