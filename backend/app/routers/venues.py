@@ -351,6 +351,9 @@ def list_positions(
 ):
     _require_schedule_editor(db, venue_id=venue_id, user=user)
 
+    if include_inactive:
+        _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
     stmt = (
         select(
             VenuePosition.id,
