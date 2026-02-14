@@ -137,13 +137,21 @@ function renderDays() {
     return;
   }
 
+  function formatDateRuNoG(iso) {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
   for (const d of days) {
     const card = document.createElement("div");
+    const dd = formatDateRuNoG(d);
     card.className = "dayrow";
     card.innerHTML = `
       <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
         <div>
-          <b>${esc(d.date)}</b>
+          <b>${esc(dd)}</b>
         </div>
         <div class="dayrow__right">
           <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "Нет отчета"}</div>
