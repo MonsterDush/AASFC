@@ -144,10 +144,9 @@ function renderDays() {
       <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
         <div>
           <b>${esc(d.date)}</b>
-          <div class="muted" style="font-size:12px">${d.hasReport ? "Есть отчёт" : "Нет отчёта"}</div>
         </div>
         <div class="dayrow__right">
-          <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "—"}</div>
+          <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "Нет отчета"}</div>
           <button class="btn" data-open>Подробнее</button>
         </div>
       </div>
