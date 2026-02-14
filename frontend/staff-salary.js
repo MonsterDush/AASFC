@@ -149,8 +149,9 @@ function formatDateRuNoG(iso) {
     const card = document.createElement("div");
     const dd = formatDateRuNoG(d.date); // <-- "dd.mm.yyyy"
     card.className = "dayrow";
+
     card.innerHTML = `
-      <div class="row" style="justify-content:space-between; gap:10px; align-items:center margin-top:5px;">
+      <div class="row" style="justify-content:space-between; gap:10px; align-items:center margin-top:3px !important;">
         <div>
           <b>${esc(dd)}</b>
         </div>
