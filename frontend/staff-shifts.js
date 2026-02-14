@@ -457,7 +457,8 @@ function renderMonth() {
         sal.className = "day-salary";
         sal.textContent = `+${Math.round(daySalary)}`;
         box.appendChild(sal);
-      } else {
+      } 
+      else {
         // будущее / сегодня: показать время начала первой моей смены
         const firstShift = list[0];
         const t = firstShift ? shiftStartHHMM(firstShift) : "";
@@ -471,26 +472,24 @@ function renderMonth() {
       }
       // цветные овальчики даже в "моих" (чтобы не было уныло)
 // Маленький бонус: цветные овальчики даже в "Только мои"
-if (list.length) {
-  const dotrow = document.createElement("div");
-  dotrow.className = "dotrow";
+    if (list.length) {
+      const dotrow = document.createElement("div");
+      dotrow.className = "dotrow";
 
-  const maxDots = 6;
-  let dotCount = 0;
+      const maxDots = 6;
+      let dotCount = 0;
 
-  for (const s of list) {
-    const dot = document.createElement("div");
-    dot.className = "dot";
-    dot.setAttribute("style", dotStyleForInterval(shiftIntervalId(s)));
-    dotrow.appendChild(dot);
-    dotCount++;
-    if (dotCount >= maxDots) break;
-  }
+      for (const s of list) {
+        const dot = document.createElement("div");
+        dot.className = "dot";
+        dot.setAttribute("style", dotStyleForInterval(shiftIntervalId(s)));
+        dotrow.appendChild(dot);
+        dotCount++;
+        if (dotCount >= maxDots) break;
+      }
 
 
-}
-
-if (dotrow.childElementCount) box.appendChild(dotrow);
+    }
 
     } else {
       // --- Режим ALL: показываем строки "Имя/логин — HH:MM", без кружков
