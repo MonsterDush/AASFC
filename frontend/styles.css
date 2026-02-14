@@ -132,6 +132,7 @@ select{min-width:160px}
   gap: 6px;
 }
 
+
 .cal-cell--out { opacity: .45; }
 
 .cal-daynum {
@@ -162,6 +163,10 @@ select{min-width:160px}
   outline: 2px solid rgba(255,255,255,.28);
   outline-offset: -2px;
 }
+
+.cal-line{ font-size:12px; line-height:1.15; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cal-badges{ margin-top:6px; display:flex; flex-direction:column; gap:4px; }
+.cal-cell.is-expanded{ z-index:50; grid-column:span 2; grid-row:span 2; }
 
 /* Кружочки для будущих назначений */
 .dotrow {

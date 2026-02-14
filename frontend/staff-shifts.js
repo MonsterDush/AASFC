@@ -55,6 +55,20 @@ function openModal(title, subtitle, bodyHtml) {
   modal?.classList.add("open");
 }
 
+function toHHMM(timeStr) {
+  if (!timeStr) return "";
+  const s = String(timeStr);
+  return s.slice(0, 5);
+}
+
+function shortNameOrLogin(u) {
+  const first = (u?.first_name || "").trim();
+  const last = (u?.last_name || "").trim();
+  const name = (first + " " + last).trim();
+  const login = (u?.tg_username || u?.username || "").trim();
+  return name || (login ? "@" + login.replace(/^@/, "") : "Без имени");
+}
+
 function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
@@ -71,16 +85,8 @@ function cmpDateStr(dateStr) {
   if (d.getTime() === today.getTime()) return 0;
   return d.getTime() < today.getTime() ? -1 : 1;
 }
-
-function hashHue(x) {
-  const s = String(x ?? "");
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % 360;
-}
-function dotStyleForInterval(intervalId) {
-  const hue = hashHue(intervalId);
-  return `background:hsl(${hue} 70% 60%);`;
+function isPastDay(isoDate) {
+  return cmpDateStr(isoDate) === -1;
 }
 
 function escapeHtml(s) {
@@ -99,6 +105,7 @@ function pickShortName(obj) {
   const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
   return uid ? `user#${uid}` : "—";
 }
+
 function fioInitials(fullName) {
   const s = (fullName || "").trim();
   if (!s) return "";
@@ -108,6 +115,7 @@ function fioInitials(fullName) {
   const initials = p.slice(1).map(x => x[0] ? x[0].toUpperCase() + "." : "").join("");
   return `${surname} ${initials}`.trim();
 }
+
 function displayPerson(obj) {
   const fn = (obj?.full_name || obj?.member?.full_name || "").trim();
   const fi = fioInitials(fn);
@@ -131,6 +139,7 @@ function normalizeList(out) {
 
 let me = null;
 let perms = null;
+let myRole = null;
 let canEdit = false;
 
 // позже сделаем отдельное право, сейчас привязка к can_make_reports
@@ -146,8 +155,7 @@ let intervals = [];
 let positions = [];
 let shifts = [];
 let shiftsByDate = new Map();
-let salaryByDate = new Map(); // dateISO -> total my_salary for the day
-
+let salaryByDate = new Map(); // dateISO -> total my_salary for the day (only when report exists)
 
 function shiftIntervalTitle(s) {
   const i = s.interval || s.shift_interval || {};
@@ -161,6 +169,11 @@ function shiftTimeLabel(s) {
   const st = i.start_time || s.start_time || "";
   const et = i.end_time || s.end_time || "";
   return (st && et) ? `${st}-${et}` : (st || "");
+}
+function shiftStartHHMM(s) {
+  const i = s.interval || s.shift_interval || {};
+  const st = i.start_time || s.start_time || s.start || s.time_start || "";
+  return toHHMM(st);
 }
 
 // --- toggle ---
@@ -195,13 +208,13 @@ async function loadContext() {
   me = await getMe().catch(() => null);
   perms = await getMyVenuePermissions(venueId).catch(() => null);
 
-  const role = perms?.role || perms?.venue_role || perms?.my_role || null;
+  myRole = perms?.role || perms?.venue_role || perms?.my_role || null;
   const flags = perms?.position_flags || {};
   const posObj = perms?.position || {};
 
   canEdit =
-    role === "OWNER" ||
-    role === "SUPER_ADMIN" ||
+    myRole === "OWNER" ||
+    myRole === "SUPER_ADMIN" ||
     !!flags.can_edit_schedule ||
     !!posObj.can_edit_schedule;
 
@@ -242,11 +255,20 @@ async function loadMonth() {
 
 function buildIndex() {
   shiftsByDate = new Map();
+  salaryByDate = new Map();
+
   for (const s of shifts) {
     const date = s.date || s.shift_date || s.day;
     if (!date) continue;
+
     if (!shiftsByDate.has(date)) shiftsByDate.set(date, []);
     shiftsByDate.get(date).push(s);
+
+    // salaryByDate: суммируем только если my_salary есть (backend выдаёт только при наличии отчёта)
+    const sal = Number(s.my_salary);
+    if (Number.isFinite(sal)) {
+      salaryByDate.set(date, (salaryByDate.get(date) || 0) + sal);
+    }
   }
 
   for (const [d, arr] of shiftsByDate.entries()) {
@@ -258,23 +280,23 @@ function buildIndex() {
   }
 }
 
-
-
 function monthTitle(d) {
-   const dt = new Date(d);
-    const month = dt.toLocaleString("ru-RU", { month: "long" }); // "февраль"
-    const year = dt.getFullYear(); // 2026
-    const s = `${month} ${year}`;
-    return s.charAt(0).toUpperCase() + s.slice(1);
+  const dt = new Date(d);
+  const month = dt.toLocaleString("ru-RU", { month: "long" });
+  const year = dt.getFullYear();
+  const s = `${month} ${year}`;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function formatDateRuNoG(iso) {
-  const d = new Date(iso);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
+  const x = String(iso);
+  const dt = new Date(x.length === 10 ? x + "T00:00:00" : x);
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const yyyy = dt.getFullYear();
   return `${dd}.${mm}.${yyyy}`;
 }
+
 function filterForCalendar(listAll, dateStr) {
   const myId = me?.id ?? null;
 
@@ -303,7 +325,49 @@ function filterForCalendar(listAll, dateStr) {
   return listAll;
 }
 
+// Формат строки для ALL-режима: "Имя/логин — HH:MM"
+function formatAllModeLine(shift, assignment) {
+  const who = assignment ? displayPerson(assignment) : pickShortName(shift);
+  const t = shiftStartHHMM(shift);
+  return t ? `${who} — ${t}` : `${who}`;
+}
+
+let expandedDate = null;
+let expandWired = false;
+
+function collapseExpanded() {
+  if (!expandedDate) return;
+  const prev = document.querySelector(`.cal-cell[data-date="${expandedDate}"]`);
+  if (prev) {
+    prev.classList.remove("is-expanded");
+    prev.style.gridColumn = "";
+    prev.style.gridRow = "";
+  }
+  expandedDate = null;
+}
+
+function expandCell(cell, dateISO) {
+  collapseExpanded();
+  expandedDate = dateISO;
+  cell.classList.add("is-expanded");
+  cell.style.gridColumn = "span 2";
+  cell.style.gridRow = "span 2";
+}
+
+function wireGlobalCollapse() {
+  if (expandWired) return;
+  expandWired = true;
+
+  document.addEventListener("click", (e) => {
+    const inCell = e.target.closest?.(".cal-cell");
+    const inModal = e.target.closest?.(".modal__panel");
+    if (!inCell && !inModal) collapseExpanded();
+  });
+}
+
 function renderMonth() {
+  wireGlobalCollapse();
+
   el.monthLabel.textContent = monthTitle(curMonth);
   el.grid.innerHTML = "";
 
@@ -333,7 +397,6 @@ function renderMonth() {
     d.setDate(start.getDate() + i);
     const inMonth = d.getMonth() === curMonth.getMonth();
     const dateStr = ymd(d);
-    const rel = cmpDateStr(dateStr);
 
     const cell = document.createElement("button");
     cell.type = "button";
@@ -354,117 +417,89 @@ function renderMonth() {
     const listAll = shiftsByDate.get(dateStr) || [];
     const list = filterForCalendar(listAll, dateStr);
 
-    const daySalary = salaryByDate.get(dateStr);
-    if (Number.isFinite(daySalary)) {
-      const sal = document.createElement('div');
-      sal.className = 'day-salary';
-      sal.textContent = `+${Math.round(daySalary)}`;
-      box.appendChild(sal);
-    }
+    // --- Режим MY: показываем либо зарплату (прошлое с отчётом), либо время начала (будущие)
+    if (!showAllOnCalendar) {
+      const past = isPastDay(dateStr);
+      const daySalary = salaryByDate.get(dateStr);
 
-    if (rel === 1) {
-      // future -> dots
-      const dotrow = document.createElement("div");
-      dotrow.className = "dotrow";
-
-      let count = 0;
-      const max = 10;
-
-      const total = list.reduce((acc, s) => {
-        const assigns = (s.assignments || s.shift_assignments || []);
-        return acc + Math.max(1, assigns.length);
-      }, 0);
-
-      for (const s of list) {
-        const intervalId = shiftIntervalId(s);
-        const itTitle = shiftIntervalTitle(s);
-        const assigns = (s.assignments || s.shift_assignments || []);
-        const n = Math.max(1, assigns.length);
-
-        for (let k = 0; k < n && count < max; k++) {
-          const dot = document.createElement("div");
-          dot.className = "dot";
-          dot.setAttribute("style", dotStyleForInterval(intervalId));
-          dot.title = itTitle;
-          dotrow.appendChild(dot);
-          count++;
+      if (past && Number.isFinite(daySalary) && daySalary > 0) {
+        const sal = document.createElement("div");
+        sal.className = "day-salary";
+        sal.textContent = `+${Math.round(daySalary)}`;
+        box.appendChild(sal);
+      } else {
+        // будущее / сегодня: показать время начала первой моей смены
+        const firstShift = list[0];
+        const t = firstShift ? shiftStartHHMM(firstShift) : "";
+        if (t) {
+          const line = document.createElement("div");
+          line.className = "cal-line";
+          line.textContent = t;
+          box.appendChild(line);
         }
-        if (count >= max) break;
       }
-
-      if (total > max) {
-        const more = document.createElement("div");
-        more.className = "dot dot--more";
-        more.textContent = `+${total - max}`;
-        dotrow.appendChild(more);
-      }
-
-      box.appendChild(dotrow);
     } else {
-      // past/today -> compact pills
-      let badgeCount = 0;
-      const maxBadges = 3;
+      // --- Режим ALL: показываем строки "Имя/логин — HH:MM", без кружков
+      const maxLines = 4;
+      let lines = [];
 
       for (const s of list) {
-        const itTitle = shiftIntervalTitle(s);
-        const assigns = (s.assignments || s.shift_assignments || []).slice();
-
-        if (!assigns.length) {
-          const b = document.createElement("div");
-          b.className = "badge";
-          b.textContent = itTitle;
-          box.appendChild(b);
-          badgeCount++;
-        } else {
+        const assigns = (s.assignments || s.shift_assignments || []);
+        if (assigns.length) {
           for (const a of assigns) {
-            if (badgeCount >= maxBadges) break;
-
-            const short = pickShortName(a);
-            let txt = `${itTitle}-${short}`;
-
-            // Зарплата на прошедших днях (только моя, только если report exists) — появится если backend отдаст поля
-            const myId = me?.id ?? null;
-            const isMe = (a.member_user_id ?? a.user_id) === myId;
-
-            const reportExists = !!(s.report_exists ?? s.day_report_exists ?? s.report);
-            const mySalary = s.my_salary ?? s.salary_my ?? null;
-
-            if (rel === -1 && isMe && reportExists && mySalary != null) {
-              txt += ` · ${Number(mySalary).toLocaleString("ru-RU")}₽`;
-            }
-
-            const b = document.createElement("div");
-            b.className = "badge";
-            b.textContent = txt;
-            box.appendChild(b);
-            badgeCount++;
+            lines.push(formatAllModeLine(s, a));
+            if (lines.length >= maxLines) break;
           }
+        } else {
+          lines.push(formatAllModeLine(s, null));
         }
-        if (badgeCount >= maxBadges) break;
+        if (lines.length >= maxLines) break;
       }
 
-      const totalBadges = list.reduce((acc, s) => {
+      for (const t of lines) {
+        const line = document.createElement("div");
+        line.className = "cal-line";
+        line.textContent = t;
+        box.appendChild(line);
+      }
+
+      // подсчёт общего количества "строк", чтобы показать +ещё
+      const totalLines = list.reduce((acc, s) => {
         const assigns = (s.assignments || s.shift_assignments || []);
         return acc + Math.max(1, assigns.length);
       }, 0);
 
-      if (totalBadges > maxBadges) {
+      if (totalLines > maxLines) {
         const more = document.createElement("div");
-        more.className = "badge badge--more";
-        more.textContent = `+${totalBadges - maxBadges}`;
+        more.className = "cal-line muted";
+        more.textContent = `+ ещё ${totalLines - maxLines}`;
         box.appendChild(more);
       }
     }
 
     cell.appendChild(box);
-    cell.onclick = () => openDay(dateStr);
+
+    // 1-й клик: expand, 2-й клик: modal
+    cell.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (expandedDate !== dateStr) {
+        expandCell(cell, dateStr);
+        return;
+      }
+
+      collapseExpanded();
+      openDay(dateStr);
+    });
+
     body.appendChild(cell);
   }
 
   el.grid.appendChild(body);
 }
 
-function renderShiftCard(s) {
+function renderShiftCard(s, allowEdit) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
   const shiftId = s.id;
@@ -485,7 +520,7 @@ function renderShiftCard(s) {
             <div class="list__main">
               <div><b>${escapeHtml(label)}</b>${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
             </div>
-            ${canEdit ? `<button class="btn danger sm" data-unassign data-shift="${shiftId}" data-user="${a.member_user_id}">Удалить</button>` : ""}
+            ${allowEdit ? `<button class="btn danger sm" data-unassign data-shift="${shiftId}" data-user="${a.member_user_id}">Удалить</button>` : ""}
           </div>
         `;
       }).join("") +
@@ -493,7 +528,7 @@ function renderShiftCard(s) {
   }
 
   let editorHtml = "";
-  if (canEdit) {
+  if (allowEdit) {
     editorHtml = `
       <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
         <select class="input" data-posselect data-shift="${shiftId}" style="flex:1; min-width:240px"></select>
@@ -511,7 +546,9 @@ function renderShiftCard(s) {
   `;
 }
 
-function wireShiftEditor(dateStr, shift) {
+function wireShiftEditor(dateStr, shift, allowEdit) {
+  if (!allowEdit) return;
+
   const shiftId = shift.id;
   const card = document.querySelector(`[data-shiftcard="${shiftId}"]`);
   if (!card) return;
@@ -534,7 +571,7 @@ function wireShiftEditor(dateStr, shift) {
         opt.value = p.id;
         const mem = p.member || {};
         const name = fioInitials(mem.full_name) || mem.short_name || (mem.tg_username ? mem.tg_username.replace(/^@/, "") : "");
-        opt.textContent = `${p.title} · ${name || "—"}`; // без ставки/%
+        opt.textContent = `${p.title} · ${name || "—"}`;
         sel.appendChild(opt);
       }
       sel.disabled = false;
@@ -578,21 +615,29 @@ function wireShiftEditor(dateStr, shift) {
   });
 }
 
+function canEditDay(dateStr) {
+  if (!canEdit) return false;
+  if (myRole === "OWNER" || myRole === "SUPER_ADMIN") return true;
+  // прошедшие дни — только owner/superadmin
+  return !isPastDay(dateStr);
+}
+
 function openDay(dateStr) {
   const listAll = shiftsByDate.get(dateStr) || [];
-  // В модалке дня ВСЕГДА показываем всех назначенных
-  const list = listAll;
+  const list = listAll; // в модалке показываем всех
 
-  const d = new Date(dateStr);
-  const title = d.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
-  const subtitle = canEdit ? "Редактирование" : "Просмотр";
+  const allowEdit = canEditDay(dateStr);
+
+  const title = formatDateRuNoG(dateStr);
+  const subtitle = allowEdit ? "Редактирование" : "Просмотр";
 
   let html = `
     <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div>
-        <div class="muted" style="margin-top:4px">${canEdit ? "Можно редактировать график" : "Просмотр графика"}</div>
+        <div class="muted" style="margin-top:4px">${allowEdit ? "Можно редактировать график" : "Просмотр графика"}</div>
+        ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted" style="margin-top:4px">Прошедшие дни может редактировать только владелец</div>` : ``}
       </div>
-      ${canEdit ? `<button class="btn primary" id="btnAddShift">+ Добавить смену</button>` : ``}
+      ${allowEdit ? `<button class="btn primary" id="btnAddShift">+ Добавить смену</button>` : ``}
     </div>
   `;
 
@@ -600,11 +645,11 @@ function openDay(dateStr) {
     html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день смен нет</div></div>`;
   } else {
     html += `<div class="stack" style="margin-top:12px">`;
-    for (const s of list) html += renderShiftCard(s);
+    for (const s of list) html += renderShiftCard(s, allowEdit);
     html += `</div>`;
   }
 
-  if (canEdit) {
+  if (allowEdit) {
     html += `
       <div class="card" style="margin-top:12px; display:none" id="addShiftCard">
         <b>Новая смена</b>
@@ -633,105 +678,105 @@ function openDay(dateStr) {
     `;
   }
 
-  openModal(title.charAt(0).toUpperCase() + title.slice(1), subtitle, html);
+  openModal(title, subtitle, html);
 
-  if (canEdit) {
-    const btn = document.getElementById("btnAddShift");
-    const card = document.getElementById("addShiftCard");
-    const sel = document.getElementById("intervalSelect");
-    const createBtn = document.getElementById("createShiftBtn");
+  if (!allowEdit) return;
 
-    if (btn && card) {
-      btn.onclick = () => {
-        card.style.display = card.style.display === "none" ? "block" : "none";
+  const btn = document.getElementById("btnAddShift");
+  const card = document.getElementById("addShiftCard");
+  const sel = document.getElementById("intervalSelect");
+  const createBtn = document.getElementById("createShiftBtn");
+
+  if (btn && card) {
+    btn.onclick = () => {
+      card.style.display = card.style.display === "none" ? "block" : "none";
+    };
+  }
+
+  if (sel) {
+    sel.innerHTML = "";
+
+    for (const i of intervals) {
+      const opt = document.createElement("option");
+      opt.value = String(i.id);
+      opt.textContent = `${i.title} · ${i.start_time}-${i.end_time}`;
+      sel.appendChild(opt);
+    }
+
+    const optCreate = document.createElement("option");
+    optCreate.value = "__create__";
+    optCreate.textContent = "➕ Создать промежуток…";
+    sel.appendChild(optCreate);
+
+    if (!intervals.length) sel.value = "__create__";
+
+    const box = document.getElementById("createIntervalBox");
+    const btnCancel = document.getElementById("cancelCreateInterval");
+    const btnCreateInt = document.getElementById("createIntervalBtn");
+
+    const syncBox = () => {
+      const isCreate = sel.value === "__create__";
+      if (box) box.style.display = isCreate ? "block" : "none";
+      if (createBtn) createBtn.disabled = isCreate;
+    };
+
+    sel.onchange = syncBox;
+    syncBox();
+
+    if (btnCancel) {
+      btnCancel.onclick = () => {
+        if (intervals.length) sel.value = String(intervals[0].id);
+        syncBox();
       };
     }
 
-    if (sel) {
-      sel.innerHTML = "";
+    if (btnCreateInt) {
+      btnCreateInt.onclick = async () => {
+        const title = document.getElementById("newIntTitle")?.value?.trim();
+        const start = document.getElementById("newIntStart")?.value?.trim();
+        const end = document.getElementById("newIntEnd")?.value?.trim();
 
-      for (const i of intervals) {
-        const opt = document.createElement("option");
-        opt.value = String(i.id);
-        opt.textContent = `${i.title} · ${i.start_time}-${i.end_time}`;
-        sel.appendChild(opt);
-      }
-
-      const optCreate = document.createElement("option");
-      optCreate.value = "__create__";
-      optCreate.textContent = "➕ Создать промежуток…";
-      sel.appendChild(optCreate);
-
-      if (!intervals.length) sel.value = "__create__";
-
-      const box = document.getElementById("createIntervalBox");
-      const btnCancel = document.getElementById("cancelCreateInterval");
-      const btnCreateInt = document.getElementById("createIntervalBtn");
-
-      const syncBox = () => {
-        const isCreate = sel.value === "__create__";
-        if (box) box.style.display = isCreate ? "block" : "none";
-        if (createBtn) createBtn.disabled = isCreate;
-      };
-
-      sel.onchange = syncBox;
-      syncBox();
-
-      if (btnCancel) {
-        btnCancel.onclick = () => {
-          if (intervals.length) sel.value = String(intervals[0].id);
-          syncBox();
-        };
-      }
-
-      if (btnCreateInt) {
-        btnCreateInt.onclick = async () => {
-          const title = document.getElementById("newIntTitle")?.value?.trim();
-          const start = document.getElementById("newIntStart")?.value?.trim();
-          const end = document.getElementById("newIntEnd")?.value?.trim();
-
-          if (!title) return toast("Укажи название", "warn");
-          if (!/^\d{2}:\d{2}$/.test(start || "")) return toast("Начало в формате HH:MM", "warn");
-          if (!/^\d{2}:\d{2}$/.test(end || "")) return toast("Конец в формате HH:MM", "warn");
-
-          try {
-            await api(`/venues/${encodeURIComponent(venueId)}/shift-intervals`, {
-              method: "POST",
-              body: { title, start_time: start, end_time: end }
-            });
-            toast("Промежуток создан", "ok");
-            await loadContext();
-            await loadMonth();
-            openDay(dateStr);
-          } catch (e) {
-            toast(e?.data?.detail || e?.message || "Не удалось создать промежуток", "err");
-          }
-        };
-      }
-    }
-
-    if (createBtn) {
-      createBtn.onclick = async () => {
-        const intervalId = document.getElementById("intervalSelect")?.value;
-        if (!intervalId) return toast("Выбери промежуток", "warn");
-        if (intervalId === "__create__") return toast("Сначала создай промежуток", "warn");
+        if (!title) return toast("Укажи название", "warn");
+        if (!/^\d{2}:\d{2}$/.test(start || "")) return toast("Начало в формате HH:MM", "warn");
+        if (!/^\d{2}:\d{2}$/.test(end || "")) return toast("Конец в формате HH:MM", "warn");
 
         try {
-          await api(`/venues/${encodeURIComponent(venueId)}/shifts`, {
+          await api(`/venues/${encodeURIComponent(venueId)}/shift-intervals`, {
             method: "POST",
-            body: { date: dateStr, interval_id: Number(intervalId) },
+            body: { title, start_time: start, end_time: end }
           });
-          toast("Смена создана", "ok");
+          toast("Промежуток создан", "ok");
+          await loadContext();
           await loadMonth();
           openDay(dateStr);
         } catch (e) {
-          toast(e?.data?.detail || e?.message || "Не удалось создать смену", "err");
+          toast(e?.data?.detail || e?.message || "Не удалось создать промежуток", "err");
         }
       };
     }
-
-    for (const s of list) wireShiftEditor(dateStr, s);
   }
+
+  if (createBtn) {
+    createBtn.onclick = async () => {
+      const intervalId = document.getElementById("intervalSelect")?.value;
+      if (!intervalId) return toast("Выбери промежуток", "warn");
+      if (intervalId === "__create__") return toast("Сначала создай промежуток", "warn");
+
+      try {
+        await api(`/venues/${encodeURIComponent(venueId)}/shifts`, {
+          method: "POST",
+          body: { date: dateStr, interval_id: Number(intervalId) },
+        });
+        toast("Смена создана", "ok");
+        await loadMonth();
+        openDay(dateStr);
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось создать смену", "err");
+      }
+    };
+  }
+
+  for (const s of list) wireShiftEditor(dateStr, s, allowEdit);
 }
 
 // month navigation
