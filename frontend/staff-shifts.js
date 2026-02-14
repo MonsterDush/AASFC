@@ -12,6 +12,20 @@ import {
   getVenuePositions,
 } from "/app.js";
 
+window.onerror = function (msg, src, line, col, err) {
+  const text = `JS ошибка: ${msg}\n${src || ""}:${line || 0}:${col || 0}`;
+  try { toast(text, "err"); } catch {}
+  alert(text);
+  if (err) console.error(err);
+};
+window.onunhandledrejection = function (e) {
+  const reason = e?.reason?.message || String(e?.reason || e);
+  const text = `Promise ошибка: ${reason}`;
+  try { toast(text, "err"); } catch {}
+  alert(text);
+  console.error(e);
+};
+
 applyTelegramTheme();
 mountCommonUI("shifts");
 
@@ -381,6 +395,7 @@ function wireGlobalCollapse() {
 }
 
 function renderMonth() {
+  try {
   wireGlobalCollapse();
 
   el.monthLabel.textContent = monthTitle(curMonth);
@@ -536,6 +551,11 @@ if (cnt) box.appendChild(dotrow);
   }
 
   el.grid.appendChild(body);
+} catch (e) {
+    console.error(e);
+    toast("Ошибка в renderMonth: " + (e?.message || e), "err");
+    throw e;
+  }
 }
 
 function renderShiftCard(s, allowEdit) {
