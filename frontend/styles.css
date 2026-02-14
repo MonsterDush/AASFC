@@ -167,14 +167,19 @@ select{min-width:160px}
 }
 
 .cal-line{
-  font-size:12px;
-  line-height:1.15;
-  margin-top:4px;
+  font-size:10px;
+  font-weight:700;
+  padding:2px 8px;
+  border-radius:999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.cal-badges{ margin-top:6px; display:flex; flex-direction:column; gap:4px; }
+.cal-badges{ margin-top:4px; display:flex; flex-direction:column; gap:4px; }
+
+
 .cal-cell.is-expanded{ 
   z-index:50; 
   grid-column:span 3; 
@@ -338,7 +343,7 @@ select{min-width:160px}
 .day-salary{
   margin-top:6px;
   display:inline-block;
-  font-size:12px;
+  font-size:10px;
   font-weight:700;
   padding:2px 8px;
   border-radius:999px;
