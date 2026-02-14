@@ -472,25 +472,25 @@ function renderMonth() {
       // цветные овальчики даже в "моих" (чтобы не было уныло)
 // Маленький бонус: цветные овальчики даже в "Только мои"
 if (list.length) {
-  const dotrowMy = document.createElement("div");
-  dotrowMy.className = "dotrow";
+  const dotrow = document.createElement("div");
+  dotrow.className = "dotrow";
 
-  const maxDotsMy = 6;
-  let cntMy = 0;
+  const maxDots = 6;
+  let dotCount = 0;
 
   for (const s of list) {
     const dot = document.createElement("div");
     dot.className = "dot";
     dot.setAttribute("style", dotStyleForInterval(shiftIntervalId(s)));
-    dotrowMy.appendChild(dot);
-    cntMy++;
-    if (cntMy >= maxDotsMy) break;
+    dotrow.appendChild(dot);
+    dotCount++;
+    if (dotCount >= maxDots) break;
   }
 
-  box.appendChild(dotrowMy);
+
 }
 
-if (cntMy) box.appendChild(dotrow);
+if (dotrow.childElementCount) box.appendChild(dotrow);
 
     } else {
       // --- Режим ALL: показываем строки "Имя/логин — HH:MM", без кружков
