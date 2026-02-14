@@ -121,8 +121,7 @@ export function mountLogo() {
     const img = document.createElement("img");
     img.src = "/logo.png"; // или /logo.svg
     img.alt = "Axelio";
-    img.style.width = "28px";
-    img.style.height = "28px";
+    img.style.width = "100%";
     img.style.display = "block";
 
     el.appendChild(img);
