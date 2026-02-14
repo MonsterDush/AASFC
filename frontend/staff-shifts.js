@@ -420,79 +420,125 @@ function renderMonth() {
     const list = filterForCalendar(listAll, dateStr);
 
     // --- Режим MY: показываем либо зарплату (прошлое с отчётом), либо время начала (будущие)
-    if (!showAllOnCalendar) {
-      const past = isPastDay(dateStr);
-      const daySalary = salaryByDate.get(dateStr);
+    // --- Режим MY / ALL ---
+if (!showAllOnCalendar) {
+  const past = isPastDay(dateStr);
+  const daySalary = salaryByDate.get(dateStr);
 
-      if (past && Number.isFinite(daySalary) && daySalary > 0) {
-        const sal = document.createElement("div");
-        sal.className = "day-salary";
-        sal.textContent = `+${Math.round(daySalary)}`;
-        box.appendChild(sal);
-      } else {
-        // будущее / сегодня: показать время начала первой моей смены
-        const firstShift = list[0];
-        const t = firstShift ? shiftStartHHMM(firstShift) : "";
-        // --- цветные овальчики (ALL mode) ---
-        // цветные овальчики даже в "моих" (чтобы не было уныло)
-        const dotrow = document.createElement("div");
-        dotrow.className = "dotrow";
-        let cnt = 0;
-        for (const s of list.slice(0, 3)) {
-          const dot = document.createElement("div");
-          dot.className = "dot";
-          dot.setAttribute("style", dotStyleForInterval(shiftIntervalId(s)));
-          dotrow.appendChild(dot);
-          cnt++;
-        }
-        if (cnt) box.appendChild(dotrow);
+  // 1) основное: зарплата (прошлое с отчётом) или время начала (будущее/сегодня)
+  if (past && Number.isFinite(daySalary) && daySalary > 0) {
+    const sal = document.createElement("div");
+    sal.className = "day-salary";
+    sal.textContent = `+${Math.round(daySalary)}`;
+    box.appendChild(sal);
+  } else {
+    const firstShift = list[0];
+    const t = firstShift ? shiftStartHHMM(firstShift) : "";
+    if (t) {
+      const line = document.createElement("div");
+      line.className = "cal-line";
+      line.textContent = t;
+      box.appendChild(line);
+    }
+  }
 
+  // 2) овальчики (всегда, если есть смены)
+  if (list.length) {
+    const dotrow = document.createElement("div");
+    dotrow.className = "dotrow";
 
-        if (t) {
-          const line = document.createElement("div");
-          line.className = "cal-line";
-          line.textContent = t;
-          box.appendChild(line);
-        }
+    const maxDots = 6;
+    let cnt = 0;
+
+    for (const s of list) {
+      const dot = document.createElement("div");
+      dot.className = "dot";
+      dot.setAttribute("style", dotStyleForInterval(shiftIntervalId(s)));
+      dotrow.appendChild(dot);
+      cnt++;
+      if (cnt >= maxDots) break;
+    }
+
+    box.appendChild(dotrow);
+  }
+
+} else {
+  // --- Режим ALL: овальчики + строки "Имя — HH:MM"
+  // 1) овальчики (по интервалам/назначениям)
+  if (list.length) {
+    const dotrow = document.createElement("div");
+    dotrow.className = "dotrow";
+
+    let dotCount = 0;
+    const maxDots = 10;
+
+    const totalDots = list.reduce((acc, s) => {
+      const assigns = (s.assignments || s.shift_assignments || []);
+      return acc + Math.max(1, assigns.length);
+    }, 0);
+
+    for (const s of list) {
+      const intervalId = shiftIntervalId(s);
+      const assigns = (s.assignments || s.shift_assignments || []);
+      const n = Math.max(1, assigns.length);
+
+      for (let k = 0; k < n && dotCount < maxDots; k++) {
+        const dot = document.createElement("div");
+        dot.className = "dot";
+        dot.setAttribute("style", dotStyleForInterval(intervalId));
+        dotrow.appendChild(dot);
+        dotCount++;
       }
-    } else {
-      // --- Режим ALL: показываем строки "Имя/логин — HH:MM", без кружков
-      const maxLines = 4;
-      let lines = [];
+      if (dotCount >= maxDots) break;
+    }
 
-      for (const s of list) {
-        const assigns = (s.assignments || s.shift_assignments || []);
-        if (assigns.length) {
-          for (const a of assigns) {
-            lines.push(formatAllModeLine(s, a));
-            if (lines.length >= maxLines) break;
-          }
-        } else {
-          lines.push(formatAllModeLine(s, null));
-        }
+    if (totalDots > maxDots) {
+      const more = document.createElement("div");
+      more.className = "dot dot--more";
+      more.textContent = `+${totalDots - maxDots}`;
+      dotrow.appendChild(more);
+    }
+
+    box.appendChild(dotrow);
+  }
+
+  // 2) строки текста
+  const maxLines = 4;
+  let lines = [];
+
+  for (const s of list) {
+    const assigns = (s.assignments || s.shift_assignments || []);
+    if (assigns.length) {
+      for (const a of assigns) {
+        lines.push(formatAllModeLine(s, a));
         if (lines.length >= maxLines) break;
       }
-
-      for (const t of lines) {
-        const line = document.createElement("div");
-        line.className = "cal-line";
-        line.textContent = t;
-        box.appendChild(line);
-      }
-
-      // подсчёт общего количества "строк", чтобы показать +ещё
-      const totalLines = list.reduce((acc, s) => {
-        const assigns = (s.assignments || s.shift_assignments || []);
-        return acc + Math.max(1, assigns.length);
-      }, 0);
-
-      if (totalLines > maxLines) {
-        const more = document.createElement("div");
-        more.className = "cal-line muted";
-        more.textContent = `+ ещё ${totalLines - maxLines}`;
-        box.appendChild(more);
-      }
+    } else {
+      lines.push(formatAllModeLine(s, null));
     }
+    if (lines.length >= maxLines) break;
+  }
+
+  for (const t of lines) {
+    const line = document.createElement("div");
+    line.className = "cal-line";
+    line.textContent = t;
+    box.appendChild(line);
+  }
+
+  const totalLines = list.reduce((acc, s) => {
+    const assigns = (s.assignments || s.shift_assignments || []);
+    return acc + Math.max(1, assigns.length);
+  }, 0);
+
+  if (totalLines > maxLines) {
+    const more = document.createElement("div");
+    more.className = "cal-line muted";
+    more.textContent = `+ ещё ${totalLines - maxLines}`;
+    box.appendChild(more);
+  }
+}
+
 
     cell.appendChild(box);
 
