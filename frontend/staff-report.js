@@ -263,21 +263,30 @@ async function openDay(dayISO) {
 
       <div class="row" style="gap:10px;flex-wrap:wrap;margin-top:12px">
         <label style="min-width:180px;display:block">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Наличка</div>
+          <div class="muted" style="font-size:12px;margin-bottom:4px">Наличные</div>
           <input id="repCash" type="number" min="0" value="${esc(cashVal)}"
             ${(!canEdit || !showMoney) ? "disabled" : ""}
             placeholder="${showMoney ? "0" : "нет доступа"}" />
         </label>
 
         <label style="min-width:180px;display:block">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Безнал</div>
+          <div class="muted" style="font-size:12px;margin-bottom:4px">Безналичные</div>
           <input id="repCashless" type="number" min="0" value="${esc(cashlessVal)}"
             ${(!canEdit || !showMoney) ? "disabled" : ""}
             placeholder="${showMoney ? "0" : "нет доступа"}" />
         </label>
 
         <label style="min-width:220px;display:block">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Выручка (итого)</div>
+          <div class="row" style="justify-content:space-between; align-items:center; gap:8px">
+            <div class="muted" style="font-size:12px;margin-bottom:4px">Выручка (итого)</div>
+              <button
+                type="button"
+                class="btn"
+                id="btnSumTotal"
+                style="padding:4px 10px; font-size:12px; line-height:1;"
+                ${(!canEdit || !showMoney) ? "disabled" : ""}
+                title="Суммировать наличка + безнал"
+              >Σ</button></div>
           <input id="repTotal" type="number" min="0" value="${esc(totalVal)}"
             ${(!canEdit || !showMoney) ? "disabled" : ""}
             placeholder="${showMoney ? "0" : "нет доступа"}" />
@@ -309,6 +318,14 @@ async function openDay(dayISO) {
         toast("Ошибка сохранения: " + (e?.message || "неизвестно"), "err");
       }
     });
+    document.getElementById("btnSumTotal")?.addEventListener("click", () => {
+      const cash = Number(document.getElementById("repCash")?.value || 0);
+      const cashless = Number(document.getElementById("repCashless")?.value || 0);
+      const total = Math.max(0, cash + cashless);
+      const repTotal = document.getElementById("repTotal");
+      if (repTotal && !repTotal.disabled) repTotal.value = String(total);
+    });
+ß
   }
 }
 
