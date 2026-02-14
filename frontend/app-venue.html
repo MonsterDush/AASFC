@@ -43,6 +43,11 @@
                 <a class="btn" id="openPositions" href="#" style="text-decoration: none;">Должности</a>
                 <a class="btn" id="openInvites" href="#" style="text-decoration: none;">Приглашения</a>
               </div>
+              <div class="row" style="margin-top:12px; gap:8px; flex-wrap:wrap">
+                <a class="btn" id="openShifts" href="#" style="text-decoration: none;">График</a>
+                <a class="btn" id="openReports" href="#" style="text-decoration: none;">Отчёты</a>
+                </a>
+              </div>
       </div>
       <div class="itemcard" style="margin-top:12px">
         <b>Участники</b>
@@ -136,6 +141,8 @@
           }
           openInvites.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
+          openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
+          openReports.href = `/staff-report.html?venue_id=${encodeURIComponent(venueId)}`;
           metaEl.textContent = `venue_id=${venueId}`;
           metaHint.textContent = "";
         }
