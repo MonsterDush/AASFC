@@ -89,6 +89,19 @@ function isPastDay(isoDate) {
   return cmpDateStr(isoDate) === -1;
 }
 
+function hashHue(x) {
+  const s = String(x ?? "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function dotStyleForInterval(intervalId) {
+  const hue = hashHue(intervalId);
+  // овальчик, цвет привязан к intervalId
+  return `background:hsl(${hue} 70% 60%);`;
+}
+
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
