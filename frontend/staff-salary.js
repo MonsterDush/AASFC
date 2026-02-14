@@ -137,16 +137,17 @@ function renderDays() {
     return;
   }
 
-  function formatDateRuNoG(iso) {
+function formatDateRuNoG(iso) {
   const dt = new Date(String(iso).length === 10 ? iso + "T00:00:00" : iso);
   const dd = String(dt.getDate()).padStart(2, "0");
   const mm = String(dt.getMonth() + 1).padStart(2, "0");
   const yyyy = dt.getFullYear();
   return `${dd}.${mm}.${yyyy}`;
 }
+
   for (const d of days) {
     const card = document.createElement("div");
-    const dd = formatDateRuNoG(d.days);
+    const dd = formatDateRuNoG(d.date); // <-- "dd.mm.yyyy"
     card.className = "dayrow";
     card.innerHTML = `
       <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
