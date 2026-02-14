@@ -490,7 +490,7 @@ if (list.length) {
   box.appendChild(dotrowMy);
 }
 
-if (cnt) box.appendChild(dotrow);
+if (dotrow.childElementCount) box.appendChild(dotrow);
 
     } else {
       // --- Режим ALL: показываем строки "Имя/логин — HH:MM", без кружков
