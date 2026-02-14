@@ -130,6 +130,8 @@ select{min-width:160px}
   display: flex;
   flex-direction: column;
   gap: 6px;
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+  will-change: transform;
 }
 
 
@@ -164,35 +166,61 @@ select{min-width:160px}
   outline-offset: -2px;
 }
 
-.cal-line{ font-size:12px; line-height:1.15; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cal-line{
+  font-size:12px;
+  line-height:1.15;
+  margin-top:4px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
 .cal-badges{ margin-top:6px; display:flex; flex-direction:column; gap:4px; }
-.cal-cell.is-expanded{ z-index:50; grid-column:span 2; grid-row:span 2; }
+.cal-cell.is-expanded{ 
+  z-index:50; 
+  grid-column:span 3; 
+  grid-row:span 2; 
+  transform: scale(1.06);
+  box-shadow: 0 14px 40px rgba(0,0,0,.35);
+}
+
+.cal-cell.is-expanded{
+  background: rgba(255,255,255,.04);
+}
+
+@keyframes pop {
+  0% { transform: scale(1.00); }
+  60% { transform: scale(1.07); }
+  100% { transform: scale(1.06); }
+}
+.cal-cell.is-expanded{
+  animation: pop .18s ease-out;
+}
 
 /* Кружочки для будущих назначений */
-.dotrow {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+.dotrow{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-top:6px;
 }
 
-.dot {
-  width: 10px;
-  height: 10px;
+.dot{
+  width: 16px;
+  height: 6px;
   border-radius: 999px;
-  background: rgba(255,255,255,.55);
-  flex: 0 0 auto;
+  opacity: .95;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset;
 }
 
-.dot--accent { background: rgba(130,200,255,.85); }
-.dot--more {
+.dot--more{
   width: auto;
-  height: 18px;
   padding: 0 8px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  background: rgba(255,255,255,.12);
   font-size: 11px;
+  height: 18px;
+  line-height: 18px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.08);
 }
 
 /* На очень узких экранах чуть уменьшим gap */

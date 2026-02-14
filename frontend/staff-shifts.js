@@ -348,10 +348,12 @@ function collapseExpanded() {
 
 function expandCell(cell, dateISO) {
   collapseExpanded();
-  expandedDate = dateISO;
-  cell.classList.add("is-expanded");
-  cell.style.gridColumn = "span 2";
+  expandedDate = dateISO;  
+  cell.style.gridColumn = "span 3";
   cell.style.gridRow = "span 2";
+  requestAnimationFrame(() => {
+    cell.classList.add("is-expanded");
+  });
 }
 
 function wireGlobalCollapse() {
@@ -431,6 +433,21 @@ function renderMonth() {
         // будущее / сегодня: показать время начала первой моей смены
         const firstShift = list[0];
         const t = firstShift ? shiftStartHHMM(firstShift) : "";
+        // --- цветные овальчики (ALL mode) ---
+        // цветные овальчики даже в "моих" (чтобы не было уныло)
+        const dotrow = document.createElement("div");
+        dotrow.className = "dotrow";
+        let cnt = 0;
+        for (const s of list.slice(0, 3)) {
+          const dot = document.createElement("div");
+          dot.className = "dot";
+          dot.setAttribute("style", dotStyleForInterval(shiftIntervalId(s)));
+          dotrow.appendChild(dot);
+          cnt++;
+        }
+        if (cnt) box.appendChild(dotrow);
+
+
         if (t) {
           const line = document.createElement("div");
           line.className = "cal-line";
