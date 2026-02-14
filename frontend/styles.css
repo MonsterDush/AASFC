@@ -6,11 +6,6 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
 }
-.logo{
-  width: 28px;
-  height: 28px;
-  background: url("/logo.png") center/contain no-repeat;
-}
 
 *{box-sizing:border-box}
 body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);padding:16px 14px 84px}
