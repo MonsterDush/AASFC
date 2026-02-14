@@ -254,11 +254,10 @@ async function openDay(dayISO) {
   const totalVal = rep?.revenue_total ?? "";
 
   const formHtml = `
-    <div class="itemcard">
+    <div class="itemcard" style="margin-top: 12px;">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div>
           <div class="muted" style="margin-top:4px"><b>${exists ? "Отчёт найден" : "Отчёта нет"}</b></div>
-        </div>
+
         ${canEdit ? `<button class="btn primary" id="btnSaveRep">${exists ? "Сохранить" : "Создать"}</button>` : ""}
       </div>
 
