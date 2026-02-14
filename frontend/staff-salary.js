@@ -146,7 +146,7 @@ function renderDays() {
 }
   for (const d of days) {
     const card = document.createElement("div");
-    const dd = formatDateRuNoG(d);
+    const dd = formatDateRuNoG(d.days);
     card.className = "dayrow";
     card.innerHTML = `
       <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
