@@ -110,6 +110,25 @@ export function closeModal() {
   if (m) m.classList.remove("open");
 }
 
+export function mountLogo() {
+  document.querySelectorAll(".logo").forEach(el => {
+    if (el.dataset.logoMounted) return;
+    el.dataset.logoMounted = "1";
+
+    // очистим, если там что-то было
+    el.innerHTML = "";
+
+    const img = document.createElement("img");
+    img.src = "/logo.png"; // или /logo.svg
+    img.alt = "Axelio";
+    img.style.width = "28px";
+    img.style.height = "28px";
+    img.style.display = "block";
+
+    el.appendChild(img);
+  });
+}
+
 export function mountCommonUI(activeTab) {
   document.querySelectorAll("[data-tab]").forEach((a) => {
     if (a.getAttribute("data-tab") === activeTab) a.classList.add("active");
@@ -122,7 +141,7 @@ export function mountCommonUI(activeTab) {
     if (closeBtn) closeBtn.onclick = closeModal;
     if (backdrop) backdrop.onclick = closeModal;
   }
-
+  mountLogo();
   document.querySelectorAll("[data-viewjson]").forEach((btn) => {
     btn.onclick = () =>
       openModal(btn.getAttribute("data-title") || "JSON", window.__lastJson || {});
