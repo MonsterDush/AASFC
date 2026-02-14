@@ -217,12 +217,19 @@ async function saveReport(dayISO) {
   });
 }
 
+function formatDateRuNoG(iso) {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
 async function openDay(dayISO) {
   if (!venueId) return;
   if (!canView()) return;
 
   const d = new Date(dayISO);
-  const title = d.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
+  const title = formatDateRuNoG(d);
 
   // Открываем модалку сразу, чтобы была мгновенная реакция
   const subtitle = canMake() ? "Редактирование" : "Просмотр";
@@ -250,8 +257,7 @@ async function openDay(dayISO) {
     <div class="itemcard">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div>
-          <b>${esc(dayISO)}</b>
-          <div class="muted" style="margin-top:4px">${exists ? "Отчёт найден" : "Отчёта нет"}</div>
+          <div class="muted" style="margin-top:4px"><b>${exists ? "Отчёт найден" : "Отчёта нет"}</b></div>
         </div>
         ${canEdit ? `<button class="btn primary" id="btnSaveRep">${exists ? "Сохранить" : "Создать"}</button>` : ""}
       </div>

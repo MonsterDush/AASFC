@@ -258,11 +258,20 @@ function buildIndex() {
   }
 }
 
+
+
 function monthTitle(d) {
-  const m = d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  const m = formatDateRuNoG(d)
   return m.charAt(0).toUpperCase() + m.slice(1);
 }
 
+function formatDateRuNoG(iso) {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
 function filterForCalendar(listAll, dateStr) {
   const myId = me?.id ?? null;
 
