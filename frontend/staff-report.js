@@ -28,6 +28,20 @@ const el = {
   dayPanel: document.getElementById("dayPanel"),
 };
 
+const modal = document.getElementById("modal");
+const modalTitle = modal?.querySelector(".modal__title");
+const modalBody = modal?.querySelector(".modal__body");
+const modalSubtitleEl = document.getElementById("modalSubtitle");
+function closeModal() { modal?.classList.remove("open"); }
+modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
+modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
+function openModal(title, subtitle, bodyHtml) {
+  if (modalTitle) modalTitle.textContent = title || "Отчет";
+  if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle || "";
+  if (modalBody) modalBody.innerHTML = bodyHtml || "";
+  modal?.classList.add("open");
+}
+
 function esc(s){
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -172,7 +186,7 @@ function renderMonth() {
     if (dStr === todayStr) cell.classList.add("is-today");
     if (hasRep) cell.classList.add("has-report");
 
-    cell.addEventListener("click", () => openDay(dStr));
+    cell.onclick = () => openDay(dStr);
     body.appendChild(cell);
   }
 
@@ -207,24 +221,32 @@ async function openDay(dayISO) {
   if (!venueId) return;
   if (!canView()) return;
 
-  el.dayPanel.innerHTML = `
-    <div class="itemcard">
-      <b>${esc(dayISO)}</b>
-      <div class="muted" style="margin-top:6px">Загрузка…</div>
-    </div>
-  `;
+  const d = new Date(dayISO);
+  const title = d.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
 
-  const report = await fetchReport(dayISO);
-  const exists = !!report;
+  // Открываем модалку сразу, чтобы была мгновенная реакция
+  const subtitle = canMake() ? "Редактирование" : "Просмотр";
 
+  let rep = null;
+  try {
+    rep = await fetchReport(dayISO);
+  } catch (e) {
+    // если 404 — это норм, отчёта нет
+    if (e?.status !== 404 && e?.data?.detail !== "Report not found") {
+      toast("Ошибка загрузки отчёта: " + (e?.message || "неизвестно"), "err");
+    }
+    rep = null;
+  }
+
+  const exists = !!rep;
   const canEdit = canMake();
   const showMoney = canSeeMoney();
 
-  const cashVal = report?.cash ?? "";
-  const cashlessVal = report?.cashless ?? "";
-  const totalVal = report?.revenue_total ?? "";
+  const cashVal = rep?.cash ?? "";
+  const cashlessVal = rep?.cashless ?? "";
+  const totalVal = rep?.revenue_total ?? "";
 
-  el.dayPanel.innerHTML = `
+  const formHtml = `
     <div class="itemcard">
       <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div>
@@ -263,6 +285,8 @@ async function openDay(dayISO) {
     </div>
   `;
 
+  openModal(title, subtitle, formHtml);
+
   if (canEdit) {
     document.getElementById("btnSaveRep")?.addEventListener("click", async () => {
       if (!showMoney) {
@@ -274,6 +298,7 @@ async function openDay(dayISO) {
         toast("Отчёт сохранён", "ok");
         await loadMonthReports();
         renderMonth();
+    el.dayPanel.innerHTML = `<div class="muted" style="margin-top:8px">Выберите день в календаре, чтобы посмотреть или заполнить отчёт.</div>`;
         await openDay(dayISO);
       } catch (e) {
         toast("Ошибка сохранения: " + (e?.message || "неизвестно"), "err");
