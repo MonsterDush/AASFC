@@ -261,8 +261,11 @@ function buildIndex() {
 
 
 function monthTitle(d) {
-  const m = formatDateRuNoG(d)
-  return m.charAt(0).toUpperCase() + m.slice(1);
+   const dt = new Date(d);
+    const month = dt.toLocaleString("ru-RU", { month: "long" }); // "февраль"
+    const year = dt.getFullYear(); // 2026
+    const s = `${month} ${year}`;
+    return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function formatDateRuNoG(iso) {
