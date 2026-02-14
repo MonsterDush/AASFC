@@ -465,7 +465,7 @@ function renderMonth() {
         // --- цветные овальчики (ALL mode) ---
         if (t) {
           const line = document.createElement("div");
-          line.className = "cal-line";
+          line.className = "day-salary";
           line.textContent = t;
           box.appendChild(line);
         }
