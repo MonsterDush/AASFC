@@ -8,6 +8,7 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenuePermissions,
+  API_BASE,
 } from "/app.js";
 
 applyTelegramTheme();
@@ -204,16 +205,55 @@ async function fetchReport(dayISO) {
   } catch {
     return null;
   }
+
+async function fetchAttachments(dayISO) {
+  try {
+    const out = await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`);
+    return Array.isArray(out) ? out : (out?.items || []);
+  } catch {
+    return [];
+  }
+}
+
+async function uploadAttachments(dayISO, files) {
+  if (!files || !files.length) return null;
+  const fd = new FormData();
+  for (const f of files) fd.append("files", f);
+  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`, {
+    method: "POST",
+    body: fd,
+    isMultipart: true,
+  });
+}
+
+async function loadAttachmentsIntoModal(dayISO) {
+  const listEl = document.getElementById("repFilesList");
+  if (!listEl) return;
+  const items = await fetchAttachments(dayISO);
+  if (!items.length) {
+    listEl.innerHTML = `<div class="muted">Нет файлов</div>`;
+    return;
+  }
+  listEl.innerHTML = items.map(a => {
+    const url = `${API_BASE}/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments/${encodeURIComponent(a.id)}/download`;
+    return `<div class="row" style="justify-content:space-between;gap:10px;margin-top:8px">
+      <a href="${url}" target="_blank">${esc(a.file_name)}</a>
+      <span class="muted" style="font-size:12px">${esc((a.created_at||"").slice(0,19).replace("T"," "))}</span>
+    </div>`;
+  }).join("");
+}
+
 }
 
 async function saveReport(dayISO) {
   const cash = Math.max(0, numOr0(document.getElementById("repCash")?.value));
   const cashless = Math.max(0, numOr0(document.getElementById("repCashless")?.value));
   const revenue_total = Math.max(0, numOr0(document.getElementById("repTotal")?.value));
+  const tips_total = Math.max(0, numOr0(document.getElementById("repTips")?.value));
 
   return api(`/venues/${encodeURIComponent(venueId)}/reports`, {
     method: "POST",
-    body: { date: dayISO, cash, cashless, revenue_total },
+    body: { date: dayISO, cash, cashless, revenue_total, tips_total },
   });
 }
 

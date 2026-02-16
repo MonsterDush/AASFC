@@ -184,6 +184,7 @@ export async function api(path, opts = {}) {
 
   // auto-jsonify object body (если передали объект)
   let body = opts.body;
+  const isForm = (typeof FormData !== "undefined") && (body instanceof FormData);
   if (isPlainObject(body)) body = JSON.stringify(body);
 
   const r = await fetch(url, {
@@ -191,7 +192,7 @@ export async function api(path, opts = {}) {
     body,
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
+      ...(isForm ? {} : { "Content-Type": "application/json" }),
       ...(opts.headers || {}),
     },
   });

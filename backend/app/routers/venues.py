@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone, date, time
+import os
+import uuid
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
@@ -22,8 +25,15 @@ from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
 from app.models.shift_assignment import ShiftAssignment
 from app.models.daily_report import DailyReport
+from app.models.daily_report_attachment import DailyReportAttachment
+from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
+from app.models.adjustment_dispute import AdjustmentDispute
+from app.models.bonus import Bonus
+from app.models.writeoff import Writeoff
+from app.models.penalty import Penalty
 
 from app.services.venues import create_venue
+from app.services.tg_notify import send_telegram_message
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 
@@ -74,6 +84,21 @@ class DailyReportUpsertIn(BaseModel):
     cash: int = Field(0, ge=0)
     cashless: int = Field(0, ge=0)
     revenue_total: int = Field(0, ge=0)
+    tips_total: int = Field(0, ge=0)
+
+class AdjustmentCreateIn(BaseModel):
+    type: str = Field(..., description="penalty|writeoff|bonus")
+    date: date
+    amount: int = Field(..., ge=0)
+    reason: str | None = Field(default=None, max_length=500)
+    member_user_id: int | None = Field(default=None, description="Required for penalty/bonus; optional for writeoff (null=venue)")
+
+class DisputeCreateIn(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000)
+
+class DisputeStatusUpdateIn(BaseModel):
+    status: str = Field(..., description="OPEN|CLOSED")
+
 
 class ShiftIntervalCreateIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
@@ -213,6 +238,60 @@ def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
     ).scalar_one_or_none()
     # report maker can always view numbers
     return bool(pos and (pos.can_view_revenue or pos.can_make_reports))
+
+
+def _is_adjustments_manager(db: Session, *, venue_id: int, user: User) -> bool:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return True
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == user.id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    return bool(pos and pos.can_manage_adjustments)
+
+
+def _require_adjustments_manager(db: Session, *, venue_id: int, user: User) -> None:
+    if not _is_adjustments_manager(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _is_adjustments_viewer(db: Session, *, venue_id: int, user: User) -> bool:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return True
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == user.id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    return bool(pos and (pos.can_view_adjustments or pos.can_manage_adjustments))
+
+
+def _require_adjustments_viewer(db: Session, *, venue_id: int, user: User) -> None:
+    if not _is_adjustments_viewer(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _is_disputes_resolver(db: Session, *, venue_id: int, user: User) -> bool:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return True
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == user.id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    return bool(pos and (pos.can_resolve_disputes or pos.can_manage_adjustments))
+
+
+def _require_disputes_resolver(db: Session, *, venue_id: int, user: User) -> None:
+    if not _is_disputes_resolver(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 
@@ -644,6 +723,7 @@ def upsert_daily_report(
             cash=payload.cash,
             cashless=payload.cashless,
             revenue_total=payload.revenue_total,
+            tips_total=payload.tips_total,
             created_by_user_id=user.id,
         )
         db.add(obj)
@@ -654,6 +734,7 @@ def upsert_daily_report(
     obj.cash = payload.cash
     obj.cashless = payload.cashless
     obj.revenue_total = payload.revenue_total
+    obj.tips_total = payload.tips_total
     obj.updated_by_user_id = user.id
     obj.updated_at = datetime.utcnow()
     db.commit()
@@ -693,6 +774,8 @@ def list_daily_reports(
             "cash": r.cash if show_numbers else None,
             "cashless": r.cashless if show_numbers else None,
             "revenue_total": r.revenue_total if show_numbers else None,
+        "tips_total": r.tips_total if show_numbers else None,
+            "tips_total": r.tips_total if show_numbers else None,
         }
         for r in rows
     ]
@@ -721,7 +804,135 @@ def get_daily_report(
         "cash": r.cash if show_numbers else None,
         "cashless": r.cashless if show_numbers else None,
         "revenue_total": r.revenue_total if show_numbers else None,
+            "tips_total": r.tips_total if show_numbers else None,
     }
+
+
+
+# ---------- Daily report attachments ----------
+
+def _reports_upload_dir() -> str:
+    return os.getenv("REPORTS_UPLOAD_DIR", "/var/www/axelio/dev/uploads/reports")
+
+
+@router.get("/{venue_id}/reports/{report_date}/attachments")
+def list_daily_report_attachments(
+    venue_id: int,
+    report_date: date,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+
+    report = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+    ).scalar_one_or_none()
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    rows = db.execute(
+        select(DailyReportAttachment)
+        .where(
+            DailyReportAttachment.venue_id == venue_id,
+            DailyReportAttachment.report_id == report.id,
+            DailyReportAttachment.is_active.is_(True),
+        )
+        .order_by(DailyReportAttachment.id.asc())
+    ).scalars().all()
+
+    return [
+        {
+            "id": a.id,
+            "file_name": a.file_name,
+            "created_at": a.created_at.isoformat(),
+        }
+        for a in rows
+    ]
+
+
+@router.post("/{venue_id}/reports/{report_date}/attachments")
+async def upload_daily_report_attachments(
+    venue_id: int,
+    report_date: date,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_maker(db, venue_id=venue_id, user=user)
+
+    report = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+    ).scalar_one_or_none()
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    base_dir = os.path.join(_reports_upload_dir(), str(venue_id), report_date.isoformat())
+    os.makedirs(base_dir, exist_ok=True)
+
+    created = []
+    for f in files:
+        if not f.filename:
+            continue
+        safe_name = os.path.basename(f.filename)
+        ext = os.path.splitext(safe_name)[1].lower()
+        uid = uuid.uuid4().hex
+        stored_name = f"{uid}{ext}"
+        storage_path = os.path.join(base_dir, stored_name)
+
+        content = await f.read()
+        with open(storage_path, "wb") as out:
+            out.write(content)
+
+        a = DailyReportAttachment(
+            venue_id=venue_id,
+            report_id=report.id,
+            file_name=safe_name,
+            storage_path=storage_path,
+            uploaded_by_user_id=user.id,
+            created_at=datetime.utcnow(),
+        )
+        db.add(a)
+        db.commit()
+        db.refresh(a)
+        created.append({"id": a.id, "file_name": a.file_name})
+
+    return {"items": created}
+
+
+@router.get("/{venue_id}/reports/{report_date}/attachments/{attachment_id}/download")
+def download_daily_report_attachment(
+    venue_id: int,
+    report_date: date,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+
+    report = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+    ).scalar_one_or_none()
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    a = db.execute(
+        select(DailyReportAttachment).where(
+            DailyReportAttachment.id == attachment_id,
+            DailyReportAttachment.venue_id == venue_id,
+            DailyReportAttachment.report_id == report.id,
+            DailyReportAttachment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if a is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    if not os.path.exists(a.storage_path):
+        raise HTTPException(status_code=404, detail="File missing on disk")
+
+    return FileResponse(a.storage_path, filename=a.file_name)
 
 
 @router.post("/{venue_id}/invites")
@@ -1103,9 +1314,8 @@ def list_shifts(
                     "position_title": r.title,
                     "tg_username": r.tg_username,
                     "full_name": r.full_name,
+                    "full_name": r.full_name,
                     "short_name": r.short_name,
-                "full_name": r.full_name,
-                "short_name": r.short_name,
                 }
             )
 
@@ -1137,6 +1347,26 @@ def list_shifts(
         ).all()
         my_assignment_by_shift = {r.shift_id: {"rate": int(r.rate), "percent": int(r.percent)} for r in my_rows}
 
+    
+    # tips share: split report.tips_total equally between unique employees scheduled for that day
+    members_by_date: dict[date, set[int]] = {}
+    for sh in shifts:
+        sset = members_by_date.setdefault(sh.date, set())
+        for a in assignments_by_shift.get(sh.id, []):
+            try:
+                sset.add(int(a["member_user_id"]))
+            except Exception:
+                pass
+
+    tips_share_by_date: dict[date, float] = {}
+    for d0, members in members_by_date.items():
+        rep = report_by_date.get(d0)
+        if rep and members:
+            tips_share_by_date[d0] = float(rep.tips_total or 0) / float(len(members))
+        else:
+            tips_share_by_date[d0] = 0.0
+
+    my_has_by_date = {d0: (user.id in members_by_date.get(d0, set())) for d0 in members_by_date.keys()}
     return [
         {
             "id": s.id,
@@ -1154,6 +1384,11 @@ def list_shifts(
             "my_salary": (
                 (my_assignment_by_shift.get(s.id)["rate"] + (my_assignment_by_shift.get(s.id)["percent"] / 100.0) * report_by_date.get(s.date).revenue_total)
                 if (report_by_date.get(s.date) and my_assignment_by_shift.get(s.id))
+                else None
+            ),
+            "my_tips_share": (
+                tips_share_by_date.get(s.date)
+                if (report_by_date.get(s.date) and my_has_by_date.get(s.date))
                 else None
             ),
         }
@@ -1402,3 +1637,374 @@ def remove_shift_assignment(
     db.delete(a)
     db.commit()
     return {"ok": True}
+
+
+# ---------- Adjustments (penalties / writeoffs / bonuses) ----------
+
+def _notify_user(db: Session, user_id: int, text: str) -> None:
+    u = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if u and u.tg_user_id:
+        send_telegram_message(int(u.tg_user_id), text)
+
+
+def _notify_adjustments_moderators(db: Session, venue_id: int, text: str) -> None:
+    # owners
+    owner_user_ids = db.execute(
+        select(VenueMember.user_id).where(
+            VenueMember.venue_id == venue_id,
+            VenueMember.venue_role == "OWNER",
+            VenueMember.is_active.is_(True),
+        )
+    ).scalars().all()
+
+    # positions with resolver rights
+    resolver_user_ids = db.execute(
+        select(VenuePosition.member_user_id).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.is_active.is_(True),
+            (VenuePosition.can_resolve_disputes.is_(True) | VenuePosition.can_manage_adjustments.is_(True)),
+        )
+    ).scalars().all()
+
+    ids = set(owner_user_ids) | set(resolver_user_ids)
+    for uid in ids:
+        _notify_user(db, uid, text)
+
+
+def _adjustment_payload(obj, t: str):
+    base = {
+        "type": t,
+        "id": obj.id,
+        "venue_id": obj.venue_id,
+        "member_user_id": getattr(obj, "member_user_id", None),
+        "date": obj.date.isoformat(),
+        "amount": int(obj.amount),
+        "reason": obj.reason,
+        "created_by_user_id": obj.created_by_user_id,
+        "created_at": obj.created_at.isoformat() if obj.created_at else None,
+    }
+    return base
+
+
+@router.post("/{venue_id}/adjustments")
+def create_adjustment(
+    venue_id: int,
+    payload: AdjustmentCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_adjustments_manager(db, venue_id=venue_id, user=user)
+
+    t = (payload.type or "").strip().lower()
+    if t not in ("penalty", "writeoff", "bonus"):
+        raise HTTPException(status_code=400, detail="Bad type")
+
+    if t in ("penalty", "bonus"):
+        if not payload.member_user_id:
+            raise HTTPException(status_code=400, detail="member_user_id required")
+    if t == "writeoff":
+        # member_user_id is optional; null means venue-level
+        pass
+
+    if t == "penalty":
+        obj = Penalty(
+            venue_id=venue_id,
+            member_user_id=payload.member_user_id,
+            date=payload.date,
+            amount=payload.amount,
+            reason=payload.reason,
+            created_by_user_id=user.id,
+            created_at=datetime.utcnow(),
+        )
+    elif t == "bonus":
+        obj = Bonus(
+            venue_id=venue_id,
+            member_user_id=payload.member_user_id,
+            date=payload.date,
+            amount=payload.amount,
+            reason=payload.reason,
+            created_by_user_id=user.id,
+            created_at=datetime.utcnow(),
+        )
+    else:
+        obj = Writeoff(
+            venue_id=venue_id,
+            member_user_id=payload.member_user_id,
+            date=payload.date,
+            amount=payload.amount,
+            reason=payload.reason,
+            created_by_user_id=user.id,
+            created_at=datetime.utcnow(),
+        )
+
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+
+    # notify target employee (only if member_user_id set)
+    if getattr(obj, "member_user_id", None):
+        title = {"penalty": "Штраф", "bonus": "Премия", "writeoff": "Списание"}.get(t, "Изменение")
+        _notify_user(db, int(obj.member_user_id), f"{title} · {payload.date.isoformat()} · {payload.amount}\n{payload.reason or ''}".strip())
+
+    return _adjustment_payload(obj, t)
+
+
+@router.get("/{venue_id}/adjustments")
+def list_adjustments(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    type: str | None = Query(default=None, description="penalty|writeoff|bonus"),
+    mine: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    try:
+        y_s, m_s = month.split("-")
+        y = int(y_s)
+        m = int(m_s)
+        start = date(y, m, 1)
+        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+
+    t = (type or "").strip().lower() or None
+    if t and t not in ("penalty", "writeoff", "bonus"):
+        raise HTTPException(status_code=400, detail="Bad type")
+
+    if mine:
+        # employee view: only own items (no venue-level writeoffs)
+        pass
+    else:
+        _require_adjustments_viewer(db, venue_id=venue_id, user=user)
+
+    items: list[dict] = []
+
+    def add_rows(rows, tt):
+        for r in rows:
+            items.append(_adjustment_payload(r, tt))
+
+    if (t is None) or (t == "penalty"):
+        stmt = select(Penalty).where(
+            Penalty.venue_id == venue_id,
+            Penalty.is_active.is_(True),
+            Penalty.date >= start,
+            Penalty.date < end,
+        )
+        if mine:
+            stmt = stmt.where(Penalty.member_user_id == user.id)
+        add_rows(db.execute(stmt).scalars().all(), "penalty")
+
+    if (t is None) or (t == "bonus"):
+        stmt = select(Bonus).where(
+            Bonus.venue_id == venue_id,
+            Bonus.is_active.is_(True),
+            Bonus.date >= start,
+            Bonus.date < end,
+        )
+        if mine:
+            stmt = stmt.where(Bonus.member_user_id == user.id)
+        add_rows(db.execute(stmt).scalars().all(), "bonus")
+
+    if (t is None) or (t == "writeoff"):
+        stmt = select(Writeoff).where(
+            Writeoff.venue_id == venue_id,
+            Writeoff.is_active.is_(True),
+            Writeoff.date >= start,
+            Writeoff.date < end,
+        )
+        if mine:
+            stmt = stmt.where(Writeoff.member_user_id == user.id)
+        add_rows(db.execute(stmt).scalars().all(), "writeoff")
+
+    items.sort(key=lambda x: (x["date"], x["type"], x["id"]))
+    return {"items": items}
+
+
+@router.get("/{venue_id}/adjustments/{target_type}/{target_id}")
+def get_adjustment(
+    venue_id: int,
+    target_type: str,
+    target_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    t = (target_type or "").strip().lower()
+    if t not in ("penalty", "writeoff", "bonus"):
+        raise HTTPException(status_code=400, detail="Bad target_type")
+
+    # access rules:
+    # - managers/viewers: can view everything
+    # - others: only their own (and only if member_user_id exists)
+    can_all = _is_adjustments_viewer(db, venue_id=venue_id, user=user)
+
+    if t == "penalty":
+        obj = db.execute(select(Penalty).where(Penalty.id == target_id, Penalty.venue_id == venue_id, Penalty.is_active.is_(True))).scalar_one_or_none()
+    elif t == "bonus":
+        obj = db.execute(select(Bonus).where(Bonus.id == target_id, Bonus.venue_id == venue_id, Bonus.is_active.is_(True))).scalar_one_or_none()
+    else:
+        obj = db.execute(select(Writeoff).where(Writeoff.id == target_id, Writeoff.venue_id == venue_id, Writeoff.is_active.is_(True))).scalar_one_or_none()
+
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not can_all:
+        mid = getattr(obj, "member_user_id", None)
+        if not mid or int(mid) != int(user.id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+    # dispute info
+    disp = db.execute(
+        select(AdjustmentDispute).where(
+            AdjustmentDispute.venue_id == venue_id,
+            AdjustmentDispute.target_type == t,
+            AdjustmentDispute.target_id == target_id,
+            AdjustmentDispute.is_active.is_(True),
+        ).order_by(AdjustmentDispute.id.desc())
+    ).scalar_one_or_none()
+
+    data = _adjustment_payload(obj, t)
+    data["dispute"] = (
+        {
+            "id": disp.id,
+            "status": disp.status,
+            "created_by_user_id": disp.created_by_user_id,
+            "created_at": disp.created_at.isoformat(),
+            "resolved_by_user_id": disp.resolved_by_user_id,
+            "resolved_at": disp.resolved_at.isoformat() if disp.resolved_at else None,
+        }
+        if disp else None
+    )
+    return data
+
+
+@router.post("/{venue_id}/adjustments/{target_type}/{target_id}/dispute")
+def create_dispute(
+    venue_id: int,
+    target_type: str,
+    target_id: int,
+    payload: DisputeCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    t = (target_type or "").strip().lower()
+    if t not in ("penalty", "writeoff", "bonus"):
+        raise HTTPException(status_code=400, detail="Bad target_type")
+
+    # check target exists and belongs to user (unless viewer)
+    can_all = _is_adjustments_viewer(db, venue_id=venue_id, user=user)
+
+    if t == "penalty":
+        obj = db.execute(select(Penalty).where(Penalty.id == target_id, Penalty.venue_id == venue_id, Penalty.is_active.is_(True))).scalar_one_or_none()
+    elif t == "bonus":
+        obj = db.execute(select(Bonus).where(Bonus.id == target_id, Bonus.venue_id == venue_id, Bonus.is_active.is_(True))).scalar_one_or_none()
+    else:
+        obj = db.execute(select(Writeoff).where(Writeoff.id == target_id, Writeoff.venue_id == venue_id, Writeoff.is_active.is_(True))).scalar_one_or_none()
+
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not can_all:
+        mid = getattr(obj, "member_user_id", None)
+        if not mid or int(mid) != int(user.id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+    disp = AdjustmentDispute(
+        venue_id=venue_id,
+        target_type=t,
+        target_id=target_id,
+        created_by_user_id=user.id,
+        created_at=datetime.utcnow(),
+        status="OPEN",
+        is_active=True,
+    )
+    db.add(disp)
+    db.commit()
+    db.refresh(disp)
+
+    c = AdjustmentDisputeComment(
+        dispute_id=disp.id,
+        author_user_id=user.id,
+        message=payload.message,
+        created_at=datetime.utcnow(),
+        is_active=True,
+    )
+    db.add(c)
+    db.commit()
+
+    # notify moderators/resolvers
+    title = {"penalty": "Штраф", "bonus": "Премия", "writeoff": "Списание"}.get(t, "Изменение")
+    _notify_adjustments_moderators(
+        db,
+        venue_id,
+        f"Оспорено: {title} #{target_id} · {getattr(obj,'date').isoformat()} · {getattr(obj,'amount')}\n{payload.message}",
+    )
+
+    return {"id": disp.id, "status": disp.status}
+
+
+@router.post("/{venue_id}/disputes/{dispute_id}/comments")
+def add_dispute_comment(
+    venue_id: int,
+    dispute_id: int,
+    payload: DisputeCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    disp = db.execute(select(AdjustmentDispute).where(AdjustmentDispute.id == dispute_id, AdjustmentDispute.venue_id == venue_id, AdjustmentDispute.is_active.is_(True))).scalar_one_or_none()
+    if disp is None:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+
+    c = AdjustmentDisputeComment(
+        dispute_id=disp.id,
+        author_user_id=user.id,
+        message=payload.message,
+        created_at=datetime.utcnow(),
+        is_active=True,
+    )
+    db.add(c)
+    db.commit()
+
+    # notify resolvers if not author
+    _notify_adjustments_moderators(db, venue_id, f"Комментарий к спору #{disp.id}:\n{payload.message}")
+
+    return {"ok": True}
+
+
+@router.patch("/{venue_id}/disputes/{dispute_id}")
+def update_dispute_status(
+    venue_id: int,
+    dispute_id: int,
+    payload: DisputeStatusUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_disputes_resolver(db, venue_id=venue_id, user=user)
+
+    disp = db.execute(select(AdjustmentDispute).where(AdjustmentDispute.id == dispute_id, AdjustmentDispute.venue_id == venue_id, AdjustmentDispute.is_active.is_(True))).scalar_one_or_none()
+    if disp is None:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+
+    st = (payload.status or "").strip().upper()
+    if st not in ("OPEN", "CLOSED"):
+        raise HTTPException(status_code=400, detail="Bad status")
+
+    disp.status = st
+    if st == "CLOSED":
+        disp.resolved_by_user_id = user.id
+        disp.resolved_at = datetime.utcnow()
+    else:
+        disp.resolved_by_user_id = None
+        disp.resolved_at = None
+
+    db.commit()
+    return {"ok": True, "status": disp.status}

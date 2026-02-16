@@ -34,5 +34,11 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("REPORTS_VIEW_DAILY", "Reports", "Отчёты за день", "Просматривать отчёт за выбранный день"),
     PermissionDef("REPORTS_VIEW_MONTHLY", "Reports", "Отчёты за месяц", "Просматривать отчёты за месяц"),
     PermissionDef("REPORTS_VIEW_PNL", "Reports", "P&L", "Просматривать прибыль/убытки"),
+
+    # Adjustments
+    PermissionDef("ADJUSTMENTS_VIEW", "Adjustments", "Просмотр штрафов/премий/списаний", "Видеть штрафы/премии/списания"),
+    PermissionDef("ADJUSTMENTS_MANAGE", "Adjustments", "Управление штрафами/премиями/списаниями", "Создавать/редактировать штрафы/премии/списания"),
+    PermissionDef("DISPUTES_RESOLVE", "Adjustments", "Разбор оспариваний", "Видеть и закрывать оспаривания"),
+
 ]
 

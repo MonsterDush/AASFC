@@ -23,6 +23,8 @@ class DailyReport(Base):
     cashless: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     revenue_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    tips_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
