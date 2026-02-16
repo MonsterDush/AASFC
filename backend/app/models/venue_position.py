@@ -32,10 +32,8 @@ class VenuePosition(Base):
     can_view_reports: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_view_revenue: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_edit_schedule: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
-    can_manage_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_view_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    can_resolve_disputes: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    can_manage_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 

@@ -67,9 +67,8 @@ function esc(s){
 }
 
 let shifts = [];
-let days = [];
-let adjustmentsByDate = new Map();
-let adjustmentsSummary = { penalties: 0, bonuses: 0, writeoffs: 0 }; // [{date, salary, hasReport, shifts:[] }]
+let days = []; // [{date, salary, hasReport, shifts:[] }]
+let adjustments = []; // month items
 
 async function loadMonth() {
   if (!venueId) return;
@@ -78,7 +77,6 @@ async function loadMonth() {
   el.monthLabel.textContent = monthTitle(curMonth);
   el.daysList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
 
-  // shifts
   try {
     const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m)}`);
     shifts = Array.isArray(out) ? out : (out?.items || []);
@@ -87,26 +85,11 @@ async function loadMonth() {
     toast(e?.message || "Не удалось загрузить смены", "err");
   }
 
-
-  // adjustments (mine)
-  adjustmentsByDate = new Map();
-  adjustmentsSummary = { penalties: 0, bonuses: 0, writeoffs: 0 };
   try {
-    const out2 = await api(`/venues/${encodeURIComponent(venueId)}/adjustments?month=${encodeURIComponent(m)}&mine=1`);
-    const items = out2?.items || [];
-    for (const it of items) {
-      const d = it.date;
-      if (!d) continue;
-      const arr = adjustmentsByDate.get(d) || [];
-      arr.push(it);
-      adjustmentsByDate.set(d, arr);
-
-      if (it.type === "penalty") adjustmentsSummary.penalties += Number(it.amount) || 0;
-      if (it.type === "bonus") adjustmentsSummary.bonuses += Number(it.amount) || 0;
-      if (it.type === "writeoff") adjustmentsSummary.writeoffs += Number(it.amount) || 0;
-    }
-  } catch (e) {
-    // ignore, still show salary
+    const adj = await api(`/venues/${encodeURIComponent(venueId)}/adjustments?month=${encodeURIComponent(m)}&mine=1`);
+    adjustments = Array.isArray(adj?.items) ? adj.items : [];
+  } catch {
+    adjustments = [];
   }
 
   // group by date
@@ -114,16 +97,16 @@ async function loadMonth() {
   for (const s of shifts) {
     const d = s.date;
     if (!d) continue;
-    const row = map.get(d) || { date: d, salary: 0, tips: 0, hasReport: !!s.report_exists, shifts: [] };
+    const row = map.get(d) || { date: d, salary: 0, hasReport: !!s.report_exists, shifts: [] };
     row.hasReport = row.hasReport || !!s.report_exists;
     row.shifts.push(s);
 
     const val = Number(s.my_salary);
     if (Number.isFinite(val)) row.salary += val;
 
-    const tval = Number(s.my_tips_share);
-    // tips share is per day: only add once
-    if (Number.isFinite(tval) && tval > 0 && row.tips === 0) row.tips = tval;
+    const tip = Number(s.my_tips_share);
+    if (!Number.isFinite(row.tips)) row.tips = 0;
+    if (Number.isFinite(tip)) row.tips += tip;
 
     map.set(d, row);
   }
@@ -138,15 +121,15 @@ function renderSummary() {
   const totalSalary = days.reduce((acc, d) => acc + (Number.isFinite(d.salary) ? d.salary : 0), 0);
   const totalTips = days.reduce((acc, d) => acc + (Number.isFinite(d.tips) ? d.tips : 0), 0);
 
-  const totalPenalties = adjustmentsSummary.penalties;
-  const totalBonuses = adjustmentsSummary.bonuses;
+  const totalPenalties = adjustments.filter(x => x.type === "penalty").reduce((a,x)=>a+Number(x.amount||0),0);
+  const totalBonuses = adjustments.filter(x => x.type === "bonus").reduce((a,x)=>a+Number(x.amount||0),0);
 
-  // пока удержание списаний не включаем (можно будет сделать настройкой заведения)
+  // Флаг удержания списаний (позже будет настройка заведения)
   const holdWriteoffs = false;
-  const totalWriteoffs = adjustmentsSummary.writeoffs;
+  const totalWriteoffs = adjustments.filter(x => x.type === "writeoff").reduce((a,x)=>a+Number(x.amount||0),0);
 
   el.sumSalary.textContent = formatMoney(totalSalary);
-  if (el.sumTips) el.sumTips.textContent = formatMoney(totalTips);
+  el.sumTips.textContent = formatMoney(totalTips);
   el.sumPenalties.textContent = formatMoney(totalPenalties);
   el.sumBonuses.textContent = formatMoney(totalBonuses);
 
@@ -157,7 +140,7 @@ function renderSummary() {
     el.rowWriteoffs.style.display = "none";
   }
 
-  const total = totalSalary + totalTips - totalPenalties + totalBonuses - (holdWriteoffs ? totalWriteoffs : 0);
+  const total = totalSalary - totalPenalties + totalBonuses - (holdWriteoffs ? totalWriteoffs : 0);
   el.sumTotal.textContent = formatMoney(total);
 }
 
@@ -188,6 +171,7 @@ function formatDateRuNoG(iso) {
         </div>
         <div class="dayrow__right">
           <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "Нет отчета"}</div>
+          <div class="muted" style="font-size:12px; text-align:right">чаевые: ${formatMoney(d.tips || 0)}</div>
           <button class="btn" data-open>Подробнее</button>
         </div>
       </div>
@@ -223,31 +207,11 @@ function openDayModal(d) {
           <div class="muted">Итого за день</div>
           <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "—"}</div>
         </div>
-        <div class="row" style="justify-content:space-between;align-items:center; margin-top:8px">
-          <div class="muted">Чаевые за день</div>
-          <div class="day-salary" style="${d.tips>0 ? "" : "opacity:.45"}">${d.tips>0 ? ("+"+formatMoney(d.tips)) : "—"}</div>
+        <div class="row" style="justify-content:space-between;align-items:center; margin-top:6px">
+          <div class="muted">Чаевые</div>
+          <div class="day-salary">${formatMoney(d.tips || 0)}</div>
         </div>
         <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
-        <div style="margin-top:10px">
-          ${(() => {
-            const arr = adjustmentsByDate.get(d.date) || [];
-            if (!arr.length) return `<div class="muted">Штрафов/премий/списаний нет</div>`;
-            const rows = arr.map(it => {
-              const sign = it.type === "penalty" || it.type === "writeoff" ? "-" : "+";
-              const label = it.type === "penalty" ? "Штраф" : (it.type === "bonus" ? "Премия" : "Списание");
-              return `<div class="row" style="justify-content:space-between; gap:10px; margin-top:8px">
-                <div>${label}${it.reason ? ` · <span class="muted">${esc(it.reason)}</span>` : ""}</div>
-                <b>${sign}${formatMoney(Number(it.amount)||0)}</b>
-              </div>`;
-            }).join("");
-            return `<div class="itemcard" style="margin-top:12px">
-              <b>Штрафы/Премии</b>
-              ${rows}
-              <div class="muted" style="margin-top:8px; font-size:12px">Оспорить можно в разделе «Штрафы»</div>
-            </div>`;
-          })()}
-        </div>
-
       </div>`
   );
 }

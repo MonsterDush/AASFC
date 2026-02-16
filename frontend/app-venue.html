@@ -46,6 +46,7 @@
               <div class="row" style="margin-top:12px; gap:8px; flex-wrap:wrap">
                 <a class="btn" id="openShifts" href="#" style="text-decoration: none;">График</a>
                 <a class="btn" id="openReports" href="#" style="text-decoration: none;">Отчёты</a>
+                <a class="btn" id="openAdjustments" href="#" style="text-decoration: none;">Штрафы/Списания</a>
                 </a>
               </div>
       </div>
@@ -128,6 +129,7 @@
         const btnDelete = document.getElementById("btnDelete");
         const openInvites = document.getElementById("openInvites");
         const openPositions = document.getElementById("openPositions");
+        const openAdjustments = document.getElementById("openAdjustments");
 
         let last = { is_archived: false, name: "" };
 
@@ -143,6 +145,7 @@
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
           openReports.href = `/staff-report.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openAdjustments) openAdjustments.href = `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
           metaEl.textContent = `venue_id=${venueId}`;
           metaHint.textContent = "";
         }

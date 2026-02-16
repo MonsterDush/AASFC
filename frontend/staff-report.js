@@ -8,7 +8,6 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenuePermissions,
-  API_BASE,
 } from "/app.js";
 
 applyTelegramTheme();
@@ -205,44 +204,6 @@ async function fetchReport(dayISO) {
   } catch {
     return null;
   }
-
-async function fetchAttachments(dayISO) {
-  try {
-    const out = await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`);
-    return Array.isArray(out) ? out : (out?.items || []);
-  } catch {
-    return [];
-  }
-}
-
-async function uploadAttachments(dayISO, files) {
-  if (!files || !files.length) return null;
-  const fd = new FormData();
-  for (const f of files) fd.append("files", f);
-  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`, {
-    method: "POST",
-    body: fd,
-    isMultipart: true,
-  });
-}
-
-async function loadAttachmentsIntoModal(dayISO) {
-  const listEl = document.getElementById("repFilesList");
-  if (!listEl) return;
-  const items = await fetchAttachments(dayISO);
-  if (!items.length) {
-    listEl.innerHTML = `<div class="muted">Нет файлов</div>`;
-    return;
-  }
-  listEl.innerHTML = items.map(a => {
-    const url = `${API_BASE}/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments/${encodeURIComponent(a.id)}/download`;
-    return `<div class="row" style="justify-content:space-between;gap:10px;margin-top:8px">
-      <a href="${url}" target="_blank">${esc(a.file_name)}</a>
-      <span class="muted" style="font-size:12px">${esc((a.created_at||"").slice(0,19).replace("T"," "))}</span>
-    </div>`;
-  }).join("");
-}
-
 }
 
 async function saveReport(dayISO) {
@@ -255,6 +216,31 @@ async function saveReport(dayISO) {
     method: "POST",
     body: { date: dayISO, cash, cashless, revenue_total, tips_total },
   });
+}
+
+async function fetchAttachments(dayISO) {
+  try {
+    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`);
+  } catch {
+    return { items: [] };
+  }
+}
+
+async function uploadAttachments(dayISO, files) {
+  const fd = new FormData();
+  for (const f of files) fd.append("files", f);
+
+  const res = await fetch(`/api/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`, {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) {
+    let msg = "Upload failed";
+    try { msg = (await res.json())?.detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
 }
 
 function formatDateRuNoG(iso) {
@@ -292,6 +278,21 @@ async function openDay(dayISO) {
   const cashVal = rep?.cash ?? "";
   const cashlessVal = rep?.cashless ?? "";
   const totalVal = rep?.revenue_total ?? "";
+  const tipsVal = rep?.tips_total ?? "";
+
+  const att = await fetchAttachments(dayISO);
+  const attItems = att?.items || [];
+  const attHtml = attItems.length
+    ? attItems
+        .map(
+          (a) =>
+            `<div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border)">
+              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%">${esc(a.file_name || "file")}</div>
+              <a class="btn" href="${esc(a.url)}" target="_blank" rel="noopener" style="text-decoration:none">Открыть</a>
+            </div>`
+        )
+        .join("")
+    : `<div class="muted">Файлов нет</div>`;
 
   const formHtml = `
     <div class="itemcard" style="margin-top: 12px;">
@@ -331,6 +332,29 @@ async function openDay(dayISO) {
             ${(!canEdit || !showMoney) ? "disabled" : ""}
             placeholder="${showMoney ? "0" : "нет доступа"}" />
         </label>
+
+        <label style="min-width:180px;display:block">
+          <div class="muted" style="font-size:12px;margin-bottom:4px">Чаевые (итого)</div>
+          <input id="repTips" type="number" min="0" value="${esc(tipsVal)}"
+            ${(!canEdit || !showMoney) ? "disabled" : ""}
+            placeholder="${showMoney ? "0" : "нет доступа"}" />
+        </label>
+      </div>
+
+      <div class="itemcard" style="margin-top:12px">
+        <b>Фото/файлы к отчёту</b>
+        <div class="muted" style="margin-top:6px">Можно прикрепить несколько фотографий</div>
+
+        <div style="margin-top:10px">${attHtml}</div>
+
+        ${canEdit ? `
+          <div style="margin-top:12px">
+            <input id="repFiles" type="file" accept="image/*" multiple />
+            <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
+              <button class="btn" id="btnUpload">Загрузить</button>
+            </div>
+          </div>
+        ` : `<div class="muted" style="margin-top:10px">Нет прав на загрузку файлов</div>`}
       </div>
 
       <div class="muted" style="margin-top:10px;font-size:12px">
@@ -365,7 +389,22 @@ async function openDay(dayISO) {
       const repTotal = document.getElementById("repTotal");
       if (repTotal && !repTotal.disabled) repTotal.value = String(total);
     });
-ß
+
+    document.getElementById("btnUpload")?.addEventListener("click", async () => {
+      const inp = document.getElementById("repFiles");
+      const files = inp?.files ? Array.from(inp.files) : [];
+      if (!files.length) {
+        toast("Выбери файлы", "err");
+        return;
+      }
+      try {
+        await uploadAttachments(dayISO, files);
+        toast("Загружено", "ok");
+        await openDay(dayISO);
+      } catch (e) {
+        toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
+      }
+    });
   }
 }
 

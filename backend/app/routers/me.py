@@ -215,7 +215,7 @@ def my_venue_permissions(
     ).scalar_one_or_none()
 
     position_obj = None
-    flags = {"can_make_reports": False, "can_edit_schedule": False}
+    flags = {"can_make_reports": False, "can_edit_schedule": False, "can_view_adjustments": False, "can_manage_adjustments": False}
     if pos is not None:
         position_obj = {
             "id": pos.id,
@@ -226,6 +226,8 @@ def my_venue_permissions(
             "can_view_reports": bool(pos.can_view_reports or pos.can_make_reports),
             "can_view_revenue": bool(pos.can_view_revenue or pos.can_make_reports),
             "can_edit_schedule": bool(pos.can_edit_schedule),
+            "can_view_adjustments": bool(getattr(pos, "can_view_adjustments", False)),
+            "can_manage_adjustments": bool(getattr(pos, "can_manage_adjustments", False)),
             "is_active": bool(pos.is_active),
         }
         flags = {
@@ -233,6 +235,8 @@ def my_venue_permissions(
             "can_view_reports": bool(pos.can_view_reports or pos.can_make_reports),
             "can_view_revenue": bool(pos.can_view_revenue or pos.can_make_reports),
             "can_edit_schedule": bool(pos.can_edit_schedule),
+            "can_view_adjustments": bool(getattr(pos, "can_view_adjustments", False)),
+            "can_manage_adjustments": bool(getattr(pos, "can_manage_adjustments", False)),
         }
 
     return {

@@ -24,214 +24,274 @@ const el = {
   monthLabel: document.getElementById("monthLabel"),
   prev: document.getElementById("monthPrev"),
   next: document.getElementById("monthNext"),
+  typeSel: document.getElementById("typeSel"),
   grid: document.getElementById("calGrid"),
   dayPanel: document.getElementById("dayPanel"),
-  typeFilter: document.getElementById("typeFilter"),
 };
 
-const modal = document.getElementById("modal");
-const modalTitle = modal?.querySelector(".modal__title");
-const modalBody = modal?.querySelector(".modal__body");
-function closeModal() { modal?.classList.remove("open"); }
-modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
-modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
-function openModal(title, bodyHtml) {
-  if (modalTitle) modalTitle.textContent = title || "Детали";
-  if (modalBody) modalBody.innerHTML = bodyHtml || "";
-  modal?.classList.add("open");
+function esc(s){
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
-function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
-function fmtMonthLabel(dt){
-  const mm = String(dt.getMonth()+1).padStart(2,"0");
-  return `${dt.getFullYear()}-${mm}`;
+function ymd(d) {
+  const dt = new Date(d);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
-function fmtRu(iso){
-  const d = new Date(String(iso).length===10? iso+"T00:00:00": iso);
-  const dd=String(d.getDate()).padStart(2,"0");
-  const mm=String(d.getMonth()+1).padStart(2,"0");
-  const yy=d.getFullYear();
-  return `${dd}.${mm}.${yy}`;
+function ym(d) {
+  const dt = new Date(d);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
 }
-function formatMoney(n){
-  const v=Math.round(Number(n)||0);
-  return v.toLocaleString("ru-RU");
+function monthTitle(d) {
+  const dt = new Date(d);
+  const m = dt.toLocaleString("ru-RU", { month: "long" });
+  const y = dt.getFullYear();
+  return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${y}`;
 }
+function formatDateRu(iso) {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 let curMonth = new Date();
 curMonth.setDate(1);
 
-let itemsByDate = new Map(); // date -> items[]
+// month cache
+let dayAgg = new Map(); // dateISO -> { penalty_sum, writeoff_sum, items: [...] }
 
 async function loadMonth() {
+  dayAgg = new Map();
   if (!venueId) return;
-  const m = fmtMonthLabel(curMonth);
-  if (el.monthLabel) el.monthLabel.textContent = m;
+  const m = ym(curMonth);
+  const type = el.typeSel?.value || "";
 
-  itemsByDate = new Map();
-  el.grid.innerHTML = `<div class="muted">Загрузка…</div>`;
-  el.dayPanel.innerHTML = ``;
+  const list = await api(`/venues/${encodeURIComponent(venueId)}/adjustments?month=${encodeURIComponent(m)}&mine=1${type ? `&type=${encodeURIComponent(type)}` : ""}`);
 
-  const type = (el.typeFilter?.value || "").trim();
-
-  try {
-    const out = await api(`/venues/${encodeURIComponent(venueId)}/adjustments?month=${encodeURIComponent(m)}&mine=1${type?`&type=${encodeURIComponent(type)}`:""}`);
-    const items = out?.items || [];
-    for (const it of items) {
-      const d = it.date;
-      const arr = itemsByDate.get(d) || [];
-      arr.push(it);
-      itemsByDate.set(d, arr);
-    }
-  } catch (e) {
-    toast(e?.message || "Не удалось загрузить", "err");
+  for (const it of (list?.items || [])) {
+    const d = it.date;
+    if (!dayAgg.has(d)) dayAgg.set(d, { penalty_sum: 0, writeoff_sum: 0, items: [] });
+    const slot = dayAgg.get(d);
+    slot.items.push(it);
+    if (it.type === "penalty") slot.penalty_sum += Number(it.amount || 0);
+    if (it.type === "writeoff") slot.writeoff_sum += Number(it.amount || 0);
   }
-
-  renderCalendar();
 }
 
-function daysInMonth(dt){
-  const y=dt.getFullYear(), m=dt.getMonth();
-  return new Date(y,m+1,0).getDate();
-}
-function firstWeekday(dt){
-  const y=dt.getFullYear(), m=dt.getMonth();
-  const wd=new Date(y,m,1).getDay(); // 0 Sun
-  return (wd+6)%7; // Mon=0
-}
+function renderMonth() {
+  if (!el.grid || !el.monthLabel) return;
 
-function renderCalendar(){
-  const y=curMonth.getFullYear();
-  const m=curMonth.getMonth();
-  const total=daysInMonth(curMonth);
-  const pad=firstWeekday(curMonth);
-
-  const cells=[];
-  for(let i=0;i<pad;i++) cells.push(null);
-  for(let d=1; d<=total; d++){
-    const iso = `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    cells.push({d, iso});
-  }
-
+  el.monthLabel.textContent = monthTitle(curMonth);
   el.grid.innerHTML = "";
-  for(const cell of cells){
-    const box=document.createElement("div");
-    box.className="cal__day";
 
-    if(!cell){
-      box.classList.add("cal__empty");
-      el.grid.appendChild(box);
-      continue;
-    }
-    const list = itemsByDate.get(cell.iso) || [];
-    box.innerHTML = `<div class="cal__num">${cell.d}</div>`;
-
-    if(list.length){
-      const dotrow=document.createElement("div");
-      dotrow.className="dotrow";
-      const maxDots=6;
-      for(const it of list.slice(0,maxDots)){
-        const dot=document.createElement("div");
-        dot.className="dot";
-        dot.style.background = it.type==="bonus" ? "var(--ok)" : "var(--danger)";
-        dotrow.appendChild(dot);
-      }
-      box.appendChild(dotrow);
-    }
-
-    box.addEventListener("click", ()=>renderDay(cell.iso));
-    el.grid.appendChild(box);
+  const head = document.createElement("div");
+  head.className = "cal-head";
+  for (const wd of WEEKDAYS) {
+    const c = document.createElement("div");
+    c.className = "cal-hcell";
+    c.textContent = wd;
+    head.appendChild(c);
   }
+  el.grid.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "cal-body";
+
+  const first = new Date(curMonth);
+  const jsDow = first.getDay();
+  const mondayBased = (jsDow + 6) % 7;
+  const start = new Date(first);
+  start.setDate(first.getDate() - mondayBased);
+
+  const todayStr = ymd(new Date());
+  const monthStr = ym(curMonth);
+
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const dStr = ymd(d);
+
+    const agg = dayAgg.get(dStr);
+    const pSum = agg ? agg.penalty_sum : 0;
+    const wSum = agg ? agg.writeoff_sum : 0;
+
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "cal-cell";
+
+    const sub = [];
+    if (pSum) sub.push(`Штрафы: ${pSum}`);
+    if (wSum) sub.push(`Списания: ${wSum}`);
+
+    cell.innerHTML = `
+      <div class="cal-num">${d.getDate()}</div>
+      <div class="cal-sub muted" style="font-size:11px">${esc(sub.join(" · "))}</div>
+    `;
+
+    if (ym(d) !== monthStr) cell.classList.add("is-out");
+    if (dStr === todayStr) cell.classList.add("is-today");
+    if (agg && agg.items.length) cell.classList.add("has-report");
+
+    cell.onclick = () => renderDay(dStr);
+    body.appendChild(cell);
+  }
+
+  el.grid.appendChild(body);
 }
 
-function renderDay(dayISO){
-  const list = (itemsByDate.get(dayISO) || []).slice().sort((a,b)=> (a.type+a.id).localeCompare(b.type+b.id));
-  if(!list.length){
-    el.dayPanel.innerHTML = `<div class="card"><b>${esc(fmtRu(dayISO))}</b><div class="muted" style="margin-top:6px">Нет штрафов/премий/списаний</div></div>`;
+function renderDay(dayISO) {
+  const agg = dayAgg.get(dayISO);
+  const items = agg?.items || [];
+
+  el.dayPanel.innerHTML = "";
+
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <b>${formatDateRu(dayISO)}</b>
+    <div class="muted" style="margin-top:6px">Штрафы и списания за выбранный день</div>
+  `;
+
+  const list = document.createElement("div");
+  list.style.marginTop = "10px";
+
+  if (!items.length) {
+    list.innerHTML = `<div class="muted">Записей нет</div>`;
+  } else {
+    for (const it of items) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0; gap:10px;";
+      const typeTitle = it.type === "penalty" ? "Штраф" : (it.type === "writeoff" ? "Списание" : it.type);
+      row.innerHTML = `
+        <div>
+          <b>${esc(typeTitle)}</b> · <b>${esc(it.amount)}</b>
+          <div class="muted" style="margin-top:4px">${esc(it.reason || "—")}</div>
+        </div>
+        <button class="btn" data-open>Открыть</button>
+      `;
+
+      row.querySelector("[data-open]").onclick = () => openItem(it);
+      list.appendChild(row);
+    }
+  }
+
+  card.appendChild(list);
+  el.dayPanel.appendChild(card);
+}
+
+function modalElements() {
+  const modal = document.getElementById("modal");
+  const body = modal?.querySelector(".modal__body");
+  const title = modal?.querySelector(".modal__title");
+  const subtitle = document.getElementById("modalSubtitle");
+  function close() { modal?.classList.remove("open"); }
+  modal?.querySelector("[data-close]")?.addEventListener("click", close);
+  modal?.querySelector(".modal__backdrop")?.addEventListener("click", close);
+  function open(t, st, html) {
+    if (title) title.textContent = t || "Деталка";
+    if (subtitle) subtitle.textContent = st || "";
+    if (body) body.innerHTML = html || "";
+    modal?.classList.add("open");
+  }
+  return { open, close };
+}
+
+const modal = modalElements();
+
+function openItem(it) {
+  const typeTitle = it.type === "penalty" ? "Штраф" : (it.type === "writeoff" ? "Списание" : it.type);
+
+  const html = `
+    <div class="itemcard">
+      <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
+        <div>
+          <b>${esc(typeTitle)} · ${esc(it.amount)}</b>
+          <div class="muted" style="margin-top:4px">Дата: <span class="mono">${esc(it.date)}</span></div>
+        </div>
+        <button class="btn" id="btnDispute">Оспорить</button>
+      </div>
+
+      <div class="muted" style="margin-top:10px">Причина</div>
+      <div style="margin-top:6px">${esc(it.reason || "—")}</div>
+
+      <div class="muted" style="margin-top:12px">Оспаривание</div>
+      <textarea id="disputeText" rows="3" placeholder="Комментарий для владельца/менеджера..."></textarea>
+      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
+        <button class="btn primary" id="btnSendDispute">Отправить</button>
+      </div>
+    </div>
+  `;
+
+  modal.open(typeTitle, "Детали и оспаривание", html);
+
+  document.getElementById("btnDispute")?.addEventListener("click", () => {
+    const ta = document.getElementById("disputeText");
+    ta?.focus();
+  });
+
+  document.getElementById("btnSendDispute")?.addEventListener("click", async () => {
+    const message = String(document.getElementById("disputeText")?.value || "").trim();
+    if (!message) {
+      toast("Напиши комментарий", "err");
+      return;
+    }
+    try {
+      await api(`/venues/${encodeURIComponent(venueId)}/adjustments/${encodeURIComponent(it.type)}/${encodeURIComponent(it.id)}/dispute`, {
+        method: "POST",
+        body: { message },
+      });
+      toast("Оспаривание отправлено", "ok");
+      modal.close();
+    } catch (e) {
+      toast("Ошибка: " + (e?.message || "неизвестно"), "err");
+    }
+  });
+}
+
+async function boot() {
+  if (!venueId) {
+    el.grid.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted" style="margin-top:6px">Открой страницу с параметром <span class="mono">?venue_id=...</span>.</div></div>`;
     return;
   }
 
-  const rows = list.map(it=>{
-    const label = it.type==="penalty" ? "Штраф" : (it.type==="bonus" ? "Премия" : "Списание");
-    const sign = it.type==="bonus" ? "+" : "-";
-    return `<div class="itemcard" style="margin-top:10px">
-      <div class="row" style="justify-content:space-between; gap:10px">
-        <div><b>${label}</b>${it.reason?`<div class="muted" style="margin-top:4px">${esc(it.reason)}</div>`:""}</div>
-        <div><b>${sign}${formatMoney(it.amount)}</b></div>
-      </div>
-      <div class="row" style="justify-content:space-between; gap:10px; margin-top:10px">
-        <button class="btn" data-dispute="${it.type}:${it.id}">Оспорить</button>
-        <button class="btn" data-open="${it.type}:${it.id}">Детали</button>
-      </div>
-    </div>`;
-  }).join("");
-
-  el.dayPanel.innerHTML = `<div class="card"><b>${esc(fmtRu(dayISO))}</b>${rows}</div>`;
-
-  el.dayPanel.querySelectorAll("[data-open]").forEach(btn=>{
-    btn.addEventListener("click", async ()=> {
-      const [t,id]=String(btn.getAttribute("data-open")||"").split(":");
-      await openDetails(t, Number(id));
-    });
-  });
-  el.dayPanel.querySelectorAll("[data-dispute]").forEach(btn=>{
-    btn.addEventListener("click", async ()=> {
-      const [t,id]=String(btn.getAttribute("data-dispute")||"").split(":");
-      await openDisputeForm(t, Number(id), dayISO);
-    });
-  });
-}
-
-async function openDetails(t, id){
-  try{
-    const out = await api(`/venues/${encodeURIComponent(venueId)}/adjustments/${encodeURIComponent(t)}/${encodeURIComponent(id)}`);
-    openModal("Детали", `<pre style="white-space:pre-wrap">${esc(JSON.stringify(out,null,2))}</pre>`);
-  }catch(e){
-    toast(e?.message || "Не удалось открыть", "err");
+  try {
+    await loadMonth();
+    renderMonth();
+    el.dayPanel.innerHTML = `<div class="muted" style="margin-top:8px">Выберите день в календаре.</div>`;
+  } catch (e) {
+    toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
   }
 }
 
-async function openDisputeForm(t, id, dayISO){
-  openModal("Оспорить", `
-    <div class="itemcard">
-      <div class="muted" style="margin-bottom:6px">Сообщение</div>
-      <textarea id="dispMsg" rows="4" placeholder="Опиши причину"></textarea>
-      <div class="row" style="gap:10px; margin-top:10px">
-        <button class="btn primary" id="dispSend">Отправить</button>
-        <button class="btn" data-close>Закрыть</button>
-      </div>
-    </div>
-  `);
-  modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
-
-  document.getElementById("dispSend")?.addEventListener("click", async ()=>{
-    const msg = String(document.getElementById("dispMsg")?.value||"").trim();
-    if(!msg){ toast("Нужно сообщение", "err"); return; }
-    try{
-      await api(`/venues/${encodeURIComponent(venueId)}/adjustments/${encodeURIComponent(t)}/${encodeURIComponent(id)}/dispute`, {
-        method:"POST",
-        body:{ message: msg },
-      });
-      toast("Отправлено");
-      closeModal();
-      await loadMonth();
-      renderDay(dayISO);
-    }catch(e){
-      toast(e?.message || "Не удалось отправить", "err");
-    }
-  });
-}
-
-el.prev?.addEventListener("click", async ()=>{
-  curMonth.setMonth(curMonth.getMonth()-1);
+el.prev?.addEventListener("click", async () => {
+  curMonth.setMonth(curMonth.getMonth() - 1);
   curMonth.setDate(1);
   await loadMonth();
+  renderMonth();
 });
-el.next?.addEventListener("click", async ()=>{
-  curMonth.setMonth(curMonth.getMonth()+1);
+
+el.next?.addEventListener("click", async () => {
+  curMonth.setMonth(curMonth.getMonth() + 1);
   curMonth.setDate(1);
   await loadMonth();
+  renderMonth();
 });
-el.typeFilter?.addEventListener("change", loadMonth);
 
-await loadMonth();
+el.typeSel?.addEventListener("change", async () => {
+  await loadMonth();
+  renderMonth();
+});
+
+boot();
