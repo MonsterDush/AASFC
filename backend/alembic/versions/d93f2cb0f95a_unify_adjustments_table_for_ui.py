@@ -66,6 +66,11 @@ def upgrade() -> None:
 
     # --- 4) daily_report_attachments тоже конфликтует: старую сохраняем, создаём новую ---
     op.rename_table("daily_report_attachments", "daily_report_attachments_old")
+    # daily_report_attachments: rename old indexes to avoid name collisions
+    op.execute("ALTER INDEX IF EXISTS ix_daily_report_attachments_venue_id RENAME TO ix_daily_report_attachments_old_venue_id")
+    op.execute("ALTER INDEX IF EXISTS ix_daily_report_attachments_report_id RENAME TO ix_daily_report_attachments_old_report_id")
+    op.execute("ALTER INDEX IF EXISTS ix_report_att_report RENAME TO ix_report_att_report_old")
+
 
     op.create_table(
         "daily_report_attachments",
