@@ -492,6 +492,8 @@ def list_positions(
             VenuePosition.can_view_reports,
             VenuePosition.can_view_revenue,
             VenuePosition.can_edit_schedule,
+            VenuePosition.can_view_adjustments,
+            VenuePosition.can_manage_adjustments,
             VenuePosition.is_active,
             User.tg_user_id,
             User.tg_username,
@@ -890,6 +892,12 @@ def upload_report_attachments(
         if f is None:
             continue
         safe_name = os.path.basename(f.filename or "file")
+        ext = os.path.splitext(safe_name)[1].lower()
+        allowed = {'.jpg', '.jpeg', '.png', '.webp', '.heic'}
+        if ext not in allowed:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+        if f.content_type and not f.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="Only image uploads are allowed")
         uid = uuid.uuid4().hex
         dst = os.path.join(base_dir, f"{venue_id}_{report_date.isoformat()}_{uid}_{safe_name}")
         with open(dst, "wb") as out:

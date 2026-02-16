@@ -13,20 +13,18 @@ applyTelegramTheme();
 mountCommonUI("adjustments");
 
 await ensureLogin({ silent: true });
+await mountNav({ activeTab: "adjustments" });
 
 const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
-await mountNav({ activeTab: "adjustments", requireVenue: true });
-
-const el = {
+const ui = {
+  monthPrev: document.getElementById("monthPrev"),
+  monthNext: document.getElementById("monthNext"),
   monthLabel: document.getElementById("monthLabel"),
-  prev: document.getElementById("monthPrev"),
-  next: document.getElementById("monthNext"),
   typeSel: document.getElementById("typeSel"),
-  grid: document.getElementById("calGrid"),
-  dayPanel: document.getElementById("dayPanel"),
+  list: document.getElementById("itemsList"),
 };
 
 function esc(s){
@@ -36,24 +34,22 @@ function esc(s){
     .replace(/>/g, "&gt;");
 }
 
-function ymd(d) {
-  const dt = new Date(d);
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
-function ym(d) {
+function ymFromDate(d) {
   const dt = new Date(d);
   const y = dt.getFullYear();
   const m = String(dt.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
 }
-function monthTitle(d) {
-  const dt = new Date(d);
-  const m = dt.toLocaleString("ru-RU", { month: "long" });
-  const y = dt.getFullYear();
-  return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${y}`;
+function addMonths(ym, delta) {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1, 1);
+  d.setMonth(d.getMonth() + delta);
+  return ymFromDate(d);
+}
+function monthTitleRu(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
 }
 function formatDateRu(iso) {
   const d = new Date(iso);
@@ -62,236 +58,191 @@ function formatDateRu(iso) {
   const yyyy = d.getFullYear();
   return `${dd}.${mm}.${yyyy}`;
 }
-
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
-let curMonth = new Date();
-curMonth.setDate(1);
-
-// month cache
-let dayAgg = new Map(); // dateISO -> { penalty_sum, writeoff_sum, items: [...] }
-
-async function loadMonth() {
-  dayAgg = new Map();
-  if (!venueId) return;
-  const m = ym(curMonth);
-  const type = el.typeSel?.value || "";
-
-  const list = await api(`/venues/${encodeURIComponent(venueId)}/adjustments?month=${encodeURIComponent(m)}&mine=1${type ? `&type=${encodeURIComponent(type)}` : ""}`);
-
-  for (const it of (list?.items || [])) {
-    const d = it.date;
-    if (!dayAgg.has(d)) dayAgg.set(d, { penalty_sum: 0, writeoff_sum: 0, items: [] });
-    const slot = dayAgg.get(d);
-    slot.items.push(it);
-    if (it.type === "penalty") slot.penalty_sum += Number(it.amount || 0);
-    if (it.type === "writeoff") slot.writeoff_sum += Number(it.amount || 0);
-  }
+function money(v){
+  const n = Number(v || 0);
+  return new Intl.NumberFormat("ru-RU").format(n);
 }
 
-function renderMonth() {
-  if (!el.grid || !el.monthLabel) return;
+let state = {
+  month: ymFromDate(new Date()),
+  type: "", // penalty|writeoff|bonus|""
+  items: [],
+};
 
-  el.monthLabel.textContent = monthTitle(curMonth);
-  el.grid.innerHTML = "";
-
-  const head = document.createElement("div");
-  head.className = "cal-head";
-  for (const wd of WEEKDAYS) {
-    const c = document.createElement("div");
-    c.className = "cal-hcell";
-    c.textContent = wd;
-    head.appendChild(c);
-  }
-  el.grid.appendChild(head);
-
-  const body = document.createElement("div");
-  body.className = "cal-body";
-
-  const first = new Date(curMonth);
-  const jsDow = first.getDay();
-  const mondayBased = (jsDow + 6) % 7;
-  const start = new Date(first);
-  start.setDate(first.getDate() - mondayBased);
-
-  const todayStr = ymd(new Date());
-  const monthStr = ym(curMonth);
-
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const dStr = ymd(d);
-
-    const agg = dayAgg.get(dStr);
-    const pSum = agg ? agg.penalty_sum : 0;
-    const wSum = agg ? agg.writeoff_sum : 0;
-
-    const cell = document.createElement("button");
-    cell.type = "button";
-    cell.className = "cal-cell";
-
-    const sub = [];
-    if (pSum) sub.push(`Штрафы: ${pSum}`);
-    if (wSum) sub.push(`Списания: ${wSum}`);
-
-    cell.innerHTML = `
-      <div class="cal-num">${d.getDate()}</div>
-      <div class="cal-sub muted" style="font-size:11px">${esc(sub.join(" · "))}</div>
-    `;
-
-    if (ym(d) !== monthStr) cell.classList.add("is-out");
-    if (dStr === todayStr) cell.classList.add("is-today");
-    if (agg && agg.items.length) cell.classList.add("has-report");
-
-    cell.onclick = () => renderDay(dStr);
-    body.appendChild(cell);
-  }
-
-  el.grid.appendChild(body);
+async function fetchItems() {
+  const q = new URLSearchParams();
+  q.set("month", state.month);
+  q.set("mine", "1");
+  if (state.type) q.set("type", state.type);
+  return api(`/venues/${encodeURIComponent(venueId)}/adjustments?` + q.toString());
 }
 
-function renderDay(dayISO) {
-  const agg = dayAgg.get(dayISO);
-  const items = agg?.items || [];
+function render() {
+  ui.monthLabel.textContent = monthTitleRu(state.month);
 
-  el.dayPanel.innerHTML = "";
+  if (!state.items.length) {
+    ui.list.innerHTML = `<div class="card"><div class="muted">Нет записей за этот период</div></div>`;
+    return;
+  }
 
-  const card = document.createElement("div");
-  card.className = "card";
-  card.innerHTML = `
-    <b>${formatDateRu(dayISO)}</b>
-    <div class="muted" style="margin-top:6px">Штрафы и списания за выбранный день</div>
-  `;
+  // group by date
+  const groups = new Map();
+  for (const it of state.items) {
+    const k = it.date;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(it);
+  }
+  // sort dates desc
+  const dates = Array.from(groups.keys()).sort((a,b)=> (a>b ? -1 : a<b ? 1 : 0));
 
-  const list = document.createElement("div");
-  list.style.marginTop = "10px";
+  let html = "";
+  for (const day of dates) {
+    const list = groups.get(day) || [];
+    const sumPenalty = list.filter(x=>x.type==="penalty").reduce((s,x)=>s+Number(x.amount||0),0);
+    const sumWriteoff = list.filter(x=>x.type==="writeoff").reduce((s,x)=>s+Number(x.amount||0),0);
+    const sumBonus = list.filter(x=>x.type==="bonus").reduce((s,x)=>s+Number(x.amount||0),0);
 
-  if (!items.length) {
-    list.innerHTML = `<div class="muted">Записей нет</div>`;
-  } else {
-    for (const it of items) {
-      const row = document.createElement("div");
-      row.className = "row";
-      row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0; gap:10px;";
-      const typeTitle = it.type === "penalty" ? "Штраф" : (it.type === "writeoff" ? "Списание" : it.type);
-      row.innerHTML = `
-        <div>
-          <b>${esc(typeTitle)}</b> · <b>${esc(it.amount)}</b>
-          <div class="muted" style="margin-top:4px">${esc(it.reason || "—")}</div>
+    const totals = [];
+    if (!state.type || state.type==="penalty") if (sumPenalty) totals.push(`Штрафы: <b>${money(sumPenalty)}</b>`);
+    if (!state.type || state.type==="writeoff") if (sumWriteoff) totals.push(`Списания: <b>${money(sumWriteoff)}</b>`);
+    if (!state.type || state.type==="bonus") if (sumBonus) totals.push(`Премии: <b>${money(sumBonus)}</b>`);
+
+    html += `
+      <div class="card" style="margin-top:12px">
+        <div class="row" style="justify-content:space-between; align-items:center">
+          <b>${formatDateRu(day)}</b>
+          <div class="muted" style="text-align:right">${totals.join(" · ") || ""}</div>
         </div>
-        <button class="btn" data-open>Открыть</button>
-      `;
-
-      row.querySelector("[data-open]").onclick = () => openItem(it);
-      list.appendChild(row);
-    }
-  }
-
-  card.appendChild(list);
-  el.dayPanel.appendChild(card);
-}
-
-function modalElements() {
-  const modal = document.getElementById("modal");
-  const body = modal?.querySelector(".modal__body");
-  const title = modal?.querySelector(".modal__title");
-  const subtitle = document.getElementById("modalSubtitle");
-  function close() { modal?.classList.remove("open"); }
-  modal?.querySelector("[data-close]")?.addEventListener("click", close);
-  modal?.querySelector(".modal__backdrop")?.addEventListener("click", close);
-  function open(t, st, html) {
-    if (title) title.textContent = t || "Деталка";
-    if (subtitle) subtitle.textContent = st || "";
-    if (body) body.innerHTML = html || "";
-    modal?.classList.add("open");
-  }
-  return { open, close };
-}
-
-const modal = modalElements();
-
-function openItem(it) {
-  const typeTitle = it.type === "penalty" ? "Штраф" : (it.type === "writeoff" ? "Списание" : it.type);
-
-  const html = `
-    <div class="itemcard">
-      <div class="row" style="justify-content:space-between; gap:10px; align-items:center">
-        <div>
-          <b>${esc(typeTitle)} · ${esc(it.amount)}</b>
-          <div class="muted" style="margin-top:4px">Дата: <span class="mono">${esc(it.date)}</span></div>
+        <div style="margin-top:10px">
+          ${list.map(it => renderItem(it)).join("")}
         </div>
-        <button class="btn" id="btnDispute">Оспорить</button>
       </div>
+    `;
+  }
+  ui.list.innerHTML = html;
 
-      <div class="muted" style="margin-top:10px">Причина</div>
-      <div style="margin-top:6px">${esc(it.reason || "—")}</div>
+  // bind click handlers
+  ui.list.querySelectorAll("[data-open]").forEach(el => {
+    el.addEventListener("click", () => openItem(el.getAttribute("data-open")));
+  });
+}
 
-      <div class="muted" style="margin-top:12px">Оспаривание</div>
-      <textarea id="disputeText" rows="3" placeholder="Комментарий для владельца/менеджера..."></textarea>
+function typeBadge(t){
+  if (t==="penalty") return `<span class="badge badge--red">Штраф</span>`;
+  if (t==="writeoff") return `<span class="badge badge--gray">Списание</span>`;
+  if (t==="bonus") return `<span class="badge badge--green">Премия</span>`;
+  return "";
+}
+
+function renderItem(it){
+  const who = it.member?.short_name || it.member?.full_name || it.member?.tg_username || (it.member_user_id ? `#${it.member_user_id}` : "—");
+  const reason = it.reason ? esc(it.reason) : "<span class='muted'>без причины</span>";
+  return `
+    <div class="itemcard" style="margin-top:8px; cursor:pointer" data-open="${esc(it.type)}:${esc(it.id)}">
+      <div class="row" style="justify-content:space-between; align-items:center; gap:10px">
+        <div class="row" style="gap:8px; align-items:center">
+          ${typeBadge(it.type)}
+          <b>${money(it.amount)}</b>
+          <span class="muted">${esc(who)}</span>
+        </div>
+        <span class="muted">Открыть</span>
+      </div>
+      <div style="margin-top:6px">${reason}</div>
+    </div>
+  `;
+}
+
+async function openItem(key) {
+  const [type, id] = String(key).split(":");
+  try {
+    const it = await api(`/venues/${encodeURIComponent(venueId)}/adjustments/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
+    showModal(it);
+  } catch (e) {
+    toast("Не удалось открыть: " + (e?.message || e), "err");
+  }
+}
+
+function showModal(it){
+  const modal = document.getElementById("modal");
+  const body = modal.querySelector(".modal__body");
+  const subtitle = document.getElementById("modalSubtitle");
+  subtitle.textContent = `${formatDateRu(it.date)} · ${it.type}`;
+
+  const who = it.member?.short_name || it.member?.full_name || it.member?.tg_username || (it.member_user_id ? `#${it.member_user_id}` : "—");
+  body.innerHTML = `
+    <div class="itemcard">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div>${typeBadge(it.type)} <b style="margin-left:6px">${money(it.amount)}</b></div>
+        <div class="muted">${esc(who)}</div>
+      </div>
+      <div style="margin-top:8px"><b>Причина:</b> ${it.reason ? esc(it.reason) : "<span class='muted'>—</span>"}</div>
+    </div>
+
+    <div class="itemcard" style="margin-top:12px">
+      <b>Оспорить</b>
+      <div class="muted" style="margin-top:6px">Комментарий уйдёт менеджеру/владельцу в Telegram.</div>
+      <textarea id="disputeMsg" rows="4" style="width:100%; margin-top:8px" placeholder="Например: не согласен, потому что…"></textarea>
       <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
-        <button class="btn primary" id="btnSendDispute">Отправить</button>
+        <button class="btn" id="btnDispute">Отправить</button>
       </div>
     </div>
   `;
 
-  modal.open(typeTitle, "Детали и оспаривание", html);
-
-  document.getElementById("btnDispute")?.addEventListener("click", () => {
-    const ta = document.getElementById("disputeText");
-    ta?.focus();
-  });
-
-  document.getElementById("btnSendDispute")?.addEventListener("click", async () => {
-    const message = String(document.getElementById("disputeText")?.value || "").trim();
-    if (!message) {
-      toast("Напиши комментарий", "err");
+  body.querySelector("#btnDispute")?.addEventListener("click", async () => {
+    const msg = String(body.querySelector("#disputeMsg")?.value || "").trim();
+    if (!msg) {
+      toast("Напиши комментарий", "warn");
       return;
     }
     try {
       await api(`/venues/${encodeURIComponent(venueId)}/adjustments/${encodeURIComponent(it.type)}/${encodeURIComponent(it.id)}/dispute`, {
         method: "POST",
-        body: { message },
+        body: { message: msg },
       });
-      toast("Оспаривание отправлено", "ok");
-      modal.close();
+      toast("Отправлено", "ok");
+      closeModal();
     } catch (e) {
-      toast("Ошибка: " + (e?.message || "неизвестно"), "err");
+      toast("Ошибка: " + (e?.message || e), "err");
     }
   });
+
+  modal.classList.add("is-open");
 }
 
-async function boot() {
+function closeModal(){
+  document.getElementById("modal")?.classList.remove("is-open");
+}
+
+document.querySelectorAll("[data-close]").forEach(el => el.addEventListener("click", closeModal));
+document.querySelector("#modal .modal__backdrop")?.addEventListener("click", closeModal);
+
+async function load() {
   if (!venueId) {
-    el.grid.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted" style="margin-top:6px">Открой страницу с параметром <span class="mono">?venue_id=...</span>.</div></div>`;
+    ui.list.innerHTML = `<div class="card"><div class="muted">Выбери заведение</div></div>`;
     return;
   }
-
+  ui.typeSel.value = state.type;
   try {
-    await loadMonth();
-    renderMonth();
-    el.dayPanel.innerHTML = `<div class="muted" style="margin-top:8px">Выберите день в календаре.</div>`;
+    const res = await fetchItems();
+    state.items = Array.isArray(res?.items) ? res.items : [];
+    render();
   } catch (e) {
-    toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
+    ui.list.innerHTML = `<div class="card"><div class="muted">Ошибка загрузки</div></div>`;
+    toast("Ошибка: " + (e?.message || e), "err");
   }
 }
 
-el.prev?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() - 1);
-  curMonth.setDate(1);
-  await loadMonth();
-  renderMonth();
+ui.monthPrev?.addEventListener("click", async () => {
+  state.month = addMonths(state.month, -1);
+  await load();
+});
+ui.monthNext?.addEventListener("click", async () => {
+  state.month = addMonths(state.month, 1);
+  await load();
+});
+ui.typeSel?.addEventListener("change", async () => {
+  state.type = ui.typeSel.value;
+  await load();
 });
 
-el.next?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() + 1);
-  curMonth.setDate(1);
-  await loadMonth();
-  renderMonth();
-});
-
-el.typeSel?.addEventListener("change", async () => {
-  await loadMonth();
-  renderMonth();
-});
-
-boot();
+await load();

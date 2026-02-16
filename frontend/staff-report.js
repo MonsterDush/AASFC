@@ -349,7 +349,7 @@ async function openDay(dayISO) {
 
         ${canEdit ? `
           <div style="margin-top:12px">
-            <input id="repFiles" type="file" accept="image/*" multiple />
+            <input id="repFiles" type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple />
             <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
               <button class="btn" id="btnUpload">Загрузить</button>
             </div>
@@ -397,8 +397,26 @@ async function openDay(dayISO) {
         toast("Выбери файлы", "err");
         return;
       }
+
+      const allowedExt = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic"]);
+      const bad = [];
+      const okFiles = [];
+      for (const f of files) {
+        const name = String(f.name || "");
+        const ext = name.includes(".") ? ("." + name.split(".").pop()).toLowerCase() : "";
+        if (!allowedExt.has(ext) || (f.type && !String(f.type).startsWith("image/"))) {
+          bad.push(name || "file");
+          continue;
+        }
+        okFiles.push(f);
+      }
+      if (bad.length) {
+        toast("Неподдерживаемые файлы: " + bad.slice(0,3).join(", ") + (bad.length>3 ? "…" : ""), "warn");
+      }
+      if (!okFiles.length) return;
+
       try {
-        await uploadAttachments(dayISO, files);
+        await uploadAttachments(dayISO, okFiles);
         toast("Загружено", "ok");
         await openDay(dayISO);
       } catch (e) {
