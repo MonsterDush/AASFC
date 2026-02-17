@@ -184,7 +184,6 @@ function openDayModal(d) {
   const shiftsHtml = (d.shifts || []).map(s => {
     const interval = s.interval?.title || s.interval_title || s.interval?.id || "Смена";
     const sal = Number(s.my_salary);
-    const dd = formatDateRuNoG(d.date); // <-- "dd.mm.yyyy"
     const salText = Number.isFinite(sal) ? ("+"+formatMoney(sal)) : "—";
     return `
       <div style="border-bottom:1px solid var(--border); padding:10px 0;">
@@ -198,10 +197,11 @@ function openDayModal(d) {
       </div>
     `;
   }).join("");
+
   openModal(
-    `${dd}`,
+    `День ${d.date}`,
     "",
-    `<div class="itemcard" style="margin-top:12px">
+    `<div class="itemcard">
         <div class="row" style="justify-content:space-between;align-items:center">
           <div class="muted">Итого за день</div>
           <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "—"}</div>
