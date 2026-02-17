@@ -1334,7 +1334,7 @@ def create_dispute(
         if not u.tg_user_id:
             continue
         uniq[u.id] = u
-
+    log.warning("recipients filtered: %s", [(x.id, x.tg_user_id) for x in uniq.values()])
     who = user.short_name or user.full_name or (user.tg_username or str(user.id))
     link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
     prefix = "Новый спор" if created_new else "Новый комментарий"
