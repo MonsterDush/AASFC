@@ -1335,6 +1335,7 @@ def create_dispute(
             continue
         uniq[u.id] = u
     log.warning("recipients filtered: %s", [(x.id, x.tg_user_id) for x in uniq.values()])
+
     who = user.short_name or user.full_name or (user.tg_username or str(user.id))
     link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
     prefix = "Новый спор" if created_new else "Новый комментарий"
@@ -1346,6 +1347,9 @@ def create_dispute(
         )
 
     for u in uniq.values():
+        c = 0
+        log.warning("count of cicle: %s", c)
+        c = c+1
         tg_notify.notify(
             chat_id=int(u.tg_user_id),
             text=(
