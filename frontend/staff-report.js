@@ -216,43 +216,63 @@ async function saveReport(dayISO) {
     method: "POST",
     body: { date: dayISO, cash, cashless, revenue_total, tips_total },
   });
+}
 
 async function fetchAttachments(dayISO) {
   try {
     return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`);
-  } catch (e) {
-    return [];
+  } catch {
+    return { items: [] };
   }
 }
 
-async function uploadAttachments(dayISO) {
-  const inp = document.getElementById("repFiles");
-  const files = inp?.files ? Array.from(inp.files) : [];
-  if (!files.length) {
-    toast("Выберите файлы", "err");
-    return;
-  }
-  // client-side filter
-  const allowed = [".jpg",".jpeg",".png",".webp",".heic"];
-  const bad = files.find(f => {
-    const n = (f.name || "").toLowerCase();
-    const ext = n.includes(".") ? n.slice(n.lastIndexOf(".")) : "";
-    return !allowed.includes(ext);
-  });
-  if (bad) {
-    toast("Неподдерживаемый файл: " + (bad.name || ""), "err");
-    return;
-  }
-
+async function uploadAttachments(dayISO, files) {
+  const allowedExt = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic"]);
+  const bad = [];
   const fd = new FormData();
-  for (const f of files) fd.append("files", f);
 
-  await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`, {
-    method: "POST",
-    body: fd,
-  });
+  for (const f of (files || [])) {
+    const name = (f?.name || "").toLowerCase();
+    const ext = name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
+    if (!allowedExt.has(ext)) {
+      bad.push(f?.name || "unknown");
+      continue;
+    }
+    fd.append("files", f);
+  }
+
+  if (bad.length) {
+    toast("Неподдерживаемые файлы: " + bad.slice(0, 5).join(", ") + (bad.length > 5 ? "…" : ""), "err");
+  }
+  if (![...fd.keys()].length) {
+    throw new Error("Нет файлов для загрузки. Поддерживаемые: jpg, jpeg, png, webp, heic");
+  }
+
+  const url = `/api/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`;
+  const res = await fetch(url, { method: "POST", credentials: "include", body: fd });
+
+  if (!res.ok) {
+    // try json -> text
+    let msg = `Upload failed (HTTP ${res.status})`;
+    try {
+      const js = await res.json();
+      msg = js?.detail || js?.message || msg;
+    } catch {
+      try {
+        const txt = await res.text();
+        if (txt && txt.length < 400) msg = `${msg}: ${txt}`;
+      } catch {}
+    }
+
+    // hint for nginx 413
+    if (res.status === 413) {
+      msg = "Файл слишком большой (HTTP 413). Уменьши фото или увеличь client_max_body_size в nginx.";
+    }
+    throw new Error(msg);
+  }
+  return res.json();
 }
-}
+
 
 function formatDateRuNoG(iso) {
   const d = new Date(iso);
@@ -290,6 +310,20 @@ async function openDay(dayISO) {
   const cashlessVal = rep?.cashless ?? "";
   const totalVal = rep?.revenue_total ?? "";
   const tipsVal = rep?.tips_total ?? "";
+
+  const att = await fetchAttachments(dayISO);
+  const attItems = att?.items || [];
+  const attHtml = attItems.length
+    ? attItems
+        .map(
+          (a) =>
+            `<div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border)">
+              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%">${esc(a.file_name || "file")}</div>
+              <a class="btn" href="${esc(a.url)}" target="_blank" rel="noopener" style="text-decoration:none">Открыть</a>
+            </div>`
+        )
+        .join("")
+    : `<div class="muted">Файлов нет</div>`;
 
   const formHtml = `
     <div class="itemcard" style="margin-top: 12px;">
@@ -329,56 +363,40 @@ async function openDay(dayISO) {
             ${(!canEdit || !showMoney) ? "disabled" : ""}
             placeholder="${showMoney ? "0" : "нет доступа"}" />
         </label>
+
         <label style="min-width:180px;display:block">
           <div class="muted" style="font-size:12px;margin-bottom:4px">Чаевые (итого)</div>
           <input id="repTips" type="number" min="0" value="${esc(tipsVal)}"
             ${(!canEdit || !showMoney) ? "disabled" : ""}
             placeholder="${showMoney ? "0" : "нет доступа"}" />
         </label>
-
       </div>
 
-      
-      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
-        <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-          <b>Фото к отчёту</b>
-          ${canEdit ? `<div class="row" style="gap:8px;align-items:center">
-              <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/*" multiple />
+      <div class="itemcard" style="margin-top:12px">
+        <b>Фото/файлы к отчёту</b>
+        <div class="muted" style="margin-top:6px">Можно прикрепить несколько фотографий</div>
+
+        <div style="margin-top:10px">${attHtml}</div>
+
+        ${canEdit ? `
+          <div style="margin-top:12px">
+            <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
+            <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
               <button class="btn" id="btnUpload">Загрузить</button>
-            </div>` : ""}
-        </div>
-        <div id="repAttachments" style="margin-top:10px" class="muted">…</div>
+            </div>
+          </div>
+        ` : `<div class="muted" style="margin-top:10px">Нет прав на загрузку файлов</div>`}
       </div>
-<div class="muted" style="margin-top:10px;font-size:12px">
-        ${canEdit ? "Можно сохранить изменения и прикрепить фото." : "Нет права на создание/редактирование отчётов."}
+
+      <div class="muted" style="margin-top:10px;font-size:12px">
+        ${canEdit ? "Можно сохранить изменения." : "Нет права на создание/редактирование отчётов."}
       </div>
     </div>
   `;
 
   openModal(title, subtitle, formHtml);
 
-  // attachments
-  const attEl = document.getElementById("repAttachments");
-  const atts = await fetchAttachments(dayISO);
-  if (attEl) {
-    if (!atts || !atts.length) {
-      attEl.innerHTML = '<div class="muted">Файлов нет</div>';
-    } else {
-      attEl.innerHTML = (atts || []).map(a => `<div class="row" style="justify-content:space-between;gap:10px"><a href="/api/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments/${encodeURIComponent(a.id)}" target="_blank">${esc(a.file_name)}</a><span class="muted" style="font-size:12px">${a.created_at ? esc(a.created_at) : ''}</span></div>`).join('');
-    }
-  }
-
   if (canEdit) {
-    document.getElementById("btnUpload")?.addEventListener("click", async () => {
-      try {
-        await uploadAttachments(dayISO);
-        toast("Файлы загружены", "ok");
-        await openDay(dayISO);
-      } catch (e) {
-        toast("Upload failed: " + (e?.message || "неизвестно"), "err");
-      }
-    });
-
     document.getElementById("btnSaveRep")?.addEventListener("click", async () => {
       if (!showMoney) {
         toast("Нет доступа к суммам отчёта", "err");
@@ -402,7 +420,22 @@ async function openDay(dayISO) {
       const repTotal = document.getElementById("repTotal");
       if (repTotal && !repTotal.disabled) repTotal.value = String(total);
     });
-ß
+
+    document.getElementById("btnUpload")?.addEventListener("click", async () => {
+      const inp = document.getElementById("repFiles");
+      const files = inp?.files ? Array.from(inp.files) : [];
+      if (!files.length) {
+        toast("Выбери файлы", "err");
+        return;
+      }
+      try {
+        await uploadAttachments(dayISO, files);
+        toast("Загружено", "ok");
+        await openDay(dayISO);
+      } catch (e) {
+        toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
+      }
+    });
   }
 }
 
