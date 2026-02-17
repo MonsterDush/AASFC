@@ -61,5 +61,35 @@
   </div>
 
   <script type="module" src="/staff-report.js"></script>
+
+  <div class="modal" id="photoModal">
+      <div class="modal__backdrop" data-close-ph></div>
+      <div class="modal__panel" style="max-width: 720px;">
+        <div class="modal__head">
+          <div style="min-width:0">
+            <b class="modal__title" id="photoTitle">Фото</b>
+            <div class="modal__subtitle" id="photoSubtitle"></div>
+          </div>
+          <button class="btn" data-close-ph>Закрыть</button>
+        </div>
+        <div class="modal__body">
+          <div class="row" style="justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="row" style="gap:8px;align-items:center">
+              <button class="btn" id="phPrev">◀</button>
+              <button class="btn" id="phNext">▶</button>
+              <div class="muted" id="phCounter" style="font-size:12px"></div>
+            </div>
+            <div class="row" style="gap:8px;align-items:center">
+              <a class="btn" id="phDownload" href="#" download style="text-decoration:none">Скачать</a>
+              <button class="btn danger" id="phDelete" style="display:none">Удалить</button>
+            </div>
+          </div>
+          <div style="margin-top:10px; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#000;">
+            <img id="phImg" alt="photo" style="display:block; width:100%; height:auto; max-height:70vh; object-fit:contain; margin:0 auto;" />
+          </div>
+        </div>
+      </div>
+  </div>
+
 </body>
 </html>

@@ -133,16 +133,118 @@ function renderList(data) {
       <button class="btn" data-edit>Открыть</button>
     `;
 
-    row.querySelector("[data-edit]").onclick = () => {
-      // пока просто показываем JSON + подсказку. В следующем шаге сделаем полноценную карточку+редактирование.
+    row.querySelector("[data-edit]").onclick = async () => {
+      const members = await loadMembers().catch(() => []);
+      const memberOpts = [
+        `<option value="0">— (по заведению)</option>`,
+        ...members.map((m) => `<option value="${esc(m.user_id)}">@${esc(m.tg_username || "-")}${m.full_name ? ` (${esc(m.full_name)})` : ""}</option>`),
+      ].join("");
+
       const html = `
         <div class="itemcard">
-          <b>${esc(typeTitle(it.type))}</b>
-          <div class="muted" style="margin-top:6px">MVP карточка</div>
-          <pre style="white-space:pre-wrap; margin-top:10px;">${esc(JSON.stringify(it, null, 2))}</pre>
+          <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label>Тип
+              <select id="edType">
+                <option value="penalty">Штраф</option>
+                <option value="writeoff">Списание</option>
+                <option value="bonus">Премия</option>
+              </select>
+            </label>
+            <label>Дата
+              <input id="edDate" type="date" />
+            </label>
+            <label>Сотрудник
+              <select id="edMember">${memberOpts}</select>
+              <div class="muted" style="font-size:12px;margin-top:4px">Для “Списание” можно оставить “по заведению”.</div>
+            </label>
+            <label>Сумма
+              <input id="edAmount" type="number" min="0" step="1" />
+            </label>
+          </div>
+
+          <label style="display:block;margin-top:10px">Причина
+            <textarea id="edReason" rows="3" placeholder="Причина"></textarea>
+          </label>
+
+          <div class="row" style="justify-content:space-between; gap:8px; margin-top:12px; flex-wrap:wrap">
+            <button class="btn danger" id="btnAdjDelete">Удалить</button>
+            <div class="row" style="gap:8px">
+              <button class="btn" id="btnAdjClose">Закрыть</button>
+              <button class="btn primary" id="btnAdjSave">Сохранить</button>
+            </div>
+          </div>
         </div>
       `;
-      openModal("Карточка", "Детали", html);
+      openModal("Карточка", "Редактирование", html);
+
+      const edType = document.getElementById("edType");
+      const edDate = document.getElementById("edDate");
+      const edMember = document.getElementById("edMember");
+      const edAmount = document.getElementById("edAmount");
+      const edReason = document.getElementById("edReason");
+
+      if (edType) edType.value = it.type || "penalty";
+      if (edDate) edDate.value = (it.date || "").slice(0, 10);
+      if (edAmount) edAmount.value = it.amount ?? 0;
+      if (edReason) edReason.value = it.reason || "";
+
+      // member: for penalty/bonus must be selected; for writeoff can be 0
+      const curMember = it.member_user_id ? String(it.member_user_id) : "0";
+      if (edMember) edMember.value = curMember;
+
+      function applyTypeRules() {
+        const t = edType?.value || "penalty";
+        if (!edMember) return;
+        if (t === "writeoff") {
+          // allow 0
+        } else {
+          if (edMember.value === "0") {
+            // pick first real member if exists
+            const first = members.find((x) => x.user_id);
+            if (first) edMember.value = String(first.user_id);
+          }
+        }
+      }
+      edType?.addEventListener("change", applyTypeRules);
+      applyTypeRules();
+
+      document.getElementById("btnAdjClose")?.addEventListener("click", closeModal);
+
+      document.getElementById("btnAdjSave")?.addEventListener("click", async () => {
+        try {
+          const payload = {
+            type: edType?.value,
+            date: edDate?.value,
+            amount: Number(edAmount?.value || 0),
+            reason: edReason?.value || "",
+            member_user_id: Number(edMember?.value || 0),
+          };
+          await api(`/venues/${encodeURIComponent(venueId)}/adjustments/${encodeURIComponent(it.id)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          toast("Сохранено", "ok");
+          closeModal();
+          const data = await loadList();
+          renderList(data);
+        } catch (e) {
+          toast("Не удалось сохранить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+        }
+      });
+
+      document.getElementById("btnAdjDelete")?.addEventListener("click", async () => {
+        if (!confirm("Удалить запись?")) return;
+        try {
+          await api(`/venues/${encodeURIComponent(venueId)}/adjustments/${encodeURIComponent(it.id)}`, { method: "DELETE" });
+          toast("Удалено", "ok");
+          closeModal();
+          const data = await loadList();
+          renderList(data);
+        } catch (e) {
+          toast("Не удалось удалить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+        }
+      });
     };
 
     el.list.appendChild(row);

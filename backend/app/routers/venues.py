@@ -857,6 +857,43 @@ def download_report_attachment(
     return FileResponse(a.storage_path, media_type=a.content_type or "application/octet-stream", filename=a.file_name)
 
 
+
+@router.delete("/{venue_id}/reports/{report_date}/attachments/{attachment_id}")
+def delete_report_attachment(
+    venue_id: int,
+    report_date: date,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_maker(db, venue_id=venue_id, user=user)
+
+    a = db.execute(
+        select(DailyReportAttachment).where(
+            DailyReportAttachment.id == attachment_id,
+            DailyReportAttachment.venue_id == venue_id,
+            DailyReportAttachment.report_date == report_date,
+            DailyReportAttachment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if a is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    # soft delete in DB
+    a.is_active = False
+    db.commit()
+
+    # best-effort remove file
+    try:
+        if a.storage_path and os.path.exists(a.storage_path):
+            os.remove(a.storage_path)
+    except Exception:
+        pass
+
+    return {"ok": True}
+
+
 @router.post("/{venue_id}/reports/{report_date}/attachments")
 def upload_report_attachments(
     venue_id: int,
@@ -1071,6 +1108,91 @@ def create_adjustment(
             )
 
     return {"id": obj.id}
+
+
+
+class AdjustmentUpdateIn(BaseModel):
+    type: str | None = None  # penalty|writeoff|bonus
+    member_user_id: int | None = None  # can be null only for writeoff (venue-level)
+    date: date | None = None
+    amount: int | None = None
+    reason: str | None = None
+
+
+@router.patch("/{venue_id}/adjustments/{adjustment_id}")
+def update_adjustment(
+    venue_id: int,
+    adjustment_id: int,
+    payload: AdjustmentUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_adjustments_manager(db, venue_id=venue_id, user=user)
+
+    adj = db.execute(
+        select(Adjustment).where(
+            Adjustment.id == adjustment_id,
+            Adjustment.venue_id == venue_id,
+            Adjustment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if adj is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if payload.type is not None:
+        t = payload.type.strip()
+        if t not in ("penalty", "writeoff", "bonus"):
+            raise HTTPException(status_code=400, detail="Bad type")
+        adj.type = t
+
+    if payload.date is not None:
+        adj.date = payload.date
+
+    if payload.amount is not None:
+        adj.amount = int(payload.amount)
+
+    if payload.reason is not None:
+        adj.reason = payload.reason.strip() or None
+
+    if payload.member_user_id is not None:
+        # allow null only for writeoff
+        if payload.member_user_id == 0:
+            adj.member_user_id = None
+        else:
+            adj.member_user_id = int(payload.member_user_id)
+
+    adj.updated_by_user_id = user.id
+    adj.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{venue_id}/adjustments/{adjustment_id}")
+def delete_adjustment(
+    venue_id: int,
+    adjustment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_adjustments_manager(db, venue_id=venue_id, user=user)
+
+    adj = db.execute(
+        select(Adjustment).where(
+            Adjustment.id == adjustment_id,
+            Adjustment.venue_id == venue_id,
+            Adjustment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if adj is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    adj.is_active = False
+    adj.updated_by_user_id = user.id
+    adj.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/{venue_id}/adjustments/{adj_type}/{adj_id}/dispute")

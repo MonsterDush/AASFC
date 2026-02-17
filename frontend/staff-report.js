@@ -33,6 +33,68 @@ const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
 const modalBody = modal?.querySelector(".modal__body");
 const modalSubtitleEl = document.getElementById("modalSubtitle");
+
+const photoModal = document.getElementById("photoModal");
+const phTitle = document.getElementById("photoTitle");
+const phSubtitle = document.getElementById("photoSubtitle");
+const phImg = document.getElementById("phImg");
+const phPrev = document.getElementById("phPrev");
+const phNext = document.getElementById("phNext");
+const phCounter = document.getElementById("phCounter");
+const phDownload = document.getElementById("phDownload");
+const phDelete = document.getElementById("phDelete");
+let phItems = [];
+let phIndex = 0;
+let phDayISO = "";
+function closePhotoModal() { photoModal?.classList.remove("open"); }
+photoModal?.querySelectorAll("[data-close-ph]")?.forEach((b) => b.addEventListener("click", closePhotoModal));
+photoModal?.querySelector(".modal__backdrop")?.addEventListener("click", closePhotoModal);
+
+function canDeleteAttachments() { return canMake(); }
+
+function showPhotoAt(idx) {
+  if (!phItems.length) return;
+  phIndex = Math.max(0, Math.min(idx, phItems.length - 1));
+  const a = phItems[phIndex];
+  const url = attachmentHref(a.url);
+  if (phTitle) phTitle.textContent = a.file_name || "Фото";
+  if (phSubtitle) phSubtitle.textContent = formatDateRuNoG(phDayISO);
+  if (phImg) phImg.src = url;
+  if (phCounter) phCounter.textContent = `${phIndex + 1} / ${phItems.length}`;
+  if (phDownload) {
+    phDownload.href = url;
+    phDownload.setAttribute("download", a.file_name || "photo");
+  }
+  if (phDelete) phDelete.style.display = canDeleteAttachments() ? "" : "none";
+}
+phPrev?.addEventListener("click", () => showPhotoAt(phIndex - 1));
+phNext?.addEventListener("click", () => showPhotoAt(phIndex + 1));
+
+async function deleteCurrentPhoto() {
+  if (!canDeleteAttachments()) return;
+  const a = phItems[phIndex];
+  if (!a) return;
+  if (!confirm("Удалить файл?")) return;
+  try {
+    await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(phDayISO)}/attachments/${encodeURIComponent(a.id)}`, { method: "DELETE" });
+    // remove from local list
+    phItems.splice(phIndex, 1);
+    if (!phItems.length) { closePhotoModal(); await openDay(phDayISO); return; }
+    showPhotoAt(Math.min(phIndex, phItems.length - 1));
+    // refresh report modal list too
+    await openDay(phDayISO);
+  } catch (e) {
+    toast("Не удалось удалить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+  }
+}
+phDelete?.addEventListener("click", deleteCurrentPhoto);
+
+function openPhotoModal(items, startIdx, dayISO) {
+  phItems = Array.isArray(items) ? items.slice() : [];
+  phDayISO = dayISO;
+  photoModal?.classList.add("open");
+  showPhotoAt(startIdx || 0);
+}
 function closeModal() { modal?.classList.remove("open"); }
 modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
 modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
@@ -289,9 +351,13 @@ async function openDay(dayISO) {
     ? attItems
         .map(
           (a) =>
-            `<div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border)">
-              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%">${esc(a.file_name || "file")}</div>
-              <a class="btn" href="${esc(attachmentHref(a.url))}" target="_blank" rel="noopener" style="text-decoration:none">Открыть</a>
+            `<div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); align-items:center">
+              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:55%">${esc(a.file_name || "file")}</div>
+              <div class="row" style="gap:8px; justify-content:flex-end; flex-wrap:wrap">
+                <button class="btn" data-ph-open="${esc(a.id)}">Открыть</button>
+                <a class="btn" href="${esc(attachmentHref(a.url))}" download style="text-decoration:none">Скачать</a>
+                ${canEdit ? `<button class="btn danger" data-att-del="${esc(a.id)}">Удалить</button>` : ``}
+              </div>
             </div>`
         )
         .join("")
@@ -367,6 +433,32 @@ async function openDay(dayISO) {
   `;
 
   openModal(title, subtitle, formHtml);
+
+  // open attachments inside the app (photo viewer)
+  modalBody?.querySelectorAll("[data-ph-open]")?.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = Number(btn.getAttribute("data-ph-open"));
+      const idx = attItems.findIndex((x) => Number(x.id) === id);
+      openPhotoModal(attItems, idx >= 0 ? idx : 0, dayISO);
+    });
+  });
+
+  // delete attachment from list
+  modalBody?.querySelectorAll("[data-att-del]")?.forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!canEdit) return;
+      const id = Number(btn.getAttribute("data-att-del"));
+      if (!id) return;
+      if (!confirm("Удалить файл?")) return;
+      try {
+        await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments/${encodeURIComponent(id)}`, { method: "DELETE" });
+        toast("Удалено", "ok");
+        await openDay(dayISO);
+      } catch (e) {
+        toast("Не удалось удалить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+      }
+    });
+  });
 
   if (canEdit) {
     document.getElementById("btnSaveRep")?.addEventListener("click", async () => {
