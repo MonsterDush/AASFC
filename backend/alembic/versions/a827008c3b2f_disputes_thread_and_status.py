@@ -62,6 +62,15 @@ def upgrade() -> None:
     # Index for fast lookup
     op.create_index("ix_adj_disputes_venue_adjustment", "adjustment_disputes", ["venue_id", "adjustment_id"])
     op.create_index("ix_adj_disputes_status", "adjustment_disputes", ["status"])
+# Before creating new adjustment_dispute_comments, rename indexes left from ..._old table
+    op.execute(
+        "ALTER INDEX IF EXISTS ix_adjustment_dispute_comments_author_user_id "
+        "RENAME TO ix_adjustment_dispute_comments_old_author_user_id"
+    )
+    op.execute(
+        "ALTER INDEX IF EXISTS ix_adjustment_dispute_comments_dispute_id "
+        "RENAME TO ix_adjustment_dispute_comments_old_dispute_id"
+    )
 
     # Create comments table (thread)
     op.create_table(
