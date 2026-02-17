@@ -367,3 +367,21 @@ select{min-width:160px}
 .switch input:checked + .slider{background:rgba(52,199,89,.35)}
 .switch input:checked + .slider:before{transform:translateX(18px)}
 .switch input:disabled + .slider{opacity:.45;cursor:not-allowed}
+
+textarea{
+  width:100%;
+  min-height:96px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+  color:inherit;
+  resize:none;
+  outline:none;
+  box-sizing:border-box;
+}
+
+textarea:focus{
+  border-color:rgba(255,255,255,.28);
+  background:rgba(255,255,255,.08);
+}
