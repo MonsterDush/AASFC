@@ -199,9 +199,9 @@ function openDayModal(d) {
   }).join("");
 
   openModal(
-    `${d.date}`,
+    `${formatDateRuNoG(d.date)}`,
     "",
-    `<div class="itemcard">
+    `<div class="itemcard" style="margin-top:12px">
         <div class="row" style="justify-content:space-between;align-items:center">
           <div class="muted">Итого за день</div>
           <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "—"}</div>
