@@ -184,6 +184,7 @@ function openDayModal(d) {
   const shiftsHtml = (d.shifts || []).map(s => {
     const interval = s.interval?.title || s.interval_title || s.interval?.id || "Смена";
     const sal = Number(s.my_salary);
+    const dd = formatDateRuNoG(d.date); // <-- "dd.mm.yyyy"
     const salText = Number.isFinite(sal) ? ("+"+formatMoney(sal)) : "—";
     return `
       <div style="border-bottom:1px solid var(--border); padding:10px 0;">
@@ -197,7 +198,6 @@ function openDayModal(d) {
       </div>
     `;
   }).join("");
-  const dd = formatDateRuNoG(d.date); // <-- "dd.mm.yyyy"
   openModal(
     `${dd}`,
     "",
