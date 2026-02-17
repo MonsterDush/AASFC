@@ -1297,7 +1297,7 @@ def create_dispute(
     )
     db.add(com)
     db.commit()
-    # notify all managers/owners (best-effort)ß
+    # notify all managers/owners (best-effort)
     import logging
     log = logging.getLogger("axelio.adjustments")
 
@@ -1325,7 +1325,7 @@ def create_dispute(
     # + создатель штрафа (самый важный)
     creator = db.execute(select(User).where(User.id == adj.created_by_user_id)).scalar_one_or_none()
     recipients = owners + managers + ([creator] if creator else [])
-
+    log.warning("recipients raw: %s", [(x.id, x.tg_user_id) for x in recipients if x])
     # фильтруем тех, кому реально можно отправить
     uniq = {}
     for u in recipients:
