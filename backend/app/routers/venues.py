@@ -1347,16 +1347,13 @@ def create_dispute(
         )
 
     for u in uniq.values():
-        c = 0
-        log.warning("count of cicle: %s", c)
-        c = c+1
+        log.warning("Sending dispute notification to user_id=%s tg_user_id=%s", u.id, int(u.tg_user_id)) 
         tg_notify.notify(
             chat_id=int(u.tg_user_id),
             text=(
                 f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
                 f"Комментарий: {message}\n"
-                f"Открыть: {link}"
-            ),
+                f"Открыть: {link}"),
         )
     return {"ok": True, "dispute_id": dis.id}
 
