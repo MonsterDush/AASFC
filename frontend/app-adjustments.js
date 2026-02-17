@@ -150,8 +150,9 @@ function renderList(data) {
 }
 
 async function loadMembers() {
+  // backend returns { venue_id, members: [...] }
   const res = await api(`/me/venues/${encodeURIComponent(venueId)}/members`);
-  return res?.items || [];
+  return res?.members || res?.items || [];
 }
 
 function buildCreateForm(members) {

@@ -231,18 +231,11 @@ async function uploadAttachments(dayISO, files) {
   const fd = new FormData();
   for (const f of files) fd.append("files", f);
 
-  // IMPORTANT: use api() so we always hit API_BASE (api-dev) instead of app-dev static nginx.
+  // IMPORTANT: send to API_BASE (api-dev). Posting to app-dev (/api/...) can return 405.
   return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`, {
     method: "POST",
     body: fd,
   });
-}
-
-function absolutizeApiUrl(u) {
-  const s = String(u || "");
-  if (!s) return "";
-  if (/^https?:\/\//i.test(s)) return s;
-  return API_BASE + (s.startsWith("/") ? s : `/${s}`);
 }
 
 function formatDateRuNoG(iso) {
@@ -251,6 +244,14 @@ function formatDateRuNoG(iso) {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
   return `${dd}.${mm}.${yyyy}`;
+}
+
+function attachmentHref(rawUrl) {
+  const raw = String(rawUrl || "");
+  // backend may return "/api/venues/..." or "/venues/...". We need a working absolute URL to api-dev.
+  const path = raw.startsWith("/api/") ? raw.slice(4) : raw;
+  if (path.startsWith("/")) return API_BASE + path;
+  return raw;
 }
 async function openDay(dayISO) {
   if (!venueId) return;
@@ -290,7 +291,7 @@ async function openDay(dayISO) {
           (a) =>
             `<div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border)">
               <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%">${esc(a.file_name || "file")}</div>
-              <a class="btn" href="${esc(absolutizeApiUrl(a.url))}" target="_blank" rel="noopener" style="text-decoration:none">Открыть</a>
+              <a class="btn" href="${esc(attachmentHref(a.url))}" target="_blank" rel="noopener" style="text-decoration:none">Открыть</a>
             </div>`
         )
         .join("")
@@ -351,7 +352,7 @@ async function openDay(dayISO) {
 
         ${canEdit ? `
           <div style="margin-top:12px">
-            <input id="repFiles" type="file" accept="image/*" multiple />
+            <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
             <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
               <button class="btn" id="btnUpload">Загрузить</button>
             </div>
@@ -399,12 +400,25 @@ async function openDay(dayISO) {
         toast("Выбери файлы", "err");
         return;
       }
+
+      // client-side extension filter (backend validates too)
+      const allowed = new Set(["jpg", "jpeg", "png", "webp", "heic"]);
+      const bad = files.filter(f => {
+        const name = String(f?.name || "").toLowerCase();
+        const ext = name.includes(".") ? name.split(".").pop() : "";
+        return !allowed.has(ext);
+      });
+      if (bad.length) {
+        toast("Можно загрузить только: jpg, jpeg, png, webp, heic", "err");
+        return;
+      }
       try {
         await uploadAttachments(dayISO, files);
         toast("Загружено", "ok");
         await openDay(dayISO);
       } catch (e) {
-        toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
+        const detail = e?.data?.detail ? `: ${e.data.detail}` : (e?.message ? `: ${e.message}` : "");
+        toast("Ошибка загрузки" + detail, "err");
       }
     });
   }
