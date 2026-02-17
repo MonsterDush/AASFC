@@ -1498,9 +1498,9 @@ def add_dispute_comment(
     db.commit()
 
     # notify the other side (best effort)
+    recipients = []
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     if token:
-        recipients = []
         if is_manager:
             # notify employee
             if adj.member_user_id:
@@ -1536,14 +1536,16 @@ def add_dispute_comment(
     vname = _venue_name(db, venue_id=venue_id)
     label = _adj_type_label(adj.type)
     link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
-    for r in recipients:
-        if _should_notify_user(r, "adjustments"):
-            tg_notify.notify(
-                        chat_id=int(r.tg_user_id),
-                        text=f"{vname}: новый комментарий в споре по {label} #{adj.id} от {who}.\n{msg}",
-                        url=link,
-                        button_text="Открыть спор",
-                    )
+    if token and recipients:
+        for r in recipients:
+            if _should_notify_user(r, "adjustments"):
+                tg_notify.notify(
+                    chat_id=int(r.tg_user_id),
+                    text=f"{vname}: новый комментарий в споре по {label} #{adj.id} от {who}.\n{msg}",
+                    url=link,
+                    button_text="Открыть спор",
+                )
+
 
     return {"ok": True}
 
