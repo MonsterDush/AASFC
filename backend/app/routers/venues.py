@@ -1281,6 +1281,7 @@ def create_dispute(
         dis = AdjustmentDispute(
             venue_id=venue_id,
             adjustment_id=adj.id,
+            message=message,
             created_by_user_id=user.id,
             is_active=True,
             status="OPEN",
@@ -1319,30 +1320,10 @@ def create_dispute(
         )
     ).scalars().all()
 
-    # Always notify the creator of the adjustment too (even if they are not OWNER / don't have a position row)
-    creators = db.execute(
-        select(User).where(
-            User.id == adj.created_by_user_id,
-            User.tg_user_id.is_not(None),
-        )
-    ).scalars().all()
-
-    # Fallback: notify super admins (if any are linked as users with tg_user_id)
-    super_admins = db.execute(
-        select(User).where(
-            User.system_role == "SUPER_ADMIN",
-            User.tg_user_id.is_not(None),
-        )
-    ).scalars().all()
-
-    uniq = {u.id: u for u in (owners + managers + creators + super_admins)}
+    uniq = {u.id: u for u in (owners + managers)}
     who = user.short_name or user.full_name or (user.tg_username or str(user.id))
     link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
     prefix = "Новый спор" if created_new else "Новый комментарий"
-
-    if not uniq:
-        # Help debugging: if nobody matched, log it
-        print(f"[adjustments] dispute notify: no recipients for venue_id={venue_id}, adj_id={adj.id}")  # noqa: T201
     for u in uniq.values():
         tg_notify.notify(
             chat_id=int(u.tg_user_id),
