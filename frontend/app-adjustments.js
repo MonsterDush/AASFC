@@ -166,8 +166,25 @@ function renderList(data) {
       ].join("");
 
       const html = `
-        <div class="itemcard" style="margin-top:12px;">
-          <div class="grid1" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <style>
+          /* Admin adjustments modal: make the form readable on narrow screens */
+          .adj-modal .adj-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+          .adj-modal label{display:block}
+          .adj-modal select,.adj-modal input,.adj-modal textarea{width:100%}
+          .adj-modal .adj-help{font-size:12px;margin-top:4px}
+          .adj-modal .adj-actions{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px}
+          .adj-modal .adj-actions-right{display:flex;gap:8px;flex-wrap:wrap}
+          .adj-modal .adj-card{margin-top:12px}
+          .adj-modal .dispute-top{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+          .adj-modal .dispute-list .card{padding:10px}
+          @media (max-width:520px){
+            .adj-modal .adj-grid{grid-template-columns:1fr}
+          }
+        </style>
+
+        <div class="adj-modal">
+        <div class="itemcard adj-card">
+          <div class="adj-grid">
             <label>Тип
               <select id="edType">
                 <option value="penalty">Штраф</option>
@@ -180,7 +197,7 @@ function renderList(data) {
             </label>
             <label>Сотрудник
               <select id="edMember">${memberOpts}</select>
-              <div class="muted" style="font-size:12px;margin-top:4px">Для “Списание” можно оставить “по заведению”.</div>
+              <div class="muted adj-help">Для “Списание” можно оставить “по заведению”.</div>
             </label>
             <label>Сумма
               <input id="edAmount" type="number" min="0" step="1" />
@@ -191,17 +208,17 @@ function renderList(data) {
             <textarea id="edReason" rows="3" placeholder="Причина"></textarea>
           </label>
 
-          <div class="row" style="justify-content:space-between; gap:8px; margin-top:12px; flex-wrap:wrap">
+          <div class="adj-actions">
             <button class="btn danger" id="btnAdjDelete">Удалить</button>
-            <div class="row" style="gap:8px">
+            <div class="adj-actions-right">
               <button class="btn" id="btnAdjClose">Закрыть</button>
               <button class="btn primary" id="btnAdjSave">Сохранить</button>
             </div>
           </div>
         </div>
 
-        <div class="itemcard" id="disputeBox" style="margin-top:12px;">
-          <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
+        <div class="itemcard adj-card" id="disputeBox">
+          <div class="dispute-top">
             <div>
               <b>Спор</b>
               <div class="muted" style="margin-top:4px" id="disputeStatus">Загрузка…</div>
@@ -209,7 +226,7 @@ function renderList(data) {
             <button class="btn" id="btnDisputeToggle">…</button>
           </div>
 
-          <div id="disputeComments" style="margin-top:10px"></div>
+          <div id="disputeComments" class="dispute-list" style="margin-top:10px"></div>
 
           <div style="margin-top:10px">
             <textarea id="disputeReply" rows="3" placeholder="Ответить…" style="width:100%"></textarea>
@@ -217,6 +234,7 @@ function renderList(data) {
               <button class="btn primary" id="btnDisputeSend">Отправить</button>
             </div>
           </div>
+        </div>
         </div>
       `;
       
