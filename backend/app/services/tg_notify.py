@@ -54,7 +54,8 @@ def notify(chat_id: int, text: str) -> bool:
                     except Exception:
                         return True
                 return False
-        except Exception:
+        except Exception as e:
+            print(f"[tg_notify] bot-service notify failed: {e}")  # noqa: T201
             return False
 
     # Fallback: direct Telegram API
