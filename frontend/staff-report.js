@@ -5,6 +5,7 @@ import {
   mountNav,
   toast,
   api,
+  API_BASE,
   getActiveVenueId,
   setActiveVenueId,
   getMyVenuePermissions,
@@ -227,52 +228,22 @@ async function fetchAttachments(dayISO) {
 }
 
 async function uploadAttachments(dayISO, files) {
-  const allowedExt = new Set([".jpg", ".jpeg", ".png", ".webp", ".heic"]);
-  const bad = [];
   const fd = new FormData();
+  for (const f of files) fd.append("files", f);
 
-  for (const f of (files || [])) {
-    const name = (f?.name || "").toLowerCase();
-    const ext = name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
-    if (!allowedExt.has(ext)) {
-      bad.push(f?.name || "unknown");
-      continue;
-    }
-    fd.append("files", f);
-  }
-
-  if (bad.length) {
-    toast("Неподдерживаемые файлы: " + bad.slice(0, 5).join(", ") + (bad.length > 5 ? "…" : ""), "err");
-  }
-  if (![...fd.keys()].length) {
-    throw new Error("Нет файлов для загрузки. Поддерживаемые: jpg, jpeg, png, webp, heic");
-  }
-
-  const url = `/api/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`;
-  const res = await fetch(url, { method: "POST", credentials: "include", body: fd });
-
-  if (!res.ok) {
-    // try json -> text
-    let msg = `Upload failed (HTTP ${res.status})`;
-    try {
-      const js = await res.json();
-      msg = js?.detail || js?.message || msg;
-    } catch {
-      try {
-        const txt = await res.text();
-        if (txt && txt.length < 400) msg = `${msg}: ${txt}`;
-      } catch {}
-    }
-
-    // hint for nginx 413
-    if (res.status === 413) {
-      msg = "Файл слишком большой (HTTP 413). Уменьши фото или увеличь client_max_body_size в nginx.";
-    }
-    throw new Error(msg);
-  }
-  return res.json();
+  // IMPORTANT: use api() so we always hit API_BASE (api-dev) instead of app-dev static nginx.
+  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`, {
+    method: "POST",
+    body: fd,
+  });
 }
 
+function absolutizeApiUrl(u) {
+  const s = String(u || "");
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  return API_BASE + (s.startsWith("/") ? s : `/${s}`);
+}
 
 function formatDateRuNoG(iso) {
   const d = new Date(iso);
@@ -319,7 +290,7 @@ async function openDay(dayISO) {
           (a) =>
             `<div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border)">
               <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%">${esc(a.file_name || "file")}</div>
-              <a class="btn" href="${esc(a.url)}" target="_blank" rel="noopener" style="text-decoration:none">Открыть</a>
+              <a class="btn" href="${esc(absolutizeApiUrl(a.url))}" target="_blank" rel="noopener" style="text-decoration:none">Открыть</a>
             </div>`
         )
         .join("")
@@ -380,7 +351,7 @@ async function openDay(dayISO) {
 
         ${canEdit ? `
           <div style="margin-top:12px">
-            <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
+            <input id="repFiles" type="file" accept="image/*" multiple />
             <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
               <button class="btn" id="btnUpload">Загрузить</button>
             </div>

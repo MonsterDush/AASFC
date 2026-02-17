@@ -822,7 +822,8 @@ def list_report_attachments(
                 "id": a.id,
                 "file_name": a.file_name,
                 "content_type": a.content_type,
-                "url": f"/api/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}",
+                # NOTE: frontend should prefix this path with API_BASE.
+                "url": f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}",
             }
             for a in rows
         ]
@@ -868,9 +869,7 @@ def upload_report_attachments(
     _require_report_maker(db, venue_id=venue_id, user=user)
 
     # ensure report exists (or create empty one)
-    rep = db.execute(
-        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
-    ).scalar_one_or_none()
+    rep = db.execute(select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)).scalar_one_or_none()
     if rep is None:
         rep = DailyReport(
             venue_id=venue_id,
@@ -884,50 +883,39 @@ def upload_report_attachments(
         db.add(rep)
         db.commit()
 
-    # Upload settings
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "reports"))
+    os.makedirs(base_dir, exist_ok=True)
+
     allowed_ext = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
     max_bytes = 12 * 1024 * 1024  # 12MB per file
 
-    base_dir = os.getenv("UPLOADS_DIR")
-    if base_dir:
-        base_dir = os.path.abspath(os.path.join(base_dir, "reports"))
-    else:
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "reports"))
-    os.makedirs(base_dir, exist_ok=True)
-
-    created: list[DailyReportAttachment] = []
-    for f in files or []:
+    created = []
+    for f in files:
         if f is None:
             continue
 
         safe_name = os.path.basename(f.filename or "file")
-        _, ext = os.path.splitext(safe_name.lower())
+        ext = os.path.splitext(safe_name.lower())[1]
         if ext not in allowed_ext:
-            raise HTTPException(status_code=415, detail=f"Unsupported file type: {ext or 'unknown'}")
-
-        # content_type is user-provided, but we still check basic hint
-        if f.content_type and not str(f.content_type).lower().startswith("image/"):
-            raise HTTPException(status_code=415, detail=f"Unsupported content-type: {f.content_type}")
+            raise HTTPException(status_code=415, detail=f"Unsupported file type: {ext}")
+        if f.content_type and not str(f.content_type).startswith("image/"):
+            raise HTTPException(status_code=415, detail=f"Unsupported content_type: {f.content_type}")
 
         uid = uuid.uuid4().hex
         dst = os.path.join(base_dir, f"{venue_id}_{report_date.isoformat()}_{uid}_{safe_name}")
-
-        # stream write + size limit
-        size = 0
         with open(dst, "wb") as out:
+            total = 0
             while True:
                 chunk = f.file.read(1024 * 1024)
                 if not chunk:
                     break
-                size += len(chunk)
-                if size > max_bytes:
+                total += len(chunk)
+                if total > max_bytes:
                     try:
                         out.close()
-                    finally:
-                        try:
-                            os.remove(dst)
-                        except Exception:
-                            pass
+                        os.remove(dst)
+                    except Exception:
+                        pass
                     raise HTTPException(status_code=413, detail="File too large (max 12MB)")
                 out.write(chunk)
 
@@ -952,12 +940,11 @@ def upload_report_attachments(
                 "id": a.id,
                 "file_name": a.file_name,
                 "content_type": a.content_type,
-                "url": f"/api/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}",
+                "url": f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}",
             }
             for a in created
         ],
     }
-
 
 
 # ---------- Adjustments (penalties/writeoffs/bonuses) ----------

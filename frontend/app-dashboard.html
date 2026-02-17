@@ -110,7 +110,20 @@ try {
 
 const vid = getActiveVenueId();
 
-document.getElementById("goAdjustments").onclick = () => location.href = `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
+// Send owners/managers to management screen, staff to personal screen
+let adjHref = `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
+try {
+  if (vid) {
+    const perms = await api(`/me/venues/${encodeURIComponent(vid)}/permissions`);
+    const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
+    const flags = perms?.position_flags || {};
+    const isOwner = perms?.role === "OWNER";
+    const canManage = isOwner || flags.can_manage_adjustments === true || has("ADJUSTMENTS_MANAGE");
+    if (canManage) adjHref = `/app-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
+  }
+} catch {}
+
+document.getElementById("goAdjustments").onclick = () => location.href = adjHref;
 document.getElementById("goShifts").onclick = () => location.href = `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`;
 document.getElementById("goSalary").onclick = () => location.href = `/staff-salary.html?venue_id=${encodeURIComponent(vid)}`;
 const repBtn = document.getElementById("goReport");

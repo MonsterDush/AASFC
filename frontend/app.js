@@ -594,6 +594,7 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   // OWNER всегда имеет доступ к отчётам, даже если permissions registry пустой.
   let showReport = false;
   let isOwner = false;
+  let canManageAdjustments = false;
   if (activeVenueId) {
     try {
       const perms = await getMyVenuePermissions(activeVenueId);
@@ -601,6 +602,11 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
 
       const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
       const flags = perms?.position_flags || {};
+
+       canManageAdjustments =
+         isOwner ||
+         flags.can_manage_adjustments === true ||
+         has("ADJUSTMENTS_MANAGE");
 
       showReport =
         isOwner ||
@@ -620,7 +626,11 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   const links = [];
 
   if (activeVenueId) {
-    links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
+    links.push({
+      title: t("adjustments"),
+      href: canManageAdjustments ? `/app-adjustments.html${qp}` : `/staff-adjustments.html${qp}`,
+      tab: "adjustments",
+    });
     links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
 
     // OWNER: вместо "Зарплата" показываем "Отчёты"
