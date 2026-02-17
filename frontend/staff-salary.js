@@ -171,7 +171,6 @@ function formatDateRuNoG(iso) {
         </div>
         <div class="dayrow__right">
           <div class="day-salary" style="${d.salary>0 ? "" : "opacity:.45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "Нет отчета"}</div>
-          <div class="muted" style="font-size:12px; text-align:right">чаевые: ${formatMoney(d.tips || 0)}</div>
           <button class="btn" data-open>Подробнее</button>
         </div>
       </div>

@@ -418,16 +418,12 @@ async function openDay(dayISO) {
 
         ${canEdit ? `
           <div style="margin-top:12px">
-            <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
-            <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
+           <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
+              <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
               <button class="btn" id="btnUpload">Загрузить</button>
             </div>
           </div>
         ` : `<div class="muted" style="margin-top:10px">Нет прав на загрузку файлов</div>`}
-      </div>
-
-      <div class="muted" style="margin-top:10px;font-size:12px">
-        ${canEdit ? "Можно сохранить изменения." : "Нет права на создание/редактирование отчётов."}
       </div>
     </div>
   `;

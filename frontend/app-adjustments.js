@@ -71,7 +71,7 @@ let perms = null;
 function hasManageAccess() {
   const flags = perms?.position_flags || {};
   const codes = Array.isArray(perms?.permissions) ? perms.permissions : [];
-  return (perms?.role === "OWNER") || flags.can_manage_adjustments === true || codes.includes("ADJUSTMENTS_MANAGE");
+  return (perms?.role === "OWNER") || (perms?.role === "SUPER_ADMIN") || flags.can_manage_adjustments === true || codes.includes("ADJUSTMENTS_MANAGE");
 }
 
 async function loadPerms() {
@@ -141,7 +141,7 @@ function renderList(data) {
       ].join("");
 
       const html = `
-        <div class="itemcard">
+        <div class="itemcard" style="margin-top:12px;">
           <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             <label>Тип
               <select id="edType">
@@ -261,7 +261,7 @@ function buildCreateForm(members) {
   const opts = members.map(m => `<option value="${esc(m.user_id)}">@${esc(m.tg_username || "-")}${m.full_name ? ` (${esc(m.full_name)})` : ""}</option>`).join("");
 
   return `
-    <div class="itemcard">
+    <div class="itemcard" style="margin-top:12px;">
       <div class="row" style="gap:10px;flex-wrap:wrap">
         <label style="min-width:220px;display:block">
           <div class="muted" style="font-size:12px;margin-bottom:4px">Тип</div>
