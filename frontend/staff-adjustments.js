@@ -156,8 +156,8 @@ function buildItemHtml(it) {
       <b>${esc(typeTitle(it.type))} · ${esc(it.amount)}</b>
       <div class="muted" style="margin-top:6px">Дата: ${esc(it.date)}</div>
       <div class="muted" style="margin-top:6px">Причина: ${esc(it.reason || "—")}</div>
-      <div class="muted" style="font-size:12px;margin-bottom:4px">Оспорить</div>
-      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px">
+      <div class="muted" style="margin-top:6px">Оспорить</div>
+      <div class="row" style="gap:8px; margin-top:12px">
         <textarea id="disputeMsg" rows="3" placeholder="Напиши комментарий"></textarea>
         <button class="btn primary" id="btnDispute">Отправить</button>
       </div>
