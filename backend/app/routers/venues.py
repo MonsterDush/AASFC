@@ -1091,6 +1091,28 @@ def list_adjustments(
     }
 
 
+
+# ---------- Adjustments helpers ----------
+
+_ADJ_TYPE_LABELS = {
+    "ru": {"penalty": "Штраф", "writeoff": "Списание", "bonus": "Премия"},
+    "en": {"penalty": "Penalty", "writeoff": "Write-off", "bonus": "Bonus"},
+}
+
+def _ui_lang() -> str:
+    # Minimal v1: default RU. Later we can store per-user language in DB and use it here.
+    return (os.getenv("DEFAULT_UI_LANG") or "ru").lower()
+
+def _adj_type_label(adj_type: str, lang: str | None = None) -> str:
+    lt = (lang or _ui_lang() or "ru").lower()
+    mp = _ADJ_TYPE_LABELS.get(lt) or _ADJ_TYPE_LABELS.get("ru", {})
+    return mp.get(adj_type, adj_type)
+
+def _venue_name(db: Session, venue_id: int) -> str:
+    v = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    return (v.name if v else "Axelio")
+
+
 @router.post("/{venue_id}/adjustments")
 def create_adjustment(
     venue_id: int,
@@ -1133,15 +1155,28 @@ def create_adjustment(
     db.refresh(obj)
 
     # notify target member
+
+    # notify target member (best-effort)
     if payload.member_user_id:
         target = db.execute(select(User).where(User.id == payload.member_user_id)).scalar_one_or_none()
         if target and target.tg_user_id:
+            vname = _venue_name(db, venue_id=venue_id)
+            label = _adj_type_label(payload.type)
+            link = (
+                f"https://app-dev.axelio.ru/staff-adjustments.html?"
+                f"venue_id={venue_id}&open={obj.id}&tab={payload.type}"
+            )
             tg_notify.notify(
                 chat_id=int(target.tg_user_id),
-                text=f"Axelio: вам добавлен(а) {payload.type} на {payload.date.isoformat()} на сумму {payload.amount}. Причина: {(payload.reason or '—')}",
+                text=(
+                    f"{vname}: вам добавлен(а) {label} на {payload.date.isoformat()} "
+                    f"на сумму {payload.amount}. Причина: {(payload.reason or '—')}"
+                ),
+                url=link,
+                button_text="Открыть",
             )
 
-    return {"id": obj.id}
+        return {"id": obj.id}
 
 import datetime as dt
 
@@ -1323,11 +1358,13 @@ def create_dispute(
     who = user.short_name or user.full_name or (user.tg_username or str(user.id))
     link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
     prefix = "Новый спор" if created_new else "Новый комментарий"
+    vname = _venue_name(db, venue_id=venue_id)
+    label = _adj_type_label(adj.type)
     for u in uniq.values():
         tg_notify.notify(
             chat_id=int(u.tg_user_id),
             text=(
-                f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
+                f"{vname}: {prefix}. {who} оспорил {label} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
                 f"Комментарий: {message}"
             ),
             url=link,
@@ -1477,14 +1514,17 @@ def add_dispute_comment(
             uniq = {u.id: u for u in (owners + managers)}
             recipients = list(uniq.values())
 
-        who = user.short_name or user.full_name or (user.tg_username or str(user.id))
-        link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
-        for r in recipients:
-            send_telegram_message(
-                bot_token=token,
-                chat_id=int(r.tg_user_id),
-                text=f"Axelio: новый комментарий в споре по {adj.type} #{adj.id} от {who}.\n{msg}\nОткрыть: {link}",
-            )
+    who = user.short_name or user.full_name or (user.tg_username or str(user.id))
+    vname = _venue_name(db, venue_id=venue_id)
+    label = _adj_type_label(adj.type)
+    link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
+    for r in recipients:
+        tg_notify.notify(
+            chat_id=int(r.tg_user_id),
+            text=f"{vname}: новый комментарий в споре по {label} #{adj.id} от {who}.\n{msg}",
+            url=link,
+            button_text="Открыть спор",
+        )
 
     return {"ok": True}
 
