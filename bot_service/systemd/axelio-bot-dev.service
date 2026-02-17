@@ -1,0 +1,14 @@
+[Unit]
+Description=Axelio Telegram Bot Service (dev)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/axelio/dev/repo/bot_service
+EnvironmentFile=/var/www/axelio/dev/repo/bot_service/.env
+ExecStart=/var/www/axelio/dev/venv/bin/python -m uvicorn bot_service.main:app --host 127.0.0.1 --port 9010
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
