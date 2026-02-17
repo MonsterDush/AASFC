@@ -117,6 +117,14 @@ async function loadMonth() {
   renderDays();
 }
 
+function formatDateRuNoG(iso) {
+  const dt = new Date(String(iso).length === 10 ? iso + "T00:00:00" : iso);
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const yyyy = dt.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
 function renderSummary() {
   const totalSalary = days.reduce((acc, d) => acc + (Number.isFinite(d.salary) ? d.salary : 0), 0);
   const totalTips = days.reduce((acc, d) => acc + (Number.isFinite(d.tips) ? d.tips : 0), 0);
@@ -150,14 +158,6 @@ function renderDays() {
     el.daysList.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
     return;
   }
-
-function formatDateRuNoG(iso) {
-  const dt = new Date(String(iso).length === 10 ? iso + "T00:00:00" : iso);
-  const dd = String(dt.getDate()).padStart(2, "0");
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const yyyy = dt.getFullYear();
-  return `${dd}.${mm}.${yyyy}`;
-}
 
   for (const d of days) {
     const card = document.createElement("div");
@@ -199,7 +199,7 @@ function openDayModal(d) {
   }).join("");
 
   openModal(
-    `${d.date}`,
+    `${formatDateRuNoG(d.date)}`,
     "",
     `<div class="itemcard" style="margin-top:12px">
         <div class="row" style="justify-content:space-between;align-items:center">
