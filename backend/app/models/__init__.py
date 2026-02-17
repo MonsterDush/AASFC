@@ -11,6 +11,7 @@ from .shift import Shift
 from .shift_assignment import ShiftAssignment
 from .daily_report import DailyReport
 from .daily_report_attachment import DailyReportAttachment
+from .adjustment import Adjustment, AdjustmentDispute
 
 __all__ = [
     "SystemRole",
@@ -27,4 +28,6 @@ __all__ = [
     "ShiftAssignment",
     "DailyReport",
     "DailyReportAttachment",
+    "Adjustment",
+    "AdjustmentDispute",
 ]
