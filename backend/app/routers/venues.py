@@ -1112,6 +1112,22 @@ def _venue_name(db: Session, venue_id: int) -> str:
     v = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     return (v.name if v else "Axelio")
 
+def _should_notify_user(u: User, kind: str) -> bool:
+    """Best-effort per-user notification gate.
+
+    kind: 'adjustments' | 'shifts'
+    """
+    if not u:
+        return False
+    if not getattr(u, "notify_enabled", True):
+        return False
+    if kind == "adjustments":
+        return bool(getattr(u, "notify_adjustments", True))
+    if kind == "shifts":
+        return bool(getattr(u, "notify_shifts", True))
+    return True
+
+
 
 @router.post("/{venue_id}/adjustments")
 def create_adjustment(
@@ -1166,15 +1182,16 @@ def create_adjustment(
                 f"https://app-dev.axelio.ru/staff-adjustments.html?"
                 f"venue_id={venue_id}&open={obj.id}&tab={payload.type}"
             )
-            tg_notify.notify(
-                chat_id=int(target.tg_user_id),
-                text=(
-                    f"{vname}: вам добавлен(а) {label} на {payload.date.isoformat()} "
-                    f"на сумму {payload.amount}. Причина: {(payload.reason or '—')}"
-                ),
-                url=link,
-                button_text="Открыть",
-            )
+            if _should_notify_user(target, "adjustments"):
+                tg_notify.notify(
+                                chat_id=int(target.tg_user_id),
+                                text=(
+                                    f"{vname}: вам добавлен(а) {label} на {payload.date.isoformat()} "
+                                    f"на сумму {payload.amount}. Причина: {(payload.reason or '—')}"
+                                ),
+                                url=link,
+                                button_text="Открыть",
+                            )
 
         return {"id": obj.id}
 
@@ -1361,15 +1378,16 @@ def create_dispute(
     vname = _venue_name(db, venue_id=venue_id)
     label = _adj_type_label(adj.type)
     for u in uniq.values():
-        tg_notify.notify(
-            chat_id=int(u.tg_user_id),
-            text=(
-                f"{vname}: {prefix}. {who} оспорил {label} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
-                f"Комментарий: {message}"
-            ),
-            url=link,
-            button_text="Открыть спор",
-        )
+        if _should_notify_user(u, "adjustments"):
+            tg_notify.notify(
+                        chat_id=int(u.tg_user_id),
+                        text=(
+                            f"{vname}: {prefix}. {who} оспорил {label} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
+                            f"Комментарий: {message}"
+                        ),
+                        url=link,
+                        button_text="Открыть спор",
+                    )
     return {"ok": True, "dispute_id": dis.id}
 
 @router.get("/{venue_id}/adjustments/{adj_type}/{adj_id}/dispute")
@@ -1519,12 +1537,13 @@ def add_dispute_comment(
     label = _adj_type_label(adj.type)
     link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
     for r in recipients:
-        tg_notify.notify(
-            chat_id=int(r.tg_user_id),
-            text=f"{vname}: новый комментарий в споре по {label} #{adj.id} от {who}.\n{msg}",
-            url=link,
-            button_text="Открыть спор",
-        )
+        if _should_notify_user(r, "adjustments"):
+            tg_notify.notify(
+                        chat_id=int(r.tg_user_id),
+                        text=f"{vname}: новый комментарий в споре по {label} #{adj.id} от {who}.\n{msg}",
+                        url=link,
+                        button_text="Открыть спор",
+                    )
 
     return {"ok": True}
 

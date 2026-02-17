@@ -351,3 +351,19 @@ select{min-width:160px}
   background: rgba(255,255,255,0.06);
   border: 1px solid var(--border);
 }
+
+
+/* Toggle switch (pill) */
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--border)}
+.toggle:first-child{border-top:none}
+.toggle__label{display:flex;flex-direction:column;gap:2px}
+.toggle__title{font-weight:600}
+.toggle__desc{font-size:12px;color:var(--muted)}
+
+.switch{position:relative;display:inline-block;width:46px;height:28px;flex:0 0 auto}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.18);transition:.2s;border-radius:999px;border:1px solid var(--border)}
+.switch .slider:before{position:absolute;content:"";height:22px;width:22px;left:3px;top:3px;background:var(--text);border-radius:50%;transition:.2s}
+.switch input:checked + .slider{background:rgba(52,199,89,.35)}
+.switch input:checked + .slider:before{transform:translateX(18px)}
+.switch input:disabled + .slider{opacity:.45;cursor:not-allowed}

@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, String
+from sqlalchemy import BigInteger, String, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -17,3 +17,8 @@ class User(Base):
 
     # храним строкой, а в коде валидируем enum-ом
     system_role: Mapped[str] = mapped_column(String(32), default="NONE", nullable=False)
+
+    # Уведомления (Telegram bot)
+    notify_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_shifts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

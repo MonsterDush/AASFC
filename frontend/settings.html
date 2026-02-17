@@ -34,6 +34,15 @@
       <div id="venueMenuMount" style="margin-top:10px"></div>
     </div>
 
+    
+    <div class="card" style="margin-top:12px">
+      <b>Уведомления</b>
+      <div class="muted" style="margin-top:6px">Настройка уведомлений от бота</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="btnNotifSettings">Настройка уведомлений</button>
+      </div>
+    </div>
+
     <div class="card" style="margin-top:12px">
       <b>Язык интерфейса</b>
       <div class="muted" style="margin-top:6px">Выберите язык интерфейса. Не волнуйтесь, это не повлияет на язык Telegram.</div>
@@ -64,7 +73,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, mountCommonUI, mountNav, mountVenueMenu, ensureLogin, getLang, setLang, t } from "/app.js";
+    import { applyTelegramTheme, mountCommonUI, mountNav, mountVenueMenu, ensureLogin, getLang, setLang, t, api } from "/app.js";
 
     applyTelegramTheme();
     mountCommonUI("settings");
@@ -99,6 +108,117 @@
       return "друг";
     }
 
+
+
+// --- Notification settings ---
+const modal = document.getElementById("modal");
+const modalTitle = modal?.querySelector(".modal__title");
+const modalBody = modal?.querySelector(".modal__body");
+function closeModal(){ modal?.classList.remove("open"); }
+modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
+modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
+function openModal(title, bodyHtml) {
+  if (modalTitle) modalTitle.textContent = title || "";
+  if (modalBody) modalBody.innerHTML = bodyHtml || "";
+  modal?.classList.add("open");
+}
+
+function sw(id, checked, disabled=false) {
+  return `
+    <label class="switch">
+      <input type="checkbox" id="${id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} />
+      <span class="slider"></span>
+    </label>`;
+}
+
+async function loadNotif() {
+  return api("/me/notification-settings");
+}
+async function saveNotif(patch) {
+  return api("/me/notification-settings", { method: "PATCH", body: patch });
+}
+
+function renderNotifModal(state) {
+  const enabled = !!state.notify_enabled;
+  const adj = !!state.notify_adjustments;
+  const shifts = !!state.notify_shifts;
+
+  const html = `
+    <div class="itemcard" style="margin-top:8px">
+      <div class="toggle">
+        <div class="toggle__label">
+          <div class="toggle__title">Уведомления от бота</div>
+          <div class="toggle__desc">Если выключить — бот не будет присылать ничего</div>
+        </div>
+        ${sw("swAll", enabled, false)}
+      </div>
+
+      <div style="margin-top:8px; ${enabled ? "" : "opacity:.55"}">
+        <div class="muted" style="font-size:12px;margin:8px 0 4px">Штрафы / Списания / Премии</div>
+        <div class="toggle">
+          <div class="toggle__label">
+            <div class="toggle__title">Уведомлять</div>
+            <div class="toggle__desc">О новых начислениях и спорах</div>
+          </div>
+          ${sw("swAdj", adj, !enabled)}
+        </div>
+
+        <div class="muted" style="font-size:12px;margin:10px 0 4px">График</div>
+        <div class="toggle">
+          <div class="toggle__label">
+            <div class="toggle__title">Напоминать о смене</div>
+            <div class="toggle__desc">За 18 часов до начала смены</div>
+          </div>
+          ${sw("swShift", shifts, !enabled)}
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px">
+        <button class="btn" id="btnNotifClose">Закрыть</button>
+        <button class="btn primary" id="btnNotifSave">Сохранить</button>
+      </div>
+    </div>
+  `;
+  openModal("Настройка уведомлений", html);
+
+  const elAll = document.getElementById("swAll");
+  const elAdj = document.getElementById("swAdj");
+  const elShift = document.getElementById("swShift");
+
+  // live enable/disable sub toggles
+  elAll?.addEventListener("change", () => {
+    const on = !!elAll.checked;
+    if (elAdj) elAdj.disabled = !on;
+    if (elShift) elShift.disabled = !on;
+  });
+
+  document.getElementById("btnNotifClose")?.addEventListener("click", closeModal);
+
+  document.getElementById("btnNotifSave")?.addEventListener("click", async () => {
+    try {
+      const patch = {
+        notify_enabled: !!elAll?.checked,
+        notify_adjustments: !!elAdj?.checked,
+        notify_shifts: !!elShift?.checked,
+      };
+      await saveNotif(patch);
+      closeModal();
+    } catch (e) {
+      // eslint-disable-next-line no-alert
+      alert("Не удалось сохранить: " + (e?.data?.detail || e?.message || "ошибка"));
+    }
+  });
+}
+
+document.getElementById("btnNotifSettings")?.addEventListener("click", async () => {
+  try {
+    const st = await loadNotif();
+    renderNotifModal(st);
+  } catch (e) {
+    // eslint-disable-next-line no-alert
+    alert("Не удалось загрузить настройки: " + (e?.data?.detail || e?.message || "ошибка"));
+  }
+});
     try {
       const me = await getMe();
       const el = document.getElementById("helloName");

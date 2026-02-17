@@ -28,6 +28,13 @@ class ProfileUpdateIn(BaseModel):
 
 
 
+
+
+class NotificationSettingsIn(BaseModel):
+    notify_enabled: bool | None = None
+    notify_adjustments: bool | None = None
+    notify_shifts: bool | None = None
+
 @router.get("/me")
 def me(user: User = Depends(get_current_user)):
     return {
@@ -37,6 +44,9 @@ def me(user: User = Depends(get_current_user)):
         "full_name": user.full_name,
         "short_name": user.short_name,
         "system_role": user.system_role,
+        "notify_enabled": user.notify_enabled,
+        "notify_adjustments": user.notify_adjustments,
+        "notify_shifts": user.notify_shifts,
     }
 
 
@@ -64,6 +74,31 @@ def update_profile(
     if payload.short_name is not None:
         v = payload.short_name.strip()
         user.short_name = v or None
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/me/notification-settings")
+def get_notification_settings(user: User = Depends(get_current_user)):
+    return {
+        "notify_enabled": user.notify_enabled,
+        "notify_adjustments": user.notify_adjustments,
+        "notify_shifts": user.notify_shifts,
+    }
+
+
+@router.patch("/me/notification-settings")
+def update_notification_settings(
+    payload: NotificationSettingsIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if payload.notify_enabled is not None:
+        user.notify_enabled = bool(payload.notify_enabled)
+    if payload.notify_adjustments is not None:
+        user.notify_adjustments = bool(payload.notify_adjustments)
+    if payload.notify_shifts is not None:
+        user.notify_shifts = bool(payload.notify_shifts)
     db.commit()
     return {"ok": True}
 
