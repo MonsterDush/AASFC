@@ -199,7 +199,7 @@ function openDayModal(d) {
   }).join("");
 
   openModal(
-    `${formatDateRuNoG(d.date)}`,
+    `${d.date}`,
     "",
     `<div class="itemcard" style="margin-top:12px">
         <div class="row" style="justify-content:space-between;align-items:center">
