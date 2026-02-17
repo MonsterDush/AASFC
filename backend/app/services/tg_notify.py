@@ -29,6 +29,8 @@ def notify(chat_id: int, text: str) -> bool:
     Returns True if request succeeded, else False. Never raises.
     """
     url = _bot_service_url()
+    import logging
+    log = logging.getLogger("axelio.tg_notify")
     secret = _bot_service_secret()
     if url:
         try:
@@ -42,6 +44,7 @@ def notify(chat_id: int, text: str) -> bool:
                     **({"X-Bot-Secret": secret} if secret else {}),
                 },
             )
+            log.debug(f"Sending notification to bot-service for chat_id={chat_id} and req = {req}") 
             with urllib.request.urlopen(req, timeout=5) as resp:
                 body = resp.read().decode("utf-8", errors="ignore")
                 # bot-service returns {ok:true} (we don't strictly require it, 200 is enough)
@@ -55,7 +58,7 @@ def notify(chat_id: int, text: str) -> bool:
                         return True
                 return False
         except Exception as e:
-            print(f"[tg_notify] bot-service notify failed: {e}")  # noqa: T201
+            log.exception(f"bot-service notify failed: {e}")
             return False
 
     # Fallback: direct Telegram API

@@ -1325,7 +1325,6 @@ def create_dispute(
     # + создатель штрафа (самый важный)
     creator = db.execute(select(User).where(User.id == adj.created_by_user_id)).scalar_one_or_none()
     recipients = owners + managers + ([creator] if creator else [])
-    log.warning("recipients raw: %s", [(x.id, x.tg_user_id) for x in recipients if x])
     # фильтруем тех, кому реально можно отправить
     uniq = {}
     for u in recipients:
@@ -1334,7 +1333,6 @@ def create_dispute(
         if not u.tg_user_id:
             continue
         uniq[u.id] = u
-    log.warning("recipients filtered: %s", [(x.id, x.tg_user_id) for x in uniq.values()])
 
     who = user.short_name or user.full_name or (user.tg_username or str(user.id))
     link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
@@ -1347,7 +1345,7 @@ def create_dispute(
         )
 
     for u in uniq.values():
-        log.warning("Sending dispute notification to user_id=%s tg_user_id=%s", u.id, int(u.tg_user_id)) 
+        text = ''
         try :
             tg_notify.notify(
             chat_id=int(u.tg_user_id),
@@ -1356,6 +1354,7 @@ def create_dispute(
                 f"Комментарий: {message}\n"
                 f"Открыть: {link}"),
         )
+            log.warning("Dispute notification sent to tg_user_id=%s, with text=%s", int(u.tg_user_id), text)
         except Exception as e:
             log.error("Failed to send dispute notification to user_id=%s tg_user_id=%s: %s", u.id, int(u.tg_user_id), str(e))
     return {"ok": True, "dispute_id": dis.id}
