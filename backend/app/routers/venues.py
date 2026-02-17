@@ -1139,6 +1139,8 @@ def create_adjustment(
             tg_notify.notify(
                 chat_id=int(target.tg_user_id),
                 text=f"Axelio: вам добавлен(а) {payload.type} на {payload.date.isoformat()} на сумму {payload.amount}. Причина: {(payload.reason or '—')}",
+                url=f"https://app-dev.axelio.ru/staff-adjustments.html?venue_id={venue_id}",
+                button_text="Открыть",
             )
 
     return {"id": obj.id}
@@ -1281,7 +1283,6 @@ def create_dispute(
         dis = AdjustmentDispute(
             venue_id=venue_id,
             adjustment_id=adj.id,
-            message=message,
             created_by_user_id=user.id,
             is_active=True,
             status="OPEN",
@@ -1298,10 +1299,6 @@ def create_dispute(
     db.add(com)
     db.commit()
     # notify all managers/owners (best-effort)
-    import logging
-    log = logging.getLogger("axelio.adjustments")
-
-    # owners/managers как раньше, НО не фильтруем по tg_user_id заранее — проверим ниже
     owners = db.execute(
         select(User)
         .join(VenueMember, VenueMember.user_id == User.id)
@@ -1309,6 +1306,7 @@ def create_dispute(
             VenueMember.venue_id == venue_id,
             VenueMember.is_active.is_(True),
             VenueMember.venue_role == "OWNER",
+            User.tg_user_id.is_not(None),
         )
     ).scalars().all()
 
@@ -1319,44 +1317,24 @@ def create_dispute(
             VenuePosition.venue_id == venue_id,
             VenuePosition.is_active.is_(True),
             VenuePosition.can_manage_adjustments.is_(True),
+            User.tg_user_id.is_not(None),
         )
     ).scalars().all()
 
-    # + создатель штрафа (самый важный)
-    creator = db.execute(select(User).where(User.id == adj.created_by_user_id)).scalar_one_or_none()
-    recipients = owners + managers + ([creator] if creator else [])
-    # фильтруем тех, кому реально можно отправить
-    uniq = {}
-    for u in recipients:
-        if not u:
-            continue
-        if not u.tg_user_id:
-            continue
-        uniq[u.id] = u
-
+    uniq = {u.id: u for u in (owners + managers)}
     who = user.short_name or user.full_name or (user.tg_username or str(user.id))
     link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
     prefix = "Новый спор" if created_new else "Новый комментарий"
-
-    if not uniq:
-        log.warning(
-            "dispute notify: no recipients (venue_id=%s adj_id=%s creator=%s owners=%s managers=%s)",
-            venue_id, adj.id, getattr(creator, "id", None), len(owners), len(managers)
-        )
-
     for u in uniq.values():
-        text = (
-                f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
-                f"Комментарий: {message}\n"
-                f"Открыть: {link}")
-        try :
-            tg_notify.notify(
+        tg_notify.notify(
             chat_id=int(u.tg_user_id),
-            text=text,
+            text=(
+                f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount})."
+                f"Комментарий: {message}"
+            ),
+            url=link,
+            button_text="Открыть спор",
         )
-            log.warning("Dispute notification sent to tg_user_id=%s, with text=%s", int(u.tg_user_id), text)
-        except Exception as e:
-            log.error("Failed to send dispute notification to user_id=%s tg_user_id=%s: %s", u.id, int(u.tg_user_id), str(e))
     return {"ok": True, "dispute_id": dis.id}
 
 @router.get("/{venue_id}/adjustments/{adj_type}/{adj_id}/dispute")
