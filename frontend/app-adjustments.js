@@ -167,7 +167,7 @@ function renderList(data) {
 
       const html = `
         <div class="itemcard" style="margin-top:12px;">
-          <div class="grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="grid1" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             <label>Тип
               <select id="edType">
                 <option value="penalty">Штраф</option>
