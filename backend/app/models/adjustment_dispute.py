@@ -8,20 +8,17 @@ from app.core.db import Base
 
 
 class AdjustmentDispute(Base):
-    """Dispute for penalty/writeoff/bonus.
-
-    target_type: 'penalty' | 'writeoff' | 'bonus'
-    target_id: id of the corresponding row.
-    """
+    """Dispute thread for a specific adjustment."""
 
     __tablename__ = "adjustment_disputes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)
+    adjustment_id: Mapped[int] = mapped_column(ForeignKey("adjustments.id"), index=True, nullable=False)
 
-    target_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    target_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # legacy column (older schema) may exist; we keep it optional and no longer use it in code
+    message: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
@@ -33,8 +30,16 @@ class AdjustmentDispute(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     venue = relationship("Venue")
+    adjustment = relationship("Adjustment")
     created_by_user = relationship("User", foreign_keys=[created_by_user_id])
     resolved_by_user = relationship("User", foreign_keys=[resolved_by_user_id])
 
+    comments = relationship(
+        "AdjustmentDisputeComment",
+        primaryjoin="AdjustmentDispute.id==AdjustmentDisputeComment.dispute_id",
+        order_by="AdjustmentDisputeComment.created_at.asc()",
+        lazy="selectin",
+    )
 
-Index("ix_adj_disputes_venue_target", AdjustmentDispute.venue_id, AdjustmentDispute.target_type, AdjustmentDispute.target_id)
+
+Index("ix_adj_disputes_venue_adjustment", AdjustmentDispute.venue_id, AdjustmentDispute.adjustment_id)

@@ -37,18 +37,3 @@ class Adjustment(Base):
     updated_by_user = relationship("User", foreign_keys=[updated_by_user_id])
 
 
-class AdjustmentDispute(Base):
-    __tablename__ = "adjustment_disputes"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    adjustment_id: Mapped[int] = mapped_column(ForeignKey("adjustments.id"), index=True, nullable=False)
-
-    message: Mapped[str] = mapped_column(String(2000), nullable=False)
-
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-
-    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-
-    adjustment = relationship("Adjustment")
-    created_by_user = relationship("User")

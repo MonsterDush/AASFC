@@ -73,6 +73,11 @@ function openModal(title, subtitle, bodyHtml) {
 
 let curMonth = new Date();
 curMonth.setDate(1);
+const targetDay = params.get("date");
+if (targetDay) {
+  const d = new Date(targetDay);
+  if (!isNaN(d)) { curMonth = new Date(d.getFullYear(), d.getMonth(), 1); }
+}
 
 async function loadList() {
   if (!venueId) return { items: [] };
@@ -107,6 +112,7 @@ function renderList(data) {
 
   for (const [day, list] of groups) {
     const dayCard = document.createElement("div");
+    dayCard.id = `day-${day}`;
     dayCard.className = "itemcard";
     dayCard.style.marginTop = "10px";
 
@@ -199,6 +205,10 @@ async function boot() {
   try {
     const data = await loadList();
     renderList(data);
+  if (targetDay) {
+    const elDay = document.getElementById(`day-${targetDay}`);
+    if (elDay) elDay.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   } catch (e) {
     toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
     el.list.innerHTML = `<div class="muted">Не удалось загрузить данные</div>`;

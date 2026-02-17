@@ -74,6 +74,11 @@ function hasManageAccess() {
   return (perms?.role === "OWNER") || (perms?.role === "SUPER_ADMIN") || flags.can_manage_adjustments === true || codes.includes("ADJUSTMENTS_MANAGE");
 }
 
+function hasResolveAccess() {
+  const flags = perms?.position_flags || {};
+  return (perms?.role === "OWNER") || (perms?.role === "SUPER_ADMIN") || flags.can_resolve_disputes === true;
+}
+
 async function loadPerms() {
   perms = null;
   if (!venueId) return;
@@ -130,7 +135,7 @@ function renderList(data) {
         <div class="muted" style="margin-top:4px">${esc(it.date)} · ${esc(who)}</div>
         <div class="muted" style="margin-top:4px">${esc(it.reason || "—")}</div>
       </div>
-      <button class="btn" data-edit>Открыть</button>
+      <button class="btn" data-edit data-id="${esc(it.id)}">Открыть</button>
     `;
 
     row.querySelector("[data-edit]").onclick = async () => {
@@ -175,7 +180,89 @@ function renderList(data) {
           </div>
         </div>
       `;
-      openModal("Карточка", "Редактирование", html);
+      
+async function renderDisputeUI(venueId, adj) {
+  const box = document.getElementById("disputeBox");
+  if (!box) return;
+
+  // Only show for managers/owners or when explicitly opened via ?tab=disputes
+  const params = new URLSearchParams(location.search);
+  const force = (params.get("tab") || "") === "disputes";
+  if (!force && !hasManageAccess() && !hasResolveAccess()) {
+    box.style.display = "none";
+    return;
+  }
+
+  let data = await loadDisputeThread(venueId, adj);
+  const statusEl = document.getElementById("disputeStatus");
+  const listEl = document.getElementById("disputeComments");
+  const btnSend = document.getElementById("btnDisputeSend");
+  const btnToggle = document.getElementById("btnDisputeToggle");
+  const ta = document.getElementById("disputeReply");
+
+  function render() {
+    const dis = data?.dispute;
+    if (!dis) {
+      if (statusEl) statusEl.textContent = "Спора нет (сотрудник ещё не оспаривал).";
+      if (listEl) listEl.innerHTML = "";
+      if (btnToggle) btnToggle.disabled = true;
+      return;
+    }
+    if (statusEl) statusEl.textContent = `Статус: ${dis.status}`;
+    if (btnToggle) {
+      const can = hasResolveAccess();
+      btnToggle.disabled = !can;
+      btnToggle.textContent = dis.status === "OPEN" ? "Закрыть спор" : "Открыть спор";
+    }
+    if (listEl) {
+      const items = Array.isArray(data.comments) ? data.comments : [];
+      listEl.innerHTML = items.length
+        ? items.map(c => `<div class="card" style="padding:10px"><div class="muted" style="font-size:12px">${(c.created_at||"").slice(0,19).replace("T"," ")}</div><div style="margin-top:6px;white-space:pre-wrap">${escapeHtml(c.message||"")}</div></div>`).join("")
+        : `<div class="muted">Комментариев пока нет</div>`;
+    }
+  }
+
+  render();
+
+  btnSend?.addEventListener("click", async () => {
+    const dis = data?.dispute;
+    if (!dis) return toast("Спор ещё не создан сотрудником", "err");
+    const msg = (ta?.value || "").trim();
+    if (!msg) return toast("Введите сообщение", "err");
+    try {
+      await postDisputeComment(venueId, dis.id, msg);
+      if (ta) ta.value = "";
+      data = await loadDisputeThread(venueId, adj);
+      render();
+      toast("Отправлено", "ok");
+    } catch (e) {
+      toast("Не удалось отправить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+    }
+  });
+
+  btnToggle?.addEventListener("click", async () => {
+    const dis = data?.dispute;
+    if (!dis) return;
+    if (!hasResolveAccess()) return toast("Нет прав", "err");
+    try {
+      const next = dis.status === "OPEN" ? "CLOSED" : "OPEN";
+      await setDisputeStatus(venueId, dis.id, next);
+      data = await loadDisputeThread(venueId, adj);
+      render();
+      toast("Готово", "ok");
+    } catch (e) {
+      toast("Не удалось: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+    }
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+}
+
+openModal("Карточка", "Редактирование", html);
+      renderDisputeUI(venueId, it);
+
 
       const edType = document.getElementById("edType");
       const edDate = document.getElementById("edDate");
@@ -228,6 +315,14 @@ function renderList(data) {
           closeModal();
           const data = await loadList();
           renderList(data);
+  // deep-link: ?open=<adjustment_id>
+  const params = new URLSearchParams(location.search);
+  const openId = params.get("open");
+  if (openId) {
+    const btn = document.querySelector(`[data-edit][data-id="${openId}"]`);
+    if (btn) btn.click();
+  }
+
         } catch (e) {
           toast("Не удалось сохранить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
         }
@@ -256,6 +351,31 @@ async function loadMembers() {
   const res = await api(`/me/venues/${encodeURIComponent(venueId)}/members`);
   return res?.members || res?.items || [];
 }
+
+async function loadDisputeThread(venueId, adj) {
+  try {
+    return await api(`/venues/${encodeURIComponent(venueId)}/adjustments/${encodeURIComponent(adj.type)}/${encodeURIComponent(adj.id)}/dispute`);
+  } catch (e) {
+    return { dispute: null, comments: [] };
+  }
+}
+
+async function postDisputeComment(venueId, disputeId, message) {
+  return await api(`/venues/${encodeURIComponent(venueId)}/disputes/${encodeURIComponent(disputeId)}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+}
+
+async function setDisputeStatus(venueId, disputeId, status) {
+  return await api(`/venues/${encodeURIComponent(venueId)}/disputes/${encodeURIComponent(disputeId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+}
+
 
 function buildCreateForm(members) {
   const opts = members.map(m => `<option value="${esc(m.user_id)}">@${esc(m.tg_username || "-")}${m.full_name ? ` (${esc(m.full_name)})` : ""}</option>`).join("");

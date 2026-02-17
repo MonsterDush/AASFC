@@ -696,6 +696,7 @@ function openDay(dateStr) {
         ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted" style="margin-top:4px">Прошедшие дни может редактировать только владелец</div>` : ``}
       </div>
       ${allowEdit ? `<button class="btn primary" id="btnAddShift">+ Добавить смену</button>` : ``}
+      <button class="btn" id="btnOpenAdjustments">Штрафы/Списания дня</button>
     </div>
   `;
 
@@ -737,6 +738,12 @@ function openDay(dateStr) {
   }
 
   openModal(title, subtitle, html);
+  document.getElementById("btnOpenAdjustments")?.addEventListener("click", () => {
+    const vid = getActiveVenueId();
+    if (!vid) return toast("Не выбрано заведение", "err");
+    window.location.href = `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}&date=${encodeURIComponent(dateStr)}`;
+  });
+
 
   if (!allowEdit) return;
 

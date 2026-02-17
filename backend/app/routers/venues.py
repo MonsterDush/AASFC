@@ -26,7 +26,9 @@ from app.models.shift import Shift
 from app.models.shift_assignment import ShiftAssignment
 from app.models.daily_report import DailyReport
 from app.models.daily_report_attachment import DailyReportAttachment
-from app.models.adjustment import Adjustment, AdjustmentDispute
+from app.models.adjustment import Adjustment
+from app.models.adjustment_dispute import AdjustmentDispute
+from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
 
 from app.services.venues import create_venue
 
@@ -75,6 +77,7 @@ class PositionUpdateIn(BaseModel):
     can_edit_schedule: bool | None = None
     can_view_adjustments: bool | None = None
     can_manage_adjustments: bool | None = None
+    can_resolve_disputes: bool | None = None
     is_active: bool | None = None
 
 
@@ -96,6 +99,12 @@ class AdjustmentCreateIn(BaseModel):
 
 class DisputeCreateIn(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
+
+class DisputeCommentIn(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000)
+
+class DisputeStatusIn(BaseModel):
+    status: str = Field(..., min_length=4, max_length=20)  # OPEN | CLOSED
 
 class ShiftIntervalCreateIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
@@ -256,6 +265,25 @@ def _is_adjustments_manager(db: Session, *, venue_id: int, user: User) -> bool:
 def _require_adjustments_manager(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_adjustments_manager(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _user_can_manage_adjustments(db: Session, *, venue_id: int, user: User) -> bool:
+    return _is_owner_or_super_admin(db, venue_id=venue_id, user=user) or _is_adjustments_manager(db, venue_id=venue_id, user=user)
+
+
+def _require_dispute_resolver(db: Session, *, venue_id: int, user: User) -> None:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == user.id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if not pos or not getattr(pos, "can_resolve_disputes", False):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
 
 
 def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
@@ -491,6 +519,9 @@ def list_positions(
             VenuePosition.can_make_reports,
             VenuePosition.can_view_reports,
             VenuePosition.can_view_revenue,
+            VenuePosition.can_view_adjustments,
+            VenuePosition.can_manage_adjustments,
+            VenuePosition.can_resolve_disputes,
             VenuePosition.can_edit_schedule,
             VenuePosition.is_active,
             User.tg_user_id,
@@ -528,6 +559,7 @@ def list_positions(
             "can_edit_schedule": bool(r.can_edit_schedule),
             "can_view_adjustments": bool(getattr(r, "can_view_adjustments", False)),
             "can_manage_adjustments": bool(getattr(r, "can_manage_adjustments", False)),
+            "can_resolve_disputes": bool(getattr(r, "can_resolve_disputes", False)),
             "is_active": bool(r.is_active),
             "member": {
                 "user_id": r.member_user_id,
@@ -583,6 +615,7 @@ def create_position(
             can_edit_schedule=payload.can_edit_schedule,
             can_view_adjustments=payload.can_view_adjustments,
             can_manage_adjustments=payload.can_manage_adjustments,
+            can_resolve_disputes=payload.can_resolve_disputes,
             is_active=payload.is_active,
         )
         db.add(pos)
@@ -662,6 +695,8 @@ def update_position(
         pos.can_view_adjustments = payload.can_view_adjustments
     if payload.can_manage_adjustments is not None:
         pos.can_manage_adjustments = payload.can_manage_adjustments
+    if payload.can_resolve_disputes is not None:
+        pos.can_resolve_disputes = payload.can_resolve_disputes
     if payload.is_active is not None:
         pos.is_active = payload.is_active
 
@@ -1206,6 +1241,11 @@ def create_dispute(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """Employee disputes a specific adjustment.
+
+    If there is an OPEN dispute thread for this adjustment, we append a comment.
+    Otherwise we create a new dispute + first comment.
+    """
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
 
     adj = db.execute(
@@ -1222,19 +1262,45 @@ def create_dispute(
     if adj.member_user_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    dis = AdjustmentDispute(
-        adjustment_id=adj.id,
-        message=payload.message.strip(),
-        created_by_user_id=user.id,
+    message = (payload.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="Message is required")
+
+    dis = db.execute(
+        select(AdjustmentDispute).where(
+            AdjustmentDispute.venue_id == venue_id,
+            AdjustmentDispute.adjustment_id == adj.id,
+            AdjustmentDispute.is_active.is_(True),
+            AdjustmentDispute.status == "OPEN",
+        )
+        .order_by(AdjustmentDispute.id.desc())
+    ).scalar_one_or_none()
+
+    created_new = False
+    if dis is None:
+        created_new = True
+        dis = AdjustmentDispute(
+            venue_id=venue_id,
+            adjustment_id=adj.id,
+            created_by_user_id=user.id,
+            is_active=True,
+            status="OPEN",
+        )
+        db.add(dis)
+        db.flush()  # get dis.id
+
+    com = AdjustmentDisputeComment(
+        dispute_id=dis.id,
+        author_user_id=user.id,
+        message=message,
         is_active=True,
     )
-    db.add(dis)
+    db.add(com)
     db.commit()
 
-    # notify all managers
+    # notify all managers/owners
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     if token:
-        # owners
         owners = db.execute(
             select(User)
             .join(VenueMember, VenueMember.user_id == User.id)
@@ -1258,18 +1324,265 @@ def create_dispute(
         ).scalars().all()
 
         uniq = {u.id: u for u in (owners + managers)}
+        who = user.short_name or user.full_name or (user.tg_username or str(user.id))
+        link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
+        prefix = "Новый спор" if created_new else "Новый комментарий"
         for u in uniq.values():
             send_telegram_message(
                 bot_token=token,
                 chat_id=int(u.tg_user_id),
                 text=(
-                    f"Axelio: @{'%s' % (user.tg_username or user.short_name or user.id)} оспорил {adj.type} #{adj.id} "
-                    f"на {adj.date.isoformat()} (сумма {adj.amount}).\nКомментарий: {payload.message.strip()}\n"
-                    f"Открыть: https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}"
+                    f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
+                    f"Комментарий: {message}\n"
+                    f"Открыть: {link}"
                 ),
             )
 
+    return {"ok": True, "dispute_id": dis.id}
+
+
+@router.get("/{venue_id}/adjustments/{adj_type}/{adj_id}/dispute")
+def get_dispute_thread(
+    venue_id: int,
+    adj_type: str,
+    adj_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    adj = db.execute(
+        select(Adjustment).where(
+            Adjustment.id == adj_id,
+            Adjustment.venue_id == venue_id,
+            Adjustment.type == adj_type,
+            Adjustment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if adj is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Access: owner/managers OR employee owning the adjustment
+    if not _user_can_manage_adjustments(db, venue_id=venue_id, user=user) and adj.member_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    dis = db.execute(
+        select(AdjustmentDispute).where(
+            AdjustmentDispute.venue_id == venue_id,
+            AdjustmentDispute.adjustment_id == adj.id,
+            AdjustmentDispute.is_active.is_(True),
+        ).order_by(AdjustmentDispute.id.desc())
+    ).scalar_one_or_none()
+
+    if dis is None:
+        return {"dispute": None, "comments": []}
+
+    comments = db.execute(
+        select(AdjustmentDisputeComment)
+        .where(
+            AdjustmentDisputeComment.dispute_id == dis.id,
+            AdjustmentDisputeComment.is_active.is_(True),
+        )
+        .order_by(AdjustmentDisputeComment.created_at.asc(), AdjustmentDisputeComment.id.asc())
+    ).scalars().all()
+
+    return {
+        "dispute": {
+            "id": dis.id,
+            "status": dis.status,
+            "created_by_user_id": dis.created_by_user_id,
+            "created_at": dis.created_at.isoformat(),
+            "resolved_by_user_id": dis.resolved_by_user_id,
+            "resolved_at": dis.resolved_at.isoformat() if dis.resolved_at else None,
+        },
+        "comments": [
+            {
+                "id": c.id,
+                "author_user_id": c.author_user_id,
+                "message": c.message,
+                "created_at": c.created_at.isoformat(),
+            }
+            for c in comments
+        ],
+    }
+
+
+@router.post("/{venue_id}/disputes/{dispute_id}/comments")
+def add_dispute_comment(
+    venue_id: int,
+    dispute_id: int,
+    payload: DisputeCommentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    dis = db.execute(
+        select(AdjustmentDispute).where(
+            AdjustmentDispute.id == dispute_id,
+            AdjustmentDispute.venue_id == venue_id,
+            AdjustmentDispute.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if dis is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    adj = db.execute(select(Adjustment).where(Adjustment.id == dis.adjustment_id)).scalar_one_or_none()
+    if adj is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    is_manager = _user_can_manage_adjustments(db, venue_id=venue_id, user=user)
+    if not is_manager and adj.member_user_id != user.id and dis.created_by_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    msg = (payload.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=422, detail="Message is required")
+
+    com = AdjustmentDisputeComment(
+        dispute_id=dis.id,
+        author_user_id=user.id,
+        message=msg,
+        is_active=True,
+    )
+    db.add(com)
+    db.commit()
+
+    # notify the other side (best effort)
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if token:
+        recipients = []
+        if is_manager:
+            # notify employee
+            if adj.member_user_id:
+                emp = db.execute(select(User).where(User.id == adj.member_user_id, User.tg_user_id.is_not(None))).scalar_one_or_none()
+                if emp:
+                    recipients.append(emp)
+        else:
+            # notify managers/owners
+            owners = db.execute(
+                select(User)
+                .join(VenueMember, VenueMember.user_id == User.id)
+                .where(
+                    VenueMember.venue_id == venue_id,
+                    VenueMember.is_active.is_(True),
+                    VenueMember.venue_role == "OWNER",
+                    User.tg_user_id.is_not(None),
+                )
+            ).scalars().all()
+            managers = db.execute(
+                select(User)
+                .join(VenuePosition, VenuePosition.member_user_id == User.id)
+                .where(
+                    VenuePosition.venue_id == venue_id,
+                    VenuePosition.is_active.is_(True),
+                    VenuePosition.can_manage_adjustments.is_(True),
+                    User.tg_user_id.is_not(None),
+                )
+            ).scalars().all()
+            uniq = {u.id: u for u in (owners + managers)}
+            recipients = list(uniq.values())
+
+        who = user.short_name or user.full_name or (user.tg_username or str(user.id))
+        link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
+        for r in recipients:
+            send_telegram_message(
+                bot_token=token,
+                chat_id=int(r.tg_user_id),
+                text=f"Axelio: новый комментарий в споре по {adj.type} #{adj.id} от {who}.\n{msg}\nОткрыть: {link}",
+            )
+
     return {"ok": True}
+
+
+@router.patch("/{venue_id}/disputes/{dispute_id}")
+def set_dispute_status(
+    venue_id: int,
+    dispute_id: int,
+    payload: DisputeStatusIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_dispute_resolver(db, venue_id=venue_id, user=user)
+
+    dis = db.execute(
+        select(AdjustmentDispute).where(
+            AdjustmentDispute.id == dispute_id,
+            AdjustmentDispute.venue_id == venue_id,
+            AdjustmentDispute.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if dis is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    st = (payload.status or "").upper()
+    if st not in ("OPEN", "CLOSED"):
+        raise HTTPException(status_code=422, detail="Invalid status")
+
+    dis.status = st
+    if st == "CLOSED":
+        dis.resolved_by_user_id = user.id
+        dis.resolved_at = datetime.utcnow()
+    else:
+        dis.resolved_by_user_id = None
+        dis.resolved_at = None
+
+    db.add(dis)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/{venue_id}/disputes")
+def list_disputes(
+    venue_id: int,
+    status: str | None = Query(None),
+    month: str | None = Query(None, description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_adjustments_manager(db, venue_id=venue_id, user=user)
+
+    stmt = select(AdjustmentDispute, Adjustment).join(Adjustment, Adjustment.id == AdjustmentDispute.adjustment_id).where(
+        AdjustmentDispute.venue_id == venue_id,
+        AdjustmentDispute.is_active.is_(True),
+        Adjustment.is_active.is_(True),
+    )
+
+    if status:
+        st = status.upper()
+        if st in ("OPEN", "CLOSED"):
+            stmt = stmt.where(AdjustmentDispute.status == st)
+
+    if month:
+        try:
+            y, m = month.split("-")
+            y = int(y); m = int(m)
+            start = date(y, m, 1)
+            end = date(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1)
+            stmt = stmt.where(Adjustment.date >= start, Adjustment.date < end)
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid month")
+
+    rows = db.execute(stmt.order_by(AdjustmentDispute.id.desc())).all()
+    return {
+        "items": [
+            {
+                "dispute_id": d.id,
+                "status": d.status,
+                "adjustment": {
+                    "id": a.id,
+                    "type": a.type,
+                    "date": a.date.isoformat(),
+                    "amount": a.amount,
+                    "member_user_id": a.member_user_id,
+                    "reason": a.reason,
+                },
+            }
+            for d, a in rows
+        ]
+    }
 
 
 @router.post("/{venue_id}/invites")
