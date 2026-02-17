@@ -2,76 +2,76 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.parse
 import urllib.request
 
 
-def _bot_token() -> str | None:
-    # Support both names (we standardize on TG_BOT_TOKEN for bot-service)
-    return os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TG_BOT_TOKEN")
-
-
 def _bot_service_url() -> str | None:
-    return os.getenv("BOT_SERVICE_URL")
+    return (os.getenv("BOT_SERVICE_URL") or "").strip() or None
 
 
 def _bot_service_secret() -> str | None:
-    return os.getenv("BOT_SERVICE_SECRET")
+    return (os.getenv("BOT_SERVICE_SECRET") or "").strip() or None
 
 
-def send_telegram_message(chat_id: int, text: str) -> bool:
-    """Best-effort Telegram notification.
+def _direct_bot_token() -> str | None:
+    # support both names
+    return (os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TG_BOT_TOKEN") or "").strip() or None
 
-    Preferred mode (Variant B):
-      - if BOT_SERVICE_URL is set, call bot-service: POST {BOT_SERVICE_URL}/notify
 
-    Fallback mode (Variant A):
-      - call Telegram Bot API directly using TG_BOT_TOKEN / TELEGRAM_BOT_TOKEN
+def notify(chat_id: int, text: str) -> bool:
+    """Best-effort notification.
 
-    Returns True if request was sent successfully (HTTP 200 + ok=true), else False.
+    Priority:
+      1) BOT_SERVICE_URL (HTTP POST /notify with X-Bot-Secret)
+      2) direct Telegram Bot API using TELEGRAM_BOT_TOKEN / TG_BOT_TOKEN
+    Returns True if request succeeded, else False.
     """
-    # --- Variant B: bot-service ---
-    bs_url = _bot_service_url()
-    if bs_url:
-        secret = _bot_service_secret() or ""
+    if not chat_id or not text:
+        return False
+
+    url = _bot_service_url()
+    secret = _bot_service_secret()
+    if url:
         try:
-            url = bs_url.rstrip("/") + "/notify"
-            payload = json.dumps({"chat_id": int(chat_id), "text": text}).encode("utf-8")
+            payload = {"chat_id": int(chat_id), "text": text}
             req = urllib.request.Request(
-                url,
-                data=payload,
-                method="POST",
+                url.rstrip("/") + "/notify",
+                data=json.dumps(payload).encode("utf-8"),
                 headers={
                     "Content-Type": "application/json",
-                    "X-Bot-Secret": secret,
+                    **({"X-Bot-Secret": secret} if secret else {}),
                 },
+                method="POST",
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
-                body = resp.read().decode("utf-8", errors="ignore")
-                js = json.loads(body) if body else {}
-                return bool(js.get("ok") is True)
+                body = resp.read().decode("utf-8", "ignore")
+            # bot-service returns {"ok": true} on success
+            return '"ok"' in body or resp.status == 200
         except Exception:
             return False
 
-    # --- Variant A: direct Telegram API ---
-    token = _bot_token()
+    token = _direct_bot_token()
     if not token:
         return False
 
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = urllib.parse.urlencode(
-        {
-            "chat_id": str(chat_id),
-            "text": text,
-            "disable_web_page_preview": "true",
-        }
-    ).encode("utf-8")
-
-    req = urllib.request.Request(url, data=data, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            body = resp.read().decode("utf-8", errors="ignore")
-            js = json.loads(body) if body else {}
-            return bool(js.get("ok"))
+        import urllib.parse
+
+        payload = {"chat_id": int(chat_id), "text": text, "disable_web_page_preview": True}
+        data = urllib.parse.urlencode(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=7) as resp:
+            body = resp.read().decode("utf-8", "ignore")
+        return '"ok":true' in body or resp.status == 200
     except Exception:
         return False
+
+
+# Backward-compatible name used in some parts of the codebase
+def send_telegram_message(chat_id: int, text: str) -> bool:
+    return notify(chat_id=chat_id, text=text)

@@ -15,6 +15,7 @@ from app.auth.deps import get_current_user
 from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.core.tg import normalize_tg_username, send_telegram_message
+from app.services import tg_notify
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -1134,10 +1135,8 @@ def create_adjustment(
     # notify target member
     if payload.member_user_id:
         target = db.execute(select(User).where(User.id == payload.member_user_id)).scalar_one_or_none()
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-        if target and target.tg_user_id and token:
-            send_telegram_message(
-                bot_token=token,
+        if target and target.tg_user_id:
+            tg_notify.notify(
                 chat_id=int(target.tg_user_id),
                 text=f"Axelio: вам добавлен(а) {payload.type} на {payload.date.isoformat()} на сумму {payload.amount}. Причина: {(payload.reason or '—')}",
             )
@@ -1282,7 +1281,6 @@ def create_dispute(
         dis = AdjustmentDispute(
             venue_id=venue_id,
             adjustment_id=adj.id,
-            message=message,
             created_by_user_id=user.id,
             is_active=True,
             status="OPEN",
@@ -1298,49 +1296,43 @@ def create_dispute(
     )
     db.add(com)
     db.commit()
+    # notify all managers/owners (best-effort)
+    owners = db.execute(
+        select(User)
+        .join(VenueMember, VenueMember.user_id == User.id)
+        .where(
+            VenueMember.venue_id == venue_id,
+            VenueMember.is_active.is_(True),
+            VenueMember.venue_role == "OWNER",
+            User.tg_user_id.is_not(None),
+        )
+    ).scalars().all()
 
-    # notify all managers/owners
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if token:
-        owners = db.execute(
-            select(User)
-            .join(VenueMember, VenueMember.user_id == User.id)
-            .where(
-                VenueMember.venue_id == venue_id,
-                VenueMember.is_active.is_(True),
-                VenueMember.venue_role == "OWNER",
-                User.tg_user_id.is_not(None),
-            )
-        ).scalars().all()
+    managers = db.execute(
+        select(User)
+        .join(VenuePosition, VenuePosition.member_user_id == User.id)
+        .where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.is_active.is_(True),
+            VenuePosition.can_manage_adjustments.is_(True),
+            User.tg_user_id.is_not(None),
+        )
+    ).scalars().all()
 
-        managers = db.execute(
-            select(User)
-            .join(VenuePosition, VenuePosition.member_user_id == User.id)
-            .where(
-                VenuePosition.venue_id == venue_id,
-                VenuePosition.is_active.is_(True),
-                VenuePosition.can_manage_adjustments.is_(True),
-                User.tg_user_id.is_not(None),
-            )
-        ).scalars().all()
-
-        uniq = {u.id: u for u in (owners + managers)}
-        who = user.short_name or user.full_name or (user.tg_username or str(user.id))
-        link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
-        prefix = "Новый спор" if created_new else "Новый комментарий"
-        for u in uniq.values():
-            send_telegram_message(
-                bot_token=token,
-                chat_id=int(u.tg_user_id),
-                text=(
-                    f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
-                    f"Комментарий: {message}\n"
-                    f"Открыть: {link}"
-                ),
-            )
-
+    uniq = {u.id: u for u in (owners + managers)}
+    who = user.short_name or user.full_name or (user.tg_username or str(user.id))
+    link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
+    prefix = "Новый спор" if created_new else "Новый комментарий"
+    for u in uniq.values():
+        tg_notify.notify(
+            chat_id=int(u.tg_user_id),
+            text=(
+                f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
+                f"Комментарий: {message}\n"
+                f"Открыть: {link}"
+            ),
+        )
     return {"ok": True, "dispute_id": dis.id}
-
 
 @router.get("/{venue_id}/adjustments/{adj_type}/{adj_id}/dispute")
 def get_dispute_thread(
