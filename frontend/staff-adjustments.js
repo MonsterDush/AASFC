@@ -152,20 +152,16 @@ function renderList(data) {
 
 function buildItemHtml(it) {
   return `
-    <div class="itemcard">
+    <div class="itemcard" style="margin-top:12px">
       <b>${esc(typeTitle(it.type))} · ${esc(it.amount)}</b>
       <div class="muted" style="margin-top:6px">Дата: ${esc(it.date)}</div>
       <div class="muted" style="margin-top:6px">Причина: ${esc(it.reason || "—")}</div>
 
-      <div style="margin-top:12px">
+      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px">
         <div class="muted" style="font-size:12px;margin-bottom:4px">Оспорить</div>
         <textarea id="disputeMsg" rows="3" placeholder="Напиши комментарий"></textarea>
-      </div>
-
-      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px">
         <button class="btn primary" id="btnDispute">Отправить</button>
       </div>
-
       <div class="muted" style="margin-top:10px;font-size:12px">
         После отправки владелец/менеджер получит уведомление и сможет отредактировать или удалить запись.
       </div>
