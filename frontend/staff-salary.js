@@ -199,7 +199,7 @@ function openDayModal(d) {
   }).join("");
 
   openModal(
-    `День ${d.date}`,
+    `${d.date}`,
     "",
     `<div class="itemcard">
         <div class="row" style="justify-content:space-between;align-items:center">
