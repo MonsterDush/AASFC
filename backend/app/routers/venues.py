@@ -1348,13 +1348,16 @@ def create_dispute(
 
     for u in uniq.values():
         log.warning("Sending dispute notification to user_id=%s tg_user_id=%s", u.id, int(u.tg_user_id)) 
-        tg_notify.notify(
+        try :
+            tg_notify.notify(
             chat_id=int(u.tg_user_id),
             text=(
                 f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
                 f"Комментарий: {message}\n"
                 f"Открыть: {link}"),
         )
+        except Exception as e:
+            log.error("Failed to send dispute notification to user_id=%s tg_user_id=%s: %s", u.id, int(u.tg_user_id), str(e))
     return {"ok": True, "dispute_id": dis.id}
 
 @router.get("/{venue_id}/adjustments/{adj_type}/{adj_id}/dispute")
