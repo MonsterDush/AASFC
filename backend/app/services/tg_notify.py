@@ -44,7 +44,7 @@ def notify(chat_id: int, text: str) -> bool:
                     **({"X-Bot-Secret": secret} if secret else {}),
                 },
             )
-            log.debug(f"Sending notification to bot-service for chat_id={chat_id} and req = {req}") 
+            log.warning(f"Sending notification to bot-service for chat_id={chat_id} and req = {req}") 
             with urllib.request.urlopen(req, timeout=5) as resp:
                 body = resp.read().decode("utf-8", errors="ignore")
                 # bot-service returns {ok:true} (we don't strictly require it, 200 is enough)
