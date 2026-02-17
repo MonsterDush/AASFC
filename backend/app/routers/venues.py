@@ -1345,14 +1345,14 @@ def create_dispute(
         )
 
     for u in uniq.values():
-        text = ''
+        text = (
+                f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
+                f"Комментарий: {message}\n"
+                f"Открыть: {link}")
         try :
             tg_notify.notify(
             chat_id=int(u.tg_user_id),
-            text=(
-                f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
-                f"Комментарий: {message}\n"
-                f"Открыть: {link}"),
+            text=text,
         )
             log.warning("Dispute notification sent to tg_user_id=%s, with text=%s", int(u.tg_user_id), text)
         except Exception as e:
