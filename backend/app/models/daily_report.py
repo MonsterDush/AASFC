@@ -22,6 +22,7 @@ class DailyReport(Base):
     cash: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cashless: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     revenue_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     tips_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)

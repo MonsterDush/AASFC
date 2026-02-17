@@ -274,14 +274,18 @@ function renderPositionForm({ mode, position }) {
       </div>
 
       <div class="card" style="padding:12px">
-        <b>Права для штрафов/списаний</b>
+        <b>Штрафы / Списания / Премии</b>
         <label class="row" style="gap:10px; align-items:center; margin:8px 0 0">
-          <input type="checkbox" id="f_adj_view" ${p.can_view_adjustments ? "checked" : ""} />
-          <span>Может просматривать штрафы/списания</span>
+          <input type="checkbox" id="f_adj_view" ${(p.can_view_adjustments || p.can_manage_adjustments) ? "checked" : ""} />
+          <span>Может просматривать</span>
         </label>
-        <label class="row" style="gap:10px; align-items:center; margin:8px 0 0">
+        <label class="row" style="gap:10px; align-items:center; margin:6px 0 0">
           <input type="checkbox" id="f_adj_manage" ${p.can_manage_adjustments ? "checked" : ""} />
-          <span>Может добавлять/изменять штрафы/списания/премии</span>
+          <span>Может создавать/редактировать</span>
+        </label>
+        <label class="row" style="gap:10px; align-items:center; margin:6px 0 0">
+          <input type="checkbox" id="f_adj_dispute" ${(p.can_resolve_disputes || p.can_manage_adjustments) ? "checked" : ""} />
+          <span>Может разруливать оспаривания</span>
         </label>
       </div>
     </div>
@@ -309,15 +313,17 @@ function collectPayload() {
   const can_view_revenue = !!document.getElementById("f_rep_revenue")?.checked;
   const can_make_reports = rep_create || rep_edit;
   const can_edit_schedule = !!document.getElementById("f_can_schedule")?.checked;
-  const can_view_adjustments = !!document.getElementById("f_adj_view")?.checked;
-  const can_manage_adjustments = !!document.getElementById("f_adj_manage")?.checked;
 
   if (!title) throw new Error("Укажите название должности");
   if (!Number.isFinite(member_user_id)) throw new Error("Выберите сотрудника");
   if (!Number.isFinite(rate)) throw new Error("Укажите корректную ставку (число)");
   if (!Number.isFinite(percent)) throw new Error("Укажите корректный процент (число)");
 
-  return { title, member_user_id, rate, percent, can_make_reports, can_view_reports, can_view_revenue, can_edit_schedule, can_view_adjustments, can_manage_adjustments };
+  const can_view_adjustments = !!document.getElementById("f_adj_view")?.checked;
+  const can_manage_adjustments = !!document.getElementById("f_adj_manage")?.checked;
+  const can_resolve_disputes = !!document.getElementById("f_adj_dispute")?.checked;
+
+  return { title, member_user_id, rate, percent, can_make_reports, can_view_reports, can_view_revenue, can_edit_schedule, can_view_adjustments, can_manage_adjustments, can_resolve_disputes };
 }
 
 /* ---------- Modal actions ---------- */

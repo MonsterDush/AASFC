@@ -28,12 +28,16 @@ class VenuePosition(Base):
     rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # Reports / schedule
     can_make_reports: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_view_reports: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_view_revenue: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_edit_schedule: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Adjustments (penalties/writeoffs/bonuses)
     can_view_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     can_manage_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    can_resolve_disputes: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
