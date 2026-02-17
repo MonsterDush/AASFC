@@ -1297,7 +1297,11 @@ def create_dispute(
     )
     db.add(com)
     db.commit()
-    # notify all managers/owners (best-effort)
+    # notify all managers/owners (best-effort)ß
+    import logging
+    log = logging.getLogger("axelio.adjustments")
+
+    # owners/managers как раньше, НО не фильтруем по tg_user_id заранее — проверим ниже
     owners = db.execute(
         select(User)
         .join(VenueMember, VenueMember.user_id == User.id)
@@ -1305,7 +1309,6 @@ def create_dispute(
             VenueMember.venue_id == venue_id,
             VenueMember.is_active.is_(True),
             VenueMember.venue_role == "OWNER",
-            User.tg_user_id.is_not(None),
         )
     ).scalars().all()
 
@@ -1316,14 +1319,32 @@ def create_dispute(
             VenuePosition.venue_id == venue_id,
             VenuePosition.is_active.is_(True),
             VenuePosition.can_manage_adjustments.is_(True),
-            User.tg_user_id.is_not(None),
         )
     ).scalars().all()
 
-    uniq = {u.id: u for u in (owners + managers)}
+    # + создатель штрафа (самый важный)
+    creator = db.execute(select(User).where(User.id == adj.created_by_user_id)).scalar_one_or_none()
+    recipients = owners + managers + ([creator] if creator else [])
+
+    # фильтруем тех, кому реально можно отправить
+    uniq = {}
+    for u in recipients:
+        if not u:
+            continue
+        if not u.tg_user_id:
+            continue
+        uniq[u.id] = u
+
     who = user.short_name or user.full_name or (user.tg_username or str(user.id))
     link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
     prefix = "Новый спор" if created_new else "Новый комментарий"
+
+    if not uniq:
+        log.warning(
+            "dispute notify: no recipients (venue_id=%s adj_id=%s creator=%s owners=%s managers=%s)",
+            venue_id, adj.id, getattr(creator, "id", None), len(owners), len(managers)
+        )
+
     for u in uniq.values():
         tg_notify.notify(
             chat_id=int(u.tg_user_id),
