@@ -37,6 +37,13 @@ function esc(s){
     .replace(/>/g, "&gt;");
 }
 
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 function ym(d) {
   const dt = new Date(d);
   const y = dt.getFullYear();
@@ -62,6 +69,19 @@ function openModal(title, subtitle, bodyHtml) {
   if (modalSubtitle) modalSubtitle.textContent = subtitle || "";
   if (modalBody) modalBody.innerHTML = bodyHtml || "";
   modal?.classList.add("open");
+}
+
+let _openedFromQuery = false;
+function maybeOpenFromQuery() {
+  if (_openedFromQuery) return;
+  const params = new URLSearchParams(location.search);
+  const openId = params.get("open");
+  if (!openId) return;
+  const btn = document.querySelector(`[data-edit][data-id="${CSS.escape(openId)}"]`);
+  if (btn) {
+    _openedFromQuery = true;
+    btn.click();
+  }
 }
 
 let curMonth = new Date();
@@ -179,6 +199,25 @@ function renderList(data) {
             </div>
           </div>
         </div>
+
+        <div class="itemcard" id="disputeBox" style="margin-top:12px;">
+          <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
+            <div>
+              <b>Спор</b>
+              <div class="muted" style="margin-top:4px" id="disputeStatus">Загрузка…</div>
+            </div>
+            <button class="btn" id="btnDisputeToggle">…</button>
+          </div>
+
+          <div id="disputeComments" style="margin-top:10px"></div>
+
+          <div style="margin-top:10px">
+            <textarea id="disputeReply" rows="3" placeholder="Ответить…" style="width:100%"></textarea>
+            <div class="row" style="justify-content:flex-end; gap:8px; margin-top:8px">
+              <button class="btn primary" id="btnDisputeSend">Отправить</button>
+            </div>
+          </div>
+        </div>
       `;
       
 async function renderDisputeUI(venueId, adj) {
@@ -224,6 +263,10 @@ async function renderDisputeUI(venueId, adj) {
 
   render();
 
+  if (force) {
+    try { box.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {}
+  }
+
   btnSend?.addEventListener("click", async () => {
     const dis = data?.dispute;
     if (!dis) return toast("Спор ещё не создан сотрудником", "err");
@@ -254,10 +297,6 @@ async function renderDisputeUI(venueId, adj) {
       toast("Не удалось: " + (e?.data?.detail || e?.message || "ошибка"), "err");
     }
   });
-}
-
-function escapeHtml(s) {
-  return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
 }
 
 openModal("Карточка", "Редактирование", html);
@@ -315,13 +354,7 @@ openModal("Карточка", "Редактирование", html);
           closeModal();
           const data = await loadList();
           renderList(data);
-  // deep-link: ?open=<adjustment_id>
-  const params = new URLSearchParams(location.search);
-  const openId = params.get("open");
-  if (openId) {
-    const btn = document.querySelector(`[data-edit][data-id="${openId}"]`);
-    if (btn) btn.click();
-  }
+          maybeOpenFromQuery();
 
         } catch (e) {
           toast("Не удалось сохранить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
@@ -336,6 +369,7 @@ openModal("Карточка", "Редактирование", html);
           closeModal();
           const data = await loadList();
           renderList(data);
+          maybeOpenFromQuery();
         } catch (e) {
           toast("Не удалось удалить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
         }
@@ -344,6 +378,9 @@ openModal("Карточка", "Редактирование", html);
 
     el.list.appendChild(row);
   }
+
+  // If we came from bot deep-link, open the requested item once list is on the page.
+  maybeOpenFromQuery();
 }
 
 async function loadMembers() {
