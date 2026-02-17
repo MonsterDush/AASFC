@@ -17,12 +17,31 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
-from app.models import Shift, ShiftInterval, ShiftAssignment, User
+from app.models import Shift, ShiftInterval, ShiftAssignment, User, Venue
 from app.services import tg_notify
 
 
 REMINDER_HOURS = 18
+
+RU_MONTHS_GEN = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+    5: "мая", 6: "июня", 7: "июля", 8: "августа",
+    9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+}
+
+def format_date_ru(d) -> str:
+    # d: date-like (expects .day and .month)
+    return f"{d.day} {RU_MONTHS_GEN.get(d.month, str(d.month))}"
+
 WINDOW_MINUTES = 15  # send once when we are within this window around the exact 18h mark
+
+def _fmt_time(t) -> str:
+    # t can be datetime.time or a string like "18:00:00"
+    try:
+        return t.strftime("%H:%M")
+    except Exception:
+        s = str(t)
+        return s[:5] if len(s) >= 5 else s
 
 
 def _shift_start_naive(shift_date, start_time):
@@ -40,14 +59,15 @@ def main() -> int:
     with SessionLocal() as db: 
         # load candidate assignments by joining shifts + intervals
         q = (
-            select(ShiftAssignment, Shift, ShiftInterval, User)
+            select(ShiftAssignment, Shift, ShiftInterval, User, Venue)
             .join(Shift, Shift.id == ShiftAssignment.shift_id)
             .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
             .join(User, User.id == ShiftAssignment.member_user_id)
+            .join(Venue, Venue.id == Shift.venue_id)
             .where(Shift.is_active.is_(True))
         )
         rows = db.execute(q).all()
-        for sa, sh, interval, user in rows:
+        for sa, sh, interval, user, venue in rows:
             if not getattr(user, "notify_enabled", True):
                 continue
             if not getattr(user, "notify_shifts", True):
@@ -60,7 +80,11 @@ def main() -> int:
                 continue
 
             # best-effort send
-            text = f"Напоминание: смена скоро начнётся ({sh.date.isoformat()} · {interval.title})."
+            text = (
+                f"Напоминаем, что у Вас смена {format_date_ru(sh.date)} "
+                f"в {_fmt_time(interval.start_time)} "
+                f"в заведении \"{venue.name}\""
+            )
             ok = tg_notify.notify(chat_id=int(user.tg_user_id), text=text)
             if ok:
                 sa.reminder_sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
