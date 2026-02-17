@@ -1139,8 +1139,6 @@ def create_adjustment(
             tg_notify.notify(
                 chat_id=int(target.tg_user_id),
                 text=f"Axelio: вам добавлен(а) {payload.type} на {payload.date.isoformat()} на сумму {payload.amount}. Причина: {(payload.reason or '—')}",
-                url=f"https://app-dev.axelio.ru/staff-adjustments.html?venue_id={venue_id}",
-                button_text="Открыть",
             )
 
     return {"id": obj.id}
@@ -1329,7 +1327,7 @@ def create_dispute(
         tg_notify.notify(
             chat_id=int(u.tg_user_id),
             text=(
-                f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount})."
+                f"Axelio: {prefix}. {who} оспорил {adj.type} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
                 f"Комментарий: {message}"
             ),
             url=link,
