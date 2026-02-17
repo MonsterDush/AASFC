@@ -1109,14 +1109,16 @@ def create_adjustment(
 
     return {"id": obj.id}
 
-
+import datetime as dt
 
 class AdjustmentUpdateIn(BaseModel):
-    type: str | None = None  # penalty|writeoff|bonus
-    member_user_id: int | None = None  # can be null only for writeoff (venue-level)
-    date: date | None = None
-    amount: int | None = None
-    reason: str | None = None
+    type: Optional[str] = None          # "penalty" | "writeoff" | "bonus"
+    member_user_id: Optional[int] = None
+    date: Optional[dt.date] = None
+    amount: Optional[int] = None
+    reason: Optional[str] = None
+    is_active: Optional[bool] = None
+
 
 
 @router.patch("/{venue_id}/adjustments/{adjustment_id}")
