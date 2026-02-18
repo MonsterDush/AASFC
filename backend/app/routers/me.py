@@ -321,6 +321,7 @@ def my_shifts_across_venues(
             VenuePosition.rate.label("rate"),
             VenuePosition.percent.label("percent"),
         )
+        .select_from(ShiftAssignment)  # <-- ВАЖНО: фиксируем левую таблицу
         .join(Shift, Shift.id == ShiftAssignment.shift_id)
         .join(Venue, Venue.id == Shift.venue_id)
         .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
@@ -333,6 +334,7 @@ def my_shifts_across_venues(
         )
         .order_by(Shift.date.asc(), Shift.id.asc())
     ).all()
+
 
     if not rows:
         return []
