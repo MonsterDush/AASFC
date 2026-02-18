@@ -233,32 +233,69 @@ function renderPositionForm({ mode, position }) {
       </div>
     </div>
 
+    
     <div style="margin-top:12px; display:grid; grid-template-columns: 1fr; gap:10px">
+
+      <div class="perm-tools">
+        <button class="btn sm" type="button" id="btnPermAllOn">Включить все</button>
+        <button class="btn sm" type="button" id="btnPermAllOff">Выключить все</button>
+      </div>
+
       <div class="card" style="padding:12px">
-        <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
-          <b>Права для отчётов</b>
-          <span class="muted" style="font-size:12px">Можно включать выборочно</span>
+        <div class="perm-group-title">
+          <div>
+            <b>Права для отчётов</b>
+            <div class="muted" style="margin-top:4px; font-size:12px">Можно включать выборочно</div>
+          </div>
+          <div class="row" style="gap:6px; flex:0 0 auto">
+            <button class="btn sm" type="button" data-perm-set="reports" data-value="1">Все</button>
+            <button class="btn sm" type="button" data-perm-set="reports" data-value="0">Ничего</button>
+          </div>
         </div>
 
-        <label class="row" style="gap:10px; align-items:center; margin:8px 0 6px">
-          <input type="checkbox" id="f_rep_create" ${p.can_make_reports ? "checked" : ""} />
-          <span>Может создавать отчёты</span>
-        </label>
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Создание отчётов</div>
+            <div class="perm-desc">Может создавать отчёты по сменам</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f_rep_create" data-perm-group="reports" ${p.can_make_reports ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
 
-        <label class="row" style="gap:10px; align-items:center; margin:6px 0">
-          <input type="checkbox" id="f_rep_edit" ${p.can_make_reports ? "checked" : ""} />
-          <span>Может редактировать отчёты</span>
-        </label>
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Редактирование отчётов</div>
+            <div class="perm-desc">Может исправлять ранее созданные отчёты</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f_rep_edit" data-perm-group="reports" ${p.can_make_reports ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
 
-        <label class="row" style="gap:10px; align-items:center; margin:6px 0">
-          <input type="checkbox" id="f_rep_view" ${(p.can_view_reports || p.can_make_reports) ? "checked" : ""} />
-          <span>Может просматривать отчёты</span>
-        </label>
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Просмотр отчётов</div>
+            <div class="perm-desc">Может смотреть отчёты (даже если сам их не создаёт)</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f_rep_view" data-perm-group="reports" ${(p.can_view_reports || p.can_make_reports) ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
 
-        <label class="row" style="gap:10px; align-items:center; margin:6px 0">
-          <input type="checkbox" id="f_rep_revenue" ${(p.can_view_revenue || p.can_make_reports) ? "checked" : ""} />
-          <span>Может видеть выручку (суммы)</span>
-        </label>
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Просмотр выручки</div>
+            <div class="perm-desc">Может видеть суммы выручки в отчётах</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f_rep_revenue" data-perm-group="reports" ${(p.can_view_revenue || p.can_make_reports) ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
 
         <div class="muted" style="font-size:12px; margin-top:6px">
           Владелец видит отчёты всегда, независимо от должности.
@@ -266,27 +303,70 @@ function renderPositionForm({ mode, position }) {
       </div>
 
       <div class="card" style="padding:12px">
-        <b>Права для графика</b>
-        <label class="row" style="gap:10px; align-items:center; margin:8px 0 0">
-          <input type="checkbox" id="f_can_schedule" ${p.can_edit_schedule ? "checked" : ""} />
-          <span>Может редактировать график</span>
-        </label>
+        <div class="perm-group-title">
+          <b>Права для графика</b>
+          <div class="row" style="gap:6px; flex:0 0 auto">
+            <button class="btn sm" type="button" data-perm-set="schedule" data-value="1">Все</button>
+            <button class="btn sm" type="button" data-perm-set="schedule" data-value="0">Ничего</button>
+          </div>
+        </div>
+
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Редактировать график</div>
+            <div class="perm-desc">Может добавлять и менять смены в календаре</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f_can_schedule" data-perm-group="schedule" ${p.can_edit_schedule ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
       </div>
 
       <div class="card" style="padding:12px">
-        <b>Штрафы / Списания / Премии</b>
-        <label class="row" style="gap:10px; align-items:center; margin:8px 0 0">
-          <input type="checkbox" id="f_adj_view" ${(p.can_view_adjustments || p.can_manage_adjustments) ? "checked" : ""} />
-          <span>Может просматривать</span>
-        </label>
-        <label class="row" style="gap:10px; align-items:center; margin:6px 0 0">
-          <input type="checkbox" id="f_adj_manage" ${p.can_manage_adjustments ? "checked" : ""} />
-          <span>Может создавать/редактировать</span>
-        </label>
-        <label class="row" style="gap:10px; align-items:center; margin:6px 0 0">
-          <input type="checkbox" id="f_adj_dispute" ${(p.can_resolve_disputes || p.can_manage_adjustments) ? "checked" : ""} />
-          <span>Может разруливать оспаривания</span>
-        </label>
+        <div class="perm-group-title">
+          <div>
+            <b>Штрафы / Списания / Премии</b>
+            <div class="muted" style="margin-top:4px; font-size:12px">Доступ к финансовым корректировкам</div>
+          </div>
+          <div class="row" style="gap:6px; flex:0 0 auto">
+            <button class="btn sm" type="button" data-perm-set="adjustments" data-value="1">Все</button>
+            <button class="btn sm" type="button" data-perm-set="adjustments" data-value="0">Ничего</button>
+          </div>
+        </div>
+
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Просмотр</div>
+            <div class="perm-desc">Может смотреть штрафы/премии и историю</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f_adj_view" data-perm-group="adjustments" ${(p.can_view_adjustments || p.can_manage_adjustments) ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Создание и редактирование</div>
+            <div class="perm-desc">Может создавать, менять и отменять корректировки</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f_adj_manage" data-perm-group="adjustments" ${p.can_manage_adjustments ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Оспаривания</div>
+            <div class="perm-desc">Может разруливать споры по штрафам/премиям</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f_adj_dispute" data-perm-group="adjustments" ${(p.can_resolve_disputes || p.can_manage_adjustments) ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
       </div>
     </div>
 
@@ -326,6 +406,97 @@ function collectPayload() {
   return { title, member_user_id, rate, percent, can_make_reports, can_view_reports, can_view_revenue, can_edit_schedule, can_view_adjustments, can_manage_adjustments, can_resolve_disputes };
 }
 
+
+function setupPermUX() {
+  const modal = document.getElementById("posModal");
+  if (!modal) return;
+
+  const allBoxes = () =>
+    Array.from(modal.querySelectorAll('input[type="checkbox"]'));
+
+  const setBoxes = (boxes, val) => {
+    boxes.forEach((b) => {
+      b.checked = !!val;
+      b.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  };
+
+  // Global on/off
+  document.getElementById("btnPermAllOn")?.addEventListener("click", () => {
+    setBoxes(allBoxes(), true);
+  });
+  document.getElementById("btnPermAllOff")?.addEventListener("click", () => {
+    setBoxes(allBoxes(), false);
+  });
+
+  // Group on/off
+  modal.querySelectorAll("[data-perm-set]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const group = btn.getAttribute("data-perm-set");
+      const v = btn.getAttribute("data-value") === "1";
+      const boxes = Array.from(
+        modal.querySelectorAll(`input[type="checkbox"][data-perm-group="${group}"]`)
+      );
+      setBoxes(boxes, v);
+    });
+  });
+
+  // Dependency helpers
+  const repCreate = document.getElementById("f_rep_create");
+  const repEdit = document.getElementById("f_rep_edit");
+  const repView = document.getElementById("f_rep_view");
+  const repRevenue = document.getElementById("f_rep_revenue");
+
+  const adjView = document.getElementById("f_adj_view");
+  const adjManage = document.getElementById("f_adj_manage");
+  const adjDispute = document.getElementById("f_adj_dispute");
+
+  const syncReports = () => {
+    const mustView = (!!repCreate?.checked) || (!!repEdit?.checked) || (!!repRevenue?.checked);
+    if (mustView && repView) repView.checked = true;
+    if (repView && !repView.checked) {
+      // если пользователь попытался выключить просмотр при включённых зависимых правах — вернём обратно
+      if (mustView) repView.checked = true;
+      // если выручка включена, без просмотра её быть не может
+      if (repRevenue?.checked && repView) repView.checked = true;
+    }
+  };
+
+  const syncAdjustments = () => {
+    // manage -> view
+    if (adjManage?.checked && adjView) adjView.checked = true;
+
+    // dispute -> manage + view
+    if (adjDispute?.checked) {
+      if (adjManage) adjManage.checked = true;
+      if (adjView) adjView.checked = true;
+    }
+
+    // если manage выключили — dispute тоже выключаем
+    if (adjManage && !adjManage.checked && adjDispute) adjDispute.checked = false;
+
+    // если view выключили при manage/dispute — вернём view
+    if (adjView && !adjView.checked && ((adjManage?.checked) || (adjDispute?.checked))) {
+      adjView.checked = true;
+    }
+  };
+
+  // Attach listeners
+  [repCreate, repEdit, repView, repRevenue].forEach((el) => {
+    if (!el) return;
+    el.addEventListener("change", syncReports);
+  });
+  [adjView, adjManage, adjDispute].forEach((el) => {
+    if (!el) return;
+    el.addEventListener("change", syncAdjustments);
+  });
+
+  // Initial sync
+  syncReports();
+  syncAdjustments();
+}
+
+
 /* ---------- Modal actions ---------- */
 
 function openCreateModal() {
@@ -338,6 +509,7 @@ function openCreateModal() {
   // дефолтный выбор сотрудника
   const sel = document.getElementById("f_member");
   if (sel && sel.options.length) sel.value = sel.options[0].value;
+  setupPermUX();
 
   document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
 
@@ -370,6 +542,7 @@ function openEditModal(p) {
 
   const sel = document.getElementById("f_member");
   if (sel) sel.value = String(p.member_user_id ?? "");
+  setupPermUX();
 
   document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
 
@@ -467,6 +640,7 @@ function renderPositions() {
 
       const sel = document.getElementById("f_member");
       if (sel && sel.options.length) sel.value = sel.options[0].value;
+  setupPermUX();
 
       document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
       document.getElementById("btnSavePos")?.addEventListener("click", async () => {

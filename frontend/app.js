@@ -637,6 +637,7 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
       links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue" });
       links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary" });
       links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses" });
+      links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
     } else {
       // Staff bottom nav: Shifts + Finance (+ optional Reports) + Settings
       links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
