@@ -927,7 +927,7 @@ function openDay(dateStr) {
 
     const optCreate = document.createElement("option");
     optCreate.value = "__create__";
-    optCreate.textContent = "➕ Создать промежуток…";
+    optCreate.textContent = "Создать промежуток…";
     sel.appendChild(optCreate);
 
     if (!intervals.length) sel.value = "__create__";
@@ -998,8 +998,11 @@ function openDay(dateStr) {
     };
   }
 
-  for (const s of list) wireShiftEditor(dateStr, s, allowEdit);
-      wireShiftComments(s.id);
+  for (const s of list) {
+    wireShiftEditor(dateStr, s, allowEdit);
+    wireShiftComments(s.id);
+  }
+
 }
 
 // month navigation
