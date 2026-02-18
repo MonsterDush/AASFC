@@ -161,7 +161,7 @@
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
           openReports.href = `/staff-report.html?venue_id=${encodeURIComponent(venueId)}`;
-          if (openAdjustments) openAdjustments.href = canManageAdjustments ? `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}` : `/staff-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
+          openAdjustments.href = `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
           metaEl.textContent = `venue_id=${venueId}`;
           metaHint.textContent = "";
         }
