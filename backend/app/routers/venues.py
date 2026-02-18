@@ -65,6 +65,7 @@ class PositionCreateIn(BaseModel):
     can_edit_schedule: bool = False
     can_view_adjustments: bool = False
     can_manage_adjustments: bool = False
+    can_resolve_disputes: bool = False
     is_active: bool = True
 
 
@@ -635,6 +636,7 @@ def create_position(
     existing.can_edit_schedule = payload.can_edit_schedule
     existing.can_view_adjustments = payload.can_view_adjustments
     existing.can_manage_adjustments = payload.can_manage_adjustments
+    existing.can_resolve_disputes = payload.can_resolve_disputes
     existing.is_active = payload.is_active
     db.commit()
     return {"id": existing.id, "mode": "updated"}
