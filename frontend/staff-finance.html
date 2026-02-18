@@ -51,7 +51,7 @@
       <div class="modal__panel">
         <div class="modal__head">
           <b class="modal__title">JSON</b>
-          <button class="btn" data-close>Close</button>
+          <button class="btn" data-close>Закрыть</button>
         </div>
         <div class="modal__body"></div>
       </div>
@@ -66,7 +66,8 @@ import {
   mountNav,
   getActiveVenueId,
   setActiveVenueId,
-  getMyVenues
+  getMyVenues,
+  getMyVenuePermissions
 } from "/app.js";
 
 applyTelegramTheme();
@@ -87,10 +88,25 @@ try {
   if (v) document.getElementById("subtitle").textContent = v.name ? `заведение: ${v.name}` : "";
 } catch {}
 
+let canManageAdjustments = false;
+        try {
+          const perms = await getMyVenuePermissions(venueId);
+          const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
+          const flags = perms?.position_flags || {};
+          canManageAdjustments =
+            String(perms?.role || "").toUpperCase() === "OWNER" ||
+            flags.can_manage_adjustments === true ||
+            has("ADJUSTMENTS_MANAGE");
+        } catch (e) {
+          canManageAdjustments = false;
+        }
+
 const vid = getActiveVenueId();
 document.getElementById("goSalarySummary").onclick = () => location.href = `/staff-salary-summary.html?venue_id=${encodeURIComponent(vid)}`;
 document.getElementById("goSalary").onclick = () => location.href = `/staff-salary.html?venue_id=${encodeURIComponent(vid)}`;
-document.getElementById("goAdjustments").onclick = () => location.href = `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
+const openAdjustments = document.getElementById("goAdjustments");
+if (openAdjustments) openAdjustments.href = canManageAdjustments ? `/app-adjustments.html?venue_id=${encodeURIComponent(vid)}` : `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
+          
   </script>
 </body>
 </html>
