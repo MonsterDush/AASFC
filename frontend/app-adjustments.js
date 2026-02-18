@@ -15,6 +15,25 @@ mountCommonUI("adjustments_manage");
 
 await ensureLogin({ silent: true });
 
+// Guard: if cookie auth is missing, stop page init (prevents silent crash on 401)
+const __meOk = await (async () => {
+  try {
+    await api("/me");
+    return true;
+  } catch (e) {
+    if (e?.status === 401) {
+      toast("Не удалось подтянуть авторизацию. Открой через Telegram Mini App и обнови страницу.", "warn");
+      return false;
+    }
+    throw e;
+  }
+})();
+if (!__meOk) {
+  // Freeze further init safely
+  await new Promise(() => {});
+}
+
+
 const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);

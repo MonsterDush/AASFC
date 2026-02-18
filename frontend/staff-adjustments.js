@@ -7,7 +7,6 @@ import {
   api,
   getActiveVenueId,
   setActiveVenueId,
-  getMyVenuePermissions,
 } from "/app.js";
 
 applyTelegramTheme();
@@ -15,30 +14,31 @@ mountCommonUI("adjustments");
 
 await ensureLogin({ silent: true });
 
+// Guard: if cookie auth is missing, stop page init (prevents silent crash on 401)
+const __meOk = await (async () => {
+  try {
+    await api("/me");
+    return true;
+  } catch (e) {
+    if (e?.status === 401) {
+      toast("Не удалось подтянуть авторизацию. Открой через Telegram Mini App и обнови страницу.", "warn");
+      return false;
+    }
+    throw e;
+  }
+})();
+if (!__meOk) {
+  // Freeze further init safely
+  await new Promise(() => {});
+}
+
+
 const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
 // Adjustments now live under "Finance" in the bottom nav
 await mountNav({ activeTab: "finance", requireVenue: true });
-
-// If user can manage adjustments (create penalties/writeoffs), redirect to management page
-try {
-  const perms = await getMyVenuePermissions(venueId);
-  const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
-  const flags = perms?.position_flags || {};
-  const canManage =
-    String(perms?.role || "").toUpperCase() === "OWNER" ||
-    flags.can_manage_adjustments === true ||
-    has("ADJUSTMENTS_MANAGE");
-
-  if (canManage) {
-    location.replace(`/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`);
-    return;
-  }
-} catch (e) {
-  // ignore and stay on staff view
-}
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
