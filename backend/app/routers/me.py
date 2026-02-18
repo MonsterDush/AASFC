@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
@@ -391,9 +391,10 @@ def my_salary_summary(
 
     Includes:
       - earned: sum of calculated shift salaries (only for shifts that have a DailyReport)
+      - tips: sum of user's tips share (DailyReport.tips_total split evenly across assignees)
       - bonuses: sum of adjustments with type=bonus
       - penalties: sum of adjustments with type=penalty or writeoff
-      - net: earned + bonuses - penalties
+      - net: earned + tips + bonuses - penalties
     """
 
     try:
@@ -441,7 +442,19 @@ def my_salary_summary(
         ).scalars().all()
         report_by_key = {(r.venue_id, r.date): r for r in reports}
 
+    # assignee counts per shift_id (for tips split)
+    shift_ids = [int(r.shift_id) for r in rows]
+    assignee_cnt_by_shift: dict[int, int] = {}
+    if shift_ids:
+        cnt_rows = db.execute(
+            select(ShiftAssignment.shift_id, func.count(ShiftAssignment.member_user_id))
+            .where(ShiftAssignment.shift_id.in_(shift_ids))
+            .group_by(ShiftAssignment.shift_id)
+        ).all()
+        assignee_cnt_by_shift = {int(sid): int(cnt or 0) for sid, cnt in cnt_rows}
+
     earned_by_venue: dict[int, int] = {}
+    tips_by_venue: dict[int, int] = {}
     venue_name_by_id: dict[int, str] = {}
     for r in rows:
         venue_name_by_id[int(r.venue_id)] = r.venue_name
@@ -454,6 +467,16 @@ def my_salary_summary(
         except Exception:
             continue
         earned_by_venue[int(r.venue_id)] = earned_by_venue.get(int(r.venue_id), 0) + sal_i
+
+        # tips share (split evenly across assignees for this shift)
+        try:
+            tips_total = int(getattr(rep, "tips_total", 0) or 0)
+            if tips_total > 0:
+                cnt = max(1, int(assignee_cnt_by_shift.get(int(r.shift_id), 1)))
+                my_tips = int(round(float(tips_total) / float(cnt)))
+                tips_by_venue[int(r.venue_id)] = tips_by_venue.get(int(r.venue_id), 0) + my_tips
+        except Exception:
+            pass
 
     # 2) Adjustments for this user in the month
     adj_rows = db.execute(
@@ -491,22 +514,26 @@ def my_salary_summary(
     items = []
     total_net = 0
     total_earned = 0
+    total_tips = 0
     total_bonus = 0
     total_pen = 0
 
     for vid in sorted(venue_ids):
         earned = int(earned_by_venue.get(vid, 0))
+        tips = int(tips_by_venue.get(vid, 0))
         bonus = int(bonuses_by_venue.get(vid, 0))
         pen = int(penalties_by_venue.get(vid, 0))
-        net = earned + bonus - pen
+        net = earned + tips + bonus - pen
         total_net += net
         total_earned += earned
+        total_tips += tips
         total_bonus += bonus
         total_pen += pen
         items.append(
             {
                 "venue": {"id": vid, "name": venue_name_by_id.get(vid, "")},
                 "earned": earned,
+                "tips": tips,
                 "bonuses": bonus,
                 "penalties": pen,
                 "net": net,
@@ -518,6 +545,7 @@ def my_salary_summary(
         "items": items,
         "totals": {
             "earned": total_earned,
+            "tips": total_tips,
             "bonuses": total_bonus,
             "penalties": total_pen,
             "net": total_net,

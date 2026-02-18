@@ -33,6 +33,7 @@ const el = {
   next: document.getElementById("monthNext"),
   reload: document.getElementById("btnReload"),
   tEarned: document.getElementById("tEarned"),
+  tTips: document.getElementById("tTips"),
   tBonuses: document.getElementById("tBonuses"),
   tPenalties: document.getElementById("tPenalties"),
   tNet: document.getElementById("tNet"),
@@ -99,6 +100,7 @@ async function load() {
     const totals = data?.totals || {};
 
     el.tEarned.textContent = fmtMoney(totals.earned);
+    el.tTips.textContent = fmtMoney(totals.tips);
     el.tBonuses.textContent = fmtMoney(totals.bonuses);
     el.tPenalties.textContent = fmtMoney(totals.penalties);
     el.tNet.textContent = fmtMoney(totals.net);
@@ -118,7 +120,7 @@ async function load() {
       row.innerHTML = `
         <div style="min-width:0">
           <b style="display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${name}</b>
-          <div class="muted" style="margin-top:4px; font-size:12px">Начислено ${fmtMoney(it.earned)} · Премии ${fmtMoney(it.bonuses)} · Штрафы ${fmtMoney(it.penalties)}</div>
+          <div class="muted" style="margin-top:4px; font-size:12px">Начислено ${fmtMoney(it.earned)} · Чаевые ${fmtMoney(it.tips)} · Премии ${fmtMoney(it.bonuses)} · Штрафы ${fmtMoney(it.penalties)}</div>
         </div>
         <div style="text-align:right; flex:0 0 auto">
           <div class="muted" style="font-size:12px">Итого</div>

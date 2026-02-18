@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import json
+import asyncio
+import logging
 import urllib.request
 import urllib.parse
 from fastapi import FastAPI, HTTPException, Request
@@ -14,6 +16,24 @@ TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_SERVICE_SECRET = os.getenv("BOT_SERVICE_SECRET", "")
 
 app = FastAPI(title="Axelio Bot Service")
+
+log = logging.getLogger("axelio-bot")
+
+# ---- Scheduled shift reminders (optional) ----
+#
+# If you want the bot service to run reminders itself (instead of cron/systemd),
+# set:
+#   REMINDER_SCHEDULER_ENABLED=1
+# and make sure send_shift_reminders.py is deployed рядом с этим файлом.
+REMINDER_SCHEDULER_ENABLED = os.getenv("REMINDER_SCHEDULER_ENABLED", "").strip() in ("1", "true", "yes")
+REMINDER_INTERVAL_SECONDS = int(os.getenv("REMINDER_INTERVAL_SECONDS", "900"))  # 15 minutes
+
+_reminder_lock = asyncio.Lock()
+
+try:
+    import send_shift_reminders as _ssr  # noqa: WPS433
+except Exception:  # pragma: no cover
+    _ssr = None
 
 
 class NotifyIn(BaseModel):
@@ -83,3 +103,46 @@ def notify(payload: NotifyIn, request: Request):
         return {"ok": ok}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"telegram error: {e}")
+
+
+@app.post("/internal/run-shift-reminders")
+async def run_shift_reminders(request: Request):
+    """Manual trigger for shift reminders.
+
+    Protected by BOT_SERVICE_SECRET via X-Bot-Secret header.
+    """
+
+    got = request.headers.get("X-Bot-Secret", "")
+    if BOT_SERVICE_SECRET and got != BOT_SERVICE_SECRET:
+        raise HTTPException(status_code=401, detail="bad secret")
+
+    if _ssr is None:
+        raise HTTPException(status_code=500, detail="send_shift_reminders.py is not available in bot service")
+
+    async with _reminder_lock:
+        try:
+            sent = await asyncio.to_thread(_ssr.main)
+            return {"ok": True, "sent": int(sent or 0)}
+        except Exception as e:
+            log.exception("shift reminders failed")
+            raise HTTPException(status_code=500, detail=f"reminder error: {e}")
+
+
+@app.on_event("startup")
+async def _start_scheduler():
+    if not REMINDER_SCHEDULER_ENABLED:
+        return
+    if _ssr is None:
+        log.warning("REMINDER_SCHEDULER_ENABLED=1 but send_shift_reminders.py is missing")
+        return
+
+    async def _loop():
+        while True:
+            try:
+                async with _reminder_lock:
+                    await asyncio.to_thread(_ssr.main)
+            except Exception:
+                log.exception("scheduled shift reminders failed")
+            await asyncio.sleep(REMINDER_INTERVAL_SECONDS)
+
+    asyncio.create_task(_loop())
