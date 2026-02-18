@@ -175,6 +175,7 @@ let canEdit = false;
 let canViewRevenue = false;
 
 const LS_SHOW_ALL = "axelio.shifts.showAll";
+const LS_SCOPE = "axelio.shifts.scope"; // 'venue' | 'global'
 let showAllOnCalendar = false;
 let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "venue";
 let isMultiVenue = false;
