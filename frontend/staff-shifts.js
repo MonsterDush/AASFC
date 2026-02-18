@@ -538,13 +538,23 @@ function renderMonth() {
       else {
         // будущее / сегодня: показать время начала первой моей смены
         const firstShift = list[0];
-        const t = firstShift ? shiftStartHHMM(firstShift) : "";
-        // --- цветные овальчики (ALL mode) ---
-        if (t) {
-          const line = document.createElement("div");
-          line.className = "day-salary";
-          line.textContent = t;
-          box.appendChild(line);
+        // В "Общий" режиме бейдж должен быть "Заведение · Время", а не только время
+        if (calendarScope === "global") {
+          const gl = firstShift ? formatGlobalLine(firstShift) : "";
+          if (gl) {
+            const line = document.createElement("div");
+            line.className = "day-salary";
+            line.textContent = gl;
+            box.appendChild(line);
+          }
+        } else {
+          const t = firstShift ? shiftStartHHMM(firstShift) : "";
+          if (t) {
+            const line = document.createElement("div");
+            line.className = "day-salary";
+            line.textContent = t;
+            box.appendChild(line);
+          }
         }
       }
       // цветные овальчики даже в "моих" (чтобы не было уныло)

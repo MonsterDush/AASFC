@@ -126,7 +126,7 @@ function openModal(title, bodyHtml) {
 function sw(id, checked, disabled=false) {
   return `
     <label class="switch">
-      <input type="checkbox" id="${id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} />
+      <input style="max-width: 45px !important;" type="checkbox" id="${id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} />
       <span class="slider"></span>
     </label>`;
 }

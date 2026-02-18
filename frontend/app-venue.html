@@ -129,6 +129,8 @@
         const btnDelete = document.getElementById("btnDelete");
         const openInvites = document.getElementById("openInvites");
         const openPositions = document.getElementById("openPositions");
+        const openShifts = document.getElementById("openShifts");
+        const openReports = document.getElementById("openReports");
         const openAdjustments = document.getElementById("openAdjustments");
 
         let last = { is_archived: false, name: "" };
@@ -145,7 +147,7 @@
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
           openReports.href = `/staff-report.html?venue_id=${encodeURIComponent(venueId)}`;
-          if (openAdjustments) openAdjustments.href = `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openAdjustments) openAdjustments.href = `/staff-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
           metaEl.textContent = `venue_id=${venueId}`;
           metaHint.textContent = "";
         }

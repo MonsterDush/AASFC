@@ -411,22 +411,37 @@ function setupPermUX() {
   const modal = document.getElementById("posModal");
   if (!modal) return;
 
+  // Bulk-режим: чтобы "Включить/Выключить все" срабатывало сразу (без "по одному"),
+  // и чтобы зависимости применялись один раз в конце.
+  let bulk = false;
+
   const allBoxes = () =>
     Array.from(modal.querySelectorAll('input[type="checkbox"]'));
 
-  const setBoxes = (boxes, val) => {
+  const setBoxes = (boxes, val, after) => {
+    bulk = true;
     boxes.forEach((b) => {
       b.checked = !!val;
-      b.dispatchEvent(new Event("change", { bubbles: true }));
     });
+    bulk = false;
+    if (typeof after === "function") after();
   };
 
   // Global on/off
   document.getElementById("btnPermAllOn")?.addEventListener("click", () => {
-    setBoxes(allBoxes(), true);
+    setBoxes(allBoxes(), true, () => {
+      syncReports();
+      syncAdjustments();
+    });
   });
   document.getElementById("btnPermAllOff")?.addEventListener("click", () => {
-    setBoxes(allBoxes(), false);
+    setBoxes(allBoxes(), false, () => {
+      // При "Выключить все" ожидаем 0 без автодовключений
+      if (repView) repView.checked = false;
+      if (adjView) adjView.checked = false;
+      syncReports();
+      syncAdjustments();
+    });
   });
 
   // Group on/off
@@ -437,7 +452,10 @@ function setupPermUX() {
       const boxes = Array.from(
         modal.querySelectorAll(`input[type="checkbox"][data-perm-group="${group}"]`)
       );
-      setBoxes(boxes, v);
+      setBoxes(boxes, v, () => {
+        syncReports();
+        syncAdjustments();
+      });
     });
   });
 
@@ -451,7 +469,8 @@ function setupPermUX() {
   const adjManage = document.getElementById("f_adj_manage");
   const adjDispute = document.getElementById("f_adj_dispute");
 
-  const syncReports = () => {
+  function syncReports() {
+    if (bulk) return;
     const mustView = (!!repCreate?.checked) || (!!repEdit?.checked) || (!!repRevenue?.checked);
     if (mustView && repView) repView.checked = true;
     if (repView && !repView.checked) {
@@ -460,9 +479,10 @@ function setupPermUX() {
       // если выручка включена, без просмотра её быть не может
       if (repRevenue?.checked && repView) repView.checked = true;
     }
-  };
+  }
 
-  const syncAdjustments = () => {
+  function syncAdjustments() {
+    if (bulk) return;
     // manage -> view
     if (adjManage?.checked && adjView) adjView.checked = true;
 
@@ -479,7 +499,7 @@ function setupPermUX() {
     if (adjView && !adjView.checked && ((adjManage?.checked) || (adjDispute?.checked))) {
       adjView.checked = true;
     }
-  };
+  }
 
   // Attach listeners
   [repCreate, repEdit, repView, repRevenue].forEach((el) => {

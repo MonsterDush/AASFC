@@ -24,8 +24,9 @@
       <div class="card">
         <b>Зарплата</b>
         <div class="muted" style="margin-top:6px">Сводка по месяцам и детализация по дням</div>
-        <div class="row" style="margin-top:10px">
-          <button class="btn primary" id="goSalary">Открыть</button>
+        <div class="row" style="margin-top:10px; gap:8px; flex-wrap:wrap">
+          <button class="btn primary" id="goSalarySummary">Сводка за месяц</button>
+          <button class="btn" id="goSalary">Детализация</button>
         </div>
       </div>
 
@@ -87,6 +88,7 @@ try {
 } catch {}
 
 const vid = getActiveVenueId();
+document.getElementById("goSalarySummary").onclick = () => location.href = `/staff-salary-summary.html?venue_id=${encodeURIComponent(vid)}`;
 document.getElementById("goSalary").onclick = () => location.href = `/staff-salary.html?venue_id=${encodeURIComponent(vid)}`;
 document.getElementById("goAdjustments").onclick = () => location.href = `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
   </script>

@@ -21,7 +21,7 @@ from app.models import Shift, ShiftInterval, ShiftAssignment, User, Venue
 from app.services import tg_notify
 
 
-REMINDER_HOURS = 18
+REMINDER_HOURS = int(os.getenv("REMINDER_HOURS", "18"))
 
 RU_MONTHS_GEN = {
     1: "января", 2: "февраля", 3: "марта", 4: "апреля",
@@ -33,7 +33,13 @@ def format_date_ru(d) -> str:
     # d: date-like (expects .day and .month)
     return f"{d.day} {RU_MONTHS_GEN.get(d.month, str(d.month))}"
 
-WINDOW_MINUTES = 15  # send once when we are within this window around the exact 18h mark
+WINDOW_MINUTES = int(os.getenv("REMINDER_WINDOW_MINUTES", "15"))  # window around the exact mark
+
+# For manual testing:
+# - DRY_RUN=1 will not send, only print matches
+# - FORCE_CHAT_ID=<tg_user_id> will send all matches to this chat_id instead of the assignee
+DRY_RUN = os.getenv("DRY_RUN", "").strip() in ("1", "true", "yes")
+FORCE_CHAT_ID = os.getenv("FORCE_CHAT_ID")
 
 def _fmt_time(t) -> str:
     # t can be datetime.time or a string like "18:00:00"
@@ -85,8 +91,15 @@ def main() -> int:
                 f"в {_fmt_time(interval.start_time)} "
                 f"в заведении \"{venue.name}\""
             )
-            ok = tg_notify.notify(chat_id=int(user.tg_user_id), text=text)
-            if ok:
+            chat_id = int(FORCE_CHAT_ID) if FORCE_CHAT_ID else int(user.tg_user_id)
+
+            if DRY_RUN:
+                print(f"DRY_RUN match: chat_id={chat_id} user_id={user.id} shift_id={sh.id} start={start_dt} venue=\"{venue.name}\"")
+                continue
+
+            ok = tg_notify.notify(chat_id=chat_id, text=text)
+            if ok and not FORCE_CHAT_ID:
+                # Mark as sent only for real reminders to real assignee
                 sa.reminder_sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
                 db.add(sa)
                 sent += 1

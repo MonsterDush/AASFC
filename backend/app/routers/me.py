@@ -20,6 +20,7 @@ from app.models import (
     ShiftAssignment,
     ShiftInterval,
     DailyReport,
+    Adjustment,
 )
 
 
@@ -378,3 +379,147 @@ def my_shifts_across_venues(
         )
 
     return out
+
+
+@router.get("/me/salary-summary")
+def my_salary_summary(
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Monthly salary summary across all venues for current user.
+
+    Includes:
+      - earned: sum of calculated shift salaries (only for shifts that have a DailyReport)
+      - bonuses: sum of adjustments with type=bonus
+      - penalties: sum of adjustments with type=penalty or writeoff
+      - net: earned + bonuses - penalties
+    """
+
+    try:
+        y_s, m_s = month.split("-")
+        y = int(y_s)
+        m = int(m_s)
+        start = date(y, m, 1)
+        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+
+    # 1) Shifts assigned to this user (across all venues)
+    rows = db.execute(
+        select(
+            Shift.id.label("shift_id"),
+            Shift.date.label("shift_date"),
+            Shift.venue_id.label("venue_id"),
+            Venue.name.label("venue_name"),
+            ShiftInterval.start_time.label("start_time"),
+            VenuePosition.rate.label("rate"),
+            VenuePosition.percent.label("percent"),
+        )
+        .select_from(ShiftAssignment)
+        .join(Shift, Shift.id == ShiftAssignment.shift_id)
+        .join(Venue, Venue.id == Shift.venue_id)
+        .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
+        .join(VenuePosition, VenuePosition.id == ShiftAssignment.venue_position_id)
+        .where(
+            ShiftAssignment.member_user_id == user.id,
+            Shift.is_active.is_(True),
+            Shift.date >= start,
+            Shift.date < end,
+        )
+    ).all()
+
+    # preload daily reports per (venue_id, date)
+    keys = {(r.venue_id, r.shift_date) for r in rows}
+    report_by_key = {}
+    if keys:
+        reports = db.execute(
+            select(DailyReport).where(
+                DailyReport.venue_id.in_({k[0] for k in keys}),
+                DailyReport.date.in_({k[1] for k in keys}),
+            )
+        ).scalars().all()
+        report_by_key = {(r.venue_id, r.date): r for r in reports}
+
+    earned_by_venue: dict[int, int] = {}
+    venue_name_by_id: dict[int, str] = {}
+    for r in rows:
+        venue_name_by_id[int(r.venue_id)] = r.venue_name
+        rep = report_by_key.get((r.venue_id, r.shift_date))
+        if rep is None:
+            continue
+        try:
+            sal = int(r.rate) + (int(r.percent) / 100.0) * rep.revenue_total
+            sal_i = int(round(float(sal)))
+        except Exception:
+            continue
+        earned_by_venue[int(r.venue_id)] = earned_by_venue.get(int(r.venue_id), 0) + sal_i
+
+    # 2) Adjustments for this user in the month
+    adj_rows = db.execute(
+        select(Adjustment.venue_id, Adjustment.type, Adjustment.amount)
+        .where(
+            Adjustment.member_user_id == user.id,
+            Adjustment.is_active.is_(True),
+            Adjustment.date >= start,
+            Adjustment.date < end,
+        )
+    ).all()
+
+    bonuses_by_venue: dict[int, int] = {}
+    penalties_by_venue: dict[int, int] = {}
+    for v_id, typ, amount in adj_rows:
+        vid = int(v_id)
+        t = str(typ or "").lower()
+        a = int(amount or 0)
+        if t == "bonus":
+            bonuses_by_venue[vid] = bonuses_by_venue.get(vid, 0) + a
+        else:
+            # penalty + writeoff => treat as penalty
+            penalties_by_venue[vid] = penalties_by_venue.get(vid, 0) + a
+
+    # 3) Compose response
+    venue_ids = set(earned_by_venue.keys()) | set(bonuses_by_venue.keys()) | set(penalties_by_venue.keys())
+    if venue_ids and len(venue_name_by_id) != len(venue_ids):
+        # best-effort: load missing venue names
+        missing = list(venue_ids - set(venue_name_by_id.keys()))
+        if missing:
+            vs = db.execute(select(Venue.id, Venue.name).where(Venue.id.in_(missing))).all()
+            for vid, vname in vs:
+                venue_name_by_id[int(vid)] = vname
+
+    items = []
+    total_net = 0
+    total_earned = 0
+    total_bonus = 0
+    total_pen = 0
+
+    for vid in sorted(venue_ids):
+        earned = int(earned_by_venue.get(vid, 0))
+        bonus = int(bonuses_by_venue.get(vid, 0))
+        pen = int(penalties_by_venue.get(vid, 0))
+        net = earned + bonus - pen
+        total_net += net
+        total_earned += earned
+        total_bonus += bonus
+        total_pen += pen
+        items.append(
+            {
+                "venue": {"id": vid, "name": venue_name_by_id.get(vid, "")},
+                "earned": earned,
+                "bonuses": bonus,
+                "penalties": pen,
+                "net": net,
+            }
+        )
+
+    return {
+        "month": month,
+        "items": items,
+        "totals": {
+            "earned": total_earned,
+            "bonuses": total_bonus,
+            "penalties": total_pen,
+            "net": total_net,
+        },
+    }
