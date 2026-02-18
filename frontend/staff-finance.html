@@ -67,45 +67,73 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
-  getMyVenuePermissions
+  getMyVenuePermissions,
 } from "/app.js";
 
 applyTelegramTheme();
 mountCommonUI("finance");
 await ensureLogin({ silent: true });
 
-// venue context
+/**
+ * Resolve venue context:
+ * 1) URL ?venue_id=
+ * 2) previously selected active venue (localStorage)
+ */
 const params = new URLSearchParams(location.search);
-const venueId = params.get("venue_id") || getActiveVenueId();
-if (venueId) setActiveVenueId(venueId);
+const urlVenueId = params.get("venue_id");
+
+if (urlVenueId) setActiveVenueId(urlVenueId);
 
 await mountNav({ activeTab: "finance", requireVenue: true });
 
-// best-effort venue title
-try {
-  const venues = await getMyVenues();
-  const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
-  if (v) document.getElementById("subtitle").textContent = v.name ? `заведение: ${v.name}` : "";
-} catch {}
+const activeId = getActiveVenueId();
+if (!activeId) {
+  // requireVenue=true should normally prevent this, but keep it safe.
+  console.warn("No active venue selected");
+} else {
+  // Best-effort venue title
+  try {
+    const venues = await getMyVenues();
+    const v = venues.find((x) => String(x.id) === String(activeId));
+    const subtitle = document.getElementById("subtitle");
+    if (subtitle) subtitle.textContent = v?.name ? `заведение: ${v.name}` : "";
+  } catch {}
+}
 
-let canManageAdjustments = false;
-        try {
-          const perms = await getMyVenuePermissions(venueId);
-          const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
-          const flags = perms?.position_flags || {};
-          canManageAdjustments =
-            String(perms?.role || "").toUpperCase() === "OWNER" ||
-            flags.can_manage_adjustments === true ||
-            has("ADJUSTMENTS_MANAGE");
-        } catch (e) {
-          canManageAdjustments = false;
-        }
+async function resolveCanManageAdjustments(venueId) {
+  try {
+    const perms = await getMyVenuePermissions(venueId);
+    const list = Array.isArray(perms?.permissions) ? perms.permissions : [];
+    const has = (code) => list.includes(code);
+    const flags = perms?.position_flags || {};
 
-const vid = getActiveVenueId();
-document.getElementById("goSalarySummary").onclick = () => location.href = `/staff-salary-summary.html?venue_id=${encodeURIComponent(vid)}`;
-document.getElementById("goSalary").onclick = () => location.href = `/staff-salary.html?venue_id=${encodeURIComponent(vid)}`;
-const openAdjustments = document.getElementById("goAdjustments");
-if (openAdjustments) openAdjustments.href = canManageAdjustments ? `/app-adjustments.html?venue_id=${encodeURIComponent(vid)}` : `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
+    return (
+      String(perms?.role || "").toUpperCase() === "OWNER" ||
+      flags.can_manage_adjustments === true ||
+      has("ADJUSTMENTS_MANAGE")
+    );
+  } catch {
+    return false;
+  }
+}
+
+const canManageAdjustments = activeId ? await resolveCanManageAdjustments(activeId) : false;
+
+const vid = activeId || "";
+const qs = vid ? `?venue_id=${encodeURIComponent(vid)}` : "";
+
+const goSalarySummary = document.getElementById("goSalarySummary");
+if (goSalarySummary) goSalarySummary.onclick = () => (location.href = `/staff-salary-summary.html${qs}`);
+
+const goSalary = document.getElementById("goSalary");
+if (goSalary) goSalary.onclick = () => (location.href = `/staff-salary.html${qs}`);
+
+const goAdjustments = document.getElementById("goAdjustments");
+if (goAdjustments) {
+  goAdjustments.href = canManageAdjustments
+    ? `/app-adjustments.html${qs}`
+    : `/staff-adjustments.html${qs}`;
+}
           
   </script>
 </body>
