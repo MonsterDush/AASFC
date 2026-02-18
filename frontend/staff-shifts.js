@@ -320,7 +320,8 @@ function formatGlobalLine(item) {
   const t = item?.interval?.start_time ? item.interval.start_time : "";
   const venueName = item?.venue?.name || "Заведение";
   if (isPastDateISO(item.date)) return fmtMoney(item.my_salary);
-  return t ? `${venueName} — ${t}` : `${venueName}`;
+  // Будущие смены: сначала название заведения, затем время начала
+  return t ? `${venueName} · ${t}` : `${venueName}`;
 }
 
 async function loadMyGlobalShifts(monthStr) {
