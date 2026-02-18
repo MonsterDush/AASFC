@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Сводка</title>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Сводка</b>
+          <div class="muted" id="subtitle">общая выручка и траты</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card">
+      <b>Сводка за месяц</b>
+      <div class="muted" style="margin-top:8px">
+        В разработке. Здесь будет общая выручка за месяц и список трат.
+      </div>
+
+      <div class="grid" style="margin-top:12px">
+        <div class="itemcard">
+          <div class="muted">Общая выручка за месяц</div>
+          <b style="display:block;margin-top:6px">—</b>
+        </div>
+        <div class="itemcard">
+          <div class="muted">Траты за месяц</div>
+          <b style="display:block;margin-top:6px">—</b>
+        </div>
+      </div>
+
+      <div class="itemcard" style="margin-top:12px">
+        <b>Список трат</b>
+        <div class="muted" style="margin-top:6px">—</div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="wrap">
+        <div id="nav"></div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"><div class="toast__text"></div></div>
+    <div class="modal" id="modal">
+      <div class="modal__backdrop"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <b class="modal__title">JSON</b>
+          <button class="btn" data-close>Close</button>
+        </div>
+        <div class="modal__body"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+import {
+  applyTelegramTheme,
+  mountCommonUI,
+  ensureLogin,
+  mountNav,
+  getActiveVenueId,
+  setActiveVenueId,
+  getMyVenues
+} from "/app.js";
+
+applyTelegramTheme();
+mountCommonUI("summary");
+await ensureLogin({ silent: true });
+
+const params = new URLSearchParams(location.search);
+const venueId = params.get("venue_id") || getActiveVenueId();
+if (venueId) setActiveVenueId(venueId);
+
+await mountNav({ activeTab: "summary", requireVenue: true });
+
+// show venue name in subtitle (best-effort)
+try {
+  const venues = await getMyVenues();
+  const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
+  if (v) document.getElementById("subtitle").textContent = v.name || "";
+} catch {}
+  </script>
+</body>
+</html>

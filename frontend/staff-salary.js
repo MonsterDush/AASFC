@@ -18,7 +18,8 @@ const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
-await mountNav({ activeTab: "salary", requireVenue: true });
+// Salary now lives under "Finance" in the bottom nav
+await mountNav({ activeTab: "finance", requireVenue: true });
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),

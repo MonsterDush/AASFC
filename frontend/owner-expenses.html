@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Расходы</title>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Расходы</b>
+          <div class="muted" id="subtitle">учёт трат</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card">
+      <b>Расходы</b>
+      <div class="muted" style="margin-top:8px">
+        В разработке. Здесь будет список расходов и добавление трат.
+      </div>
+
+      <div class="itemcard" style="margin-top:12px">
+        <b>Список расходов</b>
+        <div class="muted" style="margin-top:6px">—</div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="wrap">
+        <div id="nav"></div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"><div class="toast__text"></div></div>
+    <div class="modal" id="modal">
+      <div class="modal__backdrop"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <b class="modal__title">JSON</b>
+          <button class="btn" data-close>Close</button>
+        </div>
+        <div class="modal__body"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+import {
+  applyTelegramTheme,
+  mountCommonUI,
+  ensureLogin,
+  mountNav,
+  getActiveVenueId,
+  setActiveVenueId,
+  getMyVenues
+} from "/app.js";
+
+applyTelegramTheme();
+mountCommonUI("expenses");
+await ensureLogin({ silent: true });
+
+const params = new URLSearchParams(location.search);
+const venueId = params.get("venue_id") || getActiveVenueId();
+if (venueId) setActiveVenueId(venueId);
+
+await mountNav({ activeTab: "expenses", requireVenue: true });
+
+try {
+  const venues = await getMyVenues();
+  const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
+  if (v) document.getElementById("subtitle").textContent = v.name || "";
+} catch {}
+  </script>
+</body>
+</html>

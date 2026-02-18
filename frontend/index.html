@@ -25,7 +25,7 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
  <script type="module">
-  import { applyTelegramTheme, ensureLogin, api, toast, wa } from "/app.js";
+  import { applyTelegramTheme, ensureLogin, api, toast, wa, setActiveVenueId } from "/app.js";
 
   const splash = document.getElementById("splash");
   const fallback = document.getElementById("fallback");
@@ -73,7 +73,44 @@
         location.replace("/admin-venues.html");
         return;
       }
-      location.replace("/app-venues.html");
+
+      // Role-based landing:
+      // - STAFF -> shifts
+      // - OWNER -> summary
+      // If multiple venues: go to venues picker.
+      let venues = [];
+      try { venues = await api("/me/venues"); } catch { venues = []; }
+
+      if (!Array.isArray(venues) || venues.length === 0) {
+        location.replace("/app-venues.html");
+        return;
+      }
+
+      if (venues.length > 1) {
+        location.replace("/app-venues.html");
+        return;
+      }
+
+      const v = venues[0];
+      const vid = v?.id;
+      if (vid) setActiveVenueId(vid);
+
+      const role = String(v?.my_role || "").toUpperCase();
+      if (role) {
+        location.replace(role === "STAFF" ? `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}` : `/owner-summary.html?venue_id=${encodeURIComponent(vid)}`);
+        return;
+      }
+
+      // Fallback: ask permissions endpoint if my_role отсутствует
+      try {
+        const perms = await api(`/me/venues/${encodeURIComponent(vid)}/permissions`);
+        const isOwner = String(perms?.role || "").toUpperCase() === "OWNER";
+        location.replace(isOwner ? `/owner-summary.html?venue_id=${encodeURIComponent(vid)}` : `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`);
+        return;
+      } catch {
+        location.replace("/app-venues.html");
+        return;
+      }
     } catch (e) {
       hideSplash();
       fallback.style.display = "block";

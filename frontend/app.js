@@ -14,6 +14,9 @@ const DICT = {
     shifts: "Смены",
     salary: "Зарплата",
     report: "Отчёт",
+    finance: "Финансы",
+    summary: "Сводка",
+    expenses: "Расходы",
     admin_venues: "Заведения",
     admin_invites: "Инвайты",
   },
@@ -26,6 +29,9 @@ const DICT = {
     shifts: "Shifts",
     salary: "Salary",
     report: "Report",
+    finance: "Finance",
+    summary: "Summary",
+    expenses: "Expenses",
     admin_venues: "Venues",
     admin_invites: "Invites",
   },
@@ -626,21 +632,23 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   const links = [];
 
   if (activeVenueId) {
-    links.push({
-      title: t("adjustments"),
-      href: canManageAdjustments ? `/app-adjustments.html${qp}` : `/staff-adjustments.html${qp}`,
-      tab: "adjustments",
-    });
-    links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
-
-    // OWNER: вместо "Зарплата" показываем "Отчёты"
-    if (!isOwner) {
-      links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
+    if (isOwner) {
+      // Owner bottom nav: only Venue / Summary / Expenses
+      links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue" });
+      links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary" });
+      links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses" });
+    } else {
+      // Staff bottom nav: Shifts + Finance (+ optional Reports) + Settings
+      links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
+      links.push({ title: t("finance"), href: `/staff-finance.html${qp}`, tab: "finance" });
+      if (showReport) links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
+      links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
     }
-
-    if (showReport) links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
+  } else {
+    // No active venue chosen yet
+    links.push({ title: t("manage_venues"), href: "/app-venues.html", tab: "app-venues" });
+    links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
   }
-  links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
 
   renderNavLinks({ container, links, activeTab });
   return { ok: true, me, venues, activeVenueId };

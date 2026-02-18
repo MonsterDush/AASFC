@@ -19,7 +19,8 @@ const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
-await mountNav({ activeTab: "none", requireVenue: true });
+// Management adjustments screen is part of "Finance" navigation group
+await mountNav({ activeTab: "finance", requireVenue: true });
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
