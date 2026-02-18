@@ -396,3 +396,7 @@ textarea:focus{
   border-color:rgba(255,255,255,.28);
   background:rgba(255,255,255,.08);
 }
+
+/* Disable switch animation during bulk on/off in positions modal */
+.modal.bulk .switch .slider{ transition:none !important; }
+.modal.bulk .switch .slider:before{ transition:none !important; }
