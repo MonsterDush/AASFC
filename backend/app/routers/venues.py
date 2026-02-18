@@ -24,6 +24,7 @@ from app.models.venue_invite import VenueInvite
 from app.models.venue_position import VenuePosition
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
+from app.models.shift_comment import ShiftComment
 from app.models.shift_assignment import ShiftAssignment
 from app.models.daily_report import DailyReport
 from app.models.daily_report_attachment import DailyReportAttachment

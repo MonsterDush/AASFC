@@ -640,10 +640,10 @@ function renderMonth() {
   }
 }
 
-function renderShiftCard(s, allowEdit) {
+function renderShiftCard(s, allowEdit, allowComments) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
-  const shiftId = s.id;
+  const shiftId = (s.id ?? s.shift_id);
 
   const assignments = s.assignments || s.shift_assignments || [];
   let peopleHtml = "";
@@ -678,7 +678,7 @@ function renderShiftCard(s, allowEdit) {
     `;
   }
 
-  const commentsHtml = `
+  const commentsHtml = allowComments ? `
     <div class="sep" style="margin:12px 0"></div>
     <div class="muted" style="font-size:12px;margin-bottom:6px">Комментарии</div>
     <div data-comments-list="${shiftId}" class="muted" style="font-size:12px">Загрузка…</div>
@@ -686,7 +686,7 @@ function renderShiftCard(s, allowEdit) {
       <textarea class="textarea" data-comments-input="${shiftId}" placeholder="Написать комментарий…" style="flex:1; min-width:220px; min-height:70px"></textarea>
       <button class="btn" data-comments-send="${shiftId}">Отправить</button>
     </div>
-  `;
+  ` : "";
 
   return `
     <div class="card" data-shiftcard="${shiftId}">
@@ -765,7 +765,7 @@ async function wireShiftComments(shiftId) {
 function wireShiftEditor(dateStr, shift, allowEdit) {
   if (!allowEdit) return;
 
-  const shiftId = shift.id;
+  const shiftId = (shift.id ?? shift.shift_id);
   const card = document.querySelector(`[data-shiftcard="${shiftId}"]`);
   if (!card) return;
 
@@ -843,6 +843,9 @@ function openDay(dateStr) {
   const list = listAll; // в модалке показываем всех
 
   const allowEdit = canEditDay(dateStr);
+  // Комментарии разрешены только в режиме конкретного заведения ("Все" / "Только мои").
+  // В "Общий" (across venues) комментарии отключаем: там нет корректного venue_id контекста.
+  const allowComments = (calendarScope === "venue");
 
   const title = formatDateRuNoG(dateStr);
   const subtitle = allowEdit ? "Редактирование" : "Просмотр";
@@ -862,7 +865,7 @@ function openDay(dateStr) {
     html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день смен нет</div></div>`;
   } else {
     html += `<div class="stack" style="margin-top:12px">`;
-    for (const s of list) html += renderShiftCard(s, allowEdit);
+    for (const s of list) html += renderShiftCard(s, allowEdit, allowComments);
     html += `</div>`;
   }
 
@@ -1001,7 +1004,7 @@ function openDay(dateStr) {
 
   for (const s of list) {
     wireShiftEditor(dateStr, s, allowEdit);
-    wireShiftComments(s.id);
+    if (allowComments) wireShiftComments(s.id);
   }
 
 }
