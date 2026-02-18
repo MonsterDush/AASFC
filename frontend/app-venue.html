@@ -77,7 +77,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions } from "/app.js";
 
     applyTelegramTheme();
     mountCommonUI("venue");
@@ -101,6 +101,21 @@
 
         const params = new URLSearchParams(location.search);
         const venueId = params.get("venue_id") || "";
+
+
+        let canManageAdjustments = false;
+        try {
+          const perms = await getMyVenuePermissions(venueId);
+          const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
+          const flags = perms?.position_flags || {};
+          canManageAdjustments =
+            String(perms?.role || "").toUpperCase() === "OWNER" ||
+            flags.can_manage_adjustments === true ||
+            has("ADJUSTMENTS_MANAGE");
+        } catch (e) {
+          canManageAdjustments = false;
+        }
+
 
         // keep active venue in sync
         if (venueId) setActiveVenueId(venueId);
@@ -146,7 +161,7 @@
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
           openReports.href = `/staff-report.html?venue_id=${encodeURIComponent(venueId)}`;
-          if (openAdjustments) openAdjustments.href = `/staff-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openAdjustments) openAdjustments.href = canManageAdjustments ? `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}` : `/staff-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
           metaEl.textContent = `venue_id=${venueId}`;
           metaHint.textContent = "";
         }
