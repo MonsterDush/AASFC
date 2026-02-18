@@ -31,3 +31,4 @@ class Shift(Base):
     venue = relationship("Venue")
     interval = relationship("ShiftInterval")
     assignments = relationship("ShiftAssignment", back_populates="shift", cascade="all, delete-orphan")
+    comments = relationship("ShiftComment", back_populates="shift", cascade="all, delete-orphan")

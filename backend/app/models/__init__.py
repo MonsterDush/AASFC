@@ -9,6 +9,7 @@ from .venue_position import VenuePosition
 from .shift_interval import ShiftInterval
 from .shift import Shift
 from .shift_assignment import ShiftAssignment
+from .shift_comment import ShiftComment
 from .daily_report import DailyReport
 from .daily_report_attachment import DailyReportAttachment
 from .adjustment import Adjustment
@@ -28,6 +29,7 @@ __all__ = [
     "ShiftInterval",
     "Shift",
     "ShiftAssignment",
+    "ShiftComment",
     "DailyReport",
     "DailyReportAttachment",
     "Adjustment",

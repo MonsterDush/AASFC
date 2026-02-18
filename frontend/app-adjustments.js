@@ -31,6 +31,14 @@ const el = {
   btnCreate: document.getElementById("btnCreate"),
 };
 
+function personLabel(u) {
+  if (!u) return "—";
+  if (u.full_name) return u.full_name;
+  if (u.short_name) return u.short_name;
+  if (u.tg_username) return "@" + u.tg_username;
+  return "#" + (u.id ?? "");
+}
+
 function esc(s){
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -148,7 +156,7 @@ function renderList(data) {
     row.className = "row";
     row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0; gap:10px;";
 
-    const who = it.member ? `@${it.member.tg_username || "-"}` : "(заведение)";
+    const who = it.member ? personLabel(it.member) : "(заведение)";
 
     row.innerHTML = `
       <div>
@@ -163,7 +171,10 @@ function renderList(data) {
       const members = await loadMembers().catch(() => []);
       const memberOpts = [
         `<option value="0">— (по заведению)</option>`,
-        ...members.map((m) => `<option value="${esc(m.user_id)}">@${esc(m.tg_username || "-")}${m.full_name ? ` (${esc(m.full_name)})` : ""}</option>`),
+        ...members.map((m) => {
+          const label = (m.full_name || m.short_name) ? `${esc(m.full_name || m.short_name)}${m.tg_username ? ` — @${esc(m.tg_username)}` : ""}` : `@${esc(m.tg_username || "-")}`;
+          return `<option value="${esc(m.user_id)}">${label}</option>`;
+        }),
       ].join("");
 
       const html = `

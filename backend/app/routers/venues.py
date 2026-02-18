@@ -2323,3 +2323,82 @@ def remove_shift_assignment(
     db.delete(a)
     db.commit()
     return {"ok": True}
+
+
+
+class ShiftCommentIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+@router.get("/{venue_id}/shifts/{shift_id}/comments")
+def list_shift_comments(
+    venue_id: int,
+    shift_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
+    if shift is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    rows = db.execute(
+        select(ShiftComment, User)
+        .join(User, User.id == ShiftComment.author_user_id)
+        .where(ShiftComment.shift_id == shift_id)
+        .order_by(ShiftComment.created_at.asc(), ShiftComment.id.asc())
+    ).all()
+
+    return [
+        {
+            "id": c.id,
+            "shift_id": c.shift_id,
+            "text": c.text,
+            "created_at": c.created_at.isoformat(),
+            "author": {
+                "id": u.id,
+                "tg_username": u.tg_username,
+                "full_name": u.full_name,
+                "short_name": u.short_name,
+            },
+        }
+        for (c, u) in rows
+    ]
+
+
+@router.post("/{venue_id}/shifts/{shift_id}/comments")
+def add_shift_comment(
+    venue_id: int,
+    shift_id: int,
+    payload: ShiftCommentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
+    if shift is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty comment")
+
+    c = ShiftComment(shift_id=shift_id, author_user_id=user.id, text=text)
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+
+    return {
+        "id": c.id,
+        "shift_id": c.shift_id,
+        "text": c.text,
+        "created_at": c.created_at.isoformat(),
+        "author": {
+            "id": user.id,
+            "tg_username": user.tg_username,
+            "full_name": user.full_name,
+            "short_name": user.short_name,
+        },
+    }

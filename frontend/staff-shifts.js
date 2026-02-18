@@ -8,6 +8,7 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMe,
+  getMyVenues,
   getMyVenuePermissions,
   getVenuePositions,
 } from "/app.js";
@@ -51,6 +52,7 @@ const mode = {
   box: document.getElementById("calendarMode"),
   all: document.getElementById("modeAll"),
   mine: document.getElementById("modeMine"),
+  global: document.getElementById("modeGlobal"),
 };
 
 const modal = document.getElementById("modal");
@@ -174,6 +176,8 @@ let canViewRevenue = false;
 
 const LS_SHOW_ALL = "axelio.shifts.showAll";
 let showAllOnCalendar = false;
+let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "venue";
+let isMultiVenue = false;
 
 let curMonth = new Date();
 curMonth.setDate(1);
@@ -181,6 +185,7 @@ curMonth.setDate(1);
 let intervals = [];
 let positions = [];
 let shifts = [];
+let globalShifts = [];
 let shiftsByDate = new Map();
 let salaryByDate = new Map(); // dateISO -> total my_salary for the day (only when report exists)
 
@@ -206,33 +211,63 @@ function shiftStartHHMM(s) {
 // --- toggle ---
 function renderModeToggle() {
   if (!mode.box) return;
-  if (!canEdit) { mode.box.style.display = "none"; return; }
+
+  // показываем переключатель:
+  // - редактор расписания (canEdit) => "Все/Только мои"
+  // - сотрудник с 2+ заведениями => добавляется "Общий"
+  if (!canEdit && !isMultiVenue) {
+    mode.box.style.display = "none";
+    return;
+  }
+
   mode.box.style.display = "inline-flex";
 
+  // видимость кнопок
+  if (mode.all) mode.all.style.display = canEdit ? "" : "none";
+  if (mode.mine) mode.mine.style.display = "";
+  if (mode.global) mode.global.style.display = isMultiVenue ? "" : "none";
+
   const setActive = () => {
-    mode.all?.classList.toggle("active", !!showAllOnCalendar);
-    mode.mine?.classList.toggle("active", !showAllOnCalendar);
+    // editor toggle
+    mode.all?.classList.toggle("active", canEdit && calendarScope === "venue" && !!showAllOnCalendar);
+    mode.mine?.classList.toggle("active", calendarScope === "venue" && (!canEdit || !showAllOnCalendar));
+    mode.global?.classList.toggle("active", calendarScope === "global");
   };
+
+  const setScope = (scope) => {
+    calendarScope = scope;
+    localStorage.setItem(LS_SCOPE, scope);
+    setActive();
+    loadMonth();
+  };
+
   setActive();
 
-  mode.all.onclick = () => {
+  mode.all && (mode.all.onclick = () => {
     showAllOnCalendar = true;
     localStorage.setItem(LS_SHOW_ALL, "1");
-    setActive();
-    renderMonth();
-  };
-  mode.mine.onclick = () => {
+    setScope("venue");
+  });
+
+  mode.mine && (mode.mine.onclick = () => {
     showAllOnCalendar = false;
     localStorage.setItem(LS_SHOW_ALL, "0");
-    setActive();
-    renderMonth();
-  };
+    setScope("venue");
+  });
+
+  mode.global && (mode.global.onclick = () => {
+    setScope("global");
+  });
 }
+
 
 async function loadContext() {
   if (!venueId) return;
 
   me = await getMe().catch(() => null);
+  const venuesList = await getMyVenues().catch(() => []);
+  isMultiVenue = Array.isArray(venuesList) && venuesList.length >= 2;
+
   perms = await getMyVenuePermissions(venueId).catch(() => null);
 
   myRole = perms?.role || perms?.venue_role || perms?.my_role || null;
@@ -263,15 +298,52 @@ async function loadContext() {
   } catch { positions = []; }
 }
 
+
+// ----- Общий календарь (multi-venue) -----
+function isPastDateISO(dateISO) {
+  const d = new Date(dateISO.length === 10 ? dateISO + "T00:00:00" : dateISO);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return d < today;
+}
+
+function fmtMoney(n) {
+  if (n === null || n === undefined) return "—";
+  const v = Math.round(Number(n));
+  if (!isFinite(v)) return "—";
+  return v.toLocaleString("ru-RU");
+}
+
+function formatGlobalLine(item) {
+  const t = item?.interval?.start_time ? item.interval.start_time : "";
+  const venueName = item?.venue?.name || "Заведение";
+  if (isPastDateISO(item.date)) return fmtMoney(item.my_salary);
+  return t ? `${venueName} — ${t}` : `${venueName}`;
+}
+
+async function loadMyGlobalShifts(monthStr) {
+  const out = await api(`/me/shifts?month=${encodeURIComponent(monthStr)}`).catch(() => []);
+  return Array.isArray(out) ? out : [];
+}
+
 async function loadMonth() {
   if (!venueId) return;
 
   const m = ym(curMonth);
   try {
-    const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m)}`);
-    shifts = normalizeList(out);
+    if (calendarScope === "global") {
+      const out = await loadMyGlobalShifts(m);
+      globalShifts = normalizeList(out).map(x => ({ ...x, id: x.id ?? x.shift_id }));
+      shifts = [];
+    } else {
+      const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m)}`);
+      shifts = normalizeList(out);
+      globalShifts = [];
+    }
   } catch (e) {
     shifts = [];
+    globalShifts = [];
     toast(e?.message || "Не удалось загрузить смены", "err");
   }
 
@@ -284,7 +356,9 @@ function buildIndex() {
   shiftsByDate = new Map();
   salaryByDate = new Map();
 
-  for (const s of shifts) {
+  const list = (calendarScope === "global") ? globalShifts : shifts;
+
+  for (const s of list) {
     const date = s.date || s.shift_date || s.day;
     if (!date) continue;
 
@@ -325,6 +399,7 @@ function formatDateRuNoG(iso) {
 }
 
 function filterForCalendar(listAll, dateStr) {
+  if (calendarScope === "global") return listAll;
   const myId = me?.id ?? null;
 
   // staff w/o edit -> only mine
@@ -497,6 +572,12 @@ function renderMonth() {
       let lines = [];
 
       for (const s of list) {
+        if (calendarScope === "global") {
+          lines.push(formatGlobalLine(s));
+          if (lines.length >= maxLines) break;
+          continue;
+        }
+
         const assigns = (s.assignments || s.shift_assignments || []);
         if (assigns.length) {
           for (const a of assigns) {
@@ -595,13 +676,88 @@ function renderShiftCard(s, allowEdit) {
     `;
   }
 
+  const commentsHtml = `
+    <div class="sep" style="margin:12px 0"></div>
+    <div class="muted" style="font-size:12px;margin-bottom:6px">Комментарии</div>
+    <div data-comments-list="${shiftId}" class="muted" style="font-size:12px">Загрузка…</div>
+    <div class="row" style="margin-top:8px; gap:10px; align-items:flex-start; flex-wrap:wrap">
+      <textarea class="textarea" data-comments-input="${shiftId}" placeholder="Написать комментарий…" style="flex:1; min-width:220px; min-height:70px"></textarea>
+      <button class="btn" data-comments-send="${shiftId}">Отправить</button>
+    </div>
+  `;
+
   return `
     <div class="card" data-shiftcard="${shiftId}">
       <b>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time)})</span>` : ""}</b>
       ${peopleHtml}
       ${editorHtml}
+      ${commentsHtml}
     </div>
   `;
+}
+
+
+async function loadShiftComments(shiftId) {
+  const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/comments`).catch(() => []);
+  return Array.isArray(out) ? out : [];
+}
+
+function formatCommentAuthor(u) {
+  if (!u) return "—";
+  return u.short_name || u.full_name || (u.tg_username ? "@" + u.tg_username : ("#" + (u.id ?? "")));
+}
+
+function renderCommentsInto(shiftId, comments) {
+  const box = document.querySelector(`[data-comments-list="${shiftId}"]`);
+  if (!box) return;
+  if (!comments || !comments.length) {
+    box.innerHTML = '<span class="muted">Нет комментариев</span>';
+    return;
+  }
+  box.innerHTML = "";
+  for (const c of comments) {
+    const row = document.createElement("div");
+    row.className = "muted";
+    row.style.fontSize = "12px";
+    row.style.marginTop = "6px";
+    const who = formatCommentAuthor(c.author);
+    const dt = c.created_at ? new Date(c.created_at) : null;
+    const when = dt ? dt.toLocaleString("ru-RU", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : "";
+    row.innerHTML = `<b>${escapeHtml(who)}</b>${when ? ` <span class="muted">· ${escapeHtml(when)}</span>` : ""}<div style="margin-top:2px">${escapeHtml(c.text || "")}</div>`;
+    box.appendChild(row);
+  }
+}
+
+async function wireShiftComments(shiftId) {
+  const btn = document.querySelector(`[data-comments-send="${shiftId}"]`);
+  const inp = document.querySelector(`[data-comments-input="${shiftId}"]`);
+  if (!btn || !inp) return;
+
+  const refresh = async () => {
+    const comments = await loadShiftComments(shiftId);
+    renderCommentsInto(shiftId, comments);
+  };
+
+  // initial load
+  refresh();
+
+  btn.onclick = async () => {
+    const text = String(inp.value || "").trim();
+    if (!text) return;
+    btn.disabled = true;
+    try {
+      await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/comments`, {
+        method: "POST",
+        body: { text },
+      });
+      inp.value = "";
+      await refresh();
+    } catch (e) {
+      toast(e?.message || "Не удалось отправить комментарий", "err");
+    } finally {
+      btn.disabled = false;
+    }
+  };
 }
 
 function wireShiftEditor(dateStr, shift, allowEdit) {
@@ -842,6 +998,7 @@ function openDay(dateStr) {
   }
 
   for (const s of list) wireShiftEditor(dateStr, s, allowEdit);
+      wireShiftComments(s.id);
 }
 
 // month navigation

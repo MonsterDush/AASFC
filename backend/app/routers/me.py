@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from datetime import date
+
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +16,10 @@ from app.models import (
     Permission,
     RolePermissionDefault,
     VenuePosition,
+    Shift,
+    ShiftAssignment,
+    ShiftInterval,
+    DailyReport,
 )
 
 
@@ -281,3 +287,92 @@ def my_venue_permissions(
         "position": position_obj,
         "position_flags": flags,
     }
+
+
+
+@router.get("/me/shifts")
+def my_shifts_across_venues(
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return current user's shifts across all active venues (for 'Общий' calendar)."""
+
+    try:
+        y_s, m_s = month.split("-")
+        y = int(y_s)
+        m = int(m_s)
+        start = date(y, m, 1)
+        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+
+    # only shifts where the user is assigned
+    rows = db.execute(
+        select(
+            Shift.id.label("shift_id"),
+            Shift.date.label("shift_date"),
+            Shift.venue_id.label("venue_id"),
+            Venue.name.label("venue_name"),
+            Shift.interval_id.label("interval_id"),
+            ShiftInterval.title.label("interval_title"),
+            ShiftInterval.start_time.label("start_time"),
+            ShiftInterval.end_time.label("end_time"),
+            VenuePosition.rate.label("rate"),
+            VenuePosition.percent.label("percent"),
+        )
+        .join(Shift, Shift.id == ShiftAssignment.shift_id)
+        .join(Venue, Venue.id == Shift.venue_id)
+        .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
+        .join(VenuePosition, VenuePosition.id == ShiftAssignment.venue_position_id)
+        .where(
+            ShiftAssignment.member_user_id == user.id,
+            Shift.is_active.is_(True),
+            Shift.date >= start,
+            Shift.date < end,
+        )
+        .order_by(Shift.date.asc(), Shift.id.asc())
+    ).all()
+
+    if not rows:
+        return []
+
+    # preload daily reports per (venue_id, date) for salary calc
+    keys = {(r.venue_id, r.shift_date) for r in rows}
+    reports = db.execute(
+        select(DailyReport).where(
+            DailyReport.venue_id.in_({k[0] for k in keys}),
+            DailyReport.date.in_({k[1] for k in keys}),
+        )
+    ).scalars().all()
+    report_by_key = {(r.venue_id, r.date): r for r in reports}
+
+    out = []
+    for r in rows:
+        rep = report_by_key.get((r.venue_id, r.shift_date))
+        my_salary = None
+        revenue_total = None
+        if rep is not None:
+            revenue_total = rep.revenue_total
+            try:
+                my_salary = int(r.rate) + (int(r.percent) / 100.0) * rep.revenue_total
+            except Exception:
+                my_salary = None
+
+        out.append(
+            {
+                "shift_id": r.shift_id,
+                "date": r.shift_date.isoformat(),
+                "venue": {"id": r.venue_id, "name": r.venue_name},
+                "interval": {
+                    "id": r.interval_id,
+                    "title": r.interval_title,
+                    "start_time": r.start_time.strftime("%H:%M"),
+                    "end_time": r.end_time.strftime("%H:%M"),
+                },
+                "my_salary": my_salary,
+                "revenue_total": revenue_total,
+            }
+        )
+
+    return out
