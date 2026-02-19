@@ -20,5 +20,5 @@ class AdjustmentDisputeComment(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    dispute = relationship("AdjustmentDispute")
+    dispute = relationship("AdjustmentDispute", back_populates="comments")
     author_user = relationship("User")

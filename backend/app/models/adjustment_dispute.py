@@ -36,10 +36,12 @@ class AdjustmentDispute(Base):
 
     comments = relationship(
         "AdjustmentDisputeComment",
-        primaryjoin="AdjustmentDispute.id==AdjustmentDisputeComment.dispute_id",
+        back_populates="dispute",
         order_by="AdjustmentDisputeComment.created_at.asc()",
         lazy="selectin",
+        cascade="all, delete-orphan",
     )
+
 
 
 Index("ix_adj_disputes_venue_adjustment", AdjustmentDispute.venue_id, AdjustmentDispute.adjustment_id)
