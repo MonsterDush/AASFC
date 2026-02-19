@@ -130,10 +130,13 @@ if (goSalary) goSalary.onclick = () => (location.href = `/staff-salary.html${qs}
 
 const goAdjustments = document.getElementById("goAdjustments");
 if (goAdjustments) {
-  goAdjustments.href = canManageAdjustments
-    ? `/app-adjustments.html${qs}`
-    : `/staff-adjustments.html${qs}`;
+  goAdjustments.onclick = () => {
+    location.href = canManageAdjustments
+      ? `/app-adjustments.html${qs}`
+      : `/staff-adjustments.html${qs}`;
+  };
 }
+
           
   </script>
 </body>
