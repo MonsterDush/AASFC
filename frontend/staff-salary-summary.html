@@ -25,6 +25,7 @@
         <div class="row" style="gap:10px;align-items:center">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
+          <input class="input" id="monthPicker" type="month" style="max-width:160px" />
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
         <button class="btn" id="btnReload">Обновить</button>
@@ -32,7 +33,6 @@
 
       <div class="itemcard" style="margin-top:12px">
         <div class="row" style="justify-content:space-between"><div class="muted">Начислено</div><b id="tEarned">0</b></div>
-        <div class="row" style="justify-content:space-between"><div class="muted">Чаевые</div><b id="tTips">0</b></div>
         <div class="row" style="justify-content:space-between"><div class="muted">Премии</div><b id="tBonuses">0</b></div>
         <div class="row" style="justify-content:space-between"><div class="muted">Штрафы/Списания</div><b id="tPenalties">0</b></div>
         <div class="row" style="justify-content:space-between; margin-top:8px; border-top:1px solid var(--border); padding-top:10px">
@@ -48,7 +48,7 @@
       </div>
 
       <div class="muted" style="margin-top:10px; font-size:12px">
-        Начисление считается по сменам, для которых есть отчёт (DailyReport). Чаевые делятся поровну между назначенными на смену. Штрафы/премии берутся из корректировок за месяц.
+        Начисление считается по сменам, для которых есть отчёт (DailyReport). Штрафы/премии берутся из корректировок за месяц.
       </div>
     </div>
 

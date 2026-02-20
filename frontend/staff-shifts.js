@@ -175,7 +175,6 @@ let canEdit = false;
 let canViewRevenue = false;
 
 const LS_SHOW_ALL = "axelio.shifts.showAll";
-const LS_SCOPE = "axelio.shifts.scope"; // 'venue' | 'global'
 let showAllOnCalendar = false;
 let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "venue";
 let isMultiVenue = false;
@@ -320,8 +319,7 @@ function formatGlobalLine(item) {
   const t = item?.interval?.start_time ? item.interval.start_time : "";
   const venueName = item?.venue?.name || "Заведение";
   if (isPastDateISO(item.date)) return fmtMoney(item.my_salary);
-  // Будущие смены: сначала название заведения, затем время начала
-  return t ? `${venueName} · ${t}` : `${venueName}`;
+  return t ? `${venueName} — ${t}` : `${venueName}`;
 }
 
 async function loadMyGlobalShifts(monthStr) {
@@ -538,23 +536,13 @@ function renderMonth() {
       else {
         // будущее / сегодня: показать время начала первой моей смены
         const firstShift = list[0];
-        // В "Общий" режиме бейдж должен быть "Заведение · Время", а не только время
-        if (calendarScope === "global") {
-          const gl = firstShift ? formatGlobalLine(firstShift) : "";
-          if (gl) {
-            const line = document.createElement("div");
-            line.className = "day-salary";
-            line.textContent = gl;
-            box.appendChild(line);
-          }
-        } else {
-          const t = firstShift ? shiftStartHHMM(firstShift) : "";
-          if (t) {
-            const line = document.createElement("div");
-            line.className = "day-salary";
-            line.textContent = t;
-            box.appendChild(line);
-          }
+        const t = firstShift ? shiftStartHHMM(firstShift) : "";
+        // --- цветные овальчики (ALL mode) ---
+        if (t) {
+          const line = document.createElement("div");
+          line.className = "day-salary";
+          line.textContent = t;
+          box.appendChild(line);
         }
       }
       // цветные овальчики даже в "моих" (чтобы не было уныло)
@@ -650,7 +638,7 @@ function renderMonth() {
   }
 }
 
-function renderShiftCard(s, allowEdit, allowComments) {
+function renderShiftCard(s, allowEdit) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
   const shiftId = (s.id ?? s.shift_id);
@@ -688,7 +676,7 @@ function renderShiftCard(s, allowEdit, allowComments) {
     `;
   }
 
-  const commentsHtml = allowComments ? `
+  const commentsHtml = `
     <div class="sep" style="margin:12px 0"></div>
     <div class="muted" style="font-size:12px;margin-bottom:6px">Комментарии</div>
     <div data-comments-list="${shiftId}" class="muted" style="font-size:12px">Загрузка…</div>
@@ -696,7 +684,7 @@ function renderShiftCard(s, allowEdit, allowComments) {
       <textarea class="textarea" data-comments-input="${shiftId}" placeholder="Написать комментарий…" style="flex:1; min-width:220px; min-height:70px"></textarea>
       <button class="btn" data-comments-send="${shiftId}">Отправить</button>
     </div>
-  ` : "";
+  `;
 
   return `
     <div class="card" data-shiftcard="${shiftId}">
@@ -853,9 +841,6 @@ function openDay(dateStr) {
   const list = listAll; // в модалке показываем всех
 
   const allowEdit = canEditDay(dateStr);
-  // Комментарии разрешены только в режиме конкретного заведения ("Все" / "Только мои").
-  // В "Общий" (across venues) комментарии отключаем: там нет корректного venue_id контекста.
-  const allowComments = (calendarScope === "venue");
 
   const title = formatDateRuNoG(dateStr);
   const subtitle = allowEdit ? "Редактирование" : "Просмотр";
@@ -875,7 +860,7 @@ function openDay(dateStr) {
     html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день смен нет</div></div>`;
   } else {
     html += `<div class="stack" style="margin-top:12px">`;
-    for (const s of list) html += renderShiftCard(s, allowEdit, allowComments);
+    for (const s of list) html += renderShiftCard(s, allowEdit);
     html += `</div>`;
   }
 
@@ -941,7 +926,7 @@ function openDay(dateStr) {
 
     const optCreate = document.createElement("option");
     optCreate.value = "__create__";
-    optCreate.textContent = "Создать промежуток…";
+    optCreate.textContent = "➕ Создать промежуток…";
     sel.appendChild(optCreate);
 
     if (!intervals.length) sel.value = "__create__";
@@ -1012,11 +997,8 @@ function openDay(dateStr) {
     };
   }
 
-  for (const s of list) {
-    wireShiftEditor(dateStr, s, allowEdit);
-    if (allowComments) wireShiftComments(s.id);
-  }
-
+  for (const s of list) wireShiftEditor(dateStr, s, allowEdit);
+      wireShiftComments(s.id);
 }
 
 // month navigation

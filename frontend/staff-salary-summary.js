@@ -29,6 +29,7 @@ try {
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
+  monthPicker: document.getElementById("monthPicker"),
   prev: document.getElementById("monthPrev"),
   next: document.getElementById("monthNext"),
   reload: document.getElementById("btnReload"),
@@ -93,6 +94,8 @@ function syncUrl() {
 async function load() {
   syncUrl();
   el.monthLabel.textContent = monthTitle(cur);
+  if (el.monthPicker) el.monthPicker.value = ym(cur);
+
   el.list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
 
   try {
@@ -100,7 +103,7 @@ async function load() {
     const totals = data?.totals || {};
 
     el.tEarned.textContent = fmtMoney(totals.earned);
-    el.tTips.textContent = fmtMoney(totals.tips);
+    if (el.tTips) el.tTips.textContent = fmtMoney(totals.tips);
     el.tBonuses.textContent = fmtMoney(totals.bonuses);
     el.tPenalties.textContent = fmtMoney(totals.penalties);
     el.tNet.textContent = fmtMoney(totals.net);
@@ -145,6 +148,15 @@ el.next.onclick = () => {
   cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
   load();
 };
+
+el.monthPicker && (el.monthPicker.onchange = () => {
+  const v = String(el.monthPicker.value || "").trim();
+  if (/^\d{4}-\d{2}$/.test(v)) {
+    const [yy, mm] = v.split("-").map((x) => parseInt(x, 10));
+    if (yy && mm) cur = new Date(yy, mm - 1, 1);
+    load();
+  }
+});
 
 el.reload.onclick = () => load();
 
