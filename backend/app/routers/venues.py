@@ -65,6 +65,7 @@ class PositionCreateIn(BaseModel):
     can_edit_schedule: bool = False
     can_view_adjustments: bool = False
     can_manage_adjustments: bool = False
+    can_resolve_disputes: bool = False
     is_active: bool = True
 
 
@@ -174,58 +175,44 @@ def _require_active_member_or_admin(db: Session, *, venue_id: int, user: User) -
     if not _is_active_member_or_admin(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-def _require_shift_comments_access(db: Session, *, venue_id: int, shift_id: int, user: User) -> "Shift":
-    """Access guard for shift comments.
-
-    Allows:
-      - SUPER_ADMIN/MODERATOR
-      - Active venue members (VenueMember)
-      - Active venue positions (VenuePosition) for this venue
-      - Users assigned to the shift (ShiftAssignment)
-    """
-    shift = db.execute(
-        select(Shift).where(
-            Shift.id == shift_id,
-            Shift.venue_id == venue_id,
-            Shift.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    if shift is None:
-        raise HTTPException(status_code=404, detail="Shift not found")
-
+def _is_shift_comments_allowed(db: Session, *, venue_id: int, shift_id: int, user: User) -> bool:
+    # Admins
     if user.system_role in ("SUPER_ADMIN", "MODERATOR"):
-        return shift
+        return True
 
+    # Venue members (owner/staff)
     m = db.query(VenueMember).filter(
         VenueMember.venue_id == venue_id,
         VenueMember.user_id == user.id,
         VenueMember.is_active.is_(True),
     ).one_or_none()
     if m is not None:
-        return shift
+        return True
 
+    # Position-based staff (common case in current MVP)
     pos = db.execute(
-        select(VenuePosition.id).where(
+        select(VenuePosition).where(
             VenuePosition.venue_id == venue_id,
             VenuePosition.member_user_id == user.id,
             VenuePosition.is_active.is_(True),
         )
     ).scalar_one_or_none()
     if pos is not None:
-        return shift
+        return True
 
-    assigned = db.execute(
-        select(ShiftAssignment.id).where(
+    # Fallback: assigned to this shift
+    sa = db.execute(
+        select(ShiftAssignment).where(
             ShiftAssignment.shift_id == shift_id,
             ShiftAssignment.member_user_id == user.id,
         )
     ).scalar_one_or_none()
-    if assigned is not None:
-        return shift
-
-    raise HTTPException(status_code=403, detail="Forbidden")
+    return bool(sa)
 
 
+def _require_shift_comments_allowed(db: Session, *, venue_id: int, shift_id: int, user: User) -> None:
+    if not _is_shift_comments_allowed(db, venue_id=venue_id, shift_id=shift_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _is_schedule_editor(db: Session, *, venue_id: int, user: User) -> bool:
@@ -688,6 +675,7 @@ def create_position(
     existing.can_edit_schedule = payload.can_edit_schedule
     existing.can_view_adjustments = payload.can_view_adjustments
     existing.can_manage_adjustments = payload.can_manage_adjustments
+    existing.can_resolve_disputes = payload.can_resolve_disputes
     existing.is_active = payload.is_active
     db.commit()
     return {"id": existing.id, "mode": "updated"}
@@ -2391,7 +2379,11 @@ def list_shift_comments(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    shift = _require_shift_comments_access(db, venue_id=venue_id, shift_id=shift_id, user=user)
+    _require_shift_comments_allowed(db, venue_id=venue_id, shift_id=shift_id, user=user)
+
+    shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
+    if shift is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
 
     rows = db.execute(
         select(ShiftComment, User)
@@ -2425,7 +2417,11 @@ def add_shift_comment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    shift = _require_shift_comments_access(db, venue_id=venue_id, shift_id=shift_id, user=user)
+    _require_shift_comments_allowed(db, venue_id=venue_id, shift_id=shift_id, user=user)
+
+    shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
+    if shift is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
 
     text = (payload.text or "").strip()
     if not text:
