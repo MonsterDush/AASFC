@@ -175,11 +175,12 @@ def _require_active_member_or_admin(db: Session, *, venue_id: int, user: User) -
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
-
 def _is_active_member_or_position_or_admin(db: Session, *, venue_id: int, user: User) -> bool:
+    # allow admins
     if user.system_role in ("SUPER_ADMIN", "MODERATOR"):
         return True
 
+    # venue members (owner/staff)
     m = db.query(VenueMember).filter(
         VenueMember.venue_id == venue_id,
         VenueMember.user_id == user.id,
@@ -188,6 +189,7 @@ def _is_active_member_or_position_or_admin(db: Session, *, venue_id: int, user: 
     if m is not None:
         return True
 
+    # position-based access (some staff exist only as VenuePosition)
     pos = db.execute(
         select(VenuePosition).where(
             VenuePosition.venue_id == venue_id,
@@ -201,6 +203,8 @@ def _is_active_member_or_position_or_admin(db: Session, *, venue_id: int, user: 
 def _require_active_member_or_position_or_admin(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_active_member_or_position_or_admin(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
 
 def _is_schedule_editor(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
