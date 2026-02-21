@@ -65,7 +65,6 @@ class PositionCreateIn(BaseModel):
     can_edit_schedule: bool = False
     can_view_adjustments: bool = False
     can_manage_adjustments: bool = False
-    can_resolve_disputes: bool = False
     is_active: bool = True
 
 
@@ -175,6 +174,33 @@ def _require_active_member_or_admin(db: Session, *, venue_id: int, user: User) -
     if not _is_active_member_or_admin(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
 
+
+
+def _is_active_member_or_position_or_admin(db: Session, *, venue_id: int, user: User) -> bool:
+    if user.system_role in ("SUPER_ADMIN", "MODERATOR"):
+        return True
+
+    m = db.query(VenueMember).filter(
+        VenueMember.venue_id == venue_id,
+        VenueMember.user_id == user.id,
+        VenueMember.is_active.is_(True),
+    ).one_or_none()
+    if m is not None:
+        return True
+
+    pos = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.venue_id == venue_id,
+            VenuePosition.member_user_id == user.id,
+            VenuePosition.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    return bool(pos)
+
+
+def _require_active_member_or_position_or_admin(db: Session, *, venue_id: int, user: User) -> None:
+    if not _is_active_member_or_position_or_admin(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 def _is_schedule_editor(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
@@ -636,7 +662,6 @@ def create_position(
     existing.can_edit_schedule = payload.can_edit_schedule
     existing.can_view_adjustments = payload.can_view_adjustments
     existing.can_manage_adjustments = payload.can_manage_adjustments
-    existing.can_resolve_disputes = payload.can_resolve_disputes
     existing.is_active = payload.is_active
     db.commit()
     return {"id": existing.id, "mode": "updated"}
@@ -2340,7 +2365,7 @@ def list_shift_comments(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_active_member_or_position_or_admin(db, venue_id=venue_id, user=user)
 
     shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
     if shift is None:
@@ -2378,7 +2403,7 @@ def add_shift_comment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_active_member_or_position_or_admin(db, venue_id=venue_id, user=user)
 
     shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
     if shift is None:
