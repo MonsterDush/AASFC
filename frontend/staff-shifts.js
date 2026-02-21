@@ -1001,7 +1001,7 @@ function openDay(dateStr) {
 
   for (const s of list) {
     wireShiftEditor(dateStr, s, allowEdit);
-    wireShiftComments(s.id);
+    wireShiftComments((s.id ?? s.shift_id));
   }
 
 }
