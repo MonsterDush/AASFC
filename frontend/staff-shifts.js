@@ -853,7 +853,7 @@ function openDay(dateStr) {
         <div class="muted" style="margin-top:4px">${allowEdit ? "Можно редактировать график" : "Просмотр графика"}</div>
         ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted" style="margin-top:4px">Прошедшие дни может редактировать только владелец</div>` : ``}
       </div>
-      ${allowEdit ? `<button class="btn primary" id="btnAddShift">+ Добавить смену</button>` : ``}
+      ${allowEdit ? `<button class="btn primary" id="btnAddShift" style="margin-top:6px">+ Добавить смену</button>` : ``}
       <button class="btn" id="btnOpenAdjustments">Штрафы/Списания дня</button>
     </div>
   `;
