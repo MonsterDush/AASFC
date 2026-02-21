@@ -903,7 +903,7 @@ function openDay(dateStr) {
   });
 
 
-  if (!allowEdit) return;
+  if (allowEdit) {
 
   const btn = document.getElementById("btnAddShift");
   const card = document.getElementById("addShiftCard");
@@ -998,10 +998,12 @@ function openDay(dateStr) {
       }
     };
   }
+  }
 
+  // wire cards (comments must work even on past days; comments disabled in global mode)
   for (const s of list) {
     wireShiftEditor(dateStr, s, allowEdit);
-    wireShiftComments((s.id ?? s.shift_id));
+    if (calendarScope !== "global") wireShiftComments((s.id ?? s.shift_id));
   }
 
 }
