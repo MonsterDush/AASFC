@@ -657,8 +657,8 @@ function renderShiftCard(s, allowEdit) {
         const uname = (a.tg_username || a.member_username || "").trim();
         const unameTxt = uname ? (uname.startsWith("@") ? uname : "@"+uname) : "";
         return `
-          <div class="list__row" style="justify-content:space-between; align-items:center">
-            <div class="row">
+          <div class="list__row">
+            <div class="row" style="justify-content:space-between; align-items:center">
               <div class="list__main">
                 <div><b>${escapeHtml(label)}</b>${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
               </div>
