@@ -24,7 +24,6 @@ from app.models.venue_invite import VenueInvite
 from app.models.venue_position import VenuePosition
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
-from app.models.shift_comment import ShiftComment
 from app.models.shift_assignment import ShiftAssignment
 from app.models.daily_report import DailyReport
 from app.models.daily_report_attachment import DailyReportAttachment
@@ -174,35 +173,57 @@ def _require_active_member_or_admin(db: Session, *, venue_id: int, user: User) -
     if not _is_active_member_or_admin(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
 
+def _require_shift_comments_access(db: Session, *, venue_id: int, shift_id: int, user: User) -> "Shift":
+    """Access guard for shift comments.
 
-def _is_active_member_or_position_or_admin(db: Session, *, venue_id: int, user: User) -> bool:
-    # allow admins
+    Allows:
+      - SUPER_ADMIN/MODERATOR
+      - Active venue members (VenueMember)
+      - Active venue positions (VenuePosition) for this venue
+      - Users assigned to the shift (ShiftAssignment)
+    """
+    shift = db.execute(
+        select(Shift).where(
+            Shift.id == shift_id,
+            Shift.venue_id == venue_id,
+            Shift.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if shift is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
     if user.system_role in ("SUPER_ADMIN", "MODERATOR"):
-        return True
+        return shift
 
-    # venue members (owner/staff)
     m = db.query(VenueMember).filter(
         VenueMember.venue_id == venue_id,
         VenueMember.user_id == user.id,
         VenueMember.is_active.is_(True),
     ).one_or_none()
     if m is not None:
-        return True
+        return shift
 
-    # position-based access (some staff exist only as VenuePosition)
     pos = db.execute(
-        select(VenuePosition).where(
+        select(VenuePosition.id).where(
             VenuePosition.venue_id == venue_id,
             VenuePosition.member_user_id == user.id,
             VenuePosition.is_active.is_(True),
         )
     ).scalar_one_or_none()
-    return bool(pos)
+    if pos is not None:
+        return shift
 
+    assigned = db.execute(
+        select(ShiftAssignment.id).where(
+            ShiftAssignment.shift_id == shift_id,
+            ShiftAssignment.member_user_id == user.id,
+        )
+    ).scalar_one_or_none()
+    if assigned is not None:
+        return shift
 
-def _require_active_member_or_position_or_admin(db: Session, *, venue_id: int, user: User) -> None:
-    if not _is_active_member_or_position_or_admin(db, venue_id=venue_id, user=user):
-        raise HTTPException(status_code=403, detail="Forbidden")
+    raise HTTPException(status_code=403, detail="Forbidden")
+
 
 
 
@@ -2369,11 +2390,7 @@ def list_shift_comments(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_active_member_or_position_or_admin(db, venue_id=venue_id, user=user)
-
-    shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
-    if shift is None:
-        raise HTTPException(status_code=404, detail="Shift not found")
+    shift = _require_shift_comments_access(db, venue_id=venue_id, shift_id=shift_id, user=user)
 
     rows = db.execute(
         select(ShiftComment, User)
@@ -2407,11 +2424,7 @@ def add_shift_comment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_active_member_or_position_or_admin(db, venue_id=venue_id, user=user)
-
-    shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
-    if shift is None:
-        raise HTTPException(status_code=404, detail="Shift not found")
+    shift = _require_shift_comments_access(db, venue_id=venue_id, shift_id=shift_id, user=user)
 
     text = (payload.text or "").strip()
     if not text:
