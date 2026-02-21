@@ -658,10 +658,12 @@ function renderShiftCard(s, allowEdit) {
         const unameTxt = uname ? (uname.startsWith("@") ? uname : "@"+uname) : "";
         return `
           <div class="list__row">
-            <div class="list__main">
-              <div><b>${escapeHtml(label)}</b>${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
+            <div class="row">
+              <div class="list__main">
+                <div><b>${escapeHtml(label)}</b>${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
+              </div>
+              ${allowEdit ? `<button class="btn danger sm" data-unassign data-shift="${shiftId}" data-user="${a.member_user_id}">Удалить</button>` : ""}
             </div>
-            ${allowEdit ? `<button class="btn danger sm" data-unassign data-shift="${shiftId}" data-user="${a.member_user_id}">Удалить</button>` : ""}
           </div>
         `;
       }).join("") +
