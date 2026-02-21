@@ -177,7 +177,7 @@ def _require_active_member_or_admin(db: Session, *, venue_id: int, user: User) -
 
 def _is_shift_comments_allowed(db: Session, *, venue_id: int, shift_id: int, user: User) -> bool:
     # Admins
-    if user.system_role in ("SUPER_ADMIN", "MODERATOR"):
+    if user.system_role in ("SUPER_ADMIN", "MODERATOR", "STAFF", "OWNER"):
         return True
 
     # Venue members (owner/staff)
