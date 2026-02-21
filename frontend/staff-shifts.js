@@ -691,7 +691,7 @@ function renderShiftCard(s, allowEdit) {
   `;
 
   return `
-    <div class="card" data-shiftcard="${shiftId}">
+    <div class="card" data-shiftcard="${shiftId}" style="margin-top:12px">
       <b>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time)})</span>` : ""}</b>
       ${peopleHtml}
       ${editorHtml}
