@@ -408,7 +408,7 @@ function formatGlobalLine(item) {
   const venueName = item?.venue?.name || "Заведение";
   if (isPastDateISO(item.date)) return fmtMoney(item.my_salary);
   // Будущие смены: сначала название заведения, затем время начала
-  return t ? `${venueName} · ${t}` : `${venueName}`;
+  return t ? `${venueName} • ${t}` : `${venueName}`;
 }
 
 async function loadMyGlobalShifts(monthStr) {
@@ -684,47 +684,48 @@ function renderMonth() {
     const listAll = shiftsByDate.get(dateStr) || [];
     const list = filterForCalendar(listAll, dateStr);
 
-    // --- MY mode: salary for past days (when report exists), or start time for future.
+
+    // --- MY mode ("Только мои") и Global mode ("Общий"): показываем строки, но без dotrow/старых ярлыков.
     if (!showAllOnCalendar) {
-      const past = isPastDay(dateStr);
-      const daySalary = salaryByDate.get(dateStr);
-
-      if (past && Number.isFinite(daySalary) && daySalary > 0) {
-        const sal = document.createElement("div");
-        sal.className = "day-salary";
-        sal.textContent = `+${Math.round(daySalary)}`;
-        box.appendChild(sal);
-      } else {
-        const firstShift = list[0];
-        const t = firstShift ? shiftStartHHMM(firstShift) : "";
-        if (t) {
-          const line = document.createElement("div");
-          line.className = "day-salary";
-          line.textContent = t;
-          box.appendChild(line);
-        }
-      }
-
-      // (dotrow removed) calendar in staff shifts uses colored cal-lines instead
-      // Show up to a couple of interval-colored lines (more informative than dots)
-      const maxLines = 2;
+      const pastDay = isPastDay(dateStr);
+      const maxLines = 3;
       let shown = 0;
 
       for (const s of list) {
-        const t = shiftStartHHMM(s);
-        const title = shiftIntervalTitle(s);
-        const text = calendarScope === "global"
-          ? formatGlobalLine(s)
-          : (t ? `${title} · ${t}` : `${title}`);
-        box.appendChild(makeCalLine(text, s));
-        shown++;
+        let txt = "";
+
+        // "Общий" (multi-venue)
+        if (calendarScope === "global") {
+          if (pastDay) {
+            txt = fmtMoney(s?.my_salary);
+          } else {
+            const venueName = s?.venue?.name || "Заведение";
+            const t = shiftStartHHMM(s) || (s?.interval?.start_time ? String(s.interval.start_time).slice(0, 5) : "");
+            txt = t ? `${venueName} • ${t}` : `${venueName}`;
+          }
+        }
+        // "Мои" (в рамках текущего заведения)
+        else {
+          if (pastDay) {
+            txt = fmtMoney(s?.my_salary);
+          } else {
+            txt = shiftStartHHMM(s);
+          }
+        }
+
+        // если данных нет — не шумим
+        if (txt && txt !== "—") {
+          box.appendChild(makeCalLine(txt, s));
+          shown++;
+        }
+
         if (shown >= maxLines) break;
       }
 
-      if (list.length > maxLines) {
+      if (list.length > shown) {
         const more = document.createElement("div");
-        more.className = "cal-line";
-        more.textContent = `+${list.length - maxLines}`;
+        more.className = "cal-line muted";
+        more.textContent = `+ ещё ${list.length - shown}`;
         box.appendChild(more);
       }
 
