@@ -404,10 +404,17 @@ function fmtMoney(n) {
 }
 
 function formatGlobalLine(item) {
-  const t = item?.interval?.start_time ? item.interval.start_time : "";
   const venueName = item?.venue?.name || "Заведение";
-  if (isPastDateISO(item.date)) return fmtMoney(item.my_salary);
-  // Будущие смены: сначала название заведения, затем время начала
+  const t = shiftStartHHMM(item) || (item?.interval?.start_time ? String(item.interval.start_time).slice(0, 5) : "");
+
+  // Прошедшие: показываем зарплату, а если её нет (ещё нет отчёта) — показываем "Заведение • Время".
+  if (isPastDateISO(item.date)) {
+    const sal = Number(item?.my_salary);
+    if (Number.isFinite(sal)) return fmtMoney(sal);
+    return t ? `${venueName} • ${t}` : `${venueName}`;
+  }
+
+  // Будущие: "Заведение • Время"
   return t ? `${venueName} • ${t}` : `${venueName}`;
 }
 
@@ -696,18 +703,23 @@ function renderMonth() {
 
         // "Общий" (multi-venue)
         if (calendarScope === "global") {
+          const venueName = s?.venue?.name || "Заведение";
+          const t = shiftStartHHMM(s) || (s?.interval?.start_time ? String(s.interval.start_time).slice(0, 5) : "");
+
           if (pastDay) {
-            txt = fmtMoney(s?.my_salary);
+            const sal = Number(s?.my_salary);
+            // Если зарплаты нет (нет отчёта), чтобы день не выглядел "пустым", показываем "Заведение • Время".
+            txt = Number.isFinite(sal) ? fmtMoney(sal) : (t ? `${venueName} • ${t}` : `${venueName}`);
           } else {
-            const venueName = s?.venue?.name || "Заведение";
-            const t = shiftStartHHMM(s) || (s?.interval?.start_time ? String(s.interval.start_time).slice(0, 5) : "");
             txt = t ? `${venueName} • ${t}` : `${venueName}`;
           }
         }
         // "Мои" (в рамках текущего заведения)
         else {
           if (pastDay) {
-            txt = fmtMoney(s?.my_salary);
+            const sal = Number(s?.my_salary);
+            // Если зарплаты нет (нет отчёта), показываем время начала, чтобы не появлялась одинокая строка "+ ещё".
+            txt = Number.isFinite(sal) ? fmtMoney(sal) : shiftStartHHMM(s);
           } else {
             txt = shiftStartHHMM(s);
           }
@@ -722,7 +734,8 @@ function renderMonth() {
         if (shown >= maxLines) break;
       }
 
-      if (list.length > shown) {
+      // Показываем "+ ещё" только если уже отрисовали хотя бы одну строку.
+      if (shown > 0 && list.length > shown) {
         const more = document.createElement("div");
         more.className = "cal-line muted";
         more.textContent = `+ ещё ${list.length - shown}`;
@@ -764,7 +777,7 @@ function renderMonth() {
         return acc + Math.max(1, assigns.length);
       }, 0);
 
-      if (totalLines > maxLines) {
+      if (lines.length > 0 && totalLines > maxLines) {
         const more = document.createElement("div");
         more.className = "cal-line muted";
         more.textContent = `+ ещё ${totalLines - maxLines}`;
