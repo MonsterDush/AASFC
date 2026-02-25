@@ -523,6 +523,28 @@ function formatAllModeLine(shift, assignment) {
   return t ? `${who} — ${t}` : `${who}`;
 }
 
+
+function hexToRgbTriplet(hex) {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return "0 0 0";
+  const r = parseInt(h.slice(0,2), 16);
+  const g = parseInt(h.slice(2,4), 16);
+  const b = parseInt(h.slice(4,6), 16);
+  return `${r} ${g} ${b}`;
+}
+
+function makeCalLine(text, shift) {
+  const line = document.createElement("div");
+  line.className = "cal-line";
+  line.textContent = text;
+
+  // colorize by interval
+  const c = colorForInterval(shiftIntervalId(shift));
+  line.dataset.icolor = "1";
+  line.style.setProperty("--line-rgb", hexToRgbTriplet(c));
+  return line;
+}
+
 function collectDotsMyMode(list, dateStr) {
   // In "mine" mode we show one dot per shift (interval), not per person.
   const out = [];
@@ -683,17 +705,37 @@ function renderMonth() {
         }
       }
 
-      // Dots: future days -> interval colors, past days -> one neutral (--dotPast)
-      appendDotRow(box, collectDotsMyMode(list, dateStr), { maxDots: 6 });
+      // (dotrow removed) calendar in staff shifts uses colored cal-lines instead
+      // Show up to a couple of interval-colored lines (more informative than dots)
+      const maxLines = 2;
+      let shown = 0;
+
+      for (const s of list) {
+        const t = shiftStartHHMM(s);
+        const title = shiftIntervalTitle(s);
+        const text = calendarScope === "global"
+          ? formatGlobalLine(s)
+          : (t ? `${title} · ${t}` : `${title}`);
+        box.appendChild(makeCalLine(text, s));
+        shown++;
+        if (shown >= maxLines) break;
+      }
+
+      if (list.length > maxLines) {
+        const more = document.createElement("div");
+        more.className = "cal-line";
+        more.textContent = `+${list.length - maxLines}`;
+        box.appendChild(more);
+      }
 
     } else {
-      // --- ALL mode: show a few text lines + colored dots per person/interval
+      // --- ALL mode: show a few text lines (colorized by interval)
       const maxLines = 4;
-      let lines = [];
+      const lines = [];
 
       for (const s of list) {
         if (calendarScope === "global") {
-          lines.push(formatGlobalLine(s));
+          lines.push({ text: formatGlobalLine(s), shift: s });
           if (lines.length >= maxLines) break;
           continue;
         }
@@ -701,24 +743,19 @@ function renderMonth() {
         const assigns = (s.assignments || s.shift_assignments || []);
         if (assigns.length) {
           for (const a of assigns) {
-            lines.push(formatAllModeLine(s, a));
+            lines.push({ text: formatAllModeLine(s, a), shift: s });
             if (lines.length >= maxLines) break;
           }
         } else {
-          lines.push(formatAllModeLine(s, null));
+          lines.push({ text: formatAllModeLine(s, null), shift: s });
         }
+
         if (lines.length >= maxLines) break;
       }
 
-      for (const t of lines) {
-        const line = document.createElement("div");
-        line.className = "cal-line";
-        line.textContent = t;
-        box.appendChild(line);
+      for (const item of lines) {
+        box.appendChild(makeCalLine(item.text, item.shift));
       }
-
-      // colored dots for intervals / people
-      appendDotRow(box, collectDotsAllMode(list, dateStr), { maxDots: 10 });
 
       // +more lines hint
       const totalLines = list.reduce((acc, s) => {
