@@ -201,6 +201,20 @@ input:focus,select:focus,textarea:focus{
 .modal.open{display:block}
 .modal__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55)}
 .modal__panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(920px, calc(100vw - 28px));max-height:min(80vh, 720px);overflow:auto;border-radius:18px;background:var(--card);border:1px solid var(--border);box-shadow:var(--shadow);padding:14px}
+
+@media (max-width:520px){
+  .modal__panel{
+    left:0;
+    right:0;
+    bottom:0;
+    top:auto;
+    transform:none;
+    width:100%;
+    max-height:min(92vh, 860px);
+    border-radius:18px 18px 0 0;
+    padding-bottom:calc(14px + env(safe-area-inset-bottom));
+  }
+}
 .modal__head{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .modal__title{font-weight:900}
 
@@ -254,7 +268,7 @@ input:focus,select:focus,textarea:focus{
 .cal-cell--today{outline:2px solid var(--accent);outline-offset:-2px}
 
 .cal-daynum{font-weight:700;font-size:13px;line-height:1;color:var(--muted)}
-.cal-badges{display:flex;flex-direction:column;gap:4px;min-width:0;margin-top:4px}
+.cal-badges{display:flex;flex-direction:column;gap:4px;min-width:0;width:100%;margin-top:4px}
 
 .badge{
   max-width:100%;
@@ -275,6 +289,8 @@ input:focus,select:focus,textarea:focus{
   display:flex;
   align-items:center;
   gap:6px;
+  max-width:100%;
+  min-width:0;
   font-size:10px;
   font-weight:800;
   line-height:1.2;
@@ -283,9 +299,16 @@ input:focus,select:focus,textarea:focus{
   background:var(--card);
   border:1px solid var(--border);
   color:var(--text);
-  white-space:nowrap;
+}
+.cal-line__text{
+  flex:1;
+  min-width:0;
   overflow:hidden;
   text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.cal-line.muted{
+  color:var(--muted);
 }
 
 /* Colorized cal-line (interval colors) */
@@ -393,3 +416,60 @@ input:focus,select:focus,textarea:focus{
 /* Disable switch animation during bulk on/off in positions modal */
 .modal.bulk .switch .slider{transition:none !important;}
 .modal.bulk .switch .slider:before{transition:none !important;}
+
+
+/* Day modal: summary + mini-graph */
+.kpirow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.kpi{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  font-weight:800;
+  font-size:12px;
+  line-height:1;
+}
+.kpi .muted{font-weight:700;font-size:12px}
+
+.daygraph{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.daygraph__row{display:flex;gap:10px;align-items:center}
+.daygraph__time{
+  width:78px;
+  flex:0 0 78px;
+  font-family:var(--mono);
+  font-size:12px;
+  color:var(--muted);
+}
+.daygraph__bar{
+  position:relative;
+  flex:1;
+  min-width:0;
+  padding:8px 10px;
+  border-radius:14px;
+  border:1px solid rgba(var(--line-rgb), var(--calLineBorderAlpha));
+  background:rgba(var(--line-rgb), var(--calLineAlpha));
+  box-shadow: inset 3px 0 0 rgb(var(--line-rgb));
+}
+.daygraph__label{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  min-width:0;
+  font-weight:900;
+  font-size:13px;
+}
+.daygraph__label span:first-child{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.daygraph__meta{
+  flex:0 0 auto;
+  font-weight:800;
+  color:var(--muted);
+  font-size:12px;
+}

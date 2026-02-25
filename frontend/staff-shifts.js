@@ -543,13 +543,88 @@ function hexToRgbTriplet(hex) {
 function makeCalLine(text, shift) {
   const line = document.createElement("div");
   line.className = "cal-line";
-  line.textContent = text;
+
+  const span = document.createElement("span");
+  span.className = "cal-line__text";
+  span.textContent = text;
+  line.appendChild(span);
+
+  // Tooltip on desktop (helps when ellipsis kicks in)
+  try { line.title = text; } catch {}
 
   // colorize by interval
   const c = colorForInterval(shiftIntervalId(shift));
   line.dataset.icolor = "1";
   line.style.setProperty("--line-rgb", hexToRgbTriplet(c));
   return line;
+}
+
+
+function uniqueAssignedPeopleCount(shiftsList) {
+  const set = new Set();
+  for (const s of (shiftsList || [])) {
+    const assigns = (s.assignments || s.shift_assignments || []);
+    for (const a of assigns) {
+      const id = a.member_user_id ?? a.user_id ?? a.id;
+      if (id != null) set.add(String(id));
+    }
+  }
+  return set.size;
+}
+
+function sumSalary(shiftsList) {
+  let total = 0;
+  let has = false;
+  for (const s of (shiftsList || [])) {
+    const sal = Number(s?.my_salary);
+    if (Number.isFinite(sal)) { total += sal; has = true; }
+  }
+  return has ? total : null;
+}
+
+function renderDayKpis(shiftsList, dateStr) {
+  const shiftsCount = (shiftsList || []).length;
+  const assignsCount = (shiftsList || []).reduce((acc, s) => acc + ((s.assignments || s.shift_assignments || []).length || 0), 0);
+  const people = uniqueAssignedPeopleCount(shiftsList);
+  const past = isPastDay(dateStr);
+  const total = past ? sumSalary(shiftsList) : null;
+
+  const parts = [
+    `<div class="kpi">Смен: <span class="muted">${shiftsCount}</span></div>`,
+    `<div class="kpi">Назначений: <span class="muted">${assignsCount}</span></div>`,
+    `<div class="kpi">Людей: <span class="muted">${people}</span></div>`,
+  ];
+  if (total != null) {
+    parts.push(`<div class="kpi">Сумма: <span class="muted">${escapeHtml(fmtMoney(total))}</span></div>`);
+  }
+  return `<div class="kpirow">${parts.join("")}</div>`;
+}
+
+function renderDayMiniGraph(shiftsList) {
+  const list = (shiftsList || []);
+  if (!list.length) return "";
+
+  const rows = list.map((s) => {
+    const title = shiftIntervalTitle(s) || "Интервал";
+    const time = (shiftTimeLabel(s) || "").replace("-", "–");
+    const assigns = (s.assignments || s.shift_assignments || []);
+    const meta = assigns.length ? `${assigns.length} чел.` : "—";
+    const c = colorForInterval(shiftIntervalId(s));
+    const rgb = hexToRgbTriplet(c);
+    return `
+      <div class="daygraph__row">
+        <div class="daygraph__time">${escapeHtml(time || "")}</div>
+        <div class="daygraph__bar" style="--line-rgb:${rgb}">
+          <div class="daygraph__label">
+            <span>${escapeHtml(title)}</span>
+            <span class="daygraph__meta">${escapeHtml(meta)}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  return `<div class="daygraph">${rows}</div>`;
 }
 
 function collectDotsMyMode(list, dateStr) {
@@ -738,7 +813,8 @@ function renderMonth() {
       if (shown > 0 && list.length > shown) {
         const more = document.createElement("div");
         more.className = "cal-line muted";
-        more.textContent = `+ ещё ${list.length - shown}`;
+        more.textContent = "…";
+        more.title = "Ещё смены в этот день";
         box.appendChild(more);
       }
 
@@ -780,7 +856,8 @@ function renderMonth() {
       if (lines.length > 0 && totalLines > maxLines) {
         const more = document.createElement("div");
         more.className = "cal-line muted";
-        more.textContent = `+ ещё ${totalLines - maxLines}`;
+        more.textContent = "…";
+        more.title = "Ещё смены в этот день";
         box.appendChild(more);
       }
     }
@@ -1030,6 +1107,12 @@ function openDay(dateStr) {
       ${allowEdit ? `<button class="btn primary" id="btnAddShift" style="margin-top:6px">+ Добавить смену</button>` : ``}
     </div>
   `;
+
+  // Summary + mini-graph (helps readability on mobile and desktop)
+  if (list.length) {
+    html += renderDayKpis(list, dateStr);
+    html += renderDayMiniGraph(list);
+  }
 
   if (!list.length) {
     html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день смен нет</div></div>`;
