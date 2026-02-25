@@ -55,7 +55,77 @@ export function wa() {
   return window.Telegram?.WebApp || null;
 }
 
+// ------------------------------
+// Theme (system / light / dark)
+// ------------------------------
+const LS_THEME = "axelio.theme"; // 'system' | 'light' | 'dark'
+
+export function getThemePref() {
+  try {
+    const v = (localStorage.getItem(LS_THEME) || "system").trim();
+    return (v === "light" || v === "dark" || v === "system") ? v : "system";
+  } catch {
+    return "system";
+  }
+}
+
+export function setThemePref(pref) {
+  const v = (pref === "light" || pref === "dark" || pref === "system") ? pref : "system";
+  try { localStorage.setItem(LS_THEME, v); } catch {}
+}
+
+function ensureThemeMeta() {
+  let m = document.querySelector('meta[name="theme-color"]');
+  if (!m) {
+    m = document.createElement("meta");
+    m.setAttribute("name", "theme-color");
+    document.head.appendChild(m);
+  }
+  return m;
+}
+
+function syncThemeColorMeta() {
+  try {
+    const m = ensureThemeMeta();
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+    if (bg) m.setAttribute("content", bg);
+  } catch {}
+}
+
+export function applyTheme() {
+  const pref = getThemePref();
+  const root = document.documentElement;
+
+  // If user explicitly chose a theme, force it via data-theme.
+  // If system: remove override and let CSS media query handle it.
+  if (pref === "light" || pref === "dark") {
+    root.setAttribute("data-theme", pref);
+  } else {
+    root.removeAttribute("data-theme");
+  }
+
+  // keep mobile browser UI in sync (address bar color)
+  requestAnimationFrame(syncThemeColorMeta);
+
+  // react to system changes only when pref=system
+  try {
+    if (!root.__themeMqlBound) {
+      const mql = window.matchMedia?.("(prefers-color-scheme: dark)");
+      if (mql && typeof mql.addEventListener === "function") {
+        mql.addEventListener("change", () => {
+          if (getThemePref() === "system") requestAnimationFrame(syncThemeColorMeta);
+        });
+      }
+      root.__themeMqlBound = true;
+    }
+  } catch {}
+}
+
 export function applyTelegramTheme() {
+  // Our app theme (system/light/dark). Telegram themeParams are not used here,
+  // because we want a stable brand theme + user override.
+  applyTheme();
+
   const w = wa();
   const el = document.querySelector("[data-userpill]");
   if (!w) {
@@ -64,16 +134,6 @@ export function applyTelegramTheme() {
   }
 
   w.ready();
-
-  const t = w.themeParams || {};
-  const set = (k, v) => v && document.documentElement.style.setProperty(k, v);
-
-  set("--bg", t.bg_color);
-  set("--card", t.secondary_bg_color);
-  set("--text", t.text_color);
-  set("--muted", t.hint_color);
-  set("--accent", t.button_color);
-  set("--accentText", t.button_text_color);
 
   const u = w.initDataUnsafe?.user;
   if (el) el.textContent = u ? `@${u.username || "без_username"}` : "неизвестно";

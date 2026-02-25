@@ -105,17 +105,102 @@ function isPastDay(isoDate) {
   return cmpDateStr(isoDate) === -1;
 }
 
-function hashHue(x) {
-  const s = String(x ?? "");
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h % 360;
+// ------------------------------
+// Interval colors (Theme G)
+// One interval -> one stable color (per venue), persisted in localStorage.
+// Past days: all dots use --dotPast.
+// ------------------------------
+const INTERVAL_COLORS = [
+  "#164B8A", // Oxford blue
+  "#2D7FF9", // Azure
+  "#0EA5E9", // Sky
+  "#22D3EE", // Cyan
+  "#A78BFA", // Violet
+  "#F2A541", // Amber
+  "#34D399", // Mint
+  "#FB7185", // Pink
+  "#F97316", // Orange
+  "#B277D9", // Burnished lilac
+  "#1D8FA2", // Teal
+  "#AEB7C2", // Neutral
+];
+
+let intervalColorMap = {}; // intervalId -> hex
+
+function timeToMinutes(hhmm) {
+  const m = String(hhmm || "").match(/^(\d{2}):(\d{2})/);
+  if (!m) return 9999;
+  return (Number(m[1]) * 60) + Number(m[2]);
 }
 
-function dotStyleForInterval(intervalId) {
-  const hue = hashHue(intervalId);
-  // овальчик, цвет привязан к intervalId
-  return `background:hsl(${hue} 70% 60%);`;
+function intervalSortKey(i) {
+  const st = i?.start_time || "";
+  const et = i?.end_time || "";
+  return [timeToMinutes(st), timeToMinutes(et), String(i?.id ?? "")].join("|");
+}
+
+function buildIntervalColorMap() {
+  if (!venueId) return;
+  const key = `axelio.intervalColorMap.${venueId}`;
+  let stored = {};
+  try {
+    stored = JSON.parse(localStorage.getItem(key) || "{}");
+  } catch {
+    stored = {};
+  }
+
+  const list = (Array.isArray(intervals) ? intervals : [])
+    .filter(x => x && x.id !== undefined && x.id !== null)
+    .slice()
+    .sort((a, b) => intervalSortKey(a).localeCompare(intervalSortKey(b)));
+
+  const used = new Set();
+  const nextStored = {};
+
+  // keep only current intervals, dedupe indexes
+  for (const i of list) {
+    const id = String(i.id);
+    const idx = stored?.[id];
+    if (Number.isInteger(idx) && idx >= 0 && idx < INTERVAL_COLORS.length && !used.has(idx)) {
+      nextStored[id] = idx;
+      used.add(idx);
+    }
+  }
+
+  // assign colors for new/invalid intervals
+  const pickFree = () => {
+    for (let k = 0; k < INTERVAL_COLORS.length; k++) {
+      if (!used.has(k)) return k;
+    }
+    // fallback: reuse (still deterministic)
+    return used.size % INTERVAL_COLORS.length;
+  };
+
+  for (const i of list) {
+    const id = String(i.id);
+    if (nextStored[id] !== undefined) continue;
+    const idx = pickFree();
+    nextStored[id] = idx;
+    used.add(idx);
+  }
+
+  try { localStorage.setItem(key, JSON.stringify(nextStored)); } catch {}
+
+  intervalColorMap = {};
+  for (const [id, idx] of Object.entries(nextStored)) {
+    intervalColorMap[id] = INTERVAL_COLORS[idx % INTERVAL_COLORS.length];
+  }
+}
+
+function colorForInterval(intervalId) {
+  const id = String(intervalId ?? "");
+  return intervalColorMap[id] || INTERVAL_COLORS[Math.abs(id.split("").reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % INTERVAL_COLORS.length];
+}
+
+function dotStyleForShift(shift, dateStr, { empty = false } = {}) {
+  const c = isPastDay(dateStr) ? "var(--dotPast)" : colorForInterval(shiftIntervalId(shift));
+  if (empty) return `background:transparent;border:1px solid ${c};box-shadow:none;`;
+  return `background:${c};`;
 }
 
 function escapeHtml(s) {
@@ -293,6 +378,8 @@ async function loadContext() {
     intervals = normalizeList(out).filter(x => x && (x.is_active === undefined || x.is_active));
   } catch { intervals = []; }
 
+  buildIntervalColorMap();
+
   try {
     const out = await getVenuePositions(venueId);
     positions = normalizeList(out).filter(p => p && (p.is_active === undefined || p.is_active));
@@ -436,6 +523,57 @@ function formatAllModeLine(shift, assignment) {
   return t ? `${who} — ${t}` : `${who}`;
 }
 
+function collectDotsMyMode(list, dateStr) {
+  // In "mine" mode we show one dot per shift (interval), not per person.
+  const out = [];
+  for (const s of (list || [])) {
+    out.push({ style: dotStyleForShift(s, dateStr, { empty: false }) });
+  }
+  return out;
+}
+
+function collectDotsAllMode(list, dateStr) {
+  const out = [];
+  for (const s of (list || [])) {
+    // global mode usually doesn't include assignments; show just one dot per shift.
+    if (calendarScope === "global") {
+      out.push({ style: dotStyleForShift(s, dateStr, { empty: false }) });
+      continue;
+    }
+    const assigns = (s.assignments || s.shift_assignments || []);
+    if (assigns && assigns.length) {
+      for (const _a of assigns) out.push({ style: dotStyleForShift(s, dateStr, { empty: false }) });
+    } else {
+      // empty shift (nobody assigned)
+      out.push({ style: dotStyleForShift(s, dateStr, { empty: true }) });
+    }
+  }
+  return out;
+}
+
+function appendDotRow(box, dots, { maxDots = 6 } = {}) {
+  if (!box || !dots || !dots.length) return;
+  const dotrow = document.createElement("div");
+  dotrow.className = "dotrow";
+
+  const shown = Math.min(maxDots, dots.length);
+  for (let i = 0; i < shown; i++) {
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    dot.setAttribute("style", dots[i].style);
+    dotrow.appendChild(dot);
+  }
+
+  if (dots.length > maxDots) {
+    const more = document.createElement("div");
+    more.className = "dot--more";
+    more.textContent = `+${dots.length - maxDots}`;
+    dotrow.appendChild(more);
+  }
+
+  box.appendChild(dotrow);
+}
+
 let expandedDate = null;
 let expandWired = false;
 
@@ -524,7 +662,7 @@ function renderMonth() {
     const listAll = shiftsByDate.get(dateStr) || [];
     const list = filterForCalendar(listAll, dateStr);
 
-    // --- Режим MY: показываем либо зарплату (прошлое с отчётом), либо время начала (будущие)
+    // --- MY mode: salary for past days (when report exists), or start time for future.
     if (!showAllOnCalendar) {
       const past = isPastDay(dateStr);
       const daySalary = salaryByDate.get(dateStr);
@@ -534,12 +672,9 @@ function renderMonth() {
         sal.className = "day-salary";
         sal.textContent = `+${Math.round(daySalary)}`;
         box.appendChild(sal);
-      } 
-      else {
-        // будущее / сегодня: показать время начала первой моей смены
+      } else {
         const firstShift = list[0];
         const t = firstShift ? shiftStartHHMM(firstShift) : "";
-        // --- цветные овальчики (ALL mode) ---
         if (t) {
           const line = document.createElement("div");
           line.className = "day-salary";
@@ -547,29 +682,12 @@ function renderMonth() {
           box.appendChild(line);
         }
       }
-      // цветные овальчики даже в "моих" (чтобы не было уныло)
-// Маленький бонус: цветные овальчики даже в "Только мои"
-    if (list.length) {
-      const dotrow = document.createElement("div");
-      dotrow.className = "dotrow";
 
-      const maxDots = 6;
-      let dotCount = 0;
-
-      for (const s of list) {
-        const dot = document.createElement("div");
-        dot.className = "dot";
-        dot.setAttribute("style", dotStyleForInterval(shiftIntervalId(s)));
-        dotrow.appendChild(dot);
-        dotCount++;
-        if (dotCount >= maxDots) break;
-      }
-
-
-    }
+      // Dots: future days -> interval colors, past days -> one neutral (--dotPast)
+      appendDotRow(box, collectDotsMyMode(list, dateStr), { maxDots: 6 });
 
     } else {
-      // --- Режим ALL: показываем строки "Имя/логин — HH:MM", без кружков
+      // --- ALL mode: show a few text lines + colored dots per person/interval
       const maxLines = 4;
       let lines = [];
 
@@ -599,7 +717,10 @@ function renderMonth() {
         box.appendChild(line);
       }
 
-      // подсчёт общего количества "строк", чтобы показать +ещё
+      // colored dots for intervals / people
+      appendDotRow(box, collectDotsAllMode(list, dateStr), { maxDots: 10 });
+
+      // +more lines hint
       const totalLines = list.reduce((acc, s) => {
         const assigns = (s.assignments || s.shift_assignments || []);
         return acc + Math.max(1, assigns.length);
@@ -644,6 +765,7 @@ function renderShiftCard(s, allowEdit) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
   const shiftId = (s.id ?? s.shift_id);
+  const intColor = colorForInterval(shiftIntervalId(s));
 
   const assignments = s.assignments || s.shift_assignments || [];
   let peopleHtml = "";
@@ -692,7 +814,7 @@ function renderShiftCard(s, allowEdit) {
 
   return `
     <div class="card" data-shiftcard="${shiftId}" style="margin-top:12px">
-      <b>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time)})</span>` : ""}</b>
+      <b><span class="intchip" style="background:${intColor}"></span>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time)})</span>` : ""}</b>
       ${peopleHtml}
       ${editorHtml}
       ${commentsHtml}
@@ -877,7 +999,7 @@ function openDay(dateStr) {
           <button class="btn primary" id="createShiftBtn">Создать смену</button>
         </div>
 
-        <div id="createIntervalBox" class="card" style="margin-top:10px; display:none; background: rgba(255,255,255,0.04)">
+        <div id="createIntervalBox" class="card" style="margin-top:10px; display:none; background: var(--surface2)">
           <b>Новый промежуток</b>
           <div class="grid2" style="margin-top:10px">
             <input class="input" id="newIntTitle" placeholder="Название (например, Бар)" />

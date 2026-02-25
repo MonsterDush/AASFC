@@ -53,6 +53,19 @@
       <div class="muted" id="langHint" style="margin-top:10px"></div>
     </div>
 
+    <div class="card" style="margin-top:12px">
+      <b>Тема</b>
+      <div class="muted" style="margin-top:6px">По умолчанию — как в системе. Можно принудительно выбрать светлую или тёмную.</div>
+      <div class="row" style="margin-top:10px">
+        <select id="themeSelect" class="input" style="min-width:240px">
+          <option value="system">Системная</option>
+          <option value="light">Светлая</option>
+          <option value="dark">Тёмная</option>
+        </select>
+      </div>
+      <div class="muted" id="themeHint" style="margin-top:10px"></div>
+    </div>
+
 <div class="nav">
       <div class="wrap">
         <div id="nav"></div>
@@ -73,7 +86,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, mountCommonUI, mountNav, mountVenueMenu, ensureLogin, getLang, setLang, t, api } from "/app.js";
+    import { applyTelegramTheme, mountCommonUI, mountNav, mountVenueMenu, ensureLogin, getLang, setLang, getThemePref, setThemePref, applyTheme, t, api } from "/app.js";
 
     applyTelegramTheme();
     mountCommonUI("settings");
@@ -90,6 +103,25 @@
 
     document.getElementById("langRu").onclick = () => { setLang('ru'); location.reload(); };
     document.getElementById("langEn").onclick = () => { setLang('en'); location.reload(); };
+
+    // --- Theme ---
+    const themeSel = document.getElementById("themeSelect");
+    const themeHint = document.getElementById("themeHint");
+    const paintTheme = () => {
+      const v = getThemePref();
+      if (themeSel) themeSel.value = v;
+      if (themeHint) {
+        themeHint.textContent = v === "dark"
+          ? "Текущая тема: Тёмная"
+          : (v === "light" ? "Текущая тема: Светлая" : "Текущая тема: Системная");
+      }
+    };
+    paintTheme();
+    themeSel?.addEventListener("change", () => {
+      setThemePref(themeSel.value);
+      applyTheme();
+      paintTheme();
+    });
 
     import { getMe } from "/app.js";
 
