@@ -20,50 +20,50 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card" style="margin-top:12px">
+    <div class="card mt-12">
       <b>Профиль</b>
-      <div class="muted" style="margin-top:6px">Привет, <span id="helloName">…</span></div>
-      <div class="row" style="margin-top:10px">
+      <div class="muted mt-6">Привет, <span id="helloName">…</span></div>
+      <div class="row mt-10">
         <button class="btn" onclick="location.href='/profile.html'"> Редактировать профиль </button>
       </div>
     </div>
 
-    <div class="card" style="margin-top:12px">
+    <div class="card mt-12">
       <b>Заведение</b>
-      <div class="muted" style="margin-top:6px">Выберите активное заведение или перейдите в управление</div>
-      <div id="venueMenuMount" style="margin-top:10px"></div>
+      <div class="muted mt-6">Выберите активное заведение или перейдите в управление</div>
+      <div id="venueMenuMount"class="mt-10"></div>
     </div>
 
     
-    <div class="card" style="margin-top:12px">
+    <div class="card mt-12">
       <b>Уведомления</b>
-      <div class="muted" style="margin-top:6px">Настройка уведомлений от бота</div>
-      <div class="row" style="margin-top:10px">
+      <div class="muted mt-6">Настройка уведомлений от бота</div>
+      <div class="row mt-10">
         <button class="btn" id="btnNotifSettings">Настройка уведомлений</button>
       </div>
     </div>
 
-    <div class="card" style="margin-top:12px">
+    <div class="card mt-12">
       <b>Язык интерфейса</b>
-      <div class="muted" style="margin-top:6px">Выберите язык интерфейса. Не волнуйтесь, это не повлияет на язык Telegram.</div>
-      <div class="row" style="margin-top:10px">
+      <div class="muted mt-6">Выберите язык интерфейса. Не волнуйтесь, это не повлияет на язык Telegram.</div>
+      <div class="row mt-10">
         <button class="btn" id="langRu">Русский</button>
         <button class="btn" id="langEn">English</button>
       </div>
-      <div class="muted" id="langHint" style="margin-top:10px"></div>
+      <div class="muted" id="langHint"></div>
     </div>
 
-    <div class="card" style="margin-top:12px">
+    <div class="card mt-12">
       <b>Тема</b>
-      <div class="muted" style="margin-top:6px">По умолчанию — как в системе. Можно принудительно выбрать светлую или тёмную.</div>
-      <div class="row" style="margin-top:10px">
-        <select id="themeSelect" class="input" style="min-width:240px">
+      <div class="muted mt-6">По умолчанию — как в системе. Можно принудительно выбрать светлую или тёмную.</div>
+      <div class="row mt-10">
+        <select id="themeSelect" class="input minw-240">
           <option value="system">Системная</option>
           <option value="light">Светлая</option>
           <option value="dark">Тёмная</option>
         </select>
       </div>
-      <div class="muted" id="themeHint" style="margin-top:10px"></div>
+      <div class="muted" id="themeHint"></div>
     </div>
 
 <div class="nav">
@@ -158,7 +158,7 @@ function openModal(title, bodyHtml) {
 function sw(id, checked, disabled=false) {
   return `
     <label class="switch">
-      <input style="max-width: 45px !important;" type="checkbox" id="${id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} />
+      <inputclass="maxw-45"type="checkbox" id="${id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} />
       <span class="slider"></span>
     </label>`;
 }
@@ -176,7 +176,7 @@ function renderNotifModal(state) {
   const shifts = !!state.notify_shifts;
 
   const html = `
-    <div class="itemcard" style="margin-top:8px">
+    <div class="itemcard mt-8">
       <div class="toggle">
         <div class="toggle__label">
           <div class="toggle__title">Уведомления от бота</div>
@@ -186,7 +186,7 @@ function renderNotifModal(state) {
       </div>
 
       <div style="margin-top:8px; ${enabled ? "" : "opacity:.55"}">
-        <div class="muted" style="font-size:12px;margin:8px 0 4px">Штрафы / Списания / Премии</div>
+        <div class="muted mb-6 mt-8 small">Штрафы / Списания / Премии</div>
         <div class="toggle">
           <div class="toggle__label">
             <div class="toggle__title">Уведомлять</div>
@@ -195,7 +195,7 @@ function renderNotifModal(state) {
           ${sw("swAdj", adj, !enabled)}
         </div>
 
-        <div class="muted" style="font-size:12px;margin:10px 0 4px">График</div>
+        <div class="muted mb-6 mt-10 small">График</div>
         <div class="toggle">
           <div class="toggle__label">
             <div class="toggle__title">Напоминать о смене</div>
@@ -205,7 +205,7 @@ function renderNotifModal(state) {
         </div>
       </div>
 
-      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px">
+      <div class="row gap-8 mt-12 row--end">
         <button class="btn" id="btnNotifClose">Закрыть</button>
         <button class="btn primary" id="btnNotifSave">Сохранить</button>
       </div>

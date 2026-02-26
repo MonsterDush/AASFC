@@ -24,26 +24,26 @@
 
       <div id="selectorCard" class="itemcard" style="margin-top:12px; display:none;">
         <b>Выбрать заведение</b>
-        <div class="muted" style="margin-top:6px">
+        <div class="muted mt-6">
           Ты открыл страницу без <span class="mono">venue_id</span>. Выбери заведение из списка.
         </div>
 
-        <div class="row" style="margin-top:10px">
+        <div class="row mt-10">
           <select id="venueSelect" style="min-width:380px">
             <option value="">Загружаю заведения…</option>
           </select>
           <button class="btn primary" id="btnUseVenue">Выбрать</button>
-          <a class="link" id="openLink" href="/invites.html" style="display:none;">Открыть ссылку →</a>
+          <a class="link" id="openLink" href="/invites.html">Открыть ссылку →</a>
         </div>
       </div>
 
-      <div class="itemcard" style="margin-top:12px">
+      <div class="itemcard mt-12">
         <b id="inviteTitle">Пригласить участника</b>
 
         <!-- ✅ ДОБАВЛЕНО: venueMeta, чтобы JS не падал -->
-        <div id="venueMeta" class="muted mono" style="margin-top:6px"></div>
+        <div id="venueMeta" class="muted mono mt-6"></div>
 
-        <div class="row" style="margin-top:10px">
+        <div class="row mt-10">
           <input id="tg" placeholder="tg username (с @ или без)" />
           <select id="role">
             <option value="STAFF">Персонал</option>
@@ -51,21 +51,21 @@
           </select>
           <button class="btn primary" id="btnInvite">Пригласить</button>
         </div>
-        <div class="muted" style="margin-top:6px">
+        <div class="muted mt-6">
           <span class="mono">POST /venues/{venue_id}/invites</span>
         </div>
       </div>
 
-      <div class="itemcard" style="margin-top:12px">
+      <div class="itemcard mt-12">
         <b>Приглашения в ожидании</b>
-        <div id="pending" style="margin-top:10px">
+        <div id="pending"class="mt-10">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
 
-      <div class="itemcard" style="margin-top:12px">
+      <div class="itemcard mt-12">
         <b>Участники</b>
-        <div id="members" style="margin-top:10px">
+        <div id="members"class="mt-10">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>

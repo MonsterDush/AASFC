@@ -21,33 +21,33 @@
     </div>
 
     <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div class="row" style="gap:10px;align-items:center">
+      <div class="row row--between">
+        <div class="row ai-center gap-10">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
-          <input class="input" id="monthPicker" type="month" style="max-width:160px" />
+          <input class="input" id="monthPicker" type="month" />
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
         <button class="btn" id="btnReload">Обновить</button>
       </div>
 
-      <div class="itemcard" style="margin-top:12px">
-        <div class="row" style="justify-content:space-between"><div class="muted">Начислено</div><b id="tEarned">0</b></div>
-        <div class="row" style="justify-content:space-between"><div class="muted">Премии</div><b id="tBonuses">0</b></div>
-        <div class="row" style="justify-content:space-between"><div class="muted">Штрафы/Списания</div><b id="tPenalties">0</b></div>
-        <div class="row" style="justify-content:space-between; margin-top:8px; border-top:1px solid var(--border); padding-top:10px">
+      <div class="itemcard mt-12">
+        <div class="row jc-between row--between"><div class="muted">Начислено</div><b id="tEarned">0</b></div>
+        <div class="row jc-between row--between"><div class="muted">Премии</div><b id="tBonuses">0</b></div>
+        <div class="row jc-between row--between"><div class="muted">Штрафы/Списания</div><b id="tPenalties">0</b></div>
+        <div class="row divider-top mt-8 pt-10 row--between">
           <div class="muted">Итого</div><b id="tNet">0</b>
         </div>
       </div>
 
-      <div class="itemcard" style="margin-top:12px">
+      <div class="itemcard mt-12">
         <b>По заведениям</b>
-        <div id="venuesList" style="margin-top:10px">
+        <div id="venuesList"class="mt-10">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
 
-      <div class="muted" style="margin-top:10px; font-size:12px">
+      <div class="muted mt-10 small">
         Начисление считается по сменам, для которых есть отчёт (DailyReport). Штрафы/премии берутся из корректировок за месяц.
       </div>
     </div>

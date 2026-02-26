@@ -46,6 +46,9 @@ const el = {
   next: document.getElementById("monthNext"),
   grid: document.getElementById("calGrid"),
   dayPanel: document.getElementById("dayPanel"),
+  btnLegend: document.getElementById("btnLegend"),
+  legendModal: document.getElementById("legendModal"),
+  legendBody: document.getElementById("legendBody"),
 };
 
 // DayPanel удалён: у нас есть отдельная страница/экран для графика
@@ -77,6 +80,47 @@ function openModal(title, subtitle, bodyHtml) {
   if (modalBody) modalBody.innerHTML = bodyHtml || "";
   modal?.classList.add("open");
 }
+
+
+// ----- Legend (interval colors) -----
+function closeLegendModal() { el.legendModal?.classList.remove("open"); }
+el.legendModal?.querySelectorAll("[data-close-legend]")?.forEach((btn) => btn.addEventListener("click", closeLegendModal));
+el.legendModal?.querySelector(".modal__backdrop")?.addEventListener("click", closeLegendModal);
+
+function openLegendModal() {
+  if (!el.legendModal || !el.legendBody) return;
+  const list = (Array.isArray(intervals) ? intervals : [])
+    .filter(x => x && x.id !== undefined && x.id !== null)
+    .slice()
+    .sort((a,b) => intervalSortKey(a).localeCompare(intervalSortKey(b)));
+
+  if (!list.length) {
+    el.legendBody.innerHTML = `<div class="muted">Интервалы не найдены</div>`;
+    el.legendModal.classList.add("open");
+    return;
+  }
+
+  const rows = list.map((i) => {
+    const title = i.title || i.name || `${i.start_time || "?"}–${i.end_time || "?"}`;
+    const sub = `${i.start_time || "?"}–${i.end_time || "?"}`;
+    const c = colorForInterval(i.id);
+    return `
+      <div class="legend__row">
+        <div class="legend__swatch" style="background:${escapeHtml(c)}"></div>
+        <div class="legend__text">
+          <div class="legend__title">${escapeHtml(title)}</div>
+          <div class="legend__sub">${escapeHtml(sub)}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  el.legendBody.innerHTML = `<div class="legend">${rows}</div>`;
+  el.legendModal.classList.add("open");
+}
+
+el.btnLegend?.addEventListener("click", openLegendModal);
+
 
 function toHHMM(timeStr) {
   if (!timeStr) return "";
