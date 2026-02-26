@@ -29,6 +29,13 @@ const el = {
   dayPanel: document.getElementById("dayPanel"),
 };
 
+// Month summary (DayPanel) удалён: сводка вынесена на отдельную страницу
+if (el.dayPanel) {
+  try { el.dayPanel.remove(); } catch {}
+  el.dayPanel = null;
+}
+
+
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
 const modalBody = modal?.querySelector(".modal__body");
@@ -208,7 +215,7 @@ function renderNoVenue() {
       </div>
     </div>
   `;
-  el.dayPanel.innerHTML = "";
+if (el.dayPanel) el.dayPanel.innerHTML = "";
 }
 
 function renderMonth() {
@@ -226,7 +233,7 @@ function renderMonth() {
         </div>
       </div>
     `;
-    el.dayPanel.innerHTML = "";
+if (el.dayPanel) el.dayPanel.innerHTML = "";
     return;
   }
 
@@ -310,7 +317,7 @@ function isoForDay(dayNum) {
 function renderMonthPanel() {
   if (!el.dayPanel) return;
   if (!venueId || !canView()) {
-    el.dayPanel.innerHTML = "";
+if (el.dayPanel) el.dayPanel.innerHTML = "";
     return;
   }
 

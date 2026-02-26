@@ -48,6 +48,13 @@ const el = {
   dayPanel: document.getElementById("dayPanel"),
 };
 
+// DayPanel удалён: у нас есть отдельная страница/экран для графика
+if (el.dayPanel) {
+  try { el.dayPanel.remove(); } catch {}
+  el.dayPanel = null;
+}
+
+
 const mode = {
   box: document.getElementById("calendarMode"),
   all: document.getElementById("modeAll"),
@@ -507,7 +514,6 @@ function selectDate(dateStr, { noExpand = false } = {}) {
   const cell = document.querySelector(`.cal-cell[data-date="${esc}"]`);
   if (cell) cell.classList.add('cal-cell--selected');
 
-  renderDayPanel(dateStr);
 
   // optionally expand the cell on desktop for readability
   if (!noExpand && cell) {
