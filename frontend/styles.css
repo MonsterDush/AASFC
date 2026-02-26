@@ -386,6 +386,45 @@ input:focus,select:focus,textarea:focus{
 }
 
 
+
+/* Segmented control (generic, e.g. reports mode) */
+.seg-toggle{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:4px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  -webkit-tap-highlight-color:transparent;
+}
+.seg-toggle button{
+  appearance:none;
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  font-weight:800;
+  font-size:12px;
+  line-height:1;
+  padding:9px 11px;
+  border-radius:999px;
+  cursor:pointer;
+  transition:background .15s ease, color .15s ease, transform .12s ease;
+  user-select:none;
+}
+.seg-toggle button:active{transform:scale(.99)}
+.seg-toggle button:hover{background:var(--accentSoftBg)}
+.seg-toggle button.active{
+  background:var(--accent);
+  color:var(--accentText);
+  box-shadow:0 8px 18px rgba(0,0,0,.10);
+}
+.seg-toggle button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+@media (max-width:420px){
+  .seg-toggle{padding:3px}
+  .seg-toggle button{padding:8px 10px;font-size:12px}
+}
+
 .toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:14px;background:var(--surface2)}
 .toggle__label{display:flex;flex-direction:column;gap:2px}
 .toggle__title{font-weight:600}
@@ -500,6 +539,10 @@ input:focus,select:focus,textarea:focus{
 @media (max-width:900px){.kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:420px){.kpi{grid-template-columns:1fr}}
 
+
+.progress{margin-top:12px;border:1px solid var(--border);border-radius:999px;background:var(--surface2);height:12px;overflow:hidden}
+.progress__bar{height:100%;background:var(--accent);width:0;transition:width .18s ease}
+
 .barchart{margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
 .barchart__bars{min-width:540px;display:flex;gap:6px;align-items:flex-end;border:1px solid var(--border);border-radius:14px;background:var(--surface2);padding:10px}
 .bar{appearance:none;border:0;background:transparent;padding:0;cursor:pointer;display:flex;flex-direction:column;gap:6px;align-items:center;min-width:10px}
@@ -512,6 +555,12 @@ input:focus,select:focus,textarea:focus{
 .bar:active .bar__col{transform:translateY(1px)}
 .bar__label{font-size:11px;color:var(--muted);font-weight:800}
 .bar.is-selected .bar__col{outline:2px solid var(--accent);outline-offset:2px}
+
+
+/* Reports chart: fill/compliance mode */
+.barchart.is-fillmode .bar__col{background:transparent;border-color:var(--border)}
+.barchart.is-fillmode .bar.has .bar__col{background:var(--accentSoftBorder);border-color:var(--accent);box-shadow:none}
+.barchart.is-fillmode .bar__label{opacity:.85}
 
 .paybar{margin-top:10px;border:1px solid var(--border);border-radius:999px;background:var(--surface2);height:14px;overflow:hidden;display:flex}
 .paybar__seg{height:100%}

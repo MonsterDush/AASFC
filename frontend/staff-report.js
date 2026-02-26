@@ -152,6 +152,26 @@ function canSeeMoney() {
   return perms.role === "OWNER" || perms.flags.can_view_revenue === true || perms.flags.can_make_reports === true;
 }
 
+
+function getReportChartMode(venueId) {
+  try {
+    const key = `axelio_report_chart_mode:${venueId || "0"}`;
+    const v = localStorage.getItem(key);
+    return v === "fill" || v === "money" ? v : "money";
+  } catch {
+    return "money";
+  }
+}
+
+function setReportChartMode(venueId, mode) {
+  try {
+    const key = `axelio_report_chart_mode:${venueId || "0"}`;
+    localStorage.setItem(key, mode);
+  } catch {
+    // ignore
+  }
+}
+
 async function loadPerms() {
   perms = { role: "", flags: {} };
   if (!venueId) return;
@@ -297,6 +317,10 @@ function renderMonthPanel() {
   const days = monthDays(curMonth);
   const showMoney = canSeeMoney();
 
+  let mode = showMoney ? getReportChartMode(venueId) : "fill";
+  if (!showMoney) mode = "fill";
+  const isFillMode = mode === "fill";
+
   let filled = 0;
   let sumRevenue = 0;
   let sumTips = 0;
@@ -316,49 +340,112 @@ function renderMonthPanel() {
       sumTips += tips;
       if (rev > maxRevenue) maxRevenue = rev;
     }
+
     bars.push({ day, iso, has, rev });
   }
 
+  // streaks
+  let maxStreak = 0;
+  let run = 0;
+  for (const b of bars) {
+    if (b.has) run++;
+    else {
+      if (run > maxStreak) maxStreak = run;
+      run = 0;
+    }
+  }
+  if (run > maxStreak) maxStreak = run;
+
+  const now = new Date();
+  const isThisMonth =
+    now.getFullYear() === curMonth.getFullYear() && now.getMonth() === curMonth.getMonth();
+  const endDay = isThisMonth ? Math.min(now.getDate(), days) : days;
+  let curStreak = 0;
+  for (let d = endDay; d >= 1; d--) {
+    const iso = isoForDay(d);
+    if (reportsByDate.has(iso)) curStreak++;
+    else break;
+  }
+
+  const percent = days ? Math.round((filled / days) * 100) : 0;
+  const remaining = Math.max(0, days - filled);
   const avg = filled ? Math.round(sumRevenue / filled) : 0;
 
-  const kpiHtml = `
-    <div class="kpi">
-      <div class="kpi__item">
-        <div class="kpi__label">Заполнено</div>
-        <div class="kpi__value">${filled} / ${days}</div>
-        <div class="kpi__sub">дней в месяце</div>
+  const kpiHtml = isFillMode
+    ? `
+      <div class="kpi">
+        <div class="kpi__item">
+          <div class="kpi__label">Заполнено</div>
+          <div class="kpi__value">${filled} / ${days}</div>
+          <div class="kpi__sub">дней в месяце</div>
+        </div>
+        <div class="kpi__item">
+          <div class="kpi__label">Готовность</div>
+          <div class="kpi__value">${percent}%</div>
+          <div class="kpi__sub">отчётов готово</div>
+        </div>
+        <div class="kpi__item">
+          <div class="kpi__label">Осталось</div>
+          <div class="kpi__value">${remaining}</div>
+          <div class="kpi__sub">дней без отчёта</div>
+        </div>
+        <div class="kpi__item">
+          <div class="kpi__label">${isThisMonth ? "Серия" : "Макс серия"}</div>
+          <div class="kpi__value">${isThisMonth ? curStreak : maxStreak}</div>
+          <div class="kpi__sub">дней подряд</div>
+        </div>
       </div>
-      <div class="kpi__item">
-        <div class="kpi__label">Выручка</div>
-        <div class="kpi__value">${showMoney ? fmtRub(sumRevenue) : "—"}</div>
-        <div class="kpi__sub">за месяц</div>
+      <div class="progress" aria-label="Прогресс заполнения">
+        <div class="progress__bar" style="width:${percent}%"></div>
       </div>
-      <div class="kpi__item">
-        <div class="kpi__label">Чаевые</div>
-        <div class="kpi__value">${showMoney ? fmtRub(sumTips) : "—"}</div>
-        <div class="kpi__sub">за месяц</div>
+    `
+    : `
+      <div class="kpi">
+        <div class="kpi__item">
+          <div class="kpi__label">Заполнено</div>
+          <div class="kpi__value">${filled} / ${days}</div>
+          <div class="kpi__sub">дней в месяце</div>
+        </div>
+        <div class="kpi__item">
+          <div class="kpi__label">Выручка</div>
+          <div class="kpi__value">${fmtRub(sumRevenue)}</div>
+          <div class="kpi__sub">за месяц</div>
+        </div>
+        <div class="kpi__item">
+          <div class="kpi__label">Чаевые</div>
+          <div class="kpi__value">${fmtRub(sumTips)}</div>
+          <div class="kpi__sub">за месяц</div>
+        </div>
+        <div class="kpi__item">
+          <div class="kpi__label">Средняя</div>
+          <div class="kpi__value">${fmtRub(avg)}</div>
+          <div class="kpi__sub">на заполненный день</div>
+        </div>
       </div>
-      <div class="kpi__item">
-        <div class="kpi__label">Средняя</div>
-        <div class="kpi__value">${showMoney ? fmtRub(avg) : "—"}</div>
-        <div class="kpi__sub">на заполненный день</div>
-      </div>
-    </div>
-  `;
+    `;
 
   const barsHtml = bars
     .map(({ day, iso, has, rev }) => {
-      const h = showMoney
-        ? (maxRevenue > 0 ? Math.max(0, Math.min(1, rev / maxRevenue)) : 0)
-        : (has ? 0.55 : 0.10);
+      const h = isFillMode
+        ? has
+          ? 0.88
+          : 0.12
+        : maxRevenue > 0
+        ? Math.max(0, Math.min(1, rev / maxRevenue))
+        : 0;
+
       const cls = ["bar", has ? "has" : "", iso === selectedDayISO ? "is-selected" : ""]
         .filter(Boolean)
         .join(" ");
+
       const aria = has
-        ? (showMoney ? `${formatDateRuNoG(iso)}: ${fmtRub(rev)}` : `${formatDateRuNoG(iso)}: отчёт есть`)
+        ? isFillMode
+          ? `${formatDateRuNoG(iso)}: отчёт заполнен`
+          : `${formatDateRuNoG(iso)}: ${fmtRub(rev)}`
         : `${formatDateRuNoG(iso)}: отчёта нет`;
+
       return `
-        <button type="button" class="${cls}" data-dayiso="${esc(iso)}" aria-label="${esc(aria)}">
+        <button type="button" class="${cls}" data-dayiso="${esc(iso)}" aria-label="${esc(aria)}" title="${esc(aria)}">
           <div class="bar__col" style="--h:${h}"></div>
           <div class="bar__label">${day}</div>
         </button>
@@ -368,7 +455,7 @@ function renderMonthPanel() {
 
   const dayHtml = (() => {
     if (!selectedDayISO) {
-      return `<div class="itemcard" style="margin-top:12px"><div class="muted">Выбери день в календаре или на графике, чтобы посмотреть отчёт.</div></div>`;
+      return `<div class="itemcard" style="margin-top:12px"><div class="muted">Выбери день в календаре или на графике, чтобы открыть отчёт.</div></div>`;
     }
 
     const rep = selectedDayData?.rep || reportsByDate.get(selectedDayISO) || null;
@@ -387,6 +474,26 @@ function renderMonthPanel() {
       `;
     }
 
+    // In fill mode (or without money permissions) we show a “completion” card.
+    if (isFillMode || !showMoney) {
+      const hint = showMoney
+        ? "Режим: заполнение (суммы скрыты). Открой отчёт для деталей."
+        : "Суммы скрыты из-за прав доступа. Открой отчёт для деталей.";
+      return `
+        <div class="itemcard" style="margin-top:12px">
+          <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+            <b>${formatDateRuNoG(selectedDayISO)}</b>
+            <span class="muted">отчёт заполнен</span>
+          </div>
+          <div class="row" style="margin-top:10px;gap:10px;align-items:center;flex-wrap:wrap">
+            ${Number.isFinite(attCount) ? `<span class="muted">Файлов: ${attCount}</span>` : ``}
+            <button class="btn" type="button" data-open-report>Открыть отчёт</button>
+          </div>
+          <div class="muted" style="margin-top:8px">${hint}</div>
+        </div>
+      `;
+    }
+
     const cash = numOr0(rep.cash);
     const cashless = numOr0(rep.cashless);
     const total = numOr0(rep.revenue_total);
@@ -401,46 +508,59 @@ function renderMonthPanel() {
           <b>${formatDateRuNoG(selectedDayISO)}</b>
           <span class="muted">отчёт есть</span>
         </div>
-        ${showMoney ? `
-          <div class="row" style="margin-top:10px;gap:10px;align-items:stretch">
-            <div style="flex:1;min-width:160px">
-              <div class="small">Выручка</div>
-              <div style="font-weight:950;font-size:18px;margin-top:4px">${fmtRub(total)}</div>
-            </div>
-            <div style="flex:1;min-width:160px">
-              <div class="small">Чаевые</div>
-              <div style="font-weight:950;font-size:18px;margin-top:4px">${fmtRub(tips)}</div>
-            </div>
+        <div class="row" style="margin-top:10px;gap:10px;align-items:stretch;flex-wrap:wrap">
+          <div style="flex:1;min-width:160px">
+            <div class="small">Выручка</div>
+            <div style="font-weight:950;font-size:18px;margin-top:4px">${fmtRub(total)}</div>
           </div>
-          <div class="small" style="margin-top:10px">Наличные / безналичные</div>
-          <div class="paybar" aria-label="Наличные и безналичные">
-            <div class="paybar__seg cash" style="width:${cashW}%" title="Наличные ${fmtRub(cash)}"></div>
-            <div class="paybar__seg cashless" style="width:${cashlessW}%" title="Безналичные ${fmtRub(cashless)}"></div>
+          <div style="flex:1;min-width:160px">
+            <div class="small">Чаевые</div>
+            <div style="font-weight:950;font-size:18px;margin-top:4px">${fmtRub(tips)}</div>
           </div>
-        ` : `
-          <div class="muted" style="margin-top:10px">Нет доступа к суммам отчёта</div>
-        `}
+        </div>
+        <div class="small" style="margin-top:10px">Наличные / безналичные</div>
+        <div class="paybar" aria-label="Наличные и безналичные">
+          <div class="paybar__seg cash" style="width:${cashW}%" title="Наличные ${fmtRub(cash)}"></div>
+          <div class="paybar__seg cashless" style="width:${cashlessW}%" title="Безналичные ${fmtRub(cashless)}"></div>
+        </div>
         ${Number.isFinite(attCount) ? `<div class="muted" style="margin-top:10px">Файлов: ${attCount}</div>` : ``}
       </div>
     `;
   })();
+
+  const modeToggleHtml = showMoney
+    ? `
+      <div class="seg-toggle" data-report-mode>
+        <button type="button" data-mode="money" class="${!isFillMode ? "active" : ""}">Выручка</button>
+        <button type="button" data-mode="fill" class="${isFillMode ? "active" : ""}">Заполнение</button>
+      </div>
+    `
+    : ``;
+
+  const hintHtml = !showMoney
+    ? `<div class="muted" style="margin-top:4px">Нет доступа к суммам — показываем заполненность отчётов</div>`
+    : isFillMode
+    ? `<div class="muted" style="margin-top:4px">Режим заполнения — суммы скрыты (можно открыть отчёт)</div>`
+    : `<div class="muted" style="margin-top:4px">Кликни на столбик или день в календаре</div>`;
 
   el.dayPanel.innerHTML = `
     <div class="card daypanel-card monthsum">
       <div class="daypanel__head">
         <div class="daypanel__title">
           <b>Сводка месяца</b>
-          <div class="muted" style="margin-top:4px">Кликни на столбик или день в календаре</div>
+          ${hintHtml}
         </div>
+        <div class="daypanel__actions">${modeToggleHtml}</div>
       </div>
       ${kpiHtml}
-      <div class="barchart" aria-label="График выручки по дням">
+      <div class="barchart ${isFillMode ? "is-fillmode" : ""}" aria-label="${isFillMode ? "График заполнения отчётов по дням" : "График выручки по дням"}">
         <div class="barchart__bars">${barsHtml}</div>
       </div>
       ${dayHtml}
     </div>
   `;
 
+  // bars
   el.dayPanel.querySelectorAll("[data-dayiso]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const iso = btn.getAttribute("data-dayiso");
@@ -449,6 +569,25 @@ function renderMonthPanel() {
       selectedDayData = null;
       renderMonthPanel();
       openDay(iso);
+    });
+  });
+
+  // mode toggle (only if money permissions exist)
+  el.dayPanel.querySelectorAll("[data-report-mode] button[data-mode]").forEach((b) => {
+    b.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const m = b.getAttribute("data-mode");
+      if (m !== "money" && m !== "fill") return;
+      setReportChartMode(venueId, m);
+      renderMonthPanel();
+    });
+  });
+
+  // open report from completion card
+  el.dayPanel.querySelectorAll("[data-open-report]").forEach((b) => {
+    b.addEventListener("click", () => {
+      if (!selectedDayISO) return;
+      openDay(selectedDayISO);
     });
   });
 }
