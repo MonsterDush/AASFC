@@ -653,7 +653,7 @@ input:focus,select:focus,textarea:focus{
 /* ------------------------------------------------------------
    Legend (interval colors)
 ------------------------------------------------------------ */
-.legend{display:flex;flex-direction:column;gap:10px}
+.legend{display:flex;flex-direction:column;gap:10px;margin-top:12px;}
 .legend__row{display:flex;align-items:center;gap:10px;min-width:0;padding:10px;border:1px solid var(--border);border-radius:14px;background:var(--card)}
 .legend__swatch{width:14px;height:14px;border-radius:999px;flex:0 0 14px;box-shadow:0 0 0 2px rgba(0,0,0,0.02)}
 .legend__text{min-width:0}
