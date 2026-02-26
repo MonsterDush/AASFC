@@ -21,26 +21,28 @@
     </div>
 
     <div class="card">
-      <div class="row row--between">
-        <div class="row ai-center gap-10">
+      <div class="row jc-between ai-center gap-10">
+        <div class="row gap-10 ai-center">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
-        <div class="row ai-center gap-10 row--end">
+        <div class="row gap-10 ai-center jc-end">
           <div id="calendarMode" class="shift-toggle hidden">
             <button type="button" id="modeAll">Все</button>
             <button type="button" id="modeMine">Только мои</button>
             <button type="button" id="modeGlobal">Общий</button>
           </div>
-          <button class="btn" id="btnLegend" type="button">Легенда</button>
-          <div class="muted small">Назначения отображаются по дням</div>
+          <div class="small">Назначения отображаются по дням</div>
 </div>
 
       </div>
 
       <div id="calGrid" class="cal mt-10"></div>
     </div>
+
+    <div id="dayPanel" class="daypanel mt-12"></div>
+
     <div class="nav">
       <div class="wrap">
         <div id="nav"></div>
@@ -65,22 +67,7 @@
     </div>
   </div>
 
-  
-    <div class="modal" id="legendModal">
-      <div class="modal__backdrop" data-close-legend></div>
-      <div class="modal__panel">
-        <div class="modal__head">
-          <div class="minw-0">
-            <b class="modal__title">Легенда интервалов</b>
-            <div class="modal__subtitle">Цвета закреплены за интервалами</div>
-          </div>
-          <button class="btn" type="button" data-close-legend>Закрыть</button>
-        </div>
-        <div class="modal__body" id="legendBody"></div>
-      </div>
-    </div>
-
-  <div id="shiftsRoot"class="hidden"></div>
+  <div id="shiftsRoot"></div>
   <script type="module" src="/staff-shifts.js"></script>
 </body>
 </html>

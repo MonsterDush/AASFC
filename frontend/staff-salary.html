@@ -21,8 +21,8 @@
     </div>
 
     <div class="card">
-      <div class="row row--between">
-        <div class="row ai-center gap-10">
+      <div class="row jc-between ai-center gap-10">
+        <div class="row gap-10 ai-center">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
@@ -30,30 +30,19 @@
       </div>
 
       <div class="itemcard mt-12">
-        <div class="row jc-between row--between"><div class="muted">Начислено</div><b id="sumSalary">0</b></div>
-          <div class="row jc-between row--between"><div class="muted">Чаевые</div><b id="sumTips">0</b></div>
-          <div class="row jc-between row--between"><div class="muted">Премии</div><b id="sumBonuses">0</b></div>
-          <div class="row jc-between row--between"><div class="muted">Штрафы</div><b id="sumPenalties">0</b></div>
-          <div class="row" class="row row--between hidden" id="rowWriteoffs"><div class="muted">Списания</div><b id="sumWriteoffs">0</b></div>
-          <div class="row divider-top mt-8 pt-10 row--between">
+        <div class="row jc-between"><div class="muted">Начислено</div><b id="sumSalary">0</b></div>
+          <div class="row jc-between"><div class="muted">Чаевые</div><b id="sumTips">0</b></div>
+          <div class="row jc-between"><div class="muted">Премии</div><b id="sumBonuses">0</b></div>
+          <div class="row jc-between"><div class="muted">Штрафы</div><b id="sumPenalties">0</b></div>
+          <div class="row jc-between hidden" id="rowWriteoffs"><div class="muted">Списания</div><b id="sumWriteoffs">0</b></div>
+          <div class="row jc-between mt-8 pt-10 bt" >
           <div class="muted">Итого</div><b id="sumTotal">0</b>
         </div>
       </div>
 
-      
       <div class="itemcard mt-12">
-        <div class="row row--between">
-          <b>График по дням</b>
-          <div class="muted small">Тапни на день для деталей</div>
-        </div>
-        <div id="monthChart" class="chart">
-          <div class="skeleton"></div>
-        </div>
-      </div>
-
-<div class="itemcard mt-12">
         <b>По дням</b>
-        <div id="daysList"class="mt-10">
+        <div id="daysList">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>

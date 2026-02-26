@@ -33,7 +33,6 @@ const el = {
   sumWriteoffs: document.getElementById("sumWriteoffs"),
   sumTotal: document.getElementById("sumTotal"),
   daysList: document.getElementById("daysList"),
-  monthChart: document.getElementById("monthChart"),
 };
 
 const modal = document.getElementById("modal");
@@ -116,7 +115,6 @@ async function loadMonth() {
   days = Array.from(map.values()).sort((a,b)=>a.date.localeCompare(b.date));
 
   renderSummary();
-  renderMonthChart();
   renderDays();
 }
 
@@ -155,59 +153,25 @@ function renderSummary() {
   el.sumTotal.textContent = formatMoney(total);
 }
 
-
-function renderMonthChart() {
-  if (!el.monthChart) return;
-  if (!days.length) {
-    el.monthChart.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
-    return;
-  }
-
-  const maxVal = Math.max(1, ...days.map(d => Math.max(0, Number(d.salary) || 0)));
-  const bars = days.map((d) => {
-    const dt = new Date(String(d.date).length === 10 ? d.date + "T00:00:00" : d.date);
-    const label = String(dt.getDate());
-    const val = Math.max(0, Number(d.salary) || 0);
-    let h = Math.round((val / maxVal) * 100);
-    if (!h && d.hasReport) h = 8; // show a small stub if report exists but salary is 0
-    const barColor = d.hasReport ? "var(--accent)" : "var(--borderSoft)";
-    return `
-      <button class="bar" type="button" data-date="${esc(d.date)}" style="--h:${h}%;--barColor:${barColor}">
-        <div class="bar__track"><div class="bar__fill"></div></div>
-        <div class="bar__label">${esc(label)}</div>
-      </button>
-    `;
-  }).join("");
-
-  el.monthChart.innerHTML = `<div class="chart__bars">${bars}</div>`;
-  el.monthChart.querySelectorAll(".bar").forEach((btn) => {
-    const date = btn.getAttribute("data-date");
-    const d = days.find(x => x.date === date);
-    if (!d) return;
-    btn.addEventListener("click", () => openDayModal(d));
-  });
-}
-
-
 function renderDays() {
   el.daysList.innerHTML = "";
   if (!days.length) {
-    el.daysList.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
+    el.daysList.innerHTML = `<div class="state state--center"><div class="state__title">Нет данных</div><div class="state__text">За этот месяц нет начислений.</div></div>`;
     return;
   }
 
   for (const d of days) {
     const card = document.createElement("div");
     const dd = formatDateRuNoG(d.date); // <-- "dd.mm.yyyy"
-    card.className = "list__row";
+    card.className = "dayrow";
 
     card.innerHTML = `
-      <div class="row row--between">
+      <div class="row jc-between gap-10 ai-center mt-3">
         <div>
           <b>${esc(dd)}</b>
         </div>
         <div class="dayrow__right">
-          <div class="day-salary ${d.salary>0 ? "" : "day-salary--muted"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "Нет отчета"}</div>
+          <div class="day-salary ${d.salary>0 ?"":"op-45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "Нет отчета"}</div>
           <button class="btn" data-open>Подробнее</button>
         </div>
       </div>
@@ -223,13 +187,13 @@ function openDayModal(d) {
     const sal = Number(s.my_salary);
     const salText = Number.isFinite(sal) ? ("+"+formatMoney(sal)) : "—";
     return `
-      <div class="section">
-        <div class="row row--between">
+      <div class="line">
+        <div class="row jc-between ai-center gap-10">
           <div>
             <b>${esc(interval)}</b>
-            <div class="muted small">${s.report_exists ? "Отчёт есть" : "Нет отчёта"}</div>
+            <div class="small">${s.report_exists ? "Отчёт есть" : "Нет отчёта"}</div>
           </div>
-          <div class="day-salary" style="${Number.isFinite(sal) ? "" : "opacity:.45"}">${esc(salText)}</div>
+          <div class="day-salary ${Number.isFinite(sal) ?"":"op-45"}">${esc(salText)}</div>
         </div>
       </div>
     `;
@@ -238,16 +202,16 @@ function openDayModal(d) {
   openModal(
     `${formatDateRuNoG(d.date)}`,
     "",
-    `<div class="itemcard" style="margin-top:12px">
-        <div class="row" style="justify-content:space-between;align-items:center">
+    `<div class="itemcard mt-12">
+        <div class="row jc-between ai-center">
           <div class="muted">Итого за день</div>
-          <div class="day-salary ${d.salary>0 ? "" : "day-salary--muted"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "—"}</div>
+          <div class="day-salary ${d.salary>0 ?"":"op-45"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "—"}</div>
         </div>
-        <div class="row" style="justify-content:space-between;align-items:center; margin-top:6px">
+        <div class="row jc-between ai-center mt-6">
           <div class="muted">Чаевые</div>
           <div class="day-salary">${formatMoney(d.tips || 0)}</div>
         </div>
-        <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
+        <div>${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
       </div>`
   );
 }

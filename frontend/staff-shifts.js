@@ -46,17 +46,7 @@ const el = {
   next: document.getElementById("monthNext"),
   grid: document.getElementById("calGrid"),
   dayPanel: document.getElementById("dayPanel"),
-  btnLegend: document.getElementById("btnLegend"),
-  legendModal: document.getElementById("legendModal"),
-  legendBody: document.getElementById("legendBody"),
 };
-
-// DayPanel удалён: у нас есть отдельная страница/экран для графика
-if (el.dayPanel) {
-  try { el.dayPanel.remove(); } catch {}
-  el.dayPanel = null;
-}
-
 
 const mode = {
   box: document.getElementById("calendarMode"),
@@ -80,47 +70,6 @@ function openModal(title, subtitle, bodyHtml) {
   if (modalBody) modalBody.innerHTML = bodyHtml || "";
   modal?.classList.add("open");
 }
-
-
-// ----- Legend (interval colors) -----
-function closeLegendModal() { el.legendModal?.classList.remove("open"); }
-el.legendModal?.querySelectorAll("[data-close-legend]")?.forEach((btn) => btn.addEventListener("click", closeLegendModal));
-el.legendModal?.querySelector(".modal__backdrop")?.addEventListener("click", closeLegendModal);
-
-function openLegendModal() {
-  if (!el.legendModal || !el.legendBody) return;
-  const list = (Array.isArray(intervals) ? intervals : [])
-    .filter(x => x && x.id !== undefined && x.id !== null)
-    .slice()
-    .sort((a,b) => intervalSortKey(a).localeCompare(intervalSortKey(b)));
-
-  if (!list.length) {
-    el.legendBody.innerHTML = `<div class="muted">Интервалы не найдены</div>`;
-    el.legendModal.classList.add("open");
-    return;
-  }
-
-  const rows = list.map((i) => {
-    const title = i.title || i.name || `${i.start_time || "?"}–${i.end_time || "?"}`;
-    const sub = `${i.start_time || "?"}–${i.end_time || "?"}`;
-    const c = colorForInterval(i.id);
-    return `
-      <div class="legend__row">
-        <div class="legend__swatch" style="background:${escapeHtml(c)}"></div>
-        <div class="legend__text">
-          <div class="legend__title">${escapeHtml(title)}</div>
-          <div class="legend__sub">${escapeHtml(sub)}</div>
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  el.legendBody.innerHTML = `<div class="legend">${rows}</div>`;
-  el.legendModal.classList.add("open");
-}
-
-el.btnLegend?.addEventListener("click", openLegendModal);
-
 
 function toHHMM(timeStr) {
   if (!timeStr) return "";
@@ -156,102 +105,17 @@ function isPastDay(isoDate) {
   return cmpDateStr(isoDate) === -1;
 }
 
-// ------------------------------
-// Interval colors (Theme G)
-// One interval -> one stable color (per venue), persisted in localStorage.
-// Past days: all dots use --dotPast.
-// ------------------------------
-const INTERVAL_COLORS = [
-  "#164B8A", // Oxford blue
-  "#2D7FF9", // Azure
-  "#0EA5E9", // Sky
-  "#22D3EE", // Cyan
-  "#A78BFA", // Violet
-  "#F2A541", // Amber
-  "#34D399", // Mint
-  "#FB7185", // Pink
-  "#F97316", // Orange
-  "#B277D9", // Burnished lilac
-  "#1D8FA2", // Teal
-  "#AEB7C2", // Neutral
-];
-
-let intervalColorMap = {}; // intervalId -> hex
-
-function timeToMinutes(hhmm) {
-  const m = String(hhmm || "").match(/^(\d{2}):(\d{2})/);
-  if (!m) return 9999;
-  return (Number(m[1]) * 60) + Number(m[2]);
+function hashHue(x) {
+  const s = String(x ?? "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 360;
 }
 
-function intervalSortKey(i) {
-  const st = i?.start_time || "";
-  const et = i?.end_time || "";
-  return [timeToMinutes(st), timeToMinutes(et), String(i?.id ?? "")].join("|");
-}
-
-function buildIntervalColorMap() {
-  if (!venueId) return;
-  const key = `axelio.intervalColorMap.${venueId}`;
-  let stored = {};
-  try {
-    stored = JSON.parse(localStorage.getItem(key) || "{}");
-  } catch {
-    stored = {};
-  }
-
-  const list = (Array.isArray(intervals) ? intervals : [])
-    .filter(x => x && x.id !== undefined && x.id !== null)
-    .slice()
-    .sort((a, b) => intervalSortKey(a).localeCompare(intervalSortKey(b)));
-
-  const used = new Set();
-  const nextStored = {};
-
-  // keep only current intervals, dedupe indexes
-  for (const i of list) {
-    const id = String(i.id);
-    const idx = stored?.[id];
-    if (Number.isInteger(idx) && idx >= 0 && idx < INTERVAL_COLORS.length && !used.has(idx)) {
-      nextStored[id] = idx;
-      used.add(idx);
-    }
-  }
-
-  // assign colors for new/invalid intervals
-  const pickFree = () => {
-    for (let k = 0; k < INTERVAL_COLORS.length; k++) {
-      if (!used.has(k)) return k;
-    }
-    // fallback: reuse (still deterministic)
-    return used.size % INTERVAL_COLORS.length;
-  };
-
-  for (const i of list) {
-    const id = String(i.id);
-    if (nextStored[id] !== undefined) continue;
-    const idx = pickFree();
-    nextStored[id] = idx;
-    used.add(idx);
-  }
-
-  try { localStorage.setItem(key, JSON.stringify(nextStored)); } catch {}
-
-  intervalColorMap = {};
-  for (const [id, idx] of Object.entries(nextStored)) {
-    intervalColorMap[id] = INTERVAL_COLORS[idx % INTERVAL_COLORS.length];
-  }
-}
-
-function colorForInterval(intervalId) {
-  const id = String(intervalId ?? "");
-  return intervalColorMap[id] || INTERVAL_COLORS[Math.abs(id.split("").reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % INTERVAL_COLORS.length];
-}
-
-function dotStyleForShift(shift, dateStr, { empty = false } = {}) {
-  const c = isPastDay(dateStr) ? "var(--dotPast)" : colorForInterval(shiftIntervalId(shift));
-  if (empty) return `background:transparent;border:1px solid ${c};box-shadow:none;`;
-  return `background:${c};`;
+function dotStyleForInterval(intervalId) {
+  const hue = hashHue(intervalId);
+  // овальчик, цвет привязан к intervalId
+  return `background:hsl(${hue} 70% 60%);`;
 }
 
 function escapeHtml(s) {
@@ -317,7 +181,6 @@ let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "ve
 let isMultiVenue = false;
 
 let curMonth = new Date();
-let selectedDate = null;
 curMonth.setDate(1);
 
 let intervals = [];
@@ -354,14 +217,10 @@ function renderModeToggle() {
   // - редактор расписания (canEdit) => "Все/Только мои"
   // - сотрудник с 2+ заведениями => добавляется "Общий"
   if (!canEdit && !isMultiVenue) {
-    mode.box.classList.add("hidden");
     mode.box.style.display = "none";
     return;
   }
 
-  // В Sprint-2 версии блок мог быть скрыт классом .hidden (display:none!important).
-  // Убираем этот класс при показе, иначе переключатель не появится.
-  mode.box.classList.remove("hidden");
   mode.box.style.display = "inline-flex";
 
   // видимость кнопок
@@ -434,8 +293,6 @@ async function loadContext() {
     intervals = normalizeList(out).filter(x => x && (x.is_active === undefined || x.is_active));
   } catch { intervals = []; }
 
-  buildIntervalColorMap();
-
   try {
     const out = await getVenuePositions(venueId);
     positions = normalizeList(out).filter(p => p && (p.is_active === undefined || p.is_active));
@@ -460,18 +317,11 @@ function fmtMoney(n) {
 }
 
 function formatGlobalLine(item) {
+  const t = item?.interval?.start_time ? item.interval.start_time : "";
   const venueName = item?.venue?.name || "Заведение";
-  const t = shiftStartHHMM(item) || (item?.interval?.start_time ? String(item.interval.start_time).slice(0, 5) : "");
-
-  // Прошедшие: показываем зарплату, а если её нет (ещё нет отчёта) — показываем "Заведение • Время".
-  if (isPastDateISO(item.date)) {
-    const sal = Number(item?.my_salary);
-    if (Number.isFinite(sal)) return fmtMoney(sal);
-    return t ? `${venueName} • ${t}` : `${venueName}`;
-  }
-
-  // Будущие: "Заведение • Время"
-  return t ? `${venueName} • ${t}` : `${venueName}`;
+  if (isPastDateISO(item.date)) return fmtMoney(item.my_salary);
+  // Будущие смены: сначала название заведения, затем время начала
+  return t ? `${venueName} · ${t}` : `${venueName}`;
 }
 
 async function loadMyGlobalShifts(monthStr) {
@@ -501,15 +351,8 @@ async function loadMonth() {
 
   buildIndex();
   renderMonth();
-
-  // Keep a selected day panel (graph) on screen
-  const monthPrefix = ym(curMonth);
-  if (!selectedDate || !String(selectedDate).startsWith(monthPrefix)) {
-    selectedDate = defaultSelectedDateForMonth();
-  }
-  selectDate(selectedDate, { noExpand: true });
+  if (el.dayPanel) el.dayPanel.innerHTML = ""; // больше не используем
 }
-
 
 function buildIndex() {
   shiftsByDate = new Map();
@@ -538,212 +381,6 @@ function buildIndex() {
       return String(at).localeCompare(String(bt));
     });
   }
-}
-
-function defaultSelectedDateForMonth() {
-  const monthPrefix = ym(curMonth);
-  const today = ymd(new Date());
-  if (String(today).startsWith(monthPrefix)) return today;
-
-  // first day with shifts in this month
-  const keys = Array.from(shiftsByDate.keys()).filter(k => String(k).startsWith(monthPrefix)).sort();
-  if (keys.length) return keys[0];
-
-  return `${monthPrefix}-01`;
-}
-
-function selectDate(dateStr, { noExpand = false } = {}) {
-  if (!dateStr) return;
-  selectedDate = dateStr;
-
-  // update selected style
-  document.querySelectorAll('.cal-cell--selected').forEach(x => x.classList.remove('cal-cell--selected'));
-  const esc = (window.CSS && CSS.escape) ? CSS.escape(String(dateStr)) : String(dateStr).replace(/"/g, "\"");
-  const cell = document.querySelector(`.cal-cell[data-date="${esc}"]`);
-  if (cell) cell.classList.add('cal-cell--selected');
-
-
-  // optionally expand the cell on desktop for readability
-  if (!noExpand && cell) {
-    if (expandedDate !== dateStr) expandCell(cell, dateStr);
-  }
-}
-
-function uniqAssignedPeopleCount(shiftsList) {
-  const set = new Set();
-  for (const s of (shiftsList || [])) {
-    const assigns = (s.assignments || s.shift_assignments || []);
-    for (const a of assigns) {
-      const id = a.member_user_id ?? a.user_id ?? a.id;
-      if (id != null) set.add(String(id));
-    }
-  }
-  return set.size;
-}
-
-function countAssignments(shiftsList) {
-  let n = 0;
-  for (const s of (shiftsList || [])) {
-    const assigns = (s.assignments || s.shift_assignments || []);
-    n += (assigns?.length || 0);
-  }
-  return n;
-}
-
-function sumMySalary(shiftsList) {
-  let total = 0;
-  let has = false;
-  for (const s of (shiftsList || [])) {
-    const sal = Number(s?.my_salary);
-    if (Number.isFinite(sal)) { total += sal; has = true; }
-  }
-  return has ? total : null;
-}
-
-function hhmmToMin(hhmm) {
-  const s = toHHMM(hhmm);
-  if (!/^\d{2}:\d{2}$/.test(s)) return null;
-  const h = Number(s.slice(0,2));
-  const m = Number(s.slice(3,5));
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  return h*60 + m;
-}
-
-function timelineRowLabel(s) {
-  // In "global" scope: Venue • HH:MM
-  if (calendarScope === 'global') {
-    const venueName = s?.venue?.name || 'Заведение';
-    const t = shiftStartHHMM(s);
-    return t ? `${venueName} • ${t}` : venueName;
-  }
-  // In venue scope: HH:MM
-  return shiftStartHHMM(s);
-}
-
-function renderDayTimeline(shiftsList) {
-  if (!shiftsList || !shiftsList.length) return '';
-
-  // group by interval (and by venue in global scope)
-  const groups = new Map();
-  for (const s of shiftsList) {
-    const intervalId = shiftIntervalId(s);
-    const venueKey = (calendarScope === 'global') ? String(s?.venue_id ?? s?.venue?.id ?? 'v') : 'v';
-    const key = `${venueKey}:${intervalId}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(s);
-  }
-
-  const items = [];
-  for (const arr of groups.values()) {
-    const s0 = arr[0] || {};
-    const i = s0.interval || s0.shift_interval || {};
-    const st = toHHMM(i.start_time || s0.start_time || '');
-    const et = toHHMM(i.end_time || s0.end_time || '');
-    const stMin = hhmmToMin(st);
-    const etMin = hhmmToMin(et);
-
-    const c = colorForInterval(shiftIntervalId(s0));
-    const rgb = hexToRgbTriplet(c);
-
-    let leftPct = 0;
-    let widthPct = 100;
-    if (stMin != null && etMin != null && etMin >= stMin) {
-      leftPct = (stMin / 1440) * 100;
-      widthPct = Math.max(2, ((etMin - stMin) / 1440) * 100);
-    }
-
-    const assigns = (calendarScope === 'global') ? null : countAssignments(arr);
-    const people = (calendarScope === 'global') ? null : uniqAssignedPeopleCount(arr);
-    const sal = sumMySalary(arr);
-
-    let meta = '';
-    if (sal != null) meta = `${fmtMoney(sal)}`;
-    else if (people != null && people > 0) meta = `${people} чел.`;
-    else if (assigns != null && assigns > 0) meta = `${assigns} назнач.`;
-
-    const label = (st && et) ? `${st}–${et}` : (st || timelineRowLabel(s0) || '');
-
-    items.push({ stMin: stMin ?? 9999, leftPct, widthPct, rgb, label, meta });
-  }
-
-  items.sort((a, b) => a.stMin - b.stMin);
-
-  const rows = items.map(it => `
-    <div class="timeline__row">
-      <div class="timeline__time">${escapeHtml(it.label)}</div>
-      <div class="timeline__track">
-        <div class="timeline__seg" style="--left:${it.leftPct}%;--w:${it.widthPct}%;--line-rgb:${it.rgb}"></div>
-      </div>
-      <div class="timeline__meta">${escapeHtml(it.meta || '')}</div>
-    </div>
-  `).join('');
-
-  return `
-    <div class="timeline">
-      <div class="timeline__axis">
-        <div>00</div><div>06</div><div>12</div><div>18</div><div>24</div>
-      </div>
-      <div class="timeline__rows">${rows}</div>
-    </div>
-  `;
-}
-
-function renderDayPanel(dateStr) {
-  if (!el.dayPanel) return;
-
-  const listAll = shiftsByDate.get(dateStr) || [];
-  const list = filterForCalendar(listAll, dateStr);
-  const allowEdit = canEditDay(dateStr);
-
-  const scopeLabel = (calendarScope === 'global') ? 'Общий' : (showAllOnCalendar ? 'Все' : 'Мои');
-
-  if (!list.length) {
-    el.dayPanel.innerHTML = `
-      <div class="card daypanel-card">
-        <div class="daypanel__head">
-          <div class="daypanel__title">
-            <b>${escapeHtml(formatDateRuNoG(dateStr))}</b>
-            <div class="muted">Режим: ${escapeHtml(scopeLabel)}</div>
-          </div>
-        </div>
-        <div class="daypanel__empty muted">На этот день нет смен в выбранном режиме.</div>
-      </div>
-    `;
-    return;
-  }
-
-  const shiftsCount = list.length;
-  const people = (calendarScope === 'global') ? null : uniqAssignedPeopleCount(list);
-  const assigns = (calendarScope === 'global') ? null : countAssignments(list);
-  const total = sumMySalary(list);
-
-  const kpis = [
-    `<div class="kpi">Смен: <span class="muted">${shiftsCount}</span></div>`,
-  ];
-  if (people != null) kpis.push(`<div class="kpi">Людей: <span class="muted">${people}</span></div>`);
-  if (assigns != null) kpis.push(`<div class="kpi">Назначений: <span class="muted">${assigns}</span></div>`);
-  if (total != null) kpis.push(`<div class="kpi">Итого: <span class="muted">${fmtMoney(total)}</span></div>`);
-
-  el.dayPanel.innerHTML = `
-    <div class="card daypanel-card">
-      <div class="daypanel__head">
-        <div class="daypanel__title">
-          <b>${escapeHtml(formatDateRuNoG(dateStr))}</b>
-          <div class="muted">Режим: ${escapeHtml(scopeLabel)}</div>
-        </div>
-        <div class="daypanel__actions">
-          <button class="btn" id="btnDayOpen">Открыть</button>
-          ${allowEdit ? `<button class="btn primary" id="btnDayEdit">Редактировать</button>` : ``}
-        </div>
-      </div>
-      <div class="kpirow">${kpis.join('')}</div>
-      ${renderDayTimeline(list)}
-      <div class="daypanel__hint muted">Клик по дню в календаре обновляет график. Повторный клик открывает детали.</div>
-    </div>
-  `;
-
-  document.getElementById('btnDayOpen')?.addEventListener('click', () => openDay(dateStr));
-  document.getElementById('btnDayEdit')?.addEventListener('click', () => openDay(dateStr));
 }
 
 function monthTitle(d) {
@@ -798,37 +435,6 @@ function formatAllModeLine(shift, assignment) {
   const t = shiftStartHHMM(shift);
   return t ? `${who} — ${t}` : `${who}`;
 }
-
-
-function hexToRgbTriplet(hex) {
-  const h = String(hex || "").replace("#", "");
-  if (h.length !== 6) return "0 0 0";
-  const r = parseInt(h.slice(0,2), 16);
-  const g = parseInt(h.slice(2,4), 16);
-  const b = parseInt(h.slice(4,6), 16);
-  return `${r} ${g} ${b}`;
-}
-
-function makeCalLine(text, shift) {
-  const line = document.createElement("div");
-  line.className = "cal-line";
-
-  const span = document.createElement("span");
-  span.className = "cal-line__text";
-  span.textContent = text;
-  line.appendChild(span);
-
-  // Tooltip on desktop (helps when ellipsis kicks in)
-  try { line.title = text; } catch {}
-
-  // colorize by interval
-  const c = colorForInterval(shiftIntervalId(shift));
-  line.dataset.icolor = "1";
-  line.style.setProperty("--line-rgb", hexToRgbTriplet(c));
-  return line;
-}
-
-// dotrow removed: calendar uses only text labels (cal-line)
 
 let expandedDate = null;
 let expandWired = false;
@@ -904,8 +510,7 @@ function renderMonth() {
     cell.className =
       "cal-cell" +
       (inMonth ? "" : " cal-cell--out") +
-      (dateStr === todayStr ? " cal-cell--today" : "") +
-      (dateStr === selectedDate ? " cal-cell--selected" : "");
+      (dateStr === todayStr ? " cal-cell--today" : "");
     cell.setAttribute("data-date", dateStr);
 
     const top = document.createElement("div");
@@ -919,65 +524,58 @@ function renderMonth() {
     const listAll = shiftsByDate.get(dateStr) || [];
     const list = filterForCalendar(listAll, dateStr);
 
-
-    // --- MY mode ("Только мои") и Global mode ("Общий"): показываем строки, но без dotrow/старых ярлыков.
+    // --- Режим MY: показываем либо зарплату (прошлое с отчётом), либо время начала (будущие)
     if (!showAllOnCalendar) {
-      const pastDay = isPastDay(dateStr);
-      const maxLines = 3;
-      let shown = 0;
+      const past = isPastDay(dateStr);
+      const daySalary = salaryByDate.get(dateStr);
+
+      if (past && Number.isFinite(daySalary) && daySalary > 0) {
+        const sal = document.createElement("div");
+        sal.className = "day-salary";
+        sal.textContent = `+${Math.round(daySalary)}`;
+        box.appendChild(sal);
+      } 
+      else {
+        // будущее / сегодня: показать время начала первой моей смены
+        const firstShift = list[0];
+        const t = firstShift ? shiftStartHHMM(firstShift) : "";
+        // --- цветные овальчики (ALL mode) ---
+        if (t) {
+          const line = document.createElement("div");
+          line.className = "day-salary";
+          line.textContent = t;
+          box.appendChild(line);
+        }
+      }
+      // цветные овальчики даже в "моих" (чтобы не было уныло)
+// Маленький бонус: цветные овальчики даже в "Только мои"
+    if (list.length) {
+      const dotrow = document.createElement("div");
+      dotrow.className = "dotrow";
+
+      const maxDots = 6;
+      let dotCount = 0;
 
       for (const s of list) {
-        let txt = "";
-
-        // "Общий" (multi-venue)
-        if (calendarScope === "global") {
-          const venueName = s?.venue?.name || "Заведение";
-          const t = shiftStartHHMM(s) || (s?.interval?.start_time ? String(s.interval.start_time).slice(0, 5) : "");
-
-          if (pastDay) {
-            const sal = Number(s?.my_salary);
-            // Если зарплаты нет (нет отчёта), чтобы день не выглядел "пустым", показываем "Заведение • Время".
-            txt = Number.isFinite(sal) ? fmtMoney(sal) : (t ? `${venueName} • ${t}` : `${venueName}`);
-          } else {
-            txt = t ? `${venueName} • ${t}` : `${venueName}`;
-          }
-        }
-        // "Мои" (в рамках текущего заведения)
-        else {
-          if (pastDay) {
-            const sal = Number(s?.my_salary);
-            // Если зарплаты нет (нет отчёта), показываем время начала, чтобы не появлялась одинокая строка "+ ещё".
-            txt = Number.isFinite(sal) ? fmtMoney(sal) : shiftStartHHMM(s);
-          } else {
-            txt = shiftStartHHMM(s);
-          }
-        }
-
-        // если данных нет — не шумим
-        if (txt && txt !== "—") {
-          box.appendChild(makeCalLine(txt, s));
-          shown++;
-        }
-
-        if (shown >= maxLines) break;
+        const dot = document.createElement("div");
+        dot.className = "dot";
+        dot.setAttribute("style", dotStyleForInterval(shiftIntervalId(s)));
+        dotrow.appendChild(dot);
+        dotCount++;
+        if (dotCount >= maxDots) break;
       }
 
-      // Показываем "+ ещё" только если уже отрисовали хотя бы одну строку.
-      if (shown > 0 && list.length > shown) {
-        const more = document.createElement("div");
-        more.className = "cal-line muted cal-line--more";
-        more.textContent = "…";
-        box.appendChild(more);
-      }
+
+    }
 
     } else {
-      // --- ALL mode: show a few text lines (colorized by interval)
+      // --- Режим ALL: показываем строки "Имя/логин — HH:MM", без кружков
       const maxLines = 4;
-      const lines = [];
+      let lines = [];
 
       for (const s of list) {
         if (calendarScope === "global") {
-          lines.push({ text: formatGlobalLine(s), shift: s });
+          lines.push(formatGlobalLine(s));
           if (lines.length >= maxLines) break;
           continue;
         }
@@ -985,30 +583,32 @@ function renderMonth() {
         const assigns = (s.assignments || s.shift_assignments || []);
         if (assigns.length) {
           for (const a of assigns) {
-            lines.push({ text: formatAllModeLine(s, a), shift: s });
+            lines.push(formatAllModeLine(s, a));
             if (lines.length >= maxLines) break;
           }
         } else {
-          lines.push({ text: formatAllModeLine(s, null), shift: s });
+          lines.push(formatAllModeLine(s, null));
         }
-
         if (lines.length >= maxLines) break;
       }
 
-      for (const item of lines) {
-        box.appendChild(makeCalLine(item.text, item.shift));
+      for (const t of lines) {
+        const line = document.createElement("div");
+        line.className = "cal-line";
+        line.textContent = t;
+        box.appendChild(line);
       }
 
-      // +more lines hint
+      // подсчёт общего количества "строк", чтобы показать +ещё
       const totalLines = list.reduce((acc, s) => {
         const assigns = (s.assignments || s.shift_assignments || []);
         return acc + Math.max(1, assigns.length);
       }, 0);
 
-      if (lines.length > 0 && totalLines > maxLines) {
+      if (totalLines > maxLines) {
         const more = document.createElement("div");
-        more.className = "cal-line muted cal-line--more";
-        more.textContent = "…";
+        more.className = "cal-line muted";
+        more.textContent = `+ ещё ${totalLines - maxLines}`;
         box.appendChild(more);
       }
     }
@@ -1019,8 +619,6 @@ function renderMonth() {
     cell.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-
-      selectDate(dateStr, { noExpand: true });
 
       if (expandedDate !== dateStr) {
         expandCell(cell, dateStr);
@@ -1046,23 +644,21 @@ function renderShiftCard(s, allowEdit) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
   const shiftId = (s.id ?? s.shift_id);
-  const intColor = colorForInterval(shiftIntervalId(s));
-  const canComment = calendarScope !== "global";
 
   const assignments = s.assignments || s.shift_assignments || [];
   let peopleHtml = "";
   if (!assignments.length) {
-    peopleHtml = `<div class="muted" style="margin-top:8px">Пока никто не назначен</div>`;
+    peopleHtml = `<div class="muted mt-8">Пока никто не назначен</div>`;
   } else {
     peopleHtml =
-      `<div class="list" style="margin-top:8px">` +
+      `<div class="list mt-8">` +
       assignments.map((a) => {
         const label = displayPerson(a);
         const uname = (a.tg_username || a.member_username || "").trim();
         const unameTxt = uname ? (uname.startsWith("@") ? uname : "@"+uname) : "";
         return `
           <div class="list__row">
-            <div class="row" style="justify-content:space-between; align-items:center">
+            <div class="row jc-between ai-center">
               <div class="list__main">
                 <div><b>${escapeHtml(label)}</b>${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
               </div>
@@ -1077,44 +673,28 @@ function renderShiftCard(s, allowEdit) {
   let editorHtml = "";
   if (allowEdit) {
     editorHtml = `
-      <div class="row" style="gap:10px; flex-wrap:wrap">
-        <select class="input" data-posselect data-shift="${shiftId}" style="flex:1; min-width:240px"></select>
+      <div class="row mt-10 gap-10">
+        <select class="input flex-1 minw-240" data-posselect data-shift="${shiftId}"></select>
         <button class="btn primary" data-assign data-shift="${shiftId}">Назначить</button>
       </div>
     `;
   }
 
-  const commentsHtml = canComment
-    ? `
-      <div class="comments">
-        <div class="comments__head">
-          <b>Комментарии</b>
-          <span class="muted small" data-comments-status="${shiftId}"></span>
-        </div>
-        <div data-comments-list="${shiftId}" class="commentlist"><div class="muted small">Загрузка…</div></div>
-        <div class="commentform">
-          <textarea class="commentform__input" data-comments-input="${shiftId}" placeholder="Написать комментарий…"></textarea>
-          <button class="btn commentform__send" data-comments-send="${shiftId}">Отправить</button>
-        </div>
-      </div>
-    `
-    : `
-      <div class="comments">
-        <div class="comments__head"><b>Комментарии</b></div>
-        <div class="muted small" style="margin-top:6px">Комментарии доступны в режимах «Все» или «Только мои».</div>
-      </div>
-    `;
+  const commentsHtml = `
+    <div class="sep my-12"></div>
+    <div class="small mb-6">Комментарии</div>
+    <div data-comments-list="${shiftId}" class="small">Загрузка…</div>
+    <div class="row mt-8 gap-10 ai-start">
+      <textarea class="textarea flex-1 minw-220 minh-70" data-comments-input="${shiftId}" placeholder="Написать комментарий…" ></textarea>
+      <button class="btn" data-comments-send="${shiftId}">Отправить</button>
+    </div>
+  `;
 
   return `
-    <div class="card shiftcard" data-shiftcard="${shiftId}">
-      <div class="shiftcard__head">
-        <div class="shiftcard__title">
-          <div class="shiftcard__line1"><span class="intchip" style="background:${intColor}"></span><b>${escapeHtml(title)}</b></div>
-          ${time ? `<div class="shiftcard__meta muted">${escapeHtml(time)}</div>` : ``}
-        </div>
-      </div>
+    <div class="card mt-12" data-shiftcard="${shiftId}">
+      <b>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time)})</span>` : ""}</b>
       ${peopleHtml}
-      ${editorHtml ? `<div class="shiftcard__editor">${editorHtml}</div>` : ``}
+      ${editorHtml}
       ${commentsHtml}
     </div>
   `;
@@ -1135,25 +715,20 @@ function renderCommentsInto(shiftId, comments) {
   const box = document.querySelector(`[data-comments-list="${shiftId}"]`);
   if (!box) return;
   if (!comments || !comments.length) {
-    box.innerHTML = '<div class="muted small">Нет комментариев</div>';
+    box.innerHTML = '<span class="muted">Нет комментариев</span>';
     return;
   }
   box.innerHTML = "";
   for (const c of comments) {
+    const row = document.createElement("div");
+    row.className = "muted";
+    row.style.fontSize = "12px";
+    row.style.marginTop = "6px";
     const who = formatCommentAuthor(c.author);
     const dt = c.created_at ? new Date(c.created_at) : null;
-    const when = dt ? dt.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
-
-    const item = document.createElement("div");
-    item.className = "comment";
-    item.innerHTML = `
-      <div class="comment__head">
-        <div class="comment__author">${escapeHtml(who)}</div>
-        ${when ? `<div class="comment__when">${escapeHtml(when)}</div>` : `<div class="comment__when"></div>`}
-      </div>
-      <div class="comment__text">${escapeHtml(c.text || "")}</div>
-    `;
-    box.appendChild(item);
+    const when = dt ? dt.toLocaleString("ru-RU", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : "";
+    row.innerHTML = `<b>${escapeHtml(who)}</b>${when ? ` <span class="muted">· ${escapeHtml(when)}</span>` : ""}<div>${escapeHtml(c.text || "")}</div>`;
+    box.appendChild(row);
   }
 }
 
@@ -1161,19 +736,6 @@ async function wireShiftComments(shiftId) {
   const btn = document.querySelector(`[data-comments-send="${shiftId}"]`);
   const inp = document.querySelector(`[data-comments-input="${shiftId}"]`);
   if (!btn || !inp) return;
-
-  const syncBtn = () => {
-    const hasText = String(inp.value || "").trim().length > 0;
-    if (!btn.dataset.sending) btn.disabled = !hasText;
-  };
-
-  inp.addEventListener("input", syncBtn);
-  inp.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      btn.click();
-    }
-  });
 
   const refresh = async () => {
     const comments = await loadShiftComments(shiftId);
@@ -1183,12 +745,9 @@ async function wireShiftComments(shiftId) {
   // initial load
   refresh();
 
-  syncBtn();
-
   btn.onclick = async () => {
     const text = String(inp.value || "").trim();
     if (!text) return;
-    btn.dataset.sending = "1";
     btn.disabled = true;
     try {
       await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/comments`, {
@@ -1200,8 +759,7 @@ async function wireShiftComments(shiftId) {
     } catch (e) {
       toast(e?.message || "Не удалось отправить комментарий", "err");
     } finally {
-      delete btn.dataset.sending;
-      syncBtn();
+      btn.disabled = false;
     }
   };
 }
@@ -1292,43 +850,43 @@ function openDay(dateStr) {
   const subtitle = allowEdit ? "Редактирование" : "Просмотр";
 
   let html = `
-    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div class="row jc-between ai-start gap-12">
       <div>
-        ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted" style="margin-top:4px">Прошедшие дни может редактировать только владелец</div>` : ``}
+        ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted mt-4">Прошедшие дни может редактировать только владелец</div>` : ``}
       </div>
-      ${allowEdit ? `<button class="btn primary" id="btnAddShift" style="margin-top:6px">+ Добавить смену</button>` : ``}
+      ${allowEdit ? `<button class="btn primary mt-6" id="btnAddShift">+ Добавить смену</button>` : ``}
     </div>
   `;
 
   if (!list.length) {
-    html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день смен нет</div></div>`;
+    html += `<div class="card mt-12"><div class="muted">На этот день смен нет</div></div>`;
   } else {
-    html += `<div class="stack" style="margin-top:12px">`;
+    html += `<div class="stack mt-12">`;
     for (const s of list) html += renderShiftCard(s, allowEdit);
     html += `</div>`;
   }
 
   if (allowEdit) {
     html += `
-      <div class="card" style="margin-top:12px; display:none" id="addShiftCard">
+      <div class="card mt-12 hidden" id="addShiftCard">
         <b>Новая смена</b>
-        <div class="muted" style="margin-top:6px">Выбери промежуток и создай смену на этот день</div>
+        <div class="muted mt-6">Выбери промежуток и создай смену на этот день</div>
 
-        <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
-          <select class="input" id="intervalSelect" style="flex:1; min-width:220px"></select>
+        <div class="row mt-10 gap-10">
+          <select class="input flex-1 minw-220" id="intervalSelect"></select>
           <button class="btn primary" id="createShiftBtn">Создать смену</button>
         </div>
 
-        <div id="createIntervalBox" class="card" style="margin-top:10px; display:none; background: var(--surface2)">
+        <div id="createIntervalBox" class="card mt-10 hidden" style="background: rgba(255,255,255,0.04)">
           <b>Новый промежуток</b>
-          <div class="grid2" style="margin-top:10px">
+          <div class="grid2 mt-10">
             <input class="input" id="newIntTitle" placeholder="Название (например, Бар)" />
-            <div class="row" style="margin-top:10px">
+            <div class="row mt-10">
               <input class="input" id="newIntStart" placeholder="Начало (HH:MM)" />
               <input class="input" id="newIntEnd" placeholder="Конец (HH:MM)" />
             </div>
           </div>
-          <div class="row" style="margin-top:10px; gap:10px; justify-content:flex-end">
+          <div class="row mt-10 gap-10 jc-end">
             <button class="btn" id="cancelCreateInterval">Отмена</button>
             <button class="btn primary" id="createIntervalBtn">Создать промежуток</button>
           </div>

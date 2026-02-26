@@ -21,17 +21,20 @@
     </div>
 
     <div class="card">
-      <div class="row row--between">
-        <div class="row ai-center gap-10">
+      <div class="row jc-between gap-10 ai-center">
+        <div class="row gap-10 ai-center">
           <button class="btn" id="monthPrev">◀</button>
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext">▶</button>
         </div>
-          <div class="muted small">Кликни на день, чтобы посмотреть или заполнить отчёт</div>
+          <div class="small">Кликни на день, чтобы посмотреть или заполнить отчёт</div>
         </div>
         <div id="calGrid" class="cal mt-10"></div>
       </div>
     </div>
+
+    <div id="dayPanel" class="daypanel mt-12"></div>
+
     <div class="nav">
       <div class="wrap">
         <div id="nav"></div>
@@ -61,28 +64,28 @@
 
   <div class="modal" id="photoModal">
       <div class="modal__backdrop" data-close-ph></div>
-      <div class="modal__panel modal__panel--wide">
+      <div class="modal__panel" style="max-width: 720px">
         <div class="modal__head">
-          <divclass="minw-0">
+          <div>
             <b class="modal__title" id="photoTitle">Фото</b>
             <div class="modal__subtitle" id="photoSubtitle"></div>
           </div>
           <button class="btn" data-close-ph>Закрыть</button>
         </div>
         <div class="modal__body">
-          <div class="row gap-8 row--between">
-            <div class="row ai-center gap-8">
+          <div class="row jc-between ai-center gap-8">
+            <div class="row gap-8 ai-center">
               <button class="btn" id="phPrev">◀</button>
               <button class="btn" id="phNext">▶</button>
-              <div class="muted" id="phCounter"></div>
+              <div class="muted" id="phCounter" style="font-size:12px"></div>
             </div>
-            <div class="row ai-center gap-8">
+            <div class="row gap-8 ai-center">
               <a class="btn" id="phDownload" href="#" download>Скачать</a>
-              <button class="btn danger" id="phDelete">Удалить</button>
+              <button class="btn danger hidden" id="phDelete">Удалить</button>
             </div>
           </div>
-          <divclass="photoStage mt-10">
-            <img id="phImg" alt="photo"class="photoStage__img"/>
+          <div class="mt-10" style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#000">
+            <img id="phImg" alt="photo" class="block w-100" style="height:auto; max-height:70vh; object-fit:contain; margin:0 auto" />
           </div>
         </div>
       </div>

@@ -24,10 +24,10 @@
       <div class="itemcard mt-12">
         <b>Выберите заведение</b>
         <div class="row mt-10">
-          <select id="venueSelect" style="min-width:0; flex:1 1 220px; max-width:100%"></select>
+          <select id="venueSelect" class="minw-0 maxw-100 flex-1-220"></select>
           <button class="btn primary" id="btnUseVenue">Выбрать</button>
         </div>
-        <div class="mono" id="venueMeta"></div>
+        <div class="mono mt-8" id="venueMeta"></div>
       </div>
 
       <div class="itemcard mt-12">
@@ -44,13 +44,13 @@
 
         <div class="itemcard mt-12">
           <b>Приглашения в ожидании</b>
-          <div id="pending"class="mt-10">
+          <div id="pending">
             <div class="skeleton"></div>
             <div class="skeleton"></div></div>
         </div>
         <div class="itemcard mt-12">
           <b>Участники</b>
-          <div id="members"class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
+          <div id="members"><div class="skeleton"></div><div class="skeleton"></div></div>
         </div>
     </div>
   </div>
@@ -123,7 +123,7 @@
       items.forEach(i => {
         const row = document.createElement("div");
         row.className = "row";
-        row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
+        row.className = "row jc-between line";
         row.innerHTML = `
           <div>
             <b>@${esc(i.tg_username)}</b> <span class="mono">role=${esc(i.venue_role)}</span><br/>
@@ -155,9 +155,9 @@
       if (!items?.length) return members.innerHTML = `<div class="muted">Нет участников</div>`;
       items.forEach(m => {
         const row = document.createElement("div");
-        row.style = "border-bottom:1px solid var(--border); padding:10px 0;";
+        row.className = "row line";
         row.innerHTML = `
-          <div class="row" style="justify-content:space-between; align-items:flex-start">
+          <div class="row jc-between ai-start">
             <div>
               <b>@${esc(m.tg_username || "-")}</b> <span class="mono">role=${esc(m.venue_role)}</span><br/>
               <span class="mono">user_id=${esc(m.user_id)} · tg_user_id=${esc(m.tg_user_id || "-")}</span>

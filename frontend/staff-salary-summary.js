@@ -110,7 +110,7 @@ async function load() {
 
     const items = Array.isArray(data?.items) ? data.items : [];
     if (!items.length) {
-      el.list.innerHTML = `<div class="muted">За этот месяц данных нет</div>`;
+      el.list.innerHTML = `<div class="state state--center"><div class="state__title">Нет данных</div><div class="state__text">За этот месяц начислений нет.</div></div>`;
       return;
     }
 
@@ -119,14 +119,14 @@ async function load() {
       const name = it?.venue?.name || `venue #${it?.venue?.id || "?"}`;
       const row = document.createElement("div");
       row.className = "row";
-      row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0; gap:12px; align-items:flex-start";
+      row.className = "row jc-between gap-12 ai-start line";
       row.innerHTML = `
-        <div style="min-width:0">
-          <b style="display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${name}</b>
-          <div class="muted" style="margin-top:4px; font-size:12px">Начислено ${fmtMoney(it.earned)} · Чаевые ${fmtMoney(it.tips)} · Премии ${fmtMoney(it.bonuses)} · Штрафы ${fmtMoney(it.penalties)}</div>
+        <div>
+          <b class="block truncate">${name}</b>
+          <div class="small mt-4">Начислено ${fmtMoney(it.earned)} · Чаевые ${fmtMoney(it.tips)} · Премии ${fmtMoney(it.bonuses)} · Штрафы ${fmtMoney(it.penalties)}</div>
         </div>
-        <div style="text-align:right; flex:0 0 auto">
-          <div class="muted" style="font-size:12px">Итого</div>
+        <div class="ta-right flex-0">
+          <div class="small">Итого</div>
           <b>${fmtMoney(it.net)}</b>
         </div>
       `;
@@ -135,7 +135,7 @@ async function load() {
   } catch (e) {
     console.error(e);
     toast(e?.data?.detail || e?.message || "Не удалось загрузить сводку", "err");
-    el.list.innerHTML = `<div class="muted">Ошибка загрузки</div>`;
+    el.list.innerHTML = `<div class="state"><div class="state__title">Ошибка загрузки</div><div class="state__text">Не удалось получить данные. Попробуйте ещё раз.</div></div>`;
   }
 }
 

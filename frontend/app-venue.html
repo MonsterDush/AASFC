@@ -25,9 +25,9 @@
 
       <div class="itemcard mt-12">
         <b>Информация</b>
-        <div class="mono" id="meta">…</div>
+        <div class="mono mt-8" id="meta">…</div>
 
-        <div class="row gap-8 mt-10">
+        <div class="row mt-10 gap-8">
           <button class="btn" id="btnRename">Переименовать</button>
           <button class="btn" id="btnArchive">В архив</button>
           <button class="btn" id="btnUnarchive">Вернуть</button>
@@ -35,15 +35,15 @@
           <button class="btn danger" id="btnDelete">Удалить</button>
         </div>
 
-        <div class="muted mt-6"id="metaHint"></div>
+        <div class="muted mt-6" id="metaHint"></div>
       </div>
       <div class="itemcard mt-12">
               <b>Управление</b>
-              <div class="row gap-8 mt-12">
+              <div class="row mt-12 gap-8">
                 <a class="btn" id="openPositions" href="#">Должности</a>
                 <a class="btn" id="openInvites" href="#">Приглашения</a>
               </div>
-              <div class="row gap-8 mt-12">
+              <div class="row mt-12 gap-8">
                 <a class="btn" id="openShifts" href="#">График</a>
                 <a class="btn" id="openReports" href="#">Отчёты</a>
                 <a class="btn" id="openAdjustments" href="#">Штрафы/Списания</a>
@@ -51,7 +51,7 @@
       </div>
       <div class="itemcard mt-12">
         <b>Участники</b>
-        <div id="members"class="mt-10">
+        <div id="members">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
@@ -176,7 +176,7 @@
           items.forEach(m => {
             const row = document.createElement("div");
             row.className = "row";
-            row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
+            row.className = "row jc-between line";
             row.innerHTML = `
               <div>
                   <b>@${esc(m.tg_username || "-")}</b> <span class="mono">роль=${esc(m.venue_role)}</span><br/>
