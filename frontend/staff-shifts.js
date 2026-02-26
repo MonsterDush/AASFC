@@ -354,10 +354,14 @@ function renderModeToggle() {
   // - редактор расписания (canEdit) => "Все/Только мои"
   // - сотрудник с 2+ заведениями => добавляется "Общий"
   if (!canEdit && !isMultiVenue) {
+    mode.box.classList.add("hidden");
     mode.box.style.display = "none";
     return;
   }
 
+  // В Sprint-2 версии блок мог быть скрыт классом .hidden (display:none!important).
+  // Убираем этот класс при показе, иначе переключатель не появится.
+  mode.box.classList.remove("hidden");
   mode.box.style.display = "inline-flex";
 
   // видимость кнопок
