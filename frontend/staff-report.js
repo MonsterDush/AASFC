@@ -139,6 +139,8 @@ curMonth.setDate(1);
 
 let reportsByDate = new Map(); // dateISO -> report
 let perms = { role: "", flags: {} };
+let selectedDayISO = "";
+let selectedDayData = null; // { rep, attCount }
 
 function canMake() {
   return perms.role === "OWNER" || perms.flags.can_make_reports === true;
@@ -249,7 +251,12 @@ function renderMonth() {
     if (dStr === todayStr) cell.classList.add("is-today");
     if (hasRep) cell.classList.add("has-report");
 
-    cell.onclick = () => openDay(dStr);
+    cell.onclick = () => {
+      selectedDayISO = dStr;
+      selectedDayData = null;
+      renderMonthPanel();
+      openDay(dStr);
+    };
     body.appendChild(cell);
   }
 
@@ -259,6 +266,191 @@ function renderMonth() {
 function numOr0(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function fmtRub(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("ru-RU") + " ₽";
+}
+
+function monthDays(dateObj) {
+  const d = new Date(dateObj);
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+
+function isoForDay(dayNum) {
+  const d = new Date(curMonth);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(dayNum).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function renderMonthPanel() {
+  if (!el.dayPanel) return;
+  if (!venueId || !canView()) {
+    el.dayPanel.innerHTML = "";
+    return;
+  }
+
+  const days = monthDays(curMonth);
+  const showMoney = canSeeMoney();
+
+  let filled = 0;
+  let sumRevenue = 0;
+  let sumTips = 0;
+  let maxRevenue = 0;
+
+  const bars = [];
+  for (let day = 1; day <= days; day++) {
+    const iso = isoForDay(day);
+    const r = reportsByDate.get(iso);
+    const has = !!r;
+    const rev = has ? numOr0(r.revenue_total ?? r.total ?? r.revenue ?? r.revenue_sum ?? 0) : 0;
+    const tips = has ? numOr0(r.tips_total ?? r.tips ?? 0) : 0;
+
+    if (has) {
+      filled++;
+      sumRevenue += rev;
+      sumTips += tips;
+      if (rev > maxRevenue) maxRevenue = rev;
+    }
+    bars.push({ day, iso, has, rev });
+  }
+
+  const avg = filled ? Math.round(sumRevenue / filled) : 0;
+
+  const kpiHtml = `
+    <div class="kpi">
+      <div class="kpi__item">
+        <div class="kpi__label">Заполнено</div>
+        <div class="kpi__value">${filled} / ${days}</div>
+        <div class="kpi__sub">дней в месяце</div>
+      </div>
+      <div class="kpi__item">
+        <div class="kpi__label">Выручка</div>
+        <div class="kpi__value">${showMoney ? fmtRub(sumRevenue) : "—"}</div>
+        <div class="kpi__sub">за месяц</div>
+      </div>
+      <div class="kpi__item">
+        <div class="kpi__label">Чаевые</div>
+        <div class="kpi__value">${showMoney ? fmtRub(sumTips) : "—"}</div>
+        <div class="kpi__sub">за месяц</div>
+      </div>
+      <div class="kpi__item">
+        <div class="kpi__label">Средняя</div>
+        <div class="kpi__value">${showMoney ? fmtRub(avg) : "—"}</div>
+        <div class="kpi__sub">на заполненный день</div>
+      </div>
+    </div>
+  `;
+
+  const barsHtml = bars
+    .map(({ day, iso, has, rev }) => {
+      const h = showMoney
+        ? (maxRevenue > 0 ? Math.max(0, Math.min(1, rev / maxRevenue)) : 0)
+        : (has ? 0.55 : 0.10);
+      const cls = ["bar", has ? "has" : "", iso === selectedDayISO ? "is-selected" : ""]
+        .filter(Boolean)
+        .join(" ");
+      const aria = has
+        ? (showMoney ? `${formatDateRuNoG(iso)}: ${fmtRub(rev)}` : `${formatDateRuNoG(iso)}: отчёт есть`)
+        : `${formatDateRuNoG(iso)}: отчёта нет`;
+      return `
+        <button type="button" class="${cls}" data-dayiso="${esc(iso)}" aria-label="${esc(aria)}">
+          <div class="bar__col" style="--h:${h}"></div>
+          <div class="bar__label">${day}</div>
+        </button>
+      `;
+    })
+    .join("");
+
+  const dayHtml = (() => {
+    if (!selectedDayISO) {
+      return `<div class="itemcard" style="margin-top:12px"><div class="muted">Выбери день в календаре или на графике, чтобы посмотреть отчёт.</div></div>`;
+    }
+
+    const rep = selectedDayData?.rep || reportsByDate.get(selectedDayISO) || null;
+    const attCount = selectedDayData?.attCount;
+    const exists = !!rep;
+
+    if (!exists) {
+      return `
+        <div class="itemcard" style="margin-top:12px">
+          <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+            <b>${formatDateRuNoG(selectedDayISO)}</b>
+            <span class="muted">отчёта нет</span>
+          </div>
+          <div class="muted" style="margin-top:8px">Нажми на день, чтобы создать отчёт.</div>
+        </div>
+      `;
+    }
+
+    const cash = numOr0(rep.cash);
+    const cashless = numOr0(rep.cashless);
+    const total = numOr0(rep.revenue_total);
+    const tips = numOr0(rep.tips_total);
+    const denom = Math.max(1, cash + cashless);
+    const cashW = Math.round((cash / denom) * 100);
+    const cashlessW = 100 - cashW;
+
+    return `
+      <div class="itemcard" style="margin-top:12px">
+        <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+          <b>${formatDateRuNoG(selectedDayISO)}</b>
+          <span class="muted">отчёт есть</span>
+        </div>
+        ${showMoney ? `
+          <div class="row" style="margin-top:10px;gap:10px;align-items:stretch">
+            <div style="flex:1;min-width:160px">
+              <div class="small">Выручка</div>
+              <div style="font-weight:950;font-size:18px;margin-top:4px">${fmtRub(total)}</div>
+            </div>
+            <div style="flex:1;min-width:160px">
+              <div class="small">Чаевые</div>
+              <div style="font-weight:950;font-size:18px;margin-top:4px">${fmtRub(tips)}</div>
+            </div>
+          </div>
+          <div class="small" style="margin-top:10px">Наличные / безналичные</div>
+          <div class="paybar" aria-label="Наличные и безналичные">
+            <div class="paybar__seg cash" style="width:${cashW}%" title="Наличные ${fmtRub(cash)}"></div>
+            <div class="paybar__seg cashless" style="width:${cashlessW}%" title="Безналичные ${fmtRub(cashless)}"></div>
+          </div>
+        ` : `
+          <div class="muted" style="margin-top:10px">Нет доступа к суммам отчёта</div>
+        `}
+        ${Number.isFinite(attCount) ? `<div class="muted" style="margin-top:10px">Файлов: ${attCount}</div>` : ``}
+      </div>
+    `;
+  })();
+
+  el.dayPanel.innerHTML = `
+    <div class="card daypanel-card monthsum">
+      <div class="daypanel__head">
+        <div class="daypanel__title">
+          <b>Сводка месяца</b>
+          <div class="muted" style="margin-top:4px">Кликни на столбик или день в календаре</div>
+        </div>
+      </div>
+      ${kpiHtml}
+      <div class="barchart" aria-label="График выручки по дням">
+        <div class="barchart__bars">${barsHtml}</div>
+      </div>
+      ${dayHtml}
+    </div>
+  `;
+
+  el.dayPanel.querySelectorAll("[data-dayiso]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const iso = btn.getAttribute("data-dayiso");
+      if (!iso) return;
+      selectedDayISO = iso;
+      selectedDayData = null;
+      renderMonthPanel();
+      openDay(iso);
+    });
+  });
 }
 
 async function fetchReport(dayISO) {
@@ -319,6 +511,10 @@ async function openDay(dayISO) {
   if (!venueId) return;
   if (!canView()) return;
 
+  selectedDayISO = dayISO;
+  selectedDayData = null;
+  renderMonthPanel();
+
   const d = new Date(dayISO);
   const title = formatDateRuNoG(d);
 
@@ -347,6 +543,10 @@ async function openDay(dayISO) {
 
   const att = await fetchAttachments(dayISO);
   const attItems = att?.items || [];
+
+  // Update side panel summary (month graph)
+  selectedDayData = { rep: rep || null, attCount: attItems.length };
+  renderMonthPanel();
   const attHtml = attItems.length
     ? attItems
         .map(
@@ -467,7 +667,8 @@ async function openDay(dayISO) {
         toast("Отчёт сохранён", "ok");
         await loadMonthReports();
         renderMonth();
-    el.dayPanel.innerHTML = `<div class="muted" style="margin-top:8px">Выберите день в календаре, чтобы посмотреть или заполнить отчёт.</div>`;
+        selectedDayData = null;
+        renderMonthPanel();
         await openDay(dayISO);
       } catch (e) {
         toast("Ошибка сохранения: " + (e?.message || "неизвестно"), "err");
@@ -522,9 +723,11 @@ async function boot() {
     await loadPerms();
     await loadMonthReports();
     renderMonth();
+    renderMonthPanel();
   } catch (e) {
     toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
     renderMonth();
+    renderMonthPanel();
   }
 }
 
@@ -533,12 +736,18 @@ el.prev?.addEventListener("click", async () => {
   curMonth.setDate(1);
   await loadMonthReports();
   renderMonth();
+  selectedDayISO = "";
+  selectedDayData = null;
+  renderMonthPanel();
 });
 el.next?.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() + 1);
   curMonth.setDate(1);
   await loadMonthReports();
   renderMonth();
+  selectedDayISO = "";
+  selectedDayData = null;
+  renderMonthPanel();
 });
 
 boot();

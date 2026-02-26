@@ -993,6 +993,7 @@ function renderShiftCard(s, allowEdit) {
   const time = shiftTimeLabel(s).replace("-", "–");
   const shiftId = (s.id ?? s.shift_id);
   const intColor = colorForInterval(shiftIntervalId(s));
+  const canComment = calendarScope !== "global";
 
   const assignments = s.assignments || s.shift_assignments || [];
   let peopleHtml = "";
@@ -1022,28 +1023,44 @@ function renderShiftCard(s, allowEdit) {
   let editorHtml = "";
   if (allowEdit) {
     editorHtml = `
-      <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
+      <div class="row" style="gap:10px; flex-wrap:wrap">
         <select class="input" data-posselect data-shift="${shiftId}" style="flex:1; min-width:240px"></select>
         <button class="btn primary" data-assign data-shift="${shiftId}">Назначить</button>
       </div>
     `;
   }
 
-  const commentsHtml = `
-    <div class="sep" style="margin:12px 0"></div>
-    <div class="muted" style="font-size:12px;margin-bottom:6px">Комментарии</div>
-    <div data-comments-list="${shiftId}" class="muted" style="font-size:12px">Загрузка…</div>
-    <div class="row" style="margin-top:8px; gap:10px; align-items:flex-start; flex-wrap:wrap">
-      <textarea class="textarea" data-comments-input="${shiftId}" placeholder="Написать комментарий…" style="flex:1; min-width:220px; min-height:70px"></textarea>
-      <button class="btn" data-comments-send="${shiftId}">Отправить</button>
-    </div>
-  `;
+  const commentsHtml = canComment
+    ? `
+      <div class="comments">
+        <div class="comments__head">
+          <b>Комментарии</b>
+          <span class="muted small" data-comments-status="${shiftId}"></span>
+        </div>
+        <div data-comments-list="${shiftId}" class="commentlist"><div class="muted small">Загрузка…</div></div>
+        <div class="commentform">
+          <textarea class="commentform__input" data-comments-input="${shiftId}" placeholder="Написать комментарий…"></textarea>
+          <button class="btn commentform__send" data-comments-send="${shiftId}">Отправить</button>
+        </div>
+      </div>
+    `
+    : `
+      <div class="comments">
+        <div class="comments__head"><b>Комментарии</b></div>
+        <div class="muted small" style="margin-top:6px">Комментарии доступны в режимах «Все» или «Только мои».</div>
+      </div>
+    `;
 
   return `
-    <div class="card" data-shiftcard="${shiftId}" style="margin-top:12px">
-      <b><span class="intchip" style="background:${intColor}"></span>${escapeHtml(title)} ${time ? `<span class="muted">(${escapeHtml(time)})</span>` : ""}</b>
+    <div class="card shiftcard" data-shiftcard="${shiftId}">
+      <div class="shiftcard__head">
+        <div class="shiftcard__title">
+          <div class="shiftcard__line1"><span class="intchip" style="background:${intColor}"></span><b>${escapeHtml(title)}</b></div>
+          ${time ? `<div class="shiftcard__meta muted">${escapeHtml(time)}</div>` : ``}
+        </div>
+      </div>
       ${peopleHtml}
-      ${editorHtml}
+      ${editorHtml ? `<div class="shiftcard__editor">${editorHtml}</div>` : ``}
       ${commentsHtml}
     </div>
   `;
@@ -1064,20 +1081,25 @@ function renderCommentsInto(shiftId, comments) {
   const box = document.querySelector(`[data-comments-list="${shiftId}"]`);
   if (!box) return;
   if (!comments || !comments.length) {
-    box.innerHTML = '<span class="muted">Нет комментариев</span>';
+    box.innerHTML = '<div class="muted small">Нет комментариев</div>';
     return;
   }
   box.innerHTML = "";
   for (const c of comments) {
-    const row = document.createElement("div");
-    row.className = "muted";
-    row.style.fontSize = "12px";
-    row.style.marginTop = "6px";
     const who = formatCommentAuthor(c.author);
     const dt = c.created_at ? new Date(c.created_at) : null;
-    const when = dt ? dt.toLocaleString("ru-RU", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : "";
-    row.innerHTML = `<b>${escapeHtml(who)}</b>${when ? ` <span class="muted">· ${escapeHtml(when)}</span>` : ""}<div style="margin-top:2px">${escapeHtml(c.text || "")}</div>`;
-    box.appendChild(row);
+    const when = dt ? dt.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+
+    const item = document.createElement("div");
+    item.className = "comment";
+    item.innerHTML = `
+      <div class="comment__head">
+        <div class="comment__author">${escapeHtml(who)}</div>
+        ${when ? `<div class="comment__when">${escapeHtml(when)}</div>` : `<div class="comment__when"></div>`}
+      </div>
+      <div class="comment__text">${escapeHtml(c.text || "")}</div>
+    `;
+    box.appendChild(item);
   }
 }
 
@@ -1085,6 +1107,19 @@ async function wireShiftComments(shiftId) {
   const btn = document.querySelector(`[data-comments-send="${shiftId}"]`);
   const inp = document.querySelector(`[data-comments-input="${shiftId}"]`);
   if (!btn || !inp) return;
+
+  const syncBtn = () => {
+    const hasText = String(inp.value || "").trim().length > 0;
+    if (!btn.dataset.sending) btn.disabled = !hasText;
+  };
+
+  inp.addEventListener("input", syncBtn);
+  inp.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      btn.click();
+    }
+  });
 
   const refresh = async () => {
     const comments = await loadShiftComments(shiftId);
@@ -1094,9 +1129,12 @@ async function wireShiftComments(shiftId) {
   // initial load
   refresh();
 
+  syncBtn();
+
   btn.onclick = async () => {
     const text = String(inp.value || "").trim();
     if (!text) return;
+    btn.dataset.sending = "1";
     btn.disabled = true;
     try {
       await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/comments`, {
@@ -1108,7 +1146,8 @@ async function wireShiftComments(shiftId) {
     } catch (e) {
       toast(e?.message || "Не удалось отправить комментарий", "err");
     } finally {
-      btn.disabled = false;
+      delete btn.dataset.sending;
+      syncBtn();
     }
   };
 }
