@@ -167,7 +167,7 @@ body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);pad
 .small{font-size:12px;color:var(--muted)}
 .mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
 
-.btn{appearance:none;border:1px solid var(--border);cursor:pointer;padding:11px 12px;border-radius:12px;background:var(--surface2);color:var(--text);font-weight:800}
+.btn{text-decoration:none;border:1px solid var(--border);cursor:pointer;padding:11px 12px;border-radius:12px;background:var(--surface2);color:var(--text);font-weight:800}
 .btn.primary{background:var(--accent);color:var(--accentText);border-color:transparent}
 .btn.danger{background:var(--dangerBg);border-color:var(--dangerBorder);color:var(--dangerText)}
 .btn:disabled{opacity:.55;cursor:not-allowed}
