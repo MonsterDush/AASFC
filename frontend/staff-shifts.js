@@ -266,6 +266,7 @@ let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "ve
 let isMultiVenue = false;
 
 let curMonth = new Date();
+let selectedDate = null;
 curMonth.setDate(1);
 
 let intervals = [];
@@ -445,8 +446,15 @@ async function loadMonth() {
 
   buildIndex();
   renderMonth();
-  if (el.dayPanel) el.dayPanel.innerHTML = ""; // больше не используем
+
+  // Keep a selected day panel (graph) on screen
+  const monthPrefix = ym(curMonth);
+  if (!selectedDate || !String(selectedDate).startsWith(monthPrefix)) {
+    selectedDate = defaultSelectedDateForMonth();
+  }
+  selectDate(selectedDate, { noExpand: true });
 }
+
 
 function buildIndex() {
   shiftsByDate = new Map();
@@ -475,6 +483,213 @@ function buildIndex() {
       return String(at).localeCompare(String(bt));
     });
   }
+}
+
+function defaultSelectedDateForMonth() {
+  const monthPrefix = ym(curMonth);
+  const today = ymd(new Date());
+  if (String(today).startsWith(monthPrefix)) return today;
+
+  // first day with shifts in this month
+  const keys = Array.from(shiftsByDate.keys()).filter(k => String(k).startsWith(monthPrefix)).sort();
+  if (keys.length) return keys[0];
+
+  return `${monthPrefix}-01`;
+}
+
+function selectDate(dateStr, { noExpand = false } = {}) {
+  if (!dateStr) return;
+  selectedDate = dateStr;
+
+  // update selected style
+  document.querySelectorAll('.cal-cell--selected').forEach(x => x.classList.remove('cal-cell--selected'));
+  const esc = (window.CSS && CSS.escape) ? CSS.escape(String(dateStr)) : String(dateStr).replace(/"/g, "\"");
+  const cell = document.querySelector(`.cal-cell[data-date="${esc}"]`);
+  if (cell) cell.classList.add('cal-cell--selected');
+
+  renderDayPanel(dateStr);
+
+  // optionally expand the cell on desktop for readability
+  if (!noExpand && cell) {
+    if (expandedDate !== dateStr) expandCell(cell, dateStr);
+  }
+}
+
+function uniqAssignedPeopleCount(shiftsList) {
+  const set = new Set();
+  for (const s of (shiftsList || [])) {
+    const assigns = (s.assignments || s.shift_assignments || []);
+    for (const a of assigns) {
+      const id = a.member_user_id ?? a.user_id ?? a.id;
+      if (id != null) set.add(String(id));
+    }
+  }
+  return set.size;
+}
+
+function countAssignments(shiftsList) {
+  let n = 0;
+  for (const s of (shiftsList || [])) {
+    const assigns = (s.assignments || s.shift_assignments || []);
+    n += (assigns?.length || 0);
+  }
+  return n;
+}
+
+function sumMySalary(shiftsList) {
+  let total = 0;
+  let has = false;
+  for (const s of (shiftsList || [])) {
+    const sal = Number(s?.my_salary);
+    if (Number.isFinite(sal)) { total += sal; has = true; }
+  }
+  return has ? total : null;
+}
+
+function hhmmToMin(hhmm) {
+  const s = toHHMM(hhmm);
+  if (!/^\d{2}:\d{2}$/.test(s)) return null;
+  const h = Number(s.slice(0,2));
+  const m = Number(s.slice(3,5));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h*60 + m;
+}
+
+function timelineRowLabel(s) {
+  // In "global" scope: Venue • HH:MM
+  if (calendarScope === 'global') {
+    const venueName = s?.venue?.name || 'Заведение';
+    const t = shiftStartHHMM(s);
+    return t ? `${venueName} • ${t}` : venueName;
+  }
+  // In venue scope: HH:MM
+  return shiftStartHHMM(s);
+}
+
+function renderDayTimeline(shiftsList) {
+  if (!shiftsList || !shiftsList.length) return '';
+
+  // group by interval (and by venue in global scope)
+  const groups = new Map();
+  for (const s of shiftsList) {
+    const intervalId = shiftIntervalId(s);
+    const venueKey = (calendarScope === 'global') ? String(s?.venue_id ?? s?.venue?.id ?? 'v') : 'v';
+    const key = `${venueKey}:${intervalId}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  }
+
+  const items = [];
+  for (const arr of groups.values()) {
+    const s0 = arr[0] || {};
+    const i = s0.interval || s0.shift_interval || {};
+    const st = toHHMM(i.start_time || s0.start_time || '');
+    const et = toHHMM(i.end_time || s0.end_time || '');
+    const stMin = hhmmToMin(st);
+    const etMin = hhmmToMin(et);
+
+    const c = colorForInterval(shiftIntervalId(s0));
+    const rgb = hexToRgbTriplet(c);
+
+    let leftPct = 0;
+    let widthPct = 100;
+    if (stMin != null && etMin != null && etMin >= stMin) {
+      leftPct = (stMin / 1440) * 100;
+      widthPct = Math.max(2, ((etMin - stMin) / 1440) * 100);
+    }
+
+    const assigns = (calendarScope === 'global') ? null : countAssignments(arr);
+    const people = (calendarScope === 'global') ? null : uniqAssignedPeopleCount(arr);
+    const sal = sumMySalary(arr);
+
+    let meta = '';
+    if (sal != null) meta = `${fmtMoney(sal)}`;
+    else if (people != null && people > 0) meta = `${people} чел.`;
+    else if (assigns != null && assigns > 0) meta = `${assigns} назнач.`;
+
+    const label = (st && et) ? `${st}–${et}` : (st || timelineRowLabel(s0) || '');
+
+    items.push({ stMin: stMin ?? 9999, leftPct, widthPct, rgb, label, meta });
+  }
+
+  items.sort((a, b) => a.stMin - b.stMin);
+
+  const rows = items.map(it => `
+    <div class="timeline__row">
+      <div class="timeline__time">${escapeHtml(it.label)}</div>
+      <div class="timeline__track">
+        <div class="timeline__seg" style="--left:${it.leftPct}%;--w:${it.widthPct}%;--line-rgb:${it.rgb}"></div>
+      </div>
+      <div class="timeline__meta">${escapeHtml(it.meta || '')}</div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="timeline">
+      <div class="timeline__axis">
+        <div>00</div><div>06</div><div>12</div><div>18</div><div>24</div>
+      </div>
+      <div class="timeline__rows">${rows}</div>
+    </div>
+  `;
+}
+
+function renderDayPanel(dateStr) {
+  if (!el.dayPanel) return;
+
+  const listAll = shiftsByDate.get(dateStr) || [];
+  const list = filterForCalendar(listAll, dateStr);
+  const allowEdit = canEditDay(dateStr);
+
+  const scopeLabel = (calendarScope === 'global') ? 'Общий' : (showAllOnCalendar ? 'Все' : 'Мои');
+
+  if (!list.length) {
+    el.dayPanel.innerHTML = `
+      <div class="card daypanel-card">
+        <div class="daypanel__head">
+          <div class="daypanel__title">
+            <b>${escapeHtml(formatDateRuNoG(dateStr))}</b>
+            <div class="muted">Режим: ${escapeHtml(scopeLabel)}</div>
+          </div>
+        </div>
+        <div class="daypanel__empty muted">На этот день нет смен в выбранном режиме.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const shiftsCount = list.length;
+  const people = (calendarScope === 'global') ? null : uniqAssignedPeopleCount(list);
+  const assigns = (calendarScope === 'global') ? null : countAssignments(list);
+  const total = sumMySalary(list);
+
+  const kpis = [
+    `<div class="kpi">Смен: <span class="muted">${shiftsCount}</span></div>`,
+  ];
+  if (people != null) kpis.push(`<div class="kpi">Людей: <span class="muted">${people}</span></div>`);
+  if (assigns != null) kpis.push(`<div class="kpi">Назначений: <span class="muted">${assigns}</span></div>`);
+  if (total != null) kpis.push(`<div class="kpi">Итого: <span class="muted">${fmtMoney(total)}</span></div>`);
+
+  el.dayPanel.innerHTML = `
+    <div class="card daypanel-card">
+      <div class="daypanel__head">
+        <div class="daypanel__title">
+          <b>${escapeHtml(formatDateRuNoG(dateStr))}</b>
+          <div class="muted">Режим: ${escapeHtml(scopeLabel)}</div>
+        </div>
+        <div class="daypanel__actions">
+          <button class="btn" id="btnDayOpen">Открыть</button>
+          ${allowEdit ? `<button class="btn primary" id="btnDayEdit">Редактировать</button>` : ``}
+        </div>
+      </div>
+      <div class="kpirow">${kpis.join('')}</div>
+      ${renderDayTimeline(list)}
+      <div class="daypanel__hint muted">Клик по дню в календаре обновляет график. Повторный клик открывает детали.</div>
+    </div>
+  `;
+
+  document.getElementById('btnDayOpen')?.addEventListener('click', () => openDay(dateStr));
+  document.getElementById('btnDayEdit')?.addEventListener('click', () => openDay(dateStr));
 }
 
 function monthTitle(d) {
@@ -559,124 +774,7 @@ function makeCalLine(text, shift) {
   return line;
 }
 
-
-function uniqueAssignedPeopleCount(shiftsList) {
-  const set = new Set();
-  for (const s of (shiftsList || [])) {
-    const assigns = (s.assignments || s.shift_assignments || []);
-    for (const a of assigns) {
-      const id = a.member_user_id ?? a.user_id ?? a.id;
-      if (id != null) set.add(String(id));
-    }
-  }
-  return set.size;
-}
-
-function sumSalary(shiftsList) {
-  let total = 0;
-  let has = false;
-  for (const s of (shiftsList || [])) {
-    const sal = Number(s?.my_salary);
-    if (Number.isFinite(sal)) { total += sal; has = true; }
-  }
-  return has ? total : null;
-}
-
-function renderDayKpis(shiftsList, dateStr) {
-  const shiftsCount = (shiftsList || []).length;
-  const assignsCount = (shiftsList || []).reduce((acc, s) => acc + ((s.assignments || s.shift_assignments || []).length || 0), 0);
-  const people = uniqueAssignedPeopleCount(shiftsList);
-  const past = isPastDay(dateStr);
-  const total = past ? sumSalary(shiftsList) : null;
-
-  const parts = [
-    `<div class="kpi">Смен: <span class="muted">${shiftsCount}</span></div>`,
-    `<div class="kpi">Назначений: <span class="muted">${assignsCount}</span></div>`,
-    `<div class="kpi">Людей: <span class="muted">${people}</span></div>`,
-  ];
-  if (total != null) {
-    parts.push(`<div class="kpi">Сумма: <span class="muted">${escapeHtml(fmtMoney(total))}</span></div>`);
-  }
-  return `<div class="kpirow">${parts.join("")}</div>`;
-}
-
-function renderDayMiniGraph(shiftsList) {
-  const list = (shiftsList || []);
-  if (!list.length) return "";
-
-  const rows = list.map((s) => {
-    const title = shiftIntervalTitle(s) || "Интервал";
-    const time = (shiftTimeLabel(s) || "").replace("-", "–");
-    const assigns = (s.assignments || s.shift_assignments || []);
-    const meta = assigns.length ? `${assigns.length} чел.` : "—";
-    const c = colorForInterval(shiftIntervalId(s));
-    const rgb = hexToRgbTriplet(c);
-    return `
-      <div class="daygraph__row">
-        <div class="daygraph__time">${escapeHtml(time || "")}</div>
-        <div class="daygraph__bar" style="--line-rgb:${rgb}">
-          <div class="daygraph__label">
-            <span>${escapeHtml(title)}</span>
-            <span class="daygraph__meta">${escapeHtml(meta)}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  return `<div class="daygraph">${rows}</div>`;
-}
-
-function collectDotsMyMode(list, dateStr) {
-  // In "mine" mode we show one dot per shift (interval), not per person.
-  const out = [];
-  for (const s of (list || [])) {
-    out.push({ style: dotStyleForShift(s, dateStr, { empty: false }) });
-  }
-  return out;
-}
-
-function collectDotsAllMode(list, dateStr) {
-  const out = [];
-  for (const s of (list || [])) {
-    // global mode usually doesn't include assignments; show just one dot per shift.
-    if (calendarScope === "global") {
-      out.push({ style: dotStyleForShift(s, dateStr, { empty: false }) });
-      continue;
-    }
-    const assigns = (s.assignments || s.shift_assignments || []);
-    if (assigns && assigns.length) {
-      for (const _a of assigns) out.push({ style: dotStyleForShift(s, dateStr, { empty: false }) });
-    } else {
-      // empty shift (nobody assigned)
-      out.push({ style: dotStyleForShift(s, dateStr, { empty: true }) });
-    }
-  }
-  return out;
-}
-
-function appendDotRow(box, dots, { maxDots = 6 } = {}) {
-  if (!box || !dots || !dots.length) return;
-  const dotrow = document.createElement("div");
-  dotrow.className = "dotrow";
-
-  const shown = Math.min(maxDots, dots.length);
-  for (let i = 0; i < shown; i++) {
-    const dot = document.createElement("div");
-    dot.className = "dot";
-    dot.setAttribute("style", dots[i].style);
-    dotrow.appendChild(dot);
-  }
-
-  if (dots.length > maxDots) {
-    const more = document.createElement("div");
-    more.className = "dot--more";
-    more.textContent = `+${dots.length - maxDots}`;
-    dotrow.appendChild(more);
-  }
-
-  box.appendChild(dotrow);
-}
+// dotrow removed: calendar uses only text labels (cal-line)
 
 let expandedDate = null;
 let expandWired = false;
@@ -752,7 +850,8 @@ function renderMonth() {
     cell.className =
       "cal-cell" +
       (inMonth ? "" : " cal-cell--out") +
-      (dateStr === todayStr ? " cal-cell--today" : "");
+      (dateStr === todayStr ? " cal-cell--today" : "") +
+      (dateStr === selectedDate ? " cal-cell--selected" : "");
     cell.setAttribute("data-date", dateStr);
 
     const top = document.createElement("div");
@@ -812,9 +911,8 @@ function renderMonth() {
       // Показываем "+ ещё" только если уже отрисовали хотя бы одну строку.
       if (shown > 0 && list.length > shown) {
         const more = document.createElement("div");
-        more.className = "cal-line muted";
+        more.className = "cal-line muted cal-line--more";
         more.textContent = "…";
-        more.title = "Ещё смены в этот день";
         box.appendChild(more);
       }
 
@@ -855,9 +953,8 @@ function renderMonth() {
 
       if (lines.length > 0 && totalLines > maxLines) {
         const more = document.createElement("div");
-        more.className = "cal-line muted";
+        more.className = "cal-line muted cal-line--more";
         more.textContent = "…";
-        more.title = "Ещё смены в этот день";
         box.appendChild(more);
       }
     }
@@ -868,6 +965,8 @@ function renderMonth() {
     cell.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+
+      selectDate(dateStr, { noExpand: true });
 
       if (expandedDate !== dateStr) {
         expandCell(cell, dateStr);
@@ -1107,12 +1206,6 @@ function openDay(dateStr) {
       ${allowEdit ? `<button class="btn primary" id="btnAddShift" style="margin-top:6px">+ Добавить смену</button>` : ``}
     </div>
   `;
-
-  // Summary + mini-graph (helps readability on mobile and desktop)
-  if (list.length) {
-    html += renderDayKpis(list, dateStr);
-    html += renderDayMiniGraph(list);
-  }
 
   if (!list.length) {
     html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день смен нет</div></div>`;
