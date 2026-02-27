@@ -673,7 +673,14 @@ input:focus,select:focus,textarea:focus{
 .bar:focus{outline:none}
 .bar:focus .bar__track{box-shadow:0 0 0 3px var(--focusRing)}
 
-
+.month-controls{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  flex:1 1 auto;
+  justify-content:center;
+}
 
 /* Salary day rows */
 .dayrow__right{display:flex;align-items:center;gap:10px}
