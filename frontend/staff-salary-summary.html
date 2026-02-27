@@ -6,6 +6,157 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Сводка зарплаты</title>
+
+  <!-- Page-specific polish (не ломает глобальные стили) -->
+  <style>
+    .salary-toolbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+    .month-controls{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-width:0;
+      flex:1 1 auto;
+    }
+    .month-title{
+      display:flex;
+      flex-direction:column;
+      min-width:0;
+      gap:2px;
+    }
+    #monthLabel{
+      font-size:22px;
+      line-height:1.15;
+      letter-spacing:0.2px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .month-sub{
+      font-size:12px;
+      opacity:0.8;
+    }
+    .btn.iconbtn{
+      width:44px;
+      height:44px;
+      padding:0;
+      border-radius:14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 auto;
+    }
+    #monthPicker{
+      width:140px;
+      max-width:42vw;
+    }
+
+    .kpi-grid{
+      margin-top:12px;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    .kpi{
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:12px;
+      background: rgba(255,255,255,0.02);
+      backdrop-filter: blur(6px);
+    }
+    .kpi .kpi-label{
+      font-size:12px;
+      opacity:0.85;
+    }
+    .kpi .kpi-value{
+      margin-top:6px;
+      font-size:20px;
+      font-weight:800;
+      letter-spacing:0.2px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .kpi.kpi-total{
+      grid-column:1 / -1;
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      gap:10px;
+      padding:14px;
+    }
+    .kpi.kpi-total .kpi-value{
+      font-size:24px;
+    }
+
+    .venues-head{
+      margin-top:14px;
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .venues-grid{
+      margin-top:10px;
+      display:grid;
+      grid-template-columns:1fr;
+      gap:10px;
+    }
+    @media (min-width: 560px){
+      .venues-grid{ grid-template-columns:1fr 1fr; }
+    }
+
+    .venue-card{
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:12px;
+      background: rgba(255,255,255,0.02);
+      overflow:hidden;
+    }
+    .venue-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      min-width:0;
+    }
+    .venue-name{
+      font-weight:800;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      min-width:0;
+    }
+    .venue-net{
+      text-align:right;
+      flex:0 0 auto;
+    }
+    .venue-net .muted{
+      font-size:12px;
+    }
+    .venue-net b{
+      font-size:18px;
+    }
+    .chips{
+      margin-top:10px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    .chip{
+      border:1px solid var(--border);
+      border-radius:999px;
+      padding:6px 10px;
+      font-size:12px;
+      background: rgba(255,255,255,0.02);
+      white-space:nowrap;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -21,34 +172,63 @@
     </div>
 
     <div class="card">
-      <div class="row row--between">
-        <div class="row ai-center gap-10">
-          <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
-          <b id="monthLabel">…</b>
+      <div class="salary-toolbar">
+        <div class="month-controls">
+          <button class="btn iconbtn" id="monthPrev" aria-label="Предыдущий месяц">‹</button>
+
+          <div class="month-title">
+            <b id="monthLabel">…</b>
+            <div class="muted month-sub">Месяц</div>
+          </div>
+
+          <button class="btn iconbtn" id="monthNext" aria-label="Следующий месяц">›</button>
+
           <input class="input" id="monthPicker" type="month" />
-          <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
+
         <button class="btn" id="btnReload">Обновить</button>
       </div>
 
-      <div class="itemcard mt-12">
-        <div class="row jc-between row--between"><div class="muted">Начислено</div><b id="tEarned">0</b></div>
-        <div class="row jc-between row--between"><div class="muted">Премии</div><b id="tBonuses">0</b></div>
-        <div class="row jc-between row--between"><div class="muted">Штрафы/Списания</div><b id="tPenalties">0</b></div>
-        <div class="row divider-top mt-8 pt-10 row--between">
-          <div class="muted">Итого</div><b id="tNet">0</b>
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="muted kpi-label">Начислено</div>
+          <div class="kpi-value" id="tEarned">0</div>
+        </div>
+
+        <div class="kpi">
+          <div class="muted kpi-label">Чаевые</div>
+          <div class="kpi-value" id="tTips">0</div>
+        </div>
+
+        <div class="kpi">
+          <div class="muted kpi-label">Премии</div>
+          <div class="kpi-value" id="tBonuses">0</div>
+        </div>
+
+        <div class="kpi">
+          <div class="muted kpi-label">Штрафы/Списания</div>
+          <div class="kpi-value" id="tPenalties">0</div>
+        </div>
+
+        <div class="kpi kpi-total">
+          <div class="muted kpi-label">Итого</div>
+          <div class="kpi-value" id="tNet">0</div>
         </div>
       </div>
 
-      <div class="itemcard mt-12">
+      <div class="venues-head">
         <b>По заведениям</b>
-        <div id="venuesList"class="mt-10">
-          <div class="skeleton"></div><div class="skeleton"></div>
-        </div>
+        <div class="muted small" id="venuesCount"></div>
+      </div>
+
+      <div id="venuesList" class="venues-grid">
+        <div class="venue-card"><div class="skeleton"></div></div>
+        <div class="venue-card"><div class="skeleton"></div></div>
       </div>
 
       <div class="muted mt-10 small">
-        Начисление считается по сменам, для которых есть отчёт (DailyReport). Штрафы/премии берутся из корректировок за месяц.
+        Начисление считается по сменам, для которых есть отчёт (DailyReport).
+        Штрафы/премии берутся из корректировок за месяц.
       </div>
     </div>
 

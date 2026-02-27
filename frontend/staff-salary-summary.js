@@ -38,6 +38,7 @@ const el = {
   tBonuses: document.getElementById("tBonuses"),
   tPenalties: document.getElementById("tPenalties"),
   tNet: document.getElementById("tNet"),
+  venuesCount: document.getElementById("venuesCount"),
   list: document.getElementById("venuesList"),
 };
 
@@ -51,25 +52,26 @@ function ym(d) {
 
 function monthTitle(d) {
   const ru = [
-    "январь",
-    "февраль",
-    "март",
-    "апрель",
-    "май",
-    "июнь",
-    "июль",
-    "август",
-    "сентябрь",
-    "октябрь",
-    "ноябрь",
-    "декабрь",
+    "январь", "февраль", "март", "апрель", "май", "июнь",
+    "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
   ];
-  return `${ru[d.getMonth()]} ${d.getFullYear()}`;
+  const m = ru[d.getMonth()] || "";
+  const cap = m ? (m[0].toUpperCase() + m.slice(1)) : "—";
+  return `${cap} ${d.getFullYear()}`;
 }
 
 function fmtMoney(n) {
   const v = Math.round(Number(n || 0));
   return v.toLocaleString("ru-RU");
+}
+
+function esc(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 let cur = new Date();
@@ -79,9 +81,7 @@ cur.setDate(1);
 const qMonth = params.get("month");
 if (qMonth && /^\d{4}-\d{2}$/.test(qMonth)) {
   const [yy, mm] = qMonth.split("-").map((x) => parseInt(x, 10));
-  if (yy && mm) {
-    cur = new Date(yy, mm - 1, 1);
-  }
+  if (yy && mm) cur = new Date(yy, mm - 1, 1);
 }
 
 function syncUrl() {
@@ -91,47 +91,74 @@ function syncUrl() {
   history.replaceState({}, "", `${location.pathname}?${p.toString()}`);
 }
 
+function renderSkeleton() {
+  el.list.innerHTML = `
+    <div class="venue-card"><div class="skeleton"></div></div>
+    <div class="venue-card"><div class="skeleton"></div></div>
+  `;
+}
+
+function renderVenueCard(it) {
+  const name = it?.venue?.name || `venue #${it?.venue?.id || "?"}`;
+
+  const earned = fmtMoney(it?.earned);
+  const tips = fmtMoney(it?.tips);
+  const bonuses = fmtMoney(it?.bonuses);
+  const penalties = fmtMoney(it?.penalties);
+  const net = fmtMoney(it?.net);
+
+  const card = document.createElement("div");
+  card.className = "venue-card";
+  card.innerHTML = `
+    <div class="venue-top">
+      <div style="min-width:0">
+        <div class="venue-name">${esc(name)}</div>
+      </div>
+      <div class="venue-net">
+        <div class="muted">Итого</div>
+        <b>${net}</b>
+      </div>
+    </div>
+
+    <div class="chips">
+      <div class="chip">Начислено: <b>${earned}</b></div>
+      <div class="chip">Чаевые: <b>${tips}</b></div>
+      <div class="chip">Премии: <b>${bonuses}</b></div>
+      <div class="chip">Штрафы: <b>${penalties}</b></div>
+    </div>
+  `;
+  return card;
+}
+
 async function load() {
   syncUrl();
+
   el.monthLabel.textContent = monthTitle(cur);
   if (el.monthPicker) el.monthPicker.value = ym(cur);
 
-  el.list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+  if (el.venuesCount) el.venuesCount.textContent = "";
+  renderSkeleton();
 
   try {
     const data = await api(`/me/salary-summary?month=${encodeURIComponent(ym(cur))}`);
     const totals = data?.totals || {};
 
     el.tEarned.textContent = fmtMoney(totals.earned);
-    if (el.tTips) el.tTips.textContent = fmtMoney(totals.tips);
+    el.tTips.textContent = fmtMoney(totals.tips);
     el.tBonuses.textContent = fmtMoney(totals.bonuses);
     el.tPenalties.textContent = fmtMoney(totals.penalties);
     el.tNet.textContent = fmtMoney(totals.net);
 
     const items = Array.isArray(data?.items) ? data.items : [];
+    if (el.venuesCount) el.venuesCount.textContent = items.length ? `${items.length}` : "";
+
     if (!items.length) {
       el.list.innerHTML = `<div class="muted">За этот месяц данных нет</div>`;
       return;
     }
 
     el.list.innerHTML = "";
-    items.forEach((it) => {
-      const name = it?.venue?.name || `venue #${it?.venue?.id || "?"}`;
-      const row = document.createElement("div");
-      row.className = "row";
-      row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0; gap:12px; align-items:flex-start";
-      row.innerHTML = `
-        <div style="min-width:0">
-          <b style="display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${name}</b>
-          <div class="muted" style="margin-top:4px; font-size:12px">Начислено ${fmtMoney(it.earned)} · Чаевые ${fmtMoney(it.tips)} · Премии ${fmtMoney(it.bonuses)} · Штрафы ${fmtMoney(it.penalties)}</div>
-        </div>
-        <div style="text-align:right; flex:0 0 auto">
-          <div class="muted" style="font-size:12px">Итого</div>
-          <b>${fmtMoney(it.net)}</b>
-        </div>
-      `;
-      el.list.appendChild(row);
-    });
+    items.forEach((it) => el.list.appendChild(renderVenueCard(it)));
   } catch (e) {
     console.error(e);
     toast(e?.data?.detail || e?.message || "Не удалось загрузить сводку", "err");
