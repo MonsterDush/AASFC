@@ -21,28 +21,27 @@
     </div>
 
     <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div class="row" style="gap:10px;align-items:center">
+      <div class="row jc-between ai-center gap-10">
+        <div class="row gap-10 ai-center">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
-        <div class="row" style="gap:10px;align-items:center;justify-content:flex-end">
-          <div id="calendarMode" class="shift-toggle" style="display:none">
+        <div class="row gap-10 ai-center jc-end">
+          <div id="calendarMode" class="shift-toggle hidden">
             <button type="button" id="modeAll">Все</button>
             <button type="button" id="modeMine">Только мои</button>
             <button type="button" id="modeGlobal">Общий</button>
           </div>
-          <button class="btn" id="btnLegend" type="button">Легенда</button>
-          <div class="muted" style="font-size:12px">Назначения отображаются по дням</div>
+          <div class="small">Назначения отображаются по дням</div>
 </div>
 
       </div>
 
-      <div id="calGrid" class="cal" style="margin-top:10px"></div>
+      <div id="calGrid" class="cal mt-10"></div>
     </div>
 
-    <!-- dayPanel intentionally removed: day details live in a dedicated page/modal -->
+    <div id="dayPanel" class="daypanel mt-12"></div>
 
     <div class="nav">
       <div class="wrap">
@@ -66,23 +65,9 @@
         <div class="modal__body"></div>
       </div>
     </div>
-
-    <div class="modal" id="legendModal">
-      <div class="modal__backdrop" data-close></div>
-      <div class="modal__panel">
-        <div class="modal__head">
-          <div>
-            <b class="modal__title">Легенда интервалов</b>
-            <div class="modal__subtitle">Цвет = интервал (одинаковый на всех экранах)</div>
-          </div>
-          <button class="btn" data-close>Закрыть</button>
-        </div>
-        <div class="modal__body" id="legendBody"></div>
-      </div>
-    </div>
   </div>
 
-  <div id="shiftsRoot" style="display:none"></div>
+  <div id="shiftsRoot"></div>
   <script type="module" src="/staff-shifts.js"></script>
 </body>
 </html>
