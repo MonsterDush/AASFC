@@ -1375,6 +1375,7 @@ def create_dispute(
         dis = AdjustmentDispute(
             venue_id=venue_id,
             adjustment_id=adj.id,
+            message=message,
             created_by_user_id=user.id,
             is_active=True,
             status="OPEN",
