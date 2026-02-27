@@ -5,6 +5,73 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
+<style>
+  /* ===== Shifts calendar: Week view + compact badges ===== */
+  #calendarView.shift-toggle { display:inline-flex; }
+
+  .cal .cal-badges{
+    margin-top: 8px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    overflow:hidden;
+    min-height:0;
+  }
+
+  /* Badge-like compact lines */
+  .cal .cal-line{
+    border-radius: 10px;
+    padding: 4px 8px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cal .cal-line[data-icolor="1"]{
+    border-left: 3px solid rgb(var(--line-rgb));
+    padding-left: 8px;
+  }
+  .cal .cal-line--more{ opacity:.75; }
+
+  /* Week layout */
+  .cal.is-week .cal-body{
+    display:grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap:10px;
+  }
+  .cal.is-week .cal-cell{
+    min-height: 150px;
+    padding: 10px;
+  }
+  .cal-weektop{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+    min-width:0;
+  }
+  .cal-weektop .cal-weekname{
+    font-size:12px;
+    opacity:.8;
+    line-height:1.1;
+  }
+  .cal-weektop .cal-weekdate{
+    font-weight:800;
+    line-height:1.15;
+  }
+  .cal-weektop .cal-daymeta{
+    text-align:right;
+    font-size:12px;
+    opacity:.8;
+    white-space:nowrap;
+  }
+
+  /* Mobile: show week as a readable vertical list (идеально для Mini App) */
+  @media (max-width: 560px){
+    .cal.is-week .cal-body{ grid-template-columns: 1fr; }
+    .cal.is-week .cal-cell{ min-height: 132px; }
+  }
+</style>
   <title>Axelio · Смены</title>
 </head>
 <body>
@@ -28,6 +95,10 @@
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
         <div class="row ai-center gap-10 row--center">
+<div id="calendarView" class="shift-toggle">
+  <button type="button" id="viewMonth">Месяц</button>
+  <button type="button" id="viewWeek">Неделя</button>
+</div>
           <div id="calendarMode" class="shift-toggle hidden">
             <button type="button" id="modeAll">Все</button>
             <button type="button" id="modeMine">Только мои</button>
