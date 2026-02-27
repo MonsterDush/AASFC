@@ -640,7 +640,7 @@ input:focus,select:focus,textarea:focus{
 .ai-start{align-items:flex-start}
 .ai-end{align-items:flex-end}
 .row--between{justify-content:space-between}
-.row--end{justify-content:flex-end}
+.row--end{justify-content:space-between}
 .row--center{justify-content:center}
 .row--nowrap{flex-wrap:nowrap}
 .divider-top{border-top:1px solid var(--border)}
