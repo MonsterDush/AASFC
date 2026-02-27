@@ -674,6 +674,7 @@ input:focus,select:focus,textarea:focus{
 .bar:focus .bar__track{box-shadow:0 0 0 3px var(--focusRing)}
 
 .month-controls{
+  font-size: 25px;
   display:flex;
   align-items:center;
   gap:10px;
