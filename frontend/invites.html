@@ -22,18 +22,18 @@
 
     <div class="card">
 
-      <div id="selectorCard" class="itemcard mt-12 hidden">
+      <div id="selectorCard" class="itemcard" style="margin-top:12px; display:none;">
         <b>Выбрать заведение</b>
         <div class="muted mt-6">
           Ты открыл страницу без <span class="mono">venue_id</span>. Выбери заведение из списка.
         </div>
 
         <div class="row mt-10">
-          <select id="venueSelect">
+          <select id="venueSelect" style="min-width:380px">
             <option value="">Загружаю заведения…</option>
           </select>
           <button class="btn primary" id="btnUseVenue">Выбрать</button>
-          <a class="link hidden" id="openLink" href="/invites.html">Открыть ссылку →</a>
+          <a class="link" id="openLink" href="/invites.html">Открыть ссылку →</a>
         </div>
       </div>
 
@@ -58,14 +58,14 @@
 
       <div class="itemcard mt-12">
         <b>Приглашения в ожидании</b>
-        <div id="pending">
+        <div id="pending"class="mt-10">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
 
       <div class="itemcard mt-12">
         <b>Участники</b>
-        <div id="members">
+        <div id="members"class="mt-10">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
@@ -179,7 +179,7 @@
         items.forEach(i => {
           const row = document.createElement("div");
           row.className = "row";
-          row.className = "row jc-between line";
+          row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
           row.innerHTML = `
             <div>
               <b>@${esc(i.tg_username)}</b> <span class="mono">роль=${esc(i.venue_role)}</span><br/>
@@ -208,7 +208,7 @@
         }
         items.forEach(m => {
           const row = document.createElement("div");
-          row.className = "row line";
+          row.style = "border-bottom:1px solid var(--border); padding:10px 0;";
           row.innerHTML = `
             <div>
               <b>@${esc(m.tg_username || "-")}</b> <span class="mono">роль=${esc(m.venue_role)}</span><br/>

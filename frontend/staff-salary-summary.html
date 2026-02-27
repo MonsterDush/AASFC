@@ -21,33 +21,33 @@
     </div>
 
     <div class="card">
-      <div class="row jc-between ai-center gap-10">
-        <div class="row gap-10 ai-center">
+      <div class="row row--between">
+        <div class="row ai-center gap-10">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
-          <input class="input maxw-160" id="monthPicker" type="month" />
+          <input class="input" id="monthPicker" type="month" />
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
         <button class="btn" id="btnReload">Обновить</button>
       </div>
 
       <div class="itemcard mt-12">
-        <div class="row jc-between"><div class="muted">Начислено</div><b id="tEarned">0</b></div>
-        <div class="row jc-between"><div class="muted">Премии</div><b id="tBonuses">0</b></div>
-        <div class="row jc-between"><div class="muted">Штрафы/Списания</div><b id="tPenalties">0</b></div>
-        <div class="row jc-between mt-8 pt-10 bt" >
+        <div class="row jc-between row--between"><div class="muted">Начислено</div><b id="tEarned">0</b></div>
+        <div class="row jc-between row--between"><div class="muted">Премии</div><b id="tBonuses">0</b></div>
+        <div class="row jc-between row--between"><div class="muted">Штрафы/Списания</div><b id="tPenalties">0</b></div>
+        <div class="row divider-top mt-8 pt-10 row--between">
           <div class="muted">Итого</div><b id="tNet">0</b>
         </div>
       </div>
 
       <div class="itemcard mt-12">
         <b>По заведениям</b>
-        <div id="venuesList">
+        <div id="venuesList"class="mt-10">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
 
-      <div class="small mt-10">
+      <div class="muted mt-10 small">
         Начисление считается по сменам, для которых есть отчёт (DailyReport). Штрафы/премии берутся из корректировок за месяц.
       </div>
     </div>

@@ -62,7 +62,7 @@ function card(v){
   const div = document.createElement("div");
   div.className = "itemcard";
   div.innerHTML = `
-    <div class="row jc-between ai-start">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
       <div>
         <b>${esc(v.name)}</b>
         <div class="small">id=${v.id} · my_role=${esc(v.my_role || "")}</div>

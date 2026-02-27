@@ -80,17 +80,17 @@ function renderShell() {
     <div class="card">
       <div class="muted">Создайте должности, назначьте сотрудников и задайте условия оплаты.</div>
 
-      <div class="itemcard mt-12">
-        <div class="row jc-between gap-10 ai-center">
+      <div class="itemcard" style="margin-top:12px">
+        <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
           <b>Список должностей</b>
           <button class="btn primary" id="btnOpenCreate">+ Создать</button>
         </div>
-        <div id="list">
+        <div id="list" style="margin-top:10px">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
 
-      <div class="row mt-12">
+      <div class="row" style="margin-top:12px">
         <a class="link" id="back" href="#">← Назад к заведению</a>
       </div>
     </div>
@@ -116,7 +116,7 @@ function renderShell() {
         <div class="modal__head">
           <div>
             <b class="modal__title" id="posModalTitle">Должность</b>
-            <div class="small mt-4" id="posModalHint"></div>
+            <div class="muted" id="posModalHint" style="margin-top:4px; font-size:12px"></div>
           </div>
           <button class="btn" data-close>Закрыть</button>
         </div>
@@ -210,44 +210,44 @@ function renderPositionForm({ mode, position }) {
   return `
     ${renderTitleDatalist()}
 
-    <div class="grid grid2 mt-10">
+    <div class="grid grid2" style="margin-top:10px">
       <div>
-        <div class="muted mb-6">Название должности</div>
+        <div class="muted" style="margin-bottom:6px">Название должности</div>
         <input id="f_title" placeholder="Например: Бармен" list="posTitleHints" value="${esc(p.title || "")}" />
-        <div class="small mt-6">${esc(hint)}</div>
+        <div class="muted" style="margin-top:6px; font-size:12px">${esc(hint)}</div>
       </div>
 
       <div>
-        <div class="muted mb-6">Сотрудник</div>
+        <div class="muted" style="margin-bottom:6px">Сотрудник</div>
         <select id="f_member">${membersOptions}</select>
       </div>
 
       <div>
-        <div class="muted mb-6">Ставка</div>
+        <div class="muted" style="margin-bottom:6px">Ставка</div>
         <input id="f_rate" inputmode="decimal" placeholder="0" value="${esc(p.rate ?? "")}" />
       </div>
 
       <div>
-        <div class="muted mb-6">Процент от продаж</div>
+        <div class="muted" style="margin-bottom:6px">Процент от продаж</div>
         <input id="f_percent" inputmode="decimal" placeholder="0" value="${esc(p.percent ?? "")}" />
       </div>
     </div>
 
     
-    <div class="stack mt-12">
+    <div style="margin-top:12px; display:grid; grid-template-columns: 1fr; gap:10px">
 
       <div class="perm-tools">
         <button class="btn sm" type="button" id="btnPermAllOn">Включить все</button>
         <button class="btn sm" type="button" id="btnPermAllOff">Выключить все</button>
       </div>
 
-      <div class="card p-12">
+      <div class="card" style="padding:12px">
         <div class="perm-group-title">
           <div>
             <b>Права для отчётов</b>
-            <div class="small mt-4">Можно включать выборочно</div>
+            <div class="muted" style="margin-top:4px; font-size:12px">Можно включать выборочно</div>
           </div>
-          <div class="row gap-6" class="flex-0">
+          <div class="row" style="gap:6px; flex:0 0 auto">
             <button class="btn sm" type="button" data-perm-set="reports" data-value="1">Все</button>
             <button class="btn sm" type="button" data-perm-set="reports" data-value="0">Ничего</button>
           </div>
@@ -297,15 +297,15 @@ function renderPositionForm({ mode, position }) {
           </label>
         </div>
 
-        <div class="small mt-6">
+        <div class="muted" style="font-size:12px; margin-top:6px">
           Владелец видит отчёты всегда, независимо от должности.
         </div>
       </div>
 
-      <div class="card p-12">
+      <div class="card" style="padding:12px">
         <div class="perm-group-title">
           <b>Права для графика</b>
-          <div class="row gap-6" class="flex-0">
+          <div class="row" style="gap:6px; flex:0 0 auto">
             <button class="btn sm" type="button" data-perm-set="schedule" data-value="1">Все</button>
             <button class="btn sm" type="button" data-perm-set="schedule" data-value="0">Ничего</button>
           </div>
@@ -323,13 +323,13 @@ function renderPositionForm({ mode, position }) {
         </div>
       </div>
 
-      <div class="card p-12">
+      <div class="card" style="padding:12px">
         <div class="perm-group-title">
           <div>
             <b>Штрафы / Списания / Премии</b>
-            <div class="small mt-4">Доступ к финансовым корректировкам</div>
+            <div class="muted" style="margin-top:4px; font-size:12px">Доступ к финансовым корректировкам</div>
           </div>
-          <div class="row gap-6" class="flex-0">
+          <div class="row" style="gap:6px; flex:0 0 auto">
             <button class="btn sm" type="button" data-perm-set="adjustments" data-value="1">Все</button>
             <button class="btn sm" type="button" data-perm-set="adjustments" data-value="0">Ничего</button>
           </div>
@@ -370,13 +370,13 @@ function renderPositionForm({ mode, position }) {
       </div>
     </div>
 
-    <div class="row gap-8 mt-12">
+    <div class="row" style="gap:8px; margin-top:12px; flex-wrap:wrap">
       <button class="btn primary" id="btnSavePos">Сохранить</button>
       <button class="btn" id="btnCancelPos">Отмена</button>
       ${
         mode === "edit"
-          ? `<button class="btn danger ml-auto" id="btnDeletePos">Удалить</button>`
-          : `<span class="muted ml-auto">Можно назначать несколько людей на одну должность</span>`
+          ? `<button class="btn danger" id="btnDeletePos" style="margin-left:auto">Удалить</button>`
+          : `<span class="muted" style="margin-left:auto">Можно назначать несколько людей на одну должность</span>`
       }
     </div>
   `;
@@ -640,11 +640,11 @@ function renderPositions() {
     wrap.style.marginTop = "10px";
 
     wrap.innerHTML = `
-      <div class="row jc-between gap-10 ai-center">
+      <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
         <b>${esc(title)} <span class="muted">(${arr.length})</span></b>
         <button class="btn" data-add-same>+ Добавить сотрудника</button>
       </div>
-      <div class="list mt-10" data-rows></div>
+      <div class="list" style="margin-top:10px" data-rows></div>
     `;
 
     // "+ Добавить сотрудника" с предзаполненным title
@@ -689,12 +689,12 @@ function renderPositions() {
       row.innerHTML = `
         <div class="list__main">
           <div><b>${esc(who)}</b></div>
-          <div class="muted mt-4">
+          <div class="muted" style="margin-top:4px">
             Ставка: ${esc(money(p.rate))} · Процент: ${esc(money(p.percent))}% ·
             Отчёты: ${p.can_make_reports ? "да" : "нет"} · График: ${p.can_edit_schedule ? "да" : "нет"}
           </div>
         </div>
-        <div class="row gap-8">
+        <div class="row" style="gap:8px; flex-wrap:wrap">
           <button class="btn" data-edit>Изменить</button>
           <button class="btn danger" data-del>Удалить</button>
         </div>
