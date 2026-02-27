@@ -181,12 +181,12 @@ function renderNoVenue() {
   el.grid.innerHTML = `
     <div class="itemcard">
       <b>Не выбрано заведение</b>
-      <div class="muted mt-6">
+      <div class="muted" style="margin-top:6px">
         Открой страницу с параметром <span class="mono">?venue_id=...</span>.
       </div>
     </div>
   `;
-  el.dayPanel.innerHTML = "";
+  if (el.dayPanel) el.dayPanel.innerHTML = "";
 }
 
 function renderMonth() {
@@ -199,12 +199,12 @@ function renderMonth() {
     el.grid.innerHTML = `
       <div class="itemcard">
         <b>Нет доступа</b>
-        <div class="muted mt-6">
+        <div class="muted" style="margin-top:6px">
           У вас нет прав на просмотр отчётов.
         </div>
       </div>
     `;
-    el.dayPanel.innerHTML = "";
+    if (el.dayPanel) el.dayPanel.innerHTML = "";
     return;
   }
 
@@ -242,7 +242,7 @@ function renderMonth() {
     const hasRep = reportsByDate.has(dStr);
     cell.innerHTML = `
       <div class="cal-num">${d.getDate()}</div>
-      <div class="cal-sub tiny">${hasRep ? "есть отчёт" : ""}</div>
+      <div class="cal-sub muted" style="font-size:11px">${hasRep ? "есть отчёт" : ""}</div>
     `;
 
     if (ym(d) !== monthStr) cell.classList.add("is-out");
@@ -351,11 +351,11 @@ async function openDay(dayISO) {
     ? attItems
         .map(
           (a) =>
-            `<div class="row jc-between gap-10 ai-center line--tight">
-              <div class="maxw-55p" class="truncate">${esc(a.file_name || "file")}</div>
-              <div class="row gap-8 jc-end">
+            `<div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); align-items:center">
+              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:55%">${esc(a.file_name || "file")}</div>
+              <div class="row" style="gap:8px; justify-content:flex-end; flex-wrap:wrap">
                 <button class="btn" data-ph-open="${esc(a.id)}">Открыть</button>
-                <a class="btn" href="${esc(attachmentHref(a.url))}" download>Скачать</a>
+                <a class="btn" href="${esc(attachmentHref(a.url))}" download style="text-decoration:none">Скачать</a>
                 ${canEdit ? `<button class="btn danger" data-att-del="${esc(a.id)}">Удалить</button>` : ``}
               </div>
             </div>`
@@ -364,35 +364,36 @@ async function openDay(dayISO) {
     : `<div class="muted">Файлов нет</div>`;
 
   const formHtml = `
-    <div class="itemcard mt-12">
-      <div class="row jc-between ai-center gap-10">
-          <div class="muted mt-4"><b>${exists ? "Отчёт найден" : "Отчёта нет"}</b></div>
+    <div class="itemcard" style="margin-top: 12px;">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div class="muted" style="margin-top:4px"><b>${exists ? "Отчёт найден" : "Отчёта нет"}</b></div>
 
         ${canEdit ? `<button class="btn primary" id="btnSaveRep">${exists ? "Сохранить" : "Создать"}</button>` : ""}
       </div>
 
-      <div class="row gap-10 mt-12">
-        <label>
-          <div class="small mb-4">Наличные</div>
+      <div class="row" style="gap:10px;flex-wrap:wrap;margin-top:12px">
+        <label style="min-width:180px;display:block">
+          <div class="muted" style="font-size:12px;margin-bottom:4px">Наличные</div>
           <input id="repCash" type="number" min="0" value="${esc(cashVal)}"
             ${(!canEdit || !showMoney) ? "disabled" : ""}
             placeholder="${showMoney ? "0" : "нет доступа"}" />
         </label>
 
-        <label>
-          <div class="small mb-4">Безналичные</div>
+        <label style="min-width:180px;display:block">
+          <div class="muted" style="font-size:12px;margin-bottom:4px">Безналичные</div>
           <input id="repCashless" type="number" min="0" value="${esc(cashlessVal)}"
             ${(!canEdit || !showMoney) ? "disabled" : ""}
             placeholder="${showMoney ? "0" : "нет доступа"}" />
         </label>
 
-        <label>
-          <div class="row jc-between ai-center gap-8">
-            <div class="small mb-4">Выручка (итого)</div>
+        <label style="min-width:220px;display:block">
+          <div class="row" style="justify-content:space-between; align-items:center; gap:8px">
+            <div class="muted" style="font-size:12px;margin-bottom:4px">Выручка (итого)</div>
               <button
                 type="button"
-                class="btn sm"
+                class="btn"
                 id="btnSumTotal"
+                style="padding:4px 10px; font-size:12px; line-height:1;"
                 ${(!canEdit || !showMoney) ? "disabled" : ""}
                 title="Суммировать наличка + безнал"
               >Σ</button></div>
@@ -401,28 +402,28 @@ async function openDay(dayISO) {
             placeholder="${showMoney ? "0" : "нет доступа"}" />
         </label>
 
-        <label>
-          <div class="small mb-4">Чаевые (итого)</div>
+        <label style="min-width:180px;display:block">
+          <div class="muted" style="font-size:12px;margin-bottom:4px">Чаевые (итого)</div>
           <input id="repTips" type="number" min="0" value="${esc(tipsVal)}"
             ${(!canEdit || !showMoney) ? "disabled" : ""}
             placeholder="${showMoney ? "0" : "нет доступа"}" />
         </label>
       </div>
 
-      <div class="itemcard mt-12">
+      <div class="itemcard" style="margin-top:12px">
         <b>Фото/файлы к отчёту</b>
-        <div class="muted mt-6">Можно прикрепить несколько фотографий</div>
+        <div class="muted" style="margin-top:6px">Можно прикрепить несколько фотографий</div>
 
-        <div>${attHtml}</div>
+        <div style="margin-top:10px">${attHtml}</div>
 
         ${canEdit ? `
-          <div>
-           <div class="row jc-end gap-8 mt-10">
+          <div style="margin-top:12px">
+           <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
               <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
               <button class="btn" id="btnUpload">Загрузить</button>
             </div>
           </div>
-        ` : `<div class="muted mt-10">Нет прав на загрузку файлов</div>`}
+        ` : `<div class="muted" style="margin-top:10px">Нет прав на загрузку файлов</div>`}
       </div>
     </div>
   `;
@@ -466,7 +467,7 @@ async function openDay(dayISO) {
         toast("Отчёт сохранён", "ok");
         await loadMonthReports();
         renderMonth();
-    el.dayPanel.innerHTML = `<div class="state"><div class="state__title">Выберите день</div><div class="state__text">Кликните по дню в календаре, чтобы посмотреть или заполнить отчёт.</div></div>`;
+    if (el.dayPanel) el.dayPanel.innerHTML = `<div class="muted" style="margin-top:8px">Выберите день в календаре, чтобы посмотреть или заполнить отчёт.</div>`;
         await openDay(dayISO);
       } catch (e) {
         toast("Ошибка сохранения: " + (e?.message || "неизвестно"), "err");
