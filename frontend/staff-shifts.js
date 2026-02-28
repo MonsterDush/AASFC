@@ -1178,7 +1178,7 @@ function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
 
   // limits per view
   const maxMine = isWeek ? 10 : 3;
-  const maxAll = isWeek ? 12 : 4;
+  const maxAll = isWeek ? 12 : 3;
 
   if (!showAllOnCalendar) {
     let shown = 0;
