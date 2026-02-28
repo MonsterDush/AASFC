@@ -723,13 +723,23 @@ async function loadWeek() {
 
 function updateBadgesCols(box) {
   if (!box) return;
-  const w = box.getBoundingClientRect().width || 0;
 
-  // choose 2 cols when реально влезает (под Telegram WebView)
-  const minCol = 110; // px (пониже, чтобы даже на телефоне влезало)
-  const gap = 8;
-  const want2 = w >= (minCol * 2 + gap);
-  box.dataset.cols = want2 ? "2" : "1";
+  // HARD RULE:
+  // - For iPhone-like widths (>= 360px) always 2 columns
+  // - For very narrow screens (< 360px) fallback to 1 column
+  const vw = Math.max(
+    0,
+    Math.min(
+      window.innerWidth || 0,
+      document.documentElement?.clientWidth || 0
+    )
+  );
+
+  if (vw >= 360) {
+    box.dataset.cols = "2";
+    return;
+  }
+  box.dataset.cols = "1";
 }
 
 let _colsRaf = 0;
@@ -1176,7 +1186,10 @@ function wireGlobalCollapse() {
   });
 }
 
-function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
+function renderCellBadges(dateStr, box, { isWeek = false 
+  return { isEmpty: list.length === 0 };
+}
+ = {}) {
   const listAll = shiftsByDate.get(dateStr) || [];
   const list = filterForCalendar(listAll, dateStr);
   const pastDay = isPastDay(dateStr);
@@ -1224,7 +1237,7 @@ function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
       more.textContent = `+${list.length - shown}`;
       box.appendChild(more);
     }
-    return;
+    return { isEmpty: list.length === 0 };
   }
 
   // ALL mode

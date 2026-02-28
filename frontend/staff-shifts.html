@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v5_2col" />
 <style>
-  /* ===== Week view layout & compact badges (AUTO 1/2 columns) ===== */
+  /* ===== Week view layout & compact badges (HARD 2 cols for iPhone-like widths) ===== */
 
   /* Week layout */
   .cal.is-week .cal-body{
@@ -22,7 +22,7 @@
   .cal.is-week .cal-cell{
     height:auto;
     min-height:64px;
-    max-height:160px;          /* "не больше того что есть сейчас" */
+    max-height:160px;          /* not higher than before */
     padding:10px;
     display:flex;
     flex-direction:column;
@@ -66,24 +66,31 @@
     white-space:nowrap;
   }
 
-  /* Badges: columns decided by JS via data-cols */
+  /* Badges: ALWAYS fill rows first */
   .cal.is-week .cal-badges{
     margin-top:0;
     display:grid;
-    grid-template-columns: 1fr;
+    grid-auto-flow: row dense;             /* important: row-first packing */
+    grid-template-columns: repeat(2, minmax(0, 1fr));  /* hard 2 cols by default */
     column-gap: 8px;
     row-gap: 6px;
     overflow:hidden;
     min-width:0;
     align-content:start;
   }
-  .cal.is-week .cal-badges[data-cols="2"]{
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* If JS explicitly says 1 column (very narrow devices) */
+  .cal.is-week .cal-badges[data-cols="1"]{
+    grid-template-columns: 1fr;
+  }
+  /* Safety: super narrow */
+  @media (max-width: 340px){
+    .cal.is-week .cal-badges{ grid-template-columns: 1fr; }
   }
 
-  /* Make items shrinkable (critical for 2 columns) */
+  /* Make items shrinkable (critical for 2 cols with nowrap) */
   .cal.is-week .cal-badges > *{ min-width:0; }
   .cal.is-week .cal-line{ min-width:0; }
+  .cal-line__text{ min-width:0; }
 
   /* Compact badge style */
   .cal .cal-line{
@@ -101,7 +108,7 @@
   /* "+N" hint spans full width */
   .cal.is-week .cal-line--more{ grid-column: 1 / -1; opacity:.75; }
 
-  /* Optional: hide empty badge area in empty days */
+  /* Hide empty badge area in empty days */
   .cal.is-week .cal-cell.is-empty .cal-badges{ display:none; }
 </style>
   <title>Axelio · Смены</title>
@@ -183,6 +190,6 @@
     </div>
 
   <div id="shiftsRoot"class="hidden"></div>
-  <script type="module" src="/staff-shifts.js"></script>
+  <script type="module" src="/staff-shifts.js?v5_2col"></script>
 </body>
 </html>
