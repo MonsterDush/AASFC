@@ -64,18 +64,6 @@ const mode = {
   mine: document.getElementById("modeMine"),
   global: document.getElementById("modeGlobal"),
 };
-const view = {
-  box: document.getElementById("calendarView"),
-  month: document.getElementById("viewMonth"),
-  week: document.getElementById("viewWeek"),
-};
-
-const LS_VIEW = "axelio.shifts.view"; // 'month' | 'week'
-const LS_WEEK_START = "axelio.shifts.weekStart"; // YYYY-MM-DD (Monday)
-let calendarView = (params.get("view") || localStorage.getItem(LS_VIEW) || "month");
-if (calendarView !== "week") calendarView = "month";
-
-let curWeekStart = null; // Date (Monday)
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
@@ -151,34 +139,6 @@ function shortNameOrLogin(u) {
 function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
-function addDays(d, days) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  x.setDate(x.getDate() + days);
-  return x;
-}
-
-function startOfWeek(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  const jsDow = x.getDay(); // 0..6 (Sun..Sat)
-  const mondayBased = (jsDow + 6) % 7; // 0..6 (Mon..Sun)
-  x.setDate(x.getDate() - mondayBased);
-  return x;
-}
-
-function weekTitle(ws) {
-  const we = addDays(ws, 6);
-  const a = `${pad2(ws.getDate())}.${pad2(ws.getMonth() + 1)}`;
-  const b = `${pad2(we.getDate())}.${pad2(we.getMonth() + 1)}.${we.getFullYear()}`;
-  return `${a}–${b}`;
-}
-
-function isoInRange(iso, fromISO, toISO) {
-  // for YYYY-MM-DD (lexicographic works)
-  return String(iso) >= String(fromISO) && String(iso) <= String(toISO);
-}
-
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 function dateOnly(d) {
@@ -360,16 +320,6 @@ let curMonth = new Date();
 let selectedDate = null;
 curMonth.setDate(1);
 
-// init week start (Monday) from query/localStorage
-try {
-  const qWeek = params.get("week");
-  const s = (qWeek && /^\d{4}-\d{2}-\d{2}$/.test(qWeek)) ? qWeek : localStorage.getItem(LS_WEEK_START);
-  if (s && /^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    curWeekStart = startOfWeek(new Date(s + "T00:00:00"));
-  }
-} catch {}
-
-
 let intervals = [];
 let positions = [];
 let shifts = [];
@@ -394,35 +344,6 @@ function shiftStartHHMM(s) {
   const i = s.interval || s.shift_interval || {};
   const st = i.start_time || s.start_time || s.start || s.time_start || "";
   return toHHMM(st);
-}
-
-function timeToMin(hhmm) {
-  const s = String(hhmm || "").trim();
-  const m = /^([0-2]\d):([0-5]\d)$/.exec(s);
-  if (!m) return 1e9;
-  return (parseInt(m[1], 10) * 60) + parseInt(m[2], 10);
-}
-
-function shiftStartMinutes(s) {
-  const t = shiftStartHHMM(s) || (s?.interval?.start_time ? String(s.interval.start_time).slice(0, 5) : "");
-  return timeToMin(t);
-}
-
-function shiftStableNumId(s) {
-  const raw = s?.id ?? s?.shift_id ?? s?.shiftId ?? 0;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function sortShiftsForBadges(list) {
-  const arr = Array.isArray(list) ? [...list] : [];
-  arr.sort((a, b) => {
-    const ta = shiftStartMinutes(a);
-    const tb = shiftStartMinutes(b);
-    if (ta !== tb) return ta - tb;
-    return shiftStableNumId(a) - shiftStableNumId(b);
-  });
-  return arr;
 }
 
 // --- toggle ---
@@ -479,68 +400,6 @@ function renderModeToggle() {
   mode.global && (mode.global.onclick = () => {
     setScope("global");
   });
-}
-
-function syncUrl() {
-  try {
-    const p = new URLSearchParams(location.search);
-    if (venueId) p.set("venue_id", String(venueId));
-    p.set("view", calendarView);
-
-    if (calendarView === "week") {
-      const ws = curWeekStart ? ymd(curWeekStart) : "";
-      if (ws) p.set("week", ws);
-      p.delete("month");
-    } else {
-      p.set("month", ym(curMonth));
-      p.delete("week");
-    }
-
-    history.replaceState({}, "", `${location.pathname}?${p.toString()}`);
-  } catch {}
-}
-
-function renderViewToggle() {
-  if (!view.box) return;
-
-  const setActive = () => {
-    view.month?.classList.toggle("active", calendarView === "month");
-    view.week?.classList.toggle("active", calendarView === "week");
-  };
-
-  const goMonth = async () => {
-    calendarView = "month";
-    localStorage.setItem(LS_VIEW, "month");
-    setActive();
-
-    // align month to selectedDate if possible
-    if (selectedDate) {
-      const d = new Date(String(selectedDate) + "T00:00:00");
-      if (!isNaN(d.getTime())) curMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-    }
-    await reloadCurrentView();
-  };
-
-  const goWeek = async () => {
-    calendarView = "week";
-    localStorage.setItem(LS_VIEW, "week");
-    setActive();
-
-    const base = selectedDate ? new Date(String(selectedDate) + "T00:00:00") : new Date();
-    curWeekStart = startOfWeek(base);
-
-    try { localStorage.setItem(LS_WEEK_START, ymd(curWeekStart)); } catch {}
-    await loadWeek();
-  };
-
-  view.month && (view.month.onclick = goMonth);
-  view.week && (view.week.onclick = goWeek);
-
-  setActive();
-}
-
-async function reloadCurrentView() {
-  return (calendarView === "week") ? loadWeek() : loadMonth();
 }
 
 
@@ -624,8 +483,6 @@ async function loadMonth() {
   if (!venueId) return;
 
   const m = ym(curMonth);
-  syncUrl();
-  el.grid.classList.remove("is-week");
   try {
     if (calendarScope === "global") {
       const out = await loadMyGlobalShifts(m);
@@ -654,156 +511,13 @@ async function loadMonth() {
 }
 
 
-async function loadWeek() {
-  if (!venueId) return;
-
-  // init current week if missing
-  if (!curWeekStart) {
-    const base = selectedDate ? new Date(String(selectedDate) + "T00:00:00") : new Date();
-    curWeekStart = startOfWeek(base);
-  }
-
-  const ws = new Date(curWeekStart);
-  const we = addDays(ws, 6);
-
-  el.monthLabel.textContent = weekTitle(ws);
-  el.grid.classList.add("is-week");
-
-  const fromISO = ymd(ws);
-  const toISO = ymd(we);
-
-  syncUrl();
-
-  try {
-    if (calendarScope === "global") {
-      // global endpoint is month-based, so fetch 1-2 months and filter
-      const m1 = ym(ws);
-      const m2 = ym(we);
-      const a1 = await loadMyGlobalShifts(m1);
-      const a2 = (m2 === m1) ? [] : await loadMyGlobalShifts(m2);
-
-      globalShifts = normalizeList(a1)
-        .concat(normalizeList(a2))
-        .map(x => ({ ...x, id: x.id ?? x.shift_id }))
-        .filter(s => s?.date && isoInRange(s.date, fromISO, toISO));
-
-      shifts = [];
-    } else {
-      // venue scope: prefer date_from/date_to; fallback to month+filter
-      try {
-        const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?date_from=${encodeURIComponent(fromISO)}&date_to=${encodeURIComponent(toISO)}`);
-        shifts = normalizeList(out).filter(s => s?.date && isoInRange(s.date, fromISO, toISO));
-      } catch (e1) {
-        const m1 = ym(ws);
-        const m2 = ym(we);
-        const out1 = await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m1)}`);
-        const out2 = (m2 === m1) ? [] : await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m2)}`);
-        shifts = normalizeList(out1).concat(normalizeList(out2))
-          .filter(s => s?.date && isoInRange(s.date, fromISO, toISO));
-      }
-      globalShifts = [];
-    }
-  } catch (e) {
-    shifts = [];
-    globalShifts = [];
-    toast(e?.message || "Не удалось загрузить смены (неделя)", "err");
-  }
-
-  buildIndex();
-  renderWeek(ws);
-
-  const today = ymd(new Date());
-  if (!selectedDate || !isoInRange(selectedDate, fromISO, toISO)) {
-    selectedDate = isoInRange(today, fromISO, toISO) ? today : fromISO;
-  }
-  selectDate(selectedDate, { noExpand: true });
-
-  try { localStorage.setItem(LS_WEEK_START, fromISO); } catch {}
-}
-
-function renderWeek(ws) {
-  try {
-    // No month "expand" mechanics in week view
-    collapseExpanded();
-
-    wireGlobalCollapse();
-    el.grid.innerHTML = "";
-
-    const body = document.createElement("div");
-    body.className = "cal-body";
-
-    const todayStr = ymd(new Date());
-
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(ws, i);
-      const dateStr = ymd(d);
-
-      const cell = document.createElement("button");
-      cell.type = "button";
-      cell.className =
-        "cal-cell" +
-        (dateStr === todayStr ? " cal-cell--today" : "") +
-        (dateStr === selectedDate ? " cal-cell--selected" : "");
-      cell.setAttribute("data-date", dateStr);
-
-      // Ideal header: weekday + date + meta
-      const top = document.createElement("div");
-      top.className = "cal-weektop";
-
-      const left = document.createElement("div");
-      left.className = "minw-0";
-      left.innerHTML = `
-        <div class="cal-weekname">${escapeHtml(WEEKDAYS[i])}</div>
-        <div class="cal-weekdate">${pad2(d.getDate())}.${pad2(d.getMonth()+1)}</div>
-      `;
-
-      const meta = document.createElement("div");
-      meta.className = "cal-daymeta";
-      const dayList = filterForCalendar(shiftsByDate.get(dateStr) || [], dateStr);
-      const sal = salaryByDate.get(dateStr);
-      if (isPastDay(dateStr) && Number.isFinite(Number(sal))) meta.textContent = fmtMoney(sal);
-      else if (dayList.length) meta.textContent = `${dayList.length} смен`;
-      else meta.textContent = "";
-
-      top.appendChild(left);
-      top.appendChild(meta);
-
-      cell.appendChild(top);
-
-      const box = document.createElement("div");
-      box.className = "cal-badges";
-      renderCellBadges(dateStr, box, { isWeek: true });
-      cell.appendChild(box);
-
-      // Week is already readable: click opens day immediately
-      cell.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        selectDate(dateStr, { noExpand: true });
-        openDay(dateStr);
-      });
-
-      body.appendChild(cell);
-    }
-
-    el.grid.appendChild(body);
-  } catch (e) {
-    console.error(e);
-    toast("Ошибка в renderWeek: " + (e?.message || e), "err");
-    throw e;
-  }
-}
-
-
 function buildIndex() {
   shiftsByDate = new Map();
   salaryByDate = new Map();
 
   const list = (calendarScope === "global") ? globalShifts : shifts;
 
-  const sorted = sortShiftsForBadges(list);
-
-    for (const s of sorted) {
+  for (const s of list) {
     const date = s.date || s.shift_date || s.day;
     if (!date) continue;
 
@@ -1151,20 +865,89 @@ function wireGlobalCollapse() {
   });
 }
 
+function pluralRu(n, one, few, many) {
+  const x = Math.abs(Number(n) || 0);
+  const mod10 = x % 10;
+  const mod100 = x % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return few;
+  return many;
+}
+
+function syncUrl() {
+  try {
+    const p = new URLSearchParams(location.search);
+    if (venueId) p.set("venue_id", String(venueId));
+    p.set("view", calendarView);
+
+    if (calendarView === "week" && curWeekStart) {
+      p.set("week", ymd(curWeekStart));
+      try { localStorage.setItem(LS_WEEK_START, ymd(curWeekStart)); } catch {}
+    } else {
+      p.delete("week");
+    }
+
+    history.replaceState({}, "", `${location.pathname}?${p.toString()}`);
+  } catch {}
+}
+
+function renderViewToggle() {
+  if (!view.box) return;
+
+  const setActive = () => {
+    view.month?.classList.toggle("active", calendarView === "month");
+    view.week?.classList.toggle("active", calendarView === "week");
+  };
+
+  const goMonth = async () => {
+    calendarView = "month";
+    try { localStorage.setItem(LS_VIEW, "month"); } catch {}
+    setActive();
+
+    if (selectedDate) {
+      const d = new Date(String(selectedDate).slice(0, 10) + "T00:00:00");
+      curMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    }
+    await loadMonth();
+  };
+
+  const goWeek = async () => {
+    calendarView = "week";
+    try { localStorage.setItem(LS_VIEW, "week"); } catch {}
+    const base = selectedDate ? new Date(String(selectedDate).slice(0, 10) + "T00:00:00") : new Date();
+    curWeekStart = startOfWeek(base);
+    setActive();
+    await loadWeek();
+  };
+
+  view.month && (view.month.onclick = goMonth);
+  view.week && (view.week.onclick = goWeek);
+
+  setActive();
+}
+
+async function reloadCurrentView() {
+  return (calendarView === "week") ? loadWeek() : loadMonth();
+}
+
 function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
   const listAll = shiftsByDate.get(dateStr) || [];
   const list = filterForCalendar(listAll, dateStr);
   const pastDay = isPastDay(dateStr);
 
-  // limits per view
-  const maxMine = isWeek ? 10 : 3;
-  const maxAll = isWeek ? 12 : 4;
+  const moreLine = (n) => {
+    const more = document.createElement("div");
+    more.className = "cal-line muted cal-line--more";
+    more.textContent = `+${n}`;
+    box.appendChild(more);
+  };
 
   if (!showAllOnCalendar) {
+    // Week: меньше строк, чтобы точно не вылезать за max-height ячейки.
+    const maxLines = isWeek ? 8 : 3;
     let shown = 0;
-    const sorted = sortShiftsForBadges(list);
 
-    for (const s of sorted) {
+    for (const s of list) {
       let txt = "";
 
       if (calendarScope === "global") {
@@ -1190,27 +973,21 @@ function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
         box.appendChild(makeCalLine(txt, s));
         shown++;
       }
-      if (shown >= maxMine) break;
+      if (shown >= maxLines) break;
     }
 
-    if (shown > 0 && list.length > shown) {
-      const more = document.createElement("div");
-      more.className = "cal-line muted cal-line--more";
-      more.textContent = `+${list.length - shown}`;
-      box.appendChild(more);
-    }
-    return;
+    if (shown > 0 && list.length > shown) moreLine(list.length - shown);
+    return { list, isEmpty: list.length === 0 };
   }
 
-  // ALL mode
+  // Week: меньше строк, чтобы точно не вылезать за max-height ячейки.
+  const maxLines = isWeek ? 10 : 4;
   const lines = [];
 
-  const sorted2 = sortShiftsForBadges(list);
-
-  for (const s of sorted2) {
+  for (const s of list) {
     if (calendarScope === "global") {
       lines.push({ text: formatGlobalLine(s), shift: s });
-      if (lines.length >= maxAll) break;
+      if (lines.length >= maxLines) break;
       continue;
     }
 
@@ -1218,13 +995,13 @@ function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
     if (assigns.length) {
       for (const a of assigns) {
         lines.push({ text: formatAllModeLine(s, a), shift: s });
-        if (lines.length >= maxAll) break;
+        if (lines.length >= maxLines) break;
       }
     } else {
       lines.push({ text: formatAllModeLine(s, null), shift: s });
     }
 
-    if (lines.length >= maxAll) break;
+    if (lines.length >= maxLines) break;
   }
 
   for (const item of lines) box.appendChild(makeCalLine(item.text, item.shift));
@@ -1234,92 +1011,227 @@ function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
     return acc + Math.max(1, assigns.length);
   }, 0);
 
-  if (lines.length > 0 && totalLines > maxAll) {
-    const more = document.createElement("div");
-    more.className = "cal-line muted cal-line--more";
-    more.textContent = `+${totalLines - maxAll}`;
-    box.appendChild(more);
+  if (lines.length > 0 && totalLines > maxLines) moreLine(totalLines - maxLines);
+
+  return { list, isEmpty: list.length === 0 };
+}
+
+function updateBadgesCols(box) {
+  if (!box) return;
+  const w = box.getBoundingClientRect().width || 0;
+  const minCol = 160;
+  const gap = 8;
+  const want2 = w >= (minCol * 2 + gap);
+  box.dataset.cols = want2 ? "2" : "1";
+}
+
+let _colsRaf = 0;
+function scheduleColsUpdate() {
+  if (_colsRaf) cancelAnimationFrame(_colsRaf);
+  _colsRaf = requestAnimationFrame(() => {
+    _colsRaf = 0;
+    document.querySelectorAll(".cal.is-week .cal-badges").forEach(updateBadgesCols);
+  });
+}
+window.addEventListener("resize", scheduleColsUpdate);
+window.addEventListener("orientationchange", scheduleColsUpdate);
+
+async function loadWeek() {
+  if (!venueId) return;
+
+  if (!curWeekStart) curWeekStart = startOfWeek(new Date());
+  const ws = new Date(curWeekStart);
+  const we = addDays(ws, 6);
+
+  el.monthLabel.textContent = weekTitle(ws);
+  syncUrl();
+
+  const fromISO = ymd(ws);
+  const toISO = ymd(we);
+
+  try {
+    if (calendarScope === "global") {
+      const m1 = ym(ws);
+      const m2 = ym(we);
+      const a1 = await loadMyGlobalShifts(m1);
+      const a2 = (m2 === m1) ? [] : await loadMyGlobalShifts(m2);
+
+      globalShifts = normalizeList(a1)
+        .concat(normalizeList(a2))
+        .map(x => ({ ...x, id: x.id ?? x.shift_id }))
+        .filter(s => s?.date && isoInRange(s.date, fromISO, toISO));
+
+      shifts = [];
+    } else {
+      const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?date_from=${encodeURIComponent(fromISO)}&date_to=${encodeURIComponent(toISO)}`);
+      shifts = normalizeList(out);
+      globalShifts = [];
+    }
+  } catch (e) {
+    shifts = [];
+    globalShifts = [];
+    toast(e?.message || "Не удалось загрузить смены (неделя)", "err");
+  }
+
+  buildIndex();
+  renderWeek(ws);
+
+  const today = ymd(new Date());
+  if (!selectedDate || !isoInRange(String(selectedDate).slice(0,10), fromISO, toISO)) {
+    selectedDate = isoInRange(today, fromISO, toISO) ? today : fromISO;
+  }
+  selectDate(selectedDate, { noExpand: true });
+
+  scheduleColsUpdate();
+}
+
+function dayMetaText(dateStr, list) {
+  if (isPastDay(dateStr)) {
+    const total = salaryByDate.get(dateStr);
+    if (Number.isFinite(Number(total))) return fmtMoney(total);
+  }
+  const n = (list || []).length;
+  if (!n) return "";
+  return `${n} ${pluralRu(n, "смена", "смены", "смен")}`;
+}
+
+function renderWeek(ws) {
+  try {
+    wireGlobalCollapse();
+    el.grid.classList.add("is-week");
+    el.grid.innerHTML = "";
+
+    const body = document.createElement("div");
+    body.className = "cal-body";
+
+    const todayStr = ymd(new Date());
+
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i);
+      const dateStr = ymd(d);
+
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className =
+        "cal-cell" +
+        (dateStr === todayStr ? " cal-cell--today" : "") +
+        (dateStr === selectedDate ? " cal-cell--selected" : "");
+      cell.setAttribute("data-date", dateStr);
+
+      const listAll = shiftsByDate.get(dateStr) || [];
+      const list = filterForCalendar(listAll, dateStr);
+
+      const top = document.createElement("div");
+      top.className = "cal-weektop";
+      top.innerHTML = `
+        <div class="minw-0">
+          <div class="cal-weekname">${escapeHtml(WEEKDAYS[i])}</div>
+          <div class="cal-weekdate">${escapeHtml(pad2(d.getDate()) + "." + pad2(d.getMonth() + 1))}</div>
+        </div>
+        <div class="cal-daymeta">${escapeHtml(dayMetaText(dateStr, list))}</div>
+      `;
+      cell.appendChild(top);
+
+      const box = document.createElement("div");
+      box.className = "cal-badges";
+      const r = renderCellBadges(dateStr, box, { isWeek: true });
+      cell.appendChild(box);
+
+      if (r?.isEmpty) cell.classList.add("is-empty");
+
+      cell.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        selectDate(dateStr, { noExpand: true });
+        openDay(dateStr);
+      });
+
+      body.appendChild(cell);
+    }
+
+    el.grid.appendChild(body);
+  } catch (e) {
+    console.error(e);
+    toast("Ошибка в renderWeek: " + (e?.message || e), "err");
+    throw e;
   }
 }
 
 function renderMonth() {
   try {
-  wireGlobalCollapse();
+    wireGlobalCollapse();
+    el.grid.classList.remove("is-week");
 
-  el.grid.classList.remove("is-week");
+    el.monthLabel.textContent = monthTitle(curMonth);
+    syncUrl();
+    el.grid.innerHTML = "";
 
-  el.monthLabel.textContent = monthTitle(curMonth);
-  el.grid.innerHTML = "";
+    const head = document.createElement("div");
+    head.className = "cal-head";
+    for (const wd of WEEKDAYS) {
+      const c = document.createElement("div");
+      c.className = "cal-hcell";
+      c.textContent = wd;
+      head.appendChild(c);
+    }
+    el.grid.appendChild(head);
 
-  const head = document.createElement("div");
-  head.className = "cal-head";
-  for (const wd of WEEKDAYS) {
-    const c = document.createElement("div");
-    c.className = "cal-hcell";
-    c.textContent = wd;
-    head.appendChild(c);
-  }
-  el.grid.appendChild(head);
+    const body = document.createElement("div");
+    body.className = "cal-body";
 
-  const body = document.createElement("div");
-  body.className = "cal-body";
+    const first = new Date(curMonth);
+    const jsDow = first.getDay();
+    const mondayBased = (jsDow + 6) % 7;
+    const start = new Date(first);
+    start.setDate(first.getDate() - mondayBased);
 
-  const first = new Date(curMonth);
-  const jsDow = first.getDay();
-  const mondayBased = (jsDow + 6) % 7;
-  const start = new Date(first);
-  start.setDate(first.getDate() - mondayBased);
+    const todayStr = ymd(new Date());
 
-  const todayStr = ymd(new Date());
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const inMonth = d.getMonth() === curMonth.getMonth();
+      const dateStr = ymd(d);
 
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const inMonth = d.getMonth() === curMonth.getMonth();
-    const dateStr = ymd(d);
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className =
+        "cal-cell" +
+        (inMonth ? "" : " cal-cell--out") +
+        (dateStr === todayStr ? " cal-cell--today" : "") +
+        (dateStr === selectedDate ? " cal-cell--selected" : "");
+      cell.setAttribute("data-date", dateStr);
 
-    const cell = document.createElement("button");
-    cell.type = "button";
-    cell.className =
-      "cal-cell" +
-      (inMonth ? "" : " cal-cell--out") +
-      (dateStr === todayStr ? " cal-cell--today" : "") +
-      (dateStr === selectedDate ? " cal-cell--selected" : "");
-    cell.setAttribute("data-date", dateStr);
+      const top = document.createElement("div");
+      top.className = "cal-daynum";
+      top.textContent = String(d.getDate());
+      cell.appendChild(top);
 
-    const top = document.createElement("div");
-    top.className = "cal-daynum";
-    top.textContent = String(d.getDate());
-    cell.appendChild(top);
+      const box = document.createElement("div");
+      box.className = "cal-badges";
+      renderCellBadges(dateStr, box, { isWeek: false });
+      cell.appendChild(box);
 
-    const box = document.createElement("div");
-    box.className = "cal-badges";
+      cell.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
 
-    renderCellBadges(dateStr, box, { isWeek: false });
+        selectDate(dateStr, { noExpand: true });
 
-    cell.appendChild(box);
+        if (expandedDate !== dateStr) {
+          expandCell(cell, dateStr);
+          return;
+        }
 
-    // 1-й клик: expand, 2-й клик: modal
-    cell.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+        collapseExpanded();
+        openDay(dateStr);
+      });
 
-      selectDate(dateStr, { noExpand: true });
+      body.appendChild(cell);
+    }
 
-      if (expandedDate !== dateStr) {
-        expandCell(cell, dateStr);
-        return;
-      }
-
-      collapseExpanded();
-      openDay(dateStr);
-    });
-
-    body.appendChild(cell);
-  }
-
-  el.grid.appendChild(body);
-} catch (e) {
+    el.grid.appendChild(body);
+  } catch (e) {
     console.error(e);
     toast("Ошибка в renderMonth: " + (e?.message || e), "err");
     throw e;
@@ -1763,11 +1675,4 @@ el.next.onclick = async () => {
 await loadContext();
 renderModeToggle();
 renderViewToggle();
-
-// initial load
-if (calendarView === "week") {
-  if (!curWeekStart) curWeekStart = startOfWeek(new Date());
-  await loadWeek();
-} else {
-  await loadMonth();
-}
+await reloadCurrentView();
