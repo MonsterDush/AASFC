@@ -4,97 +4,92 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/styles.css?v6hard2" />
+  <link rel="stylesheet" href="/styles.css?mdx2" />
 <style>
-  /* ===== Week view (HARD 2 columns inside a day) =====
-     IMPORTANT: JS toggles `is-week` on #calGrid, so selectors must match that element.
-  */
+  /* ===== Shifts calendar: Week view + compact badges ===== */
+  #calendarView.shift-toggle { display:inline-flex; }
 
-  /* Week layout: desktop 7 columns, mobile vertical list */
-  #calGrid.is-week .cal-body{
-    display:grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap:10px;
-  }
-  @media (max-width: 560px){
-    #calGrid.is-week .cal-body{ grid-template-columns: 1fr; }
-  }
-
-  /* Day cell: grows by content, capped */
-  #calGrid.is-week .cal-cell{
-    height:auto;
-    min-height:64px;
-    max-height:160px;          /* "не больше того что есть сейчас" */
-    padding:10px;
+  .cal .cal-badges{
+    margin-top: 8px;
     display:flex;
     flex-direction:column;
-    gap:8px;
+    gap:6px;
     overflow:hidden;
-    min-width:0;
-  }
-  #calGrid.is-week .cal-cell.is-empty{
-    min-height:56px;
-    max-height:56px;
-    padding:10px;
-    opacity:.85;
-  }
-  @media (max-width: 560px){
-    #calGrid.is-week .cal-cell{ max-height:150px; padding:8px; }
-    #calGrid.is-week .cal-cell.is-empty{ min-height:52px; max-height:52px; padding:8px; }
+    min-height:0;
   }
 
-  /* Week header inside cell */
-  #calGrid.is-week .cal-weektop{
+  /* Badge-like compact lines */
+  .cal .cal-line{
+    border-radius: 10px;
+    padding: 4px 8px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cal .cal-line[data-icolor="1"]{
+    border-left: 3px solid rgb(var(--line-rgb));
+    padding-left: 8px;
+  }
+  .cal .cal-line--more{ opacity:.75; }
+
+  /* Week layout */
+  .cal.is-week .cal-body{
+    display:grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap:10px;
+  }
+  .cal.is-week .cal-cell{
+    height: 160px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* 2 columns for badges inside a fixed-height day */
+  .cal.is-week .cal-badges{
+    margin-top: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 8px;
+    row-gap: 6px;
+    overflow: hidden;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+  .cal.is-week .cal-line--more{ grid-column: 1 / -1; }
+  .cal-weektop{
     display:flex;
     justify-content:space-between;
     align-items:flex-start;
     gap:10px;
     min-width:0;
   }
-  #calGrid.is-week .cal-weektop .cal-weekname{
+  .cal-weektop .cal-weekname{
     font-size:12px;
     opacity:.8;
     line-height:1.1;
   }
-  #calGrid.is-week .cal-weektop .cal-weekdate{
+  .cal-weektop .cal-weekdate{
     font-weight:800;
     line-height:1.15;
   }
-  #calGrid.is-week .cal-weektop .cal-daymeta{
+  .cal-weektop .cal-daymeta{
     text-align:right;
     font-size:12px;
     opacity:.8;
     white-space:nowrap;
   }
 
-  /* Badges: HARD 2 columns + FILL ROWS FIRST */
-  #calGrid.is-week .cal-badges{
-    margin-top:0;
-    display:grid !important;                /* override global flex */
-    grid-auto-flow: row dense;              /* rows first, then next row */
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 8px;
-    row-gap: 6px;
-    overflow:hidden;
-    min-width:0;
-    align-content:start;
+  /* Mobile: show week as a readable vertical list (идеально для Mini App) */
+  @media (max-width: 560px){
+    .cal.is-week .cal-body{ grid-template-columns: 1fr; }
+    .cal.is-week .cal-cell{ height: 150px; }
+    .cal.is-week .cal-badges{ grid-template-columns: 1fr; }
   }
-
-  /* super narrow fallback */
-  @media (max-width: 340px){
-    #calGrid.is-week .cal-badges{ grid-template-columns: 1fr; }
-  }
-
-  /* Make items shrinkable (critical for nowrap) */
-  #calGrid.is-week .cal-badges > *{ min-width:0; }
-  #calGrid.is-week .cal-line{ min-width:0; }
-  #calGrid.is-week .cal-line__text{ min-width:0; }
-
-  /* "+N" hint spans full width */
-  #calGrid.is-week .cal-line--more{ grid-column: 1 / -1; opacity:.75; }
-
-  /* Empty days shouldn't waste space */
-  #calGrid.is-week .cal-cell.is-empty .cal-badges{ display:none !important; }
 </style>
   <title>Axelio · Смены</title>
 </head>
@@ -175,6 +170,6 @@
     </div>
 
   <div id="shiftsRoot"class="hidden"></div>
-  <script type="module" src="/staff-shifts.js?v6hard2"></script>
+  <script type="module" src="/staff-shifts.js?mdx2"></script>
 </body>
 </html>

@@ -202,18 +202,18 @@ function isPastDay(isoDate) {
 // Past days: all dots use --dotPast.
 // ------------------------------
 const INTERVAL_COLORS = [
-  "#22C55E",
-  "#F97316",
-  "#A855F7",
-  "#06B6D4",
-  "#EF4444",
-  "#EAB308",
-  "#3B82F6",
-  "#F43F5E",
-  "#14B8A6",
-  "#84CC16",
-  "#FB7185",
-  "#94A3B8",
+  "#164B8A", // Oxford blue
+  "#2D7FF9", // Azure
+  "#0EA5E9", // Sky
+  "#22D3EE", // Cyan
+  "#A78BFA", // Violet
+  "#F2A541", // Amber
+  "#34D399", // Mint
+  "#FB7185", // Pink
+  "#F97316", // Orange
+  "#B277D9", // Burnished lilac
+  "#1D8FA2", // Teal
+  "#AEB7C2", // Neutral
 ];
 
 let intervalColorMap = {}; // intervalId -> hex
@@ -722,9 +722,14 @@ async function loadWeek() {
 }
 
 function updateBadgesCols(box) {
-  // v6: hard 2 columns are controlled by CSS (#calGrid.is-week .cal-badges)
-  // leaving this as no-op to avoid accidental 1-col overrides.
-  return;
+  if (!box) return;
+  const w = box.getBoundingClientRect().width || 0;
+
+  // choose 2 cols when реально влезает (под Telegram WebView)
+  const minCol = 110; // px (пониже, чтобы даже на телефоне влезало)
+  const gap = 8;
+  const want2 = w >= (minCol * 2 + gap);
+  box.dataset.cols = want2 ? "2" : "1";
 }
 
 let _colsRaf = 0;
@@ -1133,40 +1138,79 @@ function makeCalLine(text, shift) {
   line.style.setProperty("--line-rgb", hexToRgbTriplet(c));
   return line;
 }
-function shiftHasAssignees(shift) {
-  const assigns = shift?.assignments || shift?.shift_assignments || [];
-  if (Array.isArray(assigns) && assigns.length) return true;
-  const c1 = Number(shift?.assigned_count);
-  const c2 = Number(shift?.assignees_count);
-  const c3 = Number(shift?.members_count);
-  return (Number.isFinite(c1) && c1 > 0) || (Number.isFinite(c2) && c2 > 0) || (Number.isFinite(c3) && c3 > 0);
-}
-
-function makeCalDot({ color, filled = false, label = "", title = "" } = {}) {
-  const dot = document.createElement("div");
-  dot.className = "cal-dot" + (filled ? " is-filled" : "");
-  dot.style.setProperty("--dot", color || "var(--muted)");
-  if (label) {
-    dot.classList.add("is-more");
-    dot.textContent = label;
-  }
-  if (title) {
-    try { dot.title = title; } catch {}
-    dot.setAttribute("aria-label", title);
-  }
-  return dot;
-}
-
 
 // dotrow removed: calendar uses only text labels (cal-line)
+
+function calcExpandedAllMonthMaxLines(cell) {
+  // We render text lines into the expanded month cell; compute how many fit.
+  // Safety fallbacks: 8..14.
+  try {
+    const box = cell?.querySelector?.(".cal-badges");
+    if (!box) return 10;
+
+    const styles = window.getComputedStyle(box);
+    const gap = parseFloat(styles.rowGap || styles.gap || "4") || 4;
+
+    // Approximate line height: use a temporary cal-line
+    const probe = document.createElement("div");
+    probe.className = "cal-line";
+    probe.style.visibility = "hidden";
+    probe.style.position = "absolute";
+    probe.style.left = "-9999px";
+    probe.style.top = "-9999px";
+    probe.innerHTML = '<span class="cal-line__text">Probe — 11:00</span>';
+    document.body.appendChild(probe);
+    const lineH = probe.getBoundingClientRect().height || 18;
+    probe.remove();
+
+    const top = cell?.querySelector?.(".cal-daynum")?.getBoundingClientRect()?.height || 18;
+    const cellH = cell.getBoundingClientRect().height || 0;
+
+    // paddings are in cell
+    const cs = window.getComputedStyle(cell);
+    const padT = parseFloat(cs.paddingTop || "0") || 0;
+    const padB = parseFloat(cs.paddingBottom || "0") || 0;
+
+    const available = Math.max(0, cellH - top - padT - padB - 10); // 10px safety
+    const per = lineH + gap;
+    const n = per > 0 ? Math.floor((available + gap) / per) : 10;
+
+    return Math.max(6, Math.min(16, n));
+  } catch {
+    return 10;
+  }
+}
+
+function rerenderMonthCellBadges(cell, dateISO, { forceText = false, expanded = false } = {}) {
+  // Only for month grid
+  try { if (el?.grid?.classList?.contains("is-week")) return; } catch {}
+
+  const box = cell?.querySelector?.(".cal-badges");
+  if (!box) return;
+
+  // store per-expanded max for ALL
+  if (expanded) {
+    const max = calcExpandedAllMonthMaxLines(cell);
+    box.dataset.expandedMax = String(max);
+  } else {
+    delete box.dataset.expandedMax;
+  }
+
+  box.innerHTML = "";
+  box.classList.remove("cal-badges--dots");
+  renderCellBadges(dateISO, box, { isWeek: false, forceText, expanded });
+}
 
 let expandedDate = null;
 let expandWired = false;
 
 function collapseExpanded() {
   if (!expandedDate) return;
+  const dateISO = expandedDate;
   const prev = document.querySelector(`.cal-cell[data-date="${expandedDate}"]`);
   if (prev) {
+    // restore dots in month "All"
+    try { rerenderMonthCellBadges(prev, dateISO, { forceText: false, expanded: false }); } catch {}
     prev.classList.remove("is-expanded");
     prev.style.gridColumn = "";
     prev.style.gridRow = "";
@@ -1176,9 +1220,14 @@ function collapseExpanded() {
 
 function expandCell(cell, dateISO) {
   collapseExpanded();
-  expandedDate = dateISO;  
+  expandedDate = dateISO;
+
   cell.style.gridColumn = "span 3";
   cell.style.gridRow = "span 2";
+
+  // month "All": show text badges inside expanded cell (instead of dots)
+  try { rerenderMonthCellBadges(cell, dateISO, { forceText: true, expanded: true }); } catch {}
+
   requestAnimationFrame(() => {
     cell.classList.add("is-expanded");
   });
@@ -1195,58 +1244,65 @@ function wireGlobalCollapse() {
   });
 }
 
-function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
+function renderCellBadges(dateStr, box, { isWeek = false, forceText = false, expanded = false } = {}) {
   const listAll = shiftsByDate.get(dateStr) || [];
   const list = filterForCalendar(listAll, dateStr);
   const pastDay = isPastDay(dateStr);
 
   // limits per view
   const maxMine = isWeek ? 10 : 3;
-  const maxAll = isWeek ? 12 : 2;
-// MONTH + ALL: show interval dots (no text), 4 max
-if (showAllOnCalendar && !isWeek) {
-  box.classList.add("cal-badges--dots");
+  const maxAll = isWeek ? 12 : (expanded ? 999 : 3);
 
-  const sorted = sortShiftsForBadges(list);
+  if (!showAllOnCalendar) {
+    let shown = 0;
+    const sorted = sortShiftsForBadges(list);
 
-  // unique by interval, preserve time order
-  const byInterval = new Map(); // intervalId -> {shift, assigned}
-  for (const s of sorted) {
-    const iidRaw = shiftIntervalId(s);
-    const iid = (iidRaw === undefined || iidRaw === null) ? "" : String(iidRaw);
-    if (!iid) continue;
+    for (const s of sorted) {
+      let txt = "";
 
-    const assigned = shiftHasAssignees(s);
-    if (!byInterval.has(iid)) byInterval.set(iid, { shift: s, assigned });
-    else byInterval.get(iid).assigned = byInterval.get(iid).assigned || assigned;
-  }
+      if (calendarScope === "global") {
+        const venueName = s?.venue?.name || "Заведение";
+        const t = shiftStartHHMM(s) || (s?.interval?.start_time ? String(s.interval.start_time).slice(0, 5) : "");
 
-  const arr = Array.from(byInterval.values());
-  const total = arr.length;
+        if (pastDay) {
+          const sal = Number(s?.my_salary);
+          txt = Number.isFinite(sal) ? fmtMoney(sal) : (t ? `${venueName} • ${t}` : `${venueName}`);
+        } else {
+          txt = t ? `${venueName} • ${t}` : `${venueName}`;
+        }
+      } else {
+        if (pastDay) {
+          const sal = Number(s?.my_salary);
+          txt = Number.isFinite(sal) ? fmtMoney(sal) : shiftStartHHMM(s);
+        } else {
+          txt = shiftStartHHMM(s);
+        }
+      }
 
-  const maxDots = 4;
+      if (txt && txt !== "—") {
+        box.appendChild(makeCalLine(txt, s));
+        shown++;
+      }
+      if (shown >= maxMine) break;
+    }
 
-  if (total <= maxDots) {
-    for (const it of arr) {
-      const color = colorForInterval(shiftIntervalId(it.shift));
-      box.appendChild(makeCalDot({ color, filled: !!it.assigned }));
+    if (shown > 0 && list.length > shown) {
+      const more = document.createElement("div");
+      more.className = "cal-line muted cal-line--more";
+      more.textContent = `+${list.length - shown}`;
+      box.appendChild(more);
     }
     return;
   }
 
-  // show first 3, 4th = "+N"/"…"
-  for (let i = 0; i < 3; i++) {
-    const it = arr[i];
-    const color = colorForInterval(shiftIntervalId(it.shift));
-    box.appendChild(makeCalDot({ color, filled: !!it.assigned }));
-  }
+   = {}) {
+  const listAll = shiftsByDate.get(dateStr) || [];
+  const list = filterForCalendar(listAll, dateStr);
+  const pastDay = isPastDay(dateStr);
 
-  const more = total - 3;
-  const label = (more <= 9) ? `+${more}` : "…";
-  box.appendChild(makeCalDot({ color: "var(--muted)", filled: false, label, title: `+${more}` }));
-  return;
-}
-
+  // limits per view
+  const maxMine = isWeek ? 10 : 3;
+  const maxAll = isWeek ? 12 : (expanded ? 999 : 3);
 
   if (!showAllOnCalendar) {
     let shown = 0;
@@ -1292,6 +1348,8 @@ if (showAllOnCalendar && !isWeek) {
 
   // ALL mode
   const lines = [];
+  const capAll = expanded ? (Number(box?.dataset?.expandedMax) || 10) : maxAll;
+
 
   const sorted2 = sortShiftsForBadges(list);
 
