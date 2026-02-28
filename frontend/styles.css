@@ -704,15 +704,19 @@ input:focus,select:focus,textarea:focus{
 
 #calGrid:not(.is-week) .cal-badges.cal-badges--dots{
   flex-direction:row;
+  flex-wrap:wrap;           /* allow 2nd row */
   gap:3px;
+  row-gap:3px;
   margin-top:6px;
   align-items:center;
+  align-content:flex-start;
   padding-right:2px;
+  max-width:100%;
 }
 
 #calGrid:not(.is-week) .cal-dot{
-  width:9px;
-  height:9px;
+  width:8px;
+  height:8px;
   border-radius:999px;
   box-sizing:border-box;
   border:2px solid var(--dot, var(--muted));
