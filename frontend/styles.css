@@ -697,3 +697,42 @@ input:focus,select:focus,textarea:focus{
 .minw-240{min-width:240px}
 .minw-380{min-width:380px}
 .maxw-45{max-width:45px !important}
+
+
+/* ===== Month calendar: ALL mode dots ===== */
+#calGrid:not(.is-week) .cal-cell{ padding-right:6px; }
+
+#calGrid:not(.is-week) .cal-badges.cal-badges--dots{
+  flex-direction:row;
+  gap:3px;
+  margin-top:6px;
+  align-items:center;
+  padding-right:2px;
+}
+
+#calGrid:not(.is-week) .cal-dot{
+  width:9px;
+  height:9px;
+  border-radius:999px;
+  box-sizing:border-box;
+  border:2px solid var(--dot, var(--muted));
+  background:transparent;
+  flex:0 0 auto;
+  display:block;
+}
+
+#calGrid:not(.is-week) .cal-dot.is-filled{
+  background:var(--dot, var(--muted));
+}
+
+#calGrid:not(.is-week) .cal-dot.is-more{
+  border-color: var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:6.5px;
+  font-weight:900;
+  letter-spacing:-0.2px;
+}

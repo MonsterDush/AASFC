@@ -202,18 +202,18 @@ function isPastDay(isoDate) {
 // Past days: all dots use --dotPast.
 // ------------------------------
 const INTERVAL_COLORS = [
-  "#164B8A", // Oxford blue
-  "#2D7FF9", // Azure
-  "#0EA5E9", // Sky
-  "#22D3EE", // Cyan
-  "#A78BFA", // Violet
-  "#F2A541", // Amber
-  "#34D399", // Mint
-  "#FB7185", // Pink
-  "#F97316", // Orange
-  "#B277D9", // Burnished lilac
-  "#1D8FA2", // Teal
-  "#AEB7C2", // Neutral
+  "#22C55E",
+  "#F97316",
+  "#A855F7",
+  "#06B6D4",
+  "#EF4444",
+  "#EAB308",
+  "#3B82F6",
+  "#F43F5E",
+  "#14B8A6",
+  "#84CC16",
+  "#FB7185",
+  "#94A3B8",
 ];
 
 let intervalColorMap = {}; // intervalId -> hex
@@ -1133,6 +1133,30 @@ function makeCalLine(text, shift) {
   line.style.setProperty("--line-rgb", hexToRgbTriplet(c));
   return line;
 }
+function shiftHasAssignees(shift) {
+  const assigns = shift?.assignments || shift?.shift_assignments || [];
+  if (Array.isArray(assigns) && assigns.length) return true;
+  const c1 = Number(shift?.assigned_count);
+  const c2 = Number(shift?.assignees_count);
+  const c3 = Number(shift?.members_count);
+  return (Number.isFinite(c1) && c1 > 0) || (Number.isFinite(c2) && c2 > 0) || (Number.isFinite(c3) && c3 > 0);
+}
+
+function makeCalDot({ color, filled = false, label = "", title = "" } = {}) {
+  const dot = document.createElement("div");
+  dot.className = "cal-dot" + (filled ? " is-filled" : "");
+  dot.style.setProperty("--dot", color || "var(--muted)");
+  if (label) {
+    dot.classList.add("is-more");
+    dot.textContent = label;
+  }
+  if (title) {
+    try { dot.title = title; } catch {}
+    dot.setAttribute("aria-label", title);
+  }
+  return dot;
+}
+
 
 // dotrow removed: calendar uses only text labels (cal-line)
 
@@ -1179,6 +1203,50 @@ function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
   // limits per view
   const maxMine = isWeek ? 10 : 3;
   const maxAll = isWeek ? 12 : 2;
+// MONTH + ALL: show interval dots (no text), 4 max
+if (showAllOnCalendar && !isWeek) {
+  box.classList.add("cal-badges--dots");
+
+  const sorted = sortShiftsForBadges(list);
+
+  // unique by interval, preserve time order
+  const byInterval = new Map(); // intervalId -> {shift, assigned}
+  for (const s of sorted) {
+    const iidRaw = shiftIntervalId(s);
+    const iid = (iidRaw === undefined || iidRaw === null) ? "" : String(iidRaw);
+    if (!iid) continue;
+
+    const assigned = shiftHasAssignees(s);
+    if (!byInterval.has(iid)) byInterval.set(iid, { shift: s, assigned });
+    else byInterval.get(iid).assigned = byInterval.get(iid).assigned || assigned;
+  }
+
+  const arr = Array.from(byInterval.values());
+  const total = arr.length;
+
+  const maxDots = 4;
+
+  if (total <= maxDots) {
+    for (const it of arr) {
+      const color = colorForInterval(shiftIntervalId(it.shift));
+      box.appendChild(makeCalDot({ color, filled: !!it.assigned }));
+    }
+    return;
+  }
+
+  // show first 3, 4th = "+N"/"…"
+  for (let i = 0; i < 3; i++) {
+    const it = arr[i];
+    const color = colorForInterval(shiftIntervalId(it.shift));
+    box.appendChild(makeCalDot({ color, filled: !!it.assigned }));
+  }
+
+  const more = total - 3;
+  const label = (more <= 9) ? `+${more}` : "…";
+  box.appendChild(makeCalDot({ color: "var(--muted)", filled: false, label, title: `+${more}` }));
+  return;
+}
+
 
   if (!showAllOnCalendar) {
     let shown = 0;
