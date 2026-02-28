@@ -60,6 +60,9 @@
     min-height: 0;
     flex: 1 1 auto;
   }
+  /* allow grid items to shrink (needed for 2 columns on mobile with nowrap) */
+  .cal.is-week .cal-badges > *{ min-width:0; }
+  .cal.is-week .cal-line{ min-width:0; }
   .cal.is-week .cal-line--more{ grid-column: 1 / -1; }
   .cal-weektop{
     display:flex;
