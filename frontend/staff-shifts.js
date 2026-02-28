@@ -396,6 +396,35 @@ function shiftStartHHMM(s) {
   return toHHMM(st);
 }
 
+function timeToMin(hhmm) {
+  const s = String(hhmm || "").trim();
+  const m = /^([0-2]\d):([0-5]\d)$/.exec(s);
+  if (!m) return 1e9;
+  return (parseInt(m[1], 10) * 60) + parseInt(m[2], 10);
+}
+
+function shiftStartMinutes(s) {
+  const t = shiftStartHHMM(s) || (s?.interval?.start_time ? String(s.interval.start_time).slice(0, 5) : "");
+  return timeToMin(t);
+}
+
+function shiftStableNumId(s) {
+  const raw = s?.id ?? s?.shift_id ?? s?.shiftId ?? 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function sortShiftsForBadges(list) {
+  const arr = Array.isArray(list) ? [...list] : [];
+  arr.sort((a, b) => {
+    const ta = shiftStartMinutes(a);
+    const tb = shiftStartMinutes(b);
+    if (ta !== tb) return ta - tb;
+    return shiftStableNumId(a) - shiftStableNumId(b);
+  });
+  return arr;
+}
+
 // --- toggle ---
 function renderModeToggle() {
   if (!mode.box) return;
@@ -772,7 +801,9 @@ function buildIndex() {
 
   const list = (calendarScope === "global") ? globalShifts : shifts;
 
-  for (const s of list) {
+  const sorted = sortShiftsForBadges(list);
+
+    for (const s of sorted) {
     const date = s.date || s.shift_date || s.day;
     if (!date) continue;
 
@@ -1126,13 +1157,14 @@ function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
   const pastDay = isPastDay(dateStr);
 
   // limits per view
-  const maxMine = isWeek ? 6 : 3;
-  const maxAll = isWeek ? 10 : 4;
+  const maxMine = isWeek ? 10 : 3;
+  const maxAll = isWeek ? 12 : 4;
 
   if (!showAllOnCalendar) {
     let shown = 0;
+    const sorted = sortShiftsForBadges(list);
 
-    for (const s of list) {
+    for (const s of sorted) {
       let txt = "";
 
       if (calendarScope === "global") {
@@ -1173,7 +1205,9 @@ function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
   // ALL mode
   const lines = [];
 
-  for (const s of list) {
+  const sorted2 = sortShiftsForBadges(list);
+
+  for (const s of sorted2) {
     if (calendarScope === "global") {
       lines.push({ text: formatGlobalLine(s), shift: s });
       if (lines.length >= maxAll) break;

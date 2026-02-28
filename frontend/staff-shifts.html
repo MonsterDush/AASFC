@@ -40,9 +40,27 @@
     gap:10px;
   }
   .cal.is-week .cal-cell{
-    min-height: 150px;
+    height: 160px;
     padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    min-height: 0;
   }
+
+  /* 2 columns for badges inside a fixed-height day */
+  .cal.is-week .cal-badges{
+    margin-top: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 8px;
+    row-gap: 6px;
+    overflow: hidden;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+  .cal.is-week .cal-line--more{ grid-column: 1 / -1; }
   .cal-weektop{
     display:flex;
     justify-content:space-between;
@@ -69,7 +87,8 @@
   /* Mobile: show week as a readable vertical list (идеально для Mini App) */
   @media (max-width: 560px){
     .cal.is-week .cal-body{ grid-template-columns: 1fr; }
-    .cal.is-week .cal-cell{ min-height: 132px; }
+    .cal.is-week .cal-cell{ height: 150px; }
+    .cal.is-week .cal-badges{ grid-template-columns: 1fr; }
   }
 </style>
   <title>Axelio · Смены</title>
