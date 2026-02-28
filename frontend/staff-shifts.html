@@ -6,10 +6,9 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
 <style>
-  /* ===== Shifts calendar: Week view + compact badges (v3) ===== */
-  #calendarView.shift-toggle { display:inline-flex; }
+  /* ===== Week view layout & compact badges (AUTO 1/2 columns) ===== */
 
-  /* Week layout (desktop: 7 columns, mobile: vertical list) */
+  /* Week layout */
   .cal.is-week .cal-body{
     display:grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -19,12 +18,12 @@
     .cal.is-week .cal-body{ grid-template-columns: 1fr; }
   }
 
-  /* Week day cell: grows by content, but capped */
+  /* Day cell: grows by content, capped */
   .cal.is-week .cal-cell{
     height:auto;
     min-height:64px;
-    max-height:160px;
-    padding: 10px;
+    max-height:160px;          /* "не больше того что есть сейчас" */
+    padding:10px;
     display:flex;
     flex-direction:column;
     gap:8px;
@@ -32,16 +31,18 @@
     min-width:0;
   }
   .cal.is-week .cal-cell.is-empty{
-    min-height:64px;
-    max-height:64px;
+    min-height:56px;
+    max-height:56px;
+    padding:10px;
     opacity:.85;
   }
+
   @media (max-width: 560px){
     .cal.is-week .cal-cell{ max-height:150px; padding:8px; }
-    .cal.is-week .cal-cell.is-empty{ max-height:56px; min-height:56px; }
+    .cal.is-week .cal-cell.is-empty{ min-height:52px; max-height:52px; padding:8px; }
   }
 
-  /* Week header inside a cell */
+  /* Week header inside cell */
   .cal-weektop{
     display:flex;
     justify-content:space-between;
@@ -65,41 +66,43 @@
     white-space:nowrap;
   }
 
-  /* Badges: AUTO columns (1 or 2 decided by JS by setting data-cols) */
+  /* Badges: columns decided by JS via data-cols */
   .cal.is-week .cal-badges{
     margin-top:0;
     display:grid;
-    grid-template-columns: 1fr;              /* default */
+    grid-template-columns: 1fr;
     column-gap: 8px;
     row-gap: 6px;
     overflow:hidden;
     min-width:0;
+    align-content:start;
   }
   .cal.is-week .cal-badges[data-cols="2"]{
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* Make labels compact and shrinkable */
+  /* Make items shrinkable (critical for 2 columns) */
   .cal.is-week .cal-badges > *{ min-width:0; }
   .cal.is-week .cal-line{ min-width:0; }
+
+  /* Compact badge style */
   .cal .cal-line{
-    border-radius: 10px;
-    padding: 4px 8px;
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    border-radius:10px;
+    padding:4px 8px;
+    line-height:1.2;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
   @media (max-width: 560px){
-    .cal .cal-line{
-      padding: 3px 6px;
-      font-size: 11px;
-      border-radius: 9px;
-    }
+    .cal .cal-line{ padding:3px 6px; font-size:11px; border-radius:9px; }
   }
 
   /* "+N" hint spans full width */
   .cal.is-week .cal-line--more{ grid-column: 1 / -1; opacity:.75; }
+
+  /* Optional: hide empty badge area in empty days */
+  .cal.is-week .cal-cell.is-empty .cal-badges{ display:none; }
 </style>
   <title>Axelio · Смены</title>
 </head>
