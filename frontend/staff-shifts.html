@@ -87,8 +87,20 @@
   /* Mobile: show week as a readable vertical list (идеально для Mini App) */
   @media (max-width: 560px){
     .cal.is-week .cal-body{ grid-template-columns: 1fr; }
-    .cal.is-week .cal-cell{ height: 150px; }
-    .cal.is-week .cal-badges{ grid-template-columns: 1fr; }
+    .cal.is-week .cal-cell{ height: 150px; padding: 8px; }
+
+    /* Auto columns inside a day: 1 col on narrow phones, 2 cols when enough width */
+    .cal.is-week .cal-badges{
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      column-gap: 6px;
+      row-gap: 5px;
+    }
+
+    .cal.is-week .cal-line{
+      padding: 3px 6px;
+      font-size: 11px;
+      border-radius: 9px;
+    }
   }
 </style>
   <title>Axelio · Смены</title>
