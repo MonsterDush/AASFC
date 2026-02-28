@@ -722,24 +722,9 @@ async function loadWeek() {
 }
 
 function updateBadgesCols(box) {
-  if (!box) return;
-
-  // HARD RULE:
-  // - For iPhone-like widths (>= 360px) always 2 columns
-  // - For very narrow screens (< 360px) fallback to 1 column
-  const vw = Math.max(
-    0,
-    Math.min(
-      window.innerWidth || 0,
-      document.documentElement?.clientWidth || 0
-    )
-  );
-
-  if (vw >= 360) {
-    box.dataset.cols = "2";
-    return;
-  }
-  box.dataset.cols = "1";
+  // v6: hard 2 columns are controlled by CSS (#calGrid.is-week .cal-badges)
+  // leaving this as no-op to avoid accidental 1-col overrides.
+  return;
 }
 
 let _colsRaf = 0;
@@ -1186,10 +1171,7 @@ function wireGlobalCollapse() {
   });
 }
 
-function renderCellBadges(dateStr, box, { isWeek = false 
-  return { isEmpty: list.length === 0 };
-}
- = {}) {
+function renderCellBadges(dateStr, box, { isWeek = false } = {}) {
   const listAll = shiftsByDate.get(dateStr) || [];
   const list = filterForCalendar(listAll, dateStr);
   const pastDay = isPastDay(dateStr);
@@ -1237,7 +1219,7 @@ function renderCellBadges(dateStr, box, { isWeek = false
       more.textContent = `+${list.length - shown}`;
       box.appendChild(more);
     }
-    return { isEmpty: list.length === 0 };
+    return;
   }
 
   // ALL mode
