@@ -456,11 +456,18 @@ function renderModeToggle() {
   };
 
   const setScope = (scope) => {
-    calendarScope = scope;
-    localStorage.setItem(LS_SCOPE, scope);
-    setActive();
-    reloadCurrentView();
-  };
+  calendarScope = scope;
+  localStorage.setItem(LS_SCOPE, scope);
+
+  // When switching away from venue scope, "All" is not applicable.
+  if (scope !== "venue") {
+    showAllOnCalendar = false;
+    localStorage.setItem(LS_SHOW_ALL, "0");
+  }
+
+  setActive();
+  reloadCurrentView();
+};
 
   setActive();
 
@@ -477,6 +484,8 @@ function renderModeToggle() {
   });
 
   mode.global && (mode.global.onclick = () => {
+    showAllOnCalendar = false;
+    localStorage.setItem(LS_SHOW_ALL, "0");
     setScope("global");
   });
 }
@@ -1069,15 +1078,42 @@ function formatDateRuNoG(iso) {
   return `${dd}.${mm}.${yyyy}`;
 }
 
+function shiftHasMyAssignment(s, myId) {
+  if (!myId) return false;
+
+  const directUid = s?.member_user_id ?? s?.user_id ?? s?.user?.id;
+  if (directUid !== undefined && directUid !== null && String(directUid) === String(myId)) return true;
+
+  const assigns = (s?.assignments || s?.shift_assignments || []);
+  if (!Array.isArray(assigns) || !assigns.length) return false;
+
+  for (const a of assigns) {
+    const uid = a?.member_user_id ?? a?.user_id ?? a?.user?.id;
+    if (uid !== undefined && uid !== null && String(uid) === String(myId)) return true;
+  }
+  return false;
+}
+
 function filterForCalendar(listAll, dateStr) {
-  if (calendarScope === "global") return listAll;
   const myId = me?.id ?? null;
+
+  // "Общий" (multi-venue): показываем только смены, куда назначен текущий пользователь
+  // (и прошедшие смены с my_salary, даже если assignments не пришли).
+  if (calendarScope === "global") {
+    const arr = Array.isArray(listAll) ? listAll : [];
+    if (!myId) return [];
+    return arr.filter((s) => {
+      const sal = Number(s?.my_salary);
+      if (Number.isFinite(sal)) return true;
+      return shiftHasMyAssignment(s, myId);
+    });
+  }
 
   // staff w/o edit -> only mine
   if (!canEdit && myId) {
-    return listAll
-      .map(s => {
-        const assigns = (s.assignments || s.shift_assignments || []).filter(a => (a.member_user_id ?? a.user_id) === myId);
+    return (Array.isArray(listAll) ? listAll : [])
+      .map((s) => {
+        const assigns = (s.assignments || s.shift_assignments || []).filter((a) => (a.member_user_id ?? a.user_id) === myId);
         if (!assigns.length) return null;
         return { ...s, assignments: assigns };
       })
@@ -1086,16 +1122,16 @@ function filterForCalendar(listAll, dateStr) {
 
   // editor toggle -> mine
   if (canEdit && !showAllOnCalendar && myId) {
-    return listAll
-      .map(s => {
-        const assigns = (s.assignments || s.shift_assignments || []).filter(a => (a.member_user_id ?? a.user_id) === myId);
+    return (Array.isArray(listAll) ? listAll : [])
+      .map((s) => {
+        const assigns = (s.assignments || s.shift_assignments || []).filter((a) => (a.member_user_id ?? a.user_id) === myId);
         if (!assigns.length) return null;
         return { ...s, assignments: assigns };
       })
       .filter(Boolean);
   }
 
-  return listAll;
+  return Array.isArray(listAll) ? listAll : [];
 }
 
 // Формат строки для ALL-режима: "Имя/логин — HH:MM"
@@ -1264,7 +1300,7 @@ function renderCellBadges(dateStr, box, { isWeek = false, forceText = false, exp
   const maxMine = isWeek ? 10 : 3;
   const maxAll = isWeek ? 12 : 2;
 // MONTH + ALL: show interval dots (no text), 4 max
-if (showAllOnCalendar && !isWeek && !forceText) {
+if (showAllOnCalendar && !isWeek && !forceText && calendarScope !== "global") {
   box.classList.add("cal-badges--dots");
 
   const sorted = sortShiftsForBadges(list);
