@@ -699,14 +699,60 @@ input:focus,select:focus,textarea:focus{
 .maxw-45{max-width:45px !important}
 
 
-/* ===== PATCH: week header readability + month dots wrap (mdx) ===== */
-#calGrid.is-week .cal-cell{ color: var(--text); }
-#calGrid.is-week .cal-weektop .cal-weekname{ color: var(--text); opacity:.78; }
-#calGrid.is-week .cal-weektop .cal-weekdate{ color: var(--text); opacity:1; }
-#calGrid.is-week .cal-weektop .cal-daymeta{ color: var(--text); opacity:.78; }
+/* ===== Month calendar: ALL mode dots ===== */
+#calGrid:not(.is-week) .cal-cell{ padding-right:6px; }
 
-#calGrid:not(.is-week) .cal-daynum{ color: var(--text); opacity:.75; }
+#calGrid:not(.is-week) .cal-badges.cal-badges--dots{
+  flex-direction:row;
+  flex-wrap:wrap;           /* allow 2nd row */
+  gap:3px;
+  row-gap:3px;
+  margin-top:6px;
+  align-items:center;
+  align-content:flex-start;
+  padding-right:2px;
+  max-width:100%;
+}
 
+#calGrid:not(.is-week) .cal-dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  box-sizing:border-box;
+  border:2px solid var(--dot, var(--muted));
+  background:transparent;
+  flex:0 0 auto;
+  display:block;
+}
+
+#calGrid:not(.is-week) .cal-dot.is-filled{
+  background:var(--dot, var(--muted));
+}
+
+#calGrid:not(.is-week) .cal-dot.is-more{
+  border-color: var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:6.5px;
+  font-weight:900;
+  letter-spacing:-0.2px;
+}
+
+
+/* ===== PATCH: week header readability + month dots wrap v3 ===== */
+/* Week header: consistent readable color across Telegram themes */
+#calGrid.is-week .cal-weektop .cal-weekname,
+#calGrid.is-week .cal-weektop .cal-weekdate,
+#calGrid.is-week .cal-weektop .cal-daymeta{
+  color: var(--text);
+}
+#calGrid.is-week .cal-weektop .cal-weekname{ opacity:.72; }
+#calGrid.is-week .cal-weektop .cal-daymeta{ opacity:.72; }
+
+/* Dots: allow second row */
 #calGrid:not(.is-week) .cal-badges.cal-badges--dots{
   flex-wrap:wrap;
   row-gap:3px;
