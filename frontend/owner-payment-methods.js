@@ -56,15 +56,17 @@ function renderShell() {
       <div class="muted">Настрой способы оплат, которые будут в отчёте закрытия смены. По умолчанию создаются: Наличные, Безналичные, СБП, Прочее.</div>
 
       <div class="itemcard" style="margin-top:12px">
-        <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
-          <b>Список способов оплат</b>
-          <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap">
-            <label class="row" style="gap:8px; align-items:center">
-              <input type="checkbox" id="showArchived" />
-              <span class="muted">показать архив</span>
-            </label>
+        <div class="section-head">
+          <div class="section-title">
+            <b>Список способов оплат</b>
             <button class="btn primary" id="btnCreate">+ Добавить</button>
           </div>
+        </div>
+        <div class="section-actions">
+          <label class="chk">
+            <input type="checkbox" id="showArchived" />
+            <span class="muted">Показывать архив</span>
+          </label>
         </div>
 
         <div id="list" style="margin-top:10px">

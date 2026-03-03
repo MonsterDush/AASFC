@@ -202,6 +202,26 @@ input:focus,select:focus,textarea:focus{
   input,select{min-width:0;width:100%}
 }
 
+
+/* checkbox inputs */
+input[type="checkbox"],input[type="radio"]{
+  -webkit-appearance:auto;
+  appearance:auto;
+  padding:0;
+  border:none;
+  background:transparent;
+  min-width:0;
+  width:auto;
+  height:18px;
+  accent-color:var(--accent);
+}
+
+.chk{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.chk .muted{margin:0}
+
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.section-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.section-actions{display:flex;justify-content:flex-end;margin-top:8px}
 .list{margin-top:12px;display:grid;gap:10px}
 
 .list__row{border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--card)}
