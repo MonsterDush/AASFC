@@ -40,5 +40,21 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("ADJUSTMENTS_MANAGE", "Adjustments", "Управление штрафами/премиями/списаниями", "Создавать/редактировать штрафы/премии/списания"),
     PermissionDef("DISPUTES_RESOLVE", "Adjustments", "Разбор оспариваний", "Видеть и закрывать оспаривания"),
 
+    # Catalogs (dynamic)
+    PermissionDef("DEPARTMENTS_VIEW", "Catalogs", "Просмотр департаментов", "Видеть список департаментов"),
+    PermissionDef("DEPARTMENTS_CREATE", "Catalogs", "Создание департаментов", "Создавать департаменты"),
+    PermissionDef("DEPARTMENTS_EDIT", "Catalogs", "Редактирование департаментов", "Редактировать департаменты"),
+    PermissionDef("DEPARTMENTS_ARCHIVE", "Catalogs", "Архивирование департаментов", "Архивировать/восстанавливать департаменты"),
+
+    PermissionDef("PAYMENT_METHODS_VIEW", "Catalogs", "Просмотр способов оплат", "Видеть список способов оплат"),
+    PermissionDef("PAYMENT_METHODS_CREATE", "Catalogs", "Создание способов оплат", "Создавать способы оплат"),
+    PermissionDef("PAYMENT_METHODS_EDIT", "Catalogs", "Редактирование способов оплат", "Редактировать способы оплат"),
+    PermissionDef("PAYMENT_METHODS_ARCHIVE", "Catalogs", "Архивирование способов оплат", "Архивировать/восстанавливать способы оплат"),
+
+    PermissionDef("KPI_METRICS_VIEW", "Catalogs", "Просмотр KPI", "Видеть список KPI/допродаж"),
+    PermissionDef("KPI_METRICS_CREATE", "Catalogs", "Создание KPI", "Создавать KPI/допродажи"),
+    PermissionDef("KPI_METRICS_EDIT", "Catalogs", "Редактирование KPI", "Редактировать KPI/допродажи"),
+    PermissionDef("KPI_METRICS_ARCHIVE", "Catalogs", "Архивирование KPI", "Архивировать/восстанавливать KPI/допродажи"),
+
 ]
 

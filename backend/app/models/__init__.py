@@ -15,6 +15,9 @@ from .daily_report_attachment import DailyReportAttachment
 from .adjustment import Adjustment
 from .adjustment_dispute import AdjustmentDispute
 from .adjustment_dispute_comment import AdjustmentDisputeComment
+from .department import Department
+from .payment_method import PaymentMethod
+from .kpi_metric import KpiMetric
 
 __all__ = [
     "SystemRole",
@@ -35,4 +38,7 @@ __all__ = [
     "Adjustment",
     "AdjustmentDispute",
     "AdjustmentDisputeComment",
+    "Department",
+    "PaymentMethod",
+    "KpiMetric",
 ]

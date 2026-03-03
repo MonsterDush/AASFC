@@ -11,7 +11,12 @@ Env:
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
+
+try:
+    from zoneinfo import ZoneInfo  # py3.9+
+except Exception:  # pragma: no cover
+    ZoneInfo = None  # type: ignore
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -55,11 +60,26 @@ def _shift_start_naive(shift_date, start_time):
     return datetime.combine(shift_date, start_time)
 
 
+def _get_tzinfo():
+    tz_name = (os.getenv("AXELIO_TZ") or os.getenv("TZ") or "").strip()
+    if tz_name and ZoneInfo is not None:
+        try:
+            return ZoneInfo(tz_name)
+        except Exception:
+            return datetime.now().astimezone().tzinfo
+    return datetime.now().astimezone().tzinfo
+
+
 def main() -> int:
-    now = datetime.now()
+    tz = _get_tzinfo()
+    now = datetime.now(tz)
     target = now + timedelta(hours=REMINDER_HOURS)
     win_start = target - timedelta(minutes=WINDOW_MINUTES)
     win_end = target + timedelta(minutes=WINDOW_MINUTES)
+
+    # narrow down by date to avoid scanning all history
+    d_from: date = win_start.date()
+    d_to: date = win_end.date()
 
     sent = 0
     with SessionLocal() as db: 
@@ -71,6 +91,8 @@ def main() -> int:
             .join(User, User.id == ShiftAssignment.member_user_id)
             .join(Venue, Venue.id == Shift.venue_id)
             .where(Shift.is_active.is_(True))
+            .where(Shift.date >= d_from)
+            .where(Shift.date <= d_to)
         )
         rows = db.execute(q).all()
         for sa, sh, interval, user, venue in rows:
@@ -78,10 +100,12 @@ def main() -> int:
                 continue
             if not getattr(user, "notify_shifts", True):
                 continue
+            if not getattr(user, "tg_user_id", None) and not FORCE_CHAT_ID:
+                continue
             if sa.reminder_sent_at is not None:
                 continue
 
-            start_dt = _shift_start_naive(sh.date, interval.start_time)
+            start_dt = _shift_start_naive(sh.date, interval.start_time).replace(tzinfo=tz)
             if not (win_start <= start_dt <= win_end):
                 continue
 

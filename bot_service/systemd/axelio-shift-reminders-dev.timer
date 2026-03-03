@@ -1,0 +1,10 @@
+[Unit]
+Description=Axelio dev: run shift reminders every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Unit=axelio-shift-reminders-dev.service
+
+[Install]
+WantedBy=timers.target

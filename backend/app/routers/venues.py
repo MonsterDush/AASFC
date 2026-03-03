@@ -3,12 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone, date, time
 import os
 import uuid
+import re
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update, func
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
@@ -31,10 +32,28 @@ from app.models.daily_report_attachment import DailyReportAttachment
 from app.models.adjustment import Adjustment
 from app.models.adjustment_dispute import AdjustmentDispute
 from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
+from app.models.department import Department
+from app.models.payment_method import PaymentMethod
+from app.models.kpi_metric import KpiMetric
+
+from app.auth.venue_permissions import require_venue_permission
 
 from app.services.venues import create_venue
 
 router = APIRouter(prefix="/venues", tags=["venues"])
+
+
+_CODE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def _normalize_code(code: str) -> str:
+    c = (code or "").strip().lower().replace(" ", "_")
+    if not _CODE_RE.match(c):
+        raise HTTPException(
+            status_code=400,
+            detail="Bad code format. Use латиницу/цифры и символы _- (пример: hookah, cashless, fruit_bowl)",
+        )
+    return c
 
 
 # ---------- Schemas ----------
@@ -90,6 +109,36 @@ class DailyReportUpsertIn(BaseModel):
     cashless: int = Field(0, ge=0)
     revenue_total: int = Field(0, ge=0)
     tips_total: int = Field(0, ge=0)
+
+
+class CatalogItemCreateIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=64)
+    title: str = Field(..., min_length=1, max_length=120)
+    is_active: bool = True
+    sort_order: int = Field(0, ge=0)
+
+
+class CatalogItemUpdateIn(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=64)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    is_active: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0)
+
+
+class KpiMetricCreateIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=64)
+    title: str = Field(..., min_length=1, max_length=120)
+    unit: str = Field("QTY", min_length=1, max_length=24)
+    is_active: bool = True
+    sort_order: int = Field(0, ge=0)
+
+
+class KpiMetricUpdateIn(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=64)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    unit: str | None = Field(default=None, min_length=1, max_length=24)
+    is_active: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0)
 
 
 class AdjustmentCreateIn(BaseModel):
@@ -1946,6 +1995,8 @@ def update_shift_interval(
     if obj is None:
         raise HTTPException(status_code=404, detail="Shift interval not found")
 
+    start_changed = payload.start_time is not None and payload.start_time != obj.start_time
+
     if payload.title is not None:
         obj.title = payload.title.strip()
     if payload.start_time is not None:
@@ -1954,6 +2005,23 @@ def update_shift_interval(
         obj.end_time = payload.end_time
     if payload.is_active is not None:
         obj.is_active = payload.is_active
+
+    # If shift start time changed - allow reminders to be re-sent for future shifts.
+    if start_changed:
+        future_shift_ids = db.scalars(
+            select(Shift.id).where(
+                Shift.venue_id == venue_id,
+                Shift.interval_id == interval_id,
+                Shift.is_active.is_(True),
+                Shift.date >= date.today(),
+            )
+        ).all()
+        if future_shift_ids:
+            db.execute(
+                update(ShiftAssignment)
+                .where(ShiftAssignment.shift_id.in_(future_shift_ids))
+                .values(reminder_sent_at=None)
+            )
 
     db.commit()
     return {"ok": True}
@@ -2181,6 +2249,9 @@ def update_shift(
     if obj is None:
         raise HTTPException(status_code=404, detail="Shift not found")
 
+    date_changed = payload.date is not None and payload.date != obj.date
+    interval_changed = payload.interval_id is not None and payload.interval_id != obj.interval_id
+
     if payload.date is not None:
         obj.date = payload.date
     if payload.interval_id is not None:
@@ -2198,6 +2269,13 @@ def update_shift(
         obj.is_active = payload.is_active
 
     try:
+        # If shift start time changed - allow reminders to be re-sent.
+        if date_changed or interval_changed:
+            db.execute(
+                update(ShiftAssignment)
+                .where(ShiftAssignment.shift_id == shift_id)
+                .values(reminder_sent_at=None)
+            )
         db.commit()
     except Exception:
         db.rollback()
@@ -2445,3 +2523,287 @@ def add_shift_comment(
             "short_name": user.short_name,
         },
     }
+
+
+# ---------------- Catalogs: Departments / Payment Methods / KPI Metrics ----------------
+
+
+@router.get("/{venue_id}/departments")
+def list_departments(
+    venue_id: int,
+    include_archived: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="DEPARTMENTS_VIEW")
+    stmt = select(Department).where(Department.venue_id == venue_id)
+    if not include_archived:
+        stmt = stmt.where(Department.is_active.is_(True))
+    rows = db.scalars(stmt.order_by(Department.sort_order.asc(), Department.id.asc())).all()
+    return [
+        {
+            "id": r.id,
+            "code": r.code,
+            "title": r.title,
+            "is_active": bool(r.is_active),
+            "sort_order": int(r.sort_order or 0),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{venue_id}/departments")
+def create_department(
+    venue_id: int,
+    payload: CatalogItemCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="DEPARTMENTS_CREATE")
+    obj = Department(
+        venue_id=venue_id,
+        code=_normalize_code(payload.code),
+        title=payload.title.strip(),
+        is_active=bool(payload.is_active),
+        sort_order=int(payload.sort_order or 0),
+        created_at=datetime.utcnow(),
+    )
+    db.add(obj)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Department code already exists")
+    db.refresh(obj)
+    return {"id": obj.id}
+
+
+@router.patch("/{venue_id}/departments/{department_id}")
+def update_department(
+    venue_id: int,
+    department_id: int,
+    payload: CatalogItemUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="DEPARTMENTS_EDIT")
+    obj = db.execute(
+        select(Department).where(Department.id == department_id, Department.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    if payload.is_active is not None and bool(payload.is_active) != bool(obj.is_active):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="DEPARTMENTS_ARCHIVE")
+        obj.is_active = bool(payload.is_active)
+
+    if payload.code is not None:
+        obj.code = _normalize_code(payload.code)
+    if payload.title is not None:
+        obj.title = payload.title.strip()
+    if payload.sort_order is not None:
+        obj.sort_order = int(payload.sort_order)
+    obj.updated_at = datetime.utcnow()
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Department code already exists")
+    return {"ok": True}
+
+
+def _ensure_default_payment_methods(db: Session, venue_id: int) -> None:
+    cnt = db.scalar(select(func.count()).select_from(PaymentMethod).where(PaymentMethod.venue_id == venue_id)) or 0
+    if cnt:
+        return
+    defaults = [
+        ("cash", "Наличные", 0),
+        ("cashless", "Безналичные", 10),
+        ("sbp", "СБП", 20),
+        ("other", "Прочее", 90),
+    ]
+    for code, title, order in defaults:
+        db.add(
+            PaymentMethod(
+                venue_id=venue_id,
+                code=code,
+                title=title,
+                is_active=True,
+                sort_order=order,
+                created_at=datetime.utcnow(),
+            )
+        )
+    db.commit()
+
+
+@router.get("/{venue_id}/payment-methods")
+def list_payment_methods(
+    venue_id: int,
+    include_archived: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYMENT_METHODS_VIEW")
+    _ensure_default_payment_methods(db, venue_id)
+    stmt = select(PaymentMethod).where(PaymentMethod.venue_id == venue_id)
+    if not include_archived:
+        stmt = stmt.where(PaymentMethod.is_active.is_(True))
+    rows = db.scalars(stmt.order_by(PaymentMethod.sort_order.asc(), PaymentMethod.id.asc())).all()
+    return [
+        {
+            "id": r.id,
+            "code": r.code,
+            "title": r.title,
+            "is_active": bool(r.is_active),
+            "sort_order": int(r.sort_order or 0),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{venue_id}/payment-methods")
+def create_payment_method(
+    venue_id: int,
+    payload: CatalogItemCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYMENT_METHODS_CREATE")
+    obj = PaymentMethod(
+        venue_id=venue_id,
+        code=_normalize_code(payload.code),
+        title=payload.title.strip(),
+        is_active=bool(payload.is_active),
+        sort_order=int(payload.sort_order or 0),
+        created_at=datetime.utcnow(),
+    )
+    db.add(obj)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Payment method code already exists")
+    db.refresh(obj)
+    return {"id": obj.id}
+
+
+@router.patch("/{venue_id}/payment-methods/{payment_method_id}")
+def update_payment_method(
+    venue_id: int,
+    payment_method_id: int,
+    payload: CatalogItemUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYMENT_METHODS_EDIT")
+    obj = db.execute(
+        select(PaymentMethod).where(PaymentMethod.id == payment_method_id, PaymentMethod.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+
+    if payload.is_active is not None and bool(payload.is_active) != bool(obj.is_active):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYMENT_METHODS_ARCHIVE")
+        obj.is_active = bool(payload.is_active)
+    if payload.code is not None:
+        obj.code = _normalize_code(payload.code)
+    if payload.title is not None:
+        obj.title = payload.title.strip()
+    if payload.sort_order is not None:
+        obj.sort_order = int(payload.sort_order)
+    obj.updated_at = datetime.utcnow()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Payment method code already exists")
+    return {"ok": True}
+
+
+@router.get("/{venue_id}/kpi-metrics")
+def list_kpi_metrics(
+    venue_id: int,
+    include_archived: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="KPI_METRICS_VIEW")
+    stmt = select(KpiMetric).where(KpiMetric.venue_id == venue_id)
+    if not include_archived:
+        stmt = stmt.where(KpiMetric.is_active.is_(True))
+    rows = db.scalars(stmt.order_by(KpiMetric.sort_order.asc(), KpiMetric.id.asc())).all()
+    return [
+        {
+            "id": r.id,
+            "code": r.code,
+            "title": r.title,
+            "unit": r.unit,
+            "is_active": bool(r.is_active),
+            "sort_order": int(r.sort_order or 0),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{venue_id}/kpi-metrics")
+def create_kpi_metric(
+    venue_id: int,
+    payload: KpiMetricCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="KPI_METRICS_CREATE")
+    unit = (payload.unit or "QTY").strip().upper()
+    obj = KpiMetric(
+        venue_id=venue_id,
+        code=_normalize_code(payload.code),
+        title=payload.title.strip(),
+        unit=unit,
+        is_active=bool(payload.is_active),
+        sort_order=int(payload.sort_order or 0),
+        created_at=datetime.utcnow(),
+    )
+    db.add(obj)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="KPI code already exists")
+    db.refresh(obj)
+    return {"id": obj.id}
+
+
+@router.patch("/{venue_id}/kpi-metrics/{kpi_metric_id}")
+def update_kpi_metric(
+    venue_id: int,
+    kpi_metric_id: int,
+    payload: KpiMetricUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="KPI_METRICS_EDIT")
+    obj = db.execute(
+        select(KpiMetric).where(KpiMetric.id == kpi_metric_id, KpiMetric.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="KPI metric not found")
+
+    if payload.is_active is not None and bool(payload.is_active) != bool(obj.is_active):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="KPI_METRICS_ARCHIVE")
+        obj.is_active = bool(payload.is_active)
+    if payload.code is not None:
+        obj.code = _normalize_code(payload.code)
+    if payload.title is not None:
+        obj.title = payload.title.strip()
+    if payload.unit is not None:
+        obj.unit = (payload.unit or "QTY").strip().upper()
+    if payload.sort_order is not None:
+        obj.sort_order = int(payload.sort_order)
+    obj.updated_at = datetime.utcnow()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="KPI code already exists")
+    return {"ok": True}

@@ -1,0 +1,9 @@
+[Unit]
+Description=Axelio dev: send shift reminders (18h)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/axelio/dev/repo/backend
+EnvironmentFile=/var/www/axelio/dev/repo/backend/.env
+ExecStart=/var/www/axelio/dev/repo/backend/.venv/bin/python app/scripts/send_shift_reminders.py
