@@ -230,12 +230,18 @@ input:focus,select:focus,textarea:focus{
 .toast.err{border-color:var(--dangerBorder)}
 .toast__text{font-size:13px;color:var(--text)}
 
-.modal{position:fixed;inset:0;display:none}
+.modal{position:fixed;inset:0;display:none;z-index:10000}
 .modal.open{display:block}
-.modal__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55)}
-.modal__panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(920px, calc(100vw - 28px));max-height:min(80vh, 720px);overflow:auto;border-radius:18px;background:var(--card);border:1px solid var(--border);box-shadow:var(--shadow);padding:14px}
+.modal__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);z-index:1}
+.modal__panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(920px, calc(100vw - 28px));max-height:min(80vh, 720px);overflow:auto;border-radius:18px;background:var(--card);border:1px solid var(--border);box-shadow:var(--shadow);padding:14px;z-index:2}
 .modal__head{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .modal__title{font-weight:900}
+
+/* Generic list rows (used in catalogs: departments/payment methods/KPI) */
+.listrow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);padding:10px 0}
+.listrow__left{flex:1 1 auto;min-width:0}
+.listrow__meta{margin-top:4px;overflow-wrap:anywhere;word-break:break-word}
+
 
 .json{margin:12px 0 0;padding:12px;border-radius:14px;border:1px solid var(--border);background:var(--surface2);font-family:var(--mono);font-size:12px;white-space:pre;overflow:auto}
 

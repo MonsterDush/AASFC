@@ -181,8 +181,7 @@ function renderList() {
   el.innerHTML = "";
   for (const it of state.items) {
     const row = document.createElement("div");
-    row.className = "row";
-    row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0; gap:10px;";
+    row.className = "listrow";
 
     const left = document.createElement("div");
     const unit = String(it.unit || "QTY").toUpperCase();
@@ -191,11 +190,11 @@ function renderList() {
         <b>${esc(it.title)}</b>
         ${it.is_active ? "" : `<span class=\"badge\">архив</span>`}
       </div>
-      <div class="mono muted" style="margin-top:4px">code=${esc(it.code)} · unit=${esc(unit)} · sort=${esc(it.sort_order)}</div>
+      <div class="mono muted listrow__meta">code=${esc(it.code)} · unit=${esc(unit)} · sort=${esc(it.sort_order)}</div>
     `;
 
     const right = document.createElement("div");
-    right.className = "row";
+    right.className = "row row--nowrap";
     right.style = "gap:8px; flex:0 0 auto;";
 
     if (state.can.edit) {
@@ -264,7 +263,7 @@ function editorForm({ mode, item }) {
         <div class="muted" style="margin-bottom:6px">Статус</div>
         <label class="row" style="gap:8px; align-items:center">
           <input type="checkbox" id="f_active" ${activeChecked} />
-          <span>${activeChecked ? "Активен" : ""}</span>
+          <span>Активен</span>
         </label>
       </div>
     </div>
