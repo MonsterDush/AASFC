@@ -59,7 +59,9 @@ function renderShell() {
         <div class="section-head">
           <div class="section-title">
             <b>Список департаментов</b>
-            <button class="btn primary" id="btnCreate">+ Добавить</button>
+            <div class="section-actions">
+              <button class="btn primary" id="btnCreate">+ Добавить</button>
+            </div>
           </div>
         </div>
         <div class="section-actions">
