@@ -59,10 +59,11 @@ function renderShell() {
         <div class="section-head">
           <div class="section-title">
             <b>Список способов оплат</b>
+          </div>
             <div class="section-actions">
               <button class="btn primary" id="btnCreate">+ Добавить</button>
             </div>
-          </div>
+
         </div>
         <div class="section-actions">
           <label class="chk">
