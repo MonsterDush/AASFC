@@ -433,6 +433,70 @@ export async function deleteVenuePosition(venueId, positionId) {
   });
 }
 
+// ------------------------------
+// Catalogs: departments / payment methods / KPI metrics
+// ------------------------------
+
+export async function getDepartments(venueId, { includeArchived = false } = {}) {
+  if (!venueId) throw new Error("NO_VENUE");
+  const q = includeArchived ? "?include_archived=true" : "";
+  return api(`/venues/${encodeURIComponent(venueId)}/departments${q}`);
+}
+
+export async function createDepartment(venueId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/departments`, { method: "POST", body: payload });
+}
+
+export async function updateDepartment(venueId, departmentId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!departmentId) throw new Error("NO_DEPARTMENT");
+  return api(`/venues/${encodeURIComponent(venueId)}/departments/${encodeURIComponent(departmentId)}`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export async function getPaymentMethods(venueId, { includeArchived = false } = {}) {
+  if (!venueId) throw new Error("NO_VENUE");
+  const q = includeArchived ? "?include_archived=true" : "";
+  return api(`/venues/${encodeURIComponent(venueId)}/payment-methods${q}`);
+}
+
+export async function createPaymentMethod(venueId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/payment-methods`, { method: "POST", body: payload });
+}
+
+export async function updatePaymentMethod(venueId, paymentMethodId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!paymentMethodId) throw new Error("NO_PAYMENT_METHOD");
+  return api(`/venues/${encodeURIComponent(venueId)}/payment-methods/${encodeURIComponent(paymentMethodId)}`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export async function getKpiMetrics(venueId, { includeArchived = false } = {}) {
+  if (!venueId) throw new Error("NO_VENUE");
+  const q = includeArchived ? "?include_archived=true" : "";
+  return api(`/venues/${encodeURIComponent(venueId)}/kpi-metrics${q}`);
+}
+
+export async function createKpiMetric(venueId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/kpi-metrics`, { method: "POST", body: payload });
+}
+
+export async function updateKpiMetric(venueId, kpiMetricId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!kpiMetricId) throw new Error("NO_KPI_METRIC");
+  return api(`/venues/${encodeURIComponent(venueId)}/kpi-metrics/${encodeURIComponent(kpiMetricId)}`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
 /**
  * Boots a page: ensures login (cookie), loads /me,
  * optionally enforces an active venue (from LS or query).

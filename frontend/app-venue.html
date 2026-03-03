@@ -48,6 +48,11 @@
                 <a class="btn" id="openReports" href="#">Отчёты</a>
                 <a class="btn" id="openAdjustments" href="#">Штрафы/Списания</a>
               </div>
+              <div class="row gap-8 mt-12">
+                <a class="btn" id="openDepartments" href="#">Департаменты</a>
+                <a class="btn" id="openPaymentMethods" href="#">Оплаты</a>
+                <a class="btn" id="openKpi" href="#">KPI</a>
+              </div>
       </div>
       <div class="itemcard mt-12">
         <b>Участники</b>
@@ -104,16 +109,36 @@
 
 
         let canManageAdjustments = false;
+        let canViewAdjustments = false;
+        let canViewDepartments = false;
+        let canViewPaymentMethods = false;
+        let canViewKpi = false;
         try {
           const perms = await getMyVenuePermissions(venueId);
           const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
           const flags = perms?.position_flags || {};
+          const role = String(perms?.role || "").toUpperCase();
+          const owner = role === "OWNER";
           canManageAdjustments =
-            String(perms?.role || "").toUpperCase() === "OWNER" ||
+            owner ||
             flags.can_manage_adjustments === true ||
             has("ADJUSTMENTS_MANAGE");
+
+          canViewAdjustments =
+            owner ||
+            flags.can_view_adjustments === true ||
+            canManageAdjustments ||
+            has("ADJUSTMENTS_VIEW");
+
+          canViewDepartments = owner || has("DEPARTMENTS_VIEW");
+          canViewPaymentMethods = owner || has("PAYMENT_METHODS_VIEW");
+          canViewKpi = owner || has("KPI_METRICS_VIEW");
         } catch (e) {
           canManageAdjustments = false;
+          canViewAdjustments = false;
+          canViewDepartments = false;
+          canViewPaymentMethods = false;
+          canViewKpi = false;
         }
 
 
@@ -146,6 +171,9 @@
         const openShifts = document.getElementById("openShifts");
         const openReports = document.getElementById("openReports");
         const openAdjustments = document.getElementById("openAdjustments");
+        const openDepartments = document.getElementById("openDepartments");
+        const openPaymentMethods = document.getElementById("openPaymentMethods");
+        const openKpi = document.getElementById("openKpi");
 
         let last = { is_archived: false, name: "" };
 
@@ -162,6 +190,17 @@
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
           openReports.href = `/staff-report.html?venue_id=${encodeURIComponent(venueId)}`;
           openAdjustments.href = `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
+
+          if (openDepartments) openDepartments.href = `/owner-departments.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openPaymentMethods) openPaymentMethods.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openKpi) openKpi.href = `/owner-kpi.html?venue_id=${encodeURIComponent(venueId)}`;
+
+          // hide if no permission
+          if (openDepartments) openDepartments.style.display = canViewDepartments ? "" : "none";
+          if (openPaymentMethods) openPaymentMethods.style.display = canViewPaymentMethods ? "" : "none";
+          if (openKpi) openKpi.style.display = canViewKpi ? "" : "none";
+
+          if (openAdjustments) openAdjustments.style.display = canViewAdjustments ? "" : "none";
           metaEl.textContent = `venue_id=${venueId}`;
           metaHint.textContent = "";
         }
