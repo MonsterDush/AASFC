@@ -35,6 +35,11 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("REPORTS_VIEW_MONTHLY", "Reports", "Отчёты за месяц", "Просматривать отчёты за месяц"),
     PermissionDef("REPORTS_VIEW_PNL", "Reports", "P&L", "Просматривать прибыль/убытки"),
 
+    PermissionDef("SHIFT_REPORT_VIEW", "Reports", "Закрытие смены: просмотр", "Просматривать отчёт закрытия смены"),
+    PermissionDef("SHIFT_REPORT_EDIT", "Reports", "Закрытие смены: правка закрытых", "Редактировать закрытые отчёты (с аудитом)"),
+    PermissionDef("SHIFT_REPORT_CLOSE", "Reports", "Закрытие смены: закрыть", "Закрывать смену (переводить отчёт в статус CLOSED)"),
+    PermissionDef("SHIFT_REPORT_REOPEN", "Reports", "Закрытие смены: переоткрыть", "Переоткрывать закрытые отчёты (CLOSED -> DRAFT)"),
+
     # Adjustments
     PermissionDef("ADJUSTMENTS_VIEW", "Adjustments", "Просмотр штрафов/премий/списаний", "Видеть штрафы/премии/списания"),
     PermissionDef("ADJUSTMENTS_MANAGE", "Adjustments", "Управление штрафами/премиями/списаниями", "Создавать/редактировать штрафы/премии/списания"),
