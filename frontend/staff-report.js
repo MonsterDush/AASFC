@@ -9,6 +9,9 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenuePermissions,
+  getDepartments,
+  getPaymentMethods,
+  getKpiMetrics,
 } from "/app.js";
 
 applyTelegramTheme();
@@ -29,18 +32,18 @@ const el = {
   dayPanel: document.getElementById("dayPanel"),
 };
 
-// Month summary (DayPanel) удалён: сводка вынесена на отдельную страницу
+// Month summary (DayPanel) removed earlier — keep compatible if exists
 if (el.dayPanel) {
   try { el.dayPanel.remove(); } catch {}
   el.dayPanel = null;
 }
-
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
 const modalBody = modal?.querySelector(".modal__body");
 const modalSubtitleEl = document.getElementById("modalSubtitle");
 
+// ---- Photo viewer (attachments) ----
 const photoModal = document.getElementById("photoModal");
 const phTitle = document.getElementById("photoTitle");
 const phSubtitle = document.getElementById("photoSubtitle");
@@ -53,70 +56,35 @@ const phDelete = document.getElementById("phDelete");
 let phItems = [];
 let phIndex = 0;
 let phDayISO = "";
+
 function closePhotoModal() { photoModal?.classList.remove("open"); }
 photoModal?.querySelectorAll("[data-close-ph]")?.forEach((b) => b.addEventListener("click", closePhotoModal));
 photoModal?.querySelector(".modal__backdrop")?.addEventListener("click", closePhotoModal);
-
-function canDeleteAttachments() { return canMake(); }
-
-function showPhotoAt(idx) {
-  if (!phItems.length) return;
-  phIndex = Math.max(0, Math.min(idx, phItems.length - 1));
-  const a = phItems[phIndex];
-  const url = attachmentHref(a.url);
-  if (phTitle) phTitle.textContent = a.file_name || "Фото";
-  if (phSubtitle) phSubtitle.textContent = formatDateRuNoG(phDayISO);
-  if (phImg) phImg.src = url;
-  if (phCounter) phCounter.textContent = `${phIndex + 1} / ${phItems.length}`;
-  if (phDownload) {
-    phDownload.href = url;
-    phDownload.setAttribute("download", a.file_name || "photo");
-  }
-  if (phDelete) phDelete.style.display = canDeleteAttachments() ? "" : "none";
-}
-phPrev?.addEventListener("click", () => showPhotoAt(phIndex - 1));
-phNext?.addEventListener("click", () => showPhotoAt(phIndex + 1));
-
-async function deleteCurrentPhoto() {
-  if (!canDeleteAttachments()) return;
-  const a = phItems[phIndex];
-  if (!a) return;
-  if (!confirm("Удалить файл?")) return;
-  try {
-    await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(phDayISO)}/attachments/${encodeURIComponent(a.id)}`, { method: "DELETE" });
-    // remove from local list
-    phItems.splice(phIndex, 1);
-    if (!phItems.length) { closePhotoModal(); await openDay(phDayISO); return; }
-    showPhotoAt(Math.min(phIndex, phItems.length - 1));
-    // refresh report modal list too
-    await openDay(phDayISO);
-  } catch (e) {
-    toast("Не удалось удалить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
-  }
-}
-phDelete?.addEventListener("click", deleteCurrentPhoto);
-
-function openPhotoModal(items, startIdx, dayISO) {
-  phItems = Array.isArray(items) ? items.slice() : [];
-  phDayISO = dayISO;
-  photoModal?.classList.add("open");
-  showPhotoAt(startIdx || 0);
-}
-function closeModal() { modal?.classList.remove("open"); }
-modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
-modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
-function openModal(title, subtitle, bodyHtml) {
-  if (modalTitle) modalTitle.textContent = title || "Отчет";
-  if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle || "";
-  if (modalBody) modalBody.innerHTML = bodyHtml || "";
-  modal?.classList.add("open");
-}
 
 function esc(s){
   return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function numOr0(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function fmtRub(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("ru-RU") + " ₽";
+}
+
+function fmtNum(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("ru-RU");
 }
 
 function ymd(d) {
@@ -139,69 +107,164 @@ function monthTitle(d) {
   return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${y}`;
 }
 
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+function formatDateRuNoG(iso) {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
 
+function fmtDtRu(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}.${mm}.${yyyy} ${hh}:${mi}`;
+}
+
+function attachmentHref(rawUrl) {
+  const raw = String(rawUrl || "");
+  const path = raw.startsWith("/api/") ? raw.slice(4) : raw;
+  if (path.startsWith("/")) return API_BASE + path;
+  return raw;
+}
+
+function canDeleteAttachments() {
+  return canMake();
+}
+
+function showPhotoAt(idx) {
+  if (!phItems.length) return;
+  phIndex = Math.max(0, Math.min(idx, phItems.length - 1));
+  const a = phItems[phIndex];
+  const url = attachmentHref(a.url);
+  if (phTitle) phTitle.textContent = a.file_name || "Фото";
+  if (phSubtitle) phSubtitle.textContent = formatDateRuNoG(phDayISO);
+  if (phImg) phImg.src = url;
+  if (phCounter) phCounter.textContent = `${phIndex + 1} / ${phItems.length}`;
+  if (phDownload) {
+    phDownload.href = url;
+    phDownload.setAttribute("download", a.file_name || "photo");
+  }
+  if (phDelete) phDelete.style.display = canDeleteAttachments() ? "" : "none";
+}
+
+phPrev?.addEventListener("click", () => showPhotoAt(phIndex - 1));
+phNext?.addEventListener("click", () => showPhotoAt(phIndex + 1));
+
+async function deleteCurrentPhoto() {
+  if (!canDeleteAttachments()) return;
+  const a = phItems[phIndex];
+  if (!a) return;
+  if (!confirm("Удалить файл?")) return;
+  try {
+    await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(phDayISO)}/attachments/${encodeURIComponent(a.id)}`, { method: "DELETE" });
+    phItems.splice(phIndex, 1);
+    if (!phItems.length) {
+      closePhotoModal();
+      await openDay(phDayISO);
+      return;
+    }
+    showPhotoAt(Math.min(phIndex, phItems.length - 1));
+    await openDay(phDayISO);
+  } catch (e) {
+    toast("Не удалось удалить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+  }
+}
+phDelete?.addEventListener("click", deleteCurrentPhoto);
+
+function openPhotoModal(items, startIdx, dayISO) {
+  phItems = Array.isArray(items) ? items.slice() : [];
+  phDayISO = dayISO;
+  photoModal?.classList.add("open");
+  showPhotoAt(startIdx || 0);
+}
+
+// ---- Main modal helpers ----
+function closeModal() { modal?.classList.remove("open"); }
+modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
+modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
+
+function openModal(title, subtitle, bodyHtml) {
+  if (modalTitle) modalTitle.textContent = title || "Отчёт";
+  if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle || "";
+  if (modalBody) modalBody.innerHTML = bodyHtml || "";
+  modal?.classList.add("open");
+}
+
+// ---- Calendar ----
+const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 let curMonth = new Date();
 curMonth.setDate(1);
 
 let reportsByDate = new Map(); // dateISO -> report
-let perms = { role: "", flags: {} };
+let perms = { role: "", permissions: [], flags: {} };
 let selectedDayISO = "";
-let selectedDayData = null; // { rep, attCount }
+
+function hasPerm(code) {
+  const arr = perms?.permissions;
+  return Array.isArray(arr) && arr.includes(code);
+}
+
+function isOwnerOrAdmin() {
+  const r = String(perms?.role || "").toUpperCase();
+  return r === "OWNER" || r === "SUPER_ADMIN" || r === "MODERATOR";
+}
 
 function canMake() {
-  return perms.role === "OWNER" || perms.flags.can_make_reports === true;
+  return isOwnerOrAdmin() || perms.flags?.can_make_reports === true;
 }
+
 function canView() {
-  return perms.role === "OWNER" || perms.flags.can_view_reports === true || perms.flags.can_make_reports === true;
+  return isOwnerOrAdmin() || perms.flags?.can_view_reports === true || perms.flags?.can_make_reports === true || hasPerm("SHIFT_REPORT_VIEW");
 }
+
 function canSeeMoney() {
-  return perms.role === "OWNER" || perms.flags.can_view_revenue === true || perms.flags.can_make_reports === true;
+  return isOwnerOrAdmin() || perms.flags?.can_view_revenue === true || perms.flags?.can_make_reports === true;
 }
 
-
-function getReportChartMode(venueId) {
-  try {
-    const key = `axelio_report_chart_mode:${venueId || "0"}`;
-    const v = localStorage.getItem(key);
-    return v === "fill" || v === "money" ? v : "money";
-  } catch {
-    return "money";
-  }
+function canClose() {
+  return isOwnerOrAdmin() || perms.flags?.can_make_reports === true || hasPerm("SHIFT_REPORT_CLOSE");
 }
 
-function setReportChartMode(venueId, mode) {
-  try {
-    const key = `axelio_report_chart_mode:${venueId || "0"}`;
-    localStorage.setItem(key, mode);
-  } catch {
-    // ignore
-  }
+function canReopen() {
+  return isOwnerOrAdmin() || hasPerm("SHIFT_REPORT_REOPEN");
+}
+
+function canEditClosed() {
+  // Backend additionally requires SHIFT_REPORT_EDIT for CLOSED edits.
+  return canMake() && (hasPerm("SHIFT_REPORT_EDIT") || String(perms?.role || "").toUpperCase() === "SUPER_ADMIN");
 }
 
 async function loadPerms() {
-  perms = { role: "", flags: {} };
+  perms = { role: "", permissions: [], flags: {} };
   if (!venueId) return;
   try {
     const p = await getMyVenuePermissions(venueId);
     perms.role = p?.role || "";
+    perms.permissions = p?.permissions || [];
     perms.flags = p?.position_flags || {};
   } catch {
-    perms = { role: "", flags: {} };
+    perms = { role: "", permissions: [], flags: {} };
   }
 }
 
 async function loadMonthReports() {
   reportsByDate = new Map();
   if (!venueId) return;
-  if (!canView()) return; // не будем бомбить бэк, если явно нет права просмотра
+  if (!canView()) return;
   const m = ym(curMonth);
   try {
     const list = await api(`/venues/${encodeURIComponent(venueId)}/reports?month=${encodeURIComponent(m)}`);
     (list || []).forEach((r) => {
       if (r?.date) reportsByDate.set(r.date, r);
     });
-  } catch (e) {
+  } catch {
     reportsByDate = new Map();
   }
 }
@@ -215,7 +278,6 @@ function renderNoVenue() {
       </div>
     </div>
   `;
-if (el.dayPanel) el.dayPanel.innerHTML = "";
 }
 
 function renderMonth() {
@@ -224,16 +286,18 @@ function renderMonth() {
   el.monthLabel.textContent = monthTitle(curMonth);
   el.grid.innerHTML = "";
 
+  if (!venueId) {
+    renderNoVenue();
+    return;
+  }
+
   if (!canView()) {
     el.grid.innerHTML = `
       <div class="itemcard">
         <b>Нет доступа</b>
-        <div class="muted" style="margin-top:6px">
-          У вас нет прав на просмотр отчётов.
-        </div>
+        <div class="muted" style="margin-top:6px">У вас нет прав на просмотр отчётов.</div>
       </div>
     `;
-if (el.dayPanel) el.dayPanel.innerHTML = "";
     return;
   }
 
@@ -251,8 +315,8 @@ if (el.dayPanel) el.dayPanel.innerHTML = "";
   body.className = "cal-body";
 
   const first = new Date(curMonth);
-  const jsDow = first.getDay(); // 0 Sun..6 Sat
-  const mondayBased = (jsDow + 6) % 7; // Mon=0..Sun=6
+  const jsDow = first.getDay();
+  const mondayBased = (jsDow + 6) % 7;
   const start = new Date(first);
   start.setDate(first.getDate() - mondayBased);
 
@@ -268,355 +332,44 @@ if (el.dayPanel) el.dayPanel.innerHTML = "";
     cell.type = "button";
     cell.className = "cal-cell";
 
-    const hasRep = reportsByDate.has(dStr);
+    const rep = reportsByDate.get(dStr) || null;
+    const hasRep = !!rep;
+    const status = String(rep?.status || "").toUpperCase();
+
+    const badgeHtml = hasRep
+      ? `<span class="badge ${status === "CLOSED" ? "badge--closed" : "badge--draft"}">${status === "CLOSED" ? "закрыто" : "черновик"}</span>`
+      : ``;
+
     cell.innerHTML = `
-      <div class="cal-num">${d.getDate()}</div>
-      <div class="cal-sub muted" style="font-size:11px">${hasRep ? "есть отчёт" : ""}</div>
+      <div class="cal-daynum">${d.getDate()}</div>
+      <div class="cal-badges">${badgeHtml}</div>
     `;
 
-    if (ym(d) !== monthStr) cell.classList.add("is-out");
-    if (dStr === todayStr) cell.classList.add("is-today");
-    if (hasRep) cell.classList.add("has-report");
+    if (ym(d) !== monthStr) cell.classList.add("cal-cell--out");
+    if (dStr === todayStr) cell.classList.add("cal-cell--today");
+    if (dStr === selectedDayISO) cell.classList.add("cal-cell--selected");
+    if (hasRep && status === "CLOSED") cell.classList.add("cal-cell--closed");
+    if (hasRep && status !== "CLOSED") cell.classList.add("cal-cell--draft");
 
     cell.onclick = () => {
       selectedDayISO = dStr;
-      selectedDayData = null;
-      renderMonthPanel();
+      renderMonth();
       openDay(dStr);
     };
+
     body.appendChild(cell);
   }
 
   el.grid.appendChild(body);
 }
 
-function numOr0(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function fmtRub(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("ru-RU") + " ₽";
-}
-
-function monthDays(dateObj) {
-  const d = new Date(dateObj);
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-}
-
-function isoForDay(dayNum) {
-  const d = new Date(curMonth);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(dayNum).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
-
-function renderMonthPanel() {
-  if (!el.dayPanel) return;
-  if (!venueId || !canView()) {
-if (el.dayPanel) el.dayPanel.innerHTML = "";
-    return;
-  }
-
-  const days = monthDays(curMonth);
-  const showMoney = canSeeMoney();
-
-  let mode = showMoney ? getReportChartMode(venueId) : "fill";
-  if (!showMoney) mode = "fill";
-  const isFillMode = mode === "fill";
-
-  let filled = 0;
-  let sumRevenue = 0;
-  let sumTips = 0;
-  let maxRevenue = 0;
-
-  const bars = [];
-  for (let day = 1; day <= days; day++) {
-    const iso = isoForDay(day);
-    const r = reportsByDate.get(iso);
-    const has = !!r;
-    const rev = has ? numOr0(r.revenue_total ?? r.total ?? r.revenue ?? r.revenue_sum ?? 0) : 0;
-    const tips = has ? numOr0(r.tips_total ?? r.tips ?? 0) : 0;
-
-    if (has) {
-      filled++;
-      sumRevenue += rev;
-      sumTips += tips;
-      if (rev > maxRevenue) maxRevenue = rev;
-    }
-
-    bars.push({ day, iso, has, rev });
-  }
-
-  // streaks
-  let maxStreak = 0;
-  let run = 0;
-  for (const b of bars) {
-    if (b.has) run++;
-    else {
-      if (run > maxStreak) maxStreak = run;
-      run = 0;
-    }
-  }
-  if (run > maxStreak) maxStreak = run;
-
-  const now = new Date();
-  const isThisMonth =
-    now.getFullYear() === curMonth.getFullYear() && now.getMonth() === curMonth.getMonth();
-  const endDay = isThisMonth ? Math.min(now.getDate(), days) : days;
-  let curStreak = 0;
-  for (let d = endDay; d >= 1; d--) {
-    const iso = isoForDay(d);
-    if (reportsByDate.has(iso)) curStreak++;
-    else break;
-  }
-
-  const percent = days ? Math.round((filled / days) * 100) : 0;
-  const remaining = Math.max(0, days - filled);
-  const avg = filled ? Math.round(sumRevenue / filled) : 0;
-
-  const kpiHtml = isFillMode
-    ? `
-      <div class="kpi">
-        <div class="kpi__item">
-          <div class="kpi__label">Заполнено</div>
-          <div class="kpi__value">${filled} / ${days}</div>
-          <div class="kpi__sub">дней в месяце</div>
-        </div>
-        <div class="kpi__item">
-          <div class="kpi__label">Готовность</div>
-          <div class="kpi__value">${percent}%</div>
-          <div class="kpi__sub">отчётов готово</div>
-        </div>
-        <div class="kpi__item">
-          <div class="kpi__label">Осталось</div>
-          <div class="kpi__value">${remaining}</div>
-          <div class="kpi__sub">дней без отчёта</div>
-        </div>
-        <div class="kpi__item">
-          <div class="kpi__label">${isThisMonth ? "Серия" : "Макс серия"}</div>
-          <div class="kpi__value">${isThisMonth ? curStreak : maxStreak}</div>
-          <div class="kpi__sub">дней подряд</div>
-        </div>
-      </div>
-      <div class="progress" aria-label="Прогресс заполнения">
-        <div class="progress__bar" style="width:${percent}%"></div>
-      </div>
-    `
-    : `
-      <div class="kpi">
-        <div class="kpi__item">
-          <div class="kpi__label">Заполнено</div>
-          <div class="kpi__value">${filled} / ${days}</div>
-          <div class="kpi__sub">дней в месяце</div>
-        </div>
-        <div class="kpi__item">
-          <div class="kpi__label">Выручка</div>
-          <div class="kpi__value">${fmtRub(sumRevenue)}</div>
-          <div class="kpi__sub">за месяц</div>
-        </div>
-        <div class="kpi__item">
-          <div class="kpi__label">Чаевые</div>
-          <div class="kpi__value">${fmtRub(sumTips)}</div>
-          <div class="kpi__sub">за месяц</div>
-        </div>
-        <div class="kpi__item">
-          <div class="kpi__label">Средняя</div>
-          <div class="kpi__value">${fmtRub(avg)}</div>
-          <div class="kpi__sub">на заполненный день</div>
-        </div>
-      </div>
-    `;
-
-  const barsHtml = bars
-    .map(({ day, iso, has, rev }) => {
-      const h = isFillMode
-        ? has
-          ? 0.88
-          : 0.12
-        : maxRevenue > 0
-        ? Math.max(0, Math.min(1, rev / maxRevenue))
-        : 0;
-
-      const cls = ["bar", has ? "has" : "", iso === selectedDayISO ? "is-selected" : ""]
-        .filter(Boolean)
-        .join(" ");
-
-      const aria = has
-        ? isFillMode
-          ? `${formatDateRuNoG(iso)}: отчёт заполнен`
-          : `${formatDateRuNoG(iso)}: ${fmtRub(rev)}`
-        : `${formatDateRuNoG(iso)}: отчёта нет`;
-
-      return `
-        <button type="button" class="${cls}" data-dayiso="${esc(iso)}" aria-label="${esc(aria)}" title="${esc(aria)}">
-          <div class="bar__col" style="--h:${h}"></div>
-          <div class="bar__label">${day}</div>
-        </button>
-      `;
-    })
-    .join("");
-
-  const dayHtml = (() => {
-    if (!selectedDayISO) {
-      return `<div class="itemcard" style="margin-top:12px"><div class="muted">Выбери день в календаре или на графике, чтобы открыть отчёт.</div></div>`;
-    }
-
-    const rep = selectedDayData?.rep || reportsByDate.get(selectedDayISO) || null;
-    const attCount = selectedDayData?.attCount;
-    const exists = !!rep;
-
-    if (!exists) {
-      return `
-        <div class="itemcard" style="margin-top:12px">
-          <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
-            <b>${formatDateRuNoG(selectedDayISO)}</b>
-            <span class="muted">отчёта нет</span>
-          </div>
-          <div class="muted" style="margin-top:8px">Нажми на день, чтобы создать отчёт.</div>
-        </div>
-      `;
-    }
-
-    // In fill mode (or without money permissions) we show a “completion” card.
-    if (isFillMode || !showMoney) {
-      const hint = showMoney
-        ? "Режим: заполнение (суммы скрыты). Открой отчёт для деталей."
-        : "Суммы скрыты из-за прав доступа. Открой отчёт для деталей.";
-      return `
-        <div class="itemcard" style="margin-top:12px">
-          <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
-            <b>${formatDateRuNoG(selectedDayISO)}</b>
-            <span class="muted">отчёт заполнен</span>
-          </div>
-          <div class="row" style="margin-top:10px;gap:10px;align-items:center;flex-wrap:wrap">
-            ${Number.isFinite(attCount) ? `<span class="muted">Файлов: ${attCount}</span>` : ``}
-            <button class="btn" type="button" data-open-report>Открыть отчёт</button>
-          </div>
-          <div class="muted" style="margin-top:8px">${hint}</div>
-        </div>
-      `;
-    }
-
-    const cash = numOr0(rep.cash);
-    const cashless = numOr0(rep.cashless);
-    const total = numOr0(rep.revenue_total);
-    const tips = numOr0(rep.tips_total);
-    const denom = Math.max(1, cash + cashless);
-    const cashW = Math.round((cash / denom) * 100);
-    const cashlessW = 100 - cashW;
-
-    return `
-      <div class="itemcard" style="margin-top:12px">
-        <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
-          <b>${formatDateRuNoG(selectedDayISO)}</b>
-          <span class="muted">отчёт есть</span>
-        </div>
-        <div class="row" style="margin-top:10px;gap:10px;align-items:stretch;flex-wrap:wrap">
-          <div style="flex:1;min-width:160px">
-            <div class="small">Выручка</div>
-            <div style="font-weight:950;font-size:18px;margin-top:4px">${fmtRub(total)}</div>
-          </div>
-          <div style="flex:1;min-width:160px">
-            <div class="small">Чаевые</div>
-            <div style="font-weight:950;font-size:18px;margin-top:4px">${fmtRub(tips)}</div>
-          </div>
-        </div>
-        <div class="small" style="margin-top:10px">Наличные / безналичные</div>
-        <div class="paybar" aria-label="Наличные и безналичные">
-          <div class="paybar__seg cash" style="width:${cashW}%" title="Наличные ${fmtRub(cash)}"></div>
-          <div class="paybar__seg cashless" style="width:${cashlessW}%" title="Безналичные ${fmtRub(cashless)}"></div>
-        </div>
-        ${Number.isFinite(attCount) ? `<div class="muted" style="margin-top:10px">Файлов: ${attCount}</div>` : ``}
-      </div>
-    `;
-  })();
-
-  const modeToggleHtml = showMoney
-    ? `
-      <div class="seg-toggle" data-report-mode>
-        <button type="button" data-mode="money" class="${!isFillMode ? "active" : ""}">Выручка</button>
-        <button type="button" data-mode="fill" class="${isFillMode ? "active" : ""}">Заполнение</button>
-      </div>
-    `
-    : ``;
-
-  const hintHtml = !showMoney
-    ? `<div class="muted" style="margin-top:4px">Нет доступа к суммам — показываем заполненность отчётов</div>`
-    : isFillMode
-    ? `<div class="muted" style="margin-top:4px">Режим заполнения — суммы скрыты (можно открыть отчёт)</div>`
-    : `<div class="muted" style="margin-top:4px">Кликни на столбик или день в календаре</div>`;
-
-  el.dayPanel.innerHTML = `
-    <div class="card daypanel-card monthsum">
-      <div class="daypanel__head">
-        <div class="daypanel__title">
-          <b>Сводка месяца</b>
-          ${hintHtml}
-        </div>
-        <div class="daypanel__actions">${modeToggleHtml}</div>
-      </div>
-      ${kpiHtml}
-      <div class="barchart ${isFillMode ? "is-fillmode" : ""}" aria-label="${isFillMode ? "График заполнения отчётов по дням" : "График выручки по дням"}">
-        <div class="barchart__bars">${barsHtml}</div>
-      </div>
-      ${dayHtml}
-    </div>
-  `;
-
-  // bars
-  el.dayPanel.querySelectorAll("[data-dayiso]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const iso = btn.getAttribute("data-dayiso");
-      if (!iso) return;
-      selectedDayISO = iso;
-      selectedDayData = null;
-      renderMonthPanel();
-      openDay(iso);
-    });
-  });
-
-  // mode toggle (only if money permissions exist)
-  el.dayPanel.querySelectorAll("[data-report-mode] button[data-mode]").forEach((b) => {
-    b.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      const m = b.getAttribute("data-mode");
-      if (m !== "money" && m !== "fill") return;
-      setReportChartMode(venueId, m);
-      renderMonthPanel();
-    });
-  });
-
-  // open report from completion card
-  el.dayPanel.querySelectorAll("[data-open-report]").forEach((b) => {
-    b.addEventListener("click", () => {
-      if (!selectedDayISO) return;
-      openDay(selectedDayISO);
-    });
-  });
-}
-
+// ---- API calls for report ----
 async function fetchReport(dayISO) {
   try {
     return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}`);
-  } catch {
-    return null;
+  } catch (e) {
+    throw e;
   }
-}
-
-async function saveReport(dayISO) {
-  const cash = Math.max(0, numOr0(document.getElementById("repCash")?.value));
-  const cashless = Math.max(0, numOr0(document.getElementById("repCashless")?.value));
-  const revenue_total = Math.max(0, numOr0(document.getElementById("repTotal")?.value));
-  const tips_total = Math.max(0, numOr0(document.getElementById("repTips")?.value));
-
-  return api(`/venues/${encodeURIComponent(venueId)}/reports`, {
-    method: "POST",
-    body: { date: dayISO, cash, cashless, revenue_total, tips_total },
-  });
 }
 
 async function fetchAttachments(dayISO) {
@@ -630,152 +383,516 @@ async function fetchAttachments(dayISO) {
 async function uploadAttachments(dayISO, files) {
   const fd = new FormData();
   for (const f of files) fd.append("files", f);
-
-  // IMPORTANT: send to API_BASE (api-dev). Posting to app-dev (/api/...) can return 405.
   return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`, {
     method: "POST",
     body: fd,
   });
 }
 
-function formatDateRuNoG(iso) {
-  const d = new Date(iso);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${dd}.${mm}.${yyyy}`;
-}
-
-function attachmentHref(rawUrl) {
-  const raw = String(rawUrl || "");
-  // backend may return "/api/venues/..." or "/venues/...". We need a working absolute URL to api-dev.
-  const path = raw.startsWith("/api/") ? raw.slice(4) : raw;
-  if (path.startsWith("/")) return API_BASE + path;
-  return raw;
-}
-async function openDay(dayISO) {
-  if (!venueId) return;
-  if (!canView()) return;
-
-  selectedDayISO = dayISO;
-  selectedDayData = null;
-  renderMonthPanel();
-
-  const d = new Date(dayISO);
-  const title = formatDateRuNoG(d);
-
-  // Открываем модалку сразу, чтобы была мгновенная реакция
-  const subtitle = canMake() ? "Редактирование" : "Просмотр";
-
-  let rep = null;
+async function fetchAudit(dayISO) {
   try {
-    rep = await fetchReport(dayISO);
-  } catch (e) {
-    // если 404 — это норм, отчёта нет
-    if (e?.status !== 404 && e?.data?.detail !== "Report not found") {
-      toast("Ошибка загрузки отчёта: " + (e?.message || "неизвестно"), "err");
-    }
-    rep = null;
+    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/audit`);
+  } catch {
+    return [];
+  }
+}
+
+async function closeReport(dayISO, comment) {
+  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/close`, {
+    method: "POST",
+    body: { comment: comment ?? null },
+  });
+}
+
+async function reopenReport(dayISO) {
+  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/reopen`, {
+    method: "POST",
+  });
+}
+
+function buildEmptyReportFromCatalogs(dayISO, catalogs) {
+  const pm = Array.isArray(catalogs?.payments) ? catalogs.payments : [];
+  const dep = Array.isArray(catalogs?.departments) ? catalogs.departments : [];
+  const kpi = Array.isArray(catalogs?.kpis) ? catalogs.kpis : [];
+
+  return {
+    id: null,
+    date: dayISO,
+    status: "DRAFT",
+    closed_at: null,
+    closed_by_user_id: null,
+    comment: "",
+    cash: 0,
+    cashless: 0,
+    revenue_total: 0,
+    tips_total: 0,
+    payments: pm.map((x) => ({ ...x, value: 0 })),
+    departments: dep.map((x) => ({ ...x, value: 0 })),
+    kpis: kpi.map((x) => ({ ...x, value: 0 })),
+    payments_total: 0,
+    departments_total: 0,
+    discrepancy: 0,
+  };
+}
+
+function unitLabel(unit) {
+  const u = String(unit || "").toUpperCase();
+  if (u === "RUB" || u === "RUR" || u === "R") return "₽";
+  if (u === "QTY" || u === "PCS" || u === "COUNT") return "шт";
+  if (u === "MIN" || u === "MINUTES") return "мин";
+  if (u === "H" || u === "HOURS") return "ч";
+  return unit ? String(unit) : "";
+}
+
+function calcTotalsFromDom({ hasDepartments }) {
+  const inputs = modalBody?.querySelectorAll("input[data-kind]") || [];
+  const totals = { payments: 0, departments: 0, kpis: 0, revenue_total: 0, tips: 0 };
+
+  inputs.forEach((inp) => {
+    const kind = String(inp.getAttribute("data-kind") || "");
+    const v = Math.max(0, numOr0(inp.value));
+    if (kind === "PAYMENT") totals.payments += v;
+    else if (kind === "DEPT") totals.departments += v;
+    else if (kind === "KPI") totals.kpis += v;
+  });
+
+  const rev = modalBody?.querySelector("#repRevenueTotal");
+  totals.revenue_total = Math.max(0, numOr0(rev?.value));
+
+  const tips = modalBody?.querySelector("#repTips");
+  totals.tips = Math.max(0, numOr0(tips?.value));
+
+  const baseTotal = hasDepartments ? totals.departments : totals.revenue_total;
+  const discrepancy = totals.payments - baseTotal;
+
+  return { ...totals, baseTotal, discrepancy };
+}
+
+function renderAuditSection(audit, maps) {
+  if (!Array.isArray(audit) || !audit.length) {
+    return `<div class="muted">Пока нет правок закрытого отчёта</div>`;
   }
 
-  const exists = !!rep;
-  const canEdit = canMake();
+  const maxCommentLen = 120;
+  const cut = (s) => {
+    const t = String(s ?? "").trim();
+    if (!t) return "";
+    return t.length > maxCommentLen ? t.slice(0, maxCommentLen - 1) + "…" : t;
+  };
+
+  const mapArrToObj = (arr) => {
+    const m = new Map();
+    (Array.isArray(arr) ? arr : []).forEach((x) => {
+      const id = Number(x?.ref_id);
+      if (!Number.isFinite(id) || id <= 0) return;
+      m.set(id, numOr0(x?.value));
+    });
+    return m;
+  };
+
+  const diffLines = (diff) => {
+    const before = diff?.before || {};
+    const after = diff?.after || {};
+    const out = [];
+
+    const bc = String(before.comment ?? "");
+    const ac = String(after.comment ?? "");
+    if (bc !== ac) {
+      out.push(`Комментарий: “${esc(cut(bc))}” → “${esc(cut(ac))}”`);
+    }
+
+    const bt = before.totals || {};
+    const at = after.totals || {};
+    const keys = [
+      ["payments_total", "Оплаты (итого)", "rub"],
+      ["departments_total", "Департаменты (итого)", "rub"],
+      ["base_total", "База сравнения", "rub"],
+      ["discrepancy", "Расхождение", "rub"],
+    ];
+    for (const [k, label, mode] of keys) {
+      const v1 = numOr0(bt?.[k]);
+      const v2 = numOr0(at?.[k]);
+      if (v1 !== v2) {
+        const a = mode === "rub" ? fmtRub(v1) : fmtNum(v1);
+        const b = mode === "rub" ? fmtRub(v2) : fmtNum(v2);
+        out.push(`${label}: ${esc(a)} → ${esc(b)}`);
+      }
+    }
+
+    const groups = [
+      ["payments", "Оплата", maps?.paymentsTitleById, (v) => fmtRub(v)],
+      ["departments", "Департамент", maps?.departmentsTitleById, (v) => fmtRub(v)],
+      ["kpis", "KPI", maps?.kpisTitleById, (v, id) => {
+        const unit = maps?.kpiUnitById?.[id] || "";
+        const u = String(unit || "").toUpperCase();
+        if (u === "RUB" || u === "RUR" || u === "R") return fmtRub(v);
+        const uLbl = unitLabel(unit);
+        return `${fmtNum(v)}${uLbl ? " " + uLbl : ""}`;
+      }],
+    ];
+
+    for (const [key, label, titleById, fmt] of groups) {
+      const m1 = mapArrToObj(before?.[key]);
+      const m2 = mapArrToObj(after?.[key]);
+      const allIds = new Set([...m1.keys(), ...m2.keys()]);
+      const ids = Array.from(allIds).sort((a, b) => a - b);
+      for (const id of ids) {
+        const v1 = numOr0(m1.get(id) || 0);
+        const v2 = numOr0(m2.get(id) || 0);
+        if (v1 === v2) continue;
+        const title = titleById?.[id] || `#${id}`;
+        const a = fmt(v1, id);
+        const b = fmt(v2, id);
+        out.push(`${label}: ${esc(title)} — ${esc(a)} → ${esc(b)}`);
+      }
+    }
+
+    return out;
+  };
+
+  return audit
+    .map((a) => {
+      const who = a?.user_tg_username ? `@${a.user_tg_username}` : (a?.user_id ? `user#${a.user_id}` : "—");
+      const when = fmtDtRu(a?.changed_at);
+      const lines = diffLines(a?.diff);
+      const inner = lines.length
+        ? `<ul class="audit-list">${lines.map((x) => `<li>${x}</li>`).join("")}</ul>`
+        : `<div class="muted">Нет различий</div>`;
+
+      return `
+        <details class="audit-item">
+          <summary>
+            <span class="audit-when">${esc(when)}</span>
+            <span class="audit-who muted">${esc(who)}</span>
+          </summary>
+          <div class="audit-body">${inner}</div>
+        </details>
+      `;
+    })
+    .join("");
+}
+
+function reportStatusBadge(status) {
+  const s = String(status || "DRAFT").toUpperCase();
+  if (s === "CLOSED") return `<span class="rep-badge rep-badge--closed">CLOSED</span>`;
+  return `<span class="rep-badge rep-badge--draft">DRAFT</span>`;
+}
+
+function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode }) {
+  const status = String(rep?.status || "DRAFT").toUpperCase();
   const showMoney = canSeeMoney();
+  const hasDepartments = Array.isArray(rep?.departments) && rep.departments.length > 0;
 
-  const cashVal = rep?.cash ?? "";
-  const cashlessVal = rep?.cashless ?? "";
-  const totalVal = rep?.revenue_total ?? "";
-  const tipsVal = rep?.tips_total ?? "";
+  const isDraft = status !== "CLOSED";
+  const canEditDraft = isDraft && canMake() && showMoney;
+  const canEditClosedNow = status === "CLOSED" && canEditClosed() && showMoney;
 
-  const att = await fetchAttachments(dayISO);
-  const attItems = att?.items || [];
+  const editEnabled = mode === "edit" ? (isDraft ? canEditDraft : canEditClosedNow) : false;
 
-  // Update side panel summary (month graph)
-  selectedDayData = { rep: rep || null, attCount: attItems.length };
-  renderMonthPanel();
-  const attHtml = attItems.length
-    ? attItems
-        .map(
-          (a) =>
-            `<div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); align-items:center">
-              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:55%">${esc(a.file_name || "file")}</div>
-              <div class="row" style="gap:8px; justify-content:flex-end; flex-wrap:wrap">
-                <button class="btn" data-ph-open="${esc(a.id)}">Открыть</button>
-                <a class="btn" href="${esc(attachmentHref(a.url))}" download style="text-decoration:none">Скачать</a>
-                ${canEdit ? `<button class="btn danger" data-att-del="${esc(a.id)}">Удалить</button>` : ``}
-              </div>
-            </div>`
-        )
-        .join("")
-    : `<div class="muted">Файлов нет</div>`;
+  const subtitle = isDraft
+    ? (canMake() ? "Черновик" : "Просмотр")
+    : "Закрыто" + (rep?.closed_at ? ` · ${fmtDtRu(rep.closed_at)}` : "");
 
-  const formHtml = `
-    <div class="itemcard" style="margin-top: 12px;">
-      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-          <div class="muted" style="margin-top:4px"><b>${exists ? "Отчёт найден" : "Отчёта нет"}</b></div>
-
-        ${canEdit ? `<button class="btn primary" id="btnSaveRep">${exists ? "Сохранить" : "Создать"}</button>` : ""}
+  const topMeta = `
+    <div class="rep-topmeta">
+      <div class="rep-topmeta__left">
+        ${reportStatusBadge(status)}
+        ${rep?.closed_at ? `<span class="muted small">Закрыто: ${esc(fmtDtRu(rep.closed_at))}</span>` : ``}
       </div>
-
-      <div class="row" style="gap:10px;flex-wrap:wrap;margin-top:12px">
-        <label style="min-width:180px;display:block">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Наличные</div>
-          <input id="repCash" type="number" min="0" value="${esc(cashVal)}"
-            ${(!canEdit || !showMoney) ? "disabled" : ""}
-            placeholder="${showMoney ? "0" : "нет доступа"}" />
-        </label>
-
-        <label style="min-width:180px;display:block">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Безналичные</div>
-          <input id="repCashless" type="number" min="0" value="${esc(cashlessVal)}"
-            ${(!canEdit || !showMoney) ? "disabled" : ""}
-            placeholder="${showMoney ? "0" : "нет доступа"}" />
-        </label>
-
-        <label style="min-width:220px;display:block">
-          <div class="row" style="justify-content:space-between; align-items:center; gap:8px">
-            <div class="muted" style="font-size:12px;margin-bottom:4px">Выручка (итого)</div>
-              <button
-                type="button"
-                class="btn"
-                id="btnSumTotal"
-                style="padding:4px 10px; font-size:12px; line-height:1;"
-                ${(!canEdit || !showMoney) ? "disabled" : ""}
-                title="Суммировать наличка + безнал"
-              >Σ</button></div>
-          <input id="repTotal" type="number" min="0" value="${esc(totalVal)}"
-            ${(!canEdit || !showMoney) ? "disabled" : ""}
-            placeholder="${showMoney ? "0" : "нет доступа"}" />
-        </label>
-
-        <label style="min-width:180px;display:block">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Чаевые (итого)</div>
-          <input id="repTips" type="number" min="0" value="${esc(tipsVal)}"
-            ${(!canEdit || !showMoney) ? "disabled" : ""}
-            placeholder="${showMoney ? "0" : "нет доступа"}" />
-        </label>
-      </div>
-
-      <div class="itemcard" style="margin-top:12px">
-        <b>Фото/файлы к отчёту</b>
-        <div class="muted" style="margin-top:6px">Можно прикрепить несколько фотографий</div>
-
-        <div style="margin-top:10px">${attHtml}</div>
-
-        ${canEdit ? `
-          <div style="margin-top:12px">
-           <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px">
-              <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
-              <button class="btn" id="btnUpload">Загрузить</button>
-            </div>
-          </div>
-        ` : `<div class="muted" style="margin-top:10px">Нет прав на загрузку файлов</div>`}
+      <div class="rep-topmeta__right">
+        ${status === "CLOSED" && canReopen() ? `<button class="btn sm" id="btnReopen">Переоткрыть</button>` : ``}
+        ${status === "CLOSED" && canEditClosedNow && !editEnabled ? `<button class="btn sm primary" id="btnEnableEdit">Редактировать</button>` : ``}
       </div>
     </div>
   `;
 
-  openModal(title, subtitle, formHtml);
+  const section = (title, bodyHtml, hint) => `
+    <div class="rep-sec">
+      <div class="rep-sec__head">
+        <b>${esc(title)}</b>
+        ${hint ? `<div class="muted small" style="margin-top:4px">${esc(hint)}</div>` : ``}
+      </div>
+      <div class="rep-sec__body">${bodyHtml}</div>
+    </div>
+  `;
 
+  const inputRow = (kind, it, opts = {}) => {
+    const v = showMoney ? (Number.isFinite(Number(it?.value)) ? Number(it.value) : 0) : "";
+    const disabled = (!editEnabled) || (!showMoney);
+    const unit = opts.unit || "";
+    const unitHtml = unit ? `<span class="muted small">${esc(unit)}</span>` : ``;
+    return `
+      <label class="rep-field">
+        <div class="rep-field__label">
+          <span>${esc(it?.title || "—")}</span>
+          ${it?.is_active === false ? `<span class="badge">архив</span>` : ``}
+          ${unitHtml}
+        </div>
+        <input
+          type="number"
+          min="0"
+          inputmode="numeric"
+          data-kind="${esc(kind)}"
+          data-ref="${esc(it?.id)}"
+          value="${esc(v)}"
+          ${disabled ? "disabled" : ""}
+          placeholder="${showMoney ? "0" : "нет доступа"}"
+        />
+      </label>
+    `;
+  };
+
+  const payments = Array.isArray(rep?.payments) ? rep.payments : [];
+  const departments = Array.isArray(rep?.departments) ? rep.departments : [];
+  const kpis = Array.isArray(rep?.kpis) ? rep.kpis : [];
+
+  const paymentsHtml = payments.length
+    ? `<div class="rep-grid">${payments.map((it) => inputRow("PAYMENT", it)).join("")}</div>`
+    : `<div class="muted">Способы оплат не настроены</div>`;
+
+  const deptsHtml = hasDepartments
+    ? `<div class="rep-grid">${departments.map((it) => inputRow("DEPT", it)).join("")}</div>`
+    : `
+      <div class="rep-grid rep-grid--single">
+        <label class="rep-field">
+          <div class="rep-field__label"><span>Выручка (итого)</span></div>
+          <input id="repRevenueTotal" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.revenue_total ?? 0) : "")}" ${(!editEnabled || !showMoney) ? "disabled" : ""} placeholder="${showMoney ? "0" : "нет доступа"}" />
+        </label>
+      </div>
+      <div class="muted small" style="margin-top:6px">Департаменты не настроены — вводим общую выручку.</div>
+    `;
+
+  const kpisHtml = kpis.length
+    ? `<div class="rep-grid">${kpis.map((it) => inputRow("KPI", it, { unit: unitLabel(it?.unit) })).join("")}</div>`
+    : `<div class="muted">KPI пока не настроены</div>`;
+
+  const tipsDisabled = (!editEnabled) || (!showMoney);
+  const tipsHtml = `
+    <div class="rep-grid rep-grid--single">
+      <label class="rep-field">
+        <div class="rep-field__label"><span>Чаевые (итого)</span></div>
+        <input id="repTips" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.tips_total ?? 0) : "")}" ${tipsDisabled ? "disabled" : ""} placeholder="${showMoney ? "0" : "нет доступа"}" />
+      </label>
+    </div>
+  `;
+
+  const comment = String(rep?.comment ?? "");
+  const commentDisabled = !editEnabled; // comment also locked when view-only
+
+  const totals = {
+    payments_total: showMoney ? (rep?.payments_total ?? null) : null,
+    departments_total: showMoney ? (rep?.departments_total ?? null) : null,
+    discrepancy: showMoney ? (rep?.discrepancy ?? null) : null,
+  };
+
+  const totalsHtml = `
+    <div class="rep-totals">
+      <div class="rep-total">
+        <div class="muted small">Оплаты (итого)</div>
+        <div class="rep-total__v" id="t_payments_total">${totals.payments_total === null ? "—" : esc(fmtRub(totals.payments_total))}</div>
+      </div>
+      <div class="rep-total">
+        <div class="muted small">${hasDepartments ? "Департаменты (итого)" : "Выручка (база)"}</div>
+        <div class="rep-total__v" id="t_base_total">${totals.discrepancy === null ? "—" : esc(fmtRub((hasDepartments ? (totals.departments_total ?? 0) : (rep?.revenue_total ?? 0))))}</div>
+      </div>
+      <div class="rep-total rep-total--discr" id="t_discr_box">
+        <div class="muted small">Расхождение</div>
+        <div class="rep-total__v" id="t_discrepancy">${totals.discrepancy === null ? "—" : esc(fmtRub(totals.discrepancy))}</div>
+        <div class="rep-total__hint muted small" id="t_discr_hint" style="display:none">Для закрытия нужен комментарий</div>
+      </div>
+    </div>
+  `;
+
+  const commentHtml = `
+    <div style="margin-top:10px">
+      <div class="muted small" style="margin-bottom:6px">Комментарий (обязателен при расхождении)</div>
+      <textarea id="repComment" class="rep-comment" ${commentDisabled ? "disabled" : ""} placeholder="Например: расхождение из-за возврата / перевод между кассами / ...">${esc(comment)}</textarea>
+    </div>
+  `;
+
+  const actionsHtml = (() => {
+    if (!showMoney) {
+      return `<div class="muted" style="margin-top:10px">Суммы скрыты из-за прав доступа.</div>`;
+    }
+
+    if (status === "CLOSED") {
+      if (!canEditClosedNow) return ``;
+      if (!editEnabled) return ``;
+      return `
+        <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px; flex-wrap:wrap">
+          <button class="btn primary" id="btnSaveClosed" type="button">Сохранить изменения</button>
+        </div>
+      `;
+    }
+
+    // DRAFT
+    if (!canMake()) return ``;
+
+    return `
+      <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px; flex-wrap:wrap">
+        <button class="btn" id="btnSaveDraft" type="button">Сохранить черновик</button>
+        ${canClose() ? `<button class="btn primary" id="btnCloseShift" type="button">Закрыть смену</button>` : ``}
+      </div>
+    `;
+  })();
+
+  const attItems = Array.isArray(attachments) ? attachments : [];
+  const attHtml = attItems.length
+    ? attItems
+        .map(
+          (a) => `
+          <div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); align-items:center">
+            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:55%">${esc(a.file_name || "file")}</div>
+            <div class="row" style="gap:8px; justify-content:flex-end; flex-wrap:wrap">
+              <button class="btn" data-ph-open="${esc(a.id)}">Открыть</button>
+              <a class="btn" href="${esc(attachmentHref(a.url))}" download style="text-decoration:none">Скачать</a>
+              ${canMake() ? `<button class="btn danger" data-att-del="${esc(a.id)}">Удалить</button>` : ``}
+            </div>
+          </div>
+        `
+        )
+        .join("")
+    : `<div class="muted">Файлов нет</div>`;
+
+  const uploadHtml = canMake()
+    ? `
+      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px; flex-wrap:wrap">
+        <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
+        <button class="btn" id="btnUpload" type="button">Загрузить</button>
+      </div>
+    `
+    : `<div class="muted" style="margin-top:10px">Нет прав на загрузку файлов</div>`;
+
+  const maps = {
+    paymentsTitleById: Object.fromEntries((catalogs?.payments || []).map((x) => [Number(x.id), x.title || `#${x.id}`])),
+    departmentsTitleById: Object.fromEntries((catalogs?.departments || []).map((x) => [Number(x.id), x.title || `#${x.id}`])),
+    kpisTitleById: Object.fromEntries((catalogs?.kpis || []).map((x) => [Number(x.id), x.title || `#${x.id}`])),
+    kpiUnitById: Object.fromEntries((catalogs?.kpis || []).map((x) => [Number(x.id), x.unit || ""])),
+  };
+
+  const auditHtml = (canSeeMoney() || isOwnerOrAdmin())
+    ? renderAuditSection(audit, maps)
+    : `<div class="muted">История скрыта из-за прав доступа</div>`;
+
+  const body = `
+    ${topMeta}
+    ${section("Сумма оплат", paymentsHtml)}
+    ${section(hasDepartments ? "Выручка по департаментам" : "Выручка", deptsHtml)}
+    ${section("KPI / доп. продажи", kpisHtml)}
+    ${section("Итоги", totalsHtml + commentHtml)}
+    ${actionsHtml}
+
+    <div class="rep-divider"></div>
+    ${section("Фото/файлы", `<div style="margin-top:6px">${attHtml}</div>${uploadHtml}`, "Можно прикрепить несколько фотографий")}
+
+    <div class="rep-divider"></div>
+    ${section("История изменений", auditHtml, status === "CLOSED" ? "Правки закрытого отчёта логируются" : "Аудит появляется после правок закрытого отчёта")}
+  `;
+
+  return { title: formatDateRuNoG(dayISO), subtitle, body, hasDepartments, editEnabled };
+}
+
+function collectPayloadFromDom({ dayISO, hasDepartments }) {
+  const showMoney = canSeeMoney();
+
+  const payload = {
+    date: dayISO,
+    cash: 0,
+    cashless: 0,
+    revenue_total: 0,
+    tips_total: 0,
+    payments: [],
+    // IMPORTANT: departments must be omitted when there are no departments configured
+    // otherwise backend will overwrite revenue_total with 0.
+    departments: hasDepartments ? [] : null,
+    kpis: [],
+    comment: null,
+  };
+
+  if (!showMoney) return payload;
+
+  const inputs = modalBody?.querySelectorAll("input[data-kind]") || [];
+  const payments = [];
+  const departments = [];
+  const kpis = [];
+
+  inputs.forEach((inp) => {
+    const kind = String(inp.getAttribute("data-kind") || "");
+    const refId = Number(inp.getAttribute("data-ref"));
+    if (!Number.isFinite(refId) || refId <= 0) return;
+    const v = Math.max(0, numOr0(inp.value));
+
+    if (kind === "PAYMENT") payments.push({ ref_id: refId, value: Math.round(v) });
+    else if (kind === "DEPT") departments.push({ ref_id: refId, value: Math.round(v) });
+    else if (kind === "KPI") kpis.push({ ref_id: refId, value: Math.round(v) });
+  });
+
+  const rev = modalBody?.querySelector("#repRevenueTotal");
+  const tips = modalBody?.querySelector("#repTips");
+  const comment = modalBody?.querySelector("#repComment");
+
+  payload.revenue_total = Math.round(Math.max(0, numOr0(rev?.value)));
+  payload.tips_total = Math.round(Math.max(0, numOr0(tips?.value)));
+  payload.comment = String(comment?.value ?? "").trim() || null;
+
+  payload.payments = payments;
+  payload.kpis = kpis;
+
+  if (hasDepartments) {
+    payload.departments = departments;
+    // revenue_total will be computed on backend from departments
+    payload.revenue_total = 0;
+  }
+
+  // legacy sync for cash/cashless — backend also syncs using payment codes, but we keep compatibility
+  // if inputs contain codes 'cash'/'cashless' we can't easily map here (no code in dom),
+  // so rely on backend sync. Keep zeros.
+
+  return payload;
+}
+
+function wireTotalsLive({ hasDepartments }) {
+  const showMoney = canSeeMoney();
+  if (!showMoney) return null;
+
+  const update = () => {
+    const t = calcTotalsFromDom({ hasDepartments });
+
+    const elPay = modalBody?.querySelector("#t_payments_total");
+    const elBase = modalBody?.querySelector("#t_base_total");
+    const elDis = modalBody?.querySelector("#t_discrepancy");
+    const box = modalBody?.querySelector("#t_discr_box");
+    const hint = modalBody?.querySelector("#t_discr_hint");
+    const ta = modalBody?.querySelector("#repComment");
+
+    if (elPay) elPay.textContent = fmtRub(t.payments);
+    if (elBase) elBase.textContent = fmtRub(t.baseTotal);
+    if (elDis) elDis.textContent = fmtRub(t.discrepancy);
+
+    const needComment = t.discrepancy !== 0;
+    if (box) {
+      box.classList.toggle("is-ok", !needComment);
+      box.classList.toggle("is-bad", needComment);
+    }
+    if (hint) hint.style.display = needComment ? "" : "none";
+
+    if (ta) {
+      const empty = !String(ta.value || "").trim();
+      ta.classList.toggle("is-required", needComment && empty);
+    }
+
+    return t;
+  };
+
+  // wire inputs
+  modalBody?.querySelectorAll("input[data-kind]")?.forEach((inp) => inp.addEventListener("input", update));
+  modalBody?.querySelectorAll("#repRevenueTotal,#repTips,#repComment")?.forEach((x) => x.addEventListener("input", update));
+
+  // initial
+  return update();
+}
+
+async function wireAttachmentsHandlers({ dayISO, attItems }) {
   // open attachments inside the app (photo viewer)
   modalBody?.querySelectorAll("[data-ph-open]")?.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -785,10 +902,10 @@ async function openDay(dayISO) {
     });
   });
 
-  // delete attachment from list
+  // delete attachment
   modalBody?.querySelectorAll("[data-att-del]")?.forEach((btn) => {
     btn.addEventListener("click", async () => {
-      if (!canEdit) return;
+      if (!canMake()) return;
       const id = Number(btn.getAttribute("data-att-del"));
       if (!id) return;
       if (!confirm("Удалить файл?")) return;
@@ -802,98 +919,214 @@ async function openDay(dayISO) {
     });
   });
 
-  if (canEdit) {
-    document.getElementById("btnSaveRep")?.addEventListener("click", async () => {
-      if (!showMoney) {
-        toast("Нет доступа к суммам отчёта", "err");
-        return;
-      }
+  // upload
+  modalBody?.querySelector("#btnUpload")?.addEventListener("click", async () => {
+    if (!canMake()) return;
+    const inp = modalBody?.querySelector("#repFiles");
+    const files = inp?.files ? Array.from(inp.files) : [];
+    if (!files.length) {
+      toast("Выбери файлы", "err");
+      return;
+    }
+
+    const allowed = new Set(["jpg", "jpeg", "png", "webp", "heic"]);
+    const bad = files.filter((f) => {
+      const name = String(f?.name || "").toLowerCase();
+      const ext = name.includes(".") ? name.split(".").pop() : "";
+      return !allowed.has(ext);
+    });
+    if (bad.length) {
+      toast("Можно загрузить только: jpg, jpeg, png, webp, heic", "err");
+      return;
+    }
+
+    try {
+      await uploadAttachments(dayISO, files);
+      toast("Загружено", "ok");
+      await openDay(dayISO);
+    } catch (e) {
+      const detail = e?.data?.detail ? `: ${e.data.detail}` : (e?.message ? `: ${e.message}` : "");
+      toast("Ошибка загрузки" + detail, "err");
+    }
+  });
+}
+
+async function upsertReportFromDom({ dayISO, hasDepartments }) {
+  const payload = collectPayloadFromDom({ dayISO, hasDepartments });
+  return api(`/venues/${encodeURIComponent(venueId)}/reports`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+async function openDay(dayISO) {
+  if (!venueId) return;
+  if (!canView()) return;
+
+  selectedDayISO = dayISO;
+  renderMonth();
+
+  // Open modal immediately for instant feedback
+  openModal(formatDateRuNoG(dayISO), "Загрузка…", `<div class="skeleton" style="height:120px"></div>`);
+
+  // Load catalogs (active only)
+  let catalogs = { payments: [], departments: [], kpis: [] };
+  try {
+    const [payments, departments, kpis] = await Promise.all([
+      getPaymentMethods(venueId, { includeArchived: false }).catch(() => []),
+      getDepartments(venueId, { includeArchived: false }).catch(() => []),
+      getKpiMetrics(venueId, { includeArchived: false }).catch(() => []),
+    ]);
+    catalogs = {
+      payments: Array.isArray(payments) ? payments : [],
+      departments: Array.isArray(departments) ? departments : [],
+      kpis: Array.isArray(kpis) ? kpis : [],
+    };
+  } catch {
+    catalogs = { payments: [], departments: [], kpis: [] };
+  }
+
+  // Load report (may not exist)
+  let rep = null;
+  try {
+    rep = await fetchReport(dayISO);
+  } catch (e) {
+    if (e?.status === 404 || e?.data?.detail === "Report not found") {
+      rep = buildEmptyReportFromCatalogs(dayISO, catalogs);
+    } else {
+      toast("Ошибка загрузки отчёта: " + (e?.data?.detail || e?.message || "неизвестно"), "err");
+      rep = buildEmptyReportFromCatalogs(dayISO, catalogs);
+    }
+  }
+
+  const att = await fetchAttachments(dayISO);
+  const attItems = att?.items || [];
+
+  // Audit only makes sense when report exists and CLOSED (or has logs)
+  const status = String(rep?.status || "DRAFT").toUpperCase();
+  const audit = (status === "CLOSED" || canEditClosed()) ? await fetchAudit(dayISO) : [];
+
+  const state = { dayISO, rep, catalogs, attachments: attItems, audit, mode: "view" };
+  const view = renderReportModal(state);
+  openModal(view.title, view.subtitle, view.body);
+
+  // Live totals only when editing is enabled (draft or enabled closed edit)
+  const hasDepartments = view.hasDepartments;
+  wireTotalsLive({ hasDepartments });
+
+  await wireAttachmentsHandlers({ dayISO, attItems });
+
+  // Reopen
+  modalBody?.querySelector("#btnReopen")?.addEventListener("click", async () => {
+    if (!canReopen()) return;
+    if (!confirm("Переоткрыть отчёт? Он станет DRAFT.")) return;
+    try {
+      await reopenReport(dayISO);
+      toast("Переоткрыто", "ok");
+      await loadMonthReports();
+      renderMonth();
+      await openDay(dayISO);
+    } catch (e) {
+      toast("Ошибка: " + (e?.data?.detail || e?.message || "неизвестно"), "err");
+    }
+  });
+
+  // Enable edit for CLOSED
+  modalBody?.querySelector("#btnEnableEdit")?.addEventListener("click", async () => {
+    if (!canEditClosed()) return;
+    const st2 = { ...state, mode: "edit" };
+    const v2 = renderReportModal(st2);
+    openModal(v2.title, v2.subtitle, v2.body);
+    wireTotalsLive({ hasDepartments: v2.hasDepartments });
+    await wireAttachmentsHandlers({ dayISO, attItems });
+
+    // Save closed
+    modalBody?.querySelector("#btnSaveClosed")?.addEventListener("click", async () => {
       try {
-        await saveReport(dayISO);
-        toast("Отчёт сохранён", "ok");
+        await upsertReportFromDom({ dayISO, hasDepartments: v2.hasDepartments });
+        toast("Сохранено (аудит записан)", "ok");
         await loadMonthReports();
         renderMonth();
-        selectedDayData = null;
-        renderMonthPanel();
         await openDay(dayISO);
       } catch (e) {
-        toast("Ошибка сохранения: " + (e?.message || "неизвестно"), "err");
+        toast("Ошибка сохранения: " + (e?.data?.detail || e?.message || "неизвестно"), "err");
       }
     });
-    document.getElementById("btnSumTotal")?.addEventListener("click", () => {
-      const cash = Number(document.getElementById("repCash")?.value || 0);
-      const cashless = Number(document.getElementById("repCashless")?.value || 0);
-      const total = Math.max(0, cash + cashless);
-      const repTotal = document.getElementById("repTotal");
-      if (repTotal && !repTotal.disabled) repTotal.value = String(total);
-    });
 
-    document.getElementById("btnUpload")?.addEventListener("click", async () => {
-      const inp = document.getElementById("repFiles");
-      const files = inp?.files ? Array.from(inp.files) : [];
-      if (!files.length) {
-        toast("Выбери файлы", "err");
-        return;
-      }
-
-      // client-side extension filter (backend validates too)
-      const allowed = new Set(["jpg", "jpeg", "png", "webp", "heic"]);
-      const bad = files.filter(f => {
-        const name = String(f?.name || "").toLowerCase();
-        const ext = name.includes(".") ? name.split(".").pop() : "";
-        return !allowed.has(ext);
-      });
-      if (bad.length) {
-        toast("Можно загрузить только: jpg, jpeg, png, webp, heic", "err");
-        return;
-      }
+    // Reopen handler again
+    modalBody?.querySelector("#btnReopen")?.addEventListener("click", async () => {
+      if (!canReopen()) return;
+      if (!confirm("Переоткрыть отчёт? Он станет DRAFT.")) return;
       try {
-        await uploadAttachments(dayISO, files);
-        toast("Загружено", "ok");
+        await reopenReport(dayISO);
+        toast("Переоткрыто", "ok");
+        await loadMonthReports();
+        renderMonth();
         await openDay(dayISO);
       } catch (e) {
-        const detail = e?.data?.detail ? `: ${e.data.detail}` : (e?.message ? `: ${e.message}` : "");
-        toast("Ошибка загрузки" + detail, "err");
+        toast("Ошибка: " + (e?.data?.detail || e?.message || "неизвестно"), "err");
       }
     });
-  }
+  });
+
+  // Save draft
+  modalBody?.querySelector("#btnSaveDraft")?.addEventListener("click", async () => {
+    if (!canMake()) return;
+    try {
+      await upsertReportFromDom({ dayISO, hasDepartments });
+      toast("Черновик сохранён", "ok");
+      await loadMonthReports();
+      renderMonth();
+      await openDay(dayISO);
+    } catch (e) {
+      toast("Ошибка сохранения: " + (e?.data?.detail || e?.message || "неизвестно"), "err");
+    }
+  });
+
+  // Close shift
+  modalBody?.querySelector("#btnCloseShift")?.addEventListener("click", async () => {
+    if (!canClose()) return;
+
+    const totals = calcTotalsFromDom({ hasDepartments });
+    const comment = String(modalBody?.querySelector("#repComment")?.value || "").trim();
+
+    if (totals.discrepancy !== 0 && !comment) {
+      toast("При расхождении нужен комментарий", "err");
+      modalBody?.querySelector("#repComment")?.focus();
+      return;
+    }
+
+    try {
+      // 1) save current values
+      await upsertReportFromDom({ dayISO, hasDepartments });
+      // 2) close
+      await closeReport(dayISO, comment || null);
+      toast("Смена закрыта", "ok");
+      await loadMonthReports();
+      renderMonth();
+      await openDay(dayISO);
+    } catch (e) {
+      toast("Ошибка закрытия: " + (e?.data?.detail || e?.message || "неизвестно"), "err");
+    }
+  });
 }
 
-async function boot() {
-  if (!venueId) {
-    renderNoVenue();
-    return;
-  }
-
-  try {
-    await loadPerms();
+// ---- Boot ----
+if (el.prev) {
+  el.prev.addEventListener("click", async () => {
+    curMonth.setMonth(curMonth.getMonth() - 1);
     await loadMonthReports();
     renderMonth();
-    renderMonthPanel();
-  } catch (e) {
-    toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
+  });
+}
+if (el.next) {
+  el.next.addEventListener("click", async () => {
+    curMonth.setMonth(curMonth.getMonth() + 1);
+    await loadMonthReports();
     renderMonth();
-    renderMonthPanel();
-  }
+  });
 }
 
-el.prev?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() - 1);
-  curMonth.setDate(1);
-  await loadMonthReports();
-  renderMonth();
-  selectedDayISO = "";
-  selectedDayData = null;
-  renderMonthPanel();
-});
-el.next?.addEventListener("click", async () => {
-  curMonth.setMonth(curMonth.getMonth() + 1);
-  curMonth.setDate(1);
-  await loadMonthReports();
-  renderMonth();
-  selectedDayISO = "";
-  selectedDayData = null;
-  renderMonthPanel();
-});
-
-boot();
+await loadPerms();
+await loadMonthReports();
+renderMonth();
