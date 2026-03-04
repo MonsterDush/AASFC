@@ -697,7 +697,7 @@ function renderNavLinks({ container, links, activeTab }) {
  *
  * Later we'll extend links as we add pages (Shifts/Salary/Adjustments/Reports).
  */
-export async function mountNav({ activeTab = "dashboard", containerSelector = "#nav" } = {}) {
+export async function mountNav({ activeTab = "dashboard", containerSelector = "#nav", requireVenue = false } = {}) {
   const container = document.querySelector(containerSelector);
   if (!container) return { ok: false, reason: "NO_CONTAINER" };
 
@@ -734,9 +734,22 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   try { venues = await getMyVenues(); } catch { venues = []; }
 
   let activeVenueId = getActiveVenueId();
-  if (!activeVenueId && venues.length === 1) {
-    activeVenueId = String(venues[0].id);
-    setActiveVenueId(activeVenueId);
+
+  const onVenuePicker = /\/app-venues\.html$/.test(location.pathname || "");
+
+  // If there's no active venue (or it's no longer available), pick the first available venue.
+  // Don't auto-pick on the venue picker page itself.
+  if (!onVenuePicker && (!activeVenueId || !venues.find((v) => String(v.id) === String(activeVenueId)))) {
+    if (venues.length >= 1) {
+      activeVenueId = String(venues[0].id);
+      setActiveVenueId(activeVenueId);
+    }
+  }
+
+  // If a page requires venue context and we still don't have one, send user to venue picker.
+  if (requireVenue && !activeVenueId) {
+    location.href = "/app-venues.html";
+    return { ok: false, reason: "NO_ACTIVE_VENUE", me, venues, activeVenueId: "" };
   }
 
 // Determine permissions for active venue (best-effort)
@@ -794,7 +807,7 @@ const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : ""
         links.push({ title: t("finance"), href: `/staff-finance.html${qp}`, tab: "finance" });
       } else {
         links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
-        links.push({ title: t("salary"), href: `/staff-salary-summary.html${qp}`, tab: "salary" });
+        links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
       }
 
       links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });

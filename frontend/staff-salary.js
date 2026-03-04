@@ -67,6 +67,16 @@ function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 let curMonth = new Date(); curMonth.setDate(1);
 
+// Mode switch: this venue vs all venues
+const btnAllVenues = document.getElementById("btnSalaryAllVenues");
+btnAllVenues?.addEventListener("click", () => {
+  const p = new URLSearchParams();
+  if (venueId) p.set("venue_id", String(venueId));
+  p.set("month", ym(curMonth));
+  location.href = `/staff-salary-summary.html?${p.toString()}`;
+});
+
+
 function monthTitle(d) {
   const m = d.toLocaleString("ru-RU", { month: "long" });
   return `${m[0].toUpperCase()}${m.slice(1)} ${d.getFullYear()}`;
