@@ -789,7 +789,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
         .map(
           (a) => `
           <div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); align-items:center">
-            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:25%">${esc(a.file_name || "file")}</div>
+            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:20%">${esc(a.file_name || "file")}</div>
             <div class="row" style="gap:8px; justify-content:flex-end; flex-wrap:wrap">
               <button class="btn" data-ph-open="${esc(a.id)}">Открыть</button>
               <a class="btn" href="${esc(attachmentHref(a.url))}" download style="text-decoration:none">Скачать</a>
