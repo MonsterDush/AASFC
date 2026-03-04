@@ -9,6 +9,8 @@ import {
   setActiveVenueId,
 } from "/app.js";
 
+import { permSetFromResponse, hasPermPrefix, hasAnyPerm, roleUpper } from "/permissions.js";
+
 applyTelegramTheme();
 mountCommonUI("adjustments");
 
@@ -38,7 +40,18 @@ let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
 // Adjustments now live under "Finance" in the bottom nav
-await mountNav({ activeTab: "finance", requireVenue: true });
+let __tab = "adjustments";
+try {
+  const pr = await (venueId ? api(`/me/venues/${encodeURIComponent(venueId)}/permissions`) : null);
+  const pset = permSetFromResponse(pr);
+  const role = roleUpper(pr);
+  const canViewReports =
+    role === "OWNER" || role === "SUPER_ADMIN" || role === "MODERATOR" ||
+    hasPermPrefix(pset, "SHIFT_REPORT_") || hasPermPrefix(pset, "REPORTS_") ||
+    hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
+  if (canViewReports) __tab = "finance";
+} catch {}
+await mountNav({ activeTab: __tab, requireVenue: true });
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),

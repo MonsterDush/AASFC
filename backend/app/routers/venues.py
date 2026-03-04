@@ -332,16 +332,11 @@ def _require_shift_comments_allowed(db: Session, *, venue_id: int, shift_id: int
 def _is_schedule_editor(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
-
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    return bool(pos and pos.can_edit_schedule)
-
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="SHIFTS_MANAGE")
+        return True
+    except HTTPException:
+        return False
 
 def _require_schedule_editor(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_schedule_editor(db, venue_id=venue_id, user=user):
@@ -408,15 +403,11 @@ def _require_report_viewer(db: Session, *, venue_id: int, user: User) -> None:
 def _is_adjustments_viewer(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    return bool(pos and getattr(pos, "can_view_adjustments", False))
-
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="ADJUSTMENTS_VIEW")
+        return True
+    except HTTPException:
+        return False
 
 def _require_adjustments_viewer(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_adjustments_viewer(db, venue_id=venue_id, user=user):
@@ -426,15 +417,11 @@ def _require_adjustments_viewer(db: Session, *, venue_id: int, user: User) -> No
 def _is_adjustments_manager(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    return bool(pos and getattr(pos, "can_manage_adjustments", False))
-
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="ADJUSTMENTS_MANAGE")
+        return True
+    except HTTPException:
+        return False
 
 def _require_adjustments_manager(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_adjustments_manager(db, venue_id=venue_id, user=user):
@@ -448,17 +435,11 @@ def _user_can_manage_adjustments(db: Session, *, venue_id: int, user: User) -> b
 def _require_dispute_resolver(db: Session, *, venue_id: int, user: User) -> None:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    if not pos or not getattr(pos, "can_resolve_disputes", False):
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="DISPUTES_RESOLVE")
+        return
+    except HTTPException:
         raise HTTPException(status_code=403, detail="Forbidden")
-
-
 
 def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
@@ -2050,7 +2031,8 @@ def list_adjustments(
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    _require_adjustments_viewer(db, venue_id=venue_id, user=user)
+    if not mine:
+        _require_adjustments_viewer(db, venue_id=venue_id, user=user)
 
     try:
         y_s, m_s = month.split("-")

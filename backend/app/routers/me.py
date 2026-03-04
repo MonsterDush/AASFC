@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 import json
+import re
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func
@@ -26,6 +27,35 @@ from app.models import (
 
 
 router = APIRouter(tags=["me"])
+
+def _parse_position_permission_codes(raw: str | None) -> list[str]:
+    """Parse VenuePosition.permission_codes stored as JSON list (preferred) or tolerate legacy formats."""
+    if not raw:
+        return []
+    s = str(raw).strip()
+    if not s:
+        return []
+    # 1) JSON list
+    try:
+        data = json.loads(s)
+        if isinstance(data, list):
+            out: list[str] = []
+            for x in data:
+                v = str(x or "").strip().upper()
+                if v and v not in out:
+                    out.append(v)
+            return out
+    except Exception:
+        pass
+
+    # 2) fallback: comma/space separated list or python-like list string
+    cleaned = s.replace("[", "").replace("]", "").replace('"', "").replace("'", "")
+    out: list[str] = []
+    for part in re.split(r"[\s,;]+", cleaned):
+        v = str(part or "").strip().upper()
+        if v and v not in out:
+            out.append(v)
+    return out
 
 
 from pydantic import BaseModel, Field
@@ -234,19 +264,25 @@ def my_venue_permissions(
             "position_flags": {"can_make_reports": False, "can_edit_schedule": False},
         }
 
-    defaults_role = VENUE_ROLE_TO_DEFAULT_ROLE.get(vm.venue_role)
-    if not defaults_role:
-        codes = []
+    if str(vm.venue_role or "").upper() == "OWNER":
+        # OWNER has full access inside their venue
+        all_codes = db.scalars(select(Permission.code).where(Permission.is_active.is_(True))).all()
+        codes = list(all_codes)
+        defaults_role = None
     else:
-        codes = db.scalars(
-            select(RolePermissionDefault.permission_code)
-            .join(Permission, Permission.code == RolePermissionDefault.permission_code)
-            .where(
-                RolePermissionDefault.role == defaults_role,
-                RolePermissionDefault.is_granted_by_default.is_(True),
-                Permission.is_active.is_(True),
-            )
-        ).all()
+        defaults_role = VENUE_ROLE_TO_DEFAULT_ROLE.get(vm.venue_role)
+        if not defaults_role:
+            codes = []
+        else:
+            codes = db.scalars(
+                select(RolePermissionDefault.permission_code)
+                .join(Permission, Permission.code == RolePermissionDefault.permission_code)
+                .where(
+                    RolePermissionDefault.role == defaults_role,
+                    RolePermissionDefault.is_granted_by_default.is_(True),
+                    Permission.is_active.is_(True),
+                )
+            ).all()
 
     # ---- position flags (MVP) ----
     pos = db.execute(

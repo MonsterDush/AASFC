@@ -27,6 +27,7 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("SHIFTS_MANAGE", "Shifts", "Управление сменами", "Создавать/редактировать смены и промежутки"),
 
     # Venue settings
+    PermissionDef("VENUE_VIEW", "Venue", "Открытие заведения", "Открывать страницу заведения/управления"),
     PermissionDef("VENUE_SETTINGS_EDIT", "Venue", "Настройки заведения", "Изменять настройки заведения (например, чаевые)"),
 
     # Expenses

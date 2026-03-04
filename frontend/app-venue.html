@@ -119,7 +119,8 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe } from "/app.js";
+    import { permSetFromResponse, roleUpper, hasPerm, hasPermPrefix, hasAnyPerm } from "/permissions.js";
 
     applyTelegramTheme();
     mountCommonUI("venue");
@@ -145,67 +146,59 @@
         const venueId = params.get("venue_id") || "";
 
 
-        let canManageAdjustments = false;
+        let perms = null;
+        let pset = new Set();
+        let myRole = "";
         let isOwner = false;
+        let isAdmin = false;
+
+        let canManageAdjustments = false;
         let canViewAdjustments = false;
         let canViewDepartments = false;
         let canViewPaymentMethods = false;
         let canViewKpi = false;
         let canEditVenueSettings = false;
+        let canViewReports = false;
+        let canOpenVenue = false;
+
         try {
-          const perms = await getMyVenuePermissions(venueId);
-          const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
-          const flags = perms?.position_flags || {};
-          const role = String(perms?.role || "").toUpperCase();
-          const owner = role === "OWNER";
-          isOwner = owner;
-          canManageAdjustments =
-            owner ||
-            flags.can_manage_adjustments === true ||
-            has("ADJUSTMENTS_MANAGE");
+          const me = await getMe().catch(() => null);
+          isAdmin = String(me?.system_role || "").toUpperCase() === "SUPER_ADMIN" || String(me?.system_role || "").toUpperCase() === "MODERATOR";
 
-          canViewAdjustments =
-            owner ||
-            flags.can_view_adjustments === true ||
-            canManageAdjustments ||
-            has("ADJUSTMENTS_VIEW");
+          perms = await getMyVenuePermissions(venueId);
+          myRole = roleUpper(perms);
+          pset = permSetFromResponse(perms);
 
-          canViewDepartments = owner || has("DEPARTMENTS_VIEW");
-          canViewPaymentMethods = owner || has("PAYMENT_METHODS_VIEW");
-          canViewKpi = owner || has("KPI_METRICS_VIEW");
-          canEditVenueSettings = owner || has("VENUE_SETTINGS_EDIT");
+          isOwner = myRole === "OWNER";
+
+          canManageAdjustments = isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_MANAGE");
+          canViewAdjustments = isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_VIEW") || canManageAdjustments;
+
+          canViewDepartments = isOwner || isAdmin || hasPerm(pset, "DEPARTMENTS_VIEW");
+          canViewPaymentMethods = isOwner || isAdmin || hasPerm(pset, "PAYMENT_METHODS_VIEW");
+          canViewKpi = isOwner || isAdmin || hasPerm(pset, "KPI_METRICS_VIEW");
+
+          canEditVenueSettings = isOwner || isAdmin || hasPerm(pset, "VENUE_SETTINGS_EDIT");
+
+          canViewReports =
+            isOwner || isAdmin ||
+            hasPermPrefix(pset, "SHIFT_REPORT_") || hasPermPrefix(pset, "REPORTS_") ||
+            hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
+
+          canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
+
         } catch (e) {
-          isOwner = false;
-          canManageAdjustments = false;
-          canViewAdjustments = false;
-          canViewDepartments = false;
-          canViewPaymentMethods = false;
-          canViewKpi = false;
+          // keep all false
         }
-
 
         // keep active venue in sync
         if (venueId) setActiveVenueId(venueId);
 
-    // Staff: redirect to dashboard ONLY if user has no explicit permission to open venue page
-    try {
-      const perms = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
-      const role = (perms?.venue_role || perms?.my_role || perms?.role || "").toString().toUpperCase();
-      const sysRole = (perms?.system_role || "").toString().toUpperCase();
-      const codes = Array.isArray(perms?.permissions) ? perms.permissions : (Array.isArray(perms) ? perms : []);
-      const canOpenVenue =
-        role === "OWNER" ||
-        sysRole === "SUPER_ADMIN" ||
-        sysRole === "MODERATOR" ||
-        codes.includes("VENUE_OPEN") ||
-        codes.includes("VENUE_VIEW") ||
-        codes.includes("VENUE_READ") ||
-        codes.includes("VENUE_SETTINGS_EDIT");
-      if (role === "STAFF" && !canOpenVenue) {
-        location.replace(`/app-dashboard.html?venue_id=${encodeURIComponent(venueId)}`);
-        return;
-      }
-    } catch {}
+        // Guard: if user cannot open venue page, redirect to schedule/dashboard
+        if (!canOpenVenue) {
+          location.replace(`/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`);
+          return;
+        }
 
 const titleEl = document.getElementById("title");
         const metaEl = document.getElementById("meta");
@@ -237,6 +230,14 @@ const titleEl = document.getElementById("title");
         const openPaymentMethods = document.getElementById("openPaymentMethods");
         const openKpi = document.getElementById("openKpi");
 
+        // Owner/admin-only destructive actions
+        const canAdminVenue = (isOwner || isAdmin);
+        if (btnRename) btnRename.style.display = canAdminVenue ? "" : "none";
+        if (btnArchive) btnArchive.style.display = canAdminVenue ? "" : "none";
+        if (btnUnarchive) btnUnarchive.style.display = canAdminVenue ? "" : "none";
+        if (btnDelete) btnDelete.style.display = canAdminVenue ? "" : "none";
+
+
         let last = { is_archived: false, name: "" };
 
         function setMeta() {
@@ -259,19 +260,28 @@ const titleEl = document.getElementById("title");
           if (openPaymentMethods) openPaymentMethods.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openKpi) openKpi.href = `/owner-kpi.html?venue_id=${encodeURIComponent(venueId)}`;
 
-          // hide if no permission
+          // hide/show by permissions
+          if (openInvites) openInvites.style.display = (isOwner || isAdmin) ? "" : "none";
+          if (openPositions) openPositions.style.display = (isOwner || isAdmin || hasPerm(pset, "POSITIONS_VIEW") || hasPerm(pset, "POSITIONS_MANAGE") || hasPerm(pset, "POSITIONS_ASSIGN") || hasPerm(pset, "POSITION_PERMISSIONS_MANAGE")) ? "" : "none";
+
+          if (openReports) openReports.style.display = canViewReports ? "" : "none";
+
           if (openDepartments) openDepartments.style.display = canViewDepartments ? "" : "none";
           if (openPaymentMethods) openPaymentMethods.style.display = canViewPaymentMethods ? "" : "none";
           if (openKpi) openKpi.style.display = canViewKpi ? "" : "none";
 
           if (openAdjustments) openAdjustments.style.display = canViewAdjustments ? "" : "none";
-          if (openSummary) openSummary.style.display = isOwner ? "" : "none";
-          if (openExpenses) openExpenses.style.display = isOwner ? "" : "none";
+          if (openSummary) openSummary.style.display = (isOwner || isAdmin) ? "" : "none";
+          if (openExpenses) openExpenses.style.display = (isOwner || isAdmin) ? "" : "none";
+
           const financeCard = document.getElementById("financeCard");
           if (financeCard) {
-            const showFinance = (openAdjustments?.style.display !== "none") || isOwner;
+            const showFinance = (openAdjustments?.style.display !== "none") || (openSummary?.style.display !== "none") || (openExpenses?.style.display !== "none");
             financeCard.style.display = showFinance ? "" : "none";
           }
+
+          const tipsCard = document.getElementById("tipsSettingsCard");
+          if (tipsCard) tipsCard.style.display = canEditVenueSettings ? "" : "none";
           metaEl.textContent = `venue_id=${venueId}`;
           metaHint.textContent = "";
         }
@@ -295,7 +305,9 @@ const titleEl = document.getElementById("title");
               <button class="btn danger" data-remove>Удалить</button>
             `;
 
-            row.querySelector("[data-remove]").onclick = async () => {
+            const rmBtn = row.querySelector("[data-remove]");
+            if (rmBtn) rmBtn.style.display = canAdminVenue ? "" : "none";
+            if (rmBtn) rmBtn.onclick = async () => {
               const ok = await confirmModal({
                 title: "Удалить участника?",
                 text: `Удалить @${m.tg_username || "-"} из заведения?`,

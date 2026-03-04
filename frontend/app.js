@@ -1,3 +1,5 @@
+import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
+
 export const API_BASE = "https://api-dev.axelio.ru";
 
 // ------------------------------
@@ -11,7 +13,7 @@ const DICT = {
     leave_venue: "Выйти из заведения",
     settings: "Настройки",
     adjustments: "Штрафы",
-    shifts: "Смены",
+    shifts: "График",
     salary: "Зарплата",
     report: "Отчёт",
     finance: "Финансы",
@@ -27,7 +29,7 @@ const DICT = {
     leave_venue: "Leave venue",
     settings: "Settings",
     adjustments: "Adjustments",
-    shifts: "Shifts",
+    shifts: "Schedule",
     salary: "Salary",
     report: "Report",
     finance: "Finance",
@@ -759,11 +761,9 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
     setActiveVenueId(activeVenueId);
   }
 
-// Determine if report tab should be shown (best-effort)
-// OWNER always has access to owner-nav; use both /me/venues list and /me/venues/{id}/permissions for resilience.
-let showReport = false;
+// Determine permissions for active venue (best-effort)
 let isOwner = false;
-let canManageAdjustments = false;
+let canViewReports = false;
 
 const activeVenue = activeVenueId ? venues.find(v => String(v.id) === String(activeVenueId)) : null;
 const roleFromList = String(activeVenue?.role || activeVenue?.venue_role || activeVenue?.my_role || "").toUpperCase();
@@ -771,59 +771,28 @@ const roleFromList = String(activeVenue?.role || activeVenue?.venue_role || acti
 if (activeVenueId) {
   try {
     const permsResp = await getMyVenuePermissions(activeVenueId);
-    // permissions endpoint may return either an object or a plain array of codes (legacy)
-    const rawCodes = Array.isArray(permsResp)
-      ? permsResp
-      : (Array.isArray(permsResp?.permissions) ? permsResp.permissions : (Array.isArray(permsResp?.codes) ? permsResp.codes : []));
-
-    const role = String(permsResp?.role || permsResp?.venue_role || permsResp?.my_role || roleFromList || "").toUpperCase();
+    const role = roleUpper(permsResp) || roleFromList;
     isOwner = role === "OWNER" || role === "VENUE_OWNER";
 
-    const flags = permsResp?.position_flags || {};
+    const pset = permSetFromResponse(permsResp);
 
-    // Normalize permission codes (string | {code} | other) -> UPPERCASE strings
-    const permCodes = (Array.isArray(rawCodes) ? rawCodes : [])
-      .map((x) => {
-        if (!x) return "";
-        if (typeof x === "string") return x.trim().toUpperCase();
-        if (typeof x === "object") {
-          const v = x.code || x.permission_code || x.permission || "";
-          return String(v || "").trim().toUpperCase();
-        }
-        return String(x).trim().toUpperCase();
-      })
-      .filter(Boolean);
-
-    const permSet = new Set(permCodes);
-    const has = (code) => permSet.has(String(code || "").trim().toUpperCase());
-    const hasPrefix = (prefix) => {
-      const p = String(prefix || "").trim().toUpperCase();
-      return permCodes.some((c) => c.startsWith(p));
-    };
-canManageAdjustments =
+    // Report access means: user can open report pages / close shift / see report sections.
+    canViewReports =
       isOwner ||
-      flags.can_manage_adjustments === true ||
-      has("ADJUSTMENTS_MANAGE");
-    showReport =
-      isOwner ||
-      flags.can_view_reports === true ||
-      flags.can_make_reports === true ||
-      // legacy per-shift report permissions
-      hasPrefix("SHIFT_REPORT_") ||
-      has("SHIFT_REPORT_VIEW") ||
-      has("SHIFT_REPORT_CLOSE") ||
-      has("SHIFT_REPORT_EDIT") ||
-      has("SHIFT_REPORT_REOPEN") ||
-      // new report pages permissions
-      hasPrefix("REPORTS_") ||
-      has("REPORTS_VIEW") ||
-      has("REPORTS_VIEW_DAILY") ||
-      has("REPORTS_VIEW_MONTHLY") ||
-      has("REPORTS_VIEW_PNL");
-} catch {
-    // fallback only on venue list role
+      hasPermPrefix(pset, "SHIFT_REPORT_") ||
+      hasPermPrefix(pset, "REPORTS_") ||
+      hasAnyPerm(pset, [
+        "SHIFT_REPORT_VIEW",
+        "SHIFT_REPORT_CLOSE",
+        "SHIFT_REPORT_EDIT",
+        "SHIFT_REPORT_REOPEN",
+        "REPORTS_VIEW_DAILY",
+        "REPORTS_VIEW_MONTHLY",
+        "REPORTS_VIEW_PNL",
+      ]);
+  } catch {
     isOwner = roleFromList === "OWNER" || roleFromList === "VENUE_OWNER";
-    showReport = isOwner;
+    canViewReports = isOwner;
   }
 }
 
@@ -837,10 +806,19 @@ const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : ""
       links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses" });
       links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
     } else {
-      // Staff bottom nav: Shifts + Finance (+ optional Reports) + Settings
+      // Staff bottom nav:
+      // - always show Schedule (Graphik)
+      // - if user can view reports => show Finance (aggregator)
+      // - else show separate Adjustments + Salary
       links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
-      links.push({ title: t("finance"), href: `/staff-finance.html${qp}`, tab: "finance" });
-      if (showReport) links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
+
+      if (canViewReports) {
+        links.push({ title: t("finance"), href: `/staff-finance.html${qp}`, tab: "finance" });
+      } else {
+        links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
+        links.push({ title: t("salary"), href: `/staff-salary-summary.html${qp}`, tab: "salary" });
+      }
+
       links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
     }
   } else {

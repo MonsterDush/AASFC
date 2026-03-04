@@ -59,6 +59,11 @@ def require_venue_permission(
     if vm is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a venue member")
 
+
+    # venue OWNER: full access inside this venue
+    if str(vm.venue_role or "").upper() == "OWNER":
+        return
+
     # ---- per-position permissions (fine-grained) ----
     pos = db.execute(
         select(VenuePosition).where(

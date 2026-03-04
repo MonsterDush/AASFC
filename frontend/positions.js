@@ -435,8 +435,9 @@ function renderPositionForm({ mode, position }) {
     {
       key: "venue",
       title: "Заведение",
-      hint: "VENUE_SETTINGS_EDIT — настройки заведения",
+      hint: "VENUE_VIEW/VENUE_SETTINGS_EDIT — доступ к карточке заведения и настройкам",
       items: [
+        { code: "VENUE_VIEW", title: "Открывать заведение" },
         { code: "VENUE_SETTINGS_EDIT", title: "Настройки заведения" },
       ],
     },

@@ -69,6 +69,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
 } from "/app.js";
+import { permSetFromResponse, roleUpper, hasPerm, hasPermPrefix, hasAnyPerm } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("finance");
@@ -103,15 +104,9 @@ if (!activeId) {
 async function resolveCanManageAdjustments(venueId) {
   try {
     const perms = await getMyVenuePermissions(venueId);
-    const list = Array.isArray(perms?.permissions) ? perms.permissions : [];
-    const has = (code) => list.includes(code);
-    const flags = perms?.position_flags || {};
-
-    return (
-      String(perms?.role || "").toUpperCase() === "OWNER" ||
-      flags.can_manage_adjustments === true ||
-      has("ADJUSTMENTS_MANAGE")
-    );
+    const role = roleUpper(perms);
+    const pset = permSetFromResponse(perms);
+    return role === "OWNER" || role === "SUPER_ADMIN" || role === "MODERATOR" || hasPerm(pset, "ADJUSTMENTS_MANAGE");
   } catch {
     return false;
   }

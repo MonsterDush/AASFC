@@ -13,6 +13,8 @@ import {
   getVenuePositions,
 } from "/app.js";
 
+import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
+
 window.onerror = function (msg, src, line, col, err) {
   const text = `JS ошибка: ${msg}\n${src || ""}:${line || 0}:${col || 0}`;
   try { toast(text, "err"); } catch {}
@@ -562,17 +564,20 @@ async function loadContext() {
 
   perms = await getMyVenuePermissions(venueId).catch(() => null);
 
-  myRole = perms?.role || perms?.venue_role || perms?.my_role || null;
-  const flags = perms?.position_flags || {};
-  const posObj = perms?.position || {};
+  myRole = roleUpper(perms) || null;
+
+  const pset = permSetFromResponse(perms);
 
   canEdit =
     myRole === "OWNER" ||
     myRole === "SUPER_ADMIN" ||
-    !!flags.can_edit_schedule ||
-    !!posObj.can_edit_schedule;
+    hasPerm(pset, "SHIFTS_MANAGE");
 
-  canViewRevenue = !!flags.can_make_reports || !!posObj.can_make_reports;
+  // numbers on calendar (salary / revenue) should be shown only to report viewers
+  canViewRevenue =
+    hasPermPrefix(pset, "SHIFT_REPORT_") ||
+    hasPermPrefix(pset, "REPORTS_") ||
+    hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
 
   // default: editor sees all
   showAllOnCalendar = canEdit ? true : false;
