@@ -15,7 +15,7 @@ const DICT = {
     salary: "Зарплата",
     report: "Отчёт",
     finance: "Финансы",
-    revenue: "Доходы",
+    revenue: "Выручка",
     summary: "Сводка",
     expenses: "Расходы",
     admin_venues: "Заведения",
@@ -51,7 +51,6 @@ export function t(key) {
   const lang = getLang();
   return (DICT[lang] && DICT[lang][key]) || (DICT.ru && DICT.ru[key]) || key;
 }
-
 
 export function wa() {
   return window.Telegram?.WebApp || null;
@@ -362,7 +361,6 @@ export function confirmModal({ title, text, confirmText = "Подтвердит�
     m.classList.add("open");
   });
 }
-
 
 // ------------------------------
 // Venue context + simple routing helpers (frontend MVP)
@@ -755,7 +753,6 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
     setActiveVenueId(activeVenueId);
   }
 
-
   // Determine if report tab should be shown (best-effort)
   // OWNER всегда имеет доступ к отчётам, даже если permissions registry пустой.
   let showReport = false;
@@ -792,11 +789,8 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   const links = [];
 
   if (activeVenueId) {
-    if (isOwner) {
-      // Owner bottom nav: Venue / Revenue / Summary / Expenses
-      links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue" });
-      links.push({ title: t("revenue"), href: `/owner-revenue.html${qp}`, tab: "revenue" });
-      links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary" });
+    if (isOwner) {      // Owner bottom nav: Venue / Summary / Expenses
+      links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue" });      links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary" });
       links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses" });
       links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
     } else {
@@ -815,8 +809,6 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   renderNavLinks({ container, links, activeTab });
   return { ok: true, me, venues, activeVenueId };
 }
-
-
 
 // ------------------------------
 // Venue dropdown menu (topbar)

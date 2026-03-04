@@ -3,12 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · Доходы</title>
+  <script>
+    // Backward compatibility: keep querystring
+    location.replace("/owner-turnover.html" + location.search);
+  </script>
 </head>
-<body>
-  <div class="container" id="root"></div>
-  <script type="module" src="/owner-revenue.js"></script>
-</body>
+<body></body>
 </html>

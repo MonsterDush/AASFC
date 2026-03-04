@@ -834,3 +834,43 @@ input[type="checkbox"],input[type="radio"]{
 .audit-body{margin-top:10px}
 .audit-list{margin:0;padding-left:18px}
 .audit-list li{margin:4px 0}
+
+
+/* -------- Revenue (Turnover) period toolbar -------- */
+.h2{font-size:26px;font-weight:800;letter-spacing:-0.02em}
+@media (max-width:900px){.h2{font-size:22px}}
+
+.periodbar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+  padding:12px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  margin: 12px 0 16px;
+}
+.seg{
+  display:flex;
+  gap:6px;
+  padding:4px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.15);
+}
+.seg button{
+  border:0;
+  background:transparent;
+  color:inherit;
+  padding:8px 12px;
+  border-radius:999px;
+  cursor:pointer;
+  opacity:0.85;
+}
+.seg button.active{
+  background: rgba(255,255,255,0.10);
+  opacity:1;
+}
+.pickers{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.pickers input{ width:auto; min-width: 160px; }

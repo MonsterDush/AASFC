@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Выручка</title>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Выручка</b>
+          <div class="muted" id="subtitle">по периодам</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="periodbar">
+      <div class="seg" id="periodSeg">
+        <button data-period="month" class="active">Месяц</button>
+        <button data-period="week">Неделя</button>
+        <button data-period="day">День</button>
+        <button data-period="range">Период</button>
+      </div>
+
+      <div class="seg" id="modeSeg">
+        <button data-mode="DEPARTMENTS" class="active">Департаменты</button>
+        <button data-mode="PAYMENTS">Оплаты</button>
+      </div>
+
+      <div class="pickers">
+        <input id="monthPick" type="month" />
+        <input id="dayPick" type="date" style="display:none" />
+        <div id="rangePick" style="display:none; gap:8px; align-items:center;">
+          <input id="fromPick" type="date" />
+          <span class="muted">—</span>
+          <input id="toPick" type="date" />
+        </div>
+      </div>
+
+      <button class="btn" id="exportBtn">Экспорт</button>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="muted">Итого</div>
+        <div class="h2" id="total">—</div>
+      </div>
+    </div>
+
+    <div class="card mt-12">
+      <div id="rows"></div>
+    </div>
+
+    <div class="nav">
+      <div class="wrap">
+        <div id="nav"></div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"><div class="toast__text"></div></div>
+    <div class="modal" id="modal">
+      <div class="modal__backdrop"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <b class="modal__title">JSON</b>
+          <button class="btn" data-close>Close</button>
+        </div>
+        <div class="modal__body"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/owner-turnover.js"></script>
+</body>
+</html>

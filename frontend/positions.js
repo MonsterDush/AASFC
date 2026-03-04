@@ -236,13 +236,43 @@ function parseVenueId() {
   return venueId;
 }
 
-function normalizePositions(out) {
-  if (!out) return [];
-  if (Array.isArray(out)) return out;
-  if (Array.isArray(out.items)) return out.items;
-  if (Array.isArray(out.positions)) return out.positions;
-  if (Array.isArray(out.data)) return out.data;
+function parsePermCodes(v) {
+  if (Array.isArray(v)) {
+    return v.map((x) => String(x || "").trim()).filter(Boolean);
+  }
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return [];
+    // JSON array string
+    try {
+      const j = JSON.parse(s);
+      if (Array.isArray(j)) return j.map((x) => String(x || "").trim()).filter(Boolean);
+    } catch {}
+    // fallback: comma/space separated, also handles "['A','B']"
+    const cleaned = s.replace(/[\[\]\"']/g, "");
+    return cleaned.split(/[,;\s]+/).map((x) => String(x || "").trim()).filter(Boolean);
+  }
   return [];
+}
+
+function normalizePositions(out) {
+  let items = [];
+  if (!out) items = [];
+  else if (Array.isArray(out)) items = out;
+  else if (Array.isArray(out.items)) items = out.items;
+  else if (Array.isArray(out.positions)) items = out.positions;
+  else if (Array.isArray(out.data)) items = out.data;
+  else items = [];
+
+  return items.map((p) => {
+    const x = { ...(p || {}) };
+    const pc = parsePermCodes(x.permission_codes);
+    if (pc.length) x.permission_codes = pc;
+    else if (typeof x.permission_codes === "string") x.permission_codes = [];
+    const pp = parsePermCodes(x.permissions);
+    if (pp.length) x.permissions = pp;
+    return x;
+  });
 }
 
 function uniqueTitles() {

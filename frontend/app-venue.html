@@ -175,17 +175,27 @@
         // keep active venue in sync
         if (venueId) setActiveVenueId(venueId);
 
-    // if staff - redirect to dashboard
+    // Staff: redirect to dashboard ONLY if user has no explicit permission to open venue page
     try {
       const perms = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
-      const role = (perms?.venue_role || perms?.my_role || "").toString().toUpperCase();
-      if (role === "STAFF") {
+      const role = (perms?.venue_role || perms?.my_role || perms?.role || "").toString().toUpperCase();
+      const sysRole = (perms?.system_role || "").toString().toUpperCase();
+      const codes = Array.isArray(perms?.permissions) ? perms.permissions : (Array.isArray(perms) ? perms : []);
+      const canOpenVenue =
+        role === "OWNER" ||
+        sysRole === "SUPER_ADMIN" ||
+        sysRole === "MODERATOR" ||
+        codes.includes("VENUE_OPEN") ||
+        codes.includes("VENUE_VIEW") ||
+        codes.includes("VENUE_READ") ||
+        codes.includes("VENUE_SETTINGS_EDIT");
+      if (role === "STAFF" && !canOpenVenue) {
         location.replace(`/app-dashboard.html?venue_id=${encodeURIComponent(venueId)}`);
         return;
       }
     } catch {}
 
-        const titleEl = document.getElementById("title");
+const titleEl = document.getElementById("title");
         const metaEl = document.getElementById("meta");
         const metaHint = document.getElementById("metaHint");
         const membersEl = document.getElementById("members");
