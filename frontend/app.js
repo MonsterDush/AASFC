@@ -771,9 +771,8 @@ const roleFromList = String(activeVenue?.role || activeVenue?.venue_role || acti
 if (activeVenueId) {
   try {
     const permsResp = await getMyVenuePermissions(activeVenueId);
-
     // permissions endpoint may return either an object or a plain array of codes (legacy)
-    const permCodes = Array.isArray(permsResp)
+    const rawCodes = Array.isArray(permsResp)
       ? permsResp
       : (Array.isArray(permsResp?.permissions) ? permsResp.permissions : (Array.isArray(permsResp?.codes) ? permsResp.codes : []));
 
@@ -781,22 +780,47 @@ if (activeVenueId) {
     isOwner = role === "OWNER" || role === "VENUE_OWNER";
 
     const flags = permsResp?.position_flags || {};
-    const has = (code) => Array.isArray(permCodes) ? permCodes.includes(code) : false;
 
-    canManageAdjustments =
+    // Normalize permission codes (string | {code} | other) -> UPPERCASE strings
+    const permCodes = (Array.isArray(rawCodes) ? rawCodes : [])
+      .map((x) => {
+        if (!x) return "";
+        if (typeof x === "string") return x.trim().toUpperCase();
+        if (typeof x === "object") {
+          const v = x.code || x.permission_code || x.permission || "";
+          return String(v || "").trim().toUpperCase();
+        }
+        return String(x).trim().toUpperCase();
+      })
+      .filter(Boolean);
+
+    const permSet = new Set(permCodes);
+    const has = (code) => permSet.has(String(code || "").trim().toUpperCase());
+    const hasPrefix = (prefix) => {
+      const p = String(prefix || "").trim().toUpperCase();
+      return permCodes.some((c) => c.startsWith(p));
+    };
+canManageAdjustments =
       isOwner ||
       flags.can_manage_adjustments === true ||
       has("ADJUSTMENTS_MANAGE");
-
     showReport =
       isOwner ||
       flags.can_view_reports === true ||
       flags.can_make_reports === true ||
+      // legacy per-shift report permissions
+      hasPrefix("SHIFT_REPORT_") ||
       has("SHIFT_REPORT_VIEW") ||
       has("SHIFT_REPORT_CLOSE") ||
       has("SHIFT_REPORT_EDIT") ||
-      has("SHIFT_REPORT_REOPEN");
-  } catch {
+      has("SHIFT_REPORT_REOPEN") ||
+      // new report pages permissions
+      hasPrefix("REPORTS_") ||
+      has("REPORTS_VIEW") ||
+      has("REPORTS_VIEW_DAILY") ||
+      has("REPORTS_VIEW_MONTHLY") ||
+      has("REPORTS_VIEW_PNL");
+} catch {
     // fallback only on venue list role
     isOwner = roleFromList === "OWNER" || roleFromList === "VENUE_OWNER";
     showReport = isOwner;
