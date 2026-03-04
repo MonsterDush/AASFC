@@ -173,13 +173,18 @@ function bindPickers() {
   $("fromPick").onchange = (e) => { state.from = e.target.value || todayISO(); load().catch(console.error); };
   $("toPick").onchange = (e) => { state.to = e.target.value || todayISO(); load().catch(console.error); };
 
-  $("exportBtn").onclick = () => {
-    const venueId = getActiveVenueId();
-    if (!venueId) return;
-    const qs = buildQuery();
-    const url = `${API_BASE}/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`;
+  
+$("exportBtn").onclick = async () => {
+  const venueId = getActiveVenueId();
+  if (!venueId) return;
 
-    // Telegram Mini App can't reliably download attachments; open export in Telegram in-app browser / external browser.
+  const qs = buildQuery();
+  try {
+    // 1) Request signed public link (requires auth in miniapp, uses cookies)
+    const link = await api(`/venues/${encodeURIComponent(venueId)}/revenue/export_link?${qs}&fmt=xlsx`, { method: "GET" });
+    const url = (link.path ? (API_BASE + link.path) : (API_BASE + `/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`));
+
+    // 2) Open in browser / Telegram in-app browser (downloads work there without auth)
     const tg = window.Telegram?.WebApp;
     try {
       if (tg?.openLink) {
@@ -187,10 +192,12 @@ function bindPickers() {
         return;
       }
     } catch {}
-
-    // fallback
     window.open(url, "_blank");
-  };
+  } catch (e) {
+    console.error(e);
+    toast("Не удалось создать ссылку на экспорт");
+  }
+};
 }
 
 async function boot() {

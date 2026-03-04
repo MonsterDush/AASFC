@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     JWT_ISS: str = "axelio-api-dev"
     JWT_AUD: str = "axelio-miniapp"
 
+    # Public export links (signed)
+    EXPORT_LINK_SECRET: str = ""  # if empty, JWT_SECRET is used
+    EXPORT_LINK_TTL_SECONDS: int = 60 * 10  # 10 minutes
+
+
     # Cookie
     COOKIE_DOMAIN: str = ".axelio.ru"
     COOKIE_SECURE: bool = True

@@ -36,3 +36,19 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     return user
+
+
+def get_current_user_optional(
+    db: Session = Depends(get_db),
+    access_token: str | None = Cookie(default=None, alias="access_token"),
+) -> User | None:
+    """Same as get_current_user, but returns None instead of raising."""
+    if not access_token:
+        return None
+    try:
+        payload = decode_access_token(get_jwt_config(), access_token)
+        user_id = int(payload["sub"])
+        user = db.query(User).filter(User.id == user_id).one_or_none()
+        return user
+    except Exception:
+        return None
