@@ -153,12 +153,12 @@ function initFromQuery() {
   state.mode = q.get("mode") || "DEPARTMENTS";
   state.period = q.get("period") || "month";
 
-  state.month = q.get("month") || nowMonth;
+  state.month = (q.get("month") || nowMonth).slice(0,7);
   state.day = q.get("day") || today;
   state.from = q.get("date_from") || today;
   state.to = q.get("date_to") || today;
 
-  $("monthPick").value = state.month;
+  $("monthPick").value = (state.month ? (state.month + "-01") : (currentMonth() + "-01"));
   $("dayPick").value = state.day;
   $("fromPick").value = state.from;
   $("toPick").value = state.to;
@@ -168,7 +168,7 @@ function initFromQuery() {
 }
 
 function bindPickers() {
-  $("monthPick").onchange = (e) => { state.month = e.target.value || currentMonth(); load().catch(console.error); };
+  $("monthPick").onchange = (e) => { const v = (e.target.value || "").slice(0,7); state.month = v || currentMonth(); e.target.value = state.month + "-01"; load().catch(console.error); };
   $("dayPick").onchange = (e) => { state.day = e.target.value || todayISO(); load().catch(console.error); };
   $("fromPick").onchange = (e) => { state.from = e.target.value || todayISO(); load().catch(console.error); };
   $("toPick").onchange = (e) => { state.to = e.target.value || todayISO(); load().catch(console.error); };
@@ -178,13 +178,24 @@ function bindPickers() {
     if (!venueId) return;
     const qs = buildQuery();
     const url = `${API_BASE}/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`;
-    window.location.href = url;
+
+    // Telegram Mini App can't reliably download attachments; open export in Telegram in-app browser / external browser.
+    const tg = window.Telegram?.WebApp;
+    try {
+      if (tg?.openLink) {
+        tg.openLink(url, { try_instant_view: false });
+        return;
+      }
+    } catch {}
+
+    // fallback
+    window.open(url, "_blank");
   };
 }
 
 async function boot() {
   applyTelegramTheme();
-  mountCommonUI("turnover");
+  mountCommonUI("summary");
   await ensureLogin({ silent: true });
 
   const params = new URLSearchParams(location.search);

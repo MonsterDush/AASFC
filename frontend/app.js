@@ -721,6 +721,12 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
   const container = document.querySelector(containerSelector);
   if (!container) return { ok: false, reason: "NO_CONTAINER" };
 
+  // Deep links: if venue_id is in URL, treat it as active venue (prevents missing owner navbar)
+  try {
+    const qv = new URLSearchParams(location.search).get("venue_id");
+    if (qv) setActiveVenueId(qv);
+  } catch {}
+
   await ensureLogin({ silent: true });
 
   let me = null;
@@ -753,38 +759,51 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
     setActiveVenueId(activeVenueId);
   }
 
-  // Determine if report tab should be shown (best-effort)
-  // OWNER всегда имеет доступ к отчётам, даже если permissions registry пустой.
-  let showReport = false;
-  let isOwner = false;
-  let canManageAdjustments = false;
-  if (activeVenueId) {
-    try {
-      const perms = await getMyVenuePermissions(activeVenueId);
-      isOwner = perms?.role === "OWNER";
+// Determine if report tab should be shown (best-effort)
+// OWNER always has access to owner-nav; use both /me/venues list and /me/venues/{id}/permissions for resilience.
+let showReport = false;
+let isOwner = false;
+let canManageAdjustments = false;
 
-      const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
-      const flags = perms?.position_flags || {};
+const activeVenue = activeVenueId ? venues.find(v => String(v.id) === String(activeVenueId)) : null;
+const roleFromList = String(activeVenue?.role || activeVenue?.venue_role || activeVenue?.my_role || "").toUpperCase();
 
-       canManageAdjustments =
-         isOwner ||
-         flags.can_manage_adjustments === true ||
-         has("ADJUSTMENTS_MANAGE");
+if (activeVenueId) {
+  try {
+    const permsResp = await getMyVenuePermissions(activeVenueId);
 
-      showReport =
-        isOwner ||
-        flags.can_view_reports === true ||
-        flags.can_make_reports === true ||
-        has("SHIFT_REPORTS_VIEW") ||
-        has("SHIFT_REPORTS_CREATE") ||
-        has("SHIFT_REPORTS_EDIT");
-    } catch {
-      showReport = false;
-      isOwner = false;
-    }
+    // permissions endpoint may return either an object or a plain array of codes (legacy)
+    const permCodes = Array.isArray(permsResp)
+      ? permsResp
+      : (Array.isArray(permsResp?.permissions) ? permsResp.permissions : (Array.isArray(permsResp?.codes) ? permsResp.codes : []));
+
+    const role = String(permsResp?.role || permsResp?.venue_role || permsResp?.my_role || roleFromList || "").toUpperCase();
+    isOwner = role === "OWNER" || role === "VENUE_OWNER";
+
+    const flags = permsResp?.position_flags || {};
+    const has = (code) => Array.isArray(permCodes) ? permCodes.includes(code) : false;
+
+    canManageAdjustments =
+      isOwner ||
+      flags.can_manage_adjustments === true ||
+      has("ADJUSTMENTS_MANAGE");
+
+    showReport =
+      isOwner ||
+      flags.can_view_reports === true ||
+      flags.can_make_reports === true ||
+      has("SHIFT_REPORTS_VIEW") ||
+      has("SHIFT_REPORTS_CREATE") ||
+      has("SHIFT_REPORTS_EDIT");
+  } catch {
+    // fallback only on venue list role
+    isOwner = roleFromList === "OWNER" || roleFromList === "VENUE_OWNER";
+    showReport = isOwner;
   }
+}
 
-  const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : "";
+const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : "";
+ ? `?venue_id=${encodeURIComponent(activeVenueId)}` : "";
 
   const links = [];
 
