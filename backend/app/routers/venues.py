@@ -42,7 +42,6 @@ from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
 from app.models.department import Department
 from app.models.payment_method import PaymentMethod
 from app.models.kpi_metric import KpiMetric
-from app.models.permission import Permission
 
 from app.auth.venue_permissions import require_venue_permission
 
@@ -533,7 +532,6 @@ def update_venue(
     venue_id: int,
     payload: VenueUpdateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
 
@@ -1658,22 +1656,16 @@ def _revenue_kind_and_catalog(mode: str):
     raise HTTPException(status_code=400, detail="Bad mode, expected DEPARTMENTS or PAYMENTS")
 
 
-@router.get("/{venue_id}/revenue", response_model=RevenueSummaryOut)
-def get_revenue_summary(
+def _revenue_summary_core(
+    *,
     venue_id: int,
-    month: str | None = Query(None, description="YYYY-MM"),
-    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
-    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
-    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Агрегация доходов по CLOSED отчётам за месяц."""
-    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    _require_report_viewer(db, venue_id=venue_id, user=user)
-    if not _can_view_revenue(db, venue_id=venue_id, user=user):
-        raise HTTPException(status_code=403, detail="Forbidden")
-
+    month: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    mode: str,
+    db: Session,
+) -> dict:
+    """Core revenue aggregation logic without auth checks."""
     start, end_incl = _resolve_period(month, date_from, date_to)
     end_excl = end_incl + timedelta(days=1)
     kind, Catalog = _revenue_kind_and_catalog(mode)
@@ -1720,13 +1712,14 @@ def get_revenue_summary(
     catalog_map: dict[int, dict] = {}
     if ref_ids:
         items = (
-            db.execute(
-                select(Catalog).where(Catalog.venue_id == venue_id, Catalog.id.in_(ref_ids))
-            )
+            db.execute(select(Catalog).where(Catalog.venue_id == venue_id, Catalog.id.in_(ref_ids)))
             .scalars()
             .all()
         )
-        catalog_map = {int(it.id): {"code": getattr(it, "code", None), "title": getattr(it, "title", f"#{it.id}")} for it in items}
+        catalog_map = {
+            int(it.id): {"code": getattr(it, "code", None), "title": getattr(it, "title", f"#{it.id}")}
+            for it in items
+        }
 
     rows: list[dict] = []
     total = 0
@@ -1761,6 +1754,31 @@ def get_revenue_summary(
         "rows": rows,
     }
 
+@router.get("/{venue_id}/revenue", response_model=RevenueSummaryOut)
+def get_revenue_summary(
+    venue_id: int,
+    month: str | None = Query(None, description="YYYY-MM"),
+    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Агрегация доходов по CLOSED отчётам за период (по умолчанию текущий месяц)."""
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    if not _can_view_revenue(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return _revenue_summary_core(
+        venue_id=venue_id,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        mode=mode,
+        db=db,
+    )
+
 
 @router.get("/{venue_id}/revenue/export")
 def export_revenue(
@@ -1771,10 +1789,9 @@ def export_revenue(
     mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
     fmt: str = Query("xlsx", description="xlsx | csv"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
 ):
     """Экспорт доходов за месяц (CLOSED) в XLSX (по умолчанию) или CSV."""
-    summary = get_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db, user=user)
+    summary = _revenue_summary_core(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db)
 
     # Venue name for filename
     v = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
@@ -2955,6 +2972,9 @@ def update_shift_interval(
 
     start_changed = payload.start_time is not None and payload.start_time != obj.start_time
 
+    if perms_touched:
+        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
+
     if payload.title is not None:
         obj.title = payload.title.strip()
     if payload.start_time is not None:
@@ -3557,6 +3577,8 @@ def update_department(
 
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
+    if perms_touched:
+        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         obj.title = payload.title.strip()
@@ -3667,6 +3689,8 @@ def update_payment_method(
         obj.is_active = bool(payload.is_active)
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
+    if perms_touched:
+        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         obj.title = payload.title.strip()
@@ -3754,6 +3778,8 @@ def update_kpi_metric(
         obj.is_active = bool(payload.is_active)
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
+    if perms_touched:
+        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         obj.title = payload.title.strip()
