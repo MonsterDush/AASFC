@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, date, time
+from datetime import datetime, timezone, date, time, timedelta
 import os
+import calendar
+import json
 import uuid
 import re
 from typing import Optional, List
@@ -122,6 +124,9 @@ class PositionCreateIn(BaseModel):
     can_manage_adjustments: bool = False
     can_resolve_disputes: bool = False
     is_active: bool = True
+    # Fine-grained permissions (preferred). Accepts either key for compatibility.
+    permission_codes: list[str] | None = None
+    permissions: list[str] | None = None
 
 
 class PositionUpdateIn(BaseModel):
@@ -752,6 +757,52 @@ def patch_venue_settings(
 
 # ---------- Positions (job roles inside venue) ----------
 
+def _parse_position_permission_codes(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            out = []
+            for x in data:
+                s = str(x or "").strip()
+                if s:
+                    out.append(s)
+            # preserve order but unique
+            seen = set()
+            uniq = []
+            for c in out:
+                if c in seen:
+                    continue
+                seen.add(c)
+                uniq.append(c)
+            return uniq
+    except Exception:
+        pass
+    return []
+
+
+def _normalize_permission_codes(db: Session, codes: list[str] | None) -> list[str]:
+    if not codes:
+        return []
+    cleaned = []
+    seen = set()
+    for c in codes:
+        s = str(c or "").strip().upper()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        cleaned.append(s)
+
+    if not cleaned:
+        return []
+
+    active = set(
+        db.execute(select(Permission.code).where(Permission.code.in_(cleaned), Permission.is_active.is_(True))).scalars().all()
+    )
+    return [c for c in cleaned if c in active]
+
+
 @router.get("/{venue_id}/positions")
 def list_positions(
     venue_id: int,
@@ -791,6 +842,7 @@ def list_positions(
             VenuePosition.member_user_id,
             VenuePosition.rate,
             VenuePosition.percent,
+            VenuePosition.permission_codes,
             VenuePosition.can_make_reports,
             VenuePosition.can_view_reports,
             VenuePosition.can_view_revenue,
@@ -828,6 +880,7 @@ def list_positions(
             "member_user_id": r.member_user_id,
             "rate": r.rate,
             "percent": r.percent,
+            "permission_codes": _parse_position_permission_codes(getattr(r, "permission_codes", None)),
             "can_make_reports": bool(r.can_make_reports),
             "can_view_reports": bool(r.can_view_reports),
             "can_view_revenue": bool(r.can_view_revenue),
@@ -861,6 +914,10 @@ def create_position(
     if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_MANAGE")
 
+    # Setting fine-grained permission codes requires POSITION_PERMISSIONS_MANAGE
+    if (payload.permission_codes is not None or payload.permissions is not None) and not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITION_PERMISSIONS_MANAGE")
+
     # validate member exists in this venue (active)
     vm = db.execute(
         select(VenueMember).where(
@@ -886,6 +943,9 @@ def create_position(
             title=payload.title.strip(),
             rate=payload.rate,
             percent=payload.percent,
+            permission_codes=(json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
+                             if (payload.permission_codes is not None or payload.permissions is not None)
+                             else None),
             can_make_reports=payload.can_make_reports,
             can_view_reports=payload.can_view_reports,
             can_view_revenue=payload.can_view_revenue,
@@ -904,6 +964,8 @@ def create_position(
     existing.title = payload.title.strip()
     existing.rate = payload.rate
     existing.percent = payload.percent
+    if payload.permission_codes is not None or payload.permissions is not None:
+        existing.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
     existing.can_make_reports = payload.can_make_reports
     existing.can_view_reports = payload.can_view_reports
     existing.can_view_revenue = payload.can_view_revenue
@@ -965,6 +1027,8 @@ def update_position(
         pos.member_user_id = payload.member_user_id
 
     # Editing permission flags is a separate permission (matrix)
+    perms_touched = payload.permission_codes is not None or payload.permissions is not None
+
     flags_touched = any(
         x is not None
         for x in (
@@ -977,8 +1041,11 @@ def update_position(
             payload.can_resolve_disputes,
         )
     )
-    if flags_touched and not is_owner:
+    if (flags_touched or perms_touched) and not is_owner:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITION_PERMISSIONS_MANAGE")
+
+    if perms_touched:
+        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         pos.title = payload.title.strip()
@@ -1530,7 +1597,9 @@ class RevenueRowOut(BaseModel):
 
 
 class RevenueSummaryOut(BaseModel):
-    month: str
+    month: str | None = None
+    period_start: date
+    period_end: date
     mode: str
     closed_reports: int
     total: int
@@ -1549,6 +1618,33 @@ def _parse_month_yyyy_mm(month: str) -> tuple[date, date]:
         raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
 
 
+
+def _resolve_period(month: str | None, date_from: date | None, date_to: date | None) -> tuple[date, date]:
+    """Resolve requested period.
+
+    Returns (start_date, end_date_inclusive).
+    Priority:
+    - explicit date_from/date_to
+    - month=YYYY-MM
+    - default: current month
+    """
+    if date_from and not date_to:
+        date_to = date_from
+    if date_to and not date_from:
+        date_from = date_to
+
+    if date_from and date_to:
+        if date_to < date_from:
+            date_from, date_to = date_to, date_from
+        return date_from, date_to
+
+    if month:
+        start, end_excl = _parse_month_yyyy_mm(month)
+        return start, (end_excl - timedelta(days=1))
+
+    today = date.today()
+    last_day = calendar.monthrange(today.year, today.month)[1]
+    return date(today.year, today.month, 1), date(today.year, today.month, last_day)
 def _revenue_kind_and_catalog(mode: str):
     mm = (mode or "").upper().strip()
     if mm == "PAYMENTS":
@@ -1561,7 +1657,9 @@ def _revenue_kind_and_catalog(mode: str):
 @router.get("/{venue_id}/revenue", response_model=RevenueSummaryOut)
 def get_revenue_summary(
     venue_id: int,
-    month: str = Query(..., description="YYYY-MM"),
+    month: str | None = Query(None, description="YYYY-MM"),
+    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1572,7 +1670,8 @@ def get_revenue_summary(
     if not _can_view_revenue(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    start, end = _parse_month_yyyy_mm(month)
+    start, end_incl = _resolve_period(month, date_from, date_to)
+    end_excl = end_incl + timedelta(days=1)
     kind, Catalog = _revenue_kind_and_catalog(mode)
 
     closed_reports_subq = (
@@ -1580,7 +1679,7 @@ def get_revenue_summary(
         .where(
             DailyReport.venue_id == venue_id,
             DailyReport.date >= start,
-            DailyReport.date < end,
+            DailyReport.date < end_excl,
             DailyReport.status == "CLOSED",
         )
         .subquery()
@@ -1591,7 +1690,7 @@ def get_revenue_summary(
             select(func.count(DailyReport.id)).where(
                 DailyReport.venue_id == venue_id,
                 DailyReport.date >= start,
-                DailyReport.date < end,
+                DailyReport.date < end_excl,
                 DailyReport.status == "CLOSED",
             )
         ).scalar()
@@ -1643,8 +1742,15 @@ def get_revenue_summary(
 
     rows.sort(key=lambda x: (-int(x.get("amount") or 0), str(x.get("title") or "")))
 
+    month_out = month
+    if month_out is None and date_from is None and date_to is None:
+        # defaulted to current month
+        month_out = start.strftime("%Y-%m")
+
     return {
-        "month": month,
+        "month": month_out,
+        "period_start": start,
+        "period_end": end_incl,
         "mode": mode.upper(),
         "closed_reports": closed_reports_count,
         "total": int(total),
@@ -1655,32 +1761,35 @@ def get_revenue_summary(
 @router.get("/{venue_id}/revenue/export")
 def export_revenue(
     venue_id: int,
-    month: str = Query(..., description="YYYY-MM"),
+    month: str | None = Query(None, description="YYYY-MM"),
+    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
     fmt: str = Query("xlsx", description="xlsx | csv"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Экспорт доходов за месяц (CLOSED) в XLSX (по умолчанию) или CSV."""
-    summary = get_revenue_summary(venue_id=venue_id, month=month, mode=mode, db=db, user=user)
+    summary = get_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db, user=user)
 
     # Venue name for filename
     v = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     venue_name = v.name if v else f"venue_{venue_id}"
 
     mode_label = "payments" if summary["mode"] == "PAYMENTS" else "departments"
+    period_label = summary.get("month") or f"{summary['period_start'].isoformat()}_{summary['period_end'].isoformat()}"
     safe_venue = re.sub(r"[^a-zA-Z0-9_-]+", "_", venue_name).strip("_") or f"venue_{venue_id}"
 
     if (fmt or "").lower() == "csv":
         content = build_revenue_csv(
-            month=summary["month"],
+            month=period_label,
             mode=summary["mode"],
             venue_name=venue_name,
             rows=summary["rows"],
             total=int(summary["total"]),
             closed_reports=int(summary["closed_reports"]),
         )
-        filename = f"revenue_{safe_venue}_{summary['month']}_{mode_label}.csv"
+        filename = f"revenue_{safe_venue}_{period_label}_{mode_label}.csv"
         return StreamingResponse(
             BytesIO(content.encode("utf-8-sig")),
             media_type="text/csv; charset=utf-8",
@@ -1689,14 +1798,14 @@ def export_revenue(
 
     # default: xlsx
     xlsx_bytes = build_revenue_xlsx(
-        month=summary["month"],
+        month=period_label,
         mode=summary["mode"],
         venue_name=venue_name,
         rows=summary["rows"],
         total=int(summary["total"]),
         closed_reports=int(summary["closed_reports"]),
     )
-    filename = f"revenue_{safe_venue}_{summary['month']}_{mode_label}.xlsx"
+    filename = f"revenue_{safe_venue}_{period_label}_{mode_label}.xlsx"
     return StreamingResponse(
         BytesIO(xlsx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -2842,6 +2951,9 @@ def update_shift_interval(
 
     start_changed = payload.start_time is not None and payload.start_time != obj.start_time
 
+    if perms_touched:
+        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
+
     if payload.title is not None:
         obj.title = payload.title.strip()
     if payload.start_time is not None:
@@ -3444,6 +3556,9 @@ def update_department(
 
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
+    if perms_touched:
+        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
+
     if payload.title is not None:
         obj.title = payload.title.strip()
     if payload.sort_order is not None:
@@ -3553,6 +3668,9 @@ def update_payment_method(
         obj.is_active = bool(payload.is_active)
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
+    if perms_touched:
+        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
+
     if payload.title is not None:
         obj.title = payload.title.strip()
     if payload.sort_order is not None:
@@ -3639,6 +3757,9 @@ def update_kpi_metric(
         obj.is_active = bool(payload.is_active)
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
+    if perms_touched:
+        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
+
     if payload.title is not None:
         obj.title = payload.title.strip()
     if payload.unit is not None:

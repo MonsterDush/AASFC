@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import json
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func
@@ -281,10 +282,47 @@ def my_venue_permissions(
             "can_manage_adjustments": bool(getattr(pos, "can_manage_adjustments", False)),
         }
 
+    
+    # ---- merge in position-based permission codes (fine-grained) + legacy flags mapping ----
+    extra_codes: list[str] = []
+    legacy_codes: list[str] = []
+    if pos is not None:
+        extra_codes = _parse_position_permission_codes(getattr(pos, "permission_codes", None))
+
+        # legacy flags -> permission codes (for backwards compatibility with old UI/guards)
+        if bool(pos.can_make_reports):
+            legacy_codes += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
+        elif bool(pos.can_view_reports):
+            legacy_codes += ["SHIFT_REPORT_VIEW"]
+
+        if bool(pos.can_edit_schedule):
+            legacy_codes += ["SHIFTS_VIEW", "SHIFTS_MANAGE"]
+
+        if bool(getattr(pos, "can_view_adjustments", False)):
+            legacy_codes += ["ADJUSTMENTS_VIEW"]
+        if bool(getattr(pos, "can_manage_adjustments", False)):
+            legacy_codes += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
+        if bool(getattr(pos, "can_resolve_disputes", False)):
+            legacy_codes += ["DISPUTES_RESOLVE"]
+
+    # filter extras by active permissions in DB
+    merged = list(codes) if codes else []
+    to_check = []
+    for c in extra_codes + legacy_codes:
+        s = str(c or "").strip().upper()
+        if s and s not in to_check:
+            to_check.append(s)
+    if to_check:
+        active = set(
+            db.execute(select(Permission.code).where(Permission.code.in_(to_check), Permission.is_active.is_(True))).scalars().all()
+        )
+        for c in to_check:
+            if c in active and c not in merged:
+                merged.append(c)
     return {
         "venue_id": venue_id,
         "role": vm.venue_role,
-        "permissions": list(codes),
+        "permissions": merged,
         "position": position_obj,
         "position_flags": flags,
     }

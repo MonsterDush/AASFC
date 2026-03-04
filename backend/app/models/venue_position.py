@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -27,6 +27,10 @@ class VenuePosition(Base):
     # MVP: integers (e.g., rate=3000, percent=10). We can migrate to Numeric later.
     rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Fine-grained permissions for this member within this venue (JSON list of permission codes).
+    # Stored as TEXT for compatibility with SQLite and Postgres.
+    permission_codes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Reports / schedule
     can_make_reports: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
