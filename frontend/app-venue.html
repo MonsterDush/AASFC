@@ -297,7 +297,7 @@ function syncTipsControls() {
   if (tipsEnabledEl) tipsEnabledEl.disabled = !canEdit;
 
   // mode select enabled only when tips are enabled AND user can edit
-  const lockMode = (!enabled) || (!canEdit) || (mode === "WEIGHTED_BY_POSITION");
+  const lockMode = (!enabled) || (!canEdit);
   if (tipsModeEl) tipsModeEl.disabled = lockMode;
 
   if (tipsModeSoonEl) tipsModeSoonEl.style.display = (mode === "WEIGHTED_BY_POSITION") ? "" : "none";
@@ -394,6 +394,20 @@ if (tipsModeEl) {
           } catch {
             titleEl.textContent = `Заведение ${venueId}`;
           }
+
+          // --- Venue settings: tips ---
+          try {
+            const s = await getVenueSettings(venueId);
+            tipsSettings = {
+              tips_enabled: !!s?.tips_enabled,
+              tips_split_mode: String(s?.tips_split_mode || "EQUAL").toUpperCase(),
+            };
+          } catch (e) {
+            // If cannot load settings, keep defaults but lock controls.
+            // (View is still allowed for active members; edit is guarded by VENUE_SETTINGS_EDIT)
+          }
+          syncTipsControls();
+
           applyButtons();
         }
 

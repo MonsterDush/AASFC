@@ -384,7 +384,10 @@ function renderMonth() {
     cell.onclick = () => {
       selectedDayISO = dStr;
       renderMonth();
-      openDay(dStr);
+      openDay(dStr).catch((e) => {
+        console.error(e);
+        toast("Ошибка: " + (e?.data?.detail || e?.message || "неизвестно"), "err");
+      });
     };
 
     body.appendChild(cell);
@@ -610,7 +613,6 @@ function reportStatusBadge(status) {
 
 function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, tipsEnabled }) {
   const status = String(rep?.status || "DRAFT").toUpperCase();
-  const tipsOn = tipsEnabled !== false; // default true if setting is not loaded
   const showMoney = canSeeMoney();
   const hasDepartments = Array.isArray(rep?.departments) && rep.departments.length > 0;
 
@@ -1045,7 +1047,6 @@ async function openDay(dayISO) {
 
   // Audit only makes sense when report exists and CLOSED (or has logs)
   const status = String(rep?.status || "DRAFT").toUpperCase();
-  const tipsOn = tipsEnabled !== false; // default true if setting is not loaded
   const audit = (status === "CLOSED" || canEditClosed()) ? await fetchAudit(dayISO) : [];
 
   const st = String(rep?.status || "DRAFT").toUpperCase();

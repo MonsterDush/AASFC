@@ -80,6 +80,7 @@ function renderShell() {
 
     <div class="card">
       <div class="muted">Создайте должности, назначьте сотрудников и задайте условия оплаты.</div>
+      <div class="muted small" id="accessHint" style="margin-top:6px"></div>
 
       <div class="itemcard" style="margin-top:12px">
         <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
@@ -155,6 +156,12 @@ function applyAccessToShell() {
     else if (auth.canManage) sub.textContent = "настройка ставок";
     else if (auth.canManagePerms) sub.textContent = "настройка прав";
     else sub.textContent = "просмотр";
+  }
+
+  const ah = document.getElementById("accessHint");
+  if (ah) {
+    const marks = (ok) => ok ? "✓" : "—";
+    ah.textContent = `Права: просмотр ${marks(auth.canViewList)} · управление ${marks(auth.canManage)} · права позиции ${marks(auth.canManagePerms)} · назначение ${marks(auth.canAssign)}`;
   }
 }
 
