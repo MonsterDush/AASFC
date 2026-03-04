@@ -265,6 +265,9 @@ function renderTitleDatalist() {
 
 function renderPositionForm({ mode, position }) {
   const p = position || {};
+  const pPerms = Array.isArray(p.permission_codes)
+    ? p.permission_codes
+    : (Array.isArray(p.permissions) ? p.permissions : []);
   const titles = uniqueTitles();
 
   const permsOnly = mode === "perms";
@@ -303,12 +306,7 @@ function renderPositionForm({ mode, position }) {
 
       <div>
         <div class="muted" style="margin-bottom:6px">Процент от продаж</div>
-        <input id="f_percent" inputmode="decimal" placeholder="0" value="${esc(p.percent ?? "")}" ${canEditMain ? "" : "disabled"} />
-      </div>
-    </div>
-
-    
-    <div style="margin-top:12px; display:${canEditPerms ? "grid" : "none"}; grid-template-columns: 1fr; gap:10px">
+        <input id="f_percent" inp<div style="margin-top:12px; display:${canEditPerms ? "grid" : "none"}; grid-template-columns: 1fr; gap:10px">
 
       <div class="perm-tools">
         <button class="btn sm" type="button" id="btnPermAllOn">Включить все</button>
@@ -318,80 +316,112 @@ function renderPositionForm({ mode, position }) {
       <div class="card" style="padding:12px">
         <div class="perm-group-title">
           <div>
-            <b>Права для отчётов</b>
-            <div class="muted" style="margin-top:4px; font-size:12px">Можно включать выборочно</div>
+            <b>Закрытие смены</b>
+            <div class="muted" style="margin-top:4px; font-size:12px">Новые права (SHIFT_REPORT_*)</div>
           </div>
           <div class="row" style="gap:6px; flex:0 0 auto">
-            <button class="btn sm" type="button" data-perm-set="reports" data-value="1">Все</button>
-            <button class="btn sm" type="button" data-perm-set="reports" data-value="0">Ничего</button>
+            <button class="btn sm" type="button" data-perm-set="shift_reports" data-value="1">Все</button>
+            <button class="btn sm" type="button" data-perm-set="shift_reports" data-value="0">Ничего</button>
           </div>
         </div>
 
         <div class="perm-row">
           <div class="perm-text">
-            <div class="perm-title">Создание отчётов</div>
-            <div class="perm-desc">Может создавать отчёты по сменам</div>
+            <div class="perm-title">Просмотр отчёта закрытия смены</div>
+            <div class="perm-desc">SHIFT_REPORT_VIEW</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="f_rep_create" data-perm-group="reports" ${p.can_make_reports ? "checked" : ""} />
+            <input type="checkbox" data-perm-code="SHIFT_REPORT_VIEW" data-perm-group="shift_reports"
+              ${((pPerms.includes("SHIFT_REPORT_VIEW")) || (p.can_view_reports || p.can_make_reports)) ? "checked" : ""} />
             <span class="slider"></span>
           </label>
         </div>
 
         <div class="perm-row">
           <div class="perm-text">
-            <div class="perm-title">Редактирование отчётов</div>
-            <div class="perm-desc">Может исправлять ранее созданные отчёты</div>
+            <div class="perm-title">Закрывать смену (CLOSED)</div>
+            <div class="perm-desc">SHIFT_REPORT_CLOSE</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="f_rep_edit" data-perm-group="reports" ${p.can_make_reports ? "checked" : ""} />
+            <input type="checkbox" data-perm-code="SHIFT_REPORT_CLOSE" data-perm-group="shift_reports"
+              ${(pPerms.includes("SHIFT_REPORT_CLOSE") || p.can_make_reports) ? "checked" : ""} />
             <span class="slider"></span>
           </label>
         </div>
 
         <div class="perm-row">
           <div class="perm-text">
-            <div class="perm-title">Просмотр отчётов</div>
-            <div class="perm-desc">Может смотреть отчёты (даже если сам их не создаёт)</div>
+            <div class="perm-title">Правка закрытых отчётов (с аудитом)</div>
+            <div class="perm-desc">SHIFT_REPORT_EDIT</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="f_rep_view" data-perm-group="reports" ${(p.can_view_reports || p.can_make_reports) ? "checked" : ""} />
+            <input type="checkbox" data-perm-code="SHIFT_REPORT_EDIT" data-perm-group="shift_reports"
+              ${pPerms.includes("SHIFT_REPORT_EDIT") ? "checked" : ""} />
             <span class="slider"></span>
           </label>
         </div>
 
         <div class="perm-row">
           <div class="perm-text">
-            <div class="perm-title">Просмотр выручки</div>
-            <div class="perm-desc">Может видеть суммы выручки в отчётах</div>
+            <div class="perm-title">Переоткрыть отчёт (CLOSED → DRAFT)</div>
+            <div class="perm-desc">SHIFT_REPORT_REOPEN</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="f_rep_revenue" data-perm-group="reports" ${(p.can_view_revenue || p.can_make_reports) ? "checked" : ""} />
+            <input type="checkbox" data-perm-code="SHIFT_REPORT_REOPEN" data-perm-group="shift_reports"
+              ${pPerms.includes("SHIFT_REPORT_REOPEN") ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Видеть суммы (выручка/департаменты/оплаты)</div>
+            <div class="perm-desc">MVP-флаг: can_view_revenue (доп.гейт UI)</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f_rep_revenue" data-legacy-flag="can_view_revenue" data-perm-group="shift_reports"
+              ${(p.can_view_revenue || p.can_make_reports) ? "checked" : ""} />
             <span class="slider"></span>
           </label>
         </div>
 
         <div class="muted" style="font-size:12px; margin-top:6px">
-          Владелец видит отчёты всегда, независимо от должности.
+          Владелец и модератор видят отчёты всегда, независимо от должности.
         </div>
       </div>
 
       <div class="card" style="padding:12px">
         <div class="perm-group-title">
-          <b>Права для графика</b>
+          <div>
+            <b>График смен</b>
+            <div class="muted" style="margin-top:4px; font-size:12px">Новые права (SHIFTS_*)</div>
+          </div>
           <div class="row" style="gap:6px; flex:0 0 auto">
-            <button class="btn sm" type="button" data-perm-set="schedule" data-value="1">Все</button>
-            <button class="btn sm" type="button" data-perm-set="schedule" data-value="0">Ничего</button>
+            <button class="btn sm" type="button" data-perm-set="shifts" data-value="1">Все</button>
+            <button class="btn sm" type="button" data-perm-set="shifts" data-value="0">Ничего</button>
           </div>
         </div>
 
         <div class="perm-row">
           <div class="perm-text">
-            <div class="perm-title">Редактировать график</div>
-            <div class="perm-desc">Может добавлять и менять смены в календаре</div>
+            <div class="perm-title">Просмотр графика</div>
+            <div class="perm-desc">SHIFTS_VIEW</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="f_can_schedule" data-perm-group="schedule" ${p.can_edit_schedule ? "checked" : ""} />
+            <input type="checkbox" data-perm-code="SHIFTS_VIEW" data-perm-group="shifts"
+              ${(pPerms.includes("SHIFTS_VIEW") || pPerms.includes("SHIFTS_MANAGE") || p.can_edit_schedule) ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">Редактировать график</div>
+            <div class="perm-desc">SHIFTS_MANAGE (MVP-флаг: can_edit_schedule)</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" data-perm-code="SHIFTS_MANAGE" data-perm-group="shifts"
+              ${(pPerms.includes("SHIFTS_MANAGE") || p.can_edit_schedule) ? "checked" : ""} />
             <span class="slider"></span>
           </label>
         </div>
@@ -400,8 +430,8 @@ function renderPositionForm({ mode, position }) {
       <div class="card" style="padding:12px">
         <div class="perm-group-title">
           <div>
-            <b>Штрафы / Списания / Премии</b>
-            <div class="muted" style="margin-top:4px; font-size:12px">Доступ к финансовым корректировкам</div>
+            <b>Штрафы / Премии / Списания</b>
+            <div class="muted" style="margin-top:4px; font-size:12px">Новые права (ADJUSTMENTS_*, DISPUTES_RESOLVE)</div>
           </div>
           <div class="row" style="gap:6px; flex:0 0 auto">
             <button class="btn sm" type="button" data-perm-set="adjustments" data-value="1">Все</button>
@@ -411,33 +441,44 @@ function renderPositionForm({ mode, position }) {
 
         <div class="perm-row">
           <div class="perm-text">
-            <div class="perm-title">Просмотр</div>
-            <div class="perm-desc">Может смотреть штрафы/премии и историю</div>
+            <div class="perm-title">Просмотр корректировок</div>
+            <div class="perm-desc">ADJUSTMENTS_VIEW</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="f_adj_view" data-perm-group="adjustments" ${(p.can_view_adjustments || p.can_manage_adjustments) ? "checked" : ""} />
+            <input type="checkbox" data-perm-code="ADJUSTMENTS_VIEW" data-perm-group="adjustments"
+              ${(pPerms.includes("ADJUSTMENTS_VIEW") || pPerms.includes("ADJUSTMENTS_MANAGE") || pPerms.includes("DISPUTES_RESOLVE") || p.can_view_adjustments || p.can_manage_adjustments) ? "checked" : ""} />
             <span class="slider"></span>
           </label>
         </div>
 
         <div class="perm-row">
           <div class="perm-text">
-            <div class="perm-title">Создание и редактирование</div>
-            <div class="perm-desc">Может создавать, менять и отменять корректировки</div>
+            <div class="perm-title">Управление корректировками</div>
+            <div class="perm-desc">ADJUSTMENTS_MANAGE</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="f_adj_manage" data-perm-group="adjustments" ${p.can_manage_adjustments ? "checked" : ""} />
+            <input type="checkbox" data-perm-code="ADJUSTMENTS_MANAGE" data-perm-group="adjustments"
+              ${(pPerms.includes("ADJUSTMENTS_MANAGE") || pPerms.includes("DISPUTES_RESOLVE") || p.can_manage_adjustments) ? "checked" : ""} />
             <span class="slider"></span>
           </label>
         </div>
 
         <div class="perm-row">
           <div class="perm-text">
-            <div class="perm-title">Оспаривания</div>
-            <div class="perm-desc">Может разруливать споры по штрафам/премиям</div>
+            <div class="perm-title">Разбор оспариваний</div>
+            <div class="perm-desc">DISPUTES_RESOLVE</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="f_adj_dispute" data-perm-group="adjustments" ${(p.can_resolve_disputes || p.can_manage_adjustments) ? "checked" : ""} />
+            <input type="checkbox" data-perm-code="DISPUTES_RESOLVE" data-perm-group="adjustments"
+              ${(pPerms.includes("DISPUTES_RESOLVE") || p.can_resolve_disputes) ? "checked" : ""} />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+    </div>
+
+stments) ? "checked" : ""} />
             <span class="slider"></span>
           </label>
         </div>
@@ -476,25 +517,45 @@ function collectPayload(base = {}) {
   const rate = (rateEl && !rateEl.disabled) ? toNum(rateEl.value) : toNum(base.rate);
   const percent = (percentEl && !percentEl.disabled) ? toNum(percentEl.value) : toNum(base.percent);
 
-  // Permission flags block may be hidden
+    // Permission block: new permission codes + legacy flags
   const readChk = (id, fallback) => {
     const el = document.getElementById(id);
     if (!el) return !!fallback;
     return !!el.checked;
   };
 
-  const rep_create = readChk("f_rep_create", base.can_make_reports);
-  const rep_edit = readChk("f_rep_edit", base.can_make_reports);
-  const can_make_reports = rep_create || rep_edit;
-  const can_view_reports = readChk("f_rep_view", (base.can_view_reports || can_make_reports));
-  const can_view_revenue = readChk("f_rep_revenue", (base.can_view_revenue || can_make_reports));
+  // New permissions list (if backend supports it). We also map them to legacy boolean fields for backward compatibility.
+  const permEls = Array.from(document.querySelectorAll('input[type="checkbox"][data-perm-code]'));
+  const permission_codes = permEls
+    .filter((x) => x && x.checked)
+    .map((x) => x.getAttribute("data-perm-code"))
+    .filter(Boolean);
 
-  const can_edit_schedule = readChk("f_can_schedule", base.can_edit_schedule);
+  const has = (code) => permission_codes.includes(code);
 
-  const can_view_adjustments = readChk("f_adj_view", (base.can_view_adjustments || base.can_manage_adjustments));
-  const can_manage_adjustments = readChk("f_adj_manage", base.can_manage_adjustments);
-  const can_resolve_disputes = readChk("f_adj_dispute", (base.can_resolve_disputes || base.can_manage_adjustments));
+  // Legacy additional gate: "see money" in report UI (can be used even if permissions are granted).
+  const can_view_revenue = readChk("f_rep_revenue", (base.can_view_revenue || base.can_make_reports));
 
+  // Legacy booleans expected by older backend schema
+  const can_make_reports = permEls.length
+    ? (has("SHIFT_REPORT_CLOSE") || has("SHIFT_REPORT_EDIT") || has("SHIFT_REPORT_REOPEN"))
+    : !!base.can_make_reports;
+
+  const can_view_reports = permEls.length
+    ? (has("SHIFT_REPORT_VIEW") || can_make_reports)
+    : !!(base.can_view_reports || base.can_make_reports);
+
+  const can_edit_schedule = permEls.length ? has("SHIFTS_MANAGE") : !!base.can_edit_schedule;
+
+  const can_manage_adjustments = permEls.length
+    ? (has("ADJUSTMENTS_MANAGE") || has("DISPUTES_RESOLVE"))
+    : !!base.can_manage_adjustments;
+
+  const can_view_adjustments = permEls.length
+    ? (has("ADJUSTMENTS_VIEW") || can_manage_adjustments)
+    : !!(base.can_view_adjustments || base.can_manage_adjustments);
+
+  const can_resolve_disputes = permEls.length ? has("DISPUTES_RESOLVE") : !!base.can_resolve_disputes;
   if (!title) throw new Error("Укажите название должности");
   if (!Number.isFinite(member_user_id) || member_user_id <= 0) throw new Error("Выберите сотрудника");
 
@@ -514,6 +575,7 @@ function collectPayload(base = {}) {
     can_view_adjustments,
     can_manage_adjustments,
     can_resolve_disputes,
+    permission_codes,
   };
 }
 
@@ -522,12 +584,13 @@ function setupPermUX() {
   const modal = document.getElementById("posModal");
   if (!modal) return;
 
-  // Bulk-режим: чтобы "Включить/Выключить все" срабатывало сразу (без "по одному"),
-  // и чтобы зависимости применялись один раз в конце.
+  // Bulk mode: avoid auto-deps while mass toggling
   let bulk = false;
 
-  const allBoxes = () =>
-    Array.from(modal.querySelectorAll('input[type="checkbox"]'));
+  const permBoxes = () =>
+    Array.from(
+      modal.querySelectorAll('input[type="checkbox"][data-perm-code], input[type="checkbox"][data-legacy-flag]')
+    );
 
   const setBoxes = (boxes, val, after) => {
     bulk = true;
@@ -538,58 +601,37 @@ function setupPermUX() {
     if (typeof after === "function") after();
   };
 
-  // Global on/off
-  document.getElementById("btnPermAllOn")?.addEventListener("click", () => {
-    setBoxes(allBoxes(), true, () => {
-      syncReports();
-      syncAdjustments();
-    });
-  });
-  document.getElementById("btnPermAllOff")?.addEventListener("click", () => {
-    setBoxes(allBoxes(), false, () => {
-      // При "Выключить все" ожидаем 0 без автодовключений
-      if (repView) repView.checked = false;
-      if (adjView) adjView.checked = false;
-      syncReports();
-      syncAdjustments();
-    });
-  });
+  const byCode = (code) => modal.querySelector(`input[type="checkbox"][data-perm-code="${code}"]`);
+  const byGroup = (group) =>
+    Array.from(modal.querySelectorAll(`input[type="checkbox"][data-perm-group="${group}"]`));
 
-  // Group on/off
-  modal.querySelectorAll("[data-perm-set]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const group = btn.getAttribute("data-perm-set");
-      const v = btn.getAttribute("data-value") === "1";
-      const boxes = Array.from(
-        modal.querySelectorAll(`input[type="checkbox"][data-perm-group="${group}"]`)
-      );
-      setBoxes(boxes, v, () => {
-        syncReports();
-        syncAdjustments();
-      });
-    });
-  });
+  // --- elements ---
+  const repView = byCode("SHIFT_REPORT_VIEW");
+  const repClose = byCode("SHIFT_REPORT_CLOSE");
+  const repEdit = byCode("SHIFT_REPORT_EDIT");
+  const repReopen = byCode("SHIFT_REPORT_REOPEN");
+  const repRevenue = modal.querySelector("#f_rep_revenue");
 
-  // Dependency helpers
-  const repCreate = document.getElementById("f_rep_create");
-  const repEdit = document.getElementById("f_rep_edit");
-  const repView = document.getElementById("f_rep_view");
-  const repRevenue = document.getElementById("f_rep_revenue");
+  const shView = byCode("SHIFTS_VIEW");
+  const shManage = byCode("SHIFTS_MANAGE");
 
-  const adjView = document.getElementById("f_adj_view");
-  const adjManage = document.getElementById("f_adj_manage");
-  const adjDispute = document.getElementById("f_adj_dispute");
+  const adjView = byCode("ADJUSTMENTS_VIEW");
+  const adjManage = byCode("ADJUSTMENTS_MANAGE");
+  const adjDispute = byCode("DISPUTES_RESOLVE");
 
-  function syncReports() {
+  function syncShiftReports() {
     if (bulk) return;
-    const mustView = (!!repCreate?.checked) || (!!repEdit?.checked) || (!!repRevenue?.checked);
+    const mustView =
+      !!repClose?.checked || !!repEdit?.checked || !!repReopen?.checked || !!repRevenue?.checked;
     if (mustView && repView) repView.checked = true;
-    if (repView && !repView.checked) {
-      // если пользователь попытался выключить просмотр при включённых зависимых правах — вернём обратно
-      if (mustView) repView.checked = true;
-      // если выручка включена, без просмотра её быть не может
-      if (repRevenue?.checked && repView) repView.checked = true;
-    }
+    if (repView && !repView.checked && mustView) repView.checked = true;
+  }
+
+  function syncShifts() {
+    if (bulk) return;
+    // manage -> view
+    if (shManage?.checked && shView) shView.checked = true;
+    if (shView && !shView.checked && shManage?.checked) shView.checked = true;
   }
 
   function syncAdjustments() {
@@ -597,36 +639,67 @@ function setupPermUX() {
     // manage -> view
     if (adjManage?.checked && adjView) adjView.checked = true;
 
-    // dispute -> manage + view
+    // disputes -> manage + view
     if (adjDispute?.checked) {
       if (adjManage) adjManage.checked = true;
       if (adjView) adjView.checked = true;
     }
 
-    // если manage выключили — dispute тоже выключаем
+    // if manage turned off -> disputes off
     if (adjManage && !adjManage.checked && adjDispute) adjDispute.checked = false;
 
-    // если view выключили при manage/dispute — вернём view
+    // if view turned off while others on -> revert view on
     if (adjView && !adjView.checked && ((adjManage?.checked) || (adjDispute?.checked))) {
       adjView.checked = true;
     }
   }
 
-  // Attach listeners
-  [repCreate, repEdit, repView, repRevenue].forEach((el) => {
-    if (!el) return;
-    el.addEventListener("change", syncReports);
+  // Global on/off (only within permissions block)
+  document.getElementById("btnPermAllOn")?.addEventListener("click", () => {
+    setBoxes(permBoxes(), true, () => {
+      syncShiftReports();
+      syncShifts();
+      syncAdjustments();
+    });
   });
-  [adjView, adjManage, adjDispute].forEach((el) => {
-    if (!el) return;
-    el.addEventListener("change", syncAdjustments);
+
+  document.getElementById("btnPermAllOff")?.addEventListener("click", () => {
+    // Expect clean 0 without auto-dependencies
+    setBoxes(permBoxes(), false);
+  });
+
+  // Group on/off
+  modal.querySelectorAll("[data-perm-set]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const group = btn.getAttribute("data-perm-set");
+      const v = btn.getAttribute("data-value") === "1";
+      setBoxes(byGroup(group), v, () => {
+        syncShiftReports();
+        syncShifts();
+        syncAdjustments();
+      });
+    });
+  });
+
+  // Attach listeners
+  [repView, repClose, repEdit, repReopen, repRevenue].forEach((x) => {
+    if (!x) return;
+    x.addEventListener("change", syncShiftReports);
+  });
+  [shView, shManage].forEach((x) => {
+    if (!x) return;
+    x.addEventListener("change", syncShifts);
+  });
+  [adjView, adjManage, adjDispute].forEach((x) => {
+    if (!x) return;
+    x.addEventListener("change", syncAdjustments);
   });
 
   // Initial sync
-  syncReports();
+  syncShiftReports();
+  syncShifts();
   syncAdjustments();
 }
-
 
 /* ---------- Modal actions ---------- */
 
@@ -860,8 +933,30 @@ function renderPositions() {
 function positionPresetFromTemplate(title) {
   const t = String(title || "").trim();
   if (!t) return null;
+
   const p = state.positions.find((x) => String(x.title || "").trim() === t);
   const src = p || { title: t };
+
+  // Prefer new field if backend returns it, otherwise derive from legacy flags.
+  let codes = Array.isArray(src.permission_codes)
+    ? src.permission_codes.slice()
+    : (Array.isArray(src.permissions) ? src.permissions.slice() : []);
+
+  if (!codes.length) {
+    if (src.can_view_reports || src.can_make_reports) codes.push("SHIFT_REPORT_VIEW");
+    if (src.can_make_reports) codes.push("SHIFT_REPORT_CLOSE");
+    if (src.can_edit_schedule) {
+      codes.push("SHIFTS_VIEW");
+      codes.push("SHIFTS_MANAGE");
+    }
+    if (src.can_view_adjustments || src.can_manage_adjustments) codes.push("ADJUSTMENTS_VIEW");
+    if (src.can_manage_adjustments) codes.push("ADJUSTMENTS_MANAGE");
+    if (src.can_resolve_disputes) codes.push("DISPUTES_RESOLVE");
+  }
+
+  // unique
+  codes = Array.from(new Set(codes));
+
   return {
     title: t,
     rate: Math.max(0, Math.round(Number(src.rate || 0) || 0)),
@@ -873,6 +968,7 @@ function positionPresetFromTemplate(title) {
     can_view_adjustments: !!src.can_view_adjustments,
     can_manage_adjustments: !!src.can_manage_adjustments,
     can_resolve_disputes: !!src.can_resolve_disputes,
+    permission_codes: codes,
   };
 }
 

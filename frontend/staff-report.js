@@ -406,11 +406,11 @@ async function fetchReport(dayISO) {
 }
 
 async function fetchAttachments(dayISO) {
-  try {
-    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`);
-  } catch {
-    return { items: [] };
-  }
+  return safeWithTimeout(
+    api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`),
+    7000,
+    { items: [] }
+  );
 }
 
 async function uploadAttachments(dayISO, files) {
@@ -423,11 +423,11 @@ async function uploadAttachments(dayISO, files) {
 }
 
 async function fetchAudit(dayISO) {
-  try {
-    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/audit`);
-  } catch {
-    return [];
-  }
+  return safeWithTimeout(
+    api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/audit`),
+    7000,
+    []
+  );
 }
 
 async function closeReport(dayISO, comment) {
@@ -992,6 +992,27 @@ async function upsertReportFromDom({ dayISO, hasDepartments, tipsEnabled }) {
   });
 }
 
+function withTimeout(promise, ms, label = "") {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        const e = new Error("TIMEOUT" + (label ? `: ${label}` : ""));
+        e.code = "TIMEOUT";
+        reject(e);
+      }, ms);
+    }),
+  ]);
+}
+
+async function safeWithTimeout(promise, ms, fallback) {
+  try {
+    return await withTimeout(promise, ms);
+  } catch {
+    return fallback;
+  }
+}
+
 async function openDay(dayISO) {
   if (!venueId) return;
   if (!canView()) return;
@@ -1006,9 +1027,9 @@ async function openDay(dayISO) {
   let catalogs = { payments: [], departments: [], kpis: [] };
   try {
     const [payments, departments, kpis] = await Promise.all([
-      getPaymentMethods(venueId, { includeArchived: false }).catch(() => []),
-      getDepartments(venueId, { includeArchived: false }).catch(() => []),
-      getKpiMetrics(venueId, { includeArchived: false }).catch(() => []),
+      safeWithTimeout(getPaymentMethods(venueId, { includeArchived: false }), 8000, []),
+      safeWithTimeout(getDepartments(venueId, { includeArchived: false }), 8000, []),
+      safeWithTimeout(getKpiMetrics(venueId, { includeArchived: false }), 8000, []),
     ]);
     catalogs = {
       payments: Array.isArray(payments) ? payments : [],
@@ -1022,7 +1043,7 @@ async function openDay(dayISO) {
   // Load venue settings (tips)
   let tipsEnabledForVenue = true;
   try {
-    const s = await getVenueSettings(venueId);
+    const s = await safeWithTimeout(getVenueSettings(venueId), 6000, { tips_enabled: true });
     tipsEnabledForVenue = s?.tips_enabled !== false;
   } catch {
     // If settings cannot be loaded, default to showing tips field (backend will still ignore when disabled).
@@ -1032,9 +1053,12 @@ async function openDay(dayISO) {
   // Load report (may not exist)
   let rep = null;
   try {
-    rep = await fetchReport(dayISO);
+    rep = await withTimeout(fetchReport(dayISO), 9000, "report");
   } catch (e) {
-    if (e?.status === 404 || e?.data?.detail === "Report not found") {
+    if (e?.code === "TIMEOUT") {
+      toast("Сервер долго отвечает (таймаут). Открыт пустой черновик.", "warn");
+      rep = buildEmptyReportFromCatalogs(dayISO, catalogs);
+    } else if (e?.status === 404 || e?.data?.detail === "Report not found") {
       rep = buildEmptyReportFromCatalogs(dayISO, catalogs);
     } else {
       toast("Ошибка загрузки отчёта: " + (e?.data?.detail || e?.message || "неизвестно"), "err");
@@ -1054,7 +1078,14 @@ async function openDay(dayISO) {
   const initMode = (isDraft && canMake() && canSeeMoney()) ? "edit" : "view";
 
   const state = { dayISO, rep, catalogs, attachments: attItems, audit, mode: initMode, tipsEnabled: tipsEnabledForVenue };
-  const view = renderReportModal(state);
+  let view;
+  try {
+    view = renderReportModal(state);
+  } catch (e) {
+    console.error(e);
+    openModal(formatDateRuNoG(dayISO), "Ошибка", `<div class="muted">Не удалось отрисовать отчёт: ${esc(e?.message || e)}</div>`);
+    return;
+  }
   openModal(view.title, view.subtitle, view.body);
 
   // Live totals only when editing is enabled (draft or enabled closed edit)
