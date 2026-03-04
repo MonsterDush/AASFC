@@ -15,12 +15,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, delete, update, func
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_user, get_current_user_optional
+from app.auth.deps import get_current_user
 from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.core.tg import normalize_tg_username, send_telegram_message
 from app.services import tg_notify
-from app.services.signed_links import make_signed_token, verify_signed_token
 from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
 
 from app.models.user import User
@@ -43,6 +42,7 @@ from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
 from app.models.department import Department
 from app.models.payment_method import PaymentMethod
 from app.models.kpi_metric import KpiMetric
+from app.models.permission import Permission
 
 from app.auth.venue_permissions import require_venue_permission
 
@@ -1658,46 +1658,22 @@ def _revenue_kind_and_catalog(mode: str):
     raise HTTPException(status_code=400, detail="Bad mode, expected DEPARTMENTS or PAYMENTS")
 
 
-# ------------------------------
-# Revenue helpers
-# ------------------------------
-
-_RU_TRANSLIT = {
-    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh", "з": "z",
-    "и": "i", "й": "i", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
-    "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "c", "ч": "ch", "ш": "sh",
-    "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
-}
-
-
-def _translit_ru(s: str) -> str:
-    out: list[str] = []
-    for ch in str(s or ""):
-        low = ch.lower()
-        if low in _RU_TRANSLIT:
-            out.append(_RU_TRANSLIT[low])
-        elif ch.isascii():
-            out.append(ch)
-        else:
-            out.append("_")
-    return "".join(out)
-
-
-def _slugify_venue_name(name: str, fallback: str) -> str:
-    base = _translit_ru(name)
-    safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", base).strip("_")
-    return safe or fallback
-
-
-def _revenue_summary_core(
-    *,
-    db: Session,
+@router.get("/{venue_id}/revenue", response_model=RevenueSummaryOut)
+def get_revenue_summary(
     venue_id: int,
-    month: str | None,
-    date_from: date | None,
-    date_to: date | None,
-    mode: str,
-) -> dict:
+    month: str | None = Query(None, description="YYYY-MM"),
+    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Агрегация доходов по CLOSED отчётам за месяц."""
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    if not _can_view_revenue(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     start, end_incl = _resolve_period(month, date_from, date_to)
     end_excl = end_incl + timedelta(days=1)
     kind, Catalog = _revenue_kind_and_catalog(mode)
@@ -1744,14 +1720,13 @@ def _revenue_summary_core(
     catalog_map: dict[int, dict] = {}
     if ref_ids:
         items = (
-            db.execute(select(Catalog).where(Catalog.venue_id == venue_id, Catalog.id.in_(ref_ids)))
+            db.execute(
+                select(Catalog).where(Catalog.venue_id == venue_id, Catalog.id.in_(ref_ids))
+            )
             .scalars()
             .all()
         )
-        catalog_map = {
-            int(it.id): {"code": getattr(it, "code", None), "title": getattr(it, "title", f"#{it.id}")}
-            for it in items
-        }
+        catalog_map = {int(it.id): {"code": getattr(it, "code", None), "title": getattr(it, "title", f"#{it.id}")} for it in items}
 
     rows: list[dict] = []
     total = 0
@@ -1760,12 +1735,20 @@ def _revenue_summary_core(
         amt = int(r.amount or 0)
         total += amt
         meta = catalog_map.get(rid) or {"code": None, "title": f"Удалено #{rid}"}
-        rows.append({"ref_id": rid, "code": meta.get("code"), "title": meta.get("title") or f"#{rid}", "amount": amt})
+        rows.append(
+            {
+                "ref_id": rid,
+                "code": meta.get("code"),
+                "title": meta.get("title") or f"#{rid}",
+                "amount": amt,
+            }
+        )
 
     rows.sort(key=lambda x: (-int(x.get("amount") or 0), str(x.get("title") or "")))
 
     month_out = month
     if month_out is None and date_from is None and date_to is None:
+        # defaulted to current month
         month_out = start.strftime("%Y-%m")
 
     return {
@@ -1779,79 +1762,6 @@ def _revenue_summary_core(
     }
 
 
-
-@router.get("/{venue_id}/revenue", response_model=RevenueSummaryOut)
-def get_revenue_summary(
-    venue_id: int,
-    month: str | None = Query(None, description="YYYY-MM"),
-    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
-    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
-    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Агрегация доходов по CLOSED отчётам за период."""
-    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    _require_report_viewer(db, venue_id=venue_id, user=user)
-    if not _can_view_revenue(db, venue_id=venue_id, user=user):
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    return _revenue_summary_core(
-        db=db,
-        venue_id=venue_id,
-        month=month,
-        date_from=date_from,
-        date_to=date_to,
-        mode=mode,
-    )
-
-
-
-class RevenueExportLinkOut(BaseModel):
-    path: str
-    token: str
-
-
-@router.get("/{venue_id}/revenue/export_link", response_model=RevenueExportLinkOut)
-def get_revenue_export_link(
-    venue_id: int,
-    month: str | None = Query(None, description="YYYY-MM"),
-    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
-    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
-    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
-    fmt: str = Query("xlsx", description="xlsx | csv"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Генерирует подписанную ссылку на экспорт: скачать сможет любой, у кого есть ссылка."""
-    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    _require_report_viewer(db, venue_id=venue_id, user=user)
-    if not _can_view_revenue(db, venue_id=venue_id, user=user):
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    # Stabilize defaults (lock to current month if nothing was provided)
-    start, _end_incl = _resolve_period(month, date_from, date_to)
-    month_out = month
-    if month_out is None and date_from is None and date_to is None:
-        month_out = start.strftime("%Y-%m")
-
-    payload = {
-        "v": 1,
-        "venue_id": int(venue_id),
-        "mode": (mode or "DEPARTMENTS").upper(),
-        "fmt": (fmt or "xlsx").lower(),
-        "month": month_out,
-        "date_from": date_from.isoformat() if date_from else None,
-        "date_to": date_to.isoformat() if date_to else None,
-    }
-    token = make_signed_token(payload)
-
-    # Return path (frontend prefixes API_BASE)
-    path = f"/venues/{venue_id}/revenue/export?token={token}"
-    return {"path": path, "token": token}
-
-
-
 @router.get("/{venue_id}/revenue/export")
 def export_revenue(
     venue_id: int,
@@ -1860,62 +1770,11 @@ def export_revenue(
     date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
     fmt: str = Query("xlsx", description="xlsx | csv"),
-    token: str | None = Query(None, description="Signed token for public download"),
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_current_user_optional),
+    user: User = Depends(get_current_user),
 ):
-    """Экспорт доходов за период (CLOSED) в XLSX (по умолчанию) или CSV.
-
-    - Если передан `token`, авторизация не нужна: скачать сможет любой по ссылке.
-    - Если `token` не передан, требуется обычная авторизация (cookie) и права.
-    """
-    # Resolve access + params
-    summary: dict
-    fmt_use = (fmt or "xlsx").lower()
-
-    if token:
-        try:
-            payload = verify_signed_token(token)
-        except Exception:
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-        if int(payload.get("venue_id") or 0) != int(venue_id):
-            raise HTTPException(status_code=403, detail="Forbidden")
-
-        month_p = payload.get("month")
-        df_p = payload.get("date_from")
-        dt_p = payload.get("date_to")
-        mode_p = (payload.get("mode") or mode).upper()
-        fmt_use = (payload.get("fmt") or fmt_use).lower()
-
-        df_val = date.fromisoformat(df_p) if df_p else None
-        dt_val = date.fromisoformat(dt_p) if dt_p else None
-
-        summary = _revenue_summary_core(
-            db=db,
-            venue_id=venue_id,
-            month=month_p,
-            date_from=df_val,
-            date_to=dt_val,
-            mode=mode_p,
-        )
-    else:
-        if not user:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-
-        _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-        _require_report_viewer(db, venue_id=venue_id, user=user)
-        if not _can_view_revenue(db, venue_id=venue_id, user=user):
-            raise HTTPException(status_code=403, detail="Forbidden")
-
-        summary = _revenue_summary_core(
-            db=db,
-            venue_id=venue_id,
-            month=month,
-            date_from=date_from,
-            date_to=date_to,
-            mode=mode,
-        )
+    """Экспорт доходов за месяц (CLOSED) в XLSX (по умолчанию) или CSV."""
+    summary = get_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db, user=user)
 
     # Venue name for filename
     v = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
@@ -1923,9 +1782,9 @@ def export_revenue(
 
     mode_label = "payments" if summary["mode"] == "PAYMENTS" else "departments"
     period_label = summary.get("month") or f"{summary['period_start'].isoformat()}_{summary['period_end'].isoformat()}"
-    safe_venue = _slugify_venue_name(venue_name, fallback=f"venue_{venue_id}")
+    safe_venue = re.sub(r"[^a-zA-Z0-9_-]+", "_", venue_name).strip("_") or f"venue_{venue_id}"
 
-    if (fmt_use or "").lower() == "csv":
+    if (fmt or "").lower() == "csv":
         content = build_revenue_csv(
             month=period_label,
             mode=summary["mode"],
@@ -3096,9 +2955,6 @@ def update_shift_interval(
 
     start_changed = payload.start_time is not None and payload.start_time != obj.start_time
 
-    if perms_touched:
-        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
-
     if payload.title is not None:
         obj.title = payload.title.strip()
     if payload.start_time is not None:
@@ -3701,8 +3557,6 @@ def update_department(
 
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
-    if perms_touched:
-        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         obj.title = payload.title.strip()
@@ -3813,8 +3667,6 @@ def update_payment_method(
         obj.is_active = bool(payload.is_active)
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
-    if perms_touched:
-        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         obj.title = payload.title.strip()
@@ -3902,8 +3754,6 @@ def update_kpi_metric(
         obj.is_active = bool(payload.is_active)
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
-    if perms_touched:
-        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         obj.title = payload.title.strip()
