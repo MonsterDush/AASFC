@@ -31,6 +31,7 @@ from app.models.daily_report import DailyReport
 from app.models.daily_report_attachment import DailyReportAttachment
 from app.models.daily_report_value import DailyReportValue
 from app.models.daily_report_audit import DailyReportAudit
+from app.models.daily_report_tip_allocation import DailyReportTipAllocation
 from app.models.adjustment import Adjustment
 from app.models.adjustment_dispute import AdjustmentDispute
 from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
@@ -73,6 +74,37 @@ class InviteCreateIn(BaseModel):
     tg_username: str
     venue_role: str = "STAFF"  # "OWNER" | "STAFF"
 
+
+
+class InviteDefaultPositionIn(BaseModel):
+    # preset position data to apply after invite is accepted
+    title: str = Field(..., min_length=1, max_length=100)
+    rate: int = Field(0, ge=0)
+    percent: int = Field(0, ge=0, le=100)
+    can_make_reports: bool = False
+    can_view_reports: bool = False
+    can_view_revenue: bool = False
+    can_edit_schedule: bool = False
+    can_view_adjustments: bool = False
+    can_manage_adjustments: bool = False
+    can_resolve_disputes: bool = False
+
+
+
+class InviteDefaultPositionPatchIn(BaseModel):
+    default_position: InviteDefaultPositionIn | None = None
+
+
+class VenueSettingsOut(BaseModel):
+    tips_enabled: bool = False
+    tips_split_mode: str = "EQUAL"
+    tips_weights: dict | None = None
+
+
+class VenueSettingsPatchIn(BaseModel):
+    tips_enabled: bool | None = None
+    tips_split_mode: str | None = None
+    tips_weights: dict | None = None
 
 
 class PositionCreateIn(BaseModel):
@@ -309,6 +341,15 @@ def _is_report_maker(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
 
+    # Permission-based (preferred)
+    for code in ("SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"):
+        try:
+            require_venue_permission(db, venue_id=venue_id, user=user, permission_code=code)
+            return True
+        except HTTPException:
+            pass
+
+    # Legacy position flags (kept for backwards compatibility)
     pos = db.execute(
         select(VenuePosition).where(
             VenuePosition.venue_id == venue_id,
@@ -328,6 +369,15 @@ def _is_report_viewer(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
 
+    # Permission-based (preferred)
+    for code in ("SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"):
+        try:
+            require_venue_permission(db, venue_id=venue_id, user=user, permission_code=code)
+            return True
+        except HTTPException:
+            pass
+
+    # Legacy position flags (kept for backwards compatibility)
     pos = db.execute(
         select(VenuePosition).where(
             VenuePosition.venue_id == venue_id,
@@ -403,6 +453,15 @@ def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
 
+    # Permission-based (preferred)
+    for code in ("SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"):
+        try:
+            require_venue_permission(db, venue_id=venue_id, user=user, permission_code=code)
+            return True
+        except HTTPException:
+            pass
+
+    # Legacy position flags (kept for backwards compatibility)
     pos = db.execute(
         select(VenuePosition).where(
             VenuePosition.venue_id == venue_id,
@@ -566,17 +625,35 @@ def get_members(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    allowed = _is_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    if not allowed:
+        for code in ("STAFF_VIEW", "STAFF_MANAGE", "POSITIONS_VIEW", "POSITIONS_MANAGE", "POSITIONS_ASSIGN"):
+            try:
+                require_venue_permission(db, venue_id=venue_id, user=user, permission_code=code)
+                allowed = True
+                break
+            except HTTPException:
+                pass
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     members = (
-        db.query(User.id, User.tg_user_id, User.tg_username, User.full_name, User.short_name,VenueMember.venue_role)
+        db.query(User.id, User.tg_user_id, User.tg_username, User.full_name, User.short_name, VenueMember.venue_role)
         .join(VenueMember, VenueMember.user_id == User.id)
         .filter(VenueMember.venue_id == venue_id, VenueMember.is_active.is_(True))
         .all()
     )
 
     invites = (
-        db.query(VenueInvite.id, VenueInvite.invited_tg_username, VenueInvite.venue_role, VenueInvite.created_at)
+        db.query(
+            VenueInvite.id,
+            VenueInvite.invited_tg_username,
+            VenueInvite.venue_role,
+            VenueInvite.created_at,
+            VenueInvite.default_position_json,
+        )
         .filter(
             VenueInvite.venue_id == venue_id,
             VenueInvite.is_active.is_(True),
@@ -588,11 +665,14 @@ def get_members(
 
     return {
         "members": [
-            {"user_id": r.id, "tg_user_id": r.tg_user_id, "tg_username": r.tg_username,
-                    "full_name": r.full_name,
-                    "short_name": r.short_name,
+            {
+                "user_id": r.id,
+                "tg_user_id": r.tg_user_id,
+                "tg_username": r.tg_username,
                 "full_name": r.full_name,
-                "short_name": r.short_name, "venue_role": r.venue_role}
+                "short_name": r.short_name,
+                "venue_role": r.venue_role,
+            }
             for r in members
         ],
         "pending_invites": [
@@ -601,6 +681,7 @@ def get_members(
                 "tg_username": r.invited_tg_username,
                 "venue_role": r.venue_role,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                "default_position": r.default_position_json,
             }
             for r in invites
         ],
@@ -608,19 +689,98 @@ def get_members(
 
 
 
+# ---------- Venue settings ----------
+
+@router.get("/{venue_id}/settings", response_model=VenueSettingsOut)
+def get_venue_settings(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+
+    return VenueSettingsOut(
+        tips_enabled=bool(getattr(venue, "tips_enabled", False)),
+        tips_split_mode=str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL"),
+        tips_weights=getattr(venue, "tips_weights", None),
+    )
+
+
+@router.patch("/{venue_id}/settings", response_model=VenueSettingsOut)
+def patch_venue_settings(
+    venue_id: int,
+    payload: VenueSettingsPatchIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="VENUE_SETTINGS_EDIT")
+
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+
+    if payload.tips_enabled is not None:
+        venue.tips_enabled = bool(payload.tips_enabled)
+
+    if payload.tips_split_mode is not None:
+        mode = str(payload.tips_split_mode).strip().upper()
+        if mode not in ("EQUAL", "WEIGHTED_BY_POSITION"):
+            raise HTTPException(status_code=400, detail="Bad tips_split_mode")
+        venue.tips_split_mode = mode
+
+    # stub (weights are stored, but not used yet)
+    if payload.tips_weights is not None:
+        venue.tips_weights = payload.tips_weights
+
+    db.commit()
+    db.refresh(venue)
+    return VenueSettingsOut(
+        tips_enabled=bool(getattr(venue, "tips_enabled", False)),
+        tips_split_mode=str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL"),
+        tips_weights=getattr(venue, "tips_weights", None),
+    )
+
+
 # ---------- Positions (job roles inside venue) ----------
 
 @router.get("/{venue_id}/positions")
 def list_positions(
     venue_id: int,
-    include_inactive: bool = Query(False, description="If true, return inactive members/positions too (owner/admin only)."),
+    include_inactive: bool = Query(False, description="If true, return inactive members/positions too (requires manage)."),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_schedule_editor(db, venue_id=venue_id, user=user)
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    allowed = _is_owner_or_super_admin(db, venue_id=venue_id, user=user) or _is_schedule_editor(db, venue_id=venue_id, user=user)
+    if not allowed:
+        for code in ("POSITIONS_VIEW", "POSITIONS_MANAGE", "SHIFTS_VIEW", "SHIFTS_MANAGE"):
+            try:
+                require_venue_permission(db, venue_id=venue_id, user=user, permission_code=code)
+                allowed = True
+                break
+            except HTTPException:
+                pass
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     if include_inactive:
-        _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+        manage_ok = _is_owner_or_super_admin(db, venue_id=venue_id, user=user)
+        if not manage_ok:
+            try:
+                require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_MANAGE")
+                manage_ok = True
+            except HTTPException:
+                manage_ok = False
+        if not manage_ok:
+            raise HTTPException(status_code=403, detail="Forbidden")
 
     stmt = (
         select(
@@ -695,7 +855,9 @@ def create_position(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_MANAGE")
 
     # validate member exists in this venue (active)
     vm = db.execute(
@@ -760,7 +922,12 @@ def update_position(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    is_owner = _is_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    if not is_owner:
+        # General editing of position requires POSITIONS_MANAGE
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_MANAGE")
 
     pos = db.execute(
         select(VenuePosition).where(VenuePosition.id == position_id, VenuePosition.venue_id == venue_id)
@@ -768,7 +935,11 @@ def update_position(
     if pos is None:
         raise HTTPException(status_code=404, detail="Position not found")
 
+    # Changing member assignment is a separate permission
     if payload.member_user_id is not None and payload.member_user_id != pos.member_user_id:
+        if not is_owner:
+            require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_ASSIGN")
+
         # validate member exists
         vm = db.execute(
             select(VenueMember).where(
@@ -790,6 +961,22 @@ def update_position(
             raise HTTPException(status_code=409, detail="Position for this member already exists")
 
         pos.member_user_id = payload.member_user_id
+
+    # Editing permission flags is a separate permission (matrix)
+    flags_touched = any(
+        x is not None
+        for x in (
+            payload.can_make_reports,
+            payload.can_view_reports,
+            payload.can_view_revenue,
+            payload.can_edit_schedule,
+            payload.can_view_adjustments,
+            payload.can_manage_adjustments,
+            payload.can_resolve_disputes,
+        )
+    )
+    if flags_touched and not is_owner:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITION_PERMISSIONS_MANAGE")
 
     if payload.title is not None:
         pos.title = payload.title.strip()
@@ -825,7 +1012,9 @@ def delete_position(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_MANAGE")
 
     pos = db.execute(
         select(VenuePosition).where(VenuePosition.id == position_id, VenuePosition.venue_id == venue_id)
@@ -959,6 +1148,13 @@ def upsert_daily_report(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_maker(db, venue_id=venue_id, user=user)
 
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    tips_enabled = bool(getattr(venue, "tips_enabled", False))
+    safe_tips_total = int(payload.tips_total or 0) if tips_enabled else 0
+
+
     obj = db.execute(
         select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == payload.date)
     ).scalar_one_or_none()
@@ -973,7 +1169,7 @@ def upsert_daily_report(
             cash=payload.cash,
             cashless=payload.cashless,
             revenue_total=payload.revenue_total,
-            tips_total=payload.tips_total,
+            tips_total=safe_tips_total,
             status="DRAFT",
             comment=payload.comment,
             created_by_user_id=user.id,
@@ -990,7 +1186,7 @@ def upsert_daily_report(
         obj.cash = payload.cash
         obj.cashless = payload.cashless
         obj.revenue_total = payload.revenue_total
-        obj.tips_total = payload.tips_total
+        obj.tips_total = safe_tips_total
         if payload.comment is not None:
             obj.comment = payload.comment
         obj.updated_by_user_id = user.id
@@ -1164,6 +1360,15 @@ def get_daily_report(
         "payments_total": totals["payments_total"] if show_numbers else None,
         "departments_total": totals["departments_total"] if show_numbers else None,
         "discrepancy": totals["discrepancy"] if show_numbers else None,
+        "tips_allocations": (
+            [
+                {"user_id": int(a.user_id), "amount": int(a.amount), "split_mode": str(a.split_mode)}
+                for a in db.execute(
+                    select(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == r.id).order_by(DailyReportTipAllocation.id.asc())
+                ).scalars().all()
+            ]
+            if show_numbers else None
+        ),
     }
 
 
@@ -1205,6 +1410,15 @@ def close_daily_report(
         db.add(rep)
         db.flush()
 
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    tips_enabled = bool(getattr(venue, "tips_enabled", False))
+    tips_split_mode = str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL").upper()
+    if not tips_enabled:
+        # when tips are disabled for venue, ignore any stored tips_total
+        rep.tips_total = 0
+
     if rep.status == "CLOSED":
         return {"ok": True, "status": "CLOSED"}
 
@@ -1221,11 +1435,50 @@ def close_daily_report(
     if payload.comment is not None:
         rep.comment = payload.comment
 
+
+    # --- tips allocation (optional) ---
+    # If venue has tips enabled, distribute daily report tips_total across all assigned members of this date.
+    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
+
+    if tips_enabled:
+        tips_total = int(rep.tips_total or 0)
+        if tips_total > 0:
+            if tips_split_mode != "EQUAL":
+                raise HTTPException(status_code=400, detail="Tips split mode not implemented yet")
+            assigned_user_ids = db.execute(
+                select(ShiftAssignment.member_user_id)
+                .join(Shift, Shift.id == ShiftAssignment.shift_id)
+                .where(
+                    Shift.venue_id == venue_id,
+                    Shift.date == report_date,
+                    Shift.is_active.is_(True),
+                )
+            ).scalars().all()
+            uniq = sorted({int(x) for x in assigned_user_ids if x is not None})
+            n = len(uniq)
+            if n > 0:
+                share = tips_total // n
+                remainder = tips_total - share * n
+                for i, uid in enumerate(uniq):
+                    amount = share + (1 if i < remainder else 0)
+                    db.add(
+                        DailyReportTipAllocation(
+                            report_id=rep.id,
+                            user_id=uid,
+                            amount=int(amount),
+                            split_mode="EQUAL",
+                        )
+                    )
+
     rep.status = "CLOSED"
     rep.closed_by_user_id = user.id
     rep.closed_at = datetime.utcnow()
     rep.updated_by_user_id = user.id
     rep.updated_at = datetime.utcnow()
+
+    # clear any stored tip allocations for this report (reopen)
+    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
+
     db.commit()
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
 
@@ -2152,6 +2405,36 @@ def create_invite(
 
     db.commit()
     return {"ok": True, "mode": "invited"}
+
+
+@router.patch("/{venue_id}/invites/{invite_id}/default_position")
+def set_invite_default_position(
+    venue_id: int,
+    invite_id: int,
+    payload: InviteDefaultPositionPatchIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    # Changing preset position for an invite requires POSITIONS_ASSIGN (or owner/admin).
+    if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_ASSIGN")
+
+    inv = db.query(VenueInvite).filter(
+        VenueInvite.id == invite_id,
+        VenueInvite.venue_id == venue_id,
+    ).one_or_none()
+    if not inv or not inv.is_active or inv.accepted_user_id is not None:
+        raise HTTPException(status_code=404, detail="Invite not found")
+
+    if payload.default_position is None:
+        inv.default_position_json = None
+    else:
+        inv.default_position_json = payload.default_position.dict()
+
+    db.commit()
+    return {"ok": True, "default_position": inv.default_position_json}
 
 
 @router.delete("/{venue_id}/invites/{invite_id}")

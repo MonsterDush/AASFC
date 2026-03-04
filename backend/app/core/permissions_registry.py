@@ -16,6 +16,7 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("POSITIONS_VIEW", "Positions", "Просмотр должностей", "Видеть список должностей"),
     PermissionDef("POSITIONS_MANAGE", "Positions", "Управление должностями", "Создавать/редактировать/удалять должности"),
     PermissionDef("POSITION_PERMISSIONS_MANAGE", "Positions", "Права должностей", "Настраивать права у должностей"),
+    PermissionDef("POSITIONS_ASSIGN", "Positions", "Назначение должностей", "Назначать/менять должность сотруднику (в т.ч. приглашённому)"),
 
     # Staff
     PermissionDef("STAFF_VIEW", "Staff", "Просмотр сотрудников", "Видеть список сотрудников"),
@@ -24,6 +25,9 @@ PERMISSIONS: list[PermissionDef] = [
     # Shifts
     PermissionDef("SHIFTS_VIEW", "Shifts", "Просмотр смен", "Видеть список смен и расписание"),
     PermissionDef("SHIFTS_MANAGE", "Shifts", "Управление сменами", "Создавать/редактировать смены и промежутки"),
+
+    # Venue settings
+    PermissionDef("VENUE_SETTINGS_EDIT", "Venue", "Настройки заведения", "Изменять настройки заведения (например, чаевые)"),
 
     # Expenses
     PermissionDef("EXPENSE_ADD", "Expenses", "Добавление расходов", "Вносить расход"),

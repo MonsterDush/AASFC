@@ -1,4 +1,5 @@
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
@@ -17,6 +18,9 @@ class VenueInvite(Base):
 
     accepted_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     accepted_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Optional preset position for invited user (applied on accept)
+    default_position_json = Column(JSONB, nullable=True)
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
