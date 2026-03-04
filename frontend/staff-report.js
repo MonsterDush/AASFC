@@ -198,6 +198,19 @@ function openModal(title, subtitle, bodyHtml) {
   modal?.classList.add("open");
 }
 
+function withTimeout(p, ms, label) {
+  const timeoutMs = Number(ms) || 0;
+  if (!timeoutMs) return p;
+  let t;
+  const tp = new Promise((_, rej) => {
+    t = setTimeout(() => rej(new Error(`Timeout${label ? ': ' + label : ''}`)), timeoutMs);
+  });
+  return Promise.race([
+    Promise.resolve(p).finally(() => clearTimeout(t)),
+    tp,
+  ]);
+}
+
 // ---- Calendar ----
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 let curMonth = new Date();
@@ -406,11 +419,11 @@ async function fetchReport(dayISO) {
 }
 
 async function fetchAttachments(dayISO) {
-  return safeWithTimeout(
-    api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`),
-    7000,
-    { items: [] }
-  );
+  try {
+    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`);
+  } catch {
+    return { items: [] };
+  }
 }
 
 async function uploadAttachments(dayISO, files) {
@@ -423,11 +436,11 @@ async function uploadAttachments(dayISO, files) {
 }
 
 async function fetchAudit(dayISO) {
-  return safeWithTimeout(
-    api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/audit`),
-    7000,
-    []
-  );
+  try {
+    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/audit`);
+  } catch {
+    return [];
+  }
 }
 
 async function closeReport(dayISO, comment) {
@@ -615,6 +628,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
   const status = String(rep?.status || "DRAFT").toUpperCase();
   const showMoney = canSeeMoney();
   const hasDepartments = Array.isArray(rep?.departments) && rep.departments.length > 0;
+  const tipsOn = tipsEnabled !== false;
 
   const isDraft = status !== "CLOSED";
   const canEditDraft = isDraft && canMake() && showMoney;
@@ -992,27 +1006,6 @@ async function upsertReportFromDom({ dayISO, hasDepartments, tipsEnabled }) {
   });
 }
 
-function withTimeout(promise, ms, label = "") {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      setTimeout(() => {
-        const e = new Error("TIMEOUT" + (label ? `: ${label}` : ""));
-        e.code = "TIMEOUT";
-        reject(e);
-      }, ms);
-    }),
-  ]);
-}
-
-async function safeWithTimeout(promise, ms, fallback) {
-  try {
-    return await withTimeout(promise, ms);
-  } catch {
-    return fallback;
-  }
-}
-
 async function openDay(dayISO) {
   if (!venueId) return;
   if (!canView()) return;
@@ -1027,9 +1020,9 @@ async function openDay(dayISO) {
   let catalogs = { payments: [], departments: [], kpis: [] };
   try {
     const [payments, departments, kpis] = await Promise.all([
-      safeWithTimeout(getPaymentMethods(venueId, { includeArchived: false }), 8000, []),
-      safeWithTimeout(getDepartments(venueId, { includeArchived: false }), 8000, []),
-      safeWithTimeout(getKpiMetrics(venueId, { includeArchived: false }), 8000, []),
+      withTimeout(getPaymentMethods(venueId, { includeArchived: false }), 8000, "payment methods").catch(() => []),
+      withTimeout(getDepartments(venueId, { includeArchived: false }), 8000, "departments").catch(() => []),
+      withTimeout(getKpiMetrics(venueId, { includeArchived: false }), 8000, "kpis").catch(() => []),
     ]);
     catalogs = {
       payments: Array.isArray(payments) ? payments : [],
@@ -1043,7 +1036,7 @@ async function openDay(dayISO) {
   // Load venue settings (tips)
   let tipsEnabledForVenue = true;
   try {
-    const s = await safeWithTimeout(getVenueSettings(venueId), 6000, { tips_enabled: true });
+    const s = await withTimeout(getVenueSettings(venueId), 8000, "venue settings");
     tipsEnabledForVenue = s?.tips_enabled !== false;
   } catch {
     // If settings cannot be loaded, default to showing tips field (backend will still ignore when disabled).
@@ -1053,12 +1046,9 @@ async function openDay(dayISO) {
   // Load report (may not exist)
   let rep = null;
   try {
-    rep = await withTimeout(fetchReport(dayISO), 9000, "report");
+    rep = await withTimeout(fetchReport(dayISO), 8000, "report");
   } catch (e) {
-    if (e?.code === "TIMEOUT") {
-      toast("Сервер долго отвечает (таймаут). Открыт пустой черновик.", "warn");
-      rep = buildEmptyReportFromCatalogs(dayISO, catalogs);
-    } else if (e?.status === 404 || e?.data?.detail === "Report not found") {
+    if (e?.status === 404 || e?.data?.detail === "Report not found") {
       rep = buildEmptyReportFromCatalogs(dayISO, catalogs);
     } else {
       toast("Ошибка загрузки отчёта: " + (e?.data?.detail || e?.message || "неизвестно"), "err");
@@ -1066,12 +1056,12 @@ async function openDay(dayISO) {
     }
   }
 
-  const att = await fetchAttachments(dayISO);
+  const att = await withTimeout(fetchAttachments(dayISO), 8000, "attachments").catch(() => ({ items: [] }));
   const attItems = att?.items || [];
 
   // Audit only makes sense when report exists and CLOSED (or has logs)
   const status = String(rep?.status || "DRAFT").toUpperCase();
-  const audit = (status === "CLOSED" || canEditClosed()) ? await fetchAudit(dayISO) : [];
+  const audit = (status === "CLOSED" || canEditClosed()) ? await withTimeout(fetchAudit(dayISO), 8000, "audit").catch(() => []) : [];
 
   const st = String(rep?.status || "DRAFT").toUpperCase();
   const isDraft = st !== "CLOSED";
@@ -1082,8 +1072,8 @@ async function openDay(dayISO) {
   try {
     view = renderReportModal(state);
   } catch (e) {
-    console.error(e);
-    openModal(formatDateRuNoG(dayISO), "Ошибка", `<div class="muted">Не удалось отрисовать отчёт: ${esc(e?.message || e)}</div>`);
+    toast("Не удалось отрисовать отчёт: " + (e?.message || "ошибка"), "err");
+    openModal(formatDateRuNoG(dayISO), "", `<div class="muted">Не удалось отрисовать отчёт.</div>`);
     return;
   }
   openModal(view.title, view.subtitle, view.body);
