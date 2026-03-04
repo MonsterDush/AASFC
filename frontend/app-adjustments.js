@@ -17,6 +17,8 @@ mountCommonUI("adjustments_manage");
 
 await ensureLogin({ silent: true });
 
+let me = null;
+
 // Guard: if cookie auth is missing, stop page init (prevents silent crash on 401)
 const __meOk = await (async () => {
   try {
@@ -115,7 +117,6 @@ function maybeOpenFromQuery() {
 }
 
 let curMonth = new Date();
-let me = null;
 curMonth.setDate(1);
 let perms = null;
 

@@ -21,7 +21,7 @@ applyTelegramTheme();
 mountCommonUI("report");
 
 await ensureLogin({ silent: true });
-await mountNav({ activeTab: "finance" });
+await mountNav({ activeTab: "report", requireVenue: true });
 
 const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();

@@ -252,7 +252,9 @@ const titleEl = document.getElementById("title");
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
           openReports.href = `/staff-report.html?venue_id=${encodeURIComponent(venueId)}`;
-          openAdjustments.href = `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
+openAdjustments.href = canManageAdjustments
+  ? `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`
+  : `/staff-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openSummary) openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openExpenses) openExpenses.href = `/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
 

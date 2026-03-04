@@ -32,7 +32,7 @@ try {
     hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
   if (canViewReports) __tab = "finance";
 } catch {}
-await mountNav({ activeTab: __tab, requireVenue: true });
+await mountNav({ activeTab: "finance", requireVenue: true });
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
@@ -47,7 +47,18 @@ const el = {
   sumTotal: document.getElementById("sumTotal"),
   daysList: document.getElementById("daysList"),
   monthChart: document.getElementById("monthChart"),
+  btnThisVenue: document.getElementById("btnThisVenue"),
+  btnAllVenues: document.getElementById("btnAllVenues"),
 };
+
+if (el.btnAllVenues) {
+  el.btnAllVenues.addEventListener("click", () => {
+    const p = new URLSearchParams();
+    if (venueId) p.set("venue_id", String(venueId));
+    p.set("month", ym(curMonth));
+    location.href = `/staff-salary-summary.html?${p.toString()}`;
+  });
+}
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
@@ -67,15 +78,21 @@ function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 let curMonth = new Date(); curMonth.setDate(1);
 
-// Mode switch: this venue vs all venues
-const btnAllVenues = document.getElementById("btnSalaryAllVenues");
-btnAllVenues?.addEventListener("click", () => {
-  const p = new URLSearchParams();
-  if (venueId) p.set("venue_id", String(venueId));
-  p.set("month", ym(curMonth));
-  location.href = `/staff-salary-summary.html?${p.toString()}`;
-});
+// allow ?month=YYYY-MM
+const qMonth = params.get("month");
+if (qMonth && /^\d{4}-\d{2}$/.test(qMonth)) {
+  const [yy, mm] = qMonth.split("-").map((x) => parseInt(x, 10));
+  if (yy && mm) curMonth = new Date(yy, mm - 1, 1);
+}
 
+function syncUrl() {
+  try {
+    const p = new URLSearchParams(location.search);
+    p.set("month", ym(curMonth));
+    if (venueId) p.set("venue_id", String(venueId));
+    history.replaceState(null, "", `${location.pathname}?${p.toString()}`);
+  } catch {}
+}
 
 function monthTitle(d) {
   const m = d.toLocaleString("ru-RU", { month: "long" });
@@ -278,12 +295,15 @@ function openDayModal(d) {
 el.prev.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() - 1);
   curMonth.setDate(1);
+  syncUrl();
   await loadMonth();
 });
 el.next.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() + 1);
   curMonth.setDate(1);
+  syncUrl();
   await loadMonth();
 });
 
+syncUrl();
 loadMonth();

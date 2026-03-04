@@ -31,7 +31,7 @@ try {
     hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
   if (canViewReports) __tab = "finance";
 } catch {}
-await mountNav({ activeTab: __tab, requireVenue: true });
+await mountNav({ activeTab: "finance", requireVenue: true });
 
 // best-effort subtitle with current venue
 try {
