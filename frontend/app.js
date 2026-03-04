@@ -792,9 +792,10 @@ if (activeVenueId) {
       isOwner ||
       flags.can_view_reports === true ||
       flags.can_make_reports === true ||
-      has("SHIFT_REPORTS_VIEW") ||
-      has("SHIFT_REPORTS_CREATE") ||
-      has("SHIFT_REPORTS_EDIT");
+      has("SHIFT_REPORT_VIEW") ||
+      has("SHIFT_REPORT_CLOSE") ||
+      has("SHIFT_REPORT_EDIT") ||
+      has("SHIFT_REPORT_REOPEN");
   } catch {
     // fallback only on venue list role
     isOwner = roleFromList === "OWNER" || roleFromList === "VENUE_OWNER";
