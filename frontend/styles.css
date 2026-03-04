@@ -842,15 +842,26 @@ input[type="checkbox"],input[type="radio"]{
 
 .periodbar{
   display:flex;
-  flex-wrap:wrap;
+  flex-direction:column;
   gap:10px;
-  align-items:center;
+  align-items:stretch;
   padding:12px;
   border-radius:16px;
   border:1px solid rgba(255,255,255,0.10);
   background: rgba(255,255,255,0.04);
   margin: 12px 0 16px;
 }
+.periodbar-row{
+  width:100%;
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+}
+.periodbar-row--space{
+  justify-content:space-between;
+}
+
 .seg{
   display:flex;
   gap:6px;

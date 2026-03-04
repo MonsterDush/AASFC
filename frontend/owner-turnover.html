@@ -21,29 +21,33 @@
     </div>
 
     <div class="periodbar">
-      <div class="seg" id="periodSeg">
-        <button data-period="month" class="active">Месяц</button>
-        <button data-period="week">Неделя</button>
-        <button data-period="day">День</button>
-        <button data-period="range">Период</button>
+      <div class="periodbar-row periodbar-row--space">
+        <div class="seg" id="periodSeg">
+          <button data-period="month" class="active">Месяц</button>
+          <button data-period="week">Неделя</button>
+          <button data-period="day">День</button>
+          <button data-period="range">Период</button>
+        </div>
+
+        <button class="btn" id="exportBtn">Экспорт</button>
       </div>
 
-      <div class="seg" id="modeSeg">
-        <button data-mode="DEPARTMENTS" class="active">Департаменты</button>
-        <button data-mode="PAYMENTS">Оплаты</button>
-      </div>
+      <div class="periodbar-row">
+        <div class="seg" id="modeSeg">
+          <button data-mode="DEPARTMENTS" class="active">Департаменты</button>
+          <button data-mode="PAYMENTS">Оплаты</button>
+        </div>
 
-      <div class="pickers">
-        <input id="monthPick" type="date" title="Выберите любой день нужного месяца" />
-        <input id="dayPick" type="date" style="display:none" />
-        <div id="rangePick" style="display:none; gap:8px; align-items:center;">
-          <input id="fromPick" type="date" />
-          <span class="muted">—</span>
-          <input id="toPick" type="date" />
+        <div class="pickers">
+          <input id="monthPick" type="month" />
+          <input id="dayPick" type="date" style="display:none" />
+          <div id="rangePick" style="display:none; gap:8px; align-items:center;">
+            <input id="fromPick" type="date" />
+            <span class="muted">—</span>
+            <input id="toPick" type="date" />
+          </div>
         </div>
       </div>
-
-      <button class="btn" id="exportBtn">Экспорт</button>
     </div>
 
     <div class="card">

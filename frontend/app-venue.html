@@ -46,8 +46,7 @@
               <div class="row gap-8 mt-12">
                 <a class="btn" id="openShifts" href="#">График</a>
                 <a class="btn" id="openReports" href="#">Отчёты</a>
-                <a class="btn" id="openAdjustments" href="#">Штрафы/Списания</a>
-              </div>
+                </div>
               <div class="row gap-8 mt-12">
                 <a class="btn" id="openDepartments" href="#">Департаменты</a>
                 <a class="btn" id="openPaymentMethods" href="#">Оплаты</a>
@@ -55,7 +54,17 @@
               </div>
       </div>
 
-      <div class="itemcard mt-12" id="tipsSettingsCard">
+      
+      <div class="itemcard mt-12" id="financeCard">
+        <b>Финансы</b>
+        <div class="row gap-8 mt-12">
+          <a class="btn" id="openSummary" href="#">Сводка</a>
+          <a class="btn" id="openExpenses" href="#">Расходы</a>
+          <a class="btn" id="openAdjustments" href="#">Штрафы</a>
+        </div>
+      </div>
+
+<div class="itemcard mt-12" id="tipsSettingsCard">
         <b>Чаевые</b>
         <div class="muted mt-6">Настройка учёта чаевых в отчёте закрытия смены.</div>
 
@@ -137,6 +146,7 @@
 
 
         let canManageAdjustments = false;
+        let isOwner = false;
         let canViewAdjustments = false;
         let canViewDepartments = false;
         let canViewPaymentMethods = false;
@@ -148,6 +158,7 @@
           const flags = perms?.position_flags || {};
           const role = String(perms?.role || "").toUpperCase();
           const owner = role === "OWNER";
+          isOwner = owner;
           canManageAdjustments =
             owner ||
             flags.can_manage_adjustments === true ||
@@ -164,6 +175,7 @@
           canViewKpi = owner || has("KPI_METRICS_VIEW");
           canEditVenueSettings = owner || has("VENUE_SETTINGS_EDIT");
         } catch (e) {
+          isOwner = false;
           canManageAdjustments = false;
           canViewAdjustments = false;
           canViewDepartments = false;
@@ -216,6 +228,8 @@ const titleEl = document.getElementById("title");
         const btnDelete = document.getElementById("btnDelete");
         const openInvites = document.getElementById("openInvites");
         const openPositions = document.getElementById("openPositions");
+        const openSummary = document.getElementById("openSummary");
+        const openExpenses = document.getElementById("openExpenses");
         const openShifts = document.getElementById("openShifts");
         const openReports = document.getElementById("openReports");
         const openAdjustments = document.getElementById("openAdjustments");
@@ -238,6 +252,8 @@ const titleEl = document.getElementById("title");
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
           openReports.href = `/staff-report.html?venue_id=${encodeURIComponent(venueId)}`;
           openAdjustments.href = `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openSummary) openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openExpenses) openExpenses.href = `/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
 
           if (openDepartments) openDepartments.href = `/owner-departments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openPaymentMethods) openPaymentMethods.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(venueId)}`;
@@ -249,6 +265,13 @@ const titleEl = document.getElementById("title");
           if (openKpi) openKpi.style.display = canViewKpi ? "" : "none";
 
           if (openAdjustments) openAdjustments.style.display = canViewAdjustments ? "" : "none";
+          if (openSummary) openSummary.style.display = isOwner ? "" : "none";
+          if (openExpenses) openExpenses.style.display = isOwner ? "" : "none";
+          const financeCard = document.getElementById("financeCard");
+          if (financeCard) {
+            const showFinance = (openAdjustments?.style.display !== "none") || isOwner;
+            financeCard.style.display = showFinance ? "" : "none";
+          }
           metaEl.textContent = `venue_id=${venueId}`;
           metaHint.textContent = "";
         }

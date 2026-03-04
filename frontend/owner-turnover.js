@@ -158,7 +158,7 @@ function initFromQuery() {
   state.from = q.get("date_from") || today;
   state.to = q.get("date_to") || today;
 
-  $("monthPick").value = (state.month ? (state.month + "-01") : (currentMonth() + "-01"));
+  $("monthPick").value = state.month || currentMonth();
   $("dayPick").value = state.day;
   $("fromPick").value = state.from;
   $("toPick").value = state.to;
@@ -168,7 +168,7 @@ function initFromQuery() {
 }
 
 function bindPickers() {
-  $("monthPick").onchange = (e) => { const v = (e.target.value || "").slice(0,7); state.month = v || currentMonth(); e.target.value = state.month + "-01"; load().catch(console.error); };
+  $("monthPick").onchange = (e) => { state.month = e.target.value || currentMonth(); load().catch(console.error); };
   $("dayPick").onchange = (e) => { state.day = e.target.value || todayISO(); load().catch(console.error); };
   $("fromPick").onchange = (e) => { state.from = e.target.value || todayISO(); load().catch(console.error); };
   $("toPick").onchange = (e) => { state.to = e.target.value || todayISO(); load().catch(console.error); };
