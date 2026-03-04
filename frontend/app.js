@@ -434,6 +434,40 @@ export async function deleteVenuePosition(venueId, positionId) {
 }
 
 // ------------------------------
+// Venue settings
+// ------------------------------
+
+export async function getVenueSettings(venueId) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/settings`);
+}
+
+export async function updateVenueSettings(venueId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/settings`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+// ------------------------------
+// Invites (pending)
+// ------------------------------
+
+/**
+ * Sets default position preset for a pending invite.
+ * Backend endpoint: PATCH /venues/{venue_id}/invites/{invite_id}/default_position
+ */
+export async function patchInviteDefaultPosition(venueId, inviteId, defaultPosition) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!inviteId) throw new Error("NO_INVITE");
+  return api(`/venues/${encodeURIComponent(venueId)}/invites/${encodeURIComponent(inviteId)}/default_position`, {
+    method: "PATCH",
+    body: { default_position: defaultPosition ?? null },
+  });
+}
+
+// ------------------------------
 // Catalogs: departments / payment methods / KPI metrics
 // ------------------------------
 

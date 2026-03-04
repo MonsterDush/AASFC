@@ -12,6 +12,7 @@ import {
   getDepartments,
   getPaymentMethods,
   getKpiMetrics,
+  getVenueSettings,
 } from "/app.js";
 
 applyTelegramTheme();
@@ -217,20 +218,49 @@ function isOwnerOrAdmin() {
 }
 
 function canMake() {
-  return isOwnerOrAdmin() || perms.flags?.can_make_reports === true;
+  return (
+    isOwnerOrAdmin() ||
+    hasPerm("SHIFT_REPORT_CLOSE") ||
+    hasPerm("SHIFT_REPORT_EDIT") ||
+    perms.flags?.can_make_reports === true
+  );
 }
+
 
 function canView() {
-  return isOwnerOrAdmin() || perms.flags?.can_view_reports === true || perms.flags?.can_make_reports === true || hasPerm("SHIFT_REPORT_VIEW");
+  return (
+    isOwnerOrAdmin() ||
+    perms.flags?.can_view_reports === true ||
+    perms.flags?.can_make_reports === true ||
+    hasPerm("SHIFT_REPORT_VIEW") ||
+    hasPerm("SHIFT_REPORT_CLOSE") ||
+    hasPerm("SHIFT_REPORT_EDIT") ||
+    hasPerm("SHIFT_REPORT_REOPEN")
+  );
 }
+
 
 function canSeeMoney() {
-  return isOwnerOrAdmin() || perms.flags?.can_view_revenue === true || perms.flags?.can_make_reports === true;
+  return (
+    isOwnerOrAdmin() ||
+    perms.flags?.can_view_revenue === true ||
+    perms.flags?.can_make_reports === true ||
+    hasPerm("SHIFT_REPORT_VIEW") ||
+    hasPerm("SHIFT_REPORT_CLOSE") ||
+    hasPerm("SHIFT_REPORT_EDIT")
+  );
 }
 
+
 function canClose() {
-  return isOwnerOrAdmin() || perms.flags?.can_make_reports === true || hasPerm("SHIFT_REPORT_CLOSE");
+  return (
+    isOwnerOrAdmin() ||
+    hasPerm("SHIFT_REPORT_CLOSE") ||
+    hasPerm("SHIFT_REPORT_EDIT") ||
+    perms.flags?.can_make_reports === true
+  );
 }
+
 
 function canReopen() {
   return isOwnerOrAdmin() || hasPerm("SHIFT_REPORT_REOPEN");
@@ -578,8 +608,9 @@ function reportStatusBadge(status) {
   return `<span class="rep-badge rep-badge--draft">DRAFT</span>`;
 }
 
-function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode }) {
+function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, tipsEnabled }) {
   const status = String(rep?.status || "DRAFT").toUpperCase();
+  const tipsOn = tipsEnabled !== false; // default true if setting is not loaded
   const showMoney = canSeeMoney();
   const hasDepartments = Array.isArray(rep?.departments) && rep.departments.length > 0;
 
@@ -667,10 +698,10 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode }) 
     : `<div class="muted">KPI пока не настроены</div>`;
 
   const tipsDisabled = (!editEnabled) || (!showMoney);
-  const tipsHtml = `
+  const tipsHtml = !tipsOn ? `` : `
     <div class="rep-grid rep-grid--single">
       <label class="rep-field">
-        <div class="rep-field__label"><span>Чаевые (итого)</span></div>
+        <div class="rep-field__label"><span>Чаевые (общая сумма)</span></div>
         <input id="repTips" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.tips_total ?? 0) : "")}" ${tipsDisabled ? "disabled" : ""} placeholder="${showMoney ? "0" : "нет доступа"}" />
       </label>
     </div>
@@ -779,7 +810,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode }) 
     ${section("Сумма оплат", paymentsHtml)}
     ${section(hasDepartments ? "Выручка по департаментам" : "Выручка", deptsHtml)}
     ${section("KPI / доп. продажи", kpisHtml)}
-    ${section("Итоги", totalsHtml + commentHtml)}
+    ${section("Итоги", tipsHtml + totalsHtml + commentHtml)}
     ${actionsHtml}
 
     <div class="rep-divider"></div>
@@ -792,7 +823,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode }) 
   return { title: formatDateRuNoG(dayISO), subtitle, body, hasDepartments, editEnabled };
 }
 
-function collectPayloadFromDom({ dayISO, hasDepartments }) {
+function collectPayloadFromDom({ dayISO, hasDepartments, tipsEnabled }) {
   const showMoney = canSeeMoney();
 
   const payload = {
@@ -832,7 +863,7 @@ function collectPayloadFromDom({ dayISO, hasDepartments }) {
   const comment = modalBody?.querySelector("#repComment");
 
   payload.revenue_total = Math.round(Math.max(0, numOr0(rev?.value)));
-  payload.tips_total = Math.round(Math.max(0, numOr0(tips?.value)));
+  payload.tips_total = tipsEnabled === false ? 0 : Math.round(Math.max(0, numOr0(tips?.value)));
   payload.comment = String(comment?.value ?? "").trim() || null;
 
   payload.payments = payments;
@@ -951,8 +982,8 @@ async function wireAttachmentsHandlers({ dayISO, attItems }) {
   });
 }
 
-async function upsertReportFromDom({ dayISO, hasDepartments }) {
-  const payload = collectPayloadFromDom({ dayISO, hasDepartments });
+async function upsertReportFromDom({ dayISO, hasDepartments, tipsEnabled }) {
+  const payload = collectPayloadFromDom({ dayISO, hasDepartments, tipsEnabled });
   return api(`/venues/${encodeURIComponent(venueId)}/reports`, {
     method: "POST",
     body: payload,
@@ -986,6 +1017,16 @@ async function openDay(dayISO) {
     catalogs = { payments: [], departments: [], kpis: [] };
   }
 
+  // Load venue settings (tips)
+  let tipsEnabledForVenue = true;
+  try {
+    const s = await getVenueSettings(venueId);
+    tipsEnabledForVenue = s?.tips_enabled !== false;
+  } catch {
+    // If settings cannot be loaded, default to showing tips field (backend will still ignore when disabled).
+    tipsEnabledForVenue = true;
+  }
+
   // Load report (may not exist)
   let rep = null;
   try {
@@ -1004,9 +1045,14 @@ async function openDay(dayISO) {
 
   // Audit only makes sense when report exists and CLOSED (or has logs)
   const status = String(rep?.status || "DRAFT").toUpperCase();
+  const tipsOn = tipsEnabled !== false; // default true if setting is not loaded
   const audit = (status === "CLOSED" || canEditClosed()) ? await fetchAudit(dayISO) : [];
 
-  const state = { dayISO, rep, catalogs, attachments: attItems, audit, mode: "view" };
+  const st = String(rep?.status || "DRAFT").toUpperCase();
+  const isDraft = st !== "CLOSED";
+  const initMode = (isDraft && canMake() && canSeeMoney()) ? "edit" : "view";
+
+  const state = { dayISO, rep, catalogs, attachments: attItems, audit, mode: initMode, tipsEnabled: tipsEnabledForVenue };
   const view = renderReportModal(state);
   openModal(view.title, view.subtitle, view.body);
 
@@ -1043,7 +1089,7 @@ async function openDay(dayISO) {
     // Save closed
     modalBody?.querySelector("#btnSaveClosed")?.addEventListener("click", async () => {
       try {
-        await upsertReportFromDom({ dayISO, hasDepartments: v2.hasDepartments });
+        await upsertReportFromDom({ dayISO, hasDepartments: v2.hasDepartments, tipsEnabled: tipsEnabledForVenue });
         toast("Сохранено (аудит записан)", "ok");
         await loadMonthReports();
         renderMonth();
@@ -1073,7 +1119,7 @@ async function openDay(dayISO) {
   modalBody?.querySelector("#btnSaveDraft")?.addEventListener("click", async () => {
     if (!canMake()) return;
     try {
-      await upsertReportFromDom({ dayISO, hasDepartments });
+      await upsertReportFromDom({ dayISO, hasDepartments, tipsEnabled: tipsEnabledForVenue });
       toast("Черновик сохранён", "ok");
       await loadMonthReports();
       renderMonth();
@@ -1098,7 +1144,7 @@ async function openDay(dayISO) {
 
     try {
       // 1) save current values
-      await upsertReportFromDom({ dayISO, hasDepartments });
+      await upsertReportFromDom({ dayISO, hasDepartments, tipsEnabled: tipsEnabledForVenue });
       // 2) close
       await closeReport(dayISO, comment || null);
       toast("Смена закрыта", "ok");

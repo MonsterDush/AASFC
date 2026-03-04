@@ -54,6 +54,34 @@
                 <a class="btn" id="openKpi" href="#">KPI</a>
               </div>
       </div>
+
+      <div class="itemcard mt-12" id="tipsSettingsCard">
+        <b>Чаевые</b>
+        <div class="muted mt-6">Настройка учёта чаевых в отчёте закрытия смены.</div>
+
+        <div class="toggle mt-12">
+          <div class="toggle__label">
+            <div class="toggle__title">Учитывать чаевые в отчёте</div>
+            <div class="toggle__desc">Если выключено — поле чаевых в отчёте скрыто, суммы игнорируются.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="tipsEnabled" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="mt-12">
+          <div class="muted" style="margin-bottom:6px">Режим распределения</div>
+          <select id="tipsMode">
+            <option value="EQUAL">Поровну</option>
+            <option value="WEIGHTED_BY_POSITION" disabled>По должностям (скоро)</option>
+          </select>
+          <div class="muted small" id="tipsModeSoon" style="margin-top:6px; display:none">Режим “По должностям” появится позже.</div>
+          <div class="muted small" id="tipsNoEdit" style="margin-top:6px; display:none">Нет прав на изменение настроек.</div>
+          <div class="muted small" id="tipsSaveHint" style="margin-top:6px"></div>
+        </div>
+      </div>
+
       <div class="itemcard mt-12">
         <b>Участники</b>
         <div id="members"class="mt-10">
@@ -82,7 +110,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings } from "/app.js";
 
     applyTelegramTheme();
     mountCommonUI("venue");
@@ -113,6 +141,7 @@
         let canViewDepartments = false;
         let canViewPaymentMethods = false;
         let canViewKpi = false;
+        let canEditVenueSettings = false;
         try {
           const perms = await getMyVenuePermissions(venueId);
           const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
@@ -133,6 +162,7 @@
           canViewDepartments = owner || has("DEPARTMENTS_VIEW");
           canViewPaymentMethods = owner || has("PAYMENT_METHODS_VIEW");
           canViewKpi = owner || has("KPI_METRICS_VIEW");
+          canEditVenueSettings = owner || has("VENUE_SETTINGS_EDIT");
         } catch (e) {
           canManageAdjustments = false;
           canViewAdjustments = false;
@@ -159,6 +189,14 @@
         const metaEl = document.getElementById("meta");
         const metaHint = document.getElementById("metaHint");
         const membersEl = document.getElementById("members");
+
+        // tips settings UI
+        const tipsEnabledEl = document.getElementById("tipsEnabled");
+        const tipsModeEl = document.getElementById("tipsMode");
+        const tipsModeSoonEl = document.getElementById("tipsModeSoon");
+        const tipsNoEditEl = document.getElementById("tipsNoEdit");
+        const tipsSaveHintEl = document.getElementById("tipsSaveHint");
+        let tipsSettings = { tips_enabled: false, tips_split_mode: "EQUAL" };
 
 
         const btnRename = document.getElementById("btnRename");
@@ -246,6 +284,76 @@
           });
         }
 
+
+
+function syncTipsControls() {
+  const enabled = !!tipsSettings.tips_enabled;
+  const mode = String(tipsSettings.tips_split_mode || "EQUAL").toUpperCase();
+
+  if (tipsEnabledEl) tipsEnabledEl.checked = enabled;
+  if (tipsModeEl) tipsModeEl.value = (mode === "WEIGHTED_BY_POSITION") ? "WEIGHTED_BY_POSITION" : "EQUAL";
+
+  const canEdit = !!canEditVenueSettings;
+  if (tipsEnabledEl) tipsEnabledEl.disabled = !canEdit;
+
+  // mode select enabled only when tips are enabled AND user can edit
+  const lockMode = (!enabled) || (!canEdit) || (mode === "WEIGHTED_BY_POSITION");
+  if (tipsModeEl) tipsModeEl.disabled = lockMode;
+
+  if (tipsModeSoonEl) tipsModeSoonEl.style.display = (mode === "WEIGHTED_BY_POSITION") ? "" : "none";
+  if (tipsNoEditEl) tipsNoEditEl.style.display = canEdit ? "none" : "";
+}
+
+function tipSavedHint(msg) {
+  if (!tipsSaveHintEl) return;
+  tipsSaveHintEl.textContent = msg || "";
+  clearTimeout(tipsSaveHintEl._t);
+  tipsSaveHintEl._t = setTimeout(() => {
+    tipsSaveHintEl.textContent = "";
+  }, 2200);
+}
+
+async function saveTipsSettings(partial) {
+  if (!venueId) return;
+  if (!canEditVenueSettings) return;
+  try {
+    const out = await updateVenueSettings(venueId, partial);
+    tipsSettings = {
+      tips_enabled: !!out?.tips_enabled,
+      tips_split_mode: String(out?.tips_split_mode || "EQUAL").toUpperCase(),
+    };
+    syncTipsControls();
+    tipSavedHint("Сохранено");
+  } catch (e) {
+    toast("Не удалось сохранить настройки чаевых: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+    // rollback UI from server copy
+    try {
+      const s = await getVenueSettings(venueId);
+      tipsSettings = {
+        tips_enabled: !!s?.tips_enabled,
+        tips_split_mode: String(s?.tips_split_mode || "EQUAL").toUpperCase(),
+      };
+      syncTipsControls();
+    } catch {}
+  }
+}
+
+// Wire tips handlers once
+if (tipsEnabledEl) {
+  tipsEnabledEl.addEventListener("change", () => {
+    tipsSettings.tips_enabled = !!tipsEnabledEl.checked;
+    syncTipsControls();
+    saveTipsSettings({ tips_enabled: tipsSettings.tips_enabled });
+  });
+}
+
+if (tipsModeEl) {
+  tipsModeEl.addEventListener("change", () => {
+    tipsSettings.tips_split_mode = String(tipsModeEl.value || "EQUAL").toUpperCase();
+    syncTipsControls();
+    saveTipsSettings({ tips_split_mode: tipsSettings.tips_split_mode });
+  });
+}
         function applyButtons() {
           // Удаление разрешено только для архивного заведения
           btnDelete.style.display = last.is_archived ? "" : "none";
