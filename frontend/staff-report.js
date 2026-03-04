@@ -804,8 +804,9 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
   const uploadHtml = canMake()
     ? `
       <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px; flex-wrap:wrap">
-        <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
+        <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple style="max-width: 260px" />
         <button class="btn" id="btnUpload" type="button">Загрузить</button>
+        <div class="muted" style="width:100%; text-align:right; font-size:12px; margin-top:4px">До 12&nbsp;МБ на файл</div>
       </div>
     `
     : `<div class="muted" style="margin-top:10px">Нет прав на загрузку файлов</div>`;
@@ -988,10 +989,28 @@ async function wireAttachmentsHandlers({ dayISO, attItems }) {
     }
 
     try {
+      // validate file sizes (backend: 12MB per file)
+      const maxBytes = 12 * 1024 * 1024;
+      const tooBig = files.filter((f) => Number(f?.size || 0) > maxBytes);
+      if (tooBig.length) {
+        const names = tooBig.map((f) => String(f?.name || "file")).slice(0, 3).join(", ");
+        toast(`Слишком большой файл: ${names}. Лимит 12 МБ на файл.`, "err");
+        return;
+      }
+
       await uploadAttachments(dayISO, files);
       toast("Загружено", "ok");
       await openDay(dayISO);
     } catch (e) {
+      const status = Number(e?.status || 0);
+      if (status === 413) {
+        toast("Слишком большой запрос (HTTP 413). На сервере увеличь лимит Nginx: client_max_body_size 20m;", "err");
+        return;
+      }
+      if (status === 403) {
+        toast("Нет прав на загрузку файлов (нужны SHIFT_REPORT_CLOSE или SHIFT_REPORT_EDIT).", "err");
+        return;
+      }
       const detail = e?.data?.detail ? `: ${e.data.detail}` : (e?.message ? `: ${e.message}` : "");
       toast("Ошибка загрузки" + detail, "err");
     }
