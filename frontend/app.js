@@ -15,6 +15,7 @@ const DICT = {
     salary: "Зарплата",
     report: "Отчёт",
     finance: "Финансы",
+    revenue: "Доходы",
     summary: "Сводка",
     expenses: "Расходы",
     admin_venues: "Заведения",
@@ -30,6 +31,7 @@ const DICT = {
     salary: "Salary",
     report: "Report",
     finance: "Finance",
+    revenue: "Revenue",
     summary: "Summary",
     expenses: "Expenses",
     admin_venues: "Venues",
@@ -791,8 +793,9 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
 
   if (activeVenueId) {
     if (isOwner) {
-      // Owner bottom nav: only Venue / Summary / Expenses
+      // Owner bottom nav: Venue / Revenue / Summary / Expenses
       links.push({ title: t("venue"), href: `/app-venue.html${qp}`, tab: "venue" });
+      links.push({ title: t("revenue"), href: `/owner-revenue.html${qp}`, tab: "revenue" });
       links.push({ title: t("summary"), href: `/owner-summary.html${qp}`, tab: "summary" });
       links.push({ title: t("expenses"), href: `/owner-expenses.html${qp}`, tab: "expenses" });
       links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
