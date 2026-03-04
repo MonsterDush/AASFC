@@ -199,7 +199,6 @@ let state = {
 let auth = {
   role: "",
   permissions: [],
-  flags: {},
   isOwnerOrAdmin: false,
   canViewList: false,
   canManage: false,
@@ -212,21 +211,29 @@ function hasPerm(code) {
 }
 
 function computeAuth(perms) {
-  const role = String(perms?.role || perms?.venue_role || perms?.my_role || "").toUpperCase();
+  const role = roleUpper(perms);
   const sysRole = String(perms?.system_role || "").toUpperCase();
-  const isOwnerOrAdmin = role === "OWNER" || sysRole === "SUPER_ADMIN" || sysRole === "MODERATOR" || role === "SUPER_ADMIN" || role === "MODERATOR";
-  const permissions = Array.isArray(perms?.permissions) ? perms.permissions : [];
-  const flags = perms?.position_flags || {};
+  const isOwnerOrAdmin =
+    role === "OWNER" ||
+    sysRole === "SUPER_ADMIN" ||
+    sysRole === "MODERATOR" ||
+    role === "SUPER_ADMIN" ||
+    role === "MODERATOR";
+
+  const pset = permSetFromResponse(perms);
+  const permissions = Array.from(pset);
 
   auth.role = role || sysRole || "";
   auth.permissions = permissions;
-  auth.flags = flags;
   auth.isOwnerOrAdmin = isOwnerOrAdmin;
 
-  auth.canViewList = isOwnerOrAdmin || permissions.some((c) => ["POSITIONS_VIEW", "POSITIONS_MANAGE", "POSITIONS_ASSIGN", "POSITION_PERMISSIONS_MANAGE"].includes(c));
-  auth.canManage = isOwnerOrAdmin || permissions.includes("POSITIONS_MANAGE");
-  auth.canAssign = isOwnerOrAdmin || permissions.includes("POSITIONS_ASSIGN");
-  auth.canManagePerms = isOwnerOrAdmin || permissions.includes("POSITION_PERMISSIONS_MANAGE");
+  auth.canViewList =
+    isOwnerOrAdmin ||
+    hasAnyPerm(pset, ["POSITIONS_VIEW", "POSITIONS_MANAGE", "POSITIONS_ASSIGN", "POSITION_PERMISSIONS_MANAGE"]);
+
+  auth.canManage = isOwnerOrAdmin || pset.has("POSITIONS_MANAGE");
+  auth.canAssign = isOwnerOrAdmin || pset.has("POSITIONS_ASSIGN");
+  auth.canManagePerms = isOwnerOrAdmin || pset.has("POSITION_PERMISSIONS_MANAGE");
 }
 
 function parseVenueId() {

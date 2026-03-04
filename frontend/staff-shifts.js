@@ -349,7 +349,7 @@ let perms = null;
 let myRole = null;
 let canEdit = false;
 
-// позже сделаем отдельное право, сейчас привязка к can_make_reports
+// отображение денег/выручки завязано на правах просмотра отчётов (SHIFT_REPORT_*/REPORTS_*)
 let canViewRevenue = false;
 
 const LS_SHOW_ALL = "axelio.shifts.showAll";

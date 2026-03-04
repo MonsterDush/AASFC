@@ -15,11 +15,13 @@ import {
   getVenueSettings,
 } from "/app.js";
 
+
+import { permSetFromResponse, roleUpper, hasPerm as hasP, hasAnyPerm, hasPermPrefix } from "/permissions.js";
 applyTelegramTheme();
 mountCommonUI("report");
 
 await ensureLogin({ silent: true });
-await mountNav({ activeTab: "report" });
+await mountNav({ activeTab: "finance" });
 
 const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
@@ -217,84 +219,74 @@ let curMonth = new Date();
 curMonth.setDate(1);
 
 let reportsByDate = new Map(); // dateISO -> report
-let perms = { role: "", permissions: [], flags: {} };
+
+let permsResp = null;
+let pset = new Set();
+let myRole = "";
+let isAdmin = false;
+
 let selectedDayISO = "";
 
 function hasPerm(code) {
-  const arr = perms?.permissions;
-  return Array.isArray(arr) && arr.includes(code);
+  return hasP(pset, code);
 }
 
 function isOwnerOrAdmin() {
-  const r = String(perms?.role || "").toUpperCase();
-  return r === "OWNER" || r === "SUPER_ADMIN" || r === "MODERATOR";
+  const r = String(myRole || "").toUpperCase();
+  return r === "OWNER" || isAdmin;
 }
 
 function canMake() {
-  return (
-    isOwnerOrAdmin() ||
-    hasPerm("SHIFT_REPORT_CLOSE") ||
-    hasPerm("SHIFT_REPORT_EDIT") ||
-    perms.flags?.can_make_reports === true
-  );
+  return isOwnerOrAdmin() || hasAnyPerm(pset, ["SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"]);
 }
-
 
 function canView() {
   return (
     isOwnerOrAdmin() ||
-    perms.flags?.can_view_reports === true ||
-    perms.flags?.can_make_reports === true ||
-    hasPerm("SHIFT_REPORT_VIEW") ||
-    hasPerm("SHIFT_REPORT_CLOSE") ||
-    hasPerm("SHIFT_REPORT_EDIT") ||
-    hasPerm("SHIFT_REPORT_REOPEN")
+    hasPermPrefix(pset, "SHIFT_REPORT_") ||
+    hasPermPrefix(pset, "REPORTS_") ||
+    hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"])
   );
 }
-
 
 function canSeeMoney() {
-  return (
-    isOwnerOrAdmin() ||
-    perms.flags?.can_view_revenue === true ||
-    perms.flags?.can_make_reports === true ||
-    hasPerm("SHIFT_REPORT_VIEW") ||
-    hasPerm("SHIFT_REPORT_CLOSE") ||
-    hasPerm("SHIFT_REPORT_EDIT")
-  );
+  return isOwnerOrAdmin() || hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"]);
 }
-
 
 function canClose() {
-  return (
-    isOwnerOrAdmin() ||
-    hasPerm("SHIFT_REPORT_CLOSE") ||
-    hasPerm("SHIFT_REPORT_EDIT") ||
-    perms.flags?.can_make_reports === true
-  );
+  return isOwnerOrAdmin() || hasAnyPerm(pset, ["SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"]);
 }
-
 
 function canReopen() {
   return isOwnerOrAdmin() || hasPerm("SHIFT_REPORT_REOPEN");
 }
 
 function canEditClosed() {
-  // Backend additionally requires SHIFT_REPORT_EDIT for CLOSED edits.
-  return canMake() && (hasPerm("SHIFT_REPORT_EDIT") || String(perms?.role || "").toUpperCase() === "SUPER_ADMIN");
+  // Backend requires SHIFT_REPORT_EDIT for CLOSED edits (unless OWNER / admin)
+  return isOwnerOrAdmin() || hasPerm("SHIFT_REPORT_EDIT");
 }
 
 async function loadPerms() {
-  perms = { role: "", permissions: [], flags: {} };
+  permsResp = null;
+  pset = new Set();
+  myRole = "";
+  isAdmin = false;
+
   if (!venueId) return;
+
+  // determine system role (best-effort)
+  try {
+    const me = await api("/me").catch(() => null);
+    const sys = String(me?.system_role || "").toUpperCase();
+    isAdmin = sys === "SUPER_ADMIN" || sys === "MODERATOR";
+  } catch {}
+
   try {
     const p = await getMyVenuePermissions(venueId);
-    perms.role = p?.role || "";
-    perms.permissions = p?.permissions || [];
-    perms.flags = p?.position_flags || {};
-  } catch {
-    perms = { role: "", permissions: [], flags: {} };
-  }
+    permsResp = p || null;
+    myRole = roleUpper(p);
+    pset = permSetFromResponse(p);
+  } catch {}
 }
 
 async function loadMonthReports() {
@@ -1215,5 +1207,12 @@ if (el.next) {
 }
 
 await loadPerms();
+if (!canView()) {
+  toast("Нет доступа к отчётам", "warn");
+  const q = venueId ? `?venue_id=${encodeURIComponent(venueId)}` : "";
+  location.replace(`/staff-shifts.html${q}`);
+  await new Promise(() => {});
+}
 await loadMonthReports();
+
 renderMonth();

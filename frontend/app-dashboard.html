@@ -75,6 +75,7 @@
 
   <script type="module">
 import { applyTelegramTheme, ensureLogin, toast, mountCommonUI, mountNav, setActiveVenueId, getActiveVenueId, getMyVenues, api } from "/app.js";
+import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("dashboard");
@@ -96,15 +97,20 @@ if (v) {
   document.getElementById("subtitle").textContent = (v.my_role === "OWNER" ? "панель владельца (персонал)" : "панель сотрудника");
 }
 
-// show report card only if permission/flag exists (best-effort)
+// show report card only if user has report access (best-effort)
 try {
   const vid = getActiveVenueId();
   if (vid) {
     const perms = await api(`/me/venues/${encodeURIComponent(vid)}/permissions`);
-    const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
-    const flags = perms?.position_flags || {};
-    const canMakeReports = flags.can_make_reports === true || has("REPORTS_VIEW_DAILY");
-    if (canMakeReports) document.getElementById("reportCard").style.display = "";
+    const pset = permSetFromResponse(perms);
+    const role = roleUpper(perms);
+    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+    const canViewReports =
+      isOwner ||
+      hasPermPrefix(pset, "SHIFT_REPORT_") ||
+      hasPermPrefix(pset, "REPORTS_") ||
+      hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
+    if (canViewReports) document.getElementById("reportCard").style.display = "";
   }
 } catch {}
 
@@ -115,10 +121,10 @@ let adjHref = `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
 try {
   if (vid) {
     const perms = await api(`/me/venues/${encodeURIComponent(vid)}/permissions`);
-    const has = (code) => Array.isArray(perms?.permissions) ? perms.permissions.includes(code) : false;
-    const flags = perms?.position_flags || {};
-    const isOwner = perms?.role === "OWNER";
-    const canManage = isOwner || flags.can_manage_adjustments === true || has("ADJUSTMENTS_MANAGE");
+    const pset = permSetFromResponse(perms);
+    const role = roleUpper(perms);
+    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+    const canManage = isOwner || hasPerm(pset, "ADJUSTMENTS_MANAGE");
     if (canManage) adjHref = `/app-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
   }
 } catch {}

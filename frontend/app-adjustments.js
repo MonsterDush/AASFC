@@ -10,6 +10,8 @@ import {
   getMyVenuePermissions,
 } from "/app.js";
 
+
+import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm } from "/permissions.js";
 applyTelegramTheme();
 mountCommonUI("adjustments_manage");
 
@@ -18,7 +20,7 @@ await ensureLogin({ silent: true });
 // Guard: if cookie auth is missing, stop page init (prevents silent crash on 401)
 const __meOk = await (async () => {
   try {
-    await api("/me");
+    me = await api("/me");
     return true;
   } catch (e) {
     if (e?.status === 401) {
@@ -113,18 +115,26 @@ function maybeOpenFromQuery() {
 }
 
 let curMonth = new Date();
+let me = null;
 curMonth.setDate(1);
 let perms = null;
 
 function hasManageAccess() {
-  const flags = perms?.position_flags || {};
-  const codes = Array.isArray(perms?.permissions) ? perms.permissions : [];
-  return (perms?.role === "OWNER") || (perms?.role === "SUPER_ADMIN") || flags.can_manage_adjustments === true || codes.includes("ADJUSTMENTS_MANAGE");
+  const pset = permSetFromResponse(perms);
+  const role = roleUpper(perms);
+  const sys = String(me?.system_role || "").toUpperCase();
+  const isAdmin = sys === "SUPER_ADMIN" || sys === "MODERATOR";
+  const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+  return isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_MANAGE");
 }
 
 function hasResolveAccess() {
-  const flags = perms?.position_flags || {};
-  return (perms?.role === "OWNER") || (perms?.role === "SUPER_ADMIN") || flags.can_resolve_disputes === true;
+  const pset = permSetFromResponse(perms);
+  const role = roleUpper(perms);
+  const sys = String(me?.system_role || "").toUpperCase();
+  const isAdmin = sys === "SUPER_ADMIN" || sys === "MODERATOR";
+  const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+  return isOwner || isAdmin || hasPerm(pset, "DISPUTES_RESOLVE");
 }
 
 async function loadPerms() {

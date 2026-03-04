@@ -1,4 +1,4 @@
-import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
+import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
 
 export const API_BASE = "https://api-dev.axelio.ru";
 
@@ -665,22 +665,6 @@ export async function getVenueById(venueId) {
 // Permissions + dynamic navigation (A2/A3)
 // ------------------------------
 
-function normalizePermList(permissions) {
-  if (!permissions) return [];
-  if (Array.isArray(permissions)) {
-    // may be ["CODE", ...] or [{code:"CODE"}, ...]
-    return permissions
-      .map((p) => (typeof p === "string" ? p : p?.code))
-      .filter(Boolean)
-      .map((s) => String(s));
-  }
-  // may be {CODE:true} or {permissions:[...]}
-  if (permissions && typeof permissions === "object") {
-    if (Array.isArray(permissions.permissions)) return normalizePermList(permissions.permissions);
-    return Object.keys(permissions).filter((k) => permissions[k]);
-  }
-  return [];
-}
 
 export function can(permCode, venuePerms) {
   if (!permCode) return false;
@@ -688,12 +672,6 @@ export function can(permCode, venuePerms) {
   return list.includes(String(permCode));
 }
 
-function setActiveNavTab(activeTab) {
-  document.querySelectorAll("[data-tab]").forEach((a) => {
-    if (a.getAttribute("data-tab") === activeTab) a.classList.add("active");
-    else a.classList.remove("active");
-  });
-}
 
 function renderNavLinks({ container, links, activeTab }) {
   if (!container) return;
