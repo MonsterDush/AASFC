@@ -42,6 +42,7 @@ from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
 from app.models.department import Department
 from app.models.payment_method import PaymentMethod
 from app.models.kpi_metric import KpiMetric
+from app.models.permission import Permission
 
 from app.auth.venue_permissions import require_venue_permission
 
@@ -142,6 +143,9 @@ class PositionUpdateIn(BaseModel):
     can_manage_adjustments: bool | None = None
     can_resolve_disputes: bool | None = None
     is_active: bool | None = None
+    # Fine-grained permissions (preferred). Accepts either key for compatibility.
+    permission_codes: list[str] | None = None
+    permissions: list[str] | None = None
 
 
 class ReportValueIn(BaseModel):
@@ -2951,9 +2955,6 @@ def update_shift_interval(
 
     start_changed = payload.start_time is not None and payload.start_time != obj.start_time
 
-    if perms_touched:
-        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
-
     if payload.title is not None:
         obj.title = payload.title.strip()
     if payload.start_time is not None:
@@ -3556,8 +3557,6 @@ def update_department(
 
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
-    if perms_touched:
-        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         obj.title = payload.title.strip()
@@ -3668,8 +3667,6 @@ def update_payment_method(
         obj.is_active = bool(payload.is_active)
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
-    if perms_touched:
-        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         obj.title = payload.title.strip()
@@ -3757,8 +3754,6 @@ def update_kpi_metric(
         obj.is_active = bool(payload.is_active)
     if payload.code is not None:
         obj.code = _normalize_code(payload.code)
-    if perms_touched:
-        pos.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
 
     if payload.title is not None:
         obj.title = payload.title.strip()

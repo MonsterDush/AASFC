@@ -803,7 +803,6 @@ if (activeVenueId) {
 }
 
 const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : "";
- ? `?venue_id=${encodeURIComponent(activeVenueId)}` : "";
 
   const links = [];
 
