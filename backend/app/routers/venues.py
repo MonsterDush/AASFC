@@ -5,9 +5,10 @@ import os
 import uuid
 import re
 from typing import Optional, List
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, delete, update, func
 from sqlalchemy.orm import Session
@@ -17,6 +18,7 @@ from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.core.tg import normalize_tg_username, send_telegram_message
 from app.services import tg_notify
+from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -1517,6 +1519,192 @@ def reopen_daily_report(
 
 
 @router.get("/{venue_id}/reports/{report_date}/audit")
+
+# ---------- Revenue aggregation (Stage 2) ----------
+
+class RevenueRowOut(BaseModel):
+    ref_id: int
+    code: str | None = None
+    title: str
+    amount: int
+
+
+class RevenueSummaryOut(BaseModel):
+    month: str
+    mode: str
+    closed_reports: int
+    total: int
+    rows: list[RevenueRowOut]
+
+
+def _parse_month_yyyy_mm(month: str) -> tuple[date, date]:
+    try:
+        y_s, m_s = month.split("-")
+        y = int(y_s)
+        m = int(m_s)
+        start = date(y, m, 1)
+        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+        return start, end
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+
+
+def _revenue_kind_and_catalog(mode: str):
+    mm = (mode or "").upper().strip()
+    if mm == "PAYMENTS":
+        return "PAYMENT", PaymentMethod
+    if mm == "DEPARTMENTS":
+        return "DEPT", Department
+    raise HTTPException(status_code=400, detail="Bad mode, expected DEPARTMENTS or PAYMENTS")
+
+
+@router.get("/{venue_id}/revenue", response_model=RevenueSummaryOut)
+def get_revenue_summary(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Агрегация доходов по CLOSED отчётам за месяц."""
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    if not _can_view_revenue(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    start, end = _parse_month_yyyy_mm(month)
+    kind, Catalog = _revenue_kind_and_catalog(mode)
+
+    closed_reports_subq = (
+        select(DailyReport.id)
+        .where(
+            DailyReport.venue_id == venue_id,
+            DailyReport.date >= start,
+            DailyReport.date < end,
+            DailyReport.status == "CLOSED",
+        )
+        .subquery()
+    )
+
+    closed_reports_count = int(
+        db.execute(
+            select(func.count(DailyReport.id)).where(
+                DailyReport.venue_id == venue_id,
+                DailyReport.date >= start,
+                DailyReport.date < end,
+                DailyReport.status == "CLOSED",
+            )
+        ).scalar()
+        or 0
+    )
+
+    sums = (
+        db.execute(
+            select(
+                DailyReportValue.ref_id,
+                func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
+            )
+            .where(
+                DailyReportValue.kind == kind,
+                DailyReportValue.report_id.in_(select(closed_reports_subq.c.id)),
+            )
+            .group_by(DailyReportValue.ref_id)
+        )
+        .all()
+    )
+
+    ref_ids = [int(r.ref_id) for r in sums]
+    catalog_map: dict[int, dict] = {}
+    if ref_ids:
+        items = (
+            db.execute(
+                select(Catalog).where(Catalog.venue_id == venue_id, Catalog.id.in_(ref_ids))
+            )
+            .scalars()
+            .all()
+        )
+        catalog_map = {int(it.id): {"code": getattr(it, "code", None), "title": getattr(it, "title", f"#{it.id}")} for it in items}
+
+    rows: list[dict] = []
+    total = 0
+    for r in sums:
+        rid = int(r.ref_id)
+        amt = int(r.amount or 0)
+        total += amt
+        meta = catalog_map.get(rid) or {"code": None, "title": f"Удалено #{rid}"}
+        rows.append(
+            {
+                "ref_id": rid,
+                "code": meta.get("code"),
+                "title": meta.get("title") or f"#{rid}",
+                "amount": amt,
+            }
+        )
+
+    rows.sort(key=lambda x: (-int(x.get("amount") or 0), str(x.get("title") or "")))
+
+    return {
+        "month": month,
+        "mode": mode.upper(),
+        "closed_reports": closed_reports_count,
+        "total": int(total),
+        "rows": rows,
+    }
+
+
+@router.get("/{venue_id}/revenue/export")
+def export_revenue(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
+    fmt: str = Query("xlsx", description="xlsx | csv"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Экспорт доходов за месяц (CLOSED) в XLSX (по умолчанию) или CSV."""
+    summary = get_revenue_summary(venue_id=venue_id, month=month, mode=mode, db=db, user=user)
+
+    # Venue name for filename
+    v = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    venue_name = v.name if v else f"venue_{venue_id}"
+
+    mode_label = "payments" if summary["mode"] == "PAYMENTS" else "departments"
+    safe_venue = re.sub(r"[^a-zA-Z0-9_-]+", "_", venue_name).strip("_") or f"venue_{venue_id}"
+
+    if (fmt or "").lower() == "csv":
+        content = build_revenue_csv(
+            month=summary["month"],
+            mode=summary["mode"],
+            venue_name=venue_name,
+            rows=summary["rows"],
+            total=int(summary["total"]),
+            closed_reports=int(summary["closed_reports"]),
+        )
+        filename = f"revenue_{safe_venue}_{summary['month']}_{mode_label}.csv"
+        return StreamingResponse(
+            BytesIO(content.encode("utf-8-sig")),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # default: xlsx
+    xlsx_bytes = build_revenue_xlsx(
+        month=summary["month"],
+        mode=summary["mode"],
+        venue_name=venue_name,
+        rows=summary["rows"],
+        total=int(summary["total"]),
+        closed_reports=int(summary["closed_reports"]),
+    )
+    filename = f"revenue_{safe_venue}_{summary['month']}_{mode_label}.xlsx"
+    return StreamingResponse(
+        BytesIO(xlsx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+
 def list_daily_report_audit(
     venue_id: int,
     report_date: date,

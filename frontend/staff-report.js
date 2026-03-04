@@ -715,7 +715,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
 
   const tipsDisabled = (!editEnabled) || (!showMoney);
   const tipsHtml = !tipsOn ? `` : `
-    <div class="rep-grid rep-grid--single">
+    <div class="rep-grid rep-grid--single" style="margin-bottom: 8px;">
       <label class="rep-field">
         <div class="rep-field__label"><span>Чаевые (общая сумма)</span></div>
         <input id="repTips" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.tips_total ?? 0) : "")}" ${tipsDisabled ? "disabled" : ""} placeholder="${showMoney ? "0" : "нет доступа"}" />
