@@ -264,6 +264,50 @@ function parsePermCodes(v) {
   return [];
 }
 
+
+// Permission codes are the single source of truth.
+// We intentionally do NOT consult legacy can_* flags here.
+function posPermSet(p) {
+  const raw =
+    (p && (p.permission_codes ?? p.permissions)) ??
+    [];
+  const arr = Array.isArray(raw) ? raw : parsePermCodes(raw);
+  const set = new Set();
+  for (const x of arr || []) {
+    const s = String(x || "").trim().toUpperCase();
+    if (s) set.add(s);
+  }
+  return set;
+}
+
+function posHasPerm(p, code) {
+  if (!code) return false;
+  return posPermSet(p).has(String(code).trim().toUpperCase());
+}
+
+function posHasAnyPerm(p, codes) {
+  const s = posPermSet(p);
+  return Array.isArray(codes) && codes.some((c) => s.has(String(c).trim().toUpperCase()));
+}
+
+function posReportsEnabled(p) {
+  // Any report-related permission means "Отчёты: да"
+  return posHasAnyPerm(p, [
+    "SHIFT_REPORT_VIEW",
+    "SHIFT_REPORT_CLOSE",
+    "SHIFT_REPORT_EDIT",
+    "SHIFT_REPORT_REOPEN",
+    "REPORTS_VIEW_DAILY",
+    "REPORTS_VIEW_MONTHLY",
+    "REPORTS_VIEW_PNL",
+  ]);
+}
+
+function posScheduleManage(p) {
+  return posHasPerm(p, "SHIFTS_MANAGE");
+}
+
+
 function normalizePositions(out) {
   let items = [];
   if (!out) items = [];
@@ -349,19 +393,6 @@ function renderPositionForm({ mode, position }) {
         { code: "SHIFT_REPORT_EDIT", title: "Правка закрытых" },
         { code: "SHIFT_REPORT_REOPEN", title: "Переоткрывать" },
       ],
-      extraHtml: `
-        <div class="perm-row">
-          <div class="perm-text">
-            <div class="perm-title">Видеть суммы</div>
-            <div class="perm-desc">MVP-флаг (can_view_revenue)</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="f_rep_revenue" data-perm-group="shift_reports"
-              ${(p.can_view_revenue) ? "checked" : ""} />
-            <span class="slider"></span>
-          </label>
-        </div>
-      `,
     },
     {
       key: "shifts",
@@ -569,54 +600,14 @@ function collectPayload(base = {}) {
     if (base && Object.prototype.hasOwnProperty.call(base, "permissions")) return parsePermCodes(base.permissions);
     return [];
   })();
-
-  // MVP flag (no permission code in registry yet)
-  const repRevenueEl = document.getElementById("f_rep_revenue");
-  const can_view_revenue =
-    repRevenueEl ? !!repRevenueEl.checked : !!base.can_view_revenue;
-
-  // Legacy booleans (compat with backend)
-  // IMPORTANT: when perm UI is present, these are derived ONLY from permission codes (no sticky fallback to old flags)
-  const can_make_reports = hasPermInputs
-    ? (permCodes.includes("SHIFT_REPORT_CLOSE") || permCodes.includes("SHIFT_REPORT_EDIT") || permCodes.includes("SHIFT_REPORT_REOPEN"))
-    : !!base.can_make_reports;
-
-  const can_view_reports = hasPermInputs
-    ? (permCodes.includes("SHIFT_REPORT_VIEW") || can_make_reports)
-    : !!base.can_view_reports;
-
-  const can_edit_schedule = hasPermInputs
-    ? permCodes.includes("SHIFTS_MANAGE")
-    : !!base.can_edit_schedule;
-
-  const can_manage_adjustments = hasPermInputs
-    ? permCodes.includes("ADJUSTMENTS_MANAGE")
-    : !!base.can_manage_adjustments;
-
-  const can_view_adjustments = hasPermInputs
-    ? (permCodes.includes("ADJUSTMENTS_VIEW") || can_manage_adjustments || permCodes.includes("DISPUTES_RESOLVE"))
-    : !!base.can_view_adjustments;
-
-  const can_resolve_disputes = hasPermInputs
-    ? permCodes.includes("DISPUTES_RESOLVE")
-    : !!base.can_resolve_disputes;
-
-return {
+  return {
     title,
     member_user_id,
     rate: Math.max(0, Math.round(rate)),
     percent: Math.max(0, Math.min(100, Math.round(percent))),
-    // legacy flags
-    can_make_reports,
-    can_view_reports,
-    can_view_revenue,
-    can_edit_schedule,
-    can_view_adjustments,
-    can_manage_adjustments,
-    can_resolve_disputes,
     // keep active by default for create; on update backend accepts bool|None
     is_active: (base.is_active === false) ? false : true,
-    // new perms (will be sent with fallback if backend doesn't support)
+    // permission codes (source of truth)
     _perm_codes: permCodes,
   };
 }
@@ -630,9 +621,6 @@ function setupPermUX() {
     const sel = group ? `input[data-perm-code][data-perm-group="${group}"]` : "input[data-perm-code]";
     return Array.from(modal.querySelectorAll(sel));
   };
-
-  const repRevenue = () => document.getElementById("f_rep_revenue");
-
   const setMany = (arr, val) => {
     arr.forEach((b) => (b.checked = !!val));
   };
@@ -678,15 +666,11 @@ function setupPermUX() {
   // global on/off
   document.getElementById("btnPermAllOn")?.addEventListener("click", () => {
     setMany(boxes(), true);
-    const rr = repRevenue();
-    if (rr) rr.checked = true;
-    syncDeps();
+syncDeps();
   });
   document.getElementById("btnPermAllOff")?.addEventListener("click", () => {
     setMany(boxes(), false);
-    const rr = repRevenue();
-    if (rr) rr.checked = false;
-  });
+});
 
   // group on/off
   modal.querySelectorAll("[data-perm-set]").forEach((btn) => {
@@ -694,16 +678,12 @@ function setupPermUX() {
       const g = btn.getAttribute("data-perm-set");
       const v = btn.getAttribute("data-value") === "1";
       setMany(boxes(g), v);
-      if (g === "shift_reports") {
-        const rr = repRevenue();
-        if (rr) rr.checked = v;
-      }
-      if (v) syncDeps();
+if (v) syncDeps();
     });
   });
 
   // deps on any change
-  modal.querySelectorAll('input[data-perm-code], #f_rep_revenue').forEach((el) => {
+  modal.querySelectorAll('input[data-perm-code]').forEach((el) => {
     el?.addEventListener("change", () => syncDeps());
   });
 
@@ -742,8 +722,8 @@ async function callPositionApiWithPerms({ kind, positionId, payload, permCodes }
       const p3 = { ...basePayload };
       delete p3.permission_codes;
       delete p3.permissions;
-      toast("Сервер пока не поддерживает сохранение новых прав — сохранили базовые флаги.", "warn");
-      return fn(p3);
+      toast("Сервер не поддерживает сохранение прав должностей через permission_codes. Обнови бэкенд.", "err");
+      throw e2;
     }
   }
 }
@@ -934,7 +914,7 @@ function renderPositions() {
           <div><b>${esc(who)}</b></div>
           <div class="muted" style="margin-top:4px">
             Ставка: ${esc(money(p.rate))} · Процент: ${esc(money(p.percent))}% ·
-            Отчёты: ${p.can_make_reports ? "да" : "нет"} · График: ${p.can_edit_schedule ? "да" : "нет"}
+            Отчёты: ${posReportsEnabled(p) ? "да" : "нет"} · График: ${posScheduleManage(p) ? "да" : "нет"}
           </div>
         </div>
         <div class="row" style="gap:8px; flex-wrap:wrap">
@@ -981,21 +961,21 @@ function renderPositions() {
 function positionPresetFromTemplate(title) {
   const t = String(title || "").trim();
   if (!t) return null;
+
   const p = state.positions.find((x) => String(x.title || "").trim() === t);
   const src = p || { title: t };
+
+  // Only permission_codes are stored in invite preset (no legacy flags).
+  const permission_codes = parsePermCodes(src.permission_codes ?? src.permissions);
+
   return {
     title: t,
     rate: Math.max(0, Math.round(Number(src.rate || 0) || 0)),
     percent: Math.max(0, Math.min(100, Math.round(Number(src.percent || 0) || 0))),
-    can_make_reports: !!src.can_make_reports,
-    can_view_reports: !!src.can_view_reports,
-    can_view_revenue: !!src.can_view_revenue,
-    can_edit_schedule: !!src.can_edit_schedule,
-    can_view_adjustments: !!src.can_view_adjustments,
-    can_manage_adjustments: !!src.can_manage_adjustments,
-    can_resolve_disputes: !!src.can_resolve_disputes,
+    permission_codes,
   };
 }
+
 
 function renderInvites() {
   const card = document.getElementById("invitesCard");

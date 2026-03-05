@@ -256,12 +256,19 @@ export async function api(path, opts = {}) {
   const isForm = (typeof FormData !== "undefined") && (body instanceof FormData);
   if (isPlainObject(body)) body = JSON.stringify(body);
 
+  // NOTE: Permission checks rely on fresh /me/* responses.
+  // Some browsers may cache credentialed GET requests aggressively in certain flows.
+  // Default to no-store, allow overriding via opts.cache when needed.
   const r = await fetch(url, {
+    cache: "no-store",
     ...opts,
     body,
     credentials: "include",
     headers: {
       ...(isForm ? {} : { "Content-Type": "application/json" }),
+      // extra cache-busting headers (safe no-op for most backends)
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
       ...(opts.headers || {}),
     },
   });
