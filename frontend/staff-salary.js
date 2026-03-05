@@ -22,14 +22,29 @@ const params = new URLSearchParams(location.search);
 // preload venues once (used for: auto-pick active venue + show/hide "all venues" switch)
 let __venues = [];
 try { __venues = await getMyVenues().catch(() => []); } catch { __venues = []; }
-const __venueIdOf = (v) => v?.id ?? v?.venue_id ?? v?.venueId ?? v?.venueID;
+const __venueIdOf = (v) => v?.venue?.id ?? v?.id ?? v?.venue_id ?? v?.venueId ?? v?.venueID ?? v?.venue?.venue_id ?? null;
 const __venueNameOf = (id) => {
   if (id == null) return "";
   const sid = String(id);
-  // getMyVenues() may return {id, name} or {venue_id, venue_name}
-  const v = (__venues || []).find((x) => String(__venueIdOf(x)) === sid);
-  return v?.name ?? v?.venue_name ?? v?.title ?? "";
+  const v = (__venues || []).find((x) => String(__venueIdOf(x)) === sid || String(__venueIdOf(x?.venue)) === sid);
+  const nested = v?.venue || null;
+  return (
+    v?.name ??
+    v?.venue_name ??
+    v?.title ??
+    nested?.name ??
+    nested?.venue_name ??
+    nested?.title ??
+    ""
+  );
 };
+
+
+async function ensureVenuesLoaded() {
+  if (Array.isArray(__venues) && __venues.length) return __venues;
+  try { __venues = await getMyVenues().catch(() => []); } catch { __venues = []; }
+  return __venues;
+}
 
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (!venueId && Array.isArray(__venues) && __venues.length) {
@@ -178,8 +193,7 @@ async function loadMonth() {
 
   const m = ym(curMonth);
   el.monthLabel.textContent = monthTitle(curMonth);
-  el.daysList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
-
+  if (el.daysList) el.daysList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
   try {
     const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m)}`);
     shifts = Array.isArray(out) ? out : (out?.items || []);
@@ -224,6 +238,7 @@ async function loadMonth() {
 
 
 async function loadMonthAll() {
+  await ensureVenuesLoaded();
   if (!allEls.list) return;
 
   const m = ym(curMonth);
@@ -233,8 +248,8 @@ async function loadMonthAll() {
   allEls.list.innerHTML = skeleton;
 
   const fmt = (n) => Math.round(Number(n || 0)).toLocaleString("ru-RU");
-  const vIdOf = (v) => v?.venue_id ?? v?.venueId ?? v?.id ?? v?.venueID;
-  const vNameOf = (v) => v?.venue_name ?? v?.venueName ?? v?.name ?? v?.title ?? __venueNameOf(vIdOf(v));
+  const vIdOf = (v) => v?.venue?.id ?? v?.venue_id ?? v?.venueId ?? v?.id ?? v?.venueID ?? v?.venue?.venue_id;
+  const vNameOf = (v) => v?.venue?.name ?? v?.venue_name ?? v?.venueName ?? v?.name ?? v?.title ?? v?.venue?.title ?? __venueNameOf(vIdOf(v));
 
   let totals = null;
   let items = null;
@@ -407,7 +422,7 @@ function renderSummary() {
 function renderMonthChart() {
   if (!el.monthChart) return;
   if (!days.length) {
-    el.monthChart.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
+    if (el.monthChart) el.monthChart.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
     return;
   }
 
@@ -427,7 +442,7 @@ function renderMonthChart() {
     `;
   }).join("");
 
-  el.monthChart.innerHTML = `<div class="chart__bars">${bars}</div>`;
+  if (el.monthChart) el.monthChart.innerHTML = `<div class="chart__bars">${bars}</div>`;
   el.monthChart.querySelectorAll(".bar").forEach((btn) => {
     const date = btn.getAttribute("data-date");
     const d = days.find(x => x.date === date);
@@ -438,9 +453,9 @@ function renderMonthChart() {
 
 
 function renderDays() {
-  el.daysList.innerHTML = "";
+  if (el.daysList) el.daysList.innerHTML = "";
   if (!days.length) {
-    el.daysList.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
+    if (el.daysList) el.daysList.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
     return;
   }
 
@@ -461,7 +476,7 @@ function renderDays() {
       </div>
     `;
     card.querySelector("[data-open]").addEventListener("click", () => openDayModal(d));
-    el.daysList.appendChild(card);
+    if (el.daysList) el.daysList.appendChild(card);
   }
 }
 
