@@ -130,13 +130,41 @@ setScopeMode(scopeMode);
 el.btnThisVenue?.addEventListener("click", () => { setScopeMode("venue"); refresh(); });
 el.btnAllVenues?.addEventListener("click", () => { setScopeMode("all"); refresh(); });
 
-const modal = document.getElementById("modal");
+function ensureModal() {
+  let m = document.getElementById("modal");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "modal";
+    m.className = "modal";
+    m.innerHTML = `
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__sheet">
+        <div class="modal__head row row--between ai-center">
+          <div>
+            <div class="modal__title">День</div>
+            <div class="muted small" id="modalSubtitle"></div>
+          </div>
+          <button class="btn sm" data-close aria-label="Закрыть">✕</button>
+        </div>
+        <div class="modal__body"></div>
+      </div>
+    `;
+    document.body.appendChild(m);
+  }
+  // Bind close handlers once
+  if (!m.__bound) {
+    const close = () => m.classList.remove("open");
+    m.querySelectorAll("[data-close]").forEach((x) => x.addEventListener("click", close));
+    m.__bound = true;
+  }
+  return m;
+}
+
+const modal = ensureModal();
 const modalTitle = modal?.querySelector(".modal__title");
 const modalBody = modal?.querySelector(".modal__body");
 const modalSubtitleEl = document.getElementById("modalSubtitle");
 function closeModal() { modal?.classList.remove("open"); }
-modal?.querySelector("[data-close]")?.addEventListener("click", closeModal);
-modal?.querySelector(".modal__backdrop")?.addEventListener("click", closeModal);
 function openModal(title, subtitle, bodyHtml) {
   if (modalTitle) modalTitle.textContent = title || "День";
   if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle || "";
@@ -248,8 +276,39 @@ async function loadMonthAll() {
   allEls.list.innerHTML = skeleton;
 
   const fmt = (n) => Math.round(Number(n || 0)).toLocaleString("ru-RU");
-  const vIdOf = (v) => v?.venue?.id ?? v?.venue_id ?? v?.venueId ?? v?.id ?? v?.venueID ?? v?.venue?.venue_id;
-  const vNameOf = (v) => v?.venue?.name ?? v?.venue_name ?? v?.venueName ?? v?.name ?? v?.title ?? v?.venue?.title ?? __venueNameOf(vIdOf(v));
+  const vIdOf = (v) => {
+    const raw = v?.venue;
+    if (typeof raw === "number") return raw;
+    if (typeof raw === "string") {
+      const t = raw.trim();
+      if (t && !Number.isNaN(Number(t))) return Number(t);
+    }
+    return (
+      v?.venue?.id ??
+      v?.venue_id ??
+      v?.venueId ??
+      v?.venueID ??
+      v?.id ??
+      v?.venue?.venue_id ??
+      null
+    );
+  };
+  const vNameOf = (v) => {
+    const raw = v?.venue;
+    if (typeof raw === "string") {
+      const t = raw.trim();
+      if (t && Number.isNaN(Number(t))) return t;
+    }
+    return (
+      v?.venue?.name ??
+      v?.venue?.title ??
+      v?.venue_name ??
+      v?.venueName ??
+      v?.name ??
+      v?.title ??
+      __venueNameOf(vIdOf(v))
+    );
+  };
 
   let totals = null;
   let items = null;
@@ -354,19 +413,44 @@ async function loadMonthAll() {
   safeItems.sort((a, b) => (Number(b?.net) || 0) - (Number(a?.net) || 0));
 
   allEls.list.innerHTML = safeItems.map((v) => {
-    const name = esc(vNameOf(v) || `#${vIdOf(v) || ""}`);
-    const earned = Number(v?.earned ?? v?.salary ?? v?.total_salary ?? 0);
+    const vid = vIdOf(v);
+    const name = esc(vNameOf(v) || (vid != null ? __venueNameOf(vid) : "") || `#${vid ?? ""}`);
+    const earned = Number(v?.earned ?? v?.salary ?? v?.total_salary ?? v?.total_earned ?? 0);
     const tips = Number(v?.tips ?? v?.total_tips ?? 0);
     const bonuses = Number(v?.bonuses ?? v?.total_bonuses ?? 0);
-    const penalties = Number(v?.penalties ?? v?.total_penalties ?? v?.penalties_total ?? 0);
+    const penalties = Number(v?.penalties ?? v?.total_penalties ?? v?.penalties_total ?? v?.total_penalty ?? 0);
     const net = Number(v?.net ?? v?.total ?? v?.total_net ?? (earned - penalties + bonuses) ?? 0);
 
     return `
       <div class="card">
         <b>${name}</b>
-        <div class="muted small mt-6">Итого: <b>${fmt(net)}</b></div>
-        <div class="muted small mt-6">Начислено: ${fmt(earned)} · Чаевые: ${fmt(tips)}</div>
-        <div class="muted small">Премии: ${fmt(bonuses)} · Штрафы/списания: ${fmt(penalties)}</div>
+
+        <div class="grid mt-10 salary-all-kpis">
+          <div class="mini-kpi">
+            <div class="muted small">Начислено</div>
+            <b>${fmt(earned)}</b>
+          </div>
+
+          <div class="mini-kpi">
+            <div class="muted small">Чаевые</div>
+            <b>${fmt(tips)}</b>
+          </div>
+
+          <div class="mini-kpi">
+            <div class="muted small">Премии</div>
+            <b>${fmt(bonuses)}</b>
+          </div>
+
+          <div class="mini-kpi">
+            <div class="muted small">Штрафы/Списания</div>
+            <b>${fmt(penalties)}</b>
+          </div>
+
+          <div class="mini-kpi total">
+            <div class="muted small">Итого</div>
+            <b>${fmt(net)}</b>
+          </div>
+        </div>
       </div>`;
   }).join("");
 }
