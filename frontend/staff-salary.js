@@ -10,7 +10,7 @@ import {
   getMyVenues,
 } from "/app.js";
 
-import { permSetFromResponse, hasPermPrefix, hasAnyPerm, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
+import { permSetFromResponse, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("salary");
@@ -18,28 +18,37 @@ mountCommonUI("salary");
 await ensureLogin({ silent: true });
 
 const params = new URLSearchParams(location.search);
+
+// preload venues once (used for: auto-pick active venue + show/hide "all venues" switch)
+let __venues = [];
+try { __venues = await getMyVenues().catch(() => []); } catch { __venues = []; }
+const __venueIdOf = (v) => v?.id ?? v?.venue_id ?? v?.venueId ?? v?.venueID;
+
 let venueId = params.get("venue_id") || getActiveVenueId();
+if (!venueId && Array.isArray(__venues) && __venues.length) {
+  const id0 = __venueIdOf(__venues[0]);
+  if (id0 != null) venueId = String(id0);
+}
 if (venueId) setActiveVenueId(venueId);
+
+// scope mode (venue vs all); allow "all" only if user has 2+ venues
+let scopeMode = (params.get("scope") || "venue").toLowerCase();
+if (scopeMode !== "all") scopeMode = "venue";
+if (!Array.isArray(__venues) || __venues.length < 2) scopeMode = "venue";
 
 // Determine whether user has report access for this venue (affects navbar layout)
 let __canReports = false;
 try {
-  const pr = await (venueId ? api(`/me/venues/${encodeURIComponent(venueId)}/permissions`) : null);
-  const pset = permSetFromResponse(pr);
-  const role = roleUpper(pr);
-  __canReports = canViewReportsPerms(pset, role, "");
-} catch {}
-
-// Hide "All venues" scope switch if user has only one venue
-try {
-  const venues = await getMyVenues().catch(() => []);
-  const scope = document.getElementById("salaryScope");
-  if (scope && (!Array.isArray(venues) || venues.length < 2)) { scope.style.display = "none"; scopeMode = "venue"; }
+  if (venueId) {
+    const pr = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
+    const pset = permSetFromResponse(pr);
+    const role = roleUpper(pr);
+    __canReports = canViewReportsPerms(pset, role, "");
+  }
 } catch {}
 
 await mountNav({ activeTab: (__canReports ? "finance" : "salary") });
 
-setScopeMode(scopeMode);
 const el = {
   monthLabel: document.getElementById("monthLabel"),
   prev: document.getElementById("monthPrev"),
@@ -56,10 +65,6 @@ const el = {
   btnThisVenue: document.getElementById("btnThisVenue"),
   btnAllVenues: document.getElementById("btnAllVenues"),
 };
-
-// --- scope switch (venue vs all venues) ---
-let scopeMode = (params.get("scope") || "venue").toLowerCase();
-if (scopeMode !== "all") scopeMode = "venue";
 
 const allEls = {
   card: document.getElementById("allVenuesCard"),
@@ -92,10 +97,16 @@ function setScopeMode(next) {
   } catch {}
 }
 
+// Hide "All venues" switch if user has only one venue
+try {
+  const scope = document.getElementById("salaryScope");
+  if (scope && (!Array.isArray(__venues) || __venues.length < 2)) scope.style.display = "none";
+} catch {}
+
+setScopeMode(scopeMode);
+
 el.btnThisVenue?.addEventListener("click", () => { setScopeMode("venue"); refresh(); });
 el.btnAllVenues?.addEventListener("click", () => { setScopeMode("all"); refresh(); });
-
-
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
@@ -150,7 +161,13 @@ let days = []; // [{date, salary, hasReport, shifts:[] }]
 let adjustments = []; // month items
 
 async function loadMonth() {
-  if (!venueId) return;
+  if (!venueId) {
+    const m = ym(curMonth);
+    if (el.monthLabel) el.monthLabel.textContent = monthTitle(curMonth);
+    if (el.daysList) el.daysList.innerHTML = `<div class="muted">Нет активного заведения</div>`;
+    if (el.monthChart) el.monthChart.innerHTML = `<div class="muted">Нет активного заведения</div>`;
+    return;
+  }
 
   const m = ym(curMonth);
   el.monthLabel.textContent = monthTitle(curMonth);
@@ -255,7 +272,7 @@ async function refresh() {
     await loadMonthAll();
     return;
   }
-  await refresh();
+  await loadMonth();
 }
 
 function formatDateRuNoG(iso) {
