@@ -217,10 +217,9 @@ function computeAuth(perms) {
   const sysRole = String(perms?.system_role || "").toUpperCase();
   const isOwnerOrAdmin =
     role === "OWNER" ||
+    role === "VENUE_OWNER" ||
     sysRole === "SUPER_ADMIN" ||
-    sysRole === "MODERATOR" ||
-    role === "SUPER_ADMIN" ||
-    role === "MODERATOR";
+    sysRole === "MODERATOR";
 
   const pset = permSetFromResponse(perms);
   const permissions = Array.from(pset);

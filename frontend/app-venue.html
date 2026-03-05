@@ -169,7 +169,7 @@
           myRole = roleUpper(perms);
           pset = permSetFromResponse(perms);
 
-          isOwner = myRole === "OWNER";
+          isOwner = myRole === "OWNER" || myRole === "VENUE_OWNER";
 
           canManageAdjustments = isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_MANAGE");
           canViewAdjustments = isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_VIEW") || canManageAdjustments;

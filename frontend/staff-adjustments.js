@@ -17,9 +17,11 @@ mountCommonUI("adjustments");
 await ensureLogin({ silent: true });
 
 // Guard: if cookie auth is missing, stop page init (prevents silent crash on 401)
+let __sysRole = "";
 const __meOk = await (async () => {
   try {
-    await api("/me");
+    const me = await api("/me");
+    __sysRole = String(me?.system_role || "").toUpperCase();
     return true;
   } catch (e) {
     if (e?.status === 401) {
@@ -45,10 +47,7 @@ try {
   const pr = await (venueId ? api(`/me/venues/${encodeURIComponent(venueId)}/permissions`) : null);
   const pset = permSetFromResponse(pr);
   const role = roleUpper(pr);
-  const canViewReports =
-    role === "OWNER" || role === "SUPER_ADMIN" || role === "MODERATOR" ||
-    hasPermPrefix(pset, "SHIFT_REPORT_") || hasPermPrefix(pset, "REPORTS_") ||
-    hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
+  const canViewReports = canViewReportsPerms(pset, role, __sysRole);
   if (canViewReports) __tab = "finance";
 } catch {}
 // Determine whether user has report access for this venue (affects navbar layout)
@@ -57,7 +56,7 @@ try {
   const pr = await (venueId ? api(`/me/venues/${encodeURIComponent(venueId)}/permissions`) : null);
   const pset = permSetFromResponse(pr);
   const role = roleUpper(pr);
-  __canReports = canViewReportsPerms(pset, role, "");
+  __canReports = canViewReportsPerms(pset, role, __sysRole);
 } catch {}
 await mountNav({ activeTab: (__canReports ? "finance" : "adjustments") });
 
@@ -78,7 +77,7 @@ async function setupManageButton() {
     const pr = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
     const pset = permSetFromResponse(pr);
     const role = roleUpper(pr);
-    const isAdmin = role === "SUPER_ADMIN" || role === "MODERATOR";
+    const isAdmin = __sysRole === "SUPER_ADMIN" || __sysRole === "MODERATOR";
     const isOwner = role === "OWNER" || role === "VENUE_OWNER";
     const canManage = isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_MANAGE");
     if (canManage) {

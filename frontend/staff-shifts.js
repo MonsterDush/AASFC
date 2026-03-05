@@ -568,10 +568,11 @@ async function loadContext() {
 
   const pset = permSetFromResponse(perms);
 
-  canEdit =
-    myRole === "OWNER" ||
-    myRole === "SUPER_ADMIN" ||
-    hasPerm(pset, "SHIFTS_MANAGE");
+  const sys = String(me?.system_role || "").toUpperCase();
+  const isAdmin = sys === "SUPER_ADMIN" || sys === "MODERATOR";
+  const isOwner = myRole === "OWNER" || myRole === "VENUE_OWNER";
+
+  canEdit = isOwner || isAdmin || hasPerm(pset, "SHIFTS_MANAGE");
 
   // numbers on calendar (salary / revenue) should be shown only to report viewers
   canViewRevenue =
@@ -1750,8 +1751,11 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
 
 function canEditDay(dateStr) {
   if (!canEdit) return false;
-  if (myRole === "OWNER" || myRole === "SUPER_ADMIN") return true;
-  // прошедшие дни — только owner/superadmin
+  const sys = String(me?.system_role || "").toUpperCase();
+  const isAdmin = sys === "SUPER_ADMIN" || sys === "MODERATOR";
+  const isOwner = myRole === "OWNER" || myRole === "VENUE_OWNER";
+  if (isOwner || isAdmin) return true;
+  // прошедшие дни — только owner/admin
   return !isPastDay(dateStr);
 }
 

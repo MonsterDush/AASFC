@@ -57,6 +57,11 @@ export function isSysAdminRole(sysRoleUpper) {
   return r === "SUPER_ADMIN" || r === "MODERATOR";
 }
 
+export function isOwnerRole(venueRoleUpper) {
+  const r = String(venueRoleUpper || "").trim().toUpperCase();
+  return r === "OWNER" || r === "VENUE_OWNER";
+}
+
 /**
  * Report access means user can open report pages / see report sections.
  * We keep it permissive: any SHIFT_REPORT_* / REPORTS_* implies access.
@@ -65,7 +70,7 @@ export function canViewReports(permSet, venueRoleUpper, systemRoleUpper) {
   const role = String(venueRoleUpper || "").trim().toUpperCase();
   const sys = String(systemRoleUpper || "").trim().toUpperCase();
 
-  if (role === "OWNER" || role === "VENUE_OWNER") return true;
+  if (isOwnerRole(role)) return true;
   if (isSysAdminRole(sys)) return true;
 
   return (
