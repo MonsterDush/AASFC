@@ -138,7 +138,7 @@ function ensureModal() {
     m.className = "modal";
     m.innerHTML = `
       <div class="modal__backdrop" data-close></div>
-      <div class="modal__sheet">
+      <div class="modal__panel">
         <div class="modal__head row row--between ai-center">
           <div>
             <div class="modal__title">День</div>
