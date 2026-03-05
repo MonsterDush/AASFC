@@ -326,36 +326,7 @@ function renderPositionForm({ mode, position }) {
     return arr.map((x) => String(x || "").trim()).filter(Boolean);
   })();
 
-  const legacyOn = (code) => {
-    switch (code) {
-      case "SHIFT_REPORT_VIEW":
-        return !!(p.can_view_reports || p.can_make_reports);
-      case "SHIFT_REPORT_CLOSE":
-        return !!p.can_make_reports;
-      case "SHIFT_REPORT_EDIT":
-        // чтобы не "сломать" старое поведение, считаем что can_make_reports давал расширенные права
-        return !!p.can_make_reports;
-      case "SHIFT_REPORT_REOPEN":
-        return false;
-
-      case "SHIFTS_VIEW":
-        return !!p.can_edit_schedule;
-      case "SHIFTS_MANAGE":
-        return !!p.can_edit_schedule;
-
-      case "ADJUSTMENTS_VIEW":
-        return !!(p.can_view_adjustments || p.can_manage_adjustments || p.can_resolve_disputes);
-      case "ADJUSTMENTS_MANAGE":
-        return !!p.can_manage_adjustments;
-      case "DISPUTES_RESOLVE":
-        return !!p.can_resolve_disputes;
-
-      default:
-        return false;
-    }
-  };
-
-  const isChecked = (code) => curPerms.includes(code) || (!curPerms.length && legacyOn(code));
+  const isChecked = (code) => curPerms.includes(code);
 
   const PERM_GROUPS = [
     {
@@ -386,7 +357,7 @@ function renderPositionForm({ mode, position }) {
           </div>
           <label class="switch">
             <input type="checkbox" id="f_rep_revenue" data-perm-group="shift_reports"
-              ${(p.can_view_revenue || p.can_make_reports) ? "checked" : ""} />
+              ${(p.can_view_revenue) ? "checked" : ""} />
             <span class="slider"></span>
           </label>
         </div>
@@ -585,28 +556,52 @@ function collectPayload(base = {}) {
 
   // New permissions list (permission codes)
   const modal = document.getElementById("posModal");
-  const permCodes = modal
-    ? Array.from(modal.querySelectorAll('input[data-perm-code]:checked'))
+  const hasPermInputs = !!(modal && modal.querySelector('input[data-perm-code]'));
+
+  const permCodes = (() => {
+    if (hasPermInputs) {
+      return Array.from(modal.querySelectorAll('input[data-perm-code]:checked'))
         .map((x) => String(x.getAttribute("data-perm-code") || "").trim())
-        .filter(Boolean)
-    : [];
+        .filter(Boolean);
+    }
+    // no perm UI in this modal -> keep existing codes from base (do NOT clear by accident)
+    if (base && Object.prototype.hasOwnProperty.call(base, "permission_codes")) return parsePermCodes(base.permission_codes);
+    if (base && Object.prototype.hasOwnProperty.call(base, "permissions")) return parsePermCodes(base.permissions);
+    return [];
+  })();
 
   // MVP flag (no permission code in registry yet)
   const repRevenueEl = document.getElementById("f_rep_revenue");
   const can_view_revenue =
-    repRevenueEl ? !!repRevenueEl.checked : !!(base.can_view_revenue || base.can_make_reports);
+    repRevenueEl ? !!repRevenueEl.checked : !!base.can_view_revenue;
 
   // Legacy booleans (compat with backend)
-  const can_make_reports = permCodes.includes("SHIFT_REPORT_CLOSE") || permCodes.includes("SHIFT_REPORT_EDIT") || permCodes.includes("SHIFT_REPORT_REOPEN") || !!base.can_make_reports;
-  const can_view_reports = permCodes.includes("SHIFT_REPORT_VIEW") || can_make_reports || !!base.can_view_reports;
+  // IMPORTANT: when perm UI is present, these are derived ONLY from permission codes (no sticky fallback to old flags)
+  const can_make_reports = hasPermInputs
+    ? (permCodes.includes("SHIFT_REPORT_CLOSE") || permCodes.includes("SHIFT_REPORT_EDIT") || permCodes.includes("SHIFT_REPORT_REOPEN"))
+    : !!base.can_make_reports;
 
-  const can_edit_schedule = permCodes.includes("SHIFTS_MANAGE") || !!base.can_edit_schedule;
+  const can_view_reports = hasPermInputs
+    ? (permCodes.includes("SHIFT_REPORT_VIEW") || can_make_reports)
+    : !!base.can_view_reports;
 
-  const can_manage_adjustments = permCodes.includes("ADJUSTMENTS_MANAGE") || !!base.can_manage_adjustments;
-  const can_view_adjustments = permCodes.includes("ADJUSTMENTS_VIEW") || can_manage_adjustments || permCodes.includes("DISPUTES_RESOLVE") || !!base.can_view_adjustments;
-  const can_resolve_disputes = permCodes.includes("DISPUTES_RESOLVE") || !!base.can_resolve_disputes;
+  const can_edit_schedule = hasPermInputs
+    ? permCodes.includes("SHIFTS_MANAGE")
+    : !!base.can_edit_schedule;
 
-  return {
+  const can_manage_adjustments = hasPermInputs
+    ? permCodes.includes("ADJUSTMENTS_MANAGE")
+    : !!base.can_manage_adjustments;
+
+  const can_view_adjustments = hasPermInputs
+    ? (permCodes.includes("ADJUSTMENTS_VIEW") || can_manage_adjustments || permCodes.includes("DISPUTES_RESOLVE"))
+    : !!base.can_view_adjustments;
+
+  const can_resolve_disputes = hasPermInputs
+    ? permCodes.includes("DISPUTES_RESOLVE")
+    : !!base.can_resolve_disputes;
+
+return {
     title,
     member_user_id,
     rate: Math.max(0, Math.round(rate)),
