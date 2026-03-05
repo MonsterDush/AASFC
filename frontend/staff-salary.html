@@ -32,18 +32,17 @@
     </div>
 
     <div class="card">
-      <div class="row row--between" style="flex-wrap:wrap; gap:10px">
-        <div class="row ai-center gap-10 month-controls">
+      <div class="row jc-center ai-center gap-10 month-controls">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
 
-        <div class="row jc-center gap-8" id="salaryScope" style="flex:1; justify-content:center">
+      <div class="row jc-center gap-8 mt-10" id="salaryScope" style="justify-content:center">
           <button class="btn sm" id="btnThisVenue" data-scope="venue">Это заведение</button>
           <button class="btn sm" id="btnAllVenues" data-scope="all">Все заведения</button>
         </div>
-      </div>
+
 
       <!-- Scope: active venue -->
       <div id="venueScopeWrap">
