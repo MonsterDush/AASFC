@@ -32,17 +32,6 @@ class VenuePosition(Base):
     # Stored as TEXT for compatibility with SQLite and Postgres.
     permission_codes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Reports / schedule
-    can_make_reports: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    can_view_reports: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    can_view_revenue: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    can_edit_schedule: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
-    # Adjustments (penalties/writeoffs/bonuses)
-    can_view_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    can_manage_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    can_resolve_disputes: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     venue = relationship("Venue")

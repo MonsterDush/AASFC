@@ -98,27 +98,9 @@ def require_venue_permission(
                 out.add(v)
         return out
     raw_perm = getattr(pos, "permission_codes", None) if pos is not None else None
-    raw_present = raw_perm is not None and str(raw_perm).strip() != ""
-    pos_codes = _parse_pos_codes(raw_perm) if raw_present else set()
+    pos_codes = _parse_pos_codes(raw_perm) if pos is not None else set()
     if permission_code.strip().upper() in pos_codes:
         return
-
-    # ---- legacy position flags mapping (backwards compatibility) ----
-    # IMPORTANT: legacy flags are used ONLY when permission_codes is empty/NULL (pre-migration).
-    if pos is not None and not raw_present:
-        pc = permission_code.strip().upper()
-        if pc in {"SHIFT_REPORT_VIEW"} and bool(pos.can_view_reports or pos.can_make_reports):
-            return
-        if pc in {"SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"} and bool(pos.can_make_reports):
-            return
-        if pc in {"SHIFTS_VIEW", "SHIFTS_MANAGE"} and bool(pos.can_edit_schedule):
-            return
-        if pc == "ADJUSTMENTS_VIEW" and bool(getattr(pos, "can_view_adjustments", False) or getattr(pos, "can_manage_adjustments", False)):
-            return
-        if pc == "ADJUSTMENTS_MANAGE" and bool(getattr(pos, "can_manage_adjustments", False)):
-            return
-        if pc == "DISPUTES_RESOLVE" and bool(getattr(pos, "can_resolve_disputes", False)):
-            return
 
     defaults_role = VENUE_ROLE_TO_DEFAULT_ROLE.get(vm.venue_role)
     if not defaults_role:

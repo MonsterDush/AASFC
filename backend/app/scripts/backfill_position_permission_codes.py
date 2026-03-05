@@ -1,19 +1,22 @@
-"""Backfill VenuePosition.permission_codes from legacy boolean flags and normalize formats.
+"""Normalize VenuePosition.permission_codes.
 
 Purpose
 -------
-We are migrating the app from coarse legacy boolean flags (can_make_reports, can_edit_schedule, ...)
-to fine-grained permission codes stored in VenuePosition.permission_codes (JSON list of codes).
+The project moved to a single source of truth for per-venue permissions:
 
-This script:
-- normalizes existing permission_codes into canonical JSON list (dedup + uppercase)
-- for rows where permission_codes is NULL/empty, derives codes from legacy flags
-- keeps legacy flags in sync with derived codes (so old UI/logic won't "stick")
+  VenuePosition.permission_codes  (TEXT, JSON list of permission codes)
+
+This script normalizes existing rows to a canonical JSON list:
+- uppercase
+- de-duplicate
+- keeps only active permissions (DB) or codes present in code registry
+- writes an explicit "[]" for NULL/empty values (optional but convenient)
+
+It can also normalize invite presets (venue_invites.default_position_json) to keep
+only `permission_codes` and remove legacy keys.
 
 Usage
 -----
-Run inside backend virtualenv / docker container with access to DATABASE_URL:
-
   python -m app.scripts.backfill_position_permission_codes
 
 Optional env vars:
@@ -95,107 +98,36 @@ def _normalize_permission_codes(db: Session, codes: Iterable[str] | None) -> lis
     return [c for c in cleaned if c in active or c in registry]
 
 
-def _derive_codes_from_legacy_flags(pos: VenuePosition) -> list[str]:
-    codes: list[str] = []
-
-    # Reports / revenue
-    if bool(getattr(pos, "can_make_reports", False)):
-        codes += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
-    elif bool(getattr(pos, "can_view_reports", False)) or bool(getattr(pos, "can_view_revenue", False)):
-        # revenue-only legacy flag still implies view-level access in new model
-        codes += ["SHIFT_REPORT_VIEW"]
-
-    # Schedule
-    if bool(getattr(pos, "can_edit_schedule", False)):
-        codes += ["SHIFTS_VIEW", "SHIFTS_MANAGE"]
-
-    # Adjustments & disputes
-    if bool(getattr(pos, "can_manage_adjustments", False)):
-        codes += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
-    elif bool(getattr(pos, "can_view_adjustments", False)):
-        codes += ["ADJUSTMENTS_VIEW"]
-
-    if bool(getattr(pos, "can_resolve_disputes", False)):
-        codes += ["DISPUTES_RESOLVE"]
-
-    # dedup/uppercase here (final normalization happens later too)
-    out: list[str] = []
-    seen: set[str] = set()
-    for c in codes:
-        s = str(c or "").strip().upper()
-        if s and s not in seen:
-            seen.add(s)
-            out.append(s)
-    return out
-
-
-def _derive_legacy_flags_from_codes(codes: list[str]) -> dict[str, bool]:
-    s = {str(c or "").strip().upper() for c in (codes or [])}
-    s.discard("")
-    return {
-        "can_make_reports": bool(s.intersection({"SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"})),
-        "can_view_reports": bool(s.intersection({"SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"})),
-        "can_view_revenue": bool(s.intersection({"SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"})),
-        "can_edit_schedule": bool(s.intersection({"SHIFTS_MANAGE"})),
-        "can_view_adjustments": bool(s.intersection({"ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"})),
-        "can_manage_adjustments": bool(s.intersection({"ADJUSTMENTS_MANAGE"})),
-        "can_resolve_disputes": bool(s.intersection({"DISPUTES_RESOLVE"})),
-    }
-
-
-def _update_invite_preset(db: Session, inv: VenueInvite) -> bool:
-    """Optional: normalize invite default_position_json to include permission_codes when missing."""
+def _normalize_invite_preset(inv: VenueInvite) -> bool:
     preset = getattr(inv, "default_position_json", None)
     if not isinstance(preset, dict):
         return False
 
-    if preset.get("permission_codes") or preset.get("permissions"):
-        # ensure list is clean and stored under permission_codes
-        raw = preset.get("permission_codes") or preset.get("permissions")
-        if isinstance(raw, str):
-            raw_list = [x.strip() for x in raw.split(",") if x.strip()]
-        elif isinstance(raw, list):
-            raw_list = raw
-        else:
-            raw_list = []
-        cleaned = [str(x or "").strip().upper() for x in raw_list if str(x or "").strip()]
-        dedup = []
-        seen = set()
-        for c in cleaned:
-            if c not in seen:
-                seen.add(c)
-                dedup.append(c)
-        preset["permission_codes"] = dedup
-        preset.pop("permissions", None)
-        inv.default_position_json = preset
-        return True
+    # accept both keys, but always store as permission_codes
+    raw = preset.get("permission_codes")
+    if raw is None:
+        raw = preset.get("permissions")
 
-    # derive from legacy flags inside preset
-    dummy = type("Dummy", (), preset)  # minimal attribute access
-    codes = []
-    if bool(getattr(dummy, "can_make_reports", False)):
-        codes += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
-    elif bool(getattr(dummy, "can_view_reports", False)) or bool(getattr(dummy, "can_view_revenue", False)):
-        codes += ["SHIFT_REPORT_VIEW"]
-    if bool(getattr(dummy, "can_edit_schedule", False)):
-        codes += ["SHIFTS_VIEW", "SHIFTS_MANAGE"]
-    if bool(getattr(dummy, "can_manage_adjustments", False)):
-        codes += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
-    elif bool(getattr(dummy, "can_view_adjustments", False)):
-        codes += ["ADJUSTMENTS_VIEW"]
-    if bool(getattr(dummy, "can_resolve_disputes", False)):
-        codes += ["DISPUTES_RESOLVE"]
+    if isinstance(raw, str):
+        raw_list = [x.strip() for x in raw.split(",") if x.strip()]
+    elif isinstance(raw, list):
+        raw_list = raw
+    else:
+        raw_list = []
 
-    cleaned = []
-    seen = set()
-    for c in codes:
-        s = str(c or "").strip().upper()
-        if s and s not in seen:
-            seen.add(s)
-            cleaned.append(s)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for x in raw_list:
+        v = str(x or "").strip().upper()
+        if v and v not in seen:
+            seen.add(v)
+            cleaned.append(v)
 
-    if not cleaned:
-        return False
+    # Remove legacy keys completely (we no longer use them)
+    for k in list(preset.keys()):
+        if str(k).startswith("can_"):
+            preset.pop(k, None)
+    preset.pop("permissions", None)
 
     preset["permission_codes"] = cleaned
     inv.default_position_json = preset
@@ -207,9 +139,8 @@ def main() -> int:
     venue_id = os.getenv("VENUE_ID", "").strip()
     limit = int(os.getenv("LIMIT", "0") or "0")
 
-    updated_positions = 0
     normalized_positions = 0
-    updated_invites = 0
+    normalized_invites = 0
     scanned = 0
 
     with SessionLocal() as db:
@@ -228,42 +159,17 @@ def main() -> int:
         for pos in rows:
             scanned += 1
             raw = getattr(pos, "permission_codes", None)
-            raw_present = raw is not None and str(raw).strip() != ""
+            existing_codes = _parse_codes(raw)
+            norm = _normalize_permission_codes(db, existing_codes)
+            canon = json.dumps(norm or [])
 
-            existing_codes = _parse_codes(raw) if raw_present else []
-            changed = False
+            # always write canonical JSON string (also converts NULL/empty to "[]")
+            if (raw is None) or (str(raw).strip() != canon):
+                pos.permission_codes = canon
+                normalized_positions += 1
+                if not dry_run:
+                    db.add(pos)
 
-            if raw_present:
-                # normalize and canonicalize to JSON list
-                norm = _normalize_permission_codes(db, existing_codes)
-                canon = json.dumps(norm or [])
-                if str(raw).strip() != canon:
-                    pos.permission_codes = canon
-                    changed = True
-                    normalized_positions += 1
-
-                # keep legacy flags in sync with codes
-                derived = _derive_legacy_flags_from_codes(norm)
-                for k, v in derived.items():
-                    if bool(getattr(pos, k)) != bool(v):
-                        setattr(pos, k, bool(v))
-                        changed = True
-            else:
-                # backfill from legacy flags
-                derived_codes = _derive_codes_from_legacy_flags(pos)
-                norm = _normalize_permission_codes(db, derived_codes)
-                if norm:
-                    pos.permission_codes = json.dumps(norm)
-                    derived_flags = _derive_legacy_flags_from_codes(norm)
-                    for k, v in derived_flags.items():
-                        setattr(pos, k, bool(v))
-                    changed = True
-                    updated_positions += 1
-
-            if changed and not dry_run:
-                db.add(pos)
-
-        # Optional: normalize invites presets
         inv_q = select(VenueInvite)
         if venue_id:
             inv_q = inv_q.where(VenueInvite.venue_id == int(venue_id))
@@ -272,8 +178,8 @@ def main() -> int:
 
         inv_rows = db.execute(inv_q).scalars().all()
         for inv in inv_rows:
-            if _update_invite_preset(db, inv):
-                updated_invites += 1
+            if _normalize_invite_preset(inv):
+                normalized_invites += 1
                 if not dry_run:
                     db.add(inv)
 
@@ -281,9 +187,8 @@ def main() -> int:
             db.commit()
 
     print(f"Scanned positions: {scanned}")
-    print(f"Backfilled positions (from legacy flags): {updated_positions}")
-    print(f"Normalized positions (canonical JSON / synced flags): {normalized_positions}")
-    print(f"Updated invites (added/normalized permission_codes in preset): {updated_invites}")
+    print(f"Normalized positions: {normalized_positions}")
+    print(f"Normalized invite presets: {normalized_invites}")
     print("DRY_RUN=1 (no commit)" if dry_run else "Committed changes")
     return 0
 

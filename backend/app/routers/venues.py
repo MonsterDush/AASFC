@@ -87,16 +87,8 @@ class InviteDefaultPositionIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
-    can_make_reports: bool = False
-    can_view_reports: bool = False
-    can_view_revenue: bool = False
-    can_edit_schedule: bool = False
-    can_view_adjustments: bool = False
-    can_manage_adjustments: bool = False
-    can_resolve_disputes: bool = False
-    # Fine-grained permissions (preferred). Accepts either key for compatibility.
+    # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
-    permissions: list[str] | None = None
 
 
 
@@ -121,17 +113,9 @@ class PositionCreateIn(BaseModel):
     member_user_id: int = Field(..., gt=0)
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
-    can_make_reports: bool = False
-    can_view_reports: bool = False
-    can_view_revenue: bool = False
-    can_edit_schedule: bool = False
-    can_view_adjustments: bool = False
-    can_manage_adjustments: bool = False
-    can_resolve_disputes: bool = False
     is_active: bool = True
-    # Fine-grained permissions (preferred). Accepts either key for compatibility.
+    # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
-    permissions: list[str] | None = None
 
 
 class PositionUpdateIn(BaseModel):
@@ -139,17 +123,9 @@ class PositionUpdateIn(BaseModel):
     member_user_id: int | None = Field(default=None, gt=0)
     rate: int | None = Field(default=None, ge=0)
     percent: int | None = Field(default=None, ge=0, le=100)
-    can_make_reports: bool | None = None
-    can_view_reports: bool | None = None
-    can_view_revenue: bool | None = None
-    can_edit_schedule: bool | None = None
-    can_view_adjustments: bool | None = None
-    can_manage_adjustments: bool | None = None
-    can_resolve_disputes: bool | None = None
     is_active: bool | None = None
-    # Fine-grained permissions (preferred). Accepts either key for compatibility.
+    # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
-    permissions: list[str] | None = None
 
 
 class ReportValueIn(BaseModel):
@@ -359,15 +335,7 @@ def _is_report_maker(db: Session, *, venue_id: int, user: User) -> bool:
         except HTTPException:
             pass
 
-    # Legacy position flags (kept for backwards compatibility)
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    return bool(pos and pos.can_make_reports)
+    return False
 
 
 def _require_report_maker(db: Session, *, venue_id: int, user: User) -> None:
@@ -387,16 +355,7 @@ def _is_report_viewer(db: Session, *, venue_id: int, user: User) -> bool:
         except HTTPException:
             pass
 
-    # Legacy position flags (kept for backwards compatibility)
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    # report maker can always view
-    return bool(pos and (pos.can_view_reports or pos.can_make_reports))
+    return False
 
 
 def _require_report_viewer(db: Session, *, venue_id: int, user: User) -> None:
@@ -457,16 +416,7 @@ def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
         except HTTPException:
             pass
 
-    # Legacy position flags (kept for backwards compatibility)
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    # report maker can always view numbers
-    return bool(pos and (pos.can_view_revenue or pos.can_make_reports))
+    return False
 
 
 
@@ -806,32 +756,6 @@ def _normalize_permission_codes(db: Session, codes: list[str] | None) -> list[st
 
 
 
-def _derive_legacy_flags_from_permission_codes(codes: list[str]) -> dict[str, bool]:
-    """Derive legacy boolean columns from fine-grained permission codes.
-
-    This prevents 'sticky' legacy flags when UI updates only permission_codes.
-    """
-    s = {str(c or "").strip().upper() for c in (codes or [])}
-    s.discard("")
-    can_make_reports = bool(s.intersection({"SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"}))
-    can_view_reports = bool(s.intersection({"SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"}))
-    can_view_revenue = bool(s.intersection({"SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"}))
-    can_edit_schedule = bool(s.intersection({"SHIFTS_MANAGE"}))
-    can_view_adjustments = bool(s.intersection({"ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"}))
-    can_manage_adjustments = bool(s.intersection({"ADJUSTMENTS_MANAGE"}))
-    can_resolve_disputes = bool(s.intersection({"DISPUTES_RESOLVE"}))
-    return {
-        "can_make_reports": can_make_reports,
-        "can_view_reports": can_view_reports,
-        "can_view_revenue": can_view_revenue,
-        "can_edit_schedule": can_edit_schedule,
-        "can_view_adjustments": can_view_adjustments,
-        "can_manage_adjustments": can_manage_adjustments,
-        "can_resolve_disputes": can_resolve_disputes,
-    }
-
-
-
 @router.get("/{venue_id}/positions")
 def list_positions(
     venue_id: int,
@@ -872,13 +796,6 @@ def list_positions(
             VenuePosition.rate,
             VenuePosition.percent,
             VenuePosition.permission_codes,
-            VenuePosition.can_make_reports,
-            VenuePosition.can_view_reports,
-            VenuePosition.can_view_revenue,
-            VenuePosition.can_view_adjustments,
-            VenuePosition.can_manage_adjustments,
-            VenuePosition.can_resolve_disputes,
-            VenuePosition.can_edit_schedule,
             VenuePosition.is_active,
             User.tg_user_id,
             User.tg_username,
@@ -910,13 +827,6 @@ def list_positions(
             "rate": r.rate,
             "percent": r.percent,
             "permission_codes": _parse_position_permission_codes(getattr(r, "permission_codes", None)),
-            "can_make_reports": bool(r.can_make_reports),
-            "can_view_reports": bool(r.can_view_reports),
-            "can_view_revenue": bool(r.can_view_revenue),
-            "can_edit_schedule": bool(r.can_edit_schedule),
-            "can_view_adjustments": bool(getattr(r, "can_view_adjustments", False)),
-            "can_manage_adjustments": bool(getattr(r, "can_manage_adjustments", False)),
-            "can_resolve_disputes": bool(getattr(r, "can_resolve_disputes", False)),
             "is_active": bool(r.is_active),
             "member": {
                 "user_id": r.member_user_id,
@@ -943,13 +853,12 @@ def create_position(
     if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_MANAGE")
 
-    # Setting fine-grained permission codes requires POSITION_PERMISSIONS_MANAGE
-    if (payload.permission_codes is not None or payload.permissions is not None) and not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+    # Setting permission codes requires POSITION_PERMISSIONS_MANAGE
+    if payload.permission_codes is not None and not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITION_PERMISSIONS_MANAGE")
 
-    perms_touched = payload.permission_codes is not None or payload.permissions is not None
-    norm_codes = _normalize_permission_codes(db, payload.permission_codes or payload.permissions) if perms_touched else None
-    derived = _derive_legacy_flags_from_permission_codes(norm_codes or []) if perms_touched else None
+    codes_provided = payload.permission_codes is not None
+    norm_codes = _normalize_permission_codes(db, payload.permission_codes or []) if codes_provided else []
 
     # validate member exists in this venue (active)
     vm = db.execute(
@@ -976,14 +885,7 @@ def create_position(
             title=payload.title.strip(),
             rate=payload.rate,
             percent=payload.percent,
-            permission_codes=(json.dumps(norm_codes) if perms_touched else None),
-            can_make_reports=(derived["can_make_reports"] if perms_touched else payload.can_make_reports),
-            can_view_reports=(derived["can_view_reports"] if perms_touched else payload.can_view_reports),
-            can_view_revenue=(derived["can_view_revenue"] if perms_touched else payload.can_view_revenue),
-            can_edit_schedule=(derived["can_edit_schedule"] if perms_touched else payload.can_edit_schedule),
-            can_view_adjustments=(derived["can_view_adjustments"] if perms_touched else payload.can_view_adjustments),
-            can_manage_adjustments=(derived["can_manage_adjustments"] if perms_touched else payload.can_manage_adjustments),
-            can_resolve_disputes=(derived["can_resolve_disputes"] if perms_touched else payload.can_resolve_disputes),
+            permission_codes=json.dumps(norm_codes),
             is_active=payload.is_active,
         )
         db.add(pos)
@@ -995,26 +897,9 @@ def create_position(
     existing.title = payload.title.strip()
     existing.rate = payload.rate
     existing.percent = payload.percent
-    if payload.permission_codes is not None or payload.permissions is not None:
-        existing.permission_codes = json.dumps(_normalize_permission_codes(db, payload.permission_codes or payload.permissions))
-    existing.can_make_reports = payload.can_make_reports
-    existing.can_view_reports = payload.can_view_reports
-    existing.can_view_revenue = payload.can_view_revenue
-    existing.can_edit_schedule = payload.can_edit_schedule
-    existing.can_view_adjustments = payload.can_view_adjustments
-    existing.can_manage_adjustments = payload.can_manage_adjustments
-    existing.can_resolve_disputes = payload.can_resolve_disputes
+    if codes_provided:
+        existing.permission_codes = json.dumps(norm_codes)
     existing.is_active = payload.is_active
-    if perms_touched:
-        # permission_codes is the source of truth -> keep legacy flags in sync
-        existing.permission_codes = json.dumps(norm_codes or [])
-        existing.can_make_reports = derived["can_make_reports"]
-        existing.can_view_reports = derived["can_view_reports"]
-        existing.can_view_revenue = derived["can_view_revenue"]
-        existing.can_edit_schedule = derived["can_edit_schedule"]
-        existing.can_view_adjustments = derived["can_view_adjustments"]
-        existing.can_manage_adjustments = derived["can_manage_adjustments"]
-        existing.can_resolve_disputes = derived["can_resolve_disputes"]
 
     db.commit()
     return {"id": existing.id, "mode": "updated"}
@@ -1068,29 +953,18 @@ def update_position(
 
         pos.member_user_id = payload.member_user_id
 
-    # Editing permission flags is a separate permission (matrix)
-    perms_touched = payload.permission_codes is not None or payload.permissions is not None
-
-    flags_touched = any(
-        x is not None
-        for x in (
-            payload.can_make_reports,
-            payload.can_view_reports,
-            payload.can_view_revenue,
-            payload.can_edit_schedule,
-            payload.can_view_adjustments,
-            payload.can_manage_adjustments,
-            payload.can_resolve_disputes,
-        )
-    )
-    if (flags_touched or perms_touched) and not is_owner:
-        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITION_PERMISSIONS_MANAGE")
-
+    # Editing permission codes is a separate permission (matrix)
+    codes_provided = payload.permission_codes is not None
     norm_codes: list[str] | None = None
+    perms_changed = False
+    if codes_provided:
+        norm_codes = _normalize_permission_codes(db, payload.permission_codes or [])
+        current = set(_parse_position_permission_codes(getattr(pos, "permission_codes", None)))
+        incoming = set(norm_codes)
+        perms_changed = current != incoming
 
-    if perms_touched:
-        norm_codes = _normalize_permission_codes(db, payload.permission_codes or payload.permissions)
-        pos.permission_codes = json.dumps(norm_codes)
+    if perms_changed and not is_owner:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITION_PERMISSIONS_MANAGE")
 
     if payload.title is not None:
         pos.title = payload.title.strip()
@@ -1098,32 +972,11 @@ def update_position(
         pos.rate = payload.rate
     if payload.percent is not None:
         pos.percent = payload.percent
-    if payload.can_make_reports is not None:
-        pos.can_make_reports = payload.can_make_reports
-    if payload.can_view_reports is not None:
-        pos.can_view_reports = payload.can_view_reports
-    if payload.can_view_revenue is not None:
-        pos.can_view_revenue = payload.can_view_revenue
-    if payload.can_edit_schedule is not None:
-        pos.can_edit_schedule = payload.can_edit_schedule
-    if payload.can_view_adjustments is not None:
-        pos.can_view_adjustments = payload.can_view_adjustments
-    if payload.can_manage_adjustments is not None:
-        pos.can_manage_adjustments = payload.can_manage_adjustments
-    if payload.can_resolve_disputes is not None:
-        pos.can_resolve_disputes = payload.can_resolve_disputes
     if payload.is_active is not None:
         pos.is_active = payload.is_active
 
-    if perms_touched:
-        derived = _derive_legacy_flags_from_permission_codes(norm_codes or [])
-        pos.can_make_reports = derived["can_make_reports"]
-        pos.can_view_reports = derived["can_view_reports"]
-        pos.can_view_revenue = derived["can_view_revenue"]
-        pos.can_edit_schedule = derived["can_edit_schedule"]
-        pos.can_view_adjustments = derived["can_view_adjustments"]
-        pos.can_manage_adjustments = derived["can_manage_adjustments"]
-        pos.can_resolve_disputes = derived["can_resolve_disputes"]
+    if perms_changed:
+        pos.permission_codes = json.dumps(norm_codes or [])
 
     db.commit()
     db.refresh(pos)
@@ -1136,13 +989,6 @@ def update_position(
         "rate": pos.rate,
         "percent": pos.percent,
         "permission_codes": _parse_position_permission_codes(getattr(pos, "permission_codes", None)),
-        "can_make_reports": bool(pos.can_make_reports),
-        "can_view_reports": bool(pos.can_view_reports),
-        "can_view_revenue": bool(pos.can_view_revenue),
-        "can_edit_schedule": bool(pos.can_edit_schedule),
-        "can_view_adjustments": bool(getattr(pos, "can_view_adjustments", False)),
-        "can_manage_adjustments": bool(getattr(pos, "can_manage_adjustments", False)),
-        "can_resolve_disputes": bool(getattr(pos, "can_resolve_disputes", False)),
         "is_active": bool(pos.is_active),
     }
 
@@ -2450,16 +2296,21 @@ def create_dispute(
         )
     ).scalars().all()
 
-    managers = db.execute(
-        select(User)
+    # Managers = users who have ADJUSTMENTS_MANAGE in position.permission_codes
+    mgr_rows = db.execute(
+        select(User, VenuePosition.permission_codes)
         .join(VenuePosition, VenuePosition.member_user_id == User.id)
         .where(
             VenuePosition.venue_id == venue_id,
             VenuePosition.is_active.is_(True),
-            VenuePosition.can_manage_adjustments.is_(True),
             User.tg_user_id.is_not(None),
         )
-    ).scalars().all()
+    ).all()
+    managers: list[User] = []
+    for u, pc in mgr_rows:
+        codes = {c.strip().upper() for c in _parse_position_permission_codes(pc)}
+        if "ADJUSTMENTS_MANAGE" in codes:
+            managers.append(u)
 
     uniq = {u.id: u for u in (owners + managers)}
     who = user.short_name or user.full_name or (user.tg_username or str(user.id))
@@ -2609,16 +2460,20 @@ def add_dispute_comment(
                     User.tg_user_id.is_not(None),
                 )
             ).scalars().all()
-            managers = db.execute(
-                select(User)
+            mgr_rows = db.execute(
+                select(User, VenuePosition.permission_codes)
                 .join(VenuePosition, VenuePosition.member_user_id == User.id)
                 .where(
                     VenuePosition.venue_id == venue_id,
                     VenuePosition.is_active.is_(True),
-                    VenuePosition.can_manage_adjustments.is_(True),
                     User.tg_user_id.is_not(None),
                 )
-            ).scalars().all()
+            ).all()
+            managers: list[User] = []
+            for u, pc in mgr_rows:
+                codes = {c.strip().upper() for c in _parse_position_permission_codes(pc)}
+                if "ADJUSTMENTS_MANAGE" in codes:
+                    managers.append(u)
             uniq = {u.id: u for u in (owners + managers)}
             recipients = list(uniq.values())
 

@@ -211,11 +211,11 @@ def my_venue_permissions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Return permissions + venue role + position flags for current user.
+    """Return permissions + venue role for current user.
 
-    Position flags are used for MVP UI gating:
-    - can_make_reports
-    - can_edit_schedule
+    Source of truth:
+    - System roles / venue role defaults (RolePermissionDefault)
+    - VenuePosition.permission_codes (fine-grained codes)
     """
 
     # ---- system roles ----
@@ -226,7 +226,6 @@ def my_venue_permissions(
             "role": "SUPER_ADMIN",
             "permissions": list(codes),
             "position": None,
-            "position_flags": {"can_make_reports": True, "can_edit_schedule": True},
         }
 
     if user.system_role == "MODERATOR":
@@ -244,7 +243,6 @@ def my_venue_permissions(
             "role": "MODERATOR",
             "permissions": list(codes),
             "position": None,
-            "position_flags": {"can_make_reports": True, "can_edit_schedule": True},
         }
 
     # ---- venue membership ----
@@ -262,7 +260,6 @@ def my_venue_permissions(
             "role": None,
             "permissions": [],
             "position": None,
-            "position_flags": {"can_make_reports": False, "can_edit_schedule": False},
         }
 
     if str(vm.venue_role or "").upper() == "OWNER":
@@ -285,7 +282,7 @@ def my_venue_permissions(
                 )
             ).all()
 
-    # ---- position flags (MVP) ----
+    # ---- position permission codes (fine-grained) ----
     pos = db.execute(
         select(VenuePosition).where(
             VenuePosition.venue_id == venue_id,
@@ -294,81 +291,37 @@ def my_venue_permissions(
         )
     ).scalar_one_or_none()
 
+    position_codes: list[str] = []
     position_obj = None
-    flags = {"can_make_reports": False, "can_edit_schedule": False, "can_view_adjustments": False, "can_manage_adjustments": False}
     if pos is not None:
+        position_codes = _parse_position_permission_codes(getattr(pos, "permission_codes", None))
         position_obj = {
             "id": pos.id,
             "title": pos.title,
             "rate": pos.rate,
             "percent": pos.percent,
-            "can_make_reports": bool(pos.can_make_reports),
-            "can_view_reports": bool(pos.can_view_reports or pos.can_make_reports),
-            "can_view_revenue": bool(pos.can_view_revenue or pos.can_make_reports),
-            "can_edit_schedule": bool(pos.can_edit_schedule),
-            "can_view_adjustments": bool(getattr(pos, "can_view_adjustments", False)),
-            "can_manage_adjustments": bool(getattr(pos, "can_manage_adjustments", False)),
             "is_active": bool(pos.is_active),
-        }
-        flags = {
-            "can_make_reports": bool(pos.can_make_reports),
-            "can_view_reports": bool(pos.can_view_reports or pos.can_make_reports),
-            "can_view_revenue": bool(pos.can_view_revenue or pos.can_make_reports),
-            "can_edit_schedule": bool(pos.can_edit_schedule),
-            "can_view_adjustments": bool(getattr(pos, "can_view_adjustments", False)),
-            "can_manage_adjustments": bool(getattr(pos, "can_manage_adjustments", False)),
+            "permission_codes": position_codes,
         }
 
-    # ---- merge in position-based permission codes (fine-grained) ----
-    extra_codes: list[str] = []
-    legacy_codes: list[str] = []
-
-    # If position.permission_codes is present (even "[]"), it becomes the source of truth.
-    # Legacy flags are mapped to permission codes ONLY when permission_codes is empty/NULL (pre-migration).
-    if pos is not None:
-        raw_perm = getattr(pos, "permission_codes", None)
-        raw_present = raw_perm is not None and str(raw_perm).strip() != ""
-        extra_codes = _parse_position_permission_codes(raw_perm)
-
-        if not raw_present:
-            # legacy flags -> permission codes (backwards compatibility)
-            if bool(pos.can_make_reports):
-                legacy_codes += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
-            elif bool(pos.can_view_reports):
-                legacy_codes += ["SHIFT_REPORT_VIEW"]
-
-            if bool(pos.can_edit_schedule):
-                legacy_codes += ["SHIFTS_VIEW", "SHIFTS_MANAGE"]
-
-            if bool(getattr(pos, "can_view_adjustments", False)):
-                legacy_codes += ["ADJUSTMENTS_VIEW"]
-            if bool(getattr(pos, "can_manage_adjustments", False)):
-                legacy_codes += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
-            if bool(getattr(pos, "can_resolve_disputes", False)):
-                legacy_codes += ["DISPUTES_RESOLVE"]
-
-    # filter extras by active permissions in DB
+    # filter position codes by active permissions in DB (or registry, even if sync wasn't run yet)
     merged = list(codes) if codes else []
-    to_check = []
-    for c in extra_codes + legacy_codes:
-        s = str(c or "").strip().upper()
-        if s and s not in to_check:
-            to_check.append(s)
-    if to_check:
+    if position_codes:
         active = set(
-            db.execute(select(Permission.code).where(Permission.code.in_(to_check), Permission.is_active.is_(True))).scalars().all()
+            db.execute(select(Permission.code).where(Permission.code.in_(position_codes), Permission.is_active.is_(True))).scalars().all()
         )
         registry = {p.code.strip().upper() for p in PERMISSIONS_REGISTRY}
-        for c in to_check:
-            # Keep codes that exist in DB as active OR are defined in code registry (even if sync wasn't run yet).
+        for c in [str(x or "").strip().upper() for x in position_codes]:
+            if not c:
+                continue
             if (c in active or c in registry) and c not in merged:
                 merged.append(c)
+
     return {
         "venue_id": venue_id,
         "role": vm.venue_role,
         "permissions": merged,
         "position": position_obj,
-        "position_flags": flags,
     }
 
 

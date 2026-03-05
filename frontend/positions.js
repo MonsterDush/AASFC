@@ -267,9 +267,7 @@ function parsePermCodes(v) {
 // Permission codes are the single source of truth.
 // We intentionally do NOT consult legacy can_* flags here.
 function posPermSet(p) {
-  const raw =
-    (p && (p.permission_codes ?? p.permissions)) ??
-    [];
+  const raw = (p && p.permission_codes) ?? [];
   const arr = Array.isArray(raw) ? raw : parsePermCodes(raw);
   const set = new Set();
   for (const x of arr || []) {
@@ -321,8 +319,6 @@ function normalizePositions(out) {
     const pc = parsePermCodes(x.permission_codes);
     if (pc.length) x.permission_codes = pc;
     else if (typeof x.permission_codes === "string") x.permission_codes = [];
-    const pp = parsePermCodes(x.permissions);
-    if (pp.length) x.permissions = pp;
     return x;
   });
 }
@@ -363,9 +359,7 @@ function renderPositionForm({ mode, position }) {
     : "Подсказок пока нет — создай первую должность";
 
   const curPerms = (() => {
-    const arr =
-      Array.isArray(p.permission_codes) ? p.permission_codes :
-      (Array.isArray(p.permissions) ? p.permissions : []);
+    const arr = Array.isArray(p.permission_codes) ? p.permission_codes : [];
     return arr.map((x) => String(x || "").trim()).filter(Boolean);
   })();
 
@@ -596,7 +590,6 @@ function collectPayload(base = {}) {
     }
     // no perm UI in this modal -> keep existing codes from base (do NOT clear by accident)
     if (base && Object.prototype.hasOwnProperty.call(base, "permission_codes")) return parsePermCodes(base.permission_codes);
-    if (base && Object.prototype.hasOwnProperty.call(base, "permissions")) return parsePermCodes(base.permissions);
     return [];
   })();
   return {
@@ -696,36 +689,27 @@ async function callPositionApiWithPerms({ kind, positionId, payload, permCodes }
   // do not leak helper field
   delete basePayload._perm_codes;
 
-  const canTryPerms = Array.isArray(permCodes);
+  const canSendPerms = Array.isArray(permCodes);
 
   const callCreate = (p) => createVenuePosition(state.venueId, p);
   const callUpdate = (p) => updateVenuePosition(state.venueId, positionId, p);
 
   const fn = kind === "create" ? callCreate : callUpdate;
 
-  if (!canTryPerms) return fn(basePayload);
+  // This page is code-only: permissions are stored only as permission_codes.
+  if (!canSendPerms) return fn(basePayload);
 
-  // 1) permission_codes (preferred)
   try {
     return await fn({ ...basePayload, permission_codes: permCodes });
-  } catch (e1) {
-    if (e1?.status !== 422) throw e1;
-
-    // 2) permissions (fallback key)
-    try {
-      return await fn({ ...basePayload, permissions: permCodes });
-    } catch (e2) {
-      if (e2?.status !== 422) throw e2;
-
-      // 3) legacy-only (server doesn't support new perms)
-      const p3 = { ...basePayload };
-      delete p3.permission_codes;
-      delete p3.permissions;
-      toast("Сервер не поддерживает сохранение прав должностей через permission_codes. Обнови бэкенд.", "err");
-      throw e2;
+  } catch (e) {
+    // If backend doesn't support permission_codes yet, do NOT try legacy keys here.
+    if (e?.status === 422) {
+      toast("Сервер не поддерживает permission_codes для должностей. Обнови бэкенд.", "err");
     }
+    throw e;
   }
 }
+
 
 
 /* ---------- Modal actions ---------- */
@@ -965,7 +949,7 @@ function positionPresetFromTemplate(title) {
   const src = p || { title: t };
 
   // Only permission_codes are stored in invite preset (no legacy flags).
-  const permission_codes = parsePermCodes(src.permission_codes ?? src.permissions);
+  const permission_codes = parsePermCodes(src.permission_codes);
 
   return {
     title: t,

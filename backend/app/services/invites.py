@@ -56,60 +56,9 @@ def _parse_codes_raw(raw) -> list[str]:
 
 
 def _extract_codes_from_preset(preset: dict) -> list[str]:
-    # preferred keys
+    # only source of truth
     raw = preset.get("permission_codes")
-    if raw is None:
-        raw = preset.get("permissions")
     return _parse_codes_raw(raw)
-
-
-def _legacy_codes_from_flags(preset: dict) -> list[str]:
-    codes: list[str] = []
-    if bool(preset.get("can_make_reports")):
-        codes += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
-    elif bool(preset.get("can_view_reports")):
-        codes += ["SHIFT_REPORT_VIEW"]
-
-    if bool(preset.get("can_edit_schedule")):
-        codes += ["SHIFTS_VIEW", "SHIFTS_MANAGE"]
-
-    if bool(preset.get("can_view_adjustments")):
-        codes += ["ADJUSTMENTS_VIEW"]
-    if bool(preset.get("can_manage_adjustments")):
-        codes += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
-    if bool(preset.get("can_resolve_disputes")):
-        codes += ["DISPUTES_RESOLVE"]
-
-    # unique
-    out = []
-    seen = set()
-    for c in codes:
-        v = _norm_code(c)
-        if v and v not in seen:
-            seen.add(v)
-            out.append(v)
-    return out
-
-
-def _derive_flags_from_codes(codes: list[str]) -> dict[str, bool]:
-    s = {_norm_code(c) for c in (codes or [])}
-    s.discard("")
-    can_make_reports = bool(s.intersection({"SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"}))
-    can_view_reports = bool(s.intersection({"SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"}))
-    can_view_revenue = bool(s.intersection({"SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"}))
-    can_edit_schedule = bool(s.intersection({"SHIFTS_MANAGE"}))
-    can_view_adjustments = bool(s.intersection({"ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"}))
-    can_manage_adjustments = bool(s.intersection({"ADJUSTMENTS_MANAGE"}))
-    can_resolve_disputes = bool(s.intersection({"DISPUTES_RESOLVE"}))
-    return {
-        "can_make_reports": can_make_reports,
-        "can_view_reports": can_view_reports,
-        "can_view_revenue": can_view_revenue,
-        "can_edit_schedule": can_edit_schedule,
-        "can_view_adjustments": can_view_adjustments,
-        "can_manage_adjustments": can_manage_adjustments,
-        "can_resolve_disputes": can_resolve_disputes,
-    }
 
 
 def accept_invites_for_user(db: Session, *, user_id: int, tg_username: str) -> int:
@@ -156,19 +105,11 @@ def accept_invites_for_user(db: Session, *, user_id: int, tg_username: str) -> i
                     VenuePosition.member_user_id == user_id,
                 )
             ).scalar_one_or_none()
-            # permission_codes are the source of truth. If preset doesn't contain them, fall back to legacy flags.
-            codes = _extract_codes_from_preset(preset)
-            if not codes:
-                codes = _legacy_codes_from_flags(preset)
-
-            flags = _derive_flags_from_codes(codes)
-
             data = {
                 "title": str(preset.get("title")).strip(),
                 "rate": int(preset.get("rate") or 0),
                 "percent": int(preset.get("percent") or 0),
-                "permission_codes": json.dumps(codes or []),
-                **flags,
+                "permission_codes": json.dumps(_extract_codes_from_preset(preset) or []),
                 "is_active": True,
             }
 
