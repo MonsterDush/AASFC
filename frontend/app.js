@@ -14,8 +14,8 @@ const DICT = {
     settings: "Настройки",
     adjustments: "Штрафы",
     shifts: "График",
-    salary: "Зарплата",
-    report: "Отчёт",
+    salary: "Зарплаты",
+    report: "Отчёты",
     finance: "Финансы",
     revenue: "Выручка",
     summary: "Сводка",
@@ -31,7 +31,7 @@ const DICT = {
     adjustments: "Adjustments",
     shifts: "Schedule",
     salary: "Salary",
-    report: "Report",
+    report: "Reports",
     finance: "Finance",
     revenue: "Revenue",
     summary: "Summary",
@@ -800,15 +800,19 @@ const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : ""
       links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
     } else {
       // Staff bottom nav:
-      // - always show Schedule (График) + Finance (Финансы)
-      // - show Report (Отчёт) only if user has report access
-      // - always show Settings
-      links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
-      links.push({ title: t("finance"), href: `/staff-finance.html${qp}`, tab: "finance" });
-      if (canViewReports) {
-        links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
-      }
-      links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
+// - If NO report access: Schedule + Salaries + Adjustments + Settings
+// - If HAS report access: Schedule + Finance + Reports + Settings
+links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
+
+if (canViewReports) {
+  links.push({ title: t("finance"), href: `/staff-finance.html${qp}`, tab: "finance" });
+  links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
+} else {
+  links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
+  links.push({ title: t("adjustments"), href: `/staff-adjustments.html${qp}`, tab: "adjustments" });
+}
+
+links.push({ title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" });
     }
   } else {
     // No active venue chosen yet

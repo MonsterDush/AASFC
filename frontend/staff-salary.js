@@ -7,9 +7,10 @@ import {
   api,
   getActiveVenueId,
   setActiveVenueId,
+  getMyVenues,
 } from "/app.js";
 
-import { permSetFromResponse, hasPermPrefix, hasAnyPerm, roleUpper } from "/permissions.js";
+import { permSetFromResponse, hasPermPrefix, hasAnyPerm, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("salary");
@@ -20,19 +21,23 @@ const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
-// Salary now lives under "Finance" in the bottom nav
-let __tab = "salary";
+// Determine whether user has report access for this venue (affects navbar layout)
+let __canReports = false;
 try {
   const pr = await (venueId ? api(`/me/venues/${encodeURIComponent(venueId)}/permissions`) : null);
   const pset = permSetFromResponse(pr);
   const role = roleUpper(pr);
-  const canViewReports =
-    role === "OWNER" || role === "SUPER_ADMIN" || role === "MODERATOR" ||
-    hasPermPrefix(pset, "SHIFT_REPORT_") || hasPermPrefix(pset, "REPORTS_") ||
-    hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
-  if (canViewReports) __tab = "finance";
+  __canReports = canViewReportsPerms(pset, role, "");
 } catch {}
-await mountNav({ activeTab: "finance", requireVenue: true });
+
+// Hide "All venues" scope switch if user has only one venue
+try {
+  const venues = await getMyVenues().catch(() => []);
+  const scope = document.getElementById("salaryScope");
+  if (scope && (!Array.isArray(venues) || venues.length < 2)) scope.style.display = "none";
+} catch {}
+
+await mountNav({ activeTab: (__canReports ? "finance" : "salary") });
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),

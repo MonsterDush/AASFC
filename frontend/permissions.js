@@ -48,3 +48,37 @@ export function hasPermPrefix(permSet, prefix) {
   }
   return false;
 }
+
+
+// --- convenience helpers (report access / system roles) ---
+
+export function isSysAdminRole(sysRoleUpper) {
+  const r = String(sysRoleUpper || "").trim().toUpperCase();
+  return r === "SUPER_ADMIN" || r === "MODERATOR";
+}
+
+/**
+ * Report access means user can open report pages / see report sections.
+ * We keep it permissive: any SHIFT_REPORT_* / REPORTS_* implies access.
+ */
+export function canViewReports(permSet, venueRoleUpper, systemRoleUpper) {
+  const role = String(venueRoleUpper || "").trim().toUpperCase();
+  const sys = String(systemRoleUpper || "").trim().toUpperCase();
+
+  if (role === "OWNER" || role === "VENUE_OWNER") return true;
+  if (isSysAdminRole(sys)) return true;
+
+  return (
+    hasPermPrefix(permSet, "SHIFT_REPORT_") ||
+    hasPermPrefix(permSet, "REPORTS_") ||
+    hasAnyPerm(permSet, [
+      "SHIFT_REPORT_VIEW",
+      "SHIFT_REPORT_CLOSE",
+      "SHIFT_REPORT_EDIT",
+      "SHIFT_REPORT_REOPEN",
+      "REPORTS_VIEW_DAILY",
+      "REPORTS_VIEW_MONTHLY",
+      "REPORTS_VIEW_PNL",
+    ])
+  );
+}

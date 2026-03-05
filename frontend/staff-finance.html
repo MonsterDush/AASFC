@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Финансы</b>
-          <div class="muted" id="subtitle">зарплата · штрафы · списания</div>
+          <div class="muted" id="subtitle">зарплата · штрафы</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -25,8 +25,8 @@
         <b>Зарплата</b>
         <div class="muted mt-6">Сводка по месяцам и детализация по дням</div>
         <div class="row gap-8 mt-10">
-          <button class="btn primary" id="goSalarySummary">Сводка за месяц</button>
-          <button class="btn" id="goSalary">Детализация</button>
+          <button class="btn primary" id="goSalarySummary">Все заведения</button>
+          <button class="btn" id="goSalary">Это заведение</button>
         </div>
       </div>
 
@@ -69,7 +69,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
 } from "/app.js";
-import { permSetFromResponse, roleUpper, hasPerm, hasPermPrefix, hasAnyPerm } from "/permissions.js";
+import { permSetFromResponse, roleUpper, hasPerm, hasPermPrefix, hasAnyPerm, canViewReports as canViewReportsPerms } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("finance");
@@ -97,7 +97,31 @@ if (!activeId) {
     const venues = await getMyVenues();
     const v = venues.find((x) => String(x.id) === String(activeId));
     const subtitle = document.getElementById("subtitle");
-    if (subtitle) subtitle.textContent = v?.name ? `заведение: ${v.name}` : "";
+    if (subtitle) subtitle.textContent = v?.name ? `завед// Guard: Finance tab should be available only for users who have report access
+let __canReports = false;
+try {
+  const perms = await (activeId ? getMyVenuePermissions(activeId) : null);
+  const pset = permSetFromResponse(perms);
+  const role = roleUpper(perms);
+  __canReports = canViewReportsPerms(pset, role, "");
+} catch {}
+
+if (!__canReports) {
+  // If user has no report access — they should use Salary + Adjustments tabs instead
+  const qs = activeId ? `?venue_id=${encodeURIComponent(activeId)}` : "";
+  location.replace(`/staff-salary.html${qs}`);
+}
+
+// Hide "All venues" option if user has only one venue
+try {
+  const venues = await getMyVenues().catch(() => []);
+  const btnAll = document.getElementById("goSalarySummary");
+  if (btnAll && (!Array.isArray(venues) || venues.length < 2)) {
+    btnAll.style.display = "none";
+  }
+} catch {}
+
+ение: ${v.name}` : "";
   } catch {}
 }
 

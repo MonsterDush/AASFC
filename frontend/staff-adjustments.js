@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
 } from "/app.js";
 
-import { permSetFromResponse, hasPermPrefix, hasAnyPerm, roleUpper } from "/permissions.js";
+import { permSetFromResponse, hasPermPrefix, hasAnyPerm, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("adjustments");
@@ -51,7 +51,16 @@ try {
     hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
   if (canViewReports) __tab = "finance";
 } catch {}
-await mountNav({ activeTab: "finance", requireVenue: true });
+// Determine whether user has report access for this venue (affects navbar layout)
+let __canReports = false;
+try {
+  const pr = await (venueId ? api(`/me/venues/${encodeURIComponent(venueId)}/permissions`) : null);
+  const pset = permSetFromResponse(pr);
+  const role = roleUpper(pr);
+  __canReports = canViewReportsPerms(pset, role, "");
+} catch {}
+await mountNav({ activeTab: (__canReports ? "finance" : "adjustments") });
+
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
