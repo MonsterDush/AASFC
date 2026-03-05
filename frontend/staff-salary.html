@@ -11,10 +11,7 @@
     .mini-kpi{padding:10px 12px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(255,255,255,.03)}
     .mini-kpi.total{grid-column:1/-1}
     .salary-all-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-    @media(min-width:640px){
-      .salary-all-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
-      .mini-kpi.total{grid-column:auto}
-    }
+    @media(min-width:640px){.salary-all-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}.mini-kpi.total{grid-column:auto}}
   </style>
 </head>
 
@@ -32,93 +29,94 @@
     </div>
 
     <div class="card">
-      <div class="row jc-center ai-center gap-10 month-controls">
+      <div class="row row--between">
+        <div class="row ai-center gap-10 month-controls">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
-        </div>
+</div>
+<div class="row jc-center gap-8 mt-10" id="salaryScope">
+  <button class="btn sm" id="btnThisVenue" data-scope="venue">Это заведение</button>
+  <button class="btn sm" id="btnAllVenues" data-scope="all">Все заведения</button>
+</div>
 
-      <div class="row jc-center gap-8 mt-10" id="salaryScope" style="justify-content:center">
-          <button class="btn sm" id="btnThisVenue" data-scope="venue">Это заведение</button>
-          <button class="btn sm" id="btnAllVenues" data-scope="all">Все заведения</button>
-        </div>
+      </div>
 
-
-      <!-- Scope: active venue -->
+      
       <div id="venueScopeWrap">
-        <div class="itemcard mt-12">
-          <div class="row row--between"><div class="muted">Начислено</div><b id="sumSalary">0</b></div>
-          <div class="row row--between"><div class="muted">Чаевые</div><b id="sumTips">0</b></div>
-          <div class="row row--between"><div class="muted">Премии</div><b id="sumBonuses">0</b></div>
-          <div class="row row--between"><div class="muted">Штрафы</div><b id="sumPenalties">0</b></div>
-          <div class="row row--between hidden" id="rowWriteoffs"><div class="muted">Списания</div><b id="sumWriteoffs">0</b></div>
-
+<div class="itemcard mt-12">
+        <div class="row jc-between row--between"><div class="muted">Начислено</div><b id="sumSalary">0</b></div>
+          <div class="row jc-between row--between"><div class="muted">Чаевые</div><b id="sumTips">0</b></div>
+          <div class="row jc-between row--between"><div class="muted">Премии</div><b id="sumBonuses">0</b></div>
+          <div class="row jc-between row--between"><div class="muted">Штрафы</div><b id="sumPenalties">0</b></div>
+          <div class="row" class="row row--between hidden" id="rowWriteoffs"><div class="muted">Списания</div><b id="sumWriteoffs">0</b></div>
           <div class="row divider-top mt-8 pt-10 row--between">
-            <div class="muted">Итого</div><b id="sumTotal">0</b>
-          </div>
-        </div>
-
-        <div class="itemcard mt-12">
-          <div class="row row--between">
-            <b>График по дням</b>
-            <div class="muted small">Тапни на день для деталей</div>
-          </div>
-          <div id="monthChart" class="chart">
-            <div class="skeleton"></div>
-          </div>
-        </div>
-
-        <div class="itemcard mt-12">
-          <b>По дням</b>
-          <div id="daysList" class="mt-10">
-            <div class="skeleton"></div><div class="skeleton"></div>
-          </div>
+          <div class="muted">Итого</div><b id="sumTotal">0</b>
         </div>
       </div>
 
-      <!-- Scope: all venues -->
-      <div class="itemcard mt-12" id="allVenuesCard" style="display:none">
-        <div class="row jc-between ai-center" style="flex-wrap:wrap; gap:10px">
-          <b>По всем заведениям</b>
-          <div class="muted small" id="allVenuesCount">—</div>
+      
+      <div class="itemcard mt-12">
+        <div class="row row--between">
+          <b>График по дням</b>
+          <div class="muted small">Тапни на день для деталей</div>
         </div>
-
-        <div class="grid mt-10 salary-all-kpis">
-          <div class="mini-kpi">
-            <div class="muted small">Начислено</div>
-            <b id="allEarned">0</b>
-          </div>
-          <div class="mini-kpi">
-            <div class="muted small">Чаевые</div>
-            <b id="allTips">0</b>
-          </div>
-          <div class="mini-kpi">
-            <div class="muted small">Премии</div>
-            <b id="allBonuses">0</b>
-          </div>
-          <div class="mini-kpi">
-            <div class="muted small">Штрафы/Списания</div>
-            <b id="allPenalties">0</b>
-          </div>
-          <div class="mini-kpi total">
-            <div class="muted small">Итого</div>
-            <b id="allNet">0</b>
-          </div>
+        <div id="monthChart" class="chart">
+          <div class="skeleton"></div>
         </div>
+      </div></div>
 
-        <div class="row jc-between ai-center mt-12" style="flex-wrap:wrap; gap:10px">
-          <b>По заведениям</b>
-          <span class="muted small" id="allVenuesHint"></span>
-        </div>
+  <div class="grid mt-10 salary-all-kpis">
+    <div class="mini-kpi">
+      <div class="muted small">Начислено</div>
+      <b id="allEarned">0</b>
+    </div>
+    <div class="mini-kpi">
+      <div class="muted small">Чаевые</div>
+      <b id="allTips">0</b>
+    </div>
+    <div class="mini-kpi">
+      <div class="muted small">Премии</div>
+      <b id="allBonuses">0</b>
+    </div>
+    <div class="mini-kpi">
+      <div class="muted small">Штрафы/Списания</div>
+      <b id="allPenalties">0</b>
+    </div>
+    <div class="mini-kpi total">
+      <div class="muted small">Итого</div>
+      <b id="allNet">0</b>
+    </div>
+  </div>
 
-        <div class="grid mt-10" id="allVenuesList">
-          <div class="card"><div class="skeleton"></div></div>
-          <div class="card"><div class="skeleton"></div></div>
+  <div class="row jc-between ai-center mt-12" style="flex-wrap:wrap; gap:10px">
+    <b>По заведениям</b>
+    <span class="muted small" id="allVenuesHint"></span>
+  </div>
+
+  <div class="grid mt-10" id="allVenuesList">
+    <div class="card"><div class="skeleton"></div></div>
+    <div class="card"><div class="skeleton"></div></div>
+  </div>
+</div>
+<div class="itemcard mt-12">
+        <b>По дням</b>
+        <div id="daysList"class="mt-10">
+          <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
     </div>
 
-    <div class="nav">
+    
+      </div>
+
+      <!-- All venues (scope=all) -->
+      <div class="itemcard mt-12" id="allVenuesCard" style="display:none">
+        <div class="row jc-between ai-center" style="flex-wrap:wrap; gap:10px">
+          <b>По всем заведениям</b>
+          <div class="muted small" id="allVenuesCount">—</div>
+
+<div class="nav">
       <div class="wrap">
         <div id="nav"></div>
       </div>

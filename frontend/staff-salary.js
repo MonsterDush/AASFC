@@ -27,10 +27,9 @@ const __venueNameOf = (id) => {
   if (id == null) return "";
   const sid = String(id);
   // getMyVenues() may return {id, name} or {venue_id, venue_name}
-  const v = (__venues || []).find((x) => String(__venueIdOf(x) ?? "") === sid);
-  return v?.name || v?.venue_name || v?.title || "";
+  const v = (__venues || []).find((x) => String(__venueIdOf(x)) === sid);
+  return v?.name ?? v?.venue_name ?? v?.title ?? "";
 };
-
 
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (!venueId && Array.isArray(__venues) && __venues.length) {
@@ -230,46 +229,131 @@ async function loadMonthAll() {
   const m = ym(curMonth);
   el.monthLabel.textContent = monthTitle(curMonth);
 
-  allEls.list.innerHTML = `<div class="card"><div class="skeleton"></div></div><div class="card"><div class="skeleton"></div></div>`;
+  const skeleton = `<div class="card"><div class="skeleton"></div></div><div class="card"><div class="skeleton"></div></div>`;
+  allEls.list.innerHTML = skeleton;
 
+  const fmt = (n) => Math.round(Number(n || 0)).toLocaleString("ru-RU");
+  const vIdOf = (v) => v?.venue_id ?? v?.venueId ?? v?.id ?? v?.venueID;
+  const vNameOf = (v) => v?.venue_name ?? v?.venueName ?? v?.name ?? v?.title ?? __venueNameOf(vIdOf(v));
+
+  let totals = null;
+  let items = null;
+
+  // 1) Try server-side summary first (fast, if backend supports it)
   try {
     const data = await api(`/me/salary-summary?month=${encodeURIComponent(m)}`);
-    const totals = data?.totals || {};
-    const items = Array.isArray(data?.venues) ? data.venues : [];
 
-    const fmt = (n) => Math.round(Number(n || 0)).toLocaleString("ru-RU");
+    totals =
+      (data && typeof data === "object" && (data.totals || data.total || data.summary)) || null;
 
-    if (allEls.earned) allEls.earned.textContent = fmt(totals.earned);
-    if (allEls.tips) allEls.tips.textContent = fmt(totals.tips);
-    if (allEls.bonuses) allEls.bonuses.textContent = fmt(totals.bonuses);
-    if (allEls.penalties) allEls.penalties.textContent = fmt(totals.penalties);
-    if (allEls.net) allEls.net.textContent = fmt(totals.net);
-
-    if (allEls.count) allEls.count.textContent = items.length ? `${items.length} завед.` : "—";
-    if (allEls.hint) allEls.hint.textContent = items.length ? "" : "Нет данных";
-
-    allEls.list.innerHTML = items.length
-      ? items.map((v) => {
-          const vid = v?.venue_id ?? v?.id ?? v?.venueId ?? v?.venueID;
-          const name = esc(v?.venue_name || v?.name || __venueNameOf(vid) || `#${vid || ""}`);
-          const net = fmt(v?.net);
-          const earned = fmt(v?.earned);
-          const tips = fmt(v?.tips);
-          const bonuses = fmt(v?.bonuses);
-          const pen = fmt(v?.penalties);
-          return `
-            <div class="card">
-              <b>${name}</b>
-              <div class="muted small mt-6">Итого: <b>${net}</b></div>
-              <div class="muted small mt-6">Начислено: ${earned} · Чаевые: ${tips}</div>
-              <div class="muted small">Премии: ${bonuses} · Штрафы: ${pen}</div>
-            </div>`;
-        }).join("")
-      : `<div class="muted">Нет данных за выбранный месяц</div>`;
-  } catch (e) {
-    allEls.list.innerHTML = `<div class="muted">Не удалось загрузить сводку</div>`;
-    toast(e?.message || "Не удалось загрузить сводку", "err");
+    items =
+      (Array.isArray(data?.venues) ? data.venues : null) ||
+      (Array.isArray(data?.items) ? data.items : null) ||
+      (Array.isArray(data?.by_venues) ? data.by_venues : null) ||
+      (Array.isArray(data?.byVenues) ? data.byVenues : null) ||
+      (Array.isArray(data?.per_venue) ? data.per_venue : null) ||
+      (Array.isArray(data?.perVenue) ? data.perVenue : null) ||
+      (Array.isArray(data?.venues_summary) ? data.venues_summary : null) ||
+      null;
+  } catch {
+    totals = null;
+    items = null;
   }
+
+  // 2) Fallback: if backend doesn't return per-venue list — compute on client from shifts+adjustments.
+  // Works reliably and matches the per-venue page logic.
+  if ((!items || !items.length) && Array.isArray(__venues) && __venues.length) {
+    items = [];
+    const agg = { earned: 0, tips: 0, bonuses: 0, penalties: 0, net: 0 };
+
+    for (const v of __venues) {
+      const vid = vIdOf(v);
+      if (vid == null) continue;
+
+      const name = vNameOf(v) || `#${vid}`;
+
+      let shifts = [];
+      try {
+        const out = await api(`/venues/${encodeURIComponent(String(vid))}/shifts?month=${encodeURIComponent(m)}`);
+        shifts = Array.isArray(out) ? out : (out?.items || []);
+      } catch {
+        shifts = [];
+      }
+
+      let adjs = [];
+      try {
+        const adj = await api(`/venues/${encodeURIComponent(String(vid))}/adjustments?month=${encodeURIComponent(m)}&mine=1`);
+        adjs = Array.isArray(adj?.items) ? adj.items : [];
+      } catch {
+        adjs = [];
+      }
+
+      const earned = shifts.reduce((a, s) => a + (Number(s?.my_salary) || 0), 0);
+      const tips = shifts.reduce((a, s) => a + (Number(s?.my_tips_share) || 0), 0);
+      const bonuses = adjs.filter(x => x?.type === "bonus").reduce((a, x) => a + (Number(x?.amount) || 0), 0);
+      const penalties = adjs
+        .filter(x => x?.type === "penalty" || x?.type === "writeoff")
+        .reduce((a, x) => a + (Number(x?.amount) || 0), 0);
+
+      const net = earned - penalties + bonuses;
+
+      // include venue row even if zeros (user expects a list by venues)
+      items.push({
+        venue_id: vid,
+        venue_name: name,
+        earned,
+        tips,
+        bonuses,
+        penalties,
+        net,
+      });
+
+      agg.earned += earned;
+      agg.tips += tips;
+      agg.bonuses += bonuses;
+      agg.penalties += penalties;
+      agg.net += net;
+    }
+
+    totals = agg;
+  }
+
+  // Normalize totals
+  const t = totals || {};
+  if (allEls.earned) allEls.earned.textContent = fmt(t.earned ?? t.salary ?? t.total_salary);
+  if (allEls.tips) allEls.tips.textContent = fmt(t.tips ?? t.total_tips);
+  if (allEls.bonuses) allEls.bonuses.textContent = fmt(t.bonuses ?? t.total_bonuses);
+  if (allEls.penalties) allEls.penalties.textContent = fmt(t.penalties ?? t.total_penalties ?? t.penalties_total);
+  if (allEls.net) allEls.net.textContent = fmt(t.net ?? t.total ?? t.total_net);
+
+  const safeItems = Array.isArray(items) ? items : [];
+  if (allEls.count) allEls.count.textContent = safeItems.length ? `${safeItems.length} завед.` : "—";
+  if (allEls.hint) allEls.hint.textContent = safeItems.length ? "" : "Нет данных";
+
+  if (!safeItems.length) {
+    allEls.list.innerHTML = `<div class="muted">Нет данных за выбранный месяц</div>`;
+    return;
+  }
+
+  // Sort: highest net first (more useful)
+  safeItems.sort((a, b) => (Number(b?.net) || 0) - (Number(a?.net) || 0));
+
+  allEls.list.innerHTML = safeItems.map((v) => {
+    const name = esc(vNameOf(v) || `#${vIdOf(v) || ""}`);
+    const earned = Number(v?.earned ?? v?.salary ?? v?.total_salary ?? 0);
+    const tips = Number(v?.tips ?? v?.total_tips ?? 0);
+    const bonuses = Number(v?.bonuses ?? v?.total_bonuses ?? 0);
+    const penalties = Number(v?.penalties ?? v?.total_penalties ?? v?.penalties_total ?? 0);
+    const net = Number(v?.net ?? v?.total ?? v?.total_net ?? (earned - penalties + bonuses) ?? 0);
+
+    return `
+      <div class="card">
+        <b>${name}</b>
+        <div class="muted small mt-6">Итого: <b>${fmt(net)}</b></div>
+        <div class="muted small mt-6">Начислено: ${fmt(earned)} · Чаевые: ${fmt(tips)}</div>
+        <div class="muted small">Премии: ${fmt(bonuses)} · Штрафы/списания: ${fmt(penalties)}</div>
+      </div>`;
+  }).join("");
 }
 
 async function refresh() {
