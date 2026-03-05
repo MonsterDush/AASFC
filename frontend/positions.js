@@ -17,6 +17,8 @@ import {
   patchInviteDefaultPosition,
 } from "/app.js";
 
+import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
+
 const root = document.getElementById("root");
 
 function esc(s) {

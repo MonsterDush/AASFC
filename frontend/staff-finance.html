@@ -58,6 +58,7 @@
     </div>
   </div>
 
+  
   <script type="module">
 import {
   applyTelegramTheme,
@@ -69,94 +70,64 @@ import {
   getMyVenues,
   getMyVenuePermissions,
 } from "/app.js";
-import { permSetFromResponse, roleUpper, hasPerm, hasPermPrefix, hasAnyPerm, canViewReports as canViewReportsPerms } from "/permissions.js";
+import { permSetFromResponse, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("finance");
 await ensureLogin({ silent: true });
 
-/**
- * Resolve venue context:
- * 1) URL ?venue_id=
- * 2) previously selected active venue (localStorage)
- */
 const params = new URLSearchParams(location.search);
 const urlVenueId = params.get("venue_id");
-
 if (urlVenueId) setActiveVenueId(urlVenueId);
 
-await mountNav({ activeTab: "finance", requireVenue: true });
+await mountNav({ activeTab: "finance" });
 
 const activeId = getActiveVenueId();
-if (!activeId) {
-  // requireVenue=true should normally prevent this, but keep it safe.
-  console.warn("No active venue selected");
-} else {
-  // Best-effort venue title
-  try {
-    const venues = await getMyVenues();
-    const v = venues.find((x) => String(x.id) === String(activeId));
-    const subtitle = document.getElementById("subtitle");
-    if (subtitle) subtitle.textContent = v?.name ? `завед// Guard: Finance tab should be available only for users who have report access
-let __canReports = false;
+
+// Subtitle: show active venue name if possible
 try {
-  const perms = await (activeId ? getMyVenuePermissions(activeId) : null);
-  const pset = permSetFromResponse(perms);
-  const role = roleUpper(perms);
-  __canReports = canViewReportsPerms(pset, role, "");
+  const venues = await getMyVenues();
+  const v = venues.find((x) => String(x.id) === String(activeId));
+  const subtitle = document.getElementById("subtitle");
+  if (subtitle) subtitle.textContent = v?.name ? `заведение: ${v.name}` : "зарплата · штрафы";
 } catch {}
 
-if (!__canReports) {
-  // If user has no report access — they should use Salary + Adjustments tabs instead
+// Guard: Finance is for users with report access
+let canReports = false;
+try {
+  if (activeId) {
+    const perms = await getMyVenuePermissions(activeId);
+    const pset = permSetFromResponse(perms);
+    const role = roleUpper(perms);
+    canReports = canViewReportsPerms(pset, role, "");
+  }
+} catch {}
+
+if (!canReports) {
   const qs = activeId ? `?venue_id=${encodeURIComponent(activeId)}` : "";
   location.replace(`/staff-salary.html${qs}`);
 }
 
-// Hide "All venues" option if user has only one venue
+// Hide "All venues" option if only one venue
 try {
   const venues = await getMyVenues().catch(() => []);
   const btnAll = document.getElementById("goSalarySummary");
-  if (btnAll && (!Array.isArray(venues) || venues.length < 2)) {
-    btnAll.style.display = "none";
-  }
+  if (btnAll && (!Array.isArray(venues) || venues.length < 2)) btnAll.style.display = "none";
 } catch {}
 
-ение: ${v.name}` : "";
-  } catch {}
-}
-
-async function resolveCanManageAdjustments(venueId) {
-  try {
-    const perms = await getMyVenuePermissions(venueId);
-    const role = roleUpper(perms);
-    const pset = permSetFromResponse(perms);
-    return role === "OWNER" || role === "SUPER_ADMIN" || role === "MODERATOR" || hasPerm(pset, "ADJUSTMENTS_MANAGE");
-  } catch {
-    return false;
-  }
-}
-
-const canManageAdjustments = activeId ? await resolveCanManageAdjustments(activeId) : false;
-
-const vid = activeId || "";
-const qs = vid ? `?venue_id=${encodeURIComponent(vid)}` : "";
-
-const goSalarySummary = document.getElementById("goSalarySummary");
-if (goSalarySummary) goSalarySummary.onclick = () => (location.href = `/staff-salary-summary.html${qs}`);
-
-const goSalary = document.getElementById("goSalary");
-if (goSalary) goSalary.onclick = () => (location.href = `/staff-salary.html${qs}`);
-
-const goAdjustments = document.getElementById("goAdjustments");
-if (goAdjustments) {
-  goAdjustments.onclick = () => {
-    location.href = canManageAdjustments
-      ? `/app-adjustments.html${qs}`
-      : `/staff-adjustments.html${qs}`;
-  };
-}
-
-          
+document.getElementById("goSalary")?.addEventListener("click", () => {
+  const qs = activeId ? `?venue_id=${encodeURIComponent(activeId)}` : "";
+  location.href = `/staff-salary.html${qs}`;
+});
+document.getElementById("goSalarySummary")?.addEventListener("click", () => {
+  const p = new URLSearchParams();
+  if (activeId) p.set("venue_id", String(activeId));
+  p.set("scope", "all");
+  location.href = `/staff-salary.html?${p.toString()}`;
+});
+document.getElementById("goAdjustments")?.addEventListener("click", () => {
+  const qs = activeId ? `?venue_id=${encodeURIComponent(activeId)}` : "";
+  location.href = `/staff-adjustments.html${qs}`;
+});
   </script>
 </body>
-</html>

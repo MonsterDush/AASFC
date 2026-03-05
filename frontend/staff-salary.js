@@ -34,11 +34,12 @@ try {
 try {
   const venues = await getMyVenues().catch(() => []);
   const scope = document.getElementById("salaryScope");
-  if (scope && (!Array.isArray(venues) || venues.length < 2)) scope.style.display = "none";
+  if (scope && (!Array.isArray(venues) || venues.length < 2)) { scope.style.display = "none"; scopeMode = "venue"; }
 } catch {}
 
 await mountNav({ activeTab: (__canReports ? "finance" : "salary") });
 
+setScopeMode(scopeMode);
 const el = {
   monthLabel: document.getElementById("monthLabel"),
   prev: document.getElementById("monthPrev"),
@@ -56,14 +57,45 @@ const el = {
   btnAllVenues: document.getElementById("btnAllVenues"),
 };
 
-if (el.btnAllVenues) {
-  el.btnAllVenues.addEventListener("click", () => {
-    const p = new URLSearchParams();
-    if (venueId) p.set("venue_id", String(venueId));
-    p.set("month", ym(curMonth));
-    location.href = `/staff-salary-summary.html?${p.toString()}`;
-  });
+// --- scope switch (venue vs all venues) ---
+let scopeMode = (params.get("scope") || "venue").toLowerCase();
+if (scopeMode !== "all") scopeMode = "venue";
+
+const allEls = {
+  card: document.getElementById("allVenuesCard"),
+  count: document.getElementById("allVenuesCount"),
+  hint: document.getElementById("allVenuesHint"),
+  earned: document.getElementById("allEarned"),
+  tips: document.getElementById("allTips"),
+  bonuses: document.getElementById("allBonuses"),
+  penalties: document.getElementById("allPenalties"),
+  net: document.getElementById("allNet"),
+  list: document.getElementById("allVenuesList"),
+};
+
+function setScopeMode(next) {
+  scopeMode = (next === "all") ? "all" : "venue";
+
+  if (el.btnThisVenue) el.btnThisVenue.disabled = (scopeMode === "venue");
+  if (el.btnAllVenues) el.btnAllVenues.disabled = (scopeMode === "all");
+
+  if (allEls.card) allEls.card.style.display = (scopeMode === "all") ? "" : "none";
+
+  const vs = document.getElementById("venueScopeWrap");
+  if (vs) vs.style.display = (scopeMode === "all") ? "none" : "";
+
+  // keep URL in sync without reload
+  try {
+    const p = new URLSearchParams(location.search);
+    if (scopeMode === "all") p.set("scope", "all"); else p.delete("scope");
+    history.replaceState(null, "", `${location.pathname}?${p.toString()}`);
+  } catch {}
 }
+
+el.btnThisVenue?.addEventListener("click", () => { setScopeMode("venue"); refresh(); });
+el.btnAllVenues?.addEventListener("click", () => { setScopeMode("all"); refresh(); });
+
+
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
@@ -163,6 +195,67 @@ async function loadMonth() {
   renderSummary();
   renderMonthChart();
   renderDays();
+}
+
+
+
+async function loadMonthAll() {
+  if (!allEls.list) return;
+
+  const m = ym(curMonth);
+  el.monthLabel.textContent = monthTitle(curMonth);
+
+  allEls.list.innerHTML = `<div class="card"><div class="skeleton"></div></div><div class="card"><div class="skeleton"></div></div>`;
+
+  try {
+    const data = await api(`/me/salary-summary?month=${encodeURIComponent(m)}`);
+    const totals = data?.totals || {};
+    const items = Array.isArray(data?.venues) ? data.venues : [];
+
+    const fmt = (n) => Math.round(Number(n || 0)).toLocaleString("ru-RU");
+
+    if (allEls.earned) allEls.earned.textContent = fmt(totals.earned);
+    if (allEls.tips) allEls.tips.textContent = fmt(totals.tips);
+    if (allEls.bonuses) allEls.bonuses.textContent = fmt(totals.bonuses);
+    if (allEls.penalties) allEls.penalties.textContent = fmt(totals.penalties);
+    if (allEls.net) allEls.net.textContent = fmt(totals.net);
+
+    if (allEls.count) allEls.count.textContent = items.length ? `${items.length} завед.` : "—";
+    if (allEls.hint) allEls.hint.textContent = items.length ? "" : "Нет данных";
+
+    allEls.list.innerHTML = items.length
+      ? items.map((v) => {
+          const name = esc(v?.venue_name || v?.name || `#${v?.venue_id || v?.id || ""}`);
+          const net = fmt(v?.net);
+          const earned = fmt(v?.earned);
+          const tips = fmt(v?.tips);
+          const bonuses = fmt(v?.bonuses);
+          const pen = fmt(v?.penalties);
+          return `
+            <div class="card">
+              <b>${name}</b>
+              <div class="muted small mt-6">Итого: <b>${net}</b></div>
+              <div class="muted small mt-6">Начислено: ${earned} · Чаевые: ${tips}</div>
+              <div class="muted small">Премии: ${bonuses} · Штрафы: ${pen}</div>
+            </div>`;
+        }).join("")
+      : `<div class="muted">Нет данных за выбранный месяц</div>`;
+  } catch (e) {
+    allEls.list.innerHTML = `<div class="muted">Не удалось загрузить сводку</div>`;
+    toast(e?.message || "Не удалось загрузить сводку", "err");
+  }
+}
+
+async function refresh() {
+  // Update scope UI + cards
+  setScopeMode(scopeMode);
+
+  if (scopeMode === "all") {
+    if (el.daysList) el.daysList.innerHTML = "";
+    await loadMonthAll();
+    return;
+  }
+  await refresh();
 }
 
 function formatDateRuNoG(iso) {
@@ -301,14 +394,14 @@ el.prev.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() - 1);
   curMonth.setDate(1);
   syncUrl();
-  await loadMonth();
+  await refresh();
 });
 el.next.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() + 1);
   curMonth.setDate(1);
   syncUrl();
-  await loadMonth();
+  await refresh();
 });
 
 syncUrl();
-loadMonth();
+refresh();
