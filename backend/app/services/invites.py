@@ -1,38 +1,98 @@
 from __future__ import annotations
 
-import json
-
 from datetime import datetime, timezone
+
+import json
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.permissions_registry import PERMISSIONS as PERMISSIONS_REGISTRY
-from app.models.permission import Permission
 from app.models.venue_invite import VenueInvite
 from app.models.venue_member import VenueMember
 from app.models.venue_position import VenuePosition
 
 
+def _norm_code(x) -> str:
+    return str(x or "").strip().upper()
 
-def _normalize_permission_codes(db: Session, raw) -> list[str]:
-    if not raw:
+
+def _parse_codes_raw(raw) -> list[str]:
+    if raw is None:
         return []
-    arr = raw if isinstance(raw, list) else []
-    cleaned: list[str] = []
-    for x in arr:
-        s = str(x or "").strip().upper()
-        if s and s not in cleaned:
-            cleaned.append(s)
-    if not cleaned:
-        return []
-    active = set(db.execute(select(Permission.code).where(Permission.code.in_(cleaned), Permission.is_active.is_(True))).scalars().all())
-    registry = {p.code.strip().upper() for p in PERMISSIONS_REGISTRY}
-    return [c for c in cleaned if c in active or c in registry]
+    if isinstance(raw, list):
+        out = []
+        seen = set()
+        for x in raw:
+            v = _norm_code(x)
+            if v and v not in seen:
+                seen.add(v)
+                out.append(v)
+        return out
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return []
+        # try JSON list
+        try:
+            data = json.loads(s)
+            if isinstance(data, list):
+                return _parse_codes_raw(data)
+        except Exception:
+            pass
+        # tolerate "['A', 'B']" or "A,B C"
+        cleaned = s.replace("[", "").replace("]", "").replace('"', "").replace("'", "")
+        parts = re.split(r"[\s,;]+", cleaned)
+        out = []
+        seen = set()
+        for p in parts:
+            v = _norm_code(p)
+            if v and v not in seen:
+                seen.add(v)
+                out.append(v)
+        return out
+    # unknown type
+    return []
 
 
-def _derive_legacy_flags_from_permission_codes(codes: list[str]) -> dict[str, bool]:
-    s = {str(c or "").strip().upper() for c in (codes or [])}
+def _extract_codes_from_preset(preset: dict) -> list[str]:
+    # preferred keys
+    raw = preset.get("permission_codes")
+    if raw is None:
+        raw = preset.get("permissions")
+    return _parse_codes_raw(raw)
+
+
+def _legacy_codes_from_flags(preset: dict) -> list[str]:
+    codes: list[str] = []
+    if bool(preset.get("can_make_reports")):
+        codes += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
+    elif bool(preset.get("can_view_reports")):
+        codes += ["SHIFT_REPORT_VIEW"]
+
+    if bool(preset.get("can_edit_schedule")):
+        codes += ["SHIFTS_VIEW", "SHIFTS_MANAGE"]
+
+    if bool(preset.get("can_view_adjustments")):
+        codes += ["ADJUSTMENTS_VIEW"]
+    if bool(preset.get("can_manage_adjustments")):
+        codes += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
+    if bool(preset.get("can_resolve_disputes")):
+        codes += ["DISPUTES_RESOLVE"]
+
+    # unique
+    out = []
+    seen = set()
+    for c in codes:
+        v = _norm_code(c)
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
+def _derive_flags_from_codes(codes: list[str]) -> dict[str, bool]:
+    s = {_norm_code(c) for c in (codes or [])}
     s.discard("")
     can_make_reports = bool(s.intersection({"SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"}))
     can_view_reports = bool(s.intersection({"SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"}))
@@ -51,34 +111,6 @@ def _derive_legacy_flags_from_permission_codes(codes: list[str]) -> dict[str, bo
         "can_resolve_disputes": can_resolve_disputes,
     }
 
-
-def _codes_from_invite_preset(preset: dict, db: Session) -> list[str]:
-    # preferred: permission_codes / permissions
-    raw_codes = preset.get("permission_codes") or preset.get("permissions")
-    codes = _normalize_permission_codes(db, raw_codes)
-
-    if codes:
-        return codes
-
-    # legacy fallback: map booleans to codes
-    legacy: list[str] = []
-    if bool(preset.get("can_make_reports")):
-        legacy += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
-    elif bool(preset.get("can_view_reports")):
-        legacy += ["SHIFT_REPORT_VIEW"]
-
-    if bool(preset.get("can_edit_schedule")):
-        legacy += ["SHIFTS_MANAGE"]
-
-    if bool(preset.get("can_manage_adjustments")):
-        legacy += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
-    elif bool(preset.get("can_view_adjustments")):
-        legacy += ["ADJUSTMENTS_VIEW"]
-
-    if bool(preset.get("can_resolve_disputes")):
-        legacy += ["DISPUTES_RESOLVE"]
-
-    return _normalize_permission_codes(db, legacy)
 
 def accept_invites_for_user(db: Session, *, user_id: int, tg_username: str) -> int:
     if not tg_username:
@@ -124,13 +156,18 @@ def accept_invites_for_user(db: Session, *, user_id: int, tg_username: str) -> i
                     VenuePosition.member_user_id == user_id,
                 )
             ).scalar_one_or_none()
-            codes = _codes_from_invite_preset(preset, db)
-            flags = _derive_legacy_flags_from_permission_codes(codes)
+            # permission_codes are the source of truth. If preset doesn't contain them, fall back to legacy flags.
+            codes = _extract_codes_from_preset(preset)
+            if not codes:
+                codes = _legacy_codes_from_flags(preset)
+
+            flags = _derive_flags_from_codes(codes)
+
             data = {
                 "title": str(preset.get("title")).strip(),
                 "rate": int(preset.get("rate") or 0),
                 "percent": int(preset.get("percent") or 0),
-                "permission_codes": json.dumps(codes),
+                "permission_codes": json.dumps(codes or []),
                 **flags,
                 "is_active": True,
             }

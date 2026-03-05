@@ -319,28 +319,33 @@ def my_venue_permissions(
             "can_manage_adjustments": bool(getattr(pos, "can_manage_adjustments", False)),
         }
 
-    
-    # ---- merge in position-based permission codes (fine-grained) + legacy flags mapping ----
+    # ---- merge in position-based permission codes (fine-grained) ----
     extra_codes: list[str] = []
     legacy_codes: list[str] = []
+
+    # If position.permission_codes is present (even "[]"), it becomes the source of truth.
+    # Legacy flags are mapped to permission codes ONLY when permission_codes is empty/NULL (pre-migration).
     if pos is not None:
-        extra_codes = _parse_position_permission_codes(getattr(pos, "permission_codes", None))
+        raw_perm = getattr(pos, "permission_codes", None)
+        raw_present = raw_perm is not None and str(raw_perm).strip() != ""
+        extra_codes = _parse_position_permission_codes(raw_perm)
 
-        # legacy flags -> permission codes (for backwards compatibility with old UI/guards)
-        if bool(pos.can_make_reports):
-            legacy_codes += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
-        elif bool(pos.can_view_reports):
-            legacy_codes += ["SHIFT_REPORT_VIEW"]
+        if not raw_present:
+            # legacy flags -> permission codes (backwards compatibility)
+            if bool(pos.can_make_reports):
+                legacy_codes += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
+            elif bool(pos.can_view_reports):
+                legacy_codes += ["SHIFT_REPORT_VIEW"]
 
-        if bool(pos.can_edit_schedule):
-            legacy_codes += ["SHIFTS_VIEW", "SHIFTS_MANAGE"]
+            if bool(pos.can_edit_schedule):
+                legacy_codes += ["SHIFTS_VIEW", "SHIFTS_MANAGE"]
 
-        if bool(getattr(pos, "can_view_adjustments", False)):
-            legacy_codes += ["ADJUSTMENTS_VIEW"]
-        if bool(getattr(pos, "can_manage_adjustments", False)):
-            legacy_codes += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
-        if bool(getattr(pos, "can_resolve_disputes", False)):
-            legacy_codes += ["DISPUTES_RESOLVE"]
+            if bool(getattr(pos, "can_view_adjustments", False)):
+                legacy_codes += ["ADJUSTMENTS_VIEW"]
+            if bool(getattr(pos, "can_manage_adjustments", False)):
+                legacy_codes += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
+            if bool(getattr(pos, "can_resolve_disputes", False)):
+                legacy_codes += ["DISPUTES_RESOLVE"]
 
     # filter extras by active permissions in DB
     merged = list(codes) if codes else []

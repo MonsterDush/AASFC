@@ -97,14 +97,15 @@ def require_venue_permission(
             if v:
                 out.add(v)
         return out
-
-
-    pos_codes = _parse_pos_codes(getattr(pos, "permission_codes", None)) if pos is not None else set()
+    raw_perm = getattr(pos, "permission_codes", None) if pos is not None else None
+    raw_present = raw_perm is not None and str(raw_perm).strip() != ""
+    pos_codes = _parse_pos_codes(raw_perm) if raw_present else set()
     if permission_code.strip().upper() in pos_codes:
         return
 
     # ---- legacy position flags mapping (backwards compatibility) ----
-    if pos is not None:
+    # IMPORTANT: legacy flags are used ONLY when permission_codes is empty/NULL (pre-migration).
+    if pos is not None and not raw_present:
         pc = permission_code.strip().upper()
         if pc in {"SHIFT_REPORT_VIEW"} and bool(pos.can_view_reports or pos.can_make_reports):
             return

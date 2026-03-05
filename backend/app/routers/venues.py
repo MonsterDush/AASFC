@@ -87,9 +87,6 @@ class InviteDefaultPositionIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
-    # Fine-grained permissions (preferred). If omitted, legacy can_* may be used as fallback.
-    permission_codes: list[str] | None = None
-    permissions: list[str] | None = None
     can_make_reports: bool = False
     can_view_reports: bool = False
     can_view_revenue: bool = False
@@ -97,6 +94,9 @@ class InviteDefaultPositionIn(BaseModel):
     can_view_adjustments: bool = False
     can_manage_adjustments: bool = False
     can_resolve_disputes: bool = False
+    # Fine-grained permissions (preferred). Accepts either key for compatibility.
+    permission_codes: list[str] | None = None
+    permissions: list[str] | None = None
 
 
 
@@ -2802,39 +2802,7 @@ def set_invite_default_position(
     if payload.default_position is None:
         inv.default_position_json = None
     else:
-        dp = payload.default_position
-
-        raw_codes = dp.permission_codes or dp.permissions
-        norm_codes = _normalize_permission_codes(db, raw_codes)
-
-        # Backwards compatibility: if old clients still send legacy can_* flags, map them into codes
-        if not norm_codes:
-            legacy: list[str] = []
-            if dp.can_make_reports:
-                legacy += ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_CLOSE"]
-            elif dp.can_view_reports:
-                legacy += ["SHIFT_REPORT_VIEW"]
-
-            if dp.can_edit_schedule:
-                legacy += ["SHIFTS_MANAGE"]
-
-            if dp.can_manage_adjustments:
-                legacy += ["ADJUSTMENTS_VIEW", "ADJUSTMENTS_MANAGE"]
-            elif dp.can_view_adjustments:
-                legacy += ["ADJUSTMENTS_VIEW"]
-
-            if dp.can_resolve_disputes:
-                legacy += ["DISPUTES_RESOLVE"]
-
-            norm_codes = _normalize_permission_codes(db, legacy)
-
-        # Store only permission_codes as source of truth in invite preset
-        inv.default_position_json = {
-            "title": dp.title.strip(),
-            "rate": int(dp.rate or 0),
-            "percent": int(dp.percent or 0),
-            "permission_codes": norm_codes,
-        }
+        inv.default_position_json = payload.default_position.dict()
 
     db.commit()
     return {"ok": True, "default_position": inv.default_position_json}
