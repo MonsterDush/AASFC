@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import get_current_user
 from app.core.db import get_db
 from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
+from app.core.permissions_registry import PERMISSIONS as PERMISSIONS_REGISTRY
 from app.models import (
     User,
     Venue,
@@ -352,8 +353,10 @@ def my_venue_permissions(
         active = set(
             db.execute(select(Permission.code).where(Permission.code.in_(to_check), Permission.is_active.is_(True))).scalars().all()
         )
+        registry = {p.code.strip().upper() for p in PERMISSIONS_REGISTRY}
         for c in to_check:
-            if c in active and c not in merged:
+            # Keep codes that exist in DB as active OR are defined in code registry (even if sync wasn't run yet).
+            if (c in active or c in registry) and c not in merged:
                 merged.append(c)
     return {
         "venue_id": venue_id,

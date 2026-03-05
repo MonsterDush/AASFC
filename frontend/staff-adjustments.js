@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
 } from "/app.js";
 
-import { permSetFromResponse, hasPermPrefix, hasAnyPerm, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
+import { permSetFromResponse, hasPerm, hasPermPrefix, hasAnyPerm, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("adjustments");
@@ -67,8 +67,29 @@ const el = {
   prev: document.getElementById("monthPrev"),
   next: document.getElementById("monthNext"),
   typeSel: document.getElementById("typeSel"),
+  btnAddAdj: document.getElementById("btnAddAdj"),
   list: document.getElementById("list"),
 };
+
+// Show "Добавить" button when user can manage adjustments
+async function setupManageButton() {
+  if (!venueId || !el.btnAddAdj) return;
+  try {
+    const pr = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
+    const pset = permSetFromResponse(pr);
+    const role = roleUpper(pr);
+    const isAdmin = role === "SUPER_ADMIN" || role === "MODERATOR";
+    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+    const canManage = isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_MANAGE");
+    if (canManage) {
+      el.btnAddAdj.style.display = "";
+      el.btnAddAdj.addEventListener("click", () => {
+        location.href = `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
+      });
+    }
+  } catch {}
+}
+
 
 function esc(s) {
   return String(s ?? "")
@@ -270,5 +291,7 @@ el.typeSel?.addEventListener("change", async () => {
   const data = await loadList();
   renderList(data);
 });
+
+await setupManageButton();
 
 boot();
