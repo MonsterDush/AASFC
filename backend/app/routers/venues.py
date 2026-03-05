@@ -19,6 +19,7 @@ from app.auth.deps import get_current_user
 from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.core.tg import normalize_tg_username, send_telegram_message
+from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
 from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
 
@@ -785,7 +786,9 @@ def _normalize_permission_codes(db: Session, codes: list[str] | None) -> list[st
     active = set(
         db.execute(select(Permission.code).where(Permission.code.in_(cleaned), Permission.is_active.is_(True))).scalars().all()
     )
-    return [c for c in cleaned if c in active]
+    registry = {p.code.strip().upper() for p in PERMISSIONS}
+    # Keep codes that exist in DB as active OR are defined in code registry (even if sync wasn't run yet).
+    return [c for c in cleaned if c in active or c in registry]
 
 
 @router.get("/{venue_id}/positions")

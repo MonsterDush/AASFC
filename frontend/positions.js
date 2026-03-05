@@ -722,7 +722,7 @@ async function callPositionApiWithPerms({ kind, positionId, payload, permCodes }
   // do not leak helper field
   delete basePayload._perm_codes;
 
-  const canTryPerms = Array.isArray(permCodes) && permCodes.length > 0;
+  const canTryPerms = Array.isArray(permCodes);
 
   const callCreate = (p) => createVenuePosition(state.venueId, p);
   const callUpdate = (p) => updateVenuePosition(state.venueId, positionId, p);
@@ -784,7 +784,7 @@ function openCreateModal() {
     }
 
     try {
-      await callPositionApiWithPerms({ kind: "create", payload, permCodes: payload._perm_codes });
+      await callPositionApiWithPerms({ kind: "create", payload, permCodes: auth.canManagePerms ? payload._perm_codes : null });
       toast("Должность создана", "ok");
       closePosModal();
       await load();
@@ -822,7 +822,7 @@ function openEditModal(p, modeOverride = null) {
     }
 
     try {
-      await callPositionApiWithPerms({ kind: "update", positionId: p.id, payload, permCodes: payload._perm_codes });
+      await callPositionApiWithPerms({ kind: "update", positionId: p.id, payload, permCodes: auth.canManagePerms ? payload._perm_codes : null });
       toast("Изменения сохранены", "ok");
       closePosModal();
       await load();
