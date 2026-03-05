@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -76,13 +77,27 @@ def require_venue_permission(
     def _parse_pos_codes(raw: str | None) -> set[str]:
         if not raw:
             return set()
+        s = str(raw).strip()
+        if not s:
+            return set()
+
+        # 1) JSON list (preferred)
         try:
-            data = json.loads(raw)
+            data = json.loads(s)
             if isinstance(data, list):
                 return {str(x or "").strip().upper() for x in data if str(x or "").strip()}
         except Exception:
             pass
-        return set()
+
+        # 2) fallback: comma/space separated list or python-like list string
+        cleaned = s.replace("[", "").replace("]", "").replace('"', "").replace("'", "")
+        out: set[str] = set()
+        for part in re.split(r"[\s,;]+", cleaned):
+            v = str(part or "").strip().upper()
+            if v:
+                out.add(v)
+        return out
+
 
     pos_codes = _parse_pos_codes(getattr(pos, "permission_codes", None)) if pos is not None else set()
     if permission_code.strip().upper() in pos_codes:

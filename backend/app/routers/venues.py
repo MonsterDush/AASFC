@@ -744,29 +744,39 @@ def patch_venue_settings(
 # ---------- Positions (job roles inside venue) ----------
 
 def _parse_position_permission_codes(raw: str | None) -> list[str]:
+    """Parse VenuePosition.permission_codes stored as JSON list (preferred) or tolerate legacy formats.
+
+    Legacy formats that we tolerate:
+    - python-like list string: "['A', 'B']"
+    - comma/space separated string: "A,B C"
+    """
     if not raw:
         return []
+    s = str(raw).strip()
+    if not s:
+        return []
+
+    # 1) JSON list (preferred)
     try:
-        data = json.loads(raw)
+        data = json.loads(s)
         if isinstance(data, list):
-            out = []
+            out: list[str] = []
             for x in data:
-                s = str(x or "").strip()
-                if s:
-                    out.append(s)
-            # preserve order but unique
-            seen = set()
-            uniq = []
-            for c in out:
-                if c in seen:
-                    continue
-                seen.add(c)
-                uniq.append(c)
-            return uniq
+                v = str(x or "").strip().upper()
+                if v and v not in out:
+                    out.append(v)
+            return out
     except Exception:
         pass
-    return []
 
+    # 2) fallback: comma/space separated list or python-like list string
+    cleaned = s.replace("[", "").replace("]", "").replace('"', "").replace("'", "")
+    out: list[str] = []
+    for part in re.split(r"[\s,;]+", cleaned):
+        v = str(part or "").strip().upper()
+        if v and v not in out:
+            out.append(v)
+    return out
 
 def _normalize_permission_codes(db: Session, codes: list[str] | None) -> list[str]:
     if not codes:
