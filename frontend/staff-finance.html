@@ -70,7 +70,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
 } from "/app.js";
-import { permSetFromResponse, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
+import { permSetFromResponse, roleUpper, hasPerm, canViewReports as canViewReportsPerms } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("finance");
@@ -125,9 +125,27 @@ document.getElementById("goSalarySummary")?.addEventListener("click", () => {
   p.set("scope", "all");
   location.href = `/staff-salary.html?${p.toString()}`;
 });
-document.getElementById("goAdjustments")?.addEventListener("click", () => {
+// Send owners/managers to management screen, staff to personal screen
+let adjHref = (() => {
   const qs = activeId ? `?venue_id=${encodeURIComponent(activeId)}` : "";
-  location.href = `/staff-adjustments.html${qs}`;
+  return `/staff-adjustments.html${qs}`;
+})();
+try {
+  if (activeId) {
+    const perms = await getMyVenuePermissions(activeId);
+    const pset = permSetFromResponse(perms);
+    const role = roleUpper(perms);
+    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+    const canManage = isOwner || hasPerm(pset, "ADJUSTMENTS_MANAGE");
+    if (canManage) {
+      const qs = activeId ? `?venue_id=${encodeURIComponent(activeId)}` : "";
+      adjHref = `/app-adjustments.html${qs}`;
+    }
+  }
+} catch {}
+
+document.getElementById("goAdjustments")?.addEventListener("click", () => {
+  location.href = adjHref;
 });
   </script>
 </body>
