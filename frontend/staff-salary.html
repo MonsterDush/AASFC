@@ -15,6 +15,50 @@
       .salary-all-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
       .mini-kpi.total{grid-column:auto}
     }
+    /* --- Salary day modal: force bottom-sheet + correct layering --- */
+    #modal {
+      position: fixed !important;
+      inset: 0 !important;
+      display: none;
+      z-index: 9999;
+    }
+
+    #modal.open { display: block; }
+
+    #modal .modal__backdrop {
+      position: absolute !important;
+      inset: 0 !important;
+      background: rgba(0,0,0,.55) !important;
+      z-index: 0 !important;
+    }
+
+    /* Panel must be ABOVE backdrop and attached to bottom */
+    #modal .modal__panel {
+      position: absolute !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      top: auto !important;
+
+      z-index: 1 !important;
+      max-height: 85vh;
+      overflow: auto;
+
+      border-top-left-radius: 18px;
+      border-top-right-radius: 18px;
+
+      /* если в styles.css нет фона — подстрахуемся */
+      background: var(--card-bg, rgba(12, 18, 35, 0.98));
+      border: 1px solid rgba(255,255,255,.08);
+    }
+
+    /* чуть приятнее: шапка липкая */
+    #modal .modal__head {
+      position: sticky;
+      top: 0;
+      background: inherit;
+      backdrop-filter: blur(8px);
+    }
   </style>
 </head>
 
