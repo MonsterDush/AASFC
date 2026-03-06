@@ -38,6 +38,7 @@ async function loadTurnoverForMonth(monthYYYYMM) {
       qp.set("month", monthYYYYMM);
       qp.set("mode", "PAYMENTS");
       qp.set("period", "month");
+      // Canonical revenue page
       location.href = `/owner-turnover.html?${qp.toString()}`;
     };
   }

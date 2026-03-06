@@ -1,3 +1,4 @@
+// Canonical revenue page for owners. Legacy route: /owner-revenue.html -> redirect.
 import {
   applyTelegramTheme,
   ensureLogin,

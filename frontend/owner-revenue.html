@@ -3,10 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Axelio · Выручка</title>
   <script>
-    // Backward compatibility: keep querystring
-    location.replace("/owner-turnover.html" + location.search);
+    // Legacy entrypoint: keep old route working, but send everything to the canonical page.
+    (function () {
+      const target = "/owner-turnover.html" + window.location.search + window.location.hash;
+      window.location.replace(target);
+    })();
   </script>
 </head>
-<body></body>
+<body>
+  <noscript>
+    <meta http-equiv="refresh" content="0;url=/owner-turnover.html" />
+    <a href="/owner-turnover.html">Открыть страницу «Выручка»</a>
+  </noscript>
+</body>
 </html>
