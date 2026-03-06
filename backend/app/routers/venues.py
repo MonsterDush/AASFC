@@ -8,6 +8,7 @@ import uuid
 import re
 from typing import Optional, List
 from io import BytesIO
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
@@ -1442,18 +1443,30 @@ def close_daily_report(
                     Shift.is_active.is_(True),
                 )
             ).scalars().all()
-            for allocation in build_equal_tip_allocations(
-                report_id=rep.id,
-                tips_total=tips_total,
-                assigned_user_ids=assigned_user_ids,
-            ):
-                db.add(allocation)
+            uniq = sorted({int(x) for x in assigned_user_ids if x is not None})
+            n = len(uniq)
+            if n > 0:
+                share = tips_total // n
+                remainder = tips_total - share * n
+                for i, uid in enumerate(uniq):
+                    amount = share + (1 if i < remainder else 0)
+                    db.add(
+                        DailyReportTipAllocation(
+                            report_id=rep.id,
+                            user_id=uid,
+                            amount=int(amount),
+                            split_mode="EQUAL",
+                        )
+                    )
 
     rep.status = "CLOSED"
     rep.closed_by_user_id = user.id
     rep.closed_at = datetime.utcnow()
     rep.updated_by_user_id = user.id
     rep.updated_at = datetime.utcnow()
+
+    # clear any stored tip allocations for this report (reopen)
+    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
 
     db.commit()
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
@@ -1700,7 +1713,12 @@ def export_revenue(
         return StreamingResponse(
             BytesIO(content.encode("utf-8-sig")),
             media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{filename}"; '
+                    f"filename*=UTF-8''{quote(filename)}"
+                )
+            },
         )
 
     # default: xlsx
@@ -1716,7 +1734,12 @@ def export_revenue(
     return StreamingResponse(
         BytesIO(xlsx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+        },
     )
 
 

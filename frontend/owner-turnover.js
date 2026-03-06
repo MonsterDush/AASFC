@@ -180,11 +180,8 @@ $("exportBtn").onclick = async () => {
 
   const qs = buildQuery();
   try {
-    // 1) Request signed public link (requires auth in miniapp, uses cookies)
-    const link = await api(`/venues/${encodeURIComponent(venueId)}/revenue/export_link?${qs}&fmt=xlsx`, { method: "GET" });
-    const url = (link.path ? (API_BASE + link.path) : (API_BASE + `/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`));
+    const url = `${API_BASE}/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`;
 
-    // 2) Open in browser / Telegram in-app browser (downloads work there without auth)
     const tg = window.Telegram?.WebApp;
     try {
       if (tg?.openLink) {
@@ -192,10 +189,11 @@ $("exportBtn").onclick = async () => {
         return;
       }
     } catch {}
-    window.open(url, "_blank");
+
+    window.location.href = url;
   } catch (e) {
     console.error(e);
-    toast("Не удалось создать ссылку на экспорт");
+    toast("Не удалось начать экспорт");
   }
 };
 }

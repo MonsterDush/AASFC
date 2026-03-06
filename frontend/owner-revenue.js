@@ -5,6 +5,7 @@ import {
   mountCommonUI,
   toast,
   api,
+  API_BASE,
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
@@ -129,10 +130,10 @@ function renderShell() {
         <div class="row mt-10" style="gap:10px; flex-wrap:wrap; justify-content:space-between; align-items:center">
           <div class="muted" id="metaLine">…</div>
           <div class="row" style="gap:10px">
-            <button class="btn" id="btnExport">Экспорт в Excel</button>
+            <button class="btn" id="btnExport">Экспорт</button>
           </div>
         </div>
-        <div class="muted mt-6">Экспортирует текущие фильтры (месяц и режим). Формат: CSV (Excel открывает).</div>
+        <div class="muted mt-6">Экспортирует текущие фильтры (месяц и режим). Формат: XLSX.</div>
 
         <div class="divider" style="margin-top:12px"></div>
 
@@ -205,7 +206,7 @@ function renderShell() {
   });
 
   const be = document.getElementById("btnExport");
-  if (be) be.onclick = () => exportCsv();
+  if (be) be.onclick = () => exportRevenue();
 }
 
 function renderList() {
@@ -370,24 +371,27 @@ async function loadAndRender() {
   if (!hasAnyNumbers) toast("Похоже, нет доступа к цифрам (в отчётах суммы скрыты)", "err");
 }
 
-function exportCsv() {
-  if (!state.closedCount) {
-    toast("Нет данных для экспорта", "err");
+function exportRevenue() {
+  if (!state.venueId) {
+    toast("Не выбрано заведение", "err");
     return;
   }
-  const modeLabel = state.mode === "PAYMENTS" ? "payments" : "departments";
-  const filename = `revenue_${state.venueId || "venue"}_${state.month}_${modeLabel}.csv`;
 
-  const lines = [];
-  lines.push(["Категория", "Сумма"]);
-  for (const r of state.rows) lines.push([r.title, Math.round(numOr0(r.amount))]);
-  lines.push(["ИТОГО", Math.round(numOr0(state.total))]);
+  const qp = new URLSearchParams();
+  qp.set("month", state.month || todayMonth());
+  qp.set("mode", state.mode || "DEPARTMENTS");
+  qp.set("fmt", "xlsx");
 
-  const csv = "\ufeff" + lines
-    .map((row) => row.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(";"))
-    .join("\n");
+  const url = `${API_BASE}/venues/${encodeURIComponent(state.venueId)}/revenue/export?${qp.toString()}`;
+  const tg = window.Telegram?.WebApp;
+  try {
+    if (tg?.openLink) {
+      tg.openLink(url, { try_instant_view: false });
+      return;
+    }
+  } catch {}
 
-  downloadBlob(filename, new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  window.location.href = url;
 }
 
 (async () => {
