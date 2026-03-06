@@ -59,21 +59,49 @@ export function wa() {
 }
 
 // ------------------------------
-// Theme (system / light / dark)
+// Theme (system / light / dark / hookahplace)
 // ------------------------------
-const LS_THEME = "axelio.theme"; // 'system' | 'light' | 'dark'
+const LS_THEME = "axelio.theme"; // 'system' | 'light' | 'dark' | 'hookahplace'
+const LS_SYS_ROLE = "axelio.system_role"; // cached from /me (used for gated features)
+
+export function cacheSystemRole(role) {
+  const v = String(role || "").toUpperCase();
+  try {
+    if (v) localStorage.setItem(LS_SYS_ROLE, v);
+    else localStorage.removeItem(LS_SYS_ROLE);
+  } catch {}
+}
+
+export function getCachedSystemRole() {
+  try { return String(localStorage.getItem(LS_SYS_ROLE) || "").toUpperCase(); } catch { return ""; }
+}
+
+export function isSuperAdminCached() {
+  return getCachedSystemRole() === "SUPER_ADMIN";
+}
 
 export function getThemePref() {
   try {
     const v = (localStorage.getItem(LS_THEME) || "system").trim();
-    return (v === "light" || v === "dark" || v === "system") ? v : "system";
+    const allowed = (v === "light" || v === "dark" || v === "system" || v === "hookahplace");
+    if (!allowed) return "system";
+
+    // Gate experimental themes by system role
+    if (v === "hookahplace" && !isSuperAdminCached()) return "system";
+
+    return v;
   } catch {
     return "system";
   }
 }
 
 export function setThemePref(pref) {
-  const v = (pref === "light" || pref === "dark" || pref === "system") ? pref : "system";
+  let v = (pref === "light" || pref === "dark" || pref === "system" || pref === "hookahplace")
+    ? pref
+    : "system";
+
+  if (v === "hookahplace" && !isSuperAdminCached()) v = "system";
+
   try { localStorage.setItem(LS_THEME, v); } catch {}
 }
 
@@ -91,6 +119,7 @@ function syncThemeColorMeta() {
   try {
     const m = ensureThemeMeta();
     const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+    // theme-color expects a solid color. Our themes keep --bg as a color (not a gradient).
     if (bg) m.setAttribute("content", bg);
   } catch {}
 }
@@ -101,7 +130,7 @@ export function applyTheme() {
 
   // If user explicitly chose a theme, force it via data-theme.
   // If system: remove override and let CSS media query handle it.
-  if (pref === "light" || pref === "dark") {
+  if (pref === "light" || pref === "dark" || pref === "hookahplace") {
     root.setAttribute("data-theme", pref);
   } else {
     root.removeAttribute("data-theme");
@@ -721,6 +750,11 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
     container.innerHTML = "";
     return { ok: false, reason: "NO_ME" };
   }
+
+  // cache system role for gated features (themes, admin-only UI)
+  cacheSystemRole(me?.system_role);
+  // re-apply theme now that role is known (enables SUPER_ADMIN-only themes)
+  applyTheme();
 
   // SUPER_ADMIN bottom nav
   if (me?.system_role === "SUPER_ADMIN") {

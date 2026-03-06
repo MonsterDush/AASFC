@@ -91,8 +91,11 @@
     applyTelegramTheme();
     mountCommonUI("settings");
     await ensureLogin({ silent: true });
-    await mountNav({ activeTab: "settings" });
+    const navState = await mountNav({ activeTab: "settings" });
     await mountVenueMenu({ containerSelector: "#venueMenuMount" });
+    const __me = navState?.me || null;
+    const __isSuperAdmin = String(__me?.system_role || "").toUpperCase() === "SUPER_ADMIN";
+
 
     const hint = document.getElementById("langHint");
     const paint = () => {
@@ -107,13 +110,22 @@
     // --- Theme ---
     const themeSel = document.getElementById("themeSelect");
     const themeHint = document.getElementById("themeHint");
+    if (__isSuperAdmin && themeSel && !themeSel.querySelector('option[value="hookahplace"]')) {
+      const opt = document.createElement("option");
+      opt.value = "hookahplace";
+      opt.textContent = "Hookah Place";
+      themeSel.appendChild(opt);
+    }
+
     const paintTheme = () => {
       const v = getThemePref();
       if (themeSel) themeSel.value = v;
       if (themeHint) {
-        themeHint.textContent = v === "dark"
-          ? "Текущая тема: Тёмная"
-          : (v === "light" ? "Текущая тема: Светлая" : "Текущая тема: Системная");
+        themeHint.textContent = v === "hookahplace"
+          ? "Текущая тема: Hookah Place"
+          : (v === "dark"
+            ? "Текущая тема: Тёмная"
+            : (v === "light" ? "Текущая тема: Светлая" : "Текущая тема: Системная"));
       }
     };
     paintTheme();
@@ -122,8 +134,6 @@
       applyTheme();
       paintTheme();
     });
-
-    import { getMe } from "/app.js";
 
     function displayName(u) {
       const shortName = (u?.short_name || "").trim();
@@ -252,9 +262,8 @@ document.getElementById("btnNotifSettings")?.addEventListener("click", async () 
   }
 });
     try {
-      const me = await getMe();
       const el = document.getElementById("helloName");
-      if (el) el.textContent = displayName(me);
+      if (el) el.textContent = displayName(__me);
     } catch {
       // ничего страшного
     }
