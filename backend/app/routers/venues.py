@@ -1442,30 +1442,18 @@ def close_daily_report(
                     Shift.is_active.is_(True),
                 )
             ).scalars().all()
-            uniq = sorted({int(x) for x in assigned_user_ids if x is not None})
-            n = len(uniq)
-            if n > 0:
-                share = tips_total // n
-                remainder = tips_total - share * n
-                for i, uid in enumerate(uniq):
-                    amount = share + (1 if i < remainder else 0)
-                    db.add(
-                        DailyReportTipAllocation(
-                            report_id=rep.id,
-                            user_id=uid,
-                            amount=int(amount),
-                            split_mode="EQUAL",
-                        )
-                    )
+            for allocation in build_equal_tip_allocations(
+                report_id=rep.id,
+                tips_total=tips_total,
+                assigned_user_ids=assigned_user_ids,
+            ):
+                db.add(allocation)
 
     rep.status = "CLOSED"
     rep.closed_by_user_id = user.id
     rep.closed_at = datetime.utcnow()
     rep.updated_by_user_id = user.id
     rep.updated_at = datetime.utcnow()
-
-    # clear any stored tip allocations for this report (reopen)
-    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
 
     db.commit()
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
