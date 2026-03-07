@@ -6,10 +6,10 @@ import {
   mountCommonUI,
   toast,
   api,
+  API_BASE,
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
-  downloadFile,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -226,34 +226,22 @@ function bindPickers() {
     if (!venueId || !state.canExport) return;
 
     const qs = buildQuery().toString();
-    const btn = $("exportBtn");
-    const prev = btn?.textContent || "Экспорт XLSX";
-
     try {
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = "Скачивание…";
-      }
+      const data = await api(`/venues/${encodeURIComponent(venueId)}/revenue/export-link?${qs}&fmt=xlsx`);
+      const url = data?.export_link || (data?.export_path ? `${API_BASE}${data.export_path}` : "");
+      if (!url) throw new Error("export link missing");
 
-      const modeLabel = (state.mode || "DEPARTMENTS").toUpperCase() === "PAYMENTS" ? "payments" : "departments";
-      const periodLabel = state.period === "month"
-        ? (state.month || currentMonth())
-        : state.period === "day"
-          ? (state.day || todayISO())
-          : `${state.from || todayISO()}_${state.to || todayISO()}`;
-
-      await downloadFile(
-        `/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`,
-        { filenameFallback: `revenue_${periodLabel}_${modeLabel}.xlsx` }
-      );
+      const tg = window.Telegram?.WebApp;
+      try {
+        if (tg?.openLink) {
+          tg.openLink(url, { try_instant_view: false });
+          return;
+        }
+      } catch {}
+      window.location.href = url;
     } catch (e) {
       console.error(e);
-      toast(e?.message || "Не удалось скачать экспорт", "err");
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = prev;
-      }
+      toast("Не удалось начать экспорт");
     }
   };
 }

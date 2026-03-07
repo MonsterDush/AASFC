@@ -10,19 +10,20 @@ from typing import Optional, List
 from io import BytesIO
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, delete, update, func
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_user, get_current_user_optional
 from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.core.tg import normalize_tg_username, send_telegram_message
 from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
 from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
+from app.services.signed_links import make_signed_token, verify_signed_token
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -49,6 +50,7 @@ from app.models.permission import Permission
 from app.auth.venue_permissions import require_venue_permission
 
 from app.services.venues import create_venue
+from app.settings import settings
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 
@@ -1588,21 +1590,7 @@ def _revenue_kind_and_catalog(mode: str):
     raise HTTPException(status_code=400, detail="Bad mode, expected DEPARTMENTS or PAYMENTS")
 
 
-@router.get("/{venue_id}/revenue", response_model=RevenueSummaryOut)
-def get_revenue_summary(
-    venue_id: int,
-    month: str | None = Query(None, description="YYYY-MM"),
-    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
-    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
-    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Агрегация доходов по CLOSED отчётам за месяц."""
-    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    _require_report_viewer(db, venue_id=venue_id, user=user)
-    _require_revenue_viewer(db, venue_id=venue_id, user=user)
-
+def _compute_revenue_summary(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, db: Session):
     start, end_incl = _resolve_period(month, date_from, date_to)
     end_excl = end_incl + timedelta(days=1)
     kind, Catalog = _revenue_kind_and_catalog(mode)
@@ -1677,7 +1665,6 @@ def get_revenue_summary(
 
     month_out = month
     if month_out is None and date_from is None and date_to is None:
-        # defaulted to current month
         month_out = start.strftime("%Y-%m")
 
     return {
@@ -1691,25 +1678,38 @@ def get_revenue_summary(
     }
 
 
-@router.get("/{venue_id}/revenue/export")
-def export_revenue(
+@router.get("/{venue_id}/revenue", response_model=RevenueSummaryOut)
+def get_revenue_summary(
     venue_id: int,
     month: str | None = Query(None, description="YYYY-MM"),
     date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
-    fmt: str = Query("xlsx", description="xlsx | csv"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Экспорт доходов за месяц (CLOSED) в XLSX (по умолчанию) или CSV."""
+    """Агрегация доходов по CLOSED отчётам за месяц."""
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
-    _require_revenue_exporter(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    return _compute_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db)
 
-    summary = get_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db, user=user)
 
-    # Venue name for filename
+
+
+def _build_revenue_export_response(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, fmt: str, db: Session, user: User | None = None):
+    """Build streaming export response.
+
+    If user is provided, permissions are checked before export.
+    Signed-link exports pass user=None and rely on token validation done by caller.
+    """
+    if user is not None:
+        _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+        _require_report_viewer(db, venue_id=venue_id, user=user)
+        _require_revenue_exporter(db, venue_id=venue_id, user=user)
+
+    summary = _compute_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db)
+
     v = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     venue_name = v.name if v else f"venue_{venue_id}"
 
@@ -1738,7 +1738,6 @@ def export_revenue(
             },
         )
 
-    # default: xlsx
     xlsx_bytes = build_revenue_xlsx(
         month=period_label,
         mode=summary["mode"],
@@ -1757,6 +1756,122 @@ def export_revenue(
                 f"filename*=UTF-8''{quote(filename)}"
             )
         },
+    )
+
+
+@router.get("/{venue_id}/revenue/export-link")
+def get_revenue_export_link(
+    venue_id: int,
+    request: Request,
+    month: str | None = Query(None, description="YYYY-MM"),
+    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
+    fmt: str = Query("xlsx", description="xlsx | csv"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    _require_revenue_exporter(db, venue_id=venue_id, user=user)
+
+    mode_norm = (mode or "DEPARTMENTS").upper().strip()
+    fmt_norm = (fmt or "xlsx").lower().strip()
+    if fmt_norm not in {"xlsx", "csv"}:
+        raise HTTPException(status_code=400, detail="Bad fmt, expected xlsx or csv")
+    _revenue_kind_and_catalog(mode_norm)
+
+    token_payload = {
+        "action": "revenue_export",
+        "venue_id": int(venue_id),
+        "month": month or None,
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
+        "mode": mode_norm,
+        "fmt": fmt_norm,
+        "user_id": int(user.id),
+    }
+    token = make_signed_token(token_payload)
+
+    q = []
+    if month:
+        q.append(f"month={quote(month)}")
+    if date_from:
+        q.append(f"date_from={quote(date_from.isoformat())}")
+    if date_to:
+        q.append(f"date_to={quote(date_to.isoformat())}")
+    q.append(f"mode={quote(mode_norm)}")
+    q.append(f"fmt={quote(fmt_norm)}")
+    q.append(f"token={quote(token)}")
+
+    base = str(request.base_url).rstrip("/")
+    export_path = f"/venues/{venue_id}/revenue/export?{'&'.join(q)}"
+    return {
+        "export_path": export_path,
+        "export_link": f"{base}{export_path}",
+        "expires_in": int(getattr(settings, 'EXPORT_LINK_TTL_SECONDS', 600) or 600),
+    }
+
+
+@router.get("/{venue_id}/revenue/export")
+def export_revenue(
+    venue_id: int,
+    month: str | None = Query(None, description="YYYY-MM"),
+    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
+    fmt: str = Query("xlsx", description="xlsx | csv"),
+    token: str | None = Query(None, description="Signed export token for external browser"),
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+):
+    """Экспорт доходов за месяц (CLOSED) в XLSX (по умолчанию) или CSV.
+
+    Supports either regular authenticated access or a signed short-lived token for
+    opening the export in an external browser.
+    """
+    if token:
+        try:
+            payload = verify_signed_token(token)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid export token")
+
+        if str(payload.get("action") or "") != "revenue_export":
+            raise HTTPException(status_code=401, detail="Invalid export token")
+        if int(payload.get("venue_id") or 0) != int(venue_id):
+            raise HTTPException(status_code=401, detail="Invalid export token")
+
+        month = payload.get("month") or None
+        date_from_raw = payload.get("date_from") or None
+        date_to_raw = payload.get("date_to") or None
+        date_from = date.fromisoformat(date_from_raw) if date_from_raw else None
+        date_to = date.fromisoformat(date_to_raw) if date_to_raw else None
+        mode = str(payload.get("mode") or mode or "DEPARTMENTS").upper().strip()
+        fmt = str(payload.get("fmt") or fmt or "xlsx").lower().strip()
+
+        return _build_revenue_export_response(
+            venue_id=venue_id,
+            month=month,
+            date_from=date_from,
+            date_to=date_to,
+            mode=mode,
+            fmt=fmt,
+            db=db,
+            user=None,
+        )
+
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    return _build_revenue_export_response(
+        venue_id=venue_id,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        mode=mode,
+        fmt=fmt,
+        db=db,
+        user=user,
     )
 
 
