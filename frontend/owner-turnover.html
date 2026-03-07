@@ -21,24 +21,28 @@
     </div>
 
     <div class="periodbar">
-      <div class="periodbar-row periodbar-row--space">
-        <div class="seg" id="periodSeg">
-          <button data-period="month" class="active">Месяц</button>
-          <button data-period="week">Неделя</button>
-          <button data-period="day">День</button>
-          <button data-period="range">Период</button>
+      <div class="periodbar-row periodbar-row--space periodbar-row--top">
+        <div class="periodbar-group">
+          <div class="muted periodbar-label">Период</div>
+          <div class="seg" id="periodSeg">
+            <button data-period="month" class="active">Месяц</button>
+            <button data-period="week">Неделя</button>
+            <button data-period="day">День</button>
+            <button data-period="range">Период</button>
+          </div>
         </div>
 
-        <button class="btn" id="exportBtn">Экспорт</button>
+        <div class="periodbar-group periodbar-group--right">
+          <div class="muted periodbar-label">Режим</div>
+          <div class="seg" id="modeSeg">
+            <button data-mode="DEPARTMENTS" class="active">Департаменты</button>
+            <button data-mode="PAYMENTS">Оплаты</button>
+          </div>
+        </div>
       </div>
 
-      <div class="periodbar-row">
-        <div class="seg" id="modeSeg">
-          <button data-mode="DEPARTMENTS" class="active">Департаменты</button>
-          <button data-mode="PAYMENTS">Оплаты</button>
-        </div>
-
-        <div class="pickers">
+      <div class="periodbar-row periodbar-row--space periodbar-row--controls">
+        <div class="pickers pickers--main">
           <input id="monthPick" type="month" />
           <input id="dayPick" type="date" style="display:none" />
           <div id="rangePick" style="display:none; gap:8px; align-items:center;">
@@ -46,6 +50,11 @@
             <span class="muted">—</span>
             <input id="toPick" type="date" />
           </div>
+        </div>
+
+        <div class="periodbar-actions">
+          <div class="muted" id="periodHint">За текущий месяц</div>
+          <button class="btn" id="exportBtn">Экспорт XLSX</button>
         </div>
       </div>
     </div>

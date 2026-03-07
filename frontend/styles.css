@@ -951,6 +951,21 @@ input[type="checkbox"],input[type="radio"]{
 .periodbar-row--space{
   justify-content:space-between;
 }
+.periodbar-row--top{
+  align-items:flex-start;
+}
+.periodbar-group{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:0;
+}
+.periodbar-group--right{
+  align-items:flex-end;
+}
+.periodbar-label{
+  font-size:12px;
+}
 
 .seg{
   display:flex;
@@ -959,6 +974,7 @@ input[type="checkbox"],input[type="radio"]{
   border-radius:999px;
   border:1px solid rgba(255,255,255,0.10);
   background: rgba(0,0,0,0.15);
+  flex-wrap:wrap;
 }
 .seg button{
   border:0;
@@ -968,10 +984,48 @@ input[type="checkbox"],input[type="radio"]{
   border-radius:999px;
   cursor:pointer;
   opacity:0.85;
+  white-space:nowrap;
 }
 .seg button.active{
   background: rgba(255,255,255,0.10);
   opacity:1;
 }
 .pickers{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.pickers--main{ flex:1 1 280px; min-width:0; }
 .pickers input{ width:auto; min-width: 160px; }
+.periodbar-actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
+
+@media (max-width:700px){
+  .periodbar{ padding:10px; }
+  .periodbar-row--top,
+  .periodbar-row--controls{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .periodbar-group,
+  .periodbar-group--right{
+    align-items:stretch;
+  }
+  .seg{ border-radius:18px; }
+  .seg button{ flex:1 1 auto; text-align:center; }
+  .pickers--main,
+  .periodbar-actions{
+    width:100%;
+    justify-content:stretch;
+  }
+  .pickers input,
+  #rangePick,
+  .periodbar-actions .btn{
+    width:100%;
+  }
+  #rangePick{
+    flex-direction:column;
+    align-items:stretch !important;
+  }
+}

@@ -10,9 +10,7 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
-  getMyVenuePermissions,
 } from "/app.js";
-import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 let state = {
   period: "month",
@@ -22,8 +20,6 @@ let state = {
   from: null,
   to: null,
 };
-
-let pageAccess = { canView: false, canExport: false };
 
 function $(id) { return document.getElementById(id); }
 
@@ -65,36 +61,15 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function applyAccessUI() {
-  const exportBtn = $("exportBtn");
-  if (exportBtn) exportBtn.style.display = pageAccess.canExport ? "" : "none";
-}
+function normalizeState() {
+  state.month = (state.month || currentMonth()).slice(0, 7);
+  state.day = state.day || todayISO();
+  state.from = state.from || todayISO();
+  state.to = state.to || todayISO();
 
-async function resolveRevenueAccess() {
-  const venueId = getActiveVenueId();
-  if (!venueId) return { canView: false, canExport: false };
-
-  try {
-    const permsResp = await getMyVenuePermissions(venueId);
-    const role = roleUpper(permsResp);
-    const pset = permSetFromResponse(permsResp);
-    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
-
-    return {
-      canView: isOwner || hasPerm(pset, "REVENUE_VIEW"),
-      canExport: isOwner || hasPerm(pset, "REVENUE_EXPORT"),
-    };
-  } catch {
-    return { canView: false, canExport: false };
+  if (state.period === "range" && state.from > state.to) {
+    [state.from, state.to] = [state.to, state.from];
   }
-}
-
-function redirectToSummary() {
-  const venueId = getActiveVenueId();
-  const qp = new URLSearchParams();
-  if (venueId) qp.set("venue_id", String(venueId));
-  const target = `/owner-summary.html${qp.toString() ? `?${qp.toString()}` : ""}`;
-  window.location.replace(target);
 }
 
 function syncPickers() {
@@ -102,12 +77,23 @@ function syncPickers() {
   const dayPick = $("dayPick");
   const rangePick = $("rangePick");
 
+  normalizeState();
+
   if (monthPick) monthPick.style.display = state.period === "month" ? "" : "none";
   if (dayPick) dayPick.style.display = (state.period === "day" || state.period === "week") ? "" : "none";
   if (rangePick) rangePick.style.display = state.period === "range" ? "flex" : "none";
+
+  if (monthPick) monthPick.value = state.month;
+  if (dayPick) dayPick.value = state.day;
+  if ($("fromPick")) $("fromPick").value = state.from;
+  if ($("toPick")) $("toPick").value = state.to;
+
+  renderPeriodHint();
 }
 
 function buildQuery() {
+  normalizeState();
+
   const qp = new URLSearchParams();
   qp.set("mode", state.mode);
 
@@ -129,10 +115,67 @@ function buildQuery() {
   return qp.toString();
 }
 
+function formatHumanDate(dateStr) {
+  if (!dateStr) return "—";
+  try {
+    return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "long", year: "numeric" }).format(new Date(`${dateStr}T00:00:00`));
+  } catch {
+    return dateStr;
+  }
+}
+
+function formatHumanMonth(monthStr) {
+  if (!monthStr) return "—";
+  try {
+    const [y, m] = String(monthStr).split("-").map(Number);
+    return new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" }).format(new Date(y, (m || 1) - 1, 1));
+  } catch {
+    return monthStr;
+  }
+}
+
+function renderPeriodHint() {
+  const el = $("periodHint");
+  if (!el) return;
+
+  if (state.period === "month") {
+    el.textContent = `За ${formatHumanMonth(state.month)}`;
+    return;
+  }
+  if (state.period === "day") {
+    el.textContent = formatHumanDate(state.day);
+    return;
+  }
+  if (state.period === "week") {
+    const monday = startOfWeekISO(state.day || todayISO());
+    el.textContent = `${formatHumanDate(monday)} — ${formatHumanDate(addDaysISO(monday, 6))}`;
+    return;
+  }
+  el.textContent = `${formatHumanDate(state.from)} — ${formatHumanDate(state.to)}`;
+}
+
+function syncUrl() {
+  const qp = new URLSearchParams();
+  qp.set("period", state.period);
+  qp.set("mode", state.mode);
+
+  if (getActiveVenueId()) qp.set("venue_id", String(getActiveVenueId()));
+
+  if (state.period === "month") qp.set("month", state.month || currentMonth());
+  if (state.period === "day" || state.period === "week") qp.set("day", state.day || todayISO());
+  if (state.period === "range") {
+    qp.set("date_from", state.from || todayISO());
+    qp.set("date_to", state.to || todayISO());
+  }
+
+  history.replaceState(null, "", `${location.pathname}?${qp.toString()}`);
+}
+
 async function load() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
 
+  syncUrl();
   const qs = buildQuery();
   const data = await api(`/venues/${encodeURIComponent(venueId)}/revenue?${qs}`);
 
@@ -191,9 +234,11 @@ function initFromQuery() {
   state.period = q.get("period") || "month";
 
   state.month = (q.get("month") || nowMonth).slice(0,7);
-  state.day = q.get("day") || today;
+  state.day = q.get("day") || q.get("date_from") || today;
   state.from = q.get("date_from") || today;
   state.to = q.get("date_to") || today;
+
+  normalizeState();
 
   $("monthPick").value = state.month || currentMonth();
   $("dayPick").value = state.day;
@@ -205,15 +250,30 @@ function initFromQuery() {
 }
 
 function bindPickers() {
-  $("monthPick").onchange = (e) => { state.month = e.target.value || currentMonth(); load().catch(console.error); };
-  $("dayPick").onchange = (e) => { state.day = e.target.value || todayISO(); load().catch(console.error); };
-  $("fromPick").onchange = (e) => { state.from = e.target.value || todayISO(); load().catch(console.error); };
-  $("toPick").onchange = (e) => { state.to = e.target.value || todayISO(); load().catch(console.error); };
+  $("monthPick").onchange = (e) => {
+    state.month = e.target.value || currentMonth();
+    syncPickers();
+    load().catch(console.error);
+  };
+  $("dayPick").onchange = (e) => {
+    state.day = e.target.value || todayISO();
+    syncPickers();
+    load().catch(console.error);
+  };
+  $("fromPick").onchange = (e) => {
+    state.from = e.target.value || todayISO();
+    syncPickers();
+    load().catch(console.error);
+  };
+  $("toPick").onchange = (e) => {
+    state.to = e.target.value || todayISO();
+    syncPickers();
+    load().catch(console.error);
+  };
 
-  
-$("exportBtn").onclick = async () => {
+  $("exportBtn").onclick = async () => {
   const venueId = getActiveVenueId();
-  if (!venueId || !pageAccess.canExport) return;
+  if (!venueId) return;
 
   const qs = buildQuery();
   try {
@@ -252,14 +312,6 @@ async function boot() {
     const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
     if (v) $("subtitle").textContent = v.name || "";
   } catch {}
-
-  pageAccess = await resolveRevenueAccess();
-  if (!pageAccess.canView) {
-    toast("Нет доступа к выручке", "warn");
-    redirectToSummary();
-    return;
-  }
-  applyAccessUI();
 
   initFromQuery();
   syncPickers();
