@@ -6,10 +6,10 @@ import {
   mountCommonUI,
   toast,
   api,
-  API_BASE,
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
+  downloadFile,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -221,24 +221,39 @@ function bindPickers() {
   $("fromPick").onchange = (e) => { state.from = e.target.value || todayISO(); load().catch(console.error); };
   $("toPick").onchange = (e) => { state.to = e.target.value || todayISO(); load().catch(console.error); };
 
-  $("exportBtn").onclick = () => {
+  $("exportBtn").onclick = async () => {
     const venueId = getActiveVenueId();
     if (!venueId || !state.canExport) return;
 
     const qs = buildQuery().toString();
+    const btn = $("exportBtn");
+    const prev = btn?.textContent || "Экспорт XLSX";
+
     try {
-      const url = `${API_BASE}/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`;
-      const tg = window.Telegram?.WebApp;
-      try {
-        if (tg?.openLink) {
-          tg.openLink(url, { try_instant_view: false });
-          return;
-        }
-      } catch {}
-      window.location.href = url;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Скачивание…";
+      }
+
+      const modeLabel = (state.mode || "DEPARTMENTS").toUpperCase() === "PAYMENTS" ? "payments" : "departments";
+      const periodLabel = state.period === "month"
+        ? (state.month || currentMonth())
+        : state.period === "day"
+          ? (state.day || todayISO())
+          : `${state.from || todayISO()}_${state.to || todayISO()}`;
+
+      await downloadFile(
+        `/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`,
+        { filenameFallback: `revenue_${periodLabel}_${modeLabel}.xlsx` }
+      );
     } catch (e) {
       console.error(e);
-      toast("Не удалось начать экспорт");
+      toast(e?.message || "Не удалось скачать экспорт", "err");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
     }
   };
 }

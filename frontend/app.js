@@ -321,6 +321,68 @@ export async function api(path, opts = {}) {
   return data;
 }
 
+function parseDownloadFilename(contentDisposition, fallback = "download") {
+  const header = String(contentDisposition || "");
+
+  const starMatch = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (starMatch?.[1]) {
+    try {
+      return decodeURIComponent(starMatch[1].trim()).replace(/[\r\n]/g, "") || fallback;
+    } catch {}
+  }
+
+  const plainMatch = header.match(/filename=\"?([^";]+)\"?/i);
+  if (plainMatch?.[1]) {
+    return plainMatch[1].trim().replace(/[\r\n]/g, "") || fallback;
+  }
+
+  return fallback;
+}
+
+export async function downloadFile(path, { filenameFallback = "download", opts = {} } = {}) {
+  const url = API_BASE + path;
+  const r = await fetch(url, {
+    cache: "no-store",
+    credentials: "include",
+    ...opts,
+    headers: {
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+      ...(opts.headers || {}),
+    },
+  });
+
+  if (!r.ok) {
+    let data = null;
+    try {
+      const text = await r.text();
+      try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    } catch {}
+    const err = new Error(`HTTP ${r.status} ${r.statusText}: ${extractErrorMessage(data)}`);
+    err.status = r.status;
+    err.data = data;
+    err.url = r.url;
+    throw err;
+  }
+
+  const blob = await r.blob();
+  const filename = parseDownloadFilename(r.headers.get("Content-Disposition"), filenameFallback);
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
+
+  return { filename };
+}
+
 export async function ensureLogin({ silent = true } = {}) {
   const w = wa();
   const initData = w?.initData || "";
