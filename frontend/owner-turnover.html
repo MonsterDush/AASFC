@@ -20,40 +20,38 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="periodbar">
-      <div class="periodbar-row periodbar-row--space periodbar-row--top">
-        <div class="periodbar-group">
-          <div class="muted periodbar-label">Период</div>
-          <div class="seg" id="periodSeg">
-            <button data-period="month" class="active">Месяц</button>
-            <button data-period="week">Неделя</button>
-            <button data-period="day">День</button>
-            <button data-period="range">Период</button>
-          </div>
-        </div>
-
-        <div class="periodbar-group periodbar-group--right">
-          <div class="muted periodbar-label">Режим</div>
-          <div class="seg" id="modeSeg">
-            <button data-mode="DEPARTMENTS" class="active">Департаменты</button>
-            <button data-mode="PAYMENTS">Оплаты</button>
-          </div>
+    <div class="card revenue-toolbar">
+      <div class="revenue-toolbar__section">
+        <div class="revenue-toolbar__label">Период</div>
+        <div class="seg seg--period" id="periodSeg">
+          <button data-period="month" class="active">Месяц</button>
+          <button data-period="week">Неделя</button>
+          <button data-period="day">День</button>
+          <button data-period="range">Период</button>
         </div>
       </div>
 
-      <div class="periodbar-row periodbar-row--space periodbar-row--controls">
-        <div class="pickers pickers--main">
+      <div class="revenue-toolbar__section">
+        <div class="revenue-toolbar__label">Режим</div>
+        <div class="seg seg--mode" id="modeSeg">
+          <button data-mode="DEPARTMENTS" class="active">Департаменты</button>
+          <button data-mode="PAYMENTS">Оплаты</button>
+        </div>
+      </div>
+
+      <div class="revenue-toolbar__section revenue-toolbar__section--bottom">
+        <div class="pickers pickers--revenue">
           <input id="monthPick" type="month" />
           <input id="dayPick" type="date" style="display:none" />
-          <div id="rangePick" style="display:none; gap:8px; align-items:center;">
+          <div id="rangePick" class="range-pick" style="display:none">
             <input id="fromPick" type="date" />
             <span class="muted">—</span>
             <input id="toPick" type="date" />
           </div>
         </div>
 
-        <div class="periodbar-actions">
-          <div class="muted" id="periodHint">За текущий месяц</div>
+        <div class="revenue-toolbar__actions">
+          <div class="small revenue-toolbar__caption" id="periodCaption">—</div>
           <button class="btn" id="exportBtn">Экспорт XLSX</button>
         </div>
       </div>

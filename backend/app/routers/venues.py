@@ -408,7 +408,6 @@ def _require_dispute_resolver(db: Session, *, venue_id: int, user: User) -> None
 def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
-
     try:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="REVENUE_VIEW")
         return True
@@ -416,16 +415,24 @@ def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
         return False
 
 
+def _require_revenue_viewer(db: Session, *, venue_id: int, user: User) -> None:
+    if not _can_view_revenue(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def _can_export_revenue(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
-
     try:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="REVENUE_EXPORT")
         return True
     except HTTPException:
         return False
 
+
+def _require_revenue_exporter(db: Session, *, venue_id: int, user: User) -> None:
+    if not _can_export_revenue(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 # ---------- Routes ----------
@@ -1593,8 +1600,8 @@ def get_revenue_summary(
 ):
     """Агрегация доходов по CLOSED отчётам за месяц."""
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    if not _can_view_revenue(db, venue_id=venue_id, user=user):
-        raise HTTPException(status_code=403, detail="Forbidden")
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
 
     start, end_incl = _resolve_period(month, date_from, date_to)
     end_excl = end_incl + timedelta(days=1)
@@ -1697,8 +1704,8 @@ def export_revenue(
 ):
     """Экспорт доходов за месяц (CLOSED) в XLSX (по умолчанию) или CSV."""
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    if not _can_export_revenue(db, venue_id=venue_id, user=user):
-        raise HTTPException(status_code=403, detail="Forbidden")
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    _require_revenue_exporter(db, venue_id=venue_id, user=user)
 
     summary = get_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db, user=user)
 

@@ -30,10 +30,6 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("VENUE_VIEW", "Venue", "Открытие заведения", "Открывать страницу заведения/управления"),
     PermissionDef("VENUE_SETTINGS_EDIT", "Venue", "Настройки заведения", "Изменять настройки заведения (например, чаевые)"),
 
-    # Revenue
-    PermissionDef("REVENUE_VIEW", "Revenue", "Просмотр выручки", "Просматривать страницу выручки и суммы выручки"),
-    PermissionDef("REVENUE_EXPORT", "Revenue", "Экспорт выручки", "Скачивать экспорт выручки"),
-
     # Expenses
     PermissionDef("EXPENSE_ADD", "Expenses", "Добавление расходов", "Вносить расход"),
     PermissionDef("EXPENSE_VIEW", "Expenses", "Просмотр расходов", "Видеть список расходов"),
@@ -48,6 +44,8 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("SHIFT_REPORT_EDIT", "Reports", "Закрытие смены: правка закрытых", "Редактировать закрытые отчёты (с аудитом)"),
     PermissionDef("SHIFT_REPORT_CLOSE", "Reports", "Закрытие смены: закрыть", "Закрывать смену (переводить отчёт в статус CLOSED)"),
     PermissionDef("SHIFT_REPORT_REOPEN", "Reports", "Закрытие смены: переоткрыть", "Переоткрывать закрытые отчёты (CLOSED -> DRAFT)"),
+    PermissionDef("REVENUE_VIEW", "Reports", "Выручка: просмотр", "Открывать страницу выручки и видеть суммы"),
+    PermissionDef("REVENUE_EXPORT", "Reports", "Выручка: экспорт", "Выгружать выручку в XLSX/CSV"),
 
     # Adjustments
     PermissionDef("ADJUSTMENTS_VIEW", "Adjustments", "Просмотр штрафов/премий/списаний", "Видеть штрафы/премии/списания"),

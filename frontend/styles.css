@@ -930,43 +930,34 @@ input[type="checkbox"],input[type="radio"]{
 .h2{font-size:26px;font-weight:800;letter-spacing:-0.02em}
 @media (max-width:900px){.h2{font-size:22px}}
 
-.periodbar{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  align-items:stretch;
-  padding:12px;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
-  margin: 12px 0 16px;
+.revenue-toolbar{
+  display:grid;
+  gap:14px;
+  padding:14px;
 }
-.periodbar-row{
-  width:100%;
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  align-items:center;
-}
-.periodbar-row--space{
-  justify-content:space-between;
-}
-.periodbar-row--top{
-  align-items:flex-start;
-}
-.periodbar-group{
-  display:flex;
-  flex-direction:column;
-  gap:6px;
+.revenue-toolbar__section{
+  display:grid;
+  gap:8px;
   min-width:0;
 }
-.periodbar-group--right{
-  align-items:flex-end;
+.revenue-toolbar__section--bottom{
+  gap:12px;
 }
-.periodbar-label{
-  font-size:12px;
+.revenue-toolbar__label{
+  color:var(--muted);
+  font-size:13px;
+  font-weight:800;
 }
-
+.revenue-toolbar__actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+}
+.revenue-toolbar__caption{
+  min-width:0;
+}
 .seg{
   display:flex;
   gap:6px;
@@ -974,13 +965,15 @@ input[type="checkbox"],input[type="radio"]{
   border-radius:999px;
   border:1px solid rgba(255,255,255,0.10);
   background: rgba(0,0,0,0.15);
-  flex-wrap:wrap;
+  min-width:0;
 }
 .seg button{
+  flex:1 1 0;
+  min-width:0;
   border:0;
   background:transparent;
   color:inherit;
-  padding:8px 12px;
+  padding:10px 12px;
   border-radius:999px;
   cursor:pointer;
   opacity:0.85;
@@ -990,42 +983,20 @@ input[type="checkbox"],input[type="radio"]{
   background: rgba(255,255,255,0.10);
   opacity:1;
 }
-.pickers{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.pickers--main{ flex:1 1 280px; min-width:0; }
-.pickers input{ width:auto; min-width: 160px; }
-.periodbar-actions{
-  display:flex;
-  gap:10px;
-  align-items:center;
-  justify-content:flex-end;
-  flex-wrap:wrap;
+.pickers{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
+.pickers input{width:auto;min-width:160px;max-width:100%}
+.pickers--revenue{width:100%}
+.range-pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%}
+.range-pick input{flex:1 1 180px}
+
+@media (max-width:760px){
+  .seg--period{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-radius:18px}
+  .seg--mode{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-radius:18px}
+  .seg button{white-space:normal;line-height:1.15;text-align:center}
+  .pickers--revenue > input,
+  .pickers--revenue > .range-pick{width:100%}
+  .pickers--revenue input{min-width:0;width:100%}
+  .revenue-toolbar__actions{align-items:stretch}
+  .revenue-toolbar__actions .btn{width:100%}
 }
 
-@media (max-width:700px){
-  .periodbar{ padding:10px; }
-  .periodbar-row--top,
-  .periodbar-row--controls{
-    flex-direction:column;
-    align-items:stretch;
-  }
-  .periodbar-group,
-  .periodbar-group--right{
-    align-items:stretch;
-  }
-  .seg{ border-radius:18px; }
-  .seg button{ flex:1 1 auto; text-align:center; }
-  .pickers--main,
-  .periodbar-actions{
-    width:100%;
-    justify-content:stretch;
-  }
-  .pickers input,
-  #rangePick,
-  .periodbar-actions .btn{
-    width:100%;
-  }
-  #rangePick{
-    flex-direction:column;
-    align-items:stretch !important;
-  }
-}

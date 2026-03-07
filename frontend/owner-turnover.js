@@ -11,6 +11,7 @@ import {
   setActiveVenueId,
   getMyVenues,
 } from "/app.js";
+import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 let state = {
   period: "month",
@@ -19,6 +20,8 @@ let state = {
   day: null,
   from: null,
   to: null,
+  canView: true,
+  canExport: true,
 };
 
 function $(id) { return document.getElementById(id); }
@@ -37,9 +40,9 @@ function fmtMoney(n) {
   try { return new Intl.NumberFormat("ru-RU").format(x) + " ₽"; } catch { return String(x) + " ₽"; }
 }
 
-function startOfWeekISO(dateStr) { // YYYY-MM-DD
+function startOfWeekISO(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
-  const day = (d.getDay() + 6) % 7; // Mon=0
+  const day = (d.getDay() + 6) % 7;
   d.setDate(d.getDate() - day);
   return d.toISOString().slice(0, 10);
 }
@@ -61,14 +64,13 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function normalizeState() {
-  state.month = (state.month || currentMonth()).slice(0, 7);
-  state.day = state.day || todayISO();
-  state.from = state.from || todayISO();
-  state.to = state.to || todayISO();
-
-  if (state.period === "range" && state.from > state.to) {
-    [state.from, state.to] = [state.to, state.from];
+function normalizeRange() {
+  if (!state.from) state.from = todayISO();
+  if (!state.to) state.to = state.from;
+  if (state.from > state.to) {
+    const x = state.from;
+    state.from = state.to;
+    state.to = x;
   }
 }
 
@@ -77,106 +79,70 @@ function syncPickers() {
   const dayPick = $("dayPick");
   const rangePick = $("rangePick");
 
-  normalizeState();
-
   if (monthPick) monthPick.style.display = state.period === "month" ? "" : "none";
   if (dayPick) dayPick.style.display = (state.period === "day" || state.period === "week") ? "" : "none";
   if (rangePick) rangePick.style.display = state.period === "range" ? "flex" : "none";
+}
 
-  if (monthPick) monthPick.value = state.month;
-  if (dayPick) dayPick.value = state.day;
-  if ($("fromPick")) $("fromPick").value = state.from;
-  if ($("toPick")) $("toPick").value = state.to;
+function periodLabel() {
+  if (state.period === "month") return `За ${state.month || currentMonth()}`;
+  if (state.period === "day") return `За ${state.day || todayISO()}`;
+  if (state.period === "week") {
+    const start = startOfWeekISO(state.day || todayISO());
+    return `Неделя ${start} — ${addDaysISO(start, 6)}`;
+  }
+  normalizeRange();
+  return `Период ${state.from} — ${state.to}`;
+}
 
-  renderPeriodHint();
+function syncCaption() {
+  const el = $("periodCaption");
+  if (el) el.textContent = periodLabel();
 }
 
 function buildQuery() {
-  normalizeState();
-
   const qp = new URLSearchParams();
   qp.set("mode", state.mode);
+  qp.set("period", state.period);
 
   if (state.period === "month") {
     qp.set("month", state.month || currentMonth());
   } else if (state.period === "day") {
+    qp.set("day", state.day || todayISO());
     qp.set("date_from", state.day || todayISO());
     qp.set("date_to", state.day || todayISO());
   } else if (state.period === "week") {
     const baseDay = state.day || todayISO();
     const monday = startOfWeekISO(baseDay);
+    qp.set("day", baseDay);
     qp.set("date_from", monday);
     qp.set("date_to", addDaysISO(monday, 6));
   } else {
+    normalizeRange();
     qp.set("date_from", state.from || todayISO());
     qp.set("date_to", state.to || todayISO());
   }
 
-  return qp.toString();
-}
-
-function formatHumanDate(dateStr) {
-  if (!dateStr) return "—";
-  try {
-    return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "long", year: "numeric" }).format(new Date(`${dateStr}T00:00:00`));
-  } catch {
-    return dateStr;
-  }
-}
-
-function formatHumanMonth(monthStr) {
-  if (!monthStr) return "—";
-  try {
-    const [y, m] = String(monthStr).split("-").map(Number);
-    return new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" }).format(new Date(y, (m || 1) - 1, 1));
-  } catch {
-    return monthStr;
-  }
-}
-
-function renderPeriodHint() {
-  const el = $("periodHint");
-  if (!el) return;
-
-  if (state.period === "month") {
-    el.textContent = `За ${formatHumanMonth(state.month)}`;
-    return;
-  }
-  if (state.period === "day") {
-    el.textContent = formatHumanDate(state.day);
-    return;
-  }
-  if (state.period === "week") {
-    const monday = startOfWeekISO(state.day || todayISO());
-    el.textContent = `${formatHumanDate(monday)} — ${formatHumanDate(addDaysISO(monday, 6))}`;
-    return;
-  }
-  el.textContent = `${formatHumanDate(state.from)} — ${formatHumanDate(state.to)}`;
+  return qp;
 }
 
 function syncUrl() {
-  const qp = new URLSearchParams();
-  qp.set("period", state.period);
-  qp.set("mode", state.mode);
-
-  if (getActiveVenueId()) qp.set("venue_id", String(getActiveVenueId()));
-
-  if (state.period === "month") qp.set("month", state.month || currentMonth());
-  if (state.period === "day" || state.period === "week") qp.set("day", state.day || todayISO());
-  if (state.period === "range") {
-    qp.set("date_from", state.from || todayISO());
-    qp.set("date_to", state.to || todayISO());
-  }
-
-  history.replaceState(null, "", `${location.pathname}?${qp.toString()}`);
+  const qp = buildQuery();
+  const venueId = getActiveVenueId();
+  if (venueId) qp.set("venue_id", venueId);
+  const target = `${location.pathname}?${qp.toString()}`;
+  history.replaceState(null, "", target);
 }
 
 async function load() {
   const venueId = getActiveVenueId();
-  if (!venueId) return;
+  if (!venueId || !state.canView) return;
 
+  normalizeRange();
+  syncCaption();
   syncUrl();
-  const qs = buildQuery();
+
+  const qs = buildQuery().toString();
   const data = await api(`/venues/${encodeURIComponent(venueId)}/revenue?${qs}`);
 
   $("total").textContent = fmtMoney(data?.total || 0);
@@ -231,14 +197,13 @@ function initFromQuery() {
   const today = todayISO();
 
   state.mode = q.get("mode") || "DEPARTMENTS";
-  state.period = q.get("period") || "month";
+  state.period = q.get("period") || (q.get("month") ? "month" : (q.get("date_from") && q.get("date_to") ? "range" : "month"));
 
   state.month = (q.get("month") || nowMonth).slice(0,7);
   state.day = q.get("day") || q.get("date_from") || today;
   state.from = q.get("date_from") || today;
   state.to = q.get("date_to") || today;
-
-  normalizeState();
+  normalizeRange();
 
   $("monthPick").value = state.month || currentMonth();
   $("dayPick").value = state.day;
@@ -247,52 +212,63 @@ function initFromQuery() {
 
   setActiveSeg("modeSeg", "mode", state.mode);
   setActiveSeg("periodSeg", "period", state.period);
+  syncCaption();
 }
 
 function bindPickers() {
-  $("monthPick").onchange = (e) => {
-    state.month = e.target.value || currentMonth();
-    syncPickers();
-    load().catch(console.error);
-  };
-  $("dayPick").onchange = (e) => {
-    state.day = e.target.value || todayISO();
-    syncPickers();
-    load().catch(console.error);
-  };
-  $("fromPick").onchange = (e) => {
-    state.from = e.target.value || todayISO();
-    syncPickers();
-    load().catch(console.error);
-  };
-  $("toPick").onchange = (e) => {
-    state.to = e.target.value || todayISO();
-    syncPickers();
-    load().catch(console.error);
-  };
+  $("monthPick").onchange = (e) => { state.month = e.target.value || currentMonth(); load().catch(console.error); };
+  $("dayPick").onchange = (e) => { state.day = e.target.value || todayISO(); load().catch(console.error); };
+  $("fromPick").onchange = (e) => { state.from = e.target.value || todayISO(); load().catch(console.error); };
+  $("toPick").onchange = (e) => { state.to = e.target.value || todayISO(); load().catch(console.error); };
 
-  $("exportBtn").onclick = async () => {
+  $("exportBtn").onclick = () => {
+    const venueId = getActiveVenueId();
+    if (!venueId || !state.canExport) return;
+
+    const qs = buildQuery().toString();
+    try {
+      const url = `${API_BASE}/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`;
+      const tg = window.Telegram?.WebApp;
+      try {
+        if (tg?.openLink) {
+          tg.openLink(url, { try_instant_view: false });
+          return;
+        }
+      } catch {}
+      window.location.href = url;
+    } catch (e) {
+      console.error(e);
+      toast("Не удалось начать экспорт");
+    }
+  };
+}
+
+async function resolveRevenueAccess() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
 
-  const qs = buildQuery();
   try {
-    const url = `${API_BASE}/venues/${encodeURIComponent(venueId)}/revenue/export?${qs}&fmt=xlsx`;
+    const permsResp = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
+    const role = roleUpper(permsResp);
+    const pset = permSetFromResponse(permsResp);
+    const isPrivileged = role === "OWNER" || role === "VENUE_OWNER" || role === "SUPER_ADMIN" || role === "MODERATOR";
 
-    const tg = window.Telegram?.WebApp;
-    try {
-      if (tg?.openLink) {
-        tg.openLink(url, { try_instant_view: false });
-        return;
-      }
-    } catch {}
-
-    window.location.href = url;
-  } catch (e) {
-    console.error(e);
-    toast("Не удалось начать экспорт");
+    state.canView = isPrivileged || hasPerm(pset, "REVENUE_VIEW");
+    state.canExport = isPrivileged || hasPerm(pset, "REVENUE_EXPORT");
+  } catch {
+    state.canView = true;
+    state.canExport = true;
   }
-};
+
+  const exportBtn = $("exportBtn");
+  if (exportBtn) exportBtn.style.display = state.canExport ? "" : "none";
+
+  if (!state.canView) {
+    toast("Нет доступа к выручке", "err");
+    const venue = getActiveVenueId();
+    const qp = venue ? `?venue_id=${encodeURIComponent(venue)}` : "";
+    setTimeout(() => { location.replace(`/owner-summary.html${qp}`); }, 150);
+  }
 }
 
 async function boot() {
@@ -304,9 +280,8 @@ async function boot() {
   const venueId = params.get("venue_id") || getActiveVenueId();
   if (venueId) setActiveVenueId(venueId);
 
-  await mountNav({ activeTab: "summary" }); // page is reached from Summary
+  await mountNav({ activeTab: "summary" });
 
-  // subtitle: venue name
   try {
     const venues = await getMyVenues();
     const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
@@ -318,7 +293,8 @@ async function boot() {
   applySeg("modeSeg", "mode");
   applySeg("periodSeg", "period");
   bindPickers();
-
+  await resolveRevenueAccess();
+  if (!state.canView) return;
   await load();
 }
 
