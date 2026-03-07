@@ -89,6 +89,26 @@ def me(user: User = Depends(get_current_user)):
     }
 
 
+@router.get("/me/permissions/catalog")
+def my_permissions_catalog(user: User = Depends(get_current_user)):
+    """Return full permission registry for dynamic UI builders.
+
+    The list is sourced from code registry, so new permissions appear in UI
+    immediately after frontend/backend deploy even before sync_permissions.
+    """
+    return {
+        "items": [
+            {
+                "code": p.code,
+                "group": p.group,
+                "title": p.title,
+                "description": p.description,
+            }
+            for p in PERMISSIONS_REGISTRY
+        ]
+    }
+
+
 
 @router.get("/me/profile")
 def get_profile(user: User = Depends(get_current_user)):

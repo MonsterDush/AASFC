@@ -65,6 +65,193 @@ function memberLabel(m) {
   return `${name}${uTxt && !name.includes("@") ? ` · ${uTxt}` : ""}${role ? ` · ${role}` : ""}`;
 }
 
+function buildDefaultPermissionsCatalog() {
+  return [
+    {
+      key: "reports",
+      title: "Отчёты и финансы",
+      hint: "REPORTS_*, SHIFT_REPORT_*, REVENUE_* — отчёты, закрытие смены и выручка",
+      items: [
+        { code: "REPORTS_VIEW_DAILY", title: "Отчёты за день" },
+        { code: "REPORTS_VIEW_MONTHLY", title: "Отчёты за месяц" },
+        { code: "REPORTS_VIEW_PNL", title: "P&L" },
+        { code: "SHIFT_REPORT_VIEW", title: "Закрытие смены: просмотр" },
+        { code: "SHIFT_REPORT_CLOSE", title: "Закрытие смены: закрыть" },
+        { code: "SHIFT_REPORT_EDIT", title: "Закрытие смены: правка закрытых" },
+        { code: "SHIFT_REPORT_REOPEN", title: "Закрытие смены: переоткрыть" },
+        { code: "REVENUE_VIEW", title: "Выручка: просмотр" },
+        { code: "REVENUE_EXPORT", title: "Выручка: экспорт" },
+      ],
+    },
+    {
+      key: "adjustments",
+      title: "Штрафы и споры",
+      hint: "ADJUSTMENTS_*, DISPUTES_*",
+      items: [
+        { code: "ADJUSTMENTS_VIEW", title: "Просмотр штрафов/премий/списаний" },
+        { code: "ADJUSTMENTS_MANAGE", title: "Управление штрафами/премиями/списаниями" },
+        { code: "DISPUTES_RESOLVE", title: "Разбор оспариваний" },
+      ],
+    },
+    {
+      key: "expenses",
+      title: "Расходы",
+      hint: "EXPENSE_*",
+      items: [
+        { code: "EXPENSE_VIEW", title: "Просмотр расходов" },
+        { code: "EXPENSE_ADD", title: "Добавление расходов" },
+        { code: "EXPENSE_CATEGORIES_MANAGE", title: "Статьи расходов" },
+      ],
+    },
+    {
+      key: "shifts",
+      title: "Смены",
+      hint: "SHIFTS_* — график и управление сменами",
+      items: [
+        { code: "SHIFTS_VIEW", title: "Просмотр смен" },
+        { code: "SHIFTS_MANAGE", title: "Управление сменами" },
+      ],
+    },
+    {
+      key: "staff",
+      title: "Сотрудники",
+      hint: "STAFF_* — участники заведения",
+      items: [
+        { code: "STAFF_VIEW", title: "Просмотр сотрудников" },
+        { code: "STAFF_MANAGE", title: "Управление сотрудниками" },
+      ],
+    },
+    {
+      key: "positions",
+      title: "Должности",
+      hint: "POSITIONS_* — раздел должностей",
+      items: [
+        { code: "POSITIONS_VIEW", title: "Просмотр должностей" },
+        { code: "POSITIONS_MANAGE", title: "Управление должностями" },
+        { code: "POSITION_PERMISSIONS_MANAGE", title: "Права должностей" },
+        { code: "POSITIONS_ASSIGN", title: "Назначение должностей" },
+      ],
+    },
+    {
+      key: "venue",
+      title: "Заведение",
+      hint: "VENUE_VIEW/VENUE_SETTINGS_EDIT — доступ к карточке заведения и настройкам",
+      items: [
+        { code: "VENUE_VIEW", title: "Открывать заведение" },
+        { code: "VENUE_SETTINGS_EDIT", title: "Настройки заведения" },
+      ],
+    },
+    {
+      key: "catalogs",
+      title: "Справочники",
+      hint: "DEPARTMENTS_*, PAYMENT_METHODS_*, KPI_METRICS_*",
+      items: [
+        { code: "DEPARTMENTS_VIEW", title: "Департаменты: просмотр" },
+        { code: "DEPARTMENTS_CREATE", title: "Департаменты: создание" },
+        { code: "DEPARTMENTS_EDIT", title: "Департаменты: редактирование" },
+        { code: "DEPARTMENTS_ARCHIVE", title: "Департаменты: архив" },
+        { code: "PAYMENT_METHODS_VIEW", title: "Оплаты: просмотр" },
+        { code: "PAYMENT_METHODS_CREATE", title: "Оплаты: создание" },
+        { code: "PAYMENT_METHODS_EDIT", title: "Оплаты: редактирование" },
+        { code: "PAYMENT_METHODS_ARCHIVE", title: "Оплаты: архив" },
+        { code: "KPI_METRICS_VIEW", title: "KPI: просмотр" },
+        { code: "KPI_METRICS_CREATE", title: "KPI: создание" },
+        { code: "KPI_METRICS_EDIT", title: "KPI: редактирование" },
+        { code: "KPI_METRICS_ARCHIVE", title: "KPI: архив" },
+      ],
+    },
+  ];
+}
+
+const PERM_GROUP_META = {
+  Reports: {
+    key: "reports",
+    title: "Отчёты и финансы",
+    hint: "REPORTS_*, SHIFT_REPORT_*, REVENUE_* — отчёты, закрытие смены и выручка",
+  },
+  Adjustments: {
+    key: "adjustments",
+    title: "Штрафы и споры",
+    hint: "ADJUSTMENTS_*, DISPUTES_*",
+  },
+  Expenses: {
+    key: "expenses",
+    title: "Расходы",
+    hint: "EXPENSE_*",
+  },
+  Shifts: {
+    key: "shifts",
+    title: "Смены",
+    hint: "SHIFTS_* — график и управление сменами",
+  },
+  Staff: {
+    key: "staff",
+    title: "Сотрудники",
+    hint: "STAFF_* — участники заведения",
+  },
+  Positions: {
+    key: "positions",
+    title: "Должности",
+    hint: "POSITIONS_* — раздел должностей",
+  },
+  Venue: {
+    key: "venue",
+    title: "Заведение",
+    hint: "VENUE_VIEW/VENUE_SETTINGS_EDIT — доступ к карточке заведения и настройкам",
+  },
+  Catalogs: {
+    key: "catalogs",
+    title: "Справочники",
+    hint: "DEPARTMENTS_*, PAYMENT_METHODS_*, KPI_METRICS_*",
+  },
+};
+
+function normalizePermissionCatalog(items = []) {
+  const groups = [];
+  const byKey = new Map();
+
+  for (const raw of Array.isArray(items) ? items : []) {
+    const code = String(raw?.code || "").trim().toUpperCase();
+    if (!code) continue;
+    const sourceGroup = String(raw?.group || "Other").trim() || "Other";
+    const meta = PERM_GROUP_META[sourceGroup] || {
+      key: sourceGroup.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other",
+      title: sourceGroup,
+      hint: "",
+    };
+
+    let group = byKey.get(meta.key);
+    if (!group) {
+      group = { key: meta.key, title: meta.title, hint: meta.hint, items: [] };
+      byKey.set(meta.key, group);
+      groups.push(group);
+    }
+
+    group.items.push({
+      code,
+      title: String(raw?.title || raw?.description || code).trim(),
+      description: String(raw?.description || "").trim(),
+    });
+  }
+
+  groups.forEach((g) => {
+    g.items.sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  });
+
+  return groups.length ? groups : buildDefaultPermissionsCatalog();
+}
+
+async function ensurePermissionsCatalog() {
+  if (Array.isArray(state.permissionsCatalog) && state.permissionsCatalog.length) return state.permissionsCatalog;
+  try {
+    const resp = await api('/me/permissions/catalog');
+    state.permissionsCatalog = normalizePermissionCatalog(resp?.items || []);
+  } catch {
+    state.permissionsCatalog = buildDefaultPermissionsCatalog();
+  }
+  return state.permissionsCatalog;
+}
+
 /* ---------- Page shell ---------- */
 
 function renderShell() {
@@ -365,108 +552,9 @@ function renderPositionForm({ mode, position }) {
 
   const isChecked = (code) => curPerms.includes(code);
 
-  const PERM_GROUPS = [
-    {
-      key: "reports_access",
-      title: "Отчёты (разделы)",
-      hint: "REPORTS_VIEW_* — доступ к разделам отчётов",
-      items: [
-        { code: "REPORTS_VIEW_DAILY", title: "Отчёт за день" },
-        { code: "REPORTS_VIEW_MONTHLY", title: "Отчёты за месяц" },
-        { code: "REPORTS_VIEW_PNL", title: "P&L" },
-      ],
-    },
-    {
-      key: "shift_reports",
-      title: "Закрытие смены",
-      hint: "SHIFT_REPORT_* — управление отчётом закрытия смены",
-      items: [
-        { code: "SHIFT_REPORT_VIEW", title: "Просмотр" },
-        { code: "SHIFT_REPORT_CLOSE", title: "Закрывать смену" },
-        { code: "SHIFT_REPORT_EDIT", title: "Правка закрытых" },
-        { code: "SHIFT_REPORT_REOPEN", title: "Переоткрывать" },
-      ],
-    },
-    {
-      key: "shifts",
-      title: "Смены",
-      hint: "SHIFTS_* — расписание и смены",
-      items: [
-        { code: "SHIFTS_VIEW", title: "Просмотр смен" },
-        { code: "SHIFTS_MANAGE", title: "Управление сменами" },
-      ],
-    },
-    {
-      key: "adjustments",
-      title: "Штрафы/премии",
-      hint: "ADJUSTMENTS_* и DISPUTES_RESOLVE",
-      items: [
-        { code: "ADJUSTMENTS_VIEW", title: "Просмотр" },
-        { code: "ADJUSTMENTS_MANAGE", title: "Управление" },
-        { code: "DISPUTES_RESOLVE", title: "Разбор оспариваний" },
-      ],
-    },
-    {
-      key: "expenses",
-      title: "Расходы",
-      hint: "EXPENSE_* — модуль расходов",
-      items: [
-        { code: "EXPENSE_VIEW", title: "Просмотр расходов" },
-        { code: "EXPENSE_ADD", title: "Добавление расхода" },
-        { code: "EXPENSE_CATEGORIES_MANAGE", title: "Статьи расходов" },
-      ],
-    },
-    {
-      key: "staff",
-      title: "Сотрудники",
-      hint: "STAFF_* — участники заведения",
-      items: [
-        { code: "STAFF_VIEW", title: "Просмотр сотрудников" },
-        { code: "STAFF_MANAGE", title: "Управление сотрудниками" },
-      ],
-    },
-    {
-      key: "positions",
-      title: "Должности",
-      hint: "POSITIONS_* — раздел должностей",
-      items: [
-        { code: "POSITIONS_VIEW", title: "Просмотр должностей" },
-        { code: "POSITIONS_MANAGE", title: "Управление должностями" },
-        { code: "POSITION_PERMISSIONS_MANAGE", title: "Права должностей" },
-        { code: "POSITIONS_ASSIGN", title: "Назначение должностей" },
-      ],
-    },
-    {
-      key: "venue",
-      title: "Заведение",
-      hint: "VENUE_VIEW/VENUE_SETTINGS_EDIT — доступ к карточке заведения и настройкам",
-      items: [
-        { code: "VENUE_VIEW", title: "Открывать заведение" },
-        { code: "VENUE_SETTINGS_EDIT", title: "Настройки заведения" },
-      ],
-    },
-    {
-      key: "catalogs",
-      title: "Справочники",
-      hint: "DEPARTMENTS_*, PAYMENT_METHODS_*, KPI_METRICS_*",
-      items: [
-        { code: "DEPARTMENTS_VIEW", title: "Департаменты: просмотр" },
-        { code: "DEPARTMENTS_CREATE", title: "Департаменты: создание" },
-        { code: "DEPARTMENTS_EDIT", title: "Департаменты: редактирование" },
-        { code: "DEPARTMENTS_ARCHIVE", title: "Департаменты: архив" },
-
-        { code: "PAYMENT_METHODS_VIEW", title: "Оплаты: просмотр" },
-        { code: "PAYMENT_METHODS_CREATE", title: "Оплаты: создание" },
-        { code: "PAYMENT_METHODS_EDIT", title: "Оплаты: редактирование" },
-        { code: "PAYMENT_METHODS_ARCHIVE", title: "Оплаты: архив" },
-
-        { code: "KPI_METRICS_VIEW", title: "KPI: просмотр" },
-        { code: "KPI_METRICS_CREATE", title: "KPI: создание" },
-        { code: "KPI_METRICS_EDIT", title: "KPI: редактирование" },
-        { code: "KPI_METRICS_ARCHIVE", title: "KPI: архив" },
-      ],
-    },
-  ];
+  const PERM_GROUPS = Array.isArray(state.permissionsCatalog) && state.permissionsCatalog.length
+    ? state.permissionsCatalog
+    : buildDefaultPermissionsCatalog();
 
   const permCardsHtml = !canEditPerms
     ? ``
@@ -482,7 +570,7 @@ function renderPositionForm({ mode, position }) {
             <div class="perm-row">
               <div class="perm-text">
                 <div class="perm-title">${esc(it.title)}</div>
-                <div class="perm-desc">${esc(it.code)}</div>
+                <div class="perm-desc">${esc(it.description || it.code)}</div>
               </div>
               <label class="switch">
                 <input type="checkbox"
@@ -714,11 +802,13 @@ async function callPositionApiWithPerms({ kind, positionId, payload, permCodes }
 
 /* ---------- Modal actions ---------- */
 
-function openCreateModal() {
+async function openCreateModal() {
   if (!auth.canManage) {
     toast("Нет прав на создание должностей", "err");
     return;
   }
+  await ensurePermissionsCatalog();
+
   openPosModal({
     title: "Создать должность",
     hint: "Одна должность может быть у нескольких сотрудников (например «Бармен»).",
@@ -752,12 +842,14 @@ function openCreateModal() {
   });
 }
 
-function openEditModal(p, modeOverride = null) {
+async function openEditModal(p, modeOverride = null) {
   const mode = modeOverride || (auth.canManage ? "edit" : (auth.canManagePerms ? "perms" : "view"));
   if (mode === "view") {
     toast("Нет прав на изменение должности", "err");
     return;
   }
+  await ensurePermissionsCatalog();
+
   openPosModal({
     title: "Изменить должность",
     hint: "Меняй должность/условия для выбранного сотрудника.",
@@ -907,10 +999,10 @@ function renderPositions() {
       `;
 
       const btnEdit = row.querySelector("[data-edit]");
-      if (btnEdit) btnEdit.onclick = () => openEditModal(p, "edit");
+      if (btnEdit) btnEdit.onclick = async () => { await openEditModal(p, "edit"); };
 
       const btnPerms = row.querySelector("[data-perms]");
-      if (btnPerms) btnPerms.onclick = () => openEditModal(p, "perms");
+      if (btnPerms) btnPerms.onclick = async () => { await openEditModal(p, "perms"); };
 
       const btnDel = row.querySelector("[data-del]");
       if (btnDel) btnDel.onclick = async () => {
