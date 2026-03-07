@@ -30,6 +30,10 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("VENUE_VIEW", "Venue", "Открытие заведения", "Открывать страницу заведения/управления"),
     PermissionDef("VENUE_SETTINGS_EDIT", "Venue", "Настройки заведения", "Изменять настройки заведения (например, чаевые)"),
 
+    # Revenue
+    PermissionDef("REVENUE_VIEW", "Revenue", "Просмотр выручки", "Просматривать страницу выручки и суммы выручки"),
+    PermissionDef("REVENUE_EXPORT", "Revenue", "Экспорт выручки", "Скачивать экспорт выручки"),
+
     # Expenses
     PermissionDef("EXPENSE_ADD", "Expenses", "Добавление расходов", "Вносить расход"),
     PermissionDef("EXPENSE_VIEW", "Expenses", "Просмотр расходов", "Видеть список расходов"),

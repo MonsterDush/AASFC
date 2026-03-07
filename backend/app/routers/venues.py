@@ -409,15 +409,22 @@ def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
 
-    # Permission-based (preferred)
-    for code in ("SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"):
-        try:
-            require_venue_permission(db, venue_id=venue_id, user=user, permission_code=code)
-            return True
-        except HTTPException:
-            pass
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="REVENUE_VIEW")
+        return True
+    except HTTPException:
+        return False
 
-    return False
+
+def _can_export_revenue(db: Session, *, venue_id: int, user: User) -> bool:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return True
+
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="REVENUE_EXPORT")
+        return True
+    except HTTPException:
+        return False
 
 
 
@@ -1586,7 +1593,6 @@ def get_revenue_summary(
 ):
     """Агрегация доходов по CLOSED отчётам за месяц."""
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    _require_report_viewer(db, venue_id=venue_id, user=user)
     if not _can_view_revenue(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -1690,6 +1696,10 @@ def export_revenue(
     user: User = Depends(get_current_user),
 ):
     """Экспорт доходов за месяц (CLOSED) в XLSX (по умолчанию) или CSV."""
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    if not _can_export_revenue(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     summary = get_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db, user=user)
 
     # Venue name for filename

@@ -10,7 +10,9 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
+  getMyVenuePermissions,
 } from "/app.js";
+import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 let state = {
   period: "month",
@@ -20,6 +22,8 @@ let state = {
   from: null,
   to: null,
 };
+
+let pageAccess = { canView: false, canExport: false };
 
 function $(id) { return document.getElementById(id); }
 
@@ -59,6 +63,38 @@ function currentMonth() {
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function applyAccessUI() {
+  const exportBtn = $("exportBtn");
+  if (exportBtn) exportBtn.style.display = pageAccess.canExport ? "" : "none";
+}
+
+async function resolveRevenueAccess() {
+  const venueId = getActiveVenueId();
+  if (!venueId) return { canView: false, canExport: false };
+
+  try {
+    const permsResp = await getMyVenuePermissions(venueId);
+    const role = roleUpper(permsResp);
+    const pset = permSetFromResponse(permsResp);
+    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+
+    return {
+      canView: isOwner || hasPerm(pset, "REVENUE_VIEW"),
+      canExport: isOwner || hasPerm(pset, "REVENUE_EXPORT"),
+    };
+  } catch {
+    return { canView: false, canExport: false };
+  }
+}
+
+function redirectToSummary() {
+  const venueId = getActiveVenueId();
+  const qp = new URLSearchParams();
+  if (venueId) qp.set("venue_id", String(venueId));
+  const target = `/owner-summary.html${qp.toString() ? `?${qp.toString()}` : ""}`;
+  window.location.replace(target);
 }
 
 function syncPickers() {
@@ -177,7 +213,7 @@ function bindPickers() {
   
 $("exportBtn").onclick = async () => {
   const venueId = getActiveVenueId();
-  if (!venueId) return;
+  if (!venueId || !pageAccess.canExport) return;
 
   const qs = buildQuery();
   try {
@@ -216,6 +252,14 @@ async function boot() {
     const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
     if (v) $("subtitle").textContent = v.name || "";
   } catch {}
+
+  pageAccess = await resolveRevenueAccess();
+  if (!pageAccess.canView) {
+    toast("Нет доступа к выручке", "warn");
+    redirectToSummary();
+    return;
+  }
+  applyAccessUI();
 
   initFromQuery();
   syncPickers();

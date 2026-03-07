@@ -6,8 +6,29 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
+  getMyVenuePermissions,
   api,
 } from "/app.js";
+import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+
+function applyRevenueCardAccess(canView) {
+  const card = document.getElementById("turnoverCard");
+  if (!card) return;
+  card.style.display = canView ? "" : "none";
+}
+
+async function canViewRevenue() {
+  const venueId = getActiveVenueId();
+  if (!venueId) return false;
+  try {
+    const permsResp = await getMyVenuePermissions(venueId);
+    const role = roleUpper(permsResp);
+    const pset = permSetFromResponse(permsResp);
+    return role === "OWNER" || role === "VENUE_OWNER" || hasPerm(pset, "REVENUE_VIEW");
+  } catch {
+    return false;
+  }
+}
 
 function fmtMoney(n) {
   const x = Math.round(Number(n || 0));
@@ -24,6 +45,10 @@ function currentMonth() {
 async function loadTurnoverForMonth(monthYYYYMM) {
   const venueId = getActiveVenueId();
   if (!venueId) return;
+
+  const allowed = await canViewRevenue();
+  applyRevenueCardAccess(allowed);
+  if (!allowed) return;
 
   const res = await api(`/venues/${encodeURIComponent(venueId)}/revenue?month=${encodeURIComponent(monthYYYYMM)}&mode=PAYMENTS`);
   const total = res?.total ?? null;
