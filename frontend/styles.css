@@ -1000,3 +1000,35 @@ input[type="checkbox"],input[type="radio"]{
   .revenue-toolbar__actions .btn{width:100%}
 }
 
+
+
+/* -------- Finance summary / expenses -------- */
+.finance-stats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+}
+.finance-stat{display:grid;gap:8px;min-width:0}
+.finance-stat__label{color:var(--muted);font-size:13px;font-weight:800}
+.finance-stat__value{font-size:24px;font-weight:900;letter-spacing:-0.02em;min-width:0;word-break:break-word}
+.finance-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.expense-list{display:grid;gap:10px}
+.expense-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;padding:14px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,0.02)}
+.expense-row__title{font-weight:800}
+.expense-row__side{display:grid;justify-items:end;align-content:start;min-width:120px}
+.expense-row__amount{font-size:20px;font-weight:900;white-space:nowrap}
+.expense-row__allocations{display:flex;gap:6px;flex-wrap:wrap}
+.finance-form{display:grid;gap:10px}
+.finance-form label{display:grid;gap:6px;font-size:13px;color:var(--muted);font-weight:700}
+.finance-form input,.finance-form select,.finance-form textarea{width:100%}
+.btn.ghost{background:transparent}
+.btn.small{padding:8px 10px;font-size:13px}
+@media (max-width:900px){
+  .finance-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:760px){
+  .finance-filters{grid-template-columns:1fr}
+  .expense-row{grid-template-columns:1fr}
+  .expense-row__side{justify-items:start;min-width:0}
+  .finance-stat__value{font-size:20px}
+}

@@ -8,31 +8,28 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   api,
+  toast,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
-function applyRevenueCardAccess(canView) {
-  const card = document.getElementById("turnoverCard");
-  if (!card) return;
-  card.style.display = canView ? "" : "none";
-}
-
-async function canViewRevenue() {
-  const venueId = getActiveVenueId();
-  if (!venueId) return false;
+function fmtMoneyMinor(minor) {
+  const kopecks = Number(minor || 0);
+  const rub = kopecks / 100;
   try {
-    const permsResp = await getMyVenuePermissions(venueId);
-    const role = roleUpper(permsResp);
-    const pset = permSetFromResponse(permsResp);
-    return role === "OWNER" || role === "VENUE_OWNER" || hasPerm(pset, "REVENUE_VIEW");
+    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
   } catch {
-    return false;
+    return rub.toFixed(2) + " ₽";
   }
 }
 
-function fmtMoney(n) {
-  const x = Math.round(Number(n || 0));
-  try { return new Intl.NumberFormat("ru-RU").format(x) + " ₽"; } catch { return String(x) + " ₽"; }
+function fmtPercentBps(bps) {
+  if (bps === null || bps === undefined) return "—";
+  const pct = Number(bps || 0) / 100;
+  try {
+    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(pct) + "%";
+  } catch {
+    return pct.toFixed(2) + "%";
+  }
 }
 
 function currentMonth() {
@@ -42,30 +39,101 @@ function currentMonth() {
   return `${y}-${m}`;
 }
 
-async function loadTurnoverForMonth(monthYYYYMM) {
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function showBlock(id, visible) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = visible ? "" : "none";
+}
+
+let financeAccess = {
+  canViewRevenue: false,
+  canViewExpenses: false,
+};
+
+async function loadFinanceAccess() {
+  const venueId = getActiveVenueId();
+  if (!venueId) return financeAccess;
+  try {
+    const permsResp = await getMyVenuePermissions(venueId);
+    const role = roleUpper(permsResp);
+    const pset = permSetFromResponse(permsResp);
+    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+    financeAccess = {
+      canViewRevenue: isOwner || hasPerm(pset, "REVENUE_VIEW"),
+      canViewExpenses: isOwner || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
+    };
+  } catch {
+    financeAccess = { canViewRevenue: false, canViewExpenses: false };
+  }
+  return financeAccess;
+}
+
+function syncActions(month) {
+  const venueId = getActiveVenueId();
+  const revenueBtn = document.getElementById("openRevenueBtn");
+  const expensesBtn = document.getElementById("openExpensesBtn");
+
+  if (revenueBtn) {
+    revenueBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
+    revenueBtn.onclick = () => {
+      const qp = new URLSearchParams();
+      qp.set("venue_id", String(venueId));
+      qp.set("month", month);
+      qp.set("mode", "PAYMENTS");
+      qp.set("period", "month");
+      location.href = `/owner-turnover.html?${qp.toString()}`;
+    };
+  }
+
+  if (expensesBtn) {
+    expensesBtn.style.display = financeAccess.canViewExpenses ? "" : "none";
+    expensesBtn.onclick = () => {
+      const qp = new URLSearchParams();
+      qp.set("venue_id", String(venueId));
+      qp.set("month", month);
+      location.href = `/owner-expenses.html?${qp.toString()}`;
+    };
+  }
+}
+
+async function loadSummary(monthYYYYMM) {
   const venueId = getActiveVenueId();
   if (!venueId) return;
 
-  const allowed = await canViewRevenue();
-  applyRevenueCardAccess(allowed);
-  if (!allowed) return;
+  await loadFinanceAccess();
+  syncActions(monthYYYYMM);
 
-  const res = await api(`/venues/${encodeURIComponent(venueId)}/revenue?month=${encodeURIComponent(monthYYYYMM)}&mode=PAYMENTS`);
-  const total = res?.total ?? null;
-  const el = document.getElementById("turnoverTotal");
-  if (el) el.textContent = (total === null || total === undefined) ? "—" : fmtMoney(total);
+  showBlock("revenueCard", financeAccess.canViewRevenue);
+  showBlock("expensesCard", financeAccess.canViewExpenses);
 
-  const btn = document.getElementById("turnoverDetailsBtn");
-  if (btn) {
-    btn.onclick = () => {
-      const qp = new URLSearchParams();
-      qp.set("venue_id", String(venueId));
-      qp.set("month", monthYYYYMM);
-      qp.set("mode", "PAYMENTS");
-      qp.set("period", "month");
-      // Canonical revenue page
-      location.href = `/owner-turnover.html?${qp.toString()}`;
-    };
+  if (!financeAccess.canViewRevenue && !financeAccess.canViewExpenses) {
+    setText("summaryRevenue", "—");
+    setText("summaryExpenses", "—");
+    setText("summaryProfit", "—");
+    setText("summaryMargin", "—");
+    setText("summaryHint", "Нет прав на финансовую сводку");
+    return;
+  }
+
+  try {
+    const summary = await api(`/venues/${encodeURIComponent(venueId)}/finance/summary?month=${encodeURIComponent(monthYYYYMM)}`);
+    setText("summaryRevenue", fmtMoneyMinor(summary?.revenue_minor));
+    setText("summaryExpenses", fmtMoneyMinor(summary?.expense_minor));
+    setText("summaryProfit", fmtMoneyMinor(summary?.profit_minor));
+    setText("summaryMargin", fmtPercentBps(summary?.margin_bps));
+    setText("summaryPeriodText", `${summary?.period_start || monthYYYYMM} — ${summary?.period_end || monthYYYYMM}`);
+    setText("summaryHint", `ФОТ: ${fmtMoneyMinor(summary?.payroll_minor)} · Корректировки: ${fmtMoneyMinor(summary?.adjustments_minor)} · Возвраты: ${fmtMoneyMinor(summary?.refunds_minor)}`);
+  } catch (e) {
+    setText("summaryRevenue", "—");
+    setText("summaryExpenses", "—");
+    setText("summaryProfit", "—");
+    setText("summaryMargin", "—");
+    setText("summaryHint", e?.data?.detail || e.message || "Ошибка загрузки");
+    toast("Не удалось загрузить финансовую сводку", "err");
   }
 }
 
@@ -80,7 +148,6 @@ async function boot() {
 
   await mountNav({ activeTab: "summary" });
 
-  // show venue name in subtitle (best-effort)
   try {
     const venues = await getMyVenues();
     const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
@@ -94,10 +161,10 @@ async function boot() {
   const month = params.get("month") || currentMonth();
   if (monthPick) {
     monthPick.value = month;
-    monthPick.onchange = (e) => loadTurnoverForMonth(e.target.value || currentMonth());
+    monthPick.onchange = (e) => loadSummary(e.target.value || currentMonth());
   }
 
-  await loadTurnoverForMonth(month);
+  await loadSummary(month);
 }
 
 document.addEventListener("DOMContentLoaded", () => { boot(); });

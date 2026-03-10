@@ -159,6 +159,8 @@
         let canViewKpi = false;
         let canEditVenueSettings = false;
         let canViewReports = false;
+        let canViewRevenue = false;
+        let canViewExpenses = false;
         let canOpenVenue = false;
 
         try {
@@ -184,6 +186,9 @@
             isOwner || isAdmin ||
             hasPermPrefix(pset, "SHIFT_REPORT_") || hasPermPrefix(pset, "REPORTS_") ||
             hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
+
+          canViewRevenue = isOwner || isAdmin || hasPerm(pset, "REVENUE_VIEW");
+          canViewExpenses = isOwner || isAdmin || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
 
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
 
@@ -273,8 +278,8 @@ openAdjustments.href = canManageAdjustments
           if (openKpi) openKpi.style.display = canViewKpi ? "" : "none";
 
           if (openAdjustments) openAdjustments.style.display = canViewAdjustments ? "" : "none";
-          if (openSummary) openSummary.style.display = (isOwner || isAdmin) ? "" : "none";
-          if (openExpenses) openExpenses.style.display = (isOwner || isAdmin) ? "" : "none";
+          if (openSummary) openSummary.style.display = (canViewRevenue || canViewExpenses) ? "" : "none";
+          if (openExpenses) openExpenses.style.display = canViewExpenses ? "" : "none";
 
           const financeCard = document.getElementById("financeCard");
           if (financeCard) {

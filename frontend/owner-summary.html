@@ -14,57 +14,74 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Сводка</b>
-          <div class="muted" id="subtitle">общая выручка и траты</div>
+          <div class="muted" id="subtitle">выручка, расходы и прибыль</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
-        <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:center; gap:12px;">
+    <div class="card finance-toolbar">
+      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
         <div>
-          <b>Сводка</b>
-          <div class="muted mt-6">общая выручка и траты</div>
+          <b>Финансовая сводка</b>
+          <div class="muted mt-6">данные по закрытым отчётам и учтённым расходам</div>
         </div>
-        <div class="row" style="gap:8px; flex-wrap:nowrap;">
+        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
           <input id="summaryMonthPick" type="month" style="width:auto; min-width:160px;" />
+          <button class="btn" id="openRevenueBtn">Выручка</button>
+          <button class="btn" id="openExpensesBtn">Расходы</button>
         </div>
       </div>
 
-      <div class="grid mt-12">
-        <div class="itemcard" id="turnoverCard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center;">
-            <div>
-              <div class="muted" style="margin-bottom:6px;">Выручка за месяц</div>
-              <div class="h2" id="turnoverTotal">—</div>
-            </div>
-            <button class="btn" id="turnoverDetailsBtn">Подробнее</button>
-          </div>
+      <div class="finance-stats mt-12">
+        <div class="itemcard finance-stat" id="revenueCard">
+          <div class="finance-stat__label">Выручка</div>
+          <div class="finance-stat__value" id="summaryRevenue">—</div>
         </div>
 
-        <div class="itemcard">
-          <div class="muted">Траты за месяц</div>
-          <div class="h2 mt-6">—</div>
+        <div class="itemcard finance-stat" id="expensesCard">
+          <div class="finance-stat__label">Расходы</div>
+          <div class="finance-stat__value" id="summaryExpenses">—</div>
+        </div>
+
+        <div class="itemcard finance-stat" id="profitCard">
+          <div class="finance-stat__label">Прибыль</div>
+          <div class="finance-stat__value" id="summaryProfit">—</div>
+        </div>
+
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Маржинальность</div>
+          <div class="finance-stat__value" id="summaryMargin">—</div>
+        </div>
+      </div>
+
+      <div class="itemcard mt-12" id="summaryMetaCard">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Период</b>
+            <div class="muted mt-6" id="summaryPeriodText">—</div>
+          </div>
+          <div class="muted" id="summaryHint">—</div>
         </div>
       </div>
     </div>
   </div>
-<div class="nav">
-      <div class="wrap">
-        <div id="nav"></div>
-      </div>
-    </div>
 
-    <div class="toast" id="toast"><div class="toast__text"></div></div>
-    <div class="modal" id="modal">
-      <div class="modal__backdrop"></div>
-      <div class="modal__panel">
-        <div class="modal__head">
-          <b class="modal__title">JSON</b>
-          <button class="btn" data-close>Close</button>
-        </div>
-        <div class="modal__body"></div>
+  <div class="nav">
+    <div class="wrap">
+      <div id="nav"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"><div class="toast__text"></div></div>
+  <div class="modal" id="modal">
+    <div class="modal__backdrop"></div>
+    <div class="modal__panel">
+      <div class="modal__head">
+        <b class="modal__title">JSON</b>
+        <button class="btn" data-close>Close</button>
       </div>
+      <div class="modal__body"></div>
     </div>
   </div>
 

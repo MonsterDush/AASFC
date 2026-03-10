@@ -20,15 +20,46 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <b>Расходы</b>
-      <div class="muted mt-8">
-        В разработке. Здесь будет список расходов и добавление трат.
+    <div class="card finance-toolbar">
+      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div>
+          <b>Расходы</b>
+          <div class="muted mt-6">учтённые траты по выбранному месяцу</div>
+        </div>
+        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="expensesMonthPick" type="month" style="width:auto; min-width:160px;" />
+          <button class="btn" id="addExpenseBtn">Добавить расход</button>
+          <button class="btn ghost" id="addCategoryBtn">Категория</button>
+          <button class="btn ghost" id="addSupplierBtn">Поставщик</button>
+        </div>
+      </div>
+
+      <div class="finance-filters mt-12">
+        <select id="expenseCategoryFilter">
+          <option value="">Все категории</option>
+        </select>
+        <select id="expenseSupplierFilter">
+          <option value="">Все поставщики</option>
+        </select>
+      </div>
+
+      <div class="finance-stats mt-12">
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Всего расходов</div>
+          <div class="finance-stat__value" id="expensesTotalMinor">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Записей</div>
+          <div class="finance-stat__value" id="expensesCount">—</div>
+        </div>
       </div>
 
       <div class="itemcard mt-12">
-        <b>Список расходов</b>
-        <div class="muted mt-6">—</div>
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <b>Список расходов</b>
+          <div class="muted" id="expensesState">—</div>
+        </div>
+        <div id="expensesList" class="expense-list mt-12"></div>
       </div>
     </div>
 
@@ -51,32 +82,6 @@
     </div>
   </div>
 
-  <script type="module">
-import {
-  applyTelegramTheme,
-  mountCommonUI,
-  ensureLogin,
-  mountNav,
-  getActiveVenueId,
-  setActiveVenueId,
-  getMyVenues
-} from "/app.js";
-
-applyTelegramTheme();
-mountCommonUI("expenses");
-await ensureLogin({ silent: true });
-
-const params = new URLSearchParams(location.search);
-const venueId = params.get("venue_id") || getActiveVenueId();
-if (venueId) setActiveVenueId(venueId);
-
-await mountNav({ activeTab: "expenses", requireVenue: true });
-
-try {
-  const venues = await getMyVenues();
-  const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
-  if (v) document.getElementById("subtitle").textContent = v.name || "";
-} catch {}
-  </script>
+  <script type="module" src="/owner-expenses.js"></script>
 </body>
 </html>
