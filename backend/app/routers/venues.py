@@ -24,6 +24,7 @@ from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
 from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
 from app.services.signed_links import make_signed_token, verify_signed_token
+from app.services.finance.expenses import rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -48,6 +49,7 @@ from app.models.kpi_metric import KpiMetric
 from app.models.expense_category import ExpenseCategory
 from app.models.supplier import Supplier
 from app.models.expense import Expense
+from app.models.expense_allocation import ExpenseAllocation
 from app.models.permission import Permission
 
 from app.auth.venue_permissions import require_venue_permission
@@ -327,9 +329,26 @@ def _get_supplier_or_404(db: Session, *, venue_id: int, supplier_id: int) -> Sup
     return obj
 
 
-def _serialize_expense(expense: Expense, category: ExpenseCategory | None = None, supplier: Supplier | None = None) -> dict:
+def _serialize_expense_allocation(allocation: ExpenseAllocation) -> dict:
+    return {
+        "id": allocation.id,
+        "expense_id": allocation.expense_id,
+        "venue_id": allocation.venue_id,
+        "month": allocation.month.isoformat() if allocation.month else None,
+        "amount_minor": int(allocation.amount_minor or 0),
+        "created_at": allocation.created_at.isoformat() if allocation.created_at else None,
+    }
+
+
+def _serialize_expense(
+    expense: Expense,
+    category: ExpenseCategory | None = None,
+    supplier: Supplier | None = None,
+    allocations: list[ExpenseAllocation] | None = None,
+) -> dict:
     cat = category or getattr(expense, "category", None)
     sup = supplier or getattr(expense, "supplier", None)
+    allocs = allocations if allocations is not None else list(getattr(expense, "allocations", []) or [])
     return {
         "id": expense.id,
         "venue_id": expense.venue_id,
@@ -352,6 +371,7 @@ def _serialize_expense(expense: Expense, category: ExpenseCategory | None = None
             "title": sup.title,
             "contact": sup.contact,
         } if sup is not None else None,
+        "allocations": [_serialize_expense_allocation(a) for a in allocs],
     }
 
 
@@ -4112,10 +4132,11 @@ def list_expenses(
         stmt = stmt.where(Expense.supplier_id == supplier_id)
 
     rows = db.execute(stmt.order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
-    return [
-        _serialize_expense(expense, category, supplier)
-        for expense, category, supplier in rows
-    ]
+    result = []
+    for expense, category, supplier in rows:
+        allocations = list_expense_allocations(db=db, expense_id=expense.id)
+        result.append(_serialize_expense(expense, category, supplier, allocations))
+    return result
 
 
 @router.post("/{venue_id}/expenses")
@@ -4142,11 +4163,13 @@ def create_expense(
         created_at=datetime.utcnow(),
     )
     db.add(obj)
+    db.flush()
+    allocations = rebuild_expense_allocations_for_expense(db=db, expense=obj)
     db.commit()
     db.refresh(obj)
     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
-    return _serialize_expense(obj, category, supplier)
+    return _serialize_expense(obj, category, supplier, allocations)
 
 
 @router.patch("/{venue_id}/expenses/{expense_id}")
@@ -4184,11 +4207,12 @@ def update_expense(
         obj.comment = payload.comment or None
     obj.updated_at = datetime.utcnow()
 
+    allocations = rebuild_expense_allocations_for_expense(db=db, expense=obj)
     db.commit()
     db.refresh(obj)
     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
-    return _serialize_expense(obj, category, supplier)
+    return _serialize_expense(obj, category, supplier, allocations)
 
 
 @router.delete("/{venue_id}/expenses/{expense_id}")
@@ -4204,6 +4228,7 @@ def delete_expense(
     ).scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Expense not found")
+    delete_expense_allocations_for_expense(db=db, expense_id=obj.id)
     db.delete(obj)
     db.commit()
     return {"ok": True}

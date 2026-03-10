@@ -34,3 +34,4 @@ class Expense(Base):
     category = relationship("ExpenseCategory")
     supplier = relationship("Supplier")
     created_by_user = relationship("User")
+    allocations = relationship("ExpenseAllocation", back_populates="expense", cascade="all, delete-orphan")

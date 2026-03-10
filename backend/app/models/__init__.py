@@ -25,6 +25,7 @@ from .expense_category import ExpenseCategory
 from .supplier import Supplier
 from .expense import Expense
 from .finance_entry import FinanceEntry
+from .expense_allocation import ExpenseAllocation
 
 __all__ = [
     "SystemRole",
@@ -55,4 +56,5 @@ __all__ = [
     "Supplier",
     "Expense",
     "FinanceEntry",
+    "ExpenseAllocation",
 ]

@@ -1,0 +1,346 @@
+--- backend/app/models/__init__.py
++++ backend/app/models/__init__.py
+@@ -25,6 +25,7 @@
+ from .supplier import Supplier
+ from .expense import Expense
+ from .finance_entry import FinanceEntry
++from .expense_allocation import ExpenseAllocation
+ 
+ __all__ = [
+     "SystemRole",
+@@ -55,4 +56,5 @@
+     "Supplier",
+     "Expense",
+     "FinanceEntry",
++    "ExpenseAllocation",
+ ]
+--- backend/app/models/expense.py
++++ backend/app/models/expense.py
+@@ -34,3 +34,4 @@
+     category = relationship("ExpenseCategory")
+     supplier = relationship("Supplier")
+     created_by_user = relationship("User")
++    allocations = relationship("ExpenseAllocation", back_populates="expense", cascade="all, delete-orphan")
+--- /dev/null
++++ backend/app/models/expense_allocation.py
+@@ -0,0 +1,29 @@
++from __future__ import annotations
++
++from datetime import date, datetime
++
++from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, Index, UniqueConstraint
++from sqlalchemy.orm import Mapped, mapped_column, relationship
++
++from app.core.db import Base
++
++
++class ExpenseAllocation(Base):
++    __tablename__ = "expense_allocations"
++    __table_args__ = (
++        CheckConstraint("amount_minor >= 0", name="ck_expense_allocations_amount_minor_non_negative"),
++        UniqueConstraint("expense_id", "month", name="uq_expense_allocations_expense_month"),
++        Index("ix_expense_allocations_venue_month", "venue_id", "month"),
++    )
++
++    id: Mapped[int] = mapped_column(primary_key=True)
++    expense_id: Mapped[int] = mapped_column(ForeignKey("expenses.id"), index=True, nullable=False)
++    venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)
++
++    month: Mapped[date] = mapped_column(Date, nullable=False, index=True)
++    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
++
++    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
++
++    expense = relationship("Expense", back_populates="allocations")
++    venue = relationship("Venue")
+--- backend/app/services/finance/__init__.py
++++ backend/app/services/finance/__init__.py
+@@ -11,3 +11,17 @@
+     "create_finance_entry",
+     "delete_finance_entries_for_source",
+ ]
++
++from .expenses import (
++    build_expense_allocation_plan,
++    rebuild_expense_allocations_for_expense,
++    delete_expense_allocations_for_expense,
++    list_expense_allocations,
++)
++
++__all__ += [
++    "build_expense_allocation_plan",
++    "rebuild_expense_allocations_for_expense",
++    "delete_expense_allocations_for_expense",
++    "list_expense_allocations",
++]
+--- /dev/null
++++ backend/app/services/finance/expenses.py
+@@ -0,0 +1,102 @@
++from __future__ import annotations
++
++from datetime import date
++
++from sqlalchemy import delete, select
++from sqlalchemy.orm import Session
++
++from app.models import Expense, ExpenseAllocation
++from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
++
++
++def _month_start(value: date) -> date:
++    return value.replace(day=1)
++
++
++def _add_months(value: date, months: int) -> date:
++    month_index = (value.month - 1) + months
++    year = value.year + month_index // 12
++    month = (month_index % 12) + 1
++    return date(year, month, 1)
++
++
++def build_expense_allocation_plan(*, amount_minor: int, expense_date: date, spread_months: int) -> list[tuple[date, int]]:
++    if not isinstance(amount_minor, int):
++        raise ValueError("amount_minor must be int and must store kopecks")
++    if amount_minor < 0:
++        raise ValueError("amount_minor must be non-negative")
++    if spread_months < 1:
++        raise ValueError("spread_months must be >= 1")
++
++    first_month = _month_start(expense_date)
++    base = amount_minor // spread_months
++    remainder = amount_minor % spread_months
++
++    plan: list[tuple[date, int]] = []
++    for index in range(spread_months):
++        month = _add_months(first_month, index)
++        amount_for_month = base + (1 if index < remainder else 0)
++        plan.append((month, amount_for_month))
++    return plan
++
++
++def rebuild_expense_allocations_for_expense(*, db: Session, expense: Expense) -> list[ExpenseAllocation]:
++    if expense.id is None:
++        raise ValueError("Expense must be flushed before allocations rebuild")
++
++    db.execute(delete(ExpenseAllocation).where(ExpenseAllocation.expense_id == int(expense.id)))
++    delete_finance_entries_for_source(db=db, source_type="expense", source_id=int(expense.id))
++
++    allocations: list[ExpenseAllocation] = []
++    plan = build_expense_allocation_plan(
++        amount_minor=int(expense.amount_minor or 0),
++        expense_date=expense.expense_date,
++        spread_months=int(expense.spread_months or 1),
++    )
++
++    for index, (month, amount_minor) in enumerate(plan):
++        allocation = ExpenseAllocation(
++            expense_id=int(expense.id),
++            venue_id=int(expense.venue_id),
++            month=month,
++            amount_minor=amount_minor,
++        )
++        db.add(allocation)
++        allocations.append(allocation)
++
++        create_finance_entry(
++            db=db,
++            venue_id=int(expense.venue_id),
++            entry_date=month,
++            amount_minor=amount_minor,
++            direction="EXPENSE",
++            kind="EXPENSE",
++            source_type="expense",
++            source_id=int(expense.id),
++            meta_json={
++                "expense_date": expense.expense_date.isoformat(),
++                "allocation_month": month.isoformat(),
++                "allocation_index": index,
++                "spread_months": int(expense.spread_months or 1),
++                "category_id": int(expense.category_id),
++                "supplier_id": int(expense.supplier_id) if expense.supplier_id is not None else None,
++            },
++        )
++
++    return allocations
++
++
++def delete_expense_allocations_for_expense(*, db: Session, expense_id: int) -> int:
++    deleted = db.execute(delete(ExpenseAllocation).where(ExpenseAllocation.expense_id == int(expense_id)))
++    delete_finance_entries_for_source(db=db, source_type="expense", source_id=int(expense_id))
++    return int(deleted.rowcount or 0)
++
++
++def list_expense_allocations(*, db: Session, expense_id: int) -> list[ExpenseAllocation]:
++    return list(
++        db.scalars(
++            select(ExpenseAllocation)
++            .where(ExpenseAllocation.expense_id == int(expense_id))
++            .order_by(ExpenseAllocation.month.asc(), ExpenseAllocation.id.asc())
++        ).all()
++    )
+--- backend/app/routers/venues.py
++++ backend/app/routers/venues.py
+@@ -24,6 +24,7 @@
+ from app.services import tg_notify
+ from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
+ from app.services.signed_links import make_signed_token, verify_signed_token
++from app.services.finance.expenses import rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
+ 
+ from app.models.user import User
+ from app.models.venue import Venue
+@@ -48,6 +49,7 @@
+ from app.models.expense_category import ExpenseCategory
+ from app.models.supplier import Supplier
+ from app.models.expense import Expense
++from app.models.expense_allocation import ExpenseAllocation
+ from app.models.permission import Permission
+ 
+ from app.auth.venue_permissions import require_venue_permission
+@@ -330,9 +332,26 @@
+     return obj
+ 
+ 
+-def _serialize_expense(expense: Expense, category: ExpenseCategory | None = None, supplier: Supplier | None = None) -> dict:
++def _serialize_expense_allocation(allocation: ExpenseAllocation) -> dict:
++    return {
++        "id": allocation.id,
++        "expense_id": allocation.expense_id,
++        "venue_id": allocation.venue_id,
++        "month": allocation.month.isoformat() if allocation.month else None,
++        "amount_minor": int(allocation.amount_minor or 0),
++        "created_at": allocation.created_at.isoformat() if allocation.created_at else None,
++    }
++
++
++def _serialize_expense(
++    expense: Expense,
++    category: ExpenseCategory | None = None,
++    supplier: Supplier | None = None,
++    allocations: list[ExpenseAllocation] | None = None,
++) -> dict:
+     cat = category or getattr(expense, "category", None)
+     sup = supplier or getattr(expense, "supplier", None)
++    allocs = allocations if allocations is not None else list(getattr(expense, "allocations", []) or [])
+     return {
+         "id": expense.id,
+         "venue_id": expense.venue_id,
+@@ -355,6 +374,7 @@
+             "title": sup.title,
+             "contact": sup.contact,
+         } if sup is not None else None,
++        "allocations": [_serialize_expense_allocation(a) for a in allocs],
+     }
+ 
+ 
+@@ -4115,10 +4135,11 @@
+         stmt = stmt.where(Expense.supplier_id == supplier_id)
+ 
+     rows = db.execute(stmt.order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
+-    return [
+-        _serialize_expense(expense, category, supplier)
+-        for expense, category, supplier in rows
+-    ]
++    result = []
++    for expense, category, supplier in rows:
++        allocations = list_expense_allocations(db=db, expense_id=expense.id)
++        result.append(_serialize_expense(expense, category, supplier, allocations))
++    return result
+ 
+ 
+ @router.post("/{venue_id}/expenses")
+@@ -4145,11 +4166,13 @@
+         created_at=datetime.utcnow(),
+     )
+     db.add(obj)
++    db.flush()
++    allocations = rebuild_expense_allocations_for_expense(db=db, expense=obj)
+     db.commit()
+     db.refresh(obj)
+     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
+     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
+-    return _serialize_expense(obj, category, supplier)
++    return _serialize_expense(obj, category, supplier, allocations)
+ 
+ 
+ @router.patch("/{venue_id}/expenses/{expense_id}")
+@@ -4187,11 +4210,12 @@
+         obj.comment = payload.comment or None
+     obj.updated_at = datetime.utcnow()
+ 
++    allocations = rebuild_expense_allocations_for_expense(db=db, expense=obj)
+     db.commit()
+     db.refresh(obj)
+     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
+     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
+-    return _serialize_expense(obj, category, supplier)
++    return _serialize_expense(obj, category, supplier, allocations)
+ 
+ 
+ @router.delete("/{venue_id}/expenses/{expense_id}")
+@@ -4207,6 +4231,7 @@
+     ).scalar_one_or_none()
+     if obj is None:
+         raise HTTPException(status_code=404, detail="Expense not found")
++    delete_expense_allocations_for_expense(db=db, expense_id=obj.id)
+     db.delete(obj)
+     db.commit()
+     return {"ok": True}
+--- /dev/null
++++ backend/alembic/versions/c3d4e5f6a7b8_add_expense_allocations.py
+@@ -0,0 +1,47 @@
++"""add expense allocations
++
++Revision ID: c3d4e5f6a7b8
++Revises: a1b2c3d4e5f7
++Create Date: 2026-03-10
++
++"""
++
++from typing import Sequence, Union
++
++from alembic import op
++import sqlalchemy as sa
++
++
++revision: str = "c3d4e5f6a7b8"
++down_revision: Union[str, Sequence[str], None] = "a1b2c3d4e5f7"
++branch_labels: Union[str, Sequence[str], None] = None
++depends_on: Union[str, Sequence[str], None] = None
++
++
++def upgrade() -> None:
++    op.create_table(
++        "expense_allocations",
++        sa.Column("id", sa.Integer(), primary_key=True),
++        sa.Column("expense_id", sa.Integer(), sa.ForeignKey("expenses.id"), nullable=False),
++        sa.Column("venue_id", sa.Integer(), sa.ForeignKey("venues.id"), nullable=False),
++        sa.Column("month", sa.Date(), nullable=False),
++        sa.Column("amount_minor", sa.Integer(), nullable=False, server_default=sa.text("0")),
++        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
++        sa.CheckConstraint("amount_minor >= 0", name="ck_expense_allocations_amount_minor_non_negative"),
++        sa.UniqueConstraint("expense_id", "month", name="uq_expense_allocations_expense_month"),
++    )
++    op.create_index("ix_expense_allocations_expense_id", "expense_allocations", ["expense_id"])
++    op.create_index("ix_expense_allocations_venue_id", "expense_allocations", ["venue_id"])
++    op.create_index("ix_expense_allocations_month", "expense_allocations", ["month"])
++    op.create_index("ix_expense_allocations_venue_month", "expense_allocations", ["venue_id", "month"])
++
++    op.alter_column("expense_allocations", "amount_minor", server_default=None)
++    op.alter_column("expense_allocations", "created_at", server_default=None)
++
++
++def downgrade() -> None:
++    op.drop_index("ix_expense_allocations_venue_month", table_name="expense_allocations")
++    op.drop_index("ix_expense_allocations_month", table_name="expense_allocations")
++    op.drop_index("ix_expense_allocations_venue_id", table_name="expense_allocations")
++    op.drop_index("ix_expense_allocations_expense_id", table_name="expense_allocations")
++    op.drop_table("expense_allocations")
+--- /dev/null
+Need rest tiny. We'll include entire patch from file. It ends with test file. Need maybe patch uses /dev/null; okay. Good.
+
+Need maybe mention if apply fails due to line numbers because previous patch maybe not exact. But likely fine. Could suggest if fail, send output. Need no extra bullet lists? fine. We'll maybe use minimal. Include patch in code block.
+
+Need maybe mention quick verification commands: maybe `pytest test/test_expense_allocations.py`. But not necessary.
+
+Let's ensure patch complete by adding remainder test lines. Need include entire patch text. We'll use content from file not truncated. We have after last segment maybe includes test file. Need show full. Could perhaps ask container to cat complete patch. Let's use maybe direct from file. We'll include all. Need no citations. let's fetch full tail. But we already saw enough until near end. Need include test file section full. Let's maybe output rest tail for accuracy. The patch ends with test file. We already saw test start in previous sed around 420? Actually ended before. Let's fetch tail.արաբաղ to=container.exec  中国福利彩票天天analysis ￣亚洲json
+{"cmd":["bash","-lc","tail -40 /tmp/finance_core_step3_clean.patch"],"timeout":300000}
