@@ -51,6 +51,26 @@ function parseMoneyToMinor(value) {
   return Math.round(Number(normalized) * 100);
 }
 
+function slugifyCategoryCode(value) {
+  const map = {
+    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i",
+    й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t",
+    у: "u", ф: "f", х: "h", ц: "ts", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y",
+    ь: "", э: "e", ю: "yu", я: "ya",
+  };
+
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .split("")
+    .map((ch) => (map[ch] !== undefined ? map[ch] : ch))
+    .join("")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_")
+    .slice(0, 64) || "expense";
+}
+
 function esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -249,31 +269,86 @@ function openExpenseForm(expenseId = null) {
   };
 }
 
-async function createCatalogItem(kind) {
+function buildCatalogForm(kind) {
+  const isCategory = kind === "category";
+  return `
+    <form id="catalogForm" class="finance-form">
+      <label>
+        Название
+        <input name="title" type="text" maxlength="120" placeholder="${isCategory ? "Например: Аренда" : "Например: ООО Поставщик"}" required />
+      </label>
+
+      ${isCategory ? `
+        <div class="muted">Код будет сгенерирован автоматически из названия.</div>
+      ` : `
+        <label>
+          Контакт
+          <input name="contact" type="text" maxlength="255" placeholder="+7..., Telegram, email" />
+        </label>
+      `}
+
+      <div class="row gap-8 mt-12">
+        <button class="btn" type="submit">${isCategory ? "Добавить категорию" : "Добавить поставщика"}</button>
+        <button class="btn ghost" type="button" id="catalogFormCancel">Отмена</button>
+      </div>
+    </form>
+  `;
+}
+
+function openCatalogForm(kind) {
   if (!access.canManageCatalogs) return;
-  const title = prompt(kind === "category" ? "Название категории" : "Название поставщика");
-  if (!title) return;
-  const venueId = getActiveVenueId();
-  try {
-    if (kind === "category") {
-      const baseCode = title.toLowerCase().trim().replace(/[^a-zа-яё0-9]+/gi, "_").replace(/^_+|_+$/g, "") || "expense";
-      await api(`/venues/${encodeURIComponent(venueId)}/expense-categories`, {
-        method: "POST",
-        body: { code: baseCode, title: title.trim(), is_active: true, sort_order: state.categories.length },
-      });
-      toast("Категория добавлена", "ok");
-    } else {
-      const contact = prompt("Контакт поставщика", "") || "";
-      await api(`/venues/${encodeURIComponent(venueId)}/suppliers`, {
-        method: "POST",
-        body: { title: title.trim(), contact, is_active: true, sort_order: state.suppliers.length },
-      });
-      toast("Поставщик добавлен", "ok");
+  const isCategory = kind === "category";
+  openHtmlModal(isCategory ? "Добавить категорию расхода" : "Добавить поставщика", buildCatalogForm(kind));
+
+  const form = document.getElementById("catalogForm");
+  const cancelBtn = document.getElementById("catalogFormCancel");
+  if (cancelBtn) cancelBtn.onclick = () => closeModal();
+  if (!form) return;
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const title = String(fd.get("title") || "").trim();
+    const contact = String(fd.get("contact") || "").trim();
+
+    if (!title) {
+      toast("Введите название", "warn");
+      return;
     }
-    await loadCatalogs();
-  } catch (err) {
-    toast(err?.data?.detail || err.message || "Не удалось сохранить", "err");
-  }
+
+    const venueId = getActiveVenueId();
+    try {
+      if (isCategory) {
+        const baseCode = slugifyCategoryCode(title);
+        await api(`/venues/${encodeURIComponent(venueId)}/expense-categories`, {
+          method: "POST",
+          body: {
+            code: baseCode,
+            title,
+            is_active: true,
+            sort_order: state.categories.length,
+          },
+        });
+        toast("Категория добавлена", "ok");
+      } else {
+        await api(`/venues/${encodeURIComponent(venueId)}/suppliers`, {
+          method: "POST",
+          body: {
+            title,
+            contact: contact || null,
+            is_active: true,
+            sort_order: state.suppliers.length,
+          },
+        });
+        toast("Поставщик добавлен", "ok");
+      }
+
+      closeModal();
+      await loadCatalogs();
+    } catch (err) {
+      toast(err?.data?.detail || err.message || "Не удалось сохранить", "err");
+    }
+  };
 }
 
 async function deleteExpense(expenseId) {
@@ -328,8 +403,8 @@ async function boot() {
     await loadExpenses();
   };
   document.getElementById("addExpenseBtn").onclick = () => openExpenseForm();
-  document.getElementById("addCategoryBtn").onclick = () => createCatalogItem("category");
-  document.getElementById("addSupplierBtn").onclick = () => createCatalogItem("supplier");
+  document.getElementById("addCategoryBtn").onclick = () => openCatalogForm("category");
+  document.getElementById("addSupplierBtn").onclick = () => openCatalogForm("supplier");
 
   try {
     await loadCatalogs();
@@ -339,5 +414,3 @@ async function boot() {
     document.getElementById("expensesState").textContent = "Ошибка";
   }
 }
-
-document.addEventListener("DOMContentLoaded", () => { boot(); });
