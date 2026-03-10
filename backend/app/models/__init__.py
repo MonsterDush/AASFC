@@ -21,6 +21,10 @@ from .adjustment_dispute_comment import AdjustmentDisputeComment
 from .department import Department
 from .payment_method import PaymentMethod
 from .kpi_metric import KpiMetric
+from .expense_category import ExpenseCategory
+from .supplier import Supplier
+from .expense import Expense
+from .finance_entry import FinanceEntry
 
 __all__ = [
     "SystemRole",
@@ -47,4 +51,8 @@ __all__ = [
     "Department",
     "PaymentMethod",
     "KpiMetric",
+    "ExpenseCategory",
+    "Supplier",
+    "Expense",
+    "FinanceEntry",
 ]

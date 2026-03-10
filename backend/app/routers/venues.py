@@ -45,6 +45,9 @@ from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
 from app.models.department import Department
 from app.models.payment_method import PaymentMethod
 from app.models.kpi_metric import KpiMetric
+from app.models.expense_category import ExpenseCategory
+from app.models.supplier import Supplier
+from app.models.expense import Expense
 from app.models.permission import Permission
 
 from app.auth.venue_permissions import require_venue_permission
@@ -189,6 +192,39 @@ class KpiMetricUpdateIn(BaseModel):
     sort_order: int | None = Field(default=None, ge=0)
 
 
+class SupplierCreateIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    contact: str | None = Field(default=None, max_length=255)
+    is_active: bool = True
+    sort_order: int = Field(0, ge=0)
+
+
+class SupplierUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    contact: str | None = Field(default=None, max_length=255)
+    is_active: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0)
+
+
+class ExpenseCreateIn(BaseModel):
+    category_id: int = Field(..., gt=0)
+    supplier_id: int | None = Field(default=None, gt=0)
+    amount_minor: int = Field(..., ge=0)
+    expense_date: date
+    spread_months: int = Field(1, ge=1, le=120)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class ExpenseUpdateIn(BaseModel):
+    category_id: int | None = Field(default=None, gt=0)
+    supplier_id: int | None = Field(default=None, gt=0)
+    clear_supplier: bool = False
+    amount_minor: int | None = Field(default=None, ge=0)
+    expense_date: date | None = None
+    spread_months: int | None = Field(default=None, ge=1, le=120)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
 class AdjustmentCreateIn(BaseModel):
     type: str = Field(..., description="penalty|writeoff|bonus")
     date: date
@@ -271,6 +307,53 @@ def _is_active_member_or_admin(db: Session, *, venue_id: int, user: User) -> boo
 def _require_active_member_or_admin(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_active_member_or_admin(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _get_expense_category_or_404(db: Session, *, venue_id: int, category_id: int) -> ExpenseCategory:
+    obj = db.execute(
+        select(ExpenseCategory).where(ExpenseCategory.id == category_id, ExpenseCategory.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Expense category not found")
+    return obj
+
+
+def _get_supplier_or_404(db: Session, *, venue_id: int, supplier_id: int) -> Supplier:
+    obj = db.execute(
+        select(Supplier).where(Supplier.id == supplier_id, Supplier.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return obj
+
+
+def _serialize_expense(expense: Expense, category: ExpenseCategory | None = None, supplier: Supplier | None = None) -> dict:
+    cat = category or getattr(expense, "category", None)
+    sup = supplier or getattr(expense, "supplier", None)
+    return {
+        "id": expense.id,
+        "venue_id": expense.venue_id,
+        "category_id": expense.category_id,
+        "supplier_id": expense.supplier_id,
+        "amount_minor": int(expense.amount_minor or 0),
+        "expense_date": expense.expense_date.isoformat() if expense.expense_date else None,
+        "spread_months": int(expense.spread_months or 1),
+        "comment": expense.comment,
+        "created_by_user_id": expense.created_by_user_id,
+        "created_at": expense.created_at.isoformat() if expense.created_at else None,
+        "updated_at": expense.updated_at.isoformat() if expense.updated_at else None,
+        "category": {
+            "id": cat.id,
+            "code": cat.code,
+            "title": cat.title,
+        } if cat is not None else None,
+        "supplier": {
+            "id": sup.id,
+            "title": sup.title,
+            "contact": sup.contact,
+        } if sup is not None else None,
+    }
+
 
 def _is_shift_comments_allowed(db: Session, *, venue_id: int, shift_id: int, user: User) -> bool:
     # Admins
@@ -3835,4 +3918,292 @@ def update_kpi_metric(
     except Exception:
         db.rollback()
         raise HTTPException(status_code=409, detail="KPI code already exists")
+    return {"ok": True}
+
+
+@router.get("/{venue_id}/expense-categories")
+def list_expense_categories(
+    venue_id: int,
+    include_archived: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_CATEGORIES_MANAGE")
+    stmt = select(ExpenseCategory).where(ExpenseCategory.venue_id == venue_id)
+    if not include_archived:
+        stmt = stmt.where(ExpenseCategory.is_active.is_(True))
+    rows = db.scalars(stmt.order_by(ExpenseCategory.sort_order.asc(), ExpenseCategory.id.asc())).all()
+    return [
+        {
+            "id": r.id,
+            "code": r.code,
+            "title": r.title,
+            "is_active": bool(r.is_active),
+            "sort_order": int(r.sort_order or 0),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{venue_id}/expense-categories")
+def create_expense_category(
+    venue_id: int,
+    payload: CatalogItemCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_CATEGORIES_MANAGE")
+    obj = ExpenseCategory(
+        venue_id=venue_id,
+        code=_normalize_code(payload.code),
+        title=payload.title.strip(),
+        is_active=bool(payload.is_active),
+        sort_order=int(payload.sort_order or 0),
+        created_at=datetime.utcnow(),
+    )
+    db.add(obj)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Expense category code already exists")
+    db.refresh(obj)
+    return {"id": obj.id}
+
+
+@router.patch("/{venue_id}/expense-categories/{category_id}")
+def update_expense_category(
+    venue_id: int,
+    category_id: int,
+    payload: CatalogItemUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_CATEGORIES_MANAGE")
+    obj = _get_expense_category_or_404(db, venue_id=venue_id, category_id=category_id)
+
+    if payload.code is not None:
+        obj.code = _normalize_code(payload.code)
+    if payload.title is not None:
+        obj.title = payload.title.strip()
+    if payload.is_active is not None:
+        obj.is_active = bool(payload.is_active)
+    if payload.sort_order is not None:
+        obj.sort_order = int(payload.sort_order)
+    obj.updated_at = datetime.utcnow()
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Expense category code already exists")
+    return {"ok": True}
+
+
+@router.get("/{venue_id}/suppliers")
+def list_suppliers(
+    venue_id: int,
+    include_archived: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_CATEGORIES_MANAGE")
+    stmt = select(Supplier).where(Supplier.venue_id == venue_id)
+    if not include_archived:
+        stmt = stmt.where(Supplier.is_active.is_(True))
+    rows = db.scalars(stmt.order_by(Supplier.sort_order.asc(), Supplier.id.asc())).all()
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "contact": r.contact,
+            "is_active": bool(r.is_active),
+            "sort_order": int(r.sort_order or 0),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{venue_id}/suppliers")
+def create_supplier(
+    venue_id: int,
+    payload: SupplierCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_CATEGORIES_MANAGE")
+    obj = Supplier(
+        venue_id=venue_id,
+        title=payload.title.strip(),
+        contact=(payload.contact or None),
+        is_active=bool(payload.is_active),
+        sort_order=int(payload.sort_order or 0),
+        created_at=datetime.utcnow(),
+    )
+    db.add(obj)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Supplier title already exists")
+    db.refresh(obj)
+    return {"id": obj.id}
+
+
+@router.patch("/{venue_id}/suppliers/{supplier_id}")
+def update_supplier(
+    venue_id: int,
+    supplier_id: int,
+    payload: SupplierUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_CATEGORIES_MANAGE")
+    obj = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=supplier_id)
+
+    if payload.title is not None:
+        obj.title = payload.title.strip()
+    if payload.contact is not None:
+        obj.contact = payload.contact or None
+    if payload.is_active is not None:
+        obj.is_active = bool(payload.is_active)
+    if payload.sort_order is not None:
+        obj.sort_order = int(payload.sort_order)
+    obj.updated_at = datetime.utcnow()
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Supplier title already exists")
+    return {"ok": True}
+
+
+@router.get("/{venue_id}/expenses")
+def list_expenses(
+    venue_id: int,
+    month: str | None = Query(default=None),
+    category_id: int | None = Query(default=None),
+    supplier_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+
+    stmt = select(Expense, ExpenseCategory, Supplier).join(
+        ExpenseCategory, ExpenseCategory.id == Expense.category_id
+    ).outerjoin(
+        Supplier, Supplier.id == Expense.supplier_id
+    ).where(Expense.venue_id == venue_id)
+
+    if month:
+        try:
+            dt = datetime.strptime(month, "%Y-%m").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+        start = dt.replace(day=1)
+        _, last_day = calendar.monthrange(dt.year, dt.month)
+        end = dt.replace(day=last_day)
+        stmt = stmt.where(Expense.expense_date >= start, Expense.expense_date <= end)
+
+    if category_id is not None:
+        stmt = stmt.where(Expense.category_id == category_id)
+    if supplier_id is not None:
+        stmt = stmt.where(Expense.supplier_id == supplier_id)
+
+    rows = db.execute(stmt.order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
+    return [
+        _serialize_expense(expense, category, supplier)
+        for expense, category, supplier in rows
+    ]
+
+
+@router.post("/{venue_id}/expenses")
+def create_expense(
+    venue_id: int,
+    payload: ExpenseCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    _get_expense_category_or_404(db, venue_id=venue_id, category_id=payload.category_id)
+    if payload.supplier_id is not None:
+        _get_supplier_or_404(db, venue_id=venue_id, supplier_id=payload.supplier_id)
+
+    obj = Expense(
+        venue_id=venue_id,
+        category_id=int(payload.category_id),
+        supplier_id=int(payload.supplier_id) if payload.supplier_id is not None else None,
+        amount_minor=int(payload.amount_minor),
+        expense_date=payload.expense_date,
+        spread_months=int(payload.spread_months or 1),
+        comment=(payload.comment or None),
+        created_by_user_id=user.id,
+        created_at=datetime.utcnow(),
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
+    supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
+    return _serialize_expense(obj, category, supplier)
+
+
+@router.patch("/{venue_id}/expenses/{expense_id}")
+def update_expense(
+    venue_id: int,
+    expense_id: int,
+    payload: ExpenseUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    obj = db.execute(
+        select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    if payload.category_id is not None:
+        _get_expense_category_or_404(db, venue_id=venue_id, category_id=payload.category_id)
+        obj.category_id = int(payload.category_id)
+
+    if payload.clear_supplier:
+        obj.supplier_id = None
+    elif payload.supplier_id is not None:
+        _get_supplier_or_404(db, venue_id=venue_id, supplier_id=payload.supplier_id)
+        obj.supplier_id = int(payload.supplier_id)
+
+    if payload.amount_minor is not None:
+        obj.amount_minor = int(payload.amount_minor)
+    if payload.expense_date is not None:
+        obj.expense_date = payload.expense_date
+    if payload.spread_months is not None:
+        obj.spread_months = int(payload.spread_months)
+    if payload.comment is not None:
+        obj.comment = payload.comment or None
+    obj.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(obj)
+    category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
+    supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
+    return _serialize_expense(obj, category, supplier)
+
+
+@router.delete("/{venue_id}/expenses/{expense_id}")
+def delete_expense(
+    venue_id: int,
+    expense_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    obj = db.execute(
+        select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    db.delete(obj)
+    db.commit()
     return {"ok": True}
