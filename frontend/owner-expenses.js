@@ -111,10 +111,10 @@ async function loadAccess() {
 function fillSelect(el, items, { placeholder }) {
   if (!el) return;
   const current = el.value;
-  el.innerHTML = `<option value="">${placeholder}</option>` + items.map(item => {
+  el.innerHTML = `<option value="">${placeholder}</option>` + items.map((item) => {
     return `<option value="${item.id}">${esc(item.title)}</option>`;
   }).join("");
-  if (current && items.some(item => String(item.id) === String(current))) el.value = current;
+  if (current && items.some((item) => String(item.id) === String(current))) el.value = current;
 }
 
 function syncToolbar() {
@@ -178,9 +178,9 @@ function renderExpenses() {
     return;
   }
 
-  list.innerHTML = state.expenses.map(item => {
+  list.innerHTML = state.expenses.map((item) => {
     const allocs = Array.isArray(item.allocations) ? item.allocations : [];
-    const allocationsHtml = allocs.map(a => `<span class="badge">${esc(a.month)} · ${esc(fmtMinor(a.amount_minor))}</span>`).join(" ");
+    const allocationsHtml = allocs.map((a) => `<span class="badge">${esc(a.month)} · ${esc(fmtMinor(a.amount_minor))}</span>`).join(" ");
     return `
       <div class="expense-row">
         <div class="expense-row__main">
@@ -197,26 +197,27 @@ function renderExpenses() {
     `;
   }).join("");
 
-  list.querySelectorAll("[data-edit]").forEach(btn => {
+  list.querySelectorAll("[data-edit]").forEach((btn) => {
     btn.onclick = () => openExpenseForm(Number(btn.getAttribute("data-edit")));
   });
-  list.querySelectorAll("[data-del]").forEach(btn => {
+  list.querySelectorAll("[data-del]").forEach((btn) => {
     btn.onclick = () => deleteExpense(Number(btn.getAttribute("data-del")));
   });
 }
 
 function buildExpenseForm(item = null) {
-  const categoryOptions = state.categories.map(cat => `<option value="${cat.id}" ${String(item?.category_id || "") === String(cat.id) ? "selected" : ""}>${esc(cat.title)}</option>`).join("");
+  const categoryOptions = state.categories.map((cat) => `<option value="${cat.id}" ${String(item?.category_id || "") === String(cat.id) ? "selected" : ""}>${esc(cat.title)}</option>`).join("");
   const supplierOptions = ['<option value="">Без поставщика</option>'].concat(
-    state.suppliers.map(sup => `<option value="${sup.id}" ${String(item?.supplier_id || "") === String(sup.id) ? "selected" : ""}>${esc(sup.title)}</option>`)
+    state.suppliers.map((sup) => `<option value="${sup.id}" ${String(item?.supplier_id || "") === String(sup.id) ? "selected" : ""}>${esc(sup.title)}</option>`)
   ).join("");
-  const amount = item ? ((Number(item.amount_minor || 0) / 100).toFixed(2)) : "";
+  const amount = item ? (Number(item.amount_minor || 0) / 100).toFixed(2) : "";
+  const defaultDate = item?.expense_date || `${state.month}-01`;
   return `
     <form id="expenseForm" class="finance-form">
       <label>Категория<select name="category_id" required>${categoryOptions}</select></label>
       <label>Поставщик<select name="supplier_id">${supplierOptions}</select></label>
       <label>Сумма, ₽<input name="amount" type="text" placeholder="1200.00" value="${esc(amount)}" required /></label>
-      <label>Дата расхода<input name="expense_date" type="date" value="${esc(item?.expense_date || `${state.month}-01`)}" required /></label>
+      <label>Дата расхода<input name="expense_date" type="date" value="${esc(defaultDate)}" required /></label>
       <label>Распределить на месяцев<input name="spread_months" type="number" min="1" max="120" value="${esc(String(item?.spread_months || 1))}" required /></label>
       <label>Комментарий<textarea name="comment" rows="4" placeholder="Комментарий">${esc(item?.comment || "")}</textarea></label>
       <div class="row gap-8 mt-12">
@@ -233,7 +234,7 @@ function openExpenseForm(expenseId = null) {
     toast("Сначала создайте категорию расхода", "warn");
     return;
   }
-  const item = expenseId ? state.expenses.find(x => Number(x.id) === Number(expenseId)) : null;
+  const item = expenseId ? state.expenses.find((x) => Number(x.id) === Number(expenseId)) : null;
   openHtmlModal(expenseId ? "Редактировать расход" : "Добавить расход", buildExpenseForm(item));
 
   const form = document.getElementById("expenseForm");
@@ -278,9 +279,9 @@ function buildCatalogForm(kind) {
         <input name="title" type="text" maxlength="120" placeholder="${isCategory ? "Например: Аренда" : "Например: ООО Поставщик"}" required />
       </label>
 
-      ${isCategory ? `
-        <div class="muted">Код будет сгенерирован автоматически из названия.</div>
-      ` : `
+      ${isCategory
+        ? `<div class="muted">Код будет сгенерирован автоматически из названия.</div>`
+        : `
         <label>
           Контакт
           <input name="contact" type="text" maxlength="255" placeholder="+7..., Telegram, email" />
@@ -377,7 +378,7 @@ async function boot() {
 
   try {
     const venues = await getMyVenues();
-    const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
+    const v = venues.find((x) => String(x.id) === String(getActiveVenueId()));
     if (v) document.getElementById("subtitle").textContent = v.name || "";
   } catch {}
 
@@ -414,3 +415,7 @@ async function boot() {
     document.getElementById("expensesState").textContent = "Ошибка";
   }
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  boot();
+});
