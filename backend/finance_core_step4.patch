@@ -1,0 +1,575 @@
+--- backend/app/services/finance/__init__.py
++++ backend/app/services/finance/__init__.py
+@@ -10,6 +10,13 @@
+     delete_expense_allocations_for_expense,
+     list_expense_allocations,
+ )
++from .revenue import (
++    build_report_revenue_plan,
++    rebuild_revenue_entries_for_report,
++    delete_revenue_entries_for_report,
++    compute_revenue_summary,
++)
++from .summary import get_finance_summary, resolve_finance_period
+ 
+ __all__ = [
+     "FINANCE_DIRECTIONS",
+@@ -20,18 +27,10 @@
+     "rebuild_expense_allocations_for_expense",
+     "delete_expense_allocations_for_expense",
+     "list_expense_allocations",
+-]
+-
+-from .expenses import (
+-    build_expense_allocation_plan,
+-    rebuild_expense_allocations_for_expense,
+-    delete_expense_allocations_for_expense,
+-    list_expense_allocations,
+-)
+-
+-__all__ += [
+-    "build_expense_allocation_plan",
+-    "rebuild_expense_allocations_for_expense",
+-    "delete_expense_allocations_for_expense",
+-    "list_expense_allocations",
++    "build_report_revenue_plan",
++    "rebuild_revenue_entries_for_report",
++    "delete_revenue_entries_for_report",
++    "compute_revenue_summary",
++    "get_finance_summary",
++    "resolve_finance_period",
+ ]
+--- /dev/null
++++ backend/app/services/finance/revenue.py
+@@ -0,0 +1,195 @@
++from __future__ import annotations
++
++from datetime import date, timedelta
++import calendar
++
++from sqlalchemy import func, select
++from sqlalchemy.orm import Session
++
++from app.models import DailyReport, DailyReportValue, Department, PaymentMethod
++from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
++
++
++def load_report_values(*, db: Session, report_id: int) -> list[DailyReportValue]:
++    return list(
++        db.execute(
++            select(DailyReportValue).where(DailyReportValue.report_id == int(report_id))
++        ).scalars().all()
++    )
++
++
++def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportValue]) -> list[dict]:
++    dept_values = [v for v in values if v.kind == "DEPT" and int(v.value_numeric or 0) > 0]
++    if dept_values:
++        return [
++            {
++                "amount_minor": int(v.value_numeric or 0) * 100,
++                "department_id": int(v.ref_id),
++                "payment_method_id": None,
++                "meta_json": {
++                    "report_date": report.date.isoformat(),
++                    "dimension": "department",
++                    "ref_id": int(v.ref_id),
++                },
++            }
++            for v in dept_values
++        ]
++
++    payment_values = [v for v in values if v.kind == "PAYMENT" and int(v.value_numeric or 0) > 0]
++    if payment_values:
++        return [
++            {
++                "amount_minor": int(v.value_numeric or 0) * 100,
++                "department_id": None,
++                "payment_method_id": int(v.ref_id),
++                "meta_json": {
++                    "report_date": report.date.isoformat(),
++                    "dimension": "payment_method",
++                    "ref_id": int(v.ref_id),
++                },
++            }
++            for v in payment_values
++        ]
++
++    total_minor = int(report.revenue_total or 0) * 100
++    if total_minor <= 0:
++        return []
++
++    return [
++        {
++            "amount_minor": total_minor,
++            "department_id": None,
++            "payment_method_id": None,
++            "meta_json": {
++                "report_date": report.date.isoformat(),
++                "dimension": "report_total",
++            },
++        }
++    ]
++
++
++def rebuild_revenue_entries_for_report(*, db: Session, report: DailyReport, values: list[DailyReportValue] | None = None) -> int:
++    if report.id is None:
++        raise ValueError("Report must be flushed before revenue rebuild")
++
++    delete_finance_entries_for_source(db=db, source_type="daily_report", source_id=int(report.id))
++
++    if str(report.status or "").upper() != "CLOSED":
++        return 0
++
++    report_values = values if values is not None else load_report_values(db=db, report_id=int(report.id))
++    plan = build_report_revenue_plan(report=report, values=report_values)
++
++    created = 0
++    for item in plan:
++        create_finance_entry(
++            db=db,
++            venue_id=int(report.venue_id),
++            entry_date=report.date,
++            amount_minor=int(item["amount_minor"]),
++            direction="INCOME",
++            kind="REVENUE",
++            source_type="daily_report",
++            source_id=int(report.id),
++            department_id=item.get("department_id"),
++            payment_method_id=item.get("payment_method_id"),
++            meta_json=item.get("meta_json"),
++        )
++        created += 1
++    return created
++
++
++def delete_revenue_entries_for_report(*, db: Session, report_id: int) -> int:
++    return delete_finance_entries_for_source(db=db, source_type="daily_report", source_id=int(report_id))
++
++
++def _parse_month_yyyy_mm(month: str) -> tuple[date, date]:
++    try:
++        y_s, m_s = month.split("-")
++        y = int(y_s)
++        m = int(m_s)
++        start = date(y, m, 1)
++        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
++        return start, end
++    except Exception:
++        raise ValueError("Bad month format, expected YYYY-MM")
++
++
++def resolve_revenue_period(month: str | None, date_from: date | None, date_to: date | None) -> tuple[date, date]:
++    if date_from and not date_to:
++        date_to = date_from
++    if date_to and not date_from:
++        date_from = date_to
++    if date_from and date_to:
++        if date_to < date_from:
++            date_from, date_to = date_to, date_from
++        return date_from, date_to
++    if month:
++        start, end_excl = _parse_month_yyyy_mm(month)
++        return start, (end_excl - timedelta(days=1))
++    today = date.today()
++    last_day = calendar.monthrange(today.year, today.month)[1]
++    return date(today.year, today.month, 1), date(today.year, today.month, last_day)
++
++
++def compute_revenue_summary(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, db: Session) -> dict:
++    period_start, period_end = resolve_revenue_period(month, date_from, date_to)
++    mode_norm = (mode or "payments").strip().lower()
++    if mode_norm not in {"payments", "departments"}:
++        raise ValueError("Bad mode, expected payments or departments")
++
++    Catalog = PaymentMethod if mode_norm == "payments" else Department
++    kind = "PAYMENT" if mode_norm == "payments" else "DEPT"
++
++    closed_reports_subq = (
++        select(DailyReport.id)
++        .where(
++            DailyReport.venue_id == int(venue_id),
++            DailyReport.status == "CLOSED",
++            DailyReport.date >= period_start,
++            DailyReport.date <= period_end,
++        )
++        .subquery()
++    )
++
++    closed_reports = int(
++        db.execute(select(func.count()).select_from(closed_reports_subq)).scalar() or 0
++    )
++
++    rows = db.execute(
++        select(
++            DailyReportValue.ref_id,
++            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
++        )
++        .where(
++            DailyReportValue.kind == kind,
++            DailyReportValue.report_id.in_(select(closed_reports_subq.c.id)),
++        )
++        .group_by(DailyReportValue.ref_id)
++    ).all()
++
++    catalog_rows = db.execute(
++        select(Catalog.id, getattr(Catalog, "code", None), Catalog.title).where(Catalog.venue_id == int(venue_id))
++    ).all()
++    catalog_map = {int(r[0]): r for r in catalog_rows}
++
++    out_rows = []
++    total = 0
++    for ref_id, amount in rows:
++        cat = catalog_map.get(int(ref_id))
++        title = cat[2] if cat else f"ID {int(ref_id)}"
++        code = cat[1] if cat else None
++        amount_int = int(amount or 0)
++        total += amount_int
++        out_rows.append({"ref_id": int(ref_id), "code": code, "title": title, "amount": amount_int})
++
++    out_rows.sort(key=lambda x: (-x["amount"], x["title"]))
++    return {
++        "month": month,
++        "period_start": period_start,
++        "period_end": period_end,
++        "mode": mode_norm,
++        "closed_reports": closed_reports,
++        "total": total,
++        "rows": out_rows,
++    }
+--- /dev/null
++++ backend/app/services/finance/summary.py
+@@ -0,0 +1,83 @@
++from __future__ import annotations
++
++from datetime import date, timedelta
++import calendar
++
++from sqlalchemy import func, select
++from sqlalchemy.orm import Session
++
++from app.models import FinanceEntry
++
++
++def _parse_month_yyyy_mm(month: str) -> tuple[date, date]:
++    try:
++        y_s, m_s = month.split("-")
++        y = int(y_s)
++        m = int(m_s)
++        start = date(y, m, 1)
++        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
++        return start, end
++    except Exception:
++        raise ValueError("Bad month format, expected YYYY-MM")
++
++
++def resolve_finance_period(month: str | None, date_from: date | None, date_to: date | None) -> tuple[date, date]:
++    if date_from and not date_to:
++        date_to = date_from
++    if date_to and not date_from:
++        date_from = date_to
++    if date_from and date_to:
++        if date_to < date_from:
++            date_from, date_to = date_to, date_from
++        return date_from, date_to
++    if month:
++        start, end_excl = _parse_month_yyyy_mm(month)
++        return start, end_excl - timedelta(days=1)
++    today = date.today()
++    last_day = calendar.monthrange(today.year, today.month)[1]
++    return date(today.year, today.month, 1), date(today.year, today.month, last_day)
++
++
++def _sum_amount(db: Session, *, venue_id: int, period_start: date, period_end: date, direction: str, kind: str) -> int:
++    return int(
++        db.execute(
++            select(func.coalesce(func.sum(FinanceEntry.amount_minor), 0)).where(
++                FinanceEntry.venue_id == int(venue_id),
++                FinanceEntry.entry_date >= period_start,
++                FinanceEntry.entry_date <= period_end,
++                FinanceEntry.direction == direction,
++                FinanceEntry.kind == kind,
++            )
++        ).scalar()
++        or 0
++    )
++
++
++def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None, date_from: date | None = None, date_to: date | None = None) -> dict:
++    period_start, period_end = resolve_finance_period(month, date_from, date_to)
++
++    revenue_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="INCOME", kind="REVENUE")
++    expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="EXPENSE", kind="EXPENSE")
++    payroll_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="EXPENSE", kind="PAYROLL")
++    adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="EXPENSE", kind="ADJUSTMENT")
++    adjustment_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="INCOME", kind="ADJUSTMENT")
++    refund_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="INCOME", kind="REFUND")
++    refund_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="EXPENSE", kind="REFUND")
++
++    adjustments_minor = adjustment_income_minor - adjustment_expense_minor
++    refunds_minor = refund_income_minor - refund_expense_minor
++    profit_minor = revenue_minor - expense_minor - payroll_minor + adjustments_minor + refunds_minor
++    margin_bps = int((profit_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
++
++    return {
++        "month": month,
++        "period_start": period_start,
++        "period_end": period_end,
++        "revenue_minor": revenue_minor,
++        "expense_minor": expense_minor,
++        "payroll_minor": payroll_minor,
++        "adjustments_minor": adjustments_minor,
++        "refunds_minor": refunds_minor,
++        "profit_minor": profit_minor,
++        "margin_bps": margin_bps,
++    }
+--- backend/app/routers/venues.py
++++ backend/app/routers/venues.py
+@@ -25,6 +25,8 @@
+ from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
+ from app.services.signed_links import make_signed_token, verify_signed_token
+ from app.services.finance.expenses import rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
++from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
++from app.services.finance.summary import get_finance_summary
+ 
+ from app.models.user import User
+ from app.models.venue import Venue
+@@ -227,6 +229,19 @@
+     comment: str | None = Field(default=None, max_length=1000)
+ 
+ 
++class FinanceSummaryOut(BaseModel):
++    month: str | None = None
++    period_start: date
++    period_end: date
++    revenue_minor: int
++    expense_minor: int
++    payroll_minor: int
++    adjustments_minor: int
++    refunds_minor: int
++    profit_minor: int
++    margin_bps: int | None = None
++
++
+ class AdjustmentCreateIn(BaseModel):
+     type: str = Field(..., description="penalty|writeoff|bonus")
+     date: date
+@@ -1371,6 +1386,10 @@
+             )
+         )
+ 
++    db.flush()
++    if str(obj.status or "").upper() == "CLOSED":
++        rebuild_revenue_entries_for_report(db=db, report=obj)
++
+     db.commit()
+     db.refresh(obj)
+     return {"id": obj.id, "date": obj.date.isoformat(), "mode": "updated" if obj.updated_at else "created"}
+@@ -1584,8 +1603,7 @@
+     rep.updated_by_user_id = user.id
+     rep.updated_at = datetime.utcnow()
+ 
+-    # clear any stored tip allocations for this report (reopen)
+-    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
++    rebuild_revenue_entries_for_report(db=db, report=rep, values=values)
+ 
+     db.commit()
+     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
+@@ -1620,6 +1638,7 @@
+     rep.closed_at = None
+     rep.updated_by_user_id = user.id
+     rep.updated_at = datetime.utcnow()
++    delete_revenue_entries_for_report(db=db, report_id=rep.id)
+     db.commit()
+     return {"ok": True, "status": "DRAFT"}
+ 
+@@ -1694,90 +1713,30 @@
+ 
+ 
+ def _compute_revenue_summary(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, db: Session):
+-    start, end_incl = _resolve_period(month, date_from, date_to)
+-    end_excl = end_incl + timedelta(days=1)
+-    kind, Catalog = _revenue_kind_and_catalog(mode)
+-
+-    closed_reports_subq = (
+-        select(DailyReport.id)
+-        .where(
+-            DailyReport.venue_id == venue_id,
+-            DailyReport.date >= start,
+-            DailyReport.date < end_excl,
+-            DailyReport.status == "CLOSED",
+-        )
+-        .subquery()
+-    )
+-
+-    closed_reports_count = int(
+-        db.execute(
+-            select(func.count(DailyReport.id)).where(
+-                DailyReport.venue_id == venue_id,
+-                DailyReport.date >= start,
+-                DailyReport.date < end_excl,
+-                DailyReport.status == "CLOSED",
+-            )
+-        ).scalar()
+-        or 0
+-    )
+-
+-    sums = (
+-        db.execute(
+-            select(
+-                DailyReportValue.ref_id,
+-                func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
+-            )
+-            .where(
+-                DailyReportValue.kind == kind,
+-                DailyReportValue.report_id.in_(select(closed_reports_subq.c.id)),
+-            )
+-            .group_by(DailyReportValue.ref_id)
+-        )
+-        .all()
+-    )
+-
+-    ref_ids = [int(r.ref_id) for r in sums]
+-    catalog_map: dict[int, dict] = {}
+-    if ref_ids:
+-        items = (
+-            db.execute(
+-                select(Catalog).where(Catalog.venue_id == venue_id, Catalog.id.in_(ref_ids))
+-            )
+-            .scalars()
+-            .all()
+-        )
+-        catalog_map = {int(it.id): {"code": getattr(it, "code", None), "title": getattr(it, "title", f"#{it.id}")} for it in items}
+-
+-    rows: list[dict] = []
+-    total = 0
+-    for r in sums:
+-        rid = int(r.ref_id)
+-        amt = int(r.amount or 0)
+-        total += amt
+-        meta = catalog_map.get(rid) or {"code": None, "title": f"Удалено #{rid}"}
+-        rows.append(
+-            {
+-                "ref_id": rid,
+-                "code": meta.get("code"),
+-                "title": meta.get("title") or f"#{rid}",
+-                "amount": amt,
+-            }
++    try:
++        summary = compute_revenue_summary(
++            venue_id=venue_id,
++            month=month,
++            date_from=date_from,
++            date_to=date_to,
++            mode=mode,
++            db=db,
+         )
++    except ValueError as exc:
++        raise HTTPException(status_code=400, detail=str(exc))
+ 
+-    rows.sort(key=lambda x: (-int(x.get("amount") or 0), str(x.get("title") or "")))
+-
+-    month_out = month
++    month_out = summary.get("month")
+     if month_out is None and date_from is None and date_to is None:
+-        month_out = start.strftime("%Y-%m")
++        month_out = summary["period_start"].strftime("%Y-%m")
+ 
+     return {
+         "month": month_out,
+-        "period_start": start,
+-        "period_end": end_incl,
+-        "mode": mode.upper(),
+-        "closed_reports": closed_reports_count,
+-        "total": int(total),
+-        "rows": rows,
++        "period_start": summary["period_start"],
++        "period_end": summary["period_end"],
++        "mode": str(summary["mode"]).upper(),
++        "closed_reports": int(summary["closed_reports"]),
++        "total": int(summary["total"]),
++        "rows": summary["rows"],
+     }
+ 
+ 
+@@ -4232,3 +4191,27 @@
+     db.delete(obj)
+     db.commit()
+     return {"ok": True}
++
++
++@router.get("/{venue_id}/finance/summary", response_model=FinanceSummaryOut)
++def get_venue_finance_summary(
++    venue_id: int,
++    month: str | None = Query(None, description="YYYY-MM"),
++    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
++    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
++    db: Session = Depends(get_db),
++    user: User = Depends(get_current_user),
++):
++    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
++    _require_revenue_viewer(db, venue_id=venue_id, user=user)
++    _require_report_viewer(db, venue_id=venue_id, user=user)
++    try:
++        return get_finance_summary(
++            db=db,
++            venue_id=venue_id,
++            month=month,
++            date_from=date_from,
++            date_to=date_to,
++        )
++    except ValueError as exc:
++        raise HTTPException(status_code=400, detail=str(exc))
+--- /dev/null
++++ backend/test/test_finance_revenue_summary.py
+@@ -0,0 +1,50 @@
++from __future__ import annotations
++
++from datetime import date
++from types import SimpleNamespace
++from unittest import TestCase
++from unittest.mock import patch
++
++from app.services.finance.revenue import build_report_revenue_plan
++from app.services.finance.summary import get_finance_summary
++
++
++class FinanceRevenueServiceTests(TestCase):
++    def test_build_report_revenue_plan_prefers_departments_over_payments(self):
++        report = SimpleNamespace(id=1, venue_id=5, date=date(2026, 3, 10), revenue_total=1500)
++        values = [
++            SimpleNamespace(kind="PAYMENT", ref_id=11, value_numeric=700),
++            SimpleNamespace(kind="DEPT", ref_id=21, value_numeric=1000),
++            SimpleNamespace(kind="DEPT", ref_id=22, value_numeric=500),
++        ]
++
++        plan = build_report_revenue_plan(report=report, values=values)
++
++        self.assertEqual(len(plan), 2)
++        self.assertEqual(sum(item["amount_minor"] for item in plan), 150000)
++        self.assertEqual(plan[0]["department_id"], 21)
++        self.assertIsNone(plan[0]["payment_method_id"])
++
++    def test_get_finance_summary_calculates_profit_and_margin(self):
++        amounts = {
++            ("INCOME", "REVENUE"): 500000,
++            ("EXPENSE", "EXPENSE"): 120000,
++            ("EXPENSE", "PAYROLL"): 80000,
++            ("EXPENSE", "ADJUSTMENT"): 10000,
++            ("INCOME", "ADJUSTMENT"): 0,
++            ("INCOME", "REFUND"): 0,
++            ("EXPENSE", "REFUND"): 0,
++        }
++
++        def fake_sum(db, *, venue_id, period_start, period_end, direction, kind):
++            return amounts[(direction, kind)]
++
++        with patch("app.services.finance.summary._sum_amount", side_effect=fake_sum):
++            summary = get_finance_summary(db=object(), venue_id=5, month="2026-03")
++
++        self.assertEqual(summary["revenue_minor"], 500000)
++        self.assertEqual(summary["expense_minor"], 120000)
++        self.assertEqual(summary["payroll_minor"], 80000)
++        self.assertEqual(summary["adjustments_minor"], -10000)
++        self.assertEqual(summary["profit_minor"], 290000)
++        self.assertEqual(summary["margin_bps"], 5800)

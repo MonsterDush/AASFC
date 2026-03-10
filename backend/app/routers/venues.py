@@ -25,6 +25,8 @@ from app.services import tg_notify
 from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
 from app.services.signed_links import make_signed_token, verify_signed_token
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
+from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
+from app.services.finance.summary import get_finance_summary
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -225,6 +227,19 @@ class ExpenseUpdateIn(BaseModel):
     expense_date: date | None = None
     spread_months: int | None = Field(default=None, ge=1, le=120)
     comment: str | None = Field(default=None, max_length=1000)
+
+
+class FinanceSummaryOut(BaseModel):
+    month: str | None = None
+    period_start: date
+    period_end: date
+    revenue_minor: int
+    expense_minor: int
+    payroll_minor: int
+    adjustments_minor: int
+    refunds_minor: int
+    profit_minor: int
+    margin_bps: int | None = None
 
 
 class AdjustmentCreateIn(BaseModel):
@@ -1371,6 +1386,10 @@ def upsert_daily_report(
             )
         )
 
+    db.flush()
+    if str(obj.status or "").upper() == "CLOSED":
+        rebuild_revenue_entries_for_report(db=db, report=obj)
+
     db.commit()
     db.refresh(obj)
     return {"id": obj.id, "date": obj.date.isoformat(), "mode": "updated" if obj.updated_at else "created"}
@@ -1584,8 +1603,7 @@ def close_daily_report(
     rep.updated_by_user_id = user.id
     rep.updated_at = datetime.utcnow()
 
-    # clear any stored tip allocations for this report (reopen)
-    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
+    rebuild_revenue_entries_for_report(db=db, report=rep, values=values)
 
     db.commit()
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
@@ -1620,6 +1638,7 @@ def reopen_daily_report(
     rep.closed_at = None
     rep.updated_by_user_id = user.id
     rep.updated_at = datetime.utcnow()
+    delete_revenue_entries_for_report(db=db, report_id=rep.id)
     db.commit()
     return {"ok": True, "status": "DRAFT"}
 
@@ -1694,90 +1713,30 @@ def _revenue_kind_and_catalog(mode: str):
 
 
 def _compute_revenue_summary(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, db: Session):
-    start, end_incl = _resolve_period(month, date_from, date_to)
-    end_excl = end_incl + timedelta(days=1)
-    kind, Catalog = _revenue_kind_and_catalog(mode)
-
-    closed_reports_subq = (
-        select(DailyReport.id)
-        .where(
-            DailyReport.venue_id == venue_id,
-            DailyReport.date >= start,
-            DailyReport.date < end_excl,
-            DailyReport.status == "CLOSED",
+    try:
+        summary = compute_revenue_summary(
+            venue_id=venue_id,
+            month=month,
+            date_from=date_from,
+            date_to=date_to,
+            mode=mode,
+            db=db,
         )
-        .subquery()
-    )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    closed_reports_count = int(
-        db.execute(
-            select(func.count(DailyReport.id)).where(
-                DailyReport.venue_id == venue_id,
-                DailyReport.date >= start,
-                DailyReport.date < end_excl,
-                DailyReport.status == "CLOSED",
-            )
-        ).scalar()
-        or 0
-    )
-
-    sums = (
-        db.execute(
-            select(
-                DailyReportValue.ref_id,
-                func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
-            )
-            .where(
-                DailyReportValue.kind == kind,
-                DailyReportValue.report_id.in_(select(closed_reports_subq.c.id)),
-            )
-            .group_by(DailyReportValue.ref_id)
-        )
-        .all()
-    )
-
-    ref_ids = [int(r.ref_id) for r in sums]
-    catalog_map: dict[int, dict] = {}
-    if ref_ids:
-        items = (
-            db.execute(
-                select(Catalog).where(Catalog.venue_id == venue_id, Catalog.id.in_(ref_ids))
-            )
-            .scalars()
-            .all()
-        )
-        catalog_map = {int(it.id): {"code": getattr(it, "code", None), "title": getattr(it, "title", f"#{it.id}")} for it in items}
-
-    rows: list[dict] = []
-    total = 0
-    for r in sums:
-        rid = int(r.ref_id)
-        amt = int(r.amount or 0)
-        total += amt
-        meta = catalog_map.get(rid) or {"code": None, "title": f"Удалено #{rid}"}
-        rows.append(
-            {
-                "ref_id": rid,
-                "code": meta.get("code"),
-                "title": meta.get("title") or f"#{rid}",
-                "amount": amt,
-            }
-        )
-
-    rows.sort(key=lambda x: (-int(x.get("amount") or 0), str(x.get("title") or "")))
-
-    month_out = month
+    month_out = summary.get("month")
     if month_out is None and date_from is None and date_to is None:
-        month_out = start.strftime("%Y-%m")
+        month_out = summary["period_start"].strftime("%Y-%m")
 
     return {
         "month": month_out,
-        "period_start": start,
-        "period_end": end_incl,
-        "mode": mode.upper(),
-        "closed_reports": closed_reports_count,
-        "total": int(total),
-        "rows": rows,
+        "period_start": summary["period_start"],
+        "period_end": summary["period_end"],
+        "mode": str(summary["mode"]).upper(),
+        "closed_reports": int(summary["closed_reports"]),
+        "total": int(summary["total"]),
+        "rows": summary["rows"],
     }
 
 
@@ -4232,3 +4191,27 @@ def delete_expense(
     db.delete(obj)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/{venue_id}/finance/summary", response_model=FinanceSummaryOut)
+def get_venue_finance_summary(
+    venue_id: int,
+    month: str | None = Query(None, description="YYYY-MM"),
+    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    try:
+        return get_finance_summary(
+            db=db,
+            venue_id=venue_id,
+            month=month,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
