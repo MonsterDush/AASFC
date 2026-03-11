@@ -721,7 +721,7 @@ input[type="checkbox"],input[type="radio"]{
 .paybar__seg.cash{background:var(--accentA45)}
 .paybar__seg.cashless{background:var(--accentA22)}
   :root:not([data-theme="light"]) .paybar__seg.cashless{background:rgba(60,120,200,.28)}
-}
+
 
 /* Empty / Error / Loading states */
 .state{border:1px solid var(--border);border-radius:var(--radius);background:var(--card);padding:16px;box-shadow:var(--shadow-sm)}
