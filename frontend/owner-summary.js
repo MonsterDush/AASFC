@@ -362,12 +362,12 @@ async function loadSummary() {
     if (isDay) {
       setText(
         "summaryHint",
-        `Разовые: ${fmtMoneyMinor(summary?.point_expense_minor)} · Регулярные: ${fmtMoneyMinor(summary?.recurring_expense_minor)} · ФОТ: ${fmtMoneyMinor(summary?.payroll_minor)}`
+        `Разовые: ${fmtMoneyMinor(summary?.point_expense_minor)} · Регулярные: ${fmtMoneyMinor(summary?.recurring_expense_minor)} · ФОТ: ${fmtMoneyMinor(summary?.payroll_minor)} · Баланс периода — в блоке по оплатам ниже`
       );
     } else {
       setText(
         "summaryHint",
-        `ФОТ: ${fmtMoneyMinor(summary?.payroll_minor)} · Корректировки P&L: ${fmtMoneyMinor(summary?.adjustments_minor)} · Возвраты: ${fmtMoneyMinor(summary?.refunds_minor)}`
+        `ФОТ: ${fmtMoneyMinor(summary?.payroll_minor)} · Корректировки P&L: ${fmtMoneyMinor(summary?.adjustments_minor)} · Возвраты: ${fmtMoneyMinor(summary?.refunds_minor)} · Баланс по оплатам — отдельный денежный блок ниже`
       );
     }
 

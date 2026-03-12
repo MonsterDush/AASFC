@@ -28,6 +28,7 @@
         </div>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
           <input id="rulesMonthPick" type="month" style="width:auto; min-width:160px;" />
+          <a class="btn ghost" id="openExpensesBtn" href="#">Открыть расходы</a>
           <button class="btn" id="generateRulesBtn">Сгенерировать за месяц</button>
           <button class="btn" id="addRuleBtn">Добавить правило</button>
         </div>
@@ -42,6 +43,27 @@
           <div class="finance-stat__label">Активных</div>
           <div class="finance-stat__value" id="rulesActiveCount">—</div>
         </div>
+      </div>
+
+
+      <div class="itemcard mt-12">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Как это работает</b>
+            <div class="muted mt-6">После генерации появятся обычные документы расходов со статусом черновика. Дальше их можно открыть на странице расходов, проверить и подтвердить.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="itemcard mt-12" id="generationResultCard" style="display:none;">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Результат последней генерации</b>
+            <div class="muted mt-6" id="generationResultHint">—</div>
+          </div>
+          <a class="btn ghost" id="openGeneratedExpensesBtn" href="#">Открыть расходы месяца</a>
+        </div>
+        <div id="generationResultList" class="mt-12"></div>
       </div>
 
       <div class="itemcard mt-12">

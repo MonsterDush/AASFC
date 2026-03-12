@@ -20,6 +20,7 @@ let state = {
   categories: [],
   suppliers: [],
   paymentMethods: [],
+  generationResult: null,
 };
 
 function esc(s) {
@@ -115,6 +116,7 @@ async function loadRules() {
   if (!access.canView) {
     document.getElementById("rulesList").innerHTML = `<div class="muted">Нет прав на просмотр правил.</div>`;
     document.getElementById("rulesState").textContent = "Доступ ограничен";
+    renderGenerationResult();
     return;
   }
   const venueId = getActiveVenueId();
@@ -137,6 +139,7 @@ function renderRules() {
 
   if (!rules.length) {
     list.innerHTML = `<div class="muted">Нет правил регулярных расходов.</div>`;
+    renderGenerationResult();
     return;
   }
 
@@ -188,6 +191,7 @@ function renderRules() {
   list.querySelectorAll("[data-generate]").forEach((btn) => {
     btn.onclick = () => generateRules(Number(btn.getAttribute("data-generate")));
   });
+  renderGenerationResult();
 }
 
 function buildBasisPaymentMethodCheckboxes(selectedIds = []) {
@@ -322,6 +326,8 @@ async function generateRules(ruleId = null) {
     const qp = new URLSearchParams({ month: state.month || currentMonth() });
     if (ruleId) qp.set("rule_id", String(ruleId));
     const result = await api(`/venues/${encodeURIComponent(venueId)}/recurring-expense-rules/generate?${qp.toString()}`, { method: "POST" });
+    state.generationResult = result || null;
+    renderGenerationResult();
     toast(`Сгенерировано: ${result?.created_count || 0}, пропущено: ${result?.skipped_count || 0}`, "ok");
   } catch (err) {
     toast(err?.data?.detail || err.message || "Не удалось сгенерировать черновики", "err");
@@ -350,11 +356,20 @@ async function boot() {
   const monthPick = document.getElementById("rulesMonthPick");
   if (monthPick) {
     monthPick.value = state.month;
-    monthPick.onchange = (e) => { state.month = e.target.value || currentMonth(); renderRules(); };
+    monthPick.onchange = (e) => {
+      state.month = e.target.value || currentMonth();
+      if (openExpensesBtn) openExpensesBtn.href = buildExpensesMonthLink(state.month);
+      if (openGeneratedExpensesBtn) openGeneratedExpensesBtn.href = buildExpensesMonthLink(state.month);
+      renderRules();
+    };
   }
   const addRuleBtn = document.getElementById("addRuleBtn");
   const generateRulesBtn = document.getElementById("generateRulesBtn");
+  const openExpensesBtn = document.getElementById("openExpensesBtn");
+  const openGeneratedExpensesBtn = document.getElementById("openGeneratedExpensesBtn");
   if (addRuleBtn) addRuleBtn.style.display = access.canManage ? "" : "none";
+  if (openExpensesBtn) openExpensesBtn.href = buildExpensesMonthLink(state.month);
+  if (openGeneratedExpensesBtn) openGeneratedExpensesBtn.href = buildExpensesMonthLink(state.month);
   if (generateRulesBtn) {
     generateRulesBtn.style.display = access.canManage ? "" : "none";
     generateRulesBtn.onclick = () => generateRules();

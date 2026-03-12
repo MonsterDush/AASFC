@@ -104,6 +104,13 @@ function statusLabel(status) {
   return "Черновик";
 }
 
+function buildRegularBadges(item) {
+  const badges = [];
+  if (item?.recurring_rule_id) badges.push('<span class="badge">Регулярный</span>');
+  if (item?.generated_for_month) badges.push(`<span class="badge">${esc(`Сгенерирован ${item.generated_for_month}`)}</span>`);
+  return badges.join(' ');
+}
+
 async function loadAccess() {
   const venueId = getActiveVenueId();
   if (!venueId) return access;
@@ -225,10 +232,12 @@ function renderExpenses() {
           <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
             <div class="expense-row__title">${esc(item.category?.title || "Без категории")}</div>
             <span class="badge">${esc(statusLabel(status))}</span>
+            ${buildRegularBadges(item)}
           </div>
-          <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}${item.payment_method?.title ? ` · ${esc(item.payment_method.title)}` : ""}${item.generated_for_month ? ` · регулярный ${esc(item.generated_for_month)}` : ""}</div>
+          <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}${item.payment_method?.title ? ` · ${esc(item.payment_method.title)}` : ""}</div>
           ${item.comment ? `<div class="mt-8">${esc(item.comment)}</div>` : ""}
           <div class="mt-8"><b>Признано в ${esc(state.month)}:</b> ${esc(fmtMinor(item.recognized_amount_minor_for_month || 0))}</div>
+          ${item.recurring_rule_id ? `<div class="muted mt-6">Это документ, созданный из правила регулярного расхода. После подтверждения он будет участвовать в расходах и сводке.</div>` : ''}
           <div class="expense-row__allocations mt-8">${recognizedHtml}</div>
           <div class="muted mt-8">Все аллокации</div>
           <div class="expense-row__allocations mt-8">${allocationsHtml || '<span class="muted">Без распределения</span>'}</div>
