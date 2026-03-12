@@ -70,6 +70,11 @@ function setText(id, value) {
   if (el) el.textContent = value;
 }
 
+function showEl(id, visible) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = visible ? "" : "none";
+}
+
 function renderList(id, rows, emptyText) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -81,7 +86,7 @@ function renderList(id, rows, emptyText) {
     <div class="row" style="justify-content:space-between; gap:12px; align-items:flex-start; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06);">
       <div>
         <div><b>${esc(row.title || row.code || "—")}</b></div>
-        ${row.code ? `<div class="muted mt-6">${esc(row.code)}</div>` : ""}
+        ${row.subtitle ? `<div class="muted mt-6">${esc(row.subtitle)}</div>` : row.code ? `<div class="muted mt-6">${esc(row.code)}</div>` : ""}
       </div>
       <div style="text-align:right; white-space:nowrap;">${esc(fmtMoneyMinor(row.amount_minor || 0))}</div>
     </div>
@@ -117,6 +122,8 @@ let financeAccess = {
 
 const state = {
   month: currentMonth(),
+  date: todayISO(),
+  periodMode: "MONTH",
   incomeMode: "PAYMENTS",
   paymentMethods: [],
   adjustments: [],
@@ -312,7 +319,15 @@ async function deleteBalanceAdjustment(adjustmentId) {
   }
 }
 
-async function loadSummary(monthYYYYMM, incomeMode) {
+function syncSummaryCaptions() {
+  const isDay = state.periodMode === "DAY";
+  setText("summaryRevenueBreakdownHint", isDay ? "Структура доходов выбранного дня" : "Структура доходов периода");
+  setText("summaryExpenseBreakdownTitle", isDay ? "Разовые расходы дня" : "Расходы по категориям");
+  setText("summaryExpenseBreakdownHint", isDay ? "Подтверждённые точечные расходы выбранного дня" : "Признанные суммы за месяц");
+  showEl("summaryRecurringCard", isDay);
+}
+
+async function loadSummary() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
 
@@ -324,21 +339,47 @@ async function loadSummary(monthYYYYMM, incomeMode) {
     setText("summaryHint", "Нет прав на финансовую сводку");
     renderList("summaryRevenueBreakdown", [], "Нет доступа");
     renderList("summaryExpenseBreakdown", [], "Нет доступа");
+    renderList("summaryRecurringBreakdown", [], "Нет доступа");
     renderPaymentBalances([]);
     return;
   }
 
+  const isDay = state.periodMode === "DAY";
+  const endpoint = isDay
+    ? `/venues/${encodeURIComponent(venueId)}/summary/day?date=${encodeURIComponent(state.date)}&income_mode=${encodeURIComponent(state.incomeMode)}`
+    : `/venues/${encodeURIComponent(venueId)}/summary/monthly?month=${encodeURIComponent(state.month)}&income_mode=${encodeURIComponent(state.incomeMode)}`;
+
   try {
-    const summary = await api(`/venues/${encodeURIComponent(venueId)}/summary/monthly?month=${encodeURIComponent(monthYYYYMM)}&income_mode=${encodeURIComponent(incomeMode)}`);
+    const summary = await api(endpoint);
     setText("summaryRevenue", fmtMoneyMinor(summary?.revenue_minor));
     setText("summaryExpenses", fmtMoneyMinor(summary?.expense_minor));
     setText("summaryProfit", fmtMoneyMinor(summary?.profit_minor));
     setText("summaryMargin", fmtPercentBps(summary?.margin_bps));
-    setText("summaryPeriodText", `${summary?.period_start || monthYYYYMM} — ${summary?.period_end || monthYYYYMM}`);
-    setText("summaryHint", `ФОТ: ${fmtMoneyMinor(summary?.payroll_minor)} · Корректировки P&L: ${fmtMoneyMinor(summary?.adjustments_minor)} · Возвраты: ${fmtMoneyMinor(summary?.refunds_minor)}`);
-    setText("summaryIncomeModeText", String(summary?.income_mode || incomeMode).toUpperCase() === "DEPARTMENTS" ? "Доходы по департаментам" : "Доходы по типам оплат");
-    renderList("summaryRevenueBreakdown", summary?.revenue_breakdown || [], "Нет данных по доходам за период");
-    renderList("summaryExpenseBreakdown", summary?.expense_categories || [], "Нет признанных расходов за период");
+    setText("summaryPeriodText", isDay
+      ? (summary?.date || state.date)
+      : `${summary?.period_start || state.month} — ${summary?.period_end || state.month}`);
+
+    if (isDay) {
+      setText(
+        "summaryHint",
+        `Разовые: ${fmtMoneyMinor(summary?.point_expense_minor)} · Регулярные: ${fmtMoneyMinor(summary?.recurring_expense_minor)} · ФОТ: ${fmtMoneyMinor(summary?.payroll_minor)}`
+      );
+    } else {
+      setText(
+        "summaryHint",
+        `ФОТ: ${fmtMoneyMinor(summary?.payroll_minor)} · Корректировки P&L: ${fmtMoneyMinor(summary?.adjustments_minor)} · Возвраты: ${fmtMoneyMinor(summary?.refunds_minor)}`
+      );
+    }
+
+    setText(
+      "summaryIncomeModeText",
+      String(summary?.income_mode || state.incomeMode).toUpperCase() === "DEPARTMENTS"
+        ? (isDay ? "Доходы дня по департаментам" : "Доходы по департаментам")
+        : (isDay ? "Доходы дня по типам оплат" : "Доходы по типам оплат")
+    );
+    renderList("summaryRevenueBreakdown", summary?.revenue_breakdown || [], isDay ? "Нет данных по доходам за день" : "Нет данных по доходам за период");
+    renderList("summaryExpenseBreakdown", isDay ? (summary?.point_expenses || []) : (summary?.expense_categories || []), isDay ? "Нет точечных расходов за день" : "Нет признанных расходов за период");
+    renderList("summaryRecurringBreakdown", summary?.recurring_expenses || [], "Нет регулярных расходов на день");
     renderPaymentBalances(summary?.payment_method_balances || []);
   } catch (e) {
     setText("summaryRevenue", "—");
@@ -348,6 +389,7 @@ async function loadSummary(monthYYYYMM, incomeMode) {
     setText("summaryHint", e?.data?.detail || e.message || "Ошибка загрузки");
     renderList("summaryRevenueBreakdown", [], "Не удалось загрузить");
     renderList("summaryExpenseBreakdown", [], "Не удалось загрузить");
+    renderList("summaryRecurringBreakdown", [], "Не удалось загрузить");
     renderPaymentBalances([]);
     toast("Не удалось загрузить финансовую сводку", "err");
   }
@@ -371,15 +413,16 @@ async function loadBalanceAdjustments(monthYYYYMM) {
 }
 
 async function reloadCurrentState() {
-  await loadSummary(state.month, state.incomeMode);
-  await loadBalanceAdjustments(state.month);
+  syncSummaryCaptions();
+  await loadSummary();
+  await loadBalanceAdjustments(state.periodMode === "DAY" ? String(state.date || todayISO()).slice(0, 7) : state.month);
 }
 
 async function boot() {
   applyTelegramTheme();
   mountCommonUI("summary");
 
-  const me = await ensureLogin();
+  await ensureLogin();
   const venues = await getMyVenues();
   if (!getActiveVenueId() && Array.isArray(venues) && venues.length) setActiveVenueId(venues[0].id);
   await mountNav({ activeTab: "summary" });
@@ -402,22 +445,41 @@ async function boot() {
   }
 
   const params = new URLSearchParams(location.search);
+  const periodModePick = document.getElementById("summaryPeriodMode");
   const monthPick = document.getElementById("summaryMonthPick");
+  const datePick = document.getElementById("summaryDatePick");
   const modePick = document.getElementById("summaryIncomeMode");
+  state.periodMode = (params.get("period_mode") || "MONTH").toUpperCase();
   state.month = params.get("month") || currentMonth();
+  state.date = params.get("date") || todayISO();
   state.incomeMode = (params.get("income_mode") || "PAYMENTS").toUpperCase();
+
+  if (periodModePick) periodModePick.value = state.periodMode;
   if (monthPick) monthPick.value = state.month;
+  if (datePick) datePick.value = state.date;
   if (modePick) modePick.value = state.incomeMode;
 
+  const syncPickVisibility = () => {
+    const isDay = state.periodMode === "DAY";
+    if (monthPick) monthPick.style.display = isDay ? "none" : "";
+    if (datePick) datePick.style.display = isDay ? "" : "none";
+  };
+
   const reload = async () => {
+    state.periodMode = (periodModePick?.value || "MONTH").toUpperCase();
     state.month = monthPick?.value || currentMonth();
+    state.date = datePick?.value || todayISO();
     state.incomeMode = (modePick?.value || "PAYMENTS").toUpperCase();
+    syncPickVisibility();
     await reloadCurrentState();
   };
 
+  if (periodModePick) periodModePick.onchange = reload;
   if (monthPick) monthPick.onchange = reload;
+  if (datePick) datePick.onchange = reload;
   if (modePick) modePick.onchange = reload;
 
+  syncPickVisibility();
   await reload();
 }
 

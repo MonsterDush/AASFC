@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import date, timedelta
 import calendar
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Expense, ExpenseAllocation, ExpenseCategory, FinanceEntry, PaymentMethod
-from app.services.finance.revenue import compute_revenue_summary
+from app.models import DailyReport, DailyReportValue, Department, Expense, ExpenseAllocation, ExpenseCategory, FinanceEntry, PaymentMethod
+from app.services.finance.recurring_expenses import get_daily_recurring_expense_summary
 
 
 def _parse_month_yyyy_mm(month: str) -> tuple[date, date]:
@@ -54,24 +54,66 @@ def _sum_amount(db: Session, *, venue_id: int, period_start: date, period_end: d
     )
 
 
-def _group_revenue_breakdown(db: Session, *, venue_id: int, period_start: date, period_end: date, income_mode: str) -> list[dict]:
-    summary = compute_revenue_summary(
-        venue_id=int(venue_id),
-        month=None,
-        date_from=period_start,
-        date_to=period_end,
-        mode='departments' if str(income_mode or 'PAYMENTS').upper() == 'DEPARTMENTS' else 'payments',
-        db=db,
+def _sum_closed_report_revenue_minor(db: Session, *, venue_id: int, period_start: date, period_end: date) -> int:
+    return int(
+        db.execute(
+            select(func.coalesce(func.sum(DailyReport.revenue_total), 0)).where(
+                DailyReport.venue_id == int(venue_id),
+                DailyReport.status == 'CLOSED',
+                DailyReport.date >= period_start,
+                DailyReport.date <= period_end,
+            )
+        ).scalar()
+        or 0
+    ) * 100
+
+
+def _closed_reports_subquery(*, venue_id: int, period_start: date, period_end: date):
+    return (
+        select(DailyReport.id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == 'CLOSED',
+            DailyReport.date >= period_start,
+            DailyReport.date <= period_end,
+        )
+        .subquery()
     )
-    return [
-        {
-            'ref_id': int(row['ref_id']),
-            'code': row.get('code'),
-            'title': row.get('title') or f"ID {int(row['ref_id'])}",
-            'amount_minor': int(row.get('amount') or 0) * 100,
-        }
-        for row in (summary.get('rows') or [])
-    ]
+
+
+def _group_revenue_breakdown(db: Session, *, venue_id: int, period_start: date, period_end: date, income_mode: str) -> list[dict]:
+    mode = str(income_mode or 'PAYMENTS').upper()
+    kind = 'DEPT' if mode == 'DEPARTMENTS' else 'PAYMENT'
+    Catalog = Department if mode == 'DEPARTMENTS' else PaymentMethod
+    closed_reports = _closed_reports_subquery(venue_id=venue_id, period_start=period_start, period_end=period_end)
+    rows = db.execute(
+        select(DailyReportValue.ref_id, func.coalesce(func.sum(DailyReportValue.value_numeric), 0))
+        .where(
+            DailyReportValue.kind == kind,
+            DailyReportValue.report_id.in_(select(closed_reports.c.id)),
+        )
+        .group_by(DailyReportValue.ref_id)
+    ).all()
+    catalog_rows = db.execute(
+        select(Catalog.id, getattr(Catalog, 'code', None), Catalog.title).where(Catalog.venue_id == int(venue_id))
+    ).all()
+    catalog_map = {int(row[0]): row for row in catalog_rows}
+    out: list[dict] = []
+    for row in rows:
+        ref_id = int(row[0])
+        amount_minor = int(row[1] or 0) * 100
+        catalog = catalog_map.get(ref_id)
+        out.append(
+            {
+                'ref_id': ref_id,
+                'code': catalog[1] if catalog else None,
+                'title': catalog[2] if catalog else f'ID {ref_id}',
+                'subtitle': None,
+                'amount_minor': amount_minor,
+            }
+        )
+    out.sort(key=lambda item: (-int(item['amount_minor']), str(item['title'])))
+    return out
 
 
 def _group_expense_categories(db: Session, *, venue_id: int, period_start: date, period_end: date) -> list[dict]:
@@ -93,80 +135,125 @@ def _group_expense_categories(db: Session, *, venue_id: int, period_start: date,
             'category_id': int(row[0]),
             'code': row[1],
             'title': row[2],
+            'subtitle': None,
             'amount_minor': int(row[3] or 0),
         }
         for row in rows
     ]
 
 
+def _sum_closed_report_payment_minor(
+    db: Session,
+    *,
+    venue_id: int,
+    payment_method_id: int | None = None,
+    payment_method_ids: list[int] | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> int:
+    stmt = (
+        select(func.coalesce(func.sum(DailyReportValue.value_numeric), 0))
+        .select_from(DailyReportValue)
+        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == 'CLOSED',
+            DailyReportValue.kind == 'PAYMENT',
+        )
+    )
+    if period_start is not None:
+        stmt = stmt.where(DailyReport.date >= period_start)
+    if period_end is not None:
+        stmt = stmt.where(DailyReport.date <= period_end)
+    if payment_method_id is not None:
+        stmt = stmt.where(DailyReportValue.ref_id == int(payment_method_id))
+    elif payment_method_ids:
+        stmt = stmt.where(DailyReportValue.ref_id.in_([int(x) for x in payment_method_ids]))
+    return int(db.execute(stmt).scalar() or 0) * 100
+
+
+def _sum_non_revenue_payment_entries(
+    db: Session,
+    *,
+    venue_id: int,
+    payment_method_id: int,
+    direction: str,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> int:
+    stmt = select(func.coalesce(func.sum(FinanceEntry.amount_minor), 0)).where(
+        FinanceEntry.venue_id == int(venue_id),
+        FinanceEntry.payment_method_id == int(payment_method_id),
+        FinanceEntry.direction == str(direction).upper(),
+        FinanceEntry.kind != 'REVENUE',
+    )
+    if period_start is not None:
+        stmt = stmt.where(FinanceEntry.entry_date >= period_start)
+    if period_end is not None:
+        stmt = stmt.where(FinanceEntry.entry_date <= period_end)
+    return int(db.execute(stmt).scalar() or 0)
+
+
 def _group_payment_method_balances(db: Session, *, venue_id: int, period_start: date, period_end: date) -> list[dict]:
-    rows = db.execute(
-        select(
-            PaymentMethod.id,
-            PaymentMethod.code,
-            PaymentMethod.title,
-            PaymentMethod.is_active,
-            PaymentMethod.sort_order,
-            func.coalesce(
-                func.sum(
-                    case(
-                        (
-                            (FinanceEntry.entry_date >= period_start)
-                            & (FinanceEntry.entry_date <= period_end)
-                            & (FinanceEntry.direction == 'INCOME'),
-                            FinanceEntry.amount_minor,
-                        ),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label('inflow_minor'),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (
-                            (FinanceEntry.entry_date >= period_start)
-                            & (FinanceEntry.entry_date <= period_end)
-                            & (FinanceEntry.direction == 'EXPENSE'),
-                            FinanceEntry.amount_minor,
-                        ),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label('outflow_minor'),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (FinanceEntry.direction == 'INCOME', FinanceEntry.amount_minor),
-                        (FinanceEntry.direction == 'EXPENSE', -FinanceEntry.amount_minor),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label('balance_minor'),
-        )
-        .outerjoin(
-            FinanceEntry,
-            (FinanceEntry.payment_method_id == PaymentMethod.id)
-            & (FinanceEntry.venue_id == int(venue_id))
-            & (FinanceEntry.entry_date <= period_end),
-        )
+    payment_methods = db.execute(
+        select(PaymentMethod.id, PaymentMethod.code, PaymentMethod.title, PaymentMethod.is_active)
         .where(PaymentMethod.venue_id == int(venue_id))
-        .group_by(PaymentMethod.id, PaymentMethod.code, PaymentMethod.title, PaymentMethod.is_active, PaymentMethod.sort_order)
         .order_by(PaymentMethod.sort_order.asc(), PaymentMethod.id.asc())
     ).all()
     out: list[dict] = []
-    for row in rows:
-        inflow_minor = int(row[5] or 0)
-        outflow_minor = int(row[6] or 0)
-        balance_minor = int(row[7] or 0)
+    for row in payment_methods:
+        payment_method_id = int(row[0])
+        revenue_inflow_minor = _sum_closed_report_payment_minor(
+            db,
+            venue_id=venue_id,
+            payment_method_id=payment_method_id,
+            period_start=period_start,
+            period_end=period_end,
+        )
+        revenue_cumulative_minor = _sum_closed_report_payment_minor(
+            db,
+            venue_id=venue_id,
+            payment_method_id=payment_method_id,
+            period_end=period_end,
+        )
+        other_income_minor = _sum_non_revenue_payment_entries(
+            db,
+            venue_id=venue_id,
+            payment_method_id=payment_method_id,
+            direction='INCOME',
+            period_start=period_start,
+            period_end=period_end,
+        )
+        other_income_cumulative_minor = _sum_non_revenue_payment_entries(
+            db,
+            venue_id=venue_id,
+            payment_method_id=payment_method_id,
+            direction='INCOME',
+            period_end=period_end,
+        )
+        outflow_minor = _sum_non_revenue_payment_entries(
+            db,
+            venue_id=venue_id,
+            payment_method_id=payment_method_id,
+            direction='EXPENSE',
+            period_start=period_start,
+            period_end=period_end,
+        )
+        cumulative_outflow_minor = _sum_non_revenue_payment_entries(
+            db,
+            venue_id=venue_id,
+            payment_method_id=payment_method_id,
+            direction='EXPENSE',
+            period_end=period_end,
+        )
+        inflow_minor = revenue_inflow_minor + other_income_minor
+        balance_minor = revenue_cumulative_minor + other_income_cumulative_minor - cumulative_outflow_minor
         is_active = bool(row[3])
         if not is_active and inflow_minor == 0 and outflow_minor == 0 and balance_minor == 0:
             continue
         out.append(
             {
-                'payment_method_id': int(row[0]),
+                'payment_method_id': payment_method_id,
                 'code': row[1],
                 'title': row[2],
                 'inflow_minor': inflow_minor,
@@ -175,6 +262,31 @@ def _group_payment_method_balances(db: Session, *, venue_id: int, period_start: 
             }
         )
     return out
+
+
+def _group_daily_point_expenses(db: Session, *, venue_id: int, target_date: date) -> list[dict]:
+    rows = db.execute(
+        select(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title, func.coalesce(func.sum(Expense.amount_minor), 0))
+        .join(Expense, Expense.category_id == ExpenseCategory.id)
+        .where(
+            Expense.venue_id == int(venue_id),
+            Expense.status == 'CONFIRMED',
+            Expense.expense_date == target_date,
+            Expense.recurring_rule_id.is_(None),
+        )
+        .group_by(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title)
+        .order_by(func.coalesce(func.sum(Expense.amount_minor), 0).desc(), ExpenseCategory.title.asc())
+    ).all()
+    return [
+        {
+            'category_id': int(row[0]),
+            'code': row[1],
+            'title': row[2],
+            'subtitle': 'Разовые расходы дня',
+            'amount_minor': int(row[3] or 0),
+        }
+        for row in rows
+    ]
 
 
 def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None, date_from: date | None = None, date_to: date | None = None) -> dict:
@@ -220,4 +332,50 @@ def get_monthly_finance_summary(*, db: Session, venue_id: int, month: str | None
         'revenue_breakdown': _group_revenue_breakdown(db, venue_id=venue_id, period_start=period_start, period_end=period_end, income_mode=mode),
         'expense_categories': _group_expense_categories(db, venue_id=venue_id, period_start=period_start, period_end=period_end),
         'payment_method_balances': _group_payment_method_balances(db, venue_id=venue_id, period_start=period_start, period_end=period_end),
+    }
+
+
+def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, income_mode: str = 'PAYMENTS') -> dict:
+    period_start = target_date
+    period_end = target_date
+    mode = str(income_mode or 'PAYMENTS').upper()
+    if mode not in {'PAYMENTS', 'DEPARTMENTS'}:
+        raise ValueError('Bad income_mode, expected PAYMENTS or DEPARTMENTS')
+
+    revenue_minor = _sum_closed_report_revenue_minor(db, venue_id=venue_id, period_start=target_date, period_end=target_date)
+    point_expenses = _group_daily_point_expenses(db, venue_id=venue_id, target_date=target_date)
+    point_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in point_expenses))
+    recurring_summary = get_daily_recurring_expense_summary(db=db, venue_id=venue_id, target_date=target_date)
+    recurring_expenses = recurring_summary['rows']
+    recurring_expense_minor = int(recurring_summary['total_minor'] or 0)
+    payroll_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='PAYROLL')
+    adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='ADJUSTMENT')
+    adjustment_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='ADJUSTMENT')
+    refund_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REFUND')
+    refund_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='REFUND')
+    adjustments_minor = adjustment_income_minor - adjustment_expense_minor
+    refunds_minor = refund_income_minor - refund_expense_minor
+    expense_minor = point_expense_minor + recurring_expense_minor
+    profit_minor = revenue_minor - expense_minor - payroll_minor + adjustments_minor + refunds_minor
+    margin_bps = int((profit_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+
+    return {
+        'date': target_date,
+        'month': target_date.strftime('%Y-%m'),
+        'period_start': period_start,
+        'period_end': period_end,
+        'revenue_minor': revenue_minor,
+        'expense_minor': expense_minor,
+        'payroll_minor': payroll_minor,
+        'adjustments_minor': adjustments_minor,
+        'refunds_minor': refunds_minor,
+        'profit_minor': profit_minor,
+        'margin_bps': margin_bps,
+        'income_mode': mode,
+        'revenue_breakdown': _group_revenue_breakdown(db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode=mode),
+        'point_expenses': point_expenses,
+        'point_expense_minor': point_expense_minor,
+        'recurring_expenses': recurring_expenses,
+        'recurring_expense_minor': recurring_expense_minor,
+        'payment_method_balances': _group_payment_method_balances(db, venue_id=venue_id, period_start=target_date, period_end=target_date),
     }

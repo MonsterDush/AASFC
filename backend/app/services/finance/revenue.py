@@ -19,22 +19,6 @@ def load_report_values(*, db: Session, report_id: int) -> list[DailyReportValue]
 
 
 def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportValue]) -> list[dict]:
-    dept_values = [v for v in values if v.kind == "DEPT" and int(v.value_numeric or 0) > 0]
-    if dept_values:
-        return [
-            {
-                "amount_minor": int(v.value_numeric or 0) * 100,
-                "department_id": int(v.ref_id),
-                "payment_method_id": None,
-                "meta_json": {
-                    "report_date": report.date.isoformat(),
-                    "dimension": "department",
-                    "ref_id": int(v.ref_id),
-                },
-            }
-            for v in dept_values
-        ]
-
     payment_values = [v for v in values if v.kind == "PAYMENT" and int(v.value_numeric or 0) > 0]
     if payment_values:
         return [
@@ -49,6 +33,22 @@ def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportVa
                 },
             }
             for v in payment_values
+        ]
+
+    dept_values = [v for v in values if v.kind == "DEPT" and int(v.value_numeric or 0) > 0]
+    if dept_values:
+        return [
+            {
+                "amount_minor": int(v.value_numeric or 0) * 100,
+                "department_id": None,
+                "payment_method_id": None,
+                "meta_json": {
+                    "report_date": report.date.isoformat(),
+                    "dimension": "department_only_fallback",
+                    "ref_id": int(v.ref_id),
+                },
+            }
+            for v in dept_values
         ]
 
     total_minor = int(report.revenue_total or 0) * 100

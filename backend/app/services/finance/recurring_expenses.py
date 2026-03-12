@@ -6,7 +6,7 @@ import calendar
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.models import Expense, FinanceEntry, PaymentMethod, RecurringExpenseRule, RecurringExpenseRulePaymentMethod
+from app.models import DailyReport, DailyReportValue, Expense, ExpenseCategory, PaymentMethod, RecurringExpenseRule, RecurringExpenseRulePaymentMethod
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense
 
 
@@ -85,9 +85,37 @@ def rule_applies_to_month(*, rule: RecurringExpenseRule, month_start: date, mont
     return True
 
 
+def rule_applies_to_date(*, rule: RecurringExpenseRule, target_date: date) -> bool:
+    if not bool(rule.is_active):
+        return False
+    if rule.start_date and rule.start_date > target_date:
+        return False
+    if rule.end_date and rule.end_date < target_date:
+        return False
+    return True
+
+
 def build_generated_expense_date(*, month_start: date, day_of_month: int) -> date:
     last_day = calendar.monthrange(month_start.year, month_start.month)[1]
     return month_start.replace(day=min(max(int(day_of_month or 1), 1), last_day))
+
+
+def _sum_closed_payment_base_minor(*, db: Session, venue_id: int, period_start: date, period_end: date, payment_method_ids: list[int] | None = None) -> int:
+    stmt = (
+        select(func.coalesce(func.sum(DailyReportValue.value_numeric), 0))
+        .select_from(DailyReportValue)
+        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == 'CLOSED',
+            DailyReport.date >= period_start,
+            DailyReport.date <= period_end,
+            DailyReportValue.kind == 'PAYMENT',
+        )
+    )
+    if payment_method_ids:
+        stmt = stmt.where(DailyReportValue.ref_id.in_([int(x) for x in payment_method_ids]))
+    return int(db.execute(stmt).scalar() or 0) * 100
 
 
 def calculate_rule_amount_minor(*, db: Session, rule: RecurringExpenseRule, month_start: date, month_end: date) -> int:
@@ -96,16 +124,13 @@ def calculate_rule_amount_minor(*, db: Session, rule: RecurringExpenseRule, mont
         return int(rule.amount_minor or 0)
 
     payment_method_ids = list_rule_payment_method_ids(db=db, rule_id=rule.id)
-    stmt = select(func.coalesce(func.sum(FinanceEntry.amount_minor), 0)).where(
-        FinanceEntry.venue_id == int(rule.venue_id),
-        FinanceEntry.entry_date >= month_start,
-        FinanceEntry.entry_date <= month_end,
-        FinanceEntry.direction == "INCOME",
-        FinanceEntry.kind == "REVENUE",
+    base_minor = _sum_closed_payment_base_minor(
+        db=db,
+        venue_id=int(rule.venue_id),
+        period_start=month_start,
+        period_end=month_end,
+        payment_method_ids=payment_method_ids,
     )
-    if payment_method_ids:
-        stmt = stmt.where(FinanceEntry.payment_method_id.in_(payment_method_ids))
-    base_minor = int(db.execute(stmt).scalar() or 0)
     percent_bps = int(rule.percent_bps or 0)
     return int((base_minor * percent_bps + 5000) // 10000)
 
@@ -126,6 +151,83 @@ def build_generated_comment(*, db: Session, rule: RecurringExpenseRule, month: s
         joined = "всех оплат"
     percent_value = (int(rule.percent_bps or 0) / 100)
     return f"{base} · {percent_value:.2f}% от {joined}"
+
+
+def _fixed_rule_daily_minor(*, rule: RecurringExpenseRule, target_date: date) -> int:
+    month_start = target_date.replace(day=1)
+    last_day = calendar.monthrange(target_date.year, target_date.month)[1]
+    month_end = target_date.replace(day=last_day)
+    active_start = max(month_start, rule.start_date or month_start)
+    active_end = min(month_end, rule.end_date or month_end)
+    if target_date < active_start or target_date > active_end:
+        return 0
+    active_days = (active_end - active_start).days + 1
+    if active_days <= 0:
+        return 0
+    total_minor = int(rule.amount_minor or 0)
+    base = total_minor // active_days
+    remainder = total_minor % active_days
+    day_index = (target_date - active_start).days + 1
+    return base + (1 if day_index <= remainder else 0)
+
+
+def _percent_rule_daily_minor(*, db: Session, rule: RecurringExpenseRule, target_date: date) -> int:
+    payment_method_ids = list_rule_payment_method_ids(db=db, rule_id=rule.id)
+    base_minor = _sum_closed_payment_base_minor(
+        db=db,
+        venue_id=int(rule.venue_id),
+        period_start=target_date,
+        period_end=target_date,
+        payment_method_ids=payment_method_ids,
+    )
+    percent_bps = int(rule.percent_bps or 0)
+    return int((base_minor * percent_bps + 5000) // 10000)
+
+
+def get_daily_recurring_expense_summary(*, db: Session, venue_id: int, target_date: date) -> dict:
+    rules = db.execute(
+        select(RecurringExpenseRule)
+        .where(RecurringExpenseRule.venue_id == int(venue_id))
+        .order_by(RecurringExpenseRule.title.asc(), RecurringExpenseRule.id.asc())
+    ).scalars().all()
+    category_ids = sorted({int(rule.category_id) for rule in rules if rule.category_id is not None})
+    category_map = {}
+    if category_ids:
+        category_rows = db.execute(
+            select(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title)
+            .where(ExpenseCategory.id.in_(category_ids))
+        ).all()
+        category_map = {int(row[0]): {'code': row[1], 'title': row[2]} for row in category_rows}
+
+    rows: list[dict] = []
+    total_minor = 0
+    for rule in rules:
+        if not rule_applies_to_date(rule=rule, target_date=target_date):
+            continue
+        mode = str(rule.generation_mode or 'FIXED').upper()
+        if mode == 'FIXED':
+            amount_minor = _fixed_rule_daily_minor(rule=rule, target_date=target_date)
+        else:
+            amount_minor = _percent_rule_daily_minor(db=db, rule=rule, target_date=target_date)
+        if amount_minor <= 0:
+            continue
+        category = category_map.get(int(rule.category_id), {})
+        rows.append(
+            {
+                'title': rule.title,
+                'code': category.get('code'),
+                'subtitle': category.get('title') or ('Фиксированный режим' if mode == 'FIXED' else 'Процентный режим'),
+                'amount_minor': int(amount_minor),
+            }
+        )
+        total_minor += int(amount_minor)
+
+    rows.sort(key=lambda item: (-int(item['amount_minor']), str(item['title'])))
+    return {
+        'date': target_date,
+        'rows': rows,
+        'total_minor': int(total_minor),
+    }
 
 
 def generate_draft_expenses_for_month(

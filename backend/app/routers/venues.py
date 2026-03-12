@@ -26,7 +26,7 @@ from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
 from app.services.signed_links import make_signed_token, verify_signed_token
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
 from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
-from app.services.finance.summary import get_finance_summary, get_monthly_finance_summary
+from app.services.finance.summary import get_day_finance_summary, get_finance_summary, get_monthly_finance_summary
 from app.services.finance.balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
 from app.services.finance.payment_transfers import rebuild_payment_method_transfer_entries, delete_payment_method_transfer_entries
 from app.services.finance.recurring_expenses import generate_draft_expenses_for_month, list_rule_payment_method_ids, normalize_rule_fields, replace_rule_payment_methods
@@ -258,6 +258,7 @@ class FinanceSummaryOut(BaseModel):
 class MonthlyFinanceBreakdownRowOut(BaseModel):
     title: str
     code: str | None = None
+    subtitle: str | None = None
     amount_minor: int
 
 
@@ -274,6 +275,17 @@ class MonthlyFinanceSummaryOut(FinanceSummaryOut):
     income_mode: str
     revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
     expense_categories: list[MonthlyFinanceBreakdownRowOut]
+    payment_method_balances: list[PaymentMethodBalanceRowOut]
+
+
+class DailyFinanceSummaryOut(FinanceSummaryOut):
+    date: date
+    income_mode: str
+    revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
+    point_expenses: list[MonthlyFinanceBreakdownRowOut]
+    point_expense_minor: int
+    recurring_expenses: list[MonthlyFinanceBreakdownRowOut]
+    recurring_expense_minor: int
     payment_method_balances: list[PaymentMethodBalanceRowOut]
 
 
@@ -5050,6 +5062,28 @@ def get_venue_monthly_finance_summary(
             db=db,
             venue_id=venue_id,
             month=month,
+            income_mode=income_mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/{venue_id}/summary/day", response_model=DailyFinanceSummaryOut)
+def get_venue_day_finance_summary(
+    venue_id: int,
+    summary_date: date = Query(..., alias="date", description="YYYY-MM-DD"),
+    income_mode: str = Query("PAYMENTS", description="PAYMENTS|DEPARTMENTS"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    try:
+        return get_day_finance_summary(
+            db=db,
+            venue_id=venue_id,
+            target_date=summary_date,
             income_mode=income_mode,
         )
     except ValueError as exc:
