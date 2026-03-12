@@ -220,7 +220,7 @@ function renderExpenses() {
             <div class="expense-row__title">${esc(item.category?.title || "Без категории")}</div>
             <span class="badge">${esc(statusLabel(status))}</span>
           </div>
-          <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}${item.payment_method?.title ? ` · ${esc(item.payment_method.title)}` : ""}</div>
+          <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}${item.payment_method?.title ? ` · ${esc(item.payment_method.title)}` : ""}${item.generated_for_month ? ` · регулярный ${esc(item.generated_for_month)}` : ""}</div>
           ${item.comment ? `<div class="mt-8">${esc(item.comment)}</div>` : ""}
           <div class="mt-8"><b>Признано в ${esc(state.month)}:</b> ${esc(fmtMinor(item.recognized_amount_minor_for_month || 0))}</div>
           <div class="expense-row__allocations mt-8">${recognizedHtml}</div>

@@ -34,6 +34,8 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("EXPENSE_ADD", "Expenses", "Добавление расходов", "Вносить расход"),
     PermissionDef("EXPENSE_VIEW", "Expenses", "Просмотр расходов", "Видеть список расходов"),
     PermissionDef("EXPENSE_CATEGORIES_MANAGE", "Expenses", "Статьи расходов", "Настраивать статьи расходов"),
+    PermissionDef("RECURRING_EXPENSES_VIEW", "Expenses", "Регулярные расходы: просмотр", "Видеть правила регулярных расходов"),
+    PermissionDef("RECURRING_EXPENSES_MANAGE", "Expenses", "Регулярные расходы: управление", "Создавать и редактировать правила регулярных расходов и генерировать черновики"),
 
     # Reports
     PermissionDef("REPORTS_VIEW_DAILY", "Reports", "Отчёты за день", "Просматривать отчёт за выбранный день"),

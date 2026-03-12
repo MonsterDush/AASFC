@@ -60,6 +60,7 @@
         <div class="row gap-8 mt-12">
           <a class="btn" id="openSummary" href="#">Сводка и балансы</a>
           <a class="btn" id="openExpenses" href="#">Расходы</a>
+          <a class="btn" id="openRecurringExpenses" href="#">Регулярные</a>
           <a class="btn" id="openAdjustments" href="#">Штрафы</a>
         </div>
       </div>
@@ -161,6 +162,7 @@
         let canViewReports = false;
         let canViewRevenue = false;
         let canViewExpenses = false;
+        let canViewRecurringExpenses = false;
         let canOpenVenue = false;
 
         try {
@@ -189,6 +191,7 @@
 
           canViewRevenue = isOwner || isAdmin || hasPerm(pset, "REVENUE_VIEW");
           canViewExpenses = isOwner || isAdmin || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
+          canViewRecurringExpenses = canViewExpenses || hasPerm(pset, "RECURRING_EXPENSES_VIEW") || hasPerm(pset, "RECURRING_EXPENSES_MANAGE");
 
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
 
@@ -228,6 +231,7 @@ const titleEl = document.getElementById("title");
         const openPositions = document.getElementById("openPositions");
         const openSummary = document.getElementById("openSummary");
         const openExpenses = document.getElementById("openExpenses");
+        const openRecurringExpenses = document.getElementById("openRecurringExpenses");
         const openShifts = document.getElementById("openShifts");
         const openReports = document.getElementById("openReports");
         const openAdjustments = document.getElementById("openAdjustments");
@@ -262,6 +266,7 @@ openAdjustments.href = canManageAdjustments
   : `/staff-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openSummary) openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openExpenses) openExpenses.href = `/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openRecurringExpenses) openRecurringExpenses.href = `/owner-recurring-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
 
           if (openDepartments) openDepartments.href = `/owner-departments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openPaymentMethods) openPaymentMethods.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(venueId)}`;
@@ -280,10 +285,11 @@ openAdjustments.href = canManageAdjustments
           if (openAdjustments) openAdjustments.style.display = canViewAdjustments ? "" : "none";
           if (openSummary) openSummary.style.display = (canViewRevenue || canViewExpenses) ? "" : "none";
           if (openExpenses) openExpenses.style.display = canViewExpenses ? "" : "none";
+          if (openRecurringExpenses) openRecurringExpenses.style.display = canViewRecurringExpenses ? "" : "none";
 
           const financeCard = document.getElementById("financeCard");
           if (financeCard) {
-            const showFinance = (openAdjustments?.style.display !== "none") || (openSummary?.style.display !== "none") || (openExpenses?.style.display !== "none");
+            const showFinance = (openAdjustments?.style.display !== "none") || (openSummary?.style.display !== "none") || (openExpenses?.style.display !== "none") || (openRecurringExpenses?.style.display !== "none");
             financeCard.style.display = showFinance ? "" : "none";
           }
 

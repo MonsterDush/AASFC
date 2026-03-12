@@ -18,6 +18,15 @@ from .revenue import (
 )
 from .summary import get_finance_summary, get_monthly_finance_summary, resolve_finance_period
 from .balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
+from .recurring_expenses import (
+    calculate_rule_amount_minor,
+    generate_draft_expenses_for_month,
+    list_rule_payment_method_ids,
+    month_bounds,
+    normalize_rule_fields,
+    parse_month_start,
+    replace_rule_payment_methods,
+)
 
 __all__ = [
     "FINANCE_DIRECTIONS",
@@ -37,4 +46,11 @@ __all__ = [
     "resolve_finance_period",
     "rebuild_balance_adjustment_entries",
     "delete_balance_adjustment_entries",
+    "calculate_rule_amount_minor",
+    "generate_draft_expenses_for_month",
+    "list_rule_payment_method_ids",
+    "month_bounds",
+    "normalize_rule_fields",
+    "parse_month_start",
+    "replace_rule_payment_methods",
 ]
