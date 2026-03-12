@@ -101,7 +101,11 @@ class RevenueTests(TestCase):
             'closed_reports': 1,
         }
 
-        with patch.object(venues, 'get_revenue_summary', return_value=summary),              patch.object(venues, 'build_revenue_xlsx', return_value=b'xlsx-bytes'):
+        with patch.object(venues, '_compute_revenue_summary', return_value=summary), \
+             patch.object(venues, 'build_revenue_xlsx', return_value=b'xlsx-bytes'), \
+             patch.object(venues, '_require_active_member_or_admin', return_value=None), \
+             patch.object(venues, '_require_report_viewer', return_value=None), \
+             patch.object(venues, '_require_revenue_exporter', return_value=None):
             response = venues.export_revenue(
                 venue_id=1,
                 month='2026-03',

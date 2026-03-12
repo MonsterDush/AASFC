@@ -6,7 +6,23 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from app.services.finance.revenue import build_report_revenue_plan
-from app.services.finance.summary import get_finance_summary
+from app.services.finance.summary import get_finance_summary, get_monthly_finance_summary
+
+
+class _RowsResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
+class _FakeSummaryDb:
+    def execute(self, statement):
+        return _RowsResult([
+            (7, "rent", "Аренда", 120000),
+            (8, "tax", "Налоги", 50000),
+        ])
 
 
 class FinanceRevenueServiceTests(TestCase):
@@ -48,3 +64,28 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertEqual(summary["adjustments_minor"], -10000)
         self.assertEqual(summary["profit_minor"], 290000)
         self.assertEqual(summary["margin_bps"], 5800)
+
+    def test_get_monthly_finance_summary_adds_breakdowns(self):
+        fake_db = _FakeSummaryDb()
+        with patch("app.services.finance.summary.get_finance_summary", return_value={
+            "month": "2026-03",
+            "period_start": date(2026, 3, 1),
+            "period_end": date(2026, 3, 31),
+            "revenue_minor": 500000,
+            "expense_minor": 170000,
+            "payroll_minor": 0,
+            "adjustments_minor": 0,
+            "refunds_minor": 0,
+            "profit_minor": 330000,
+            "margin_bps": 6600,
+        }), patch("app.services.finance.summary.compute_revenue_summary", return_value={
+            "rows": [
+                {"ref_id": 1, "code": "cash", "title": "Наличные", "amount": 3000},
+                {"ref_id": 2, "code": "card", "title": "Карта", "amount": 2000},
+            ]
+        }):
+            summary = get_monthly_finance_summary(db=fake_db, venue_id=5, month="2026-03", income_mode="PAYMENTS")
+
+        self.assertEqual(summary["income_mode"], "PAYMENTS")
+        self.assertEqual(summary["revenue_breakdown"][0]["amount_minor"], 300000)
+        self.assertEqual(summary["expense_categories"][0]["title"], "Аренда")

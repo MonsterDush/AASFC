@@ -24,6 +24,7 @@ class Expense(Base):
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     expense_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     spread_months: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="DRAFT", index=True)
     comment: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

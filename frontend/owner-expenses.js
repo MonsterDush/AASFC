@@ -35,6 +35,14 @@ function currentMonth() {
   return `${y}-${m}`;
 }
 
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function fmtMinor(minor) {
   const rub = Number(minor || 0) / 100;
   try {
@@ -87,6 +95,13 @@ function openHtmlModal(title, html) {
   if (head) head.textContent = title;
   if (body) body.innerHTML = html;
   m.classList.add("open");
+}
+
+function statusLabel(status) {
+  const norm = String(status || "DRAFT").toUpperCase();
+  if (norm === "CONFIRMED") return "Подтверждён";
+  if (norm === "CANCELLED") return "Отменён";
+  return "Черновик";
 }
 
 async function loadAccess() {
@@ -168,10 +183,12 @@ function renderExpenses() {
   const stateEl = document.getElementById("expensesState");
   if (!list) return;
 
-  const totalMinor = state.expenses.reduce((acc, item) => acc + Number(item.amount_minor || 0), 0);
-  if (totalEl) totalEl.textContent = fmtMinor(totalMinor);
+  const recognizedTotalMinor = state.expenses.reduce((acc, item) => acc + Number(item.recognized_amount_minor_for_month || 0), 0);
+  if (totalEl) totalEl.textContent = fmtMinor(recognizedTotalMinor);
   if (countEl) countEl.textContent = String(state.expenses.length);
-  if (stateEl) stateEl.textContent = state.expenses.length ? `Месяц ${state.month}` : `За ${state.month} расходов нет`;
+  if (stateEl) stateEl.textContent = state.expenses.length
+    ? `Месяц ${state.month} · признано ${fmtMinor(recognizedTotalMinor)}`
+    : `За ${state.month} расходов нет`;
 
   if (!state.expenses.length) {
     list.innerHTML = `<div class="muted">Нет расходов за выбранный период.</div>`;
@@ -180,18 +197,38 @@ function renderExpenses() {
 
   list.innerHTML = state.expenses.map((item) => {
     const allocs = Array.isArray(item.allocations) ? item.allocations : [];
+    const recognizedAllocs = Array.isArray(item.recognized_allocations) ? item.recognized_allocations : [];
     const allocationsHtml = allocs.map((a) => `<span class="badge">${esc(a.month)} · ${esc(fmtMinor(a.amount_minor))}</span>`).join(" ");
+    const recognizedHtml = recognizedAllocs.length
+      ? recognizedAllocs.map((a) => `<span class="badge">${esc(a.month)} · ${esc(fmtMinor(a.amount_minor))}</span>`).join(" ")
+      : `<span class="muted">В выбранном месяце не признаётся</span>`;
+    const status = String(item.status || "DRAFT").toUpperCase();
+    const quickActions = access.canEdit ? `
+      <div class="row gap-8 mt-10" style="flex-wrap:wrap; justify-content:flex-end;">
+        ${status !== "CONFIRMED" ? `<button class="btn small" data-status="CONFIRMED" data-id="${item.id}">Подтвердить</button>` : ""}
+        ${status !== "DRAFT" ? `<button class="btn ghost small" data-status="DRAFT" data-id="${item.id}">В черновик</button>` : ""}
+        ${status !== "CANCELLED" ? `<button class="btn ghost small" data-status="CANCELLED" data-id="${item.id}">Отменить</button>` : ""}
+        <button class="btn small" data-edit="${item.id}">Изменить</button>
+        <button class="btn danger small" data-del="${item.id}">Удалить</button>
+      </div>` : "";
     return `
       <div class="expense-row">
         <div class="expense-row__main">
-          <div class="expense-row__title">${esc(item.category?.title || "Без категории")}</div>
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+            <div class="expense-row__title">${esc(item.category?.title || "Без категории")}</div>
+            <span class="badge">${esc(statusLabel(status))}</span>
+          </div>
           <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}</div>
           ${item.comment ? `<div class="mt-8">${esc(item.comment)}</div>` : ""}
+          <div class="mt-8"><b>Признано в ${esc(state.month)}:</b> ${esc(fmtMinor(item.recognized_amount_minor_for_month || 0))}</div>
+          <div class="expense-row__allocations mt-8">${recognizedHtml}</div>
+          <div class="muted mt-8">Все аллокации</div>
           <div class="expense-row__allocations mt-8">${allocationsHtml || '<span class="muted">Без распределения</span>'}</div>
         </div>
         <div class="expense-row__side">
           <div class="expense-row__amount">${esc(fmtMinor(item.amount_minor))}</div>
-          ${access.canEdit ? `<div class="row gap-8 mt-10"><button class="btn small" data-edit="${item.id}">Изменить</button><button class="btn danger small" data-del="${item.id}">Удалить</button></div>` : ""}
+          <div class="muted mt-6">Полная сумма</div>
+          ${quickActions}
         </div>
       </div>
     `;
@@ -203,6 +240,17 @@ function renderExpenses() {
   list.querySelectorAll("[data-del]").forEach((btn) => {
     btn.onclick = () => deleteExpense(Number(btn.getAttribute("data-del")));
   });
+  list.querySelectorAll("[data-status]").forEach((btn) => {
+    btn.onclick = async () => {
+      try {
+        const expenseId = Number(btn.getAttribute("data-id"));
+        const status = String(btn.getAttribute("data-status") || "DRAFT");
+        await updateExpenseStatus(expenseId, status);
+      } catch (err) {
+        toast(err?.data?.detail || err.message || "Не удалось обновить статус", "err");
+      }
+    };
+  });
 }
 
 function buildExpenseForm(item = null) {
@@ -211,7 +259,8 @@ function buildExpenseForm(item = null) {
     state.suppliers.map((sup) => `<option value="${sup.id}" ${String(item?.supplier_id || "") === String(sup.id) ? "selected" : ""}>${esc(sup.title)}</option>`)
   ).join("");
   const amount = item ? (Number(item.amount_minor || 0) / 100).toFixed(2) : "";
-  const defaultDate = item?.expense_date || `${state.month}-01`;
+  const defaultDate = item?.expense_date || todayISO();
+  const status = String(item?.status || "DRAFT").toUpperCase();
   return `
     <form id="expenseForm" class="finance-form">
       <label>Категория<select name="category_id" required>${categoryOptions}</select></label>
@@ -219,6 +268,13 @@ function buildExpenseForm(item = null) {
       <label>Сумма, ₽<input name="amount" type="text" placeholder="1200.00" value="${esc(amount)}" required /></label>
       <label>Дата расхода<input name="expense_date" type="date" value="${esc(defaultDate)}" required /></label>
       <label>Распределить на месяцев<input name="spread_months" type="number" min="1" max="120" value="${esc(String(item?.spread_months || 1))}" required /></label>
+      <label>Статус
+        <select name="status">
+          <option value="DRAFT" ${status === "DRAFT" ? "selected" : ""}>Черновик</option>
+          <option value="CONFIRMED" ${status === "CONFIRMED" ? "selected" : ""}>Подтверждён</option>
+          <option value="CANCELLED" ${status === "CANCELLED" ? "selected" : ""}>Отменён</option>
+        </select>
+      </label>
       <label>Комментарий<textarea name="comment" rows="4" placeholder="Комментарий">${esc(item?.comment || "")}</textarea></label>
       <div class="row gap-8 mt-12">
         <button class="btn" type="submit">${item ? "Сохранить" : "Добавить"}</button>
@@ -250,6 +306,7 @@ function openExpenseForm(expenseId = null) {
       amount_minor: parseMoneyToMinor(fd.get("amount")),
       expense_date: String(fd.get("expense_date") || ""),
       spread_months: Number(fd.get("spread_months") || 1),
+      status: String(fd.get("status") || "DRAFT"),
       comment: String(fd.get("comment") || "").trim() || null,
     };
 
@@ -268,6 +325,16 @@ function openExpenseForm(expenseId = null) {
       toast(err?.data?.detail || err.message || "Не удалось сохранить расход", "err");
     }
   };
+}
+
+async function updateExpenseStatus(expenseId, status) {
+  const venueId = getActiveVenueId();
+  await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(expenseId)}`, {
+    method: "PATCH",
+    body: { status },
+  });
+  toast("Статус расхода обновлён", "ok");
+  await loadExpenses();
 }
 
 function buildCatalogForm(kind) {

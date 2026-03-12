@@ -24,9 +24,9 @@ from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
 from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
 from app.services.signed_links import make_signed_token, verify_signed_token
-from app.services.finance.expenses import rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
+from app.services.finance.expenses import CONFIRMED_EXPENSE_STATUS, rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
 from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
-from app.services.finance.summary import get_finance_summary
+from app.services.finance.summary import get_finance_summary, get_monthly_finance_summary
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -56,6 +56,7 @@ from app.models.permission import Permission
 
 from app.auth.venue_permissions import require_venue_permission
 
+from app.services.tips import build_equal_tip_allocations
 from app.services.venues import create_venue
 from app.settings import settings
 
@@ -216,6 +217,7 @@ class ExpenseCreateIn(BaseModel):
     amount_minor: int = Field(..., ge=0)
     expense_date: date
     spread_months: int = Field(1, ge=1, le=120)
+    status: str = Field("DRAFT", min_length=5, max_length=16)
     comment: str | None = Field(default=None, max_length=1000)
 
 
@@ -226,6 +228,7 @@ class ExpenseUpdateIn(BaseModel):
     amount_minor: int | None = Field(default=None, ge=0)
     expense_date: date | None = None
     spread_months: int | None = Field(default=None, ge=1, le=120)
+    status: str | None = Field(default=None, min_length=5, max_length=16)
     comment: str | None = Field(default=None, max_length=1000)
 
 
@@ -240,6 +243,26 @@ class FinanceSummaryOut(BaseModel):
     refunds_minor: int
     profit_minor: int
     margin_bps: int | None = None
+
+
+class RevenueBreakdownOut(BaseModel):
+    ref_id: int
+    code: str | None = None
+    title: str
+    amount_minor: int
+
+
+class ExpenseCategorySummaryOut(BaseModel):
+    category_id: int
+    code: str | None = None
+    title: str
+    amount_minor: int
+
+
+class MonthlyFinanceSummaryOut(FinanceSummaryOut):
+    income_mode: str
+    revenue_breakdown: list[RevenueBreakdownOut]
+    expense_categories: list[ExpenseCategorySummaryOut]
 
 
 class AdjustmentCreateIn(BaseModel):
@@ -344,6 +367,24 @@ def _get_supplier_or_404(db: Session, *, venue_id: int, supplier_id: int) -> Sup
     return obj
 
 
+def _normalize_expense_status(value: str | None) -> str:
+    normalized = str(value or "DRAFT").strip().upper()
+    if normalized not in {"DRAFT", "CONFIRMED", "CANCELLED"}:
+        raise HTTPException(status_code=400, detail="Bad expense status")
+    return normalized
+
+
+def _month_bounds(month: str) -> tuple[date, date, date]:
+    try:
+        dt = datetime.strptime(month, "%Y-%m").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+    start = dt.replace(day=1)
+    _, last_day = calendar.monthrange(dt.year, dt.month)
+    end = dt.replace(day=last_day)
+    return start, end, start
+
+
 def _serialize_expense_allocation(allocation: ExpenseAllocation) -> dict:
     return {
         "id": allocation.id,
@@ -360,10 +401,13 @@ def _serialize_expense(
     category: ExpenseCategory | None = None,
     supplier: Supplier | None = None,
     allocations: list[ExpenseAllocation] | None = None,
+    recognized_month: date | None = None,
 ) -> dict:
     cat = category or getattr(expense, "category", None)
     sup = supplier or getattr(expense, "supplier", None)
     allocs = allocations if allocations is not None else list(getattr(expense, "allocations", []) or [])
+    recognized_allocs = [a for a in allocs if recognized_month is not None and a.month == recognized_month]
+    recognized_amount_minor = sum(int(a.amount_minor or 0) for a in recognized_allocs)
     return {
         "id": expense.id,
         "venue_id": expense.venue_id,
@@ -372,10 +416,14 @@ def _serialize_expense(
         "amount_minor": int(expense.amount_minor or 0),
         "expense_date": expense.expense_date.isoformat() if expense.expense_date else None,
         "spread_months": int(expense.spread_months or 1),
+        "status": _normalize_expense_status(getattr(expense, "status", "DRAFT")),
         "comment": expense.comment,
         "created_by_user_id": expense.created_by_user_id,
         "created_at": expense.created_at.isoformat() if expense.created_at else None,
         "updated_at": expense.updated_at.isoformat() if expense.updated_at else None,
+        "recognized_month": recognized_month.isoformat() if recognized_month else None,
+        "recognized_amount_minor_for_month": int(recognized_amount_minor),
+        "recognized_allocations": [_serialize_expense_allocation(a) for a in recognized_allocs],
         "category": {
             "id": cat.id,
             "code": cat.code,
@@ -1261,6 +1309,39 @@ def _build_dynamic_items(
     return out
 
 
+def _rebuild_tip_allocations_for_report(db: Session, *, venue_id: int, report: DailyReport, tips_enabled: bool, tips_split_mode: str) -> list[DailyReportTipAllocation]:
+    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == report.id))
+
+    if not tips_enabled or str(report.status or "").upper() != "CLOSED":
+        return []
+
+    tips_total = int(report.tips_total or 0)
+    if tips_total <= 0:
+        return []
+
+    if tips_split_mode != "EQUAL":
+        raise HTTPException(status_code=400, detail="Tips split mode not implemented yet")
+
+    assigned_user_ids = db.execute(
+        select(ShiftAssignment.member_user_id)
+        .join(Shift, Shift.id == ShiftAssignment.shift_id)
+        .where(
+            Shift.venue_id == venue_id,
+            Shift.date == report.date,
+            Shift.is_active.is_(True),
+        )
+    ).scalars().all()
+
+    allocations = build_equal_tip_allocations(
+        report_id=int(report.id),
+        tips_total=tips_total,
+        assigned_user_ids=assigned_user_ids,
+    )
+    for allocation in allocations:
+        db.add(allocation)
+    return allocations
+
+
 @router.post("/{venue_id}/reports")
 def upsert_daily_report(
     venue_id: int,
@@ -1389,6 +1470,13 @@ def upsert_daily_report(
     db.flush()
     if str(obj.status or "").upper() == "CLOSED":
         rebuild_revenue_entries_for_report(db=db, report=obj)
+        _rebuild_tip_allocations_for_report(
+            db,
+            venue_id=venue_id,
+            report=obj,
+            tips_enabled=tips_enabled,
+            tips_split_mode=str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL").upper(),
+        )
 
     db.commit()
     db.refresh(obj)
@@ -1563,40 +1651,6 @@ def close_daily_report(
         rep.comment = payload.comment
 
 
-    # --- tips allocation (optional) ---
-    # If venue has tips enabled, distribute daily report tips_total across all assigned members of this date.
-    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
-
-    if tips_enabled:
-        tips_total = int(rep.tips_total or 0)
-        if tips_total > 0:
-            if tips_split_mode != "EQUAL":
-                raise HTTPException(status_code=400, detail="Tips split mode not implemented yet")
-            assigned_user_ids = db.execute(
-                select(ShiftAssignment.member_user_id)
-                .join(Shift, Shift.id == ShiftAssignment.shift_id)
-                .where(
-                    Shift.venue_id == venue_id,
-                    Shift.date == report_date,
-                    Shift.is_active.is_(True),
-                )
-            ).scalars().all()
-            uniq = sorted({int(x) for x in assigned_user_ids if x is not None})
-            n = len(uniq)
-            if n > 0:
-                share = tips_total // n
-                remainder = tips_total - share * n
-                for i, uid in enumerate(uniq):
-                    amount = share + (1 if i < remainder else 0)
-                    db.add(
-                        DailyReportTipAllocation(
-                            report_id=rep.id,
-                            user_id=uid,
-                            amount=int(amount),
-                            split_mode="EQUAL",
-                        )
-                    )
-
     rep.status = "CLOSED"
     rep.closed_by_user_id = user.id
     rep.closed_at = datetime.utcnow()
@@ -1604,6 +1658,13 @@ def close_daily_report(
     rep.updated_at = datetime.utcnow()
 
     rebuild_revenue_entries_for_report(db=db, report=rep, values=values)
+    _rebuild_tip_allocations_for_report(
+        db,
+        venue_id=venue_id,
+        report=rep,
+        tips_enabled=tips_enabled,
+        tips_split_mode=tips_split_mode,
+    )
 
     db.commit()
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
@@ -1639,11 +1700,10 @@ def reopen_daily_report(
     rep.updated_by_user_id = user.id
     rep.updated_at = datetime.utcnow()
     delete_revenue_entries_for_report(db=db, report_id=rep.id)
+    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
     db.commit()
     return {"ok": True, "status": "DRAFT"}
 
-
-@router.get("/{venue_id}/reports/{report_date}/audit")
 
 # ---------- Revenue aggregation (Stage 2) ----------
 
@@ -1892,9 +1952,10 @@ def export_revenue(
     Supports either regular authenticated access or a signed short-lived token for
     opening the export in an external browser.
     """
-    if token:
+    token_value = token if isinstance(token, str) else None
+    if token_value:
         try:
-            payload = verify_signed_token(token)
+            payload = verify_signed_token(token_value)
         except Exception:
             raise HTTPException(status_code=401, detail="Invalid export token")
 
@@ -1938,6 +1999,7 @@ def export_revenue(
 
 
 
+@router.get("/{venue_id}/reports/{report_date}/audit")
 def list_daily_report_audit(
     venue_id: int,
     report_date: date,
@@ -4075,15 +4137,11 @@ def list_expenses(
         Supplier, Supplier.id == Expense.supplier_id
     ).where(Expense.venue_id == venue_id)
 
+    recognized_month = None
+    month_start = None
+    month_end = None
     if month:
-        try:
-            dt = datetime.strptime(month, "%Y-%m").date()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
-        start = dt.replace(day=1)
-        _, last_day = calendar.monthrange(dt.year, dt.month)
-        end = dt.replace(day=last_day)
-        stmt = stmt.where(Expense.expense_date >= start, Expense.expense_date <= end)
+        month_start, month_end, recognized_month = _month_bounds(month)
 
     if category_id is not None:
         stmt = stmt.where(Expense.category_id == category_id)
@@ -4094,7 +4152,15 @@ def list_expenses(
     result = []
     for expense, category, supplier in rows:
         allocations = list_expense_allocations(db=db, expense_id=expense.id)
-        result.append(_serialize_expense(expense, category, supplier, allocations))
+        status_norm = _normalize_expense_status(getattr(expense, "status", "DRAFT"))
+        if recognized_month is not None:
+            recognized_allocs = [a for a in allocations if a.month == recognized_month]
+            if status_norm == CONFIRMED_EXPENSE_STATUS:
+                if not recognized_allocs:
+                    continue
+            elif not (expense.expense_date and month_start <= expense.expense_date <= month_end):
+                continue
+        result.append(_serialize_expense(expense, category, supplier, allocations, recognized_month=recognized_month))
     return result
 
 
@@ -4117,6 +4183,7 @@ def create_expense(
         amount_minor=int(payload.amount_minor),
         expense_date=payload.expense_date,
         spread_months=int(payload.spread_months or 1),
+        status=_normalize_expense_status(payload.status),
         comment=(payload.comment or None),
         created_by_user_id=user.id,
         created_at=datetime.utcnow(),
@@ -4162,6 +4229,8 @@ def update_expense(
         obj.expense_date = payload.expense_date
     if payload.spread_months is not None:
         obj.spread_months = int(payload.spread_months)
+    if payload.status is not None:
+        obj.status = _normalize_expense_status(payload.status)
     if payload.comment is not None:
         obj.comment = payload.comment or None
     obj.updated_at = datetime.utcnow()
@@ -4212,6 +4281,28 @@ def get_venue_finance_summary(
             month=month,
             date_from=date_from,
             date_to=date_to,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/{venue_id}/summary/monthly", response_model=MonthlyFinanceSummaryOut)
+def get_venue_monthly_summary(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    income_mode: str = Query("PAYMENTS", description="PAYMENTS | DEPARTMENTS"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    try:
+        return get_monthly_finance_summary(
+            db=db,
+            venue_id=venue_id,
+            month=month,
+            income_mode=income_mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

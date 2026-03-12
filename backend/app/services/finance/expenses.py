@@ -6,6 +6,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, ExpenseAllocation
+
+
+CONFIRMED_EXPENSE_STATUS = "CONFIRMED"
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 
@@ -46,6 +49,9 @@ def rebuild_expense_allocations_for_expense(*, db: Session, expense: Expense) ->
 
     db.execute(delete(ExpenseAllocation).where(ExpenseAllocation.expense_id == int(expense.id)))
     delete_finance_entries_for_source(db=db, source_type="expense", source_id=int(expense.id))
+
+    if str(getattr(expense, "status", "DRAFT") or "DRAFT").upper() != CONFIRMED_EXPENSE_STATUS:
+        return []
 
     allocations: list[ExpenseAllocation] = []
     plan = build_expense_allocation_plan(

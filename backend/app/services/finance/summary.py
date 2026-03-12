@@ -6,7 +6,9 @@ import calendar
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import FinanceEntry
+from app.models import Expense, ExpenseAllocation, ExpenseCategory, FinanceEntry
+from app.services.finance.expenses import CONFIRMED_EXPENSE_STATUS
+from app.services.finance.revenue import compute_revenue_summary
 
 
 def _parse_month_yyyy_mm(month: str) -> tuple[date, date]:
@@ -80,4 +82,61 @@ def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None,
         "refunds_minor": refunds_minor,
         "profit_minor": profit_minor,
         "margin_bps": margin_bps,
+    }
+
+
+def get_monthly_finance_summary(*, db: Session, venue_id: int, month: str, income_mode: str = "PAYMENTS") -> dict:
+    period_start, period_end = resolve_finance_period(month, None, None)
+    base = get_finance_summary(db=db, venue_id=venue_id, month=month)
+
+    revenue = compute_revenue_summary(
+        venue_id=venue_id,
+        month=month,
+        date_from=None,
+        date_to=None,
+        mode=(income_mode or "PAYMENTS").lower(),
+        db=db,
+    )
+
+    expense_rows = db.execute(
+        select(
+            ExpenseCategory.id,
+            ExpenseCategory.code,
+            ExpenseCategory.title,
+            func.coalesce(func.sum(ExpenseAllocation.amount_minor), 0).label("amount_minor"),
+        )
+        .select_from(ExpenseAllocation)
+        .join(Expense, Expense.id == ExpenseAllocation.expense_id)
+        .join(ExpenseCategory, ExpenseCategory.id == Expense.category_id)
+        .where(
+            ExpenseAllocation.venue_id == int(venue_id),
+            ExpenseAllocation.month >= period_start,
+            ExpenseAllocation.month <= period_end,
+            Expense.status == CONFIRMED_EXPENSE_STATUS,
+        )
+        .group_by(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title)
+        .order_by(func.coalesce(func.sum(ExpenseAllocation.amount_minor), 0).desc(), ExpenseCategory.title.asc())
+    ).all()
+
+    return {
+        **base,
+        "income_mode": str(income_mode or "PAYMENTS").upper(),
+        "revenue_breakdown": [
+            {
+                "ref_id": int(row["ref_id"] if isinstance(row, dict) else row[0]),
+                "code": row["code"] if isinstance(row, dict) else row[1],
+                "title": row["title"] if isinstance(row, dict) else row[2],
+                "amount_minor": int((row["amount"] if isinstance(row, dict) else row[3]) or 0) * 100,
+            }
+            for row in revenue.get("rows", [])
+        ],
+        "expense_categories": [
+            {
+                "category_id": int(row[0]),
+                "code": row[1],
+                "title": row[2],
+                "amount_minor": int(row[3] or 0),
+            }
+            for row in expense_rows
+        ],
     }

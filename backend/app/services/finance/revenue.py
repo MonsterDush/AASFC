@@ -171,14 +171,25 @@ def compute_revenue_summary(*, venue_id: int, month: str | None, date_from: date
     catalog_rows = db.execute(
         select(Catalog.id, getattr(Catalog, "code", None), Catalog.title).where(Catalog.venue_id == int(venue_id))
     ).all()
-    catalog_map = {int(r[0]): r for r in catalog_rows}
+
+    def _row_value(row, idx: int, attr: str):
+        if hasattr(row, attr):
+            return getattr(row, attr)
+        return row[idx]
+
+    catalog_map = {int(_row_value(r, 0, "id")): r for r in catalog_rows}
 
     out_rows = []
     total = 0
-    for ref_id, amount in rows:
+    for row in rows:
+        if hasattr(row, "ref_id") and hasattr(row, "amount"):
+            ref_id = getattr(row, "ref_id")
+            amount = getattr(row, "amount")
+        else:
+            ref_id, amount = row
         cat = catalog_map.get(int(ref_id))
-        title = cat[2] if cat else f"ID {int(ref_id)}"
-        code = cat[1] if cat else None
+        title = _row_value(cat, 2, "title") if cat else f"ID {int(ref_id)}"
+        code = _row_value(cat, 1, "code") if cat else None
         amount_int = int(amount or 0)
         total += amount_int
         out_rows.append({"ref_id": int(ref_id), "code": code, "title": title, "amount": amount_int})
