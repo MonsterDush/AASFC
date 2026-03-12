@@ -6,7 +6,8 @@ import calendar
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.models import Department, Expense, ExpenseAllocation, ExpenseCategory, FinanceEntry, PaymentMethod
+from app.models import Expense, ExpenseAllocation, ExpenseCategory, FinanceEntry, PaymentMethod
+from app.services.finance.revenue import compute_revenue_summary
 
 
 def _parse_month_yyyy_mm(month: str) -> tuple[date, date]:
@@ -54,45 +55,22 @@ def _sum_amount(db: Session, *, venue_id: int, period_start: date, period_end: d
 
 
 def _group_revenue_breakdown(db: Session, *, venue_id: int, period_start: date, period_end: date, income_mode: str) -> list[dict]:
-    mode = str(income_mode or 'PAYMENTS').upper()
-    if mode == 'DEPARTMENTS':
-        rows = db.execute(
-            select(Department.id, Department.code, Department.title, func.coalesce(func.sum(FinanceEntry.amount_minor), 0))
-            .join(Department, Department.id == FinanceEntry.department_id)
-            .where(
-                FinanceEntry.venue_id == int(venue_id),
-                FinanceEntry.entry_date >= period_start,
-                FinanceEntry.entry_date <= period_end,
-                FinanceEntry.direction == 'INCOME',
-                FinanceEntry.kind == 'REVENUE',
-                FinanceEntry.department_id.is_not(None),
-            )
-            .group_by(Department.id, Department.code, Department.title)
-            .order_by(func.coalesce(func.sum(FinanceEntry.amount_minor), 0).desc(), Department.title.asc())
-        ).all()
-    else:
-        rows = db.execute(
-            select(PaymentMethod.id, PaymentMethod.code, PaymentMethod.title, func.coalesce(func.sum(FinanceEntry.amount_minor), 0))
-            .join(PaymentMethod, PaymentMethod.id == FinanceEntry.payment_method_id)
-            .where(
-                FinanceEntry.venue_id == int(venue_id),
-                FinanceEntry.entry_date >= period_start,
-                FinanceEntry.entry_date <= period_end,
-                FinanceEntry.direction == 'INCOME',
-                FinanceEntry.kind == 'REVENUE',
-                FinanceEntry.payment_method_id.is_not(None),
-            )
-            .group_by(PaymentMethod.id, PaymentMethod.code, PaymentMethod.title)
-            .order_by(func.coalesce(func.sum(FinanceEntry.amount_minor), 0).desc(), PaymentMethod.title.asc())
-        ).all()
+    summary = compute_revenue_summary(
+        venue_id=int(venue_id),
+        month=None,
+        date_from=period_start,
+        date_to=period_end,
+        mode='departments' if str(income_mode or 'PAYMENTS').upper() == 'DEPARTMENTS' else 'payments',
+        db=db,
+    )
     return [
         {
-            'ref_id': int(row[0]),
-            'code': row[1],
-            'title': row[2],
-            'amount_minor': int(row[3] or 0),
+            'ref_id': int(row['ref_id']),
+            'code': row.get('code'),
+            'title': row.get('title') or f"ID {int(row['ref_id'])}",
+            'amount_minor': int(row.get('amount') or 0) * 100,
         }
-        for row in rows
+        for row in (summary.get('rows') or [])
     ]
 
 

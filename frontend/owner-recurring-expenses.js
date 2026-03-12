@@ -279,7 +279,7 @@ function openRuleForm(ruleId = null) {
       end_date: String(fd.get("end_date") || "").trim() || null,
       day_of_month: Number(fd.get("day_of_month") || 1),
       spread_months: Number(fd.get("spread_months") || 1),
-      generation_mode,
+      generation_mode: generationMode,
       amount_minor: generationMode === "FIXED" ? parseMoneyToMinor(fd.get("amount")) : null,
       percent_bps: generationMode === "PERCENT" ? parseMoneyToMinor(fd.get("percent")) : null,
       description: String(fd.get("description") || "").trim() || null,

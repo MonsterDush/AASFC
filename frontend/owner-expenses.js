@@ -136,9 +136,15 @@ function syncToolbar() {
   const addExpenseBtn = document.getElementById("addExpenseBtn");
   const addCategoryBtn = document.getElementById("addCategoryBtn");
   const addSupplierBtn = document.getElementById("addSupplierBtn");
+  const openRecurringExpensesBtn = document.getElementById("openRecurringExpensesBtn");
+  const openExpenseCategoriesBtn = document.getElementById("openExpenseCategoriesBtn");
+  const openSuppliersBtn = document.getElementById("openSuppliersBtn");
   if (addExpenseBtn) addExpenseBtn.style.display = access.canEdit ? "" : "none";
   if (addCategoryBtn) addCategoryBtn.style.display = access.canManageCatalogs ? "" : "none";
   if (addSupplierBtn) addSupplierBtn.style.display = access.canManageCatalogs ? "" : "none";
+  if (openRecurringExpensesBtn) openRecurringExpensesBtn.style.display = access.canView ? "" : "none";
+  if (openExpenseCategoriesBtn) openExpenseCategoriesBtn.style.display = access.canManageCatalogs ? "" : "none";
+  if (openSuppliersBtn) openSuppliersBtn.style.display = access.canManageCatalogs ? "" : "none";
 }
 
 async function loadCatalogs() {
@@ -458,6 +464,14 @@ async function boot() {
 
   await loadAccess();
   syncToolbar();
+
+  const activeVenueId = getActiveVenueId();
+  const openRecurringExpensesBtn = document.getElementById("openRecurringExpensesBtn");
+  const openExpenseCategoriesBtn = document.getElementById("openExpenseCategoriesBtn");
+  const openSuppliersBtn = document.getElementById("openSuppliersBtn");
+  if (openRecurringExpensesBtn) openRecurringExpensesBtn.href = `/owner-recurring-expenses.html?venue_id=${encodeURIComponent(activeVenueId)}`;
+  if (openExpenseCategoriesBtn) openExpenseCategoriesBtn.href = `/owner-expense-categories.html?venue_id=${encodeURIComponent(activeVenueId)}`;
+  if (openSuppliersBtn) openSuppliersBtn.href = `/owner-suppliers.html?venue_id=${encodeURIComponent(activeVenueId)}`;
 
   state.month = params.get("month") || currentMonth();
   const monthPick = document.getElementById("expensesMonthPick");
