@@ -18,6 +18,7 @@ from app.models import (
     RecurringExpenseAccrual,
     RecurringExpenseRule,
 )
+from app.services.finance.expenses import backfill_missing_expense_recognition_entries
 from app.services.finance.recurring_expenses import get_daily_recurring_expense_summary
 
 
@@ -368,6 +369,7 @@ def _group_daily_point_expenses(db: Session, *, venue_id: int, target_date: date
 
 def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None, date_from: date | None = None, date_to: date | None = None) -> dict:
     period_start, period_end = resolve_finance_period(month, date_from, date_to)
+    backfill_missing_expense_recognition_entries(db=db, venue_id=venue_id)
 
     revenue_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REVENUE')
     expense_minor = _sum_expense_recognition_minor(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
@@ -413,6 +415,7 @@ def get_monthly_finance_summary(*, db: Session, venue_id: int, month: str | None
 
 
 def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, income_mode: str = 'PAYMENTS') -> dict:
+    backfill_missing_expense_recognition_entries(db=db, venue_id=venue_id)
     period_start = target_date
     period_end = target_date
     mode = str(income_mode or 'PAYMENTS').upper()

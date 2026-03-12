@@ -73,6 +73,59 @@ function fillSelectOptions(items, current, placeholder = "—") {
   ).join("");
 }
 
+
+function buildExpensesMonthLink(monthValue) {
+  const venueId = getActiveVenueId();
+  const qp = new URLSearchParams();
+  if (venueId) qp.set("venue_id", String(venueId));
+  if (monthValue) qp.set("month", String(monthValue));
+  return `/owner-expenses.html?${qp.toString()}`;
+}
+
+function renderGenerationResult() {
+  const card = document.getElementById("generationResultCard");
+  const hint = document.getElementById("generationResultHint");
+  const list = document.getElementById("generationResultList");
+  if (!card || !hint || !list) return;
+  const result = state.generationResult;
+  if (!result) {
+    card.style.display = "none";
+    hint.textContent = "—";
+    list.innerHTML = "";
+    return;
+  }
+  card.style.display = "";
+  const created = Array.isArray(result.created) ? result.created : [];
+  const skipped = Array.isArray(result.skipped) ? result.skipped : [];
+  hint.textContent = `Месяц ${result.month || state.month} · создано ${result.created_count || created.length} · пропущено ${result.skipped_count || skipped.length}`;
+
+  const parts = [];
+  if (created.length) {
+    parts.push(`<div class="mt-8"><b>Создано</b></div>`);
+    parts.push(created.map((item) => `
+      <div class="row" style="justify-content:space-between; gap:12px; align-items:flex-start; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06);">
+        <div>
+          <div><b>${esc(item.category?.title || item.comment || `Расход #${item.id}`)}</b></div>
+          <div class="muted mt-6">${esc(item.expense_date || "—")} · ${esc(item.status || "DRAFT")}</div>
+        </div>
+        <div style="text-align:right; white-space:nowrap;">${esc(fmtMinor(item.amount_minor || 0))}</div>
+      </div>`).join(""));
+  }
+  if (skipped.length) {
+    parts.push(`<div class="mt-12"><b>Пропущено</b></div>`);
+    parts.push(skipped.map((item) => `
+      <div class="row" style="justify-content:space-between; gap:12px; align-items:flex-start; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06);">
+        <div>
+          <div><b>${esc(item.title || `Правило #${item.rule_id}`)}</b></div>
+          <div class="muted mt-6">${esc(item.reason || "skipped")}</div>
+        </div>
+        <div class="muted" style="text-align:right; white-space:nowrap;">${item.expense_id ? `expense #${esc(item.expense_id)}` : ""}</div>
+      </div>`).join(""));
+  }
+  if (!parts.length) parts.push('<div class="muted">Изменений нет.</div>');
+  list.innerHTML = parts.join("");
+}
+
 function modeLabel(mode) {
   return String(mode || "FIXED").toUpperCase() === "PERCENT" ? "Процент" : "Фикс";
 }

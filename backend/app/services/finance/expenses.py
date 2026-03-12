@@ -5,7 +5,7 @@ from datetime import date
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Expense, ExpenseAllocation
+from app.models import Expense, ExpenseAllocation, ExpenseRecognitionEntry
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 from app.services.finance.recognition import (
     delete_expense_recognition_entries_for_expense,
@@ -111,3 +111,38 @@ def list_expense_allocations(*, db: Session, expense_id: int) -> list[ExpenseAll
             .order_by(ExpenseAllocation.month.asc(), ExpenseAllocation.id.asc())
         ).all()
     )
+
+
+
+def backfill_missing_expense_recognition_entries(*, db: Session, venue_id: int) -> dict:
+    rows = db.execute(
+        select(Expense)
+        .outerjoin(ExpenseRecognitionEntry, ExpenseRecognitionEntry.expense_id == Expense.id)
+        .where(
+            Expense.venue_id == int(venue_id),
+            Expense.status == 'CONFIRMED',
+            Expense.recurring_rule_id.is_(None),
+            ExpenseRecognitionEntry.id.is_(None),
+        )
+        .order_by(Expense.id.asc())
+    ).scalars().all()
+
+    rebuilt = 0
+    for expense in rows:
+        allocations = list(
+            db.scalars(
+                select(ExpenseAllocation)
+                .where(ExpenseAllocation.expense_id == int(expense.id))
+                .order_by(ExpenseAllocation.month.asc(), ExpenseAllocation.id.asc())
+            ).all()
+        )
+        if allocations:
+            rebuild_expense_recognition_entries_for_expense(db=db, expense=expense, allocations=allocations)
+        else:
+            rebuild_expense_allocations_for_expense(db=db, expense=expense)
+        rebuilt += 1
+    if rebuilt:
+        db.commit()
+    return {
+        'rebuilt': rebuilt,
+    }
