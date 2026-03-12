@@ -22,6 +22,12 @@ from .payment_transfers import (
     rebuild_payment_method_transfer_entries,
     delete_payment_method_transfer_entries,
 )
+from .recognition import (
+    build_daily_spread_plan,
+    build_expense_recognition_plan,
+    rebuild_expense_recognition_entries_for_expense,
+    delete_expense_recognition_entries_for_expense,
+)
 from .recurring_expenses import (
     calculate_rule_amount_minor,
     generate_draft_expenses_for_month,
@@ -62,4 +68,8 @@ __all__ = [
     "normalize_rule_fields",
     "parse_month_start",
     "replace_rule_payment_methods",
+    "build_daily_spread_plan",
+    "build_expense_recognition_plan",
+    "rebuild_expense_recognition_entries_for_expense",
+    "delete_expense_recognition_entries_for_expense",
 ]

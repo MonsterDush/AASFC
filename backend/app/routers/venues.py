@@ -29,7 +29,14 @@ from app.services.finance.revenue import rebuild_revenue_entries_for_report, del
 from app.services.finance.summary import get_day_finance_summary, get_finance_summary, get_monthly_finance_summary
 from app.services.finance.balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
 from app.services.finance.payment_transfers import rebuild_payment_method_transfer_entries, delete_payment_method_transfer_entries
-from app.services.finance.recurring_expenses import generate_draft_expenses_for_month, list_rule_payment_method_ids, normalize_rule_fields, replace_rule_payment_methods
+from app.services.finance.recurring_expenses import (
+    delete_daily_recurring_accruals_for_date,
+    generate_draft_expenses_for_month,
+    list_rule_payment_method_ids,
+    normalize_rule_fields,
+    replace_rule_payment_methods,
+    sync_daily_recurring_accruals_for_date,
+)
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -60,6 +67,7 @@ from app.models.balance_adjustment import BalanceAdjustment
 from app.models.payment_method_transfer import PaymentMethodTransfer
 from app.models.recurring_expense_rule import RecurringExpenseRule
 from app.models.recurring_expense_rule_payment_method import RecurringExpenseRulePaymentMethod
+from app.models.recurring_expense_accrual import RecurringExpenseAccrual
 from app.models.permission import Permission
 
 from app.auth.venue_permissions import require_venue_permission
@@ -1928,6 +1936,7 @@ def close_daily_report(
     rep.updated_at = datetime.utcnow()
 
     rebuild_revenue_entries_for_report(db=db, report=rep, values=values)
+    sync_daily_recurring_accruals_for_date(db=db, venue_id=venue_id, target_date=report_date)
 
     db.commit()
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
@@ -1964,6 +1973,7 @@ def reopen_daily_report(
     rep.updated_at = datetime.utcnow()
     delete_revenue_entries_for_report(db=db, report_id=rep.id)
     db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
+    delete_daily_recurring_accruals_for_date(db=db, venue_id=venue_id, target_date=report_date)
     db.commit()
     return {"ok": True, "status": "DRAFT"}
 
@@ -4402,12 +4412,21 @@ def list_expenses(
     ).where(Expense.venue_id == venue_id)
 
     recognized_month = None
+    period_start = None
+    period_end = None
     if month:
         try:
             recognized_month = datetime.strptime(month, "%Y-%m").date().replace(day=1)
         except ValueError:
             raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
-        stmt = stmt.join(ExpenseAllocation, ExpenseAllocation.expense_id == Expense.id).where(ExpenseAllocation.month == recognized_month)
+        _, last_day = calendar.monthrange(recognized_month.year, recognized_month.month)
+        period_start = recognized_month
+        period_end = recognized_month.replace(day=last_day)
+        stmt = stmt.outerjoin(ExpenseAllocation, ExpenseAllocation.expense_id == Expense.id).where(
+            (ExpenseAllocation.month == recognized_month)
+            | ((Expense.status != 'CONFIRMED') & (Expense.generated_for_month == recognized_month))
+            | ((Expense.status != 'CONFIRMED') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
+        )
 
     if category_id is not None:
         stmt = stmt.where(Expense.category_id == category_id)
@@ -5003,6 +5022,7 @@ def delete_recurring_expense_rule(
         .where(Expense.venue_id == venue_id, Expense.recurring_rule_id == int(rule.id))
         .values(recurring_rule_id=None)
     )
+    db.execute(delete(RecurringExpenseAccrual).where(RecurringExpenseAccrual.rule_id == int(rule.id)))
     db.delete(rule)
     db.commit()
     return {"ok": True}

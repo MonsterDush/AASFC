@@ -6,7 +6,16 @@ import calendar
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.models import DailyReport, DailyReportValue, Expense, ExpenseCategory, PaymentMethod, RecurringExpenseRule, RecurringExpenseRulePaymentMethod
+from app.models import (
+    DailyReport,
+    DailyReportValue,
+    Expense,
+    ExpenseCategory,
+    PaymentMethod,
+    RecurringExpenseAccrual,
+    RecurringExpenseRule,
+    RecurringExpenseRulePaymentMethod,
+)
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense
 
 
@@ -167,11 +176,11 @@ def _fixed_rule_daily_minor(*, rule: RecurringExpenseRule, target_date: date) ->
     total_minor = int(rule.amount_minor or 0)
     base = total_minor // active_days
     remainder = total_minor % active_days
-    day_index = (target_date - active_start).days + 1
-    return base + (1 if day_index <= remainder else 0)
+    day_index = (target_date - active_start).days
+    return base + (1 if day_index < remainder else 0)
 
 
-def _percent_rule_daily_minor(*, db: Session, rule: RecurringExpenseRule, target_date: date) -> int:
+def _percent_rule_daily_minor(*, db: Session, rule: RecurringExpenseRule, target_date: date) -> tuple[int, int]:
     payment_method_ids = list_rule_payment_method_ids(db=db, rule_id=rule.id)
     base_minor = _sum_closed_payment_base_minor(
         db=db,
@@ -181,51 +190,125 @@ def _percent_rule_daily_minor(*, db: Session, rule: RecurringExpenseRule, target
         payment_method_ids=payment_method_ids,
     )
     percent_bps = int(rule.percent_bps or 0)
-    return int((base_minor * percent_bps + 5000) // 10000)
+    amount_minor = int((base_minor * percent_bps + 5000) // 10000)
+    return base_minor, amount_minor
 
 
-def get_daily_recurring_expense_summary(*, db: Session, venue_id: int, target_date: date) -> dict:
+def sync_daily_recurring_accruals_for_date(*, db: Session, venue_id: int, target_date: date) -> dict:
     rules = db.execute(
         select(RecurringExpenseRule)
         .where(RecurringExpenseRule.venue_id == int(venue_id))
-        .order_by(RecurringExpenseRule.title.asc(), RecurringExpenseRule.id.asc())
+        .order_by(RecurringExpenseRule.id.asc())
     ).scalars().all()
-    category_ids = sorted({int(rule.category_id) for rule in rules if rule.category_id is not None})
-    category_map = {}
-    if category_ids:
-        category_rows = db.execute(
-            select(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title)
-            .where(ExpenseCategory.id.in_(category_ids))
-        ).all()
-        category_map = {int(row[0]): {'code': row[1], 'title': row[2]} for row in category_rows}
 
-    rows: list[dict] = []
-    total_minor = 0
+    created = 0
+    updated = 0
+    deleted = 0
+    kept_ids: set[int] = set()
+
     for rule in rules:
         if not rule_applies_to_date(rule=rule, target_date=target_date):
             continue
         mode = str(rule.generation_mode or 'FIXED').upper()
+        basis_minor = None
         if mode == 'FIXED':
             amount_minor = _fixed_rule_daily_minor(rule=rule, target_date=target_date)
         else:
-            amount_minor = _percent_rule_daily_minor(db=db, rule=rule, target_date=target_date)
-        if amount_minor <= 0:
-            continue
-        category = category_map.get(int(rule.category_id), {})
-        rows.append(
-            {
-                'title': rule.title,
-                'code': category.get('code'),
-                'subtitle': category.get('title') or ('Фиксированный режим' if mode == 'FIXED' else 'Процентный режим'),
-                'amount_minor': int(amount_minor),
-            }
-        )
-        total_minor += int(amount_minor)
+            basis_minor, amount_minor = _percent_rule_daily_minor(db=db, rule=rule, target_date=target_date)
 
-    rows.sort(key=lambda item: (-int(item['amount_minor']), str(item['title'])))
+        existing = db.execute(
+            select(RecurringExpenseAccrual).where(
+                RecurringExpenseAccrual.rule_id == int(rule.id),
+                RecurringExpenseAccrual.accrual_date == target_date,
+            )
+        ).scalar_one_or_none()
+
+        if amount_minor <= 0:
+            if existing is not None:
+                db.delete(existing)
+                deleted += 1
+            continue
+
+        meta_json = {
+            'generation_mode': mode,
+            'payment_method_id': int(rule.payment_method_id) if rule.payment_method_id is not None else None,
+            'category_id': int(rule.category_id),
+            'supplier_id': int(rule.supplier_id) if rule.supplier_id is not None else None,
+        }
+        if basis_minor is not None:
+            meta_json['basis_minor'] = int(basis_minor)
+            meta_json['basis_payment_method_ids'] = list_rule_payment_method_ids(db=db, rule_id=rule.id)
+
+        if existing is None:
+            db.add(
+                RecurringExpenseAccrual(
+                    rule_id=int(rule.id),
+                    venue_id=int(venue_id),
+                    accrual_date=target_date,
+                    amount_minor=int(amount_minor),
+                    basis_minor=int(basis_minor) if basis_minor is not None else None,
+                    meta_json=meta_json,
+                    created_at=datetime.utcnow(),
+                )
+            )
+            created += 1
+        else:
+            existing.amount_minor = int(amount_minor)
+            existing.basis_minor = int(basis_minor) if basis_minor is not None else None
+            existing.meta_json = meta_json
+            existing.updated_at = datetime.utcnow()
+            updated += 1
+            kept_ids.add(int(existing.id))
+
     return {
         'date': target_date,
-        'rows': rows,
+        'created': created,
+        'updated': updated,
+        'deleted': deleted,
+    }
+
+
+def delete_daily_recurring_accruals_for_date(*, db: Session, venue_id: int, target_date: date) -> int:
+    deleted = db.execute(
+        delete(RecurringExpenseAccrual).where(
+            RecurringExpenseAccrual.venue_id == int(venue_id),
+            RecurringExpenseAccrual.accrual_date == target_date,
+        )
+    )
+    return int(deleted.rowcount or 0)
+
+
+def get_daily_recurring_expense_summary(*, db: Session, venue_id: int, target_date: date) -> dict:
+    rows = db.execute(
+        select(
+            RecurringExpenseRule.title,
+            ExpenseCategory.code,
+            ExpenseCategory.title,
+            func.coalesce(func.sum(RecurringExpenseAccrual.amount_minor), 0),
+        )
+        .select_from(RecurringExpenseAccrual)
+        .join(RecurringExpenseRule, RecurringExpenseRule.id == RecurringExpenseAccrual.rule_id)
+        .join(ExpenseCategory, ExpenseCategory.id == RecurringExpenseRule.category_id)
+        .where(
+            RecurringExpenseAccrual.venue_id == int(venue_id),
+            RecurringExpenseAccrual.accrual_date == target_date,
+        )
+        .group_by(RecurringExpenseRule.title, ExpenseCategory.code, ExpenseCategory.title)
+        .order_by(func.coalesce(func.sum(RecurringExpenseAccrual.amount_minor), 0).desc(), RecurringExpenseRule.title.asc())
+    ).all()
+    out = [
+        {
+            'title': row[0],
+            'code': row[1],
+            'subtitle': row[2],
+            'amount_minor': int(row[3] or 0),
+        }
+        for row in rows
+    ]
+    total_minor = int(sum(int(item['amount_minor']) for item in out))
+    return {
+        'date': target_date,
+        'rows': out,
         'total_minor': int(total_minor),
     }
 

@@ -6,7 +6,18 @@ import calendar
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import DailyReport, DailyReportValue, Department, Expense, ExpenseAllocation, ExpenseCategory, FinanceEntry, PaymentMethod
+from app.models import (
+    DailyReport,
+    DailyReportValue,
+    Department,
+    Expense,
+    ExpenseCategory,
+    ExpenseRecognitionEntry,
+    FinanceEntry,
+    PaymentMethod,
+    RecurringExpenseAccrual,
+    RecurringExpenseRule,
+)
 from app.services.finance.recurring_expenses import get_daily_recurring_expense_summary
 
 
@@ -116,30 +127,89 @@ def _group_revenue_breakdown(db: Session, *, venue_id: int, period_start: date, 
     return out
 
 
+def _sum_expense_recognition_minor(db: Session, *, venue_id: int, period_start: date, period_end: date) -> int:
+    manual_minor = int(
+        db.execute(
+            select(func.coalesce(func.sum(ExpenseRecognitionEntry.amount_minor), 0))
+            .select_from(ExpenseRecognitionEntry)
+            .join(Expense, Expense.id == ExpenseRecognitionEntry.expense_id)
+            .where(
+                ExpenseRecognitionEntry.venue_id == int(venue_id),
+                ExpenseRecognitionEntry.recognition_date >= period_start,
+                ExpenseRecognitionEntry.recognition_date <= period_end,
+                Expense.status == 'CONFIRMED',
+                Expense.recurring_rule_id.is_(None),
+            )
+        ).scalar()
+        or 0
+    )
+    recurring_minor = int(
+        db.execute(
+            select(func.coalesce(func.sum(RecurringExpenseAccrual.amount_minor), 0)).where(
+                RecurringExpenseAccrual.venue_id == int(venue_id),
+                RecurringExpenseAccrual.accrual_date >= period_start,
+                RecurringExpenseAccrual.accrual_date <= period_end,
+            )
+        ).scalar()
+        or 0
+    )
+    return manual_minor + recurring_minor
+
+
 def _group_expense_categories(db: Session, *, venue_id: int, period_start: date, period_end: date) -> list[dict]:
-    rows = db.execute(
-        select(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title, func.coalesce(func.sum(ExpenseAllocation.amount_minor), 0))
-        .join(Expense, Expense.category_id == ExpenseCategory.id)
-        .join(ExpenseAllocation, ExpenseAllocation.expense_id == Expense.id)
+    manual_rows = db.execute(
+        select(
+            ExpenseCategory.id,
+            ExpenseCategory.code,
+            ExpenseCategory.title,
+            func.coalesce(func.sum(ExpenseRecognitionEntry.amount_minor), 0),
+        )
+        .select_from(ExpenseRecognitionEntry)
+        .join(Expense, Expense.id == ExpenseRecognitionEntry.expense_id)
+        .join(ExpenseCategory, ExpenseCategory.id == Expense.category_id)
         .where(
-            Expense.venue_id == int(venue_id),
-            ExpenseAllocation.month >= period_start.replace(day=1),
-            ExpenseAllocation.month <= period_end.replace(day=1),
+            ExpenseRecognitionEntry.venue_id == int(venue_id),
+            ExpenseRecognitionEntry.recognition_date >= period_start,
+            ExpenseRecognitionEntry.recognition_date <= period_end,
             Expense.status == 'CONFIRMED',
+            Expense.recurring_rule_id.is_(None),
         )
         .group_by(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title)
-        .order_by(func.coalesce(func.sum(ExpenseAllocation.amount_minor), 0).desc(), ExpenseCategory.title.asc())
     ).all()
-    return [
-        {
-            'category_id': int(row[0]),
+
+    recurring_rows = db.execute(
+        select(
+            ExpenseCategory.id,
+            ExpenseCategory.code,
+            ExpenseCategory.title,
+            func.coalesce(func.sum(RecurringExpenseAccrual.amount_minor), 0),
+        )
+        .select_from(RecurringExpenseAccrual)
+        .join(RecurringExpenseRule, RecurringExpenseRule.id == RecurringExpenseAccrual.rule_id)
+        .join(ExpenseCategory, ExpenseCategory.id == RecurringExpenseRule.category_id)
+        .where(
+            RecurringExpenseAccrual.venue_id == int(venue_id),
+            RecurringExpenseAccrual.accrual_date >= period_start,
+            RecurringExpenseAccrual.accrual_date <= period_end,
+        )
+        .group_by(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title)
+    ).all()
+
+    acc: dict[int, dict] = {}
+    for row in list(manual_rows) + list(recurring_rows):
+        category_id = int(row[0])
+        item = acc.setdefault(category_id, {
+            'category_id': category_id,
             'code': row[1],
             'title': row[2],
             'subtitle': None,
-            'amount_minor': int(row[3] or 0),
-        }
-        for row in rows
-    ]
+            'amount_minor': 0,
+        })
+        item['amount_minor'] += int(row[3] or 0)
+
+    out = list(acc.values())
+    out.sort(key=lambda item: (-int(item['amount_minor']), str(item['title'])))
+    return out
 
 
 def _sum_closed_report_payment_minor(
@@ -266,16 +336,23 @@ def _group_payment_method_balances(db: Session, *, venue_id: int, period_start: 
 
 def _group_daily_point_expenses(db: Session, *, venue_id: int, target_date: date) -> list[dict]:
     rows = db.execute(
-        select(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title, func.coalesce(func.sum(Expense.amount_minor), 0))
-        .join(Expense, Expense.category_id == ExpenseCategory.id)
+        select(
+            ExpenseCategory.id,
+            ExpenseCategory.code,
+            ExpenseCategory.title,
+            func.coalesce(func.sum(ExpenseRecognitionEntry.amount_minor), 0),
+        )
+        .select_from(ExpenseRecognitionEntry)
+        .join(Expense, Expense.id == ExpenseRecognitionEntry.expense_id)
+        .join(ExpenseCategory, ExpenseCategory.id == Expense.category_id)
         .where(
-            Expense.venue_id == int(venue_id),
+            ExpenseRecognitionEntry.venue_id == int(venue_id),
+            ExpenseRecognitionEntry.recognition_date == target_date,
             Expense.status == 'CONFIRMED',
-            Expense.expense_date == target_date,
             Expense.recurring_rule_id.is_(None),
         )
         .group_by(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title)
-        .order_by(func.coalesce(func.sum(Expense.amount_minor), 0).desc(), ExpenseCategory.title.asc())
+        .order_by(func.coalesce(func.sum(ExpenseRecognitionEntry.amount_minor), 0).desc(), ExpenseCategory.title.asc())
     ).all()
     return [
         {
@@ -293,7 +370,7 @@ def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None,
     period_start, period_end = resolve_finance_period(month, date_from, date_to)
 
     revenue_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REVENUE')
-    expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='EXPENSE')
+    expense_minor = _sum_expense_recognition_minor(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
     payroll_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='PAYROLL')
     adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='ADJUSTMENT')
     adjustment_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='ADJUSTMENT')

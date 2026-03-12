@@ -30,6 +30,8 @@ from .balance_adjustment import BalanceAdjustment
 from .recurring_expense_rule import RecurringExpenseRule
 from .recurring_expense_rule_payment_method import RecurringExpenseRulePaymentMethod
 from .payment_method_transfer import PaymentMethodTransfer
+from .expense_recognition_entry import ExpenseRecognitionEntry
+from .recurring_expense_accrual import RecurringExpenseAccrual
 
 __all__ = [
     "SystemRole",
@@ -65,4 +67,6 @@ __all__ = [
     "RecurringExpenseRule",
     "RecurringExpenseRulePaymentMethod",
     "PaymentMethodTransfer",
+    "ExpenseRecognitionEntry",
+    "RecurringExpenseAccrual",
 ]
