@@ -28,33 +28,41 @@ jobs:
             set -e
 
             if [ "${{ github.ref_name }}" = "develop" ]; then
-              cd /var/www/axelio/dev/repo
+              APP_ROOT=/var/www/axelio/dev
+              REPO_DIR=$APP_ROOT/repo
+              BACKEND_DIR=$REPO_DIR/backend
+              VENV_BIN=$APP_ROOT/venv/bin
+
+              cd "$REPO_DIR"
               git fetch origin
               git checkout develop
               git pull origin develop
 
-              cd /var/www/axelio/dev
-              ./venv/bin/pip install -r repo/backend/requirements.txt
+              "$VENV_BIN/pip" install -r "$BACKEND_DIR/requirements.txt"
 
-              cd repo/backend
-              ../venv/bin/alembic upgrade head
-              ../venv/bin/python -m app.core.sync_permissions
+              cd "$BACKEND_DIR"
+              "$VENV_BIN/alembic" upgrade head
+              "$VENV_BIN/python" -m app.core.sync_permissions
 
               sudo systemctl restart axelio-api-dev
               sudo systemctl reload nginx
               echo "Deployed develop -> dev"
             else
-              cd /var/www/axelio/prod/repo
+              APP_ROOT=/var/www/axelio/prod
+              REPO_DIR=$APP_ROOT/repo
+              BACKEND_DIR=$REPO_DIR/backend
+              VENV_BIN=$APP_ROOT/venv/bin
+
+              cd "$REPO_DIR"
               git fetch origin
               git checkout main
               git pull origin main
 
-              cd /var/www/axelio/prod
-              ./venv/bin/pip install -r repo/backend/requirements.txt
+              "$VENV_BIN/pip" install -r "$BACKEND_DIR/requirements.txt"
 
-              cd repo/backend
-              ../venv/bin/alembic upgrade head
-              ../venv/bin/python -m app.core.sync_permissions
+              cd "$BACKEND_DIR"
+              "$VENV_BIN/alembic" upgrade head
+              "$VENV_BIN/python" -m app.core.sync_permissions
 
               sudo systemctl restart axelio-api-prod
               sudo systemctl reload nginx
