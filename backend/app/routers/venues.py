@@ -28,6 +28,7 @@ from app.services.finance.expenses import rebuild_expense_allocations_for_expens
 from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
 from app.services.finance.summary import get_finance_summary, get_monthly_finance_summary
 from app.services.finance.balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
+from app.services.finance.payment_transfers import rebuild_payment_method_transfer_entries, delete_payment_method_transfer_entries
 from app.services.finance.recurring_expenses import generate_draft_expenses_for_month, list_rule_payment_method_ids, normalize_rule_fields, replace_rule_payment_methods
 
 from app.models.user import User
@@ -54,7 +55,9 @@ from app.models.expense_category import ExpenseCategory
 from app.models.supplier import Supplier
 from app.models.expense import Expense
 from app.models.expense_allocation import ExpenseAllocation
+from app.models.finance_entry import FinanceEntry
 from app.models.balance_adjustment import BalanceAdjustment
+from app.models.payment_method_transfer import PaymentMethodTransfer
 from app.models.recurring_expense_rule import RecurringExpenseRule
 from app.models.recurring_expense_rule_payment_method import RecurringExpenseRulePaymentMethod
 from app.models.permission import Permission
@@ -292,6 +295,24 @@ class BalanceAdjustmentUpdateIn(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
 
 
+class PaymentMethodTransferCreateIn(BaseModel):
+    from_payment_method_id: int = Field(..., gt=0)
+    to_payment_method_id: int = Field(..., gt=0)
+    transfer_date: date
+    amount_minor: int = Field(..., gt=0)
+    status: str = Field('CONFIRMED', min_length=5, max_length=16)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class PaymentMethodTransferUpdateIn(BaseModel):
+    from_payment_method_id: int | None = Field(default=None, gt=0)
+    to_payment_method_id: int | None = Field(default=None, gt=0)
+    transfer_date: date | None = None
+    amount_minor: int | None = Field(default=None, gt=0)
+    status: str | None = Field(default=None, min_length=5, max_length=16)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
 class RecurringExpenseRuleCreateIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     category_id: int = Field(..., gt=0)
@@ -521,6 +542,69 @@ def _serialize_balance_adjustment(adjustment: BalanceAdjustment, payment_method:
     }
 
 
+def _serialize_payment_method_transfer(
+    transfer: PaymentMethodTransfer,
+    from_payment_method: PaymentMethod | None = None,
+    to_payment_method: PaymentMethod | None = None,
+) -> dict:
+    from_pm = from_payment_method or getattr(transfer, 'from_payment_method', None)
+    to_pm = to_payment_method or getattr(transfer, 'to_payment_method', None)
+    return {
+        'id': transfer.id,
+        'venue_id': transfer.venue_id,
+        'from_payment_method_id': transfer.from_payment_method_id,
+        'to_payment_method_id': transfer.to_payment_method_id,
+        'transfer_date': transfer.transfer_date.isoformat() if transfer.transfer_date else None,
+        'amount_minor': int(transfer.amount_minor or 0),
+        'status': str(getattr(transfer, 'status', 'CONFIRMED') or 'CONFIRMED').upper(),
+        'comment': transfer.comment,
+        'created_by_user_id': transfer.created_by_user_id,
+        'created_at': transfer.created_at.isoformat() if transfer.created_at else None,
+        'updated_at': transfer.updated_at.isoformat() if transfer.updated_at else None,
+        'from_payment_method': {
+            'id': from_pm.id,
+            'code': from_pm.code,
+            'title': from_pm.title,
+        } if from_pm is not None else None,
+        'to_payment_method': {
+            'id': to_pm.id,
+            'code': to_pm.code,
+            'title': to_pm.title,
+        } if to_pm is not None else None,
+    }
+
+
+def _serialize_finance_entry(
+    entry: FinanceEntry,
+    payment_method: PaymentMethod | None = None,
+    department: Department | None = None,
+) -> dict:
+    pm = payment_method or getattr(entry, 'payment_method', None)
+    dept = department or getattr(entry, 'department', None)
+    return {
+        'id': entry.id,
+        'venue_id': entry.venue_id,
+        'entry_date': entry.entry_date.isoformat() if entry.entry_date else None,
+        'amount_minor': int(entry.amount_minor or 0),
+        'direction': str(entry.direction or '').upper(),
+        'kind': str(entry.kind or '').upper(),
+        'source_type': str(entry.source_type or '').lower(),
+        'source_id': int(entry.source_id) if entry.source_id is not None else None,
+        'meta_json': entry.meta_json or None,
+        'payment_method': {
+            'id': pm.id,
+            'code': pm.code,
+            'title': pm.title,
+        } if pm is not None else None,
+        'department': {
+            'id': dept.id,
+            'code': dept.code,
+            'title': dept.title,
+        } if dept is not None else None,
+        'created_at': entry.created_at.isoformat() if entry.created_at else None,
+    }
+
+
 def _serialize_recurring_expense_rule(
     rule: RecurringExpenseRule,
     category: ExpenseCategory | None = None,
@@ -587,6 +671,32 @@ def _require_recurring_expenses_manage(db: Session, *, venue_id: int, user: User
         return
     try:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="RECURRING_EXPENSES_MANAGE")
+        return
+    except HTTPException:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+
+
+def _require_finance_ledger_view(db: Session, *, venue_id: int, user: User) -> None:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="FINANCE_LEDGER_VIEW")
+        return
+    except HTTPException:
+        pass
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="REVENUE_VIEW")
+        return
+    except HTTPException:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+
+
+
+def _require_payment_transfers_manage(db: Session, *, venue_id: int, user: User) -> None:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYMENT_TRANSFERS_MANAGE")
         return
     except HTTPException:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
@@ -4526,6 +4636,179 @@ def delete_balance_adjustment(
     if obj is None:
         raise HTTPException(status_code=404, detail="Balance adjustment not found")
     delete_balance_adjustment_entries(db=db, adjustment_id=obj.id)
+    db.delete(obj)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/{venue_id}/finance/entries")
+def list_finance_entries(
+    venue_id: int,
+    month: str | None = Query(default=None),
+    payment_method_id: int | None = Query(default=None),
+    direction: str | None = Query(default=None),
+    kind: str | None = Query(default=None),
+    source_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_finance_ledger_view(db, venue_id=venue_id, user=user)
+
+    stmt = select(FinanceEntry, PaymentMethod, Department).outerjoin(
+        PaymentMethod, PaymentMethod.id == FinanceEntry.payment_method_id
+    ).outerjoin(
+        Department, Department.id == FinanceEntry.department_id
+    ).where(FinanceEntry.venue_id == venue_id)
+
+    if month:
+        try:
+            dt = datetime.strptime(month, "%Y-%m").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+        start = dt.replace(day=1)
+        _, last_day = calendar.monthrange(dt.year, dt.month)
+        end = dt.replace(day=last_day)
+        stmt = stmt.where(FinanceEntry.entry_date >= start, FinanceEntry.entry_date <= end)
+
+    if payment_method_id is not None:
+        stmt = stmt.where(FinanceEntry.payment_method_id == int(payment_method_id))
+    if direction:
+        stmt = stmt.where(FinanceEntry.direction == str(direction).upper())
+    if kind:
+        stmt = stmt.where(FinanceEntry.kind == str(kind).upper())
+    if source_type:
+        stmt = stmt.where(FinanceEntry.source_type == str(source_type).lower())
+
+    rows = db.execute(stmt.order_by(FinanceEntry.entry_date.desc(), FinanceEntry.id.desc())).all()
+    return [_serialize_finance_entry(entry, payment_method, department) for entry, payment_method, department in rows]
+
+
+@router.get("/{venue_id}/payment-method-transfers")
+def list_payment_method_transfers(
+    venue_id: int,
+    month: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_finance_ledger_view(db, venue_id=venue_id, user=user)
+
+    from_pm = PaymentMethod.__table__.alias('from_pm')
+    to_pm = PaymentMethod.__table__.alias('to_pm')
+    stmt = select(PaymentMethodTransfer, from_pm.c.id, from_pm.c.code, from_pm.c.title, to_pm.c.id, to_pm.c.code, to_pm.c.title).join(
+        from_pm, from_pm.c.id == PaymentMethodTransfer.from_payment_method_id
+    ).join(
+        to_pm, to_pm.c.id == PaymentMethodTransfer.to_payment_method_id
+    ).where(PaymentMethodTransfer.venue_id == venue_id)
+
+    if month:
+        try:
+            dt = datetime.strptime(month, "%Y-%m").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+        start = dt.replace(day=1)
+        _, last_day = calendar.monthrange(dt.year, dt.month)
+        end = dt.replace(day=last_day)
+        stmt = stmt.where(PaymentMethodTransfer.transfer_date >= start, PaymentMethodTransfer.transfer_date <= end)
+
+    rows = db.execute(stmt.order_by(PaymentMethodTransfer.transfer_date.desc(), PaymentMethodTransfer.id.desc())).all()
+    out = []
+    for row in rows:
+        transfer = row[0]
+        from_payment_method = type('PM', (), {'id': row[1], 'code': row[2], 'title': row[3]})()
+        to_payment_method = type('PM', (), {'id': row[4], 'code': row[5], 'title': row[6]})()
+        out.append(_serialize_payment_method_transfer(transfer, from_payment_method, to_payment_method))
+    return out
+
+
+@router.post("/{venue_id}/payment-method-transfers")
+def create_payment_method_transfer(
+    venue_id: int,
+    payload: PaymentMethodTransferCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_payment_transfers_manage(db, venue_id=venue_id, user=user)
+    from_payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.from_payment_method_id)
+    to_payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.to_payment_method_id)
+    if int(payload.from_payment_method_id) == int(payload.to_payment_method_id):
+        raise HTTPException(status_code=400, detail="Transfer methods must be different")
+
+    obj = PaymentMethodTransfer(
+        venue_id=venue_id,
+        from_payment_method_id=int(payload.from_payment_method_id),
+        to_payment_method_id=int(payload.to_payment_method_id),
+        transfer_date=payload.transfer_date,
+        amount_minor=int(payload.amount_minor),
+        status=str(payload.status or 'CONFIRMED').upper(),
+        comment=(payload.comment or None),
+        created_by_user_id=user.id,
+        created_at=datetime.utcnow(),
+    )
+    db.add(obj)
+    db.flush()
+    rebuild_payment_method_transfer_entries(db=db, transfer=obj)
+    db.commit()
+    db.refresh(obj)
+    return _serialize_payment_method_transfer(obj, from_payment_method, to_payment_method)
+
+
+@router.patch("/{venue_id}/payment-method-transfers/{transfer_id}")
+def update_payment_method_transfer(
+    venue_id: int,
+    transfer_id: int,
+    payload: PaymentMethodTransferUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_payment_transfers_manage(db, venue_id=venue_id, user=user)
+    obj = db.execute(
+        select(PaymentMethodTransfer).where(PaymentMethodTransfer.id == transfer_id, PaymentMethodTransfer.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Payment method transfer not found")
+
+    if payload.from_payment_method_id is not None:
+        _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.from_payment_method_id)
+        obj.from_payment_method_id = int(payload.from_payment_method_id)
+    if payload.to_payment_method_id is not None:
+        _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.to_payment_method_id)
+        obj.to_payment_method_id = int(payload.to_payment_method_id)
+    if int(obj.from_payment_method_id) == int(obj.to_payment_method_id):
+        raise HTTPException(status_code=400, detail="Transfer methods must be different")
+    if payload.transfer_date is not None:
+        obj.transfer_date = payload.transfer_date
+    if payload.amount_minor is not None:
+        obj.amount_minor = int(payload.amount_minor)
+    if payload.status is not None:
+        obj.status = str(payload.status or 'CONFIRMED').upper()
+    if payload.comment is not None:
+        obj.comment = payload.comment or None
+    obj.updated_at = datetime.utcnow()
+
+    rebuild_payment_method_transfer_entries(db=db, transfer=obj)
+    db.commit()
+    db.refresh(obj)
+    from_payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.from_payment_method_id)
+    to_payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.to_payment_method_id)
+    return _serialize_payment_method_transfer(obj, from_payment_method, to_payment_method)
+
+
+@router.delete("/{venue_id}/payment-method-transfers/{transfer_id}")
+def delete_payment_method_transfer(
+    venue_id: int,
+    transfer_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_payment_transfers_manage(db, venue_id=venue_id, user=user)
+    obj = db.execute(
+        select(PaymentMethodTransfer).where(PaymentMethodTransfer.id == transfer_id, PaymentMethodTransfer.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Payment method transfer not found")
+    delete_payment_method_transfer_entries(db=db, transfer_id=obj.id)
     db.delete(obj)
     db.commit()
     return {"ok": True}
