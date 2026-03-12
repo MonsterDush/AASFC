@@ -144,12 +144,14 @@ function syncToolbar() {
 async function loadCatalogs() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
-  const [categories, suppliers] = await Promise.all([
+  const [categories, suppliers, paymentMethods] = await Promise.all([
     api(`/venues/${encodeURIComponent(venueId)}/expense-categories`),
     api(`/venues/${encodeURIComponent(venueId)}/suppliers`),
+    api(`/venues/${encodeURIComponent(venueId)}/payment-methods`).catch(() => []),
   ]);
   state.categories = Array.isArray(categories) ? categories : [];
   state.suppliers = Array.isArray(suppliers) ? suppliers : [];
+  state.paymentMethods = Array.isArray(paymentMethods) ? paymentMethods : [];
 
   fillSelect(document.getElementById("expenseCategoryFilter"), state.categories, { placeholder: "Все категории" });
   fillSelect(document.getElementById("expenseSupplierFilter"), state.suppliers, { placeholder: "Все поставщики" });
@@ -218,7 +220,7 @@ function renderExpenses() {
             <div class="expense-row__title">${esc(item.category?.title || "Без категории")}</div>
             <span class="badge">${esc(statusLabel(status))}</span>
           </div>
-          <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}</div>
+          <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}${item.payment_method?.title ? ` · ${esc(item.payment_method.title)}` : ""}</div>
           ${item.comment ? `<div class="mt-8">${esc(item.comment)}</div>` : ""}
           <div class="mt-8"><b>Признано в ${esc(state.month)}:</b> ${esc(fmtMinor(item.recognized_amount_minor_for_month || 0))}</div>
           <div class="expense-row__allocations mt-8">${recognizedHtml}</div>
@@ -258,6 +260,9 @@ function buildExpenseForm(item = null) {
   const supplierOptions = ['<option value="">Без поставщика</option>'].concat(
     state.suppliers.map((sup) => `<option value="${sup.id}" ${String(item?.supplier_id || "") === String(sup.id) ? "selected" : ""}>${esc(sup.title)}</option>`)
   ).join("");
+  const paymentMethodOptions = ['<option value="">Не указан</option>'].concat(
+    state.paymentMethods.map((pm) => `<option value="${pm.id}" ${String(item?.payment_method_id || "") === String(pm.id) ? "selected" : ""}>${esc(pm.title)}</option>`)
+  ).join("");
   const amount = item ? (Number(item.amount_minor || 0) / 100).toFixed(2) : "";
   const defaultDate = item?.expense_date || todayISO();
   const status = String(item?.status || "DRAFT").toUpperCase();
@@ -265,6 +270,7 @@ function buildExpenseForm(item = null) {
     <form id="expenseForm" class="finance-form">
       <label>Категория<select name="category_id" required>${categoryOptions}</select></label>
       <label>Поставщик<select name="supplier_id">${supplierOptions}</select></label>
+      <label>Оплачено через<select name="payment_method_id">${paymentMethodOptions}</select></label>
       <label>Сумма, ₽<input name="amount" type="text" placeholder="1200.00" value="${esc(amount)}" required /></label>
       <label>Дата расхода<input name="expense_date" type="date" value="${esc(defaultDate)}" required /></label>
       <label>Распределить на месяцев<input name="spread_months" type="number" min="1" max="120" value="${esc(String(item?.spread_months || 1))}" required /></label>
@@ -303,6 +309,7 @@ function openExpenseForm(expenseId = null) {
     const payload = {
       category_id: Number(fd.get("category_id")),
       supplier_id: fd.get("supplier_id") ? Number(fd.get("supplier_id")) : null,
+      payment_method_id: fd.get("payment_method_id") ? Number(fd.get("payment_method_id")) : null,
       amount_minor: parseMoneyToMinor(fd.get("amount")),
       expense_date: String(fd.get("expense_date") || ""),
       spread_months: Number(fd.get("spread_months") || 1),

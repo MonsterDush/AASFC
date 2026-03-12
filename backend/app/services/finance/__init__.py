@@ -16,7 +16,8 @@ from .revenue import (
     delete_revenue_entries_for_report,
     compute_revenue_summary,
 )
-from .summary import get_finance_summary, resolve_finance_period
+from .summary import get_finance_summary, get_monthly_finance_summary, resolve_finance_period
+from .balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
 
 __all__ = [
     "FINANCE_DIRECTIONS",
@@ -32,5 +33,8 @@ __all__ = [
     "delete_revenue_entries_for_report",
     "compute_revenue_summary",
     "get_finance_summary",
+    "get_monthly_finance_summary",
     "resolve_finance_period",
+    "rebuild_balance_adjustment_entries",
+    "delete_balance_adjustment_entries",
 ]

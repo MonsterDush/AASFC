@@ -24,9 +24,10 @@ from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
 from app.services.xlsx_export import build_revenue_xlsx, build_revenue_csv
 from app.services.signed_links import make_signed_token, verify_signed_token
-from app.services.finance.expenses import CONFIRMED_EXPENSE_STATUS, rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
+from app.services.finance.expenses import rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
 from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
 from app.services.finance.summary import get_finance_summary, get_monthly_finance_summary
+from app.services.finance.balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -52,11 +53,11 @@ from app.models.expense_category import ExpenseCategory
 from app.models.supplier import Supplier
 from app.models.expense import Expense
 from app.models.expense_allocation import ExpenseAllocation
+from app.models.balance_adjustment import BalanceAdjustment
 from app.models.permission import Permission
 
 from app.auth.venue_permissions import require_venue_permission
 
-from app.services.tips import build_equal_tip_allocations
 from app.services.venues import create_venue
 from app.settings import settings
 
@@ -214,17 +215,20 @@ class SupplierUpdateIn(BaseModel):
 class ExpenseCreateIn(BaseModel):
     category_id: int = Field(..., gt=0)
     supplier_id: int | None = Field(default=None, gt=0)
+    payment_method_id: int | None = Field(default=None, gt=0)
     amount_minor: int = Field(..., ge=0)
     expense_date: date
     spread_months: int = Field(1, ge=1, le=120)
-    status: str = Field("DRAFT", min_length=5, max_length=16)
+    status: str = Field('DRAFT', min_length=5, max_length=16)
     comment: str | None = Field(default=None, max_length=1000)
 
 
 class ExpenseUpdateIn(BaseModel):
     category_id: int | None = Field(default=None, gt=0)
     supplier_id: int | None = Field(default=None, gt=0)
+    payment_method_id: int | None = Field(default=None, gt=0)
     clear_supplier: bool = False
+    clear_payment_method: bool = False
     amount_minor: int | None = Field(default=None, ge=0)
     expense_date: date | None = None
     spread_months: int | None = Field(default=None, ge=1, le=120)
@@ -245,24 +249,44 @@ class FinanceSummaryOut(BaseModel):
     margin_bps: int | None = None
 
 
-class RevenueBreakdownOut(BaseModel):
-    ref_id: int
-    code: str | None = None
+class MonthlyFinanceBreakdownRowOut(BaseModel):
     title: str
+    code: str | None = None
     amount_minor: int
 
 
-class ExpenseCategorySummaryOut(BaseModel):
-    category_id: int
-    code: str | None = None
+class PaymentMethodBalanceRowOut(BaseModel):
+    payment_method_id: int
     title: str
-    amount_minor: int
+    code: str | None = None
+    inflow_minor: int
+    outflow_minor: int
+    balance_minor: int
 
 
 class MonthlyFinanceSummaryOut(FinanceSummaryOut):
     income_mode: str
-    revenue_breakdown: list[RevenueBreakdownOut]
-    expense_categories: list[ExpenseCategorySummaryOut]
+    revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
+    expense_categories: list[MonthlyFinanceBreakdownRowOut]
+    payment_method_balances: list[PaymentMethodBalanceRowOut]
+
+
+class BalanceAdjustmentCreateIn(BaseModel):
+    payment_method_id: int = Field(..., gt=0)
+    adjustment_date: date
+    delta_minor: int
+    status: str = Field('CONFIRMED', min_length=5, max_length=16)
+    reason: str | None = Field(default=None, max_length=255)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class BalanceAdjustmentUpdateIn(BaseModel):
+    payment_method_id: int | None = Field(default=None, gt=0)
+    adjustment_date: date | None = None
+    delta_minor: int | None = None
+    status: str | None = Field(default=None, min_length=5, max_length=16)
+    reason: str | None = Field(default=None, max_length=255)
+    comment: str | None = Field(default=None, max_length=1000)
 
 
 class AdjustmentCreateIn(BaseModel):
@@ -367,22 +391,13 @@ def _get_supplier_or_404(db: Session, *, venue_id: int, supplier_id: int) -> Sup
     return obj
 
 
-def _normalize_expense_status(value: str | None) -> str:
-    normalized = str(value or "DRAFT").strip().upper()
-    if normalized not in {"DRAFT", "CONFIRMED", "CANCELLED"}:
-        raise HTTPException(status_code=400, detail="Bad expense status")
-    return normalized
-
-
-def _month_bounds(month: str) -> tuple[date, date, date]:
-    try:
-        dt = datetime.strptime(month, "%Y-%m").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
-    start = dt.replace(day=1)
-    _, last_day = calendar.monthrange(dt.year, dt.month)
-    end = dt.replace(day=last_day)
-    return start, end, start
+def _get_payment_method_or_404(db: Session, *, venue_id: int, payment_method_id: int) -> PaymentMethod:
+    obj = db.execute(
+        select(PaymentMethod).where(PaymentMethod.id == payment_method_id, PaymentMethod.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+    return obj
 
 
 def _serialize_expense_allocation(allocation: ExpenseAllocation) -> dict:
@@ -400,30 +415,27 @@ def _serialize_expense(
     expense: Expense,
     category: ExpenseCategory | None = None,
     supplier: Supplier | None = None,
+    payment_method: PaymentMethod | None = None,
     allocations: list[ExpenseAllocation] | None = None,
-    recognized_month: date | None = None,
 ) -> dict:
     cat = category or getattr(expense, "category", None)
     sup = supplier or getattr(expense, "supplier", None)
+    pm = payment_method or getattr(expense, "payment_method", None)
     allocs = allocations if allocations is not None else list(getattr(expense, "allocations", []) or [])
-    recognized_allocs = [a for a in allocs if recognized_month is not None and a.month == recognized_month]
-    recognized_amount_minor = sum(int(a.amount_minor or 0) for a in recognized_allocs)
     return {
         "id": expense.id,
         "venue_id": expense.venue_id,
         "category_id": expense.category_id,
         "supplier_id": expense.supplier_id,
+        "payment_method_id": expense.payment_method_id,
         "amount_minor": int(expense.amount_minor or 0),
         "expense_date": expense.expense_date.isoformat() if expense.expense_date else None,
         "spread_months": int(expense.spread_months or 1),
-        "status": _normalize_expense_status(getattr(expense, "status", "DRAFT")),
+        "status": str(getattr(expense, 'status', 'CONFIRMED') or 'CONFIRMED').upper(),
         "comment": expense.comment,
         "created_by_user_id": expense.created_by_user_id,
         "created_at": expense.created_at.isoformat() if expense.created_at else None,
         "updated_at": expense.updated_at.isoformat() if expense.updated_at else None,
-        "recognized_month": recognized_month.isoformat() if recognized_month else None,
-        "recognized_amount_minor_for_month": int(recognized_amount_minor),
-        "recognized_allocations": [_serialize_expense_allocation(a) for a in recognized_allocs],
         "category": {
             "id": cat.id,
             "code": cat.code,
@@ -434,7 +446,34 @@ def _serialize_expense(
             "title": sup.title,
             "contact": sup.contact,
         } if sup is not None else None,
+        "payment_method": {
+            "id": pm.id,
+            "code": pm.code,
+            "title": pm.title,
+        } if pm is not None else None,
         "allocations": [_serialize_expense_allocation(a) for a in allocs],
+    }
+
+
+def _serialize_balance_adjustment(adjustment: BalanceAdjustment, payment_method: PaymentMethod | None = None) -> dict:
+    pm = payment_method or getattr(adjustment, 'payment_method', None)
+    return {
+        'id': adjustment.id,
+        'venue_id': adjustment.venue_id,
+        'payment_method_id': adjustment.payment_method_id,
+        'adjustment_date': adjustment.adjustment_date.isoformat() if adjustment.adjustment_date else None,
+        'delta_minor': int(adjustment.delta_minor or 0),
+        'status': str(getattr(adjustment, 'status', 'CONFIRMED') or 'CONFIRMED').upper(),
+        'reason': adjustment.reason,
+        'comment': adjustment.comment,
+        'created_by_user_id': adjustment.created_by_user_id,
+        'created_at': adjustment.created_at.isoformat() if adjustment.created_at else None,
+        'updated_at': adjustment.updated_at.isoformat() if adjustment.updated_at else None,
+        'payment_method': {
+            'id': pm.id,
+            'code': pm.code,
+            'title': pm.title,
+        } if pm is not None else None,
     }
 
 
@@ -1309,39 +1348,6 @@ def _build_dynamic_items(
     return out
 
 
-def _rebuild_tip_allocations_for_report(db: Session, *, venue_id: int, report: DailyReport, tips_enabled: bool, tips_split_mode: str) -> list[DailyReportTipAllocation]:
-    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == report.id))
-
-    if not tips_enabled or str(report.status or "").upper() != "CLOSED":
-        return []
-
-    tips_total = int(report.tips_total or 0)
-    if tips_total <= 0:
-        return []
-
-    if tips_split_mode != "EQUAL":
-        raise HTTPException(status_code=400, detail="Tips split mode not implemented yet")
-
-    assigned_user_ids = db.execute(
-        select(ShiftAssignment.member_user_id)
-        .join(Shift, Shift.id == ShiftAssignment.shift_id)
-        .where(
-            Shift.venue_id == venue_id,
-            Shift.date == report.date,
-            Shift.is_active.is_(True),
-        )
-    ).scalars().all()
-
-    allocations = build_equal_tip_allocations(
-        report_id=int(report.id),
-        tips_total=tips_total,
-        assigned_user_ids=assigned_user_ids,
-    )
-    for allocation in allocations:
-        db.add(allocation)
-    return allocations
-
-
 @router.post("/{venue_id}/reports")
 def upsert_daily_report(
     venue_id: int,
@@ -1470,13 +1476,6 @@ def upsert_daily_report(
     db.flush()
     if str(obj.status or "").upper() == "CLOSED":
         rebuild_revenue_entries_for_report(db=db, report=obj)
-        _rebuild_tip_allocations_for_report(
-            db,
-            venue_id=venue_id,
-            report=obj,
-            tips_enabled=tips_enabled,
-            tips_split_mode=str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL").upper(),
-        )
 
     db.commit()
     db.refresh(obj)
@@ -1651,6 +1650,40 @@ def close_daily_report(
         rep.comment = payload.comment
 
 
+    # --- tips allocation (optional) ---
+    # If venue has tips enabled, distribute daily report tips_total across all assigned members of this date.
+    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
+
+    if tips_enabled:
+        tips_total = int(rep.tips_total or 0)
+        if tips_total > 0:
+            if tips_split_mode != "EQUAL":
+                raise HTTPException(status_code=400, detail="Tips split mode not implemented yet")
+            assigned_user_ids = db.execute(
+                select(ShiftAssignment.member_user_id)
+                .join(Shift, Shift.id == ShiftAssignment.shift_id)
+                .where(
+                    Shift.venue_id == venue_id,
+                    Shift.date == report_date,
+                    Shift.is_active.is_(True),
+                )
+            ).scalars().all()
+            uniq = sorted({int(x) for x in assigned_user_ids if x is not None})
+            n = len(uniq)
+            if n > 0:
+                share = tips_total // n
+                remainder = tips_total - share * n
+                for i, uid in enumerate(uniq):
+                    amount = share + (1 if i < remainder else 0)
+                    db.add(
+                        DailyReportTipAllocation(
+                            report_id=rep.id,
+                            user_id=uid,
+                            amount=int(amount),
+                            split_mode="EQUAL",
+                        )
+                    )
+
     rep.status = "CLOSED"
     rep.closed_by_user_id = user.id
     rep.closed_at = datetime.utcnow()
@@ -1658,13 +1691,6 @@ def close_daily_report(
     rep.updated_at = datetime.utcnow()
 
     rebuild_revenue_entries_for_report(db=db, report=rep, values=values)
-    _rebuild_tip_allocations_for_report(
-        db,
-        venue_id=venue_id,
-        report=rep,
-        tips_enabled=tips_enabled,
-        tips_split_mode=tips_split_mode,
-    )
 
     db.commit()
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
@@ -1952,10 +1978,9 @@ def export_revenue(
     Supports either regular authenticated access or a signed short-lived token for
     opening the export in an external browser.
     """
-    token_value = token if isinstance(token, str) else None
-    if token_value:
+    if token:
         try:
-            payload = verify_signed_token(token_value)
+            payload = verify_signed_token(token)
         except Exception:
             raise HTTPException(status_code=401, detail="Invalid export token")
 
@@ -4131,36 +4156,36 @@ def list_expenses(
 ):
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
 
-    stmt = select(Expense, ExpenseCategory, Supplier).join(
+    stmt = select(Expense, ExpenseCategory, Supplier, PaymentMethod).join(
         ExpenseCategory, ExpenseCategory.id == Expense.category_id
     ).outerjoin(
         Supplier, Supplier.id == Expense.supplier_id
+    ).outerjoin(
+        PaymentMethod, PaymentMethod.id == Expense.payment_method_id
     ).where(Expense.venue_id == venue_id)
 
     recognized_month = None
-    month_start = None
-    month_end = None
     if month:
-        month_start, month_end, recognized_month = _month_bounds(month)
+        try:
+            recognized_month = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+        stmt = stmt.join(ExpenseAllocation, ExpenseAllocation.expense_id == Expense.id).where(ExpenseAllocation.month == recognized_month)
 
     if category_id is not None:
         stmt = stmt.where(Expense.category_id == category_id)
     if supplier_id is not None:
         stmt = stmt.where(Expense.supplier_id == supplier_id)
 
-    rows = db.execute(stmt.order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
+    rows = db.execute(stmt.distinct().order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
     result = []
-    for expense, category, supplier in rows:
+    for expense, category, supplier, payment_method in rows:
         allocations = list_expense_allocations(db=db, expense_id=expense.id)
-        status_norm = _normalize_expense_status(getattr(expense, "status", "DRAFT"))
-        if recognized_month is not None:
-            recognized_allocs = [a for a in allocations if a.month == recognized_month]
-            if status_norm == CONFIRMED_EXPENSE_STATUS:
-                if not recognized_allocs:
-                    continue
-            elif not (expense.expense_date and month_start <= expense.expense_date <= month_end):
-                continue
-        result.append(_serialize_expense(expense, category, supplier, allocations, recognized_month=recognized_month))
+        recognized_allocations = [a for a in allocations if recognized_month is not None and a.month == recognized_month]
+        payload = _serialize_expense(expense, category, supplier, payment_method, allocations)
+        payload["recognized_allocations"] = [_serialize_expense_allocation(a) for a in recognized_allocations]
+        payload["recognized_amount_minor_for_month"] = int(sum(int(a.amount_minor or 0) for a in recognized_allocations))
+        result.append(payload)
     return result
 
 
@@ -4175,15 +4200,18 @@ def create_expense(
     _get_expense_category_or_404(db, venue_id=venue_id, category_id=payload.category_id)
     if payload.supplier_id is not None:
         _get_supplier_or_404(db, venue_id=venue_id, supplier_id=payload.supplier_id)
+    if payload.payment_method_id is not None:
+        _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.payment_method_id)
 
     obj = Expense(
         venue_id=venue_id,
         category_id=int(payload.category_id),
         supplier_id=int(payload.supplier_id) if payload.supplier_id is not None else None,
+        payment_method_id=int(payload.payment_method_id) if payload.payment_method_id is not None else None,
         amount_minor=int(payload.amount_minor),
         expense_date=payload.expense_date,
         spread_months=int(payload.spread_months or 1),
-        status=_normalize_expense_status(payload.status),
+        status=str(payload.status or 'DRAFT').upper(),
         comment=(payload.comment or None),
         created_by_user_id=user.id,
         created_at=datetime.utcnow(),
@@ -4195,7 +4223,8 @@ def create_expense(
     db.refresh(obj)
     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
-    return _serialize_expense(obj, category, supplier, allocations)
+    payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.payment_method_id) if obj.payment_method_id else None
+    return _serialize_expense(obj, category, supplier, payment_method, allocations)
 
 
 @router.patch("/{venue_id}/expenses/{expense_id}")
@@ -4223,16 +4252,22 @@ def update_expense(
         _get_supplier_or_404(db, venue_id=venue_id, supplier_id=payload.supplier_id)
         obj.supplier_id = int(payload.supplier_id)
 
+    if payload.clear_payment_method:
+        obj.payment_method_id = None
+    elif payload.payment_method_id is not None:
+        _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.payment_method_id)
+        obj.payment_method_id = int(payload.payment_method_id)
+
     if payload.amount_minor is not None:
         obj.amount_minor = int(payload.amount_minor)
     if payload.expense_date is not None:
         obj.expense_date = payload.expense_date
     if payload.spread_months is not None:
         obj.spread_months = int(payload.spread_months)
-    if payload.status is not None:
-        obj.status = _normalize_expense_status(payload.status)
     if payload.comment is not None:
         obj.comment = payload.comment or None
+    if payload.status is not None:
+        obj.status = str(payload.status or 'DRAFT').upper()
     obj.updated_at = datetime.utcnow()
 
     allocations = rebuild_expense_allocations_for_expense(db=db, expense=obj)
@@ -4240,7 +4275,8 @@ def update_expense(
     db.refresh(obj)
     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
-    return _serialize_expense(obj, category, supplier, allocations)
+    payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.payment_method_id) if obj.payment_method_id else None
+    return _serialize_expense(obj, category, supplier, payment_method, allocations)
 
 
 @router.delete("/{venue_id}/expenses/{expense_id}")
@@ -4262,6 +4298,146 @@ def delete_expense(
     return {"ok": True}
 
 
+@router.get("/{venue_id}/balance-adjustments")
+def list_balance_adjustments(
+    venue_id: int,
+    month: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+
+    stmt = select(BalanceAdjustment, PaymentMethod).join(
+        PaymentMethod, PaymentMethod.id == BalanceAdjustment.payment_method_id
+    ).where(BalanceAdjustment.venue_id == venue_id)
+
+    if month:
+        try:
+            dt = datetime.strptime(month, "%Y-%m").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+        start = dt.replace(day=1)
+        _, last_day = calendar.monthrange(dt.year, dt.month)
+        end = dt.replace(day=last_day)
+        stmt = stmt.where(BalanceAdjustment.adjustment_date >= start, BalanceAdjustment.adjustment_date <= end)
+
+    rows = db.execute(stmt.order_by(BalanceAdjustment.adjustment_date.desc(), BalanceAdjustment.id.desc())).all()
+    return [_serialize_balance_adjustment(adjustment, payment_method) for adjustment, payment_method in rows]
+
+
+@router.post("/{venue_id}/balance-adjustments")
+def create_balance_adjustment(
+    venue_id: int,
+    payload: BalanceAdjustmentCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.payment_method_id)
+    if int(payload.delta_minor) == 0:
+        raise HTTPException(status_code=400, detail="delta_minor must be non-zero")
+
+    obj = BalanceAdjustment(
+        venue_id=venue_id,
+        payment_method_id=int(payload.payment_method_id),
+        adjustment_date=payload.adjustment_date,
+        delta_minor=int(payload.delta_minor),
+        status=str(payload.status or 'CONFIRMED').upper(),
+        reason=(payload.reason or None),
+        comment=(payload.comment or None),
+        created_by_user_id=user.id,
+        created_at=datetime.utcnow(),
+    )
+    db.add(obj)
+    db.flush()
+    rebuild_balance_adjustment_entries(db=db, adjustment=obj)
+    db.commit()
+    db.refresh(obj)
+    return _serialize_balance_adjustment(obj, payment_method)
+
+
+@router.patch("/{venue_id}/balance-adjustments/{adjustment_id}")
+def update_balance_adjustment(
+    venue_id: int,
+    adjustment_id: int,
+    payload: BalanceAdjustmentUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    obj = db.execute(
+        select(BalanceAdjustment).where(BalanceAdjustment.id == adjustment_id, BalanceAdjustment.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Balance adjustment not found")
+
+    if payload.payment_method_id is not None:
+        _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.payment_method_id)
+        obj.payment_method_id = int(payload.payment_method_id)
+    if payload.adjustment_date is not None:
+        obj.adjustment_date = payload.adjustment_date
+    if payload.delta_minor is not None:
+        if int(payload.delta_minor) == 0:
+            raise HTTPException(status_code=400, detail="delta_minor must be non-zero")
+        obj.delta_minor = int(payload.delta_minor)
+    if payload.status is not None:
+        obj.status = str(payload.status or 'CONFIRMED').upper()
+    if payload.reason is not None:
+        obj.reason = payload.reason or None
+    if payload.comment is not None:
+        obj.comment = payload.comment or None
+    obj.updated_at = datetime.utcnow()
+
+    rebuild_balance_adjustment_entries(db=db, adjustment=obj)
+    db.commit()
+    db.refresh(obj)
+    payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.payment_method_id)
+    return _serialize_balance_adjustment(obj, payment_method)
+
+
+@router.delete("/{venue_id}/balance-adjustments/{adjustment_id}")
+def delete_balance_adjustment(
+    venue_id: int,
+    adjustment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    obj = db.execute(
+        select(BalanceAdjustment).where(BalanceAdjustment.id == adjustment_id, BalanceAdjustment.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Balance adjustment not found")
+    delete_balance_adjustment_entries(db=db, adjustment_id=obj.id)
+    db.delete(obj)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/{venue_id}/summary/monthly", response_model=MonthlyFinanceSummaryOut)
+def get_venue_monthly_finance_summary(
+    venue_id: int,
+    month: str | None = Query(None, description="YYYY-MM"),
+    income_mode: str = Query("PAYMENTS", description="PAYMENTS|DEPARTMENTS"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    try:
+        return get_monthly_finance_summary(
+            db=db,
+            venue_id=venue_id,
+            month=month,
+            income_mode=income_mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/{venue_id}/finance/summary", response_model=FinanceSummaryOut)
 def get_venue_finance_summary(
     venue_id: int,
@@ -4281,28 +4457,6 @@ def get_venue_finance_summary(
             month=month,
             date_from=date_from,
             date_to=date_to,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@router.get("/{venue_id}/summary/monthly", response_model=MonthlyFinanceSummaryOut)
-def get_venue_monthly_summary(
-    venue_id: int,
-    month: str = Query(..., description="YYYY-MM"),
-    income_mode: str = Query("PAYMENTS", description="PAYMENTS | DEPARTMENTS"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    _require_revenue_viewer(db, venue_id=venue_id, user=user)
-    _require_report_viewer(db, venue_id=venue_id, user=user)
-    try:
-        return get_monthly_finance_summary(
-            db=db,
-            venue_id=venue_id,
-            month=month,
-            income_mode=income_mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

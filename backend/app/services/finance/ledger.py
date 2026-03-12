@@ -11,7 +11,7 @@ from app.models import FinanceEntry
 
 
 FINANCE_DIRECTIONS = {"INCOME", "EXPENSE"}
-FINANCE_KINDS = {"REVENUE", "EXPENSE", "PAYROLL", "ADJUSTMENT", "REFUND"}
+FINANCE_KINDS = {"REVENUE", "EXPENSE", "PAYROLL", "ADJUSTMENT", "REFUND", "BALANCE_ADJUSTMENT"}
 
 
 def _normalize_upper(value: str, *, field_name: str) -> str:

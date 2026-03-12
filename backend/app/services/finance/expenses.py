@@ -6,9 +6,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, ExpenseAllocation
-
-
-CONFIRMED_EXPENSE_STATUS = "CONFIRMED"
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 
@@ -50,7 +47,8 @@ def rebuild_expense_allocations_for_expense(*, db: Session, expense: Expense) ->
     db.execute(delete(ExpenseAllocation).where(ExpenseAllocation.expense_id == int(expense.id)))
     delete_finance_entries_for_source(db=db, source_type="expense", source_id=int(expense.id))
 
-    if str(getattr(expense, "status", "DRAFT") or "DRAFT").upper() != CONFIRMED_EXPENSE_STATUS:
+    expense_status = str(getattr(expense, 'status', 'CONFIRMED') or 'CONFIRMED').upper()
+    if expense_status != 'CONFIRMED':
         return []
 
     allocations: list[ExpenseAllocation] = []
@@ -79,6 +77,7 @@ def rebuild_expense_allocations_for_expense(*, db: Session, expense: Expense) ->
             kind="EXPENSE",
             source_type="expense",
             source_id=int(expense.id),
+            payment_method_id=int(expense.payment_method_id) if expense.payment_method_id is not None else None,
             meta_json={
                 "expense_date": expense.expense_date.isoformat(),
                 "allocation_month": month.isoformat(),
@@ -86,6 +85,7 @@ def rebuild_expense_allocations_for_expense(*, db: Session, expense: Expense) ->
                 "spread_months": int(expense.spread_months or 1),
                 "category_id": int(expense.category_id),
                 "supplier_id": int(expense.supplier_id) if expense.supplier_id is not None else None,
+                "payment_method_id": int(expense.payment_method_id) if expense.payment_method_id is not None else None,
             },
         )
 

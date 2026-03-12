@@ -26,6 +26,7 @@ from .supplier import Supplier
 from .expense import Expense
 from .finance_entry import FinanceEntry
 from .expense_allocation import ExpenseAllocation
+from .balance_adjustment import BalanceAdjustment
 
 __all__ = [
     "SystemRole",
@@ -57,4 +58,5 @@ __all__ = [
     "Expense",
     "FinanceEntry",
     "ExpenseAllocation",
+    "BalanceAdjustment",
 ]
