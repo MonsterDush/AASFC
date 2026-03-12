@@ -16,6 +16,7 @@ jobs:
           else
             echo "SSH_KEY is present"
           fi
+
       - name: SSH Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -25,16 +26,20 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
+
             if [ "${{ github.ref_name }}" = "develop" ]; then
               cd /var/www/axelio/dev/repo
               git fetch origin
               git checkout develop
               git pull origin develop
+
               cd /var/www/axelio/dev
-              source venv/bin/activate
-              pip install -r repo/backend/requirements.txt
+              ./venv/bin/pip install -r repo/backend/requirements.txt
+
               cd repo/backend
-              alembic upgrade head
+              ../venv/bin/alembic upgrade head
+              ../venv/bin/python -m app.core.sync_permissions
+
               sudo systemctl restart axelio-api-dev
               sudo systemctl reload nginx
               echo "Deployed develop -> dev"
@@ -43,11 +48,14 @@ jobs:
               git fetch origin
               git checkout main
               git pull origin main
+
               cd /var/www/axelio/prod
-              source venv/bin/activate
-              pip install -r repo/backend/requirements.txt
+              ./venv/bin/pip install -r repo/backend/requirements.txt
+
               cd repo/backend
-              alembic upgrade head
+              ../venv/bin/alembic upgrade head
+              ../venv/bin/python -m app.core.sync_permissions
+
               sudo systemctl restart axelio-api-prod
               sudo systemctl reload nginx
               echo "Deployed main -> prod"
