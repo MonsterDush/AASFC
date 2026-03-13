@@ -22,10 +22,13 @@ let access = {
 let state = {
   categories: [],
   suppliers: [],
+  paymentMethods: [],
   expenses: [],
   month: "",
   categoryId: "",
   supplierId: "",
+  statuses: "",
+  stats: null,
 };
 
 function currentMonth() {
@@ -104,6 +107,44 @@ function statusLabel(status) {
   return "Черновик";
 }
 
+
+function expenseStatusesLabel(value) {
+  const norm = String(value || '').toUpperCase();
+  if (!norm) return 'все статусы';
+  if (norm === 'DRAFT') return 'только черновики';
+  if (norm === 'CONFIRMED') return 'только подтверждённые';
+  if (norm === 'CANCELLED') return 'только отменённые';
+  if (norm === 'DRAFT,CONFIRMED') return 'черновики и подтверждённые';
+  return norm;
+}
+
+function buildExpensesLink({ month = state.month, statuses = state.statuses } = {}) {
+  const venueId = getActiveVenueId();
+  const qp = new URLSearchParams();
+  if (venueId) qp.set('venue_id', String(venueId));
+  if (month) qp.set('month', String(month));
+  if (statuses) qp.set('statuses', String(statuses));
+  return `/owner-expenses.html?${qp.toString()}`;
+}
+
+function renderDraftBanner() {
+  const card = document.getElementById('draftExpensesCard');
+  const hint = document.getElementById('draftExpensesHint');
+  const link = document.getElementById('openDraftExpensesBtn');
+  const stats = state.stats || {};
+  const draftCount = Number(stats.draft_count || 0);
+  const draftTotalMinor = Number(stats.draft_total_minor || 0);
+  if (link) link.href = buildExpensesLink({ statuses: 'DRAFT' });
+  if (!card || !hint) return;
+  if (draftCount <= 0) {
+    card.style.display = 'none';
+    hint.textContent = '—';
+    return;
+  }
+  card.style.display = '';
+  hint.textContent = `Черновиков: ${draftCount} · на сумму ${fmtMinor(draftTotalMinor)}. Они не участвуют в прибыли и сводке, пока не подтверждены.`;
+}
+
 function buildRegularBadges(item) {
   const badges = [];
   if (item?.recurring_rule_id) badges.push('<span class="badge">Регулярный</span>');
@@ -170,6 +211,27 @@ async function loadCatalogs() {
   fillSelect(document.getElementById("expenseSupplierFilter"), state.suppliers, { placeholder: "Все поставщики" });
 }
 
+
+async function loadExpenseStats() {
+  const venueId = getActiveVenueId();
+  if (!venueId || !access.canView) {
+    state.stats = null;
+    renderDraftBanner();
+    return;
+  }
+  const qp = new URLSearchParams();
+  qp.set('month', state.month || currentMonth());
+  if (state.categoryId) qp.set('category_id', state.categoryId);
+  if (state.supplierId) qp.set('supplier_id', state.supplierId);
+  if (state.statuses) qp.set('statuses', state.statuses);
+  try {
+    state.stats = await api(`/venues/${encodeURIComponent(venueId)}/expenses/stats?${qp.toString()}`);
+  } catch {
+    state.stats = null;
+  }
+  renderDraftBanner();
+}
+
 async function loadExpenses() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
@@ -178,6 +240,8 @@ async function loadExpenses() {
     document.getElementById("expensesState").textContent = "Доступ ограничен";
     document.getElementById("expensesTotalMinor").textContent = "—";
     document.getElementById("expensesCount").textContent = "—";
+    state.stats = null;
+    renderDraftBanner();
     return;
   }
 
@@ -185,8 +249,12 @@ async function loadExpenses() {
   qp.set("month", state.month || currentMonth());
   if (state.categoryId) qp.set("category_id", state.categoryId);
   if (state.supplierId) qp.set("supplier_id", state.supplierId);
+  if (state.statuses) qp.set("statuses", state.statuses);
 
-  const rows = await api(`/venues/${encodeURIComponent(venueId)}/expenses?${qp.toString()}`);
+  const [rows] = await Promise.all([
+    api(`/venues/${encodeURIComponent(venueId)}/expenses?${qp.toString()}`),
+    loadExpenseStats(),
+  ]);
   state.expenses = Array.isArray(rows) ? rows : [];
   renderExpenses();
 }
@@ -202,8 +270,8 @@ function renderExpenses() {
   if (totalEl) totalEl.textContent = fmtMinor(recognizedTotalMinor);
   if (countEl) countEl.textContent = String(state.expenses.length);
   if (stateEl) stateEl.textContent = state.expenses.length
-    ? `Месяц ${state.month} · признано ${fmtMinor(recognizedTotalMinor)}`
-    : `За ${state.month} расходов нет`;
+    ? `Месяц ${state.month} · ${expenseStatusesLabel(state.statuses)} · признано ${fmtMinor(recognizedTotalMinor)}`
+    : `За ${state.month} расходов нет (${expenseStatusesLabel(state.statuses)})`;
 
   if (!state.expenses.length) {
     list.innerHTML = `<div class="muted">Нет расходов за выбранный период.</div>`;

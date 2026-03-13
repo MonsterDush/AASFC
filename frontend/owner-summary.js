@@ -75,6 +75,31 @@ function showEl(id, visible) {
   if (el) el.style.display = visible ? "" : "none";
 }
 
+
+function buildExpensesLink({ month = state.month, statuses = 'DRAFT' } = {}) {
+  const venueId = getActiveVenueId();
+  const qp = new URLSearchParams();
+  if (venueId) qp.set('venue_id', String(venueId));
+  if (month) qp.set('month', String(month));
+  if (statuses) qp.set('statuses', String(statuses));
+  return `/owner-expenses.html?${qp.toString()}`;
+}
+
+function renderDraftSummaryHint(summary) {
+  const card = document.getElementById('summaryDraftCard');
+  const hint = document.getElementById('summaryDraftHint');
+  const count = Number(summary?.draft_expense_count || 0);
+  const total = Number(summary?.draft_expense_total_minor || 0);
+  if (!card || !hint) return;
+  if (count <= 0) {
+    card.style.display = 'none';
+    hint.textContent = '—';
+    return;
+  }
+  card.style.display = '';
+  hint.textContent = `${count} черновик(ов) на сумму ${fmtMoneyMinor(total)}. Они не участвуют в расходах и прибыли, пока не подтверждены.`;
+}
+
 function renderList(id, rows, emptyText) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -341,6 +366,7 @@ async function loadSummary() {
     renderList("summaryExpenseBreakdown", [], "Нет доступа");
     renderList("summaryRecurringBreakdown", [], "Нет доступа");
     renderPaymentBalances([]);
+    renderDraftSummaryHint(null);
     return;
   }
 
@@ -381,6 +407,7 @@ async function loadSummary() {
     renderList("summaryExpenseBreakdown", isDay ? (summary?.point_expenses || []) : (summary?.expense_categories || []), isDay ? "Нет точечных расходов за день" : "Нет признанных расходов за период");
     renderList("summaryRecurringBreakdown", summary?.recurring_expenses || [], "Нет регулярных расходов на день");
     renderPaymentBalances(summary?.payment_method_balances || []);
+    renderDraftSummaryHint(summary);
   } catch (e) {
     setText("summaryRevenue", "—");
     setText("summaryExpenses", "—");
@@ -391,6 +418,7 @@ async function loadSummary() {
     renderList("summaryExpenseBreakdown", [], "Не удалось загрузить");
     renderList("summaryRecurringBreakdown", [], "Не удалось загрузить");
     renderPaymentBalances([]);
+    renderDraftSummaryHint(null);
     toast("Не удалось загрузить финансовую сводку", "err");
   }
 }
@@ -437,8 +465,10 @@ async function boot() {
   const openRevenueBtn = document.getElementById("openRevenueBtn");
   const openExpensesBtn = document.getElementById("openExpensesBtn");
   const addBalanceAdjustmentBtn = document.getElementById("addBalanceAdjustmentBtn");
+  const openSummaryDraftExpensesBtn = document.getElementById("openSummaryDraftExpensesBtn");
   if (openRevenueBtn && venueId) openRevenueBtn.onclick = () => location.href = `/owner-turnover.html?venue_id=${encodeURIComponent(venueId)}`;
   if (openExpensesBtn && venueId) openExpensesBtn.onclick = () => location.href = `/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
+  if (openSummaryDraftExpensesBtn) openSummaryDraftExpensesBtn.onclick = () => { location.href = buildExpensesLink({ statuses: 'DRAFT' }); };
   if (addBalanceAdjustmentBtn) {
     addBalanceAdjustmentBtn.style.display = financeAccess.canManageExpenses ? "" : "none";
     addBalanceAdjustmentBtn.onclick = () => openBalanceAdjustmentForm();

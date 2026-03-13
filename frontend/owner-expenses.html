@@ -59,6 +59,23 @@
         <select id="expenseSupplierFilter">
           <option value="">Все поставщики</option>
         </select>
+        <select id="expenseStatusFilter">
+          <option value="">Все статусы</option>
+          <option value="DRAFT">Только черновики</option>
+          <option value="CONFIRMED">Только подтверждённые</option>
+          <option value="CANCELLED">Только отменённые</option>
+          <option value="DRAFT,CONFIRMED">Черновики + подтверждённые</option>
+        </select>
+      </div>
+
+      <div class="itemcard mt-12" id="draftExpensesCard" style="display:none;">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Есть расходы в черновике</b>
+            <div class="muted mt-6" id="draftExpensesHint">—</div>
+          </div>
+          <a class="btn ghost" id="openDraftExpensesBtn" href="#">Открыть черновики</a>
+        </div>
       </div>
 
       <div class="finance-stats mt-12">

@@ -126,6 +126,21 @@ function renderGenerationResult() {
   list.innerHTML = parts.join("");
 }
 
+
+function generationReasonLabel(reason) {
+  const norm = String(reason || '').toLowerCase();
+  if (norm === 'inactive_for_month') return 'Не действует в выбранном месяце';
+  if (norm === 'zero_amount') return 'Сумма получилась нулевой';
+  if (norm === 'already_confirmed') return 'Уже подтверждён — обновление пропущено';
+  if (norm === 'already_cancelled') return 'Уже отменён — обновление пропущено';
+  if (norm === 'already_generated') return 'Уже был сгенерирован ранее';
+  return reason || 'Пропущено';
+}
+
+function expenseTitleForGeneration(item) {
+  return item?.comment || item?.category?.title || `Расход #${item?.id ?? '—'}`;
+}
+
 function modeLabel(mode) {
   return String(mode || "FIXED").toUpperCase() === "PERCENT" ? "Процент" : "Фикс";
 }
@@ -381,7 +396,7 @@ async function generateRules(ruleId = null) {
     const result = await api(`/venues/${encodeURIComponent(venueId)}/recurring-expense-rules/generate?${qp.toString()}`, { method: "POST" });
     state.generationResult = result || null;
     renderGenerationResult();
-    toast(`Сгенерировано: ${result?.created_count || 0}, пропущено: ${result?.skipped_count || 0}`, "ok");
+    toast(`Создано: ${result?.created_count || 0}, обновлено: ${result?.updated_count || 0}, пропущено: ${result?.skipped_count || 0}`, "ok");
   } catch (err) {
     toast(err?.data?.detail || err.message || "Не удалось сгенерировать черновики", "err");
   }
