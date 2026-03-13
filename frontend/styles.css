@@ -1026,6 +1026,9 @@ input[type="checkbox"],input[type="radio"]{
 @media (max-width:900px){
   .finance-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+@media (max-width:900px){
+  .finance-stats-1{grid-template-columns:repeat(1,minmax(0,1fr))}
+}
 @media (max-width:760px){
   .finance-filters{grid-template-columns:1fr}
   .expense-row{grid-template-columns:1fr}
