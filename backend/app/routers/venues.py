@@ -313,19 +313,35 @@ class DayEconomicsReportOut(BaseModel):
 
 
 class DayEconomicsTeamOut(BaseModel):
+    total_shift_count: int = 0
     assignment_count: int = 0
     assigned_user_count: int = 0
     assigned_shift_count: int = 0
+    unassigned_shift_count: int = 0
 
 
 class DayEconomicsMetricsOut(BaseModel):
     result_status: str
     revenue_per_assigned_minor: int | None = None
     tips_per_assigned_minor: int | None = None
+    profit_per_assigned_minor: int | None = None
+    revenue_per_shift_minor: int | None = None
+    profit_per_shift_minor: int | None = None
+    assignments_per_shift: float | None = None
+    assigned_shift_coverage_bps: int | None = None
     expense_ratio_bps: int | None = None
     point_expense_ratio_bps: int | None = None
     recurring_expense_ratio_bps: int | None = None
     payroll_ratio_bps: int | None = None
+    top_department_title: str | None = None
+    top_department_share_bps: int | None = None
+    kpi_metric_count: int = 0
+    nonzero_kpi_metric_count: int = 0
+    kpi_total_value_numeric: int = 0
+
+
+class DepartmentShareRowOut(MonthlyFinanceBreakdownRowOut):
+    share_bps: int | None = None
 
 
 class KpiFactRowOut(BaseModel):
@@ -336,6 +352,12 @@ class KpiFactRowOut(BaseModel):
     value_numeric: int
 
 
+class KpiSummaryOut(BaseModel):
+    metric_count: int = 0
+    nonzero_metric_count: int = 0
+    total_value_numeric: int = 0
+
+
 class DayEconomicsOut(BaseModel):
     date: date
     report: DayEconomicsReportOut
@@ -344,7 +366,9 @@ class DayEconomicsOut(BaseModel):
     summary: DailyFinanceSummaryOut
     payment_revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
     department_revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
+    department_share_breakdown: list[DepartmentShareRowOut]
     kpi_breakdown: list[KpiFactRowOut]
+    kpi_summary: KpiSummaryOut
 
 
 

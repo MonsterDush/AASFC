@@ -40,19 +40,27 @@ class DayEconomicsServiceTests(TestCase):
             "revenue_total_minor": 100000,
             "tips_total_minor": 12000,
         }), patch("app.services.finance.day_economics._get_team_snapshot", return_value={
+            "total_shift_count": 3,
             "assignment_count": 5,
             "assigned_user_count": 4,
             "assigned_shift_count": 2,
-        }), patch("app.services.finance.day_economics._group_revenue_breakdown", side_effect=[[{"title": "Наличные", "code": "cash", "subtitle": None, "amount_minor": 60000}], [{"title": "Бар", "code": "bar", "subtitle": None, "amount_minor": 70000}]]), patch("app.services.finance.day_economics._get_kpi_breakdown", return_value=[{"metric_id": 1, "title": "Апселл", "code": "upsell", "unit": "QTY", "value_numeric": 7}]):
+            "unassigned_shift_count": 1,
+        }), patch("app.services.finance.day_economics._group_revenue_breakdown", side_effect=[[{"title": "Наличные", "code": "cash", "subtitle": None, "amount_minor": 60000}], [{"title": "Бар", "code": "bar", "subtitle": None, "amount_minor": 70000}, {"title": "Кухня", "code": "kitchen", "subtitle": None, "amount_minor": 30000}]]), patch("app.services.finance.day_economics._get_kpi_breakdown", return_value=[{"metric_id": 1, "title": "Апселл", "code": "upsell", "unit": "QTY", "value_numeric": 7}]):
             result = get_day_economics(db=object(), venue_id=5, target_date=date(2026, 3, 13))
 
         self.assertEqual(result["metrics"]["result_status"], "PROFIT")
         self.assertEqual(result["metrics"]["revenue_per_assigned_minor"], 25000)
         self.assertEqual(result["metrics"]["tips_per_assigned_minor"], 3000)
+        self.assertEqual(result["metrics"]["profit_per_assigned_minor"], 18750)
+        self.assertEqual(result["metrics"]["revenue_per_shift_minor"], 33333)
+        self.assertEqual(result["metrics"]["assigned_shift_coverage_bps"], 6666)
         self.assertEqual(result["metrics"]["expense_ratio_bps"], 2500)
+        self.assertEqual(result["metrics"]["top_department_title"], "Бар")
         self.assertEqual(result["payment_revenue_breakdown"][0]["title"], "Наличные")
         self.assertEqual(result["department_revenue_breakdown"][0]["title"], "Бар")
+        self.assertEqual(result["department_share_breakdown"][0]["share_bps"], 7000)
         self.assertEqual(result["kpi_breakdown"][0]["code"], "upsell")
+        self.assertEqual(result["kpi_summary"]["metric_count"], 1)
 
     def test_get_day_economics_without_team_keeps_per_employee_metrics_empty(self):
         with patch("app.services.finance.day_economics.get_day_finance_summary", return_value={
@@ -86,12 +94,16 @@ class DayEconomicsServiceTests(TestCase):
             "revenue_total_minor": 0,
             "tips_total_minor": 0,
         }), patch("app.services.finance.day_economics._get_team_snapshot", return_value={
+            "total_shift_count": 0,
             "assignment_count": 0,
             "assigned_user_count": 0,
             "assigned_shift_count": 0,
+            "unassigned_shift_count": 0,
         }), patch("app.services.finance.day_economics._group_revenue_breakdown", side_effect=[[], []]), patch("app.services.finance.day_economics._get_kpi_breakdown", return_value=[]):
             result = get_day_economics(db=object(), venue_id=5, target_date=date(2026, 3, 13))
 
         self.assertEqual(result["metrics"]["result_status"], "BREAKEVEN")
         self.assertIsNone(result["metrics"]["revenue_per_assigned_minor"])
         self.assertIsNone(result["metrics"]["tips_per_assigned_minor"])
+        self.assertIsNone(result["metrics"]["profit_per_shift_minor"])
+        self.assertEqual(result["kpi_summary"]["metric_count"], 0)
