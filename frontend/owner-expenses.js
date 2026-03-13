@@ -551,11 +551,21 @@ async function boot() {
   if (openSuppliersBtn) openSuppliersBtn.href = `/owner-suppliers.html?venue_id=${encodeURIComponent(activeVenueId)}`;
 
   state.month = params.get("month") || currentMonth();
+  state.statuses = params.get("statuses") || "";
   const monthPick = document.getElementById("expensesMonthPick");
   if (monthPick) {
     monthPick.value = state.month;
     monthPick.onchange = async (e) => {
       state.month = e.target.value || currentMonth();
+      await loadExpenses();
+    };
+  }
+
+  const statusFilter = document.getElementById("expenseStatusFilter");
+  if (statusFilter) {
+    statusFilter.value = state.statuses;
+    statusFilter.onchange = async (e) => {
+      state.statuses = e.target.value || "";
       await loadExpenses();
     };
   }
