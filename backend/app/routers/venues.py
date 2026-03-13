@@ -284,6 +284,8 @@ class MonthlyFinanceSummaryOut(FinanceSummaryOut):
     revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
     expense_categories: list[MonthlyFinanceBreakdownRowOut]
     payment_method_balances: list[PaymentMethodBalanceRowOut]
+    draft_expense_count: int = 0
+    draft_expense_total_minor: int = 0
 
 
 class DailyFinanceSummaryOut(FinanceSummaryOut):
@@ -295,6 +297,8 @@ class DailyFinanceSummaryOut(FinanceSummaryOut):
     recurring_expenses: list[MonthlyFinanceBreakdownRowOut]
     recurring_expense_minor: int
     payment_method_balances: list[PaymentMethodBalanceRowOut]
+    draft_expense_count: int = 0
+    draft_expense_total_minor: int = 0
 
 
 class BalanceAdjustmentCreateIn(BaseModel):
@@ -4392,12 +4396,52 @@ def update_supplier(
     return {"ok": True}
 
 
+def _parse_expense_statuses_filter(statuses: str | None) -> list[str] | None:
+    if statuses is None:
+        return None
+    normalized = []
+    for raw in str(statuses).split(','):
+        value = raw.strip().upper()
+        if not value:
+            continue
+        if value not in {'DRAFT', 'CONFIRMED', 'CANCELLED'}:
+            raise HTTPException(status_code=400, detail='Bad status filter, expected DRAFT, CONFIRMED, CANCELLED')
+        if value not in normalized:
+            normalized.append(value)
+    return normalized or None
+
+
+def _collect_expense_status_stats(*, rows: list[tuple[Expense, ExpenseCategory, Supplier | None, PaymentMethod | None]], statuses: list[str] | None = None) -> dict:
+    counts: dict[str, int] = {'DRAFT': 0, 'CONFIRMED': 0, 'CANCELLED': 0}
+    totals: dict[str, int] = {'DRAFT': 0, 'CONFIRMED': 0, 'CANCELLED': 0}
+    filtered_count = 0
+    filtered_total = 0
+    for expense, *_ in rows:
+        status = str(getattr(expense, 'status', 'DRAFT') or 'DRAFT').upper()
+        counts[status] = counts.get(status, 0) + 1
+        totals[status] = totals.get(status, 0) + int(getattr(expense, 'amount_minor', 0) or 0)
+        if statuses is None or status in statuses:
+            filtered_count += 1
+            filtered_total += int(getattr(expense, 'amount_minor', 0) or 0)
+    return {
+        'count': filtered_count,
+        'total_minor': filtered_total,
+        'draft_count': counts.get('DRAFT', 0),
+        'draft_total_minor': totals.get('DRAFT', 0),
+        'confirmed_count': counts.get('CONFIRMED', 0),
+        'confirmed_total_minor': totals.get('CONFIRMED', 0),
+        'cancelled_count': counts.get('CANCELLED', 0),
+        'cancelled_total_minor': totals.get('CANCELLED', 0),
+    }
+
+
 @router.get("/{venue_id}/expenses")
 def list_expenses(
     venue_id: int,
     month: str | None = Query(default=None),
     category_id: int | None = Query(default=None),
     supplier_id: int | None = Query(default=None),
+    statuses: str | None = Query(default=None, description='Comma-separated statuses: DRAFT,CONFIRMED,CANCELLED'),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -4434,6 +4478,9 @@ def list_expenses(
         stmt = stmt.where(Expense.supplier_id == supplier_id)
 
     rows = db.execute(stmt.distinct().order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
+    status_filter = _parse_expense_statuses_filter(statuses)
+    if status_filter:
+        rows = [row for row in rows if str(getattr(row[0], 'status', 'DRAFT') or 'DRAFT').upper() in status_filter]
     result = []
     for expense, category, supplier, payment_method in rows:
         allocations = list_expense_allocations(db=db, expense_id=expense.id)
@@ -4443,6 +4490,58 @@ def list_expenses(
         payload["recognized_amount_minor_for_month"] = int(sum(int(a.amount_minor or 0) for a in recognized_allocations))
         result.append(payload)
     return result
+
+
+@router.get("/{venue_id}/expenses/stats")
+def get_expense_stats(
+    venue_id: int,
+    month: str | None = Query(default=None),
+    category_id: int | None = Query(default=None),
+    supplier_id: int | None = Query(default=None),
+    statuses: str | None = Query(default=None, description='Comma-separated statuses: DRAFT,CONFIRMED,CANCELLED'),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+
+    stmt = select(Expense, ExpenseCategory, Supplier, PaymentMethod).join(
+        ExpenseCategory, ExpenseCategory.id == Expense.category_id
+    ).outerjoin(
+        Supplier, Supplier.id == Expense.supplier_id
+    ).outerjoin(
+        PaymentMethod, PaymentMethod.id == Expense.payment_method_id
+    ).where(Expense.venue_id == venue_id)
+
+    recognized_month = None
+    period_start = None
+    period_end = None
+    if month:
+        try:
+            recognized_month = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+        _, last_day = calendar.monthrange(recognized_month.year, recognized_month.month)
+        period_start = recognized_month
+        period_end = recognized_month.replace(day=last_day)
+        stmt = stmt.outerjoin(ExpenseAllocation, ExpenseAllocation.expense_id == Expense.id).where(
+            (ExpenseAllocation.month == recognized_month)
+            | ((Expense.status != 'CONFIRMED') & (Expense.generated_for_month == recognized_month))
+            | ((Expense.status != 'CONFIRMED') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
+        )
+
+    if category_id is not None:
+        stmt = stmt.where(Expense.category_id == category_id)
+    if supplier_id is not None:
+        stmt = stmt.where(Expense.supplier_id == supplier_id)
+
+    rows = db.execute(stmt.distinct().order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
+    status_filter = _parse_expense_statuses_filter(statuses)
+    stats = _collect_expense_status_stats(rows=rows, statuses=status_filter)
+    return {
+        'month': recognized_month.isoformat() if recognized_month is not None else None,
+        'statuses': status_filter or ['DRAFT', 'CONFIRMED', 'CANCELLED'],
+        **stats,
+    }
 
 
 @router.post("/{venue_id}/expenses")
@@ -5056,12 +5155,22 @@ def generate_recurring_expense_drafts(
         allocations = list_expense_allocations(db=db, expense_id=expense.id)
         created_payload.append(_serialize_expense(expense, category, supplier, payment_method, allocations))
 
+    updated_payload = []
+    for expense in result.get("updated", []):
+        category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=expense.category_id)
+        supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=expense.supplier_id) if expense.supplier_id else None
+        payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=expense.payment_method_id) if expense.payment_method_id else None
+        allocations = list_expense_allocations(db=db, expense_id=expense.id)
+        updated_payload.append(_serialize_expense(expense, category, supplier, payment_method, allocations))
+
     db.commit()
     return {
         "month": result["month"],
         "created_count": result["created_count"],
+        "updated_count": result.get("updated_count", 0),
         "skipped_count": result["skipped_count"],
         "created": created_payload,
+        "updated": updated_payload,
         "skipped": result["skipped"],
     }
 

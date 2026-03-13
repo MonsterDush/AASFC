@@ -328,6 +328,7 @@ def generate_draft_expenses_for_month(
     rules = db.execute(stmt.order_by(RecurringExpenseRule.id.asc())).scalars().all()
 
     created: list[Expense] = []
+    updated: list[Expense] = []
     skipped: list[dict] = []
 
     for rule in rules:
@@ -342,11 +343,39 @@ def generate_draft_expenses_for_month(
                 Expense.generated_for_month == month_start,
             )
         ).scalar_one_or_none()
-        if existing is not None:
-            skipped.append({"rule_id": int(rule.id), "title": rule.title, "reason": "already_generated", "expense_id": int(existing.id)})
-            continue
 
         amount_minor = calculate_rule_amount_minor(db=db, rule=rule, month_start=month_start, month_end=month_end)
+        if existing is not None:
+            existing_status = str(getattr(existing, 'status', 'DRAFT') or 'DRAFT').upper()
+            if existing_status != 'DRAFT':
+                skipped.append({
+                    "rule_id": int(rule.id),
+                    "title": rule.title,
+                    "reason": f"already_{existing_status.lower()}",
+                    "expense_id": int(existing.id),
+                })
+                continue
+            if amount_minor <= 0:
+                skipped.append({
+                    "rule_id": int(rule.id),
+                    "title": rule.title,
+                    "reason": "zero_amount",
+                    "expense_id": int(existing.id),
+                })
+                continue
+            existing.category_id = int(rule.category_id)
+            existing.supplier_id = int(rule.supplier_id) if rule.supplier_id is not None else None
+            existing.payment_method_id = int(rule.payment_method_id) if rule.payment_method_id is not None else None
+            existing.amount_minor = int(amount_minor)
+            existing.expense_date = build_generated_expense_date(month_start=month_start, day_of_month=int(rule.day_of_month or 1))
+            existing.generated_for_month = month_start
+            existing.spread_months = int(rule.spread_months or 1)
+            existing.comment = build_generated_comment(db=db, rule=rule, month=month)
+            existing.updated_at = datetime.utcnow()
+            rebuild_expense_allocations_for_expense(db=db, expense=existing)
+            updated.append(existing)
+            continue
+
         if amount_minor <= 0:
             skipped.append({"rule_id": int(rule.id), "title": rule.title, "reason": "zero_amount"})
             continue
@@ -375,6 +404,8 @@ def generate_draft_expenses_for_month(
         "month": month,
         "created": created,
         "created_count": len(created),
+        "updated": updated,
+        "updated_count": len(updated),
         "skipped": skipped,
         "skipped_count": len(skipped),
     }

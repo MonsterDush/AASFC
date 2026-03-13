@@ -161,6 +161,27 @@ def _sum_expense_recognition_minor(db: Session, *, venue_id: int, period_start: 
     )
 
 
+def _expense_document_stats_for_period(db: Session, *, venue_id: int, period_start: date, period_end: date) -> dict:
+    month_start = period_start.replace(day=1)
+    last_day = calendar.monthrange(period_start.year, period_start.month)[1]
+    month_end = period_start.replace(day=last_day)
+    stmt = (
+        select(Expense.id, Expense.status, Expense.amount_minor)
+        .where(
+            Expense.venue_id == int(venue_id),
+            (Expense.generated_for_month == month_start)
+            | ((Expense.generated_for_month.is_(None)) & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
+        )
+        .order_by(Expense.id.asc())
+    )
+    rows = db.execute(stmt).all()
+    draft_rows = [row for row in rows if str(row[1] or 'DRAFT').upper() == 'DRAFT']
+    return {
+        'draft_expense_count': len(draft_rows),
+        'draft_expense_total_minor': int(sum(int(row[2] or 0) for row in draft_rows)),
+    }
+
+
 def _group_expense_categories(db: Session, *, venue_id: int, period_start: date, period_end: date) -> list[dict]:
     rows = db.execute(
         select(
@@ -398,6 +419,7 @@ def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None,
     profit_minor = revenue_minor - expense_minor - payroll_minor + adjustments_minor + refunds_minor
     margin_bps = int((profit_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
 
+    draft_stats = _expense_document_stats_for_period(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
     return {
         'month': month,
         'period_start': period_start,
@@ -409,6 +431,7 @@ def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None,
         'refunds_minor': refunds_minor,
         'profit_minor': profit_minor,
         'margin_bps': margin_bps,
+        **draft_stats,
     }
 
 
@@ -451,6 +474,7 @@ def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, in
     profit_minor = revenue_minor - expense_minor - payroll_minor + adjustments_minor + refunds_minor
     margin_bps = int((profit_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
 
+    draft_stats = _expense_document_stats_for_period(db, venue_id=venue_id, period_start=target_date, period_end=target_date)
     return {
         'date': target_date,
         'month': target_date.strftime('%Y-%m'),
@@ -470,4 +494,5 @@ def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, in
         'recurring_expenses': recurring_expenses,
         'recurring_expense_minor': recurring_expense_minor,
         'payment_method_balances': _group_payment_method_balances(db, venue_id=venue_id, period_start=target_date, period_end=target_date),
+        **draft_stats,
     }
