@@ -27,6 +27,7 @@ from app.services.signed_links import make_signed_token, verify_signed_token
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
 from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
 from app.services.finance.summary import get_day_finance_summary, get_finance_summary, get_monthly_finance_summary
+from app.services.finance.day_economics import get_day_economics
 from app.services.finance.balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
 from app.services.finance.payment_transfers import rebuild_payment_method_transfer_entries, delete_payment_method_transfer_entries
 from app.services.finance.recurring_expenses import (
@@ -299,6 +300,52 @@ class DailyFinanceSummaryOut(FinanceSummaryOut):
     payment_method_balances: list[PaymentMethodBalanceRowOut]
     draft_expense_count: int = 0
     draft_expense_total_minor: int = 0
+
+class DayEconomicsReportOut(BaseModel):
+    exists: bool
+    report_id: int | None = None
+    status: str
+    closed_at: datetime | None = None
+    closed_by_user_id: int | None = None
+    comment: str | None = None
+    revenue_total_minor: int = 0
+    tips_total_minor: int = 0
+
+
+class DayEconomicsTeamOut(BaseModel):
+    assignment_count: int = 0
+    assigned_user_count: int = 0
+    assigned_shift_count: int = 0
+
+
+class DayEconomicsMetricsOut(BaseModel):
+    result_status: str
+    revenue_per_assigned_minor: int | None = None
+    tips_per_assigned_minor: int | None = None
+    expense_ratio_bps: int | None = None
+    point_expense_ratio_bps: int | None = None
+    recurring_expense_ratio_bps: int | None = None
+    payroll_ratio_bps: int | None = None
+
+
+class KpiFactRowOut(BaseModel):
+    metric_id: int
+    title: str
+    code: str | None = None
+    unit: str
+    value_numeric: int
+
+
+class DayEconomicsOut(BaseModel):
+    date: date
+    report: DayEconomicsReportOut
+    team: DayEconomicsTeamOut
+    metrics: DayEconomicsMetricsOut
+    summary: DailyFinanceSummaryOut
+    payment_revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
+    department_revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
+    kpi_breakdown: list[KpiFactRowOut]
+
 
 
 class BalanceAdjustmentCreateIn(BaseModel):
@@ -5215,6 +5262,22 @@ def get_venue_day_finance_summary(
             target_date=summary_date,
             income_mode=income_mode,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/{venue_id}/economics/day", response_model=DayEconomicsOut)
+def get_venue_day_economics(
+    venue_id: int,
+    economics_date: date = Query(..., alias="date", description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    try:
+        return get_day_economics(db=db, venue_id=venue_id, target_date=economics_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

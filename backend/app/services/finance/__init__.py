@@ -72,4 +72,7 @@ __all__ = [
     "build_expense_recognition_plan",
     "rebuild_expense_recognition_entries_for_expense",
     "delete_expense_recognition_entries_for_expense",
+    "get_day_economics",
 ]
+
+from .day_economics import get_day_economics
