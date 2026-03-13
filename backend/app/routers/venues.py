@@ -30,8 +30,11 @@ from app.services.finance.summary import get_day_finance_summary, get_finance_su
 from app.services.finance.day_economics import (
     get_day_economics,
     get_day_economics_plan,
+    get_day_economics_plan_override,
     get_venue_economics_rules,
+    list_day_economics_plan_templates,
     upsert_day_economics_plan,
+    upsert_day_economics_plan_template,
     upsert_venue_economics_rules,
 )
 from app.services.finance.balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
@@ -366,6 +369,9 @@ class KpiSummaryOut(BaseModel):
 
 class DayEconomicsPlanOut(BaseModel):
     date: date
+    source: str = 'NONE'
+    template_weekday: int | None = None
+    template_weekday_title: str | None = None
     revenue_plan_minor: int | None = None
     profit_plan_minor: int | None = None
     revenue_per_assigned_plan_minor: int | None = None
@@ -374,6 +380,28 @@ class DayEconomicsPlanOut(BaseModel):
 
 
 class DayEconomicsPlanIn(BaseModel):
+    revenue_plan_minor: int | None = Field(default=None, ge=0)
+    profit_plan_minor: int | None = None
+    revenue_per_assigned_plan_minor: int | None = Field(default=None, ge=0)
+    assigned_user_target: int | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class DayEconomicsPlanTemplateOut(BaseModel):
+    weekday: int
+    weekday_title: str
+    date: date
+    source: str = 'WEEKDAY_TEMPLATE'
+    template_weekday: int | None = None
+    template_weekday_title: str | None = None
+    revenue_plan_minor: int | None = None
+    profit_plan_minor: int | None = None
+    revenue_per_assigned_plan_minor: int | None = None
+    assigned_user_target: int | None = None
+    notes: str | None = None
+
+
+class DayEconomicsPlanTemplateIn(BaseModel):
     revenue_plan_minor: int | None = Field(default=None, ge=0)
     profit_plan_minor: int | None = None
     revenue_per_assigned_plan_minor: int | None = Field(default=None, ge=0)
@@ -5408,6 +5436,19 @@ def get_venue_day_economics_plan_route(
     return get_day_economics_plan(db=db, venue_id=venue_id, target_date=economics_date)
 
 
+@router.get("/{venue_id}/economics/plan/override", response_model=DayEconomicsPlanOut)
+def get_venue_day_economics_plan_override_route(
+    venue_id: int,
+    economics_date: date = Query(..., alias="date", description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    return get_day_economics_plan_override(db=db, venue_id=venue_id, target_date=economics_date)
+
+
 @router.put("/{venue_id}/economics/plan", response_model=DayEconomicsPlanOut)
 def put_venue_day_economics_plan(
     venue_id: int,
@@ -5429,6 +5470,44 @@ def put_venue_day_economics_plan(
     )
     db.commit()
     return plan
+
+
+@router.get("/{venue_id}/economics/plan-templates", response_model=list[DayEconomicsPlanTemplateOut])
+def get_venue_day_economics_plan_templates_route(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    return list_day_economics_plan_templates(db=db, venue_id=venue_id)
+
+
+@router.put("/{venue_id}/economics/plan-templates/{weekday}", response_model=DayEconomicsPlanTemplateOut)
+def put_venue_day_economics_plan_template(
+    venue_id: int,
+    weekday: int,
+    payload: DayEconomicsPlanTemplateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    try:
+        row = upsert_day_economics_plan_template(
+            db=db,
+            venue_id=venue_id,
+            weekday=weekday,
+            revenue_plan_minor=payload.revenue_plan_minor,
+            profit_plan_minor=payload.profit_plan_minor,
+            revenue_per_assigned_plan_minor=payload.revenue_per_assigned_plan_minor,
+            assigned_user_target=payload.assigned_user_target,
+            notes=payload.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return row
 
 
 @router.get("/{venue_id}/economics/rules", response_model=VenueEconomicsRulesOut)

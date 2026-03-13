@@ -7,8 +7,27 @@ from sqlalchemy.orm import Session
 
 from app.models import DailyReport, DailyReportValue, KpiMetric, Shift, ShiftAssignment
 from app.models.day_economics_plan import DayEconomicsPlan
+from app.models.day_economics_plan_template import DayEconomicsPlanTemplate
 from app.models.venue_economics_rule import VenueEconomicsRule
 from app.services.finance.summary import get_day_finance_summary, _group_revenue_breakdown
+
+
+WEEKDAY_TITLES = {
+    0: 'Понедельник',
+    1: 'Вторник',
+    2: 'Среда',
+    3: 'Четверг',
+    4: 'Пятница',
+    5: 'Суббота',
+    6: 'Воскресенье',
+}
+
+
+def _format_minor_as_rub_text(value_minor: int | None) -> str:
+    minor = int(value_minor or 0)
+    sign = '-' if minor < 0 else ''
+    rub = abs(minor) / 100
+    return f'{sign}{rub:,.2f} ₽'.replace(',', ' ')
 
 
 def _get_report_state(*, db: Session, venue_id: int, target_date: date) -> dict:
@@ -175,23 +194,139 @@ def _build_kpi_summary(kpi_breakdown: list[dict]) -> dict:
     }
 
 
-def _serialize_plan(plan: DayEconomicsPlan | None, *, target_date: date) -> dict:
-    if plan is None:
-        return {
-            'date': target_date,
-            'revenue_plan_minor': None,
-            'profit_plan_minor': None,
-            'revenue_per_assigned_plan_minor': None,
-            'assigned_user_target': None,
-            'notes': None,
-        }
+def _empty_plan(*, target_date: date, source: str = 'NONE', template_weekday: int | None = None) -> dict:
     return {
-        'date': plan.target_date,
+        'date': target_date,
+        'source': source,
+        'template_weekday': template_weekday,
+        'template_weekday_title': WEEKDAY_TITLES.get(template_weekday) if template_weekday is not None else None,
+        'revenue_plan_minor': None,
+        'profit_plan_minor': None,
+        'revenue_per_assigned_plan_minor': None,
+        'assigned_user_target': None,
+        'notes': None,
+    }
+
+
+def _serialize_plan(plan: DayEconomicsPlan | DayEconomicsPlanTemplate | None, *, target_date: date, source: str = 'DATE_OVERRIDE', template_weekday: int | None = None) -> dict:
+    if plan is None:
+        return _empty_plan(target_date=target_date, source=source, template_weekday=template_weekday)
+    weekday = template_weekday if template_weekday is not None else (int(plan.weekday) if hasattr(plan, 'weekday') else None)
+    return {
+        'date': target_date,
+        'source': source,
+        'template_weekday': weekday,
+        'template_weekday_title': WEEKDAY_TITLES.get(weekday) if weekday is not None else None,
         'revenue_plan_minor': int(plan.revenue_plan_minor) if plan.revenue_plan_minor is not None else None,
         'profit_plan_minor': int(plan.profit_plan_minor) if plan.profit_plan_minor is not None else None,
         'revenue_per_assigned_plan_minor': int(plan.revenue_per_assigned_plan_minor) if plan.revenue_per_assigned_plan_minor is not None else None,
         'assigned_user_target': int(plan.assigned_user_target) if plan.assigned_user_target is not None else None,
         'notes': plan.notes,
+    }
+
+
+def _get_date_override_plan_model(*, db: Session, venue_id: int, target_date: date) -> DayEconomicsPlan | None:
+    return db.execute(
+        select(DayEconomicsPlan).where(
+            DayEconomicsPlan.venue_id == int(venue_id),
+            DayEconomicsPlan.target_date == target_date,
+        )
+    ).scalar_one_or_none()
+
+
+def _get_weekday_template_model(*, db: Session, venue_id: int, weekday: int) -> DayEconomicsPlanTemplate | None:
+    return db.execute(
+        select(DayEconomicsPlanTemplate).where(
+            DayEconomicsPlanTemplate.venue_id == int(venue_id),
+            DayEconomicsPlanTemplate.weekday == int(weekday),
+        )
+    ).scalar_one_or_none()
+
+
+def get_day_economics_plan(*, db: Session, venue_id: int, target_date: date) -> dict:
+    override = _get_date_override_plan_model(db=db, venue_id=venue_id, target_date=target_date)
+    if override is not None:
+        return _serialize_plan(override, target_date=target_date, source='DATE_OVERRIDE')
+    template = _get_weekday_template_model(db=db, venue_id=venue_id, weekday=target_date.weekday())
+    if template is not None:
+        return _serialize_plan(template, target_date=target_date, source='WEEKDAY_TEMPLATE', template_weekday=target_date.weekday())
+    return _empty_plan(target_date=target_date, source='NONE', template_weekday=target_date.weekday())
+
+
+def get_day_economics_plan_override(*, db: Session, venue_id: int, target_date: date) -> dict:
+    override = _get_date_override_plan_model(db=db, venue_id=venue_id, target_date=target_date)
+    if override is None:
+        return _empty_plan(target_date=target_date, source='DATE_OVERRIDE', template_weekday=target_date.weekday())
+    return _serialize_plan(override, target_date=target_date, source='DATE_OVERRIDE')
+
+
+def upsert_day_economics_plan(
+    *,
+    db: Session,
+    venue_id: int,
+    target_date: date,
+    revenue_plan_minor: int | None,
+    profit_plan_minor: int | None,
+    revenue_per_assigned_plan_minor: int | None,
+    assigned_user_target: int | None,
+    notes: str | None,
+) -> dict:
+    plan = _get_date_override_plan_model(db=db, venue_id=venue_id, target_date=target_date)
+    if plan is None:
+        plan = DayEconomicsPlan(venue_id=int(venue_id), target_date=target_date)
+        db.add(plan)
+    plan.revenue_plan_minor = revenue_plan_minor
+    plan.profit_plan_minor = profit_plan_minor
+    plan.revenue_per_assigned_plan_minor = revenue_per_assigned_plan_minor
+    plan.assigned_user_target = assigned_user_target
+    plan.notes = notes or None
+    db.flush()
+    return _serialize_plan(plan, target_date=target_date, source='DATE_OVERRIDE')
+
+
+def list_day_economics_plan_templates(*, db: Session, venue_id: int) -> list[dict]:
+    rows = db.execute(
+        select(DayEconomicsPlanTemplate).where(DayEconomicsPlanTemplate.venue_id == int(venue_id))
+    ).scalars().all()
+    by_weekday = {int(item.weekday): item for item in rows}
+    result: list[dict] = []
+    for weekday in range(7):
+        template = by_weekday.get(weekday)
+        result.append({
+            'weekday': weekday,
+            'weekday_title': WEEKDAY_TITLES[weekday],
+            **_serialize_plan(template, target_date=date(2000, 1, 3) + timedelta(days=weekday), source='WEEKDAY_TEMPLATE', template_weekday=weekday),
+        })
+    return result
+
+
+def upsert_day_economics_plan_template(
+    *,
+    db: Session,
+    venue_id: int,
+    weekday: int,
+    revenue_plan_minor: int | None,
+    profit_plan_minor: int | None,
+    revenue_per_assigned_plan_minor: int | None,
+    assigned_user_target: int | None,
+    notes: str | None,
+) -> dict:
+    if int(weekday) < 0 or int(weekday) > 6:
+        raise ValueError('Bad weekday, expected 0..6')
+    template = _get_weekday_template_model(db=db, venue_id=venue_id, weekday=weekday)
+    if template is None:
+        template = DayEconomicsPlanTemplate(venue_id=int(venue_id), weekday=int(weekday))
+        db.add(template)
+    template.revenue_plan_minor = revenue_plan_minor
+    template.profit_plan_minor = profit_plan_minor
+    template.revenue_per_assigned_plan_minor = revenue_per_assigned_plan_minor
+    template.assigned_user_target = assigned_user_target
+    template.notes = notes or None
+    db.flush()
+    return {
+        'weekday': int(weekday),
+        'weekday_title': WEEKDAY_TITLES[int(weekday)],
+        **_serialize_plan(template, target_date=date(2000, 1, 3) + timedelta(days=int(weekday)), source='WEEKDAY_TEMPLATE', template_weekday=int(weekday)),
     }
 
 
@@ -213,45 +348,6 @@ def _serialize_rules(rule: VenueEconomicsRule | None) -> dict:
         'min_profit_minor': int(rule.min_profit_minor) if rule.min_profit_minor is not None else None,
         'warn_on_draft_expenses': bool(rule.warn_on_draft_expenses),
     }
-
-
-def get_day_economics_plan(*, db: Session, venue_id: int, target_date: date) -> dict:
-    plan = db.execute(
-        select(DayEconomicsPlan).where(
-            DayEconomicsPlan.venue_id == int(venue_id),
-            DayEconomicsPlan.target_date == target_date,
-        )
-    ).scalar_one_or_none()
-    return _serialize_plan(plan, target_date=target_date)
-
-
-def upsert_day_economics_plan(
-    *,
-    db: Session,
-    venue_id: int,
-    target_date: date,
-    revenue_plan_minor: int | None,
-    profit_plan_minor: int | None,
-    revenue_per_assigned_plan_minor: int | None,
-    assigned_user_target: int | None,
-    notes: str | None,
-) -> dict:
-    plan = db.execute(
-        select(DayEconomicsPlan).where(
-            DayEconomicsPlan.venue_id == int(venue_id),
-            DayEconomicsPlan.target_date == target_date,
-        )
-    ).scalar_one_or_none()
-    if plan is None:
-        plan = DayEconomicsPlan(venue_id=int(venue_id), target_date=target_date)
-        db.add(plan)
-    plan.revenue_plan_minor = revenue_plan_minor
-    plan.profit_plan_minor = profit_plan_minor
-    plan.revenue_per_assigned_plan_minor = revenue_per_assigned_plan_minor
-    plan.assigned_user_target = assigned_user_target
-    plan.notes = notes or None
-    db.flush()
-    return _serialize_plan(plan, target_date=target_date)
 
 
 def get_venue_economics_rules(*, db: Session, venue_id: int) -> dict:
@@ -333,7 +429,7 @@ def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict
             'severity': 'WARN',
             'code': 'DRAFT_EXPENSES',
             'title': 'Есть черновые расходы',
-            'detail': f"{int(summary.get('draft_expense_count') or 0)} черновик(ов) на сумму {int(summary.get('draft_expense_total_minor') or 0)} коп.",
+            'detail': f"{int(summary.get('draft_expense_count') or 0)} черновик(ов) на сумму {_format_minor_as_rub_text(summary.get('draft_expense_total_minor'))}.",
         })
 
     if int(summary.get('profit_minor') or 0) < 0:

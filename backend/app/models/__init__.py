@@ -32,6 +32,9 @@ from .recurring_expense_rule_payment_method import RecurringExpenseRulePaymentMe
 from .payment_method_transfer import PaymentMethodTransfer
 from .expense_recognition_entry import ExpenseRecognitionEntry
 from .recurring_expense_accrual import RecurringExpenseAccrual
+from .day_economics_plan import DayEconomicsPlan
+from .day_economics_plan_template import DayEconomicsPlanTemplate
+from .venue_economics_rule import VenueEconomicsRule
 
 __all__ = [
     "SystemRole",
@@ -69,4 +72,7 @@ __all__ = [
     "PaymentMethodTransfer",
     "ExpenseRecognitionEntry",
     "RecurringExpenseAccrual",
+    "DayEconomicsPlan",
+    "DayEconomicsPlanTemplate",
+    "VenueEconomicsRule",
 ]
