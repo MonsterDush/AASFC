@@ -27,7 +27,13 @@ from app.services.signed_links import make_signed_token, verify_signed_token
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense, delete_expense_allocations_for_expense, list_expense_allocations
 from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
 from app.services.finance.summary import get_day_finance_summary, get_finance_summary, get_monthly_finance_summary
-from app.services.finance.day_economics import get_day_economics
+from app.services.finance.day_economics import (
+    get_day_economics,
+    get_day_economics_plan,
+    get_venue_economics_rules,
+    upsert_day_economics_plan,
+    upsert_venue_economics_rules,
+)
 from app.services.finance.balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
 from app.services.finance.payment_transfers import rebuild_payment_method_transfer_entries, delete_payment_method_transfer_entries
 from app.services.finance.recurring_expenses import (
@@ -358,6 +364,84 @@ class KpiSummaryOut(BaseModel):
     total_value_numeric: int = 0
 
 
+class DayEconomicsPlanOut(BaseModel):
+    date: date
+    revenue_plan_minor: int | None = None
+    profit_plan_minor: int | None = None
+    revenue_per_assigned_plan_minor: int | None = None
+    assigned_user_target: int | None = None
+    notes: str | None = None
+
+
+class DayEconomicsPlanIn(BaseModel):
+    revenue_plan_minor: int | None = Field(default=None, ge=0)
+    profit_plan_minor: int | None = None
+    revenue_per_assigned_plan_minor: int | None = Field(default=None, ge=0)
+    assigned_user_target: int | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class VenueEconomicsRulesOut(BaseModel):
+    max_expense_ratio_bps: int | None = None
+    max_payroll_ratio_bps: int | None = None
+    min_revenue_per_assigned_minor: int | None = None
+    min_assigned_shift_coverage_bps: int | None = None
+    min_profit_minor: int | None = None
+    warn_on_draft_expenses: bool = True
+
+
+class VenueEconomicsRulesIn(BaseModel):
+    max_expense_ratio_bps: int | None = Field(default=None, ge=0)
+    max_payroll_ratio_bps: int | None = Field(default=None, ge=0)
+    min_revenue_per_assigned_minor: int | None = Field(default=None, ge=0)
+    min_assigned_shift_coverage_bps: int | None = Field(default=None, ge=0, le=10000)
+    min_profit_minor: int | None = None
+    warn_on_draft_expenses: bool = True
+
+
+class DayEconomicsPlanFactOut(BaseModel):
+    revenue_fact_minor: int
+    revenue_plan_minor: int | None = None
+    revenue_delta_minor: int | None = None
+    revenue_progress_bps: int | None = None
+    profit_fact_minor: int
+    profit_plan_minor: int | None = None
+    profit_delta_minor: int | None = None
+    revenue_per_assigned_fact_minor: int | None = None
+    revenue_per_assigned_plan_minor: int | None = None
+    revenue_per_assigned_delta_minor: int | None = None
+    assigned_user_fact: int = 0
+    assigned_user_target: int | None = None
+    assigned_user_delta: int | None = None
+
+
+class DayEconomicsAlertOut(BaseModel):
+    severity: str
+    code: str
+    title: str
+    detail: str
+
+
+class DayEconomicsRollupDayOut(BaseModel):
+    date: date
+    profit_minor: int
+    revenue_minor: int
+
+
+class DayEconomicsRollupOut(BaseModel):
+    month: str
+    days_in_period: int
+    evaluated_day_count: int
+    closed_day_count: int
+    profit_total_minor: int
+    avg_profit_minor: int | None = None
+    avg_revenue_per_assigned_minor: int | None = None
+    profitable_day_count: int = 0
+    loss_day_count: int = 0
+    best_day: DayEconomicsRollupDayOut | None = None
+    worst_day: DayEconomicsRollupDayOut | None = None
+
+
 class DayEconomicsOut(BaseModel):
     date: date
     report: DayEconomicsReportOut
@@ -369,6 +453,11 @@ class DayEconomicsOut(BaseModel):
     department_share_breakdown: list[DepartmentShareRowOut]
     kpi_breakdown: list[KpiFactRowOut]
     kpi_summary: KpiSummaryOut
+    plan: DayEconomicsPlanOut
+    rules: VenueEconomicsRulesOut
+    plan_fact: DayEconomicsPlanFactOut
+    alerts: list[DayEconomicsAlertOut]
+    rollup: DayEconomicsRollupOut
 
 
 
@@ -5304,6 +5393,76 @@ def get_venue_day_economics(
         return get_day_economics(db=db, venue_id=venue_id, target_date=economics_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/{venue_id}/economics/plan", response_model=DayEconomicsPlanOut)
+def get_venue_day_economics_plan_route(
+    venue_id: int,
+    economics_date: date = Query(..., alias="date", description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    return get_day_economics_plan(db=db, venue_id=venue_id, target_date=economics_date)
+
+
+@router.put("/{venue_id}/economics/plan", response_model=DayEconomicsPlanOut)
+def put_venue_day_economics_plan(
+    venue_id: int,
+    payload: DayEconomicsPlanIn,
+    economics_date: date = Query(..., alias="date", description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    plan = upsert_day_economics_plan(
+        db=db,
+        venue_id=venue_id,
+        target_date=economics_date,
+        revenue_plan_minor=payload.revenue_plan_minor,
+        profit_plan_minor=payload.profit_plan_minor,
+        revenue_per_assigned_plan_minor=payload.revenue_per_assigned_plan_minor,
+        assigned_user_target=payload.assigned_user_target,
+        notes=payload.notes,
+    )
+    db.commit()
+    return plan
+
+
+@router.get("/{venue_id}/economics/rules", response_model=VenueEconomicsRulesOut)
+def get_venue_day_economics_rules_route(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    return get_venue_economics_rules(db=db, venue_id=venue_id)
+
+
+@router.put("/{venue_id}/economics/rules", response_model=VenueEconomicsRulesOut)
+def put_venue_day_economics_rules(
+    venue_id: int,
+    payload: VenueEconomicsRulesIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    rules = upsert_venue_economics_rules(
+        db=db,
+        venue_id=venue_id,
+        max_expense_ratio_bps=payload.max_expense_ratio_bps,
+        max_payroll_ratio_bps=payload.max_payroll_ratio_bps,
+        min_revenue_per_assigned_minor=payload.min_revenue_per_assigned_minor,
+        min_assigned_shift_coverage_bps=payload.min_assigned_shift_coverage_bps,
+        min_profit_minor=payload.min_profit_minor,
+        warn_on_draft_expenses=payload.warn_on_draft_expenses,
+    )
+    db.commit()
+    return rules
 
 
 @router.get("/{venue_id}/finance/summary", response_model=FinanceSummaryOut)

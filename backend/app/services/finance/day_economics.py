@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.models import DailyReport, DailyReportValue, KpiMetric, Shift, ShiftAssignment
+from app.models.day_economics_plan import DayEconomicsPlan
+from app.models.venue_economics_rule import VenueEconomicsRule
 from app.services.finance.summary import get_day_finance_summary, _group_revenue_breakdown
 
 
@@ -173,6 +175,292 @@ def _build_kpi_summary(kpi_breakdown: list[dict]) -> dict:
     }
 
 
+def _serialize_plan(plan: DayEconomicsPlan | None, *, target_date: date) -> dict:
+    if plan is None:
+        return {
+            'date': target_date,
+            'revenue_plan_minor': None,
+            'profit_plan_minor': None,
+            'revenue_per_assigned_plan_minor': None,
+            'assigned_user_target': None,
+            'notes': None,
+        }
+    return {
+        'date': plan.target_date,
+        'revenue_plan_minor': int(plan.revenue_plan_minor) if plan.revenue_plan_minor is not None else None,
+        'profit_plan_minor': int(plan.profit_plan_minor) if plan.profit_plan_minor is not None else None,
+        'revenue_per_assigned_plan_minor': int(plan.revenue_per_assigned_plan_minor) if plan.revenue_per_assigned_plan_minor is not None else None,
+        'assigned_user_target': int(plan.assigned_user_target) if plan.assigned_user_target is not None else None,
+        'notes': plan.notes,
+    }
+
+
+def _serialize_rules(rule: VenueEconomicsRule | None) -> dict:
+    if rule is None:
+        return {
+            'max_expense_ratio_bps': None,
+            'max_payroll_ratio_bps': None,
+            'min_revenue_per_assigned_minor': None,
+            'min_assigned_shift_coverage_bps': None,
+            'min_profit_minor': None,
+            'warn_on_draft_expenses': True,
+        }
+    return {
+        'max_expense_ratio_bps': int(rule.max_expense_ratio_bps) if rule.max_expense_ratio_bps is not None else None,
+        'max_payroll_ratio_bps': int(rule.max_payroll_ratio_bps) if rule.max_payroll_ratio_bps is not None else None,
+        'min_revenue_per_assigned_minor': int(rule.min_revenue_per_assigned_minor) if rule.min_revenue_per_assigned_minor is not None else None,
+        'min_assigned_shift_coverage_bps': int(rule.min_assigned_shift_coverage_bps) if rule.min_assigned_shift_coverage_bps is not None else None,
+        'min_profit_minor': int(rule.min_profit_minor) if rule.min_profit_minor is not None else None,
+        'warn_on_draft_expenses': bool(rule.warn_on_draft_expenses),
+    }
+
+
+def get_day_economics_plan(*, db: Session, venue_id: int, target_date: date) -> dict:
+    plan = db.execute(
+        select(DayEconomicsPlan).where(
+            DayEconomicsPlan.venue_id == int(venue_id),
+            DayEconomicsPlan.target_date == target_date,
+        )
+    ).scalar_one_or_none()
+    return _serialize_plan(plan, target_date=target_date)
+
+
+def upsert_day_economics_plan(
+    *,
+    db: Session,
+    venue_id: int,
+    target_date: date,
+    revenue_plan_minor: int | None,
+    profit_plan_minor: int | None,
+    revenue_per_assigned_plan_minor: int | None,
+    assigned_user_target: int | None,
+    notes: str | None,
+) -> dict:
+    plan = db.execute(
+        select(DayEconomicsPlan).where(
+            DayEconomicsPlan.venue_id == int(venue_id),
+            DayEconomicsPlan.target_date == target_date,
+        )
+    ).scalar_one_or_none()
+    if plan is None:
+        plan = DayEconomicsPlan(venue_id=int(venue_id), target_date=target_date)
+        db.add(plan)
+    plan.revenue_plan_minor = revenue_plan_minor
+    plan.profit_plan_minor = profit_plan_minor
+    plan.revenue_per_assigned_plan_minor = revenue_per_assigned_plan_minor
+    plan.assigned_user_target = assigned_user_target
+    plan.notes = notes or None
+    db.flush()
+    return _serialize_plan(plan, target_date=target_date)
+
+
+def get_venue_economics_rules(*, db: Session, venue_id: int) -> dict:
+    rule = db.execute(
+        select(VenueEconomicsRule).where(VenueEconomicsRule.venue_id == int(venue_id))
+    ).scalar_one_or_none()
+    return _serialize_rules(rule)
+
+
+def upsert_venue_economics_rules(
+    *,
+    db: Session,
+    venue_id: int,
+    max_expense_ratio_bps: int | None,
+    max_payroll_ratio_bps: int | None,
+    min_revenue_per_assigned_minor: int | None,
+    min_assigned_shift_coverage_bps: int | None,
+    min_profit_minor: int | None,
+    warn_on_draft_expenses: bool,
+) -> dict:
+    rule = db.execute(
+        select(VenueEconomicsRule).where(VenueEconomicsRule.venue_id == int(venue_id))
+    ).scalar_one_or_none()
+    if rule is None:
+        rule = VenueEconomicsRule(venue_id=int(venue_id))
+        db.add(rule)
+    rule.max_expense_ratio_bps = max_expense_ratio_bps
+    rule.max_payroll_ratio_bps = max_payroll_ratio_bps
+    rule.min_revenue_per_assigned_minor = min_revenue_per_assigned_minor
+    rule.min_assigned_shift_coverage_bps = min_assigned_shift_coverage_bps
+    rule.min_profit_minor = min_profit_minor
+    rule.warn_on_draft_expenses = bool(warn_on_draft_expenses)
+    db.flush()
+    return _serialize_rules(rule)
+
+
+def _build_plan_fact(*, summary: dict, metrics: dict, team: dict, plan: dict) -> dict:
+    revenue_fact_minor = int(summary.get('revenue_minor') or 0)
+    profit_fact_minor = int(summary.get('profit_minor') or 0)
+    revenue_per_assigned_fact_minor = metrics.get('revenue_per_assigned_minor')
+    assigned_user_fact = int(team.get('assigned_user_count') or 0)
+
+    revenue_plan_minor = plan.get('revenue_plan_minor')
+    profit_plan_minor = plan.get('profit_plan_minor')
+    revenue_per_assigned_plan_minor = plan.get('revenue_per_assigned_plan_minor')
+    assigned_user_target = plan.get('assigned_user_target')
+
+    return {
+        'revenue_fact_minor': revenue_fact_minor,
+        'revenue_plan_minor': revenue_plan_minor,
+        'revenue_delta_minor': (revenue_fact_minor - int(revenue_plan_minor)) if revenue_plan_minor is not None else None,
+        'revenue_progress_bps': _safe_ratio_bps(numerator_minor=revenue_fact_minor, denominator_minor=int(revenue_plan_minor)) if revenue_plan_minor else None,
+        'profit_fact_minor': profit_fact_minor,
+        'profit_plan_minor': profit_plan_minor,
+        'profit_delta_minor': (profit_fact_minor - int(profit_plan_minor)) if profit_plan_minor is not None else None,
+        'revenue_per_assigned_fact_minor': revenue_per_assigned_fact_minor,
+        'revenue_per_assigned_plan_minor': revenue_per_assigned_plan_minor,
+        'revenue_per_assigned_delta_minor': (int(revenue_per_assigned_fact_minor) - int(revenue_per_assigned_plan_minor)) if revenue_per_assigned_fact_minor is not None and revenue_per_assigned_plan_minor is not None else None,
+        'assigned_user_fact': assigned_user_fact,
+        'assigned_user_target': assigned_user_target,
+        'assigned_user_delta': (assigned_user_fact - int(assigned_user_target)) if assigned_user_target is not None else None,
+    }
+
+
+def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict, rules: dict) -> list[dict]:
+    alerts: list[dict] = []
+
+    report_status = str(report.get('status') or 'MISSING').upper()
+    if report_status != 'CLOSED':
+        alerts.append({
+            'severity': 'WARN',
+            'code': 'REPORT_NOT_CLOSED',
+            'title': 'День не закрыт',
+            'detail': 'Экономика дня может быть неполной, пока отчёт не закрыт.',
+        })
+
+    if bool(rules.get('warn_on_draft_expenses', True)) and int(summary.get('draft_expense_count') or 0) > 0:
+        alerts.append({
+            'severity': 'WARN',
+            'code': 'DRAFT_EXPENSES',
+            'title': 'Есть черновые расходы',
+            'detail': f"{int(summary.get('draft_expense_count') or 0)} черновик(ов) на сумму {int(summary.get('draft_expense_total_minor') or 0)} коп.",
+        })
+
+    if int(summary.get('profit_minor') or 0) < 0:
+        alerts.append({
+            'severity': 'CRITICAL',
+            'code': 'LOSS_DAY',
+            'title': 'День убыточный',
+            'detail': 'Фактическая прибыль дня ушла в минус.',
+        })
+
+    max_expense_ratio_bps = rules.get('max_expense_ratio_bps')
+    expense_ratio_bps = metrics.get('expense_ratio_bps')
+    if max_expense_ratio_bps is not None and expense_ratio_bps is not None and int(expense_ratio_bps) > int(max_expense_ratio_bps):
+        alerts.append({
+            'severity': 'WARN',
+            'code': 'EXPENSE_RATIO_HIGH',
+            'title': 'Расходы выше нормы',
+            'detail': f'Расходы к выручке: {expense_ratio_bps / 100:.2f}% при лимите {int(max_expense_ratio_bps) / 100:.2f}%.',
+        })
+
+    max_payroll_ratio_bps = rules.get('max_payroll_ratio_bps')
+    payroll_ratio_bps = metrics.get('payroll_ratio_bps')
+    if max_payroll_ratio_bps is not None and payroll_ratio_bps is not None and int(payroll_ratio_bps) > int(max_payroll_ratio_bps):
+        alerts.append({
+            'severity': 'WARN',
+            'code': 'PAYROLL_RATIO_HIGH',
+            'title': 'ФОТ выше нормы',
+            'detail': f'ФОТ к выручке: {payroll_ratio_bps / 100:.2f}% при лимите {int(max_payroll_ratio_bps) / 100:.2f}%.',
+        })
+
+    min_revenue_per_assigned_minor = rules.get('min_revenue_per_assigned_minor')
+    revenue_per_assigned_minor = metrics.get('revenue_per_assigned_minor')
+    if min_revenue_per_assigned_minor is not None and revenue_per_assigned_minor is not None and int(revenue_per_assigned_minor) < int(min_revenue_per_assigned_minor):
+        alerts.append({
+            'severity': 'WARN',
+            'code': 'REVENUE_PER_ASSIGNED_LOW',
+            'title': 'Низкая выручка на сотрудника',
+            'detail': 'Выручка на сотрудника ниже заданной нормы.',
+        })
+
+    min_assigned_shift_coverage_bps = rules.get('min_assigned_shift_coverage_bps')
+    coverage_bps = metrics.get('assigned_shift_coverage_bps')
+    if min_assigned_shift_coverage_bps is not None and coverage_bps is not None and int(coverage_bps) < int(min_assigned_shift_coverage_bps):
+        alerts.append({
+            'severity': 'WARN',
+            'code': 'SHIFT_COVERAGE_LOW',
+            'title': 'Низкое покрытие смен',
+            'detail': f'Покрытие смен: {coverage_bps / 100:.2f}% при целевом значении {int(min_assigned_shift_coverage_bps) / 100:.2f}%.',
+        })
+
+    min_profit_minor = rules.get('min_profit_minor')
+    if min_profit_minor is not None and int(summary.get('profit_minor') or 0) < int(min_profit_minor):
+        alerts.append({
+            'severity': 'WARN',
+            'code': 'PROFIT_BELOW_TARGET',
+            'title': 'Прибыль ниже порога',
+            'detail': 'Фактическая прибыль дня ниже заданного минимального порога.',
+        })
+
+    if plan_fact.get('revenue_delta_minor') is not None and int(plan_fact['revenue_delta_minor']) < 0:
+        alerts.append({
+            'severity': 'INFO',
+            'code': 'REVENUE_PLAN_MISSED',
+            'title': 'План по выручке не выполнен',
+            'detail': 'Фактическая выручка ниже плана дня.',
+        })
+
+    if plan_fact.get('profit_delta_minor') is not None and int(plan_fact['profit_delta_minor']) < 0:
+        alerts.append({
+            'severity': 'INFO',
+            'code': 'PROFIT_PLAN_MISSED',
+            'title': 'План по прибыли не выполнен',
+            'detail': 'Фактическая прибыль ниже плана дня.',
+        })
+
+    return alerts
+
+
+def _build_rollup(*, db: Session, venue_id: int, target_date: date) -> dict:
+    month_start = target_date.replace(day=1)
+    cursor = month_start
+    days: list[dict] = []
+    avg_revenue_per_assigned_parts: list[int] = []
+    closed_day_count = 0
+
+    while cursor <= target_date:
+        summary = get_day_finance_summary(db=db, venue_id=venue_id, target_date=cursor, income_mode='PAYMENTS')
+        team = _get_team_snapshot(db=db, venue_id=venue_id, target_date=cursor)
+        report = _get_report_state(db=db, venue_id=venue_id, target_date=cursor)
+        if str(report.get('status') or '').upper() == 'CLOSED':
+            closed_day_count += 1
+        if int(summary.get('revenue_minor') or 0) > 0 or int(summary.get('expense_minor') or 0) > 0 or report.get('exists'):
+            profit_minor = int(summary.get('profit_minor') or 0)
+            revenue_minor = int(summary.get('revenue_minor') or 0)
+            assigned_users = int(team.get('assigned_user_count') or 0)
+            if assigned_users > 0:
+                avg_revenue_per_assigned_parts.append(int(revenue_minor / assigned_users))
+            days.append({
+                'date': cursor,
+                'profit_minor': profit_minor,
+                'revenue_minor': revenue_minor,
+            })
+        cursor += timedelta(days=1)
+
+    profit_total_minor = int(sum(int(item['profit_minor']) for item in days)) if days else 0
+    avg_profit_minor = int(profit_total_minor / len(days)) if days else None
+    avg_revenue_per_assigned_minor = int(sum(avg_revenue_per_assigned_parts) / len(avg_revenue_per_assigned_parts)) if avg_revenue_per_assigned_parts else None
+    profitable_day_count = sum(1 for item in days if int(item['profit_minor']) > 0)
+    loss_day_count = sum(1 for item in days if int(item['profit_minor']) < 0)
+    best_day = max(days, key=lambda item: int(item['profit_minor'])) if days else None
+    worst_day = min(days, key=lambda item: int(item['profit_minor'])) if days else None
+
+    return {
+        'month': month_start.strftime('%Y-%m'),
+        'days_in_period': (target_date - month_start).days + 1,
+        'evaluated_day_count': len(days),
+        'closed_day_count': closed_day_count,
+        'profit_total_minor': profit_total_minor,
+        'avg_profit_minor': avg_profit_minor,
+        'avg_revenue_per_assigned_minor': avg_revenue_per_assigned_minor,
+        'profitable_day_count': profitable_day_count,
+        'loss_day_count': loss_day_count,
+        'best_day': best_day,
+        'worst_day': worst_day,
+    }
+
+
 def _build_metrics(*, summary: dict, report: dict, team: dict, department_share_breakdown: list[dict], kpi_breakdown: list[dict]) -> dict:
     revenue_minor = int(summary.get('revenue_minor') or 0)
     point_expense_minor = int(summary.get('point_expense_minor') or 0)
@@ -226,6 +514,11 @@ def get_day_economics(*, db: Session, venue_id: int, target_date: date) -> dict:
     department_share_breakdown = _build_share_breakdown(department_revenue_breakdown)
     kpi_breakdown = _get_kpi_breakdown(db=db, venue_id=venue_id, target_date=target_date)
     metrics = _build_metrics(summary=summary, report=report, team=team, department_share_breakdown=department_share_breakdown, kpi_breakdown=kpi_breakdown)
+    plan = get_day_economics_plan(db=db, venue_id=venue_id, target_date=target_date)
+    rules = get_venue_economics_rules(db=db, venue_id=venue_id)
+    plan_fact = _build_plan_fact(summary=summary, metrics=metrics, team=team, plan=plan)
+    alerts = _build_alerts(report=report, summary=summary, metrics=metrics, plan_fact=plan_fact, rules=rules)
+    rollup = _build_rollup(db=db, venue_id=venue_id, target_date=target_date)
     return {
         'date': target_date,
         'report': report,
@@ -237,4 +530,9 @@ def get_day_economics(*, db: Session, venue_id: int, target_date: date) -> dict:
         'department_share_breakdown': department_share_breakdown,
         'kpi_breakdown': kpi_breakdown,
         'kpi_summary': _build_kpi_summary(kpi_breakdown),
+        'plan': plan,
+        'rules': rules,
+        'plan_fact': plan_fact,
+        'alerts': alerts,
+        'rollup': rollup,
     }

@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Экономика дня</b>
-          <div class="muted" id="subtitle">приход, расходы, прибыль и эффективность команды за выбранный день</div>
+          <div class="muted" id="subtitle">приход, расходы, прибыль, план/факт и алерты за выбранный день</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -24,7 +24,7 @@
       <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
         <div>
           <b>День как управленческая единица</b>
-          <div class="muted mt-6">Показывает денежный приход, признанные расходы дня и эффективность команды по закрытому отчёту.</div>
+          <div class="muted mt-6">Денежный приход, признанные расходы, эффективность команды, цели дня и автоматические предупреждения.</div>
         </div>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
           <input id="economicsDatePick" type="date" style="width:auto; min-width:160px;" />
@@ -57,60 +57,24 @@
       </div>
 
       <div class="finance-stats mt-12">
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Выручка дня</div>
-          <div class="finance-stat__value" id="economicsRevenue">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Расходы дня</div>
-          <div class="finance-stat__value" id="economicsExpenses">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Прибыль дня</div>
-          <div class="finance-stat__value" id="economicsProfit">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Маржинальность</div>
-          <div class="finance-stat__value" id="economicsMargin">—</div>
-        </div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка дня</div><div class="finance-stat__value" id="economicsRevenue">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Расходы дня</div><div class="finance-stat__value" id="economicsExpenses">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Прибыль дня</div><div class="finance-stat__value" id="economicsProfit">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Маржинальность</div><div class="finance-stat__value" id="economicsMargin">—</div></div>
       </div>
 
       <div class="finance-stats mt-12">
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Сотрудников в дне</div>
-          <div class="finance-stat__value" id="economicsAssignedUsers">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Выручка на сотрудника</div>
-          <div class="finance-stat__value" id="economicsRevenuePerAssigned">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Чаевые на сотрудника</div>
-          <div class="finance-stat__value" id="economicsTipsPerAssigned">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Чаевые дня</div>
-          <div class="finance-stat__value" id="economicsTips">—</div>
-        </div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Сотрудников в дне</div><div class="finance-stat__value" id="economicsAssignedUsers">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка на сотрудника</div><div class="finance-stat__value" id="economicsRevenuePerAssigned">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Чаевые на сотрудника</div><div class="finance-stat__value" id="economicsTipsPerAssigned">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Чаевые дня</div><div class="finance-stat__value" id="economicsTips">—</div></div>
       </div>
 
       <div class="finance-stats mt-12">
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Расходы / выручка</div>
-          <div class="finance-stat__value" id="economicsExpenseRatio">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Разовые / выручка</div>
-          <div class="finance-stat__value" id="economicsPointExpenseRatio">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Регулярные / выручка</div>
-          <div class="finance-stat__value" id="economicsRecurringExpenseRatio">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">ФОТ / выручка</div>
-          <div class="finance-stat__value" id="economicsPayrollRatio">—</div>
-        </div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Расходы / выручка</div><div class="finance-stat__value" id="economicsExpenseRatio">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Разовые / выручка</div><div class="finance-stat__value" id="economicsPointExpenseRatio">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Регулярные / выручка</div><div class="finance-stat__value" id="economicsRecurringExpenseRatio">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">ФОТ / выручка</div><div class="finance-stat__value" id="economicsPayrollRatio">—</div></div>
       </div>
 
       <div class="itemcard mt-12">
@@ -125,66 +89,109 @@
 
       <div class="finance-stats mt-12">
         <div class="itemcard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <b>Доходы дня по типам оплат</b>
-            <div class="muted">Денежный приход из закрытого отчёта</div>
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>План / факт дня</b><div class="muted">Цели на день и отклонение от них</div></div>
+          <div class="finance-stats mt-12">
+            <div class="itemcard finance-stat"><div class="finance-stat__label">План выручки</div><div class="finance-stat__value" id="economicsPlanRevenue">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Отклонение выручки</div><div class="finance-stat__value" id="economicsPlanRevenueDelta">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">План прибыли</div><div class="finance-stat__value" id="economicsPlanProfit">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Отклонение прибыли</div><div class="finance-stat__value" id="economicsPlanProfitDelta">—</div></div>
           </div>
-          <div id="economicsPaymentRevenueBreakdown" class="mt-12"></div>
+          <div class="finance-stats mt-12">
+            <div class="itemcard finance-stat"><div class="finance-stat__label">План выручки / сотрудника</div><div class="finance-stat__value" id="economicsPlanPerAssigned">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Отклонение / сотрудника</div><div class="finance-stat__value" id="economicsPlanPerAssignedDelta">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Цель по сотрудникам</div><div class="finance-stat__value" id="economicsPlanAssignedTarget">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Отклонение по сотрудникам</div><div class="finance-stat__value" id="economicsPlanAssignedDelta">—</div></div>
+          </div>
+          <div class="muted mt-12" id="economicsPlanNotesView">—</div>
         </div>
 
         <div class="itemcard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <b>Доходы дня по департаментам</b>
-            <div class="muted">Аналитическая структура выручки дня</div>
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Алерты дня</b><div class="muted">Нормативы, незакрытый день и проблемные зоны</div></div>
+          <div id="economicsAlerts" class="mt-12"></div>
+        </div>
+      </div>
+
+      <div class="finance-stats mt-12">
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Rollup месяца к дате</b><div class="muted">Лучшие и худшие дни, средняя эффективность</div></div>
+          <div class="finance-stats mt-12">
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Закрытых дней</div><div class="finance-stat__value" id="economicsRollupClosedDays">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Прибыльных дней</div><div class="finance-stat__value" id="economicsRollupProfitDays">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Убыточных дней</div><div class="finance-stat__value" id="economicsRollupLossDays">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Прибыль месяца</div><div class="finance-stat__value" id="economicsRollupProfitTotal">—</div></div>
           </div>
+          <div class="finance-stats mt-12">
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Средняя прибыль дня</div><div class="finance-stat__value" id="economicsRollupAvgProfit">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Средняя выручка / сотрудника</div><div class="finance-stat__value" id="economicsRollupAvgRevenuePerAssigned">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Лучший день</div><div class="finance-stat__value" id="economicsRollupBestDay">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Худший день</div><div class="finance-stat__value" id="economicsRollupWorstDay">—</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="finance-stats mt-12" id="economicsManageBlock" style="display:none;">
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Настроить план дня</b><div class="muted">План используется в plan/fact и подсказках</div></div>
+          <form id="economicsPlanForm" class="finance-form mt-12">
+            <label>План выручки, ₽<input name="revenue_plan" type="text" placeholder="150000.00" /></label>
+            <label>План прибыли, ₽<input name="profit_plan" type="text" placeholder="50000.00" /></label>
+            <label>План выручки на сотрудника, ₽<input name="revenue_per_assigned_plan" type="text" placeholder="30000.00" /></label>
+            <label>Цель по сотрудникам<input name="assigned_user_target" type="number" min="0" step="1" placeholder="5" /></label>
+            <label>Комментарий к плану<textarea name="notes" rows="3" placeholder="Например: пятница, ожидаем высокий трафик"></textarea></label>
+            <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить план</button></div>
+          </form>
+        </div>
+
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Нормативы и алерты</b><div class="muted">Правила, по которым подсвечиваются проблемные дни</div></div>
+          <form id="economicsRulesForm" class="finance-form mt-12">
+            <label>Макс. расходы / выручка, %<input name="max_expense_ratio_pct" type="text" placeholder="35" /></label>
+            <label>Макс. ФОТ / выручка, %<input name="max_payroll_ratio_pct" type="text" placeholder="20" /></label>
+            <label>Мин. выручка на сотрудника, ₽<input name="min_revenue_per_assigned" type="text" placeholder="25000.00" /></label>
+            <label>Мин. покрытие смен, %<input name="min_assigned_shift_coverage_pct" type="text" placeholder="80" /></label>
+            <label>Мин. прибыль дня, ₽<input name="min_profit" type="text" placeholder="10000.00" /></label>
+            <label class="row" style="gap:8px; align-items:center;"><input name="warn_on_draft_expenses" type="checkbox" /> Предупреждать о черновых расходах</label>
+            <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить правила</button></div>
+          </form>
+        </div>
+      </div>
+
+      <div class="finance-stats mt-12">
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Доходы дня по типам оплат</b><div class="muted">Денежный приход из закрытого отчёта</div></div>
+          <div id="economicsPaymentRevenueBreakdown" class="mt-12"></div>
+        </div>
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Доходы дня по департаментам</b><div class="muted">Аналитическая структура выручки дня</div></div>
           <div id="economicsDepartmentRevenueBreakdown" class="mt-12"></div>
         </div>
       </div>
 
       <div class="finance-stats mt-12">
         <div class="itemcard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <b>Разовые расходы дня</b>
-            <div class="muted">Подтверждённые точечные расходы выбранного дня</div>
-          </div>
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Разовые расходы дня</b><div class="muted">Подтверждённые точечные расходы выбранного дня</div></div>
           <div id="economicsPointExpenses" class="mt-12"></div>
         </div>
-
         <div class="itemcard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <b>Регулярные расходы дня</b>
-            <div class="muted">Признанные регулярные расходы за выбранный день</div>
-          </div>
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Регулярные расходы дня</b><div class="muted">Признанные регулярные расходы за выбранный день</div></div>
           <div id="economicsRecurringExpenses" class="mt-12"></div>
         </div>
       </div>
 
       <div class="finance-stats mt-12">
         <div class="itemcard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <b>Баланс по типам оплат</b>
-            <div class="muted">Приход, расход и расчётный остаток за день</div>
-          </div>
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Баланс по типам оплат</b><div class="muted">Приход, расход и расчётный остаток за день</div></div>
           <div id="economicsPaymentBalances" class="mt-12"></div>
         </div>
-
         <div class="itemcard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <b>KPI-факт дня</b>
-            <div class="muted">Что закрытый отчёт зафиксировал по KPI</div>
-          </div>
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>KPI-факт дня</b><div class="muted">Что закрытый отчёт зафиксировал по KPI</div></div>
           <div id="economicsKpiBreakdown" class="mt-12"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="nav">
-    <div class="wrap">
-      <div id="nav"></div>
-    </div>
-  </div>
-
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
   <script type="module" src="/owner-day-economics.js"></script>
 </body>
