@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Экономика дня</title>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Экономика дня</b>
+          <div class="muted" id="subtitle">приход, расходы, прибыль и эффективность команды за выбранный день</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card finance-toolbar">
+      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div>
+          <b>День как управленческая единица</b>
+          <div class="muted mt-6">Показывает денежный приход, признанные расходы дня и эффективность команды по закрытому отчёту.</div>
+        </div>
+        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="economicsDatePick" type="date" style="width:auto; min-width:160px;" />
+          <button class="btn" id="openSummaryBtn">Сводка дня</button>
+          <button class="btn" id="refreshEconomicsBtn">Обновить</button>
+        </div>
+      </div>
+
+      <div class="itemcard mt-12" id="economicsStatusCard">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b id="economicsStatusTitle">—</b>
+            <div class="muted mt-6" id="economicsStatusHint">—</div>
+          </div>
+          <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+            <span class="badge" id="economicsResultBadge">—</span>
+            <span class="badge" id="economicsReportBadge">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="itemcard mt-12" id="economicsDraftCard" style="display:none;">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Есть черновые расходы</b>
+            <div class="muted mt-6" id="economicsDraftHint">—</div>
+          </div>
+          <button class="btn ghost" id="openEconomicsDraftExpensesBtn">Открыть черновики</button>
+        </div>
+      </div>
+
+      <div class="finance-stats mt-12">
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Выручка дня</div>
+          <div class="finance-stat__value" id="economicsRevenue">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Расходы дня</div>
+          <div class="finance-stat__value" id="economicsExpenses">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Прибыль дня</div>
+          <div class="finance-stat__value" id="economicsProfit">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Маржинальность</div>
+          <div class="finance-stat__value" id="economicsMargin">—</div>
+        </div>
+      </div>
+
+      <div class="finance-stats mt-12">
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Сотрудников в дне</div>
+          <div class="finance-stat__value" id="economicsAssignedUsers">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Выручка на сотрудника</div>
+          <div class="finance-stat__value" id="economicsRevenuePerAssigned">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Чаевые на сотрудника</div>
+          <div class="finance-stat__value" id="economicsTipsPerAssigned">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Чаевые дня</div>
+          <div class="finance-stat__value" id="economicsTips">—</div>
+        </div>
+      </div>
+
+      <div class="finance-stats mt-12">
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Расходы / выручка</div>
+          <div class="finance-stat__value" id="economicsExpenseRatio">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Разовые / выручка</div>
+          <div class="finance-stat__value" id="economicsPointExpenseRatio">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Регулярные / выручка</div>
+          <div class="finance-stat__value" id="economicsRecurringExpenseRatio">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">ФОТ / выручка</div>
+          <div class="finance-stat__value" id="economicsPayrollRatio">—</div>
+        </div>
+      </div>
+
+      <div class="itemcard mt-12">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Срез дня</b>
+            <div class="muted mt-6" id="economicsMetaHint">—</div>
+          </div>
+          <div class="muted" id="economicsPeriodText">—</div>
+        </div>
+      </div>
+
+      <div class="finance-stats mt-12">
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <b>Доходы дня по типам оплат</b>
+            <div class="muted">Денежный приход из закрытого отчёта</div>
+          </div>
+          <div id="economicsPaymentRevenueBreakdown" class="mt-12"></div>
+        </div>
+
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <b>Доходы дня по департаментам</b>
+            <div class="muted">Аналитическая структура выручки дня</div>
+          </div>
+          <div id="economicsDepartmentRevenueBreakdown" class="mt-12"></div>
+        </div>
+      </div>
+
+      <div class="finance-stats mt-12">
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <b>Разовые расходы дня</b>
+            <div class="muted">Подтверждённые точечные расходы выбранного дня</div>
+          </div>
+          <div id="economicsPointExpenses" class="mt-12"></div>
+        </div>
+
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <b>Регулярные расходы дня</b>
+            <div class="muted">Признанные регулярные расходы за выбранный день</div>
+          </div>
+          <div id="economicsRecurringExpenses" class="mt-12"></div>
+        </div>
+      </div>
+
+      <div class="finance-stats mt-12">
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <b>Баланс по типам оплат</b>
+            <div class="muted">Приход, расход и расчётный остаток за день</div>
+          </div>
+          <div id="economicsPaymentBalances" class="mt-12"></div>
+        </div>
+
+        <div class="itemcard">
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <b>KPI-факт дня</b>
+            <div class="muted">Что закрытый отчёт зафиксировал по KPI</div>
+          </div>
+          <div id="economicsKpiBreakdown" class="mt-12"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav">
+    <div class="wrap">
+      <div id="nav"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"><div class="toast__text"></div></div>
+  <script type="module" src="/owner-day-economics.js"></script>
+</body>
+</html>

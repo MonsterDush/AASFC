@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Сводка</b>
-          <div class="muted" id="subtitle">выручка, расходы, прибыль, регулярные расходы и балансы</div>
+          <div class="muted" id="subtitle">выручка, расходы и прибыль</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -24,21 +24,13 @@
       <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
         <div>
           <b>Финансовая сводка</b>
-          <div class="muted mt-6">данные по закрытым отчётам, подтверждённым расходам, регулярным правилам и корректировкам баланса</div>
+          <div class="muted mt-6">данные по закрытым отчётам и учтённым расходам</div>
         </div>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-          <select id="summaryPeriodMode" style="width:auto; min-width:130px;">
-            <option value="MONTH">Месяц</option>
-            <option value="DAY">День</option>
-          </select>
           <input id="summaryMonthPick" type="month" style="width:auto; min-width:160px;" />
-          <input id="summaryDatePick" type="date" style="width:auto; min-width:160px; display:none;" />
-          <select id="summaryIncomeMode" style="width:auto; min-width:170px;">
-            <option value="PAYMENTS">Доходы по оплатам</option>
-            <option value="DEPARTMENTS">Доходы по департаментам</option>
-          </select>
           <button class="btn" id="openRevenueBtn">Выручка</button>
           <button class="btn" id="openExpensesBtn">Расходы</button>
+          <button class="btn" id="openEconomicsBtn">Экономика дня</button>
         </div>
       </div>
 
@@ -64,16 +56,6 @@
         </div>
       </div>
 
-
-      <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
-            <b>Как читать сводку</b>
-            <div class="muted mt-6">Выручка и баланс по оплатам показывают денежное движение. Расходы и прибыль показывают управленческую картину периода: разовые расходы и регулярные правила.</div>
-          </div>
-        </div>
-      </div>
-
       <div class="itemcard mt-12" id="summaryMetaCard">
         <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
           <div>
@@ -82,64 +64,6 @@
           </div>
           <div class="muted" id="summaryHint">—</div>
         </div>
-      </div>
-
-      <div class="itemcard mt-12" id="summaryDraftCard" style="display:none;">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
-            <b>Есть черновые расходы</b>
-            <div class="muted mt-6" id="summaryDraftHint">—</div>
-          </div>
-          <button class="btn ghost" id="openSummaryDraftExpensesBtn">Открыть черновики</button>
-        </div>
-      </div>
-
-      <div class="finance-stats mt-12">
-        <div class="itemcard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <b id="summaryIncomeModeText">Доходы по типам оплат</b>
-            <div class="muted" id="summaryRevenueBreakdownHint">Структура доходов периода</div>
-          </div>
-          <div id="summaryRevenueBreakdown" class="mt-12"></div>
-        </div>
-
-        <div class="itemcard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <b id="summaryExpenseBreakdownTitle">Расходы по категориям</b>
-            <div class="muted" id="summaryExpenseBreakdownHint">Признанные суммы за месяц</div>
-          </div>
-          <div id="summaryExpenseBreakdown" class="mt-12"></div>
-        </div>
-
-        <div class="itemcard" id="summaryRecurringCard" style="display:none;">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <b>Регулярные расходы дня</b>
-            <div class="muted">Автоматически признаются после закрытия дня</div>
-          </div>
-          <div id="summaryRecurringBreakdown" class="mt-12"></div>
-        </div>
-      </div>
-
-      <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
-            <b>Баланс по типам оплат</b>
-            <div class="muted mt-6">Приход и расход за период, плюс расчётный остаток на конец выбранного периода</div>
-          </div>
-          <button class="btn" id="addBalanceAdjustmentBtn" style="display:none;">Корректировка баланса</button>
-        </div>
-        <div id="summaryPaymentBalances" class="mt-12"></div>
-      </div>
-
-      <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
-            <b>Корректировки баланса</b>
-            <div class="muted mt-6">Начальные остатки и ручные поправки по факту</div>
-          </div>
-          <div class="muted" id="balanceAdjustmentsHint">—</div>
-        </div>
-        <div id="balanceAdjustmentsList" class="mt-12"></div>
       </div>
     </div>
   </div>
