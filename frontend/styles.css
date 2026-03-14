@@ -1033,5 +1033,5 @@ input[type="checkbox"],input[type="radio"]{
   .finance-filters{grid-template-columns:1fr}
   .expense-row{grid-template-columns:1fr}
   .expense-row__side{justify-items:start;min-width:0}
-  .finance-stat__value{font-size:20px}
+  .finance-stat__value{font-size:15px}
 }
