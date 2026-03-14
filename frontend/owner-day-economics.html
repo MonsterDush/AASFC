@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Экономика дня</b>
-          <div class="muted" id="subtitle">приход, расходы, прибыль, план/факт и алерты за выбранный день</div>
+          <div class="muted" id="subtitle">приход, расходы, прибыль и сигналы за выбранный день</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -29,6 +29,8 @@
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
           <input id="economicsDatePick" type="date" style="width:auto; min-width:160px;" />
           <button class="btn" id="openSummaryBtn">Сводка дня</button>
+          <button class="btn ghost" id="openPlanTemplatesBtn">Планы</button>
+          <button class="btn ghost" id="openEconomicsRulesBtn">Нормативы</button>
           <button class="btn" id="refreshEconomicsBtn">Обновить</button>
         </div>
       </div>
@@ -131,32 +133,33 @@
 
       <div class="finance-stats-1 mt-12" id="economicsManageBlock" style="display:none;">
         <div class="itemcard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Настроить план дня</b><div class="muted">План используется в plan/fact и подсказках</div></div>
-          <form id="economicsPlanForm" class="finance-form mt-12">
-            <label>План выручки, ₽<input name="revenue_plan" type="text" placeholder="150000.00" /></label>
-            <label>План прибыли, ₽<input name="profit_plan" type="text" placeholder="50000.00" /></label>
-            <label>План выручки на сотрудника, ₽<input name="revenue_per_assigned_plan" type="text" placeholder="30000.00" /></label>
-            <label>Цель по сотрудникам<input name="assigned_user_target" type="number" min="0" step="1" placeholder="5" /></label>
-            <label>Комментарий к плану<textarea name="notes" rows="3" placeholder="Например: пятница, ожидаем высокий трафик"></textarea></label>
-            <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить план</button></div>
-          </form>
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div>
+              <b>План дня</b>
+              <div class="muted mt-6" id="economicsPlanSourceHint">План не задан</div>
+            </div>
+            <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+              <button class="btn" id="openPlanTemplatesBtnCard">Открыть планы</button>
+            </div>
+          </div>
+          <div class="muted mt-12">Шаблоны по дням недели и override на конкретную дату вынесены на отдельную страницу.</div>
         </div>
 
         <div class="itemcard mt-12">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Нормативы и алерты</b><div class="muted">Правила, по которым подсвечиваются проблемные дни</div></div>
-          <form id="economicsRulesForm" class="finance-form mt-12">
-            <label>Макс. расходы / выручка, %<input name="max_expense_ratio_pct" type="text" placeholder="35" /></label>
-            <label>Макс. ФОТ / выручка, %<input name="max_payroll_ratio_pct" type="text" placeholder="20" /></label>
-            <label>Мин. выручка на сотрудника, ₽<input name="min_revenue_per_assigned" type="text" placeholder="25000.00" /></label>
-            <label>Мин. покрытие смен, %<input name="min_assigned_shift_coverage_pct" type="text" placeholder="80" /></label>
-            <label>Мин. прибыль дня, ₽<input name="min_profit" type="text" placeholder="10000.00" /></label>
-            <label class="row" style="gap:8px; align-items:center;"><input name="warn_on_draft_expenses" type="checkbox" /> Предупреждать о черновых расходах</label>
-            <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить правила</button></div>
-          </form>
+          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div>
+              <b>Нормативы и алерты</b>
+              <div class="muted mt-6" id="economicsRulesHint">Управление правилами вынесено на отдельную страницу.</div>
+            </div>
+            <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+              <button class="btn" id="openEconomicsRulesBtnCard">Открыть нормативы</button>
+            </div>
+          </div>
+          <div class="muted mt-12">Здесь показываются только сигналы и план/факт выбранного дня.</div>
         </div>
       </div>
 
-      <div class="finance-stats mt-12">
+<div class="finance-stats mt-12">
         <div class="itemcard">
           <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Доходы дня по типам оплат</b><div class="muted">Денежный приход из закрытого отчёта</div></div>
           <div id="economicsPaymentRevenueBreakdown" class="mt-12"></div>

@@ -116,6 +116,21 @@ function buildDraftExpensesLink() {
   return `/owner-expenses.html?${qp.toString()}`;
 }
 
+function buildPlansPageLink() {
+  const venueId = getActiveVenueId();
+  const qp = new URLSearchParams();
+  if (venueId) qp.set("venue_id", String(venueId));
+  qp.set("date", String(state.date || todayISO()));
+  return `/owner-economics-plans.html?${qp.toString()}`;
+}
+
+function buildRulesPageLink() {
+  const venueId = getActiveVenueId();
+  const qp = new URLSearchParams();
+  if (venueId) qp.set("venue_id", String(venueId));
+  return `/owner-economics-rules.html?${qp.toString()}`;
+}
+
 function buildSummaryLink() {
   const venueId = getActiveVenueId();
   const qp = new URLSearchParams();
@@ -264,27 +279,26 @@ function renderPlanFact(econ) {
   setText("economicsPlanAssignedDelta", fmtDeltaInt(pf.assigned_user_delta));
   setText("economicsPlanNotesView", plan.notes || "План на день не заполнен.");
 
-  const form = document.getElementById("economicsPlanForm");
-  if (form) {
-    fillValue(form, "revenue_plan", plan.revenue_plan_minor != null ? (Number(plan.revenue_plan_minor) / 100).toFixed(2) : "");
-    fillValue(form, "profit_plan", plan.profit_plan_minor != null ? (Number(plan.profit_plan_minor) / 100).toFixed(2) : "");
-    fillValue(form, "revenue_per_assigned_plan", plan.revenue_per_assigned_plan_minor != null ? (Number(plan.revenue_per_assigned_plan_minor) / 100).toFixed(2) : "");
-    fillValue(form, "assigned_user_target", plan.assigned_user_target ?? "");
-    fillValue(form, "notes", plan.notes || "");
-  }
+  const source = String(plan.source || "NONE").toUpperCase();
+  let sourceText = "План не задан";
+  if (source === "DATE_OVERRIDE") sourceText = `Используется override на дату ${formatDateRu(plan.date)}`;
+  else if (source === "WEEKDAY_TEMPLATE") sourceText = `Используется шаблон: ${plan.template_weekday_title || "день недели"}`;
+  setText("economicsPlanSourceHint", sourceText);
 }
+
 
 function renderRules(econ) {
   const rules = econ?.rules || {};
-  const form = document.getElementById("economicsRulesForm");
-  if (!form) return;
-  fillValue(form, "max_expense_ratio_pct", rules.max_expense_ratio_bps != null ? (Number(rules.max_expense_ratio_bps) / 100).toFixed(2) : "");
-  fillValue(form, "max_payroll_ratio_pct", rules.max_payroll_ratio_bps != null ? (Number(rules.max_payroll_ratio_bps) / 100).toFixed(2) : "");
-  fillValue(form, "min_revenue_per_assigned", rules.min_revenue_per_assigned_minor != null ? (Number(rules.min_revenue_per_assigned_minor) / 100).toFixed(2) : "");
-  fillValue(form, "min_assigned_shift_coverage_pct", rules.min_assigned_shift_coverage_bps != null ? (Number(rules.min_assigned_shift_coverage_bps) / 100).toFixed(2) : "");
-  fillValue(form, "min_profit", rules.min_profit_minor != null ? (Number(rules.min_profit_minor) / 100).toFixed(2) : "");
-  fillValue(form, "warn_on_draft_expenses", rules.warn_on_draft_expenses !== false);
+  const parts = [];
+  if (rules.max_expense_ratio_bps != null) parts.push(`расходы ≤ ${fmtPercentBps(rules.max_expense_ratio_bps)}`);
+  if (rules.max_payroll_ratio_bps != null) parts.push(`ФОТ ≤ ${fmtPercentBps(rules.max_payroll_ratio_bps)}`);
+  if (rules.min_revenue_per_assigned_minor != null) parts.push(`выручка/сотрудник ≥ ${fmtMoneyMinor(rules.min_revenue_per_assigned_minor)}`);
+  if (rules.min_assigned_shift_coverage_bps != null) parts.push(`покрытие смен ≥ ${fmtPercentBps(rules.min_assigned_shift_coverage_bps)}`);
+  if (rules.min_profit_minor != null) parts.push(`прибыль ≥ ${fmtMoneyMinor(rules.min_profit_minor)}`);
+  if (rules.warn_on_draft_expenses) parts.push(`предупреждать о черновиках`);
+  setText("economicsRulesHint", parts.length ? parts.join(" · ") : "Нормативы ещё не заданы.");
 }
+
 
 function renderRollup(econ) {
   const r = econ?.rollup || {};
@@ -365,52 +379,7 @@ async function loadEconomics() {
   }
 }
 
-async function savePlan(event) {
-  event.preventDefault();
-  const venueId = getActiveVenueId();
-  if (!venueId || !access.canManage) return;
-  try {
-    const fd = new FormData(event.currentTarget);
-    await api(`/venues/${encodeURIComponent(venueId)}/economics/plan?date=${encodeURIComponent(state.date)}`, {
-      method: "PUT",
-      body: {
-        revenue_plan_minor: parseMoneyInputToMinor(fd.get("revenue_plan")),
-        profit_plan_minor: parseMoneyInputToMinor(fd.get("profit_plan")),
-        revenue_per_assigned_plan_minor: parseMoneyInputToMinor(fd.get("revenue_per_assigned_plan")),
-        assigned_user_target: fd.get("assigned_user_target") ? Number(fd.get("assigned_user_target")) : null,
-        notes: String(fd.get("notes") || "").trim() || null,
-      },
-    });
-    toast("План дня сохранён", "ok");
-    await loadEconomics();
-  } catch (err) {
-    toast(err?.data?.detail || err.message || "Не удалось сохранить план дня", "err");
-  }
-}
 
-async function saveRules(event) {
-  event.preventDefault();
-  const venueId = getActiveVenueId();
-  if (!venueId || !access.canManage) return;
-  try {
-    const fd = new FormData(event.currentTarget);
-    await api(`/venues/${encodeURIComponent(venueId)}/economics/rules`, {
-      method: "PUT",
-      body: {
-        max_expense_ratio_bps: parsePercentInputToBps(fd.get("max_expense_ratio_pct")),
-        max_payroll_ratio_bps: parsePercentInputToBps(fd.get("max_payroll_ratio_pct")),
-        min_revenue_per_assigned_minor: parseMoneyInputToMinor(fd.get("min_revenue_per_assigned")),
-        min_assigned_shift_coverage_bps: parsePercentInputToBps(fd.get("min_assigned_shift_coverage_pct")),
-        min_profit_minor: parseMoneyInputToMinor(fd.get("min_profit")),
-        warn_on_draft_expenses: fd.get("warn_on_draft_expenses") === "on",
-      },
-    });
-    toast("Нормативы сохранены", "ok");
-    await loadEconomics();
-  } catch (err) {
-    toast(err?.data?.detail || err.message || "Не удалось сохранить нормативы", "err");
-  }
-}
 
 async function boot() {
   applyTelegramTheme();
@@ -439,12 +408,16 @@ async function boot() {
   if (openSummaryBtn) openSummaryBtn.onclick = () => { location.href = buildSummaryLink(); };
   const openDraftBtn = document.getElementById("openEconomicsDraftExpensesBtn");
   if (openDraftBtn) openDraftBtn.onclick = () => { location.href = buildDraftExpensesLink(); };
+  const openPlansBtn = document.getElementById("openPlanTemplatesBtn");
+  if (openPlansBtn) openPlansBtn.onclick = () => { location.href = buildPlansPageLink(); };
+  const openPlansBtnCard = document.getElementById("openPlanTemplatesBtnCard");
+  if (openPlansBtnCard) openPlansBtnCard.onclick = () => { location.href = buildPlansPageLink(); };
+  const openRulesBtn = document.getElementById("openEconomicsRulesBtn");
+  if (openRulesBtn) openRulesBtn.onclick = () => { location.href = buildRulesPageLink(); };
+  const openRulesBtnCard = document.getElementById("openEconomicsRulesBtnCard");
+  if (openRulesBtnCard) openRulesBtnCard.onclick = () => { location.href = buildRulesPageLink(); };
   const refreshBtn = document.getElementById("refreshEconomicsBtn");
   if (refreshBtn) refreshBtn.onclick = async () => { await loadEconomics(); };
-  const planForm = document.getElementById("economicsPlanForm");
-  if (planForm) planForm.addEventListener("submit", savePlan);
-  const rulesForm = document.getElementById("economicsRulesForm");
-  if (rulesForm) rulesForm.addEventListener("submit", saveRules);
 
   await loadEconomics();
 }

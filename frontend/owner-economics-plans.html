@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Планы по дням недели</title>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand"><div class="logo"></div><div class="title"><b>Планы по дням недели</b><div class="muted" id="subtitle">шаблоны и override на конкретную дату</div></div></div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card finance-toolbar">
+      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div>
+          <b>Эффективный план на дату</b>
+          <div class="muted mt-6">Сначала берётся override на дату, если его нет — шаблон по дню недели.</div>
+        </div>
+        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="plansDatePick" type="date" style="width:auto; min-width:160px;" />
+          <button class="btn" id="openDayEconomicsFromPlansBtn">Экономика дня</button>
+        </div>
+      </div>
+
+      <div class="itemcard mt-12">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div><b>План на выбранную дату</b><div class="muted mt-6" id="effectivePlanHint">—</div></div>
+          <span class="badge" id="effectivePlanSourceBadge">—</span>
+        </div>
+        <div class="finance-stats mt-12">
+          <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка</div><div class="finance-stat__value" id="effectivePlanRevenue">—</div></div>
+          <div class="itemcard finance-stat"><div class="finance-stat__label">Прибыль</div><div class="finance-stat__value" id="effectivePlanProfit">—</div></div>
+          <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка / сотрудника</div><div class="finance-stat__value" id="effectivePlanPerAssigned">—</div></div>
+          <div class="itemcard finance-stat"><div class="finance-stat__label">Цель по сотрудникам</div><div class="finance-stat__value" id="effectivePlanAssigned">—</div></div>
+        </div>
+        <div class="muted mt-12" id="effectivePlanNotes">—</div>
+      </div>
+
+      <div class="itemcard mt-12">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Override на выбранную дату</b><div class="muted">Если заполнен, перекрывает шаблон дня недели</div></div>
+        <form id="planOverrideForm" class="finance-form mt-12">
+          <label>План выручки, ₽<input name="revenue_plan" type="text" placeholder="150000.00" /></label>
+          <label>План прибыли, ₽<input name="profit_plan" type="text" placeholder="50000.00" /></label>
+          <label>План выручки на сотрудника, ₽<input name="revenue_per_assigned_plan" type="text" placeholder="30000.00" /></label>
+          <label>Цель по сотрудникам<input name="assigned_user_target" type="number" min="0" step="1" placeholder="5" /></label>
+          <label>Комментарий<textarea name="notes" rows="3" placeholder="Например: пятница, ожидаем высокий трафик"></textarea></label>
+          <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить override</button></div>
+        </form>
+      </div>
+
+      <div class="itemcard mt-12">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Шаблоны по дням недели</b><div class="muted">Используются, если override на дату не задан</div></div>
+        <div id="planTemplatesList" class="mt-12"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+  <div class="toast" id="toast"><div class="toast__text"></div></div>
+  <script type="module" src="/owner-economics-plans.js"></script>
+</body>
+</html>

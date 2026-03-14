@@ -32,6 +32,14 @@ function fmtPercentBps(bps) {
   }
 }
 
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function currentMonth() {
   const d = new Date();
   const y = d.getFullYear();
@@ -76,6 +84,7 @@ function syncActions(month) {
   const venueId = getActiveVenueId();
   const revenueBtn = document.getElementById("openRevenueBtn");
   const expensesBtn = document.getElementById("openExpensesBtn");
+  const economicsBtn = document.getElementById("openEconomicsBtn");
 
   if (revenueBtn) {
     revenueBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
@@ -96,6 +105,18 @@ function syncActions(month) {
       qp.set("venue_id", String(venueId));
       qp.set("month", month);
       location.href = `/owner-expenses.html?${qp.toString()}`;
+    };
+  }
+
+  if (economicsBtn) {
+    economicsBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
+    economicsBtn.onclick = () => {
+      const params = new URLSearchParams(location.search);
+      const targetDate = params.get("date") || `${month}-01` || todayISO();
+      const qp = new URLSearchParams();
+      qp.set("venue_id", String(venueId));
+      qp.set("date", targetDate);
+      location.href = `/owner-day-economics.html?${qp.toString()}`;
     };
   }
 }

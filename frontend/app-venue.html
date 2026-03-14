@@ -60,6 +60,8 @@
         <div class="row gap-8 mt-12">
           <a class="btn" id="openSummary" href="#">Сводка</a>
           <a class="btn" id="openDayEconomics" href="#">Экономика дня</a>
+          <a class="btn ghost" id="openEconomicsPlans" href="#">Планы</a>
+          <a class="btn ghost" id="openEconomicsRules" href="#">Нормативы</a>
           <a class="btn" id="openExpenses" href="#">Расходы</a>
           <a class="btn" id="openAdjustments" href="#">Штрафы</a>
         </div>
@@ -264,6 +266,10 @@ openAdjustments.href = canManageAdjustments
   : `/staff-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openSummary) openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openDayEconomics) openDayEconomics.href = `/owner-day-economics.html?venue_id=${encodeURIComponent(venueId)}`;
+          const openEconomicsPlans = document.getElementById("openEconomicsPlans");
+          if (openEconomicsPlans) openEconomicsPlans.href = `/owner-economics-plans.html?venue_id=${encodeURIComponent(venueId)}`;
+          const openEconomicsRules = document.getElementById("openEconomicsRules");
+          if (openEconomicsRules) openEconomicsRules.href = `/owner-economics-rules.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openExpenses) openExpenses.href = `/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
 
           if (openDepartments) openDepartments.href = `/owner-departments.html?venue_id=${encodeURIComponent(venueId)}`;
