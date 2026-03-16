@@ -47,7 +47,12 @@
             <b>Редактировать нормативы</b>
             <div class="muted mt-6">Можно включать и выключать каждое правило отдельно.</div>
           </div>
-          <span class="badge">Owner-only</span>
+          <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+            <span class="badge">Owner-only</span>
+            <button class="btn ghost" id="enableAllRulesBtn" type="button">Включить всё</button>
+            <button class="btn ghost" id="disableAllRulesBtn" type="button">Выключить всё</button>
+            <button class="btn ghost" id="applyBaseRulesBtn" type="button">Базовый набор</button>
+          </div>
         </div>
         <form id="economicsRulesFormPage" class="finance-form mt-12"></form>
       </div>

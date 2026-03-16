@@ -22,6 +22,8 @@ class DayEconomicsPlan(Base):
     profit_plan_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     revenue_per_assigned_plan_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     assigned_user_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    day_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)

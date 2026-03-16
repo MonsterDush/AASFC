@@ -180,6 +180,13 @@ function fmtDeltaInt(value) {
   return `${n > 0 ? "+" : ""}${n}`;
 }
 
+function dayKindLabel(kind) {
+  const key = String(kind || '').toUpperCase();
+  if (key === 'HOLIDAY') return 'Праздник';
+  if (key === 'SPECIAL') return 'Спец-день';
+  return '';
+}
+
 const state = {
   date: todayISO(),
   economics: null,
@@ -277,11 +284,14 @@ function renderPlanFact(econ) {
   setText("economicsPlanPerAssignedDelta", fmtDeltaMinor(pf.revenue_per_assigned_delta_minor));
   setText("economicsPlanAssignedTarget", plan.assigned_user_target == null ? "—" : String(plan.assigned_user_target));
   setText("economicsPlanAssignedDelta", fmtDeltaInt(pf.assigned_user_delta));
-  setText("economicsPlanNotesView", plan.notes || "План на день не заполнен.");
+  const planNotes = [kind, title, plan.notes].filter(Boolean).join(" · ");
+  setText("economicsPlanNotesView", planNotes || "План на день не заполнен.");
 
   const source = String(plan.source || "NONE").toUpperCase();
+  const kind = dayKindLabel(plan?.day_kind);
+  const title = String(plan?.title || '').trim();
   let sourceText = "План не задан";
-  if (source === "DATE_OVERRIDE") sourceText = `Используется override на дату ${formatDateRu(plan.date)}`;
+  if (source === "DATE_OVERRIDE") sourceText = `Используется override на дату ${formatDateRu(plan.date)}${kind ? ` · ${kind}` : ''}${title ? ` · ${title}` : ''}`;
   else if (source === "MONTH_TEMPLATE") sourceText = `Используется план на месяц ${plan.template_month_title || plan.template_month || "месяц"}`;
   else if (source === "WEEKDAY_TEMPLATE") sourceText = `Используется шаблон: ${plan.template_weekday_title || "день недели"}`;
   setText("economicsPlanSourceHint", sourceText);

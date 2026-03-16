@@ -21,6 +21,7 @@ const state = {
   monthPlan: null,
   overridePlan: null,
   templates: [],
+  copyResultHint: '—',
 };
 
 const WEEKDAYS = [
@@ -32,6 +33,50 @@ const WEEKDAYS = [
   [5, "Суббота"],
   [6, "Воскресенье"],
 ];
+
+const TARGET_GROUPS = {
+  WORKDAYS: [0, 1, 2, 3, 4],
+  WEEKENDS: [5, 6],
+  ALL: [0, 1, 2, 3, 4, 5, 6],
+};
+
+function dayKindLabel(kind) {
+  const key = String(kind || '').toUpperCase();
+  if (key === 'HOLIDAY') return 'Праздник';
+  if (key === 'SPECIAL') return 'Спец-день';
+  return '';
+}
+
+function templateOptionsHtml(selected) {
+  return WEEKDAYS.map(([id, title]) => `<option value="${id}" ${String(selected) === String(id) ? 'selected' : ''}>${esc(title)}</option>`).join('');
+}
+
+function customTargetsHtml(selected = []) {
+  const set = new Set((Array.isArray(selected) ? selected : []).map((v) => Number(v)));
+  return WEEKDAYS.map(([id, title]) => `<label class="badge" style="cursor:pointer;"><input type="checkbox" name="custom_target_weekday" value="${id}" ${set.has(id) ? 'checked' : ''} /> ${esc(title)}</label>`).join(' ');
+}
+
+function setAllPlanToggles(form, prefix, checked) {
+  ['revenue', 'profit', 'revenue_per_assigned', 'assigned_user_target'].forEach((name) => {
+    const toggle = form?.elements?.namedItem(`${prefix}_enable_${name}`);
+    if (toggle) {
+      toggle.checked = checked;
+      toggle.dispatchEvent(new Event('change'));
+    }
+  });
+}
+
+function selectedCopyWeekdays(form) {
+  return Array.from(form.querySelectorAll('input[name="custom_target_weekday"]:checked')).map((el) => Number(el.value));
+}
+
+function syncWeekdayCopyTargets() {
+  const form = document.getElementById('weekdayCopyForm');
+  const wrap = document.getElementById('weekdayCopyCustomTargets');
+  if (!form || !wrap) return;
+  const group = String(form.elements.namedItem('target_group')?.value || 'WORKDAYS').toUpperCase();
+  wrap.style.display = group === 'CUSTOM' ? '' : 'none';
+}
 
 function todayISO() {
   const d = new Date();
@@ -98,7 +143,9 @@ function buildDayEconomicsLink() {
 
 function sourceLabel(plan) {
   const source = String(plan?.source || "NONE").toUpperCase();
-  if (source === "DATE_OVERRIDE") return "Override на дату";
+  const kind = dayKindLabel(plan?.day_kind);
+  const suffix = kind ? ` · ${kind}` : "";
+  if (source === "DATE_OVERRIDE") return `Override на дату${suffix}`;
   if (source === "MONTH_TEMPLATE") return `Месяц · ${plan?.template_month_title || plan?.template_month || state.month}`;
   if (source === "WEEKDAY_TEMPLATE") return `День недели · ${plan?.template_weekday_title || "шаблон"}`;
   return "План не задан";
@@ -106,7 +153,9 @@ function sourceLabel(plan) {
 
 function sourceHint(plan) {
   const source = String(plan?.source || "NONE").toUpperCase();
-  if (source === "DATE_OVERRIDE") return `Для ${plan?.date || state.date} используется override на дату.`;
+  const kind = dayKindLabel(plan?.day_kind);
+  const title = String(plan?.title || '').trim();
+  if (source === "DATE_OVERRIDE") return `Для ${plan?.date || state.date} используется override на дату${kind ? ` (${kind.toLowerCase()})` : ''}${title ? ` — ${title}` : ''}.`;
   if (source === "MONTH_TEMPLATE") return `Для ${plan?.date || state.date} используется общий план на месяц ${plan?.template_month_title || plan?.template_month || state.month}.`;
   if (source === "WEEKDAY_TEMPLATE") return `Для ${plan?.date || state.date} используется шаблон по дню недели.`;
   return "На дату пока не задан ни override, ни план на месяц, ни шаблон по дню недели.";
@@ -121,13 +170,19 @@ function extractEnabled(plan) {
   };
 }
 
-function planFormHtml(prefix, title, subtitle, plan = {}) {
+function planFormHtml(prefix, title, subtitle, plan = {}, options = {}) {
   const enabled = extractEnabled(plan);
+  const includeDayMeta = Boolean(options.includeDayMeta);
+  const dayKind = String(plan?.day_kind || '').toUpperCase();
   return `
     <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
       <div>
         <b>${esc(title)}</b>
         <div class="muted mt-6">${esc(subtitle)}</div>
+      </div>
+      <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="btn ghost" type="button" data-plan-action="enable-all" data-prefix="${prefix}">Включить всё</button>
+        <button class="btn ghost" type="button" data-plan-action="disable-all" data-prefix="${prefix}">Выключить всё</button>
       </div>
     </div>
     <label>
@@ -146,6 +201,16 @@ function planFormHtml(prefix, title, subtitle, plan = {}) {
       <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_assigned_user_target" ${enabled.assignedUsers ? "checked" : ""} /> Использовать цель по сотрудникам</span>
       <input name="${prefix}_assigned_user_target" type="number" min="0" step="1" placeholder="5" value="${plan?.assigned_user_target == null ? "" : esc(String(plan.assigned_user_target))}" />
     </label>
+    ${includeDayMeta ? `
+      <label>
+        <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_day_meta" ${dayKind ? "checked" : ""} /> Отметить как спец-день / праздник</span>
+        <select name="${prefix}_day_kind">
+          <option value="SPECIAL" ${dayKind === 'SPECIAL' ? 'selected' : ''}>Спец-день</option>
+          <option value="HOLIDAY" ${dayKind === 'HOLIDAY' ? 'selected' : ''}>Праздник</option>
+        </select>
+      </label>
+      <label>Название дня / события<input name="${prefix}_title" type="text" maxlength="255" placeholder="Например, 8 Марта / Турнир / Вечеринка" value="${esc(plan?.title || '')}" /></label>
+    ` : ''}
     <label>Комментарий<textarea name="${prefix}_notes" rows="3" placeholder="Комментарий">${esc(plan?.notes || "")}</textarea></label>
   `;
 }
@@ -156,6 +221,8 @@ function bindToggleDisable(form, prefix) {
     ["enable_profit", "profit_plan"],
     ["enable_revenue_per_assigned", "revenue_per_assigned_plan"],
     ["enable_assigned_user_target", "assigned_user_target"],
+    ["enable_day_meta", "day_kind"],
+    ["enable_day_meta", "title"],
   ];
   pairs.forEach(([toggleName, inputName]) => {
     const toggle = form.elements.namedItem(`${prefix}_${toggleName}`);
@@ -165,6 +232,12 @@ function bindToggleDisable(form, prefix) {
     toggle.addEventListener("change", sync);
     sync();
   });
+  form.querySelectorAll('[data-plan-action]').forEach((btn) => {
+    btn.onclick = () => {
+      const action = btn.getAttribute('data-plan-action');
+      setAllPlanToggles(form, prefix, action === 'enable-all');
+    };
+  });
 }
 
 function buildPlanPayload(form, prefix) {
@@ -173,11 +246,14 @@ function buildPlanPayload(form, prefix) {
   const enabledProfit = fd.get(`${prefix}_enable_profit`) === "on";
   const enabledRevenuePerAssigned = fd.get(`${prefix}_enable_revenue_per_assigned`) === "on";
   const enabledAssigned = fd.get(`${prefix}_enable_assigned_user_target`) === "on";
+  const enabledDayMeta = fd.get(`${prefix}_enable_day_meta`) === "on";
   return {
     revenue_plan_minor: enabledRevenue ? parseMoneyToMinor(fd.get(`${prefix}_revenue_plan`)) : null,
     profit_plan_minor: enabledProfit ? parseMoneyToMinor(fd.get(`${prefix}_profit_plan`)) : null,
     revenue_per_assigned_plan_minor: enabledRevenuePerAssigned ? parseMoneyToMinor(fd.get(`${prefix}_revenue_per_assigned_plan`)) : null,
     assigned_user_target: enabledAssigned ? (fd.get(`${prefix}_assigned_user_target`) ? Number(fd.get(`${prefix}_assigned_user_target`)) : 0) : null,
+    day_kind: enabledDayMeta ? String(fd.get(`${prefix}_day_kind`) || '').toUpperCase() || null : null,
+    title: enabledDayMeta ? String(fd.get(`${prefix}_title`) || '').trim() || null : null,
     notes: String(fd.get(`${prefix}_notes`) || "").trim() || null,
   };
 }
@@ -189,7 +265,13 @@ function renderEffective(plan) {
   setText("effectivePlanProfit", fmtMoneyMinor(plan?.profit_plan_minor));
   setText("effectivePlanPerAssigned", fmtMoneyMinor(plan?.revenue_per_assigned_plan_minor));
   setText("effectivePlanAssigned", plan?.assigned_user_target == null ? "—" : String(plan.assigned_user_target));
-  setText("effectivePlanNotes", plan?.notes || "Без комментария.");
+  const kind = dayKindLabel(plan?.day_kind);
+  const title = String(plan?.title || '').trim();
+  const parts = [];
+  if (kind) parts.push(kind);
+  if (title) parts.push(title);
+  if (plan?.notes) parts.push(plan.notes);
+  setText("effectivePlanNotes", parts.length ? parts.join(" · ") : "Без комментария.");
 }
 
 function renderMonthPlan(plan) {
@@ -204,10 +286,11 @@ function renderMonthPlan(plan) {
 }
 
 function renderOverride(plan) {
-  setText("overrideBadge", plan?.revenue_plan_minor != null || plan?.profit_plan_minor != null || plan?.revenue_per_assigned_plan_minor != null || plan?.assigned_user_target != null ? "Заполнен" : "Не задан");
+  const hasValues = plan?.revenue_plan_minor != null || plan?.profit_plan_minor != null || plan?.revenue_per_assigned_plan_minor != null || plan?.assigned_user_target != null || !!plan?.day_kind || !!plan?.title;
+  setText("overrideBadge", hasValues ? (dayKindLabel(plan?.day_kind) || "Заполнен") : "Не задан");
   const form = document.getElementById("planOverrideForm");
   if (!form) return;
-  form.innerHTML = planFormHtml("override", "Override на дату", `Для ${state.date} можно задать отдельный план.`, plan) + `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить override</button></div>`;
+  form.innerHTML = planFormHtml("override", "Override на дату", `Для ${state.date} можно задать отдельный план.`, plan, { includeDayMeta: true }) + `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить override</button></div>`;
   bindToggleDisable(form, "override");
   form.style.display = state.access.canManage ? "" : "none";
   form.onsubmit = saveOverride;
@@ -227,7 +310,7 @@ function templateCard(template) {
       </div>
       <form id="${formId}" class="finance-form mt-12">
         ${planFormHtml(`weekday_${weekday}`, template.weekday_title || "День недели", "Настройки для всех соответствующих дней недели.", template)}
-        <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить шаблон</button></div>
+        <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить шаблон</button><button class="btn ghost" type="button" data-copy-template="${weekday}">Скопировать этот шаблон</button></div>
       </form>
     </div>
   `;
@@ -244,7 +327,11 @@ function renderTemplates(list) {
     bindToggleDisable(form, `weekday_${weekday}`);
     form.style.display = state.access.canManage ? "" : "none";
     form.addEventListener("submit", (event) => saveTemplate(event, weekday));
+    form.querySelectorAll('[data-copy-template]').forEach((btn) => {
+      btn.onclick = () => openCopyFromWeekday(weekday);
+    });
   });
+  renderWeekdayCopyControls();
 }
 
 function setMode(mode) {
@@ -256,6 +343,30 @@ function setMode(mode) {
   document.querySelectorAll('input[name="planMode"]').forEach((radio) => {
     radio.checked = radio.value === state.mode;
   });
+}
+
+function openCopyFromWeekday(weekday) {
+  const form = document.getElementById('weekdayCopyForm');
+  if (!form) return;
+  form.elements.namedItem('source_weekday').value = String(weekday);
+  syncWeekdayCopyTargets();
+  const card = document.getElementById('weekdayCopyCard');
+  if (card?.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderWeekdayCopyControls() {
+  const form = document.getElementById('weekdayCopyForm');
+  if (!form) return;
+  const source = form.elements.namedItem('source_weekday');
+  if (source && !source.options.length) source.innerHTML = templateOptionsHtml(0);
+  const wrap = document.getElementById('weekdayCopyCustomTargets');
+  if (wrap && !wrap.innerHTML.trim()) wrap.innerHTML = customTargetsHtml();
+  const targetGroup = form.elements.namedItem('target_group');
+  if (targetGroup && !targetGroup._bound) {
+    targetGroup.addEventListener('change', syncWeekdayCopyTargets);
+    targetGroup._bound = true;
+  }
+  syncWeekdayCopyTargets();
 }
 
 async function loadAccess() {
@@ -287,6 +398,58 @@ async function loadData() {
   renderMonthPlan(state.monthPlan);
   renderOverride(state.overridePlan);
   renderTemplates(state.templates);
+}
+
+async function copyPreviousMonthPlan() {
+  if (!state.access.canManage) return;
+  try {
+    const venueId = getVenueId();
+    const result = await api(`/venues/${encodeURIComponent(venueId)}/economics/plan-month/copy-previous?month=${encodeURIComponent(state.month)}&overwrite=true`, {
+      method: 'POST',
+    });
+    toast(result?.copied ? `План скопирован из ${result?.copied_from_month}` : 'План уже существовал и не был изменён', 'ok');
+    await loadData();
+  } catch (err) {
+    toast(err?.data?.detail || err.message || 'Не удалось скопировать прошлый месяц', 'err');
+  }
+}
+
+async function copyWeekdayTemplates(event) {
+  event.preventDefault();
+  if (!state.access.canManage) return;
+  try {
+    const venueId = getVenueId();
+    const fd = new FormData(event.currentTarget);
+    const group = String(fd.get('target_group') || 'WORKDAYS').toUpperCase();
+    const targets = group === 'CUSTOM' ? selectedCopyWeekdays(event.currentTarget) : (TARGET_GROUPS[group] || TARGET_GROUPS.WORKDAYS);
+    const result = await api(`/venues/${encodeURIComponent(venueId)}/economics/plan-templates/copy`, {
+      method: 'POST',
+      body: {
+        source_weekday: Number(fd.get('source_weekday') || 0),
+        target_weekdays: targets,
+        overwrite: fd.get('overwrite') === 'on',
+      },
+    });
+    const hint = document.getElementById('weekdayCopyHint');
+    if (hint) {
+      hint.textContent = `Скопировано: ${result?.copied_count || 0}. Пропущено: ${result?.skipped_count || 0}.`;
+    }
+    toast(`Скопировано: ${result?.copied_count || 0}`, 'ok');
+    await loadData();
+  } catch (err) {
+    toast(err?.data?.detail || err.message || 'Не удалось скопировать шаблоны', 'err');
+  }
+}
+
+async function quickCopyMondayToWeekdays() {
+  const form = document.getElementById('weekdayCopyForm');
+  if (!form) return;
+  form.elements.namedItem('source_weekday').value = '0';
+  form.elements.namedItem('target_group').value = 'WORKDAYS';
+  const overwrite = form.elements.namedItem('overwrite');
+  if (overwrite) overwrite.checked = true;
+  syncWeekdayCopyTargets();
+  await copyWeekdayTemplates({ preventDefault() {}, currentTarget: form });
 }
 
 async function saveMonthPlan(event) {
@@ -388,6 +551,12 @@ async function boot() {
 
   const openBtn = document.getElementById("openDayEconomicsFromPlansBtn");
   if (openBtn) openBtn.onclick = () => { location.href = buildDayEconomicsLink(); };
+  const copyPrevBtn = document.getElementById('copyPrevMonthPlanBtn');
+  if (copyPrevBtn) copyPrevBtn.onclick = () => { copyPreviousMonthPlan(); };
+  const copyMondayBtn = document.getElementById('copyMondayToWeekdaysBtn');
+  if (copyMondayBtn) copyMondayBtn.onclick = () => { quickCopyMondayToWeekdays(); };
+  const weekdayCopyForm = document.getElementById('weekdayCopyForm');
+  if (weekdayCopyForm) weekdayCopyForm.addEventListener('submit', copyWeekdayTemplates);
 
   await loadData();
 }

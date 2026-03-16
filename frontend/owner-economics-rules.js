@@ -71,6 +71,49 @@ function setText(id, value) {
   if (el) el.textContent = value;
 }
 
+function setAllRuleToggles(form, checked) {
+  [
+    "enable_max_expense_ratio",
+    "enable_max_payroll_ratio",
+    "enable_min_revenue_per_assigned",
+    "enable_min_assigned_shift_coverage",
+    "enable_min_profit",
+  ].forEach((name) => {
+    const toggle = form?.elements?.namedItem(name);
+    if (toggle) {
+      toggle.checked = checked;
+      toggle.dispatchEvent(new Event("change"));
+    }
+  });
+}
+
+function applyBaseRulePreset(form) {
+  if (!form) return;
+  setAllRuleToggles(form, false);
+  const toggles = {
+    enable_max_expense_ratio: "35",
+    enable_min_revenue_per_assigned: "25000.00",
+    enable_min_profit: "0.00",
+  };
+  Object.entries(toggles).forEach(([toggleName, value]) => {
+    const toggle = form.elements.namedItem(toggleName);
+    const inputName = toggleName.replace("enable_", "");
+    const inputMap = {
+      max_expense_ratio: "max_expense_ratio_pct",
+      min_revenue_per_assigned: "min_revenue_per_assigned",
+      min_profit: "min_profit",
+    };
+    const input = form.elements.namedItem(inputMap[inputName]);
+    if (toggle) {
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event("change"));
+    }
+    if (input) input.value = value;
+  });
+  const warn = form.elements.namedItem('warn_on_draft_expenses');
+  if (warn) warn.checked = true;
+}
+
 function buildDayEconomicsLink() {
   const qp = new URLSearchParams();
   const venueId = getActiveVenueId();
@@ -163,6 +206,13 @@ function renderRules(rules = {}) {
   bindToggle(form, "enable_min_revenue_per_assigned", "min_revenue_per_assigned");
   bindToggle(form, "enable_min_assigned_shift_coverage", "min_assigned_shift_coverage_pct");
   bindToggle(form, "enable_min_profit", "min_profit");
+
+  const enableAllBtn = document.getElementById('enableAllRulesBtn');
+  if (enableAllBtn) enableAllBtn.onclick = () => setAllRuleToggles(form, true);
+  const disableAllBtn = document.getElementById('disableAllRulesBtn');
+  if (disableAllBtn) disableAllBtn.onclick = () => setAllRuleToggles(form, false);
+  const baseBtn = document.getElementById('applyBaseRulesBtn');
+  if (baseBtn) baseBtn.onclick = () => applyBaseRulePreset(form);
 }
 
 async function loadRules() {

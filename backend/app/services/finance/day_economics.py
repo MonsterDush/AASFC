@@ -23,6 +23,11 @@ WEEKDAY_TITLES = {
     6: 'Воскресенье',
 }
 
+DAY_KIND_TITLES = {
+    'SPECIAL': 'Спец-день',
+    'HOLIDAY': 'Праздник',
+}
+
 
 def _month_start(target_date: date) -> date:
     return target_date.replace(day=1)
@@ -41,6 +46,19 @@ def _format_minor_as_rub_text(value_minor: int | None) -> str:
     sign = '-' if minor < 0 else ''
     rub = abs(minor) / 100
     return f'{sign}{rub:,.2f} ₽'.replace(',', ' ')
+
+def _normalize_day_kind(value: str | None) -> str | None:
+    raw = str(value or '').strip().upper()
+    if not raw:
+        return None
+    if raw not in DAY_KIND_TITLES:
+        raise ValueError('Bad day_kind, expected SPECIAL or HOLIDAY')
+    return raw
+
+
+def _day_kind_title(day_kind: str | None) -> str | None:
+    key = _normalize_day_kind(day_kind) if day_kind is not None and str(day_kind).strip() else None
+    return DAY_KIND_TITLES.get(key) if key else None
 
 
 def _get_report_state(*, db: Session, venue_id: int, target_date: date) -> dict:
@@ -219,6 +237,9 @@ def _empty_plan(*, target_date: date, source: str = 'NONE', template_weekday: in
         'profit_plan_minor': None,
         'revenue_per_assigned_plan_minor': None,
         'assigned_user_target': None,
+        'day_kind': None,
+        'day_kind_title': None,
+        'title': None,
         'notes': None,
     }
 
@@ -230,6 +251,8 @@ def _serialize_plan(plan: DayEconomicsPlan | DayEconomicsMonthPlan | DayEconomic
     month_value = template_month
     if month_value is None and hasattr(plan, 'month_start') and getattr(plan, 'month_start') is not None:
         month_value = getattr(plan, 'month_start').strftime('%Y-%m')
+    day_kind = getattr(plan, 'day_kind', None) if plan is not None else None
+    day_kind = _normalize_day_kind(day_kind) if day_kind else None
     return {
         'date': target_date,
         'source': source,
@@ -241,6 +264,9 @@ def _serialize_plan(plan: DayEconomicsPlan | DayEconomicsMonthPlan | DayEconomic
         'profit_plan_minor': int(plan.profit_plan_minor) if plan.profit_plan_minor is not None else None,
         'revenue_per_assigned_plan_minor': int(plan.revenue_per_assigned_plan_minor) if plan.revenue_per_assigned_plan_minor is not None else None,
         'assigned_user_target': int(plan.assigned_user_target) if plan.assigned_user_target is not None else None,
+        'day_kind': day_kind,
+        'day_kind_title': _day_kind_title(day_kind),
+        'title': getattr(plan, 'title', None),
         'notes': plan.notes,
     }
 
@@ -301,6 +327,8 @@ def upsert_day_economics_plan(
     profit_plan_minor: int | None,
     revenue_per_assigned_plan_minor: int | None,
     assigned_user_target: int | None,
+    day_kind: str | None,
+    title: str | None,
     notes: str | None,
 ) -> dict:
     plan = _get_date_override_plan_model(db=db, venue_id=venue_id, target_date=target_date)
@@ -311,6 +339,8 @@ def upsert_day_economics_plan(
     plan.profit_plan_minor = profit_plan_minor
     plan.revenue_per_assigned_plan_minor = revenue_per_assigned_plan_minor
     plan.assigned_user_target = assigned_user_target
+    plan.day_kind = _normalize_day_kind(day_kind)
+    plan.title = (title or '').strip() or None
     plan.notes = notes or None
     db.flush()
     return _serialize_plan(plan, target_date=target_date, source='DATE_OVERRIDE')
@@ -347,6 +377,36 @@ def upsert_day_economics_month_plan(
     plan.notes = notes or None
     db.flush()
     return _serialize_plan(plan, target_date=month_date, source='MONTH_TEMPLATE', template_month=month_date.strftime('%Y-%m'))
+
+
+def copy_day_economics_month_plan_from_previous_month(*, db: Session, venue_id: int, month_value: str, overwrite: bool = True) -> dict:
+    month_date = date.fromisoformat(f"{month_value}-01")
+    previous_month_date = (month_date - timedelta(days=1)).replace(day=1)
+    source = _get_month_plan_model(db=db, venue_id=venue_id, target_date=previous_month_date)
+    if source is None:
+        raise ValueError('Нет плана за предыдущий месяц для копирования')
+    existing = _get_month_plan_model(db=db, venue_id=venue_id, target_date=month_date)
+    if existing is not None and not overwrite:
+        return {
+            'copied': False,
+            'copied_from_month': previous_month_date.strftime('%Y-%m'),
+            'plan': _serialize_plan(existing, target_date=month_date, source='MONTH_TEMPLATE', template_month=month_date.strftime('%Y-%m')),
+        }
+    target = existing
+    if target is None:
+        target = DayEconomicsMonthPlan(venue_id=int(venue_id), month_start=month_date)
+        db.add(target)
+    target.revenue_plan_minor = source.revenue_plan_minor
+    target.profit_plan_minor = source.profit_plan_minor
+    target.revenue_per_assigned_plan_minor = source.revenue_per_assigned_plan_minor
+    target.assigned_user_target = source.assigned_user_target
+    target.notes = source.notes
+    db.flush()
+    return {
+        'copied': True,
+        'copied_from_month': previous_month_date.strftime('%Y-%m'),
+        'plan': _serialize_plan(target, target_date=month_date, source='MONTH_TEMPLATE', template_month=month_date.strftime('%Y-%m')),
+    }
 
 
 def list_day_economics_plan_templates(*, db: Session, venue_id: int) -> list[dict]:
@@ -392,6 +452,58 @@ def upsert_day_economics_plan_template(
         'weekday': int(weekday),
         'weekday_title': WEEKDAY_TITLES[int(weekday)],
         **_serialize_plan(template, target_date=date(2000, 1, 3) + timedelta(days=int(weekday)), source='WEEKDAY_TEMPLATE', template_weekday=int(weekday)),
+    }
+
+
+def copy_day_economics_plan_templates(
+    *,
+    db: Session,
+    venue_id: int,
+    source_weekday: int,
+    target_weekdays: list[int],
+    overwrite: bool = True,
+) -> dict:
+    if int(source_weekday) < 0 or int(source_weekday) > 6:
+        raise ValueError('Bad source_weekday, expected 0..6')
+    source = _get_weekday_template_model(db=db, venue_id=venue_id, weekday=source_weekday)
+    if source is None:
+        raise ValueError('Нет исходного шаблона для копирования')
+    normalized_targets = []
+    for weekday in target_weekdays:
+        w = int(weekday)
+        if w < 0 or w > 6:
+            raise ValueError('Bad target_weekdays, expected values 0..6')
+        if w != int(source_weekday) and w not in normalized_targets:
+            normalized_targets.append(w)
+    copied_rows = []
+    skipped = []
+    for weekday in normalized_targets:
+        existing = _get_weekday_template_model(db=db, venue_id=venue_id, weekday=weekday)
+        if existing is not None and not overwrite:
+            skipped.append({'weekday': weekday, 'weekday_title': WEEKDAY_TITLES[weekday], 'reason': 'already_exists'})
+            continue
+        target = existing
+        if target is None:
+            target = DayEconomicsPlanTemplate(venue_id=int(venue_id), weekday=weekday)
+            db.add(target)
+        target.revenue_plan_minor = source.revenue_plan_minor
+        target.profit_plan_minor = source.profit_plan_minor
+        target.revenue_per_assigned_plan_minor = source.revenue_per_assigned_plan_minor
+        target.assigned_user_target = source.assigned_user_target
+        target.notes = source.notes
+        db.flush()
+        copied_rows.append({
+            'weekday': weekday,
+            'weekday_title': WEEKDAY_TITLES[weekday],
+            **_serialize_plan(target, target_date=date(2000, 1, 3) + timedelta(days=weekday), source='WEEKDAY_TEMPLATE', template_weekday=weekday),
+        })
+    return {
+        'source_weekday': int(source_weekday),
+        'source_weekday_title': WEEKDAY_TITLES[int(source_weekday)],
+        'copied_count': len(copied_rows),
+        'copied': copied_rows,
+        'skipped_count': len(skipped),
+        'skipped': skipped,
     }
 
 

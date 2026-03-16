@@ -72,6 +72,8 @@ __all__ = [
     "build_expense_recognition_plan",
     "rebuild_expense_recognition_entries_for_expense",
     "delete_expense_recognition_entries_for_expense",
+    "copy_day_economics_month_plan_from_previous_month",
+    "copy_day_economics_plan_templates",
     "get_day_economics",
     "get_day_economics_plan",
     "get_day_economics_month_plan",
@@ -85,6 +87,8 @@ __all__ = [
 ]
 
 from .day_economics import (
+    copy_day_economics_month_plan_from_previous_month,
+    copy_day_economics_plan_templates,
     get_day_economics,
     get_day_economics_plan,
     get_day_economics_month_plan,

@@ -28,16 +28,18 @@ from app.services.finance.expenses import rebuild_expense_allocations_for_expens
 from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
 from app.services.finance.summary import get_day_finance_summary, get_finance_summary, get_monthly_finance_summary
 from app.services.finance.day_economics import (
+    copy_day_economics_month_plan_from_previous_month,
+    copy_day_economics_plan_templates,
     get_day_economics,
     get_day_economics_plan,
     get_day_economics_plan_override,
+    get_day_economics_month_plan,
     get_venue_economics_rules,
     list_day_economics_plan_templates,
+    upsert_day_economics_month_plan,
     upsert_day_economics_plan,
     upsert_day_economics_plan_template,
     upsert_venue_economics_rules,
-    upsert_day_economics_month_plan,
-    get_day_economics_month_plan
 )
 from app.services.finance.balance_adjustments import rebuild_balance_adjustment_entries, delete_balance_adjustment_entries
 from app.services.finance.payment_transfers import rebuild_payment_method_transfer_entries, delete_payment_method_transfer_entries
@@ -380,6 +382,9 @@ class DayEconomicsPlanOut(BaseModel):
     profit_plan_minor: int | None = None
     revenue_per_assigned_plan_minor: int | None = None
     assigned_user_target: int | None = None
+    day_kind: str | None = None
+    day_kind_title: str | None = None
+    title: str | None = None
     notes: str | None = None
 
 
@@ -388,6 +393,8 @@ class DayEconomicsPlanIn(BaseModel):
     profit_plan_minor: int | None = None
     revenue_per_assigned_plan_minor: int | None = Field(default=None, ge=0)
     assigned_user_target: int | None = Field(default=None, ge=0)
+    day_kind: str | None = Field(default=None, min_length=0, max_length=16)
+    title: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=1000)
 
 
@@ -433,6 +440,27 @@ class DayEconomicsMonthPlanIn(BaseModel):
     revenue_per_assigned_plan_minor: int | None = Field(default=None, ge=0)
     assigned_user_target: int | None = Field(default=None, ge=0)
     notes: str | None = Field(default=None, max_length=1000)
+
+
+class DayEconomicsMonthPlanCopyOut(BaseModel):
+    copied: bool
+    copied_from_month: str
+    plan: DayEconomicsMonthPlanOut
+
+
+class DayEconomicsTemplateCopyIn(BaseModel):
+    source_weekday: int = Field(..., ge=0, le=6)
+    target_weekdays: list[int] = Field(default_factory=list)
+    overwrite: bool = True
+
+
+class DayEconomicsTemplateCopyOut(BaseModel):
+    source_weekday: int
+    source_weekday_title: str
+    copied_count: int
+    copied: list[DayEconomicsPlanTemplateOut]
+    skipped_count: int
+    skipped: list[dict]
 
 
 class VenueEconomicsRulesOut(BaseModel):
@@ -5509,6 +5537,8 @@ def put_venue_day_economics_plan(
         profit_plan_minor=payload.profit_plan_minor,
         revenue_per_assigned_plan_minor=payload.revenue_per_assigned_plan_minor,
         assigned_user_target=payload.assigned_user_target,
+        day_kind=payload.day_kind,
+        title=payload.title,
         notes=payload.notes,
     )
     db.commit()
@@ -5538,6 +5568,35 @@ def put_venue_day_economics_month_plan(
     return {
         'month': month,
         **plan,
+    }
+
+
+@router.post("/{venue_id}/economics/plan-month/copy-previous", response_model=DayEconomicsMonthPlanCopyOut)
+def post_venue_day_economics_month_plan_copy_previous(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    overwrite: bool = Query(True),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    try:
+        result = copy_day_economics_month_plan_from_previous_month(
+            db=db,
+            venue_id=venue_id,
+            month_value=month,
+            overwrite=overwrite,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return {
+        'copied': bool(result['copied']),
+        'copied_from_month': result['copied_from_month'],
+        'plan': {
+            'month': month,
+            **result['plan'],
+        },
     }
 
 
@@ -5577,6 +5636,28 @@ def put_venue_day_economics_plan_template(
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
     return row
+
+
+@router.post("/{venue_id}/economics/plan-templates/copy", response_model=DayEconomicsTemplateCopyOut)
+def post_venue_day_economics_plan_templates_copy(
+    venue_id: int,
+    payload: DayEconomicsTemplateCopyIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    try:
+        result = copy_day_economics_plan_templates(
+            db=db,
+            venue_id=venue_id,
+            source_weekday=payload.source_weekday,
+            target_weekdays=payload.target_weekdays,
+            overwrite=payload.overwrite,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return result
 
 
 @router.get("/{venue_id}/economics/rules", response_model=VenueEconomicsRulesOut)
