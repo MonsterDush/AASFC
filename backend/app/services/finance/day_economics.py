@@ -6,6 +6,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.models import DailyReport, DailyReportValue, KpiMetric, Shift, ShiftAssignment
+from app.models.day_economics_month_plan import DayEconomicsMonthPlan
 from app.models.day_economics_plan import DayEconomicsPlan
 from app.models.day_economics_plan_template import DayEconomicsPlanTemplate
 from app.models.venue_economics_rule import VenueEconomicsRule
@@ -21,6 +22,18 @@ WEEKDAY_TITLES = {
     5: 'Суббота',
     6: 'Воскресенье',
 }
+
+
+def _month_start(target_date: date) -> date:
+    return target_date.replace(day=1)
+
+
+def _month_title_ru(month_start: date) -> str:
+    months = {
+        1: 'январь', 2: 'февраль', 3: 'март', 4: 'апрель', 5: 'май', 6: 'июнь',
+        7: 'июль', 8: 'август', 9: 'сентябрь', 10: 'октябрь', 11: 'ноябрь', 12: 'декабрь',
+    }
+    return f"{months.get(month_start.month, month_start.strftime('%m'))} {month_start.year}"
 
 
 def _format_minor_as_rub_text(value_minor: int | None) -> str:
@@ -194,12 +207,14 @@ def _build_kpi_summary(kpi_breakdown: list[dict]) -> dict:
     }
 
 
-def _empty_plan(*, target_date: date, source: str = 'NONE', template_weekday: int | None = None) -> dict:
+def _empty_plan(*, target_date: date, source: str = 'NONE', template_weekday: int | None = None, template_month: str | None = None) -> dict:
     return {
         'date': target_date,
         'source': source,
         'template_weekday': template_weekday,
         'template_weekday_title': WEEKDAY_TITLES.get(template_weekday) if template_weekday is not None else None,
+        'template_month': template_month,
+        'template_month_title': _month_title_ru(date.fromisoformat(f"{template_month}-01")) if template_month else None,
         'revenue_plan_minor': None,
         'profit_plan_minor': None,
         'revenue_per_assigned_plan_minor': None,
@@ -208,15 +223,20 @@ def _empty_plan(*, target_date: date, source: str = 'NONE', template_weekday: in
     }
 
 
-def _serialize_plan(plan: DayEconomicsPlan | DayEconomicsPlanTemplate | None, *, target_date: date, source: str = 'DATE_OVERRIDE', template_weekday: int | None = None) -> dict:
+def _serialize_plan(plan: DayEconomicsPlan | DayEconomicsMonthPlan | DayEconomicsPlanTemplate | None, *, target_date: date, source: str = 'DATE_OVERRIDE', template_weekday: int | None = None, template_month: str | None = None) -> dict:
     if plan is None:
-        return _empty_plan(target_date=target_date, source=source, template_weekday=template_weekday)
+        return _empty_plan(target_date=target_date, source=source, template_weekday=template_weekday, template_month=template_month)
     weekday = template_weekday if template_weekday is not None else (int(plan.weekday) if hasattr(plan, 'weekday') else None)
+    month_value = template_month
+    if month_value is None and hasattr(plan, 'month_start') and getattr(plan, 'month_start') is not None:
+        month_value = getattr(plan, 'month_start').strftime('%Y-%m')
     return {
         'date': target_date,
         'source': source,
         'template_weekday': weekday,
         'template_weekday_title': WEEKDAY_TITLES.get(weekday) if weekday is not None else None,
+        'template_month': month_value,
+        'template_month_title': _month_title_ru(date.fromisoformat(f"{month_value}-01")) if month_value else None,
         'revenue_plan_minor': int(plan.revenue_plan_minor) if plan.revenue_plan_minor is not None else None,
         'profit_plan_minor': int(plan.profit_plan_minor) if plan.profit_plan_minor is not None else None,
         'revenue_per_assigned_plan_minor': int(plan.revenue_per_assigned_plan_minor) if plan.revenue_per_assigned_plan_minor is not None else None,
@@ -234,6 +254,15 @@ def _get_date_override_plan_model(*, db: Session, venue_id: int, target_date: da
     ).scalar_one_or_none()
 
 
+def _get_month_plan_model(*, db: Session, venue_id: int, target_date: date) -> DayEconomicsMonthPlan | None:
+    return db.execute(
+        select(DayEconomicsMonthPlan).where(
+            DayEconomicsMonthPlan.venue_id == int(venue_id),
+            DayEconomicsMonthPlan.month_start == _month_start(target_date),
+        )
+    ).scalar_one_or_none()
+
+
 def _get_weekday_template_model(*, db: Session, venue_id: int, weekday: int) -> DayEconomicsPlanTemplate | None:
     return db.execute(
         select(DayEconomicsPlanTemplate).where(
@@ -247,10 +276,13 @@ def get_day_economics_plan(*, db: Session, venue_id: int, target_date: date) -> 
     override = _get_date_override_plan_model(db=db, venue_id=venue_id, target_date=target_date)
     if override is not None:
         return _serialize_plan(override, target_date=target_date, source='DATE_OVERRIDE')
+    month_plan = _get_month_plan_model(db=db, venue_id=venue_id, target_date=target_date)
+    if month_plan is not None:
+        return _serialize_plan(month_plan, target_date=target_date, source='MONTH_TEMPLATE', template_month=_month_start(target_date).strftime('%Y-%m'))
     template = _get_weekday_template_model(db=db, venue_id=venue_id, weekday=target_date.weekday())
     if template is not None:
         return _serialize_plan(template, target_date=target_date, source='WEEKDAY_TEMPLATE', template_weekday=target_date.weekday())
-    return _empty_plan(target_date=target_date, source='NONE', template_weekday=target_date.weekday())
+    return _empty_plan(target_date=target_date, source='NONE', template_weekday=target_date.weekday(), template_month=_month_start(target_date).strftime('%Y-%m'))
 
 
 def get_day_economics_plan_override(*, db: Session, venue_id: int, target_date: date) -> dict:
@@ -282,6 +314,39 @@ def upsert_day_economics_plan(
     plan.notes = notes or None
     db.flush()
     return _serialize_plan(plan, target_date=target_date, source='DATE_OVERRIDE')
+
+
+def get_day_economics_month_plan(*, db: Session, venue_id: int, month_value: str) -> dict:
+    month_date = date.fromisoformat(f"{month_value}-01")
+    plan = _get_month_plan_model(db=db, venue_id=venue_id, target_date=month_date)
+    if plan is None:
+        return _empty_plan(target_date=month_date, source='MONTH_TEMPLATE', template_month=month_date.strftime('%Y-%m'))
+    return _serialize_plan(plan, target_date=month_date, source='MONTH_TEMPLATE', template_month=month_date.strftime('%Y-%m'))
+
+
+def upsert_day_economics_month_plan(
+    *,
+    db: Session,
+    venue_id: int,
+    month_value: str,
+    revenue_plan_minor: int | None,
+    profit_plan_minor: int | None,
+    revenue_per_assigned_plan_minor: int | None,
+    assigned_user_target: int | None,
+    notes: str | None,
+) -> dict:
+    month_date = date.fromisoformat(f"{month_value}-01")
+    plan = _get_month_plan_model(db=db, venue_id=venue_id, target_date=month_date)
+    if plan is None:
+        plan = DayEconomicsMonthPlan(venue_id=int(venue_id), month_start=month_date)
+        db.add(plan)
+    plan.revenue_plan_minor = revenue_plan_minor
+    plan.profit_plan_minor = profit_plan_minor
+    plan.revenue_per_assigned_plan_minor = revenue_per_assigned_plan_minor
+    plan.assigned_user_target = assigned_user_target
+    plan.notes = notes or None
+    db.flush()
+    return _serialize_plan(plan, target_date=month_date, source='MONTH_TEMPLATE', template_month=month_date.strftime('%Y-%m'))
 
 
 def list_day_economics_plan_templates(*, db: Session, venue_id: int) -> list[dict]:

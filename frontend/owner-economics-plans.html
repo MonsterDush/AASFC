@@ -5,56 +5,95 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · Планы по дням недели</title>
+  <title>Axelio · Планы</title>
 </head>
 <body>
   <div class="container">
     <div class="topbar">
-      <div class="brand"><div class="logo"></div><div class="title"><b>Планы по дням недели</b><div class="muted" id="subtitle">шаблоны и override на конкретную дату</div></div></div>
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Планы</b>
+          <div class="muted" id="subtitle">месячный план, шаблоны по дням недели и override на дату</div>
+        </div>
+      </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
     <div class="card finance-toolbar">
       <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
         <div>
-          <b>Эффективный план на дату</b>
-          <div class="muted mt-6">Сначала берётся override на дату, если его нет — шаблон по дню недели.</div>
+          <b>Управление планами</b>
+          <div class="muted mt-6">Можно задавать единый план на месяц, план по дням недели и отдельное переопределение на конкретную дату.</div>
         </div>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <input id="plansMonthPick" type="month" style="width:auto; min-width:160px;" />
           <input id="plansDatePick" type="date" style="width:auto; min-width:160px;" />
-          <button class="btn" id="openDayEconomicsFromPlansBtn">Экономика дня</button>
+          <button class="btn ghost" id="openDayEconomicsFromPlansBtn">Экономика дня</button>
         </div>
       </div>
 
       <div class="itemcard mt-12">
         <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div><b>План на выбранную дату</b><div class="muted mt-6" id="effectivePlanHint">—</div></div>
+          <div>
+            <b>Эффективный план на выбранную дату</b>
+            <div class="muted mt-6" id="effectivePlanHint">—</div>
+          </div>
           <span class="badge" id="effectivePlanSourceBadge">—</span>
         </div>
         <div class="finance-stats mt-12">
           <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка</div><div class="finance-stat__value" id="effectivePlanRevenue">—</div></div>
           <div class="itemcard finance-stat"><div class="finance-stat__label">Прибыль</div><div class="finance-stat__value" id="effectivePlanProfit">—</div></div>
           <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка / сотрудника</div><div class="finance-stat__value" id="effectivePlanPerAssigned">—</div></div>
-          <div class="itemcard finance-stat"><div class="finance-stat__label">Цель по сотрудникам</div><div class="finance-stat__value" id="effectivePlanAssigned">—</div></div>
+          <div class="itemcard finance-stat"><div class="finance-stat__label">Сотрудников</div><div class="finance-stat__value" id="effectivePlanAssigned">—</div></div>
         </div>
         <div class="muted mt-12" id="effectivePlanNotes">—</div>
       </div>
 
       <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Override на выбранную дату</b><div class="muted">Если заполнен, перекрывает шаблон дня недели</div></div>
-        <form id="planOverrideForm" class="finance-form mt-12">
-          <label>План выручки, ₽<input name="revenue_plan" type="text" placeholder="150000.00" /></label>
-          <label>План прибыли, ₽<input name="profit_plan" type="text" placeholder="50000.00" /></label>
-          <label>План выручки на сотрудника, ₽<input name="revenue_per_assigned_plan" type="text" placeholder="30000.00" /></label>
-          <label>Цель по сотрудникам<input name="assigned_user_target" type="number" min="0" step="1" placeholder="5" /></label>
-          <label>Комментарий<textarea name="notes" rows="3" placeholder="Например: пятница, ожидаем высокий трафик"></textarea></label>
-          <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить override</button></div>
-        </form>
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Режим редактирования</b>
+            <div class="muted mt-6">Выбери, редактируешь ли ты план на весь месяц или шаблоны по дням недели.</div>
+          </div>
+          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+            <label class="badge" style="cursor:pointer;"><input type="radio" name="planMode" value="MONTH" checked /> Месяц</label>
+            <label class="badge" style="cursor:pointer;"><input type="radio" name="planMode" value="WEEKDAYS" /> Дни недели</label>
+          </div>
+        </div>
       </div>
 
-      <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Шаблоны по дням недели</b><div class="muted">Используются, если override на дату не задан</div></div>
+      <div class="itemcard mt-12" id="monthPlanCard">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>План на месяц</b>
+            <div class="muted mt-6" id="monthPlanHint">Этот план применяется ко всем дням выбранного месяца, если на дату нет override.</div>
+          </div>
+          <span class="badge" id="monthPlanBadge">—</span>
+        </div>
+        <form id="monthPlanForm" class="finance-form mt-12"></form>
+      </div>
+
+      <div class="itemcard mt-12" id="weekdayPlansCard" style="display:none;">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Шаблоны по дням недели</b>
+            <div class="muted mt-6">Используются, если нет override на дату и нет плана на месяц.</div>
+          </div>
+          <span class="badge">7 шаблонов</span>
+        </div>
         <div id="planTemplatesList" class="mt-12"></div>
+      </div>
+
+      <div class="itemcard mt-12" id="planOverrideCard">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Переопределение на конкретную дату</b>
+            <div class="muted mt-6">Приоритет выше месячного плана и шаблона дня недели.</div>
+          </div>
+          <span class="badge" id="overrideBadge">—</span>
+        </div>
+        <form id="planOverrideForm" class="finance-form mt-12"></form>
       </div>
     </div>
   </div>

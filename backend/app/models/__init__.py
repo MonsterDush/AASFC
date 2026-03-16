@@ -33,6 +33,7 @@ from .payment_method_transfer import PaymentMethodTransfer
 from .expense_recognition_entry import ExpenseRecognitionEntry
 from .recurring_expense_accrual import RecurringExpenseAccrual
 from .day_economics_plan import DayEconomicsPlan
+from .day_economics_month_plan import DayEconomicsMonthPlan
 from .day_economics_plan_template import DayEconomicsPlanTemplate
 from .venue_economics_rule import VenueEconomicsRule
 
@@ -73,6 +74,7 @@ __all__ = [
     "ExpenseRecognitionEntry",
     "RecurringExpenseAccrual",
     "DayEconomicsPlan",
+    "DayEconomicsMonthPlan",
     "DayEconomicsPlanTemplate",
     "VenueEconomicsRule",
 ]

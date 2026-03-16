@@ -372,6 +372,8 @@ class DayEconomicsPlanOut(BaseModel):
     source: str = 'NONE'
     template_weekday: int | None = None
     template_weekday_title: str | None = None
+    template_month: str | None = None
+    template_month_title: str | None = None
     revenue_plan_minor: int | None = None
     profit_plan_minor: int | None = None
     revenue_per_assigned_plan_minor: int | None = None
@@ -402,6 +404,28 @@ class DayEconomicsPlanTemplateOut(BaseModel):
 
 
 class DayEconomicsPlanTemplateIn(BaseModel):
+    revenue_plan_minor: int | None = Field(default=None, ge=0)
+    profit_plan_minor: int | None = None
+    revenue_per_assigned_plan_minor: int | None = Field(default=None, ge=0)
+    assigned_user_target: int | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+
+
+class DayEconomicsMonthPlanOut(BaseModel):
+    month: str
+    source: str = 'MONTH_TEMPLATE'
+    template_month: str | None = None
+    template_month_title: str | None = None
+    revenue_plan_minor: int | None = None
+    profit_plan_minor: int | None = None
+    revenue_per_assigned_plan_minor: int | None = None
+    assigned_user_target: int | None = None
+    notes: str | None = None
+
+
+class DayEconomicsMonthPlanIn(BaseModel):
     revenue_plan_minor: int | None = Field(default=None, ge=0)
     profit_plan_minor: int | None = None
     revenue_per_assigned_plan_minor: int | None = Field(default=None, ge=0)
@@ -5436,6 +5460,23 @@ def get_venue_day_economics_plan_route(
     return get_day_economics_plan(db=db, venue_id=venue_id, target_date=economics_date)
 
 
+@router.get("/{venue_id}/economics/plan-month", response_model=DayEconomicsMonthPlanOut)
+def get_venue_day_economics_month_plan_route(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    plan = get_day_economics_month_plan(db=db, venue_id=venue_id, month_value=month)
+    return {
+        'month': month,
+        **plan,
+    }
+
+
 @router.get("/{venue_id}/economics/plan/override", response_model=DayEconomicsPlanOut)
 def get_venue_day_economics_plan_override_route(
     venue_id: int,
@@ -5470,6 +5511,32 @@ def put_venue_day_economics_plan(
     )
     db.commit()
     return plan
+
+
+@router.put("/{venue_id}/economics/plan-month", response_model=DayEconomicsMonthPlanOut)
+def put_venue_day_economics_month_plan(
+    venue_id: int,
+    payload: DayEconomicsMonthPlanIn,
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    plan = upsert_day_economics_month_plan(
+        db=db,
+        venue_id=venue_id,
+        month_value=month,
+        revenue_plan_minor=payload.revenue_plan_minor,
+        profit_plan_minor=payload.profit_plan_minor,
+        revenue_per_assigned_plan_minor=payload.revenue_per_assigned_plan_minor,
+        assigned_user_target=payload.assigned_user_target,
+        notes=payload.notes,
+    )
+    db.commit()
+    return {
+        'month': month,
+        **plan,
+    }
 
 
 @router.get("/{venue_id}/economics/plan-templates", response_model=list[DayEconomicsPlanTemplateOut])

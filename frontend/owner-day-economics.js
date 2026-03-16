@@ -282,6 +282,7 @@ function renderPlanFact(econ) {
   const source = String(plan.source || "NONE").toUpperCase();
   let sourceText = "План не задан";
   if (source === "DATE_OVERRIDE") sourceText = `Используется override на дату ${formatDateRu(plan.date)}`;
+  else if (source === "MONTH_TEMPLATE") sourceText = `Используется план на месяц ${plan.template_month_title || plan.template_month || "месяц"}`;
   else if (source === "WEEKDAY_TEMPLATE") sourceText = `Используется шаблон: ${plan.template_weekday_title || "день недели"}`;
   setText("economicsPlanSourceHint", sourceText);
 }

@@ -10,36 +10,46 @@
 <body>
   <div class="container">
     <div class="topbar">
-      <div class="brand"><div class="logo"></div><div class="title"><b>Нормативы и алерты</b><div class="muted" id="subtitle">правила, которые подсвечивают проблемные дни</div></div></div>
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Нормативы и алерты</b>
+          <div class="muted">владелец сам выбирает, какие правила учитывать в предупреждениях</div>
+        </div>
+      </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
     <div class="card finance-toolbar">
       <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
         <div>
-          <b>Нормативы заведения</b>
-          <div class="muted mt-6">Эти правила используются в алертах дня для подсветки проблемных зон.</div>
+          <b>Правила заведения</b>
+          <div class="muted mt-6">Пустое или выключенное правило не участвует в алертах экономики дня.</div>
         </div>
         <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <button class="btn ghost" id="openPlansBtn">Планы</button>
           <button class="btn" id="openDayEconomicsFromRulesBtn">Экономика дня</button>
         </div>
       </div>
 
       <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Текущие правила</b><div class="muted" id="rulesSummaryHint">—</div></div>
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Активные правила</b>
+            <div class="muted mt-6" id="rulesSummaryHint">—</div>
+          </div>
+        </div>
       </div>
 
       <div class="itemcard mt-12" id="rulesManageCard">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;"><b>Редактировать нормативы</b><div class="muted">Owner-only</div></div>
-        <form id="economicsRulesFormPage" class="finance-form mt-12">
-          <label>Макс. расходы / выручка, %<input name="max_expense_ratio_pct" type="text" placeholder="35" /></label>
-          <label>Макс. ФОТ / выручка, %<input name="max_payroll_ratio_pct" type="text" placeholder="20" /></label>
-          <label>Мин. выручка на сотрудника, ₽<input name="min_revenue_per_assigned" type="text" placeholder="25000.00" /></label>
-          <label>Мин. покрытие смен, %<input name="min_assigned_shift_coverage_pct" type="text" placeholder="80" /></label>
-          <label>Мин. прибыль дня, ₽<input name="min_profit" type="text" placeholder="10000.00" /></label>
-          <label class="row" style="gap:8px; align-items:center;"><input name="warn_on_draft_expenses" type="checkbox" /> Предупреждать о черновых расходах</label>
-          <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить правила</button></div>
-        </form>
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Редактировать нормативы</b>
+            <div class="muted mt-6">Можно включать и выключать каждое правило отдельно.</div>
+          </div>
+          <span class="badge">Owner-only</span>
+        </div>
+        <form id="economicsRulesFormPage" class="finance-form mt-12"></form>
       </div>
     </div>
   </div>
