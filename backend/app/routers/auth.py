@@ -25,6 +25,7 @@ from app.auth.phone_auth import (
     verify_challenge,
 )
 from app.auth.telegram_webapp import TelegramInitDataError, verify_init_data
+from app.auth.telegram_widget import TelegramLoginWidgetError, verify_login_widget_data
 from app.core.db import get_db
 from app.core.tg import normalize_tg_username
 from app.models import User
@@ -38,6 +39,16 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class TelegramAuthIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     initData: str = Field(alias="init_data")
+
+
+class TelegramWidgetAuthIn(BaseModel):
+    id: int
+    first_name: str | None = None
+    last_name: str | None = None
+    username: str | None = None
+    photo_url: str | None = None
+    auth_date: int
+    hash: str
 
 
 class PhoneCodeRequestIn(BaseModel):
@@ -131,6 +142,48 @@ def _client_ip(request: Request) -> str | None:
 
 
 
+
+
+def _upsert_user_from_telegram_payload(
+    db: Session,
+    *,
+    tg_user_id: int,
+    tg_username: str | None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+) -> User:
+    first_name = (first_name or "").strip()
+    last_name = (last_name or "").strip()
+    default_full_name = " ".join([p for p in [last_name, first_name] if p]) or None
+    default_short_name = first_name or (tg_username.lstrip("@") if tg_username else None)
+
+    user = db.query(User).filter(User.tg_user_id == tg_user_id).one_or_none()
+    if user is None:
+        user = User(
+            tg_user_id=tg_user_id,
+            tg_username=tg_username,
+            full_name=default_full_name,
+            short_name=default_short_name,
+            system_role="NONE",
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.tg_user_id = tg_user_id
+        if tg_username and user.tg_username != tg_username:
+            user.tg_username = tg_username
+        if user.full_name is None and default_full_name:
+            user.full_name = default_full_name
+        if user.short_name is None and default_short_name:
+            user.short_name = default_short_name
+
+    if tg_user_id in settings.super_admin_ids() and user.system_role != "SUPER_ADMIN":
+        user.system_role = "SUPER_ADMIN"
+
+    upsert_telegram_identity(db, user=user, tg_user_id=tg_user_id)
+    return user
+
+
 def _auth_state(db: Session, *, user: User) -> AuthStateOut:
     return AuthStateOut(
         user_id=user.id,
@@ -158,35 +211,65 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
         tg_username = normalize_tg_username(tg_user.get("username"))
         first_name = (tg_user.get("first_name") or "").strip()
         last_name = (tg_user.get("last_name") or "").strip()
-        default_full_name = " ".join([p for p in [last_name, first_name] if p]) or None
-        default_short_name = first_name or (tg_username.lstrip("@") if tg_username else None)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user payload")
 
-    user = db.query(User).filter(User.tg_user_id == tg_user_id).one_or_none()
-    if user is None:
-        user = User(
-            tg_user_id=tg_user_id,
-            tg_username=tg_username,
-            full_name=default_full_name,
-            short_name=default_short_name,
-            system_role="NONE",
+    user = _upsert_user_from_telegram_payload(
+        db,
+        tg_user_id=tg_user_id,
+        tg_username=tg_username,
+        first_name=first_name,
+        last_name=last_name,
+    )
+    db.commit()
+    db.refresh(user)
+
+    accept_invites_for_user(db, user_id=user.id, tg_username=user.tg_username)
+    _write_access_cookie(response, user=user)
+    return
+
+
+@router.get("/telegram/widget/config")
+def telegram_widget_config():
+    bot_username = str(settings.TG_LOGIN_WIDGET_BOT_USERNAME or "").strip()
+    return {
+        "ok": True,
+        "enabled": bool(bot_username),
+        "bot_username": bot_username or None,
+    }
+
+
+@router.post("/telegram/widget", status_code=status.HTTP_204_NO_CONTENT)
+def auth_telegram_widget(payload: TelegramWidgetAuthIn, response: Response, db: Session = Depends(get_db)):
+    bot_username = str(settings.TG_LOGIN_WIDGET_BOT_USERNAME or "").strip()
+    if not bot_username:
+        raise HTTPException(status_code=503, detail="Telegram Login Widget is not configured")
+
+    try:
+        data = verify_login_widget_data(
+            payload.model_dump(exclude_none=True),
+            settings.TG_BOT_TOKEN,
+            max_age_seconds=int(settings.TG_LOGIN_WIDGET_MAX_AGE_SECONDS or 3600),
         )
-        db.add(user)
-        db.flush()
-    else:
-        user.tg_user_id = tg_user_id
-        if tg_username and user.tg_username != tg_username:
-            user.tg_username = tg_username
-        if user.full_name is None and default_full_name:
-            user.full_name = default_full_name
-        if user.short_name is None and default_short_name:
-            user.short_name = default_short_name
+    except TelegramLoginWidgetError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
-    if tg_user_id in settings.super_admin_ids() and user.system_role != "SUPER_ADMIN":
-        user.system_role = "SUPER_ADMIN"
+    try:
+        tg_user_id = int(data["id"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Telegram widget payload")
 
-    upsert_telegram_identity(db, user=user, tg_user_id=tg_user_id)
+    tg_username = normalize_tg_username(data.get("username"))
+    first_name = (data.get("first_name") or "").strip()
+    last_name = (data.get("last_name") or "").strip()
+
+    user = _upsert_user_from_telegram_payload(
+        db,
+        tg_user_id=tg_user_id,
+        tg_username=tg_username,
+        first_name=first_name,
+        last_name=last_name,
+    )
     db.commit()
     db.refresh(user)
 

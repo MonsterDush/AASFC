@@ -461,6 +461,15 @@ export async function ensureLogin({ silent = true, redirectOnFail = false } = {}
   }
 }
 
+
+export async function loginWithTelegramWidget(authData) {
+  return api("/auth/telegram/widget", {
+    method: "POST",
+    body: authData || {},
+    handle401: false,
+  });
+}
+
 export async function requestPhoneCode(phone) {
   return api("/auth/phone/request-code", {
     method: "POST",

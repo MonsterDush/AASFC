@@ -1059,3 +1059,7 @@ input[type="checkbox"],input[type="radio"]{
   .topbar{align-items:flex-start;gap:10px;margin-bottom:14px; padding: 0 4px;}
   .logo{width:36px;height:36px}
 }
+
+
+.telegram-widget-host{display:flex;align-items:center;justify-content:flex-start;min-height:50px}
+.telegram-widget-host iframe{max-width:100%}

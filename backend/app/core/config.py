@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     # Telegram WebApp auth
     TG_BOT_TOKEN: str
 
+    TG_LOGIN_WIDGET_BOT_USERNAME: str = ""
+    TG_LOGIN_WIDGET_MAX_AGE_SECONDS: int = 60 * 60
+
     # JWT (cookie-based auth)
     JWT_SECRET: str
     JWT_ISS: str = "axelio-api-dev"
