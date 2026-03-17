@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, String, Boolean
+from sqlalchemy import BigInteger, String, Boolean, DateTime, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -22,3 +22,9 @@ class User(Base):
     notify_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_shifts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Локальная аутентификация по номеру + пароль
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_set_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_changed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

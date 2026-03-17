@@ -18,23 +18,31 @@ def get_jwt_config() -> JwtConfig:
     )
 
 
+def _decode_user_from_cookie(db: Session, access_token: str | None) -> User | None:
+    if not access_token:
+        return None
+    try:
+        payload = decode_access_token(get_jwt_config(), access_token)
+        user_id = int(payload["sub"])
+        token_session_version = int(payload.get("sv", 0) or 0)
+    except Exception:
+        return None
+
+    user = db.query(User).filter(User.id == user_id).one_or_none()
+    if not user:
+        return None
+    if token_session_version != int(user.session_version or 0):
+        return None
+    return user
+
+
 def get_current_user(
     db: Session = Depends(get_db),
     access_token: str | None = Cookie(default=None, alias="access_token"),
 ) -> User:
-    if not access_token:
+    user = _decode_user_from_cookie(db, access_token)
+    if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-
-    try:
-        payload = decode_access_token(get_jwt_config(), access_token)
-        user_id = int(payload["sub"])
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-    user = db.query(User).filter(User.id == user_id).one_or_none()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-
     return user
 
 
@@ -43,12 +51,4 @@ def get_current_user_optional(
     access_token: str | None = Cookie(default=None, alias="access_token"),
 ) -> User | None:
     """Same as get_current_user, but returns None instead of raising."""
-    if not access_token:
-        return None
-    try:
-        payload = decode_access_token(get_jwt_config(), access_token)
-        user_id = int(payload["sub"])
-        user = db.query(User).filter(User.id == user_id).one_or_none()
-        return user
-    except Exception:
-        return None
+    return _decode_user_from_cookie(db, access_token)

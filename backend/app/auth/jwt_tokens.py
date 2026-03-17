@@ -15,10 +15,11 @@ class JwtConfig:
     ttl_seconds: int
 
 
-def create_access_token(cfg: JwtConfig, user_id: int) -> str:
+def create_access_token(cfg: JwtConfig, user_id: int, *, session_version: int = 0) -> str:
     now = int(time.time())
     payload: dict[str, Any] = {
         "sub": str(user_id),
+        "sv": int(session_version or 0),
         "iat": now,
         "exp": now + cfg.ttl_seconds,
         "iss": cfg.issuer,

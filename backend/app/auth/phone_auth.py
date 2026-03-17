@@ -4,6 +4,7 @@ import hashlib
 import random
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Iterable
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -18,6 +19,10 @@ OTP_STATUS_PENDING = "PENDING"
 OTP_STATUS_VERIFIED = "VERIFIED"
 OTP_STATUS_EXPIRED = "EXPIRED"
 OTP_STATUS_FAILED = "FAILED"
+
+OTP_PURPOSE_PHONE_LOGIN = "PHONE_LOGIN"
+OTP_PURPOSE_LINK_PHONE = "LINK_PHONE"
+OTP_PURPOSE_RESET_PASSWORD = "RESET_PASSWORD"
 
 
 def utcnow() -> datetime:
@@ -88,21 +93,45 @@ def expire_stale_challenges(db: Session, *, phone_e164: str) -> None:
             row.status = OTP_STATUS_EXPIRED
 
 
-def build_challenge(db: Session, *, phone_e164: str, request_ip: str | None, user_agent: str | None) -> tuple[PhoneOtpChallenge, str]:
+def _normalize_purposes(purpose: str | Iterable[str] | None) -> list[str] | None:
+    if purpose is None:
+        return None
+    if isinstance(purpose, str):
+        values = [purpose]
+    else:
+        values = list(purpose)
+    out: list[str] = []
+    for item in values:
+        val = str(item or "").strip().upper()
+        if val and val not in out:
+            out.append(val)
+    return out or None
+
+
+def build_challenge(
+    db: Session,
+    *,
+    phone_e164: str,
+    request_ip: str | None,
+    user_agent: str | None,
+    purpose: str = OTP_PURPOSE_PHONE_LOGIN,
+) -> tuple[PhoneOtpChallenge, str]:
     expire_stale_challenges(db, phone_e164=phone_e164)
     now = utcnow()
-    cooldown_from = now - timedelta(seconds=int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 30))
-    recent = db.execute(
-        select(PhoneOtpChallenge)
-        .where(
-            PhoneOtpChallenge.phone_e164 == phone_e164,
-            PhoneOtpChallenge.status == OTP_STATUS_PENDING,
-            PhoneOtpChallenge.sent_at >= cooldown_from,
-        )
-        .order_by(PhoneOtpChallenge.id.desc())
-    ).scalar_one_or_none()
-    if recent is not None:
-        raise HTTPException(status_code=429, detail="Код уже отправлен. Подождите немного и попробуйте снова.")
+
+    cooldown_seconds = int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 60)
+    if cooldown_seconds > 0:
+        cooldown_from = now - timedelta(seconds=cooldown_seconds)
+        recent = db.execute(
+            select(PhoneOtpChallenge)
+            .where(
+                PhoneOtpChallenge.phone_e164 == phone_e164,
+                PhoneOtpChallenge.sent_at >= cooldown_from,
+            )
+            .order_by(PhoneOtpChallenge.id.desc())
+        ).scalar_one_or_none()
+        if recent is not None:
+            raise HTTPException(status_code=429, detail="Код уже отправлен. Подождите немного и попробуйте снова.")
 
     max_sends_per_day = int(settings.PHONE_AUTH_MAX_SENDS_PER_DAY or 0)
     if max_sends_per_day > 0:
@@ -116,9 +145,32 @@ def build_challenge(db: Session, *, phone_e164: str, request_ip: str | None, use
         if int(sent_today or 0) >= max_sends_per_day:
             raise HTTPException(status_code=429, detail="Превышен дневной лимит отправки кодов")
 
+    burst_window_seconds = int(settings.PHONE_AUTH_BURST_WINDOW_SECONDS or 0)
+    burst_limit = int(settings.PHONE_AUTH_MAX_SENDS_PER_WINDOW or 0)
+    block_seconds = int(settings.PHONE_AUTH_BLOCK_SECONDS or 0)
+    if burst_window_seconds > 0 and burst_limit > 0 and block_seconds > 0:
+        window_from = now - timedelta(seconds=burst_window_seconds)
+        recent_rows = db.execute(
+            select(PhoneOtpChallenge)
+            .where(
+                PhoneOtpChallenge.phone_e164 == phone_e164,
+                PhoneOtpChallenge.sent_at >= window_from,
+            )
+            .order_by(PhoneOtpChallenge.sent_at.desc(), PhoneOtpChallenge.id.desc())
+        ).scalars().all()
+        if len(recent_rows) >= burst_limit:
+            newest = recent_rows[0]
+            block_until = newest.sent_at + timedelta(seconds=block_seconds)
+            if block_until > now:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Слишком много SMS за короткое время. Попробуйте позже.",
+                )
+
     code = generate_code()
     challenge = PhoneOtpChallenge(
         phone_e164=phone_e164,
+        purpose=str(purpose or OTP_PURPOSE_PHONE_LOGIN).upper(),
         code_hash=_hash_code(phone_e164=phone_e164, code=code),
         status=OTP_STATUS_PENDING,
         provider=str(settings.PHONE_AUTH_PROVIDER or "debug"),
@@ -133,16 +185,28 @@ def build_challenge(db: Session, *, phone_e164: str, request_ip: str | None, use
     return challenge, code
 
 
-def verify_challenge(db: Session, *, phone_e164: str, code: str) -> PhoneOtpChallenge:
+def verify_challenge(
+    db: Session,
+    *,
+    phone_e164: str,
+    code: str,
+    purpose: str | Iterable[str] | None = None,
+) -> PhoneOtpChallenge:
     expire_stale_challenges(db, phone_e164=phone_e164)
-    challenge = db.execute(
+    purposes = _normalize_purposes(purpose)
+
+    stmt = (
         select(PhoneOtpChallenge)
         .where(
             PhoneOtpChallenge.phone_e164 == phone_e164,
             PhoneOtpChallenge.status == OTP_STATUS_PENDING,
         )
         .order_by(PhoneOtpChallenge.id.desc())
-    ).scalar_one_or_none()
+    )
+    if purposes:
+        stmt = stmt.where(PhoneOtpChallenge.purpose.in_(purposes))
+
+    challenge = db.execute(stmt).scalar_one_or_none()
     if challenge is None:
         raise HTTPException(status_code=400, detail="Код не найден или уже истёк")
 
@@ -193,7 +257,6 @@ def upsert_telegram_identity(db: Session, *, user: User, tg_user_id: int) -> Aut
     ident.is_verified = True
     db.flush()
     return ident
-
 
 
 def link_phone_identity_to_user(db: Session, *, user: User, phone_e164: str) -> AuthIdentity:
@@ -283,6 +346,7 @@ def link_telegram_identity_to_user(
     db.flush()
     return ident
 
+
 def get_user_phone(db: Session, *, user_id: int) -> str | None:
     return db.execute(
         select(AuthIdentity.phone_e164)
@@ -309,7 +373,7 @@ def get_user_auth_methods(db: Session, *, user_id: int) -> list[str]:
     return out
 
 
-def find_or_create_user_by_phone(db: Session, *, phone_e164: str) -> User:
+def find_user_by_phone(db: Session, *, phone_e164: str) -> User | None:
     ident = db.execute(
         select(AuthIdentity).where(
             AuthIdentity.provider == PHONE_PROVIDER_PHONE,
@@ -317,8 +381,14 @@ def find_or_create_user_by_phone(db: Session, *, phone_e164: str) -> User:
             AuthIdentity.is_verified.is_(True),
         )
     ).scalar_one_or_none()
-    if ident is not None:
-        user = db.execute(select(User).where(User.id == ident.user_id)).scalar_one()
+    if ident is None:
+        return None
+    return db.execute(select(User).where(User.id == ident.user_id)).scalar_one_or_none()
+
+
+def find_or_create_user_by_phone(db: Session, *, phone_e164: str) -> User:
+    user = find_user_by_phone(db, phone_e164=phone_e164)
+    if user is not None:
         return user
 
     user = User(

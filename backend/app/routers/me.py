@@ -9,6 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
+from app.auth.passwords import has_password
 from app.auth.phone_auth import get_user_auth_methods, get_user_phone
 from app.core.db import get_db
 from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
@@ -92,6 +93,8 @@ def me(
         "notify_shifts": user.notify_shifts,
         "phone": get_user_phone(db, user_id=user.id),
         "auth_methods": get_user_auth_methods(db, user_id=user.id),
+        "has_password": has_password(user),
+        "password_set_at": user.password_set_at.isoformat() if user.password_set_at else None,
     }
 
 
@@ -126,6 +129,8 @@ def get_profile(user: User = Depends(get_current_user), db: Session = Depends(ge
         "short_name": user.short_name,
         "phone": get_user_phone(db, user_id=user.id),
         "auth_methods": get_user_auth_methods(db, user_id=user.id),
+        "has_password": has_password(user),
+        "password_set_at": user.password_set_at.isoformat() if user.password_set_at else None,
     }
 
 

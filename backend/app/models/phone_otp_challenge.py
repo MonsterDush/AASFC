@@ -13,6 +13,7 @@ class PhoneOtpChallenge(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     phone_e164: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False, default="PHONE_LOGIN", index=True)
     code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="PENDING", index=True)
     provider: Mapped[str] = mapped_column(String(32), nullable=False, default="debug")
