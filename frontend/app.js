@@ -483,6 +483,29 @@ export async function logout() {
   });
 }
 
+export async function requestLinkPhoneCode(phone) {
+  return api("/auth/link/phone/request-code", {
+    method: "POST",
+    body: { phone },
+  });
+}
+
+export async function verifyLinkPhoneCode(phone, code) {
+  return api("/auth/link/phone/verify-code", {
+    method: "POST",
+    body: { phone, code },
+  });
+}
+
+export async function linkTelegramAccount(initData = "") {
+  const value = String(initData || wa()?.initData || "").trim();
+  if (!value) throw new Error("Telegram Mini App недоступен для привязки");
+  return api("/auth/link/telegram", {
+    method: "POST",
+    body: { initData: value },
+  });
+}
+
 export function confirmModal({ title, text, confirmText = "Подтвердить", danger = false }) {
   return new Promise((resolve) => {
     const m = document.getElementById("modal");

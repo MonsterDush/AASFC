@@ -195,6 +195,94 @@ def upsert_telegram_identity(db: Session, *, user: User, tg_user_id: int) -> Aut
     return ident
 
 
+
+def link_phone_identity_to_user(db: Session, *, user: User, phone_e164: str) -> AuthIdentity:
+    existing = db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.provider == PHONE_PROVIDER_PHONE,
+            AuthIdentity.phone_e164 == phone_e164,
+        )
+    ).scalar_one_or_none()
+
+    if existing is not None and existing.user_id != user.id:
+        raise HTTPException(status_code=409, detail="Этот номер уже привязан к другой учётной записи")
+
+    # Keep history rows, but only one verified phone per user.
+    user_phone_rows = db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.user_id == user.id,
+            AuthIdentity.provider == PHONE_PROVIDER_PHONE,
+        )
+    ).scalars().all()
+    for row in user_phone_rows:
+        row.is_verified = False
+
+    if existing is None:
+        existing = AuthIdentity(
+            user_id=user.id,
+            provider=PHONE_PROVIDER_PHONE,
+            phone_e164=phone_e164,
+            is_verified=True,
+        )
+        db.add(existing)
+        db.flush()
+        return existing
+
+    existing.user_id = user.id
+    existing.phone_e164 = phone_e164
+    existing.is_verified = True
+    db.flush()
+    return existing
+
+
+def link_telegram_identity_to_user(
+    db: Session,
+    *,
+    user: User,
+    tg_user_id: int,
+    tg_username: str | None = None,
+    default_full_name: str | None = None,
+    default_short_name: str | None = None,
+) -> AuthIdentity:
+    provider_user_id = str(int(tg_user_id))
+    ident = db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.provider == PHONE_PROVIDER_TELEGRAM,
+            AuthIdentity.provider_user_id == provider_user_id,
+        )
+    ).scalar_one_or_none()
+    if ident is not None and ident.user_id != user.id:
+        raise HTTPException(status_code=409, detail="Этот Telegram-аккаунт уже привязан к другой учётной записи")
+
+    # legacy user.tg_user_id also must stay unique and synced
+    clash_user = db.execute(select(User).where(User.tg_user_id == tg_user_id)).scalar_one_or_none()
+    if clash_user is not None and clash_user.id != user.id:
+        raise HTTPException(status_code=409, detail="Этот Telegram-аккаунт уже используется другой учётной записью")
+
+    user.tg_user_id = tg_user_id
+    if tg_username:
+        user.tg_username = tg_username
+    if not user.full_name and default_full_name:
+        user.full_name = default_full_name
+    if not user.short_name and default_short_name:
+        user.short_name = default_short_name
+
+    if ident is None:
+        ident = AuthIdentity(
+            user_id=user.id,
+            provider=PHONE_PROVIDER_TELEGRAM,
+            provider_user_id=provider_user_id,
+            is_verified=True,
+        )
+        db.add(ident)
+        db.flush()
+        return ident
+
+    ident.user_id = user.id
+    ident.is_verified = True
+    db.flush()
+    return ident
+
 def get_user_phone(db: Session, *, user_id: int) -> str | None:
     return db.execute(
         select(AuthIdentity.phone_e164)
@@ -226,10 +314,10 @@ def find_or_create_user_by_phone(db: Session, *, phone_e164: str) -> User:
         select(AuthIdentity).where(
             AuthIdentity.provider == PHONE_PROVIDER_PHONE,
             AuthIdentity.phone_e164 == phone_e164,
+            AuthIdentity.is_verified.is_(True),
         )
     ).scalar_one_or_none()
     if ident is not None:
-        ident.is_verified = True
         user = db.execute(select(User).where(User.id == ident.user_id)).scalar_one()
         return user
 

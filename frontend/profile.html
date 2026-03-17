@@ -6,6 +6,13 @@
   <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Профиль</title>
+  <style>
+    .auth-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+    .auth-methods { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+    .auth-chip { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:4px 10px; font-size:12px; }
+    .auth-box { border:1px solid var(--border); border-radius:16px; padding:12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -34,34 +41,171 @@
         <button class="btn primary" id="saveBtn">Сохранить</button>
       </div>
     </div>
+
+    <div class="card">
+      <b>Способы входа</b>
+      <div class="muted mt-6">Можно привязать телефон к старому Telegram-аккаунту или привязать Telegram к phone-аккаунту. Это уменьшает риск дублей.</div>
+
+      <div class="auth-methods" id="authMethods"></div>
+
+      <div class="auth-grid mt-12">
+        <div class="auth-box">
+          <b>Телефон</b>
+          <div class="muted mt-8" id="phoneState">Загрузка…</div>
+          <div class="stack mt-12">
+            <input class="input" id="linkPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
+            <div class="row" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn" id="requestLinkCodeBtn">Получить код</button>
+              <button class="btn primary" id="verifyLinkCodeBtn">Подтвердить и привязать</button>
+            </div>
+            <input class="input" id="linkPhoneCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+            <div class="muted mono" id="linkPhoneMeta"></div>
+          </div>
+        </div>
+
+        <div class="auth-box">
+          <b>Telegram</b>
+          <div class="muted mt-8" id="telegramState">Загрузка…</div>
+          <div class="row mt-12" style="gap:8px; flex-wrap:wrap;">
+            <button class="btn primary" id="linkTelegramBtn">Привязать Telegram</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, mountNav, api, toast, getMe } from "/app.js";
+    import {
+      applyTelegramTheme,
+      ensureLogin,
+      mountNav,
+      api,
+      toast,
+      wa,
+      requestLinkPhoneCode,
+      verifyLinkPhoneCode,
+      linkTelegramAccount,
+    } from "/app.js";
 
     applyTelegramTheme();
     await ensureLogin({ silent: true });
     await mountNav({ activeTab: "settings" });
 
-    try {
-      const p = await api("/me/profile");
-      document.getElementById("fullName").value = p?.full_name || "";
-      document.getElementById("shortName").value = p?.short_name || "";
-    } catch (e) {
-      toast(e?.data?.detail || e?.message || "Не удалось загрузить профиль", "err");
+    const els = {
+      fullName: document.getElementById("fullName"),
+      shortName: document.getElementById("shortName"),
+      saveBtn: document.getElementById("saveBtn"),
+      authMethods: document.getElementById("authMethods"),
+      phoneState: document.getElementById("phoneState"),
+      linkPhoneInput: document.getElementById("linkPhoneInput"),
+      linkPhoneCodeInput: document.getElementById("linkPhoneCodeInput"),
+      linkPhoneMeta: document.getElementById("linkPhoneMeta"),
+      requestLinkCodeBtn: document.getElementById("requestLinkCodeBtn"),
+      verifyLinkCodeBtn: document.getElementById("verifyLinkCodeBtn"),
+      telegramState: document.getElementById("telegramState"),
+      linkTelegramBtn: document.getElementById("linkTelegramBtn"),
+    };
+
+    function renderAuthMethods(methods) {
+      const list = Array.isArray(methods) ? methods : [];
+      els.authMethods.innerHTML = "";
+      if (!list.length) {
+        els.authMethods.innerHTML = '<span class="auth-chip">Пока не найдено подтверждённых способов входа</span>';
+        return;
+      }
+      for (const method of list) {
+        const chip = document.createElement("span");
+        chip.className = "auth-chip";
+        chip.textContent = method === "phone" ? "Телефон" : method === "telegram" ? "Telegram" : method;
+        els.authMethods.appendChild(chip);
+      }
     }
 
-    document.getElementById("saveBtn").onclick = async () => {
-      const full_name = document.getElementById("fullName").value;
-      const short_name = document.getElementById("shortName").value;
+    function telegramMiniAppAvailable() {
+      return Boolean(wa()?.initData || "");
+    }
+
+    function renderProfile(profile) {
+      els.fullName.value = profile?.full_name || "";
+      els.shortName.value = profile?.short_name || "";
+      els.linkPhoneInput.value = profile?.phone || "";
+      renderAuthMethods(profile?.auth_methods || []);
+
+      if (profile?.phone) {
+        els.phoneState.textContent = `Привязанный номер: ${profile.phone}`;
+      } else {
+        els.phoneState.textContent = "Телефон пока не привязан. После привязки в приложение можно будет входить и по SMS.";
+      }
+
+      if (profile?.tg_user_id) {
+        els.telegramState.textContent = profile?.tg_username
+          ? `Telegram уже привязан: ${profile.tg_username}`
+          : `Telegram уже привязан к этой учётной записи.`;
+      } else if (telegramMiniAppAvailable()) {
+        els.telegramState.textContent = "Telegram Mini App доступен. Можно привязать текущий Telegram-аккаунт к этой учётной записи.";
+      } else {
+        els.telegramState.textContent = "Сейчас ты не внутри Telegram Mini App. Открой профиль из Telegram, чтобы привязать аккаунт.";
+      }
+      els.linkTelegramBtn.disabled = !telegramMiniAppAvailable();
+    }
+
+    async function loadProfile() {
+      try {
+        const p = await api("/me/profile");
+        renderProfile(p);
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось загрузить профиль", "err");
+      }
+    }
+
+    els.saveBtn.onclick = async () => {
+      const full_name = els.fullName.value;
+      const short_name = els.shortName.value;
       try {
         await api("/me/profile", { method: "PATCH", body: { full_name, short_name } });
         toast("Сохранено", "ok");
-        history.back();
+        await loadProfile();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось сохранить", "err");
       }
     };
+
+    els.requestLinkCodeBtn.onclick = async () => {
+      try {
+        const out = await requestLinkPhoneCode(els.linkPhoneInput.value.trim());
+        els.linkPhoneMeta.textContent = out?.debug_code
+          ? `Код отправлен. dev_code=${out.debug_code}`
+          : `Код отправлен на ${out?.phone || els.linkPhoneInput.value.trim()}`;
+        toast("Код отправлен", "ok");
+        els.linkPhoneCodeInput.focus();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось отправить код", "err");
+      }
+    };
+
+    els.verifyLinkCodeBtn.onclick = async () => {
+      try {
+        const out = await verifyLinkPhoneCode(els.linkPhoneInput.value.trim(), els.linkPhoneCodeInput.value.trim());
+        toast("Телефон привязан", "ok");
+        renderAuthMethods(out?.auth_methods || []);
+        await loadProfile();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось привязать номер", "err");
+      }
+    };
+
+    els.linkTelegramBtn.onclick = async () => {
+      try {
+        const out = await linkTelegramAccount();
+        toast("Telegram привязан", "ok");
+        renderAuthMethods(out?.auth_methods || []);
+        await loadProfile();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось привязать Telegram", "err");
+      }
+    };
+
+    await loadProfile();
   </script>
 </body>
 </html>

@@ -117,12 +117,15 @@ def my_permissions_catalog(user: User = Depends(get_current_user)):
 
 
 @router.get("/me/profile")
-def get_profile(user: User = Depends(get_current_user)):
+def get_profile(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return {
         "id": user.id,
+        "tg_user_id": user.tg_user_id,
         "tg_username": user.tg_username,
         "full_name": user.full_name,
         "short_name": user.short_name,
+        "phone": get_user_phone(db, user_id=user.id),
+        "auth_methods": get_user_auth_methods(db, user_id=user.id),
     }
 
 

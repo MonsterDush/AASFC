@@ -214,6 +214,34 @@ def create_venue_invite(
     return inv
 
 
+
+
+def accept_phone_invites_for_user(db: Session, *, user_id: int, phone_e164: str | None) -> int:
+    phone = normalize_phone_e164(phone_e164)
+    if not phone:
+        return 0
+
+    invites = (
+        db.query(VenueInvite)
+        .filter(
+            VenueInvite.invite_channel == "PHONE",
+            VenueInvite.invited_phone_e164 == phone,
+            VenueInvite.is_active.is_(True),
+            VenueInvite.accepted_user_id.is_(None),
+        )
+        .all()
+    )
+
+    accepted = 0
+    for inv in invites:
+        _accept_invite_record(db, inv=inv, user_id=user_id, accepted_via="PHONE_AUTO")
+        accepted += 1
+
+    if accepted:
+        db.commit()
+
+    return accepted
+
 def accept_invites_for_user(db: Session, *, user_id: int, tg_username: str) -> int:
     if not tg_username:
         return 0
