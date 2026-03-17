@@ -23,7 +23,7 @@
     <div class="auth-grid">
       <div class="card">
         <b>Вход по телефону</b>
-        <div class="muted mt-8">Подходит для входа из браузера и будущего standalone-приложения.</div>
+        <div class="muted mt-8">Подходит для входа из браузера и standalone-приложения. SMS отправляются через SMS.ru.</div>
 
         <label class="auth-label mt-16" for="phoneInput">Номер телефона</label>
         <input id="phoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
@@ -57,7 +57,7 @@
 
         <div class="itemcard mt-16">
           <b>Что дальше</b>
-          <div class="muted mt-8">
+          <div class="muted mt-8" id="nextHint">
             После входа тебя вернёт на страницу, с которой запрашивалась авторизация.
           </div>
         </div>
@@ -73,7 +73,7 @@
       ensureLogin,
       requestPhoneCode,
       verifyPhoneCode,
-      redirectToAuth,
+      api,
       toast,
       wa,
     } from "/app.js";
@@ -82,20 +82,48 @@
 
     const params = new URLSearchParams(location.search);
     const next = params.get("next") || "/";
+    const nextHint = document.getElementById("nextHint");
 
     function getSafeNext() {
       if (!next || /\/auth\.html(\?|$)/i.test(next)) return "/";
       return next;
     }
 
-    function goNext() {
-      location.replace(getSafeNext());
+    function extractInviteToken(target) {
+      try {
+        const url = new URL(target, location.origin);
+        if (/\/invite-accept\.html$/i.test(url.pathname || "")) {
+          return (url.searchParams.get("token") || "").trim();
+        }
+      } catch {}
+      return "";
+    }
+
+    async function finishPostLoginFlow() {
+      const safeNext = getSafeNext();
+      const inviteToken = extractInviteToken(safeNext);
+      if (!inviteToken) {
+        location.replace(safeNext);
+        return;
+      }
+      try {
+        const out = await api(`/public/invites/${encodeURIComponent(inviteToken)}/accept`, { method: "POST" });
+        toast("Приглашение принято", "ok");
+        const venueId = out?.venue_id;
+        if (venueId) {
+          location.replace(`/app-venue.html?venue_id=${encodeURIComponent(venueId)}`);
+          return;
+        }
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось автоматически принять приглашение", "warn");
+      }
+      location.replace(safeNext);
     }
 
     async function initExistingSession() {
       const login = await ensureLogin({ silent: true, redirectOnFail: false });
       if (login.ok) {
-        goNext();
+        await finishPostLoginFlow();
         return true;
       }
       return false;
@@ -119,12 +147,17 @@
       }
     }
 
+    const inviteToken = extractInviteToken(getSafeNext());
+    if (inviteToken) {
+      nextHint.textContent = "После входа система попробует автоматически принять приглашение и открыть нужное заведение.";
+    }
+
     document.getElementById("btnRequestCode").onclick = async () => {
       try {
         const out = await requestPhoneCode(phoneInput.value.trim());
         phoneMeta.textContent = out?.debug_code
           ? `Код отправлен. dev_code=${out.debug_code}`
-          : "Код отправлен. Проверь SMS.";
+          : `Код отправлен на ${out?.phone || phoneInput.value.trim()}. Проверь SMS.`;
         toast("Код отправлен", "ok");
         codeInput.focus();
       } catch (e) {
@@ -136,7 +169,7 @@
       try {
         await verifyPhoneCode(phoneInput.value.trim(), codeInput.value.trim());
         toast("Вход выполнен", "ok");
-        goNext();
+        await finishPostLoginFlow();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось подтвердить код", "err");
       }
@@ -144,7 +177,7 @@
 
     btnTelegramLogin.onclick = async () => {
       const login = await ensureLogin({ silent: false, redirectOnFail: false });
-      if (login.ok) goNext();
+      if (login.ok) await finishPostLoginFlow();
     };
 
     if (!(await initExistingSession())) {

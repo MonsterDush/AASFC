@@ -31,17 +31,21 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, wa } from '/app.js';
+    import { applyTelegramTheme, ensureLogin, api, toast, wa, redirectToAuth } from '/app.js';
     function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     const params = new URLSearchParams(location.search);
     const token = (params.get('token') || '').trim();
     const state = document.getElementById('state');
     const card = document.getElementById('card');
+    const currentNext = `${location.pathname || '/invite-accept.html'}${location.search || ''}${location.hash || ''}`;
 
     applyTelegramTheme();
 
     function renderInvite(inv) {
       const contact = inv.invite_channel === 'PHONE' ? (inv.contact_label || inv.phone || '—') : ('@' + (inv.tg_username || '—'));
+      const loginHint = inv.invite_channel === 'PHONE'
+        ? 'Для этого приглашения нужно войти по тому же номеру телефона, на который оно отправлено.'
+        : 'Для этого приглашения нужно войти под нужным Telegram-аккаунтом.';
       card.innerHTML = `
         <div><b>${esc(inv.venue_name || 'Приглашение')}</b></div>
         <div class="invite-meta mt-12">
@@ -50,21 +54,33 @@
           <div class="muted">Контакт: ${esc(contact)}</div>
           <div class="muted">Статус: ${esc(inv.status || '')}</div>
         </div>
-        <div class="muted mt-12">${inv.invite_channel === 'PHONE' ? 'Ссылка готова для phone-auth flow. Пока вход в этой сборке остаётся через Telegram.' : 'Для Telegram-инвайта нужно войти под нужным Telegram-аккаунтом.'}</div>
-        <div class="row mt-12" style="gap:8px;">
-          <button class="btn primary" id="btnAccept">Принять приглашение</button>
-          <a class="btn" href="/index.html">На главную</a>
-        </div>
+        <div class="muted mt-12">${esc(loginHint)}</div>
+        <div class="row mt-12" style="gap:8px;" id="actionsRow"></div>
       `;
-      document.getElementById('btnAccept').onclick = acceptInvite;
+      const actions = document.getElementById('actionsRow');
+      const btnAccept = document.createElement('button');
+      btnAccept.className = 'btn primary';
+      btnAccept.textContent = 'Принять приглашение';
+      btnAccept.onclick = acceptInvite;
+      actions.appendChild(btnAccept);
+
+      const btnAuth = document.createElement('button');
+      btnAuth.className = 'btn';
+      btnAuth.textContent = inv.invite_channel === 'PHONE' ? 'Войти по номеру' : 'Войти';
+      btnAuth.onclick = () => redirectToAuth(currentNext);
+      actions.appendChild(btnAuth);
+
+      const home = document.createElement('a');
+      home.className = 'btn';
+      home.href = '/index.html';
+      home.textContent = 'На главную';
+      actions.appendChild(home);
     }
 
     async function acceptInvite() {
-      const login = await ensureLogin({ silent:true });
+      const login = await ensureLogin({ silent:true, redirectOnFail: false });
       if (!login.ok) {
-        const hasTg = !!(wa()?.initData);
-        state.textContent = '';
-        toast(hasTg ? 'Не удалось авторизоваться в Telegram' : 'Открой ссылку из Mini App Telegram или после добавления phone-auth', 'warn');
+        redirectToAuth(currentNext);
         return;
       }
       try {

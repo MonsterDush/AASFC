@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.auth.jwt_tokens import JwtConfig, create_access_token
 from app.auth.phone_auth import (
-    build_challenge,
     find_or_create_user_by_phone,
     get_user_auth_methods,
     get_user_phone,
     normalize_phone_e164,
+    build_challenge,
     upsert_telegram_identity,
     verify_challenge,
 )
@@ -145,7 +145,11 @@ def request_phone_code(payload: PhoneCodeRequestIn, request: Request, db: Sessio
         user_agent=request.headers.get("user-agent"),
     )
     provider = get_sms_provider()
-    send_result = provider.send_code(phone_e164=phone_e164, code=code)
+    send_result = provider.send_code(
+        phone_e164=phone_e164,
+        code=code,
+        request_ip=(request.client.host if request.client else None),
+    )
     db.commit()
 
     out = {
@@ -156,6 +160,10 @@ def request_phone_code(payload: PhoneCodeRequestIn, request: Request, db: Sessio
         "cooldown_seconds": int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 30),
         "challenge_id": challenge.id,
     }
+    if send_result.get("sms_id"):
+        out["sms_id"] = send_result.get("sms_id")
+    if send_result.get("test"):
+        out["test"] = True
     if "debug_code" in send_result:
         out["debug_code"] = send_result["debug_code"]
     return out

@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AuthIdentity, PhoneOtpChallenge, User
@@ -51,6 +51,8 @@ def normalize_phone_e164(raw: str) -> str:
 
     if not (11 <= len(e164_digits) <= 15):
         raise HTTPException(status_code=400, detail="Bad phone length")
+    if settings.PHONE_AUTH_REQUIRE_RU_NUMBERS and not e164_digits.startswith("7"):
+        raise HTTPException(status_code=400, detail="Пока поддерживаются только российские номера")
     return f"+{e164_digits}"
 
 
@@ -88,7 +90,8 @@ def expire_stale_challenges(db: Session, *, phone_e164: str) -> None:
 
 def build_challenge(db: Session, *, phone_e164: str, request_ip: str | None, user_agent: str | None) -> tuple[PhoneOtpChallenge, str]:
     expire_stale_challenges(db, phone_e164=phone_e164)
-    cooldown_from = utcnow() - timedelta(seconds=int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 30))
+    now = utcnow()
+    cooldown_from = now - timedelta(seconds=int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 30))
     recent = db.execute(
         select(PhoneOtpChallenge)
         .where(
@@ -101,6 +104,18 @@ def build_challenge(db: Session, *, phone_e164: str, request_ip: str | None, use
     if recent is not None:
         raise HTTPException(status_code=429, detail="Код уже отправлен. Подождите немного и попробуйте снова.")
 
+    max_sends_per_day = int(settings.PHONE_AUTH_MAX_SENDS_PER_DAY or 0)
+    if max_sends_per_day > 0:
+        since = now - timedelta(days=1)
+        sent_today = db.execute(
+            select(func.count(PhoneOtpChallenge.id)).where(
+                PhoneOtpChallenge.phone_e164 == phone_e164,
+                PhoneOtpChallenge.sent_at >= since,
+            )
+        ).scalar_one()
+        if int(sent_today or 0) >= max_sends_per_day:
+            raise HTTPException(status_code=429, detail="Превышен дневной лимит отправки кодов")
+
     code = generate_code()
     challenge = PhoneOtpChallenge(
         phone_e164=phone_e164,
@@ -109,7 +124,7 @@ def build_challenge(db: Session, *, phone_e164: str, request_ip: str | None, use
         provider=str(settings.PHONE_AUTH_PROVIDER or "debug"),
         attempts=0,
         max_attempts=int(settings.PHONE_AUTH_MAX_ATTEMPTS or 5),
-        expires_at=utcnow() + timedelta(seconds=int(settings.PHONE_AUTH_CODE_TTL_SECONDS or 300)),
+        expires_at=now + timedelta(seconds=int(settings.PHONE_AUTH_CODE_TTL_SECONDS or 300)),
         request_ip=(request_ip or None),
         user_agent=(user_agent or None),
     )

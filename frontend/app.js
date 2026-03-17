@@ -11,19 +11,21 @@ export function isAuthPage() {
   return isBrowser() && /\/auth\.html$/i.test(location.pathname || "");
 }
 
-export function buildAuthUrl(next = "") {
+export function buildAuthUrl(next = "", reason = "") {
   const url = new URL(AUTH_PAGE, location.origin);
   const normalizedNext = String(next || "").trim();
   if (normalizedNext && !/\/auth\.html(\?|$)/i.test(normalizedNext)) {
     url.searchParams.set("next", normalizedNext);
   }
+  const normalizedReason = String(reason || "").trim();
+  if (normalizedReason) url.searchParams.set("reason", normalizedReason);
   return url.toString();
 }
 
-export function redirectToAuth(next = "") {
+export function redirectToAuth(next = "", reason = "") {
   if (!isBrowser() || isAuthPage()) return;
   const current = next || `${location.pathname || "/"}${location.search || ""}${location.hash || ""}`;
-  location.replace(buildAuthUrl(current));
+  location.replace(buildAuthUrl(current, reason));
 }
 
 // ------------------------------
@@ -343,7 +345,7 @@ export async function api(path, opts = {}) {
     err.url = r.url;
 
     if (r.status === 401 && handle401) {
-      redirectToAuth();
+      redirectToAuth("", "unauthorized");
     }
 
     throw err;

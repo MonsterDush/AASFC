@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.tg import normalize_tg_username
+from app.models.auth_identity import AuthIdentity
 from app.models.user import User
 from app.models.venue import Venue
 from app.models.venue_invite import VenueInvite
@@ -159,7 +160,7 @@ def create_venue_invite(
     phone_e164: str | None = None,
     contact_label: str | None = None,
     created_by_user_id: int | None = None,
-    expires_at = None,
+    expires_at=None,
 ) -> VenueInvite:
     channel = str(invite_channel or "").strip().upper()
     if channel not in ("TELEGRAM", "PHONE"):
@@ -260,6 +261,16 @@ def get_invite_status(inv: VenueInvite) -> str:
     return "PENDING"
 
 
+def _get_verified_user_phone(db: Session, *, user_id: int) -> str | None:
+    return db.execute(
+        select(AuthIdentity.phone_e164).where(
+            AuthIdentity.user_id == user_id,
+            AuthIdentity.provider == "PHONE",
+            AuthIdentity.is_verified.is_(True),
+        )
+    ).scalar_one_or_none()
+
+
 def accept_invite_by_token(db: Session, *, token: str, user: User) -> VenueInvite:
     inv = get_invite_by_token(db, token)
     if inv is None:
@@ -279,6 +290,13 @@ def accept_invite_by_token(db: Session, *, token: str, user: User) -> VenueInvit
         current_username = normalize_tg_username(getattr(user, "tg_username", None) or "")
         if not current_username or current_username != normalize_tg_username(inv.invited_tg_username or ""):
             raise PermissionError("This invite is bound to another Telegram account")
+    elif inv.invite_channel == "PHONE":
+        current_phone = normalize_phone_e164(_get_verified_user_phone(db, user_id=user.id))
+        invited_phone = normalize_phone_e164(inv.invited_phone_e164)
+        if not current_phone:
+            raise PermissionError("This invite requires a verified phone number on your account")
+        if not invited_phone or current_phone != invited_phone:
+            raise PermissionError("This invite is bound to another phone number")
 
     _accept_invite_record(db, inv=inv, user_id=user.id, accepted_via=inv.invite_channel)
     db.commit()
