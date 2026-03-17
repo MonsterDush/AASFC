@@ -29,14 +29,9 @@
 
 
     <div class="card">
-      <div class="row">
+      <div class="row row--between">
         <b>Редактирование профиля</b>
-        <div class="row mt-10">
-          <button class="btn" type="button" id="backBtn">← Назад</button>
-        </div>
-        <div class="muted mt-6">
-          Краткое имя используется в интерфейсе вместо логина. Логин остаётся дополнением.
-        </div>
+        <button class="btn" type="button" id="backBtn">← Назад</button>
       </div>
       <div class="stack mt-12">
         <div>
@@ -48,7 +43,9 @@
           <div class="muted mt-6">Краткое имя</div>
           <input class="input" id="shortName" placeholder="Например: Вова" />
         </div>
-
+        <div class="muted mt-6">
+          Краткое имя используется в интерфейсе вместо логина. Логин остаётся дополнением.
+        </div>
         <button class="btn primary" id="saveBtn">Сохранить</button>
       </div>
     </div>
