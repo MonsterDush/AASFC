@@ -86,6 +86,9 @@ const el = {
   monthChart: document.getElementById("monthChart"),
   btnThisVenue: document.getElementById("btnThisVenue"),
   btnAllVenues: document.getElementById("btnAllVenues"),
+  sourceHint: document.getElementById("salarySourceHint"),
+  payrollBreakdownRow: document.getElementById("payrollBreakdownRow"),
+  openPayrollBreakdownBtn: document.getElementById("openPayrollBreakdownBtn"),
 };
 
 const allEls = {
@@ -201,6 +204,11 @@ function formatMoney(x) {
   if (!Number.isFinite(n)) return "0";
   return Math.round(n).toString();
 }
+function formatMoneyMinor(x) {
+  const n = Number(x || 0) / 100;
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function esc(s){
   return String(s ?? "")
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -209,6 +217,8 @@ function esc(s){
 let shifts = [];
 let days = []; // [{date, salary, hasReport, shifts:[] }]
 let adjustments = []; // month items
+let monthSummaryItem = null;
+let payrollLine = null;
 
 async function loadMonth() {
   if (!venueId) {
@@ -235,6 +245,20 @@ async function loadMonth() {
     adjustments = Array.isArray(adj?.items) ? adj.items : [];
   } catch {
     adjustments = [];
+  }
+
+  monthSummaryItem = null;
+  payrollLine = null;
+  try {
+    const summary = await api(`/me/salary-summary?month=${encodeURIComponent(m)}`);
+    const items = Array.isArray(summary?.items) ? summary.items : [];
+    monthSummaryItem = items.find((item) => String(item?.venue?.id ?? item?.venue_id ?? item?.venueId ?? "") === String(venueId)) || null;
+    if (monthSummaryItem?.source === "payroll") {
+      payrollLine = await api(`/me/payroll-line?month=${encodeURIComponent(m)}&venue_id=${encodeURIComponent(venueId)}`).catch(() => null);
+    }
+  } catch {
+    monthSummaryItem = null;
+    payrollLine = null;
   }
 
   // group by date
@@ -423,7 +447,10 @@ async function loadMonthAll() {
 
     return `
       <div class="card">
-        <b>${name}</b>
+        <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap;">
+          <b>${name}</b>
+          ${v?.source === "payroll" ? `<span class="badge">payroll</span>` : ""}
+        </div>
 
         <div class="grid mt-10 salary-all-kpis">
           <div class="mini-kpi">
@@ -476,20 +503,25 @@ function formatDateRuNoG(iso) {
 }
 
 function renderSummary() {
-  const totalSalary = days.reduce((acc, d) => acc + (Number.isFinite(d.salary) ? d.salary : 0), 0);
-  const totalTips = days.reduce((acc, d) => acc + (Number.isFinite(d.tips) ? d.tips : 0), 0);
+  const legacySalary = days.reduce((acc, d) => acc + (Number.isFinite(d.salary) ? d.salary : 0), 0);
+  const legacyTips = days.reduce((acc, d) => acc + (Number.isFinite(d.tips) ? d.tips : 0), 0);
 
   const totalPenalties = adjustments.filter(x => x.type === "penalty").reduce((a,x)=>a+Number(x.amount||0),0);
   const totalBonuses = adjustments.filter(x => x.type === "bonus").reduce((a,x)=>a+Number(x.amount||0),0);
 
-  // Флаг удержания списаний (позже будет настройка заведения)
   const holdWriteoffs = false;
   const totalWriteoffs = adjustments.filter(x => x.type === "writeoff").reduce((a,x)=>a+Number(x.amount||0),0);
 
-  el.sumSalary.textContent = formatMoney(totalSalary);
-  el.sumTips.textContent = formatMoney(totalTips);
-  el.sumPenalties.textContent = formatMoney(totalPenalties);
-  el.sumBonuses.textContent = formatMoney(totalBonuses);
+  const earned = Number(monthSummaryItem?.earned ?? legacySalary ?? 0);
+  const tips = Number(monthSummaryItem?.tips ?? legacyTips ?? 0);
+  const bonuses = Number(monthSummaryItem?.bonuses ?? totalBonuses ?? 0);
+  const penalties = Number(monthSummaryItem?.penalties ?? totalPenalties ?? 0);
+  const total = Number(monthSummaryItem?.net ?? (earned + tips - penalties + bonuses - (holdWriteoffs ? totalWriteoffs : 0)) ?? 0);
+
+  el.sumSalary.textContent = formatMoney(earned);
+  el.sumTips.textContent = formatMoney(tips);
+  el.sumPenalties.textContent = formatMoney(penalties);
+  el.sumBonuses.textContent = formatMoney(bonuses);
 
   if (holdWriteoffs) {
     el.rowWriteoffs.style.display = "flex";
@@ -498,10 +530,50 @@ function renderSummary() {
     el.rowWriteoffs.style.display = "none";
   }
 
-  const total = totalSalary - totalPenalties + totalBonuses - (holdWriteoffs ? totalWriteoffs : 0);
   el.sumTotal.textContent = formatMoney(total);
+
+  if (el.sourceHint) {
+    if (monthSummaryItem?.source === "payroll") {
+      el.sourceHint.textContent = "Итог за месяц взят из нового payroll-расчёта. Блок «По дням» пока остаётся справочным и показывает смены отдельно.";
+    } else if (monthSummaryItem?.source === "legacy") {
+      el.sourceHint.textContent = "Итог за месяц пока считается по старой shift-логике. Для этого заведения payroll ещё не назначен или не рассчитан.";
+    } else {
+      el.sourceHint.textContent = "";
+    }
+  }
+  if (el.payrollBreakdownRow) el.payrollBreakdownRow.style.display = (monthSummaryItem?.source === "payroll" && payrollLine?.breakdown) ? "flex" : "none";
 }
 
+function openPayrollBreakdown() {
+  if (!payrollLine?.breakdown) return;
+  const breakdown = payrollLine.breakdown || {};
+  const metrics = breakdown.metrics || {};
+  const components = Array.isArray(breakdown.components) ? breakdown.components : [];
+  const componentsHtml = components.length ? components.map((c) => `
+    <div class="section">
+      <div class="row row--between" style="gap:12px; align-items:flex-start;">
+        <div>
+          <b>${esc(c.title || c.component_type || "Компонент")}</b>
+          <div class="muted small mt-4">${esc(String(c.component_type || ""))}</div>
+        </div>
+        <div><b>${esc(formatMoneyMinor(c.amount_minor || 0))}</b></div>
+      </div>
+    </div>
+  `).join("") : `<div class="muted">Нет breakdown</div>`;
+
+  openModal(
+    `Начисление за ${ym(curMonth)}`,
+    breakdown.pay_profile_title ? `Профиль: ${breakdown.pay_profile_title}` : "",
+    `<div class="itemcard" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between; align-items:center; gap:12px;">
+        <div class="muted">Итого начислено</div>
+        <div class="day-salary">${esc(formatMoneyMinor(payrollLine.amount_minor || 0))}</div>
+      </div>
+      <div class="muted small mt-8">Часы: ${esc(metrics.hours_total ?? 0)} · Смены: ${esc(metrics.shifts_count ?? 0)} · Дней: ${esc(metrics.worked_dates_count ?? 0)}</div>
+      <div style="margin-top:10px">${componentsHtml}</div>
+    </div>`
+  );
+}
 
 function renderMonthChart() {
   if (!el.monthChart) return;
@@ -611,6 +683,8 @@ el.next.addEventListener("click", async () => {
   syncUrl();
   await refresh();
 });
+
+el.openPayrollBreakdownBtn?.addEventListener("click", openPayrollBreakdown);
 
 syncUrl();
 refresh();

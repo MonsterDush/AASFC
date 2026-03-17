@@ -416,8 +416,12 @@ def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None,
 
     adjustments_minor = adjustment_income_minor - adjustment_expense_minor
     refunds_minor = refund_income_minor - refund_expense_minor
+    total_cost_minor = expense_minor + payroll_minor
     profit_minor = revenue_minor - expense_minor - payroll_minor + adjustments_minor + refunds_minor
     margin_bps = int((profit_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    expense_ratio_bps = int((expense_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    payroll_ratio_bps = int((payroll_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    total_cost_ratio_bps = int((total_cost_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
 
     draft_stats = _expense_document_stats_for_period(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
     return {
@@ -426,11 +430,17 @@ def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None,
         'period_end': period_end,
         'revenue_minor': revenue_minor,
         'expense_minor': expense_minor,
+        'expense_without_payroll_minor': expense_minor,
         'payroll_minor': payroll_minor,
+        'payroll_expense_minor': payroll_minor,
+        'total_cost_minor': total_cost_minor,
         'adjustments_minor': adjustments_minor,
         'refunds_minor': refunds_minor,
         'profit_minor': profit_minor,
         'margin_bps': margin_bps,
+        'expense_ratio_bps': expense_ratio_bps,
+        'payroll_ratio_bps': payroll_ratio_bps,
+        'total_cost_ratio_bps': total_cost_ratio_bps,
         **draft_stats,
     }
 
@@ -471,8 +481,12 @@ def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, in
     adjustments_minor = adjustment_income_minor - adjustment_expense_minor
     refunds_minor = refund_income_minor - refund_expense_minor
     expense_minor = point_expense_minor + recurring_expense_minor
+    total_cost_minor = expense_minor + payroll_minor
     profit_minor = revenue_minor - expense_minor - payroll_minor + adjustments_minor + refunds_minor
     margin_bps = int((profit_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    expense_ratio_bps = int((expense_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    payroll_ratio_bps = int((payroll_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    total_cost_ratio_bps = int((total_cost_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
 
     draft_stats = _expense_document_stats_for_period(db, venue_id=venue_id, period_start=target_date, period_end=target_date)
     return {
@@ -482,11 +496,17 @@ def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, in
         'period_end': period_end,
         'revenue_minor': revenue_minor,
         'expense_minor': expense_minor,
+        'expense_without_payroll_minor': expense_minor,
         'payroll_minor': payroll_minor,
+        'payroll_expense_minor': payroll_minor,
+        'total_cost_minor': total_cost_minor,
         'adjustments_minor': adjustments_minor,
         'refunds_minor': refunds_minor,
         'profit_minor': profit_minor,
         'margin_bps': margin_bps,
+        'expense_ratio_bps': expense_ratio_bps,
+        'payroll_ratio_bps': payroll_ratio_bps,
+        'total_cost_ratio_bps': total_cost_ratio_bps,
         'income_mode': mode,
         'revenue_breakdown': _group_revenue_breakdown(db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode=mode),
         'point_expenses': point_expenses,

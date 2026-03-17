@@ -5,10 +5,9 @@ from datetime import date, datetime, time, timedelta
 import json
 
 from sqlalchemy import delete, func, select
-import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from app.models import DailyReport, DailyReportValue, ExpenseCategory, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
+from app.models import DailyReport, DailyReportValue, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 
@@ -256,52 +255,6 @@ def _pick_latest_assignments(assignments: list[tuple[PayProfileAssignment, PayPr
     return [item[2] for item in selected.values()]
 
 
-def month_from_date(target_date: date) -> str:
-    return target_date.strftime("%Y-%m")
-
-
-def ensure_payroll_expense_category(db: Session, *, venue_id: int) -> ExpenseCategory:
-    category = db.execute(
-        select(ExpenseCategory).where(
-            ExpenseCategory.venue_id == int(venue_id),
-            sa.or_(ExpenseCategory.code == "fot", ExpenseCategory.title == "ФОТ"),
-        )
-    ).scalar_one_or_none()
-    if category is None:
-        max_sort = int(
-            db.execute(
-                select(func.coalesce(func.max(ExpenseCategory.sort_order), 0)).where(ExpenseCategory.venue_id == int(venue_id))
-            ).scalar()
-            or 0
-        )
-        category = ExpenseCategory(
-            venue_id=int(venue_id),
-            code="fot",
-            title="ФОТ",
-            is_active=True,
-            sort_order=max_sort + 10,
-            updated_at=datetime.utcnow(),
-        )
-        db.add(category)
-        db.flush()
-        return category
-
-    changed = False
-    if str(category.code or "").strip().lower() != "fot":
-        category.code = "fot"
-        changed = True
-    if str(category.title or "").strip() != "ФОТ":
-        category.title = "ФОТ"
-        changed = True
-    if not bool(category.is_active):
-        category.is_active = True
-        changed = True
-    if changed:
-        category.updated_at = datetime.utcnow()
-        db.flush()
-    return category
-
-
 def _load_profile_components(db: Session, *, profile_ids: list[int]) -> dict[int, list[PayComponent]]:
     if not profile_ids:
         return {}
@@ -319,9 +272,28 @@ def _load_profile_components(db: Session, *, profile_ids: list[int]) -> dict[int
     return out
 
 
+def _load_closed_report_dates(db: Session, *, venue_id: int, month_start: date, month_end_excl: date) -> set[date]:
+    rows = db.execute(
+        select(DailyReport.date)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == "CLOSED",
+            DailyReport.date >= month_start,
+            DailyReport.date < month_end_excl,
+        )
+    ).all()
+    return {row[0] for row in rows if row and row[0] is not None}
+
+
+
 def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month_end_excl: date, member_user_ids: list[int]) -> dict[int, PayrollMemberMetrics]:
     if not member_user_ids:
         return {}
+
+    out: dict[int, PayrollMemberMetrics] = {int(uid): PayrollMemberMetrics() for uid in member_user_ids}
+    closed_dates = _load_closed_report_dates(db, venue_id=venue_id, month_start=month_start, month_end_excl=month_end_excl)
+    if not closed_dates:
+        return out
 
     rows = db.execute(
         select(
@@ -333,24 +305,16 @@ def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month
         )
         .join(Shift, Shift.id == ShiftAssignment.shift_id)
         .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
-        .join(
-            DailyReport,
-            sa.and_(
-                DailyReport.venue_id == Shift.venue_id,
-                DailyReport.date == Shift.date,
-                DailyReport.status == "CLOSED",
-            ),
-        )
         .where(
             Shift.venue_id == int(venue_id),
             Shift.is_active.is_(True),
             Shift.date >= month_start,
             Shift.date < month_end_excl,
+            Shift.date.in_(closed_dates),
             ShiftAssignment.member_user_id.in_(member_user_ids),
         )
     ).all()
 
-    out: dict[int, PayrollMemberMetrics] = {int(uid): PayrollMemberMetrics() for uid in member_user_ids}
     shift_sets: dict[int, set[int]] = {int(uid): set() for uid in member_user_ids}
 
     for row in rows:
@@ -471,7 +435,6 @@ def calculate_payroll_for_month(
 ) -> PayrollCalculationResult:
     month_start = parse_month_start(month)
     month_end_excl = next_month_start(month_start)
-    ensure_payroll_expense_category(db, venue_id=int(venue_id))
 
     run = db.execute(
         select(PayrollRun).where(

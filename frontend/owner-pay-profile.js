@@ -114,38 +114,97 @@ function kpiMetricTitleFor(item) {
   return found?.title || `KPI #${metricId}`;
 }
 
-function stepsTextareaValue(steps) {
-  if (!Array.isArray(steps) || !steps.length) return "";
-  try {
-    const normalized = steps.map((step) => ({
-      ...step,
+function normalizeStepsForForm(steps) {
+  if (!Array.isArray(steps)) return [];
+  return steps
+    .map((step) => ({
+      threshold_value: step?.threshold_value ?? "",
       amount_rub: moneyInputFromMinor(step?.amount_minor),
-    })).map(({ amount_minor, ...rest }) => rest);
-    return JSON.stringify(normalized, null, 2);
-  } catch {
-    return "";
-  }
+      title: step?.title || "",
+    }))
+    .filter((step) => String(step.threshold_value).trim() !== "" || String(step.amount_rub).trim() !== "" || String(step.title).trim() !== "");
 }
 
-function parseStepsInput(raw) {
-  const text = String(raw || "").trim();
-  if (!text) return null;
-  try {
-    const value = JSON.parse(text);
-    if (!Array.isArray(value)) return null;
-    return value.map((step) => {
-      if (!step || typeof step !== "object") return step;
-      const next = { ...step };
-      if (next.amount_minor == null && next.amount_rub != null) {
-        const parsed = parseMoneyRubToMinor(next.amount_rub);
-        if (parsed != null) next.amount_minor = parsed;
-      }
-      delete next.amount_rub;
-      return next;
+function stepsRowsMarkup(steps) {
+  const normalized = normalizeStepsForForm(steps);
+  const rows = normalized.length ? normalized : [{ threshold_value: "", amount_rub: "", title: "" }];
+  return rows.map((step, idx) => `
+    <div class="kpi-step-row" data-step-row>
+      <label>
+        <span>Порог</span>
+        <input data-step-threshold inputmode="numeric" placeholder="Например: 10" value="${esc(step.threshold_value ?? "")}" />
+      </label>
+      <label>
+        <span>Бонус, ₽</span>
+        <input data-step-amount inputmode="decimal" placeholder="Например: 500" value="${esc(step.amount_rub ?? "")}" />
+      </label>
+      <label>
+        <span>Подпись</span>
+        <input data-step-title placeholder="Например: серебро" value="${esc(step.title ?? "")}" />
+      </label>
+      <div class="kpi-step-row__actions">
+        <button class="btn sm danger" type="button" data-remove-step ${rows.length === 1 ? "disabled" : ""}>Удалить</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function wireStepsBuilder() {
+  const container = document.getElementById("f_steps_rows");
+  const addBtn = document.getElementById("btnAddStep");
+  if (!container) return;
+
+  const refreshRemoveButtons = () => {
+    const buttons = Array.from(container.querySelectorAll("[data-remove-step]"));
+    buttons.forEach((btn) => { btn.disabled = buttons.length <= 1; });
+  };
+
+  const addRow = (step = { threshold_value: "", amount_rub: "", title: "" }) => {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = stepsRowsMarkup([step]).trim();
+    const row = wrap.firstElementChild;
+    if (!row) return;
+    row.querySelector("[data-remove-step]")?.addEventListener("click", () => {
+      row.remove();
+      refreshRemoveButtons();
     });
-  } catch {
-    return false;
+    container.appendChild(row);
+    refreshRemoveButtons();
+  };
+
+  Array.from(container.querySelectorAll("[data-remove-step]")).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      btn.closest("[data-step-row]")?.remove();
+      refreshRemoveButtons();
+    });
+  });
+
+  addBtn?.addEventListener("click", () => addRow());
+  refreshRemoveButtons();
+}
+
+function readStepsBuilder() {
+  const rows = Array.from(document.querySelectorAll("#f_steps_rows [data-step-row]"));
+  const out = [];
+  for (const row of rows) {
+    const thresholdRaw = String(row.querySelector("[data-step-threshold]")?.value || "").trim();
+    const amountRaw = String(row.querySelector("[data-step-amount]")?.value || "").trim();
+    const titleRaw = String(row.querySelector("[data-step-title]")?.value || "").trim();
+    if (!thresholdRaw && !amountRaw && !titleRaw) continue;
+    const thresholdValue = Number(thresholdRaw);
+    const amountMinor = parseMoneyRubToMinor(amountRaw);
+    if (!Number.isFinite(thresholdValue) || thresholdValue < 0 || !Number.isInteger(thresholdValue)) {
+      return false;
+    }
+    if (amountMinor == null) {
+      return false;
+    }
+    const step = { threshold_value: thresholdValue, amount_minor: amountMinor };
+    if (titleRaw) step.title = titleRaw;
+    out.push(step);
   }
+  out.sort((a, b) => Number(a.threshold_value || 0) - Number(b.threshold_value || 0));
+  return out;
 }
 
 function memberName(member) {
@@ -298,6 +357,12 @@ function renderHeader() {
   document.getElementById("btnAddAssignment").style.display = state.can.manage ? "" : "none";
 }
 
+function componentStepsPreview(item) {
+  const steps = Array.isArray(item?.steps) ? item.steps : [];
+  if (!steps.length) return "";
+  return `<div class="kpi-step-chips">${steps.map((step) => `<span class="kpi-step-chip">от ${esc(step.threshold_value)} → ${esc(fmtMoneyMinor(step.amount_minor || 0))}${step?.title ? ` · ${esc(step.title)}` : ""}</span>`).join("")}</div>`;
+}
+
 function componentSubtitle(item) {
   const type = String(item?.component_type || "").toUpperCase();
   if (type === "SALARY_FIXED_MONTH") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)}`;
@@ -341,6 +406,7 @@ function renderComponents() {
         </div>
         <div class="muted mt-6">${esc(COMPONENT_LABELS[String(it.component_type || "").toUpperCase()] || it.component_type || "Компонент")}</div>
         <div class="mono listrow__meta">${esc(componentSubtitle(it))} · sort=${Number(it.sort_order || 0)}</div>
+        ${String(it?.component_type || "").toUpperCase() === "KPI_BONUS" ? componentStepsPreview(it) : ""}
       </div>
       <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;" id="componentActions_${it.id}"></div>
     `;
@@ -519,11 +585,21 @@ function componentForm({ mode, item }) {
         <span id="f_threshold_label">Порог KPI</span>
         <input id="f_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.threshold_value ?? "")}" />
       </label>
-      <label id="f_steps_wrap">
-        <span>Ступени бонуса (JSON, опционально)</span>
-        <textarea id="f_steps_json" rows="6" placeholder='[{"threshold_value":10,"amount_rub":500},{"threshold_value":20,"amount_rub":1000}]'>${esc(stepsTextareaValue(it.steps))}</textarea>
+      <label id="f_use_steps_wrap" class="chk">
+        <input type="checkbox" id="f_use_steps" ${Array.isArray(it.steps) && it.steps.length ? "checked" : ""} />
+        <span>Использовать ступени бонуса</span>
       </label>
-      <div id="f_steps_hint" class="muted">Если заполнены ступени, будет выбрана максимальная подходящая ступень. Суммы в JSON указывай в рублях через поле amount_rub. Если оставить пусто — сработает обычный порог и сумма.</div>
+      <div id="f_steps_wrap" class="kpi-steps-builder">
+        <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+          <div>
+            <b>Ступени бонуса</b>
+            <div class="muted mt-4">Будет выбрана максимальная подходящая ступень.</div>
+          </div>
+          <button class="btn sm" type="button" id="btnAddStep">+ Ступень</button>
+        </div>
+        <div id="f_steps_rows">${stepsRowsMarkup(it.steps)}</div>
+      </div>
+      <div id="f_steps_hint" class="muted">Ступени можно не использовать: тогда сработает обычный порог и фиксированный бонус.</div>
       <label>
         <span>Порядок</span>
         <input id="f_sort_order" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
@@ -543,6 +619,7 @@ function componentForm({ mode, item }) {
 
 function syncComponentFields() {
   const type = String(document.getElementById("f_component_type")?.value || "SALARY_FIXED_MONTH").toUpperCase();
+  const useSteps = !!document.getElementById("f_use_steps")?.checked;
   const amountWrap = document.getElementById("f_amount_wrap");
   const rateWrap = document.getElementById("f_rate_wrap");
   const percentWrap = document.getElementById("f_percent_wrap");
@@ -551,6 +628,7 @@ function syncComponentFields() {
   const kpiMetricWrap = document.getElementById("f_kpi_metric_wrap");
   const kpiMetricHint = document.getElementById("f_kpi_metric_hint");
   const thresholdWrap = document.getElementById("f_threshold_wrap");
+  const useStepsWrap = document.getElementById("f_use_steps_wrap");
   const stepsWrap = document.getElementById("f_steps_wrap");
   const stepsHint = document.getElementById("f_steps_hint");
   const amountLabel = document.getElementById("f_amount_label");
@@ -558,7 +636,7 @@ function syncComponentFields() {
   const percentLabel = document.getElementById("f_percent_label");
   const thresholdLabel = document.getElementById("f_threshold_label");
 
-  [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, kpiMetricWrap, kpiMetricHint, thresholdWrap, stepsWrap, stepsHint].forEach((el) => {
+  [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint].forEach((el) => {
     if (el) el.style.display = "none";
   });
 
@@ -589,14 +667,20 @@ function syncComponentFields() {
   }
 
   if (type === "KPI_BONUS") {
-    if (amountWrap) amountWrap.style.display = "grid";
-    if (amountLabel) amountLabel.textContent = "Бонус, ₽";
     if (kpiMetricWrap) kpiMetricWrap.style.display = "grid";
     if (kpiMetricHint) kpiMetricHint.style.display = "";
     if (thresholdWrap) thresholdWrap.style.display = "grid";
-    if (stepsWrap) stepsWrap.style.display = "grid";
+    if (useStepsWrap) useStepsWrap.style.display = "flex";
     if (stepsHint) stepsHint.style.display = "";
     if (thresholdLabel) thresholdLabel.textContent = "Порог KPI";
+    if (useSteps) {
+      if (stepsWrap) stepsWrap.style.display = "block";
+      if (amountWrap) amountWrap.style.display = "none";
+    } else {
+      if (stepsWrap) stepsWrap.style.display = "none";
+      if (amountWrap) amountWrap.style.display = "grid";
+      if (amountLabel) amountLabel.textContent = "Бонус, ₽";
+    }
   }
 }
 
@@ -609,6 +693,8 @@ function openComponentEditor({ mode, item = null }) {
     bodyHtml: componentForm({ mode, item }),
   });
   document.getElementById("f_component_type")?.addEventListener("change", syncComponentFields);
+  document.getElementById("f_use_steps")?.addEventListener("change", syncComponentFields);
+  wireStepsBuilder();
   syncComponentFields();
   document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);
   document.getElementById("btnSave")?.addEventListener("click", async () => {
@@ -628,7 +714,7 @@ function openComponentEditor({ mode, item = null }) {
 
     const kpiMetricRaw = String(document.getElementById("f_kpi_metric_id")?.value || "").trim();
     const thresholdRaw = String(document.getElementById("f_threshold_value")?.value || "").trim();
-    const stepsRaw = String(document.getElementById("f_steps_json")?.value || "").trim();
+    const useSteps = !!document.getElementById("f_use_steps")?.checked;
 
     const payload = {
       component_type: componentType,
@@ -690,16 +776,20 @@ function openComponentEditor({ mode, item = null }) {
       }
       payload.kpi_metric_id = Number(kpiMetricRaw);
       if (thresholdRaw) payload.threshold_value = Number(thresholdRaw);
-      const parsedSteps = parseStepsInput(stepsRaw);
-      if (parsedSteps === false) {
-        toast("Ступени должны быть валидным JSON-массивом", "warn");
-        return;
-      }
-      if (Array.isArray(parsedSteps) && parsedSteps.length) {
+      if (useSteps) {
+        const parsedSteps = readStepsBuilder();
+        if (parsedSteps === false) {
+          toast("Проверь ступени: укажи целый порог и сумму в рублях в каждой строке", "warn");
+          return;
+        }
+        if (!Array.isArray(parsedSteps) || !parsedSteps.length) {
+          toast("Добавь хотя бы одну ступень или отключи режим ступеней", "warn");
+          return;
+        }
         payload.steps_json = parsedSteps;
       } else {
         if (!amountMinorRaw) {
-          toast("Укажи бонус в рублях или заполни ступени", "warn");
+          toast("Укажи бонус в рублях или включи ступени", "warn");
           return;
         }
         payload.amount_minor = parseMoneyRubToMinor(amountMinorRaw);

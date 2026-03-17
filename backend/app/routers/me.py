@@ -26,6 +26,9 @@ from app.models import (
     ShiftInterval,
     DailyReport,
     Adjustment,
+    PayrollLine,
+    PayrollRun,
+    PayProfile,
 )
 
 
@@ -360,6 +363,48 @@ def my_venue_permissions(
 
 
 
+def _parse_month_range(month: str) -> tuple[date, date]:
+    try:
+        y_s, m_s = month.split("-")
+        y = int(y_s)
+        m = int(m_s)
+        start = date(y, m, 1)
+        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+        return start, end
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+
+
+
+def _load_payroll_summary_by_venue(db: Session, *, user_id: int, month_start: date) -> dict[int, dict]:
+    rows = db.execute(
+        select(
+            PayrollLine.venue_id,
+            Venue.name.label("venue_name"),
+            func.coalesce(func.sum(PayrollLine.amount_minor), 0).label("earned_minor"),
+            func.max(PayrollLine.id).label("payroll_line_id"),
+        )
+        .join(PayrollRun, PayrollRun.id == PayrollLine.payroll_run_id)
+        .join(Venue, Venue.id == PayrollLine.venue_id)
+        .where(
+            PayrollLine.member_user_id == int(user_id),
+            PayrollRun.period_month == month_start,
+        )
+        .group_by(PayrollLine.venue_id, Venue.name)
+    ).all()
+    out: dict[int, dict] = {}
+    for row in rows:
+        vid = int(row.venue_id)
+        out[vid] = {
+            "venue_id": vid,
+            "venue_name": row.venue_name or "",
+            "earned": int(round(int(row.earned_minor or 0) / 100.0)),
+            "source": "payroll",
+            "payroll_line_id": int(row.payroll_line_id) if row.payroll_line_id is not None else None,
+        }
+    return out
+
+
 @router.get("/me/shifts")
 def my_shifts_across_venues(
     month: str = Query(..., description="YYYY-MM"),
@@ -450,6 +495,55 @@ def my_shifts_across_venues(
     return out
 
 
+@router.get("/me/payroll-line")
+def my_payroll_line(
+    month: str = Query(..., description="YYYY-MM"),
+    venue_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    month_start, _month_end = _parse_month_range(month)
+
+    rows = db.execute(
+        select(PayrollLine, PayrollRun, Venue, PayProfile)
+        .join(PayrollRun, PayrollRun.id == PayrollLine.payroll_run_id)
+        .join(Venue, Venue.id == PayrollLine.venue_id)
+        .outerjoin(PayProfile, PayProfile.id == PayrollLine.pay_profile_id)
+        .where(
+            PayrollLine.member_user_id == int(user.id),
+            PayrollRun.period_month == month_start,
+            *( [PayrollLine.venue_id == int(venue_id)] if venue_id is not None else [] ),
+        )
+        .order_by(Venue.name.asc(), PayrollLine.id.asc())
+    ).all()
+
+    items = []
+    for line, run, venue, profile in rows:
+        breakdown = None
+        try:
+            breakdown = json.loads(line.breakdown_json) if line.breakdown_json else None
+        except Exception:
+            breakdown = None
+        items.append({
+            "id": int(line.id),
+            "venue": {"id": int(venue.id), "name": venue.name},
+            "month": month,
+            "amount_minor": int(line.amount_minor or 0),
+            "pay_profile_id": int(line.pay_profile_id) if line.pay_profile_id is not None else None,
+            "pay_profile_title": profile.title if profile is not None else None,
+            "run": {
+                "id": int(run.id),
+                "calculated_at": run.calculated_at.isoformat() if run.calculated_at else None,
+            },
+            "breakdown": breakdown,
+            "source": "payroll",
+        })
+
+    if venue_id is not None:
+        return items[0] if items else None
+    return {"month": month, "items": items}
+
+
 @router.get("/me/salary-summary")
 def my_salary_summary(
     month: str = Query(..., description="YYYY-MM"),
@@ -458,25 +552,17 @@ def my_salary_summary(
 ):
     """Monthly salary summary across all venues for current user.
 
-    Includes:
-      - earned: sum of calculated shift salaries (only for shifts that have a DailyReport)
-      - tips: sum of user's tips share (DailyReport.tips_total split evenly across assignees)
-      - bonuses: sum of adjustments with type=bonus
-      - penalties: sum of adjustments with type=penalty or writeoff
-      - net: earned + tips + bonuses - penalties
+    Prefers new payroll lines when they exist for a venue/month. For venues
+    without payroll yet, falls back to legacy shift-based calculation.
     """
 
-    try:
-        y_s, m_s = month.split("-")
-        y = int(y_s)
-        m = int(m_s)
-        start = date(y, m, 1)
-        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+    start, end = _parse_month_range(month)
 
-    # 1) Shifts assigned to this user (across all venues)
-    rows = db.execute(
+    payroll_by_venue = _load_payroll_summary_by_venue(db, user_id=int(user.id), month_start=start)
+    payroll_venue_ids = set(payroll_by_venue.keys())
+
+    # Legacy shifts assigned to this user (only for venues without payroll for the month)
+    legacy_rows_query = (
         select(
             Shift.id.label("shift_id"),
             Shift.date.label("shift_date"),
@@ -497,9 +583,12 @@ def my_salary_summary(
             Shift.date >= start,
             Shift.date < end,
         )
-    ).all()
+    )
+    if payroll_venue_ids:
+        legacy_rows_query = legacy_rows_query.where(~Shift.venue_id.in_(payroll_venue_ids))
+    rows = db.execute(legacy_rows_query).all()
 
-    # preload daily reports per (venue_id, date)
+    # preload closed daily reports per (venue_id, date) for salary calc
     keys = {(r.venue_id, r.shift_date) for r in rows}
     report_by_key = {}
     if keys:
@@ -507,11 +596,11 @@ def my_salary_summary(
             select(DailyReport).where(
                 DailyReport.venue_id.in_({k[0] for k in keys}),
                 DailyReport.date.in_({k[1] for k in keys}),
+                DailyReport.status == "CLOSED",
             )
         ).scalars().all()
         report_by_key = {(r.venue_id, r.date): r for r in reports}
 
-    # assignee counts per shift_id (for tips split)
     shift_ids = [int(r.shift_id) for r in rows]
     assignee_cnt_by_shift: dict[int, int] = {}
     if shift_ids:
@@ -522,22 +611,24 @@ def my_salary_summary(
         ).all()
         assignee_cnt_by_shift = {int(sid): int(cnt or 0) for sid, cnt in cnt_rows}
 
-    earned_by_venue: dict[int, int] = {}
+    earned_by_venue: dict[int, int] = {vid: int(item.get("earned") or 0) for vid, item in payroll_by_venue.items()}
     tips_by_venue: dict[int, int] = {}
-    venue_name_by_id: dict[int, str] = {}
+    venue_name_by_id: dict[int, str] = {vid: str(item.get("venue_name") or "") for vid, item in payroll_by_venue.items()}
+    source_by_venue: dict[int, str] = {vid: "payroll" for vid in payroll_by_venue.keys()}
+
     for r in rows:
         venue_name_by_id[int(r.venue_id)] = r.venue_name
+        source_by_venue.setdefault(int(r.venue_id), "legacy")
         rep = report_by_key.get((r.venue_id, r.shift_date))
         if rep is None:
             continue
         try:
-            sal = int(r.rate) + (int(r.percent) / 100.0) * rep.revenue_total
+            sal = int(r.rate or 0) + (int(r.percent or 0) / 100.0) * float(rep.revenue_total or 0)
             sal_i = int(round(float(sal)))
         except Exception:
-            continue
+            sal_i = 0
         earned_by_venue[int(r.venue_id)] = earned_by_venue.get(int(r.venue_id), 0) + sal_i
 
-        # tips share (split evenly across assignees for this shift)
         try:
             tips_total = int(getattr(rep, "tips_total", 0) or 0)
             if tips_total > 0:
@@ -547,7 +638,6 @@ def my_salary_summary(
         except Exception:
             pass
 
-    # 2) Adjustments for this user in the month
     adj_rows = db.execute(
         select(Adjustment.venue_id, Adjustment.type, Adjustment.amount)
         .where(
@@ -567,13 +657,10 @@ def my_salary_summary(
         if t == "bonus":
             bonuses_by_venue[vid] = bonuses_by_venue.get(vid, 0) + a
         else:
-            # penalty + writeoff => treat as penalty
             penalties_by_venue[vid] = penalties_by_venue.get(vid, 0) + a
 
-    # 3) Compose response
-    venue_ids = set(earned_by_venue.keys()) | set(bonuses_by_venue.keys()) | set(penalties_by_venue.keys())
+    venue_ids = set(earned_by_venue.keys()) | set(tips_by_venue.keys()) | set(bonuses_by_venue.keys()) | set(penalties_by_venue.keys())
     if venue_ids and len(venue_name_by_id) != len(venue_ids):
-        # best-effort: load missing venue names
         missing = list(venue_ids - set(venue_name_by_id.keys()))
         if missing:
             vs = db.execute(select(Venue.id, Venue.name).where(Venue.id.in_(missing))).all()
@@ -598,16 +685,18 @@ def my_salary_summary(
         total_tips += tips
         total_bonus += bonus
         total_pen += pen
-        items.append(
-            {
-                "venue": {"id": vid, "name": venue_name_by_id.get(vid, "")},
-                "earned": earned,
-                "tips": tips,
-                "bonuses": bonus,
-                "penalties": pen,
-                "net": net,
-            }
-        )
+        item = {
+            "venue": {"id": vid, "name": venue_name_by_id.get(vid, "")},
+            "earned": earned,
+            "tips": tips,
+            "bonuses": bonus,
+            "penalties": pen,
+            "net": net,
+            "source": source_by_venue.get(vid, "legacy"),
+        }
+        if vid in payroll_by_venue and payroll_by_venue[vid].get("payroll_line_id") is not None:
+            item["payroll_line_id"] = payroll_by_venue[vid]["payroll_line_id"]
+        items.append(item)
 
     return {
         "month": month,
@@ -619,4 +708,5 @@ def my_salary_summary(
             "penalties": total_pen,
             "net": total_net,
         },
+        "source": "mixed" if any((it.get("source") == "payroll") for it in items) and any((it.get("source") == "legacy") for it in items) else (items[0].get("source") if len(items) == 1 else ("payroll" if items and all((it.get("source") == "payroll") for it in items) else "legacy")),
     }

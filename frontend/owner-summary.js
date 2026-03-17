@@ -145,10 +145,14 @@ async function loadSummary(monthYYYYMM) {
 
   showBlock("revenueCard", financeAccess.canViewRevenue);
   showBlock("expensesCard", financeAccess.canViewExpenses);
+  showBlock("payrollCard", financeAccess.canViewPayroll);
+  showBlock("totalCostCard", financeAccess.canViewExpenses || financeAccess.canViewPayroll);
 
-  if (!financeAccess.canViewRevenue && !financeAccess.canViewExpenses) {
+  if (!financeAccess.canViewRevenue && !financeAccess.canViewExpenses && !financeAccess.canViewPayroll) {
     setText("summaryRevenue", "—");
     setText("summaryExpenses", "—");
+    setText("summaryPayroll", "—");
+    setText("summaryTotalCost", "—");
     setText("summaryProfit", "—");
     setText("summaryMargin", "—");
     setText("summaryHint", "Нет прав на финансовую сводку");
@@ -158,14 +162,18 @@ async function loadSummary(monthYYYYMM) {
   try {
     const summary = await api(`/venues/${encodeURIComponent(venueId)}/finance/summary?month=${encodeURIComponent(monthYYYYMM)}`);
     setText("summaryRevenue", fmtMoneyMinor(summary?.revenue_minor));
-    setText("summaryExpenses", fmtMoneyMinor(summary?.expense_minor));
+    setText("summaryExpenses", fmtMoneyMinor(summary?.expense_without_payroll_minor ?? summary?.expense_minor));
+    setText("summaryPayroll", fmtMoneyMinor(summary?.payroll_minor));
+    setText("summaryTotalCost", fmtMoneyMinor(summary?.total_cost_minor ?? ((Number(summary?.expense_minor || 0)) + (Number(summary?.payroll_minor || 0)))));
     setText("summaryProfit", fmtMoneyMinor(summary?.profit_minor));
     setText("summaryMargin", fmtPercentBps(summary?.margin_bps));
     setText("summaryPeriodText", `${summary?.period_start || monthYYYYMM} — ${summary?.period_end || monthYYYYMM}`);
-    setText("summaryHint", `ФОТ: ${fmtMoneyMinor(summary?.payroll_minor)} · Корректировки: ${fmtMoneyMinor(summary?.adjustments_minor)} · Возвраты: ${fmtMoneyMinor(summary?.refunds_minor)}`);
+    setText("summaryHint", `Доли от выручки: расходы ${fmtPercentBps(summary?.expense_ratio_bps)} · ФОТ ${fmtPercentBps(summary?.payroll_ratio_bps)} · всего затрат ${fmtPercentBps(summary?.total_cost_ratio_bps)} · корректировки ${fmtMoneyMinor(summary?.adjustments_minor)} · возвраты ${fmtMoneyMinor(summary?.refunds_minor)}`);
   } catch (e) {
     setText("summaryRevenue", "—");
     setText("summaryExpenses", "—");
+    setText("summaryPayroll", "—");
+    setText("summaryTotalCost", "—");
     setText("summaryProfit", "—");
     setText("summaryMargin", "—");
     setText("summaryHint", e?.data?.detail || e.message || "Ошибка загрузки");
