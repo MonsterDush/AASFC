@@ -1064,18 +1064,11 @@ input[type="checkbox"],input[type="radio"]{
 .telegram-widget-host{display:flex;align-items:center;justify-content:flex-start;min-height:50px}
 .telegram-widget-host iframe{max-width:100%}
 
-/* -------- Payroll / profiles -------- */
-.entity-list{display:grid;gap:10px}
-.entity-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;padding:14px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,0.02)}
-.entity-row__title{font-weight:800}
-.entity-row__side{display:grid;justify-items:end;align-content:start;gap:8px;min-width:140px}
-.entity-tags{display:flex;gap:6px;flex-wrap:wrap}
-.payroll-line__amount{font-size:20px;font-weight:900;white-space:nowrap}
-.payroll-breakdown{display:grid;gap:10px}
-.payroll-breakdown__item{display:grid;gap:8px}
-
+/* -------- Payroll -------- */
+.payroll-breakdown{border-top:1px dashed var(--border); padding-top:10px}
+.payroll-breakdown summary{cursor:pointer; color:var(--muted); font-weight:800}
+.payroll-breakdown__body{display:grid; gap:8px}
+.payroll-breakdown__row{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:14px; background:rgba(255,255,255,0.02)}
 @media (max-width:760px){
-  .entity-row{grid-template-columns:1fr}
-  .entity-row__side{justify-items:start;min-width:0}
-  .payroll-line__amount{font-size:16px}
+  .payroll-breakdown__row{grid-template-columns:1fr}
 }

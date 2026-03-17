@@ -1,309 +1,375 @@
 import {
   applyTelegramTheme,
-  mountCommonUI,
   ensureLogin,
   mountNav,
-  getActiveVenueId,
-  setActiveVenueId,
-  getMyVenues,
-  getMyVenuePermissions,
-  api,
+  mountCommonUI,
   toast,
-  closeModal,
   confirmModal,
+  setActiveVenueId,
+  getMyVenuePermissions,
+  getMe,
+  getPayProfiles,
+  createPayProfile,
+  updatePayProfile,
+  deletePayProfile,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
-const state = {
-  includeInactive: false,
-  profiles: [],
-  access: {
-    canView: false,
-    canManage: false,
-    canViewPayroll: false,
-  },
-};
+const root = document.getElementById("root");
 
 function esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
-function fmtDate(value) {
-  if (!value) return "—";
-  try {
-    return new Intl.DateTimeFormat("ru-RU").format(new Date(value));
-  } catch {
-    return String(value);
-  }
+function parseVenueId() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get("venue_id") || "";
+  if (id) setActiveVenueId(id);
+  return id;
 }
 
-function showEmpty(message) {
-  const list = document.getElementById("profilesList");
-  if (list) list.innerHTML = `<div class="muted">${esc(message)}</div>`;
+function capFirst(s) {
+  const v = String(s || "").trim();
+  return v ? v.charAt(0).toUpperCase() + v.slice(1) : "";
 }
 
-function openHtmlModal(title, html) {
-  const modal = document.getElementById("modal");
-  if (!modal) return;
-  const head = modal.querySelector(".modal__title");
-  const body = modal.querySelector(".modal__body");
-  if (head) head.textContent = title;
-  if (body) body.innerHTML = html;
-  modal.classList.add("open");
-}
+let state = {
+  venueId: "",
+  perms: null,
+  me: null,
+  items: [],
+  includeInactive: false,
+  can: { view: false, manage: false },
+};
 
-async function loadAccess() {
-  const venueId = getActiveVenueId();
-  if (!venueId) return state.access;
-  try {
-    const permsResp = await getMyVenuePermissions(venueId);
-    const role = roleUpper(permsResp);
-    const pset = permSetFromResponse(permsResp);
-    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
-    state.access = {
-      canView: isOwner || hasPerm(pset, "PAY_PROFILES_VIEW") || hasPerm(pset, "PAY_PROFILES_MANAGE"),
-      canManage: isOwner || hasPerm(pset, "PAY_PROFILES_MANAGE"),
-      canViewPayroll: isOwner || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE"),
-    };
-  } catch {
-    state.access = { canView: false, canManage: false, canViewPayroll: false };
-  }
-  return state.access;
-}
-
-function syncActions() {
-  const addBtn = document.getElementById("addProfileBtn");
-  const payrollBtn = document.getElementById("openPayrollBtn");
-  const venueId = getActiveVenueId();
-  if (addBtn) addBtn.style.display = state.access.canManage ? "" : "none";
-  if (payrollBtn) {
-    payrollBtn.style.display = state.access.canViewPayroll ? "" : "none";
-    payrollBtn.onclick = () => {
-      location.href = `/owner-payroll.html?venue_id=${encodeURIComponent(venueId)}`;
-    };
-  }
-}
-
-function profileStatusBadge(profile) {
-  return profile?.is_active ? '<span class="badge">Активный</span>' : '<span class="badge">Неактивный</span>';
-}
-
-function renderProfiles() {
-  const list = document.getElementById("profilesList");
-  const hint = document.getElementById("profilesHint");
-  const stateEl = document.getElementById("profilesState");
-  if (!list) return;
-
-  if (!state.access.canView) {
-    showEmpty("Нет прав на просмотр профилей зарплаты.");
-    if (hint) hint.textContent = "Доступ ограничен";
-    if (stateEl) stateEl.textContent = "Нет доступа";
-    return;
-  }
-
-  if (!state.profiles.length) {
-    showEmpty(state.includeInactive ? "Профилей пока нет." : "Активных профилей пока нет.");
-    if (hint) hint.textContent = "0 профилей";
-    if (stateEl) stateEl.textContent = "Пусто";
-    return;
-  }
-
-  if (hint) hint.textContent = `${state.profiles.length} проф.`;
-  if (stateEl) stateEl.textContent = state.includeInactive ? "Все профили" : "Только активные";
-
-  list.innerHTML = state.profiles.map((profile) => {
-    const desc = profile.description ? `<div class="muted mt-6">${esc(profile.description)}</div>` : "";
-    const counts = `
-      <div class="entity-tags mt-8">
-        <span class="badge">Компонентов: ${Number(profile.components_count || 0)}</span>
-        <span class="badge">Назначений: ${Number(profile.assignments_count || 0)}</span>
-        ${profileStatusBadge(profile)}
-      </div>
-    `;
-    return `
-      <div class="entity-row">
-        <div>
-          <div class="entity-row__title">${esc(profile.title || `Профиль #${profile.id}`)}</div>
-          ${desc}
-          ${counts}
-          <div class="muted mt-8">Обновлён: ${esc(fmtDate(profile.updated_at || profile.created_at))}</div>
-        </div>
-        <div class="entity-row__side">
-          <a class="btn" href="/owner-pay-profile.html?venue_id=${encodeURIComponent(getActiveVenueId())}&profile_id=${encodeURIComponent(profile.id)}">Открыть</a>
-          ${state.access.canManage ? `<button class="btn small" data-edit-profile="${profile.id}">Изменить</button>` : ""}
-          ${state.access.canManage ? `<button class="btn small" data-toggle-profile="${profile.id}">${profile.is_active ? "В архив" : "Вернуть"}</button>` : ""}
-          ${state.access.canManage ? `<button class="btn danger small" data-delete-profile="${profile.id}">Удалить</button>` : ""}
+function renderShell() {
+  root.innerHTML = `
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Профили зарплаты</b>
+          <div class="muted">шаблоны начислений для сотрудников</div>
         </div>
       </div>
-    `;
-  }).join("");
+      <div class="userpill" data-userpill>…</div>
+    </div>
 
-  list.querySelectorAll("[data-edit-profile]").forEach((btn) => {
-    btn.onclick = () => {
-      const profile = state.profiles.find((item) => String(item.id) === String(btn.dataset.editProfile));
-      if (profile) openProfileModal(profile);
-    };
-  });
+    <div class="card">
+      <div class="muted">Здесь настраиваются шаблоны начислений: оклад, почасовая ставка и фикс за смену. Назначения к сотрудникам редактируются внутри карточки профиля.</div>
 
-  list.querySelectorAll("[data-toggle-profile]").forEach((btn) => {
-    btn.onclick = async () => {
-      const profile = state.profiles.find((item) => String(item.id) === String(btn.dataset.toggleProfile));
-      if (!profile) return;
-      try {
-        await api(`/venues/${encodeURIComponent(getActiveVenueId())}/pay-profiles/${encodeURIComponent(profile.id)}`, {
-          method: "PATCH",
-          body: { is_active: !profile.is_active },
-        });
-        toast(profile.is_active ? "Профиль отправлен в архив" : "Профиль восстановлен", "ok");
-        await loadProfiles();
-      } catch (e) {
-        toast(e?.data?.detail || e.message || "Не удалось обновить профиль", "err");
-      }
-    };
-  });
+      <div class="itemcard mt-12">
+        <div class="section-head">
+          <div class="section-title">
+            <b>Список профилей</b>
+          </div>
+          <div class="section-actions">
+            <button class="btn primary" id="btnCreate">+ Добавить профиль</button>
+          </div>
+        </div>
 
-  list.querySelectorAll("[data-delete-profile]").forEach((btn) => {
-    btn.onclick = async () => {
-      const profile = state.profiles.find((item) => String(item.id) === String(btn.dataset.deleteProfile));
-      if (!profile) return;
-      const ok = await confirmModal({
-        title: "Удалить профиль?",
-        text: `Профиль «${profile.title}» будет удалён без возможности восстановления.`,
-        confirmText: "Удалить",
-        danger: true,
-      });
-      if (!ok) return;
-      try {
-        await api(`/venues/${encodeURIComponent(getActiveVenueId())}/pay-profiles/${encodeURIComponent(profile.id)}`, { method: "DELETE" });
-        toast("Профиль удалён", "ok");
-        await loadProfiles();
-      } catch (e) {
-        toast(e?.data?.detail || e.message || "Не удалось удалить профиль", "err");
-      }
-    };
-  });
-}
+        <div class="section-actions mt-8">
+          <label class="chk">
+            <input type="checkbox" id="showInactive" />
+            <span class="muted">Показывать неактивные</span>
+          </label>
+        </div>
 
-function profileFormHtml(profile = null) {
-  return `
-    <form id="payProfileForm" class="finance-form">
-      <label>
-        Название
-        <input name="title" type="text" maxlength="120" required value="${esc(profile?.title || "")}" />
-      </label>
-      <label>
-        Описание
-        <textarea name="description" rows="4" maxlength="500" placeholder="Например: бармены, фикс+почасовая ставка">${esc(profile?.description || "")}</textarea>
-      </label>
-      <label class="row" style="gap:8px; align-items:center;">
-        <input name="is_active" type="checkbox" style="width:auto;" ${profile?.is_active === false ? "" : "checked"} />
-        <span>Профиль активен</span>
-      </label>
-      <div class="row" style="gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:4px;">
-        <button type="button" class="btn" data-close-inline>Отмена</button>
-        <button type="submit" class="btn primary">${profile ? "Сохранить" : "Создать"}</button>
+        <div id="list" style="margin-top:10px">
+          <div class="skeleton"></div><div class="skeleton"></div>
+        </div>
       </div>
-    </form>
+
+      <div class="row mt-12">
+        <a class="link" id="back" href="#">← Назад к заведению</a>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"><div class="toast__text"></div></div>
+
+    <div id="modal" class="modal">
+      <div class="modal__backdrop"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <div class="modal__title">Подтверждение</div>
+          <button class="btn" data-close>Закрыть</button>
+        </div>
+        <div class="modal__body"></div>
+      </div>
+    </div>
+
+    <div id="editModal" class="modal">
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <div>
+            <b class="modal__title" id="editTitle">Профиль зарплаты</b>
+            <div class="muted" id="editHint" style="margin-top:4px; font-size:12px"></div>
+          </div>
+          <button class="btn" data-close>Закрыть</button>
+        </div>
+        <div class="modal__body" id="editBody"></div>
+      </div>
+    </div>
+
+    <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   `;
+
+  mountCommonUI("none");
 }
 
-function openProfileModal(profile = null) {
-  if (!state.access.canManage) return;
-  openHtmlModal(profile ? "Изменить профиль" : "Новый профиль", profileFormHtml(profile));
-  const form = document.getElementById("payProfileForm");
-  const closeBtn = document.querySelector("[data-close-inline]");
-  if (closeBtn) closeBtn.onclick = () => closeModal();
-  if (!form) return;
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const body = {
-      title: String(fd.get("title") || "").trim(),
-      description: String(fd.get("description") || "").trim() || null,
-      is_active: fd.get("is_active") === "on",
-    };
-    if (!body.title) {
-      toast("Введите название профиля", "warn");
-      return;
-    }
-    try {
-      if (profile?.id) {
-        await api(`/venues/${encodeURIComponent(getActiveVenueId())}/pay-profiles/${encodeURIComponent(profile.id)}`, { method: "PATCH", body });
-        toast("Профиль обновлён", "ok");
-      } else {
-        await api(`/venues/${encodeURIComponent(getActiveVenueId())}/pay-profiles`, { method: "POST", body });
-        toast("Профиль создан", "ok");
-      }
-      closeModal();
-      await loadProfiles();
-    } catch (err) {
-      toast(err?.data?.detail || err.message || "Не удалось сохранить профиль", "err");
-    }
+function closeEditModal() {
+  document.getElementById("editModal")?.classList.remove("open");
+}
+
+function openEditModal({ title, hint, bodyHtml }) {
+  const modal = document.getElementById("editModal");
+  const titleEl = document.getElementById("editTitle");
+  const hintEl = document.getElementById("editHint");
+  const bodyEl = document.getElementById("editBody");
+  if (titleEl) titleEl.textContent = title || "Профиль зарплаты";
+  if (hintEl) hintEl.textContent = hint || "";
+  if (bodyEl) bodyEl.innerHTML = bodyHtml || "";
+  modal?.classList.add("open");
+}
+
+function wireEditModalClose() {
+  const m = document.getElementById("editModal");
+  if (!m) return;
+  m.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", closeEditModal));
+}
+
+function computeCaps(perms, me) {
+  const role = roleUpper(perms);
+  const pset = permSetFromResponse(perms);
+  const sysRole = String(me?.system_role || "").toUpperCase();
+  const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+  const isAdmin = sysRole === "SUPER_ADMIN" || sysRole === "MODERATOR";
+  return {
+    view: isOwner || isAdmin || hasPerm(pset, "PAY_PROFILES_VIEW") || hasPerm(pset, "PAY_PROFILES_MANAGE"),
+    manage: isOwner || isAdmin || hasPerm(pset, "PAY_PROFILES_MANAGE"),
   };
 }
 
-async function loadProfiles() {
-  const venueId = getActiveVenueId();
-  if (!venueId) return;
-  const list = document.getElementById("profilesList");
+function renderList() {
+  const el = document.getElementById("list");
+  const btnCreate = document.getElementById("btnCreate");
+  const chk = document.getElementById("showInactive");
+  const back = document.getElementById("back");
+
+  if (btnCreate) btnCreate.style.display = state.can.manage ? "" : "none";
+  if (chk) chk.checked = !!state.includeInactive;
+  if (back) back.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
+
+  if (!el) return;
+  if (!state.can.view) {
+    el.innerHTML = `<div class="muted">Нет доступа к профилям зарплаты</div>`;
+    return;
+  }
+  if (!state.items.length) {
+    el.innerHTML = `<div class="muted">Пока нет профилей</div>`;
+    return;
+  }
+
+  el.innerHTML = "";
+  state.items.forEach((it) => {
+    const row = document.createElement("div");
+    row.className = "listrow";
+
+    const left = document.createElement("div");
+    left.className = "listrow__left";
+    left.innerHTML = `
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+        <b>${esc(it.title)}</b>
+        ${it.is_active ? "" : `<span class="badge">неактивен</span>`}
+      </div>
+      <div class="muted mt-6">${esc(it.description || "Без описания")}</div>
+      <div class="mono listrow__meta">Компонентов: ${Number(it.components_count || 0)} · Назначений: ${Number(it.assignments_count || 0)}</div>
+    `;
+
+    const right = document.createElement("div");
+    right.className = "row row--nowrap";
+    right.style = "gap:8px; flex:0 0 auto;";
+
+    const openBtn = document.createElement("a");
+    openBtn.className = "btn sm";
+    openBtn.href = `/owner-pay-profile.html?venue_id=${encodeURIComponent(state.venueId)}&profile_id=${encodeURIComponent(it.id)}`;
+    openBtn.textContent = "Открыть";
+    right.appendChild(openBtn);
+
+    if (state.can.manage) {
+      const editBtn = document.createElement("button");
+      editBtn.className = "btn sm";
+      editBtn.textContent = "Редакт.";
+      editBtn.onclick = () => openEditor({ mode: "edit", item: it });
+      right.appendChild(editBtn);
+
+      const toggleBtn = document.createElement("button");
+      toggleBtn.className = "btn sm" + (it.is_active ? " danger" : "");
+      toggleBtn.textContent = it.is_active ? "Отключить" : "Включить";
+      toggleBtn.onclick = async () => {
+        try {
+          await updatePayProfile(state.venueId, it.id, { is_active: !it.is_active });
+          toast("Сохранено", "ok");
+          await load();
+        } catch (e) {
+          toast("Ошибка: " + (e?.data?.detail || e?.message || "не удалось сохранить"), "err");
+        }
+      };
+      right.appendChild(toggleBtn);
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "btn sm danger";
+      deleteBtn.textContent = "Удалить";
+      deleteBtn.onclick = async () => {
+        const ok = await confirmModal({
+          title: "Удалить профиль?",
+          text: `Профиль "${it.title}" будет удалён безвозвратно.`,
+          confirmText: "Удалить",
+          danger: true,
+        });
+        if (!ok) return;
+        try {
+          await deletePayProfile(state.venueId, it.id);
+          toast("Профиль удалён", "ok");
+          await load();
+        } catch (e) {
+          toast("Ошибка: " + (e?.data?.detail || e?.message || "не удалось удалить"), "err");
+        }
+      };
+      right.appendChild(deleteBtn);
+    }
+
+    row.appendChild(left);
+    row.appendChild(right);
+    el.appendChild(row);
+  });
+}
+
+function editorForm({ mode, item }) {
+  const it = item || {};
+  const activeChecked = (mode === "edit" ? !!it.is_active : true) ? "checked" : "";
+  return `
+    <div class="finance-form mt-8">
+      <label>
+        <span>Название</span>
+        <input id="f_title" placeholder="Бармен — ставка" value="${esc(it.title || "")}" />
+      </label>
+      <label>
+        <span>Описание</span>
+        <textarea id="f_description" rows="4" placeholder="Например: базовый профиль для барменов">${esc(it.description || "")}</textarea>
+      </label>
+      <label class="chk">
+        <input type="checkbox" id="f_active" ${activeChecked} />
+        <span>Профиль активен</span>
+      </label>
+    </div>
+
+    <div class="row mt-12" style="justify-content:flex-end; gap:8px">
+      <button class="btn" id="btnCancel" type="button">Отмена</button>
+      <button class="btn primary" id="btnSave" type="button">Сохранить</button>
+    </div>
+  `;
+}
+
+function openEditor({ mode, item = null }) {
+  if (!state.can.manage) return;
+  const isEdit = mode === "edit";
+  openEditModal({
+    title: isEdit ? "Редактировать профиль" : "Новый профиль",
+    hint: isEdit ? "Изменения применятся сразу после сохранения" : "После создания откроется карточка профиля",
+    bodyHtml: editorForm({ mode, item }),
+  });
+
+  document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);
+  document.getElementById("btnSave")?.addEventListener("click", async () => {
+    const title = String(document.getElementById("f_title")?.value || "").trim();
+    const description = String(document.getElementById("f_description")?.value || "").trim();
+    const isActive = !!document.getElementById("f_active")?.checked;
+
+    if (!title) {
+      toast("Укажи название профиля", "warn");
+      return;
+    }
+
+    const payload = {
+      title,
+      description: description || null,
+      is_active: isActive,
+    };
+
+    try {
+      if (isEdit && item?.id) {
+        await updatePayProfile(state.venueId, item.id, payload);
+        toast("Профиль обновлён", "ok");
+        closeEditModal();
+        await load();
+        return;
+      }
+
+      const created = await createPayProfile(state.venueId, payload);
+      toast("Профиль создан", "ok");
+      closeEditModal();
+      location.href = `/owner-pay-profile.html?venue_id=${encodeURIComponent(state.venueId)}&profile_id=${encodeURIComponent(created.id)}`;
+    } catch (e) {
+      toast("Ошибка: " + (e?.data?.detail || e?.message || "не удалось сохранить"), "err");
+    }
+  });
+}
+
+async function load() {
+  const list = document.getElementById("list");
   if (list) list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+
   try {
-    const rows = await api(`/venues/${encodeURIComponent(venueId)}/pay-profiles?include_inactive=${state.includeInactive ? "true" : "false"}`);
-    state.profiles = Array.isArray(rows) ? rows : [];
-    renderProfiles();
+    state.items = await getPayProfiles(state.venueId, { includeInactive: state.includeInactive });
+    renderList();
   } catch (e) {
-    state.profiles = [];
-    showEmpty(e?.data?.detail || e.message || "Не удалось загрузить профили");
-    const hint = document.getElementById("profilesHint");
-    if (hint) hint.textContent = "Ошибка";
-    const stateEl = document.getElementById("profilesState");
-    if (stateEl) stateEl.textContent = "Ошибка";
-    toast("Не удалось загрузить профили зарплаты", "err");
+    if (list) list.innerHTML = `<div class="muted">Ошибка: ${esc(e?.data?.detail || e?.message || "не удалось загрузить")}</div>`;
+    toast("Не удалось загрузить профили", "err");
   }
 }
 
 async function boot() {
   applyTelegramTheme();
-  mountCommonUI("venue");
+  renderShell();
+  wireEditModalClose();
   await ensureLogin({ silent: true });
 
-  const params = new URLSearchParams(location.search);
-  const venueId = params.get("venue_id") || getActiveVenueId();
-  if (venueId) setActiveVenueId(venueId);
-
-  await mountNav({ activeTab: "venue" });
-  await loadAccess();
-  syncActions();
-
-  try {
-    const venues = await getMyVenues();
-    const venue = venues.find((item) => String(item.id) === String(getActiveVenueId()));
-    if (venue) {
-      const subtitle = document.getElementById("subtitle");
-      if (subtitle) subtitle.textContent = venue.name || "";
-    }
-  } catch {}
-
-  const showInactive = document.getElementById("showInactiveProfiles");
-  if (showInactive) {
-    showInactive.checked = state.includeInactive;
-    showInactive.onchange = async () => {
-      state.includeInactive = !!showInactive.checked;
-      await loadProfiles();
-    };
+  state.venueId = parseVenueId();
+  if (!state.venueId) {
+    root.innerHTML = `<div class="card"><div class="muted">Не найден venue_id</div></div>`;
+    return;
   }
 
-  const refreshBtn = document.getElementById("refreshProfilesBtn");
-  if (refreshBtn) refreshBtn.onclick = () => loadProfiles();
+  await mountNav({ activeTab: "summary" });
 
-  const addBtn = document.getElementById("addProfileBtn");
-  if (addBtn) addBtn.onclick = () => openProfileModal(null);
+  try {
+    state.me = await getMe();
+  } catch {
+    state.me = null;
+  }
 
-  await loadProfiles();
+  try {
+    state.perms = await getMyVenuePermissions(state.venueId);
+  } catch {
+    state.perms = null;
+  }
+
+  state.can = computeCaps(state.perms, state.me);
+
+  document.getElementById("btnCreate")?.addEventListener("click", () => openEditor({ mode: "create" }));
+  document.getElementById("showInactive")?.addEventListener("change", (e) => {
+    state.includeInactive = !!e.target.checked;
+    load();
+  });
+
+  await load();
 }
 
-document.addEventListener("DOMContentLoaded", () => { boot(); });
+document.addEventListener("DOMContentLoaded", boot);

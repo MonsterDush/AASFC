@@ -61,6 +61,7 @@ let financeAccess = {
   canViewRevenue: false,
   canViewExpenses: false,
   canViewPayroll: false,
+  canCalculatePayroll: false,
 };
 
 async function loadFinanceAccess() {
@@ -75,9 +76,10 @@ async function loadFinanceAccess() {
       canViewRevenue: isOwner || hasPerm(pset, "REVENUE_VIEW"),
       canViewExpenses: isOwner || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
       canViewPayroll: isOwner || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE"),
+      canCalculatePayroll: isOwner || hasPerm(pset, "PAYROLL_CALCULATE"),
     };
   } catch {
-    financeAccess = { canViewRevenue: false, canViewExpenses: false, canViewPayroll: false };
+    financeAccess = { canViewRevenue: false, canViewExpenses: false, canViewPayroll: false, canCalculatePayroll: false };
   }
   return financeAccess;
 }

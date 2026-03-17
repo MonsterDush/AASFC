@@ -55,12 +55,12 @@
         <b>Финансы</b>
         <div class="row gap-8 mt-12">
           <a class="btn" id="openSummary" href="#">Сводка</a>
+          <a class="btn" id="openPayProfiles" href="#">Профили зарплаты</a>
+          <a class="btn" id="openPayroll" href="#">Начисления</a>
           <a class="btn" id="openDayEconomics" href="#">Экономика дня</a>
           <a class="btn ghost" id="openEconomicsPlans" href="#">Планы</a>
           <a class="btn ghost" id="openEconomicsRules" href="#">Нормативы</a>
           <a class="btn" id="openExpenses" href="#">Расходы</a>
-          <a class="btn" id="openPayProfiles" href="#">Профили зарплаты</a>
-          <a class="btn" id="openPayroll" href="#">Начисления</a>
           <a class="btn" id="openAdjustments" href="#">Штрафы</a>
         </div>
       </div>
@@ -162,11 +162,9 @@
         let canViewReports = false;
         let canViewRevenue = false;
         let canViewExpenses = false;
-        let canOpenVenue = false;
         let canViewPayProfiles = false;
-        let canManagePayProfiles = false;
         let canViewPayroll = false;
-        let canCalculatePayroll = false;
+        let canOpenVenue = false;
 
         try {
           const me = await getMe().catch(() => null);
@@ -195,9 +193,7 @@
           canViewRevenue = isOwner || isAdmin || hasPerm(pset, "REVENUE_VIEW");
           canViewExpenses = isOwner || isAdmin || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
           canViewPayProfiles = isOwner || isAdmin || hasPerm(pset, "PAY_PROFILES_VIEW") || hasPerm(pset, "PAY_PROFILES_MANAGE");
-          canManagePayProfiles = isOwner || isAdmin || hasPerm(pset, "PAY_PROFILES_MANAGE");
           canViewPayroll = isOwner || isAdmin || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");
-          canCalculatePayroll = isOwner || isAdmin || hasPerm(pset, "PAYROLL_CALCULATE");
 
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
 
@@ -236,13 +232,13 @@ const titleEl = document.getElementById("title");
         const openInvites = document.getElementById("openInvites");
         const openPositions = document.getElementById("openPositions");
         const openSummary = document.getElementById("openSummary");
+        const openPayProfiles = document.getElementById("openPayProfiles");
+        const openPayroll = document.getElementById("openPayroll");
         const openDayEconomics = document.getElementById("openDayEconomics");
         const openExpenses = document.getElementById("openExpenses");
         const openShifts = document.getElementById("openShifts");
         const openReports = document.getElementById("openReports");
         const openAdjustments = document.getElementById("openAdjustments");
-        const openPayProfiles = document.getElementById("openPayProfiles");
-        const openPayroll = document.getElementById("openPayroll");
         const openDepartments = document.getElementById("openDepartments");
         const openPaymentMethods = document.getElementById("openPaymentMethods");
         const openKpi = document.getElementById("openKpi");
@@ -273,14 +269,14 @@ openAdjustments.href = canManageAdjustments
   ? `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`
   : `/staff-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openSummary) openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openPayProfiles) openPayProfiles.href = `/owner-pay-profiles.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openPayroll) openPayroll.href = `/owner-payroll.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openDayEconomics) openDayEconomics.href = `/owner-day-economics.html?venue_id=${encodeURIComponent(venueId)}`;
           const openEconomicsPlans = document.getElementById("openEconomicsPlans");
           if (openEconomicsPlans) openEconomicsPlans.href = `/owner-economics-plans.html?venue_id=${encodeURIComponent(venueId)}`;
           const openEconomicsRules = document.getElementById("openEconomicsRules");
           if (openEconomicsRules) openEconomicsRules.href = `/owner-economics-rules.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openExpenses) openExpenses.href = `/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
-          if (openPayProfiles) openPayProfiles.href = `/owner-pay-profiles.html?venue_id=${encodeURIComponent(venueId)}`;
-          if (openPayroll) openPayroll.href = `/owner-payroll.html?venue_id=${encodeURIComponent(venueId)}`;
 
           if (openDepartments) openDepartments.href = `/owner-departments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openPaymentMethods) openPaymentMethods.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(venueId)}`;
@@ -297,15 +293,15 @@ openAdjustments.href = canManageAdjustments
           if (openKpi) openKpi.style.display = canViewKpi ? "" : "none";
 
           if (openAdjustments) openAdjustments.style.display = canViewAdjustments ? "" : "none";
+          if (openSummary) openSummary.style.display = (canViewRevenue || canViewExpenses) ? "" : "none";
           if (openPayProfiles) openPayProfiles.style.display = canViewPayProfiles ? "" : "none";
           if (openPayroll) openPayroll.style.display = canViewPayroll ? "" : "none";
-          if (openSummary) openSummary.style.display = (canViewRevenue || canViewExpenses || canViewPayroll) ? "" : "none";
           if (openDayEconomics) openDayEconomics.style.display = (canViewRevenue || canViewExpenses) ? "" : "none";
           if (openExpenses) openExpenses.style.display = canViewExpenses ? "" : "none";
 
           const financeCard = document.getElementById("financeCard");
           if (financeCard) {
-            const showFinance = (openAdjustments?.style.display !== "none") || (openSummary?.style.display !== "none") || (openExpenses?.style.display !== "none") || (openPayProfiles?.style.display !== "none") || (openPayroll?.style.display !== "none");
+            const showFinance = (openAdjustments?.style.display !== "none") || (openSummary?.style.display !== "none") || (openPayProfiles?.style.display !== "none") || (openPayroll?.style.display !== "none") || (openExpenses?.style.display !== "none");
             financeCard.style.display = showFinance ? "" : "none";
           }
 

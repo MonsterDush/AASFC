@@ -1,26 +1,34 @@
 import {
   applyTelegramTheme,
-  mountCommonUI,
   ensureLogin,
   mountNav,
-  getActiveVenueId,
-  setActiveVenueId,
-  getMyVenues,
-  getMyVenuePermissions,
-  api,
+  mountCommonUI,
   toast,
+  setActiveVenueId,
+  getMe,
+  getMyVenuePermissions,
+  getPayroll,
+  calculatePayroll,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
-const state = {
-  month: "",
-  payload: null,
-  access: {
-    canView: false,
-    canCalculate: false,
-    canViewProfiles: false,
-  },
-};
+const root = document.getElementById("root");
+
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function parseVenueId() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get("venue_id") || "";
+  if (id) setActiveVenueId(id);
+  return id;
+}
 
 function currentMonth() {
   const d = new Date();
@@ -29,240 +37,251 @@ function currentMonth() {
   return `${y}-${m}`;
 }
 
-function esc(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function fmtMinor(minor) {
-  const rub = Number(minor || 0) / 100;
+function fmtMoneyMinor(minor) {
+  const value = Number(minor || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
+    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " ₽";
   } catch {
-    return rub.toFixed(2) + " ₽";
+    return value.toFixed(2) + " ₽";
   }
 }
 
-function fmtDateTime(value) {
-  if (!value) return "—";
-  try {
-    return new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
-  } catch {
-    return String(value);
-  }
+function memberName(member) {
+  if (!member) return "—";
+  return member.short_name || member.full_name || (member.tg_username ? `@${member.tg_username}` : `user #${member.user_id || ""}`);
 }
 
-function openHtmlModal(title, html) {
-  const modal = document.getElementById("modal");
-  if (!modal) return;
-  const head = modal.querySelector(".modal__title");
-  const body = modal.querySelector(".modal__body");
-  if (head) head.textContent = title;
-  if (body) body.innerHTML = html;
-  modal.classList.add("open");
+let state = {
+  venueId: "",
+  month: currentMonth(),
+  me: null,
+  perms: null,
+  can: { view: false, calculate: false },
+  data: null,
+};
+
+function computeCaps(perms, me) {
+  const role = roleUpper(perms);
+  const pset = permSetFromResponse(perms);
+  const sysRole = String(me?.system_role || "").toUpperCase();
+  const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+  const isAdmin = sysRole === "SUPER_ADMIN" || sysRole === "MODERATOR";
+  return {
+    view: isOwner || isAdmin || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE"),
+    calculate: isOwner || isAdmin || hasPerm(pset, "PAYROLL_CALCULATE"),
+  };
 }
 
-function breakdownHtml(line) {
-  const breakdown = line?.breakdown || {};
-  const metrics = breakdown?.metrics || {};
-  const components = Array.isArray(breakdown?.components) ? breakdown.components : [];
-  return `
-    <div class="payroll-breakdown">
-      <div class="itemcard">
-        <b>${esc(breakdown?.member_name || line?.member?.short_name || "Сотрудник")}</b>
-        <div class="muted mt-6">Профиль: ${esc(breakdown?.pay_profile_title || line?.pay_profile_title || "—")}</div>
-        <div class="entity-tags mt-8">
-          <span class="badge">Часов: ${Number(metrics.hours_total || 0)}</span>
-          <span class="badge">Минут: ${Number(metrics.minutes_total || 0)}</span>
-          <span class="badge">Смен: ${Number(metrics.shifts_count || 0)}</span>
-          <span class="badge">Итого: ${esc(fmtMinor(line?.amount_minor))}</span>
+function renderShell() {
+  root.innerHTML = `
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Начисления</b>
+          <div class="muted" id="subtitle">расчёт зарплаты за месяц</div>
         </div>
       </div>
-      ${components.map((component) => `
-        <div class="itemcard payroll-breakdown__item">
-          <div class="entity-row__title">${esc(component.title || component.component_type || "Компонент")}</div>
-          <div class="entity-tags mt-8">
-            <span class="badge">${esc(component.component_type || "—")}</span>
-            <span class="badge">Сумма: ${esc(fmtMinor(component.amount_minor))}</span>
-            <span class="badge">Часов: ${Number(component.hours_total || 0)}</span>
-            <span class="badge">Смен: ${Number(component.shifts_count || 0)}</span>
-          </div>
-        </div>
-      `).join("") || '<div class="muted">Нет компонентов в breakdown.</div>'}
+      <div class="userpill" data-userpill>…</div>
     </div>
+
+    <div class="card">
+      <div class="revenue-toolbar__actions">
+        <div class="revenue-toolbar__caption">
+          <b>Расчёт зарплаты</b>
+          <div class="muted mt-6">Считается по активным назначениям профилей. Сейчас доступны оклад, почасовая ставка и фикс за смену.</div>
+        </div>
+        <div class="pickers pickers--revenue">
+          <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
+          <button class="btn primary" id="btnCalculate">Рассчитать</button>
+          <a class="btn" id="openProfilesBtn" href="#">Профили</a>
+        </div>
+      </div>
+
+      <div class="finance-stats finance-stats-1 mt-12" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Итого</div>
+          <div class="finance-stat__value" id="totalAmount">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Сотрудников</div>
+          <div class="finance-stat__value" id="linesCount">—</div>
+        </div>
+        <div class="itemcard finance-stat">
+          <div class="finance-stat__label">Статус расчёта</div>
+          <div class="finance-stat__value" id="runMeta">—</div>
+        </div>
+      </div>
+
+      <div class="itemcard mt-12">
+        <div class="section-head">
+          <div class="section-title"><b>Строки начислений</b></div>
+        </div>
+        <div id="linesList" class="mt-12"><div class="skeleton"></div><div class="skeleton"></div></div>
+      </div>
+
+      <div class="row mt-12" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <a class="link" id="backVenue" href="#">← Назад к заведению</a>
+        <a class="link" id="openSummary" href="#">Открыть сводку →</a>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"><div class="toast__text"></div></div>
+    <div id="modal" class="modal">
+      <div class="modal__backdrop"></div>
+      <div class="modal__panel">
+        <div class="modal__head">
+          <div class="modal__title">JSON</div>
+          <button class="btn" data-close>Закрыть</button>
+        </div>
+        <div class="modal__body"></div>
+      </div>
+    </div>
+
+    <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   `;
+
+  mountCommonUI("none");
 }
 
-function showEmpty(message) {
-  const list = document.getElementById("payrollLines");
-  if (list) list.innerHTML = `<div class="muted">${esc(message)}</div>`;
+function renderState() {
+  const btnCalculate = document.getElementById("btnCalculate");
+  const monthPick = document.getElementById("monthPick");
+  const backVenue = document.getElementById("backVenue");
+  const openSummary = document.getElementById("openSummary");
+  const openProfilesBtn = document.getElementById("openProfilesBtn");
+  if (monthPick) monthPick.value = state.month;
+  if (btnCalculate) btnCalculate.style.display = state.can.calculate ? "" : "none";
+  if (backVenue) backVenue.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
+  if (openSummary) openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(state.venueId)}&month=${encodeURIComponent(state.month)}`;
+  if (openProfilesBtn) openProfilesBtn.href = `/owner-pay-profiles.html?venue_id=${encodeURIComponent(state.venueId)}`;
 }
 
-async function loadAccess() {
-  const venueId = getActiveVenueId();
-  if (!venueId) return state.access;
-  try {
-    const permsResp = await getMyVenuePermissions(venueId);
-    const role = roleUpper(permsResp);
-    const pset = permSetFromResponse(permsResp);
-    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
-    state.access = {
-      canView: isOwner || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE"),
-      canCalculate: isOwner || hasPerm(pset, "PAYROLL_CALCULATE"),
-      canViewProfiles: isOwner || hasPerm(pset, "PAY_PROFILES_VIEW") || hasPerm(pset, "PAY_PROFILES_MANAGE"),
-    };
-  } catch {
-    state.access = { canView: false, canCalculate: false, canViewProfiles: false };
-  }
-  return state.access;
-}
+function renderLines() {
+  const totalAmount = document.getElementById("totalAmount");
+  const linesCount = document.getElementById("linesCount");
+  const runMeta = document.getElementById("runMeta");
+  const linesList = document.getElementById("linesList");
+  if (!linesList) return;
 
-function syncActions() {
-  const calcBtn = document.getElementById("calculatePayrollBtn");
-  const profilesBtn = document.getElementById("openProfilesBtn");
-  const venueId = getActiveVenueId();
-  if (calcBtn) calcBtn.style.display = state.access.canCalculate ? "" : "none";
-  if (profilesBtn) {
-    profilesBtn.style.display = state.access.canViewProfiles ? "" : "none";
-    profilesBtn.onclick = () => {
-      location.href = `/owner-pay-profiles.html?venue_id=${encodeURIComponent(venueId)}`;
-    };
-  }
-}
-
-function renderPayroll() {
-  const run = state.payload?.run || null;
-  const lines = Array.isArray(state.payload?.lines) ? state.payload.lines : [];
-  const hint = document.getElementById("payrollHint");
-  const totalEl = document.getElementById("payrollTotal");
-  const countEl = document.getElementById("payrollLinesCount");
-  const atEl = document.getElementById("payrollCalculatedAt");
-  const stateEl = document.getElementById("payrollState");
-  const list = document.getElementById("payrollLines");
-
-  if (totalEl) totalEl.textContent = fmtMinor(state.payload?.total_amount_minor || 0);
-  if (countEl) countEl.textContent = String(state.payload?.lines_count || 0);
-  if (atEl) atEl.textContent = fmtDateTime(run?.calculated_at);
-  if (stateEl) stateEl.textContent = run ? "Рассчитано" : "Нет расчёта";
-  if (hint) hint.textContent = run ? `месяц ${state.month}` : `месяц ${state.month} · расчёт не запускался`;
-
-  if (!list) return;
-  if (!run || !lines.length) {
-    showEmpty(state.access.canCalculate ? "Пока нет расчёта за этот месяц. Нажмите «Рассчитать»." : "Пока нет расчёта за этот месяц.");
+  if (!state.can.view) {
+    linesList.innerHTML = `<div class="muted">Нет доступа к начислениям</div>`;
+    if (totalAmount) totalAmount.textContent = "—";
+    if (linesCount) linesCount.textContent = "—";
+    if (runMeta) runMeta.textContent = "нет доступа";
     return;
   }
 
-  list.innerHTML = lines.map((line) => {
-    const memberName = line?.member?.short_name || line?.member?.full_name || (line?.member?.tg_username ? `@${line.member.tg_username}` : `user #${line.member_user_id}`);
-    const metrics = line?.breakdown?.metrics || {};
-    return `
-      <div class="entity-row">
-        <div>
-          <div class="entity-row__title">${esc(memberName)}</div>
-          <div class="muted mt-6">Профиль: ${esc(line?.pay_profile_title || "—")}</div>
-          <div class="entity-tags mt-8">
-            <span class="badge">Часов: ${Number(metrics.hours_total || 0)}</span>
-            <span class="badge">Смен: ${Number(metrics.shifts_count || 0)}</span>
-            <span class="badge">Компонентов: ${Array.isArray(line?.breakdown?.components) ? line.breakdown.components.length : 0}</span>
+  const data = state.data || { lines: [], total_amount_minor: 0, lines_count: 0, run: null };
+  if (totalAmount) totalAmount.textContent = fmtMoneyMinor(data.total_amount_minor);
+  if (linesCount) linesCount.textContent = String(Number(data.lines_count || 0));
+  if (runMeta) runMeta.textContent = data.run?.calculated_at ? "рассчитано" : "ещё не считалось";
+
+  const lines = Array.isArray(data.lines) ? data.lines : [];
+  if (!lines.length) {
+    linesList.innerHTML = `<div class="muted">За выбранный месяц начислений пока нет. Нажми «Рассчитать», если профили уже назначены.</div>`;
+    return;
+  }
+
+  linesList.innerHTML = "";
+  lines.forEach((line) => {
+    const breakdown = line.breakdown || {};
+    const metrics = breakdown.metrics || {};
+    const components = Array.isArray(breakdown.components) ? breakdown.components : [];
+    const row = document.createElement("div");
+    row.className = "expense-row";
+    row.innerHTML = `
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <b class="expense-row__title">${esc(memberName(line.member))}</b>
+          ${line.pay_profile_title ? `<span class="badge">${esc(line.pay_profile_title)}</span>` : ""}
+        </div>
+        <div class="mono mt-6">Часы: ${esc(metrics.hours_total ?? 0)} · Смены: ${esc(metrics.shifts_count ?? 0)}</div>
+        <details class="mt-12 payroll-breakdown">
+          <summary>Показать разбор</summary>
+          <div class="payroll-breakdown__body mt-8">
+            ${components.length ? components.map((c) => `
+              <div class="payroll-breakdown__row">
+                <div>
+                  <b>${esc(c.title || c.component_type || "Компонент")}</b>
+                  <div class="mono mt-4">${esc(c.component_type || "")}</div>
+                </div>
+                <div><b>${esc(fmtMoneyMinor(c.amount_minor || 0))}</b></div>
+              </div>
+            `).join("") : `<div class="muted">Нет breakdown</div>`}
           </div>
-        </div>
-        <div class="entity-row__side">
-          <div class="payroll-line__amount">${esc(fmtMinor(line?.amount_minor))}</div>
-          <button class="btn small" data-open-breakdown="${line.id}">Подробнее</button>
-          ${state.access.canViewProfiles && line?.pay_profile_id ? `<a class="btn small" href="/owner-pay-profile.html?venue_id=${encodeURIComponent(getActiveVenueId())}&profile_id=${encodeURIComponent(line.pay_profile_id)}">Профиль</a>` : ""}
-        </div>
+        </details>
+      </div>
+      <div class="expense-row__side">
+        <div class="expense-row__amount">${esc(fmtMoneyMinor(line.amount_minor))}</div>
       </div>
     `;
-  }).join("");
-
-  list.querySelectorAll("[data-open-breakdown]").forEach((btn) => {
-    btn.onclick = () => {
-      const line = lines.find((item) => String(item.id) === String(btn.dataset.openBreakdown));
-      if (!line) return;
-      openHtmlModal("Breakdown начисления", breakdownHtml(line));
-    };
+    linesList.appendChild(row);
   });
 }
 
-async function loadPayroll() {
-  const venueId = getActiveVenueId();
-  if (!venueId) return;
-  const list = document.getElementById("payrollLines");
-  if (list) list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+async function load() {
+  const linesList = document.getElementById("linesList");
+  if (linesList) linesList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
   try {
-    state.payload = await api(`/venues/${encodeURIComponent(venueId)}/payroll?month=${encodeURIComponent(state.month)}`);
-    renderPayroll();
+    state.data = await getPayroll(state.venueId, state.month);
+    renderLines();
   } catch (e) {
-    state.payload = null;
-    showEmpty(e?.data?.detail || e.message || "Не удалось загрузить начисления");
-    const stateEl = document.getElementById("payrollState");
-    if (stateEl) stateEl.textContent = "Ошибка";
+    if (linesList) linesList.innerHTML = `<div class="muted">Ошибка: ${esc(e?.data?.detail || e?.message || "не удалось загрузить")}</div>`;
     toast("Не удалось загрузить начисления", "err");
   }
 }
 
-async function calculatePayroll() {
+async function onCalculate() {
   try {
-    await api(`/venues/${encodeURIComponent(getActiveVenueId())}/payroll/calculate`, {
-      method: "POST",
-      body: { month: state.month },
-    });
-    toast("Начисления пересчитаны", "ok");
-    await loadPayroll();
+    await calculatePayroll(state.venueId, state.month);
+    toast("Расчёт выполнен", "ok");
+    await load();
   } catch (e) {
-    toast(e?.data?.detail || e.message || "Не удалось выполнить расчёт", "err");
+    toast("Ошибка расчёта: " + (e?.data?.detail || e?.message || "не удалось рассчитать"), "err");
   }
 }
 
 async function boot() {
   applyTelegramTheme();
-  mountCommonUI("summary");
+  renderShell();
   await ensureLogin({ silent: true });
 
-  const params = new URLSearchParams(location.search);
-  const venueId = params.get("venue_id") || getActiveVenueId();
-  if (venueId) setActiveVenueId(venueId);
-  state.month = params.get("month") || currentMonth();
-
-  await mountNav({ activeTab: "summary" });
-  await loadAccess();
-  syncActions();
-
-  try {
-    const venues = await getMyVenues();
-    const venue = venues.find((item) => String(item.id) === String(getActiveVenueId()));
-    if (venue) {
-      const subtitle = document.getElementById("subtitle");
-      if (subtitle) subtitle.textContent = venue.name || "";
-    }
-  } catch {}
-
-  const monthPick = document.getElementById("payrollMonthPick");
-  if (monthPick) {
-    monthPick.value = state.month;
-    monthPick.onchange = async () => {
-      state.month = monthPick.value || currentMonth();
-      await loadPayroll();
-    };
-  }
-
-  const refreshBtn = document.getElementById("refreshPayrollBtn");
-  if (refreshBtn) refreshBtn.onclick = () => loadPayroll();
-
-  const calcBtn = document.getElementById("calculatePayrollBtn");
-  if (calcBtn) calcBtn.onclick = () => calculatePayroll();
-
-  if (!state.access.canView) {
-    showEmpty("Нет прав на просмотр начислений.");
-    const stateEl = document.getElementById("payrollState");
-    if (stateEl) stateEl.textContent = "Нет доступа";
+  state.venueId = parseVenueId();
+  if (!state.venueId) {
+    root.innerHTML = `<div class="card"><div class="muted">Не найден venue_id</div></div>`;
     return;
   }
 
-  await loadPayroll();
+  const params = new URLSearchParams(location.search);
+  state.month = params.get("month") || currentMonth();
+
+  await mountNav({ activeTab: "summary" });
+
+  try {
+    state.me = await getMe();
+  } catch {
+    state.me = null;
+  }
+
+  try {
+    state.perms = await getMyVenuePermissions(state.venueId);
+  } catch {
+    state.perms = null;
+  }
+
+  state.can = computeCaps(state.perms, state.me);
+  renderState();
+
+  document.getElementById("monthPick")?.addEventListener("change", async (e) => {
+    state.month = e.target.value || currentMonth();
+    renderState();
+    await load();
+  });
+
+  document.getElementById("btnCalculate")?.addEventListener("click", onCalculate);
+
+  await load();
 }
 
-document.addEventListener("DOMContentLoaded", () => { boot(); });
+document.addEventListener("DOMContentLoaded", boot);

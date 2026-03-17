@@ -783,6 +783,112 @@ export async function updateKpiMetric(venueId, kpiMetricId, payload) {
  * Boots a page: ensures login (cookie), loads /me,
  * optionally enforces an active venue (from LS or query).
  */
+
+
+// ------------------------------
+// Payroll: profiles / components / assignments / runs
+// ------------------------------
+
+export async function getPayProfiles(venueId, { includeInactive = false } = {}) {
+  if (!venueId) throw new Error("NO_VENUE");
+  const q = includeInactive ? "?include_inactive=true" : "";
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-profiles${q}`);
+}
+
+export async function getPayProfile(venueId, profileId) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!profileId) throw new Error("NO_PAY_PROFILE");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-profiles/${encodeURIComponent(profileId)}`);
+}
+
+export async function createPayProfile(venueId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-profiles`, { method: "POST", body: payload });
+}
+
+export async function updatePayProfile(venueId, profileId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!profileId) throw new Error("NO_PAY_PROFILE");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-profiles/${encodeURIComponent(profileId)}`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export async function deletePayProfile(venueId, profileId) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!profileId) throw new Error("NO_PAY_PROFILE");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-profiles/${encodeURIComponent(profileId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createPayProfileAssignment(venueId, profileId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!profileId) throw new Error("NO_PAY_PROFILE");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-profiles/${encodeURIComponent(profileId)}/assignments`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function updatePayProfileAssignment(venueId, assignmentId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!assignmentId) throw new Error("NO_ASSIGNMENT");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-profile-assignments/${encodeURIComponent(assignmentId)}`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export async function deletePayProfileAssignment(venueId, assignmentId) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!assignmentId) throw new Error("NO_ASSIGNMENT");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-profile-assignments/${encodeURIComponent(assignmentId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createPayComponent(venueId, profileId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!profileId) throw new Error("NO_PAY_PROFILE");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-profiles/${encodeURIComponent(profileId)}/components`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function updatePayComponent(venueId, componentId, payload) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!componentId) throw new Error("NO_COMPONENT");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-components/${encodeURIComponent(componentId)}`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export async function deletePayComponent(venueId, componentId) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!componentId) throw new Error("NO_COMPONENT");
+  return api(`/venues/${encodeURIComponent(venueId)}/pay-components/${encodeURIComponent(componentId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function calculatePayroll(venueId, month) {
+  if (!venueId) throw new Error("NO_VENUE");
+  return api(`/venues/${encodeURIComponent(venueId)}/payroll/calculate`, {
+    method: "POST",
+    body: { month },
+  });
+}
+
+export async function getPayroll(venueId, month) {
+  if (!venueId) throw new Error("NO_VENUE");
+  if (!month) throw new Error("NO_MONTH");
+  return api(`/venues/${encodeURIComponent(venueId)}/payroll?month=${encodeURIComponent(month)}`);
+}
+
 export async function bootPage({ requireVenue = false, silentLogin = true } = {}) {
   await ensureLogin({ silent: silentLogin });
 
