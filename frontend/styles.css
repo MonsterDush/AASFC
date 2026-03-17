@@ -241,7 +241,7 @@ html{-webkit-text-size-adjust:100%}
 body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);padding:16px 14px calc(84px + env(safe-area-inset-bottom))}
 .container{max-width:980px;margin:0 auto}
 
-.topbar{display:flex;justify-content:flex-start;align-items:center;gap:12px;flex-wrap:nowrap;margin-bottom:16px;min-height:44px}
+.topbar{display:flex;justify-content:flex-start;align-items:center;gap:12px;flex-wrap:nowrap;margin-bottom:16px;min-height:44px; padding:0 4px}
 .brand{min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:12px}
 .title{min-width:0;line-height:1.15}
 .title b{display:block;font-size:16px}
