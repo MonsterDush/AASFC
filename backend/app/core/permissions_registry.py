@@ -56,6 +56,12 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef("ADJUSTMENTS_MANAGE", "Adjustments", "Управление штрафами/премиями/списаниями", "Создавать/редактировать штрафы/премии/списания"),
     PermissionDef("DISPUTES_RESOLVE", "Adjustments", "Разбор оспариваний", "Видеть и закрывать оспаривания"),
 
+    # Payroll
+    PermissionDef("PAY_PROFILES_VIEW", "Payroll", "Профили зарплаты: просмотр", "Видеть список и состав профилей зарплаты"),
+    PermissionDef("PAY_PROFILES_MANAGE", "Payroll", "Профили зарплаты: управление", "Создавать, редактировать и удалять профили зарплаты, компоненты и назначения"),
+    PermissionDef("PAYROLL_VIEW", "Payroll", "Начисления зарплаты: просмотр", "Видеть рассчитанные начисления зарплаты"),
+    PermissionDef("PAYROLL_CALCULATE", "Payroll", "Начисления зарплаты: расчёт", "Запускать расчёт зарплаты за период"),
+
     # Catalogs (dynamic)
     PermissionDef("DEPARTMENTS_VIEW", "Catalogs", "Просмотр департаментов", "Видеть список департаментов"),
     PermissionDef("DEPARTMENTS_CREATE", "Catalogs", "Создание департаментов", "Создавать департаменты"),

@@ -38,6 +38,11 @@ from .day_economics_plan import DayEconomicsPlan
 from .day_economics_month_plan import DayEconomicsMonthPlan
 from .day_economics_plan_template import DayEconomicsPlanTemplate
 from .venue_economics_rule import VenueEconomicsRule
+from .pay_profile import PayProfile
+from .pay_profile_assignment import PayProfileAssignment
+from .pay_component import PayComponent
+from .payroll_run import PayrollRun
+from .payroll_line import PayrollLine
 
 __all__ = [
     "SystemRole",
@@ -81,4 +86,9 @@ __all__ = [
     "DayEconomicsMonthPlan",
     "DayEconomicsPlanTemplate",
     "VenueEconomicsRule",
+    "PayProfile",
+    "PayProfileAssignment",
+    "PayComponent",
+    "PayrollRun",
+    "PayrollLine",
 ]

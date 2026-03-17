@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, U
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, delete, update, func
+import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, get_current_user_optional
@@ -51,6 +52,7 @@ from app.services.finance.recurring_expenses import (
     replace_rule_payment_methods,
     sync_daily_recurring_accruals_for_date,
 )
+from app.services.payroll.calculator import PAY_COMPONENT_TYPES, calculate_payroll_for_month, parse_month_start
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -84,6 +86,11 @@ from app.models.recurring_expense_rule_payment_method import RecurringExpenseRul
 from app.models.recurring_expense_accrual import RecurringExpenseAccrual
 from app.models.permission import Permission
 from app.models.auth_identity import AuthIdentity
+from app.models.pay_profile import PayProfile
+from app.models.pay_profile_assignment import PayProfileAssignment
+from app.models.pay_component import PayComponent
+from app.models.payroll_run import PayrollRun
+from app.models.payroll_line import PayrollLine
 
 from app.auth.venue_permissions import require_venue_permission
 
@@ -174,6 +181,63 @@ class PositionUpdateIn(BaseModel):
     is_active: bool | None = None
     # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
+
+
+class PayProfileCreateIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    is_active: bool = True
+
+
+class PayProfileUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    is_active: bool | None = None
+
+
+class PayProfileAssignmentCreateIn(BaseModel):
+    member_user_id: int = Field(..., gt=0)
+    start_date: date | None = None
+    end_date: date | None = None
+    is_active: bool = True
+
+
+class PayProfileAssignmentUpdateIn(BaseModel):
+    start_date: date | None = None
+    end_date: date | None = None
+    is_active: bool | None = None
+
+
+class PayComponentCreateIn(BaseModel):
+    component_type: str = Field(..., min_length=1, max_length=40)
+    title: str = Field(..., min_length=1, max_length=120)
+    amount_minor: int | None = Field(default=None, ge=0)
+    rate_minor: int | None = Field(default=None, ge=0)
+    percent_bps: int | None = Field(default=None, ge=0)
+    department_id: int | None = Field(default=None, gt=0)
+    kpi_metric_id: int | None = Field(default=None, gt=0)
+    threshold_value: int | None = Field(default=None, ge=0)
+    steps_json: dict | list | None = None
+    sort_order: int = Field(0, ge=0)
+    is_active: bool = True
+
+
+class PayComponentUpdateIn(BaseModel):
+    component_type: str | None = Field(default=None, min_length=1, max_length=40)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    amount_minor: int | None = Field(default=None, ge=0)
+    rate_minor: int | None = Field(default=None, ge=0)
+    percent_bps: int | None = Field(default=None, ge=0)
+    department_id: int | None = Field(default=None, gt=0)
+    kpi_metric_id: int | None = Field(default=None, gt=0)
+    threshold_value: int | None = Field(default=None, ge=0)
+    steps_json: dict | list | None = None
+    sort_order: int | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+
+
+class PayrollCalculateIn(BaseModel):
+    month: str = Field(..., min_length=7, max_length=7, description="YYYY-MM")
 
 
 class ReportValueIn(BaseModel):
@@ -1700,6 +1764,232 @@ def _normalize_permission_codes(db: Session, codes: list[str] | None) -> list[st
 
 
 
+def _require_pay_profiles_view(db: Session, *, venue_id: int, user: User) -> None:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAY_PROFILES_VIEW")
+        return
+    except HTTPException:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAY_PROFILES_MANAGE")
+
+
+
+def _require_pay_profiles_manage(db: Session, *, venue_id: int, user: User) -> None:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAY_PROFILES_MANAGE")
+
+
+
+def _require_payroll_view(db: Session, *, venue_id: int, user: User) -> None:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return
+    try:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYROLL_VIEW")
+        return
+    except HTTPException:
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYROLL_CALCULATE")
+
+
+
+def _require_payroll_calculate(db: Session, *, venue_id: int, user: User) -> None:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYROLL_CALCULATE")
+
+
+
+def _parse_json_text(raw: str | None):
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+
+def _get_pay_profile_or_404(db: Session, *, venue_id: int, profile_id: int) -> PayProfile:
+    obj = db.execute(
+        select(PayProfile).where(PayProfile.id == profile_id, PayProfile.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Pay profile not found")
+    return obj
+
+
+
+def _get_pay_profile_assignment_or_404(db: Session, *, venue_id: int, assignment_id: int) -> PayProfileAssignment:
+    obj = db.execute(
+        select(PayProfileAssignment).where(
+            PayProfileAssignment.id == assignment_id,
+            PayProfileAssignment.venue_id == venue_id,
+        )
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Pay profile assignment not found")
+    return obj
+
+
+
+def _get_pay_component_or_404(db: Session, *, venue_id: int, component_id: int) -> PayComponent:
+    obj = db.execute(
+        select(PayComponent).where(PayComponent.id == component_id, PayComponent.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Pay component not found")
+    return obj
+
+
+
+def _serialize_pay_component(component: PayComponent) -> dict:
+    return {
+        "id": int(component.id),
+        "pay_profile_id": int(component.pay_profile_id),
+        "component_type": component.component_type,
+        "title": component.title,
+        "amount_minor": component.amount_minor,
+        "rate_minor": component.rate_minor,
+        "percent_bps": component.percent_bps,
+        "department_id": component.department_id,
+        "kpi_metric_id": component.kpi_metric_id,
+        "threshold_value": component.threshold_value,
+        "steps": _parse_json_text(component.steps_json),
+        "sort_order": int(component.sort_order or 0),
+        "is_active": bool(component.is_active),
+    }
+
+
+
+def _serialize_pay_profile_assignment(assignment: PayProfileAssignment, member: User | None = None) -> dict:
+    member_obj = None
+    if member is not None:
+        member_obj = {
+            "user_id": int(member.id),
+            "tg_user_id": member.tg_user_id,
+            "tg_username": member.tg_username,
+            "full_name": member.full_name,
+            "short_name": member.short_name,
+        }
+    return {
+        "id": int(assignment.id),
+        "pay_profile_id": int(assignment.pay_profile_id),
+        "member_user_id": int(assignment.member_user_id),
+        "start_date": assignment.start_date.isoformat() if assignment.start_date else None,
+        "end_date": assignment.end_date.isoformat() if assignment.end_date else None,
+        "is_active": bool(assignment.is_active),
+        "member": member_obj,
+    }
+
+
+
+def _serialize_pay_profile(profile: PayProfile, *, components_count: int | None = None, assignments_count: int | None = None) -> dict:
+    payload = {
+        "id": int(profile.id),
+        "venue_id": int(profile.venue_id),
+        "title": profile.title,
+        "description": profile.description,
+        "is_active": bool(profile.is_active),
+        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+    }
+    if components_count is not None:
+        payload["components_count"] = int(components_count)
+    if assignments_count is not None:
+        payload["assignments_count"] = int(assignments_count)
+    return payload
+
+
+
+def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> dict:
+    profile = _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
+    components = db.execute(
+        select(PayComponent)
+        .where(PayComponent.venue_id == venue_id, PayComponent.pay_profile_id == profile_id)
+        .order_by(PayComponent.sort_order.asc(), PayComponent.id.asc())
+    ).scalars().all()
+    assignment_rows = db.execute(
+        select(PayProfileAssignment, User)
+        .join(User, User.id == PayProfileAssignment.member_user_id)
+        .where(
+            PayProfileAssignment.venue_id == venue_id,
+            PayProfileAssignment.pay_profile_id == profile_id,
+        )
+        .order_by(PayProfileAssignment.is_active.desc(), PayProfileAssignment.start_date.desc(), PayProfileAssignment.id.desc())
+    ).all()
+    payload = _serialize_pay_profile(profile)
+    payload["components"] = [_serialize_pay_component(component) for component in components]
+    payload["assignments"] = [
+        _serialize_pay_profile_assignment(assignment, member=member)
+        for assignment, member in assignment_rows
+    ]
+    return payload
+
+
+
+def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
+    month_start = parse_month_start(month)
+    run = db.execute(
+        select(PayrollRun).where(
+            PayrollRun.venue_id == venue_id,
+            PayrollRun.period_month == month_start,
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        return {
+            "month": month,
+            "run": None,
+            "lines": [],
+            "total_amount_minor": 0,
+            "lines_count": 0,
+        }
+
+    rows = db.execute(
+        select(PayrollLine, User, PayProfile)
+        .join(User, User.id == PayrollLine.member_user_id)
+        .outerjoin(PayProfile, PayProfile.id == PayrollLine.pay_profile_id)
+        .where(PayrollLine.payroll_run_id == int(run.id))
+        .order_by(User.short_name.asc(), User.full_name.asc(), PayrollLine.id.asc())
+    ).all()
+
+    lines = []
+    for line, member, profile in rows:
+        lines.append(
+            {
+                "id": int(line.id),
+                "member_user_id": int(line.member_user_id),
+                "amount_minor": int(line.amount_minor or 0),
+                "pay_profile_id": int(line.pay_profile_id) if line.pay_profile_id is not None else None,
+                "pay_profile_title": profile.title if profile is not None else None,
+                "member": {
+                    "user_id": int(member.id),
+                    "tg_user_id": member.tg_user_id,
+                    "tg_username": member.tg_username,
+                    "full_name": member.full_name,
+                    "short_name": member.short_name,
+                },
+                "breakdown": _parse_json_text(line.breakdown_json),
+            }
+        )
+
+    return {
+        "month": month,
+        "run": {
+            "id": int(run.id),
+            "venue_id": int(run.venue_id),
+            "period_month": run.period_month.isoformat() if run.period_month else None,
+            "calculated_by_user_id": run.calculated_by_user_id,
+            "calculated_at": run.calculated_at.isoformat() if run.calculated_at else None,
+            "total_amount_minor": int(run.total_amount_minor or 0),
+            "lines_count": int(run.lines_count or 0),
+        },
+        "lines": lines,
+        "total_amount_minor": int(run.total_amount_minor or 0),
+        "lines_count": int(run.lines_count or 0),
+    }
+
+
 @router.get("/{venue_id}/positions")
 def list_positions(
     venue_id: int,
@@ -1957,6 +2247,371 @@ def delete_position(
     pos.is_active = False
     db.commit()
     return {"ok": True}
+
+
+@router.get("/{venue_id}/pay-profiles")
+def list_pay_profiles(
+    venue_id: int,
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_view(db, venue_id=venue_id, user=user)
+
+    stmt = select(PayProfile).where(PayProfile.venue_id == venue_id).order_by(PayProfile.is_active.desc(), PayProfile.title.asc(), PayProfile.id.asc())
+    if not include_inactive:
+        stmt = stmt.where(PayProfile.is_active.is_(True))
+    profiles = db.execute(stmt).scalars().all()
+    profile_ids = [int(profile.id) for profile in profiles]
+
+    components_counts = {
+        int(profile_id): int(count or 0)
+        for profile_id, count in db.execute(
+            select(PayComponent.pay_profile_id, func.count(PayComponent.id))
+            .where(PayComponent.venue_id == venue_id, PayComponent.pay_profile_id.in_(profile_ids) if profile_ids else sa.true())
+            .group_by(PayComponent.pay_profile_id)
+        ).all()
+    } if profile_ids else {}
+
+    assignments_counts = {
+        int(profile_id): int(count or 0)
+        for profile_id, count in db.execute(
+            select(PayProfileAssignment.pay_profile_id, func.count(PayProfileAssignment.id))
+            .where(PayProfileAssignment.venue_id == venue_id, PayProfileAssignment.pay_profile_id.in_(profile_ids) if profile_ids else sa.true())
+            .group_by(PayProfileAssignment.pay_profile_id)
+        ).all()
+    } if profile_ids else {}
+
+    return [
+        _serialize_pay_profile(
+            profile,
+            components_count=components_counts.get(int(profile.id), 0),
+            assignments_count=assignments_counts.get(int(profile.id), 0),
+        )
+        for profile in profiles
+    ]
+
+
+@router.get("/{venue_id}/pay-profiles/{profile_id}")
+def get_pay_profile(
+    venue_id: int,
+    profile_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_view(db, venue_id=venue_id, user=user)
+    return _load_pay_profile_detail(db, venue_id=venue_id, profile_id=profile_id)
+
+
+@router.post("/{venue_id}/pay-profiles")
+def create_pay_profile(
+    venue_id: int,
+    payload: PayProfileCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
+
+    profile = PayProfile(
+        venue_id=venue_id,
+        title=payload.title.strip(),
+        description=(payload.description or None),
+        is_active=payload.is_active,
+        updated_at=datetime.utcnow(),
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return _serialize_pay_profile(profile, components_count=0, assignments_count=0)
+
+
+@router.patch("/{venue_id}/pay-profiles/{profile_id}")
+def update_pay_profile(
+    venue_id: int,
+    profile_id: int,
+    payload: PayProfileUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
+
+    profile = _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
+    fields_set = getattr(payload, 'model_fields_set', getattr(payload, '__fields_set__', set()))
+    if 'title' in fields_set and payload.title is not None:
+        profile.title = payload.title.strip()
+    if 'description' in fields_set:
+        profile.description = payload.description or None
+    if 'is_active' in fields_set and payload.is_active is not None:
+        profile.is_active = payload.is_active
+    profile.updated_at = datetime.utcnow()
+    db.commit()
+    return _load_pay_profile_detail(db, venue_id=venue_id, profile_id=profile_id)
+
+
+@router.delete("/{venue_id}/pay-profiles/{profile_id}")
+def delete_pay_profile(
+    venue_id: int,
+    profile_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
+
+    profile = _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
+    used = db.execute(select(PayrollLine.id).where(PayrollLine.pay_profile_id == profile_id).limit(1)).scalar_one_or_none()
+    if used is not None:
+        raise HTTPException(status_code=400, detail="Pay profile is already used in payroll runs. Archive it instead of deleting.")
+
+    db.delete(profile)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{venue_id}/pay-profiles/{profile_id}/assignments")
+def create_pay_profile_assignment(
+    venue_id: int,
+    profile_id: int,
+    payload: PayProfileAssignmentCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
+    _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
+    if payload.start_date and payload.end_date and payload.end_date < payload.start_date:
+        raise HTTPException(status_code=400, detail="end_date must be >= start_date")
+
+    vm = db.execute(
+        select(VenueMember).where(
+            VenueMember.venue_id == venue_id,
+            VenueMember.user_id == payload.member_user_id,
+            VenueMember.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if vm is None:
+        raise HTTPException(status_code=400, detail="Member not found in venue")
+
+    assignment = PayProfileAssignment(
+        venue_id=venue_id,
+        pay_profile_id=profile_id,
+        member_user_id=payload.member_user_id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        is_active=payload.is_active,
+        updated_at=datetime.utcnow(),
+    )
+    db.add(assignment)
+    db.commit()
+    member = db.execute(select(User).where(User.id == payload.member_user_id)).scalar_one_or_none()
+    return _serialize_pay_profile_assignment(assignment, member=member)
+
+
+@router.patch("/{venue_id}/pay-profile-assignments/{assignment_id}")
+def update_pay_profile_assignment(
+    venue_id: int,
+    assignment_id: int,
+    payload: PayProfileAssignmentUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
+
+    assignment = _get_pay_profile_assignment_or_404(db, venue_id=venue_id, assignment_id=assignment_id)
+    fields_set = getattr(payload, 'model_fields_set', getattr(payload, '__fields_set__', set()))
+    new_start_date = payload.start_date if 'start_date' in fields_set else assignment.start_date
+    new_end_date = payload.end_date if 'end_date' in fields_set else assignment.end_date
+    if new_start_date and new_end_date and new_end_date < new_start_date:
+        raise HTTPException(status_code=400, detail="end_date must be >= start_date")
+    if 'start_date' in fields_set:
+        assignment.start_date = payload.start_date
+    if 'end_date' in fields_set:
+        assignment.end_date = payload.end_date
+    if 'is_active' in fields_set and payload.is_active is not None:
+        assignment.is_active = payload.is_active
+    assignment.updated_at = datetime.utcnow()
+    db.commit()
+    member = db.execute(select(User).where(User.id == assignment.member_user_id)).scalar_one_or_none()
+    return _serialize_pay_profile_assignment(assignment, member=member)
+
+
+@router.delete("/{venue_id}/pay-profile-assignments/{assignment_id}")
+def delete_pay_profile_assignment(
+    venue_id: int,
+    assignment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
+
+    assignment = _get_pay_profile_assignment_or_404(db, venue_id=venue_id, assignment_id=assignment_id)
+    db.delete(assignment)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{venue_id}/pay-profiles/{profile_id}/components")
+def create_pay_component(
+    venue_id: int,
+    profile_id: int,
+    payload: PayComponentCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
+    _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
+
+    component_type = payload.component_type.strip().upper()
+    if component_type not in PAY_COMPONENT_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported pay component type")
+
+    if payload.department_id is not None:
+        dep = db.execute(select(Department.id).where(Department.id == payload.department_id, Department.venue_id == venue_id)).scalar_one_or_none()
+        if dep is None:
+            raise HTTPException(status_code=400, detail="Department not found in venue")
+    if payload.kpi_metric_id is not None:
+        kpi = db.execute(select(KpiMetric.id).where(KpiMetric.id == payload.kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
+        if kpi is None:
+            raise HTTPException(status_code=400, detail="KPI metric not found in venue")
+
+    component = PayComponent(
+        venue_id=venue_id,
+        pay_profile_id=profile_id,
+        component_type=component_type,
+        title=payload.title.strip(),
+        amount_minor=payload.amount_minor,
+        rate_minor=payload.rate_minor,
+        percent_bps=payload.percent_bps,
+        department_id=payload.department_id,
+        kpi_metric_id=payload.kpi_metric_id,
+        threshold_value=payload.threshold_value,
+        steps_json=json.dumps(payload.steps_json, ensure_ascii=False) if payload.steps_json is not None else None,
+        sort_order=payload.sort_order,
+        is_active=payload.is_active,
+        updated_at=datetime.utcnow(),
+    )
+    db.add(component)
+    db.commit()
+    return _serialize_pay_component(component)
+
+
+@router.patch("/{venue_id}/pay-components/{component_id}")
+def update_pay_component(
+    venue_id: int,
+    component_id: int,
+    payload: PayComponentUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
+
+    component = _get_pay_component_or_404(db, venue_id=venue_id, component_id=component_id)
+    fields_set = getattr(payload, 'model_fields_set', getattr(payload, '__fields_set__', set()))
+    if 'component_type' in fields_set and payload.component_type is not None:
+        new_component_type = payload.component_type.strip().upper()
+        if new_component_type not in PAY_COMPONENT_TYPES:
+            raise HTTPException(status_code=400, detail="Unsupported pay component type")
+        component.component_type = new_component_type
+    if 'title' in fields_set and payload.title is not None:
+        component.title = payload.title.strip()
+    if 'amount_minor' in fields_set:
+        component.amount_minor = payload.amount_minor
+    if 'rate_minor' in fields_set:
+        component.rate_minor = payload.rate_minor
+    if 'percent_bps' in fields_set:
+        component.percent_bps = payload.percent_bps
+    if 'department_id' in fields_set:
+        if payload.department_id is None:
+            component.department_id = None
+        else:
+            dep = db.execute(select(Department.id).where(Department.id == payload.department_id, Department.venue_id == venue_id)).scalar_one_or_none()
+            if dep is None:
+                raise HTTPException(status_code=400, detail="Department not found in venue")
+            component.department_id = payload.department_id
+    if 'kpi_metric_id' in fields_set:
+        if payload.kpi_metric_id is None:
+            component.kpi_metric_id = None
+        else:
+            kpi = db.execute(select(KpiMetric.id).where(KpiMetric.id == payload.kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
+            if kpi is None:
+                raise HTTPException(status_code=400, detail="KPI metric not found in venue")
+            component.kpi_metric_id = payload.kpi_metric_id
+    if 'threshold_value' in fields_set:
+        component.threshold_value = payload.threshold_value
+    if 'steps_json' in fields_set:
+        component.steps_json = json.dumps(payload.steps_json, ensure_ascii=False) if payload.steps_json is not None else None
+    if 'sort_order' in fields_set and payload.sort_order is not None:
+        component.sort_order = payload.sort_order
+    if 'is_active' in fields_set and payload.is_active is not None:
+        component.is_active = payload.is_active
+    component.updated_at = datetime.utcnow()
+    db.commit()
+    return _serialize_pay_component(component)
+
+
+@router.delete("/{venue_id}/pay-components/{component_id}")
+def delete_pay_component(
+    venue_id: int,
+    component_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
+
+    component = _get_pay_component_or_404(db, venue_id=venue_id, component_id=component_id)
+    db.delete(component)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{venue_id}/payroll/calculate")
+def calculate_payroll(
+    venue_id: int,
+    payload: PayrollCalculateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_payroll_calculate(db, venue_id=venue_id, user=user)
+
+    try:
+        calculate_payroll_for_month(
+            db=db,
+            venue_id=venue_id,
+            month=payload.month,
+            calculated_by_user_id=user.id,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    db.commit()
+    return _load_payroll_payload(db, venue_id=venue_id, month=payload.month)
+
+
+@router.get("/{venue_id}/payroll")
+def get_payroll(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_payroll_view(db, venue_id=venue_id, user=user)
+
+    try:
+        return _load_payroll_payload(db, venue_id=venue_id, month=month)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ---------- Daily reports ----------
