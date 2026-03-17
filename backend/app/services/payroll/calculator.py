@@ -25,12 +25,14 @@ PAY_COMPONENT_TYPES = {
 class PayrollMemberMetrics:
     minutes_total: int = 0
     shifts_count: int = 0
+    worked_dates: set[date] = field(default_factory=set)
 
 
 @dataclass
 class PayrollRevenueMetrics:
     total_revenue_minor: int = 0
     department_revenue_minor: dict[int, int] = field(default_factory=dict)
+    department_revenue_by_date_minor: dict[int, dict[date, int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,6 +79,27 @@ def interval_duration_minutes(start_time: time, end_time: time) -> int:
     return int((end_dt - start_dt).total_seconds() // 60)
 
 
+def _rub_to_minor(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, str):
+        normalized = value.strip().replace(",", ".")
+        if not normalized:
+            return None
+        try:
+            num = float(normalized)
+        except Exception:
+            return None
+    else:
+        try:
+            num = float(value)
+        except Exception:
+            return None
+    if num < 0:
+        return None
+    return int(round(num * 100))
+
+
 def _parse_steps_json(raw: object) -> list[dict]:
     if raw is None:
         return []
@@ -106,6 +129,8 @@ def _parse_steps_json(raw: object) -> list[dict]:
             continue
         threshold_value = item.get("threshold_value")
         amount_minor = item.get("amount_minor")
+        if amount_minor in (None, ""):
+            amount_minor = _rub_to_minor(item.get("amount_rub"))
         try:
             threshold_value = int(threshold_value)
             amount_minor = int(amount_minor)
@@ -255,6 +280,7 @@ def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month
         select(
             ShiftAssignment.member_user_id,
             Shift.id.label("shift_id"),
+            Shift.date.label("shift_date"),
             ShiftInterval.start_time,
             ShiftInterval.end_time,
         )
@@ -276,6 +302,7 @@ def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month
         member_user_id = int(row.member_user_id)
         metrics = out.setdefault(member_user_id, PayrollMemberMetrics())
         metrics.minutes_total += interval_duration_minutes(row.start_time, row.end_time)
+        metrics.worked_dates.add(row.shift_date)
         shift_sets.setdefault(member_user_id, set()).add(int(row.shift_id))
 
     for member_user_id, shift_ids in shift_sets.items():
@@ -317,9 +344,33 @@ def _load_revenue_metrics(db: Session, *, venue_id: int, month_start: date, mont
     for row in dept_rows:
         department_revenue_minor[int(row.ref_id)] = int(row.amount or 0) * 100
 
+    dept_daily_rows = db.execute(
+        select(
+            DailyReport.date.label("report_date"),
+            DailyReportValue.ref_id,
+            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
+        )
+        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == "CLOSED",
+            DailyReport.date >= month_start,
+            DailyReport.date < month_end_excl,
+            DailyReportValue.kind == "DEPT",
+        )
+        .group_by(DailyReport.date, DailyReportValue.ref_id)
+    ).all()
+
+    department_revenue_by_date_minor: dict[int, dict[date, int]] = {}
+    for row in dept_daily_rows:
+        dep_id = int(row.ref_id)
+        by_date = department_revenue_by_date_minor.setdefault(dep_id, {})
+        by_date[row.report_date] = int(row.amount or 0) * 100
+
     return PayrollRevenueMetrics(
         total_revenue_minor=total_revenue_minor,
         department_revenue_minor=department_revenue_minor,
+        department_revenue_by_date_minor=department_revenue_by_date_minor,
     )
 
 
@@ -345,6 +396,15 @@ def _load_kpi_metrics(db: Session, *, venue_id: int, month_start: date, month_en
     for row in rows:
         totals_by_metric_id[int(row.ref_id)] = int(row.value_total or 0)
     return PayrollKpiMetrics(totals_by_metric_id=totals_by_metric_id)
+
+
+def _sum_department_revenue_for_worked_dates(
+    department_revenue_by_date_minor: dict[date, int] | None,
+    worked_dates: set[date] | None,
+) -> int:
+    if not department_revenue_by_date_minor or not worked_dates:
+        return 0
+    return int(sum(int(department_revenue_by_date_minor.get(day) or 0) for day in worked_dates))
 
 
 def calculate_payroll_for_month(
@@ -424,8 +484,12 @@ def calculate_payroll_for_month(
         for component in components:
             component_type = str(component.component_type or "").strip().upper()
             department_base_minor = 0
+            worked_dates_sorted = sorted(metrics.worked_dates)
             if component.department_id is not None:
-                department_base_minor = int(revenue_metrics.department_revenue_minor.get(int(component.department_id), 0))
+                department_base_minor = _sum_department_revenue_for_worked_dates(
+                    revenue_metrics.department_revenue_by_date_minor.get(int(component.department_id), {}),
+                    metrics.worked_dates,
+                )
             kpi_metric_value = 0
             if component.kpi_metric_id is not None:
                 kpi_metric_value = int(kpi_metrics.totals_by_metric_id.get(int(component.kpi_metric_id), 0))
@@ -454,6 +518,8 @@ def calculate_payroll_for_month(
                 breakdown_item["department_id"] = int(component.department_id) if component.department_id is not None else None
                 breakdown_item["department_title"] = component.department.title if getattr(component, "department", None) is not None else None
                 breakdown_item["base_amount_minor"] = int(department_base_minor)
+                breakdown_item["worked_dates_count"] = len(worked_dates_sorted)
+                breakdown_item["worked_dates"] = [day.isoformat() for day in worked_dates_sorted]
             elif component_type == "KPI_BONUS":
                 kpi_decision = calculate_kpi_bonus(component, kpi_metric_value=int(kpi_metric_value))
                 breakdown_item["kpi_metric_id"] = int(component.kpi_metric_id) if component.kpi_metric_id is not None else None
@@ -474,6 +540,8 @@ def calculate_payroll_for_month(
                 "minutes_total": int(metrics.minutes_total),
                 "hours_total": round(int(metrics.minutes_total) / 60.0, 2),
                 "shifts_count": int(metrics.shifts_count),
+                "worked_dates_count": len(sorted(metrics.worked_dates)),
+                "worked_dates": [day.isoformat() for day in sorted(metrics.worked_dates)],
             },
             "revenue_metrics": {
                 "total_revenue_minor": int(revenue_metrics.total_revenue_minor),

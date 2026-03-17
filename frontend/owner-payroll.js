@@ -77,7 +77,9 @@ function breakdownComponentMeta(component) {
   }
   if (type === "PERCENT_DEPARTMENT_REVENUE") {
     const depTitle = component?.department_title ? ` · ${component.department_title}` : "";
-    return `${label} · ${fmtPercentBps(component?.percent_bps)}${depTitle} · база ${fmtMoneyMinor(component?.base_amount_minor || 0)}`;
+    const workedDays = Number(component?.worked_dates_count || 0);
+    const workedDaysLabel = workedDays ? ` · отраб. дней ${workedDays}` : "";
+    return `${label} · ${fmtPercentBps(component?.percent_bps)}${depTitle} · база ${fmtMoneyMinor(component?.base_amount_minor || 0)}${workedDaysLabel}`;
   }
   if (type === "KPI_BONUS") {
     const metricTitle = component?.kpi_metric_title ? ` · ${component.kpi_metric_title}` : "";
@@ -234,7 +236,7 @@ function renderLines() {
           <b class="expense-row__title">${esc(memberName(line.member))}</b>
           ${line.pay_profile_title ? `<span class="badge">${esc(line.pay_profile_title)}</span>` : ""}
         </div>
-        <div class="mono mt-6">Часы: ${esc(metrics.hours_total ?? 0)} · Смены: ${esc(metrics.shifts_count ?? 0)}</div>
+        <div class="mono mt-6">Часы: ${esc(metrics.hours_total ?? 0)} · Смены: ${esc(metrics.shifts_count ?? 0)}${Number(metrics.worked_dates_count || 0) ? ` · Дней: ${esc(metrics.worked_dates_count)}` : ""}</div>
         <details class="mt-12 payroll-breakdown">
           <summary>Показать разбор</summary>
           <div class="payroll-breakdown__body mt-8">

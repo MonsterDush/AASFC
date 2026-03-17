@@ -73,6 +73,21 @@ function percentInputFromBps(bps) {
   return Number.isFinite(value) ? String(value).replace(/\.0+$/, "") : "";
 }
 
+function moneyInputFromMinor(minor) {
+  if (minor == null || minor === "") return "";
+  const value = Number(minor) / 100;
+  if (!Number.isFinite(value)) return "";
+  return String(value).replace(/\.0+$/, "");
+}
+
+function parseMoneyRubToMinor(value) {
+  const normalized = String(value || "").trim().replace(/\s+/g, "").replace(",", ".");
+  if (!normalized) return null;
+  const num = Number(normalized);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num * 100);
+}
+
 function parsePercentInputToBps(value) {
   const normalized = String(value || "").trim().replace(",", ".");
   if (!normalized) return null;
@@ -102,7 +117,11 @@ function kpiMetricTitleFor(item) {
 function stepsTextareaValue(steps) {
   if (!Array.isArray(steps) || !steps.length) return "";
   try {
-    return JSON.stringify(steps, null, 2);
+    const normalized = steps.map((step) => ({
+      ...step,
+      amount_rub: moneyInputFromMinor(step?.amount_minor),
+    })).map(({ amount_minor, ...rest }) => rest);
+    return JSON.stringify(normalized, null, 2);
   } catch {
     return "";
   }
@@ -114,7 +133,16 @@ function parseStepsInput(raw) {
   try {
     const value = JSON.parse(text);
     if (!Array.isArray(value)) return null;
-    return value;
+    return value.map((step) => {
+      if (!step || typeof step !== "object") return step;
+      const next = { ...step };
+      if (next.amount_minor == null && next.amount_rub != null) {
+        const parsed = parseMoneyRubToMinor(next.amount_rub);
+        if (parsed != null) next.amount_minor = parsed;
+      }
+      delete next.amount_rub;
+      return next;
+    });
   } catch {
     return false;
   }
@@ -278,7 +306,7 @@ function componentSubtitle(item) {
   if (type === "PERCENT_TOTAL_REVENUE") return `${COMPONENT_LABELS[type]} · ${fmtPercentBps(item.percent_bps)}`;
   if (type === "PERCENT_DEPARTMENT_REVENUE") {
     const depTitle = departmentTitleFor(item);
-    return `${COMPONENT_LABELS[type]} · ${fmtPercentBps(item.percent_bps)}${depTitle ? ` · ${depTitle}` : ""}`;
+    return `${COMPONENT_LABELS[type]} · ${fmtPercentBps(item.percent_bps)}${depTitle ? ` · ${depTitle}` : ""} · по отраб. дням`;
   }
   if (type === "KPI_BONUS") {
     const metricTitle = kpiMetricTitleFor(item);
@@ -450,12 +478,12 @@ function componentForm({ mode, item }) {
         <input id="f_title" placeholder="Оклад" value="${esc(it.title || "")}" />
       </label>
       <label id="f_amount_wrap">
-        <span id="f_amount_label">Сумма, коп.</span>
-        <input id="f_amount_minor" inputmode="numeric" placeholder="0" value="${esc(it.amount_minor ?? "")}" />
+        <span id="f_amount_label">Сумма, ₽</span>
+        <input id="f_amount_minor" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(it.amount_minor))}" />
       </label>
       <label id="f_rate_wrap">
-        <span id="f_rate_label">Ставка, коп. / час</span>
-        <input id="f_rate_minor" inputmode="numeric" placeholder="0" value="${esc(it.rate_minor ?? "")}" />
+        <span id="f_rate_label">Ставка, ₽ / час</span>
+        <input id="f_rate_minor" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(it.rate_minor))}" />
       </label>
       <label id="f_percent_wrap">
         <span id="f_percent_label">Процент</span>
@@ -493,9 +521,9 @@ function componentForm({ mode, item }) {
       </label>
       <label id="f_steps_wrap">
         <span>Ступени бонуса (JSON, опционально)</span>
-        <textarea id="f_steps_json" rows="6" placeholder='[{"threshold_value":10,"amount_minor":50000},{"threshold_value":20,"amount_minor":100000}]'>${esc(stepsTextareaValue(it.steps))}</textarea>
+        <textarea id="f_steps_json" rows="6" placeholder='[{"threshold_value":10,"amount_rub":500},{"threshold_value":20,"amount_rub":1000}]'>${esc(stepsTextareaValue(it.steps))}</textarea>
       </label>
-      <div id="f_steps_hint" class="muted">Если заполнены ступени, будет выбрана максимальная подходящая ступень. Если оставить пусто — сработает обычный порог и сумма.</div>
+      <div id="f_steps_hint" class="muted">Если заполнены ступени, будет выбрана максимальная подходящая ступень. Суммы в JSON указывай в рублях через поле amount_rub. Если оставить пусто — сработает обычный порог и сумма.</div>
       <label>
         <span>Порядок</span>
         <input id="f_sort_order" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
@@ -536,13 +564,13 @@ function syncComponentFields() {
 
   if (type === "SALARY_HOURLY") {
     if (rateWrap) rateWrap.style.display = "grid";
-    if (rateLabel) rateLabel.textContent = "Ставка, коп. / час";
+    if (rateLabel) rateLabel.textContent = "Ставка, ₽ / час";
     return;
   }
 
   if (type === "SALARY_FIXED_MONTH" || type === "SALARY_PER_SHIFT") {
     if (amountWrap) amountWrap.style.display = "grid";
-    if (amountLabel) amountLabel.textContent = type === "SALARY_PER_SHIFT" ? "Сумма, коп. / смена" : "Сумма, коп. / месяц";
+    if (amountLabel) amountLabel.textContent = type === "SALARY_PER_SHIFT" ? "Сумма, ₽ / смена" : "Сумма, ₽ / месяц";
     return;
   }
 
@@ -562,7 +590,7 @@ function syncComponentFields() {
 
   if (type === "KPI_BONUS") {
     if (amountWrap) amountWrap.style.display = "grid";
-    if (amountLabel) amountLabel.textContent = "Бонус, коп.";
+    if (amountLabel) amountLabel.textContent = "Бонус, ₽";
     if (kpiMetricWrap) kpiMetricWrap.style.display = "grid";
     if (kpiMetricHint) kpiMetricHint.style.display = "";
     if (thresholdWrap) thresholdWrap.style.display = "grid";
@@ -618,16 +646,24 @@ function openComponentEditor({ mode, item = null }) {
 
     if (componentType === "SALARY_HOURLY") {
       if (!rateMinorRaw) {
-        toast("Укажи почасовую ставку в копейках", "warn");
+        toast("Укажи почасовую ставку в рублях", "warn");
         return;
       }
-      payload.rate_minor = Number(rateMinorRaw || 0);
+      payload.rate_minor = parseMoneyRubToMinor(rateMinorRaw);
+      if (payload.rate_minor === null) {
+        toast("Некорректная почасовая ставка", "warn");
+        return;
+      }
     } else if (componentType === "SALARY_FIXED_MONTH" || componentType === "SALARY_PER_SHIFT") {
       if (!amountMinorRaw) {
-        toast("Укажи сумму в копейках", "warn");
+        toast("Укажи сумму в рублях", "warn");
         return;
       }
-      payload.amount_minor = Number(amountMinorRaw || 0);
+      payload.amount_minor = parseMoneyRubToMinor(amountMinorRaw);
+      if (payload.amount_minor === null) {
+        toast("Некорректная сумма", "warn");
+        return;
+      }
     } else if (componentType === "PERCENT_TOTAL_REVENUE") {
       const percentBps = parsePercentInputToBps(percentRaw);
       if (percentBps === null) {
@@ -663,10 +699,14 @@ function openComponentEditor({ mode, item = null }) {
         payload.steps_json = parsedSteps;
       } else {
         if (!amountMinorRaw) {
-          toast("Укажи бонус в копейках или заполни ступени", "warn");
+          toast("Укажи бонус в рублях или заполни ступени", "warn");
           return;
         }
-        payload.amount_minor = Number(amountMinorRaw || 0);
+        payload.amount_minor = parseMoneyRubToMinor(amountMinorRaw);
+        if (payload.amount_minor === null) {
+          toast("Некорректный бонус", "warn");
+          return;
+        }
       }
     }
 
