@@ -1,5 +1,7 @@
 from .enums import SystemRole, VenueRole
 from .user import User
+from .auth_identity import AuthIdentity
+from .phone_otp_challenge import PhoneOtpChallenge
 from .venue import Venue
 from .venue_member import VenueMember
 from .permission import Permission
@@ -41,6 +43,8 @@ __all__ = [
     "SystemRole",
     "VenueRole",
     "User",
+    "AuthIdentity",
+    "PhoneOtpChallenge",
     "Venue",
     "VenueMember",
     "Permission",

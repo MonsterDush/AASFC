@@ -1,6 +1,30 @@
 import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
 
 export const API_BASE = "https://api-dev.axelio.ru";
+export const AUTH_PAGE = "/auth.html";
+
+function isBrowser() {
+  return typeof window !== "undefined" && typeof location !== "undefined";
+}
+
+export function isAuthPage() {
+  return isBrowser() && /\/auth\.html$/i.test(location.pathname || "");
+}
+
+export function buildAuthUrl(next = "") {
+  const url = new URL(AUTH_PAGE, location.origin);
+  const normalizedNext = String(next || "").trim();
+  if (normalizedNext && !/\/auth\.html(\?|$)/i.test(normalizedNext)) {
+    url.searchParams.set("next", normalizedNext);
+  }
+  return url.toString();
+}
+
+export function redirectToAuth(next = "") {
+  if (!isBrowser() || isAuthPage()) return;
+  const current = next || `${location.pathname || "/"}${location.search || ""}${location.hash || ""}`;
+  location.replace(buildAuthUrl(current));
+}
 
 // ------------------------------
 // i18n (RU/EN) MVP
@@ -285,6 +309,8 @@ export async function api(path, opts = {}) {
   const isForm = (typeof FormData !== "undefined") && (body instanceof FormData);
   if (isPlainObject(body)) body = JSON.stringify(body);
 
+  const handle401 = opts.handle401 !== false;
+
   // NOTE: Permission checks rely on fresh /me/* responses.
   // Some browsers may cache credentialed GET requests aggressively in certain flows.
   // Default to no-store, allow overriding via opts.cache when needed.
@@ -315,6 +341,11 @@ export async function api(path, opts = {}) {
     err.status = r.status;
     err.data = data;
     err.url = r.url;
+
+    if (r.status === 401 && handle401) {
+      redirectToAuth();
+    }
+
     throw err;
   }
 
@@ -383,28 +414,41 @@ export async function downloadFile(path, { filenameFallback = "download", opts =
   return { filename };
 }
 
-export async function ensureLogin({ silent = true } = {}) {
+export async function ensureLogin({ silent = true, redirectOnFail = false } = {}) {
+  try {
+    const me = await api("/me", { handle401: false });
+    return { ok: true, data: me, source: "cookie" };
+  } catch (e) {
+    if (e?.status && e.status !== 401) {
+      if (!silent) toast(e?.message || "Ошибка авторизации", "err");
+      return { ok: false, status: e?.status, data: e?.data, message: e?.message };
+    }
+  }
+
   const w = wa();
   const initData = w?.initData || "";
 
   if (!initData) {
-    if (!silent) toast("Нет initData. Открой через Telegram Mini App.", "warn");
+    if (!silent) toast("Нужна авторизация: Telegram или телефон.", "warn");
+    if (redirectOnFail) redirectToAuth();
     return { ok: false, reason: "NO_INITDATA" };
   }
 
   try {
     const out = await api("/auth/telegram", {
       method: "POST",
-      body: { initData }, // <-- ключ initData
+      body: { initData },
+      handle401: false,
     });
 
     if (!silent) toast("Вход выполнен", "ok");
-    return { ok: true, data: out };
+    return { ok: true, data: out, source: "telegram" };
   } catch (e) {
     if (!silent) {
       const msg = e?.message || "Ошибка входа";
       toast(msg, "err");
     }
+    if (redirectOnFail) redirectToAuth();
     return {
       ok: false,
       status: e?.status,
@@ -412,6 +456,29 @@ export async function ensureLogin({ silent = true } = {}) {
       message: e?.message,
     };
   }
+}
+
+export async function requestPhoneCode(phone) {
+  return api("/auth/phone/request-code", {
+    method: "POST",
+    body: { phone },
+    handle401: false,
+  });
+}
+
+export async function verifyPhoneCode(phone, code) {
+  return api("/auth/phone/verify-code", {
+    method: "POST",
+    body: { phone, code },
+    handle401: false,
+  });
+}
+
+export async function logout() {
+  return api("/auth/logout", {
+    method: "POST",
+    handle401: false,
+  });
 }
 
 export function confirmModal({ title, text, confirmText = "Подтвердить", danger = false }) {

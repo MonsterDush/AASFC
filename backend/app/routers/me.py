@@ -9,6 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
+from app.auth.phone_auth import get_user_auth_methods, get_user_phone
 from app.core.db import get_db
 from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
 from app.core.permissions_registry import PERMISSIONS as PERMISSIONS_REGISTRY
@@ -75,7 +76,10 @@ class NotificationSettingsIn(BaseModel):
     notify_shifts: bool | None = None
 
 @router.get("/me")
-def me(user: User = Depends(get_current_user)):
+def me(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     return {
         "id": user.id,
         "tg_user_id": user.tg_user_id,
@@ -86,6 +90,8 @@ def me(user: User = Depends(get_current_user)):
         "notify_enabled": user.notify_enabled,
         "notify_adjustments": user.notify_adjustments,
         "notify_shifts": user.notify_shifts,
+        "phone": get_user_phone(db, user_id=user.id),
+        "auth_methods": get_user_auth_methods(db, user_id=user.id),
     }
 
 

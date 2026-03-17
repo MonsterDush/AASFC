@@ -25,7 +25,17 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = True
     ACCESS_TOKEN_TTL_SECONDS: int = 60 * 60 * 24 * 7  # 7 days
 
-    SUPER_ADMIN_TG_USER_IDS: str = ""
+
+SUPER_ADMIN_TG_USER_IDS: str = ""
+
+# Phone auth / OTP
+PHONE_AUTH_PROVIDER: str = "debug"
+PHONE_AUTH_DEBUG_REVEAL_CODE: bool = True
+PHONE_AUTH_DEFAULT_COUNTRY_CODE: str = "7"
+PHONE_AUTH_CODE_LENGTH: int = 6
+PHONE_AUTH_CODE_TTL_SECONDS: int = 60 * 5
+PHONE_AUTH_RESEND_COOLDOWN_SECONDS: int = 30
+PHONE_AUTH_MAX_ATTEMPTS: int = 5
 
     def super_admin_ids(self) -> set[int]:
         raw = (self.SUPER_ADMIN_TG_USER_IDS or "").strip()

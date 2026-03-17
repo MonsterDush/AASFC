@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Авторизация</title>
+</head>
+<body>
+  <div class="container auth-shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Axelio</b>
+          <div class="muted">вход через Telegram или номер телефона</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>гость</div>
+    </div>
+
+    <div class="auth-grid">
+      <div class="card">
+        <b>Вход по телефону</b>
+        <div class="muted mt-8">Подходит для входа из браузера и будущего standalone-приложения.</div>
+
+        <label class="auth-label mt-16" for="phoneInput">Номер телефона</label>
+        <input id="phoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
+
+        <div class="row mt-12">
+          <button class="btn primary" id="btnRequestCode">Получить код</button>
+        </div>
+
+        <div id="phoneMeta" class="muted mono mt-8"></div>
+
+        <div class="auth-divider mt-16"></div>
+
+        <label class="auth-label mt-16" for="codeInput">Код из SMS</label>
+        <input id="codeInput" placeholder="6 цифр" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+
+        <div class="row mt-12">
+          <button class="btn primary" id="btnVerifyCode">Войти по коду</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <b>Вход через Telegram</b>
+        <div class="muted mt-8">Старый способ входа сохраняется. Уже существующие пользователи не теряются.</div>
+
+        <div class="itemcard mt-16">
+          <div class="muted" id="telegramState">Проверяю доступность Telegram Mini App…</div>
+          <div class="row mt-12">
+            <button class="btn" id="btnTelegramLogin">Войти через Telegram</button>
+          </div>
+        </div>
+
+        <div class="itemcard mt-16">
+          <b>Что дальше</b>
+          <div class="muted mt-8">
+            После входа тебя вернёт на страницу, с которой запрашивалась авторизация.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+
+  <script type="module">
+    import {
+      applyTelegramTheme,
+      ensureLogin,
+      requestPhoneCode,
+      verifyPhoneCode,
+      redirectToAuth,
+      toast,
+      wa,
+    } from "/app.js";
+
+    applyTelegramTheme();
+
+    const params = new URLSearchParams(location.search);
+    const next = params.get("next") || "/";
+
+    function getSafeNext() {
+      if (!next || /\/auth\.html(\?|$)/i.test(next)) return "/";
+      return next;
+    }
+
+    function goNext() {
+      location.replace(getSafeNext());
+    }
+
+    async function initExistingSession() {
+      const login = await ensureLogin({ silent: true, redirectOnFail: false });
+      if (login.ok) {
+        goNext();
+        return true;
+      }
+      return false;
+    }
+
+    const phoneInput = document.getElementById("phoneInput");
+    const codeInput = document.getElementById("codeInput");
+    const phoneMeta = document.getElementById("phoneMeta");
+    const telegramState = document.getElementById("telegramState");
+    const btnTelegramLogin = document.getElementById("btnTelegramLogin");
+
+    function setTelegramState() {
+      const initData = wa()?.initData || "";
+      if (initData) {
+        telegramState.textContent = "Telegram Mini App доступен. Можно войти текущим способом.";
+        btnTelegramLogin.classList.add("primary");
+        btnTelegramLogin.disabled = false;
+      } else {
+        telegramState.textContent = "Сейчас ты не внутри Telegram Mini App. Для входа используй телефон или открой приложение из Telegram.";
+        btnTelegramLogin.disabled = true;
+      }
+    }
+
+    document.getElementById("btnRequestCode").onclick = async () => {
+      try {
+        const out = await requestPhoneCode(phoneInput.value.trim());
+        phoneMeta.textContent = out?.debug_code
+          ? `Код отправлен. dev_code=${out.debug_code}`
+          : "Код отправлен. Проверь SMS.";
+        toast("Код отправлен", "ok");
+        codeInput.focus();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось отправить код", "err");
+      }
+    };
+
+    document.getElementById("btnVerifyCode").onclick = async () => {
+      try {
+        await verifyPhoneCode(phoneInput.value.trim(), codeInput.value.trim());
+        toast("Вход выполнен", "ok");
+        goNext();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось подтвердить код", "err");
+      }
+    };
+
+    btnTelegramLogin.onclick = async () => {
+      const login = await ensureLogin({ silent: false, redirectOnFail: false });
+      if (login.ok) goNext();
+    };
+
+    if (!(await initExistingSession())) {
+      setTelegramState();
+      if (params.get("reason") === "unauthorized") {
+        toast("Сессия истекла. Войди заново.", "warn");
+      }
+    }
+  </script>
+</body>
+</html>

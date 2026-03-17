@@ -18,14 +18,17 @@
     <div class="card">
       <b>Не удалось загрузить приложение</b>
       <div class="muted mt-8">
-        Пожалуйста, откройте Mini App через Telegram и попробуйте ещё раз.
+        Нужна авторизация. Если ты не в Telegram, войди по номеру телефона.
+      </div>
+      <div class="mt-12">
+        <a class="btn primary" href="/auth.html">Открыть авторизацию</a>
       </div>
     </div>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
  <script type="module">
-  import { applyTelegramTheme, ensureLogin, api, toast, wa, setActiveVenueId } from "/app.js";
+  import { applyTelegramTheme, ensureLogin, api, toast, wa, setActiveVenueId, buildAuthUrl } from "/app.js";
 
   const splash = document.getElementById("splash");
   const fallback = document.getElementById("fallback");
@@ -47,14 +50,12 @@
   (async () => {
     try {
       const okInit = await waitInitData();
-      if (!okInit) {
-        hideSplash();
-        fallback.style.display = "block";
-        toast("Не удалось получить initData. Откройте Mini App через Telegram.", "err");
+      const login = await ensureLogin({ silent: true, redirectOnFail: false });
+
+      if (!login.ok && !okInit) {
+        location.replace(buildAuthUrl(`${location.pathname}${location.search}${location.hash}`));
         return;
       }
-
-      const login = await ensureLogin({ silent: true });
 
       if (!login.ok) {
         hideSplash();
