@@ -119,7 +119,7 @@ function renderShell() {
         <div class="logo"></div>
         <div class="title">
           <b id="title">Начисления</b>
-          <div class="muted" id="subtitle">расчёт зарплаты за месяц</div>
+          <div class="muted" id="subtitle">автопересчёт зарплаты по закрытым сменам и отчётам</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -129,11 +129,11 @@ function renderShell() {
       <div class="revenue-toolbar__actions">
         <div class="revenue-toolbar__caption">
           <b>Расчёт зарплаты</b>
-          <div class="muted mt-6">Считается по активным назначениям профилей. Поддержаны ставки, проценты и KPI-бонусы по закрытым отчётам.</div>
+          <div class="muted mt-6">Считается по активным назначениям профилей. Поддержаны ставки, проценты и KPI-бонусы по закрытым отчётам. Пересчитывается автоматически после закрытия/переоткрытия отчёта и при изменении назначений на закрытую дату.</div>
         </div>
         <div class="pickers pickers--revenue">
           <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
-          <button class="btn primary" id="btnCalculate">Рассчитать</button>
+          <button class="btn primary" id="btnCalculate">Пересчитать</button>
           <a class="btn" id="openProfilesBtn" href="#">Профили</a>
         </div>
       </div>
@@ -219,7 +219,7 @@ function renderLines() {
 
   const lines = Array.isArray(data.lines) ? data.lines : [];
   if (!lines.length) {
-    linesList.innerHTML = `<div class="muted">За выбранный месяц начислений пока нет. Нажми «Рассчитать», если профили уже назначены.</div>`;
+    linesList.innerHTML = `<div class="muted">За выбранный месяц начислений пока нет. После первого закрытого отчёта и назначенных профилей расчёт появится автоматически; кнопку можно использовать для ручного пересчёта.</div>`;
     return;
   }
 

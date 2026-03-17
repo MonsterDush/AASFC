@@ -1494,7 +1494,8 @@ def archive_venue(
     if not venue.is_archived:
         venue.is_archived = True
         venue.archived_at = datetime.now(timezone.utc)
-        db.commit()
+
+    db.commit()
 
     return {"ok": True}
 
@@ -1981,6 +1982,46 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
     ]
     return payload
 
+
+
+def _has_closed_report_for_date(db: Session, *, venue_id: int, target_date: date) -> bool:
+    report_id = db.execute(
+        select(DailyReport.id).where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.date == target_date,
+            DailyReport.status == "CLOSED",
+        )
+    ).scalar_one_or_none()
+    return report_id is not None
+
+
+def _recalculate_payroll_for_dates(
+    db: Session,
+    *,
+    venue_id: int,
+    target_dates: list[date] | tuple[date, ...],
+    calculated_by_user_id: int | None = None,
+    force: bool = False,
+) -> list[str]:
+    months_done: list[str] = []
+    seen: set[str] = set()
+    for target_date in target_dates:
+        if target_date is None:
+            continue
+        month = target_date.strftime("%Y-%m")
+        if month in seen:
+            continue
+        if not force and not _has_closed_report_for_date(db, venue_id=venue_id, target_date=target_date):
+            continue
+        calculate_payroll_for_month(
+            db=db,
+            venue_id=int(venue_id),
+            month=month,
+            calculated_by_user_id=int(calculated_by_user_id) if calculated_by_user_id is not None else None,
+        )
+        seen.add(month)
+        months_done.append(month)
+    return months_done
 
 
 def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
@@ -2928,6 +2969,13 @@ def upsert_daily_report(
     db.flush()
     if str(obj.status or "").upper() == "CLOSED":
         rebuild_revenue_entries_for_report(db=db, report=obj)
+        _recalculate_payroll_for_dates(
+            db,
+            venue_id=venue_id,
+            target_dates=[obj.date],
+            calculated_by_user_id=user.id,
+            force=True,
+        )
 
     db.commit()
     db.refresh(obj)
@@ -3144,6 +3192,13 @@ def close_daily_report(
 
     rebuild_revenue_entries_for_report(db=db, report=rep, values=values)
     sync_daily_recurring_accruals_for_date(db=db, venue_id=venue_id, target_date=report_date)
+    _recalculate_payroll_for_dates(
+        db,
+        venue_id=venue_id,
+        target_dates=[report_date],
+        calculated_by_user_id=user.id,
+        force=True,
+    )
 
     db.commit()
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
@@ -3181,6 +3236,13 @@ def reopen_daily_report(
     delete_revenue_entries_for_report(db=db, report_id=rep.id)
     db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
     delete_daily_recurring_accruals_for_date(db=db, venue_id=venue_id, target_date=report_date)
+    _recalculate_payroll_for_dates(
+        db,
+        venue_id=venue_id,
+        target_dates=[report_date],
+        calculated_by_user_id=user.id,
+        force=True,
+    )
     db.commit()
     return {"ok": True, "status": "DRAFT"}
 
@@ -4555,6 +4617,16 @@ def remove_member(
 
     vm.is_active = False
 
+    affected_shift_dates = db.execute(
+        select(Shift.date)
+        .join(ShiftAssignment, ShiftAssignment.shift_id == Shift.id)
+        .where(
+            Shift.venue_id == venue_id,
+            ShiftAssignment.member_user_id == member_user_id,
+        )
+        .distinct()
+    ).scalars().all()
+
     # Deactivate member's position (if exists) and remove their assignments in this venue
     venue_shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
 
@@ -4572,6 +4644,13 @@ def remove_member(
             VenuePosition.venue_id == venue_id,
             VenuePosition.member_user_id == member_user_id,
         )
+    )
+
+    _recalculate_payroll_for_dates(
+        db,
+        venue_id=venue_id,
+        target_dates=list(affected_shift_dates),
+        calculated_by_user_id=user.id,
     )
 
     db.commit()
@@ -4622,6 +4701,16 @@ def leave_venue(
     membership.is_active = False
     db.add(membership)
 
+    affected_shift_dates = db.execute(
+        select(Shift.date)
+        .join(ShiftAssignment, ShiftAssignment.shift_id == Shift.id)
+        .where(
+            Shift.venue_id == venue_id,
+            ShiftAssignment.member_user_id == current_user.id,
+        )
+        .distinct()
+    ).scalars().all()
+
     # Deactivate user's position (if exists) and remove their assignments in this venue
     venue_shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
 
@@ -4639,6 +4728,13 @@ def leave_venue(
             VenuePosition.venue_id == venue_id,
             VenuePosition.member_user_id == current_user.id,
         )
+    )
+
+    _recalculate_payroll_for_dates(
+        db,
+        venue_id=venue_id,
+        target_dates=list(affected_shift_dates),
+        calculated_by_user_id=current_user.id,
     )
 
     db.commit()
@@ -4973,8 +5069,10 @@ def update_shift(
     if obj is None:
         raise HTTPException(status_code=404, detail="Shift not found")
 
+    previous_date = obj.date
     date_changed = payload.date is not None and payload.date != obj.date
     interval_changed = payload.interval_id is not None and payload.interval_id != obj.interval_id
+    active_changed = payload.is_active is not None and payload.is_active != obj.is_active
 
     if payload.date is not None:
         obj.date = payload.date
@@ -5000,6 +5098,13 @@ def update_shift(
                 .where(ShiftAssignment.shift_id == shift_id)
                 .values(reminder_sent_at=None)
             )
+        if date_changed or interval_changed or active_changed:
+            _recalculate_payroll_for_dates(
+                db,
+                venue_id=venue_id,
+                target_dates=[previous_date, obj.date],
+                calculated_by_user_id=user.id,
+            )
         db.commit()
     except Exception:
         db.rollback()
@@ -5023,7 +5128,14 @@ def delete_shift(
     if obj is None:
         raise HTTPException(status_code=404, detail="Shift not found")
 
+    shift_date = obj.date
     obj.is_active = False
+    _recalculate_payroll_for_dates(
+        db,
+        venue_id=venue_id,
+        target_dates=[shift_date],
+        calculated_by_user_id=user.id,
+    )
     db.commit()
     return {"ok": True}
 
@@ -5139,6 +5251,12 @@ def add_shift_assignment(
         venue_position_id=pos.id,
     )
     db.add(a)
+    _recalculate_payroll_for_dates(
+        db,
+        venue_id=venue_id,
+        target_dates=[shift.date],
+        calculated_by_user_id=user.id,
+    )
     db.commit()
     db.refresh(a)
     return {"id": a.id}
@@ -5165,7 +5283,17 @@ def remove_shift_assignment(
     if a is None:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
+    shift_date = db.execute(
+        select(Shift.date).where(Shift.id == shift_id, Shift.venue_id == venue_id)
+    ).scalar_one_or_none()
     db.delete(a)
+    if shift_date is not None:
+        _recalculate_payroll_for_dates(
+            db,
+            venue_id=venue_id,
+            target_dates=[shift_date],
+            calculated_by_user_id=user.id,
+        )
     db.commit()
     return {"ok": True}
 
