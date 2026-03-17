@@ -449,7 +449,7 @@ function componentForm({ mode, item }) {
   `;
 }
 
-function syncComponentFieldsfunction syncComponentFields() {
+function syncComponentFields() {
   const type = String(document.getElementById("f_component_type")?.value || "SALARY_FIXED_MONTH").toUpperCase();
   const amountWrap = document.getElementById("f_amount_wrap");
   const rateWrap = document.getElementById("f_rate_wrap");
