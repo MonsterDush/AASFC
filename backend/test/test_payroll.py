@@ -38,3 +38,14 @@ class PayrollCalculationHelpersTests(TestCase):
         component = SimpleNamespace(component_type="SALARY_PER_SHIFT", amount_minor=32000, rate_minor=None)
         amount_minor = calculate_component_amount_minor(component, minutes_total=0, shifts_count=7)
         self.assertEqual(amount_minor, 224000)
+
+
+    def test_calculate_component_amount_minor_for_percent_total_revenue(self):
+        component = SimpleNamespace(component_type="PERCENT_TOTAL_REVENUE", percent_bps=750, amount_minor=None, rate_minor=None)
+        amount_minor = calculate_component_amount_minor(component, minutes_total=0, shifts_count=0, total_revenue_minor=1234567)
+        self.assertEqual(amount_minor, 92593)
+
+    def test_calculate_component_amount_minor_for_percent_department_revenue(self):
+        component = SimpleNamespace(component_type="PERCENT_DEPARTMENT_REVENUE", percent_bps=1250, department_id=3, amount_minor=None, rate_minor=None)
+        amount_minor = calculate_component_amount_minor(component, minutes_total=0, shifts_count=0, department_revenue_minor=800000)
+        self.assertEqual(amount_minor, 100000)

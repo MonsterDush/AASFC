@@ -9,6 +9,7 @@ import {
   getMe,
   getMyVenuePermissions,
   getVenueMembers,
+  getDepartments,
   getPayProfile,
   updatePayProfile,
   createPayProfileAssignment,
@@ -26,6 +27,8 @@ const COMPONENT_LABELS = {
   SALARY_FIXED_MONTH: "Оклад за месяц",
   SALARY_HOURLY: "Почасовая ставка",
   SALARY_PER_SHIFT: "Фикс за смену",
+  PERCENT_TOTAL_REVENUE: "% от общей выручки",
+  PERCENT_DEPARTMENT_REVENUE: "% от выручки департамента",
 };
 
 function esc(s) {
@@ -54,6 +57,37 @@ function fmtMoneyMinor(minor) {
   }
 }
 
+function fmtPercentBps(bps) {
+  const value = Number(bps || 0) / 100;
+  try {
+    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + "%";
+  } catch {
+    return value.toFixed(2) + "%";
+  }
+}
+
+function percentInputFromBps(bps) {
+  const value = Number(bps || 0) / 100;
+  return Number.isFinite(value) ? String(value).replace(/\.0+$/, "") : "";
+}
+
+function parsePercentInputToBps(value) {
+  const normalized = String(value || "").trim().replace(",", ".");
+  if (!normalized) return null;
+  const num = Number(normalized);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num * 100);
+}
+
+function departmentTitleFor(item) {
+  const direct = item?.department_title || item?.department?.title;
+  if (direct) return direct;
+  const depId = Number(item?.department_id || 0);
+  if (!depId) return null;
+  const found = (state.departments || []).find((d) => Number(d?.id) === depId);
+  return found?.title || `ID ${depId}`;
+}
+
 function memberName(member) {
   if (!member) return "—";
   return member.display_name || member.short_name || member.full_name || (member.tg_username ? `@${member.tg_username}` : "—");
@@ -67,6 +101,7 @@ let state = {
   can: { view: false, manage: false },
   profile: null,
   members: [],
+  departments: [],
 };
 
 function renderShell() {
@@ -102,7 +137,7 @@ function renderShell() {
             <div class="section-title"><b>Компоненты</b></div>
             <div class="section-actions"><button class="btn primary" id="btnAddComponent">+ Добавить</button></div>
           </div>
-          <div class="muted mt-6">Пока подключены только MVP-типы: оклад, почасовая ставка, фикс за смену.</div>
+          <div class="muted mt-6">Доступны: оклад, почасовая ставка, фикс за смену, % от общей выручки и % от выручки департамента.</div>
           <div id="componentsList" class="mt-12"><div class="skeleton"></div></div>
         </div>
 
@@ -207,6 +242,11 @@ function componentSubtitle(item) {
   if (type === "SALARY_FIXED_MONTH") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)}`;
   if (type === "SALARY_HOURLY") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.rate_minor)} / час`;
   if (type === "SALARY_PER_SHIFT") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)} / смена`;
+  if (type === "PERCENT_TOTAL_REVENUE") return `${COMPONENT_LABELS[type]} · ${fmtPercentBps(item.percent_bps)}`;
+  if (type === "PERCENT_DEPARTMENT_REVENUE") {
+    const depTitle = departmentTitleFor(item);
+    return `${COMPONENT_LABELS[type]} · ${fmtPercentBps(item.percent_bps)}${depTitle ? ` · ${depTitle}` : ""}`;
+  }
   return `${type} · ${fmtMoneyMinor(item.amount_minor || item.rate_minor || 0)}`;
 }
 
@@ -349,6 +389,8 @@ function componentForm({ mode, item }) {
   const it = item || {};
   const type = String(it.component_type || "SALARY_FIXED_MONTH").toUpperCase();
   const activeChecked = (mode === "edit" ? !!it.is_active : true) ? "checked" : "";
+  const hasDepartments = Array.isArray(state.departments) && state.departments.length > 0;
+  const departmentOptions = state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("");
   return `
     <div class="finance-form mt-8">
       <label>
@@ -357,6 +399,8 @@ function componentForm({ mode, item }) {
           <option value="SALARY_FIXED_MONTH" ${type === "SALARY_FIXED_MONTH" ? "selected" : ""}>Оклад за месяц</option>
           <option value="SALARY_HOURLY" ${type === "SALARY_HOURLY" ? "selected" : ""}>Почасовая ставка</option>
           <option value="SALARY_PER_SHIFT" ${type === "SALARY_PER_SHIFT" ? "selected" : ""}>Фикс за смену</option>
+          <option value="PERCENT_TOTAL_REVENUE" ${type === "PERCENT_TOTAL_REVENUE" ? "selected" : ""}>% от общей выручки</option>
+          <option value="PERCENT_DEPARTMENT_REVENUE" ${type === "PERCENT_DEPARTMENT_REVENUE" ? "selected" : ""}>% от выручки департамента</option>
         </select>
       </label>
       <label>
@@ -371,6 +415,23 @@ function componentForm({ mode, item }) {
         <span id="f_rate_label">Ставка, коп. / час</span>
         <input id="f_rate_minor" inputmode="numeric" placeholder="0" value="${esc(it.rate_minor ?? "")}" />
       </label>
+      <label id="f_percent_wrap">
+        <span id="f_percent_label">Процент</span>
+        <input id="f_percent" inputmode="decimal" placeholder="Например, 5" value="${esc(percentInputFromBps(it.percent_bps))}" />
+      </label>
+      ${hasDepartments ? `
+      <label id="f_department_wrap">
+        <span>Департамент</span>
+        <select id="f_department_id">
+          <option value="">Выбери департамент</option>
+          ${departmentOptions}
+        </select>
+      </label>` : `
+      <label id="f_department_wrap">
+        <span>ID департамента</span>
+        <input id="f_department_id" inputmode="numeric" placeholder="Например: 3" value="${esc(it.department_id ?? "")}" />
+      </label>
+      <div id="f_department_hint" class="muted">Список департаментов не загрузился. Можно указать department_id вручную.</div>`}
       <label>
         <span>Порядок</span>
         <input id="f_sort_order" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
@@ -388,23 +449,47 @@ function componentForm({ mode, item }) {
   `;
 }
 
-function syncComponentFields() {
+function syncComponentFieldsfunction syncComponentFields() {
   const type = String(document.getElementById("f_component_type")?.value || "SALARY_FIXED_MONTH").toUpperCase();
   const amountWrap = document.getElementById("f_amount_wrap");
   const rateWrap = document.getElementById("f_rate_wrap");
+  const percentWrap = document.getElementById("f_percent_wrap");
+  const departmentWrap = document.getElementById("f_department_wrap");
+  const departmentHint = document.getElementById("f_department_hint");
   const amountLabel = document.getElementById("f_amount_label");
   const rateLabel = document.getElementById("f_rate_label");
+  const percentLabel = document.getElementById("f_percent_label");
+
+  if (amountWrap) amountWrap.style.display = "none";
+  if (rateWrap) rateWrap.style.display = "none";
+  if (percentWrap) percentWrap.style.display = "none";
+  if (departmentWrap) departmentWrap.style.display = "none";
+  if (departmentHint) departmentHint.style.display = "none";
 
   if (type === "SALARY_HOURLY") {
-    if (amountWrap) amountWrap.style.display = "none";
     if (rateWrap) rateWrap.style.display = "grid";
     if (rateLabel) rateLabel.textContent = "Ставка, коп. / час";
     return;
   }
 
-  if (amountWrap) amountWrap.style.display = "grid";
-  if (rateWrap) rateWrap.style.display = "none";
-  if (amountLabel) amountLabel.textContent = type === "SALARY_PER_SHIFT" ? "Сумма, коп. / смена" : "Сумма, коп. / месяц";
+  if (type === "SALARY_FIXED_MONTH" || type === "SALARY_PER_SHIFT") {
+    if (amountWrap) amountWrap.style.display = "grid";
+    if (amountLabel) amountLabel.textContent = type === "SALARY_PER_SHIFT" ? "Сумма, коп. / смена" : "Сумма, коп. / месяц";
+    return;
+  }
+
+  if (type === "PERCENT_TOTAL_REVENUE") {
+    if (percentWrap) percentWrap.style.display = "grid";
+    if (percentLabel) percentLabel.textContent = "Процент от общей выручки";
+    return;
+  }
+
+  if (type === "PERCENT_DEPARTMENT_REVENUE") {
+    if (percentWrap) percentWrap.style.display = "grid";
+    if (departmentWrap) departmentWrap.style.display = "grid";
+    if (departmentHint) departmentHint.style.display = "";
+    if (percentLabel) percentLabel.textContent = "Процент от выручки департамента";
+  }
 }
 
 function openComponentEditor({ mode, item = null }) {
@@ -412,7 +497,7 @@ function openComponentEditor({ mode, item = null }) {
   const isEdit = mode === "edit";
   openEditModal({
     title: isEdit ? "Редактировать компонент" : "Новый компонент",
-    hint: "MVP: оклад, почасовая ставка, фикс за смену",
+    hint: "Доступны фиксированные ставки и проценты от выручки",
     bodyHtml: componentForm({ mode, item }),
   });
   document.getElementById("f_component_type")?.addEventListener("change", syncComponentFields);
@@ -423,6 +508,8 @@ function openComponentEditor({ mode, item = null }) {
     const title = String(document.getElementById("f_title")?.value || "").trim();
     const amountMinorRaw = String(document.getElementById("f_amount_minor")?.value || "").trim();
     const rateMinorRaw = String(document.getElementById("f_rate_minor")?.value || "").trim();
+    const percentRaw = String(document.getElementById("f_percent")?.value || "").trim();
+    const departmentRaw = String(document.getElementById("f_department_id")?.value || "").trim();
     const sortRaw = String(document.getElementById("f_sort_order")?.value || "0").trim();
     const isActive = !!document.getElementById("f_active")?.checked;
 
@@ -436,6 +523,8 @@ function openComponentEditor({ mode, item = null }) {
       title,
       amount_minor: null,
       rate_minor: null,
+      percent_bps: null,
+      department_id: null,
       sort_order: Number(sortRaw || 0),
       is_active: isActive,
     };
@@ -446,12 +535,31 @@ function openComponentEditor({ mode, item = null }) {
         return;
       }
       payload.rate_minor = Number(rateMinorRaw || 0);
-    } else {
+    } else if (componentType === "SALARY_FIXED_MONTH" || componentType === "SALARY_PER_SHIFT") {
       if (!amountMinorRaw) {
         toast("Укажи сумму в копейках", "warn");
         return;
       }
       payload.amount_minor = Number(amountMinorRaw || 0);
+    } else if (componentType === "PERCENT_TOTAL_REVENUE") {
+      const percentBps = parsePercentInputToBps(percentRaw);
+      if (percentBps === null) {
+        toast("Укажи процент, например 5 или 7.5", "warn");
+        return;
+      }
+      payload.percent_bps = percentBps;
+    } else if (componentType === "PERCENT_DEPARTMENT_REVENUE") {
+      const percentBps = parsePercentInputToBps(percentRaw);
+      if (percentBps === null) {
+        toast("Укажи процент, например 5 или 7.5", "warn");
+        return;
+      }
+      if (!departmentRaw) {
+        toast("Выбери департамент", "warn");
+        return;
+      }
+      payload.percent_bps = percentBps;
+      payload.department_id = Number(departmentRaw);
     }
 
     try {
@@ -667,6 +775,13 @@ async function boot() {
     state.members = Array.isArray(membersResp?.members) ? membersResp.members : [];
   } catch {
     state.members = [];
+  }
+
+  try {
+    const depsResp = await getDepartments(state.venueId);
+    state.departments = Array.isArray(depsResp) ? depsResp : [];
+  } catch {
+    state.departments = [];
   }
 
   document.getElementById("btnEditProfile")?.addEventListener("click", openProfileEditor);

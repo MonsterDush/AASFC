@@ -1844,6 +1844,8 @@ def _get_pay_component_or_404(db: Session, *, venue_id: int, component_id: int) 
 
 
 def _serialize_pay_component(component: PayComponent) -> dict:
+    department = getattr(component, "department", None)
+    kpi_metric = getattr(component, "kpi_metric", None)
     return {
         "id": int(component.id),
         "pay_profile_id": int(component.pay_profile_id),
@@ -1853,7 +1855,9 @@ def _serialize_pay_component(component: PayComponent) -> dict:
         "rate_minor": component.rate_minor,
         "percent_bps": component.percent_bps,
         "department_id": component.department_id,
+        "department_title": department.title if department is not None else None,
         "kpi_metric_id": component.kpi_metric_id,
+        "kpi_metric_title": kpi_metric.title if kpi_metric is not None else None,
         "threshold_value": component.threshold_value,
         "steps": _parse_json_text(component.steps_json),
         "sort_order": int(component.sort_order or 0),
@@ -1861,6 +1865,40 @@ def _serialize_pay_component(component: PayComponent) -> dict:
     }
 
 
+
+
+
+def _validate_pay_component_fields(
+    *,
+    component_type: str,
+    amount_minor: int | None,
+    rate_minor: int | None,
+    percent_bps: int | None,
+    department_id: int | None,
+) -> None:
+    component_type = str(component_type or "").strip().upper()
+    if component_type == "SALARY_FIXED_MONTH":
+        if amount_minor is None:
+            raise HTTPException(status_code=400, detail="amount_minor is required for SALARY_FIXED_MONTH")
+        return
+    if component_type == "SALARY_HOURLY":
+        if rate_minor is None:
+            raise HTTPException(status_code=400, detail="rate_minor is required for SALARY_HOURLY")
+        return
+    if component_type == "SALARY_PER_SHIFT":
+        if amount_minor is None:
+            raise HTTPException(status_code=400, detail="amount_minor is required for SALARY_PER_SHIFT")
+        return
+    if component_type == "PERCENT_TOTAL_REVENUE":
+        if percent_bps is None:
+            raise HTTPException(status_code=400, detail="percent_bps is required for PERCENT_TOTAL_REVENUE")
+        return
+    if component_type == "PERCENT_DEPARTMENT_REVENUE":
+        if percent_bps is None:
+            raise HTTPException(status_code=400, detail="percent_bps is required for PERCENT_DEPARTMENT_REVENUE")
+        if department_id is None:
+            raise HTTPException(status_code=400, detail="department_id is required for PERCENT_DEPARTMENT_REVENUE")
+        return
 
 def _serialize_pay_profile_assignment(assignment: PayProfileAssignment, member: User | None = None) -> dict:
     member_obj = None
@@ -2480,6 +2518,13 @@ def create_pay_component(
         kpi = db.execute(select(KpiMetric.id).where(KpiMetric.id == payload.kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
         if kpi is None:
             raise HTTPException(status_code=400, detail="KPI metric not found in venue")
+    _validate_pay_component_fields(
+        component_type=component_type,
+        amount_minor=payload.amount_minor,
+        rate_minor=payload.rate_minor,
+        percent_bps=payload.percent_bps,
+        department_id=payload.department_id,
+    )
 
     component = PayComponent(
         venue_id=venue_id,
@@ -2552,6 +2597,13 @@ def update_pay_component(
         component.sort_order = payload.sort_order
     if 'is_active' in fields_set and payload.is_active is not None:
         component.is_active = payload.is_active
+    _validate_pay_component_fields(
+        component_type=component.component_type,
+        amount_minor=component.amount_minor,
+        rate_minor=component.rate_minor,
+        percent_bps=component.percent_bps,
+        department_id=component.department_id,
+    )
     component.updated_at = datetime.utcnow()
     db.commit()
     return _serialize_pay_component(component)

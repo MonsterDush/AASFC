@@ -51,6 +51,36 @@ function memberName(member) {
   return member.short_name || member.full_name || (member.tg_username ? `@${member.tg_username}` : `user #${member.user_id || ""}`);
 }
 
+const COMPONENT_LABELS = {
+  SALARY_FIXED_MONTH: "Оклад за месяц",
+  SALARY_HOURLY: "Почасовая ставка",
+  SALARY_PER_SHIFT: "Фикс за смену",
+  PERCENT_TOTAL_REVENUE: "% от общей выручки",
+  PERCENT_DEPARTMENT_REVENUE: "% от выручки департамента",
+};
+
+function fmtPercentBps(bps) {
+  const value = Number(bps || 0) / 100;
+  try {
+    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + "%";
+  } catch {
+    return value.toFixed(2) + "%";
+  }
+}
+
+function breakdownComponentMeta(component) {
+  const type = String(component?.component_type || "").toUpperCase();
+  const label = COMPONENT_LABELS[type] || type || "Компонент";
+  if (type === "PERCENT_TOTAL_REVENUE") {
+    return `${label} · ${fmtPercentBps(component?.percent_bps)} · база ${fmtMoneyMinor(component?.base_amount_minor || 0)}`;
+  }
+  if (type === "PERCENT_DEPARTMENT_REVENUE") {
+    const depTitle = component?.department_title ? ` · ${component.department_title}` : "";
+    return `${label} · ${fmtPercentBps(component?.percent_bps)}${depTitle} · база ${fmtMoneyMinor(component?.base_amount_minor || 0)}`;
+  }
+  return label;
+}
+
 let state = {
   venueId: "",
   month: currentMonth(),
@@ -89,7 +119,7 @@ function renderShell() {
       <div class="revenue-toolbar__actions">
         <div class="revenue-toolbar__caption">
           <b>Расчёт зарплаты</b>
-          <div class="muted mt-6">Считается по активным назначениям профилей. Сейчас доступны оклад, почасовая ставка и фикс за смену.</div>
+          <div class="muted mt-6">Считается по активным назначениям профилей. Поддержаны фиксированные ставки и проценты по закрытым отчётам.</div>
         </div>
         <div class="pickers pickers--revenue">
           <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
@@ -204,7 +234,7 @@ function renderLines() {
               <div class="payroll-breakdown__row">
                 <div>
                   <b>${esc(c.title || c.component_type || "Компонент")}</b>
-                  <div class="mono mt-4">${esc(c.component_type || "")}</div>
+                  <div class="mono mt-4">${esc(breakdownComponentMeta(c))}</div>
                 </div>
                 <div><b>${esc(fmtMoneyMinor(c.amount_minor || 0))}</b></div>
               </div>

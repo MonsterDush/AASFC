@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 import json
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.models import FinanceEntry, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
+from app.models import DailyReport, DailyReportValue, FinanceEntry, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 
@@ -25,6 +25,12 @@ PAY_COMPONENT_TYPES = {
 class PayrollMemberMetrics:
     minutes_total: int = 0
     shifts_count: int = 0
+
+
+@dataclass
+class PayrollRevenueMetrics:
+    total_revenue_minor: int = 0
+    department_revenue_minor: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -57,7 +63,14 @@ def interval_duration_minutes(start_time: time, end_time: time) -> int:
     return int((end_dt - start_dt).total_seconds() // 60)
 
 
-def calculate_component_amount_minor(component: PayComponent, *, minutes_total: int, shifts_count: int) -> int:
+def calculate_component_amount_minor(
+    component: PayComponent,
+    *,
+    minutes_total: int,
+    shifts_count: int,
+    total_revenue_minor: int = 0,
+    department_revenue_minor: int = 0,
+) -> int:
     component_type = str(component.component_type or "").strip().upper()
     if component_type not in PAY_COMPONENT_TYPES:
         raise ValueError(f"Unsupported pay component type: {component.component_type}")
@@ -73,7 +86,15 @@ def calculate_component_amount_minor(component: PayComponent, *, minutes_total: 
         amount_minor = int(component.amount_minor or 0)
         return int(amount_minor * int(shifts_count))
 
-    # 5.2 / 5.3 are intentionally scaffolded in the schema, but not calculated yet.
+    if component_type == "PERCENT_TOTAL_REVENUE":
+        percent_bps = int(component.percent_bps or 0)
+        return int((int(total_revenue_minor) * percent_bps + 5000) // 10000)
+
+    if component_type == "PERCENT_DEPARTMENT_REVENUE":
+        percent_bps = int(component.percent_bps or 0)
+        return int((int(department_revenue_minor) * percent_bps + 5000) // 10000)
+
+    # 5.3 KPI bonuses are scaffolded in schema, but are not calculated yet.
     return 0
 
 
@@ -154,6 +175,46 @@ def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month
     return out
 
 
+
+def _load_revenue_metrics(db: Session, *, venue_id: int, month_start: date, month_end_excl: date) -> PayrollRevenueMetrics:
+    total_revenue_minor = int(
+        db.execute(
+            select(func.coalesce(func.sum(DailyReport.revenue_total), 0)).where(
+                DailyReport.venue_id == int(venue_id),
+                DailyReport.status == "CLOSED",
+                DailyReport.date >= month_start,
+                DailyReport.date < month_end_excl,
+            )
+        ).scalar()
+        or 0
+    ) * 100
+
+    dept_rows = db.execute(
+        select(
+            DailyReportValue.ref_id,
+            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
+        )
+        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == "CLOSED",
+            DailyReport.date >= month_start,
+            DailyReport.date < month_end_excl,
+            DailyReportValue.kind == "DEPT",
+        )
+        .group_by(DailyReportValue.ref_id)
+    ).all()
+
+    department_revenue_minor: dict[int, int] = {}
+    for row in dept_rows:
+        department_revenue_minor[int(row.ref_id)] = int(row.amount or 0) * 100
+
+    return PayrollRevenueMetrics(
+        total_revenue_minor=total_revenue_minor,
+        department_revenue_minor=department_revenue_minor,
+    )
+
+
 def calculate_payroll_for_month(
     *,
     db: Session,
@@ -206,6 +267,12 @@ def calculate_payroll_for_month(
         month_end_excl=month_end_excl,
         member_user_ids=member_user_ids,
     )
+    revenue_metrics = _load_revenue_metrics(
+        db,
+        venue_id=int(venue_id),
+        month_start=month_start,
+        month_end_excl=month_end_excl,
+    )
 
     lines: list[PayrollLine] = []
     total_amount_minor = 0
@@ -217,22 +284,35 @@ def calculate_payroll_for_month(
         line_total = 0
 
         for component in components:
+            component_type = str(component.component_type or "").strip().upper()
+            department_base_minor = 0
+            if component.department_id is not None:
+                department_base_minor = int(revenue_metrics.department_revenue_minor.get(int(component.department_id), 0))
             amount_minor = calculate_component_amount_minor(
                 component,
                 minutes_total=int(metrics.minutes_total),
                 shifts_count=int(metrics.shifts_count),
+                total_revenue_minor=int(revenue_metrics.total_revenue_minor),
+                department_revenue_minor=int(department_base_minor),
             )
-            breakdown_items.append(
-                {
-                    "component_id": int(component.id),
-                    "component_type": component.component_type,
-                    "title": component.title,
-                    "amount_minor": int(amount_minor),
-                    "minutes_total": int(metrics.minutes_total),
-                    "hours_total": round(int(metrics.minutes_total) / 60.0, 2),
-                    "shifts_count": int(metrics.shifts_count),
-                }
-            )
+            breakdown_item = {
+                "component_id": int(component.id),
+                "component_type": component.component_type,
+                "title": component.title,
+                "amount_minor": int(amount_minor),
+                "minutes_total": int(metrics.minutes_total),
+                "hours_total": round(int(metrics.minutes_total) / 60.0, 2),
+                "shifts_count": int(metrics.shifts_count),
+            }
+            if component_type == "PERCENT_TOTAL_REVENUE":
+                breakdown_item["percent_bps"] = int(component.percent_bps or 0)
+                breakdown_item["base_amount_minor"] = int(revenue_metrics.total_revenue_minor)
+            elif component_type == "PERCENT_DEPARTMENT_REVENUE":
+                breakdown_item["percent_bps"] = int(component.percent_bps or 0)
+                breakdown_item["department_id"] = int(component.department_id) if component.department_id is not None else None
+                breakdown_item["department_title"] = component.department.title if getattr(component, "department", None) is not None else None
+                breakdown_item["base_amount_minor"] = int(department_base_minor)
+            breakdown_items.append(breakdown_item)
             line_total += int(amount_minor)
 
         breakdown_payload = {
@@ -244,6 +324,9 @@ def calculate_payroll_for_month(
                 "minutes_total": int(metrics.minutes_total),
                 "hours_total": round(int(metrics.minutes_total) / 60.0, 2),
                 "shifts_count": int(metrics.shifts_count),
+            },
+            "revenue_metrics": {
+                "total_revenue_minor": int(revenue_metrics.total_revenue_minor),
             },
             "components": breakdown_items,
         }
