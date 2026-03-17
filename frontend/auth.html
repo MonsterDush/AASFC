@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Axelio</b>
-          <div class="muted">вход через Telegram или номер телефона</div>
+          <div class="muted">вход по телефону и паролю или через Telegram</div>
         </div>
       </div>
       <div class="userpill" data-userpill>гость</div>
@@ -23,30 +23,69 @@
     <div class="auth-grid">
       <div class="card">
         <b>Вход по телефону</b>
-        <div class="muted mt-8">Подходит для входа из браузера и standalone-приложения. SMS отправляются через SMS.ru.</div>
+        <div class="muted mt-8">Основной сценарий — вход по номеру телефона и паролю. SMS нужны только для первичной настройки и сброса пароля.</div>
 
-        <label class="auth-label mt-16" for="phoneInput">Номер телефона</label>
-        <input id="phoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
-
-        <div class="row mt-12">
-          <button class="btn primary" id="btnRequestCode">Получить код</button>
+        <div class="stack mt-16">
+          <div>
+            <label class="auth-label" for="loginPhoneInput">Номер телефона</label>
+            <input id="loginPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
+          </div>
+          <div>
+            <label class="auth-label" for="loginPasswordInput">Пароль</label>
+            <input id="loginPasswordInput" type="password" placeholder="Минимум 8 символов" autocomplete="current-password" />
+          </div>
+          <div class="row mt-4">
+            <button class="btn primary" id="btnPasswordLogin">Войти</button>
+          </div>
+          <div class="row auth-inline-links">
+            <button class="btn sm" id="showSetupModeBtn" type="button">Впервые с номером</button>
+            <button class="btn sm" id="showResetModeBtn" type="button">Забыли пароль?</button>
+          </div>
         </div>
-
-        <div id="phoneMeta" class="muted mono mt-8"></div>
 
         <div class="auth-divider mt-16"></div>
 
-        <label class="auth-label mt-16" for="codeInput">Код из SMS</label>
-        <input id="codeInput" placeholder="6 цифр" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+        <div class="row auth-mode-switch mt-16">
+          <button class="btn sm primary" id="modeSetupBtn" type="button">Первичная настройка</button>
+          <button class="btn sm" id="modeResetBtn" type="button">Сброс пароля</button>
+        </div>
 
-        <div class="row mt-12">
-          <button class="btn primary" id="btnVerifyCode">Войти по коду</button>
+        <div class="itemcard mt-12">
+          <b id="passwordFlowTitle">Первичная настройка</b>
+          <div class="muted mt-8" id="passwordFlowHint">Подтверди номер по SMS и сразу задай пароль для следующих входов.</div>
+
+          <div class="stack mt-12">
+            <div>
+              <label class="auth-label" for="smsPhoneInput">Номер телефона</label>
+              <input id="smsPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
+            </div>
+            <div class="row mt-4">
+              <button class="btn" id="btnRequestSms">Получить SMS-код</button>
+            </div>
+            <div id="smsMeta" class="muted mono mt-8"></div>
+
+            <div>
+              <label class="auth-label" for="smsCodeInput">Код из SMS</label>
+              <input id="smsCodeInput" placeholder="6 цифр" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+            </div>
+            <div>
+              <label class="auth-label" for="newPasswordInput">Новый пароль</label>
+              <input id="newPasswordInput" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
+            </div>
+            <div>
+              <label class="auth-label" for="confirmPasswordInput">Повтори пароль</label>
+              <input id="confirmPasswordInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
+            </div>
+            <div class="row mt-4">
+              <button class="btn primary" id="btnCompletePasswordFlow">Подтвердить номер и сохранить пароль</button>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="card">
         <b>Вход через Telegram</b>
-        <div class="muted mt-8">Старый способ входа сохраняется. Уже существующие пользователи не теряются.</div>
+        <div class="muted mt-8">Старый способ входа сохраняется. Уже существующие пользователи не теряются и могут потом привязать телефон с паролем в профиле.</div>
 
         <div class="itemcard mt-16">
           <div class="muted" id="telegramState">Проверяю доступность Telegram Mini App…</div>
@@ -61,6 +100,13 @@
             После входа тебя вернёт на страницу, с которой запрашивалась авторизация.
           </div>
         </div>
+
+        <div class="itemcard mt-16">
+          <b>Правила пароля</b>
+          <div class="muted mt-8">
+            Пароль должен быть не короче 8 символов и содержать хотя бы одну букву и одну цифру.
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -71,8 +117,11 @@
     import {
       applyTelegramTheme,
       ensureLogin,
+      loginWithPassword,
       requestPhoneCode,
-      verifyPhoneCode,
+      requestPasswordResetCode,
+      setPasswordAfterPhoneVerify,
+      confirmPasswordReset,
       api,
       toast,
       wa,
@@ -83,6 +132,10 @@
     const params = new URLSearchParams(location.search);
     const next = params.get("next") || "/";
     const nextHint = document.getElementById("nextHint");
+
+    const MODE_SETUP = "setup";
+    const MODE_RESET = "reset";
+    let passwordFlowMode = MODE_SETUP;
 
     function getSafeNext() {
       if (!next || /\/auth\.html(\?|$)/i.test(next)) return "/";
@@ -129,21 +182,78 @@
       return false;
     }
 
-    const phoneInput = document.getElementById("phoneInput");
-    const codeInput = document.getElementById("codeInput");
-    const phoneMeta = document.getElementById("phoneMeta");
-    const telegramState = document.getElementById("telegramState");
-    const btnTelegramLogin = document.getElementById("btnTelegramLogin");
+    const els = {
+      loginPhoneInput: document.getElementById("loginPhoneInput"),
+      loginPasswordInput: document.getElementById("loginPasswordInput"),
+      btnPasswordLogin: document.getElementById("btnPasswordLogin"),
+      showSetupModeBtn: document.getElementById("showSetupModeBtn"),
+      showResetModeBtn: document.getElementById("showResetModeBtn"),
+      modeSetupBtn: document.getElementById("modeSetupBtn"),
+      modeResetBtn: document.getElementById("modeResetBtn"),
+      passwordFlowTitle: document.getElementById("passwordFlowTitle"),
+      passwordFlowHint: document.getElementById("passwordFlowHint"),
+      smsPhoneInput: document.getElementById("smsPhoneInput"),
+      btnRequestSms: document.getElementById("btnRequestSms"),
+      smsMeta: document.getElementById("smsMeta"),
+      smsCodeInput: document.getElementById("smsCodeInput"),
+      newPasswordInput: document.getElementById("newPasswordInput"),
+      confirmPasswordInput: document.getElementById("confirmPasswordInput"),
+      btnCompletePasswordFlow: document.getElementById("btnCompletePasswordFlow"),
+      telegramState: document.getElementById("telegramState"),
+      btnTelegramLogin: document.getElementById("btnTelegramLogin"),
+    };
+
+    function syncPhoneFields(sourceValue = "") {
+      const normalized = String(sourceValue || "").trim();
+      if (normalized && !els.smsPhoneInput.value.trim()) {
+        els.smsPhoneInput.value = normalized;
+      }
+      if (normalized && !els.loginPhoneInput.value.trim()) {
+        els.loginPhoneInput.value = normalized;
+      }
+    }
+
+    function setPasswordMode(mode) {
+      passwordFlowMode = mode === MODE_RESET ? MODE_RESET : MODE_SETUP;
+      const isReset = passwordFlowMode === MODE_RESET;
+      els.modeSetupBtn.classList.toggle("primary", !isReset);
+      els.modeResetBtn.classList.toggle("primary", isReset);
+      els.passwordFlowTitle.textContent = isReset ? "Сброс пароля" : "Первичная настройка";
+      els.passwordFlowHint.textContent = isReset
+        ? "Подтверди номер по SMS и задай новый пароль. Старые сессии будут закрыты."
+        : "Подтверди номер по SMS и сразу задай пароль для следующих входов.";
+      els.btnRequestSms.textContent = isReset ? "Отправить код для сброса" : "Получить SMS-код";
+      els.btnCompletePasswordFlow.textContent = isReset
+        ? "Сбросить пароль"
+        : "Подтвердить номер и сохранить пароль";
+    }
+
+    function validateNewPassword() {
+      const password = els.newPasswordInput.value.trim();
+      const confirm = els.confirmPasswordInput.value.trim();
+      if (!password || !confirm) throw new Error("Заполни оба поля с новым паролем");
+      if (password !== confirm) throw new Error("Пароли не совпадают");
+      return password;
+    }
+
+    async function completePasswordFlow(phone, password) {
+      try {
+        await api("/me", { handle401: false });
+      } catch {
+        await loginWithPassword(phone, password);
+      }
+      await finishPostLoginFlow();
+    }
 
     function setTelegramState() {
       const initData = wa()?.initData || "";
       if (initData) {
-        telegramState.textContent = "Telegram Mini App доступен. Можно войти текущим способом.";
-        btnTelegramLogin.classList.add("primary");
-        btnTelegramLogin.disabled = false;
+        els.telegramState.textContent = "Telegram Mini App доступен. Можно войти текущим способом.";
+        els.btnTelegramLogin.classList.add("primary");
+        els.btnTelegramLogin.disabled = false;
       } else {
-        telegramState.textContent = "Сейчас ты не внутри Telegram Mini App. Для входа используй телефон или открой приложение из Telegram.";
-        btnTelegramLogin.disabled = true;
+        els.telegramState.textContent = "Сейчас ты не внутри Telegram Mini App. Для входа используй телефон или открой приложение из Telegram.";
+        els.btnTelegramLogin.disabled = true;
       }
     }
 
@@ -152,33 +262,71 @@
       nextHint.textContent = "После входа система попробует автоматически принять приглашение и открыть нужное заведение.";
     }
 
-    document.getElementById("btnRequestCode").onclick = async () => {
+    els.loginPhoneInput.addEventListener("input", () => syncPhoneFields(els.loginPhoneInput.value));
+    els.showSetupModeBtn.onclick = () => {
+      syncPhoneFields(els.loginPhoneInput.value);
+      setPasswordMode(MODE_SETUP);
+      els.smsPhoneInput.focus();
+    };
+    els.showResetModeBtn.onclick = () => {
+      syncPhoneFields(els.loginPhoneInput.value);
+      setPasswordMode(MODE_RESET);
+      els.smsPhoneInput.focus();
+    };
+    els.modeSetupBtn.onclick = () => setPasswordMode(MODE_SETUP);
+    els.modeResetBtn.onclick = () => setPasswordMode(MODE_RESET);
+
+    els.btnPasswordLogin.onclick = async () => {
       try {
-        const out = await requestPhoneCode(phoneInput.value.trim());
-        phoneMeta.textContent = out?.debug_code
+        await loginWithPassword(els.loginPhoneInput.value.trim(), els.loginPasswordInput.value);
+        toast("Вход выполнен", "ok");
+        await finishPostLoginFlow();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось войти по паролю", "err");
+      }
+    };
+
+    els.btnRequestSms.onclick = async () => {
+      try {
+        const phone = els.smsPhoneInput.value.trim() || els.loginPhoneInput.value.trim();
+        syncPhoneFields(phone);
+        const out = passwordFlowMode === MODE_RESET
+          ? await requestPasswordResetCode(phone)
+          : await requestPhoneCode(phone);
+        els.smsMeta.textContent = out?.debug_code
           ? `Код отправлен. dev_code=${out.debug_code}`
-          : `Код отправлен на ${out?.phone || phoneInput.value.trim()}. Проверь SMS.`;
+          : `Код отправлен на ${out?.phone || phone}. Проверь SMS.`;
         toast("Код отправлен", "ok");
-        codeInput.focus();
+        els.smsCodeInput.focus();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось отправить код", "err");
       }
     };
 
-    document.getElementById("btnVerifyCode").onclick = async () => {
+    els.btnCompletePasswordFlow.onclick = async () => {
       try {
-        await verifyPhoneCode(phoneInput.value.trim(), codeInput.value.trim());
-        toast("Вход выполнен", "ok");
-        await finishPostLoginFlow();
+        const phone = els.smsPhoneInput.value.trim() || els.loginPhoneInput.value.trim();
+        syncPhoneFields(phone);
+        const password = validateNewPassword();
+        if (passwordFlowMode === MODE_RESET) {
+          await confirmPasswordReset(phone, els.smsCodeInput.value.trim(), password);
+          toast("Пароль сброшен", "ok");
+        } else {
+          await setPasswordAfterPhoneVerify(phone, els.smsCodeInput.value.trim(), password);
+          toast("Пароль сохранён", "ok");
+        }
+        await completePasswordFlow(phone, password);
       } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось подтвердить код", "err");
+        toast(e?.data?.detail || e?.message || "Не удалось завершить настройку пароля", "err");
       }
     };
 
-    btnTelegramLogin.onclick = async () => {
+    els.btnTelegramLogin.onclick = async () => {
       const login = await ensureLogin({ silent: false, redirectOnFail: false });
       if (login.ok) await finishPostLoginFlow();
     };
+
+    setPasswordMode(MODE_SETUP);
 
     if (!(await initExistingSession())) {
       setTelegramState();

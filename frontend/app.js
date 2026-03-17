@@ -476,6 +476,49 @@ export async function verifyPhoneCode(phone, code) {
   });
 }
 
+export async function loginWithPassword(phone, password) {
+  return api("/auth/password/login", {
+    method: "POST",
+    body: { phone, password },
+    handle401: false,
+  });
+}
+
+export async function setPasswordAfterPhoneVerify(phone, code, newPassword) {
+  return api("/auth/password/set-after-phone-verify", {
+    method: "POST",
+    body: { phone, code, new_password: newPassword },
+    handle401: false,
+  });
+}
+
+export async function requestPasswordResetCode(phone) {
+  return api("/auth/password/reset/request-code", {
+    method: "POST",
+    body: { phone },
+    handle401: false,
+  });
+}
+
+export async function confirmPasswordReset(phone, code, newPassword) {
+  return api("/auth/password/reset/confirm", {
+    method: "POST",
+    body: { phone, code, new_password: newPassword },
+    handle401: false,
+  });
+}
+
+export async function getPasswordState() {
+  return api("/auth/password/state");
+}
+
+export async function changePassword(currentPassword, newPassword) {
+  return api("/auth/password/change", {
+    method: "POST",
+    body: { current_password: currentPassword, new_password: newPassword },
+  });
+}
+
 export async function logout() {
   return api("/auth/logout", {
     method: "POST",
@@ -490,10 +533,13 @@ export async function requestLinkPhoneCode(phone) {
   });
 }
 
-export async function verifyLinkPhoneCode(phone, code) {
+export async function verifyLinkPhoneCode(phone, code, newPassword = "") {
+  const body = { phone, code };
+  const normalizedPassword = String(newPassword || "").trim();
+  if (normalizedPassword) body.new_password = normalizedPassword;
   return api("/auth/link/phone/verify-code", {
     method: "POST",
-    body: { phone, code },
+    body,
   });
 }
 

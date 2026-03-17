@@ -248,7 +248,7 @@ body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);pad
 .title div{font-size:12px;color:var(--muted)}
 .userpill{flex:0 0 auto;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);font-size:12px;color:var(--muted)}
 
-.logo{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--accent),rgba(255,255,255,.10));box-shadow:var(--shadow)}
+.logo{width:40px;height:40px;flex:0 0 auto;border-radius:0;background:center / contain no-repeat url("/logo.png");filter:drop-shadow(0 8px 16px rgba(0,0,0,.18))}
 
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
 .itemcard{border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--surface2)}
@@ -377,7 +377,7 @@ input[type="checkbox"],input[type="radio"]{
 
 /* Splash / loading */
 .splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);z-index:9999}
-.splash__logo{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,var(--accent),rgba(255,255,255,.12));box-shadow:0 10px 30px rgba(0,0,0,.25);margin-bottom:14px}
+.splash__logo{width:84px;height:84px;background:center / contain no-repeat url("/logo.png");filter:drop-shadow(0 10px 24px rgba(0,0,0,.22));margin-bottom:14px}
 .spinner{width:34px;height:34px;border-radius:50%;border:3px solid rgba(127,127,127,.25);border-top-color:var(--accent);animation:spin 1s linear infinite;margin-top:10px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -1042,3 +1042,20 @@ input[type="checkbox"],input[type="radio"]{
 .auth-label{display:block;font-size:13px;color:var(--muted)}
 .auth-divider{height:1px;background:var(--border)}
 @media (max-width:900px){.auth-grid{grid-template-columns:1fr}}
+
+
+.auth-inline-links{gap:8px;justify-content:flex-start}
+.auth-mode-switch{gap:8px;align-items:center}
+.auth-mode-switch .btn{min-width:0}
+.stack{display:flex;flex-direction:column;gap:10px}
+.mt-4{margin-top:4px}
+.mt-6{margin-top:6px}
+.mt-8{margin-top:8px}
+.mt-12{margin-top:12px}
+.mt-16{margin-top:16px}
+
+@media (max-width:760px){
+  .topbar{align-items:flex-start;gap:10px}
+  .userpill{max-width:42%}
+  .logo{width:36px;height:36px}
+}

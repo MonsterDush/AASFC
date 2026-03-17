@@ -17,7 +17,13 @@
 <body>
   <div class="container">
     <div class="topbar">
-      <div class="brand">Профиль</div>
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Профиль</b>
+          <div class="muted">данные пользователя и безопасность входа</div>
+        </div>
+      </div>
       <div class="userpill" id="userpill" data-userpill></div>
     </div>
 
@@ -44,7 +50,7 @@
 
     <div class="card">
       <b>Способы входа</b>
-      <div class="muted mt-6">Можно привязать телефон к старому Telegram-аккаунту или привязать Telegram к phone-аккаунту. Это уменьшает риск дублей.</div>
+      <div class="muted mt-6">Можно привязать телефон к старому Telegram-аккаунту или привязать Telegram к phone-аккаунту. После привязки номера можно сразу поставить пароль.</div>
 
       <div class="auth-methods" id="authMethods"></div>
 
@@ -59,6 +65,8 @@
               <button class="btn primary" id="verifyLinkCodeBtn">Подтвердить и привязать</button>
             </div>
             <input class="input" id="linkPhoneCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+            <input class="input" id="linkPhonePasswordInput" type="password" placeholder="Новый пароль сразу после привязки (необязательно)" autocomplete="new-password" />
+            <input class="input" id="linkPhonePasswordConfirmInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
             <div class="muted mono" id="linkPhoneMeta"></div>
           </div>
         </div>
@@ -70,9 +78,40 @@
             <button class="btn primary" id="linkTelegramBtn">Привязать Telegram</button>
           </div>
         </div>
+
+        <div class="auth-box">
+          <b>Пароль</b>
+          <div class="muted mt-8" id="passwordState">Загрузка…</div>
+          <div class="stack mt-12">
+            <div>
+              <div class="muted">Изменить пароль</div>
+              <input class="input mt-8" id="currentPasswordInput" type="password" placeholder="Текущий пароль" autocomplete="current-password" />
+              <input class="input mt-8" id="changePasswordInput" type="password" placeholder="Новый пароль" autocomplete="new-password" />
+              <input class="input mt-8" id="changePasswordConfirmInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
+              <button class="btn primary mt-12" id="changePasswordBtn">Изменить пароль</button>
+            </div>
+
+            <div class="auth-divider"></div>
+
+            <div>
+              <div class="muted">Сбросить или установить пароль по SMS</div>
+              <div class="muted mt-6" id="passwordResetPhoneHint">Номер загрузится из профиля после привязки телефона.</div>
+              <div class="row mt-8" style="gap:8px; flex-wrap:wrap;">
+                <button class="btn" id="requestPasswordResetBtn">Получить код</button>
+                <button class="btn primary" id="confirmPasswordResetBtn">Сохранить новый пароль</button>
+              </div>
+              <input class="input mt-8" id="passwordResetCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+              <input class="input mt-8" id="passwordResetNewInput" type="password" placeholder="Новый пароль" autocomplete="new-password" />
+              <input class="input mt-8" id="passwordResetConfirmInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
+              <div class="muted mono mt-8" id="passwordResetMeta"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
 
   <script type="module">
     import {
@@ -85,6 +124,10 @@
       requestLinkPhoneCode,
       verifyLinkPhoneCode,
       linkTelegramAccount,
+      getPasswordState,
+      changePassword,
+      requestPasswordResetCode,
+      confirmPasswordReset,
     } from "/app.js";
 
     applyTelegramTheme();
@@ -99,12 +142,29 @@
       phoneState: document.getElementById("phoneState"),
       linkPhoneInput: document.getElementById("linkPhoneInput"),
       linkPhoneCodeInput: document.getElementById("linkPhoneCodeInput"),
+      linkPhonePasswordInput: document.getElementById("linkPhonePasswordInput"),
+      linkPhonePasswordConfirmInput: document.getElementById("linkPhonePasswordConfirmInput"),
       linkPhoneMeta: document.getElementById("linkPhoneMeta"),
       requestLinkCodeBtn: document.getElementById("requestLinkCodeBtn"),
       verifyLinkCodeBtn: document.getElementById("verifyLinkCodeBtn"),
       telegramState: document.getElementById("telegramState"),
       linkTelegramBtn: document.getElementById("linkTelegramBtn"),
+      passwordState: document.getElementById("passwordState"),
+      currentPasswordInput: document.getElementById("currentPasswordInput"),
+      changePasswordInput: document.getElementById("changePasswordInput"),
+      changePasswordConfirmInput: document.getElementById("changePasswordConfirmInput"),
+      changePasswordBtn: document.getElementById("changePasswordBtn"),
+      passwordResetPhoneHint: document.getElementById("passwordResetPhoneHint"),
+      requestPasswordResetBtn: document.getElementById("requestPasswordResetBtn"),
+      confirmPasswordResetBtn: document.getElementById("confirmPasswordResetBtn"),
+      passwordResetCodeInput: document.getElementById("passwordResetCodeInput"),
+      passwordResetNewInput: document.getElementById("passwordResetNewInput"),
+      passwordResetConfirmInput: document.getElementById("passwordResetConfirmInput"),
+      passwordResetMeta: document.getElementById("passwordResetMeta"),
     };
+
+    let currentProfile = null;
+    let currentPasswordState = null;
 
     function renderAuthMethods(methods) {
       const list = Array.isArray(methods) ? methods : [];
@@ -125,7 +185,31 @@
       return Boolean(wa()?.initData || "");
     }
 
+    function validatePasswordPair(password, confirm) {
+      const a = String(password || "").trim();
+      const b = String(confirm || "").trim();
+      if (!a && !b) return "";
+      if (!a || !b) throw new Error("Заполни оба поля с новым паролем");
+      if (a !== b) throw new Error("Пароли не совпадают");
+      return a;
+    }
+
+    function renderPasswordState(state) {
+      currentPasswordState = state || null;
+      const hasPassword = Boolean(state?.has_password);
+      if (hasPassword) {
+        const changedAt = state?.password_set_at || state?.password_changed_at || null;
+        els.passwordState.textContent = changedAt
+          ? `Пароль установлен. Последнее обновление: ${changedAt}`
+          : "Пароль установлен и активен.";
+      } else {
+        els.passwordState.textContent = "Пароль пока не установлен. Его можно создать после подтверждения номера по SMS.";
+      }
+      els.currentPasswordInput.disabled = !hasPassword;
+    }
+
     function renderProfile(profile) {
+      currentProfile = profile || null;
       els.fullName.value = profile?.full_name || "";
       els.shortName.value = profile?.short_name || "";
       els.linkPhoneInput.value = profile?.phone || "";
@@ -133,8 +217,10 @@
 
       if (profile?.phone) {
         els.phoneState.textContent = `Привязанный номер: ${profile.phone}`;
+        els.passwordResetPhoneHint.textContent = `Код будет отправлен на ${profile.phone}.`;
       } else {
-        els.phoneState.textContent = "Телефон пока не привязан. После привязки в приложение можно будет входить и по SMS.";
+        els.phoneState.textContent = "Телефон пока не привязан. После привязки в приложение можно будет входить по телефону и паролю.";
+        els.passwordResetPhoneHint.textContent = "Сначала привяжи номер телефона, затем можно будет сбрасывать пароль по SMS.";
       }
 
       if (profile?.tg_user_id) {
@@ -151,8 +237,12 @@
 
     async function loadProfile() {
       try {
-        const p = await api("/me/profile");
-        renderProfile(p);
+        const [profile, passwordState] = await Promise.all([
+          api("/me/profile"),
+          getPasswordState().catch(() => null),
+        ]);
+        renderProfile(profile);
+        if (passwordState) renderPasswordState(passwordState);
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось загрузить профиль", "err");
       }
@@ -185,8 +275,16 @@
 
     els.verifyLinkCodeBtn.onclick = async () => {
       try {
-        const out = await verifyLinkPhoneCode(els.linkPhoneInput.value.trim(), els.linkPhoneCodeInput.value.trim());
-        toast("Телефон привязан", "ok");
+        const newPassword = validatePasswordPair(
+          els.linkPhonePasswordInput.value,
+          els.linkPhonePasswordConfirmInput.value,
+        );
+        const out = await verifyLinkPhoneCode(
+          els.linkPhoneInput.value.trim(),
+          els.linkPhoneCodeInput.value.trim(),
+          newPassword,
+        );
+        toast(newPassword ? "Телефон привязан, пароль установлен" : "Телефон привязан", "ok");
         renderAuthMethods(out?.auth_methods || []);
         await loadProfile();
       } catch (e) {
@@ -202,6 +300,59 @@
         await loadProfile();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось привязать Telegram", "err");
+      }
+    };
+
+    els.changePasswordBtn.onclick = async () => {
+      try {
+        const newPassword = validatePasswordPair(
+          els.changePasswordInput.value,
+          els.changePasswordConfirmInput.value,
+        );
+        if (!newPassword) throw new Error("Введи новый пароль");
+        await changePassword(els.currentPasswordInput.value, newPassword);
+        toast("Пароль изменён", "ok");
+        els.currentPasswordInput.value = "";
+        els.changePasswordInput.value = "";
+        els.changePasswordConfirmInput.value = "";
+        await loadProfile();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось изменить пароль", "err");
+      }
+    };
+
+    els.requestPasswordResetBtn.onclick = async () => {
+      try {
+        const phone = currentProfile?.phone || els.linkPhoneInput.value.trim();
+        if (!phone) throw new Error("Сначала привяжи номер телефона");
+        const out = await requestPasswordResetCode(phone);
+        els.passwordResetMeta.textContent = out?.debug_code
+          ? `Код отправлен. dev_code=${out.debug_code}`
+          : `Код отправлен на ${out?.phone || phone}`;
+        toast("Код отправлен", "ok");
+        els.passwordResetCodeInput.focus();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось отправить код", "err");
+      }
+    };
+
+    els.confirmPasswordResetBtn.onclick = async () => {
+      try {
+        const phone = currentProfile?.phone || els.linkPhoneInput.value.trim();
+        if (!phone) throw new Error("Сначала привяжи номер телефона");
+        const newPassword = validatePasswordPair(
+          els.passwordResetNewInput.value,
+          els.passwordResetConfirmInput.value,
+        );
+        if (!newPassword) throw new Error("Введи новый пароль");
+        await confirmPasswordReset(phone, els.passwordResetCodeInput.value.trim(), newPassword);
+        toast(currentPasswordState?.has_password ? "Пароль сброшен" : "Пароль установлен", "ok");
+        els.passwordResetCodeInput.value = "";
+        els.passwordResetNewInput.value = "";
+        els.passwordResetConfirmInput.value = "";
+        await loadProfile();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось сохранить новый пароль", "err");
       }
     };
 
