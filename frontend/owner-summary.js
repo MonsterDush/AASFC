@@ -60,6 +60,7 @@ function showBlock(id, visible) {
 let financeAccess = {
   canViewRevenue: false,
   canViewExpenses: false,
+  canViewPayroll: false,
 };
 
 async function loadFinanceAccess() {
@@ -73,9 +74,10 @@ async function loadFinanceAccess() {
     financeAccess = {
       canViewRevenue: isOwner || hasPerm(pset, "REVENUE_VIEW"),
       canViewExpenses: isOwner || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
+      canViewPayroll: isOwner || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE"),
     };
   } catch {
-    financeAccess = { canViewRevenue: false, canViewExpenses: false };
+    financeAccess = { canViewRevenue: false, canViewExpenses: false, canViewPayroll: false };
   }
   return financeAccess;
 }
@@ -84,6 +86,7 @@ function syncActions(month) {
   const venueId = getActiveVenueId();
   const revenueBtn = document.getElementById("openRevenueBtn");
   const expensesBtn = document.getElementById("openExpensesBtn");
+  const payrollBtn = document.getElementById("openPayrollBtn");
   const economicsBtn = document.getElementById("openEconomicsBtn");
 
   if (revenueBtn) {
@@ -105,6 +108,16 @@ function syncActions(month) {
       qp.set("venue_id", String(venueId));
       qp.set("month", month);
       location.href = `/owner-expenses.html?${qp.toString()}`;
+    };
+  }
+
+  if (payrollBtn) {
+    payrollBtn.style.display = financeAccess.canViewPayroll ? "" : "none";
+    payrollBtn.onclick = () => {
+      const qp = new URLSearchParams();
+      qp.set("venue_id", String(venueId));
+      qp.set("month", month);
+      location.href = `/owner-payroll.html?${qp.toString()}`;
     };
   }
 
