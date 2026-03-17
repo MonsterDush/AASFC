@@ -241,14 +241,15 @@ html{-webkit-text-size-adjust:100%}
 body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);padding:16px 14px calc(84px + env(safe-area-inset-bottom))}
 .container{max-width:980px;margin:0 auto}
 
-.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:nowrap;margin-bottom:14px}
-.brand{min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:10px}
-.title{min-width:0;line-height:1.1}
-.title b{font-size:16px}
-.title div{font-size:12px;color:var(--muted)}
-.userpill{flex:0 0 auto;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);font-size:12px;color:var(--muted)}
+.topbar{display:flex;justify-content:flex-start;align-items:center;gap:12px;flex-wrap:nowrap;margin-bottom:16px;min-height:44px}
+.brand{min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:12px}
+.title{min-width:0;line-height:1.15}
+.title b{display:block;font-size:16px}
+.title div{font-size:12px;color:var(--muted);margin-top:2px}
+.userpill{display:none !important}
 
 .logo{width:40px;height:40px;flex:0 0 auto;border-radius:0;background:center / contain no-repeat url("/logo.png");filter:drop-shadow(0 8px 16px rgba(0,0,0,.18))}
+.topbar__spacer{display:none}
 
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
 .itemcard{border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--surface2)}
@@ -1055,7 +1056,6 @@ input[type="checkbox"],input[type="radio"]{
 .mt-16{margin-top:16px}
 
 @media (max-width:760px){
-  .topbar{align-items:flex-start;gap:10px}
-  .userpill{max-width:42%}
+  .topbar{align-items:flex-start;gap:10px;margin-bottom:14px}
   .logo{width:36px;height:36px}
 }

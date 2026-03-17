@@ -195,6 +195,7 @@ export function applyTelegramTheme() {
 
   const u = w.initDataUnsafe?.user;
   if (el) el.textContent = u ? `@${u.username || "без_username"}` : "неизвестно";
+  // userpill is hidden globally for a cleaner, unified topbar.
 }
 
 export function toast(msg, type = "info") {
