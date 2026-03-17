@@ -6,6 +6,12 @@
   <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Админ · Приглашения</title>
+  <style>
+    .invite-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:10px; margin-top:10px; }
+    .invite-card { border-bottom:1px solid var(--border); padding:12px 0; }
+    .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--border); border-radius:999px; font-size:12px; }
+    .mono-wrap { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; word-break: break-all; }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -14,7 +20,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Админ · Приглашения</b>
-          <div class="muted">участники · ожидание · удаление</div>
+          <div class="muted">контроль pending invites по каналам</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -32,199 +38,199 @@
 
       <div class="itemcard mt-12">
         <b>Создать приглашение</b>
+        <div class="invite-grid">
+          <div>
+            <label class="muted">Канал</label>
+            <select id="inviteChannel">
+              <option value="TELEGRAM">Telegram</option>
+              <option value="PHONE">Телефон</option>
+            </select>
+          </div>
+          <div id="tgWrap">
+            <label class="muted">Telegram username</label>
+            <input id="tg" placeholder="@username" />
+          </div>
+          <div id="phoneWrap" style="display:none">
+            <label class="muted">Телефон</label>
+            <input id="phone" placeholder="+7 999 123-45-67" />
+          </div>
+          <div>
+            <label class="muted">Имя/заметка</label>
+            <input id="contactLabel" placeholder="Иван / Бармен" />
+          </div>
+          <div>
+            <label class="muted">Роль</label>
+            <select id="role">
+              <option value="STAFF">Персонал</option>
+              <option value="OWNER">Владелец</option>
+            </select>
+          </div>
+        </div>
         <div class="row mt-10">
-          <input id="tg" placeholder="username в Telegram (с @ или без)" />
-          <select id="role">
-            <option value="STAFF">Персонал</option>
-            <option value="OWNER">Владелец</option>
-          </select>
-          <button class="btn primary" id="btnInvite">Пригласить</button>
+          <button class="btn primary" id="btnInvite">Создать</button>
+          <div id="inviteResult" class="muted"></div>
         </div>
       </div>
 
-        <div class="itemcard mt-12">
-          <b>Приглашения в ожидании</b>
-          <div id="pending"class="mt-10">
-            <div class="skeleton"></div>
-            <div class="skeleton"></div></div>
-        </div>
-        <div class="itemcard mt-12">
-          <b>Участники</b>
-          <div id="members"class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
-        </div>
+      <div class="itemcard mt-12">
+        <b>Приглашения в ожидании</b>
+        <div id="pending" class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
+      </div>
+      <div class="itemcard mt-12">
+        <b>Участники</b>
+        <div id="members" class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
+      </div>
     </div>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
-  <div id="modal" class="modal">
-    <div class="modal__backdrop"></div>
-    <div class="modal__panel">
-      <div class="modal__head">
-        <div class="modal__title">Подтверждение</div>
-        <button class="btn" data-close>Закрыть</button>
-      </div>
-      <div class="modal__body"></div>
-    </div>
-  </div>
-
-  <div class="nav">
-    <div class="wrap">
-      <div id="nav"></div>
-    </div>
-  </div>
+  <div id="modal" class="modal"><div class="modal__backdrop"></div><div class="modal__panel"><div class="modal__head"><div class="modal__title">Подтверждение</div><button class="btn" data-close>Закрыть</button></div><div class="modal__body"></div></div></div>
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
   <script type="module">
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, mountNav } from "/app.js";
+    function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+    function escAttr(s){ return esc(s).replace(/"/g, '&quot;'); }
 
     applyTelegramTheme();
-    mountCommonUI("admin-invites");
+    mountCommonUI('admin-invites');
     await ensureLogin({ silent:true });
-    await mountNav({ activeTab: "admin-invites" });
+    await mountNav({ activeTab: 'admin-invites' });
 
-    const params = new URLSearchParams(location.search);
-    let venueId = params.get("venue_id") || "";
+    let venueId = new URLSearchParams(location.search).get('venue_id') || '';
+    const venueSelect = document.getElementById('venueSelect');
+    const venueMeta = document.getElementById('venueMeta');
+    const pending = document.getElementById('pending');
+    const members = document.getElementById('members');
+    const inviteChannel = document.getElementById('inviteChannel');
+    const tgWrap = document.getElementById('tgWrap');
+    const phoneWrap = document.getElementById('phoneWrap');
+    const inviteResult = document.getElementById('inviteResult');
 
-    const venueSelect = document.getElementById("venueSelect");
-    const venueMeta = document.getElementById("venueMeta");
-    // openLink removed (лишняя кнопка)
-
-    const pending = document.getElementById("pending");
-    const members = document.getElementById("members");
-
-    function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+    function syncChannel(){
+      const channel = String(inviteChannel.value || 'TELEGRAM').toUpperCase();
+      tgWrap.style.display = channel === 'TELEGRAM' ? '' : 'none';
+      phoneWrap.style.display = channel === 'PHONE' ? '' : 'none';
+    }
+    function setVenueMeta(){ venueMeta.textContent = venueId ? `venue_id=${venueId}` : 'Заведение не выбрано'; }
 
     async function loadVenues() {
       venueSelect.innerHTML = `<option value="">Загружаю заведения…</option>`;
       try {
-        const data = await api("/venues?include_archived=true");
+        const data = await api('/venues?include_archived=true');
         window.__lastJson = data;
-
         venueSelect.innerHTML = `<option value="">Выберите заведение…</option>`;
         data.forEach(v => {
-          const opt = document.createElement("option");
+          const opt = document.createElement('option');
           opt.value = String(v.id);
-          opt.textContent = `${v.name} (id=${v.id})${v.is_archived ? " [архив]" : ""}`;
+          opt.textContent = `${v.name} (id=${v.id})${v.is_archived ? ' [архив]' : ''}`;
           if (String(v.id) === String(venueId)) opt.selected = true;
           venueSelect.appendChild(opt);
         });
       } catch (e) {
         venueSelect.innerHTML = `<option value="">Ошибка: ${esc(e.message)}</option>`;
-        toast("Ошибка загрузки заведений: " + e.message, "err");
+        toast('Ошибка загрузки заведений: ' + e.message, 'err');
       }
     }
 
-    function setVenueMeta() {
-      venueMeta.textContent = venueId ? `venue_id=${venueId}` : "Заведение не выбрано";
-    }
-
     function renderPending(items) {
-      pending.innerHTML = "";
-      if (!items?.length) return pending.innerHTML = `<div class="muted">Нет приглашений</div>`;
+      pending.innerHTML = '';
+      if (!items?.length) { pending.innerHTML = `<div class="muted">Нет приглашений</div>`; return; }
       items.forEach(i => {
-        const row = document.createElement("div");
-        row.className = "row";
-        row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
+        const contact = i.channel === 'PHONE' ? (i.contact_label || i.phone || '—') : '@' + (i.tg_username || '—');
+        const row = document.createElement('div');
+        row.className = 'invite-card';
         row.innerHTML = `
-          <div>
-            <b>@${esc(i.tg_username)}</b> <span class="mono">role=${esc(i.venue_role)}</span><br/>
-            <span class="mono">${esc(i.created_at || "")}</span>
+          <div class="row" style="justify-content:space-between; align-items:flex-start; gap:12px;">
+            <div>
+              <div><b>${esc(contact)}</b> <span class="chip">${esc(i.channel || 'TELEGRAM')}</span> <span class="chip">${esc(i.venue_role)}</span></div>
+              <div class="muted mono-wrap mt-6">${i.phone ? esc(i.phone) + ' · ' : ''}${esc(i.created_at || '')}</div>
+              <div class="mono-wrap mt-6"><a class="link" href="${escAttr(i.invite_link || '#')}" target="_blank" rel="noreferrer">${esc(i.invite_link || '')}</a></div>
+            </div>
+            <div class="row" style="gap:8px;">
+              <button class="btn" data-copy>Скопировать ссылку</button>
+              <button class="btn danger" data-cancel>Отменить</button>
+            </div>
           </div>
-          <button class="btn danger" data-cancel>Отменить</button>
         `;
-        row.querySelector("[data-cancel]").onclick = async () => {
-          const ok = await confirmModal({
-            title: "Отменить приглашение?",
-            text: `Отменить приглашение для @${i.tg_username}?`,
-            confirmText: "Отменить",
-            danger: true,
-          });
+        row.querySelector('[data-copy]').onclick = async () => {
+          try { await navigator.clipboard.writeText(location.origin + (i.invite_link || '')); toast('Ссылка скопирована', 'ok'); }
+          catch { toast('Не удалось скопировать', 'warn'); }
+        };
+        row.querySelector('[data-cancel]').onclick = async () => {
+          const ok = await confirmModal({ title:'Отменить приглашение?', text:`Отменить приглашение для ${contact}?`, confirmText:'Отменить', danger:true });
           if (!ok) return;
-
-          try {
-            await api(`/venues/${venueId}/invites/${i.id}`, { method:"DELETE" });
-            toast("Приглашение отменено", "ok");
-            await loadMembers();
-          } catch (e) { toast("Ошибка отмены: " + e.message, "err"); }
+          try { await api(`/venues/${venueId}/invites/${i.id}`, { method:'DELETE' }); toast('Приглашение отменено', 'ok'); await loadMembers(); }
+          catch (e) { toast('Ошибка отмены: ' + e.message, 'err'); }
         };
         pending.appendChild(row);
       });
     }
 
     function renderMembers(items) {
-      members.innerHTML = "";
-      if (!items?.length) return members.innerHTML = `<div class="muted">Нет участников</div>`;
+      members.innerHTML = '';
+      if (!items?.length) { members.innerHTML = `<div class="muted">Нет участников</div>`; return; }
       items.forEach(m => {
-        const row = document.createElement("div");
-        row.style = "border-bottom:1px solid var(--border); padding:10px 0;";
-        row.innerHTML = `
-          <div class="row" style="justify-content:space-between; align-items:flex-start">
-            <div>
-              <b>@${esc(m.tg_username || "-")}</b> <span class="mono">role=${esc(m.venue_role)}</span><br/>
-              <span class="mono">user_id=${esc(m.user_id)} · tg_user_id=${esc(m.tg_user_id || "-")}</span>
-            </div>
-            <button class="btn danger" data-remove>Удалить</button>
-          </div>
-        `;
-        row.querySelector("[data-remove]").onclick = async () => {
-          const ok = await confirmModal({
-            title: "Удалить участника?",
-            text: `Удалить @${m.tg_username || "-"} из заведения?`,
-            confirmText: "Удалить",
-            danger: true,
-          });
-          if (!ok) return;
-
-          try {
-            await api(`/venues/${venueId}/members/${m.user_id}`, { method:"DELETE" });
-            toast("Участник удалён", "ok");
-            await loadMembers();
-          } catch (e) { toast("Ошибка удаления: " + e.message, "err"); }
-        };
+        const row = document.createElement('div');
+        row.className = 'invite-card';
+        row.innerHTML = `<div><b>${esc(m.short_name || m.full_name || (m.tg_username ? '@' + m.tg_username : 'user #' + m.user_id))}</b> <span class="chip">${esc(m.venue_role)}</span><div class="muted mono-wrap mt-6">user_id=${esc(m.user_id)} · tg=${esc(m.tg_username || '-')}</div></div>`;
         members.appendChild(row);
       });
     }
 
     async function loadMembers() {
-      if (!venueId) {
-        pending.innerHTML = `<div class="muted">Выберите заведение</div>`;
-        members.innerHTML = `<div class="muted">Выберите заведение</div>`;
-        return;
-      }
+      if (!venueId) { pending.innerHTML = `<div class="muted">Выберите заведение</div>`; members.innerHTML = `<div class="muted">Выберите заведение</div>`; return; }
       pending.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
       members.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
       try {
         const data = await api(`/venues/${venueId}/members`);
         window.__lastJson = data;
-        renderPending(data.pending_invites);
-        renderMembers(data.members);
+        renderPending(data.pending_invites || []);
+        renderMembers(data.members || []);
       } catch (e) {
         pending.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
         members.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
-        toast("Ошибка загрузки участников: " + e.message, "err");
+        toast('Ошибка загрузки участников: ' + e.message, 'err');
       }
     }
 
-
-    document.getElementById("btnUseVenue").onclick = async () => {
-      venueId = venueSelect.value || "";
+    document.getElementById('btnUseVenue').onclick = async () => {
+      venueId = venueSelect.value || '';
       setVenueMeta();
+      const url = new URL(location.href);
+      if (venueId) url.searchParams.set('venue_id', venueId); else url.searchParams.delete('venue_id');
+      history.replaceState(null, '', url.pathname + url.search);
       await loadMembers();
     };
 
-    document.getElementById("btnInvite").onclick = async () => {
-      if (!venueId) return toast("Сначала выберите заведение", "warn");
-      const tg = document.getElementById("tg").value.trim();
-      const role = document.getElementById("role").value;
-      if (!tg) return toast("Введите username", "warn");
-
+    document.getElementById('btnInvite').onclick = async () => {
+      if (!venueId) return toast('Сначала выберите заведение', 'warn');
+      const channel = String(inviteChannel.value || 'TELEGRAM').toUpperCase();
+      const role = document.getElementById('role').value;
+      const contact_label = document.getElementById('contactLabel').value.trim() || null;
+      const body = { invite_channel: channel, venue_role: role, contact_label };
+      if (channel === 'TELEGRAM') {
+        const tg = document.getElementById('tg').value.trim();
+        if (!tg) return toast('Введите username', 'warn');
+        body.tg_username = tg;
+      } else {
+        const phone = document.getElementById('phone').value.trim();
+        if (!phone) return toast('Введите телефон', 'warn');
+        body.phone = phone;
+      }
       try {
-        await api(`/venues/${venueId}/invites`, { method:"POST", body: JSON.stringify({ tg_username: tg, venue_role: role }) });
-        document.getElementById("tg").value = "";
-        toast("Приглашение отправлено", "ok");
+        const out = await api(`/venues/${venueId}/invites`, { method:'POST', body });
+        inviteResult.innerHTML = out?.invite_link ? `Ссылка: <a class="link" href="${escAttr(out.invite_link)}" target="_blank" rel="noreferrer">${esc(out.invite_link)}</a>` : 'Готово';
+        document.getElementById('tg').value = '';
+        document.getElementById('phone').value = '';
+        document.getElementById('contactLabel').value = '';
+        toast(out?.mode === 'member_added' ? 'Участник добавлен' : 'Приглашение отправлено', 'ok');
         await loadMembers();
-      } catch (e) { toast("Ошибка приглашения: " + e.message, "err"); }
+      } catch (e) { toast('Ошибка приглашения: ' + e.message, 'err'); }
     };
 
+    inviteChannel.onchange = syncChannel;
+    syncChannel();
     await loadVenues();
     setVenueMeta();
     await loadMembers();

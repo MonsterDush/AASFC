@@ -4,6 +4,7 @@ app = FastAPI(title="Axelio API")
 
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers.venues import router as venues_router
+from app.routers.public_invites import router as public_invites_router
 from app.routers import auth, me
 
 app.add_middleware(
@@ -20,8 +21,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(venues_router)
+app.include_router(public_invites_router)
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
-

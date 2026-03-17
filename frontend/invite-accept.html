@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Принять приглашение</title>
+  <style>
+    .invite-meta { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:10px; }
+    .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--border); border-radius:999px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Принять приглашение</b>
+          <div class="muted">token-based invite page</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card" id="card">
+      <div id="state" class="muted">Загрузка…</div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <script type="module">
+    import { applyTelegramTheme, ensureLogin, api, toast, wa } from '/app.js';
+    function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    const params = new URLSearchParams(location.search);
+    const token = (params.get('token') || '').trim();
+    const state = document.getElementById('state');
+    const card = document.getElementById('card');
+
+    applyTelegramTheme();
+
+    function renderInvite(inv) {
+      const contact = inv.invite_channel === 'PHONE' ? (inv.contact_label || inv.phone || '—') : ('@' + (inv.tg_username || '—'));
+      card.innerHTML = `
+        <div><b>${esc(inv.venue_name || 'Приглашение')}</b></div>
+        <div class="invite-meta mt-12">
+          <div><span class="chip">${esc(inv.invite_channel || 'TELEGRAM')}</span></div>
+          <div><span class="chip">${esc(inv.venue_role || '')}</span></div>
+          <div class="muted">Контакт: ${esc(contact)}</div>
+          <div class="muted">Статус: ${esc(inv.status || '')}</div>
+        </div>
+        <div class="muted mt-12">${inv.invite_channel === 'PHONE' ? 'Ссылка готова для phone-auth flow. Пока вход в этой сборке остаётся через Telegram.' : 'Для Telegram-инвайта нужно войти под нужным Telegram-аккаунтом.'}</div>
+        <div class="row mt-12" style="gap:8px;">
+          <button class="btn primary" id="btnAccept">Принять приглашение</button>
+          <a class="btn" href="/index.html">На главную</a>
+        </div>
+      `;
+      document.getElementById('btnAccept').onclick = acceptInvite;
+    }
+
+    async function acceptInvite() {
+      const login = await ensureLogin({ silent:true });
+      if (!login.ok) {
+        const hasTg = !!(wa()?.initData);
+        state.textContent = '';
+        toast(hasTg ? 'Не удалось авторизоваться в Telegram' : 'Открой ссылку из Mini App Telegram или после добавления phone-auth', 'warn');
+        return;
+      }
+      try {
+        const out = await api(`/public/invites/${encodeURIComponent(token)}/accept`, { method:'POST' });
+        toast('Приглашение принято', 'ok');
+        const vid = out?.venue_id;
+        if (vid) {
+          location.replace(`/app-venue.html?venue_id=${encodeURIComponent(vid)}`);
+          return;
+        }
+        location.replace('/index.html');
+      } catch (e) {
+        toast(e?.data?.detail || e.message || 'Ошибка принятия приглашения', 'err');
+      }
+    }
+
+    if (!token) {
+      state.textContent = 'Токен приглашения не найден';
+    } else {
+      try {
+        const inv = await api(`/public/invites/${encodeURIComponent(token)}`);
+        renderInvite(inv);
+      } catch (e) {
+        state.textContent = e?.data?.detail || e.message || 'Приглашение не найдено';
+      }
+    }
+  </script>
+</body>
+</html>

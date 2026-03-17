@@ -87,6 +87,7 @@ from app.models.permission import Permission
 from app.auth.venue_permissions import require_venue_permission
 
 from app.services.venues import create_venue
+from app.services.invites import build_invite_link, create_venue_invite, normalize_phone_e164
 from app.settings import settings
 
 router = APIRouter(prefix="/venues", tags=["venues"])
@@ -109,7 +110,10 @@ def _normalize_code(code: str) -> str:
 
 class VenueCreateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
-    owner_usernames: Optional[List[str]] = None  # ["owner1", "@owner2"]
+    owner_usernames: Optional[List[str]] = None  # legacy fallback ["owner1", "@owner2"]
+    owner_user_id: int | None = None
+    owner_tg_username: str | None = None
+    owner_phone: str | None = None
 
 
 class VenueUpdateIn(BaseModel):
@@ -117,8 +121,11 @@ class VenueUpdateIn(BaseModel):
 
 
 class InviteCreateIn(BaseModel):
-    tg_username: str
-    venue_role: str = "STAFF"  # "OWNER" | "STAFF"
+    invite_channel: str = "TELEGRAM"  # TELEGRAM | PHONE
+    tg_username: str | None = None
+    phone: str | None = None
+    contact_label: str | None = None
+    venue_role: str = "STAFF"  # OWNER | STAFF
 
 
 
@@ -1141,12 +1148,42 @@ def create_venue_admin_only(
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    venue = create_venue(
-        db,
-        name=payload.name,
-        owner_usernames=payload.owner_usernames,
+    try:
+        venue = create_venue(
+            db,
+            name=payload.name,
+            owner_usernames=payload.owner_usernames,
+            owner_user_id=payload.owner_user_id,
+            owner_tg_username=payload.owner_tg_username,
+            owner_phone=payload.owner_phone,
+            created_by_user_id=user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    owner_pending_invite = (
+        db.query(VenueInvite)
+        .filter(
+            VenueInvite.venue_id == venue.id,
+            VenueInvite.venue_role == "OWNER",
+            VenueInvite.accepted_user_id.is_(None),
+            VenueInvite.is_active.is_(True),
+        )
+        .order_by(VenueInvite.id.desc())
+        .one_or_none()
     )
-    return {"id": venue.id, "name": venue.name}
+    return {
+        "id": venue.id,
+        "name": venue.name,
+        "owner_pending": owner_pending_invite is not None,
+        "owner_invite": {
+            "id": owner_pending_invite.id,
+            "channel": owner_pending_invite.invite_channel,
+            "tg_username": owner_pending_invite.invited_tg_username,
+            "phone": owner_pending_invite.invited_phone_e164,
+            "invite_link": build_invite_link(owner_pending_invite.invite_token),
+        } if owner_pending_invite else None,
+    }
 
 
 @router.get("")
@@ -1308,9 +1345,14 @@ def get_members(
     invites = (
         db.query(
             VenueInvite.id,
+            VenueInvite.invite_channel,
             VenueInvite.invited_tg_username,
+            VenueInvite.invited_phone_e164,
+            VenueInvite.invited_contact_label,
+            VenueInvite.invite_token,
             VenueInvite.venue_role,
             VenueInvite.created_at,
+            VenueInvite.expires_at,
             VenueInvite.default_position_json,
         )
         .filter(
@@ -1337,9 +1379,14 @@ def get_members(
         "pending_invites": [
             {
                 "id": r.id,
+                "channel": r.invite_channel,
                 "tg_username": r.invited_tg_username,
+                "phone": r.invited_phone_e164,
+                "contact_label": r.invited_contact_label,
                 "venue_role": r.venue_role,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+                "invite_link": build_invite_link(r.invite_token),
                 "default_position": r.default_position_json,
             }
             for r in invites
@@ -3379,43 +3426,75 @@ def create_invite(
 ):
     _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
 
-    username = normalize_tg_username(payload.tg_username)
-    if not username:
-        raise HTTPException(status_code=400, detail="Bad tg_username")
-
-    role = payload.venue_role
+    role = str(payload.venue_role or "").strip().upper()
     if role not in ("OWNER", "STAFF"):
         raise HTTPException(status_code=400, detail="Bad venue_role")
 
-    existing_user = db.query(User).filter(User.tg_username == username).one_or_none()
-    if existing_user:
-        mem = db.query(VenueMember).filter(
-            VenueMember.venue_id == venue_id,
-            VenueMember.user_id == existing_user.id,
-        ).one_or_none()
+    channel = str(payload.invite_channel or "TELEGRAM").strip().upper()
+    if channel not in ("TELEGRAM", "PHONE"):
+        raise HTTPException(status_code=400, detail="Bad invite_channel")
 
-        if mem:
-            mem.venue_role = role
-            mem.is_active = True
-        else:
-            db.add(VenueMember(venue_id=venue_id, user_id=existing_user.id, venue_role=role, is_active=True))
+    if channel == "TELEGRAM":
+        username = normalize_tg_username(payload.tg_username)
+        if not username:
+            raise HTTPException(status_code=400, detail="Bad tg_username")
 
-        db.commit()
-        return {"ok": True, "mode": "member_added"}
+        existing_user = db.query(User).filter(User.tg_username == username).one_or_none()
+        if existing_user:
+            mem = db.query(VenueMember).filter(
+                VenueMember.venue_id == venue_id,
+                VenueMember.user_id == existing_user.id,
+            ).one_or_none()
 
-    inv = db.query(VenueInvite).filter(
-        VenueInvite.venue_id == venue_id,
-        VenueInvite.invited_tg_username == username,
-        VenueInvite.venue_role == role,
-    ).one_or_none()
+            if mem:
+                mem.venue_role = role
+                mem.is_active = True
+            else:
+                db.add(VenueMember(venue_id=venue_id, user_id=existing_user.id, venue_role=role, is_active=True))
 
-    if inv:
-        inv.is_active = True
+            db.commit()
+            return {"ok": True, "mode": "member_added", "channel": channel}
+
+        try:
+            inv = create_venue_invite(
+                db,
+                venue_id=venue_id,
+                venue_role=role,
+                invite_channel="TELEGRAM",
+                tg_username=username,
+                contact_label=payload.contact_label,
+                created_by_user_id=user.id,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     else:
-        db.add(VenueInvite(venue_id=venue_id, invited_tg_username=username, venue_role=role, is_active=True))
+        phone = normalize_phone_e164(payload.phone)
+        if not phone:
+            raise HTTPException(status_code=400, detail="Bad phone")
+        try:
+            inv = create_venue_invite(
+                db,
+                venue_id=venue_id,
+                venue_role=role,
+                invite_channel="PHONE",
+                phone_e164=phone,
+                contact_label=payload.contact_label,
+                created_by_user_id=user.id,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     db.commit()
-    return {"ok": True, "mode": "invited"}
+    db.refresh(inv)
+    return {
+        "ok": True,
+        "mode": "invited",
+        "channel": inv.invite_channel,
+        "invite_id": inv.id,
+        "invite_link": build_invite_link(inv.invite_token),
+        "token": inv.invite_token,
+    }
 
 
 @router.patch("/{venue_id}/invites/{invite_id}/default_position")
@@ -3462,6 +3541,7 @@ def cancel_invite(
         raise HTTPException(status_code=404, detail="Invite not found")
 
     inv.is_active = False
+    inv.revoked_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True}
 

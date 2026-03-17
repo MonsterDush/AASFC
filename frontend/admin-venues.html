@@ -13,7 +13,7 @@
     .row { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
     .muted { opacity:.7; }
     .btn { cursor:pointer; }
-    input[type="text"], input[type="search"] { padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.2); min-width:240px; }
+    input[type="text"], input[type="search"], select { padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.2); min-width:180px; }
     .pill { padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.15); }
     .skeleton { border-radius:12px; height:64px; background:rgba(0,0,0,.06); margin:10px 0; }
     pre { white-space:pre-wrap; word-break:break-word; }
@@ -59,13 +59,22 @@
       <div class="row">
         <div>
           <div><b>Создать заведение</b></div>
-          <div class="muted">название + usernames владельцев через запятую</div>
+          <div class="muted">создание с владельцем по Telegram, телефону или существующему user_id</div>
         </div>
       </div>
 
       <div class="toolbar">
         <input id="vName" type="text" placeholder="Название заведения" />
-        <input id="owners" type="text" placeholder="usernames владельцев: ivan, petr" />
+        <select id="ownerMode">
+          <option value="tg">Telegram username</option>
+          <option value="phone">Телефон</option>
+          <option value="user_id">Существующий user_id</option>
+          <option value="legacy_multi">Legacy: несколько Telegram usernames</option>
+        </select>
+        <input id="ownerTg" type="text" placeholder="@owner_username" />
+        <input id="ownerPhone" type="text" placeholder="+7 999 123-45-67" style="display:none" />
+        <input id="ownerUserId" type="text" placeholder="user_id владельца" style="display:none" />
+        <input id="owners" type="text" placeholder="usernames владельцев: ivan, petr" style="display:none" />
         <button id="btnCreate" class="btn">Создать</button>
       </div>
       <div id="createResult" class="muted"></div>
@@ -233,8 +242,17 @@
     }
   }
 
+  function syncOwnerMode() {
+    const mode = document.getElementById("ownerMode").value;
+    document.getElementById("ownerTg").style.display = mode === "tg" ? "" : "none";
+    document.getElementById("ownerPhone").style.display = mode === "phone" ? "" : "none";
+    document.getElementById("ownerUserId").style.display = mode === "user_id" ? "" : "none";
+    document.getElementById("owners").style.display = mode === "legacy_multi" ? "" : "none";
+  }
+
   async function createVenue() {
     const name = document.getElementById("vName").value.trim();
+    const modeSel = document.getElementById("ownerMode").value;
     const ownersRaw = document.getElementById("owners").value.trim();
     const owner_usernames = ownersRaw
       ? ownersRaw.split(",").map(s => s.trim().replace(/^@/, "")).filter(Boolean)
@@ -242,14 +260,37 @@
 
     if (!name) { toast("Venue name required", "warn"); return; }
 
+    const body = { name };
+    if (modeSel === "tg") {
+      const owner_tg_username = document.getElementById("ownerTg").value.trim();
+      if (!owner_tg_username) { toast("Укажи Telegram username владельца", "warn"); return; }
+      body.owner_tg_username = owner_tg_username;
+    } else if (modeSel === "phone") {
+      const owner_phone = document.getElementById("ownerPhone").value.trim();
+      if (!owner_phone) { toast("Укажи телефон владельца", "warn"); return; }
+      body.owner_phone = owner_phone;
+    } else if (modeSel === "user_id") {
+      const rawId = document.getElementById("ownerUserId").value.trim();
+      const owner_user_id = Number(rawId);
+      if (!rawId || !Number.isFinite(owner_user_id) || owner_user_id <= 0) { toast("Укажи корректный user_id", "warn"); return; }
+      body.owner_user_id = owner_user_id;
+    } else if (modeSel === "legacy_multi") {
+      if (!owner_usernames.length) { toast("Укажи хотя бы один Telegram username", "warn"); return; }
+      body.owner_usernames = owner_usernames;
+    }
+
     createResultEl.textContent = "";
     setStatus("Creating...");
 
     try {
-      const out = await api("/venues", { method: "POST", body: { name, owner_usernames } });
+      const out = await api("/venues", { method: "POST", body });
       setLastJson({ create: "OK", response: out });
       setStatus("Created");
-      createResultEl.textContent = out?.id ? `Created id=${out.id}` : "Created";
+      if (out?.owner_pending && out?.owner_invite?.invite_link) {
+        createResultEl.innerHTML = `Created id=${esc(out.id)} · owner pending · <a class="link" href="${escAttr(out.owner_invite.invite_link)}" target="_blank" rel="noreferrer">invite link</a>`;
+      } else {
+        createResultEl.textContent = out?.id ? `Created id=${out.id}` : "Created";
+      }
       toast("Venue created", "ok");
       mode = "active";
       await loadVenues();
@@ -335,6 +376,8 @@
     await loadVenues();
   });
 
+  document.getElementById("ownerMode").addEventListener("change", syncOwnerMode);
+  syncOwnerMode();
   document.getElementById("btnCreate").addEventListener("click", createVenue);
 
 
