@@ -57,6 +57,7 @@ const COMPONENT_LABELS = {
   SALARY_PER_SHIFT: "Фикс за смену",
   PERCENT_TOTAL_REVENUE: "% от общей выручки",
   PERCENT_DEPARTMENT_REVENUE: "% от выручки департамента",
+  KPI_BONUS: "KPI-бонус",
 };
 
 function fmtPercentBps(bps) {
@@ -77,6 +78,13 @@ function breakdownComponentMeta(component) {
   if (type === "PERCENT_DEPARTMENT_REVENUE") {
     const depTitle = component?.department_title ? ` · ${component.department_title}` : "";
     return `${label} · ${fmtPercentBps(component?.percent_bps)}${depTitle} · база ${fmtMoneyMinor(component?.base_amount_minor || 0)}`;
+  }
+  if (type === "KPI_BONUS") {
+    const metricTitle = component?.kpi_metric_title ? ` · ${component.kpi_metric_title}` : "";
+    const metricValue = component?.metric_value != null ? ` · факт ${component.metric_value}` : "";
+    const thresholdValue = component?.threshold_value != null ? ` · порог ${component.threshold_value}` : "";
+    const matchedStep = component?.matched_step?.threshold_value != null ? ` · ступень ${component.matched_step.threshold_value}` : "";
+    return `${label}${metricTitle}${metricValue}${thresholdValue}${matchedStep}`;
   }
   return label;
 }
@@ -119,7 +127,7 @@ function renderShell() {
       <div class="revenue-toolbar__actions">
         <div class="revenue-toolbar__caption">
           <b>Расчёт зарплаты</b>
-          <div class="muted mt-6">Считается по активным назначениям профилей. Поддержаны фиксированные ставки и проценты по закрытым отчётам.</div>
+          <div class="muted mt-6">Считается по активным назначениям профилей. Поддержаны ставки, проценты и KPI-бонусы по закрытым отчётам.</div>
         </div>
         <div class="pickers pickers--revenue">
           <input id="monthPick" type="month" style="width:auto; min-width:160px;" />

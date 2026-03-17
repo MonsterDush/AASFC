@@ -1875,6 +1875,9 @@ def _validate_pay_component_fields(
     rate_minor: int | None,
     percent_bps: int | None,
     department_id: int | None,
+    kpi_metric_id: int | None = None,
+    threshold_value: int | None = None,
+    steps_json: dict | list | None = None,
 ) -> None:
     component_type = str(component_type or "").strip().upper()
     if component_type == "SALARY_FIXED_MONTH":
@@ -1898,6 +1901,20 @@ def _validate_pay_component_fields(
             raise HTTPException(status_code=400, detail="percent_bps is required for PERCENT_DEPARTMENT_REVENUE")
         if department_id is None:
             raise HTTPException(status_code=400, detail="department_id is required for PERCENT_DEPARTMENT_REVENUE")
+        return
+    if component_type == "KPI_BONUS":
+        if kpi_metric_id is None:
+            raise HTTPException(status_code=400, detail="kpi_metric_id is required for KPI_BONUS")
+        has_steps = False
+        if isinstance(steps_json, list):
+            has_steps = len(steps_json) > 0
+        elif isinstance(steps_json, dict):
+            raw_steps = steps_json.get("steps") if steps_json is not None else None
+            has_steps = isinstance(raw_steps, list) and len(raw_steps) > 0
+        if has_steps:
+            return
+        if amount_minor is None:
+            raise HTTPException(status_code=400, detail="amount_minor is required for KPI_BONUS without steps_json")
         return
 
 def _serialize_pay_profile_assignment(assignment: PayProfileAssignment, member: User | None = None) -> dict:
@@ -2524,6 +2541,9 @@ def create_pay_component(
         rate_minor=payload.rate_minor,
         percent_bps=payload.percent_bps,
         department_id=payload.department_id,
+        kpi_metric_id=payload.kpi_metric_id,
+        threshold_value=payload.threshold_value,
+        steps_json=payload.steps_json,
     )
 
     component = PayComponent(
@@ -2603,6 +2623,9 @@ def update_pay_component(
         rate_minor=component.rate_minor,
         percent_bps=component.percent_bps,
         department_id=component.department_id,
+        kpi_metric_id=component.kpi_metric_id,
+        threshold_value=component.threshold_value,
+        steps_json=_parse_json_text(component.steps_json),
     )
     component.updated_at = datetime.utcnow()
     db.commit()

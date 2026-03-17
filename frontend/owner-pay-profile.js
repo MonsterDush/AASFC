@@ -10,6 +10,7 @@ import {
   getMyVenuePermissions,
   getVenueMembers,
   getDepartments,
+  getKpiMetrics,
   getPayProfile,
   updatePayProfile,
   createPayProfileAssignment,
@@ -29,6 +30,7 @@ const COMPONENT_LABELS = {
   SALARY_PER_SHIFT: "Фикс за смену",
   PERCENT_TOTAL_REVENUE: "% от общей выручки",
   PERCENT_DEPARTMENT_REVENUE: "% от выручки департамента",
+  KPI_BONUS: "KPI-бонус",
 };
 
 function esc(s) {
@@ -88,6 +90,36 @@ function departmentTitleFor(item) {
   return found?.title || `ID ${depId}`;
 }
 
+function kpiMetricTitleFor(item) {
+  const direct = item?.kpi_metric_title || item?.kpi_metric?.title;
+  if (direct) return direct;
+  const metricId = Number(item?.kpi_metric_id || 0);
+  if (!metricId) return null;
+  const found = (state.kpiMetrics || []).find((m) => Number(m?.id) === metricId);
+  return found?.title || `KPI #${metricId}`;
+}
+
+function stepsTextareaValue(steps) {
+  if (!Array.isArray(steps) || !steps.length) return "";
+  try {
+    return JSON.stringify(steps, null, 2);
+  } catch {
+    return "";
+  }
+}
+
+function parseStepsInput(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  try {
+    const value = JSON.parse(text);
+    if (!Array.isArray(value)) return null;
+    return value;
+  } catch {
+    return false;
+  }
+}
+
 function memberName(member) {
   if (!member) return "—";
   return member.display_name || member.short_name || member.full_name || (member.tg_username ? `@${member.tg_username}` : "—");
@@ -102,6 +134,7 @@ let state = {
   profile: null,
   members: [],
   departments: [],
+  kpiMetrics: [],
 };
 
 function renderShell() {
@@ -137,7 +170,7 @@ function renderShell() {
             <div class="section-title"><b>Компоненты</b></div>
             <div class="section-actions"><button class="btn primary" id="btnAddComponent">+ Добавить</button></div>
           </div>
-          <div class="muted mt-6">Доступны: оклад, почасовая ставка, фикс за смену, % от общей выручки и % от выручки департамента.</div>
+          <div class="muted mt-6">Доступны: оклад, почасовая ставка, фикс за смену, проценты по выручке и KPI-бонусы по закрытым отчётам.</div>
           <div id="componentsList" class="mt-12"><div class="skeleton"></div></div>
         </div>
 
@@ -246,6 +279,12 @@ function componentSubtitle(item) {
   if (type === "PERCENT_DEPARTMENT_REVENUE") {
     const depTitle = departmentTitleFor(item);
     return `${COMPONENT_LABELS[type]} · ${fmtPercentBps(item.percent_bps)}${depTitle ? ` · ${depTitle}` : ""}`;
+  }
+  if (type === "KPI_BONUS") {
+    const metricTitle = kpiMetricTitleFor(item);
+    const threshold = item.threshold_value != null ? ` · порог ${item.threshold_value}` : "";
+    const stepsCount = Array.isArray(item.steps) && item.steps.length ? ` · ступеней: ${item.steps.length}` : "";
+    return `${COMPONENT_LABELS[type]}${metricTitle ? ` · ${metricTitle}` : ""}${threshold}${stepsCount}${item.amount_minor != null ? ` · ${fmtMoneyMinor(item.amount_minor)}` : ""}`;
   }
   return `${type} · ${fmtMoneyMinor(item.amount_minor || item.rate_minor || 0)}`;
 }
@@ -391,6 +430,8 @@ function componentForm({ mode, item }) {
   const activeChecked = (mode === "edit" ? !!it.is_active : true) ? "checked" : "";
   const hasDepartments = Array.isArray(state.departments) && state.departments.length > 0;
   const departmentOptions = state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("");
+  const hasKpiMetrics = Array.isArray(state.kpiMetrics) && state.kpiMetrics.length > 0;
+  const kpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.kpi_metric_id) ? "selected" : ""}>${esc(metric.title)}</option>`).join("");
   return `
     <div class="finance-form mt-8">
       <label>
@@ -401,6 +442,7 @@ function componentForm({ mode, item }) {
           <option value="SALARY_PER_SHIFT" ${type === "SALARY_PER_SHIFT" ? "selected" : ""}>Фикс за смену</option>
           <option value="PERCENT_TOTAL_REVENUE" ${type === "PERCENT_TOTAL_REVENUE" ? "selected" : ""}>% от общей выручки</option>
           <option value="PERCENT_DEPARTMENT_REVENUE" ${type === "PERCENT_DEPARTMENT_REVENUE" ? "selected" : ""}>% от выручки департамента</option>
+          <option value="KPI_BONUS" ${type === "KPI_BONUS" ? "selected" : ""}>KPI-бонус</option>
         </select>
       </label>
       <label>
@@ -432,6 +474,28 @@ function componentForm({ mode, item }) {
         <input id="f_department_id" inputmode="numeric" placeholder="Например: 3" value="${esc(it.department_id ?? "")}" />
       </label>
       <div id="f_department_hint" class="muted">Список департаментов не загрузился. Можно указать department_id вручную.</div>`}
+      ${hasKpiMetrics ? `
+      <label id="f_kpi_metric_wrap">
+        <span>KPI-метрика</span>
+        <select id="f_kpi_metric_id">
+          <option value="">Выбери KPI</option>
+          ${kpiOptions}
+        </select>
+      </label>` : `
+      <label id="f_kpi_metric_wrap">
+        <span>ID KPI-метрики</span>
+        <input id="f_kpi_metric_id" inputmode="numeric" placeholder="Например: 5" value="${esc(it.kpi_metric_id ?? "")}" />
+      </label>
+      <div id="f_kpi_metric_hint" class="muted">Список KPI не загрузился. Можно указать kpi_metric_id вручную.</div>`}
+      <label id="f_threshold_wrap">
+        <span id="f_threshold_label">Порог KPI</span>
+        <input id="f_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.threshold_value ?? "")}" />
+      </label>
+      <label id="f_steps_wrap">
+        <span>Ступени бонуса (JSON, опционально)</span>
+        <textarea id="f_steps_json" rows="6" placeholder='[{"threshold_value":10,"amount_minor":50000},{"threshold_value":20,"amount_minor":100000}]'>${esc(stepsTextareaValue(it.steps))}</textarea>
+      </label>
+      <div id="f_steps_hint" class="muted">Если заполнены ступени, будет выбрана максимальная подходящая ступень. Если оставить пусто — сработает обычный порог и сумма.</div>
       <label>
         <span>Порядок</span>
         <input id="f_sort_order" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
@@ -456,15 +520,19 @@ function syncComponentFields() {
   const percentWrap = document.getElementById("f_percent_wrap");
   const departmentWrap = document.getElementById("f_department_wrap");
   const departmentHint = document.getElementById("f_department_hint");
+  const kpiMetricWrap = document.getElementById("f_kpi_metric_wrap");
+  const kpiMetricHint = document.getElementById("f_kpi_metric_hint");
+  const thresholdWrap = document.getElementById("f_threshold_wrap");
+  const stepsWrap = document.getElementById("f_steps_wrap");
+  const stepsHint = document.getElementById("f_steps_hint");
   const amountLabel = document.getElementById("f_amount_label");
   const rateLabel = document.getElementById("f_rate_label");
   const percentLabel = document.getElementById("f_percent_label");
+  const thresholdLabel = document.getElementById("f_threshold_label");
 
-  if (amountWrap) amountWrap.style.display = "none";
-  if (rateWrap) rateWrap.style.display = "none";
-  if (percentWrap) percentWrap.style.display = "none";
-  if (departmentWrap) departmentWrap.style.display = "none";
-  if (departmentHint) departmentHint.style.display = "none";
+  [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, kpiMetricWrap, kpiMetricHint, thresholdWrap, stepsWrap, stepsHint].forEach((el) => {
+    if (el) el.style.display = "none";
+  });
 
   if (type === "SALARY_HOURLY") {
     if (rateWrap) rateWrap.style.display = "grid";
@@ -489,6 +557,18 @@ function syncComponentFields() {
     if (departmentWrap) departmentWrap.style.display = "grid";
     if (departmentHint) departmentHint.style.display = "";
     if (percentLabel) percentLabel.textContent = "Процент от выручки департамента";
+    return;
+  }
+
+  if (type === "KPI_BONUS") {
+    if (amountWrap) amountWrap.style.display = "grid";
+    if (amountLabel) amountLabel.textContent = "Бонус, коп.";
+    if (kpiMetricWrap) kpiMetricWrap.style.display = "grid";
+    if (kpiMetricHint) kpiMetricHint.style.display = "";
+    if (thresholdWrap) thresholdWrap.style.display = "grid";
+    if (stepsWrap) stepsWrap.style.display = "grid";
+    if (stepsHint) stepsHint.style.display = "";
+    if (thresholdLabel) thresholdLabel.textContent = "Порог KPI";
   }
 }
 
@@ -497,7 +577,7 @@ function openComponentEditor({ mode, item = null }) {
   const isEdit = mode === "edit";
   openEditModal({
     title: isEdit ? "Редактировать компонент" : "Новый компонент",
-    hint: "Доступны фиксированные ставки и проценты от выручки",
+    hint: "Поддержаны ставки, проценты и KPI-бонусы",
     bodyHtml: componentForm({ mode, item }),
   });
   document.getElementById("f_component_type")?.addEventListener("change", syncComponentFields);
@@ -518,6 +598,10 @@ function openComponentEditor({ mode, item = null }) {
       return;
     }
 
+    const kpiMetricRaw = String(document.getElementById("f_kpi_metric_id")?.value || "").trim();
+    const thresholdRaw = String(document.getElementById("f_threshold_value")?.value || "").trim();
+    const stepsRaw = String(document.getElementById("f_steps_json")?.value || "").trim();
+
     const payload = {
       component_type: componentType,
       title,
@@ -525,6 +609,9 @@ function openComponentEditor({ mode, item = null }) {
       rate_minor: null,
       percent_bps: null,
       department_id: null,
+      kpi_metric_id: null,
+      threshold_value: null,
+      steps_json: null,
       sort_order: Number(sortRaw || 0),
       is_active: isActive,
     };
@@ -560,6 +647,27 @@ function openComponentEditor({ mode, item = null }) {
       }
       payload.percent_bps = percentBps;
       payload.department_id = Number(departmentRaw);
+    } else if (componentType === "KPI_BONUS") {
+      if (!kpiMetricRaw) {
+        toast("Выбери KPI-метрику", "warn");
+        return;
+      }
+      payload.kpi_metric_id = Number(kpiMetricRaw);
+      if (thresholdRaw) payload.threshold_value = Number(thresholdRaw);
+      const parsedSteps = parseStepsInput(stepsRaw);
+      if (parsedSteps === false) {
+        toast("Ступени должны быть валидным JSON-массивом", "warn");
+        return;
+      }
+      if (Array.isArray(parsedSteps) && parsedSteps.length) {
+        payload.steps_json = parsedSteps;
+      } else {
+        if (!amountMinorRaw) {
+          toast("Укажи бонус в копейках или заполни ступени", "warn");
+          return;
+        }
+        payload.amount_minor = Number(amountMinorRaw || 0);
+      }
     }
 
     try {
@@ -782,6 +890,13 @@ async function boot() {
     state.departments = Array.isArray(depsResp) ? depsResp : [];
   } catch {
     state.departments = [];
+  }
+
+  try {
+    const kpiResp = await getKpiMetrics(state.venueId, { includeArchived: false });
+    state.kpiMetrics = Array.isArray(kpiResp) ? kpiResp : [];
+  } catch {
+    state.kpiMetrics = [];
   }
 
   document.getElementById("btnEditProfile")?.addEventListener("click", openProfileEditor);

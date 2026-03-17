@@ -7,7 +7,7 @@ import json
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.models import DailyReport, DailyReportValue, FinanceEntry, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
+from app.models import DailyReport, DailyReportValue, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 
@@ -34,9 +34,23 @@ class PayrollRevenueMetrics:
 
 
 @dataclass
+class PayrollKpiMetrics:
+    totals_by_metric_id: dict[int, int] = field(default_factory=dict)
+
+
+@dataclass
 class PayrollCalculationResult:
     run: PayrollRun
     lines: list[PayrollLine]
+
+
+@dataclass
+class PayrollKpiBonusDecision:
+    amount_minor: int
+    metric_value: int
+    threshold_value: int | None = None
+    matched_step: dict | None = None
+    steps: list[dict] = field(default_factory=list)
 
 
 def parse_month_start(month: str) -> date:
@@ -63,6 +77,97 @@ def interval_duration_minutes(start_time: time, end_time: time) -> int:
     return int((end_dt - start_dt).total_seconds() // 60)
 
 
+def _parse_steps_json(raw: object) -> list[dict]:
+    if raw is None:
+        return []
+    value = raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        try:
+            value = json.loads(text)
+        except Exception:
+            return []
+
+    if isinstance(value, dict):
+        candidate = value.get("steps")
+        if isinstance(candidate, list):
+            value = candidate
+        else:
+            return []
+
+    if not isinstance(value, list):
+        return []
+
+    out: list[dict] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        threshold_value = item.get("threshold_value")
+        amount_minor = item.get("amount_minor")
+        try:
+            threshold_value = int(threshold_value)
+            amount_minor = int(amount_minor)
+        except Exception:
+            continue
+        if threshold_value < 0 or amount_minor < 0:
+            continue
+        normalized = {
+            "threshold_value": threshold_value,
+            "amount_minor": amount_minor,
+        }
+        if item.get("title") not in (None, ""):
+            normalized["title"] = str(item.get("title"))
+        out.append(normalized)
+
+    out.sort(key=lambda row: (int(row.get("threshold_value") or 0), int(row.get("amount_minor") or 0)))
+    return out
+
+
+def calculate_kpi_bonus(
+    component: PayComponent,
+    *,
+    kpi_metric_value: int = 0,
+) -> PayrollKpiBonusDecision:
+    metric_value = int(kpi_metric_value or 0)
+    steps = _parse_steps_json(getattr(component, "steps_json", None))
+    threshold_value = getattr(component, "threshold_value", None)
+    threshold_value = int(threshold_value) if threshold_value is not None else None
+
+    if steps:
+        matched_step = None
+        for step in steps:
+            if metric_value >= int(step.get("threshold_value") or 0):
+                matched_step = step
+            else:
+                break
+        return PayrollKpiBonusDecision(
+            amount_minor=int(matched_step.get("amount_minor") or 0) if matched_step is not None else 0,
+            metric_value=metric_value,
+            threshold_value=threshold_value,
+            matched_step=matched_step,
+            steps=steps,
+        )
+
+    amount_minor = int(getattr(component, "amount_minor", 0) or 0)
+    if threshold_value is None or metric_value >= threshold_value:
+        return PayrollKpiBonusDecision(
+            amount_minor=amount_minor,
+            metric_value=metric_value,
+            threshold_value=threshold_value,
+            matched_step=None,
+            steps=[],
+        )
+    return PayrollKpiBonusDecision(
+        amount_minor=0,
+        metric_value=metric_value,
+        threshold_value=threshold_value,
+        matched_step=None,
+        steps=[],
+    )
+
+
 def calculate_component_amount_minor(
     component: PayComponent,
     *,
@@ -70,6 +175,7 @@ def calculate_component_amount_minor(
     shifts_count: int,
     total_revenue_minor: int = 0,
     department_revenue_minor: int = 0,
+    kpi_metric_value: int = 0,
 ) -> int:
     component_type = str(component.component_type or "").strip().upper()
     if component_type not in PAY_COMPONENT_TYPES:
@@ -94,7 +200,9 @@ def calculate_component_amount_minor(
         percent_bps = int(component.percent_bps or 0)
         return int((int(department_revenue_minor) * percent_bps + 5000) // 10000)
 
-    # 5.3 KPI bonuses are scaffolded in schema, but are not calculated yet.
+    if component_type == "KPI_BONUS":
+        return int(calculate_kpi_bonus(component, kpi_metric_value=kpi_metric_value).amount_minor)
+
     return 0
 
 
@@ -215,6 +323,30 @@ def _load_revenue_metrics(db: Session, *, venue_id: int, month_start: date, mont
     )
 
 
+
+def _load_kpi_metrics(db: Session, *, venue_id: int, month_start: date, month_end_excl: date) -> PayrollKpiMetrics:
+    rows = db.execute(
+        select(
+            DailyReportValue.ref_id,
+            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("value_total"),
+        )
+        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == "CLOSED",
+            DailyReport.date >= month_start,
+            DailyReport.date < month_end_excl,
+            DailyReportValue.kind == "KPI",
+        )
+        .group_by(DailyReportValue.ref_id)
+    ).all()
+
+    totals_by_metric_id: dict[int, int] = {}
+    for row in rows:
+        totals_by_metric_id[int(row.ref_id)] = int(row.value_total or 0)
+    return PayrollKpiMetrics(totals_by_metric_id=totals_by_metric_id)
+
+
 def calculate_payroll_for_month(
     *,
     db: Session,
@@ -273,6 +405,12 @@ def calculate_payroll_for_month(
         month_start=month_start,
         month_end_excl=month_end_excl,
     )
+    kpi_metrics = _load_kpi_metrics(
+        db,
+        venue_id=int(venue_id),
+        month_start=month_start,
+        month_end_excl=month_end_excl,
+    )
 
     lines: list[PayrollLine] = []
     total_amount_minor = 0
@@ -288,12 +426,16 @@ def calculate_payroll_for_month(
             department_base_minor = 0
             if component.department_id is not None:
                 department_base_minor = int(revenue_metrics.department_revenue_minor.get(int(component.department_id), 0))
+            kpi_metric_value = 0
+            if component.kpi_metric_id is not None:
+                kpi_metric_value = int(kpi_metrics.totals_by_metric_id.get(int(component.kpi_metric_id), 0))
             amount_minor = calculate_component_amount_minor(
                 component,
                 minutes_total=int(metrics.minutes_total),
                 shifts_count=int(metrics.shifts_count),
                 total_revenue_minor=int(revenue_metrics.total_revenue_minor),
                 department_revenue_minor=int(department_base_minor),
+                kpi_metric_value=int(kpi_metric_value),
             )
             breakdown_item = {
                 "component_id": int(component.id),
@@ -312,6 +454,14 @@ def calculate_payroll_for_month(
                 breakdown_item["department_id"] = int(component.department_id) if component.department_id is not None else None
                 breakdown_item["department_title"] = component.department.title if getattr(component, "department", None) is not None else None
                 breakdown_item["base_amount_minor"] = int(department_base_minor)
+            elif component_type == "KPI_BONUS":
+                kpi_decision = calculate_kpi_bonus(component, kpi_metric_value=int(kpi_metric_value))
+                breakdown_item["kpi_metric_id"] = int(component.kpi_metric_id) if component.kpi_metric_id is not None else None
+                breakdown_item["kpi_metric_title"] = component.kpi_metric.title if getattr(component, "kpi_metric", None) is not None else None
+                breakdown_item["metric_value"] = int(kpi_decision.metric_value)
+                breakdown_item["threshold_value"] = kpi_decision.threshold_value
+                breakdown_item["matched_step"] = kpi_decision.matched_step
+                breakdown_item["steps"] = kpi_decision.steps
             breakdown_items.append(breakdown_item)
             line_total += int(amount_minor)
 
@@ -327,6 +477,10 @@ def calculate_payroll_for_month(
             },
             "revenue_metrics": {
                 "total_revenue_minor": int(revenue_metrics.total_revenue_minor),
+            },
+            "kpi_metrics": {
+                str(metric_id): int(value)
+                for metric_id, value in sorted(kpi_metrics.totals_by_metric_id.items())
             },
             "components": breakdown_items,
         }
