@@ -1,12 +1,27 @@
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.tg import normalize_tg_username
+from app.models.auth_identity import AuthIdentity
 from app.models.user import User
 from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.services.invites import create_venue_invite, normalize_phone_e164
+
+
+def _find_verified_phone_user(db: Session, phone_e164: str) -> User | None:
+    ident = db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.provider == "PHONE",
+            AuthIdentity.phone_e164 == phone_e164,
+            AuthIdentity.is_verified.is_(True),
+        )
+    ).scalar_one_or_none()
+    if ident is None:
+        return None
+    return db.execute(select(User).where(User.id == ident.user_id)).scalar_one_or_none()
 
 
 # создаёт заведение и назначает/приглашает владельца(ев)
@@ -43,14 +58,27 @@ def create_venue(
         phone = normalize_phone_e164(owner_phone)
         if not phone:
             raise ValueError("Bad owner_phone")
-        create_venue_invite(
-            db,
-            venue_id=venue.id,
-            venue_role="OWNER",
-            invite_channel="PHONE",
-            phone_e164=phone,
-            created_by_user_id=created_by_user_id,
-        )
+        user = _find_verified_phone_user(db, phone)
+        if user is not None:
+            mem = (
+                db.query(VenueMember)
+                .filter(VenueMember.venue_id == venue.id, VenueMember.user_id == user.id)
+                .one_or_none()
+            )
+            if mem:
+                mem.venue_role = "OWNER"
+                mem.is_active = True
+            else:
+                db.add(VenueMember(venue_id=venue.id, user_id=user.id, venue_role="OWNER", is_active=True))
+        else:
+            create_venue_invite(
+                db,
+                venue_id=venue.id,
+                venue_role="OWNER",
+                invite_channel="PHONE",
+                phone_e164=phone,
+                created_by_user_id=created_by_user_id,
+            )
 
     elif owner_tg_username:
         username = normalize_tg_username(owner_tg_username)

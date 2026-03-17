@@ -83,6 +83,7 @@ from app.models.recurring_expense_rule import RecurringExpenseRule
 from app.models.recurring_expense_rule_payment_method import RecurringExpenseRulePaymentMethod
 from app.models.recurring_expense_accrual import RecurringExpenseAccrual
 from app.models.permission import Permission
+from app.models.auth_identity import AuthIdentity
 
 from app.auth.venue_permissions import require_venue_permission
 
@@ -1140,6 +1141,199 @@ def _require_revenue_exporter(db: Session, *, venue_id: int, user: User) -> None
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+
+def _build_user_auth_snapshot_map(db: Session, user_ids: list[int]) -> dict[int, dict]:
+    ids = [int(x) for x in user_ids if x]
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(
+            AuthIdentity.user_id,
+            AuthIdentity.provider,
+            AuthIdentity.phone_e164,
+        ).where(
+            AuthIdentity.user_id.in_(ids),
+            AuthIdentity.is_verified.is_(True),
+        )
+    ).all()
+    out: dict[int, dict] = {uid: {"phone": None, "auth_methods": []} for uid in ids}
+    for r in rows:
+        item = out.setdefault(int(r.user_id), {"phone": None, "auth_methods": []})
+        provider = str(r.provider or "").strip().lower()
+        if provider and provider not in item["auth_methods"]:
+            item["auth_methods"].append(provider)
+        if provider == "phone" and r.phone_e164 and not item["phone"]:
+            item["phone"] = r.phone_e164
+    return out
+
+
+def _display_name(*, short_name: str | None = None, full_name: str | None = None, tg_username: str | None = None, phone: str | None = None, user_id: int | None = None) -> str:
+    if short_name:
+        return short_name
+    if full_name:
+        return full_name
+    if tg_username:
+        return f"@{tg_username}"
+    if phone:
+        return phone
+    if user_id:
+        return f"user #{user_id}"
+    return "—"
+
+
+def _serialize_user_brief(row, auth_map: dict[int, dict]) -> dict:
+    snap = auth_map.get(int(row.id), {"phone": None, "auth_methods": []})
+    phone = snap.get("phone")
+    methods = list(snap.get("auth_methods") or [])
+    return {
+        "user_id": row.id,
+        "tg_user_id": getattr(row, "tg_user_id", None),
+        "tg_username": getattr(row, "tg_username", None),
+        "full_name": getattr(row, "full_name", None),
+        "short_name": getattr(row, "short_name", None),
+        "phone": phone,
+        "auth_methods": methods,
+        "has_phone_auth": "phone" in methods,
+        "has_telegram_auth": "telegram" in methods,
+        "display_name": _display_name(
+            short_name=getattr(row, "short_name", None),
+            full_name=getattr(row, "full_name", None),
+            tg_username=getattr(row, "tg_username", None),
+            phone=phone,
+            user_id=getattr(row, "id", None),
+        ),
+    }
+
+
+def _build_pending_invite_target_map(db: Session, invites) -> dict[int, dict]:
+    tg_usernames = []
+    phones = []
+    for inv in invites or []:
+        channel = str(getattr(inv, "invite_channel", "") or "").strip().upper()
+        if channel == "TELEGRAM":
+            u = normalize_tg_username(getattr(inv, "invited_tg_username", None) or "")
+            if u:
+                tg_usernames.append(u)
+        elif channel == "PHONE":
+            p = normalize_phone_e164(getattr(inv, "invited_phone_e164", None))
+            if p:
+                phones.append(p)
+
+    tg_rows = []
+    if tg_usernames:
+        tg_rows = db.execute(
+            select(User.id, User.tg_user_id, User.tg_username, User.full_name, User.short_name).where(User.tg_username.in_(list(dict.fromkeys(tg_usernames))))
+        ).all()
+
+    phone_rows = []
+    if phones:
+        phone_rows = db.execute(
+            select(
+                AuthIdentity.phone_e164,
+                User.id,
+                User.tg_user_id,
+                User.tg_username,
+                User.full_name,
+                User.short_name,
+            )
+            .join(User, User.id == AuthIdentity.user_id)
+            .where(
+                AuthIdentity.provider == "PHONE",
+                AuthIdentity.is_verified.is_(True),
+                AuthIdentity.phone_e164.in_(list(dict.fromkeys(phones))),
+            )
+        ).all()
+
+    user_ids = [int(r.id) for r in tg_rows] + [int(r.id) for r in phone_rows]
+    auth_map = _build_user_auth_snapshot_map(db, user_ids)
+
+    tg_lookup = {normalize_tg_username(r.tg_username or ""): _serialize_user_brief(r, auth_map) for r in tg_rows}
+    phone_lookup = {normalize_phone_e164(r.phone_e164): _serialize_user_brief(r, auth_map) for r in phone_rows}
+
+    out: dict[int, dict] = {}
+    for inv in invites or []:
+        channel = str(getattr(inv, "invite_channel", "") or "").strip().upper()
+        linked = None
+        if channel == "TELEGRAM":
+            linked = tg_lookup.get(normalize_tg_username(getattr(inv, "invited_tg_username", None) or ""))
+        elif channel == "PHONE":
+            linked = phone_lookup.get(normalize_phone_e164(getattr(inv, "invited_phone_e164", None)))
+        out[int(inv.id)] = {
+            "target_status": "LINKED_USER" if linked else "WAITING_SIGNUP",
+            "target_user": linked,
+        }
+    return out
+
+
+def _build_owner_summary_by_venue(db: Session, venue_ids: list[int]) -> dict[int, dict]:
+    ids = [int(x) for x in venue_ids if x]
+    if not ids:
+        return {}
+
+    owner_rows = db.execute(
+        select(
+            VenueMember.venue_id,
+            User.id,
+            User.tg_user_id,
+            User.tg_username,
+            User.full_name,
+            User.short_name,
+        )
+        .join(User, User.id == VenueMember.user_id)
+        .where(
+            VenueMember.venue_id.in_(ids),
+            VenueMember.venue_role == "OWNER",
+            VenueMember.is_active.is_(True),
+        )
+    ).all()
+    owner_auth_map = _build_user_auth_snapshot_map(db, [int(r.id) for r in owner_rows])
+
+    pending_rows = db.execute(
+        select(
+            VenueInvite.id,
+            VenueInvite.venue_id,
+            VenueInvite.invite_channel,
+            VenueInvite.invited_tg_username,
+            VenueInvite.invited_phone_e164,
+            VenueInvite.invited_contact_label,
+            VenueInvite.invite_token,
+            VenueInvite.created_at,
+            VenueInvite.expires_at,
+        ).where(
+            VenueInvite.venue_id.in_(ids),
+            VenueInvite.venue_role == "OWNER",
+            VenueInvite.is_active.is_(True),
+            VenueInvite.accepted_user_id.is_(None),
+        )
+    ).all()
+    pending_target_map = _build_pending_invite_target_map(db, pending_rows)
+
+    out = {vid: {"state": "UNASSIGNED", "owners": [], "pending": []} for vid in ids}
+    for r in owner_rows:
+        item = _serialize_user_brief(r, owner_auth_map)
+        out[int(r.venue_id)]["owners"].append(item)
+        out[int(r.venue_id)]["state"] = "LINKED"
+
+    for r in pending_rows:
+        meta = pending_target_map.get(int(r.id), {"target_status": "WAITING_SIGNUP", "target_user": None})
+        out[int(r.venue_id)]["pending"].append({
+            "id": r.id,
+            "channel": r.invite_channel,
+            "tg_username": r.invited_tg_username,
+            "phone": r.invited_phone_e164,
+            "contact_label": r.invited_contact_label,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+            "invite_link": build_invite_link(r.invite_token),
+            "target_status": meta.get("target_status"),
+            "target_user": meta.get("target_user"),
+        })
+        if out[int(r.venue_id)]["state"] != "LINKED":
+            out[int(r.venue_id)]["state"] = "PENDING"
+
+    return out
+
+
 # ---------- Routes ----------
 
 @router.post("")
@@ -1161,28 +1355,16 @@ def create_venue_admin_only(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    owner_pending_invite = (
-        db.query(VenueInvite)
-        .filter(
-            VenueInvite.venue_id == venue.id,
-            VenueInvite.venue_role == "OWNER",
-            VenueInvite.accepted_user_id.is_(None),
-            VenueInvite.is_active.is_(True),
-        )
-        .order_by(VenueInvite.id.desc())
-        .one_or_none()
-    )
+    owner_summary = _build_owner_summary_by_venue(db, [venue.id]).get(venue.id, {"state": "UNASSIGNED", "owners": [], "pending": []})
+    owner_pending_invite = owner_summary["pending"][0] if owner_summary.get("pending") else None
+    owner_linked = owner_summary["owners"][0] if owner_summary.get("owners") else None
     return {
         "id": venue.id,
         "name": venue.name,
         "owner_pending": owner_pending_invite is not None,
-        "owner_invite": {
-            "id": owner_pending_invite.id,
-            "channel": owner_pending_invite.invite_channel,
-            "tg_username": owner_pending_invite.invited_tg_username,
-            "phone": owner_pending_invite.invited_phone_e164,
-            "invite_link": build_invite_link(owner_pending_invite.invite_token),
-        } if owner_pending_invite else None,
+        "owner_linked": owner_linked,
+        "owner_invite": owner_pending_invite,
+        "owner_status": owner_summary,
     }
 
 
@@ -1202,12 +1384,14 @@ def list_venues_admin_only(
         stmt = stmt.where(Venue.is_archived.is_(False))
 
     rows = db.execute(stmt).all()
+    owner_summary_map = _build_owner_summary_by_venue(db, [int(r.id) for r in rows])
     return [
         {
             "id": r.id,
             "name": r.name,
             "is_archived": bool(r.is_archived),
             "archived_at": r.archived_at.isoformat() if r.archived_at else None,
+            "owner_status": owner_summary_map.get(int(r.id), {"state": "UNASSIGNED", "owners": [], "pending": []}),
         }
         for r in rows
     ]
@@ -1341,6 +1525,7 @@ def get_members(
         .filter(VenueMember.venue_id == venue_id, VenueMember.is_active.is_(True))
         .all()
     )
+    member_auth_map = _build_user_auth_snapshot_map(db, [int(r.id) for r in members])
 
     invites = (
         db.query(
@@ -1363,15 +1548,12 @@ def get_members(
         .order_by(VenueInvite.created_at.desc())
         .all()
     )
+    invite_target_map = _build_pending_invite_target_map(db, invites)
 
     return {
         "members": [
             {
-                "user_id": r.id,
-                "tg_user_id": r.tg_user_id,
-                "tg_username": r.tg_username,
-                "full_name": r.full_name,
-                "short_name": r.short_name,
+                **_serialize_user_brief(r, member_auth_map),
                 "venue_role": r.venue_role,
             }
             for r in members
@@ -1388,6 +1570,8 @@ def get_members(
                 "expires_at": r.expires_at.isoformat() if r.expires_at else None,
                 "invite_link": build_invite_link(r.invite_token),
                 "default_position": r.default_position_json,
+                "target_status": invite_target_map.get(int(r.id), {}).get("target_status", "WAITING_SIGNUP"),
+                "target_user": invite_target_map.get(int(r.id), {}).get("target_user"),
             }
             for r in invites
         ],
@@ -3434,6 +3618,8 @@ def create_invite(
     if channel not in ("TELEGRAM", "PHONE"):
         raise HTTPException(status_code=400, detail="Bad invite_channel")
 
+    existing_user = None
+
     if channel == "TELEGRAM":
         username = normalize_tg_username(payload.tg_username)
         if not username:
@@ -3453,7 +3639,23 @@ def create_invite(
                 db.add(VenueMember(venue_id=venue_id, user_id=existing_user.id, venue_role=role, is_active=True))
 
             db.commit()
-            return {"ok": True, "mode": "member_added", "channel": channel}
+            auth_map = _build_user_auth_snapshot_map(db, [existing_user.id])
+            member_row = type("MemberRow", (), {
+                "id": existing_user.id,
+                "tg_user_id": existing_user.tg_user_id,
+                "tg_username": existing_user.tg_username,
+                "full_name": existing_user.full_name,
+                "short_name": existing_user.short_name,
+            })()
+            return {
+                "ok": True,
+                "mode": "member_added",
+                "channel": channel,
+                "member": {
+                    **_serialize_user_brief(member_row, auth_map),
+                    "venue_role": role,
+                },
+            }
 
         try:
             inv = create_venue_invite(
@@ -3472,6 +3674,47 @@ def create_invite(
         phone = normalize_phone_e164(payload.phone)
         if not phone:
             raise HTTPException(status_code=400, detail="Bad phone")
+
+        phone_ident = db.execute(
+            select(AuthIdentity).where(
+                AuthIdentity.provider == "PHONE",
+                AuthIdentity.phone_e164 == phone,
+                AuthIdentity.is_verified.is_(True),
+            )
+        ).scalar_one_or_none()
+        if phone_ident is not None:
+            existing_user = db.execute(select(User).where(User.id == phone_ident.user_id)).scalar_one_or_none()
+
+        if existing_user:
+            mem = db.query(VenueMember).filter(
+                VenueMember.venue_id == venue_id,
+                VenueMember.user_id == existing_user.id,
+            ).one_or_none()
+            if mem:
+                mem.venue_role = role
+                mem.is_active = True
+            else:
+                db.add(VenueMember(venue_id=venue_id, user_id=existing_user.id, venue_role=role, is_active=True))
+
+            db.commit()
+            auth_map = _build_user_auth_snapshot_map(db, [existing_user.id])
+            member_row = type("MemberRow", (), {
+                "id": existing_user.id,
+                "tg_user_id": existing_user.tg_user_id,
+                "tg_username": existing_user.tg_username,
+                "full_name": existing_user.full_name,
+                "short_name": existing_user.short_name,
+            })()
+            return {
+                "ok": True,
+                "mode": "member_added",
+                "channel": channel,
+                "member": {
+                    **_serialize_user_brief(member_row, auth_map),
+                    "venue_role": role,
+                },
+            }
+
         try:
             inv = create_venue_invite(
                 db,
@@ -3487,6 +3730,7 @@ def create_invite(
 
     db.commit()
     db.refresh(inv)
+    invite_meta = _build_pending_invite_target_map(db, [inv]).get(int(inv.id), {"target_status": "WAITING_SIGNUP", "target_user": None})
     return {
         "ok": True,
         "mode": "invited",
@@ -3494,6 +3738,8 @@ def create_invite(
         "invite_id": inv.id,
         "invite_link": build_invite_link(inv.invite_token),
         "token": inv.invite_token,
+        "target_status": invite_meta.get("target_status", "WAITING_SIGNUP"),
+        "target_user": invite_meta.get("target_user"),
     }
 
 

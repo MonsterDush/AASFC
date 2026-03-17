@@ -36,7 +36,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Админ · Заведения</b>
-          <div class="muted">создание · архив · поиск</div>
+          <div class="muted">создание · архив · поиск · linked/pending owner status</div>
         </div>
       </div>
       <div class="userpill" data-userpill>—</div>
@@ -59,7 +59,7 @@
       <div class="row">
         <div>
           <div><b>Создать заведение</b></div>
-          <div class="muted">создание с владельцем по Telegram, телефону или существующему user_id</div>
+          <div class="muted">если Telegram/телефон уже привязан к существующей учётке, владелец добавится сразу; иначе будет создан pending invite</div>
         </div>
       </div>
 
@@ -170,6 +170,29 @@
     });
   }
 
+
+  function ownerStatusHtml(summary) {
+    const s = summary || {};
+    const owners = Array.isArray(s.owners) ? s.owners : [];
+    const pending = Array.isArray(s.pending) ? s.pending : [];
+    const state = String(s.state || 'UNASSIGNED').toUpperCase();
+    const stateChip = state === 'LINKED'
+      ? '<span class="tag">owner linked</span>'
+      : state === 'PENDING'
+        ? '<span class="tag">owner pending</span>'
+        : '<span class="tag muted">owner missing</span>';
+    const ownersHtml = owners.length
+      ? owners.map(o => `<span class="tag">${esc(o.display_name || o.tg_username || o.phone || ('user #' + o.user_id))}</span>`).join(' ')
+      : '';
+    const pendingHtml = pending.length
+      ? pending.map(o => {
+          const contact = o.contact_label || o.phone || (o.tg_username ? '@' + o.tg_username : '—');
+          return `<span class="tag">pending: ${esc(contact)}</span>`;
+        }).join(' ')
+      : '';
+    return `<div class="muted mt-6">${stateChip} ${ownersHtml} ${pendingHtml}</div>`;
+  }
+
   function renderVenues() {
     const items = searchFilter(modeFilter(allVenues));
     countEl.textContent = String(items.length);
@@ -202,6 +225,7 @@
                 ${badge}
                 </div>
               <div class="muted">id=${esc(v.id)}${v.archived_at ? " · archived_at=" + esc(v.archived_at) : ""}</div>
+              ${ownerStatusHtml(v.owner_status)}
             </div>
             <div class="toolbar">
               <button class="btn" data-action="rename" data-id="${id}">Rename</button>
@@ -286,8 +310,12 @@
       const out = await api("/venues", { method: "POST", body });
       setLastJson({ create: "OK", response: out });
       setStatus("Created");
-      if (out?.owner_pending && out?.owner_invite?.invite_link) {
-        createResultEl.innerHTML = `Created id=${esc(out.id)} · owner pending · <a class="link" href="${escAttr(out.owner_invite.invite_link)}" target="_blank" rel="noreferrer">invite link</a>`;
+      if (out?.owner_status?.state === 'LINKED' && out?.owner_linked) {
+        const ownerName = out.owner_linked.display_name || out.owner_linked.tg_username || out.owner_linked.phone || ('user #' + out.owner_linked.user_id);
+        createResultEl.textContent = out?.id ? `Created id=${out.id} · owner linked: ${ownerName}` : `Owner linked: ${ownerName}`;
+      } else if (out?.owner_pending && out?.owner_invite?.invite_link) {
+        const pendingContact = out.owner_invite.contact_label || out.owner_invite.phone || (out.owner_invite.tg_username ? '@' + out.owner_invite.tg_username : 'owner');
+        createResultEl.innerHTML = `Created id=${esc(out.id)} · owner pending: ${esc(pendingContact)} · <a class="link" href="${escAttr(out.owner_invite.invite_link)}" target="_blank" rel="noreferrer">invite link</a>`;
       } else {
         createResultEl.textContent = out?.id ? `Created id=${out.id}` : "Created";
       }
