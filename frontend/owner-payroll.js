@@ -9,6 +9,8 @@ import {
   getMyVenuePermissions,
   getPayroll,
   calculatePayroll,
+  api,
+  API_BASE,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -100,6 +102,20 @@ let state = {
   data: null,
 };
 
+async function openExportLink(path) {
+  const data = await api(path);
+  const url = data?.export_link || (data?.export_path ? `${API_BASE}${data.export_path}` : "");
+  if (!url) throw new Error("export link missing");
+  const tg = window.Telegram?.WebApp;
+  try {
+    if (tg?.openLink) {
+      tg.openLink(url, { try_instant_view: false });
+      return;
+    }
+  } catch {}
+  window.location.href = url;
+}
+
 function computeCaps(perms, me) {
   const role = roleUpper(perms);
   const pset = permSetFromResponse(perms);
@@ -134,6 +150,7 @@ function renderShell() {
         <div class="pickers pickers--revenue">
           <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
           <button class="btn primary" id="btnCalculate">Рассчитать</button>
+          <button class="btn" id="btnExport">Экспорт XLSX</button>
           <a class="btn" id="openProfilesBtn" href="#">Профили</a>
         </div>
       </div>
@@ -186,12 +203,14 @@ function renderShell() {
 
 function renderState() {
   const btnCalculate = document.getElementById("btnCalculate");
+  const btnExport = document.getElementById("btnExport");
   const monthPick = document.getElementById("monthPick");
   const backVenue = document.getElementById("backVenue");
   const openSummary = document.getElementById("openSummary");
   const openProfilesBtn = document.getElementById("openProfilesBtn");
   if (monthPick) monthPick.value = state.month;
   if (btnCalculate) btnCalculate.style.display = state.can.calculate ? "" : "none";
+  if (btnExport) btnExport.style.display = state.can.view ? "" : "none";
   if (backVenue) backVenue.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
   if (openSummary) openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(state.venueId)}&month=${encodeURIComponent(state.month)}`;
   if (openProfilesBtn) openProfilesBtn.href = `/owner-pay-profiles.html?venue_id=${encodeURIComponent(state.venueId)}`;
@@ -327,6 +346,13 @@ async function boot() {
   });
 
   document.getElementById("btnCalculate")?.addEventListener("click", onCalculate);
+  document.getElementById("btnExport")?.addEventListener("click", async () => {
+    try {
+      await openExportLink(`/venues/${encodeURIComponent(state.venueId)}/payroll/export-link?month=${encodeURIComponent(state.month)}`);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || "Не удалось начать экспорт", "err");
+    }
+  });
 
   await load();
 }

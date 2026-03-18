@@ -8,6 +8,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   api,
+  API_BASE,
   toast,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
@@ -57,6 +58,21 @@ function showBlock(id, visible) {
   if (el) el.style.display = visible ? "" : "none";
 }
 
+
+async function openExportLink(path) {
+  const data = await api(path);
+  const url = data?.export_link || (data?.export_path ? `${API_BASE}${data.export_path}` : "");
+  if (!url) throw new Error("export link missing");
+  const tg = window.Telegram?.WebApp;
+  try {
+    if (tg?.openLink) {
+      tg.openLink(url, { try_instant_view: false });
+      return;
+    }
+  } catch {}
+  window.location.href = url;
+}
+
 let financeAccess = {
   canViewRevenue: false,
   canViewExpenses: false,
@@ -86,10 +102,22 @@ async function loadFinanceAccess() {
 
 function syncActions(month) {
   const venueId = getActiveVenueId();
+  const exportSummaryBtn = document.getElementById("exportSummaryBtn");
   const revenueBtn = document.getElementById("openRevenueBtn");
   const expensesBtn = document.getElementById("openExpensesBtn");
   const payrollBtn = document.getElementById("openPayrollBtn");
   const economicsBtn = document.getElementById("openEconomicsBtn");
+
+  if (exportSummaryBtn) {
+    exportSummaryBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
+    exportSummaryBtn.onclick = async () => {
+      try {
+        await openExportLink(`/venues/${encodeURIComponent(venueId)}/summary/monthly/export-link?month=${encodeURIComponent(month)}`);
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось начать экспорт", "err");
+      }
+    };
+  }
 
   if (revenueBtn) {
     revenueBtn.style.display = financeAccess.canViewRevenue ? "" : "none";

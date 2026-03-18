@@ -8,6 +8,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   api,
+  API_BASE,
   toast,
   closeModal,
 } from "/app.js";
@@ -30,6 +31,20 @@ let state = {
   statuses: "",
   stats: null,
 };
+
+async function openExportLink(path) {
+  const data = await api(path);
+  const url = data?.export_link || (data?.export_path ? `${API_BASE}${data.export_path}` : "");
+  if (!url) throw new Error("export link missing");
+  const tg = window.Telegram?.WebApp;
+  try {
+    if (tg?.openLink) {
+      tg.openLink(url, { try_instant_view: false });
+      return;
+    }
+  } catch {}
+  window.location.href = url;
+}
 
 function currentMonth() {
   const d = new Date();
@@ -182,12 +197,14 @@ function fillSelect(el, items, { placeholder }) {
 
 function syncToolbar() {
   const addExpenseBtn = document.getElementById("addExpenseBtn");
+  const exportExpensesBtn = document.getElementById("exportExpensesBtn");
   const addCategoryBtn = document.getElementById("addCategoryBtn");
   const addSupplierBtn = document.getElementById("addSupplierBtn");
   const openRecurringExpensesBtn = document.getElementById("openRecurringExpensesBtn");
   const openExpenseCategoriesBtn = document.getElementById("openExpenseCategoriesBtn");
   const openSuppliersBtn = document.getElementById("openSuppliersBtn");
   if (addExpenseBtn) addExpenseBtn.style.display = access.canEdit ? "" : "none";
+  if (exportExpensesBtn) exportExpensesBtn.style.display = access.canView ? "" : "none";
   if (addCategoryBtn) addCategoryBtn.style.display = access.canManageCatalogs ? "" : "none";
   if (addSupplierBtn) addSupplierBtn.style.display = access.canManageCatalogs ? "" : "none";
   if (openRecurringExpensesBtn) openRecurringExpensesBtn.style.display = access.canView ? "" : "none";
@@ -579,6 +596,19 @@ async function boot() {
     await loadExpenses();
   };
   document.getElementById("addExpenseBtn").onclick = () => openExpenseForm();
+  document.getElementById("exportExpensesBtn").onclick = async () => {
+    try {
+      const venueId = getActiveVenueId();
+      const qp = new URLSearchParams();
+      qp.set("month", state.month || currentMonth());
+      if (state.categoryId) qp.set("category_id", state.categoryId);
+      if (state.supplierId) qp.set("supplier_id", state.supplierId);
+      if (state.statuses) qp.set("statuses", state.statuses);
+      await openExportLink(`/venues/${encodeURIComponent(venueId)}/expenses/export-link?${qp.toString()}`);
+    } catch (err) {
+      toast(err?.data?.detail || err?.message || "Не удалось начать экспорт", "err");
+    }
+  };
   document.getElementById("addCategoryBtn").onclick = () => openCatalogForm("category");
   document.getElementById("addSupplierBtn").onclick = () => openCatalogForm("supplier");
 
