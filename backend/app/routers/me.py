@@ -557,96 +557,89 @@ def my_salary_summary(
 ):
     """Monthly salary summary across all venues for current user.
 
-    New payroll is the primary source of truth. For venue/month combinations
-    where payroll has not been calculated yet, the response falls back to the
-    legacy shift-based calculation so the page still remains usable.
+    The employee salary screen is payroll-only. If a venue/month has no
+    payroll calculation yet, it is intentionally omitted from the summary so
+    the frontend can show a clear "not calculated" state instead of a legacy
+    shift-based approximation.
     """
 
     start, end = _parse_month_range(month)
 
     payroll_by_venue = _load_payroll_summary_by_venue(db, user_id=int(user.id), month_start=start)
     payroll_venue_ids = set(payroll_by_venue.keys())
+    if not payroll_venue_ids:
+        return {
+            "month": month,
+            "items": [],
+            "totals": {
+                "earned": 0,
+                "tips": 0,
+                "bonuses": 0,
+                "penalties": 0,
+                "net": 0,
+            },
+        }
 
-    legacy_rows_query = (
+    shift_rows = db.execute(
         select(
             Shift.id.label("shift_id"),
-            Shift.date.label("shift_date"),
             Shift.venue_id.label("venue_id"),
-            Venue.name.label("venue_name"),
-            ShiftInterval.start_time.label("start_time"),
-            VenuePosition.rate.label("rate"),
-            VenuePosition.percent.label("percent"),
+            Shift.date.label("shift_date"),
         )
         .select_from(ShiftAssignment)
         .join(Shift, Shift.id == ShiftAssignment.shift_id)
-        .join(Venue, Venue.id == Shift.venue_id)
-        .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
-        .join(VenuePosition, VenuePosition.id == ShiftAssignment.venue_position_id)
         .where(
             ShiftAssignment.member_user_id == user.id,
             Shift.is_active.is_(True),
+            Shift.venue_id.in_(payroll_venue_ids),
             Shift.date >= start,
             Shift.date < end,
         )
-    )
-    if payroll_venue_ids:
-        legacy_rows_query = legacy_rows_query.where(~Shift.venue_id.in_(payroll_venue_ids))
-    rows = db.execute(legacy_rows_query).all()
+    ).all()
 
-    keys = {(r.venue_id, r.shift_date) for r in rows}
-    report_by_key = {}
-    if keys:
-        reports = db.execute(
-            select(DailyReport).where(
-                DailyReport.venue_id.in_({k[0] for k in keys}),
-                DailyReport.date.in_({k[1] for k in keys}),
-                DailyReport.status == "CLOSED",
-            )
-        ).scalars().all()
-        report_by_key = {(r.venue_id, r.date): r for r in reports}
-
-    shift_ids = [int(r.shift_id) for r in rows]
-    assignee_cnt_by_shift: dict[int, int] = {}
-    if shift_ids:
-        cnt_rows = db.execute(
-            select(ShiftAssignment.shift_id, func.count(ShiftAssignment.member_user_id))
-            .where(ShiftAssignment.shift_id.in_(shift_ids))
-            .group_by(ShiftAssignment.shift_id)
-        ).all()
-        assignee_cnt_by_shift = {int(sid): int(cnt or 0) for sid, cnt in cnt_rows}
-
-    earned_by_venue: dict[int, int] = {vid: int(item.get("earned") or 0) for vid, item in payroll_by_venue.items()}
     tips_by_venue: dict[int, int] = {}
-    venue_name_by_id: dict[int, str] = {vid: str(item.get("venue_name") or "") for vid, item in payroll_by_venue.items()}
-    source_by_venue: dict[int, str] = {vid: "payroll" for vid in payroll_by_venue.keys()}
+    if shift_rows:
+        keys = {(int(r.venue_id), r.shift_date) for r in shift_rows}
+        shift_ids = [int(r.shift_id) for r in shift_rows]
+        report_by_key = {}
+        if keys:
+            reports = db.execute(
+                select(DailyReport).where(
+                    DailyReport.venue_id.in_({k[0] for k in keys}),
+                    DailyReport.date.in_({k[1] for k in keys}),
+                    DailyReport.status == "CLOSED",
+                )
+            ).scalars().all()
+            report_by_key = {(int(r.venue_id), r.date): r for r in reports}
 
-    for r in rows:
-        venue_name_by_id[int(r.venue_id)] = r.venue_name
-        source_by_venue.setdefault(int(r.venue_id), "legacy")
-        rep = report_by_key.get((r.venue_id, r.shift_date))
-        if rep is None:
-            continue
-        try:
-            sal = int(r.rate or 0) + (int(r.percent or 0) / 100.0) * float(rep.revenue_total or 0)
-            sal_i = int(round(float(sal)))
-        except Exception:
-            sal_i = 0
-        earned_by_venue[int(r.venue_id)] = earned_by_venue.get(int(r.venue_id), 0) + sal_i
+        assignee_cnt_by_shift: dict[int, int] = {}
+        if shift_ids:
+            cnt_rows = db.execute(
+                select(ShiftAssignment.shift_id, func.count(ShiftAssignment.member_user_id))
+                .where(ShiftAssignment.shift_id.in_(shift_ids))
+                .group_by(ShiftAssignment.shift_id)
+            ).all()
+            assignee_cnt_by_shift = {int(sid): int(cnt or 0) for sid, cnt in cnt_rows}
 
-        try:
-            tips_total = int(getattr(rep, "tips_total", 0) or 0)
-            if tips_total > 0:
-                cnt = max(1, int(assignee_cnt_by_shift.get(int(r.shift_id), 1)))
-                my_tips = int(round(float(tips_total) / float(cnt)))
-                tips_by_venue[int(r.venue_id)] = tips_by_venue.get(int(r.venue_id), 0) + my_tips
-        except Exception:
-            pass
+        for r in shift_rows:
+            rep = report_by_key.get((int(r.venue_id), r.shift_date))
+            if rep is None:
+                continue
+            try:
+                tips_total = int(getattr(rep, "tips_total", 0) or 0)
+                if tips_total > 0:
+                    cnt = max(1, int(assignee_cnt_by_shift.get(int(r.shift_id), 1)))
+                    my_tips = int(round(float(tips_total) / float(cnt)))
+                    tips_by_venue[int(r.venue_id)] = tips_by_venue.get(int(r.venue_id), 0) + my_tips
+            except Exception:
+                pass
 
     adj_rows = db.execute(
         select(Adjustment.venue_id, Adjustment.type, Adjustment.amount)
         .where(
             Adjustment.member_user_id == user.id,
             Adjustment.is_active.is_(True),
+            Adjustment.venue_id.in_(payroll_venue_ids),
             Adjustment.date >= start,
             Adjustment.date < end,
         )
@@ -663,14 +656,6 @@ def my_salary_summary(
         else:
             penalties_by_venue[vid] = penalties_by_venue.get(vid, 0) + a
 
-    venue_ids = set(earned_by_venue.keys()) | set(tips_by_venue.keys()) | set(bonuses_by_venue.keys()) | set(penalties_by_venue.keys())
-    if venue_ids and len(venue_name_by_id) != len(venue_ids):
-        missing = list(venue_ids - set(venue_name_by_id.keys()))
-        if missing:
-            vs = db.execute(select(Venue.id, Venue.name).where(Venue.id.in_(missing))).all()
-            for vid, vname in vs:
-                venue_name_by_id[int(vid)] = vname
-
     items = []
     total_net = 0
     total_earned = 0
@@ -678,8 +663,9 @@ def my_salary_summary(
     total_bonus = 0
     total_pen = 0
 
-    for vid in sorted(venue_ids):
-        earned = int(earned_by_venue.get(vid, 0))
+    for vid in sorted(payroll_venue_ids):
+        payroll_item = payroll_by_venue.get(vid) or {}
+        earned = int(payroll_item.get("earned") or 0)
         tips = int(tips_by_venue.get(vid, 0))
         bonus = int(bonuses_by_venue.get(vid, 0))
         pen = int(penalties_by_venue.get(vid, 0))
@@ -690,18 +676,18 @@ def my_salary_summary(
         total_bonus += bonus
         total_pen += pen
         item = {
-            "venue": {"id": vid, "name": venue_name_by_id.get(vid, "")},
+            "venue": {"id": vid, "name": payroll_item.get("venue_name") or ""},
             "earned": earned,
             "tips": tips,
             "bonuses": bonus,
             "penalties": pen,
             "net": net,
-            "source": source_by_venue.get(vid, "legacy"),
+            "source": "payroll",
+            "calculated": True,
+            "earned_minor": int(payroll_item.get("earned_minor") or 0),
         }
-        if vid in payroll_by_venue:
-            item["earned_minor"] = int(payroll_by_venue[vid].get("earned_minor") or 0)
-            if payroll_by_venue[vid].get("payroll_line_id") is not None:
-                item["payroll_line_id"] = payroll_by_venue[vid]["payroll_line_id"]
+        if payroll_item.get("payroll_line_id") is not None:
+            item["payroll_line_id"] = payroll_item["payroll_line_id"]
         items.append(item)
 
     return {

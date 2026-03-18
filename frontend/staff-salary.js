@@ -267,9 +267,19 @@ async function loadMonth() {
       payrollLine = await api(`/me/payroll-line?month=${encodeURIComponent(m)}&venue_id=${encodeURIComponent(venueId)}`).catch(() => null);
       const worked = Array.isArray(payrollLine?.breakdown?.metrics?.worked_dates) ? payrollLine.breakdown.metrics.worked_dates : [];
       payrollWorkedDates = new Set(worked.map((x) => String(x || "").slice(0, 10)).filter(Boolean));
+    } else {
+      monthSummaryItem = {
+        venue: { id: venueId, name: __venueNameOf(venueId) || "" },
+        source: "not_calculated",
+        calculated: false,
+      };
     }
   } catch {
-    monthSummaryItem = null;
+    monthSummaryItem = {
+      venue: { id: venueId, name: __venueNameOf(venueId) || "" },
+      source: "not_calculated",
+      calculated: false,
+    };
     payrollLine = null;
   }
 
@@ -298,34 +308,6 @@ async function loadMonthAll() {
     items = null;
   }
 
-  if ((!items || !items.length) && Array.isArray(__venues) && __venues.length) {
-    items = [];
-    const agg = { earned: 0, tips: 0, bonuses: 0, penalties: 0, net: 0 };
-    for (const v of __venues) {
-      const vid = __venueIdOf(v);
-      if (vid == null) continue;
-      const name = __venueNameOf(vid) || `#${vid}`;
-      let venueShifts = [];
-      let adjs = [];
-      try {
-        const out = await api(`/venues/${encodeURIComponent(String(vid))}/shifts?month=${encodeURIComponent(m)}`);
-        venueShifts = Array.isArray(out) ? out : (out?.items || []);
-      } catch {}
-      try {
-        const adj = await api(`/venues/${encodeURIComponent(String(vid))}/adjustments?month=${encodeURIComponent(m)}&mine=1`);
-        adjs = Array.isArray(adj?.items) ? adj.items : [];
-      } catch {}
-      const earned = venueShifts.reduce((a, s) => a + (Number(s?.my_salary) || 0), 0);
-      const tips = venueShifts.reduce((a, s) => a + (Number(s?.my_tips_share) || 0), 0);
-      const bonuses = adjs.filter(x => x?.type === "bonus").reduce((a, x) => a + (Number(x?.amount) || 0), 0);
-      const penalties = adjs.filter(x => x?.type === "penalty" || x?.type === "writeoff").reduce((a, x) => a + (Number(x?.amount) || 0), 0);
-      const net = earned + tips + bonuses - penalties;
-      items.push({ venue: { id: vid, name }, earned, tips, bonuses, penalties, net, source: "legacy" });
-      agg.earned += earned; agg.tips += tips; agg.bonuses += bonuses; agg.penalties += penalties; agg.net += net;
-    }
-    totals = agg;
-  }
-
   const t = totals || {};
   if (allEls.earned) allEls.earned.textContent = formatMoney(t.earned ?? t.salary ?? t.total_salary);
   if (allEls.tips) allEls.tips.textContent = formatMoney(t.tips ?? t.total_tips);
@@ -333,14 +315,44 @@ async function loadMonthAll() {
   if (allEls.penalties) allEls.penalties.textContent = formatMoney(t.penalties ?? t.total_penalties ?? t.penalties_total);
   if (allEls.net) allEls.net.textContent = formatMoney(t.net ?? t.total ?? t.total_net);
 
-  const safeItems = Array.isArray(items) ? items : [];
-  if (allEls.hint) allEls.hint.textContent = safeItems.length ? "" : "Нет данных";
+  const summaryItems = Array.isArray(items) ? items : [];
+  const summaryByVenue = new Map(summaryItems.map((item) => [String(item?.venue?.id ?? item?.venue_id ?? item?.venueId ?? ""), item]));
+  const safeItems = [];
+  for (const v of (__venues || [])) {
+    const vid = __venueIdOf(v);
+    if (vid == null) continue;
+    const found = summaryByVenue.get(String(vid));
+    if (found) {
+      safeItems.push(found);
+    } else {
+      safeItems.push({
+        venue: { id: vid, name: __venueNameOf(vid) || `#${vid}` },
+        source: "not_calculated",
+        calculated: false,
+      });
+    }
+  }
   if (!safeItems.length) {
-    allEls.list.innerHTML = `<div class="muted">Нет данных за выбранный месяц</div>`;
+    for (const item of summaryItems) safeItems.push(item);
+  }
+
+  const missingCount = safeItems.filter((item) => item?.source !== "payroll").length;
+  if (allEls.hint) {
+    allEls.hint.textContent = missingCount
+      ? `Не рассчитано по ${missingCount} ${missingCount === 1 ? "заведению" : "заведениям"}`
+      : "Все начисления рассчитаны";
+  }
+  if (!safeItems.length) {
+    allEls.list.innerHTML = `<div class="muted">Нет заведений для отображения</div>`;
     return;
   }
 
-  safeItems.sort((a, b) => (Number(b?.net) || 0) - (Number(a?.net) || 0));
+  safeItems.sort((a, b) => {
+    const ap = a?.source === "payroll" ? 1 : 0;
+    const bp = b?.source === "payroll" ? 1 : 0;
+    if (bp !== ap) return bp - ap;
+    return (Number(b?.net) || 0) - (Number(a?.net) || 0);
+  });
   allEls.list.innerHTML = safeItems.map((v) => {
     const vid = v?.venue?.id ?? v?.venue_id ?? v?.venueId ?? v?.id ?? null;
     const name = esc(v?.venue?.name ?? v?.venue_name ?? v?.venueName ?? v?.name ?? __venueNameOf(vid) ?? `#${vid ?? ""}`);
@@ -349,12 +361,21 @@ async function loadMonthAll() {
     const bonuses = Number(v?.bonuses ?? 0);
     const penalties = Number(v?.penalties ?? 0);
     const net = Number(v?.net ?? (earned + tips + bonuses - penalties) ?? 0);
-    const badge = v?.source === "payroll" ? `<span class="badge">payroll</span>` : `<span class="badge">legacy</span>`;
+    if (v?.source !== "payroll") {
+      return `
+        <div class="card">
+          <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap;">
+            <b>${name}</b>
+            <span class="badge">не рассчитано</span>
+          </div>
+          <div class="muted mt-10">Начисление за этот месяц ещё не рассчитано. Сумма появится после payroll-расчёта.</div>
+        </div>`;
+    }
     return `
       <div class="card">
         <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap;">
           <b>${name}</b>
-          ${badge}
+          <span class="badge">payroll</span>
         </div>
         <div class="grid mt-10 salary-all-kpis">
           <div class="mini-kpi"><div class="muted small">Начислено</div><b>${formatMoney(earned)}</b></div>
@@ -378,46 +399,41 @@ async function refresh() {
 }
 
 function renderSummary() {
-  const legacySalary = days.reduce((acc, d) => acc + (Number.isFinite(d.salary) ? d.salary : 0), 0);
-  const legacyTips = days.reduce((acc, d) => acc + (Number.isFinite(d.tips) ? d.tips : 0), 0);
-  const totalPenalties = adjustments.filter(x => x.type === "penalty").reduce((a,x)=>a+Number(x.amount||0),0);
-  const totalBonuses = adjustments.filter(x => x.type === "bonus").reduce((a,x)=>a+Number(x.amount||0),0);
   const totalWriteoffs = adjustments.filter(x => x.type === "writeoff").reduce((a,x)=>a+Number(x.amount||0),0);
-  const holdWriteoffs = false;
-
-  const earned = Number(monthSummaryItem?.earned ?? legacySalary ?? 0);
-  const tips = Number(monthSummaryItem?.tips ?? legacyTips ?? 0);
-  const bonuses = Number(monthSummaryItem?.bonuses ?? totalBonuses ?? 0);
-  const penalties = Number(monthSummaryItem?.penalties ?? totalPenalties ?? 0);
-  const total = Number(monthSummaryItem?.net ?? (earned + tips + bonuses - penalties - (holdWriteoffs ? totalWriteoffs : 0)) ?? 0);
-
-  el.sumSalary.textContent = formatMoney(earned);
-  el.sumTips.textContent = formatMoney(tips);
-  el.sumPenalties.textContent = formatMoney(penalties);
-  el.sumBonuses.textContent = formatMoney(bonuses);
-  if (holdWriteoffs) {
-    el.rowWriteoffs.style.display = "flex";
-    el.sumWriteoffs.textContent = formatMoney(totalWriteoffs);
-  } else {
-    el.rowWriteoffs.style.display = "none";
-  }
-  el.sumTotal.textContent = formatMoney(total);
-
   const isPayroll = monthSummaryItem?.source === "payroll";
-  if (el.sourceHint) {
-    if (isPayroll) {
-      el.sourceHint.textContent = "Основной источник — новый payroll. Месячная сумма и итог берутся из payroll-начисления; блоки ниже показывают справочную детализацию по дням и сменам.";
-    } else if (monthSummaryItem?.source === "legacy") {
-      el.sourceHint.textContent = "Для этого заведения payroll за месяц ещё не рассчитан, поэтому сумма временно взята из старой shift-логики.";
-    } else {
-      el.sourceHint.textContent = "";
+  const isCalculated = isPayroll && !!monthSummaryItem?.calculated;
+
+  if (isCalculated) {
+    const earned = Number(monthSummaryItem?.earned ?? 0);
+    const tips = Number(monthSummaryItem?.tips ?? 0);
+    const bonuses = Number(monthSummaryItem?.bonuses ?? 0);
+    const penalties = Number(monthSummaryItem?.penalties ?? 0);
+    const total = Number(monthSummaryItem?.net ?? (earned + tips + bonuses - penalties) ?? 0);
+    el.sumSalary.textContent = formatMoney(earned);
+    el.sumTips.textContent = formatMoney(tips);
+    el.sumPenalties.textContent = formatMoney(penalties);
+    el.sumBonuses.textContent = formatMoney(bonuses);
+    el.sumTotal.textContent = formatMoney(total);
+    if (el.sourceHint) {
+      el.sourceHint.textContent = "Экран сотрудника теперь работает только от payroll. Месячная сумма и итог берутся из рассчитанного payroll-начисления; блоки ниже показывают справочную детализацию по дням и сменам.";
+    }
+  } else {
+    el.sumSalary.textContent = "—";
+    el.sumTips.textContent = "—";
+    el.sumPenalties.textContent = "—";
+    el.sumBonuses.textContent = "—";
+    el.sumTotal.textContent = "—";
+    if (el.sourceHint) {
+      el.sourceHint.textContent = "Начисление за этот месяц ещё не рассчитано. Старый shift-расчёт больше не используется; сумма появится после payroll-расчёта.";
     }
   }
-  if (el.payrollBreakdownRow) el.payrollBreakdownRow.style.display = (isPayroll && payrollLine?.breakdown) ? "flex" : "none";
-  if (el.daysChartTitle) el.daysChartTitle.textContent = isPayroll ? "Дни, вошедшие в расчёт" : "График по дням";
-  if (el.daysChartHint) el.daysChartHint.textContent = isPayroll ? "Подсвечены даты, которые реально попали в payroll" : "Выбери день для подробностей";
-  if (el.daysListTitle) el.daysListTitle.textContent = isPayroll ? "Смены по дням" : "По дням";
-  if (el.daysListHint) el.daysListHint.textContent = isPayroll ? "Это справочная детализация, а не источник месячной суммы" : "";
+  if (el.rowWriteoffs) el.rowWriteoffs.style.display = "none";
+  if (el.sumWriteoffs) el.sumWriteoffs.textContent = formatMoney(totalWriteoffs);
+  if (el.payrollBreakdownRow) el.payrollBreakdownRow.style.display = (isCalculated && payrollLine?.breakdown) ? "flex" : "none";
+  if (el.daysChartTitle) el.daysChartTitle.textContent = isCalculated ? "Дни, вошедшие в расчёт" : "Календарь смен";
+  if (el.daysChartHint) el.daysChartHint.textContent = isCalculated ? "Подсвечены даты, которые реально попали в payroll" : "Здесь показаны смены и закрытые дни, но итоговая сумма появится только после payroll-расчёта";
+  if (el.daysListTitle) el.daysListTitle.textContent = isCalculated ? "Смены по дням" : "Смены за месяц";
+  if (el.daysListHint) el.daysListHint.textContent = isCalculated ? "Это справочная детализация, а не источник месячной суммы" : "Справочная детализация без расчёта зарплаты";
 }
 
 function renderMonthChart() {
@@ -442,14 +458,12 @@ function renderMonthChart() {
         </button>`;
     }).join("");
   } else {
-    const maxVal = Math.max(1, ...days.map(d => Math.max(0, Number(d.salary) || 0)));
     bars = days.map((d) => {
       const dt = new Date(String(d.date).length === 10 ? d.date + "T00:00:00" : d.date);
       const label = String(dt.getDate());
-      const val = Math.max(0, Number(d.salary) || 0);
-      let h = Math.round((val / maxVal) * 100);
-      if (!h && d.hasReport) h = 8;
-      const barColor = d.hasReport ? "var(--accent)" : "var(--borderSoft)";
+      const shiftsCount = Math.max(0, d.shifts?.length || 0);
+      const h = d.hasReport ? 100 : (shiftsCount ? 45 : 12);
+      const barColor = d.hasReport ? "var(--accent)" : (shiftsCount ? "var(--borderSoft)" : "var(--borderSoft)");
       return `
         <button class="bar" type="button" data-date="${esc(d.date)}" style="--h:${h}%;--barColor:${barColor}">
           <div class="bar__track"><div class="bar__fill"></div></div>
@@ -482,15 +496,15 @@ function renderDays() {
     const dd = formatDateRu(d.date);
     const rightText = isPayroll
       ? (d.includedInPayroll ? "Вошло в расчёт" : (d.shifts?.length ? "Не вошло" : "—"))
-      : (d.salary > 0 ? `+${formatMoney(d.salary)}` : "Нет отчета");
+      : (d.hasReport ? "Есть закрытый отчёт" : (d.shifts?.length ? "Смена без закрытия" : "—"));
     const rightClass = isPayroll
       ? (d.includedInPayroll ? "day-salary" : "day-salary day-salary--muted")
-      : (d.salary > 0 ? "day-salary" : "day-salary day-salary--muted");
+      : (d.hasReport ? "day-salary" : "day-salary day-salary--muted");
     card.innerHTML = `
       <div class="row row--between" style="gap:10px; align-items:center;">
         <div>
           <b>${esc(dd)}</b>
-          <div class="muted small mt-4">${isPayroll ? `${Math.max(0, d.shifts?.length || 0)} смен(ы)` : (d.hasReport ? "Есть отчёт" : "Нет закрытого отчёта")}</div>
+          <div class="muted small mt-4">${Math.max(0, d.shifts?.length || 0)} смен(ы)</div>
         </div>
         <div class="dayrow__right">
           <div class="${rightClass}">${esc(rightText)}</div>
@@ -561,11 +575,9 @@ function openDayModal(d) {
   const isPayroll = monthSummaryItem?.source === "payroll";
   const shiftsHtml = (d.shifts || []).map((s) => {
     const interval = s.interval?.title || s.interval_title || s.interval?.id || "Смена";
-    const status = d.includedInPayroll ? "Вошло в payroll" : (s.report_exists ? "Есть отчёт, но не вошло" : "Нет закрытого отчёта");
-    const legacySalary = Number(s.my_salary);
-    const trailing = isPayroll
-      ? `<div class="muted small">${esc(status)}</div>`
-      : `<div class="day-salary" style="${Number.isFinite(legacySalary) ? "" : "opacity:.45"}">${esc(Number.isFinite(legacySalary) ? ("+" + formatMoney(legacySalary)) : "—")}</div>`;
+    const status = isPayroll
+      ? (d.includedInPayroll ? "Вошло в payroll" : (s.report_exists ? "Есть отчёт, но не вошло" : "Нет закрытого отчёта"))
+      : (s.report_exists ? "Есть закрытый отчёт" : "Нет закрытого отчёта");
     return `
       <div class="section">
         <div class="row row--between" style="gap:12px; align-items:flex-start;">
@@ -573,43 +585,24 @@ function openDayModal(d) {
             <b>${esc(interval)}</b>
             <div class="muted small">${s.report_exists ? "Отчёт есть" : "Нет отчёта"}</div>
           </div>
-          <div>${trailing}</div>
+          <div class="muted small">${esc(status)}</div>
         </div>
       </div>`;
   }).join("");
 
-  if (isPayroll) {
-    openModal(
-      `${formatDateRu(d.date)}`,
-      d.includedInPayroll ? "Этот день попал в payroll-расчёт" : "Этот день не участвует в payroll-итоге",
-      `<div class="itemcard" style="margin-top:12px">
-        <div class="row" style="justify-content:space-between;align-items:center; gap:12px;">
-          <div class="muted">Статус дня</div>
-          <div class="day-salary ${d.includedInPayroll ? "" : "day-salary--muted"}">${d.includedInPayroll ? "Вошло в расчёт" : "Не вошло"}</div>
-        </div>
-        <div class="row" style="justify-content:space-between;align-items:center; margin-top:6px">
-          <div class="muted">Чаевые за день</div>
-          <div class="day-salary">${formatMoney(d.tips || 0)}</div>
-        </div>
-        <div class="muted small mt-8">Месячная сумма берётся из payroll, поэтому здесь показана только справочная детализация по сменам.</div>
-        <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
-      </div>`
-    );
-    return;
-  }
-
   openModal(
     `${formatDateRu(d.date)}`,
-    "",
+    isPayroll
+      ? (d.includedInPayroll ? "Этот день попал в payroll-расчёт" : "Этот день не участвует в payroll-итоге")
+      : "Начисление за месяц ещё не рассчитано",
     `<div class="itemcard" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <div class="muted">Итого за день</div>
-        <div class="day-salary ${d.salary>0 ? "" : "day-salary--muted"}">${d.salary>0 ? ("+"+formatMoney(d.salary)) : "—"}</div>
+      <div class="row" style="justify-content:space-between;align-items:center; gap:12px;">
+        <div class="muted">Статус дня</div>
+        <div class="day-salary ${isPayroll ? (d.includedInPayroll ? "" : "day-salary--muted") : (d.hasReport ? "" : "day-salary--muted")}">${isPayroll ? (d.includedInPayroll ? "Вошло в расчёт" : "Не вошло") : (d.hasReport ? "Закрытый день" : "Без закрытия")}</div>
       </div>
-      <div class="row" style="justify-content:space-between;align-items:center; margin-top:6px">
-        <div class="muted">Чаевые</div>
-        <div class="day-salary">${formatMoney(d.tips || 0)}</div>
-      </div>
+      <div class="muted small mt-8">${isPayroll
+        ? "Месячная сумма берётся из payroll, поэтому здесь показана только справочная детализация по сменам."
+        : "Payroll за этот месяц ещё не рассчитан, поэтому суммы по дням скрыты и ниже показана только справочная детализация по сменам."}</div>
       <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
     </div>`
   );
