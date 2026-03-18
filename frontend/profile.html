@@ -7,11 +7,14 @@
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Профиль</title>
   <style>
-    .auth-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+    .auth-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:12px; }
     .auth-methods { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
     .auth-chip { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:4px 10px; font-size:12px; }
     .auth-box { border:1px solid var(--border); border-radius:16px; padding:12px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .hidden { display:none !important; }
+    .call-number { font-size:18px; font-weight:700; letter-spacing:.02em; }
+    .call-number a { color: inherit; text-decoration:none; }
   </style>
 </head>
 <body>
@@ -26,7 +29,6 @@
       </div>
       <div class="userpill" id="userpill" data-userpill></div>
     </div>
-
 
     <div class="card">
       <div class="row row--between">
@@ -43,16 +45,14 @@
           <div class="muted mt-6">Краткое имя</div>
           <input class="input" id="shortName" placeholder="Например: Вова" />
         </div>
-        <div class="muted mt-6">
-          Краткое имя используется в интерфейсе вместо логина. Логин остаётся дополнением.
-        </div>
+        <div class="muted mt-6">Краткое имя используется в интерфейсе вместо логина. Логин остаётся дополнением.</div>
         <button class="btn primary" id="saveBtn">Сохранить</button>
       </div>
     </div>
 
     <div class="card">
       <b>Способы входа</b>
-      <div class="muted mt-6">Можно привязать телефон к старому Telegram-аккаунту или привязать Telegram к phone-аккаунту. После привязки номера можно сразу поставить пароль.</div>
+      <div class="muted mt-6">Можно привязать телефон к старому Telegram-аккаунту или привязать Telegram к phone-аккаунту. Подтверждение номера теперь начинается со звонка; если он не проходит, позже можно запросить SMS.</div>
 
       <div class="auth-methods" id="authMethods"></div>
 
@@ -63,13 +63,17 @@
           <div class="stack mt-12">
             <input class="input" id="linkPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
             <div class="row" style="gap:8px; flex-wrap:wrap;">
-              <button class="btn" id="requestLinkCodeBtn">Получить код</button>
-              <button class="btn primary" id="verifyLinkCodeBtn">Подтвердить и привязать</button>
+              <button class="btn" id="requestLinkCallBtn">Получить номер для звонка</button>
+              <button class="btn hidden" id="requestLinkCodeBtn">Не получается? Получить SMS</button>
             </div>
-            <input class="input" id="linkPhoneCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+            <div class="muted mono" id="linkPhoneMeta"></div>
+            <div class="call-number hidden" id="linkPhoneCallNumber"></div>
+            <div id="linkPhoneSmsBlock" class="hidden">
+              <input class="input mt-8" id="linkPhoneCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+            </div>
             <input class="input" id="linkPhonePasswordInput" type="password" placeholder="Новый пароль сразу после привязки (необязательно)" autocomplete="new-password" />
             <input class="input" id="linkPhonePasswordConfirmInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
-            <div class="muted mono" id="linkPhoneMeta"></div>
+            <button class="btn primary" id="verifyLinkCodeBtn">Завершить привязку</button>
           </div>
         </div>
 
@@ -96,16 +100,20 @@
             <div class="auth-divider"></div>
 
             <div>
-              <div class="muted">Сбросить или установить пароль по SMS</div>
+              <div class="muted">Сбросить или установить пароль по звонку</div>
               <div class="muted mt-6" id="passwordResetPhoneHint">Номер загрузится из профиля после привязки телефона.</div>
               <div class="row mt-8" style="gap:8px; flex-wrap:wrap;">
-                <button class="btn" id="requestPasswordResetBtn">Получить код</button>
-                <button class="btn primary" id="confirmPasswordResetBtn">Сохранить новый пароль</button>
+                <button class="btn" id="requestPasswordResetCallBtn">Получить номер для звонка</button>
+                <button class="btn hidden" id="requestPasswordResetBtn">Не получается? Получить SMS</button>
               </div>
-              <input class="input mt-8" id="passwordResetCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+              <div class="muted mono mt-8" id="passwordResetMeta"></div>
+              <div class="call-number hidden mt-8" id="passwordResetCallNumber"></div>
+              <div id="passwordResetSmsBlock" class="hidden">
+                <input class="input mt-8" id="passwordResetCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+              </div>
               <input class="input mt-8" id="passwordResetNewInput" type="password" placeholder="Новый пароль" autocomplete="new-password" />
               <input class="input mt-8" id="passwordResetConfirmInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
-              <div class="muted mono mt-8" id="passwordResetMeta"></div>
+              <button class="btn primary mt-12" id="confirmPasswordResetBtn">Сохранить новый пароль</button>
             </div>
           </div>
         </div>
@@ -128,16 +136,21 @@
       api,
       toast,
       wa,
+      mountLogo,
+      requestLinkPhoneCall,
       requestLinkPhoneCode,
       verifyLinkPhoneCode,
       linkTelegramAccount,
       getPasswordState,
       changePassword,
+      requestPasswordResetCall,
       requestPasswordResetCode,
       confirmPasswordReset,
+      getPhoneCallStatus,
     } from "/app.js";
 
     applyTelegramTheme();
+    mountLogo();
     await ensureLogin({ silent: true });
     await mountNav({ activeTab: "settings" });
 
@@ -153,7 +166,10 @@
       linkPhonePasswordInput: document.getElementById("linkPhonePasswordInput"),
       linkPhonePasswordConfirmInput: document.getElementById("linkPhonePasswordConfirmInput"),
       linkPhoneMeta: document.getElementById("linkPhoneMeta"),
+      requestLinkCallBtn: document.getElementById("requestLinkCallBtn"),
       requestLinkCodeBtn: document.getElementById("requestLinkCodeBtn"),
+      linkPhoneCallNumber: document.getElementById("linkPhoneCallNumber"),
+      linkPhoneSmsBlock: document.getElementById("linkPhoneSmsBlock"),
       verifyLinkCodeBtn: document.getElementById("verifyLinkCodeBtn"),
       telegramState: document.getElementById("telegramState"),
       linkTelegramBtn: document.getElementById("linkTelegramBtn"),
@@ -163,28 +179,48 @@
       changePasswordConfirmInput: document.getElementById("changePasswordConfirmInput"),
       changePasswordBtn: document.getElementById("changePasswordBtn"),
       passwordResetPhoneHint: document.getElementById("passwordResetPhoneHint"),
+      requestPasswordResetCallBtn: document.getElementById("requestPasswordResetCallBtn"),
       requestPasswordResetBtn: document.getElementById("requestPasswordResetBtn"),
       confirmPasswordResetBtn: document.getElementById("confirmPasswordResetBtn"),
       passwordResetCodeInput: document.getElementById("passwordResetCodeInput"),
       passwordResetNewInput: document.getElementById("passwordResetNewInput"),
       passwordResetConfirmInput: document.getElementById("passwordResetConfirmInput"),
       passwordResetMeta: document.getElementById("passwordResetMeta"),
+      passwordResetCallNumber: document.getElementById("passwordResetCallNumber"),
+      passwordResetSmsBlock: document.getElementById("passwordResetSmsBlock"),
     };
 
     let currentProfile = null;
     let currentPasswordState = null;
+    const flows = {
+      link: { challengeId: null, verified: false, pollTimer: null, fallbackTimer: null },
+      reset: { challengeId: null, verified: false, pollTimer: null, fallbackTimer: null },
+    };
 
-    els.backBtn?.addEventListener("click", () => {
-      const ref = document.referrer || "";
-      try {
-        const refUrl = ref ? new URL(ref) : null;
-        if (refUrl && refUrl.origin === location.origin) {
-          history.back();
-          return;
-        }
-      } catch {}
-      location.href = "/settings.html";
-    });
+    function clearFlow(kind) {
+      const state = flows[kind];
+      if (state.pollTimer) clearInterval(state.pollTimer);
+      if (state.fallbackTimer) clearTimeout(state.fallbackTimer);
+      state.challengeId = null;
+      state.verified = false;
+      state.pollTimer = null;
+      state.fallbackTimer = null;
+      if (kind === "link") {
+        els.linkPhoneMeta.textContent = "";
+        els.linkPhoneCallNumber.textContent = "";
+        els.linkPhoneCallNumber.classList.add("hidden");
+        els.linkPhoneSmsBlock.classList.add("hidden");
+        els.requestLinkCodeBtn.classList.add("hidden");
+        els.linkPhoneCodeInput.value = "";
+      } else {
+        els.passwordResetMeta.textContent = "";
+        els.passwordResetCallNumber.textContent = "";
+        els.passwordResetCallNumber.classList.add("hidden");
+        els.passwordResetSmsBlock.classList.add("hidden");
+        els.requestPasswordResetBtn.classList.add("hidden");
+        els.passwordResetCodeInput.value = "";
+      }
+    }
 
     function renderAuthMethods(methods) {
       const list = Array.isArray(methods) ? methods : [];
@@ -223,7 +259,7 @@
           ? `Пароль установлен. Последнее обновление: ${changedAt}`
           : "Пароль установлен и активен.";
       } else {
-        els.passwordState.textContent = "Пароль пока не установлен. Его можно создать после подтверждения номера по SMS.";
+        els.passwordState.textContent = "Пароль пока не установлен. Его можно создать после подтверждения номера звонком или через запасной SMS-код.";
       }
       els.currentPasswordInput.disabled = !hasPassword;
     }
@@ -237,10 +273,10 @@
 
       if (profile?.phone) {
         els.phoneState.textContent = `Привязанный номер: ${profile.phone}`;
-        els.passwordResetPhoneHint.textContent = `Код будет отправлен на ${profile.phone}.`;
+        els.passwordResetPhoneHint.textContent = `Подтверждение будет проходить для номера ${profile.phone}.`;
       } else {
         els.phoneState.textContent = "Телефон пока не привязан. После привязки в приложение можно будет входить по телефону и паролю.";
-        els.passwordResetPhoneHint.textContent = "Сначала привяжи номер телефона, затем можно будет сбрасывать пароль по SMS.";
+        els.passwordResetPhoneHint.textContent = "Сначала привяжи номер телефона, затем можно будет сбрасывать пароль.";
       }
 
       if (profile?.tg_user_id) {
@@ -268,6 +304,83 @@
       }
     }
 
+    els.backBtn?.addEventListener("click", () => {
+      const ref = document.referrer || "";
+      try {
+        const refUrl = ref ? new URL(ref) : null;
+        if (refUrl && refUrl.origin === location.origin) {
+          history.back();
+          return;
+        }
+      } catch {}
+      location.href = "/settings.html";
+    });
+
+    async function startCall(kind) {
+      const phone = (kind === "link" ? els.linkPhoneInput.value : (currentProfile?.phone || els.linkPhoneInput.value)).trim();
+      if (!phone) throw new Error("Сначала укажи номер телефона");
+      clearFlow(kind);
+      const out = kind === "link" ? await requestLinkPhoneCall(phone) : await requestPasswordResetCall(phone);
+      flows[kind].challengeId = out?.challenge_id || null;
+      const pretty = out?.call_phone_pretty || out?.call_phone || "";
+      const numberEl = kind === "link" ? els.linkPhoneCallNumber : els.passwordResetCallNumber;
+      const metaEl = kind === "link" ? els.linkPhoneMeta : els.passwordResetMeta;
+      metaEl.textContent = `Позвони со своего номера на ${pretty || "указанный номер"}. После успешного звонка подтверждение сработает автоматически.`;
+      if (pretty) {
+        const raw = String(out?.call_phone || pretty).replace(/\D+/g, "");
+        numberEl.innerHTML = `<a href="tel:${raw}">${pretty}</a>`;
+        numberEl.classList.remove("hidden");
+      }
+      flows[kind].pollTimer = setInterval(() => pollCall(kind, out?.phone || phone), 2500);
+      flows[kind].fallbackTimer = setTimeout(() => {
+        if (kind === "link") {
+          els.requestLinkCodeBtn.classList.remove("hidden");
+          els.linkPhoneSmsBlock.classList.remove("hidden");
+          if (!flows[kind].verified) els.linkPhoneMeta.textContent += "\n\nЕсли звонок не проходит, можно получить SMS.";
+        } else {
+          els.requestPasswordResetBtn.classList.remove("hidden");
+          els.passwordResetSmsBlock.classList.remove("hidden");
+          if (!flows[kind].verified) els.passwordResetMeta.textContent += "\n\nЕсли звонок не проходит, можно получить SMS.";
+        }
+      }, Math.max(1, Number(out?.fallback_after_seconds || 10)) * 1000);
+      await pollCall(kind, out?.phone || phone);
+    }
+
+    async function pollCall(kind, phone) {
+      const state = flows[kind];
+      if (!state.challengeId) return;
+      try {
+        const out = await getPhoneCallStatus(phone, state.challengeId);
+        const metaEl = kind === "link" ? els.linkPhoneMeta : els.passwordResetMeta;
+        if (out?.verified) {
+          state.verified = true;
+          if (state.pollTimer) clearInterval(state.pollTimer);
+          if (state.fallbackTimer) clearTimeout(state.fallbackTimer);
+          state.pollTimer = null;
+          state.fallbackTimer = null;
+          metaEl.textContent = "Звонок подтверждён. Теперь можно завершить действие ниже.";
+          toast("Номер подтверждён звонком", "ok");
+          return;
+        }
+        if (out?.expired) {
+          if (state.pollTimer) clearInterval(state.pollTimer);
+          state.pollTimer = null;
+          metaEl.textContent = out?.status_text || "Время подтверждения истекло.";
+          if (kind === "link") {
+            els.requestLinkCodeBtn.classList.remove("hidden");
+            els.linkPhoneSmsBlock.classList.remove("hidden");
+          } else {
+            els.requestPasswordResetBtn.classList.remove("hidden");
+            els.passwordResetSmsBlock.classList.remove("hidden");
+          }
+        }
+      } catch (e) {
+        if (state.pollTimer) clearInterval(state.pollTimer);
+        state.pollTimer = null;
+        toast(e?.data?.detail || e?.message || "Не удалось проверить статус звонка", "err");
+      }
+    }
+
     els.saveBtn.onclick = async () => {
       const full_name = els.fullName.value;
       const short_name = els.shortName.value;
@@ -280,13 +393,22 @@
       }
     };
 
+    els.requestLinkCallBtn.onclick = async () => {
+      try {
+        await startCall("link");
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось начать подтверждение звонком", "err");
+      }
+    };
+
     els.requestLinkCodeBtn.onclick = async () => {
       try {
         const out = await requestLinkPhoneCode(els.linkPhoneInput.value.trim());
+        els.linkPhoneSmsBlock.classList.remove("hidden");
         els.linkPhoneMeta.textContent = out?.debug_code
           ? `Код отправлен. dev_code=${out.debug_code}`
           : `Код отправлен на ${out?.phone || els.linkPhoneInput.value.trim()}`;
-        toast("Код отправлен", "ok");
+        toast("SMS отправлена", "ok");
         els.linkPhoneCodeInput.focus();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось отправить код", "err");
@@ -303,9 +425,13 @@
           els.linkPhoneInput.value.trim(),
           els.linkPhoneCodeInput.value.trim(),
           newPassword,
+          flows.link.verified ? flows.link.challengeId : null,
         );
         toast(newPassword ? "Телефон привязан, пароль установлен" : "Телефон привязан", "ok");
         renderAuthMethods(out?.auth_methods || []);
+        clearFlow("link");
+        els.linkPhonePasswordInput.value = "";
+        els.linkPhonePasswordConfirmInput.value = "";
         await loadProfile();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось привязать номер", "err");
@@ -341,15 +467,24 @@
       }
     };
 
+    els.requestPasswordResetCallBtn.onclick = async () => {
+      try {
+        await startCall("reset");
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось начать подтверждение звонком", "err");
+      }
+    };
+
     els.requestPasswordResetBtn.onclick = async () => {
       try {
         const phone = currentProfile?.phone || els.linkPhoneInput.value.trim();
         if (!phone) throw new Error("Сначала привяжи номер телефона");
         const out = await requestPasswordResetCode(phone);
+        els.passwordResetSmsBlock.classList.remove("hidden");
         els.passwordResetMeta.textContent = out?.debug_code
           ? `Код отправлен. dev_code=${out.debug_code}`
           : `Код отправлен на ${out?.phone || phone}`;
-        toast("Код отправлен", "ok");
+        toast("SMS отправлена", "ok");
         els.passwordResetCodeInput.focus();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось отправить код", "err");
@@ -365,9 +500,14 @@
           els.passwordResetConfirmInput.value,
         );
         if (!newPassword) throw new Error("Введи новый пароль");
-        await confirmPasswordReset(phone, els.passwordResetCodeInput.value.trim(), newPassword);
-        toast(currentPasswordState?.has_password ? "Пароль сброшен" : "Пароль установлен", "ok");
-        els.passwordResetCodeInput.value = "";
+        await confirmPasswordReset(
+          phone,
+          els.passwordResetCodeInput.value.trim(),
+          newPassword,
+          flows.reset.verified ? flows.reset.challengeId : null,
+        );
+        toast(currentPasswordState?.has_password ? "Пароль обновлён" : "Пароль установлен", "ok");
+        clearFlow("reset");
         els.passwordResetNewInput.value = "";
         els.passwordResetConfirmInput.value = "";
         await loadProfile();

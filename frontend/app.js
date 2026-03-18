@@ -470,6 +470,20 @@ export async function loginWithTelegramWidget(authData) {
   });
 }
 
+export async function requestPhoneCall(phone) {
+  return api("/auth/phone/request-call", {
+    method: "POST",
+    body: { phone },
+    handle401: false,
+  });
+}
+
+export async function getPhoneCallStatus(phone, challengeId) {
+  return api(`/auth/phone/call-status/${encodeURIComponent(challengeId)}?phone=${encodeURIComponent(phone)}`, {
+    handle401: false,
+  });
+}
+
 export async function requestPhoneCode(phone) {
   return api("/auth/phone/request-code", {
     method: "POST",
@@ -478,10 +492,14 @@ export async function requestPhoneCode(phone) {
   });
 }
 
-export async function verifyPhoneCode(phone, code) {
+export async function verifyPhoneCode(phone, code = "", challengeId = null) {
+  const body = { phone };
+  const normalizedCode = String(code || "").trim();
+  if (normalizedCode) body.code = normalizedCode;
+  if (challengeId != null && challengeId !== "") body.challenge_id = challengeId;
   return api("/auth/phone/verify-code", {
     method: "POST",
-    body: { phone, code },
+    body,
     handle401: false,
   });
 }
@@ -494,10 +512,22 @@ export async function loginWithPassword(phone, password) {
   });
 }
 
-export async function setPasswordAfterPhoneVerify(phone, code, newPassword) {
+export async function setPasswordAfterPhoneVerify(phone, code = "", newPassword = "", challengeId = null) {
+  const body = { phone, new_password: newPassword };
+  const normalizedCode = String(code || "").trim();
+  if (normalizedCode) body.code = normalizedCode;
+  if (challengeId != null && challengeId !== "") body.challenge_id = challengeId;
   return api("/auth/password/set-after-phone-verify", {
     method: "POST",
-    body: { phone, code, new_password: newPassword },
+    body,
+    handle401: false,
+  });
+}
+
+export async function requestPasswordResetCall(phone) {
+  return api("/auth/password/reset/request-call", {
+    method: "POST",
+    body: { phone },
     handle401: false,
   });
 }
@@ -510,10 +540,14 @@ export async function requestPasswordResetCode(phone) {
   });
 }
 
-export async function confirmPasswordReset(phone, code, newPassword) {
+export async function confirmPasswordReset(phone, code = "", newPassword = "", challengeId = null) {
+  const body = { phone, new_password: newPassword };
+  const normalizedCode = String(code || "").trim();
+  if (normalizedCode) body.code = normalizedCode;
+  if (challengeId != null && challengeId !== "") body.challenge_id = challengeId;
   return api("/auth/password/reset/confirm", {
     method: "POST",
-    body: { phone, code, new_password: newPassword },
+    body,
     handle401: false,
   });
 }
@@ -536,6 +570,13 @@ export async function logout() {
   });
 }
 
+export async function requestLinkPhoneCall(phone) {
+  return api("/auth/link/phone/request-call", {
+    method: "POST",
+    body: { phone },
+  });
+}
+
 export async function requestLinkPhoneCode(phone) {
   return api("/auth/link/phone/request-code", {
     method: "POST",
@@ -543,9 +584,12 @@ export async function requestLinkPhoneCode(phone) {
   });
 }
 
-export async function verifyLinkPhoneCode(phone, code, newPassword = "") {
-  const body = { phone, code };
+export async function verifyLinkPhoneCode(phone, code = "", newPassword = "", challengeId = null) {
+  const body = { phone };
+  const normalizedCode = String(code || "").trim();
   const normalizedPassword = String(newPassword || "").trim();
+  if (normalizedCode) body.code = normalizedCode;
+  if (challengeId != null && challengeId !== "") body.challenge_id = challengeId;
   if (normalizedPassword) body.new_password = normalizedPassword;
   return api("/auth/link/phone/verify-code", {
     method: "POST",

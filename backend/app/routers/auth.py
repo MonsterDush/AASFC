@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -10,19 +10,26 @@ from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import JwtConfig, create_access_token
 from app.auth.passwords import has_password, set_password, validate_new_password, verify_password
 from app.auth.phone_auth import (
+    OTP_CHANNEL_CALL,
+    OTP_CHANNEL_SMS,
     OTP_PURPOSE_LINK_PHONE,
     OTP_PURPOSE_PHONE_LOGIN,
     OTP_PURPOSE_RESET_PASSWORD,
+    OTP_STATUS_EXPIRED,
+    OTP_STATUS_PENDING,
+    OTP_STATUS_VERIFIED,
     build_challenge,
     find_or_create_user_by_phone,
     find_user_by_phone,
+    get_challenge_by_id,
     get_user_auth_methods,
     get_user_phone,
     link_phone_identity_to_user,
     link_telegram_identity_to_user,
+    mark_challenge_verified,
     normalize_phone_e164,
+    resolve_verified_challenge,
     upsert_telegram_identity,
-    verify_challenge,
 )
 from app.auth.telegram_webapp import TelegramInitDataError, verify_init_data
 from app.auth.telegram_widget import TelegramLoginWidgetError, verify_login_widget_data
@@ -57,7 +64,8 @@ class PhoneCodeRequestIn(BaseModel):
 
 class PhoneCodeVerifyIn(BaseModel):
     phone: str = Field(..., min_length=5, max_length=32)
-    code: str = Field(..., min_length=4, max_length=8)
+    code: str | None = Field(default=None, min_length=4, max_length=8)
+    challenge_id: int | None = None
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
@@ -73,7 +81,8 @@ class PasswordChangeIn(BaseModel):
 
 class PasswordResetConfirmIn(BaseModel):
     phone: str = Field(..., min_length=5, max_length=32)
-    code: str = Field(..., min_length=4, max_length=8)
+    code: str | None = Field(default=None, min_length=4, max_length=8)
+    challenge_id: int | None = None
     new_password: str = Field(..., min_length=8, max_length=128)
 
 
@@ -99,6 +108,22 @@ class PasswordStateOut(BaseModel):
     password_changed_at: str | None = None
 
 
+class PhoneCallStatusOut(BaseModel):
+    ok: bool = True
+    challenge_id: int
+    phone: str
+    purpose: str
+    verification_channel: str
+    provider: str
+    status: str
+    verified: bool = False
+    expired: bool = False
+    pending: bool = False
+    call_phone: str | None = None
+    call_phone_pretty: str | None = None
+    status_text: str | None = None
+    fallback_after_seconds: int = 10
+
 
 def _jwt_config() -> JwtConfig:
     return JwtConfig(
@@ -107,7 +132,6 @@ def _jwt_config() -> JwtConfig:
         audience=settings.JWT_AUD,
         ttl_seconds=settings.ACCESS_TOKEN_TTL_SECONDS,
     )
-
 
 
 def _write_access_cookie(response: Response, *, user: User) -> None:
@@ -124,7 +148,6 @@ def _write_access_cookie(response: Response, *, user: User) -> None:
     )
 
 
-
 def _clear_access_cookie(response: Response) -> None:
     response.delete_cookie(
         key="access_token",
@@ -136,12 +159,8 @@ def _clear_access_cookie(response: Response) -> None:
     )
 
 
-
 def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
-
-
-
 
 
 def _upsert_user_from_telegram_payload(
@@ -191,6 +210,108 @@ def _auth_state(db: Session, *, user: User) -> AuthStateOut:
         phone=get_user_phone(db, user_id=user.id),
         has_password=has_password(user),
         password_set_at=(user.password_set_at.isoformat() if user.password_set_at else None),
+    )
+
+
+def _challenge_to_status_out(challenge, *, status_text: str | None = None) -> PhoneCallStatusOut:
+    verified = challenge.status == OTP_STATUS_VERIFIED
+    expired = challenge.status == OTP_STATUS_EXPIRED
+    pending = challenge.status == OTP_STATUS_PENDING
+    return PhoneCallStatusOut(
+        challenge_id=challenge.id,
+        phone=challenge.phone_e164,
+        purpose=str(challenge.purpose or ""),
+        verification_channel=str(challenge.verification_channel or OTP_CHANNEL_SMS),
+        provider=str(challenge.provider or ""),
+        status=str(challenge.status or OTP_STATUS_PENDING),
+        verified=verified,
+        expired=expired,
+        pending=pending,
+        call_phone=str(challenge.external_target or "") or None,
+        call_phone_pretty=str(challenge.external_target or "") or None,
+        status_text=status_text,
+        fallback_after_seconds=int(settings.PHONE_AUTH_CALL_FALLBACK_AFTER_SECONDS or 10),
+    )
+
+
+def _request_sms_challenge(db: Session, *, phone_e164: str, request: Request, purpose: str):
+    challenge, code = build_challenge(
+        db,
+        phone_e164=phone_e164,
+        request_ip=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        purpose=purpose,
+        channel=OTP_CHANNEL_SMS,
+    )
+    provider = get_sms_provider()
+    send_result = provider.send_code(
+        phone_e164=phone_e164,
+        code=code,
+        request_ip=_client_ip(request),
+    )
+    db.commit()
+
+    out = {
+        "ok": True,
+        "phone": phone_e164,
+        "provider": send_result.provider,
+        "verification_channel": OTP_CHANNEL_SMS,
+        "expires_in_seconds": int(settings.PHONE_AUTH_CODE_TTL_SECONDS or 300),
+        "cooldown_seconds": int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 60),
+        "challenge_id": challenge.id,
+        "purpose": purpose,
+    }
+    if send_result.get("sms_id"):
+        out["sms_id"] = send_result.get("sms_id")
+    if send_result.get("test"):
+        out["test"] = True
+    if "debug_code" in send_result:
+        out["debug_code"] = send_result["debug_code"]
+    return out
+
+
+def _request_call_challenge(db: Session, *, phone_e164: str, request: Request, purpose: str):
+    challenge, _ = build_challenge(
+        db,
+        phone_e164=phone_e164,
+        request_ip=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        purpose=purpose,
+        channel=OTP_CHANNEL_CALL,
+    )
+    provider = get_sms_provider()
+    call_result = provider.start_call_verification(
+        phone_e164=phone_e164,
+        request_ip=_client_ip(request),
+    )
+    challenge.provider = call_result.provider
+    challenge.external_check_id = str(call_result.get("check_id") or "").strip() or None
+    challenge.external_target = str(call_result.get("call_phone_pretty") or call_result.get("call_phone") or "").strip() or None
+    db.flush()
+    db.commit()
+    return {
+        "ok": True,
+        "phone": phone_e164,
+        "provider": call_result.provider,
+        "verification_channel": OTP_CHANNEL_CALL,
+        "expires_in_seconds": int(settings.PHONE_AUTH_CODE_TTL_SECONDS or 300),
+        "cooldown_seconds": int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 60),
+        "fallback_after_seconds": int(settings.PHONE_AUTH_CALL_FALLBACK_AFTER_SECONDS or 10),
+        "challenge_id": challenge.id,
+        "purpose": purpose,
+        "call_phone": call_result.get("call_phone"),
+        "call_phone_pretty": call_result.get("call_phone_pretty"),
+        "call_phone_html": call_result.get("call_phone_html"),
+    }
+
+
+def _resolve_verification(db: Session, *, phone_e164: str, purpose: str, code: str | None, challenge_id: int | None):
+    return resolve_verified_challenge(
+        db,
+        phone_e164=phone_e164,
+        purpose=purpose,
+        code=code,
+        challenge_id=challenge_id,
     )
 
 
@@ -278,46 +399,58 @@ def auth_telegram_widget(payload: TelegramWidgetAuthIn, response: Response, db: 
     return
 
 
+@router.post("/phone/request-call")
+def request_phone_call(payload: PhoneCodeRequestIn, request: Request, db: Session = Depends(get_db)):
+    phone_e164 = normalize_phone_e164(payload.phone)
+    return _request_call_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_PHONE_LOGIN)
+
+
 @router.post("/phone/request-code")
 def request_phone_code(payload: PhoneCodeRequestIn, request: Request, db: Session = Depends(get_db)):
     phone_e164 = normalize_phone_e164(payload.phone)
-    challenge, code = build_challenge(
-        db,
-        phone_e164=phone_e164,
-        request_ip=_client_ip(request),
-        user_agent=request.headers.get("user-agent"),
-        purpose=OTP_PURPOSE_PHONE_LOGIN,
-    )
-    provider = get_sms_provider()
-    send_result = provider.send_code(
-        phone_e164=phone_e164,
-        code=code,
-        request_ip=_client_ip(request),
-    )
-    db.commit()
+    return _request_sms_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_PHONE_LOGIN)
 
-    out = {
-        "ok": True,
-        "phone": phone_e164,
-        "provider": send_result.provider,
-        "expires_in_seconds": int(settings.PHONE_AUTH_CODE_TTL_SECONDS or 300),
-        "cooldown_seconds": int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 60),
-        "challenge_id": challenge.id,
-        "purpose": OTP_PURPOSE_PHONE_LOGIN,
-    }
-    if send_result.get("sms_id"):
-        out["sms_id"] = send_result.get("sms_id")
-    if send_result.get("test"):
-        out["test"] = True
-    if "debug_code" in send_result:
-        out["debug_code"] = send_result["debug_code"]
+
+@router.get("/phone/call-status/{challenge_id}", response_model=PhoneCallStatusOut)
+def phone_call_status(challenge_id: int, phone: str = Query(..., min_length=5, max_length=32), db: Session = Depends(get_db)):
+    phone_e164 = normalize_phone_e164(phone)
+    challenge = get_challenge_by_id(db, challenge_id=challenge_id, phone_e164=phone_e164)
+    if str(challenge.verification_channel or OTP_CHANNEL_SMS) != OTP_CHANNEL_CALL:
+        raise HTTPException(status_code=400, detail="Это подтверждение не использует звонок")
+
+    if challenge.status == OTP_STATUS_VERIFIED:
+        db.commit()
+        return _challenge_to_status_out(challenge, status_text="Номер уже подтверждён")
+    if challenge.status == OTP_STATUS_EXPIRED:
+        db.commit()
+        return _challenge_to_status_out(challenge, status_text="Время подтверждения истекло")
+
+    provider = get_sms_provider()
+    status_result = provider.get_call_verification_status(check_id=str(challenge.external_check_id or ""))
+    if status_result.get("confirmed"):
+        mark_challenge_verified(db, challenge=challenge)
+    elif status_result.get("expired"):
+        challenge.status = OTP_STATUS_EXPIRED
+        db.flush()
+
+    db.commit()
+    challenge = get_challenge_by_id(db, challenge_id=challenge_id, phone_e164=phone_e164)
+    out = _challenge_to_status_out(challenge, status_text=str(status_result.get("check_status_text") or "").strip() or None)
+    if status_result.get("call_phone_pretty") and not out.call_phone_pretty:
+        out.call_phone_pretty = str(status_result.get("call_phone_pretty") or "") or out.call_phone_pretty
     return out
 
 
 @router.post("/phone/verify-code", response_model=AuthStateOut)
 def verify_phone_code(payload: PhoneCodeVerifyIn, response: Response, db: Session = Depends(get_db)):
     phone_e164 = normalize_phone_e164(payload.phone)
-    verify_challenge(db, phone_e164=phone_e164, code=payload.code, purpose=OTP_PURPOSE_PHONE_LOGIN)
+    _resolve_verification(
+        db,
+        phone_e164=phone_e164,
+        purpose=OTP_PURPOSE_PHONE_LOGIN,
+        code=payload.code,
+        challenge_id=payload.challenge_id,
+    )
     user = find_or_create_user_by_phone(db, phone_e164=phone_e164)
     if payload.new_password:
         set_password(user, payload.new_password)
@@ -343,7 +476,13 @@ def password_login(payload: PasswordLoginIn, response: Response, db: Session = D
 @router.post("/password/set-after-phone-verify", response_model=AuthStateOut)
 def set_password_after_phone_verify(payload: PasswordResetConfirmIn, response: Response, db: Session = Depends(get_db)):
     phone_e164 = normalize_phone_e164(payload.phone)
-    verify_challenge(db, phone_e164=phone_e164, code=payload.code, purpose=OTP_PURPOSE_PHONE_LOGIN)
+    _resolve_verification(
+        db,
+        phone_e164=phone_e164,
+        purpose=OTP_PURPOSE_PHONE_LOGIN,
+        code=payload.code,
+        challenge_id=payload.challenge_id,
+    )
     user = find_or_create_user_by_phone(db, phone_e164=phone_e164)
     set_password(user, payload.new_password)
     db.commit()
@@ -354,50 +493,34 @@ def set_password_after_phone_verify(payload: PasswordResetConfirmIn, response: R
     return _auth_state(db, user=user)
 
 
+@router.post("/password/reset/request-call")
+def request_password_reset_call(payload: PhoneCodeRequestIn, request: Request, db: Session = Depends(get_db)):
+    phone_e164 = normalize_phone_e164(payload.phone)
+    user = find_user_by_phone(db, phone_e164=phone_e164)
+    if user is None or not has_password(user):
+        raise HTTPException(status_code=404, detail="Для этого номера пароль ещё не настроен")
+    return _request_call_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_RESET_PASSWORD)
+
+
 @router.post("/password/reset/request-code")
 def request_password_reset_code(payload: PhoneCodeRequestIn, request: Request, db: Session = Depends(get_db)):
     phone_e164 = normalize_phone_e164(payload.phone)
     user = find_user_by_phone(db, phone_e164=phone_e164)
     if user is None or not has_password(user):
         raise HTTPException(status_code=404, detail="Для этого номера пароль ещё не настроен")
-
-    challenge, code = build_challenge(
-        db,
-        phone_e164=phone_e164,
-        request_ip=_client_ip(request),
-        user_agent=request.headers.get("user-agent"),
-        purpose=OTP_PURPOSE_RESET_PASSWORD,
-    )
-    provider = get_sms_provider()
-    send_result = provider.send_code(
-        phone_e164=phone_e164,
-        code=code,
-        request_ip=_client_ip(request),
-    )
-    db.commit()
-
-    out = {
-        "ok": True,
-        "phone": phone_e164,
-        "provider": send_result.provider,
-        "expires_in_seconds": int(settings.PHONE_AUTH_CODE_TTL_SECONDS or 300),
-        "cooldown_seconds": int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 60),
-        "challenge_id": challenge.id,
-        "purpose": OTP_PURPOSE_RESET_PASSWORD,
-    }
-    if send_result.get("sms_id"):
-        out["sms_id"] = send_result.get("sms_id")
-    if send_result.get("test"):
-        out["test"] = True
-    if "debug_code" in send_result:
-        out["debug_code"] = send_result["debug_code"]
-    return out
+    return _request_sms_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_RESET_PASSWORD)
 
 
 @router.post("/password/reset/confirm", response_model=AuthStateOut)
 def confirm_password_reset(payload: PasswordResetConfirmIn, response: Response, db: Session = Depends(get_db)):
     phone_e164 = normalize_phone_e164(payload.phone)
-    verify_challenge(db, phone_e164=phone_e164, code=payload.code, purpose=OTP_PURPOSE_RESET_PASSWORD)
+    _resolve_verification(
+        db,
+        phone_e164=phone_e164,
+        purpose=OTP_PURPOSE_RESET_PASSWORD,
+        code=payload.code,
+        challenge_id=payload.challenge_id,
+    )
     user = find_user_by_phone(db, phone_e164=phone_e164)
     if user is None:
         raise HTTPException(status_code=404, detail="Пользователь с таким номером не найден")
@@ -451,6 +574,20 @@ def logout(response: Response):
     return
 
 
+@router.post("/link/phone/request-call")
+def request_link_phone_call(
+    payload: PhoneCodeRequestIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    phone_e164 = normalize_phone_e164(payload.phone)
+    out = _request_call_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_LINK_PHONE)
+    out["link_mode"] = True
+    out["user_id"] = user.id
+    return out
+
+
 @router.post("/link/phone/request-code")
 def request_link_phone_code(
     payload: PhoneCodeRequestIn,
@@ -459,38 +596,9 @@ def request_link_phone_code(
     user: User = Depends(get_current_user),
 ):
     phone_e164 = normalize_phone_e164(payload.phone)
-    challenge, code = build_challenge(
-        db,
-        phone_e164=phone_e164,
-        request_ip=_client_ip(request),
-        user_agent=request.headers.get("user-agent"),
-        purpose=OTP_PURPOSE_LINK_PHONE,
-    )
-    provider = get_sms_provider()
-    send_result = provider.send_code(
-        phone_e164=phone_e164,
-        code=code,
-        request_ip=_client_ip(request),
-    )
-    db.commit()
-
-    out = {
-        "ok": True,
-        "link_mode": True,
-        "user_id": user.id,
-        "phone": phone_e164,
-        "provider": send_result.provider,
-        "expires_in_seconds": int(settings.PHONE_AUTH_CODE_TTL_SECONDS or 300),
-        "cooldown_seconds": int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 60),
-        "challenge_id": challenge.id,
-        "purpose": OTP_PURPOSE_LINK_PHONE,
-    }
-    if send_result.get("sms_id"):
-        out["sms_id"] = send_result.get("sms_id")
-    if send_result.get("test"):
-        out["test"] = True
-    if "debug_code" in send_result:
-        out["debug_code"] = send_result["debug_code"]
+    out = _request_sms_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_LINK_PHONE)
+    out["link_mode"] = True
+    out["user_id"] = user.id
     return out
 
 
@@ -502,7 +610,13 @@ def verify_link_phone_code(
     user: User = Depends(get_current_user),
 ):
     phone_e164 = normalize_phone_e164(payload.phone)
-    verify_challenge(db, phone_e164=phone_e164, code=payload.code, purpose=OTP_PURPOSE_LINK_PHONE)
+    _resolve_verification(
+        db,
+        phone_e164=phone_e164,
+        purpose=OTP_PURPOSE_LINK_PHONE,
+        code=payload.code,
+        challenge_id=payload.challenge_id,
+    )
     link_phone_identity_to_user(db, user=user, phone_e164=phone_e164)
     if payload.new_password:
         set_password(user, payload.new_password)

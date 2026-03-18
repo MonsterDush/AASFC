@@ -6,6 +6,15 @@
   <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Авторизация</title>
+  <style>
+    .auth-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:12px; }
+    .verify-box { border:1px solid var(--border); border-radius:16px; padding:12px; }
+    .verify-meta { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-line; }
+    .hidden { display:none !important; }
+    .call-number { font-size:20px; font-weight:700; letter-spacing:.02em; }
+    .call-number a { color: inherit; text-decoration: none; }
+    .telegram-widget-host { min-height: 50px; }
+  </style>
 </head>
 <body>
   <div class="container auth-shell">
@@ -23,7 +32,7 @@
     <div class="auth-grid">
       <div class="card">
         <b>Вход по телефону</b>
-        <div class="muted mt-8">Основной сценарий — вход по номеру телефона и паролю. SMS нужны только для первичной настройки и сброса пароля.</div>
+        <div class="muted mt-8">Основной сценарий — вход по номеру телефона и паролю. Звонок нужен только для первой настройки номера и для сброса пароля. Если звонок не проходит, через 10 секунд появится запасной вариант с SMS.</div>
 
         <div class="stack mt-16">
           <div>
@@ -50,24 +59,28 @@
           <button class="btn sm" id="modeResetBtn" type="button">Сброс пароля</button>
         </div>
 
-        <div class="itemcard mt-12">
+        <div class="verify-box mt-12">
           <b id="passwordFlowTitle">Первичная настройка</b>
-          <div class="muted mt-8" id="passwordFlowHint">Подтверди номер по SMS и сразу задай пароль для следующих входов.</div>
+          <div class="muted mt-8" id="passwordFlowHint">Подтверди номер звонком и сразу задай пароль для следующих входов.</div>
 
           <div class="stack mt-12">
             <div>
-              <label class="auth-label" for="smsPhoneInput">Номер телефона</label>
-              <input id="smsPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
+              <label class="auth-label" for="verifyPhoneInput">Номер телефона</label>
+              <input id="verifyPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
             </div>
-            <div class="row mt-4">
-              <button class="btn" id="btnRequestSms">Получить SMS-код</button>
+            <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn" id="btnRequestCall">Получить номер для звонка</button>
+              <button class="btn hidden" id="btnRequestSmsFallback">Не получается? Получить SMS</button>
             </div>
-            <div id="smsMeta" class="muted mono mt-8"></div>
+            <div id="callMeta" class="muted verify-meta mt-8"></div>
+            <div id="callNumberBlock" class="call-number hidden mt-8"></div>
 
-            <div>
+            <div id="smsFallbackBlock" class="hidden">
               <label class="auth-label" for="smsCodeInput">Код из SMS</label>
               <input id="smsCodeInput" placeholder="6 цифр" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+              <div id="smsMeta" class="muted verify-meta mt-8"></div>
             </div>
+
             <div>
               <label class="auth-label" for="newPasswordInput">Новый пароль</label>
               <input id="newPasswordInput" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
@@ -77,7 +90,7 @@
               <input id="confirmPasswordInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
             </div>
             <div class="row mt-4">
-              <button class="btn primary" id="btnCompletePasswordFlow">Подтвердить номер и сохранить пароль</button>
+              <button class="btn primary" id="btnCompletePasswordFlow">Завершить подтверждение и сохранить пароль</button>
             </div>
           </div>
         </div>
@@ -92,22 +105,18 @@
           <div class="row mt-12" id="telegramMiniAppLoginRow">
             <button class="btn" id="btnTelegramLogin">Войти через Telegram</button>
           </div>
-          <div id="telegramWidgetHost" class="telegram-widget-host mt-12" hidden></div>
-          <div id="telegramWidgetHint" class="muted mt-8" hidden>Откроется официальное окно Telegram для подтверждения входа.</div>
+          <div id="telegramWidgetHost" class="telegram-widget-host mt-12 hidden"></div>
+          <div id="telegramWidgetHint" class="muted mt-8 hidden">Откроется официальное окно Telegram для подтверждения входа.</div>
         </div>
 
         <div class="itemcard mt-16">
           <b>Что дальше</b>
-          <div class="muted mt-8" id="nextHint">
-            После входа тебя вернёт на страницу, с которой запрашивалась авторизация.
-          </div>
+          <div class="muted mt-8" id="nextHint">После входа тебя вернёт на страницу, с которой запрашивалась авторизация.</div>
         </div>
 
         <div class="itemcard mt-16">
           <b>Правила пароля</b>
-          <div class="muted mt-8">
-            Пароль должен быть не короче 8 символов и содержать хотя бы одну букву и одну цифру.
-          </div>
+          <div class="muted mt-8">Пароль должен быть не короче 8 символов и содержать хотя бы одну букву и одну цифру.</div>
         </div>
       </div>
     </div>
@@ -120,7 +129,10 @@
       applyTelegramTheme,
       ensureLogin,
       loginWithPassword,
+      requestPhoneCall,
+      getPhoneCallStatus,
       requestPhoneCode,
+      requestPasswordResetCall,
       requestPasswordResetCode,
       setPasswordAfterPhoneVerify,
       confirmPasswordReset,
@@ -128,9 +140,11 @@
       toast,
       wa,
       loginWithTelegramWidget,
+      mountLogo,
     } from "/app.js";
 
     applyTelegramTheme();
+    mountLogo();
 
     const params = new URLSearchParams(location.search);
     const next = params.get("next") || "/";
@@ -139,6 +153,11 @@
     const MODE_SETUP = "setup";
     const MODE_RESET = "reset";
     let passwordFlowMode = MODE_SETUP;
+    let callChallengeId = null;
+    let callVerified = false;
+    let callPollTimer = null;
+    let callFallbackTimer = null;
+    let smsChallengeId = null;
 
     function getSafeNext() {
       if (!next || /\/auth\.html(\?|$)/i.test(next)) return "/";
@@ -195,10 +214,14 @@
       modeResetBtn: document.getElementById("modeResetBtn"),
       passwordFlowTitle: document.getElementById("passwordFlowTitle"),
       passwordFlowHint: document.getElementById("passwordFlowHint"),
-      smsPhoneInput: document.getElementById("smsPhoneInput"),
-      btnRequestSms: document.getElementById("btnRequestSms"),
-      smsMeta: document.getElementById("smsMeta"),
+      verifyPhoneInput: document.getElementById("verifyPhoneInput"),
+      btnRequestCall: document.getElementById("btnRequestCall"),
+      btnRequestSmsFallback: document.getElementById("btnRequestSmsFallback"),
+      callMeta: document.getElementById("callMeta"),
+      callNumberBlock: document.getElementById("callNumberBlock"),
+      smsFallbackBlock: document.getElementById("smsFallbackBlock"),
       smsCodeInput: document.getElementById("smsCodeInput"),
+      smsMeta: document.getElementById("smsMeta"),
       newPasswordInput: document.getElementById("newPasswordInput"),
       confirmPasswordInput: document.getElementById("confirmPasswordInput"),
       btnCompletePasswordFlow: document.getElementById("btnCompletePasswordFlow"),
@@ -209,26 +232,52 @@
       telegramWidgetHint: document.getElementById("telegramWidgetHint"),
     };
 
+    function clearCallTimers() {
+      if (callPollTimer) {
+        clearInterval(callPollTimer);
+        callPollTimer = null;
+      }
+      if (callFallbackTimer) {
+        clearTimeout(callFallbackTimer);
+        callFallbackTimer = null;
+      }
+    }
+
     function syncPhoneFields(sourceValue = "") {
       const normalized = String(sourceValue || "").trim();
-      if (normalized && !els.smsPhoneInput.value.trim()) {
-        els.smsPhoneInput.value = normalized;
+      if (normalized && !els.verifyPhoneInput.value.trim()) {
+        els.verifyPhoneInput.value = normalized;
       }
       if (normalized && !els.loginPhoneInput.value.trim()) {
         els.loginPhoneInput.value = normalized;
       }
     }
 
+    function resetVerificationState() {
+      clearCallTimers();
+      callChallengeId = null;
+      callVerified = false;
+      smsChallengeId = null;
+      els.callMeta.textContent = "";
+      els.callNumberBlock.textContent = "";
+      els.callNumberBlock.classList.add("hidden");
+      els.smsFallbackBlock.classList.add("hidden");
+      els.btnRequestSmsFallback.classList.add("hidden");
+      els.smsCodeInput.value = "";
+      els.smsMeta.textContent = "";
+    }
+
     function setPasswordMode(mode) {
       passwordFlowMode = mode === MODE_RESET ? MODE_RESET : MODE_SETUP;
+      resetVerificationState();
       const isReset = passwordFlowMode === MODE_RESET;
       els.modeSetupBtn.classList.toggle("primary", !isReset);
       els.modeResetBtn.classList.toggle("primary", isReset);
       els.passwordFlowTitle.textContent = isReset ? "Сброс пароля" : "Первичная настройка";
       els.passwordFlowHint.textContent = isReset
-        ? "Подтверди номер по SMS и задай новый пароль. Старые сессии будут закрыты."
-        : "Подтверди номер по SMS и сразу задай пароль для следующих входов.";
-      els.btnRequestSms.textContent = isReset ? "Отправить код для сброса" : "Получить SMS-код";
+        ? "Сначала подтвердите номер звонком. Если звонок не проходит, через 10 секунд можно запросить SMS. После подтверждения задайте новый пароль."
+        : "Сначала подтвердите номер звонком. Если звонок не проходит, через 10 секунд можно запросить SMS. После подтверждения задайте пароль для следующих входов.";
+      els.btnRequestCall.textContent = isReset ? "Получить номер для звонка" : "Получить номер для звонка";
       els.btnCompletePasswordFlow.textContent = isReset
         ? "Сбросить пароль"
         : "Подтвердить номер и сохранить пароль";
@@ -242,97 +291,94 @@
       return password;
     }
 
-    async function completePasswordFlow(phone, password) {
+    async function pollCallStatus(phone, challengeId) {
       try {
-        await api("/me", { handle401: false });
-      } catch {
-        await loginWithPassword(phone, password);
+        const status = await getPhoneCallStatus(phone, challengeId);
+        if (status?.verified) {
+          callVerified = true;
+          clearCallTimers();
+          els.callMeta.textContent = "Звонок подтверждён. Теперь нажми кнопку ниже, чтобы завершить настройку.";
+          toast("Номер подтверждён звонком", "ok");
+          return;
+        }
+        if (status?.expired) {
+          clearCallTimers();
+          els.callMeta.textContent = status?.status_text || "Время подтверждения истекло. Запроси новый звонок или воспользуйся SMS.";
+          els.btnRequestSmsFallback.classList.remove("hidden");
+          return;
+        }
+        if (status?.status_text) {
+          els.callMeta.textContent = `${els.callMeta.textContent.split("\n\n")[0] || ""}\n\n${status.status_text}`.trim();
+        }
+      } catch (e) {
+        clearCallTimers();
+        toast(e?.data?.detail || e?.message || "Не удалось проверить статус звонка", "err");
       }
+    }
+
+    async function startCallFlow() {
+      const phone = els.verifyPhoneInput.value.trim() || els.loginPhoneInput.value.trim();
+      if (!phone) throw new Error("Сначала введи номер телефона");
+      resetVerificationState();
+      const out = passwordFlowMode === MODE_RESET
+        ? await requestPasswordResetCall(phone)
+        : await requestPhoneCall(phone);
+      callChallengeId = out?.challenge_id;
+      syncPhoneFields(out?.phone || phone);
+      const callPretty = out?.call_phone_pretty || out?.call_phone || "";
+      els.callMeta.textContent = `Позвони со своего номера на ${callPretty || "указанный номер"}. Мы автоматически подтвердим номер после звонка.`;
+      if (callPretty) {
+        const raw = String(out?.call_phone || callPretty).replace(/\D+/g, "");
+        els.callNumberBlock.innerHTML = `<a href="tel:${raw}">${callPretty}</a>`;
+        els.callNumberBlock.classList.remove("hidden");
+      }
+      callPollTimer = setInterval(() => pollCallStatus(out?.phone || phone, callChallengeId), 2500);
+      callFallbackTimer = setTimeout(() => {
+        els.btnRequestSmsFallback.classList.remove("hidden");
+        els.smsFallbackBlock.classList.remove("hidden");
+        if (!callVerified) {
+          els.smsMeta.textContent = "Если звонок не проходит, можно запросить SMS с кодом.";
+        }
+      }, Math.max(1, Number(out?.fallback_after_seconds || 10)) * 1000);
+      await pollCallStatus(out?.phone || phone, callChallengeId);
+    }
+
+    async function requestSmsFallback() {
+      const phone = els.verifyPhoneInput.value.trim() || els.loginPhoneInput.value.trim();
+      if (!phone) throw new Error("Сначала введи номер телефона");
+      const out = passwordFlowMode === MODE_RESET
+        ? await requestPasswordResetCode(phone)
+        : await requestPhoneCode(phone);
+      smsChallengeId = out?.challenge_id || null;
+      els.smsFallbackBlock.classList.remove("hidden");
+      els.smsMeta.textContent = out?.debug_code
+        ? `Код отправлен. dev_code=${out.debug_code}`
+        : `Код отправлен на ${out?.phone || phone}.`; 
+      toast("SMS отправлена", "ok");
+      els.smsCodeInput.focus();
+    }
+
+    async function completeVerificationFlow() {
+      const phone = els.verifyPhoneInput.value.trim() || els.loginPhoneInput.value.trim();
+      if (!phone) throw new Error("Сначала введи номер телефона");
+      const password = validateNewPassword();
+      const smsCode = els.smsCodeInput.value.trim();
+      if (!callVerified && !smsCode) {
+        throw new Error("Сначала подтверди номер звонком или введи код из SMS");
+      }
+      if (passwordFlowMode === MODE_RESET) {
+        await confirmPasswordReset(phone, smsCode, password, callVerified ? callChallengeId : null);
+        toast("Пароль обновлён", "ok");
+      } else {
+        await setPasswordAfterPhoneVerify(phone, smsCode, password, callVerified ? callChallengeId : null);
+        toast("Номер подтверждён, пароль сохранён", "ok");
+      }
+      clearCallTimers();
       await finishPostLoginFlow();
     }
 
-    let telegramWidgetConfig = null;
-
-    async function fetchTelegramWidgetConfig() {
-      if (telegramWidgetConfig) return telegramWidgetConfig;
-      try {
-        telegramWidgetConfig = await api("/auth/telegram/widget/config", { handle401: false });
-      } catch (e) {
-        telegramWidgetConfig = { ok: false, enabled: false, error: e?.data?.detail || e?.message || "Не удалось загрузить конфиг Telegram" };
-      }
-      return telegramWidgetConfig;
-    }
-
-    function renderTelegramWidget(botUsername) {
-      const host = els.telegramWidgetHost;
-      host.hidden = false;
-      host.innerHTML = "";
-      window.AxelioTelegramWidgetAuth = async (user) => {
-        try {
-          await loginWithTelegramWidget(user);
-          toast("Вход через Telegram выполнен", "ok");
-          await finishPostLoginFlow();
-        } catch (e) {
-          toast(e?.data?.detail || e?.message || "Не удалось войти через Telegram", "err");
-        }
-      };
-
-      const s = document.createElement("script");
-      s.async = true;
-      s.src = "https://telegram.org/js/telegram-widget.js?22";
-      s.setAttribute("data-telegram-login", botUsername);
-      s.setAttribute("data-size", "large");
-      s.setAttribute("data-radius", "12");
-      s.setAttribute("data-userpic", "false");
-      s.setAttribute("data-lang", "ru");
-      s.setAttribute("data-onauth", "AxelioTelegramWidgetAuth(user)");
-      host.appendChild(s);
-    }
-
-    async function setTelegramState() {
-      const initData = wa()?.initData || "";
-      if (initData) {
-        els.telegramState.textContent = "Telegram Mini App доступен. Можно войти текущим способом.";
-        els.btnTelegramLogin.classList.add("primary");
-        els.btnTelegramLogin.disabled = false;
-        els.telegramMiniAppLoginRow.hidden = false;
-        els.telegramWidgetHost.hidden = true;
-        els.telegramWidgetHint.hidden = true;
-        return;
-      }
-
-      els.btnTelegramLogin.disabled = true;
-      els.telegramMiniAppLoginRow.hidden = true;
-      const cfg = await fetchTelegramWidgetConfig();
-      if (cfg?.enabled && cfg?.bot_username) {
-        els.telegramState.textContent = "Снаружи сайта доступен официальный вход через Telegram.";
-        els.telegramWidgetHint.hidden = false;
-        renderTelegramWidget(cfg.bot_username);
-      } else {
-        els.telegramState.textContent = cfg?.error || "Telegram Login Widget пока не настроен. Используй телефон или открой приложение из Telegram.";
-        els.telegramWidgetHost.hidden = true;
-        els.telegramWidgetHint.hidden = true;
-      }
-    }
-
-    const inviteToken = extractInviteToken(getSafeNext());
-    if (inviteToken) {
-      nextHint.textContent = "После входа система попробует автоматически принять приглашение и открыть нужное заведение.";
-    }
-
-    els.loginPhoneInput.addEventListener("input", () => syncPhoneFields(els.loginPhoneInput.value));
-    els.showSetupModeBtn.onclick = () => {
-      syncPhoneFields(els.loginPhoneInput.value);
-      setPasswordMode(MODE_SETUP);
-      els.smsPhoneInput.focus();
-    };
-    els.showResetModeBtn.onclick = () => {
-      syncPhoneFields(els.loginPhoneInput.value);
-      setPasswordMode(MODE_RESET);
-      els.smsPhoneInput.focus();
-    };
-    els.modeSetupBtn.onclick = () => setPasswordMode(MODE_SETUP);
-    els.modeResetBtn.onclick = () => setPasswordMode(MODE_RESET);
+    els.loginPhoneInput.addEventListener("input", (e) => syncPhoneFields(e.target.value));
+    els.verifyPhoneInput.addEventListener("input", (e) => syncPhoneFields(e.target.value));
 
     els.btnPasswordLogin.onclick = async () => {
       try {
@@ -340,57 +386,105 @@
         toast("Вход выполнен", "ok");
         await finishPostLoginFlow();
       } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось войти по паролю", "err");
+        toast(e?.data?.detail || e?.message || "Не удалось войти", "err");
       }
     };
 
-    els.btnRequestSms.onclick = async () => {
+    els.showSetupModeBtn.onclick = () => {
+      setPasswordMode(MODE_SETUP);
+      els.verifyPhoneInput.focus();
+    };
+    els.showResetModeBtn.onclick = () => {
+      setPasswordMode(MODE_RESET);
+      els.verifyPhoneInput.focus();
+    };
+    els.modeSetupBtn.onclick = () => setPasswordMode(MODE_SETUP);
+    els.modeResetBtn.onclick = () => setPasswordMode(MODE_RESET);
+
+    els.btnRequestCall.onclick = async () => {
       try {
-        const phone = els.smsPhoneInput.value.trim() || els.loginPhoneInput.value.trim();
-        syncPhoneFields(phone);
-        const out = passwordFlowMode === MODE_RESET
-          ? await requestPasswordResetCode(phone)
-          : await requestPhoneCode(phone);
-        els.smsMeta.textContent = out?.debug_code
-          ? `Код отправлен. dev_code=${out.debug_code}`
-          : `Код отправлен на ${out?.phone || phone}. Проверь SMS.`;
-        toast("Код отправлен", "ok");
-        els.smsCodeInput.focus();
+        await startCallFlow();
       } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось отправить код", "err");
+        toast(e?.data?.detail || e?.message || "Не удалось запросить подтверждение звонком", "err");
+      }
+    };
+
+    els.btnRequestSmsFallback.onclick = async () => {
+      try {
+        await requestSmsFallback();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось отправить SMS", "err");
       }
     };
 
     els.btnCompletePasswordFlow.onclick = async () => {
       try {
-        const phone = els.smsPhoneInput.value.trim() || els.loginPhoneInput.value.trim();
-        syncPhoneFields(phone);
-        const password = validateNewPassword();
-        if (passwordFlowMode === MODE_RESET) {
-          await confirmPasswordReset(phone, els.smsCodeInput.value.trim(), password);
-          toast("Пароль сброшен", "ok");
-        } else {
-          await setPasswordAfterPhoneVerify(phone, els.smsCodeInput.value.trim(), password);
-          toast("Пароль сохранён", "ok");
-        }
-        await completePasswordFlow(phone, password);
+        await completeVerificationFlow();
       } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось завершить настройку пароля", "err");
+        toast(e?.data?.detail || e?.message || "Не удалось завершить подтверждение", "err");
       }
     };
 
-    els.btnTelegramLogin.onclick = async () => {
-      const login = await ensureLogin({ silent: false, redirectOnFail: false });
-      if (login.ok) await finishPostLoginFlow();
-    };
+    async function renderTelegramLogin() {
+      const insideTelegram = Boolean(wa()?.initData || "");
+      if (insideTelegram) {
+        els.telegramState.textContent = "Ты внутри Telegram Mini App — доступен бесшовный вход.";
+        els.telegramMiniAppLoginRow.classList.remove("hidden");
+        els.telegramWidgetHost.classList.add("hidden");
+        els.telegramWidgetHint.classList.add("hidden");
+        els.btnTelegramLogin.onclick = async () => {
+          try {
+            const initData = wa()?.initData || "";
+            if (!initData) throw new Error("Telegram Mini App недоступен");
+            await api("/auth/telegram", { method: "POST", body: { init_data: initData }, handle401: false });
+            toast("Вход выполнен", "ok");
+            await finishPostLoginFlow();
+          } catch (e) {
+            toast(e?.data?.detail || e?.message || "Ошибка входа через Telegram", "err");
+          }
+        };
+        return;
+      }
 
+      els.telegramMiniAppLoginRow.classList.add("hidden");
+      try {
+        const cfg = await api("/auth/telegram/widget/config", { handle401: false });
+        if (!cfg?.enabled || !cfg?.bot_username) {
+          els.telegramState.textContent = "Telegram Login Widget пока не настроен для этого домена.";
+          return;
+        }
+        els.telegramState.textContent = "Официальный Telegram Login Widget готов к работе.";
+        els.telegramWidgetHost.classList.remove("hidden");
+        els.telegramWidgetHint.classList.remove("hidden");
+        window.AxelioTelegramWidgetAuth = async (user) => {
+          try {
+            await loginWithTelegramWidget(user || {});
+            toast("Вход через Telegram выполнен", "ok");
+            await finishPostLoginFlow();
+          } catch (e) {
+            toast(e?.data?.detail || e?.message || "Ошибка входа через Telegram", "err");
+          }
+        };
+        els.telegramWidgetHost.innerHTML = "";
+        const script = document.createElement("script");
+        script.async = true;
+        script.src = "https://telegram.org/js/telegram-widget.js?22";
+        script.setAttribute("data-telegram-login", cfg.bot_username);
+        script.setAttribute("data-size", "large");
+        script.setAttribute("data-radius", "12");
+        script.setAttribute("data-request-access", "write");
+        script.setAttribute("data-userpic", "false");
+        script.setAttribute("data-onauth", "AxelioTelegramWidgetAuth(user)");
+        els.telegramWidgetHost.appendChild(script);
+      } catch (e) {
+        els.telegramState.textContent = e?.data?.detail || e?.message || "Не удалось подготовить Telegram Login Widget";
+      }
+    }
+
+    nextHint.textContent = `После входа тебя вернёт на ${getSafeNext()}.`;
     setPasswordMode(MODE_SETUP);
-
     if (!(await initExistingSession())) {
-      setTelegramState();
-      if (params.get("reason") === "unauthorized") {
-        toast("Сессия истекла. Войди заново.", "warn");
-      }
+      await renderTelegramLogin();
     }
   </script>
 </body>

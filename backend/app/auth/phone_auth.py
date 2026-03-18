@@ -20,6 +20,9 @@ OTP_STATUS_VERIFIED = "VERIFIED"
 OTP_STATUS_EXPIRED = "EXPIRED"
 OTP_STATUS_FAILED = "FAILED"
 
+OTP_CHANNEL_SMS = "SMS"
+OTP_CHANNEL_CALL = "CALL"
+
 OTP_PURPOSE_PHONE_LOGIN = "PHONE_LOGIN"
 OTP_PURPOSE_LINK_PHONE = "LINK_PHONE"
 OTP_PURPOSE_RESET_PASSWORD = "RESET_PASSWORD"
@@ -108,16 +111,14 @@ def _normalize_purposes(purpose: str | Iterable[str] | None) -> list[str] | None
     return out or None
 
 
-def build_challenge(
-    db: Session,
-    *,
-    phone_e164: str,
-    request_ip: str | None,
-    user_agent: str | None,
-    purpose: str = OTP_PURPOSE_PHONE_LOGIN,
-) -> tuple[PhoneOtpChallenge, str]:
-    expire_stale_challenges(db, phone_e164=phone_e164)
+def _normalize_channel(channel: str | None) -> str:
+    value = str(channel or OTP_CHANNEL_SMS).strip().upper()
+    return OTP_CHANNEL_CALL if value == OTP_CHANNEL_CALL else OTP_CHANNEL_SMS
+
+
+def _enforce_request_limits(db: Session, *, phone_e164: str, channel: str) -> None:
     now = utcnow()
+    normalized_channel = _normalize_channel(channel)
 
     cooldown_seconds = int(settings.PHONE_AUTH_RESEND_COOLDOWN_SECONDS or 60)
     if cooldown_seconds > 0:
@@ -126,12 +127,14 @@ def build_challenge(
             select(PhoneOtpChallenge)
             .where(
                 PhoneOtpChallenge.phone_e164 == phone_e164,
+                PhoneOtpChallenge.verification_channel == normalized_channel,
                 PhoneOtpChallenge.sent_at >= cooldown_from,
             )
             .order_by(PhoneOtpChallenge.id.desc())
         ).scalar_one_or_none()
         if recent is not None:
-            raise HTTPException(status_code=429, detail="Код уже отправлен. Подождите немного и попробуйте снова.")
+            detail = "Запрос на звонок уже отправлен. Подождите немного и попробуйте снова." if normalized_channel == OTP_CHANNEL_CALL else "Код уже отправлен. Подождите немного и попробуйте снова."
+            raise HTTPException(status_code=429, detail=detail)
 
     max_sends_per_day = int(settings.PHONE_AUTH_MAX_SENDS_PER_DAY or 0)
     if max_sends_per_day > 0:
@@ -139,11 +142,13 @@ def build_challenge(
         sent_today = db.execute(
             select(func.count(PhoneOtpChallenge.id)).where(
                 PhoneOtpChallenge.phone_e164 == phone_e164,
+                PhoneOtpChallenge.verification_channel == normalized_channel,
                 PhoneOtpChallenge.sent_at >= since,
             )
         ).scalar_one()
         if int(sent_today or 0) >= max_sends_per_day:
-            raise HTTPException(status_code=429, detail="Превышен дневной лимит отправки кодов")
+            detail = "Превышен дневной лимит подтверждений звонком" if normalized_channel == OTP_CHANNEL_CALL else "Превышен дневной лимит отправки кодов"
+            raise HTTPException(status_code=429, detail=detail)
 
     burst_window_seconds = int(settings.PHONE_AUTH_BURST_WINDOW_SECONDS or 0)
     burst_limit = int(settings.PHONE_AUTH_MAX_SENDS_PER_WINDOW or 0)
@@ -154,6 +159,7 @@ def build_challenge(
             select(PhoneOtpChallenge)
             .where(
                 PhoneOtpChallenge.phone_e164 == phone_e164,
+                PhoneOtpChallenge.verification_channel == normalized_channel,
                 PhoneOtpChallenge.sent_at >= window_from,
             )
             .order_by(PhoneOtpChallenge.sent_at.desc(), PhoneOtpChallenge.id.desc())
@@ -162,18 +168,37 @@ def build_challenge(
             newest = recent_rows[0]
             block_until = newest.sent_at + timedelta(seconds=block_seconds)
             if block_until > now:
-                raise HTTPException(
-                    status_code=429,
-                    detail="Слишком много SMS за короткое время. Попробуйте позже.",
-                )
+                detail = "Слишком много подтверждений звонком за короткое время. Попробуйте позже." if normalized_channel == OTP_CHANNEL_CALL else "Слишком много SMS за короткое время. Попробуйте позже."
+                raise HTTPException(status_code=429, detail=detail)
 
+
+def build_challenge(
+    db: Session,
+    *,
+    phone_e164: str,
+    request_ip: str | None,
+    user_agent: str | None,
+    purpose: str = OTP_PURPOSE_PHONE_LOGIN,
+    channel: str = OTP_CHANNEL_SMS,
+    provider: str | None = None,
+    external_check_id: str | None = None,
+    external_target: str | None = None,
+) -> tuple[PhoneOtpChallenge, str]:
+    expire_stale_challenges(db, phone_e164=phone_e164)
+    normalized_channel = _normalize_channel(channel)
+    _enforce_request_limits(db, phone_e164=phone_e164, channel=normalized_channel)
+
+    now = utcnow()
     code = generate_code()
     challenge = PhoneOtpChallenge(
         phone_e164=phone_e164,
         purpose=str(purpose or OTP_PURPOSE_PHONE_LOGIN).upper(),
         code_hash=_hash_code(phone_e164=phone_e164, code=code),
         status=OTP_STATUS_PENDING,
-        provider=str(settings.PHONE_AUTH_PROVIDER or "debug"),
+        provider=str(provider or settings.PHONE_AUTH_PROVIDER or "debug"),
+        verification_channel=normalized_channel,
+        external_check_id=(external_check_id or None),
+        external_target=(external_target or None),
         attempts=0,
         max_attempts=int(settings.PHONE_AUTH_MAX_ATTEMPTS or 5),
         expires_at=now + timedelta(seconds=int(settings.PHONE_AUTH_CODE_TTL_SECONDS or 300)),
@@ -183,6 +208,61 @@ def build_challenge(
     db.add(challenge)
     db.flush()
     return challenge, code
+
+
+def get_challenge_by_id(
+    db: Session,
+    *,
+    challenge_id: int,
+    phone_e164: str | None = None,
+    purpose: str | Iterable[str] | None = None,
+) -> PhoneOtpChallenge:
+    challenge = db.execute(select(PhoneOtpChallenge).where(PhoneOtpChallenge.id == int(challenge_id))).scalar_one_or_none()
+    if challenge is None:
+        raise HTTPException(status_code=404, detail="Подтверждение не найдено")
+
+    if phone_e164 and challenge.phone_e164 != phone_e164:
+        raise HTTPException(status_code=400, detail="Подтверждение относится к другому номеру")
+
+    purposes = _normalize_purposes(purpose)
+    if purposes and str(challenge.purpose or "").upper() not in purposes:
+        raise HTTPException(status_code=400, detail="Подтверждение относится к другой операции")
+
+    if challenge.status == OTP_STATUS_PENDING and challenge.expires_at <= utcnow():
+        challenge.status = OTP_STATUS_EXPIRED
+        db.flush()
+
+    return challenge
+
+
+def mark_challenge_verified(db: Session, *, challenge: PhoneOtpChallenge) -> PhoneOtpChallenge:
+    if challenge.status != OTP_STATUS_VERIFIED:
+        challenge.status = OTP_STATUS_VERIFIED
+        challenge.verified_at = utcnow()
+        db.flush()
+    return challenge
+
+
+def resolve_verified_challenge(
+    db: Session,
+    *,
+    phone_e164: str,
+    purpose: str | Iterable[str],
+    code: str | None = None,
+    challenge_id: int | None = None,
+) -> PhoneOtpChallenge:
+    if challenge_id is not None:
+        challenge = get_challenge_by_id(db, challenge_id=challenge_id, phone_e164=phone_e164, purpose=purpose)
+        if challenge.status != OTP_STATUS_VERIFIED:
+            if challenge.status == OTP_STATUS_EXPIRED:
+                raise HTTPException(status_code=400, detail="Подтверждение истекло")
+            raise HTTPException(status_code=400, detail="Подтверждение ещё не завершено")
+        return challenge
+
+    if not str(code or "").strip():
+        raise HTTPException(status_code=400, detail="Нужно указать код из SMS или подтверждённый звонок")
+
+    return verify_challenge(db, phone_e164=phone_e164, code=code, purpose=purpose)
 
 
 def verify_challenge(
@@ -200,6 +280,7 @@ def verify_challenge(
         .where(
             PhoneOtpChallenge.phone_e164 == phone_e164,
             PhoneOtpChallenge.status == OTP_STATUS_PENDING,
+            PhoneOtpChallenge.verification_channel == OTP_CHANNEL_SMS,
         )
         .order_by(PhoneOtpChallenge.id.desc())
     )
@@ -270,7 +351,6 @@ def link_phone_identity_to_user(db: Session, *, user: User, phone_e164: str) -> 
     if existing is not None and existing.user_id != user.id:
         raise HTTPException(status_code=409, detail="Этот номер уже привязан к другой учётной записи")
 
-    # Keep history rows, but only one verified phone per user.
     user_phone_rows = db.execute(
         select(AuthIdentity).where(
             AuthIdentity.user_id == user.id,
@@ -317,7 +397,6 @@ def link_telegram_identity_to_user(
     if ident is not None and ident.user_id != user.id:
         raise HTTPException(status_code=409, detail="Этот Telegram-аккаунт уже привязан к другой учётной записи")
 
-    # legacy user.tg_user_id also must stay unique and synced
     clash_user = db.execute(select(User).where(User.tg_user_id == tg_user_id)).scalar_one_or_none()
     if clash_user is not None and clash_user.id != user.id:
         raise HTTPException(status_code=409, detail="Этот Telegram-аккаунт уже используется другой учётной записью")

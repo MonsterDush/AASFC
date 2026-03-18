@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     PHONE_AUTH_BURST_WINDOW_SECONDS: int = 60 * 10
     PHONE_AUTH_MAX_SENDS_PER_WINDOW: int = 5
     PHONE_AUTH_BLOCK_SECONDS: int = 60 * 30
+    PHONE_AUTH_CALL_FALLBACK_AFTER_SECONDS: int = 10
     PHONE_AUTH_SMS_TEMPLATE: str = "Ваш код: {code}"
 
     # Пароли
@@ -55,6 +56,8 @@ class Settings(BaseSettings):
     SMS_RU_TEST: bool = False
     SMS_RU_TIMEOUT_SECONDS: int = 10
     SMS_RU_FROM: str = ""
+    SMS_RU_CALL_ADD_URL: str = "https://sms.ru/callcheck/add"
+    SMS_RU_CALL_STATUS_URL: str = "https://sms.ru/callcheck/status"
 
     def super_admin_ids(self) -> set[int]:
         raw = (self.SUPER_ADMIN_TG_USER_IDS or "").strip()
