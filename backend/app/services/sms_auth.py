@@ -87,8 +87,8 @@ class SmsRuProvider(SmsProvider):
             payload["ip"] = request_ip
         if settings.SMS_RU_TEST:
             payload["test"] = 1
-        if str(settings.SMS_RU_FROM or "").strip():
-            payload["from"] = str(settings.SMS_RU_FROM).strip()
+        #if str(settings.SMS_RU_FROM or "").strip():
+        #    payload["from"] = str(settings.SMS_RU_FROM).strip()
 
         body = urlencode(payload).encode("utf-8")
         req = Request(
