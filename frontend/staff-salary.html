@@ -43,7 +43,6 @@
         <button class="btn sm" id="btnAllVenues" data-scope="all">Все заведения</button>
       </div>
 
-      <!-- Scope: active venue -->
       <div id="venueScopeWrap">
         <div class="itemcard mt-12">
           <div class="row row--between"><div class="muted">Начислено</div><b id="sumSalary">0</b></div>
@@ -55,16 +54,19 @@
           <div class="row divider-top mt-8 pt-10 row--between">
             <div class="muted">Итого</div><b id="sumTotal">0</b>
           </div>
-          <div class="muted small mt-8" id="salarySourceHint"></div>
-          <div class="row mt-8" style="justify-content:flex-end; display:none;" id="payrollBreakdownRow">
-            <button class="btn sm" id="openPayrollBreakdownBtn" type="button">Разбор начисления</button>
+
+          <div class="muted small mt-10" id="salarySourceHint"></div>
+
+          <div class="row row--between ai-center mt-10" id="payrollBreakdownRow" style="display:none; gap:10px; flex-wrap:wrap;">
+            <span class="badge">payroll</span>
+            <button class="btn sm" id="openPayrollBreakdownBtn">Разбор начисления</button>
           </div>
         </div>
-                <!-- По дням (только "Это заведение") -->
+
         <div class="itemcard mt-12">
-          <div class="row row--between">
-            <b>График по дням</b>
-            <div class="muted small">Выбери день для подробностей</div>
+          <div class="row row--between" style="gap:10px; flex-wrap:wrap;">
+            <b id="daysChartTitle">График по дням</b>
+            <div class="muted small" id="daysChartHint">Выбери день для подробностей</div>
           </div>
           <div id="monthChart" class="chart">
             <div class="skeleton"></div>
@@ -72,7 +74,10 @@
         </div>
 
         <div class="itemcard mt-12">
-          <b>По дням</b>
+          <div class="row row--between" style="gap:10px; flex-wrap:wrap;">
+            <b id="daysListTitle">По дням</b>
+            <div class="muted small" id="daysListHint"></div>
+          </div>
           <div id="daysList" class="mt-10">
             <div class="skeleton"></div>
             <div class="skeleton"></div>
@@ -80,7 +85,6 @@
         </div>
       </div>
 
-      <!-- Scope: all venues -->
       <div class="itemcard mt-12" id="allVenuesCard" style="display:none">
         <div class="grid mt-10 salary-all-kpis">
           <div class="mini-kpi">

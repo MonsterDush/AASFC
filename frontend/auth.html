@@ -335,7 +335,6 @@
       callPollTimer = setInterval(() => pollCallStatus(out?.phone || phone, callChallengeId), 2500);
       callFallbackTimer = setTimeout(() => {
         els.btnRequestSmsFallback.classList.remove("hidden");
-        els.smsFallbackBlock.classList.remove("hidden");
         if (!callVerified) {
           els.smsMeta.textContent = "Если звонок не проходит, можно запросить SMS с кодом.";
         }

@@ -368,10 +368,8 @@
           metaEl.textContent = out?.status_text || "Время подтверждения истекло.";
           if (kind === "link") {
             els.requestLinkCodeBtn.classList.remove("hidden");
-            els.linkPhoneSmsBlock.classList.remove("hidden");
           } else {
             els.requestPasswordResetBtn.classList.remove("hidden");
-            els.passwordResetSmsBlock.classList.remove("hidden");
           }
         }
       } catch (e) {
