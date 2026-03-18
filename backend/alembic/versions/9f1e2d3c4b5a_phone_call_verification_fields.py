@@ -1,7 +1,7 @@
 """phone call verification fields
 
 Revision ID: 9f1e2d3c4b5a
-Revises: 8ab1c2d3e4f5
+Revises: 1f2e3d4c5b6a
 Create Date: 2026-03-18 17:55:00
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "9f1e2d3c4b5a"
-down_revision = "8ab1c2d3e4f5"
+down_revision = "1f2e3d4c5b6a"
 branch_labels = None
 depends_on = None
 
