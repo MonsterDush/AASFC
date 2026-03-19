@@ -84,9 +84,12 @@
           <div class="muted" style="margin-bottom:6px">Режим распределения</div>
           <select id="tipsMode">
             <option value="EQUAL">Поровну</option>
-            <option value="WEIGHTED_BY_POSITION" disabled>По должностям (скоро)</option>
+            <option value="WEIGHTED_BY_POSITION">По должностям</option>
           </select>
-          <div class="muted small" id="tipsModeSoon" style="margin-top:6px; display:none">Режим “По должностям” появится позже.</div>
+          <div class="muted small" id="tipsModeSoon" style="margin-top:6px; display:none">Процент задаётся на каждого назначенного сотрудника этой должности. Остаток делится поровну между остальными назначенными на смену.</div>
+          <div class="row gap-8 mt-10" id="tipsConfigRow" style="display:none">
+            <a class="btn sm" id="openTipsDistribution" href="#">Настроить распределение</a>
+          </div>
           <div class="muted small" id="tipsNoEdit" style="margin-top:6px; display:none">Нет прав на изменение настроек.</div>
           <div class="muted small" id="tipsSaveHint" style="margin-top:6px"></div>
         </div>
@@ -219,6 +222,8 @@ const titleEl = document.getElementById("title");
         const tipsEnabledEl = document.getElementById("tipsEnabled");
         const tipsModeEl = document.getElementById("tipsMode");
         const tipsModeSoonEl = document.getElementById("tipsModeSoon");
+        const tipsConfigRowEl = document.getElementById("tipsConfigRow");
+        const openTipsDistribution = document.getElementById("openTipsDistribution");
         const tipsNoEditEl = document.getElementById("tipsNoEdit");
         const tipsSaveHintEl = document.getElementById("tipsSaveHint");
         let tipsSettings = { tips_enabled: false, tips_split_mode: "EQUAL" };
@@ -277,6 +282,7 @@ openAdjustments.href = canManageAdjustments
           const openEconomicsRules = document.getElementById("openEconomicsRules");
           if (openEconomicsRules) openEconomicsRules.href = `/owner-economics-rules.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openExpenses) openExpenses.href = `/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openTipsDistribution) openTipsDistribution.href = `/owner-tip-settings.html?venue_id=${encodeURIComponent(venueId)}`;
 
           if (openDepartments) openDepartments.href = `/owner-departments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openPaymentMethods) openPaymentMethods.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(venueId)}`;
@@ -371,6 +377,7 @@ function syncTipsControls() {
   if (tipsModeEl) tipsModeEl.disabled = lockMode;
 
   if (tipsModeSoonEl) tipsModeSoonEl.style.display = (mode === "WEIGHTED_BY_POSITION") ? "" : "none";
+  if (tipsConfigRowEl) tipsConfigRowEl.style.display = (enabled && mode === "WEIGHTED_BY_POSITION" && canEdit) ? "" : "none";
   if (tipsNoEditEl) tipsNoEditEl.style.display = canEdit ? "none" : "";
 }
 

@@ -25,6 +25,7 @@ from app.models import (
     ShiftAssignment,
     ShiftInterval,
     DailyReport,
+    DailyReportTipAllocation,
     Adjustment,
     PayrollLine,
     PayrollRun,
@@ -78,6 +79,14 @@ class NotificationSettingsIn(BaseModel):
     notify_enabled: bool | None = None
     notify_adjustments: bool | None = None
     notify_shifts: bool | None = None
+
+
+class ManualTipCreateIn(BaseModel):
+    venue_id: int = Field(..., gt=0)
+    date: date
+    amount: int = Field(..., gt=0)
+    note: str | None = Field(default=None, max_length=500)
+
 
 @router.get("/me")
 def me(
@@ -549,6 +558,45 @@ def my_payroll_line(
     return {"month": month, "items": items}
 
 
+@router.post("/me/manual-tips")
+def create_manual_tip(
+    payload: ManualTipCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    vm = db.execute(
+        select(VenueMember).where(
+            VenueMember.venue_id == int(payload.venue_id),
+            VenueMember.user_id == int(user.id),
+            VenueMember.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if vm is None and user.system_role not in ("SUPER_ADMIN", "MODERATOR"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    obj = Adjustment(
+        venue_id=int(payload.venue_id),
+        type="tip",
+        member_user_id=int(user.id),
+        date=payload.date,
+        amount=int(payload.amount or 0),
+        reason=(payload.note or "").strip() or None,
+        created_by_user_id=int(user.id),
+        is_active=True,
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return {
+        "id": int(obj.id),
+        "venue_id": int(obj.venue_id),
+        "date": obj.date.isoformat(),
+        "amount": int(obj.amount or 0),
+        "reason": obj.reason,
+        "type": obj.type,
+    }
+
+
 @router.get("/me/salary-summary")
 def my_salary_summary(
     month: str = Query(..., description="YYYY-MM"),
@@ -567,7 +615,48 @@ def my_salary_summary(
 
     payroll_by_venue = _load_payroll_summary_by_venue(db, user_id=int(user.id), month_start=start)
     payroll_venue_ids = set(payroll_by_venue.keys())
-    if not payroll_venue_ids:
+
+    tip_alloc_rows = db.execute(
+        select(DailyReport.venue_id, func.coalesce(func.sum(DailyReportTipAllocation.amount), 0))
+        .select_from(DailyReportTipAllocation)
+        .join(DailyReport, DailyReport.id == DailyReportTipAllocation.report_id)
+        .where(
+            DailyReportTipAllocation.user_id == int(user.id),
+            DailyReport.status == "CLOSED",
+            DailyReport.date >= start,
+            DailyReport.date < end,
+        )
+        .group_by(DailyReport.venue_id)
+    ).all()
+    tips_by_venue: dict[int, int] = {int(venue_id): int(amount or 0) for venue_id, amount in tip_alloc_rows}
+
+    adj_rows = db.execute(
+        select(Adjustment.venue_id, Adjustment.type, Adjustment.amount)
+        .where(
+            Adjustment.member_user_id == int(user.id),
+            Adjustment.is_active.is_(True),
+            Adjustment.date >= start,
+            Adjustment.date < end,
+        )
+    ).all()
+
+    bonuses_by_venue: dict[int, int] = {}
+    penalties_by_venue: dict[int, int] = {}
+    extra_tip_venue_ids: set[int] = set()
+    for v_id, typ, amount in adj_rows:
+        vid = int(v_id)
+        t = str(typ or "").lower()
+        a = int(amount or 0)
+        if t == "bonus":
+            bonuses_by_venue[vid] = bonuses_by_venue.get(vid, 0) + a
+        elif t == "tip":
+            tips_by_venue[vid] = tips_by_venue.get(vid, 0) + a
+            extra_tip_venue_ids.add(vid)
+        else:
+            penalties_by_venue[vid] = penalties_by_venue.get(vid, 0) + a
+
+    all_venue_ids = set(payroll_venue_ids) | set(tips_by_venue.keys()) | set(bonuses_by_venue.keys()) | set(penalties_by_venue.keys())
+    if not all_venue_ids:
         return {
             "month": month,
             "items": [],
@@ -580,81 +669,15 @@ def my_salary_summary(
             },
         }
 
-    shift_rows = db.execute(
-        select(
-            Shift.id.label("shift_id"),
-            Shift.venue_id.label("venue_id"),
-            Shift.date.label("shift_date"),
-        )
-        .select_from(ShiftAssignment)
-        .join(Shift, Shift.id == ShiftAssignment.shift_id)
-        .where(
-            ShiftAssignment.member_user_id == user.id,
-            Shift.is_active.is_(True),
-            Shift.venue_id.in_(payroll_venue_ids),
-            Shift.date >= start,
-            Shift.date < end,
-        )
-    ).all()
+    venue_names: dict[int, str] = {}
+    for vid, payload in payroll_by_venue.items():
+        venue_names[int(vid)] = str(payload.get("venue_name") or "")
 
-    tips_by_venue: dict[int, int] = {}
-    if shift_rows:
-        keys = {(int(r.venue_id), r.shift_date) for r in shift_rows}
-        shift_ids = [int(r.shift_id) for r in shift_rows]
-        report_by_key = {}
-        if keys:
-            reports = db.execute(
-                select(DailyReport).where(
-                    DailyReport.venue_id.in_({k[0] for k in keys}),
-                    DailyReport.date.in_({k[1] for k in keys}),
-                    DailyReport.status == "CLOSED",
-                )
-            ).scalars().all()
-            report_by_key = {(int(r.venue_id), r.date): r for r in reports}
-
-        assignee_cnt_by_shift: dict[int, int] = {}
-        if shift_ids:
-            cnt_rows = db.execute(
-                select(ShiftAssignment.shift_id, func.count(ShiftAssignment.member_user_id))
-                .where(ShiftAssignment.shift_id.in_(shift_ids))
-                .group_by(ShiftAssignment.shift_id)
-            ).all()
-            assignee_cnt_by_shift = {int(sid): int(cnt or 0) for sid, cnt in cnt_rows}
-
-        for r in shift_rows:
-            rep = report_by_key.get((int(r.venue_id), r.shift_date))
-            if rep is None:
-                continue
-            try:
-                tips_total = int(getattr(rep, "tips_total", 0) or 0)
-                if tips_total > 0:
-                    cnt = max(1, int(assignee_cnt_by_shift.get(int(r.shift_id), 1)))
-                    my_tips = int(round(float(tips_total) / float(cnt)))
-                    tips_by_venue[int(r.venue_id)] = tips_by_venue.get(int(r.venue_id), 0) + my_tips
-            except Exception:
-                pass
-
-    adj_rows = db.execute(
-        select(Adjustment.venue_id, Adjustment.type, Adjustment.amount)
-        .where(
-            Adjustment.member_user_id == user.id,
-            Adjustment.is_active.is_(True),
-            Adjustment.venue_id.in_(payroll_venue_ids),
-            Adjustment.date >= start,
-            Adjustment.date < end,
-        )
-    ).all()
-
-    bonuses_by_venue: dict[int, int] = {}
-    penalties_by_venue: dict[int, int] = {}
-    for v_id, typ, amount in adj_rows:
-        vid = int(v_id)
-        t = str(typ or "").lower()
-        a = int(amount or 0)
-        if t == "bonus":
-            bonuses_by_venue[vid] = bonuses_by_venue.get(vid, 0) + a
-        else:
-            penalties_by_venue[vid] = penalties_by_venue.get(vid, 0) + a
+    missing_name_ids = [vid for vid in all_venue_ids if vid not in venue_names]
+    if missing_name_ids:
+        rows = db.execute(select(Venue.id, Venue.name).where(Venue.id.in_(missing_name_ids))).all()
+        for vid, name in rows:
+            venue_names[int(vid)] = str(name or "")
 
     items = []
     total_net = 0
@@ -663,8 +686,9 @@ def my_salary_summary(
     total_bonus = 0
     total_pen = 0
 
-    for vid in sorted(payroll_venue_ids):
+    for vid in sorted(all_venue_ids):
         payroll_item = payroll_by_venue.get(vid) or {}
+        is_payroll = bool(payroll_item)
         earned = int(payroll_item.get("earned") or 0)
         tips = int(tips_by_venue.get(vid, 0))
         bonus = int(bonuses_by_venue.get(vid, 0))
@@ -676,14 +700,14 @@ def my_salary_summary(
         total_bonus += bonus
         total_pen += pen
         item = {
-            "venue": {"id": vid, "name": payroll_item.get("venue_name") or ""},
+            "venue": {"id": vid, "name": venue_names.get(vid, "")},
             "earned": earned,
             "tips": tips,
             "bonuses": bonus,
             "penalties": pen,
             "net": net,
-            "source": "payroll",
-            "calculated": True,
+            "source": "payroll" if is_payroll else "partial",
+            "calculated": bool(is_payroll),
             "earned_minor": int(payroll_item.get("earned_minor") or 0),
         }
         if payroll_item.get("payroll_line_id") is not None:

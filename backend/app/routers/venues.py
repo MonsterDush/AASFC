@@ -59,6 +59,7 @@ from app.services.finance.recurring_expenses import (
     sync_daily_recurring_accruals_for_date,
 )
 from app.services.payroll.calculator import PAY_COMPONENT_TYPES, calculate_payroll_for_month, parse_month_start
+from app.services.tips import build_equal_tip_allocations, build_weighted_by_position_tip_allocations
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -3092,6 +3093,62 @@ def get_daily_report(
     }
 
 
+def _load_assigned_members_for_report_date(db: Session, *, venue_id: int, report_date: date) -> list[tuple[int, str | None]]:
+    rows = db.execute(
+        select(ShiftAssignment.member_user_id, VenuePosition.title)
+        .join(Shift, Shift.id == ShiftAssignment.shift_id)
+        .join(VenuePosition, VenuePosition.id == ShiftAssignment.venue_position_id)
+        .where(
+            Shift.venue_id == venue_id,
+            Shift.date == report_date,
+            Shift.is_active.is_(True),
+        )
+        .order_by(ShiftAssignment.member_user_id.asc(), ShiftAssignment.id.asc())
+    ).all()
+    return [(int(user_id), title) for user_id, title in rows if user_id is not None]
+
+
+def _rebuild_report_tip_allocations(
+    db: Session,
+    *,
+    report: DailyReport,
+    venue: Venue,
+) -> list[DailyReportTipAllocation]:
+    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == report.id))
+
+    if not bool(getattr(venue, "tips_enabled", False)):
+        report.tips_total = 0
+        return []
+
+    tips_total = int(getattr(report, "tips_total", 0) or 0)
+    if tips_total <= 0:
+        return []
+
+    tips_split_mode = str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL").upper()
+    assigned_members = _load_assigned_members_for_report_date(db, venue_id=int(report.venue_id), report_date=report.date)
+    if not assigned_members:
+        return []
+
+    if tips_split_mode == "WEIGHTED_BY_POSITION":
+        try:
+            allocations = build_weighted_by_position_tip_allocations(
+                report_id=int(report.id),
+                tips_total=tips_total,
+                assigned_members=assigned_members,
+                tips_weights=getattr(venue, "tips_weights", None),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    else:
+        allocations = build_equal_tip_allocations(
+            report_id=int(report.id),
+            tips_total=tips_total,
+            assigned_user_ids=[user_id for user_id, _title in assigned_members],
+        )
+
+    for alloc in allocations:
+        db.add(alloc)
+    return allocations
 
 
 
@@ -3133,9 +3190,7 @@ def close_daily_report(
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found")
-    tips_enabled = bool(getattr(venue, "tips_enabled", False))
-    tips_split_mode = str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL").upper()
-    if not tips_enabled:
+    if not bool(getattr(venue, "tips_enabled", False)):
         # when tips are disabled for venue, ignore any stored tips_total
         rep.tips_total = 0
 
@@ -3156,39 +3211,7 @@ def close_daily_report(
         rep.comment = payload.comment
 
 
-    # --- tips allocation (optional) ---
-    # If venue has tips enabled, distribute daily report tips_total across all assigned members of this date.
-    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
-
-    if tips_enabled:
-        tips_total = int(rep.tips_total or 0)
-        if tips_total > 0:
-            if tips_split_mode != "EQUAL":
-                raise HTTPException(status_code=400, detail="Tips split mode not implemented yet")
-            assigned_user_ids = db.execute(
-                select(ShiftAssignment.member_user_id)
-                .join(Shift, Shift.id == ShiftAssignment.shift_id)
-                .where(
-                    Shift.venue_id == venue_id,
-                    Shift.date == report_date,
-                    Shift.is_active.is_(True),
-                )
-            ).scalars().all()
-            uniq = sorted({int(x) for x in assigned_user_ids if x is not None})
-            n = len(uniq)
-            if n > 0:
-                share = tips_total // n
-                remainder = tips_total - share * n
-                for i, uid in enumerate(uniq):
-                    amount = share + (1 if i < remainder else 0)
-                    db.add(
-                        DailyReportTipAllocation(
-                            report_id=rep.id,
-                            user_id=uid,
-                            amount=int(amount),
-                            split_mode="EQUAL",
-                        )
-                    )
+    _rebuild_report_tip_allocations(db, report=rep, venue=venue)
 
     rep.status = "CLOSED"
     rep.closed_by_user_id = user.id
@@ -4212,7 +4235,7 @@ def list_adjustments(
     venue_id: int,
     month: str = Query(..., description="YYYY-MM"),
     mine: int = Query(0, description="1 => only my items"),
-    type: str | None = Query(default=None, description="penalty|writeoff|bonus"),
+    type: str | None = Query(default=None, description="penalty|writeoff|bonus|tip"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -4238,6 +4261,8 @@ def list_adjustments(
 
     if type:
         stmt = stmt.where(Adjustment.type == type)
+    else:
+        stmt = stmt.where(Adjustment.type != "tip")
     if mine:
         stmt = stmt.where(Adjustment.member_user_id == user.id)
 
@@ -4282,8 +4307,8 @@ def list_adjustments(
 # ---------- Adjustments helpers ----------
 
 _ADJ_TYPE_LABELS = {
-    "ru": {"penalty": "Штраф", "writeoff": "Списание", "bonus": "Премия"},
-    "en": {"penalty": "Penalty", "writeoff": "Write-off", "bonus": "Bonus"},
+    "ru": {"penalty": "Штраф", "writeoff": "Списание", "bonus": "Премия", "tip": "Чаевые"},
+    "en": {"penalty": "Penalty", "writeoff": "Write-off", "bonus": "Bonus", "tip": "Tips"},
 }
 
 def _ui_lang() -> str:
@@ -5695,6 +5720,19 @@ def add_shift_assignment(
         venue_position_id=pos.id,
     )
     db.add(a)
+
+    closed_report = db.execute(
+        select(DailyReport).where(
+            DailyReport.venue_id == venue_id,
+            DailyReport.date == shift.date,
+            DailyReport.status == "CLOSED",
+        )
+    ).scalar_one_or_none()
+    if closed_report is not None:
+        venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+        if venue is not None:
+            _rebuild_report_tip_allocations(db, report=closed_report, venue=venue)
+
     _recalculate_payroll_for_dates(
         db,
         venue_id=venue_id,
@@ -5732,6 +5770,17 @@ def remove_shift_assignment(
     ).scalar_one_or_none()
     db.delete(a)
     if shift_date is not None:
+        closed_report = db.execute(
+            select(DailyReport).where(
+                DailyReport.venue_id == venue_id,
+                DailyReport.date == shift_date,
+                DailyReport.status == "CLOSED",
+            )
+        ).scalar_one_or_none()
+        if closed_report is not None:
+            venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+            if venue is not None:
+                _rebuild_report_tip_allocations(db, report=closed_report, venue=venue)
         _recalculate_payroll_for_dates(
             db,
             venue_id=venue_id,

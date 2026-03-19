@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Распределение чаевых</title>
+  <style>
+    .tip-settings-grid{display:grid;gap:10px}
+    .tip-settings-row{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:10px;align-items:end}
+    .tip-settings-row .btn{white-space:nowrap}
+    @media(max-width:640px){
+      .tip-settings-row{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Распределение чаевых</b>
+          <div class="muted" id="subtitle">по должностям</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card">
+      <div class="itemcard">
+        <div class="row row--between" style="gap:10px; flex-wrap:wrap; align-items:center;">
+          <div>
+            <b id="venueTitle">Заведение</b>
+            <div class="muted small mt-4" id="pageHint">Задай процент на каждого сотрудника выбранной должности. Остаток чаевых делится поровну между остальными назначенными на смену.</div>
+          </div>
+          <a class="btn sm" id="backToVenue" href="#">К заведению</a>
+        </div>
+      </div>
+
+      <div class="itemcard mt-12">
+        <div class="row row--between" style="gap:10px; flex-wrap:wrap; align-items:center;">
+          <b>Правила распределения</b>
+          <button class="btn sm" id="addRuleBtn">Добавить правило</button>
+        </div>
+        <div class="muted small mt-6">Процент задаётся на одного сотрудника этой должности, а не на всю группу.</div>
+        <div id="rulesList" class="tip-settings-grid mt-12"></div>
+        <div class="muted small mt-10" id="saveHint"></div>
+        <div class="row gap-8 mt-12" style="justify-content:flex-end; flex-wrap:wrap;">
+          <button class="btn" id="saveBtn">Сохранить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+  <script type="module" src="/owner-tip-settings.js"></script>
+</body>
+</html>

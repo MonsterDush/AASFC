@@ -76,6 +76,7 @@ const el = {
   sourceHint: document.getElementById("salarySourceHint"),
   payrollBreakdownRow: document.getElementById("payrollBreakdownRow"),
   openPayrollBreakdownBtn: document.getElementById("openPayrollBreakdownBtn"),
+  addManualTipBtn: document.getElementById("addManualTipBtn"),
   daysChartTitle: document.getElementById("daysChartTitle"),
   daysChartHint: document.getElementById("daysChartHint"),
   daysListTitle: document.getElementById("daysListTitle"),
@@ -100,6 +101,7 @@ function setScopeMode(next) {
   if (allEls.card) allEls.card.style.display = (scopeMode === "all") ? "" : "none";
   const vs = document.getElementById("venueScopeWrap");
   if (vs) vs.style.display = (scopeMode === "all") ? "none" : "";
+  if (el.addManualTipBtn) el.addManualTipBtn.style.display = (scopeMode === "all") ? "none" : "";
   try {
     const p = new URLSearchParams(location.search);
     if (scopeMode === "all") p.set("scope", "all"); else p.delete("scope");
@@ -154,6 +156,92 @@ function openModal(title, subtitle, bodyHtml) {
   if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle || "";
   if (modalBody) modalBody.innerHTML = bodyHtml || "";
   modal?.classList.add("open");
+}
+
+
+function isoToday() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function defaultTipDate() {
+  const currentMonth = ym(curMonth);
+  const today = isoToday();
+  return today.startsWith(`${currentMonth}-`) ? today : `${currentMonth}-01`;
+}
+
+function closeModal() {
+  modal?.classList.remove("open");
+}
+
+function openManualTipModal() {
+  const venueOptions = (__venues || []).map((v) => {
+    const id = __venueIdOf(v);
+    const name = __venueNameOf(id) || `#${id}`;
+    return `<option value="${esc(id)}">${esc(name)}</option>`;
+  }).join("");
+  const defaultVenueId = String(venueId || __venueIdOf(__venues?.[0]) || "");
+  openModal(
+    "Добавить чаевые",
+    "Сумма попадёт в зарплатную сводку сотрудника",
+    `<div class="itemcard" style="margin-top:12px">
+      <div class="grid" style="gap:10px">
+        <label>
+          <div class="muted small" style="margin-bottom:6px">Заведение</div>
+          <select id="manualTipVenue">${venueOptions}</select>
+        </label>
+        <label>
+          <div class="muted small" style="margin-bottom:6px">Дата начисления</div>
+          <input id="manualTipDate" type="date" value="${esc(defaultTipDate())}" />
+        </label>
+        <label>
+          <div class="muted small" style="margin-bottom:6px">Сумма</div>
+          <input id="manualTipAmount" type="number" min="1" inputmode="numeric" placeholder="0" />
+        </label>
+        <label>
+          <div class="muted small" style="margin-bottom:6px">Комментарий</div>
+          <input id="manualTipNote" type="text" maxlength="500" placeholder="Необязательно" />
+        </label>
+      </div>
+      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px; flex-wrap:wrap;">
+        <button class="btn sm" type="button" id="manualTipCancel">Отмена</button>
+        <button class="btn sm" type="button" id="manualTipSave">Сохранить</button>
+      </div>
+    </div>`
+  );
+
+  const venueSelect = modalBody?.querySelector("#manualTipVenue");
+  const dateInput = modalBody?.querySelector("#manualTipDate");
+  const amountInput = modalBody?.querySelector("#manualTipAmount");
+  const noteInput = modalBody?.querySelector("#manualTipNote");
+  if (venueSelect) venueSelect.value = defaultVenueId;
+  modalBody?.querySelector("#manualTipCancel")?.addEventListener("click", closeModal);
+  modalBody?.querySelector("#manualTipSave")?.addEventListener("click", async () => {
+    const payload = {
+      venue_id: Number(venueSelect?.value || 0),
+      date: String(dateInput?.value || "").trim(),
+      amount: Math.round(Number(amountInput?.value || 0)),
+      note: String(noteInput?.value || "").trim() || null,
+    };
+    if (!payload.venue_id) { toast("Выбери заведение", "err"); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) { toast("Укажи дату", "err"); return; }
+    if (!Number.isFinite(payload.amount) || payload.amount <= 0) { toast("Укажи сумму больше нуля", "err"); return; }
+    try {
+      await api(`/me/manual-tips`, { method: "POST", body: payload });
+      if (String(payload.venue_id) !== String(venueId)) {
+        venueId = String(payload.venue_id);
+        setActiveVenueId(venueId);
+      }
+      closeModal();
+      toast("Чаевые добавлены", "ok");
+      await refresh();
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || "Не удалось добавить чаевые", "err");
+    }
+  });
 }
 
 function pad2(n) { return String(n).padStart(2, "0"); }
@@ -268,7 +356,7 @@ async function loadMonth() {
       const worked = Array.isArray(payrollLine?.breakdown?.metrics?.worked_dates) ? payrollLine.breakdown.metrics.worked_dates : [];
       payrollWorkedDates = new Set(worked.map((x) => String(x || "").slice(0, 10)).filter(Boolean));
     } else {
-      monthSummaryItem = {
+      monthSummaryItem = monthSummaryItem || {
         venue: { id: venueId, name: __venueNameOf(venueId) || "" },
         source: "not_calculated",
         calculated: false,
@@ -402,20 +490,30 @@ function renderSummary() {
   const totalWriteoffs = adjustments.filter(x => x.type === "writeoff").reduce((a,x)=>a+Number(x.amount||0),0);
   const isPayroll = monthSummaryItem?.source === "payroll";
   const isCalculated = isPayroll && !!monthSummaryItem?.calculated;
+  const earned = Number(monthSummaryItem?.earned ?? 0);
+  const tips = Number(monthSummaryItem?.tips ?? 0);
+  const bonuses = Number(monthSummaryItem?.bonuses ?? 0);
+  const penalties = Number(monthSummaryItem?.penalties ?? 0);
+  const total = Number(monthSummaryItem?.net ?? (earned + tips + bonuses - penalties) ?? 0);
+  const hasPartial = !isCalculated && (tips !== 0 || bonuses !== 0 || penalties !== 0 || total !== 0);
 
   if (isCalculated) {
-    const earned = Number(monthSummaryItem?.earned ?? 0);
-    const tips = Number(monthSummaryItem?.tips ?? 0);
-    const bonuses = Number(monthSummaryItem?.bonuses ?? 0);
-    const penalties = Number(monthSummaryItem?.penalties ?? 0);
-    const total = Number(monthSummaryItem?.net ?? (earned + tips + bonuses - penalties) ?? 0);
     el.sumSalary.textContent = formatMoney(earned);
     el.sumTips.textContent = formatMoney(tips);
     el.sumPenalties.textContent = formatMoney(penalties);
     el.sumBonuses.textContent = formatMoney(bonuses);
     el.sumTotal.textContent = formatMoney(total);
     if (el.sourceHint) {
-      el.sourceHint.textContent = "Экран сотрудника теперь работает только от payroll. Месячная сумма и итог берутся из рассчитанного payroll-начисления; блоки ниже показывают справочную детализацию по дням и сменам.";
+      el.sourceHint.textContent = "Месячная зарплата взята из рассчитанного payroll. Чаевые, премии и штрафы уже включены в итог выше.";
+    }
+  } else if (hasPartial) {
+    el.sumSalary.textContent = "—";
+    el.sumTips.textContent = formatMoney(tips);
+    el.sumPenalties.textContent = formatMoney(penalties);
+    el.sumBonuses.textContent = formatMoney(bonuses);
+    el.sumTotal.textContent = formatMoney(total);
+    if (el.sourceHint) {
+      el.sourceHint.textContent = "Payroll за месяц ещё не рассчитан, но чаевые, премии и штрафы уже учтены в сводке. Начисление появится после расчёта payroll.";
     }
   } else {
     el.sumSalary.textContent = "—";
@@ -424,7 +522,7 @@ function renderSummary() {
     el.sumBonuses.textContent = "—";
     el.sumTotal.textContent = "—";
     if (el.sourceHint) {
-      el.sourceHint.textContent = "Начисление за этот месяц ещё не рассчитано. Старый shift-расчёт больше не используется; сумма появится после payroll-расчёта.";
+      el.sourceHint.textContent = "Начисление за этот месяц ещё не рассчитано. Суммы появятся после payroll-расчёта или после добавления чаевых/корректировок.";
     }
   }
   if (el.rowWriteoffs) el.rowWriteoffs.style.display = "none";
@@ -621,6 +719,10 @@ el.next?.addEventListener("click", async () => {
   await refresh();
 });
 el.openPayrollBreakdownBtn?.addEventListener("click", openPayrollBreakdown);
+el.addManualTipBtn?.addEventListener("click", async () => {
+  await ensureVenuesLoaded();
+  openManualTipModal();
+});
 
 syncUrl();
 refresh();
