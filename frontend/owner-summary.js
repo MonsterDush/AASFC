@@ -11,7 +11,7 @@ import {
   API_BASE,
   toast,
 } from "/app.js";
-import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 function fmtMoneyMinor(minor) {
   const kopecks = Number(minor || 0);
@@ -87,9 +87,9 @@ async function loadFinanceAccess() {
     const permsResp = await getMyVenuePermissions(venueId);
     const role = roleUpper(permsResp);
     const pset = permSetFromResponse(permsResp);
-    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+    const isOwner = isOwnerRole(role);
     financeAccess = {
-      canViewRevenue: isOwner || hasPerm(pset, "REVENUE_VIEW"),
+      canViewRevenue: canViewRevenue(pset, role, ""),
       canViewExpenses: isOwner || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
       canViewPayroll: isOwner || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE"),
       canCalculatePayroll: isOwner || hasPerm(pset, "PAYROLL_CALCULATE"),

@@ -10,7 +10,7 @@ import {
   getMyVenues,
 } from "/app.js";
 
-import { permSetFromResponse, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
+import { hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("salary");
@@ -52,7 +52,7 @@ try {
     const pr = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
     const pset = permSetFromResponse(pr);
     const role = roleUpper(pr);
-    __canReports = canViewReportsPerms(pset, role, "");
+    __canReports = hasReportAccess(pset, role, "");
   }
 } catch {}
 

@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 from datetime import date
-import json
-import re
-
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
+
+import json
 
 from app.auth.deps import get_current_user
 from app.auth.passwords import has_password
 from app.auth.phone_auth import get_user_auth_methods, get_user_phone
 from app.core.db import get_db
-from app.core.permission_policy import expand_permission_codes, get_default_permission_codes_for_role
 from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
 from app.core.permissions_registry import PERMISSIONS as PERMISSIONS_REGISTRY
+from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes, unique_permission_codes
 from app.models import (
     User,
     Venue,
@@ -35,36 +34,6 @@ from app.models import (
 
 
 router = APIRouter(tags=["me"])
-
-def _parse_position_permission_codes(raw: str | None) -> list[str]:
-    """Parse VenuePosition.permission_codes stored as JSON list (preferred) or tolerate legacy formats."""
-    if not raw:
-        return []
-    s = str(raw).strip()
-    if not s:
-        return []
-    # 1) JSON list
-    try:
-        data = json.loads(s)
-        if isinstance(data, list):
-            out: list[str] = []
-            for x in data:
-                v = str(x or "").strip().upper()
-                if v and v not in out:
-                    out.append(v)
-            return out
-    except Exception:
-        pass
-
-    # 2) fallback: comma/space separated list or python-like list string
-    cleaned = s.replace("[", "").replace("]", "").replace('"', "").replace("'", "")
-    out: list[str] = []
-    for part in re.split(r"[\s,;]+", cleaned):
-        v = str(part or "").strip().upper()
-        if v and v not in out:
-            out.append(v)
-    return out
-
 
 from pydantic import BaseModel, Field
 
@@ -276,11 +245,19 @@ def my_venue_permissions(
         }
 
     if user.system_role == "MODERATOR":
-        codes = db.scalars(select(Permission.code).where(Permission.is_active.is_(True))).all()
+        codes = db.scalars(
+            select(RolePermissionDefault.permission_code)
+            .join(Permission, Permission.code == RolePermissionDefault.permission_code)
+            .where(
+                RolePermissionDefault.role == "MODERATOR",
+                RolePermissionDefault.is_granted_by_default.is_(True),
+                Permission.is_active.is_(True),
+            )
+        ).all()
         return {
             "venue_id": venue_id,
             "role": "MODERATOR",
-            "permissions": list(expand_permission_codes(codes)),
+            "permissions": list(codes),
             "position": None,
         }
 
@@ -311,7 +288,7 @@ def my_venue_permissions(
         if not defaults_role:
             codes = []
         else:
-            db_codes = db.scalars(
+            codes = db.scalars(
                 select(RolePermissionDefault.permission_code)
                 .join(Permission, Permission.code == RolePermissionDefault.permission_code)
                 .where(
@@ -320,7 +297,6 @@ def my_venue_permissions(
                     Permission.is_active.is_(True),
                 )
             ).all()
-            codes = list(expand_permission_codes([*db_codes, *get_default_permission_codes_for_role(defaults_role)]))
 
     # ---- position permission codes (fine-grained) ----
     pos = db.execute(
@@ -334,7 +310,7 @@ def my_venue_permissions(
     position_codes: list[str] = []
     position_obj = None
     if pos is not None:
-        position_codes = list(expand_permission_codes(_parse_position_permission_codes(getattr(pos, "permission_codes", None))))
+        position_codes = parse_permission_codes(getattr(pos, "permission_codes", None))
         position_obj = {
             "id": pos.id,
             "title": pos.title,
@@ -344,17 +320,11 @@ def my_venue_permissions(
             "permission_codes": position_codes,
         }
 
-    # filter position codes by active permissions in DB (or registry, even if sync wasn't run yet)
-    merged = list(codes) if codes else []
+    # Merge default role permissions with position overrides in one shared helper.
+    merged = unique_permission_codes(codes)
     if position_codes:
-        active = set(
-            db.execute(select(Permission.code).where(Permission.code.in_(position_codes), Permission.is_active.is_(True))).scalars().all()
-        )
-        registry = {p.code.strip().upper() for p in PERMISSIONS_REGISTRY}
-        for c in [str(x or "").strip().upper() for x in position_codes]:
-            if not c:
-                continue
-            if (c in active or c in registry) and c not in merged:
+        for c in normalize_known_permission_codes(db, position_codes):
+            if c not in merged:
                 merged.append(c)
 
     return {

@@ -75,7 +75,7 @@
 
   <script type="module">
 import { applyTelegramTheme, ensureLogin, toast, mountCommonUI, mountNav, setActiveVenueId, getActiveVenueId, getMyVenues, api } from "/app.js";
-import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
+import { canManageAdjustments, hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("dashboard");
@@ -104,12 +104,7 @@ try {
     const perms = await api(`/me/venues/${encodeURIComponent(vid)}/permissions`);
     const pset = permSetFromResponse(perms);
     const role = roleUpper(perms);
-    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
-    const canViewReports =
-      isOwner ||
-      hasPermPrefix(pset, "SHIFT_REPORT_") ||
-      hasPermPrefix(pset, "REPORTS_") ||
-      hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
+    const canViewReports = hasReportAccess(pset, role, "");
     if (canViewReports) document.getElementById("reportCard").style.display = "";
   }
 } catch {}
@@ -123,8 +118,7 @@ try {
     const perms = await api(`/me/venues/${encodeURIComponent(vid)}/permissions`);
     const pset = permSetFromResponse(perms);
     const role = roleUpper(perms);
-    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
-    const canManage = isOwner || hasPerm(pset, "ADJUSTMENTS_MANAGE");
+    const canManage = canManageAdjustments(pset, role, "");
     if (canManage) adjHref = `/app-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
   }
 } catch {}

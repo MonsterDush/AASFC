@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
 } from "/app.js";
 
-import { permSetFromResponse, hasPerm, hasPermPrefix, hasAnyPerm, roleUpper, canViewReports as canViewReportsPerms } from "/permissions.js";
+import { canManageAdjustments, hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("adjustments");
@@ -47,7 +47,7 @@ try {
   const pr = await (venueId ? api(`/me/venues/${encodeURIComponent(venueId)}/permissions`) : null);
   const pset = permSetFromResponse(pr);
   const role = roleUpper(pr);
-  const canViewReports = canViewReportsPerms(pset, role, __sysRole);
+  const canViewReports = hasReportAccess(pset, role, __sysRole);
   if (canViewReports) __tab = "finance";
 } catch {}
 // Determine whether user has report access for this venue (affects navbar layout)
@@ -56,7 +56,7 @@ try {
   const pr = await (venueId ? api(`/me/venues/${encodeURIComponent(venueId)}/permissions`) : null);
   const pset = permSetFromResponse(pr);
   const role = roleUpper(pr);
-  __canReports = canViewReportsPerms(pset, role, __sysRole);
+  __canReports = hasReportAccess(pset, role, __sysRole);
 } catch {}
 await mountNav({ activeTab: (__canReports ? "finance" : "adjustments") });
 
@@ -77,9 +77,7 @@ async function setupManageButton() {
     const pr = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
     const pset = permSetFromResponse(pr);
     const role = roleUpper(pr);
-    const isAdmin = __sysRole === "SUPER_ADMIN" || __sysRole === "MODERATOR";
-    const isOwner = role === "OWNER" || role === "VENUE_OWNER";
-    const canManage = isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_MANAGE");
+    const canManage = canManageAdjustments(pset, role, __sysRole);
     if (canManage) {
       el.btnAddAdj.style.display = "";
       el.btnAddAdj.addEventListener("click", () => {

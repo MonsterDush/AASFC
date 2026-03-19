@@ -124,7 +124,7 @@
 
   <script type="module">
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe } from "/app.js";
-    import { permSetFromResponse, roleUpper, hasPerm, hasPermPrefix, hasAnyPerm } from "/permissions.js";
+    import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, hasReportAccess, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
     applyTelegramTheme();
     mountCommonUI("venue");
@@ -171,16 +171,16 @@
 
         try {
           const me = await getMe().catch(() => null);
-          isAdmin = String(me?.system_role || "").toUpperCase() === "SUPER_ADMIN" || String(me?.system_role || "").toUpperCase() === "MODERATOR";
+          isAdmin = isSysAdminRole(String(me?.system_role || ""));
 
           perms = await getMyVenuePermissions(venueId);
           myRole = roleUpper(perms);
           pset = permSetFromResponse(perms);
 
-          isOwner = myRole === "OWNER" || myRole === "VENUE_OWNER";
+          isOwner = isOwnerRole(myRole);
 
-          canManageAdjustments = isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_MANAGE");
-          canViewAdjustments = isOwner || isAdmin || hasPerm(pset, "ADJUSTMENTS_VIEW") || canManageAdjustments;
+          canManageAdjustments = hasAdjustmentsManageAccess(pset, myRole, String(me?.system_role || ""));
+          canViewAdjustments = hasAdjustmentsViewAccess(pset, myRole, String(me?.system_role || ""));
 
           canViewDepartments = isOwner || isAdmin || hasPerm(pset, "DEPARTMENTS_VIEW");
           canViewPaymentMethods = isOwner || isAdmin || hasPerm(pset, "PAYMENT_METHODS_VIEW");
@@ -188,12 +188,9 @@
 
           canEditVenueSettings = isOwner || isAdmin || hasPerm(pset, "VENUE_SETTINGS_EDIT");
 
-          canViewReports =
-            isOwner || isAdmin ||
-            hasPermPrefix(pset, "SHIFT_REPORT_") || hasPermPrefix(pset, "REPORTS_") ||
-            hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
+          canViewReports = hasReportAccess(pset, myRole, String(me?.system_role || ""));
 
-          canViewRevenue = isOwner || isAdmin || hasPerm(pset, "REVENUE_VIEW");
+          canViewRevenue = hasRevenueViewAccess(pset, myRole, String(me?.system_role || ""));
           canViewExpenses = isOwner || isAdmin || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
           canViewPayProfiles = isOwner || isAdmin || hasPerm(pset, "PAY_PROFILES_VIEW") || hasPerm(pset, "PAY_PROFILES_MANAGE");
           canViewPayroll = isOwner || isAdmin || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");

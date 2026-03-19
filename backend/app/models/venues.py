@@ -1,8 +1,18 @@
-"""Deprecated compatibility shim.
+"""Compatibility alias for the venue router module.
 
-Legacy API/router code used to live in ``app.models.venues``.
-The canonical implementation is now in ``app.routers.venues``.
-Keep this file tiny so there is no second source of truth.
+This file used to blur the boundary between the model layer and router layer by
+re-exporting everything from ``app.routers.venues`` via ``import *``.
+Keep the alias tiny and explicit so there is no second implementation here.
+Prefer importing from ``app.routers.venues`` directly in new code.
 """
 
-from app.routers.venues import *  # noqa: F401,F403
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
+_TARGET = "app.routers.venues"
+
+
+def __getattr__(name: str) -> Any:
+    return getattr(import_module(_TARGET), name)

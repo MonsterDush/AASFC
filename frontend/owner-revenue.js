@@ -1,4 +1,3 @@
-// Legacy compatibility shim.
-// The canonical owner revenue page is /owner-turnover.html.
-// Keep this file tiny so there is no second implementation of the same screen.
+// Route alias: the canonical owner revenue page is /owner-turnover.html.
+// Keep this file redirect-only so there is no second implementation here.
 window.location.replace("/owner-turnover.html" + window.location.search + window.location.hash);

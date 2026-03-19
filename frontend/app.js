@@ -1,4 +1,4 @@
-import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
+import { normalizePermList, permSetFromResponse, roleUpper, hasReportAccess, isOwnerRole } from "/permissions.js";
 
 export const API_BASE = "https://api-dev.axelio.ru";
 export const AUTH_PAGE = "/auth.html";
@@ -1166,26 +1166,12 @@ if (activeVenueId) {
   try {
     const permsResp = await getMyVenuePermissions(activeVenueId);
     const role = roleUpper(permsResp) || roleFromList;
-    isOwner = role === "OWNER" || role === "VENUE_OWNER";
+    isOwner = isOwnerRole(role);
 
     const pset = permSetFromResponse(permsResp);
-
-    // Report access means: user can open report pages / close shift / see report sections.
-    canViewReports =
-      isOwner ||
-      hasPermPrefix(pset, "SHIFT_REPORT_") ||
-      hasPermPrefix(pset, "REPORTS_") ||
-      hasAnyPerm(pset, [
-        "SHIFT_REPORT_VIEW",
-        "SHIFT_REPORT_CLOSE",
-        "SHIFT_REPORT_EDIT",
-        "SHIFT_REPORT_REOPEN",
-        "REPORTS_VIEW_DAILY",
-        "REPORTS_VIEW_MONTHLY",
-        "REPORTS_VIEW_PNL",
-      ]);
+    canViewReports = hasReportAccess(pset, role, "");
   } catch {
-    isOwner = roleFromList === "OWNER" || roleFromList === "VENUE_OWNER";
+    isOwner = isOwnerRole(roleFromList);
     canViewReports = isOwner;
   }
 }

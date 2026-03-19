@@ -1,4 +1,4 @@
-// permissions.js — helpers for permission gating in UI (ES module)
+// permissions.js — shared permission helpers for UI gating (ES module)
 
 export function normalizePermList(permsResp) {
   const raw = Array.isArray(permsResp)
@@ -49,9 +49,6 @@ export function hasPermPrefix(permSet, prefix) {
   return false;
 }
 
-
-// --- convenience helpers (report access / system roles) ---
-
 export function isSysAdminRole(sysRoleUpper) {
   const r = String(sysRoleUpper || "").trim().toUpperCase();
   return r === "SUPER_ADMIN" || r === "MODERATOR";
@@ -62,11 +59,7 @@ export function isOwnerRole(venueRoleUpper) {
   return r === "OWNER" || r === "VENUE_OWNER";
 }
 
-/**
- * Report access means user can open report pages / see report sections.
- * We keep it permissive: any SHIFT_REPORT_* / REPORTS_* implies access.
- */
-export function canViewReports(permSet, venueRoleUpper, systemRoleUpper) {
+export function hasReportAccess(permSet, venueRoleUpper, systemRoleUpper) {
   const role = String(venueRoleUpper || "").trim().toUpperCase();
   const sys = String(systemRoleUpper || "").trim().toUpperCase();
 
@@ -86,4 +79,19 @@ export function canViewReports(permSet, venueRoleUpper, systemRoleUpper) {
       "REPORTS_VIEW_PNL",
     ])
   );
+}
+
+// Backward-compatible export name used by older pages.
+export const canViewReports = hasReportAccess;
+
+export function canManageAdjustments(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "ADJUSTMENTS_MANAGE");
+}
+
+export function canViewAdjustments(permSet, venueRoleUpper, systemRoleUpper) {
+  return canManageAdjustments(permSet, venueRoleUpper, systemRoleUpper) || hasPerm(permSet, "ADJUSTMENTS_VIEW");
+}
+
+export function canViewRevenue(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "REVENUE_VIEW");
 }

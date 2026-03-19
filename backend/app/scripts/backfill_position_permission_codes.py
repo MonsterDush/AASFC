@@ -29,73 +29,22 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
-from app.core.permissions_registry import PERMISSIONS
-from app.models import Permission, VenuePosition, VenueInvite
+from app.core.permission_codes import normalize_known_permission_codes, parse_permission_codes
+from app.models import VenuePosition, VenueInvite
 
 
 def _parse_codes(raw: str | None) -> list[str]:
-    """Tolerant parser for VenuePosition.permission_codes stored as TEXT."""
-    if raw is None:
-        return []
-    s = str(raw).strip()
-    if not s:
-        return []
-
-    # 1) JSON list (preferred)
-    try:
-        data = json.loads(s)
-        if isinstance(data, list):
-            out: list[str] = []
-            for x in data:
-                v = str(x or "").strip().upper()
-                if v and v not in out:
-                    out.append(v)
-            return out
-    except Exception:
-        pass
-
-    # 2) fallback: comma/space separated list or python-like list string
-    cleaned = s.replace("[", "").replace("]", "").replace('"', "").replace("'", "")
-    out: list[str] = []
-    for part in re.split(r"[\s,;]+", cleaned):
-        v = str(part or "").strip().upper()
-        if v and v not in out:
-            out.append(v)
-    return out
+    return parse_permission_codes(raw)
 
 
 def _normalize_permission_codes(db: Session, codes: Iterable[str] | None) -> list[str]:
-    if not codes:
-        return []
-    cleaned: list[str] = []
-    seen: set[str] = set()
-    for c in codes:
-        s = str(c or "").strip().upper()
-        if not s or s in seen:
-            continue
-        seen.add(s)
-        cleaned.append(s)
-
-    if not cleaned:
-        return []
-
-    active = set(
-        db.execute(
-            select(Permission.code).where(Permission.code.in_(cleaned), Permission.is_active.is_(True))
-        )
-        .scalars()
-        .all()
-    )
-    registry = {p.code.strip().upper() for p in PERMISSIONS}
-    # Keep codes that exist in DB as active OR are defined in code registry (even if sync wasn't run yet).
-    return [c for c in cleaned if c in active or c in registry]
+    return normalize_known_permission_codes(db, codes)
 
 
 def _normalize_invite_preset(inv: VenueInvite) -> bool:

@@ -61,7 +61,7 @@ class RevenueTests(TestCase):
         )
         user = SimpleNamespace(id=101, system_role='NONE')
 
-        with patch.object(venues, '_require_active_member_or_admin', return_value=None),              patch.object(venues, '_require_report_viewer', return_value=None),              patch.object(venues, '_can_view_revenue', return_value=True):
+        with patch.object(venues, '_require_active_member_or_admin', return_value=None),              patch.object(venues, '_require_report_viewer', return_value=None),              patch.object(venues, '_has_revenue_view_access', return_value=True):
             result = venues.get_revenue_summary(
                 venue_id=1,
                 month='2026-03',

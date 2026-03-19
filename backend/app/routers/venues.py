@@ -4,8 +4,9 @@ from datetime import datetime, timezone, date, time, timedelta
 import os
 import calendar
 import json
-import uuid
 import re
+import uuid
+
 from typing import Optional, List
 from io import BytesIO
 from urllib.parse import quote
@@ -21,6 +22,7 @@ from app.auth.deps import get_current_user, get_current_user_optional
 from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.core.tg import normalize_tg_username, send_telegram_message
+from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
 from app.services.xlsx_export import (
@@ -1169,7 +1171,7 @@ def _require_adjustments_manager(db: Session, *, venue_id: int, user: User) -> N
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
-def _user_can_manage_adjustments(db: Session, *, venue_id: int, user: User) -> bool:
+def _has_adjustments_manage_access(db: Session, *, venue_id: int, user: User) -> bool:
     return _is_owner_or_super_admin(db, venue_id=venue_id, user=user) or _is_adjustments_manager(db, venue_id=venue_id, user=user)
 
 
@@ -1182,7 +1184,7 @@ def _require_dispute_resolver(db: Session, *, venue_id: int, user: User) -> None
     except HTTPException:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
+def _has_revenue_view_access(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
     try:
@@ -1193,11 +1195,11 @@ def _can_view_revenue(db: Session, *, venue_id: int, user: User) -> bool:
 
 
 def _require_revenue_viewer(db: Session, *, venue_id: int, user: User) -> None:
-    if not _can_view_revenue(db, venue_id=venue_id, user=user):
+    if not _has_revenue_view_access(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
-def _can_export_revenue(db: Session, *, venue_id: int, user: User) -> bool:
+def _has_revenue_export_access(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
     try:
@@ -1208,7 +1210,7 @@ def _can_export_revenue(db: Session, *, venue_id: int, user: User) -> bool:
 
 
 def _require_revenue_exporter(db: Session, *, venue_id: int, user: User) -> None:
-    if not _can_export_revenue(db, venue_id=venue_id, user=user):
+    if not _has_revenue_export_access(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
@@ -1713,62 +1715,11 @@ def patch_venue_settings(
 # ---------- Positions (job roles inside venue) ----------
 
 def _parse_position_permission_codes(raw: str | None) -> list[str]:
-    """Parse VenuePosition.permission_codes stored as JSON list (preferred) or tolerate legacy formats.
+    return parse_permission_codes(raw)
 
-    Legacy formats that we tolerate:
-    - python-like list string: "['A', 'B']"
-    - comma/space separated string: "A,B C"
-    """
-    if not raw:
-        return []
-    s = str(raw).strip()
-    if not s:
-        return []
-
-    # 1) JSON list (preferred)
-    try:
-        data = json.loads(s)
-        if isinstance(data, list):
-            out: list[str] = []
-            for x in data:
-                v = str(x or "").strip().upper()
-                if v and v not in out:
-                    out.append(v)
-            return out
-    except Exception:
-        pass
-
-    # 2) fallback: comma/space separated list or python-like list string
-    cleaned = s.replace("[", "").replace("]", "").replace('"', "").replace("'", "")
-    out: list[str] = []
-    for part in re.split(r"[\s,;]+", cleaned):
-        v = str(part or "").strip().upper()
-        if v and v not in out:
-            out.append(v)
-    return out
 
 def _normalize_permission_codes(db: Session, codes: list[str] | None) -> list[str]:
-    if not codes:
-        return []
-    cleaned = []
-    seen = set()
-    for c in codes:
-        s = str(c or "").strip().upper()
-        if not s or s in seen:
-            continue
-        seen.add(s)
-        cleaned.append(s)
-
-    if not cleaned:
-        return []
-
-    active = set(
-        db.execute(select(Permission.code).where(Permission.code.in_(cleaned), Permission.is_active.is_(True))).scalars().all()
-    )
-    registry = {p.code.strip().upper() for p in PERMISSIONS}
-    # Keep codes that exist in DB as active OR are defined in code registry (even if sync wasn't run yet).
-    return [c for c in cleaned if c in active or c in registry]
-
+    return normalize_known_permission_codes(db, codes)
 
 
 
@@ -3015,7 +2966,7 @@ def list_daily_reports(
         .order_by(DailyReport.date.asc())
     ).scalars().all()
 
-    show_numbers = _can_view_revenue(db, venue_id=venue_id, user=user)
+    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user)
     return [
         {
             "id": r.id,
@@ -3047,7 +2998,7 @@ def get_daily_report(
     if r is None:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    show_numbers = _can_view_revenue(db, venue_id=venue_id, user=user)
+    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user)
     values = _load_report_values(db, report_id=r.id)
 
     dept_cnt = int(db.execute(select(func.count(Department.id)).where(Department.venue_id == venue_id)).scalar() or 0)
@@ -4630,7 +4581,7 @@ def get_dispute_thread(
         raise HTTPException(status_code=404, detail="Not found")
 
     # Access: owner/managers OR employee owning the adjustment
-    if not _user_can_manage_adjustments(db, venue_id=venue_id, user=user) and adj.member_user_id != user.id:
+    if not _has_adjustments_manage_access(db, venue_id=venue_id, user=user) and adj.member_user_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
     dis = db.execute(
@@ -4698,7 +4649,7 @@ def add_dispute_comment(
     if adj is None:
         raise HTTPException(status_code=404, detail="Not found")
 
-    is_manager = _user_can_manage_adjustments(db, venue_id=venue_id, user=user)
+    is_manager = _has_adjustments_manage_access(db, venue_id=venue_id, user=user)
     if not is_manager and adj.member_user_id != user.id and dis.created_by_user_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -5383,7 +5334,7 @@ def list_shifts(
         ).scalars().all()
         report_by_date = {r.date: r for r in rrows}
 
-    show_revenue = _can_view_revenue(db, venue_id=venue_id, user=user)
+    show_revenue = _has_revenue_view_access(db, venue_id=venue_id, user=user)
 
     # preload intervals
     interval_ids = {s.interval_id for s in shifts}

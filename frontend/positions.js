@@ -451,8 +451,7 @@ function parsePermCodes(v) {
 }
 
 
-// Permission codes are the single source of truth.
-// We intentionally do NOT consult legacy can_* flags here.
+// Permission codes are the single source of truth for position access.
 function posPermSet(p) {
   const raw = (p && p.permission_codes) ?? [];
   const arr = Array.isArray(raw) ? raw : parsePermCodes(raw);
@@ -739,13 +738,8 @@ function setupPermUX() {
     ];
     cat.forEach(([a, v]) => { if (isOn(a)) ensure(v, true); });
 
-    // shift report close/edit/reopen -> view + catalogs required by report form
-    if (isOn("SHIFT_REPORT_CLOSE") || isOn("SHIFT_REPORT_EDIT") || isOn("SHIFT_REPORT_REOPEN") || isOn("SHIFT_REPORT_VIEW")) {
-      ensure("SHIFT_REPORT_VIEW", true);
-      ensure("DEPARTMENTS_VIEW", true);
-      ensure("PAYMENT_METHODS_VIEW", true);
-      ensure("KPI_METRICS_VIEW", true);
-    }
+    // shift report close/edit/reopen -> view
+    if (isOn("SHIFT_REPORT_CLOSE") || isOn("SHIFT_REPORT_EDIT") || isOn("SHIFT_REPORT_REOPEN")) ensure("SHIFT_REPORT_VIEW", true);
   }
 
   // global on/off
@@ -795,7 +789,7 @@ async function callPositionApiWithPerms({ kind, positionId, payload, permCodes }
   try {
     return await fn({ ...basePayload, permission_codes: permCodes });
   } catch (e) {
-    // If backend doesn't support permission_codes yet, do NOT try legacy keys here.
+    // Do not fall back to removed boolean permission flags here.
     if (e?.status === 422) {
       toast("Сервер не поддерживает permission_codes для должностей. Обнови бэкенд.", "err");
     }
