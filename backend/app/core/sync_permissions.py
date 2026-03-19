@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
+from app.core.permission_policy import role_has_built_in_default
 from app.core.permissions_registry import PERMISSIONS
 from app.core.roles_registry import DEFAULT_ROLES
 from app.models.permission import Permission
@@ -55,23 +56,34 @@ def sync_permissions() -> None:
         )
 
         defaults_created = 0
+        defaults_updated = 0
+        existing_default_rows = {
+            (row.role, row.permission_code): row
+            for row in db.scalars(select(RolePermissionDefault)).all()
+        }
         for role in DEFAULT_ROLES:
             for perm in PERMISSIONS:
                 key = (role, perm.code)
-                if key not in existing_defaults:
+                should_grant = role_has_built_in_default(role, perm.code)
+                row = existing_default_rows.get(key)
+                if row is None:
                     db.add(
                         RolePermissionDefault(
                             role=role,
                             permission_code=perm.code,
-                            is_granted_by_default=False,
+                            is_granted_by_default=should_grant,
                         )
                     )
                     defaults_created += 1
+                    continue
+                if bool(row.is_granted_by_default) != bool(should_grant):
+                    row.is_granted_by_default = bool(should_grant)
+                    defaults_updated += 1
 
         db.commit()
 
         print(
-            f"Permissions sync done. permissions_created={created}, permissions_updated={updated}, defaults_created={defaults_created}"
+            f"Permissions sync done. permissions_created={created}, permissions_updated={updated}, defaults_created={defaults_created}, defaults_updated={defaults_updated}"
         )
 
 

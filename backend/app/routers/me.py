@@ -12,6 +12,7 @@ from app.auth.deps import get_current_user
 from app.auth.passwords import has_password
 from app.auth.phone_auth import get_user_auth_methods, get_user_phone
 from app.core.db import get_db
+from app.core.permission_policy import expand_permission_codes, get_default_permission_codes_for_role
 from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
 from app.core.permissions_registry import PERMISSIONS as PERMISSIONS_REGISTRY
 from app.models import (
@@ -275,19 +276,11 @@ def my_venue_permissions(
         }
 
     if user.system_role == "MODERATOR":
-        codes = db.scalars(
-            select(RolePermissionDefault.permission_code)
-            .join(Permission, Permission.code == RolePermissionDefault.permission_code)
-            .where(
-                RolePermissionDefault.role == "MODERATOR",
-                RolePermissionDefault.is_granted_by_default.is_(True),
-                Permission.is_active.is_(True),
-            )
-        ).all()
+        codes = db.scalars(select(Permission.code).where(Permission.is_active.is_(True))).all()
         return {
             "venue_id": venue_id,
             "role": "MODERATOR",
-            "permissions": list(codes),
+            "permissions": list(expand_permission_codes(codes)),
             "position": None,
         }
 
@@ -318,7 +311,7 @@ def my_venue_permissions(
         if not defaults_role:
             codes = []
         else:
-            codes = db.scalars(
+            db_codes = db.scalars(
                 select(RolePermissionDefault.permission_code)
                 .join(Permission, Permission.code == RolePermissionDefault.permission_code)
                 .where(
@@ -327,6 +320,7 @@ def my_venue_permissions(
                     Permission.is_active.is_(True),
                 )
             ).all()
+            codes = list(expand_permission_codes([*db_codes, *get_default_permission_codes_for_role(defaults_role)]))
 
     # ---- position permission codes (fine-grained) ----
     pos = db.execute(
@@ -340,7 +334,7 @@ def my_venue_permissions(
     position_codes: list[str] = []
     position_obj = None
     if pos is not None:
-        position_codes = _parse_position_permission_codes(getattr(pos, "permission_codes", None))
+        position_codes = list(expand_permission_codes(_parse_position_permission_codes(getattr(pos, "permission_codes", None))))
         position_obj = {
             "id": pos.id,
             "title": pos.title,

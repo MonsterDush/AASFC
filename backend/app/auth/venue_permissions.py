@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.permission_policy import expand_permission_codes, normalize_permission_code, role_has_built_in_default
 from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
 from app.models import Permission, RolePermissionDefault, User, VenueMember, VenuePosition
 
@@ -30,19 +31,22 @@ def require_venue_permission(
     if user.system_role == "SUPER_ADMIN":
         return
 
+    norm_permission = normalize_permission_code(permission_code)
+
     def _has_default(role: str) -> bool:
-        return bool(
+        db_has = bool(
             db.execute(
                 select(RolePermissionDefault)
                 .join(Permission, Permission.code == RolePermissionDefault.permission_code)
                 .where(
                     RolePermissionDefault.role == role,
-                    RolePermissionDefault.permission_code == permission_code,
+                    RolePermissionDefault.permission_code == norm_permission,
                     RolePermissionDefault.is_granted_by_default.is_(True),
                     Permission.is_active.is_(True),
                 )
             ).scalar_one_or_none()
         )
+        return db_has or role_has_built_in_default(role, norm_permission)
 
     if user.system_role == "MODERATOR":
         if _has_default("MODERATOR"):
@@ -98,8 +102,8 @@ def require_venue_permission(
                 out.add(v)
         return out
     raw_perm = getattr(pos, "permission_codes", None) if pos is not None else None
-    pos_codes = _parse_pos_codes(raw_perm) if pos is not None else set()
-    if permission_code.strip().upper() in pos_codes:
+    pos_codes = expand_permission_codes(_parse_pos_codes(raw_perm)) if pos is not None else set()
+    if norm_permission in pos_codes:
         return
 
     defaults_role = VENUE_ROLE_TO_DEFAULT_ROLE.get(vm.venue_role)

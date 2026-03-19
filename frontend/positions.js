@@ -739,8 +739,13 @@ function setupPermUX() {
     ];
     cat.forEach(([a, v]) => { if (isOn(a)) ensure(v, true); });
 
-    // shift report close/edit/reopen -> view
-    if (isOn("SHIFT_REPORT_CLOSE") || isOn("SHIFT_REPORT_EDIT") || isOn("SHIFT_REPORT_REOPEN")) ensure("SHIFT_REPORT_VIEW", true);
+    // shift report close/edit/reopen -> view + catalogs required by report form
+    if (isOn("SHIFT_REPORT_CLOSE") || isOn("SHIFT_REPORT_EDIT") || isOn("SHIFT_REPORT_REOPEN") || isOn("SHIFT_REPORT_VIEW")) {
+      ensure("SHIFT_REPORT_VIEW", true);
+      ensure("DEPARTMENTS_VIEW", true);
+      ensure("PAYMENT_METHODS_VIEW", true);
+      ensure("KPI_METRICS_VIEW", true);
+    }
   }
 
   // global on/off
