@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone, date, time, timedelta
+import logging
 import os
 import calendar
 import json
@@ -25,6 +26,7 @@ from app.core.tg import normalize_tg_username, send_telegram_message
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
+from app.services.notification_logs import log_notification_attempt
 from app.services.xlsx_export import (
     build_expenses_xlsx,
     build_monthly_summary_xlsx,
@@ -77,6 +79,7 @@ from app.models.daily_report_attachment import DailyReportAttachment
 from app.models.daily_report_value import DailyReportValue
 from app.models.daily_report_audit import DailyReportAudit
 from app.models.daily_report_tip_allocation import DailyReportTipAllocation
+from app.models.notification_delivery_log import NotificationDeliveryLog
 from app.models.adjustment import Adjustment
 from app.models.adjustment_dispute import AdjustmentDispute
 from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
@@ -108,6 +111,7 @@ from app.services.invites import build_invite_link, create_venue_invite, normali
 from app.settings import settings
 
 router = APIRouter(prefix="/venues", tags=["venues"])
+log = logging.getLogger("axelio.day_economics_notifications")
 
 
 _CODE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -3218,6 +3222,18 @@ def close_daily_report(
     )
 
     db.commit()
+
+    try:
+        _send_day_economics_summary_notifications(db, venue_id=venue_id, target_date=report_date)
+    except Exception as exc:
+        db.rollback()
+        log.exception(
+            "day economics summary notification failed venue_id=%s report_date=%s: %s",
+            venue_id,
+            report_date,
+            exc,
+        )
+
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
 
 
@@ -4333,6 +4349,182 @@ def _should_notify_user(u: User, kind: str) -> bool:
         return bool(getattr(u, "notify_soft_alerts", True))
     return True
 
+
+
+def _frontend_base_url() -> str:
+    return (os.getenv("FRONTEND_BASE_URL") or os.getenv("APP_BASE_URL") or "https://app-dev.axelio.ru").rstrip("/")
+
+
+def _build_owner_day_economics_link(*, venue_id: int, target_date: date) -> str:
+    return f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}&date={quote(target_date.isoformat())}"
+
+
+def _can_receive_day_economics_summary(db: Session, *, venue_id: int, user: User) -> bool:
+    if user is None:
+        return False
+    if not _should_notify_user(user, "day_economics"):
+        return False
+    if not getattr(user, "tg_user_id", None):
+        return False
+    return _has_revenue_view_access(db, venue_id=venue_id, user=user) and _is_report_viewer(db, venue_id=venue_id, user=user)
+
+
+def _fmt_money_minor(value_minor: int | None) -> str:
+    minor = int(value_minor or 0)
+    sign = "-" if minor < 0 else ""
+    abs_minor = abs(minor)
+    if abs_minor % 100 == 0:
+        rub = abs_minor // 100
+        return f"{sign}{rub:,} ₽".replace(",", " ")
+    rub = abs_minor / 100.0
+    return f"{sign}{rub:,.2f} ₽".replace(",", " ")
+
+
+def _fmt_percent_bps(value_bps: int | None) -> str:
+    if value_bps is None:
+        return "—"
+    value = int(value_bps) / 100.0
+    rendered = f"{value:.2f}".rstrip("0").rstrip(".")
+    return f"{rendered}%"
+
+
+def _format_ru_date(value: date) -> str:
+    months = {
+        1: "января", 2: "февраля", 3: "марта", 4: "апреля", 5: "мая", 6: "июня",
+        7: "июля", 8: "августа", 9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+    }
+    return f"{value.day} {months.get(value.month, value.strftime('%m'))} {value.year}"
+
+
+def _truncate_breakdown_items(items: list[dict], *, limit: int) -> list[dict]:
+    return list(items[: max(int(limit), 0)])
+
+
+def _render_breakdown(title: str, items: list[dict], *, limit: int) -> list[str]:
+    if not items:
+        return [f"{title}: —"]
+    visible = _truncate_breakdown_items(items, limit=limit)
+    lines = [f"{title}:"]
+    for item in visible:
+        lines.append(f"• {item.get('title') or 'Без названия'} — {_fmt_money_minor(int(item.get('amount_minor') or 0))}")
+    extra = max(len(items) - len(visible), 0)
+    if extra:
+        lines.append(f"• ещё {extra}")
+    return lines
+
+
+def _build_day_economics_notification_text(*, venue_name: str, target_date: date, economics: dict, detail_level: str) -> str:
+    level = str(detail_level or "standard").strip().lower()
+    if level not in {"short", "standard", "detailed"}:
+        level = "standard"
+
+    summary = economics.get("summary") or {}
+    payment_breakdown = economics.get("payment_revenue_breakdown") or []
+    department_breakdown = economics.get("department_revenue_breakdown") or []
+
+    lines: list[str] = [
+        f"📊 Экономика дня · {_format_ru_date(target_date)}",
+        f"Заведение: {venue_name}",
+        f"Выручка: {_fmt_money_minor(summary.get('revenue_minor'))}",
+        f"ФОТ: {_fmt_money_minor(summary.get('payroll_minor'))} ({_fmt_percent_bps(summary.get('payroll_ratio_bps'))})",
+        f"Прибыль: {_fmt_money_minor(summary.get('profit_minor'))}",
+    ]
+
+    draft_total_minor = int(summary.get("draft_expense_total_minor") or 0)
+    draft_count = int(summary.get("draft_expense_count") or 0)
+
+    if level in {"standard", "detailed"}:
+        lines.extend(_render_breakdown("По оплатам", payment_breakdown, limit=4 if level == "standard" else 8))
+        lines.extend(_render_breakdown("По департаментам", department_breakdown, limit=4 if level == "standard" else 8))
+        lines.append(f"Разовые расходы: {_fmt_money_minor(summary.get('point_expense_minor'))}")
+        lines.append(f"Регулярные расходы: {_fmt_money_minor(summary.get('recurring_expense_minor'))}")
+        if draft_count > 0 or draft_total_minor > 0:
+            lines.append(f"Черновые расходы: {_fmt_money_minor(draft_total_minor)} ({draft_count} шт.)")
+        else:
+            lines.append("Черновые расходы: —")
+
+    if level == "detailed":
+        point_expenses = summary.get("point_expenses") or []
+        recurring_expenses = summary.get("recurring_expenses") or []
+        if point_expenses:
+            lines.extend(_render_breakdown("Детализация разовых расходов", point_expenses, limit=6))
+        if recurring_expenses:
+            lines.extend(_render_breakdown("Детализация регулярных расходов", recurring_expenses, limit=6))
+
+    return "\n".join(lines)
+
+def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
+    members = db.execute(
+        select(User)
+        .join(VenueMember, VenueMember.user_id == User.id)
+        .where(
+            VenueMember.venue_id == int(venue_id),
+            VenueMember.is_active.is_(True),
+        )
+        .order_by(User.id.asc())
+    ).scalars().all()
+    if not members:
+        return
+
+    recipients = [user for user in members if _can_receive_day_economics_summary(db, venue_id=venue_id, user=user)]
+    if not recipients:
+        return
+
+    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
+    venue_name = _venue_name(db, venue_id)
+    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
+    sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
+
+    for recipient in recipients:
+        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{int(recipient.id)}"
+        already_sent = db.execute(
+            select(NotificationDeliveryLog.id).where(
+                NotificationDeliveryLog.idempotency_key == idempotency_key,
+                NotificationDeliveryLog.status == "sent",
+            )
+        ).scalar_one_or_none()
+        if already_sent is not None:
+            continue
+
+        detail_level = getattr(recipient, "notification_detail_level", "standard")
+        text = _build_day_economics_notification_text(
+            venue_name=venue_name,
+            target_date=target_date,
+            economics=economics,
+            detail_level=detail_level,
+        )
+        ok = tg_notify.notify(
+            chat_id=int(recipient.tg_user_id),
+            text=text,
+            url=link,
+            button_text="Открыть экономику дня",
+        )
+        if ok:
+            log_notification_attempt(
+                db,
+                notification_type="day_economics_summary",
+                status="sent",
+                user_id=int(recipient.id),
+                venue_id=int(venue_id),
+                planned_at=sent_at,
+                sent_at=sent_at,
+                idempotency_key=idempotency_key,
+                payload_preview=text[:2000],
+            )
+        else:
+            log_notification_attempt(
+                db,
+                notification_type="day_economics_summary",
+                status="failed",
+                user_id=int(recipient.id),
+                venue_id=int(venue_id),
+                planned_at=sent_at,
+                idempotency_key=idempotency_key,
+                error_text="notify() returned False",
+                payload_preview=text[:2000],
+            )
+
+    db.commit()
 
 
 @router.post("/{venue_id}/adjustments")
