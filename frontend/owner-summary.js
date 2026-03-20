@@ -10,8 +10,8 @@ import {
   api,
   API_BASE,
   toast,
-} from "/app.js";
-import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+} from "/app.js?v=20260321-miniappfix1";
+import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix1";
 
 function fmtMoneyMinor(minor) {
   const kopecks = Number(minor || 0);
@@ -58,6 +58,25 @@ function showBlock(id, visible) {
   if (el) el.style.display = visible ? "" : "none";
 }
 
+
+function withTimeout(promise, ms, label = "REQUEST_TIMEOUT") {
+  let timer = null;
+  return new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(label);
+      err.code = "TIMEOUT";
+      reject(err);
+    }, ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
+async function startupApi(path, timeoutMs = 10000, label = "STARTUP_TIMEOUT") {
+  return withTimeout(api(path), timeoutMs, label);
+}
 
 async function openExportLink(path) {
   const data = await api(path);
@@ -188,7 +207,7 @@ async function loadSummary(monthYYYYMM) {
   }
 
   try {
-    const summary = await api(`/venues/${encodeURIComponent(venueId)}/finance/summary?month=${encodeURIComponent(monthYYYYMM)}`);
+    const summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/finance/summary?month=${encodeURIComponent(monthYYYYMM)}`, 10000, "OWNER_SUMMARY_TIMEOUT");
     setText("summaryRevenue", fmtMoneyMinor(summary?.revenue_minor));
     setText("summaryExpenses", fmtMoneyMinor(summary?.expense_without_payroll_minor ?? summary?.expense_minor));
     setText("summaryPayroll", fmtMoneyMinor(summary?.payroll_minor));

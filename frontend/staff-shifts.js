@@ -11,9 +11,9 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   getVenuePositions,
-} from "/app.js";
+} from "/app.js?v=20260321-miniappfix1";
 
-import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
+import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
 
 window.onerror = function (msg, src, line, col, err) {
   const text = `JS ошибка: ${msg}\n${src || ""}:${line || 0}:${col || 0}`;
@@ -29,6 +29,25 @@ window.onunhandledrejection = function (e) {
   console.error(e);
 };
 
+
+function withTimeout(promise, ms, label = "REQUEST_TIMEOUT") {
+  let timer = null;
+  return new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(label);
+      err.code = "TIMEOUT";
+      reject(err);
+    }, ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
+async function startupApi(path, timeoutMs = 10000, label = "STARTUP_TIMEOUT") {
+  return withTimeout(api(path), timeoutMs, label);
+}
 applyTelegramTheme();
 mountCommonUI("shifts");
 
@@ -586,7 +605,7 @@ async function loadContext() {
   if (saved !== null) showAllOnCalendar = saved === "1";
 
   try {
-    const out = await api(`/venues/${encodeURIComponent(venueId)}/shift-intervals`);
+    const out = await startupApi(`/venues/${encodeURIComponent(venueId)}/shift-intervals`, 10000, "SHIFT_INTERVALS_TIMEOUT");
     intervals = normalizeList(out).filter(x => x && (x.is_active === undefined || x.is_active));
   } catch { intervals = []; }
 
@@ -631,7 +650,7 @@ function formatGlobalLine(item) {
 }
 
 async function loadMyGlobalShifts(monthStr) {
-  const out = await api(`/me/shifts?month=${encodeURIComponent(monthStr)}`).catch(() => []);
+  const out = await startupApi(`/me/shifts?month=${encodeURIComponent(monthStr)}`, 10000, "MY_SHIFTS_TIMEOUT").catch(() => []);
   return Array.isArray(out) ? out : [];
 }
 
@@ -647,7 +666,7 @@ async function loadMonth() {
       globalShifts = normalizeList(out).map(x => ({ ...x, id: x.id ?? x.shift_id }));
       shifts = [];
     } else {
-      const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m)}`);
+      const out = await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m)}`, 10000, "VENUE_SHIFTS_MONTH_TIMEOUT");
       shifts = normalizeList(out);
       globalShifts = [];
     }
@@ -706,13 +725,13 @@ async function loadWeek() {
     } else {
       // venue scope: prefer date_from/date_to; fallback to month+filter
       try {
-        const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?date_from=${encodeURIComponent(fromISO)}&date_to=${encodeURIComponent(toISO)}`);
+        const out = await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?date_from=${encodeURIComponent(fromISO)}&date_to=${encodeURIComponent(toISO)}`, 10000, "VENUE_SHIFTS_RANGE_TIMEOUT");
         shifts = normalizeList(out).filter(s => s?.date && isoInRange(s.date, fromISO, toISO));
       } catch (e1) {
         const m1 = ym(ws);
         const m2 = ym(we);
-        const out1 = await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m1)}`);
-        const out2 = (m2 === m1) ? [] : await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m2)}`);
+        const out1 = await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m1)}`, 10000, "VENUE_SHIFTS_MONTH_TIMEOUT");
+        const out2 = (m2 === m1) ? [] : await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m2)}`, 10000, "VENUE_SHIFTS_MONTH_TIMEOUT");
         shifts = normalizeList(out1).concat(normalizeList(out2))
           .filter(s => s?.date && isoInRange(s.date, fromISO, toISO));
       }

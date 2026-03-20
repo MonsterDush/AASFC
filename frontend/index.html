@@ -28,7 +28,7 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
  <script type="module">
-  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, toast, wa, setActiveVenueId, buildAuthUrl } from "/app.js";
+  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, wa, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260321-miniappfix1";
 
   const splash = document.getElementById("splash");
   const fallback = document.getElementById("fallback");
@@ -121,7 +121,7 @@ if (role) {
 
 // Fallback: ask permissions endpoint if my_role отсутствует
 try {
-  const perms = await api(`/me/venues/${encodeURIComponent(vid)}/permissions`);
+  const perms = await getMyVenuePermissions(vid, { timeoutMs: 8000 });
   const r = String(perms?.role || "").toUpperCase();
   location.replace(r === "STAFF"
     ? `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`

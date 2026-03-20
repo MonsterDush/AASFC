@@ -1,4 +1,4 @@
-import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
+import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
 
 export const API_BASE = "https://api-dev.axelio.ru";
 export const AUTH_PAGE = "/auth.html";
