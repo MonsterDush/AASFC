@@ -28,7 +28,7 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
  <script type="module">
-  import { applyTelegramTheme, ensureLogin, api, toast, wa, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260320-p21-hotfix";
+  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, toast, wa, setActiveVenueId, buildAuthUrl } from "/app.js";
 
   const splash = document.getElementById("splash");
   const fallback = document.getElementById("fallback");
@@ -69,7 +69,7 @@
         return;
       }
 
-      const me = await api("/me");
+      const me = await getMe({ timeoutMs: 8000 });
       if (me?.system_role === "SUPER_ADMIN") {
         location.replace("/admin-venues.html");
         return;
@@ -81,7 +81,12 @@
 // - Otherwise: if exactly 1 venue -> land based on role
 // - Otherwise -> venues picker
 let venues = [];
-try { venues = await api("/me/venues"); } catch { venues = []; }
+try { venues = await getMyVenues({ timeoutMs: 8000 }); } catch (e) {
+  hideSplash();
+  fallback.style.display = "block";
+  toast(e?.code === "TIMEOUT" || /TIMEOUT/i.test(String(e?.message || "")) ? "Не удалось получить список заведений. Похоже, завис запрос /me/venues в Telegram WebView." : "Не удалось получить список заведений", "err");
+  return;
+}
 
 if (!Array.isArray(venues) || venues.length === 0) {
   location.replace("/app-venues.html");

@@ -1,9 +1,4 @@
-import { normalizePermList, permSetFromResponse, roleUpper, canViewReports as hasReportAccess } from "/permissions.js?v=20260320-p21-hotfix";
-
-function isOwnerRole(role) {
-  const r = String(role || "").trim().toUpperCase();
-  return r === "OWNER" || r === "VENUE_OWNER";
-}
+import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js";
 
 export const API_BASE = "https://api-dev.axelio.ru";
 export const AUTH_PAGE = "/auth.html";
@@ -664,6 +659,29 @@ export function confirmModal({ title, text, confirmText = "Подтвердит�
 // ------------------------------
 const LS_ACTIVE_VENUE = "axelio.activeVenueId";
 
+
+function withTimeout(promise, ms, label = "REQUEST_TIMEOUT") {
+  let timer = null;
+  return new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(label);
+      err.code = "TIMEOUT";
+      reject(err);
+    }, ms);
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+
 export function getActiveVenueId() {
   try { return localStorage.getItem(LS_ACTIVE_VENUE) || ""; } catch { return ""; }
 }
@@ -678,17 +696,28 @@ export function setActiveVenueId(id) {
   } catch {}
 }
 
-export async function getMe() {
-  return api("/me");
+export async function getMe({ timeoutMs = 8000 } = {}) {
+  return withTimeout(api("/me"), timeoutMs, "ME_TIMEOUT");
 }
 
-export async function getMyVenues() {
-  return api("/me/venues");
+export async function getMyVenues({ timeoutMs = 8000 } = {}) {
+  return withTimeout(api("/me/venues"), timeoutMs, "MY_VENUES_TIMEOUT");
 }
 
-export async function getMyVenuePermissions(venueId) {
+export async function getMyVenuePermissions(venueId, { timeoutMs = 8000 } = {}) {
   if (!venueId) return { venue_id: null, role: null, permissions: [] };
-  return api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
+  try {
+    return await withTimeout(
+      api(`/me/venues/${encodeURIComponent(venueId)}/permissions`),
+      timeoutMs,
+      "MY_VENUE_PERMISSIONS_TIMEOUT",
+    );
+  } catch (e) {
+    if (e?.code === "TIMEOUT" || /TIMEOUT/i.test(String(e?.message || ""))) {
+      return { venue_id: Number(venueId) || venueId, role: null, permissions: [], _timed_out: true };
+    }
+    throw e;
+  }
 }
 
 // ------------------------------
@@ -1171,12 +1200,26 @@ if (activeVenueId) {
   try {
     const permsResp = await getMyVenuePermissions(activeVenueId);
     const role = roleUpper(permsResp) || roleFromList;
-    isOwner = isOwnerRole(role);
+    isOwner = role === "OWNER" || role === "VENUE_OWNER";
 
     const pset = permSetFromResponse(permsResp);
-    canViewReports = hasReportAccess(pset, role, "");
+
+    // Report access means: user can open report pages / close shift / see report sections.
+    canViewReports =
+      isOwner ||
+      hasPermPrefix(pset, "SHIFT_REPORT_") ||
+      hasPermPrefix(pset, "REPORTS_") ||
+      hasAnyPerm(pset, [
+        "SHIFT_REPORT_VIEW",
+        "SHIFT_REPORT_CLOSE",
+        "SHIFT_REPORT_EDIT",
+        "SHIFT_REPORT_REOPEN",
+        "REPORTS_VIEW_DAILY",
+        "REPORTS_VIEW_MONTHLY",
+        "REPORTS_VIEW_PNL",
+      ]);
   } catch {
-    isOwner = isOwnerRole(roleFromList);
+    isOwner = roleFromList === "OWNER" || roleFromList === "VENUE_OWNER";
     canViewReports = isOwner;
   }
 }
