@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.parse
 import urllib.request
 from typing import Optional
@@ -61,23 +62,29 @@ def notify(
                     **({"X-Bot-Secret": secret} if secret else {}),
                 },
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                body = resp.read().decode("utf-8", errors="ignore")
-                if 200 <= resp.status < 300:
-                    if not body:
-                        return True
-                    try:
-                        js = json.loads(body)
-                        return bool(js.get("ok", True))
-                    except Exception:
-                        return True
-                log.warning("bot-service notify failed status=%s body=%s", resp.status, body[:300])
-                return False
+            for attempt in range(2):
+                try:
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        body = resp.read().decode("utf-8", errors="ignore")
+                        if 200 <= resp.status < 300:
+                            if not body:
+                                return True
+                            try:
+                                js = json.loads(body)
+                                return bool(js.get("ok", True))
+                            except Exception:
+                                return True
+                        log.warning("bot-service notify failed status=%s body=%s", resp.status, body[:300])
+                except Exception as e:
+                    if attempt == 1:
+                        log.exception("bot-service notify exception: %s", e)
+                        return False
+                    time.sleep(0.35)
+            return False
         except Exception as e:
             log.exception("bot-service notify exception: %s", e)
             return False
 
-    # Fallback: direct Telegram API
     token = _direct_bot_token()
     if not token:
         log.warning("notify skipped: no BOT_SERVICE_URL and no telegram token (chat_id=%s)", chat_id)
@@ -99,18 +106,25 @@ def notify(
 
         data = urllib.parse.urlencode(data_dict).encode("utf-8")
         req = urllib.request.Request(api_url, data=data, method="POST")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            body = resp.read().decode("utf-8", errors="ignore")
-            js = json.loads(body) if body else {}
-            ok = bool(js.get("ok"))
-            if not ok:
-                log.warning("telegram notify failed status=%s body=%s", resp.status, body[:300])
-            return ok
+        for attempt in range(2):
+            try:
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    body = resp.read().decode("utf-8", errors="ignore")
+                    js = json.loads(body) if body else {}
+                    ok = bool(js.get("ok"))
+                    if not ok:
+                        log.warning("telegram notify failed status=%s body=%s", resp.status, body[:300])
+                    return ok
+            except Exception as e:
+                if attempt == 1:
+                    log.exception("telegram notify exception: %s", e)
+                    return False
+                time.sleep(0.35)
+        return False
     except Exception as e:
         log.exception("telegram notify exception: %s", e)
         return False
 
 
-# Backward compatible name used in older code
 def send_telegram_message(chat_id: int, text: str) -> bool:
     return notify(chat_id=chat_id, text=text)

@@ -35,7 +35,7 @@ from app.models import (
 
 router = APIRouter(tags=["me"])
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 class ProfileUpdateIn(BaseModel):
     full_name: str | None = Field(default=None, max_length=128)
@@ -49,6 +49,30 @@ class NotificationSettingsIn(BaseModel):
     notify_enabled: bool | None = None
     notify_adjustments: bool | None = None
     notify_shifts: bool | None = None
+    notify_day_economics: bool | None = None
+    notify_salary: bool | None = None
+    notify_soft_alerts: bool | None = None
+    shift_reminder_lead_time_hours: int | None = Field(default=None)
+    notification_detail_level: str | None = Field(default=None, max_length=16)
+
+    @field_validator("shift_reminder_lead_time_hours")
+    @classmethod
+    def validate_shift_reminder_lead_time_hours(cls, value: int | None):
+        if value is None:
+            return value
+        if value not in {1, 2, 6, 12, 18, 24}:
+            raise ValueError("shift_reminder_lead_time_hours must be one of: 1, 2, 6, 12, 18, 24")
+        return value
+
+    @field_validator("notification_detail_level")
+    @classmethod
+    def validate_notification_detail_level(cls, value: str | None):
+        if value is None:
+            return value
+        normalized = str(value or "").strip().lower()
+        if normalized not in {"short", "standard", "detailed"}:
+            raise ValueError("notification_detail_level must be one of: short, standard, detailed")
+        return normalized
 
 
 class ManualTipCreateIn(BaseModel):
@@ -73,6 +97,11 @@ def me(
         "notify_enabled": user.notify_enabled,
         "notify_adjustments": user.notify_adjustments,
         "notify_shifts": user.notify_shifts,
+        "notify_day_economics": user.notify_day_economics,
+        "notify_salary": user.notify_salary,
+        "notify_soft_alerts": user.notify_soft_alerts,
+        "shift_reminder_lead_time_hours": user.shift_reminder_lead_time_hours,
+        "notification_detail_level": user.notification_detail_level,
         "phone": get_user_phone(db, user_id=user.id),
         "auth_methods": get_user_auth_methods(db, user_id=user.id),
         "has_password": has_password(user),
@@ -139,6 +168,13 @@ def get_notification_settings(user: User = Depends(get_current_user)):
         "notify_enabled": user.notify_enabled,
         "notify_adjustments": user.notify_adjustments,
         "notify_shifts": user.notify_shifts,
+        "notify_day_economics": user.notify_day_economics,
+        "notify_salary": user.notify_salary,
+        "notify_soft_alerts": user.notify_soft_alerts,
+        "shift_reminder_lead_time_hours": user.shift_reminder_lead_time_hours,
+        "notification_detail_level": user.notification_detail_level,
+        "shift_reminder_lead_time_options": [1, 2, 6, 12, 18, 24],
+        "notification_detail_level_options": ["short", "standard", "detailed"],
     }
 
 
@@ -154,8 +190,30 @@ def update_notification_settings(
         user.notify_adjustments = bool(payload.notify_adjustments)
     if payload.notify_shifts is not None:
         user.notify_shifts = bool(payload.notify_shifts)
+    if payload.notify_day_economics is not None:
+        user.notify_day_economics = bool(payload.notify_day_economics)
+    if payload.notify_salary is not None:
+        user.notify_salary = bool(payload.notify_salary)
+    if payload.notify_soft_alerts is not None:
+        user.notify_soft_alerts = bool(payload.notify_soft_alerts)
+    if payload.shift_reminder_lead_time_hours is not None:
+        user.shift_reminder_lead_time_hours = int(payload.shift_reminder_lead_time_hours)
+    if payload.notification_detail_level is not None:
+        user.notification_detail_level = str(payload.notification_detail_level).strip().lower() or "standard"
     db.commit()
-    return {"ok": True}
+    return {
+        "ok": True,
+        "settings": {
+            "notify_enabled": user.notify_enabled,
+            "notify_adjustments": user.notify_adjustments,
+            "notify_shifts": user.notify_shifts,
+            "notify_day_economics": user.notify_day_economics,
+            "notify_salary": user.notify_salary,
+            "notify_soft_alerts": user.notify_soft_alerts,
+            "shift_reminder_lead_time_hours": user.shift_reminder_lead_time_hours,
+            "notification_detail_level": user.notification_detail_level,
+        },
+    }
 
 
 @router.get("/me/venues")

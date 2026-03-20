@@ -43,6 +43,7 @@ from .pay_profile_assignment import PayProfileAssignment
 from .pay_component import PayComponent
 from .payroll_run import PayrollRun
 from .payroll_line import PayrollLine
+from .notification_delivery_log import NotificationDeliveryLog
 
 __all__ = [
     "SystemRole",
@@ -91,4 +92,5 @@ __all__ = [
     "PayComponent",
     "PayrollRun",
     "PayrollLine",
+    "NotificationDeliveryLog",
 ]
