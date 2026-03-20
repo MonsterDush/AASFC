@@ -730,6 +730,43 @@ class ShiftIntervalUpdateIn(BaseModel):
     is_active: bool | None = None
 
 
+def _normalize_shift_interval_title(title: str) -> str:
+    value = str(title or "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Interval title is required")
+    return value
+
+
+def _ensure_shift_interval_title_unique(
+    db: Session,
+    *,
+    venue_id: int,
+    title: str,
+    exclude_interval_id: int | None = None,
+) -> None:
+    stmt = select(ShiftInterval.id).where(
+        ShiftInterval.venue_id == venue_id,
+        func.lower(ShiftInterval.title) == title.lower(),
+    )
+    if exclude_interval_id is not None:
+        stmt = stmt.where(ShiftInterval.id != exclude_interval_id)
+    exists_id = db.execute(stmt.limit(1)).scalar_one_or_none()
+    if exists_id is not None:
+        raise HTTPException(status_code=409, detail="Shift interval with this title already exists")
+
+
+def _count_interval_shift_usage(db: Session, *, venue_id: int, interval_id: int) -> int:
+    return int(
+        db.execute(
+            select(func.count(Shift.id)).where(
+                Shift.venue_id == venue_id,
+                Shift.interval_id == interval_id,
+            )
+        ).scalar_one()
+        or 0
+    )
+
+
 class ShiftCreateIn(BaseModel):
     date: date
     interval_id: int = Field(..., gt=0)
@@ -5186,6 +5223,12 @@ def list_shift_intervals(
         stmt = stmt.where(ShiftInterval.is_active.is_(True))
 
     rows = db.execute(stmt.order_by(ShiftInterval.start_time.asc(), ShiftInterval.id.asc())).scalars().all()
+    usage_rows = db.execute(
+        select(Shift.interval_id, func.count(Shift.id))
+        .where(Shift.venue_id == venue_id)
+        .group_by(Shift.interval_id)
+    ).all()
+    usage_by_interval = {int(interval_id): int(count or 0) for interval_id, count in usage_rows}
     return [
         {
             "id": r.id,
@@ -5193,6 +5236,8 @@ def list_shift_intervals(
             "start_time": r.start_time.strftime("%H:%M"),
             "end_time": r.end_time.strftime("%H:%M"),
             "is_active": bool(r.is_active),
+            "usage_count": usage_by_interval.get(r.id, 0),
+            "can_delete": usage_by_interval.get(r.id, 0) == 0,
         }
         for r in rows
     ]
@@ -5208,9 +5253,12 @@ def create_shift_interval(
     """Create a reusable shift interval (schedule editor only)."""
     _require_schedule_editor(db, venue_id=venue_id, user=user)
 
+    title = _normalize_shift_interval_title(payload.title)
+    _ensure_shift_interval_title_unique(db, venue_id=venue_id, title=title)
+
     obj = ShiftInterval(
         venue_id=venue_id,
-        title=payload.title.strip(),
+        title=title,
         start_time=payload.start_time,
         end_time=payload.end_time,
         is_active=payload.is_active,
@@ -5244,7 +5292,9 @@ def update_shift_interval(
     start_changed = payload.start_time is not None and payload.start_time != obj.start_time
 
     if payload.title is not None:
-        obj.title = payload.title.strip()
+        title = _normalize_shift_interval_title(payload.title)
+        _ensure_shift_interval_title_unique(db, venue_id=venue_id, title=title, exclude_interval_id=interval_id)
+        obj.title = title
     if payload.start_time is not None:
         obj.start_time = payload.start_time
     if payload.end_time is not None:
@@ -5288,7 +5338,14 @@ def delete_shift_interval(
     if obj is None:
         raise HTTPException(status_code=404, detail="Shift interval not found")
 
-    obj.is_active = False
+    usage_count = _count_interval_shift_usage(db, venue_id=venue_id, interval_id=interval_id)
+    if usage_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Shift interval is already used in shifts and cannot be deleted. Archive it instead.",
+        )
+
+    db.delete(obj)
     db.commit()
     return {"ok": True}
 
@@ -5299,6 +5356,8 @@ def list_shifts(
     month: str | None = Query(default=None, description="YYYY-MM"),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
+    interval_ids: list[int] | None = Query(default=None),
+    staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -5309,6 +5368,11 @@ def list_shifts(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
 
     stmt = select(Shift).where(Shift.venue_id == venue_id, Shift.is_active.is_(True))
+
+    if interval_ids:
+        normalized_ids = sorted({int(x) for x in interval_ids if int(x) > 0})
+        if normalized_ids:
+            stmt = stmt.where(Shift.interval_id.in_(normalized_ids))
 
     if month:
         try:
@@ -5328,6 +5392,16 @@ def list_shifts(
             stmt = stmt.where(Shift.date >= date_from)
         if date_to:
             stmt = stmt.where(Shift.date <= date_to)
+
+    assignment_exists = sa.exists(
+        select(1)
+        .select_from(ShiftAssignment)
+        .where(ShiftAssignment.shift_id == Shift.id)
+    )
+    if staffing_state == "staffed":
+        stmt = stmt.where(assignment_exists)
+    elif staffing_state == "unstaffed":
+        stmt = stmt.where(sa.not_(assignment_exists))
 
     shifts = db.execute(stmt.order_by(Shift.date.asc(), Shift.id.asc())).scalars().all()
 

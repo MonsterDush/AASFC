@@ -58,6 +58,7 @@ let venueId = params.get("venue_id") || getActiveVenueId();
 
 if (!venueId) toast("Сначала выбери заведение в «Настройках»", "warn");
 if (venueId) setActiveVenueId(venueId);
+loadScheduleFilters();
 
 await mountNav({ activeTab: "shifts", requireVenue: true });
 
@@ -68,8 +69,16 @@ const el = {
   grid: document.getElementById("calGrid"),
   dayPanel: document.getElementById("dayPanel"),
   btnLegend: document.getElementById("btnLegend"),
+  btnIntervals: document.getElementById("btnIntervals"),
   legendModal: document.getElementById("legendModal"),
   legendBody: document.getElementById("legendBody"),
+  scheduleFilters: document.getElementById("scheduleFilters"),
+  scheduleIntervalList: document.getElementById("scheduleIntervalList"),
+  scheduleFilterSummary: document.getElementById("scheduleFilterSummary"),
+  scheduleFilterScopeNote: document.getElementById("scheduleFilterScopeNote"),
+  scheduleSummary: document.getElementById("scheduleSummary"),
+  btnResetScheduleFilters: document.getElementById("btnResetScheduleFilters"),
+  btnUnstaffedOnly: document.getElementById("btnUnstaffedOnly"),
 };
 
 // DayPanel удалён: у нас есть отдельная страница/экран для графика
@@ -93,10 +102,13 @@ const view = {
 
 const LS_VIEW = "axelio.shifts.view"; // 'month' | 'week'
 const LS_WEEK_START = "axelio.shifts.weekStart"; // YYYY-MM-DD (Monday)
+const LS_FILTERS_PREFIX = "axelio.shifts.filters";
 let calendarView = (params.get("view") || localStorage.getItem(LS_VIEW) || "month");
 if (calendarView !== "week") calendarView = "month";
 
 let curWeekStart = null; // Date (Monday)
+let selectedIntervalIds = new Set();
+let unstaffedOnly = false;
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
@@ -177,6 +189,68 @@ function addDays(d, days) {
   x.setHours(0, 0, 0, 0);
   x.setDate(x.getDate() + days);
   return x;
+}
+
+function filtersStorageKey() {
+  return `${LS_FILTERS_PREFIX}.${venueId || "unknown"}`;
+}
+
+function parseIntervalIdsRaw(raw) {
+  if (!raw) return [];
+  return String(raw)
+    .split(",")
+    .map((x) => Number(String(x).trim()))
+    .filter((x) => Number.isInteger(x) && x > 0);
+}
+
+function loadScheduleFilters() {
+  let ids = [];
+  let unstaffed = false;
+  const urlIntervals = parseIntervalIdsRaw(params.get("intervals"));
+  const hasUrlIntervals = params.has("intervals");
+  const hasUrlUnstaffed = params.has("unstaffed");
+  if (hasUrlIntervals || hasUrlUnstaffed) {
+    ids = urlIntervals;
+    unstaffed = ["1", "true", "yes", "on"].includes(String(params.get("unstaffed") || "").toLowerCase());
+  } else {
+    try {
+      const raw = JSON.parse(localStorage.getItem(filtersStorageKey()) || "{}");
+      ids = parseIntervalIdsRaw(raw?.interval_ids || "");
+      unstaffed = !!raw?.unstaffed_only;
+    } catch {}
+  }
+  selectedIntervalIds = new Set(ids.map((x) => String(x)));
+  unstaffedOnly = !!unstaffed;
+}
+
+function persistScheduleFilters() {
+  const ids = Array.from(selectedIntervalIds)
+    .map((x) => Number(x))
+    .filter((x) => Number.isInteger(x) && x > 0)
+    .sort((a, b) => a - b);
+  try {
+    localStorage.setItem(filtersStorageKey(), JSON.stringify({ interval_ids: ids.join(","), unstaffed_only: !!unstaffedOnly }));
+  } catch {}
+}
+
+function pruneSelectedIntervalsAgainstActiveList() {
+  const allowed = new Set((Array.isArray(intervals) ? intervals : []).map((it) => String(it?.id ?? "")).filter(Boolean));
+  const next = new Set();
+  for (const id of selectedIntervalIds) {
+    if (allowed.has(String(id))) next.add(String(id));
+  }
+  selectedIntervalIds = next;
+}
+
+function venueShiftFiltersQuery() {
+  const p = new URLSearchParams();
+  const ids = Array.from(selectedIntervalIds)
+    .map((x) => Number(x))
+    .filter((x) => Number.isInteger(x) && x > 0)
+    .sort((a, b) => a - b);
+  for (const id of ids) p.append("interval_ids", String(id));
+  if (unstaffedOnly) p.set("staffing_state", "unstaffed");
+  return p;
 }
 
 function startOfWeek(d) {
@@ -526,6 +600,15 @@ function syncUrl() {
       p.delete("week");
     }
 
+    p.delete("intervals");
+    p.delete("unstaffed");
+    const ids = Array.from(selectedIntervalIds)
+      .map((x) => Number(x))
+      .filter((x) => Number.isInteger(x) && x > 0)
+      .sort((a, b) => a - b);
+    if (ids.length) p.set("intervals", ids.join(","));
+    if (unstaffedOnly) p.set("unstaffed", "1");
+
     history.replaceState({}, "", `${location.pathname}?${p.toString()}`);
   } catch {}
 }
@@ -573,6 +656,82 @@ async function reloadCurrentView() {
   return (calendarView === "week") ? loadWeek() : loadMonth();
 }
 
+function renderScheduleFilters() {
+  const listEl = el.scheduleIntervalList;
+  const summaryEl = el.scheduleFilterSummary;
+  const noteEl = el.scheduleFilterScopeNote;
+  if (!listEl || !summaryEl) return;
+
+  const isGlobal = calendarScope === "global";
+  el.scheduleFilters?.classList.toggle("hidden", false);
+  noteEl?.classList.toggle("hidden", !isGlobal);
+  listEl.innerHTML = "";
+  el.btnUnstaffedOnly?.classList.toggle("active", !!unstaffedOnly);
+  el.btnUnstaffedOnly && (el.btnUnstaffedOnly.disabled = isGlobal);
+  el.btnResetScheduleFilters && (el.btnResetScheduleFilters.disabled = isGlobal);
+
+  const items = Array.isArray(intervals) ? intervals.slice().sort((a, b) => intervalSortKey(a).localeCompare(intervalSortKey(b))) : [];
+  if (!isGlobal) {
+    for (const it of items) {
+      const id = String(it?.id ?? "");
+      if (!id) continue;
+      const label = document.createElement("label");
+      label.className = "schedule-check";
+      label.innerHTML = `
+        <input type="checkbox" ${selectedIntervalIds.has(id) ? "checked" : ""} />
+        <span class="schedule-check__text">
+          <span class="schedule-check__title">${escapeHtml(it.title || "Интервал")}</span>
+          <span class="schedule-check__meta">${escapeHtml(it.start_time || "?")}-${escapeHtml(it.end_time || "?")}</span>
+        </span>
+      `;
+      const input = label.querySelector("input");
+      input?.addEventListener("change", async () => {
+        if (input.checked) selectedIntervalIds.add(id);
+        else selectedIntervalIds.delete(id);
+        persistScheduleFilters();
+        renderScheduleFilters();
+        await reloadCurrentView();
+      });
+      listEl.appendChild(label);
+    }
+  }
+
+  const parts = [];
+  if (unstaffedOnly) parts.push(`<span class="badge">Без назначений</span>`);
+  if (!isGlobal) {
+    const chosen = items.filter((it) => selectedIntervalIds.has(String(it?.id ?? "")));
+    for (const it of chosen) {
+      parts.push(`<span class="badge">${escapeHtml(it.title || "Интервал")}</span>`);
+    }
+  }
+  if (!parts.length) {
+    summaryEl.innerHTML = `<span class="muted small">Фильтры не выбраны</span>`;
+  } else {
+    summaryEl.innerHTML = parts.join("");
+  }
+}
+
+function hasAssignments(shift) {
+  return ((shift?.assignments || shift?.shift_assignments || []).length || 0) > 0;
+}
+
+
+el.btnResetScheduleFilters?.addEventListener("click", async () => {
+  selectedIntervalIds = new Set();
+  unstaffedOnly = false;
+  persistScheduleFilters();
+  renderScheduleFilters();
+  await reloadCurrentView();
+});
+
+el.btnUnstaffedOnly?.addEventListener("click", async () => {
+  if (calendarScope === "global") return;
+  unstaffedOnly = !unstaffedOnly;
+  persistScheduleFilters();
+  renderScheduleFilters();
+  await reloadCurrentView();
+});
+
 
 async function loadContext() {
   if (!venueId) return;
@@ -609,12 +768,24 @@ async function loadContext() {
     intervals = normalizeList(out).filter(x => x && (x.is_active === undefined || x.is_active));
   } catch { intervals = []; }
 
+  pruneSelectedIntervalsAgainstActiveList();
+  persistScheduleFilters();
+
   buildIntervalColorMap();
 
   try {
     const out = await getVenuePositions(venueId);
     positions = normalizeList(out).filter(p => p && (p.is_active === undefined || p.is_active));
   } catch { positions = []; }
+
+  el.btnIntervals?.classList.toggle("hidden", !canEdit);
+  if (el.btnIntervals && canEdit) {
+    el.btnIntervals.onclick = () => {
+      location.href = `/shift-intervals.html?venue_id=${encodeURIComponent(venueId)}`;
+    };
+  }
+
+  renderScheduleFilters();
 }
 
 
@@ -666,7 +837,9 @@ async function loadMonth() {
       globalShifts = normalizeList(out).map(x => ({ ...x, id: x.id ?? x.shift_id }));
       shifts = [];
     } else {
-      const out = await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m)}`, 10000, "VENUE_SHIFTS_MONTH_TIMEOUT");
+      const q = venueShiftFiltersQuery();
+      q.set("month", m);
+      const out = await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?${q.toString()}`, 10000, "VENUE_SHIFTS_MONTH_TIMEOUT");
       shifts = normalizeList(out);
       globalShifts = [];
     }
@@ -677,6 +850,7 @@ async function loadMonth() {
   }
 
   buildIndex();
+  renderScheduleFilters();
   renderMonth();
 
   // Keep a selected day panel (graph) on screen
@@ -725,13 +899,20 @@ async function loadWeek() {
     } else {
       // venue scope: prefer date_from/date_to; fallback to month+filter
       try {
-        const out = await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?date_from=${encodeURIComponent(fromISO)}&date_to=${encodeURIComponent(toISO)}`, 10000, "VENUE_SHIFTS_RANGE_TIMEOUT");
+        const q = venueShiftFiltersQuery();
+        q.set("date_from", fromISO);
+        q.set("date_to", toISO);
+        const out = await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?${q.toString()}`, 10000, "VENUE_SHIFTS_RANGE_TIMEOUT");
         shifts = normalizeList(out).filter(s => s?.date && isoInRange(s.date, fromISO, toISO));
       } catch (e1) {
         const m1 = ym(ws);
         const m2 = ym(we);
-        const out1 = await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m1)}`, 10000, "VENUE_SHIFTS_MONTH_TIMEOUT");
-        const out2 = (m2 === m1) ? [] : await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m2)}`, 10000, "VENUE_SHIFTS_MONTH_TIMEOUT");
+        const q1 = venueShiftFiltersQuery();
+        q1.set("month", m1);
+        const q2 = venueShiftFiltersQuery();
+        q2.set("month", m2);
+        const out1 = await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?${q1.toString()}`, 10000, "VENUE_SHIFTS_MONTH_TIMEOUT");
+        const out2 = (m2 === m1) ? [] : await startupApi(`/venues/${encodeURIComponent(venueId)}/shifts?${q2.toString()}`, 10000, "VENUE_SHIFTS_MONTH_TIMEOUT");
         shifts = normalizeList(out1).concat(normalizeList(out2))
           .filter(s => s?.date && isoInRange(s.date, fromISO, toISO));
       }
@@ -744,6 +925,7 @@ async function loadWeek() {
   }
 
   buildIndex();
+  renderScheduleFilters();
   renderWeek(ws);
 
   const today = ymd(new Date());
@@ -1792,7 +1974,7 @@ function openDay(dateStr) {
       <div>
         ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted" style="margin-top:4px">Прошедшие дни может редактировать только владелец</div>` : ``}
       </div>
-      ${allowEdit ? `<button class="btn primary" id="btnAddShift" style="margin-top:6px">+ Добавить смену</button>` : ``}
+      ${allowEdit ? `<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:6px"><button class="btn" id="btnManageIntervals">Интервалы</button><button class="btn primary" id="btnAddShift">+ Добавить смену</button></div>` : ``}
     </div>
   `;
 
@@ -1842,6 +2024,9 @@ function openDay(dateStr) {
 
 
   if (allowEdit) {
+  document.getElementById("btnManageIntervals")?.addEventListener("click", () => {
+    location.href = `/shift-intervals.html?venue_id=${encodeURIComponent(venueId)}`;
+  });
 
   const btn = document.getElementById("btnAddShift");
   const card = document.getElementById("addShiftCard");
