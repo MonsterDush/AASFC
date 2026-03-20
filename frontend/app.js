@@ -1,4 +1,9 @@
-import { normalizePermList, permSetFromResponse, roleUpper, hasReportAccess, isOwnerRole } from "/permissions.js";
+import { normalizePermList, permSetFromResponse, roleUpper, canViewReports as hasReportAccess } from "/permissions.js?v=20260320-p21-hotfix";
+
+function isOwnerRole(role) {
+  const r = String(role || "").trim().toUpperCase();
+  return r === "OWNER" || r === "VENUE_OWNER";
+}
 
 export const API_BASE = "https://api-dev.axelio.ru";
 export const AUTH_PAGE = "/auth.html";
