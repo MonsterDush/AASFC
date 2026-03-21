@@ -125,7 +125,7 @@ function renderVenueCard(it) {
         <div class="venue-name">${esc(name)}</div>
       </div>
       <div class="venue-net">
-        <div class="muted">Итого</div>
+        <div class="muted">Итого начисление</div>
         <b>${net}</b>
       </div>
     </div>

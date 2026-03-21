@@ -59,7 +59,6 @@ try {
 await mountNav({ activeTab: (__canReports ? "finance" : "salary") });
 
 const el = {
-  subtitle: document.getElementById("subtitle"),
   monthLabel: document.getElementById("monthLabel"),
   periodMonthBtn: document.getElementById("periodMonthBtn"),
   periodRangeBtn: document.getElementById("periodRangeBtn"),
@@ -298,18 +297,11 @@ function getPeriodQuery() {
 function syncPeriodUi() {
   if (el.monthControls) el.monthControls.style.display = periodMode === "month" ? "flex" : "none";
   if (el.rangeControls) el.rangeControls.style.display = periodMode === "range" ? "flex" : "none";
-  if (el.periodMonthBtn) {
-    el.periodMonthBtn.disabled = periodMode === "month";
-    el.periodMonthBtn.classList.toggle("active", periodMode === "month");
-  }
-  if (el.periodRangeBtn) {
-    el.periodRangeBtn.disabled = periodMode === "range";
-    el.periodRangeBtn.classList.toggle("active", periodMode === "range");
-  }
+  if (el.periodMonthBtn) el.periodMonthBtn.disabled = periodMode === "month";
+  if (el.periodRangeBtn) el.periodRangeBtn.disabled = periodMode === "range";
   if (el.rangeFrom) el.rangeFrom.value = rangeFrom || "";
   if (el.rangeTo) el.rangeTo.value = rangeTo || "";
   if (el.monthLabel) el.monthLabel.textContent = periodMode === "month" ? monthTitle(curMonth) : `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}`;
-  if (el.subtitle) el.subtitle.textContent = periodMode === "month" ? "сводка за месяц" : "сводка за выбранный диапазон";
   if (el.daysChartTitle) el.daysChartTitle.textContent = periodMode === "month" ? "График по дням" : "Период по дням";
   if (el.daysListTitle) el.daysListTitle.textContent = periodMode === "month" ? "По дням" : "Дни в диапазоне";
   if (el.daysListHint) el.daysListHint.textContent = periodMode === "month" ? "" : `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}`;
@@ -569,7 +561,7 @@ async function loadMonthAll() {
     const tips = Number(v?.tips ?? 0);
     const bonuses = Number(v?.bonuses ?? 0);
     const penalties = Number(v?.penalties ?? 0);
-    const net = Number(v?.net ?? (earned + tips + bonuses - penalties) ?? 0);
+    const net = Number(v?.net ?? (earned + bonuses - penalties) ?? 0);
     const state = String(v?.period_state || "empty");
     const latest = v?.latest_recalculation?.trigger_reason ? `<div class="muted small mt-8">${esc(recalcReasonLabel(v.latest_recalculation.trigger_reason))}</div>` : "";
     if (state === "empty") {
@@ -593,7 +585,7 @@ async function loadMonthAll() {
           <div class="mini-kpi"><div class="muted small">Чаевые</div><b>${formatMoney(tips)}</b></div>
           <div class="mini-kpi"><div class="muted small">Премии</div><b>${formatMoney(bonuses)}</b></div>
           <div class="mini-kpi"><div class="muted small">Штрафы/Списания</div><b>${formatMoney(penalties)}</b></div>
-          <div class="mini-kpi total"><div class="muted small">Итого</div><b>${formatMoney(net)}</b></div>
+          <div class="mini-kpi total"><div class="muted small">Итого начисление</div><b>${formatMoney(net)}</b></div>
         </div>
         ${latest}
       </div>`;
@@ -619,7 +611,7 @@ function renderSummary() {
   const tips = Number(monthSummaryItem?.tips ?? 0);
   const bonuses = Number(monthSummaryItem?.bonuses ?? 0);
   const penalties = Number(monthSummaryItem?.penalties ?? 0);
-  const total = Number(monthSummaryItem?.net ?? (earned + tips + bonuses - penalties) ?? 0);
+  const total = Number(monthSummaryItem?.net ?? (earned + bonuses - penalties) ?? 0);
   const latest = monthSummaryItem?.latest_recalculation || null;
   const hasAny = state !== "empty" || earned !== 0 || tips !== 0 || bonuses !== 0 || penalties !== 0 || total !== 0;
 
@@ -640,7 +632,7 @@ function renderSummary() {
   let hint = "";
   if (!hasAny) {
     hint = periodMode === "month"
-      ? "За этот месяц начислений пока нет. Суммы появятся после payroll-расчёта или после добавления чаевых/корректировок."
+      ? "За этот месяц начислений пока нет. Суммы появятся после payroll-расчёта; чаевые и корректировки показываются отдельно."
       : "За выбранный диапазон начислений пока нет.";
   } else if (state === "partial") {
     hint = "Часть дней уже пересчитана автоматически, но часть данных ещё может быть в процессе обновления.";
@@ -847,7 +839,7 @@ function renderDayBreakdownModal(d, breakdown) {
 
     <div class="grid mt-12" style="gap:8px">
       <div class="row row--between"><div class="muted">Основное начисление</div><b>${esc(formatMoneyMinor(summary?.earnings_minor || 0))}</b></div>
-      <div class="row row--between"><div class="muted">Чаевые</div><b>${esc(formatMoneyMinor(summary?.tips_minor || 0))}</b></div>
+      <div class="row row--between"><div class="muted">Чаевые (отдельно)</div><b>${esc(formatMoneyMinor(summary?.tips_minor || 0))}</b></div>
       <div class="row row--between"><div class="muted">Премии</div><b>${esc(formatMoneyMinor(summary?.bonuses_minor || 0))}</b></div>
       <div class="row row--between"><div class="muted">Штрафы/списания</div><b>${esc(formatMoneyMinor(-(Number(summary?.penalties_minor || 0))))}</b></div>
       <div class="row row--between"><div class="muted">Смен / часов</div><b>${esc(String(shiftsCount))} / ${esc(hoursText)}</b></div>

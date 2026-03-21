@@ -474,7 +474,7 @@ def build_member_day_breakdown(
     tips_minor = sum(int(item.get("amount_minor") or 0) for item in items if item.get("category") == "tip")
     bonuses_minor = sum(int(item.get("amount_minor") or 0) for item in items if item.get("category") == "bonus")
     penalties_minor = -sum(int(item.get("amount_minor") or 0) for item in items if item.get("category") in {"penalty", "writeoff"})
-    total_minor = sum(int(item.get("amount_minor") or 0) for item in items)
+    total_minor = earnings_minor + bonuses_minor - penalties_minor
 
     day_minutes = int(context.minutes_by_date.get(target_date, 0))
     day_shifts = int(context.shifts_by_date.get(target_date, 0))

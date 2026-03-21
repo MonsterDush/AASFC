@@ -200,7 +200,7 @@ def build_member_period_summary(
         else:
             period_state = "empty"
 
-        source = "payroll" if payroll_present else ("partial" if any([tips_minor, bonuses_minor, penalties_minor]) else "not_calculated")
+        source = "payroll" if payroll_present else ("partial" if any([earned_minor, tips_minor, bonuses_minor, penalties_minor]) else "not_calculated")
         item = {
             "venue": {"id": int(vid), "name": venue_names.get(int(vid), "")},
             "earned_minor": int(earned_minor),

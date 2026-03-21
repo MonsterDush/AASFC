@@ -32,23 +32,10 @@
     </div>
 
     <div class="card">
-      <div class="revenue-toolbar__section revenue-toolbar__section--bottom">
-        <div class="seg seg--period" style="max-width:420px; margin:0 auto;">
-          <button type="button" id="periodMonthBtn">Месяц</button>
-          <button type="button" id="periodRangeBtn">Диапазон</button>
-        </div>
-
-        <div class="row ai-center jc-center gap-10 month-controls" id="monthControls">
-          <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
-          <b id="monthLabel">…</b>
-          <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
-        </div>
-
-        <div class="pickers range-pick jc-center" id="rangeControls" style="display:none; max-width:720px; margin:0 auto;">
-          <input id="rangeFrom" type="date" aria-label="Дата начала диапазона" />
-          <input id="rangeTo" type="date" aria-label="Дата окончания диапазона" />
-          <button class="btn primary" id="rangeApply" type="button">Показать</button>
-        </div>
+      <div class="row ai-center jc-center gap-10 month-controls">
+        <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
+        <b id="monthLabel">…</b>
+        <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
       </div>
 
       <div class="row jc-center gap-8 mt-10" id="salaryScope">
@@ -65,7 +52,7 @@
           <div class="row row--between hidden" id="rowWriteoffs"><div class="muted">Списания</div><b id="sumWriteoffs">0</b></div>
 
           <div class="row divider-top mt-8 pt-10 row--between">
-            <div class="muted">Итого</div><b id="sumTotal">0</b>
+            <div class="muted">Итого начисление</div><b id="sumTotal">0</b>
           </div>
 
           <div class="muted small mt-10" id="salarySourceHint"></div>
@@ -120,7 +107,7 @@
             <b id="allPenalties">0</b>
           </div>
           <div class="mini-kpi total">
-            <div class="muted small">Итого</div>
+            <div class="muted small">Итого начисление</div>
             <b id="allNet">0</b>
           </div>
         </div>
