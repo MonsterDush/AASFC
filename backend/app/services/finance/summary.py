@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import calendar
+import json
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -15,7 +16,12 @@ from app.models import (
     ExpenseRecognitionEntry,
     FinanceEntry,
     PaymentMethod,
+    PayrollLine,
+    PayrollRun,
     RecurringExpenseRule,
+    Shift,
+    ShiftAssignment,
+    ShiftInterval,
 )
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense
 
@@ -76,6 +82,136 @@ def _sum_closed_report_revenue_minor(db: Session, *, venue_id: int, period_start
         ).scalar()
         or 0
     ) * 100
+
+
+def _load_day_member_shift_metrics(db: Session, *, venue_id: int, target_date: date) -> dict[int, dict[str, int]]:
+    rows = db.execute(
+        select(
+            ShiftAssignment.member_user_id,
+            Shift.id.label("shift_id"),
+            ShiftInterval.start_time,
+            ShiftInterval.end_time,
+        )
+        .join(Shift, Shift.id == ShiftAssignment.shift_id)
+        .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
+        .where(
+            Shift.venue_id == int(venue_id),
+            Shift.is_active.is_(True),
+            Shift.date == target_date,
+        )
+    ).all()
+
+    metrics: dict[int, dict[str, int]] = {}
+    seen_shifts_by_member: dict[int, set[int]] = {}
+    for row in rows:
+        member_user_id = int(row.member_user_id)
+        slot = metrics.setdefault(member_user_id, {"minutes_total": 0, "shifts_count": 0})
+        seen = seen_shifts_by_member.setdefault(member_user_id, set())
+        shift_id = int(row.shift_id)
+        if shift_id in seen:
+            continue
+        seen.add(shift_id)
+        start_dt = datetime.combine(date(2000, 1, 1), row.start_time)
+        end_dt = datetime.combine(date(2000, 1, 1), row.end_time)
+        if end_dt <= start_dt:
+            end_dt += timedelta(days=1)
+        slot["minutes_total"] += int((end_dt - start_dt).total_seconds() // 60)
+        slot["shifts_count"] += 1
+    return metrics
+
+
+def _load_day_department_revenue_minor(db: Session, *, venue_id: int, target_date: date) -> dict[int, int]:
+    rows = db.execute(
+        select(DailyReportValue.ref_id, func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"))
+        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == 'CLOSED',
+            DailyReport.date == target_date,
+            DailyReportValue.kind == 'DEPT',
+        )
+        .group_by(DailyReportValue.ref_id)
+    ).all()
+    return {int(row.ref_id): int(row.amount or 0) * 100 for row in rows}
+
+
+def _round_ratio_amount(amount_minor: int, numerator: int, denominator: int) -> int:
+    amount_minor = int(amount_minor or 0)
+    numerator = int(numerator or 0)
+    denominator = int(denominator or 0)
+    if amount_minor <= 0 or numerator <= 0 or denominator <= 0:
+        return 0
+    return int((amount_minor * numerator + (denominator // 2)) // denominator)
+
+
+def _calculate_daily_payroll_minor_from_payroll_run(db: Session, *, venue_id: int, target_date: date) -> int:
+    month_start = date(target_date.year, target_date.month, 1)
+    run = db.execute(
+        select(PayrollRun)
+        .where(
+            PayrollRun.venue_id == int(venue_id),
+            PayrollRun.period_month == month_start,
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        return 0
+
+    rows = db.execute(
+        select(PayrollLine.member_user_id, PayrollLine.breakdown_json)
+        .where(
+            PayrollLine.venue_id == int(venue_id),
+            PayrollLine.payroll_run_id == int(run.id),
+        )
+    ).all()
+    if not rows:
+        return 0
+
+    target_date_iso = target_date.isoformat()
+    day_shift_metrics = _load_day_member_shift_metrics(db, venue_id=venue_id, target_date=target_date)
+    day_total_revenue_minor = _sum_closed_report_revenue_minor(db, venue_id=venue_id, period_start=target_date, period_end=target_date)
+    day_department_revenue_minor = _load_day_department_revenue_minor(db, venue_id=venue_id, target_date=target_date)
+
+    total_minor = 0
+    for row in rows:
+        member_user_id = int(row.member_user_id)
+        try:
+            breakdown = json.loads(row.breakdown_json) if row.breakdown_json else {}
+        except Exception:
+            breakdown = {}
+        metrics = breakdown.get("metrics") or {}
+        worked_dates = {str(item) for item in (metrics.get("worked_dates") or []) if item}
+        if target_date_iso not in worked_dates:
+            continue
+
+        day_metrics = day_shift_metrics.get(member_user_id) or {"minutes_total": 0, "shifts_count": 0}
+        day_minutes = int(day_metrics.get("minutes_total") or 0)
+        day_shifts = int(day_metrics.get("shifts_count") or 0)
+        total_minutes = int(metrics.get("minutes_total") or 0)
+        total_shifts = int(metrics.get("shifts_count") or 0)
+        worked_dates_count = max(int(metrics.get("worked_dates_count") or len(worked_dates) or 0), 1)
+
+        for component in (breakdown.get("components") or []):
+            component_type = str(component.get("component_type") or "").strip().upper()
+            component_amount_minor = int(component.get("amount_minor") or 0)
+            if component_amount_minor <= 0:
+                continue
+
+            if component_type == "SALARY_HOURLY":
+                total_minor += _round_ratio_amount(component_amount_minor, day_minutes, total_minutes)
+            elif component_type == "SALARY_PER_SHIFT":
+                total_minor += _round_ratio_amount(component_amount_minor, day_shifts, total_shifts)
+            elif component_type == "PERCENT_TOTAL_REVENUE":
+                percent_bps = int(component.get("percent_bps") or 0)
+                total_minor += int((day_total_revenue_minor * percent_bps + 5000) // 10000)
+            elif component_type == "PERCENT_DEPARTMENT_REVENUE":
+                percent_bps = int(component.get("percent_bps") or 0)
+                department_id = component.get("department_id")
+                department_revenue_minor = int(day_department_revenue_minor.get(int(department_id), 0)) if department_id is not None else 0
+                total_minor += int((department_revenue_minor * percent_bps + 5000) // 10000)
+            else:
+                total_minor += _round_ratio_amount(component_amount_minor, 1, worked_dates_count)
+
+    return int(total_minor)
 
 
 def _backfill_missing_expense_recognition(db: Session, *, venue_id: int) -> int:
@@ -473,7 +609,9 @@ def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, in
     point_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in point_expenses))
     recurring_expenses = _group_daily_recurring_expenses(db, venue_id=venue_id, target_date=target_date)
     recurring_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in recurring_expenses))
-    payroll_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='PAYROLL')
+    payroll_minor = _calculate_daily_payroll_minor_from_payroll_run(db, venue_id=venue_id, target_date=target_date)
+    if payroll_minor <= 0:
+        payroll_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='PAYROLL')
     adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='ADJUSTMENT')
     adjustment_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='ADJUSTMENT')
     refund_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REFUND')

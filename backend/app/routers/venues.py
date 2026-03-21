@@ -4466,7 +4466,22 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
     if not members:
         return
 
-    recipients = [user for user in members if _can_receive_day_economics_summary(db, venue_id=venue_id, user=user)]
+    recipients: list[User] = []
+    seen_recipient_ids: set[int] = set()
+    seen_tg_user_ids: set[int] = set()
+    for user in members:
+        if not _can_receive_day_economics_summary(db, venue_id=venue_id, user=user):
+            continue
+        user_id = int(user.id)
+        tg_user_id = int(user.tg_user_id) if getattr(user, "tg_user_id", None) is not None else None
+        if user_id in seen_recipient_ids:
+            continue
+        if tg_user_id is not None and tg_user_id in seen_tg_user_ids:
+            continue
+        recipients.append(user)
+        seen_recipient_ids.add(user_id)
+        if tg_user_id is not None:
+            seen_tg_user_ids.add(tg_user_id)
     if not recipients:
         return
 
