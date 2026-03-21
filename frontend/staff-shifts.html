@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/styles.css?mdx3" />
+  <link rel="stylesheet" href="/styles.css?20260322-exportfix1" />
 <style>
   /* ===== Week view (HARD 2 columns inside a day) =====
      IMPORTANT: JS toggles `is-week` on #calGrid, so selectors must match that element.
@@ -190,30 +190,29 @@
 
     <div class="modal" id="exportModal">
       <div class="modal__backdrop" data-close-export></div>
-      <div class="modal__panel modal__panel--wide">
-        <div class="modal__head">
-          <div class="minw-0">
+      <div class="modal__panel modal__panel--wide export-modal-panel">
+        <div class="modal__head export-modal-head">
+          <div class="minw-0 export-modal-copy">
             <b class="modal__title">Экспорт графика</b>
             <div class="modal__subtitle" id="exportModalSubtitle">Текущее состояние графика</div>
           </div>
-          <div class="row ai-center gap-10">
-            <button class="btn" type="button" id="btnExportShare">Поделиться</button>
-            <button class="btn" type="button" id="btnExportTelegram">Telegram</button>
-            <button class="btn" type="button" id="btnExportDownloadPng">PNG</button>
-            <button class="btn" type="button" id="btnExportDownloadWebp">WebP</button>
-            <button class="btn" type="button" data-close-export>Закрыть</button>
-          </div>
         </div>
-        <div class="modal__body">
+        <div class="modal__body export-modal-body">
           <div class="export-status muted" id="exportStatus">Готовим изображение…</div>
           <div class="export-preview-wrap">
             <img id="exportPreviewImage" class="export-preview-image hidden" alt="Предпросмотр экспорта графика" />
+          </div>
+          <div class="export-actions">
+            <button class="btn primary" type="button" id="btnExportShare">Поделиться</button>
+            <button class="btn" type="button" id="btnExportTelegram">В Telegram</button>
+            <button class="btn" type="button" id="btnExportDownload">Скачать</button>
+            <button class="btn" type="button" data-close-export>Закрыть</button>
           </div>
         </div>
       </div>
     </div>
 
   <div id="shiftsRoot"class="hidden"></div>
-  <script type="module" src="/staff-shifts.js?v=20260321-sprint3"></script>
+  <script type="module" src="/staff-shifts.js?v=20260322-exportfix1"></script>
 </body>
 </html>

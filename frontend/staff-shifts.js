@@ -85,8 +85,7 @@ const el = {
   exportModalSubtitle: document.getElementById("exportModalSubtitle"),
   btnExportShare: document.getElementById("btnExportShare"),
   btnExportTelegram: document.getElementById("btnExportTelegram"),
-  btnExportDownloadPng: document.getElementById("btnExportDownloadPng"),
-  btnExportDownloadWebp: document.getElementById("btnExportDownloadWebp"),
+  btnExportDownload: document.getElementById("btnExportDownload"),
 };
 
 // DayPanel удалён: у нас есть отдельная страница/экран для графика
@@ -2202,7 +2201,6 @@ const exportState = {
   canvas: null,
   meta: null,
   pngBlob: null,
-  webpBlob: null,
   previewUrl: "",
   filenameBase: "schedule",
 };
@@ -2219,7 +2217,6 @@ function resetExportState() {
   exportState.canvas = null;
   exportState.meta = null;
   exportState.pngBlob = null;
-  exportState.webpBlob = null;
   exportState.filenameBase = "schedule";
 }
 
@@ -2239,8 +2236,7 @@ function setExportButtonsDisabled(disabled) {
   [
     el.btnExportShare,
     el.btnExportTelegram,
-    el.btnExportDownloadPng,
-    el.btnExportDownloadWebp,
+    el.btnExportDownload,
   ].forEach((btn) => {
     if (btn) btn.disabled = !!disabled;
   });
@@ -2514,21 +2510,162 @@ async function loadExportLogo(meta) {
   return loadImage(sameOriginUrl);
 }
 
+
 async function renderScheduleExportCanvas(meta) {
   const range = currentRangeContext();
   const isWeek = range.view === "week";
-  const width = isWeek ? 1750 : 1820;
-  const padding = 40;
-  const gridGap = 12;
+  const padding = isWeek ? 36 : 40;
+  const gridGap = isWeek ? 14 : 12;
+  const bg = "#F3F5F9";
+  const card = "#FFFFFF";
+  const border = "#D9E0EA";
+  const text = "#0F172A";
+  const muted = "#64748B";
+  const subtle = "#E8EDF5";
+  const accent = "#6366F1";
+  const todayIso = ymd(new Date());
+  const logo = await loadExportLogo(meta);
+
+  if (isWeek) {
+    const width = 1180;
+    const headerCardH = 164;
+    const statsY = 222;
+    const statGap = 14;
+    const statsCols = 2;
+    const statW = (width - padding * 2 - statGap) / statsCols;
+    const statsH = 82;
+    const statsRows = 2;
+    const daysTop = statsY + statsRows * statsH + statGap + 26;
+    const stats = countVisibleStats(range.periodDates);
+    const scopeLabel = calendarScope === "global" ? "Общий" : (showAllOnCalendar ? "Все" : "Мои");
+    const statItems = [
+      { title: "Всего смен", value: String(stats.total) },
+      { title: "Укомплектовано", value: String(stats.staffed) },
+      { title: "Неукомплектовано", value: String(stats.unstaffed) },
+      { title: "Режим", value: scopeLabel },
+    ];
+
+    const dayCards = range.gridDates.map((dateStr, index) => {
+      const dayDate = new Date(`${dateStr}T00:00:00`);
+      const lines = buildExportLinesForDate(dateStr);
+      const visibleCount = Math.max(1, Math.min(lines.length, 9));
+      const cardH = Math.max(122, 78 + visibleCount * 28 + (lines.length > visibleCount ? 28 : 0));
+      return {
+        dateStr,
+        index,
+        dayDate,
+        lines,
+        visibleCount,
+        cardH,
+      };
+    });
+
+    const daysHeight = dayCards.reduce((sum, item, idx) => sum + item.cardH + (idx ? gridGap : 0), 0);
+    const footerH = 42;
+    const height = daysTop + daysHeight + footerH;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas not supported");
+
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, width, height);
+
+    fillRoundRect(ctx, padding, 32, width - padding * 2, headerCardH, 28, card, border, 1);
+
+    let titleX = padding + 28;
+    if (logo) {
+      const size = 64;
+      ctx.drawImage(logo, padding + 24, 50, size, size);
+      titleX = padding + 24 + size + 18;
+    }
+
+    ctx.fillStyle = text;
+    ctx.textBaseline = "top";
+    ctx.font = "700 38px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText(meta?.venue_name || currentVenueName || "График смен", titleX, 54);
+
+    ctx.font = "600 24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillStyle = muted;
+    ctx.fillText(meta?.period_label || range.periodLabel, titleX, 102);
+
+    ctx.font = "500 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    drawWrappedText(ctx, meta?.filters_text || buildLocalExportMetadata().filters_text, titleX, 136, width - padding * 2 - (titleX - padding) - 24, 24, 2, muted);
+
+    for (let i = 0; i < statItems.length; i++) {
+      const row = Math.floor(i / statsCols);
+      const col = i % statsCols;
+      const x = padding + col * (statW + statGap);
+      const y = statsY + row * (statsH + statGap);
+      fillRoundRect(ctx, x, y, statW, statsH, 22, card, border, 1);
+      ctx.fillStyle = muted;
+      ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+      ctx.fillText(statItems[i].title, x + 20, y + 18);
+      ctx.fillStyle = text;
+      ctx.font = "700 28px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+      ctx.fillText(statItems[i].value, x + 20, y + 42);
+    }
+
+    let y = daysTop;
+    for (const item of dayCards) {
+      const x = padding;
+      const dayDate = item.dayDate;
+      const dateLabel = `${WEEKDAYS[item.index]} · ${pad2(dayDate.getDate())}.${pad2(dayDate.getMonth() + 1)}`;
+      fillRoundRect(ctx, x, y, width - padding * 2, item.cardH, 22, card, item.dateStr === todayIso ? accent : border, item.dateStr === todayIso ? 2 : 1);
+
+      ctx.fillStyle = text;
+      ctx.font = "700 24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+      ctx.fillText(dateLabel, x + 20, y + 18);
+
+      const countLabel = item.lines.length ? `${item.lines.length} смен` : "Нет смен";
+      ctx.fillStyle = muted;
+      ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+      const countWidth = ctx.measureText(countLabel).width;
+      ctx.fillText(countLabel, x + (width - padding * 2) - 20 - countWidth, y + 22);
+
+      if (!item.lines.length) {
+        ctx.fillStyle = muted;
+        ctx.font = "500 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+        ctx.fillText("Нет смен", x + 20, y + 62);
+      } else {
+        ctx.font = "500 19px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+        const lineStartY = y + 58;
+        const maxTextWidth = width - padding * 2 - 60;
+        const visible = item.lines.slice(0, item.visibleCount);
+        for (let i = 0; i < visible.length; i++) {
+          const line = visible[i];
+          const lineY = lineStartY + i * 28;
+          fillRoundRect(ctx, x + 20, lineY + 8, 9, 9, 4.5, line.color || "#94A3B8", "");
+          ctx.fillStyle = text;
+          ctx.fillText(truncateCanvasText(ctx, line.text, maxTextWidth), x + 36, lineY);
+        }
+        if (item.lines.length > visible.length) {
+          ctx.fillStyle = muted;
+          ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+          ctx.fillText(`+${item.lines.length - visible.length} ещё`, x + 20, lineStartY + visible.length * 28 + 4);
+        }
+      }
+
+      y += item.cardH + gridGap;
+    }
+
+    ctx.fillStyle = muted;
+    ctx.font = "500 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText("Экспортировано из Axelio", padding, height - 22);
+    return canvas;
+  }
+
+  const width = 1820;
   const cols = 7;
-  const rows = isWeek ? 1 : 6;
+  const rows = 6;
   const headerCardH = 168;
   const statsY = 228;
   const statsH = 86;
   const gridTop = 360;
   const footerH = 46;
   const cellW = (width - padding * 2 - gridGap * (cols - 1)) / cols;
-  const cellH = isWeek ? 420 : 160;
+  const cellH = 160;
   const height = gridTop + rows * cellH + (rows - 1) * gridGap + footerH;
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -2536,20 +2673,11 @@ async function renderScheduleExportCanvas(meta) {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas not supported");
 
-  const bg = "#F3F5F9";
-  const card = "#FFFFFF";
-  const border = "#D9E0EA";
-  const text = "#0F172A";
-  const muted = "#64748B";
-  const subtle = "#E8EDF5";
-  const todayIso = ymd(new Date());
-
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);
 
   fillRoundRect(ctx, padding, 32, width - padding * 2, headerCardH, 28, card, border, 1);
 
-  const logo = await loadExportLogo(meta);
   let titleX = padding + 28;
   if (logo) {
     const size = 64;
@@ -2601,52 +2729,49 @@ async function renderScheduleExportCanvas(meta) {
   const monthKey = ym(curMonth);
   for (let index = 0; index < range.gridDates.length; index++) {
     const dateStr = range.gridDates[index];
-    const row = isWeek ? 0 : Math.floor(index / 7);
+    const row = Math.floor(index / 7);
     const col = index % 7;
     const x = padding + col * (cellW + gridGap);
     const y = gridTop + row * (cellH + gridGap);
-    const inMonth = isWeek || dateStr.startsWith(monthKey);
+    const inMonth = dateStr.startsWith(monthKey);
     const isToday = dateStr === todayIso;
-    fillRoundRect(ctx, x, y, cellW, cellH, 18, inMonth ? card : subtle, isToday ? "#6366F1" : border, isToday ? 2 : 1);
+    fillRoundRect(ctx, x, y, cellW, cellH, 18, inMonth ? card : subtle, isToday ? accent : border, isToday ? 2 : 1);
 
     const dayDate = new Date(`${dateStr}T00:00:00`);
     ctx.fillStyle = text;
     ctx.font = "700 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    const dateLabel = isWeek ? `${WEEKDAYS[col]} · ${pad2(dayDate.getDate())}.${pad2(dayDate.getMonth() + 1)}` : `${dayDate.getDate()}`;
-    ctx.fillText(dateLabel, x + 16, y + 14);
+    ctx.fillText(`${dayDate.getDate()}`, x + 16, y + 14);
 
     const lines = buildExportLinesForDate(dateStr);
-    const maxLines = isWeek ? 11 : 4;
-    const visible = lines.slice(0, maxLines);
+    const visible = lines.slice(0, 4);
     const lineYStart = y + 48;
-    const lineH = isWeek ? 28 : 22;
-    ctx.font = `${isWeek ? 500 : 600} ${isWeek ? 19 : 15}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
+    const lineH = 22;
+    ctx.font = "600 15px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
     for (let i = 0; i < visible.length; i++) {
       const line = visible[i];
       const lineY = lineYStart + i * lineH;
-      ctx.fillStyle = line.color || "#94A3B8";
-      fillRoundRect(ctx, x + 16, lineY + (isWeek ? 8 : 6), 8, isWeek ? 8 : 7, 4, line.color || "#94A3B8", "");
+      fillRoundRect(ctx, x + 16, lineY + 6, 8, 7, 4, line.color || "#94A3B8", "");
       ctx.fillStyle = text;
-      const maxTextWidth = cellW - 16 - 16 - 16;
+      const maxTextWidth = cellW - 48;
       ctx.fillText(truncateCanvasText(ctx, line.text, maxTextWidth), x + 30, lineY);
     }
 
     if (lines.length > visible.length) {
       ctx.fillStyle = muted;
-      ctx.font = `${isWeek ? 600 : 600} ${isWeek ? 18 : 15}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
+      ctx.font = "600 15px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
       ctx.fillText(`+${lines.length - visible.length} ещё`, x + 16, lineYStart + visible.length * lineH + 2);
     }
 
     if (!lines.length) {
       ctx.fillStyle = muted;
-      ctx.font = `${isWeek ? 500 : 500} ${isWeek ? 18 : 15}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
+      ctx.font = "500 15px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
       ctx.fillText("Нет смен", x + 16, lineYStart);
     }
   }
 
   ctx.fillStyle = muted;
   ctx.font = "500 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-  ctx.fillText("Экспортировано из Axelio · учитываются активные фильтры графика", padding, height - 24);
+  ctx.fillText("Экспортировано из Axelio", padding, height - 24);
   return canvas;
 }
 
@@ -2670,6 +2795,7 @@ async function canvasToBlob(canvas, type, quality = 0.95) {
   });
 }
 
+
 async function ensureExportArtifact() {
   if (exportState.canvas && exportState.pngBlob && exportState.meta) return exportState;
   const meta = await getExportMetadata();
@@ -2680,12 +2806,6 @@ async function ensureExportArtifact() {
   exportState.pngBlob = pngBlob;
   exportState.filenameBase = buildExportFilenameBase(meta);
   return exportState;
-}
-
-async function ensureWebpBlob() {
-  await ensureExportArtifact();
-  if (!exportState.webpBlob && exportState.canvas) exportState.webpBlob = await canvasToBlob(exportState.canvas, "image/webp", 0.94);
-  return exportState.webpBlob;
 }
 
 function downloadBlob(blob, filename) {
@@ -2704,13 +2824,6 @@ function downloadBlob(blob, filename) {
   }
 }
 
-function currentShiftsPageUrl() {
-  const meta = exportState.meta || null;
-  if (meta?.share_url) return String(meta.share_url);
-  if (meta?.deep_link_url) return String(meta.deep_link_url);
-  return new URL(`${location.pathname}${location.search}`, location.origin).toString();
-}
-
 function canShareFile(file) {
   try {
     return !!(navigator.canShare && navigator.canShare({ files: [file] }));
@@ -2719,53 +2832,54 @@ function canShareFile(file) {
   }
 }
 
+function canWriteImageToClipboard() {
+  return !!(navigator.clipboard && window.ClipboardItem);
+}
+
+async function copyImageBlobToClipboard(blob) {
+  if (!canWriteImageToClipboard()) throw new Error("Буфер обмена недоступен");
+  const item = new ClipboardItem({ [blob.type || "image/png"]: blob });
+  await navigator.clipboard.write([item]);
+}
+
 async function shareExportImage() {
   const art = await ensureExportArtifact();
   const file = new File([art.pngBlob], `${art.filenameBase}.png`, { type: "image/png" });
-  const shareUrl = art.meta?.share_url || currentShiftsPageUrl();
 
   if (canShareFile(file) && navigator.share) {
-    await navigator.share({
-      title: art.meta?.share_title || "График смен",
-      text: art.meta?.share_text || art.meta?.period_label || "График смен",
-      files: [file],
-    });
-    return;
+    await navigator.share({ files: [file] });
+    return "native-file";
   }
 
-  if (navigator.share) {
-    await navigator.share({
-      title: art.meta?.share_title || "График смен",
-      text: art.meta?.share_text || art.meta?.period_label || "График смен",
-      url: shareUrl,
-    });
-    return;
+  if (canWriteImageToClipboard()) {
+    await copyImageBlobToClipboard(art.pngBlob);
+    toast("Картинка скопирована в буфер обмена", "ok");
+    return "clipboard";
   }
 
-  openTelegramShare();
+  downloadBlob(art.pngBlob, `${art.filenameBase}.png`);
+  toast("Браузер не умеет передавать картинку напрямую — скачал PNG", "warn");
+  return "download";
 }
 
-function openTelegramShare() {
-  const meta = exportState.meta || buildLocalExportMetadata();
-  const shareUrl = meta.share_url || currentShiftsPageUrl();
-  const tgUrl = meta.telegram_share_url || `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(meta.share_text || meta.period_label || "График смен")}`;
-  const tg = window.Telegram?.WebApp;
-  try {
-    if (tg?.openTelegramLink) {
-      tg.openTelegramLink(tgUrl);
-      return true;
-    }
-    if (tg?.openLink) {
-      tg.openLink(tgUrl, { try_instant_view: false });
-      return true;
-    }
-  } catch {}
-  try {
-    window.open(tgUrl, "_blank", "noopener,noreferrer");
-    return true;
-  } catch {
-    return false;
+async function openTelegramShare() {
+  const art = await ensureExportArtifact();
+  const file = new File([art.pngBlob], `${art.filenameBase}.png`, { type: "image/png" });
+
+  if (canShareFile(file) && navigator.share) {
+    await navigator.share({ files: [file] });
+    return "native-file";
   }
+
+  if (canWriteImageToClipboard()) {
+    await copyImageBlobToClipboard(art.pngBlob);
+    toast("Картинка скопирована — вставь её в Telegram", "ok");
+    return "clipboard";
+  }
+
+  downloadBlob(art.pngBlob, `${art.filenameBase}.png`);
+  toast("Этот браузер не умеет отправлять картинку напрямую в Telegram — скачал PNG", "warn");
+  return "download";
 }
 
 async function refreshExportPreview() {
@@ -2786,9 +2900,8 @@ async function refreshExportPreview() {
       el.exportPreviewImage.classList.remove("hidden");
     }
     if (el.exportModalSubtitle) el.exportModalSubtitle.textContent = `${art.meta?.period_label || ""} · ${art.meta?.filters_text || ""}`;
-    setExportStatus("Можно поделиться или скачать текущий вид графика.");
+    setExportStatus("");
     setExportButtonsDisabled(false);
-    if (el.btnExportTelegram) el.btnExportTelegram.disabled = !window.Telegram?.WebApp;
   } catch (e) {
     setExportStatus(e?.message || "Не удалось подготовить экспорт", { error: true });
     toast(e?.message || "Не удалось подготовить экспорт", "err");
@@ -2800,13 +2913,8 @@ async function openExportModal() {
   await refreshExportPreview();
 }
 
-async function downloadExportAs(type) {
+async function downloadExportImage() {
   const art = await ensureExportArtifact();
-  if (type === "webp") {
-    const blob = await ensureWebpBlob();
-    downloadBlob(blob, `${art.filenameBase}.webp`);
-    return;
-  }
   downloadBlob(art.pngBlob, `${art.filenameBase}.png`);
 }
 
@@ -2822,25 +2930,22 @@ el.btnExportShare?.addEventListener("click", async () => {
   }
 });
 
-el.btnExportTelegram?.addEventListener("click", () => {
-  if (!openTelegramShare()) toast("Не удалось открыть Telegram share", "err");
+el.btnExportTelegram?.addEventListener("click", async () => {
+  try {
+    await openTelegramShare();
+  } catch (e) {
+    toast(e?.message || "Не удалось подготовить картинку для Telegram", "err");
+  }
 });
 
-el.btnExportDownloadPng?.addEventListener("click", async () => {
+el.btnExportDownload?.addEventListener("click", async () => {
   try {
-    await downloadExportAs("png");
+    await downloadExportImage();
   } catch (e) {
     toast(e?.message || "Не удалось скачать PNG", "err");
   }
 });
 
-el.btnExportDownloadWebp?.addEventListener("click", async () => {
-  try {
-    await downloadExportAs("webp");
-  } catch (e) {
-    toast(e?.message || "Не удалось скачать WebP", "err");
-  }
-});
 
 // navigation (month/week)
 el.prev.onclick = async () => {
