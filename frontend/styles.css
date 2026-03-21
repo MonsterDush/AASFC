@@ -632,7 +632,7 @@ input[type="checkbox"],input[type="radio"]{
 }
 @media (max-width:560px){
   .schedule-filter-trigger{
-    min-height:43px;
+    min-height:37px;
     padding:0 36px 0 14px;
   }
   .schedule-filter-menu{
