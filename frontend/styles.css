@@ -544,14 +544,16 @@ input[type="checkbox"],input[type="radio"]{
 .schedule-filter-trigger{
   width:auto;
   min-width:0;
+  min-height:44px;
   display:inline-flex;
   align-items:center;
   justify-content:space-between;
   gap:10px;
-  padding:12px 14px;
-  border-radius:16px;
+  padding:11px 12px;
+  border-radius:12px;
   background:var(--surface2);
   white-space:nowrap;
+  line-height:1.2;
 }
 .schedule-filter-trigger.active{
   background:var(--accentSoftBg);
@@ -580,6 +582,7 @@ input[type="checkbox"],input[type="radio"]{
   border:1px solid var(--border);
   background:var(--surface2);
   box-shadow:var(--shadow);
+  overflow:hidden;
 }
 .schedule-filter-menu.hidden{display:none}
 .schedule-filter-menu__actions{
@@ -650,10 +653,10 @@ input[type="checkbox"],input[type="radio"]{
   }
   .schedule-filter-trigger{
     width:auto;
-    min-height:46px;
+    min-height:44px;
     max-width:100%;
-    padding:12px 14px;
-    border-radius:14px;
+    padding:11px 12px;
+    border-radius:12px;
   }
   .schedule-filter-menu{
     position:absolute;

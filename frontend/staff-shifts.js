@@ -665,6 +665,27 @@ function syncScheduleFilterTriggerState() {
   }
 }
 
+
+function positionScheduleFilterMenu() {
+  const dropdown = el.scheduleFilterDropdown;
+  const menu = el.scheduleFilterMenu;
+  if (!dropdown || !menu || menu.classList.contains("hidden")) return;
+
+  const gutter = window.innerWidth <= 560 ? 12 : 16;
+  menu.style.left = "50%";
+  menu.style.right = "auto";
+  menu.style.transform = "translateX(-50%)";
+
+  const rect = menu.getBoundingClientRect();
+  let shift = 0;
+  if (rect.left < gutter) shift += gutter - rect.left;
+  if (rect.right > window.innerWidth - gutter) shift -= rect.right - (window.innerWidth - gutter);
+
+  if (shift) {
+    menu.style.transform = `translateX(calc(-50% + ${shift}px))`;
+  }
+}
+
 function closeScheduleFilterDropdown() {
   el.scheduleFilterDropdown?.classList.remove("open");
   el.scheduleFilterMenu?.classList.add("hidden");
@@ -674,6 +695,7 @@ function closeScheduleFilterDropdown() {
 function openScheduleFilterDropdown() {
   el.scheduleFilterDropdown?.classList.add("open");
   el.scheduleFilterMenu?.classList.remove("hidden");
+  positionScheduleFilterMenu();
   syncScheduleFilterTriggerState();
 }
 
@@ -765,6 +787,16 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeScheduleFilterDropdown();
 });
+
+window.addEventListener("resize", () => {
+  if (el.scheduleFilterDropdown?.classList.contains("open")) positionScheduleFilterMenu();
+});
+window.addEventListener("orientationchange", () => {
+  if (el.scheduleFilterDropdown?.classList.contains("open")) positionScheduleFilterMenu();
+});
+window.addEventListener("scroll", () => {
+  if (el.scheduleFilterDropdown?.classList.contains("open")) positionScheduleFilterMenu();
+}, true);
 
 
 async function loadContext() {
