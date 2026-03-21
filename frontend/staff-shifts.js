@@ -2735,14 +2735,12 @@ async function renderScheduleExportCanvas(meta) {
           const col = i % 2;
           const cellX = x + innerPad + col * (shiftColW + shiftGapX);
           const cellY = shiftsTop + row * (shiftCellH + rowGap);
-          fillRoundRect(ctx, cellX, cellY, shiftColW, shiftCellH, 14, subtle, "");
-          fillRoundRect(ctx, cellX + 12, cellY + 14, 10, 10, 5, line.color || accent, "");
 
           ctx.fillStyle = text;
           ctx.font = "600 17px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-          const textX = cellX + 30;
-          const textY = cellY + 10;
-          const maxTextWidth = shiftColW - 42;
+          const textX = cellX;
+          const textY = cellY + 8;
+          const maxTextWidth = shiftColW - 6;
           drawWrappedText(ctx, line.text, textX, textY, maxTextWidth, shiftLineHeight, 2, text, "left");
         }
         if (item.lines.length > visible.length) {
