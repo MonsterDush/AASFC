@@ -105,6 +105,7 @@ from app.models.pay_profile_assignment import PayProfileAssignment
 from app.models.pay_component import PayComponent
 from app.models.payroll_run import PayrollRun
 from app.models.payroll_line import PayrollLine
+from app.models.payroll_recalculation_log import PayrollRecalculationLog
 
 from app.auth.venue_permissions import require_venue_permission
 
@@ -1995,6 +1996,61 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
 
 
 
+def _serialize_payroll_recalculation_log(row: PayrollRecalculationLog | None) -> dict | None:
+    if row is None:
+        return None
+    target_dates: list[str] = []
+    try:
+        raw_dates = json.loads(row.target_dates_json) if row.target_dates_json else []
+        if isinstance(raw_dates, list):
+            target_dates = [str(item) for item in raw_dates if item]
+    except Exception:
+        target_dates = []
+    return {
+        "id": int(row.id),
+        "period_month": row.period_month.strftime("%Y-%m") if getattr(row, "period_month", None) else None,
+        "trigger_reason": str(row.trigger_reason or ""),
+        "triggered_by_user_id": int(row.triggered_by_user_id) if getattr(row, "triggered_by_user_id", None) is not None else None,
+        "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else None,
+        "target_dates": target_dates,
+    }
+
+
+def _create_payroll_recalculation_log(
+    db: Session,
+    *,
+    venue_id: int,
+    period_month: date,
+    trigger_reason: str,
+    triggered_by_user_id: int | None = None,
+    target_dates: list[date] | tuple[date, ...] | None = None,
+    details: dict | None = None,
+) -> PayrollRecalculationLog:
+    obj = PayrollRecalculationLog(
+        venue_id=int(venue_id),
+        period_month=period_month,
+        triggered_by_user_id=int(triggered_by_user_id) if triggered_by_user_id is not None else None,
+        trigger_reason=str(trigger_reason or "system"),
+        target_dates_json=json.dumps(sorted({day.isoformat() for day in (target_dates or []) if isinstance(day, date)}), ensure_ascii=False),
+        details_json=json.dumps(details or {}, ensure_ascii=False),
+        created_at=datetime.utcnow(),
+    )
+    db.add(obj)
+    db.flush()
+    return obj
+
+
+def _latest_payroll_recalculation_log(db: Session, *, venue_id: int, period_month: date) -> PayrollRecalculationLog | None:
+    return db.execute(
+        select(PayrollRecalculationLog)
+        .where(
+            PayrollRecalculationLog.venue_id == int(venue_id),
+            PayrollRecalculationLog.period_month == period_month,
+        )
+        .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+    ).scalar_one_or_none()
+
+
 def _has_closed_report_for_date(db: Session, *, venue_id: int, target_date: date) -> bool:
     report_id = db.execute(
         select(DailyReport.id).where(
@@ -2013,12 +2069,13 @@ def _recalculate_payroll_for_dates(
     target_dates: list[date] | tuple[date, ...],
     calculated_by_user_id: int | None = None,
     force: bool = False,
+    trigger_reason: str = "system",
+    details: dict | None = None,
 ) -> list[str]:
     months_done: list[str] = []
     seen: set[str] = set()
+    target_dates = [day for day in target_dates if isinstance(day, date)]
     for target_date in target_dates:
-        if target_date is None:
-            continue
         month = target_date.strftime("%Y-%m")
         if month in seen:
             continue
@@ -2030,6 +2087,17 @@ def _recalculate_payroll_for_dates(
             month=month,
             calculated_by_user_id=int(calculated_by_user_id) if calculated_by_user_id is not None else None,
         )
+        month_start = parse_month_start(month)
+        month_target_dates = sorted(day for day in target_dates if day.strftime("%Y-%m") == month)
+        _create_payroll_recalculation_log(
+            db,
+            venue_id=int(venue_id),
+            period_month=month_start,
+            trigger_reason=str(trigger_reason or "system"),
+            triggered_by_user_id=int(calculated_by_user_id) if calculated_by_user_id is not None else None,
+            target_dates=month_target_dates,
+            details=details or {},
+        )
         seen.add(month)
         months_done.append(month)
     return months_done
@@ -2037,6 +2105,7 @@ def _recalculate_payroll_for_dates(
 
 def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
     month_start = parse_month_start(month)
+    latest_recalculation = _latest_payroll_recalculation_log(db, venue_id=int(venue_id), period_month=month_start)
     run = db.execute(
         select(PayrollRun).where(
             PayrollRun.venue_id == venue_id,
@@ -2050,6 +2119,7 @@ def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
             "lines": [],
             "total_amount_minor": 0,
             "lines_count": 0,
+            "latest_recalculation": _serialize_payroll_recalculation_log(latest_recalculation),
         }
 
     rows = db.execute(
@@ -2717,6 +2787,15 @@ def calculate_payroll(
             month=payload.month,
             calculated_by_user_id=user.id,
         )
+        _create_payroll_recalculation_log(
+            db,
+            venue_id=int(venue_id),
+            period_month=parse_month_start(payload.month),
+            trigger_reason="manual_calculation",
+            triggered_by_user_id=int(user.id),
+            target_dates=[],
+            details={"source": "manual_payroll_calculate"},
+        )
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
@@ -2739,6 +2818,38 @@ def get_payroll(
         return _load_payroll_payload(db, venue_id=venue_id, month=month)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/{venue_id}/payroll/recalculation-log")
+def get_payroll_recalculation_log(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_payroll_view(db, venue_id=venue_id, user=user)
+
+    try:
+        month_start = parse_month_start(month)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    rows = db.execute(
+        select(PayrollRecalculationLog)
+        .where(
+            PayrollRecalculationLog.venue_id == int(venue_id),
+            PayrollRecalculationLog.period_month == month_start,
+        )
+        .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+        .limit(int(limit))
+    ).scalars().all()
+
+    return {
+        "month": month,
+        "items": [_serialize_payroll_recalculation_log(row) for row in rows],
+    }
 
 
 # ---------- Daily reports ----------
@@ -2986,6 +3097,7 @@ def upsert_daily_report(
             target_dates=[obj.date],
             calculated_by_user_id=user.id,
             force=True,
+            trigger_reason="closed_report_updated",
         )
 
     db.commit()
@@ -3232,6 +3344,7 @@ def close_daily_report(
         target_dates=[report_date],
         calculated_by_user_id=user.id,
         force=True,
+        trigger_reason="report_closed",
     )
     _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date)
     _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date)
@@ -3280,6 +3393,7 @@ def reopen_daily_report(
         target_dates=[report_date],
         calculated_by_user_id=user.id,
         force=True,
+        trigger_reason="report_reopened",
     )
     db.commit()
     return {"ok": True, "status": "DRAFT"}
@@ -4242,7 +4356,9 @@ def upload_report_attachments(
 @router.get("/{venue_id}/adjustments")
 def list_adjustments(
     venue_id: int,
-    month: str = Query(..., description="YYYY-MM"),
+    month: str | None = Query(default=None, description="YYYY-MM"),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     mine: int = Query(0, description="1 => only my items"),
     type: str | None = Query(default=None, description="penalty|writeoff|bonus|tip"),
     db: Session = Depends(get_db),
@@ -4252,14 +4368,25 @@ def list_adjustments(
     if not mine:
         _require_adjustments_viewer(db, venue_id=venue_id, user=user)
 
-    try:
-        y_s, m_s = month.split("-")
-        y = int(y_s)
-        m = int(m_s)
-        start = date(y, m, 1)
-        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+    if month and (date_from is not None or date_to is not None):
+        raise HTTPException(status_code=400, detail="Use either month or date_from/date_to")
+
+    if month:
+        try:
+            y_s, m_s = month.split("-")
+            y = int(y_s)
+            m = int(m_s)
+            start = date(y, m, 1)
+            end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+    else:
+        if date_from is None or date_to is None:
+            raise HTTPException(status_code=400, detail="Provide month or both date_from/date_to")
+        if date_from > date_to:
+            raise HTTPException(status_code=400, detail="date_from must be <= date_to")
+        start = date_from
+        end = date_to + timedelta(days=1)
 
     stmt = select(Adjustment).where(
         Adjustment.venue_id == venue_id,
@@ -5697,6 +5824,7 @@ def remove_member(
         venue_id=venue_id,
         target_dates=list(affected_shift_dates),
         calculated_by_user_id=user.id,
+        trigger_reason="member_removed_from_venue",
     )
 
     db.commit()
@@ -5781,6 +5909,7 @@ def leave_venue(
         venue_id=venue_id,
         target_dates=list(affected_shift_dates),
         calculated_by_user_id=current_user.id,
+        trigger_reason="member_left_venue",
     )
 
     db.commit()
@@ -6187,6 +6316,7 @@ def update_shift(
                 venue_id=venue_id,
                 target_dates=[previous_date, obj.date],
                 calculated_by_user_id=user.id,
+                trigger_reason="shift_updated",
             )
         db.commit()
     except Exception:
@@ -6218,6 +6348,7 @@ def delete_shift(
         venue_id=venue_id,
         target_dates=[shift_date],
         calculated_by_user_id=user.id,
+        trigger_reason="shift_deleted",
     )
     db.commit()
     return {"ok": True}
@@ -6352,6 +6483,7 @@ def add_shift_assignment(
         venue_id=venue_id,
         target_dates=[shift.date],
         calculated_by_user_id=user.id,
+        trigger_reason="shift_assignment_added",
     )
     db.commit()
     db.refresh(a)
@@ -6400,6 +6532,7 @@ def remove_shift_assignment(
             venue_id=venue_id,
             target_dates=[shift_date],
             calculated_by_user_id=user.id,
+            trigger_reason="shift_assignment_removed",
         )
     db.commit()
     return {"ok": True}

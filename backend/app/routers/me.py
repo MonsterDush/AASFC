@@ -32,6 +32,7 @@ from app.models import (
     PayProfile,
 )
 from app.services.payroll.day_breakdown import build_member_day_breakdown
+from app.services.payroll.period_summary import build_member_period_summary, resolve_salary_period
 
 
 router = APIRouter(tags=["me"])
@@ -409,6 +410,18 @@ def _parse_month_range(month: str) -> tuple[date, date]:
         raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
 
 
+def _resolve_salary_period_or_400(
+    *,
+    month: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> tuple[date, date, dict]:
+    try:
+        return resolve_salary_period(month=month, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 def _load_payroll_summary_by_venue(db: Session, *, user_id: int, month_start: date) -> dict[int, dict]:
     rows = db.execute(
         select(
@@ -647,129 +660,48 @@ def create_manual_tip(
 
 @router.get("/me/salary-summary")
 def my_salary_summary(
-    month: str = Query(..., description="YYYY-MM"),
+    month: str | None = Query(default=None, description="YYYY-MM"),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Monthly salary summary across all venues for current user.
+    """Salary summary for current user for month or arbitrary range."""
 
-    The employee salary screen is payroll-only. If a venue/month has no
-    payroll calculation yet, it is intentionally omitted from the summary so
-    the frontend can show a clear "not calculated" state instead of a legacy
-    shift-based approximation.
-    """
+    period_start, period_end, period_meta = _resolve_salary_period_or_400(
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
-    start, end = _parse_month_range(month)
+    payload = build_member_period_summary(
+        db,
+        member_user_id=int(user.id),
+        period_start=period_start,
+        period_end=period_end,
+    )
 
-    payroll_by_venue = _load_payroll_summary_by_venue(db, user_id=int(user.id), month_start=start)
-    payroll_venue_ids = set(payroll_by_venue.keys())
-
-    tip_alloc_rows = db.execute(
-        select(DailyReport.venue_id, func.coalesce(func.sum(DailyReportTipAllocation.amount), 0))
-        .select_from(DailyReportTipAllocation)
-        .join(DailyReport, DailyReport.id == DailyReportTipAllocation.report_id)
-        .where(
-            DailyReportTipAllocation.user_id == int(user.id),
-            DailyReport.status == "CLOSED",
-            DailyReport.date >= start,
-            DailyReport.date < end,
-        )
-        .group_by(DailyReport.venue_id)
-    ).all()
-    tips_by_venue: dict[int, int] = {int(venue_id): int(amount or 0) for venue_id, amount in tip_alloc_rows}
-
-    adj_rows = db.execute(
-        select(Adjustment.venue_id, Adjustment.type, Adjustment.amount)
-        .where(
-            Adjustment.member_user_id == int(user.id),
-            Adjustment.is_active.is_(True),
-            Adjustment.date >= start,
-            Adjustment.date < end,
-        )
-    ).all()
-
-    bonuses_by_venue: dict[int, int] = {}
-    penalties_by_venue: dict[int, int] = {}
-    extra_tip_venue_ids: set[int] = set()
-    for v_id, typ, amount in adj_rows:
-        vid = int(v_id)
-        t = str(typ or "").lower()
-        a = int(amount or 0)
-        if t == "bonus":
-            bonuses_by_venue[vid] = bonuses_by_venue.get(vid, 0) + a
-        elif t == "tip":
-            tips_by_venue[vid] = tips_by_venue.get(vid, 0) + a
-            extra_tip_venue_ids.add(vid)
-        else:
-            penalties_by_venue[vid] = penalties_by_venue.get(vid, 0) + a
-
-    all_venue_ids = set(payroll_venue_ids) | set(tips_by_venue.keys()) | set(bonuses_by_venue.keys()) | set(penalties_by_venue.keys())
-    if not all_venue_ids:
-        return {
-            "month": month,
-            "items": [],
-            "totals": {
-                "earned": 0,
-                "tips": 0,
-                "bonuses": 0,
-                "penalties": 0,
-                "net": 0,
-            },
-        }
-
-    venue_names: dict[int, str] = {}
-    for vid, payload in payroll_by_venue.items():
-        venue_names[int(vid)] = str(payload.get("venue_name") or "")
-
-    missing_name_ids = [vid for vid in all_venue_ids if vid not in venue_names]
-    if missing_name_ids:
-        rows = db.execute(select(Venue.id, Venue.name).where(Venue.id.in_(missing_name_ids))).all()
-        for vid, name in rows:
-            venue_names[int(vid)] = str(name or "")
-
-    items = []
-    total_net = 0
-    total_earned = 0
-    total_tips = 0
-    total_bonus = 0
-    total_pen = 0
-
-    for vid in sorted(all_venue_ids):
-        payroll_item = payroll_by_venue.get(vid) or {}
-        is_payroll = bool(payroll_item)
-        earned = int(payroll_item.get("earned") or 0)
-        tips = int(tips_by_venue.get(vid, 0))
-        bonus = int(bonuses_by_venue.get(vid, 0))
-        pen = int(penalties_by_venue.get(vid, 0))
-        net = earned + tips + bonus - pen
-        total_net += net
-        total_earned += earned
-        total_tips += tips
-        total_bonus += bonus
-        total_pen += pen
-        item = {
-            "venue": {"id": vid, "name": venue_names.get(vid, "")},
-            "earned": earned,
-            "tips": tips,
-            "bonuses": bonus,
-            "penalties": pen,
-            "net": net,
-            "source": "payroll" if is_payroll else "partial",
-            "calculated": bool(is_payroll),
-            "earned_minor": int(payroll_item.get("earned_minor") or 0),
-        }
-        if payroll_item.get("payroll_line_id") is not None:
-            item["payroll_line_id"] = payroll_item["payroll_line_id"]
-        items.append(item)
-
-    return {
-        "month": month,
-        "items": items,
-        "totals": {
-            "earned": total_earned,
-            "tips": total_tips,
-            "bonuses": total_bonus,
-            "penalties": total_pen,
-            "net": total_net,
+    response = {
+        "items": payload.get("items") or [],
+        "totals": payload.get("totals") or {
+            "earned": 0,
+            "tips": 0,
+            "bonuses": 0,
+            "penalties": 0,
+            "net": 0,
+            "earned_minor": 0,
+            "tips_minor": 0,
+            "bonuses_minor": 0,
+            "penalties_minor": 0,
+            "net_minor": 0,
+        },
+        "period": {
+            "date_from": period_start.isoformat(),
+            "date_to": period_end.isoformat(),
+            **period_meta,
         },
     }
+    if month is not None:
+        response["month"] = month
+    return response
+

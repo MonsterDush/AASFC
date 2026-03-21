@@ -14,6 +14,7 @@ from app.models import (
     DailyReportTipAllocation,
     DailyReportValue,
     PayrollLine,
+    PayrollRecalculationLog,
     PayrollRun,
     Shift,
     ShiftAssignment,
@@ -71,6 +72,25 @@ def _safe_json(raw: str | None) -> dict:
     except Exception:
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def _serialize_recalculation_log(row: PayrollRecalculationLog | None) -> dict | None:
+    if row is None:
+        return None
+    target_dates: list[str] = []
+    try:
+        raw_dates = json.loads(row.target_dates_json) if row.target_dates_json else []
+        if isinstance(raw_dates, list):
+            target_dates = [str(item) for item in raw_dates if item]
+    except Exception:
+        target_dates = []
+    return {
+        "id": int(row.id),
+        "period_month": row.period_month.strftime("%Y-%m") if getattr(row, "period_month", None) else None,
+        "trigger_reason": str(row.trigger_reason or ""),
+        "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else None,
+        "target_dates": target_dates,
+    }
 
 
 def _month_start_for_day(target_date: date) -> date:
@@ -343,6 +363,14 @@ def build_member_day_breakdown(
     payroll_line = line_row[0] if line_row else None
     payroll_run = line_row[1] if line_row else None
     breakdown = _safe_json(getattr(payroll_line, "breakdown_json", None))
+    latest_recalculation = db.execute(
+        select(PayrollRecalculationLog)
+        .where(
+            PayrollRecalculationLog.venue_id == int(venue_id),
+            PayrollRecalculationLog.period_month == month_start,
+        )
+        .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+    ).scalar_one_or_none()
     metrics = breakdown.get("metrics") if isinstance(breakdown.get("metrics"), dict) else {}
     worked_dates = []
     for raw_day in (metrics.get("worked_dates") or []):
@@ -486,6 +514,7 @@ def build_member_day_breakdown(
             "payroll_line_id": int(payroll_line.id) if payroll_line is not None else None,
             "pay_profile_title": breakdown.get("pay_profile_title") if breakdown else None,
             "calculated_at": payroll_run.calculated_at.isoformat() if payroll_run is not None and getattr(payroll_run, "calculated_at", None) else None,
+            "latest_recalculation": _serialize_recalculation_log(latest_recalculation),
         },
         "items": items,
     }

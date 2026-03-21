@@ -60,6 +60,13 @@ await mountNav({ activeTab: (__canReports ? "finance" : "salary") });
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
+  periodMonthBtn: document.getElementById("periodMonthBtn"),
+  periodRangeBtn: document.getElementById("periodRangeBtn"),
+  monthControls: document.getElementById("monthControls"),
+  rangeControls: document.getElementById("rangeControls"),
+  rangeFrom: document.getElementById("rangeFrom"),
+  rangeTo: document.getElementById("rangeTo"),
+  rangeApply: document.getElementById("rangeApply"),
   prev: document.getElementById("monthPrev"),
   next: document.getElementById("monthNext"),
   sumSalary: document.getElementById("sumSalary"),
@@ -102,11 +109,7 @@ function setScopeMode(next) {
   const vs = document.getElementById("venueScopeWrap");
   if (vs) vs.style.display = (scopeMode === "all") ? "none" : "";
   if (el.addManualTipBtn) el.addManualTipBtn.style.display = (scopeMode === "all") ? "none" : "";
-  try {
-    const p = new URLSearchParams(location.search);
-    if (scopeMode === "all") p.set("scope", "all"); else p.delete("scope");
-    history.replaceState(null, "", `${location.pathname}?${p.toString()}`);
-  } catch {}
+  syncUrl();
 }
 
 try {
@@ -167,9 +170,26 @@ function isoToday() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function monthStartIso(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
+}
+
+function monthEndIso(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())}`;
+}
+
+let periodMode = (params.get("period_mode") || ((params.get("date_from") && params.get("date_to")) ? "range" : "month")).toLowerCase();
+if (periodMode !== "range") periodMode = "month";
+
 function defaultTipDate() {
-  const currentMonth = ym(curMonth);
   const today = isoToday();
+  if (periodMode === "range") {
+    const from = String(rangeFrom || "");
+    const to = String(rangeTo || "");
+    if (from && to && today >= from && today <= to) return today;
+    return from || today;
+  }
+  const currentMonth = ym(curMonth);
   return today.startsWith(`${currentMonth}-`) ? today : `${currentMonth}-01`;
 }
 
@@ -258,11 +278,39 @@ if (qMonth && /^\d{4}-\d{2}$/.test(qMonth)) {
   const [yy, mm] = deepLinkDate.slice(0, 7).split("-").map((x) => parseInt(x, 10));
   if (yy && mm) curMonth = new Date(yy, mm - 1, 1);
 }
+let rangeFrom = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_from") || "")) ? String(params.get("date_from")) : monthStartIso(curMonth);
+let rangeTo = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_to") || "")) ? String(params.get("date_to")) : (deepLinkDate || isoToday());
+if (rangeTo < rangeFrom) rangeTo = rangeFrom;
+
+function getPeriodQuery() {
+  const q = new URLSearchParams();
+  if (periodMode === "range") {
+    q.set("period_mode", "range");
+    q.set("date_from", String(rangeFrom || ""));
+    q.set("date_to", String(rangeTo || ""));
+  } else {
+    q.set("month", ym(curMonth));
+  }
+  return q;
+}
+
+function syncPeriodUi() {
+  if (el.monthControls) el.monthControls.style.display = periodMode === "month" ? "flex" : "none";
+  if (el.rangeControls) el.rangeControls.style.display = periodMode === "range" ? "flex" : "none";
+  if (el.periodMonthBtn) el.periodMonthBtn.disabled = periodMode === "month";
+  if (el.periodRangeBtn) el.periodRangeBtn.disabled = periodMode === "range";
+  if (el.rangeFrom) el.rangeFrom.value = rangeFrom || "";
+  if (el.rangeTo) el.rangeTo.value = rangeTo || "";
+  if (el.monthLabel) el.monthLabel.textContent = periodMode === "month" ? monthTitle(curMonth) : `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}`;
+  if (el.daysChartTitle) el.daysChartTitle.textContent = periodMode === "month" ? "График по дням" : "Период по дням";
+  if (el.daysListTitle) el.daysListTitle.textContent = periodMode === "month" ? "По дням" : "Дни в диапазоне";
+  if (el.daysListHint) el.daysListHint.textContent = periodMode === "month" ? "" : `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}`;
+}
 
 function syncUrl() {
   try {
-    const p = new URLSearchParams(location.search);
-    p.set("month", ym(curMonth));
+    const p = getPeriodQuery();
+    if (scopeMode === "all") p.set("scope", "all");
     if (venueId) p.set("venue_id", String(venueId));
     history.replaceState(null, "", `${location.pathname}?${p.toString()}`);
   } catch {}
@@ -295,6 +343,26 @@ function formatDateRu(iso) {
   return `${dd}.${mm}.${yyyy}`;
 }
 
+function recalcReasonLabel(reason) {
+  const map = {
+    manual_calculation: "Ручной расчёт",
+    report_closed: "Автоперерасчёт после закрытия отчёта",
+    report_reopened: "Автоперерасчёт после переоткрытия отчёта",
+    closed_report_updated: "Автоперерасчёт после изменения закрытого отчёта",
+    shift_assignment_added: "Автоперерасчёт после назначения сотрудника",
+    shift_assignment_removed: "Автоперерасчёт после снятия сотрудника",
+    shift_updated: "Автоперерасчёт после изменения смены",
+    shift_deleted: "Автоперерасчёт после удаления смены",
+    member_removed_from_venue: "Автоперерасчёт после удаления из заведения",
+    member_left_venue: "Автоперерасчёт после выхода из заведения",
+  };
+  return map[String(reason || "")] || "Автоперерасчёт начисления";
+}
+
+function periodQueryString() {
+  return getPeriodQuery().toString();
+}
+
 let shifts = [];
 let days = [];
 let adjustments = [];
@@ -308,7 +376,18 @@ function buildDaysFromShifts() {
   for (const s of shifts) {
     const d = String(s?.date || "").slice(0, 10);
     if (!d) continue;
-    const row = map.get(d) || { date: d, salary: 0, hasReport: !!s.report_exists, shifts: [], tips: 0, includedInPayroll: false };
+    const row = map.get(d) || {
+      date: d,
+      salary: 0,
+      hasReport: !!s.report_exists,
+      shifts: [],
+      tips: 0,
+      bonuses: 0,
+      penalties: 0,
+      writeoffs: 0,
+      includedInPayroll: false,
+      adjustmentCount: 0,
+    };
     row.hasReport = row.hasReport || !!s.report_exists;
     row.shifts.push(s);
     const val = Number(s.my_salary);
@@ -317,27 +396,50 @@ function buildDaysFromShifts() {
     if (Number.isFinite(tip)) row.tips += tip;
     map.set(d, row);
   }
+  for (const adj of adjustments || []) {
+    const d = String(adj?.date || "").slice(0, 10);
+    if (!d) continue;
+    const row = map.get(d) || {
+      date: d,
+      salary: 0,
+      hasReport: false,
+      shifts: [],
+      tips: 0,
+      bonuses: 0,
+      penalties: 0,
+      writeoffs: 0,
+      includedInPayroll: false,
+      adjustmentCount: 0,
+    };
+    row.adjustmentCount += 1;
+    const amount = Number(adj?.amount || 0);
+    if (String(adj?.type || "").toLowerCase() === "bonus") row.bonuses += amount;
+    else if (String(adj?.type || "").toLowerCase() === "tip") row.tips += amount;
+    else if (String(adj?.type || "").toLowerCase() === "writeoff") row.writeoffs += amount;
+    else row.penalties += amount;
+    map.set(d, row);
+  }
   for (const d of payrollWorkedDates) {
-    if (!map.has(d)) map.set(d, { date: d, salary: 0, hasReport: true, shifts: [], tips: 0, includedInPayroll: true });
+    if (!map.has(d)) map.set(d, { date: d, salary: 0, hasReport: true, shifts: [], tips: 0, bonuses: 0, penalties: 0, writeoffs: 0, includedInPayroll: true, adjustmentCount: 0 });
   }
   days = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
   for (const row of days) row.includedInPayroll = payrollWorkedDates.has(row.date);
 }
 
+
 async function loadMonth() {
+  syncPeriodUi();
   if (!venueId) {
-    if (el.monthLabel) el.monthLabel.textContent = monthTitle(curMonth);
     if (el.daysList) el.daysList.innerHTML = `<div class="muted">Нет активного заведения</div>`;
     if (el.monthChart) el.monthChart.innerHTML = `<div class="muted">Нет активного заведения</div>`;
     return;
   }
 
-  const m = ym(curMonth);
-  el.monthLabel.textContent = monthTitle(curMonth);
+  const q = periodQueryString();
   if (el.daysList) el.daysList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
 
   try {
-    const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?month=${encodeURIComponent(m)}`);
+    const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?${q}`);
     shifts = Array.isArray(out) ? out : (out?.items || []);
   } catch (e) {
     shifts = [];
@@ -345,7 +447,7 @@ async function loadMonth() {
   }
 
   try {
-    const adj = await api(`/venues/${encodeURIComponent(venueId)}/adjustments?month=${encodeURIComponent(m)}&mine=1`);
+    const adj = await api(`/venues/${encodeURIComponent(venueId)}/adjustments?${q}&mine=1`);
     adjustments = Array.isArray(adj?.items) ? adj.items : [];
   } catch {
     adjustments = [];
@@ -355,11 +457,11 @@ async function loadMonth() {
   payrollLine = null;
   payrollWorkedDates = new Set();
   try {
-    const summary = await api(`/me/salary-summary?month=${encodeURIComponent(m)}`);
+    const summary = await api(`/me/salary-summary?${q}`);
     const items = Array.isArray(summary?.items) ? summary.items : [];
     monthSummaryItem = items.find((item) => String(item?.venue?.id ?? item?.venue_id ?? item?.venueId ?? "") === String(venueId)) || null;
-    if (monthSummaryItem?.source === "payroll") {
-      payrollLine = await api(`/me/payroll-line?month=${encodeURIComponent(m)}&venue_id=${encodeURIComponent(venueId)}`).catch(() => null);
+    if (periodMode === "month" && monthSummaryItem?.source === "payroll") {
+      payrollLine = await api(`/me/payroll-line?month=${encodeURIComponent(ym(curMonth))}&venue_id=${encodeURIComponent(venueId)}`).catch(() => null);
       const worked = Array.isArray(payrollLine?.breakdown?.metrics?.worked_dates) ? payrollLine.breakdown.metrics.worked_dates : [];
       payrollWorkedDates = new Set(worked.map((x) => String(x || "").slice(0, 10)).filter(Boolean));
     } else {
@@ -367,6 +469,7 @@ async function loadMonth() {
         venue: { id: venueId, name: __venueNameOf(venueId) || "" },
         source: "not_calculated",
         calculated: false,
+        period_state: "empty",
       };
     }
   } catch {
@@ -374,6 +477,7 @@ async function loadMonth() {
       venue: { id: venueId, name: __venueNameOf(venueId) || "" },
       source: "not_calculated",
       calculated: false,
+      period_state: "empty",
     };
     payrollLine = null;
   }
@@ -384,18 +488,19 @@ async function loadMonth() {
   renderDays();
 }
 
+
 async function loadMonthAll() {
   await ensureVenuesLoaded();
   if (!allEls.list) return;
 
-  const m = ym(curMonth);
-  el.monthLabel.textContent = monthTitle(curMonth);
+  const q = periodQueryString();
+  syncPeriodUi();
   allEls.list.innerHTML = `<div class="card"><div class="skeleton"></div></div><div class="card"><div class="skeleton"></div></div>`;
 
   let totals = null;
   let items = null;
   try {
-    const data = await api(`/me/salary-summary?month=${encodeURIComponent(m)}`);
+    const data = await api(`/me/salary-summary?${q}`);
     totals = (data && typeof data === "object" && (data.totals || data.total || data.summary)) || null;
     items = Array.isArray(data?.items) ? data.items : null;
   } catch {
@@ -424,6 +529,7 @@ async function loadMonthAll() {
         venue: { id: vid, name: __venueNameOf(vid) || `#${vid}` },
         source: "not_calculated",
         calculated: false,
+        period_state: "empty",
       });
     }
   }
@@ -431,11 +537,11 @@ async function loadMonthAll() {
     for (const item of summaryItems) safeItems.push(item);
   }
 
-  const missingCount = safeItems.filter((item) => item?.source !== "payroll").length;
+  const missingCount = safeItems.filter((item) => item?.period_state === "empty").length;
   if (allEls.hint) {
     allEls.hint.textContent = missingCount
-      ? `Не рассчитано по ${missingCount} ${missingCount === 1 ? "заведению" : "заведениям"}`
-      : "Все начисления рассчитаны";
+      ? `Нет начислений по ${missingCount} ${missingCount === 1 ? "заведению" : "заведениям"}`
+      : "Данные собраны по выбранному периоду";
   }
   if (!safeItems.length) {
     allEls.list.innerHTML = `<div class="muted">Нет заведений для отображения</div>`;
@@ -443,8 +549,8 @@ async function loadMonthAll() {
   }
 
   safeItems.sort((a, b) => {
-    const ap = a?.source === "payroll" ? 1 : 0;
-    const bp = b?.source === "payroll" ? 1 : 0;
+    const ap = a?.calculated ? 1 : 0;
+    const bp = b?.calculated ? 1 : 0;
     if (bp !== ap) return bp - ap;
     return (Number(b?.net) || 0) - (Number(a?.net) || 0);
   });
@@ -456,21 +562,23 @@ async function loadMonthAll() {
     const bonuses = Number(v?.bonuses ?? 0);
     const penalties = Number(v?.penalties ?? 0);
     const net = Number(v?.net ?? (earned + tips + bonuses - penalties) ?? 0);
-    if (v?.source !== "payroll") {
+    const state = String(v?.period_state || "empty");
+    const latest = v?.latest_recalculation?.trigger_reason ? `<div class="muted small mt-8">${esc(recalcReasonLabel(v.latest_recalculation.trigger_reason))}</div>` : "";
+    if (state === "empty") {
       return `
         <div class="card">
           <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap;">
             <b>${name}</b>
-            <span class="badge">не рассчитано</span>
+            <span class="badge">нет данных</span>
           </div>
-          <div class="muted mt-10">Начисление за этот месяц ещё не рассчитано. Сумма появится после payroll-расчёта.</div>
+          <div class="muted mt-10">За выбранный период начислений нет.</div>
         </div>`;
     }
     return `
       <div class="card">
         <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap;">
           <b>${name}</b>
-          <span class="badge">payroll</span>
+          <span class="badge">${state === "partial" ? "частично" : "готово"}</span>
         </div>
         <div class="grid mt-10 salary-all-kpis">
           <div class="mini-kpi"><div class="muted small">Начислено</div><b>${formatMoney(earned)}</b></div>
@@ -479,9 +587,11 @@ async function loadMonthAll() {
           <div class="mini-kpi"><div class="muted small">Штрафы/Списания</div><b>${formatMoney(penalties)}</b></div>
           <div class="mini-kpi total"><div class="muted small">Итого</div><b>${formatMoney(net)}</b></div>
         </div>
+        ${latest}
       </div>`;
   }).join("");
 }
+
 
 async function refresh() {
   setScopeMode(scopeMode);
@@ -495,88 +605,84 @@ async function refresh() {
 }
 
 function renderSummary() {
-  const totalWriteoffs = adjustments.filter(x => x.type === "writeoff").reduce((a,x)=>a+Number(x.amount||0),0);
-  const isPayroll = monthSummaryItem?.source === "payroll";
-  const isCalculated = isPayroll && !!monthSummaryItem?.calculated;
+  const totalWriteoffs = adjustments.filter(x => x.type === "writeoff").reduce((a, x) => a + Number(x.amount || 0), 0);
+  const state = String(monthSummaryItem?.period_state || (monthSummaryItem?.source === "payroll" ? "ready" : "empty"));
   const earned = Number(monthSummaryItem?.earned ?? 0);
   const tips = Number(monthSummaryItem?.tips ?? 0);
   const bonuses = Number(monthSummaryItem?.bonuses ?? 0);
   const penalties = Number(monthSummaryItem?.penalties ?? 0);
   const total = Number(monthSummaryItem?.net ?? (earned + tips + bonuses - penalties) ?? 0);
-  const hasPartial = !isCalculated && (tips !== 0 || bonuses !== 0 || penalties !== 0 || total !== 0);
+  const latest = monthSummaryItem?.latest_recalculation || null;
+  const hasAny = state !== "empty" || earned !== 0 || tips !== 0 || bonuses !== 0 || penalties !== 0 || total !== 0;
 
-  if (isCalculated) {
+  if (hasAny) {
     el.sumSalary.textContent = formatMoney(earned);
     el.sumTips.textContent = formatMoney(tips);
     el.sumPenalties.textContent = formatMoney(penalties);
     el.sumBonuses.textContent = formatMoney(bonuses);
     el.sumTotal.textContent = formatMoney(total);
-    if (el.sourceHint) {
-      el.sourceHint.textContent = "Месячная зарплата взята из рассчитанного payroll. Чаевые, премии и штрафы уже включены в итог выше.";
-    }
-  } else if (hasPartial) {
-    el.sumSalary.textContent = "—";
-    el.sumTips.textContent = formatMoney(tips);
-    el.sumPenalties.textContent = formatMoney(penalties);
-    el.sumBonuses.textContent = formatMoney(bonuses);
-    el.sumTotal.textContent = formatMoney(total);
-    if (el.sourceHint) {
-      el.sourceHint.textContent = "Payroll за месяц ещё не рассчитан, но чаевые, премии и штрафы уже учтены в сводке. Начисление появится после расчёта payroll.";
-    }
   } else {
     el.sumSalary.textContent = "—";
     el.sumTips.textContent = "—";
     el.sumPenalties.textContent = "—";
     el.sumBonuses.textContent = "—";
     el.sumTotal.textContent = "—";
-    if (el.sourceHint) {
-      el.sourceHint.textContent = "Начисление за этот месяц ещё не рассчитано. Суммы появятся после payroll-расчёта или после добавления чаевых/корректировок.";
-    }
   }
+
+  let hint = "";
+  if (!hasAny) {
+    hint = periodMode === "month"
+      ? "За этот месяц начислений пока нет. Суммы появятся после payroll-расчёта или после добавления чаевых/корректировок."
+      : "За выбранный диапазон начислений пока нет.";
+  } else if (state === "partial") {
+    hint = "Часть дней уже пересчитана автоматически, но часть данных ещё может быть в процессе обновления.";
+  } else if (periodMode === "month" && payrollLine?.breakdown) {
+    hint = "Месячная сумма взята из payroll, а детализация по дням собрана из того же расчёта.";
+  } else {
+    hint = "Сводка собрана за выбранный период по дневным breakdown начисления.";
+  }
+  if (latest?.trigger_reason) {
+    const suffix = latest?.created_at ? ` · ${new Date(latest.created_at).toLocaleString("ru-RU")}` : "";
+    hint = `${hint} ${recalcReasonLabel(latest.trigger_reason)}${suffix}.`;
+  }
+  if (el.sourceHint) el.sourceHint.textContent = hint;
+
   if (el.rowWriteoffs) el.rowWriteoffs.style.display = "none";
   if (el.sumWriteoffs) el.sumWriteoffs.textContent = formatMoney(totalWriteoffs);
-  if (el.payrollBreakdownRow) el.payrollBreakdownRow.style.display = (isCalculated && payrollLine?.breakdown) ? "flex" : "none";
-  if (el.daysChartTitle) el.daysChartTitle.textContent = isCalculated ? "Дни, вошедшие в расчёт" : "Календарь смен";
-  if (el.daysChartHint) el.daysChartHint.textContent = isCalculated ? "Подсвечены даты, которые реально попали в payroll" : "Здесь показаны смены и закрытые дни, но итоговая сумма появится только после payroll-расчёта";
-  if (el.daysListTitle) el.daysListTitle.textContent = isCalculated ? "Смены по дням" : "Смены за месяц";
-  if (el.daysListHint) el.daysListHint.textContent = isCalculated ? "Это справочная детализация, а не источник месячной суммы" : "Справочная детализация без расчёта зарплаты";
+  if (el.payrollBreakdownRow) el.payrollBreakdownRow.style.display = (periodMode === "month" && payrollLine?.breakdown) ? "flex" : "none";
+  if (el.daysChartHint) {
+    el.daysChartHint.textContent = periodMode === "month"
+      ? ((monthSummaryItem?.source === "payroll") ? "Подсвечены даты, которые реально попали в payroll" : "Выбери день для подробностей")
+      : "Выбери день, чтобы увидеть breakdown начисления и перерасчёта";
+  }
 }
+
 
 function renderMonthChart() {
   if (!el.monthChart) return;
   if (!days.length) {
-    el.monthChart.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
+    el.monthChart.innerHTML = `<div class="muted">${periodMode === "month" ? "Нет данных за этот месяц" : "Нет данных за этот диапазон"}</div>`;
     return;
   }
 
   const isPayroll = monthSummaryItem?.source === "payroll";
-  let bars = "";
-  if (isPayroll) {
-    bars = days.map((d) => {
-      const dt = new Date(String(d.date).length === 10 ? d.date + "T00:00:00" : d.date);
-      const label = String(dt.getDate());
-      const h = d.includedInPayroll ? 100 : (d.shifts?.length ? 35 : 12);
-      const barColor = d.includedInPayroll ? "var(--accent)" : "var(--borderSoft)";
-      return `
-        <button class="bar" type="button" data-date="${esc(d.date)}" style="--h:${h}%;--barColor:${barColor}">
-          <div class="bar__track"><div class="bar__fill"></div></div>
-          <div class="bar__label">${esc(label)}</div>
-        </button>`;
-    }).join("");
-  } else {
-    bars = days.map((d) => {
-      const dt = new Date(String(d.date).length === 10 ? d.date + "T00:00:00" : d.date);
-      const label = String(dt.getDate());
-      const shiftsCount = Math.max(0, d.shifts?.length || 0);
-      const h = d.hasReport ? 100 : (shiftsCount ? 45 : 12);
-      const barColor = d.hasReport ? "var(--accent)" : (shiftsCount ? "var(--borderSoft)" : "var(--borderSoft)");
-      return `
-        <button class="bar" type="button" data-date="${esc(d.date)}" style="--h:${h}%;--barColor:${barColor}">
-          <div class="bar__track"><div class="bar__fill"></div></div>
-          <div class="bar__label">${esc(label)}</div>
-        </button>`;
-    }).join("");
-  }
+  const bars = days.map((d) => {
+    const dt = new Date(String(d.date).length === 10 ? d.date + "T00:00:00" : d.date);
+    const label = periodMode === "month" ? String(dt.getDate()) : `${pad2(dt.getDate())}.${pad2(dt.getMonth() + 1)}`;
+    const shiftsCount = Math.max(0, d.shifts?.length || 0);
+    const hasAdjustments = (Number(d.adjustmentCount || 0) > 0);
+    const h = isPayroll
+      ? (d.includedInPayroll ? 100 : (hasAdjustments ? 55 : (shiftsCount ? 35 : 12)))
+      : (d.hasReport ? 100 : (hasAdjustments ? 55 : (shiftsCount ? 45 : 12)));
+    const barColor = isPayroll
+      ? (d.includedInPayroll ? "var(--accent)" : "var(--borderSoft)")
+      : (d.hasReport ? "var(--accent)" : "var(--borderSoft)");
+    return `
+      <button class="bar" type="button" data-date="${esc(d.date)}" style="--h:${h}%;--barColor:${barColor}">
+        <div class="bar__track"><div class="bar__fill"></div></div>
+        <div class="bar__label">${esc(label)}</div>
+      </button>`;
+  }).join("");
 
   el.monthChart.innerHTML = `<div class="chart__bars">${bars}</div>`;
   el.monthChart.querySelectorAll(".bar").forEach((btn) => {
@@ -587,11 +693,12 @@ function renderMonthChart() {
   });
 }
 
+
 function renderDays() {
   if (!el.daysList) return;
   el.daysList.innerHTML = "";
   if (!days.length) {
-    el.daysList.innerHTML = `<div class="muted">Нет данных за этот месяц</div>`;
+    el.daysList.innerHTML = `<div class="muted">${periodMode === "month" ? "Нет данных за этот месяц" : "Нет данных за этот диапазон"}</div>`;
     return;
   }
 
@@ -600,17 +707,27 @@ function renderDays() {
     const card = document.createElement("div");
     card.className = "list__row";
     const dd = formatDateRu(d.date);
-    const rightText = isPayroll
-      ? (d.includedInPayroll ? "Вошло в расчёт" : (d.shifts?.length ? "Не вошло" : "—"))
-      : (d.hasReport ? "Есть закрытый отчёт" : (d.shifts?.length ? "Смена без закрытия" : "—"));
-    const rightClass = isPayroll
-      ? (d.includedInPayroll ? "day-salary" : "day-salary day-salary--muted")
-      : (d.hasReport ? "day-salary" : "day-salary day-salary--muted");
+    let rightText = "—";
+    if (isPayroll) {
+      rightText = d.includedInPayroll ? "Вошло в расчёт" : ((d.shifts?.length || d.adjustmentCount) ? "Есть изменения / вне payroll" : "—");
+    } else if (d.hasReport) {
+      rightText = "Есть закрытый отчёт";
+    } else if (d.adjustmentCount) {
+      rightText = "Есть корректировки";
+    } else if (d.shifts?.length) {
+      rightText = "Смена без закрытия";
+    }
+    const rightClass = (isPayroll && d.includedInPayroll) || d.hasReport || d.adjustmentCount
+      ? "day-salary"
+      : "day-salary day-salary--muted";
+    const details = [];
+    details.push(`${Math.max(0, d.shifts?.length || 0)} смен(ы)`);
+    if (d.adjustmentCount) details.push(`${d.adjustmentCount} коррект.`);
     card.innerHTML = `
       <div class="row row--between" style="gap:10px; align-items:center;">
         <div>
           <b>${esc(dd)}</b>
-          <div class="muted small mt-4">${Math.max(0, d.shifts?.length || 0)} смен(ы)</div>
+          <div class="muted small mt-4">${esc(details.join(" · "))}</div>
         </div>
         <div class="dayrow__right">
           <div class="${rightClass}">${esc(rightText)}</div>
@@ -621,6 +738,7 @@ function renderDays() {
     el.daysList.appendChild(card);
   }
 }
+
 
 async function loadDayBreakdown(dateIso) {
   const key = `${venueId}:${String(dateIso || "").slice(0, 10)}`;
@@ -705,6 +823,10 @@ function renderDayBreakdownModal(d, breakdown) {
   const hoursTotal = Number(context?.hours_total || 0);
   const hoursText = Number.isFinite(hoursTotal) ? hoursTotal.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : "0";
   const fallbackShifts = (d?.shifts || []).length ? `<div class="muted small mt-10">Смен за день: ${esc((d.shifts || []).map((s) => s.interval?.title || s.interval_title || "Смена").join(", "))}</div>` : "";
+  const latest = context?.latest_recalculation || null;
+  const recalcHtml = latest?.trigger_reason
+    ? `<div class="muted small mt-10">${esc(recalcReasonLabel(latest.trigger_reason))}${latest?.created_at ? ` · ${esc(new Date(latest.created_at).toLocaleString("ru-RU"))}` : ""}</div>`
+    : "";
 
   return `<div class="itemcard" style="margin-top:12px">
     <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -728,6 +850,7 @@ function renderDayBreakdownModal(d, breakdown) {
       <div class="payroll-breakdown__body mt-8">${itemsHtml}</div>
     </div>
 
+    ${recalcHtml}
     ${state === "partial" ? `<div class="muted small mt-10">Часть начислений ещё в пересчёте или появится после payroll.</div>` : ""}
     ${state === "no_payroll" ? `<div class="muted small mt-10">За этот день уже могут быть чаевые или корректировки, но payroll-начисление ещё не собрано.</div>` : ""}
     ${state === "empty" ? `<div class="muted small mt-10">Нет начисления за этот день. Проверь, была ли смена, закрыт ли отчёт и назначен ли профиль оплаты.</div>` : ""}
@@ -735,11 +858,13 @@ function renderDayBreakdownModal(d, breakdown) {
   </div>`;
 }
 
+
 async function maybeAutoOpenDay() {
   if (!shouldAutoOpenDay || deepLinkAutoOpened || scopeMode === "all" || !deepLinkDate) return;
-  if (ym(curMonth) !== deepLinkDate.slice(0, 7)) return;
+  if (periodMode === "month" && ym(curMonth) !== deepLinkDate.slice(0, 7)) return;
+  if (periodMode === "range" && (deepLinkDate < rangeFrom || deepLinkDate > rangeTo)) return;
   const target = days.find((x) => String(x?.date || "").slice(0, 10) === deepLinkDate)
-    || { date: deepLinkDate, shifts: [], hasReport: false, includedInPayroll: payrollWorkedDates.has(deepLinkDate) };
+    || { date: deepLinkDate, shifts: [], hasReport: false, includedInPayroll: payrollWorkedDates.has(deepLinkDate), adjustmentCount: 0 };
   deepLinkAutoOpened = true;
   await openDayModal(target);
 }
@@ -834,11 +959,46 @@ el.next?.addEventListener("click", async () => {
   syncUrl();
   await refresh();
 });
+el.periodMonthBtn?.addEventListener("click", async () => {
+  periodMode = "month";
+  syncPeriodUi();
+  syncUrl();
+  await refresh();
+});
+el.periodRangeBtn?.addEventListener("click", async () => {
+  periodMode = "range";
+  if (!rangeFrom || !rangeTo) {
+    rangeFrom = monthStartIso(curMonth);
+    rangeTo = monthEndIso(curMonth);
+  }
+  syncPeriodUi();
+  syncUrl();
+  await refresh();
+});
+el.rangeApply?.addEventListener("click", async () => {
+  const from = String(el.rangeFrom?.value || "").trim();
+  const to = String(el.rangeTo?.value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    toast("Укажи обе даты диапазона", "err");
+    return;
+  }
+  if (from > to) {
+    toast("Дата начала должна быть раньше даты окончания", "err");
+    return;
+  }
+  rangeFrom = from;
+  rangeTo = to;
+  periodMode = "range";
+  syncPeriodUi();
+  syncUrl();
+  await refresh();
+});
 el.openPayrollBreakdownBtn?.addEventListener("click", openPayrollBreakdown);
 el.addManualTipBtn?.addEventListener("click", async () => {
   await ensureVenuesLoaded();
   openManualTipModal();
 });
 
+syncPeriodUi();
 syncUrl();
 refresh();

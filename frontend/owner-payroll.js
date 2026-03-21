@@ -237,7 +237,21 @@ function renderLines() {
   if (runMeta) {
     if (data.run?.calculated_at) {
       const dt = new Date(data.run.calculated_at);
-      runMeta.textContent = Number.isNaN(dt.getTime()) ? "рассчитано" : `обновлено ${dt.toLocaleString("ru-RU")}`;
+      const baseText = Number.isNaN(dt.getTime()) ? "рассчитано" : `обновлено ${dt.toLocaleString("ru-RU")}`;
+      const reason = String(data?.latest_recalculation?.trigger_reason || "");
+      const reasonMap = {
+        manual_calculation: "ручной расчёт",
+        report_closed: "после закрытия отчёта",
+        report_reopened: "после reopen",
+        closed_report_updated: "после правки CLOSED-отчёта",
+        shift_assignment_added: "после назначения",
+        shift_assignment_removed: "после снятия назначения",
+        shift_updated: "после изменения смены",
+        shift_deleted: "после удаления смены",
+        member_removed_from_venue: "после удаления участника",
+        member_left_venue: "после выхода участника",
+      };
+      runMeta.textContent = reason ? `${baseText} · ${reasonMap[reason] || "автоперерасчёт"}` : baseText;
     } else {
       runMeta.textContent = "ещё не считалось";
     }
