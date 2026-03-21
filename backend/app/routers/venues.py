@@ -807,91 +807,6 @@ class ShiftAssignmentAddIn(BaseModel):
     venue_position_id: int = Field(..., gt=0)
 
 
-class ScheduleExportMetadataOut(BaseModel):
-    venue_id: int
-    venue_name: str
-    view: str
-    period_start: date
-    period_end: date
-    period_label: str
-    filters_text: str
-    interval_titles: list[str] = Field(default_factory=list)
-    staffing_state: str = "all"
-    logo_url: str | None = None
-    app_logo_url: str | None = None
-    deep_link_path: str = "/staff-shifts.html"
-    share_title: str
-    share_text: str
-
-
-_RU_MONTHS = [
-    "",
-    "январь",
-    "февраль",
-    "март",
-    "апрель",
-    "май",
-    "июнь",
-    "июль",
-    "август",
-    "сентябрь",
-    "октябрь",
-    "ноябрь",
-    "декабрь",
-]
-
-
-def _format_ru_month_label(value: date) -> str:
-    month_name = _RU_MONTHS[int(value.month)]
-    return f"{month_name[:1].upper() + month_name[1:]} {value.year}"
-
-
-def _resolve_schedule_export_period(*, view: str, month: str | None, week_start: date | None) -> tuple[date, date, str]:
-    current_view = (view or "month").strip().lower()
-    if current_view not in {"month", "week"}:
-        raise HTTPException(status_code=400, detail="Bad view, expected month or week")
-
-    if current_view == "week":
-        if week_start is None:
-            raise HTTPException(status_code=400, detail="week_start is required for week export metadata")
-        monday_offset = week_start.weekday()
-        start = week_start - timedelta(days=monday_offset)
-        end = start + timedelta(days=6)
-        label = f"{start.strftime('%d.%m.%Y')}–{end.strftime('%d.%m.%Y')}"
-        return start, end, label
-
-    if not month:
-        today = date.today()
-        start = date(today.year, today.month, 1)
-    else:
-        try:
-            year_raw, month_raw = month.split("-", 1)
-            year = int(year_raw)
-            month_num = int(month_raw)
-            start = date(year, month_num, 1)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM") from exc
-
-    last_day = calendar.monthrange(start.year, start.month)[1]
-    end = date(start.year, start.month, last_day)
-    return start, end, _format_ru_month_label(start)
-
-
-def _build_schedule_filters_text(
-    *,
-    view: str,
-    interval_titles: list[str],
-    staffing_state: str,
-) -> str:
-    parts: list[str] = ["Месяц" if view == "month" else "Неделя"]
-    if interval_titles:
-        parts.append("Интервалы: " + ", ".join(interval_titles))
-    if staffing_state == "unstaffed":
-        parts.append("Только без назначений")
-    elif staffing_state == "staffed":
-        parts.append("Только укомплектованные")
-    return " • ".join(parts)
-
 
 # ---------- Helpers ----------
 
@@ -6440,6 +6355,166 @@ def delete_shift_interval(
     return {"ok": True}
 
 
+
+
+_SCHEDULE_EXPORT_VIEW_LABELS = {
+    "month": "Месяц",
+    "week": "Неделя",
+}
+
+_MONTH_NAMES_RU = {
+    1: "Январь",
+    2: "Февраль",
+    3: "Март",
+    4: "Апрель",
+    5: "Май",
+    6: "Июнь",
+    7: "Июль",
+    8: "Август",
+    9: "Сентябрь",
+    10: "Октябрь",
+    11: "Ноябрь",
+    12: "Декабрь",
+}
+
+
+def _month_period_bounds(month_value: str) -> tuple[date, date]:
+    try:
+        year_text, month_text = str(month_value or "").strip().split("-", 1)
+        year = int(year_text)
+        month = int(month_text)
+        start = date(year, month, 1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+    last_day = calendar.monthrange(start.year, start.month)[1]
+    return start, date(start.year, start.month, last_day)
+
+
+def _week_period_bounds(week_start_value: date) -> tuple[date, date]:
+    start = week_start_value - timedelta(days=week_start_value.weekday())
+    return start, start + timedelta(days=6)
+
+
+def _format_schedule_period_label(*, view: str, period_start: date, period_end: date) -> str:
+    if view == "week":
+        return f"{period_start.strftime('%d.%m')}–{period_end.strftime('%d.%m.%Y')}"
+    return f"{_MONTH_NAMES_RU.get(period_start.month, period_start.strftime('%m'))} {period_start.year}"
+
+
+def _build_schedule_export_filters_text(
+    *,
+    view: str,
+    interval_titles: list[str],
+    staffing_state: str,
+) -> str:
+    parts = [_SCHEDULE_EXPORT_VIEW_LABELS.get(view, "График"), "Все сотрудники"]
+    if interval_titles:
+        parts.append(f"Интервалы: {', '.join(interval_titles)}")
+    if staffing_state == "unstaffed":
+        parts.append("Только без назначений")
+    elif staffing_state == "staffed":
+        parts.append("Только с назначениями")
+    return " • ".join(parts)
+
+
+def _build_staff_shifts_deep_link_path(
+    *,
+    venue_id: int,
+    view: str,
+    period_start: date,
+    interval_ids: list[int],
+    staffing_state: str,
+) -> str:
+    params: list[tuple[str, str]] = [
+        ("venue_id", str(int(venue_id))),
+        ("view", view),
+    ]
+    if view == "week":
+        params.append(("week", period_start.isoformat()))
+    else:
+        params.append(("month", period_start.strftime("%Y-%m")))
+    if interval_ids:
+        params.append(("intervals", ",".join(str(int(x)) for x in interval_ids)))
+    if staffing_state == "unstaffed":
+        params.append(("unstaffed", "1"))
+    query = "&".join(f"{quote(key)}={quote(value)}" for key, value in params)
+    return f"/staff-shifts.html?{query}"
+
+
+@router.get("/{venue_id}/shifts/export-metadata")
+def get_shifts_export_metadata(
+    venue_id: int,
+    view: str = Query(default="month", pattern="^(month|week)$"),
+    month: str | None = Query(default=None, description="YYYY-MM"),
+    week_start: date | None = Query(default=None),
+    interval_ids: list[int] | None = Query(default=None),
+    staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Metadata for client-side schedule export, download and share flows."""
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+
+    if view == "week":
+        if week_start is None:
+            raise HTTPException(status_code=400, detail="week_start is required for week export metadata")
+        period_start, period_end = _week_period_bounds(week_start)
+    else:
+        if not month:
+            raise HTTPException(status_code=400, detail="month is required for month export metadata")
+        period_start, period_end = _month_period_bounds(month)
+
+    normalized_interval_ids = sorted({int(item) for item in (interval_ids or []) if int(item) > 0})
+    interval_titles: list[str] = []
+    if normalized_interval_ids:
+        interval_rows = db.execute(
+            select(ShiftInterval)
+            .where(
+                ShiftInterval.venue_id == venue_id,
+                ShiftInterval.id.in_(normalized_interval_ids),
+            )
+            .order_by(ShiftInterval.start_time.asc(), ShiftInterval.id.asc())
+        ).scalars().all()
+        interval_titles = [str(row.title or "").strip() for row in interval_rows if str(row.title or "").strip()]
+        normalized_interval_ids = [int(row.id) for row in interval_rows]
+
+    period_label = _format_schedule_period_label(view=view, period_start=period_start, period_end=period_end)
+    filters_text = _build_schedule_export_filters_text(
+        view=view,
+        interval_titles=interval_titles,
+        staffing_state=staffing_state,
+    )
+    deep_link_path = _build_staff_shifts_deep_link_path(
+        venue_id=venue_id,
+        view=view,
+        period_start=period_start,
+        interval_ids=normalized_interval_ids,
+        staffing_state=staffing_state,
+    )
+
+    return {
+        "venue_id": int(venue.id),
+        "venue_name": venue.name,
+        "view": view,
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
+        "period_label": period_label,
+        "filters_text": filters_text,
+        "interval_titles": interval_titles,
+        "staffing_state": staffing_state,
+        "logo_url": None,
+        "app_logo_url": "/logo.png",
+        "deep_link_path": deep_link_path,
+        "deep_link_url": f"{_frontend_base_url()}{deep_link_path}",
+        "share_title": f"График смен · {venue.name}",
+        "share_text": f"{venue.name}\n{period_label}\n{filters_text}",
+    }
+
+
 @router.get("/{venue_id}/shifts")
 def list_shifts(
     venue_id: int,
@@ -6601,71 +6676,6 @@ def list_shifts(
         }
         for s in shifts
     ]
-
-
-@router.get("/{venue_id}/shifts/export-metadata", response_model=ScheduleExportMetadataOut)
-def get_shift_schedule_export_metadata(
-    venue_id: int,
-    view: str = Query(default="month", pattern="^(month|week)$"),
-    month: str | None = Query(default=None, description="YYYY-MM"),
-    week_start: date | None = Query(default=None, description="YYYY-MM-DD (any day inside the week, normalized to Monday)"),
-    interval_ids: list[int] | None = Query(default=None),
-    staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-
-    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
-    if venue is None:
-        raise HTTPException(status_code=404, detail="Venue not found")
-
-    period_start, period_end, period_label = _resolve_schedule_export_period(
-        view=view,
-        month=month,
-        week_start=week_start,
-    )
-
-    normalized_interval_ids = sorted({int(x) for x in (interval_ids or []) if int(x) > 0})
-    interval_titles: list[str] = []
-    if normalized_interval_ids:
-        interval_rows = db.execute(
-            select(ShiftInterval.id, ShiftInterval.title)
-            .where(
-                ShiftInterval.venue_id == venue_id,
-                ShiftInterval.id.in_(normalized_interval_ids),
-            )
-            .order_by(ShiftInterval.start_time.asc(), ShiftInterval.id.asc())
-        ).all()
-        interval_titles = [str(row.title) for row in interval_rows if row.title]
-
-    filters_text = _build_schedule_filters_text(
-        view=view,
-        interval_titles=interval_titles,
-        staffing_state=staffing_state,
-    )
-
-    share_title = f"График смен · {venue.name}"
-    share_text_parts = [venue.name, period_label]
-    if filters_text:
-        share_text_parts.append(filters_text)
-
-    return ScheduleExportMetadataOut(
-        venue_id=venue.id,
-        venue_name=venue.name,
-        view=view,
-        period_start=period_start,
-        period_end=period_end,
-        period_label=period_label,
-        filters_text=filters_text,
-        interval_titles=interval_titles,
-        staffing_state=staffing_state,
-        logo_url=None,
-        app_logo_url="/logo.png",
-        deep_link_path="/staff-shifts.html",
-        share_title=share_title,
-        share_text="\n".join(share_text_parts),
-    )
 
 
 @router.post("/{venue_id}/shifts")
