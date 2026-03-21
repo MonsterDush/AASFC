@@ -7,7 +7,6 @@ import {
   setActiveVenueId,
   getMe,
   getMyVenuePermissions,
-  getPayroll,
   calculatePayroll,
   api,
   API_BASE,
@@ -32,11 +31,41 @@ function parseVenueId() {
   return id;
 }
 
+function todayIso() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function currentMonth() {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
+}
+
+function monthStartIso(month) {
+  return `${month}-01`;
+}
+
+function monthEndIso(month) {
+  const [yearS, monthS] = String(month || "").split("-");
+  const year = Number(yearS || 0);
+  const monthI = Number(monthS || 0);
+  if (!year || !monthI) return todayIso();
+  return new Date(year, monthI, 0).toISOString().slice(0, 10);
+}
+
+function formatDateRu(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return String(iso || "—");
+  const d = new Date(`${iso}T00:00:00`);
+  try {
+    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  } catch {
+    return iso;
+  }
 }
 
 function fmtMoneyMinor(minor) {
@@ -60,6 +89,10 @@ const COMPONENT_LABELS = {
   PERCENT_TOTAL_REVENUE: "% от общей выручки",
   PERCENT_DEPARTMENT_REVENUE: "% от выручки департамента",
   KPI_BONUS: "KPI-бонус",
+  TIP: "Чаевые",
+  BONUS: "Премия",
+  PENALTY: "Штраф",
+  WRITEOFF: "Списание",
 };
 
 function fmtPercentBps(bps) {
@@ -74,6 +107,12 @@ function fmtPercentBps(bps) {
 function breakdownComponentMeta(component) {
   const type = String(component?.component_type || "").toUpperCase();
   const label = COMPONENT_LABELS[type] || type || "Компонент";
+  if (component?.formula_text || component?.base_text) {
+    const parts = [label];
+    if (component?.base_text) parts.push(component.base_text);
+    if (component?.formula_text) parts.push(component.formula_text);
+    return parts.join(" · ");
+  }
   if (type === "PERCENT_TOTAL_REVENUE") {
     return `${label} · ${fmtPercentBps(component?.percent_bps)} · база ${fmtMoneyMinor(component?.base_amount_minor || 0)}`;
   }
@@ -95,7 +134,10 @@ function breakdownComponentMeta(component) {
 
 let state = {
   venueId: "",
+  periodMode: "month",
   month: currentMonth(),
+  dateFrom: monthStartIso(currentMonth()),
+  dateTo: monthEndIso(currentMonth()),
   me: null,
   perms: null,
   can: { view: false, calculate: false },
@@ -128,6 +170,12 @@ function computeCaps(perms, me) {
   };
 }
 
+function periodTitle() {
+  return state.periodMode === "month"
+    ? "расчёт зарплаты за месяц"
+    : `сводка начислений за диапазон ${formatDateRu(state.dateFrom)} — ${formatDateRu(state.dateTo)}`;
+}
+
 function renderShell() {
   root.innerHTML = `
     <div class="topbar">
@@ -135,7 +183,7 @@ function renderShell() {
         <div class="logo"></div>
         <div class="title">
           <b id="title">Начисления</b>
-          <div class="muted" id="subtitle">расчёт зарплаты за месяц</div>
+          <div class="muted" id="subtitle">${esc(periodTitle())}</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -148,7 +196,18 @@ function renderShell() {
           <div class="muted mt-6">Считается по активным назначениям профилей. Поддержаны ставки, проценты и KPI-бонусы по закрытым отчётам.</div>
         </div>
         <div class="pickers pickers--revenue">
-          <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
+          <div class="seg seg--period" id="periodSeg" style="min-width:220px;">
+            <button type="button" id="periodMonthBtn">Месяц</button>
+            <button type="button" id="periodRangeBtn">Диапазон</button>
+          </div>
+          <div id="monthControls" class="pickers">
+            <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
+          </div>
+          <div id="rangeControls" class="range-pick" style="display:none;">
+            <input id="rangeFrom" type="date" />
+            <input id="rangeTo" type="date" />
+            <button class="btn" id="rangeApply">Показать</button>
+          </div>
           <button class="btn primary" id="btnCalculate">Рассчитать</button>
           <button class="btn" id="btnExport">Экспорт XLSX</button>
           <a class="btn" id="openProfilesBtn" href="#">Профили</a>
@@ -201,19 +260,83 @@ function renderShell() {
   mountCommonUI("none");
 }
 
+function getPeriodQuery() {
+  const params = new URLSearchParams();
+  if (state.periodMode === "range") {
+    params.set("period_mode", "range");
+    params.set("date_from", state.dateFrom);
+    params.set("date_to", state.dateTo);
+  } else {
+    params.set("month", state.month);
+  }
+  if (state.venueId) params.set("venue_id", state.venueId);
+  return params;
+}
+
+function syncUrl() {
+  try {
+    history.replaceState(null, "", `${location.pathname}?${getPeriodQuery().toString()}`);
+  } catch {}
+}
+
 function renderState() {
   const btnCalculate = document.getElementById("btnCalculate");
   const btnExport = document.getElementById("btnExport");
   const monthPick = document.getElementById("monthPick");
+  const rangeFrom = document.getElementById("rangeFrom");
+  const rangeTo = document.getElementById("rangeTo");
   const backVenue = document.getElementById("backVenue");
   const openSummary = document.getElementById("openSummary");
   const openProfilesBtn = document.getElementById("openProfilesBtn");
+  const monthControls = document.getElementById("monthControls");
+  const rangeControls = document.getElementById("rangeControls");
+  const periodMonthBtn = document.getElementById("periodMonthBtn");
+  const periodRangeBtn = document.getElementById("periodRangeBtn");
+  const subtitle = document.getElementById("subtitle");
+
+  if (subtitle) subtitle.textContent = periodTitle();
   if (monthPick) monthPick.value = state.month;
-  if (btnCalculate) btnCalculate.style.display = state.can.calculate ? "" : "none";
-  if (btnExport) btnExport.style.display = state.can.view ? "" : "none";
+  if (rangeFrom) rangeFrom.value = state.dateFrom;
+  if (rangeTo) rangeTo.value = state.dateTo;
+  if (monthControls) monthControls.style.display = state.periodMode === "month" ? "" : "none";
+  if (rangeControls) rangeControls.style.display = state.periodMode === "range" ? "" : "none";
+  periodMonthBtn?.classList.toggle("active", state.periodMode === "month");
+  periodRangeBtn?.classList.toggle("active", state.periodMode === "range");
+
+  if (btnCalculate) btnCalculate.style.display = (state.can.calculate && state.periodMode === "month") ? "" : "none";
+  if (btnExport) btnExport.style.display = (state.can.view && state.periodMode === "month") ? "" : "none";
   if (backVenue) backVenue.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
-  if (openSummary) openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(state.venueId)}&month=${encodeURIComponent(state.month)}`;
+  if (openSummary) {
+    if (state.periodMode === "month") {
+      openSummary.style.display = "";
+      openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(state.venueId)}&month=${encodeURIComponent(state.month)}`;
+    } else {
+      openSummary.style.display = "none";
+    }
+  }
   if (openProfilesBtn) openProfilesBtn.href = `/owner-pay-profiles.html?venue_id=${encodeURIComponent(state.venueId)}`;
+  syncUrl();
+}
+
+function recalculationText(latestRecalc, runCalculatedAt) {
+  const reasonMap = {
+    manual_calculation: "ручной расчёт",
+    report_closed: "после закрытия отчёта",
+    report_reopened: "после reopen",
+    closed_report_updated: "после правки CLOSED-отчёта",
+    shift_assignment_added: "после назначения",
+    shift_assignment_removed: "после снятия назначения",
+    shift_updated: "после изменения смены",
+    shift_deleted: "после удаления смены",
+    member_removed_from_venue: "после удаления участника",
+    member_left_venue: "после выхода участника",
+  };
+  const dt = runCalculatedAt ? new Date(runCalculatedAt) : null;
+  const baseText = dt && !Number.isNaN(dt.getTime())
+    ? `обновлено ${dt.toLocaleString("ru-RU")}`
+    : (latestRecalc?.created_at ? `обновлено ${new Date(latestRecalc.created_at).toLocaleString("ru-RU")}` : "есть перерасчёт");
+  const reason = String(latestRecalc?.trigger_reason || "");
+  return reason ? `${baseText} · ${reasonMap[reason] || "автоперерасчёт"}` : baseText;
 }
 
 function renderLines() {
@@ -231,35 +354,22 @@ function renderLines() {
     return;
   }
 
-  const data = state.data || { lines: [], total_amount_minor: 0, lines_count: 0, run: null };
+  const data = state.data || { lines: [], total_amount_minor: 0, lines_count: 0, run: null, latest_recalculation: null };
   if (totalAmount) totalAmount.textContent = fmtMoneyMinor(data.total_amount_minor);
   if (linesCount) linesCount.textContent = String(Number(data.lines_count || 0));
   if (runMeta) {
     if (data.run?.calculated_at) {
-      const dt = new Date(data.run.calculated_at);
-      const baseText = Number.isNaN(dt.getTime()) ? "рассчитано" : `обновлено ${dt.toLocaleString("ru-RU")}`;
-      const reason = String(data?.latest_recalculation?.trigger_reason || "");
-      const reasonMap = {
-        manual_calculation: "ручной расчёт",
-        report_closed: "после закрытия отчёта",
-        report_reopened: "после reopen",
-        closed_report_updated: "после правки CLOSED-отчёта",
-        shift_assignment_added: "после назначения",
-        shift_assignment_removed: "после снятия назначения",
-        shift_updated: "после изменения смены",
-        shift_deleted: "после удаления смены",
-        member_removed_from_venue: "после удаления участника",
-        member_left_venue: "после выхода участника",
-      };
-      runMeta.textContent = reason ? `${baseText} · ${reasonMap[reason] || "автоперерасчёт"}` : baseText;
+      runMeta.textContent = recalculationText(data.latest_recalculation, data.run.calculated_at);
+    } else if (data.latest_recalculation?.created_at) {
+      runMeta.textContent = recalculationText(data.latest_recalculation, null);
     } else {
-      runMeta.textContent = "ещё не считалось";
+      runMeta.textContent = state.periodMode === "month" ? "ещё не считалось" : "агрегация по дневным начислениям";
     }
   }
 
   const lines = Array.isArray(data.lines) ? data.lines : [];
   if (!lines.length) {
-    linesList.innerHTML = `<div class="muted">За выбранный месяц начислений пока нет. Нажми «Рассчитать», если профили уже назначены.</div>`;
+    linesList.innerHTML = `<div class="muted">${state.periodMode === "month" ? "За выбранный месяц начислений пока нет. Нажми «Рассчитать», если профили уже назначены." : "За выбранный диапазон начислений пока нет."}</div>`;
     return;
   }
 
@@ -270,15 +380,20 @@ function renderLines() {
     const components = Array.isArray(breakdown.components) ? breakdown.components : [];
     const row = document.createElement("div");
     row.className = "expense-row";
+    const periodState = String(line.period_state || breakdown.period_state || "").toLowerCase();
+    const stateBadge = periodState === "partial"
+      ? '<span class="badge">частично</span>'
+      : (periodState === "ready" ? '' : '');
     row.innerHTML = `
       <div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <b class="expense-row__title">${esc(memberName(line.member))}</b>
           ${line.pay_profile_title ? `<span class="badge">${esc(line.pay_profile_title)}</span>` : ""}
+          ${stateBadge}
         </div>
         <div class="mono mt-6">Часы: ${esc(metrics.hours_total ?? 0)} · Смены: ${esc(metrics.shifts_count ?? 0)}${Number(metrics.worked_dates_count || 0) ? ` · Дней: ${esc(metrics.worked_dates_count)}` : ""}</div>
         <details class="mt-12 payroll-breakdown">
-          <summary>Показать разбор</summary>
+          <summary>${state.periodMode === "month" ? "Показать разбор" : "Показать разбор периода"}</summary>
           <div class="payroll-breakdown__body mt-8">
             ${components.length ? components.map((c) => `
               <div class="payroll-breakdown__row">
@@ -300,11 +415,18 @@ function renderLines() {
   });
 }
 
+function buildPayrollPath() {
+  if (state.periodMode === "range") {
+    return `/venues/${encodeURIComponent(state.venueId)}/payroll?date_from=${encodeURIComponent(state.dateFrom)}&date_to=${encodeURIComponent(state.dateTo)}`;
+  }
+  return `/venues/${encodeURIComponent(state.venueId)}/payroll?month=${encodeURIComponent(state.month)}`;
+}
+
 async function load() {
   const linesList = document.getElementById("linesList");
   if (linesList) linesList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
   try {
-    state.data = await getPayroll(state.venueId, state.month);
+    state.data = await api(buildPayrollPath());
     renderLines();
   } catch (e) {
     if (linesList) linesList.innerHTML = `<div class="muted">Ошибка: ${esc(e?.data?.detail || e?.message || "не удалось загрузить")}</div>`;
@@ -322,6 +444,24 @@ async function onCalculate() {
   }
 }
 
+function setPeriodMode(next) {
+  state.periodMode = next === "range" ? "range" : "month";
+  renderState();
+}
+
+async function applyRangeFromControls() {
+  const nextFrom = String(document.getElementById("rangeFrom")?.value || "").trim();
+  const nextTo = String(document.getElementById("rangeTo")?.value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(nextTo)) {
+    toast("Выбери даты диапазона", "err");
+    return;
+  }
+  state.dateFrom = nextFrom <= nextTo ? nextFrom : nextTo;
+  state.dateTo = nextTo >= nextFrom ? nextTo : nextFrom;
+  renderState();
+  await load();
+}
+
 async function boot() {
   applyTelegramTheme();
   renderShell();
@@ -335,6 +475,11 @@ async function boot() {
 
   const params = new URLSearchParams(location.search);
   state.month = params.get("month") || currentMonth();
+  const hasRange = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_from") || "")) && /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_to") || ""));
+  state.periodMode = (params.get("period_mode") || (hasRange ? "range" : "month")).toLowerCase() === "range" ? "range" : "month";
+  state.dateFrom = hasRange ? String(params.get("date_from")) : monthStartIso(state.month);
+  state.dateTo = hasRange ? String(params.get("date_to")) : monthEndIso(state.month);
+  if (state.dateTo < state.dateFrom) state.dateTo = state.dateFrom;
 
   await mountNav({ activeTab: "summary" });
 
@@ -353,12 +498,28 @@ async function boot() {
   state.can = computeCaps(state.perms, state.me);
   renderState();
 
+  document.getElementById("periodMonthBtn")?.addEventListener("click", async () => {
+    if (state.periodMode === "month") return;
+    setPeriodMode("month");
+    await load();
+  });
+  document.getElementById("periodRangeBtn")?.addEventListener("click", async () => {
+    if (state.periodMode === "range") return;
+    setPeriodMode("range");
+    await load();
+  });
+
   document.getElementById("monthPick")?.addEventListener("change", async (e) => {
     state.month = e.target.value || currentMonth();
+    if (!state.dateFrom || !state.dateTo) {
+      state.dateFrom = monthStartIso(state.month);
+      state.dateTo = monthEndIso(state.month);
+    }
     renderState();
     await load();
   });
 
+  document.getElementById("rangeApply")?.addEventListener("click", applyRangeFromControls);
   document.getElementById("btnCalculate")?.addEventListener("click", onCalculate);
   document.getElementById("btnExport")?.addEventListener("click", async () => {
     try {
