@@ -12,7 +12,7 @@ from typing import Optional, List
 from io import BytesIO
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, delete, update, func
@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, get_current_user_optional
 from app.auth.guards import require_super_admin
-from app.core.db import get_db
+from app.core.db import SessionLocal, get_db
 from app.core.tg import normalize_tg_username, send_telegram_message
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.core.permissions_registry import PERMISSIONS
@@ -80,6 +80,7 @@ from app.models.daily_report_value import DailyReportValue
 from app.models.daily_report_audit import DailyReportAudit
 from app.models.daily_report_tip_allocation import DailyReportTipAllocation
 from app.models.notification_delivery_log import NotificationDeliveryLog
+from app.models.notification_job import NotificationJob
 from app.models.adjustment import Adjustment
 from app.models.adjustment_dispute import AdjustmentDispute
 from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
@@ -112,6 +113,15 @@ from app.settings import settings
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 log = logging.getLogger("axelio.day_economics_notifications")
+
+_NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY = "day_economics_summary"
+_NOTIFICATION_JOB_STATUS_PENDING = "pending"
+_NOTIFICATION_JOB_STATUS_PROCESSING = "processing"
+_NOTIFICATION_JOB_STATUS_SENT = "sent"
+_NOTIFICATION_JOB_STATUS_FAILED = "failed"
+_NOTIFICATION_JOB_RETRY_MINUTES = int(os.getenv("NOTIFICATION_JOB_RETRY_MINUTES", "2"))
+_NOTIFICATION_JOB_STALE_MINUTES = int(os.getenv("NOTIFICATION_JOB_STALE_MINUTES", "10"))
+_NOTIFICATION_JOB_MAX_ATTEMPTS = int(os.getenv("NOTIFICATION_JOB_MAX_ATTEMPTS", "5"))
 
 
 _CODE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -3149,6 +3159,7 @@ def close_daily_report(
     venue_id: int,
     report_date: date,
     payload: DailyReportCloseIn,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -3220,19 +3231,10 @@ def close_daily_report(
         calculated_by_user_id=user.id,
         force=True,
     )
+    _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date)
 
     db.commit()
-
-    try:
-        _send_day_economics_summary_notifications(db, venue_id=venue_id, target_date=report_date)
-    except Exception as exc:
-        db.rollback()
-        log.exception(
-            "day economics summary notification failed venue_id=%s report_date=%s: %s",
-            venue_id,
-            report_date,
-            exc,
-        )
+    background_tasks.add_task(process_pending_notification_jobs_once, 10)
 
     return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
 
@@ -4453,6 +4455,134 @@ def _build_day_economics_notification_text(*, venue_name: str, target_date: date
 
     return "\n".join(lines)
 
+
+def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
+    idempotency_key = f"job:day_economics_summary:{int(venue_id)}:{target_date.isoformat()}"
+    existing = db.execute(
+        select(NotificationJob)
+        .where(
+            NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY,
+            NotificationJob.idempotency_key == idempotency_key,
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+        )
+        .order_by(NotificationJob.id.desc())
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    job = NotificationJob(
+        job_type=_NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY,
+        status=_NOTIFICATION_JOB_STATUS_PENDING,
+        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat()}, ensure_ascii=False),
+        attempts=0,
+        max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
+        run_after=datetime.utcnow(),
+        idempotency_key=idempotency_key,
+    )
+    db.add(job)
+    db.flush()
+    return job
+
+
+def _claim_notification_job(db: Session) -> NotificationJob | None:
+    now = datetime.utcnow()
+    stale_before = now - timedelta(minutes=max(int(_NOTIFICATION_JOB_STALE_MINUTES), 1))
+    stmt = (
+        select(NotificationJob)
+        .where(
+            sa.or_(
+                sa.and_(
+                    NotificationJob.status == _NOTIFICATION_JOB_STATUS_PENDING,
+                    NotificationJob.run_after <= now,
+                ),
+                sa.and_(
+                    NotificationJob.status == _NOTIFICATION_JOB_STATUS_PROCESSING,
+                    NotificationJob.locked_at.is_not(None),
+                    NotificationJob.locked_at <= stale_before,
+                ),
+            )
+        )
+        .order_by(NotificationJob.run_after.asc(), NotificationJob.id.asc())
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )
+    job = db.execute(stmt).scalar_one_or_none()
+    if job is None:
+        return None
+    job.status = _NOTIFICATION_JOB_STATUS_PROCESSING
+    job.locked_at = now
+    job.attempts = int(job.attempts or 0) + 1
+    job.updated_at = now
+    db.flush()
+    return job
+
+
+def _complete_notification_job(db: Session, job: NotificationJob, *, status: str, last_error: str | None = None) -> None:
+    now = datetime.utcnow()
+    if status == _NOTIFICATION_JOB_STATUS_FAILED and int(job.attempts or 0) < int(job.max_attempts or _NOTIFICATION_JOB_MAX_ATTEMPTS):
+        job.status = _NOTIFICATION_JOB_STATUS_PENDING
+        job.run_after = now + timedelta(minutes=max(int(_NOTIFICATION_JOB_RETRY_MINUTES), 1))
+        job.locked_at = None
+        job.last_error = (last_error or None)
+        job.updated_at = now
+    else:
+        job.status = status
+        job.processed_at = now
+        job.locked_at = None
+        job.last_error = (last_error or None)
+        job.updated_at = now
+
+
+def process_pending_notification_jobs_once(limit: int = 10) -> int:
+    processed = 0
+    hard_limit = max(int(limit or 0), 0)
+    if hard_limit <= 0:
+        return 0
+
+    while processed < hard_limit:
+        with SessionLocal() as db:
+            job = _claim_notification_job(db)
+            if job is None:
+                db.rollback()
+                break
+            job_id = int(job.id)
+            db.commit()
+
+        with SessionLocal() as db:
+            job = db.get(NotificationJob, job_id)
+            if job is None:
+                processed += 1
+                continue
+            try:
+                payload = json.loads(job.payload_json or "{}")
+                if job.job_type == _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY:
+                    _send_day_economics_summary_notifications(
+                        db,
+                        venue_id=int(payload.get("venue_id")),
+                        target_date=date.fromisoformat(str(payload.get("target_date"))),
+                    )
+                else:
+                    raise ValueError(f"Unsupported notification job type: {job.job_type}")
+                _complete_notification_job(db, job, status=_NOTIFICATION_JOB_STATUS_SENT)
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                with SessionLocal() as retry_db:
+                    retry_job = retry_db.get(NotificationJob, job_id)
+                    if retry_job is not None:
+                        _complete_notification_job(
+                            retry_db,
+                            retry_job,
+                            status=_NOTIFICATION_JOB_STATUS_FAILED,
+                            last_error=str(exc)[:2000],
+                        )
+                        retry_db.commit()
+                log.exception("notification job failed id=%s type=%s: %s", job_id, getattr(job, "job_type", None), exc)
+            processed += 1
+
+    return processed
+
+
 def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
     members = db.execute(
         select(User)
@@ -4467,39 +4597,39 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
         return
 
     recipients: list[User] = []
-    seen_recipient_ids: set[int] = set()
-    seen_tg_user_ids: set[int] = set()
+    seen_user_ids: set[int] = set()
+    seen_chat_ids: set[int] = set()
     for user in members:
         if not _can_receive_day_economics_summary(db, venue_id=venue_id, user=user):
             continue
         user_id = int(user.id)
-        tg_user_id = int(user.tg_user_id) if getattr(user, "tg_user_id", None) is not None else None
-        if user_id in seen_recipient_ids:
+        chat_id = int(user.tg_user_id) if getattr(user, "tg_user_id", None) else None
+        if user_id in seen_user_ids or (chat_id is not None and chat_id in seen_chat_ids):
             continue
-        if tg_user_id is not None and tg_user_id in seen_tg_user_ids:
-            continue
+        seen_user_ids.add(user_id)
+        if chat_id is not None:
+            seen_chat_ids.add(chat_id)
         recipients.append(user)
-        seen_recipient_ids.add(user_id)
-        if tg_user_id is not None:
-            seen_tg_user_ids.add(tg_user_id)
     if not recipients:
         return
 
     economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
     venue_name = _venue_name(db, venue_id)
     link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
-    sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
+    planned_at = datetime.utcnow().replace(tzinfo=timezone.utc)
 
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
-        dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
-        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}"
+        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{chat_id}"
         existing_log = db.execute(
-            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
-            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
+            select(NotificationDeliveryLog)
+            .where(
+                NotificationDeliveryLog.idempotency_key == idempotency_key,
+                NotificationDeliveryLog.status.in_(["pending", "sent"]),
+            )
             .order_by(NotificationDeliveryLog.id.desc())
-        ).first()
-        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+        ).scalar_one_or_none()
+        if existing_log is not None:
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
@@ -4509,19 +4639,17 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             economics=economics,
             detail_level=detail_level,
         )
-
         pending_log = log_notification_attempt(
             db,
             notification_type="day_economics_summary",
             status="pending",
             user_id=int(recipient.id),
             venue_id=int(venue_id),
-            planned_at=sent_at,
+            planned_at=planned_at,
             idempotency_key=idempotency_key,
             payload_preview=text[:2000],
         )
         db.flush()
-        db.commit()
 
         ok = tg_notify.notify(
             chat_id=chat_id,
@@ -4529,17 +4657,10 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             url=link,
             button_text="Открыть экономику дня",
         )
-        try:
-            pending_log.status = "sent" if ok else "failed"
-            pending_log.sent_at = sent_at if ok else None
-            pending_log.error_text = None if ok else "notify() returned False"
-            db.add(pending_log)
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
+        pending_log.status = "sent" if ok else "failed"
+        pending_log.sent_at = planned_at if ok else None
+        pending_log.error_text = None if ok else "notify() returned False"
 
-    db.commit()
 
 
 @router.post("/{venue_id}/adjustments")

@@ -44,6 +44,7 @@ from .pay_component import PayComponent
 from .payroll_run import PayrollRun
 from .payroll_line import PayrollLine
 from .notification_delivery_log import NotificationDeliveryLog
+from .notification_job import NotificationJob
 
 __all__ = [
     "SystemRole",
@@ -93,4 +94,5 @@ __all__ = [
     "PayrollRun",
     "PayrollLine",
     "NotificationDeliveryLog",
+    "NotificationJob",
 ]
