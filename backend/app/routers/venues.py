@@ -4491,14 +4491,15 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
     sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
 
     for recipient in recipients:
-        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{int(recipient.id)}"
-        already_sent = db.execute(
-            select(NotificationDeliveryLog.id).where(
-                NotificationDeliveryLog.idempotency_key == idempotency_key,
-                NotificationDeliveryLog.status == "sent",
-            )
-        ).scalar_one_or_none()
-        if already_sent is not None:
+        chat_id = int(recipient.tg_user_id)
+        dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
+        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}"
+        existing_log = db.execute(
+            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
+            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
+            .order_by(NotificationDeliveryLog.id.desc())
+        ).first()
+        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
@@ -4508,36 +4509,35 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             economics=economics,
             detail_level=detail_level,
         )
+
+        pending_log = log_notification_attempt(
+            db,
+            notification_type="day_economics_summary",
+            status="pending",
+            user_id=int(recipient.id),
+            venue_id=int(venue_id),
+            planned_at=sent_at,
+            idempotency_key=idempotency_key,
+            payload_preview=text[:2000],
+        )
+        db.flush()
+        db.commit()
+
         ok = tg_notify.notify(
-            chat_id=int(recipient.tg_user_id),
+            chat_id=chat_id,
             text=text,
             url=link,
             button_text="Открыть экономику дня",
         )
-        if ok:
-            log_notification_attempt(
-                db,
-                notification_type="day_economics_summary",
-                status="sent",
-                user_id=int(recipient.id),
-                venue_id=int(venue_id),
-                planned_at=sent_at,
-                sent_at=sent_at,
-                idempotency_key=idempotency_key,
-                payload_preview=text[:2000],
-            )
-        else:
-            log_notification_attempt(
-                db,
-                notification_type="day_economics_summary",
-                status="failed",
-                user_id=int(recipient.id),
-                venue_id=int(venue_id),
-                planned_at=sent_at,
-                idempotency_key=idempotency_key,
-                error_text="notify() returned False",
-                payload_preview=text[:2000],
-            )
+        try:
+            pending_log.status = "sent" if ok else "failed"
+            pending_log.sent_at = sent_at if ok else None
+            pending_log.error_text = None if ok else "notify() returned False"
+            db.add(pending_log)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
     db.commit()
 
