@@ -16,7 +16,6 @@ jobs:
           else
             echo "SSH_KEY is present"
           fi
-
       - name: SSH Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -26,44 +25,27 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
-
             if [ "${{ github.ref_name }}" = "develop" ]; then
-              APP_ROOT=/var/www/axelio/dev
-              REPO_DIR=$APP_ROOT/repo
-              BACKEND_DIR=$REPO_DIR/backend
-              VENV_BIN=$APP_ROOT/venv/bin
-
-              cd "$REPO_DIR"
+              cd /var/www/axelio/dev/repo
               git fetch origin
               git checkout develop
               git pull origin develop
-
-              "$VENV_BIN/pip" install -r "$BACKEND_DIR/requirements.txt"
-
-              cd "$BACKEND_DIR"
-              "$VENV_BIN/alembic" upgrade head
-              "$VENV_BIN/python" -m app.core.sync_permissions
-
+              cd /var/www/axelio/dev
+              source venv/bin/activate
+              pip install -r repo/backend/requirements.txt
               sudo systemctl restart axelio-api-dev
+              sudo systemctl restart axelio-shift-reminders-dev.timer
+              sudo systemctl restart axelio-notification-jobs-dev.timer
               sudo systemctl reload nginx
               echo "Deployed develop -> dev"
             else
-              APP_ROOT=/var/www/axelio/prod
-              REPO_DIR=$APP_ROOT/repo
-              BACKEND_DIR=$REPO_DIR/backend
-              VENV_BIN=$APP_ROOT/venv/bin
-
-              cd "$REPO_DIR"
+              cd /var/www/axelio/prod/repo
               git fetch origin
               git checkout main
               git pull origin main
-
-              "$VENV_BIN/pip" install -r "$BACKEND_DIR/requirements.txt"
-
-              cd "$BACKEND_DIR"
-              "$VENV_BIN/alembic" upgrade head
-              "$VENV_BIN/python" -m app.core.sync_permissions
-
+              cd /var/www/axelio/prod
+              source venv/bin/activate
+              pip install -r repo/backend/requirements.txt
               sudo systemctl restart axelio-api-prod
               sudo systemctl reload nginx
               echo "Deployed main -> prod"
