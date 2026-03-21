@@ -7,3 +7,4 @@ Type=oneshot
 WorkingDirectory=/var/www/axelio/dev/repo/backend
 EnvironmentFile=/var/www/axelio/dev/repo/backend/.env
 ExecStart=/var/www/axelio/dev/venv/bin/python app/scripts/send_shift_reminders.py
+
