@@ -13,7 +13,7 @@ from io import BytesIO
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, delete, update, func
 import sqlalchemy as sa
@@ -126,6 +126,7 @@ _NOTIFICATION_JOB_STATUS_FAILED = "failed"
 _NOTIFICATION_JOB_RETRY_MINUTES = int(os.getenv("NOTIFICATION_JOB_RETRY_MINUTES", "2"))
 _NOTIFICATION_JOB_STALE_MINUTES = int(os.getenv("NOTIFICATION_JOB_STALE_MINUTES", "10"))
 _NOTIFICATION_JOB_MAX_ATTEMPTS = int(os.getenv("NOTIFICATION_JOB_MAX_ATTEMPTS", "5"))
+_SCHEDULE_SHARE_TTL_SECONDS = int(os.getenv("SCHEDULE_SHARE_TTL_SECONDS", "604800"))
 
 
 _CODE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -6441,9 +6442,85 @@ def _build_staff_shifts_deep_link_path(
     return f"/staff-shifts.html?{query}"
 
 
+
+def _build_staff_shifts_share_token(
+    *,
+    venue_id: int,
+    view: str,
+    period_start: date,
+    interval_ids: list[int],
+    staffing_state: str,
+) -> str:
+    return make_signed_token(
+        {
+            "action": "staff_shifts_share",
+            "venue_id": int(venue_id),
+            "view": str(view),
+            "period_start": period_start.isoformat(),
+            "interval_ids": [int(item) for item in (interval_ids or []) if int(item) > 0],
+            "staffing_state": str(staffing_state or "all"),
+        },
+        ttl_seconds=_SCHEDULE_SHARE_TTL_SECONDS,
+    )
+
+
+def _build_staff_shifts_share_path(token: str) -> str:
+    return f"/venues/share/staff-shifts/{quote(token)}"
+
+
+def _build_staff_shifts_share_url(*, request: Request, token: str) -> str:
+    base = str(request.base_url).rstrip("/")
+    return f"{base}{_build_staff_shifts_share_path(token)}"
+
+
+def _build_telegram_share_url(*, url: str, text: str) -> str:
+    return f"https://t.me/share/url?url={quote(url)}&text={quote(text or '')}"
+
+
+@router.get("/share/staff-shifts/{token}")
+def open_staff_shifts_share_link(token: str):
+    try:
+        payload = verify_signed_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid share token")
+
+    if str(payload.get("action") or "") != "staff_shifts_share":
+        raise HTTPException(status_code=401, detail="Invalid share token")
+
+    venue_id = int(payload.get("venue_id") or 0)
+    if venue_id <= 0:
+        raise HTTPException(status_code=401, detail="Invalid share token")
+
+    view = str(payload.get("view") or "month").strip().lower()
+    if view not in {"month", "week"}:
+        view = "month"
+
+    raw_period_start = payload.get("period_start")
+    try:
+        period_start = date.fromisoformat(str(raw_period_start))
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid share token")
+
+    raw_interval_ids = payload.get("interval_ids") or []
+    interval_ids = [int(item) for item in raw_interval_ids if int(item) > 0]
+    staffing_state = str(payload.get("staffing_state") or "all").strip().lower()
+    if staffing_state not in {"all", "staffed", "unstaffed"}:
+        staffing_state = "all"
+
+    deep_link_path = _build_staff_shifts_deep_link_path(
+        venue_id=venue_id,
+        view=view,
+        period_start=period_start,
+        interval_ids=interval_ids,
+        staffing_state=staffing_state,
+    )
+    return RedirectResponse(url=f"{_frontend_base_url()}{deep_link_path}", status_code=307)
+
+
 @router.get("/{venue_id}/shifts/export-metadata")
 def get_shifts_export_metadata(
     venue_id: int,
+    request: Request,
     view: str = Query(default="month", pattern="^(month|week)$"),
     month: str | None = Query(default=None, description="YYYY-MM"),
     week_start: date | None = Query(default=None),
@@ -6495,6 +6572,17 @@ def get_shifts_export_metadata(
         interval_ids=normalized_interval_ids,
         staffing_state=staffing_state,
     )
+    share_title = f"График смен · {venue.name}"
+    share_text = f"{venue.name}\n{period_label}\n{filters_text}"
+    share_token = _build_staff_shifts_share_token(
+        venue_id=venue_id,
+        view=view,
+        period_start=period_start,
+        interval_ids=normalized_interval_ids,
+        staffing_state=staffing_state,
+    )
+    share_path = _build_staff_shifts_share_path(share_token)
+    share_url = _build_staff_shifts_share_url(request=request, token=share_token)
 
     return {
         "venue_id": int(venue.id),
@@ -6510,8 +6598,13 @@ def get_shifts_export_metadata(
         "app_logo_url": "/logo.png",
         "deep_link_path": deep_link_path,
         "deep_link_url": f"{_frontend_base_url()}{deep_link_path}",
-        "share_title": f"График смен · {venue.name}",
-        "share_text": f"{venue.name}\n{period_label}\n{filters_text}",
+        "share_title": share_title,
+        "share_text": share_text,
+        "share_token": share_token,
+        "share_path": share_path,
+        "share_url": share_url,
+        "telegram_share_url": _build_telegram_share_url(url=share_url, text=share_text),
+        "share_expires_in": _SCHEDULE_SHARE_TTL_SECONDS,
     }
 
 

@@ -2705,6 +2705,9 @@ function downloadBlob(blob, filename) {
 }
 
 function currentShiftsPageUrl() {
+  const meta = exportState.meta || null;
+  if (meta?.share_url) return String(meta.share_url);
+  if (meta?.deep_link_url) return String(meta.deep_link_url);
   return new URL(`${location.pathname}${location.search}`, location.origin).toString();
 }
 
@@ -2719,7 +2722,7 @@ function canShareFile(file) {
 async function shareExportImage() {
   const art = await ensureExportArtifact();
   const file = new File([art.pngBlob], `${art.filenameBase}.png`, { type: "image/png" });
-  const shareUrl = currentShiftsPageUrl();
+  const shareUrl = art.meta?.share_url || currentShiftsPageUrl();
 
   if (canShareFile(file) && navigator.share) {
     await navigator.share({
@@ -2744,8 +2747,8 @@ async function shareExportImage() {
 
 function openTelegramShare() {
   const meta = exportState.meta || buildLocalExportMetadata();
-  const shareUrl = currentShiftsPageUrl();
-  const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(meta.share_text || meta.period_label || "График смен")}`;
+  const shareUrl = meta.share_url || currentShiftsPageUrl();
+  const tgUrl = meta.telegram_share_url || `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(meta.share_text || meta.period_label || "График смен")}`;
   const tg = window.Telegram?.WebApp;
   try {
     if (tg?.openTelegramLink) {
