@@ -1,0 +1,10 @@
+[Unit]
+Description=Axelio dev: run notification jobs every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Unit=axelio-notification-jobs-dev.service
+
+[Install]
+WantedBy=timers.target

@@ -1,9 +1,9 @@
 [Unit]
-Description=Axelio dev: send shift reminders
+Description=Axelio dev: process notification jobs
 After=network.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=/var/www/axelio/dev/repo/backend
 EnvironmentFile=/var/www/axelio/dev/repo/backend/.env
-ExecStart=/var/www/axelio/dev/venv/bin/python app/scripts/send_shift_reminders.py
+ExecStart=/var/www/axelio/dev/venv/bin/python app/scripts/process_notification_jobs.py
