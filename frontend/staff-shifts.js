@@ -657,6 +657,31 @@ async function reloadCurrentView() {
   return (calendarView === "week") ? loadWeek() : loadMonth();
 }
 
+function syncScheduleFilterTriggerState() {
+  const active = !!unstaffedOnly || selectedIntervalIds.size > 0;
+  el.btnScheduleFilter?.classList.toggle("active", active || el.scheduleFilterDropdown?.classList.contains("open"));
+  if (el.btnScheduleFilter) {
+    el.btnScheduleFilter.setAttribute("aria-expanded", el.scheduleFilterDropdown?.classList.contains("open") ? "true" : "false");
+  }
+}
+
+function closeScheduleFilterDropdown() {
+  el.scheduleFilterDropdown?.classList.remove("open");
+  el.scheduleFilterMenu?.classList.add("hidden");
+  syncScheduleFilterTriggerState();
+}
+
+function openScheduleFilterDropdown() {
+  el.scheduleFilterDropdown?.classList.add("open");
+  el.scheduleFilterMenu?.classList.remove("hidden");
+  syncScheduleFilterTriggerState();
+}
+
+function toggleScheduleFilterDropdown() {
+  if (el.scheduleFilterDropdown?.classList.contains("open")) closeScheduleFilterDropdown();
+  else openScheduleFilterDropdown();
+}
+
 function renderScheduleFilters() {
   const listEl = el.scheduleIntervalList;
   const noteEl = el.scheduleFilterScopeNote;
@@ -667,14 +692,8 @@ function renderScheduleFilters() {
   noteEl?.classList.toggle("hidden", !isGlobal);
   listEl.innerHTML = "";
   el.btnUnstaffedOnly?.classList.toggle("active", !!unstaffedOnly);
-  el.btnUnstaffedOnly && (el.btnUnstaffedOnly.disabled = isGlobal);
-  el.btnResetScheduleFilters && (el.btnResetScheduleFilters.disabled = isGlobal);
-
-  const hasActiveFilters = !!unstaffedOnly || selectedIntervalIds.size > 0;
-  el.btnScheduleFilter?.classList.toggle("active", hasActiveFilters);
-  if (el.btnScheduleFilter) {
-    el.btnScheduleFilter.setAttribute("aria-expanded", String(!el.scheduleFilterMenu?.classList.contains("hidden")));
-  }
+  if (el.btnUnstaffedOnly) el.btnUnstaffedOnly.disabled = isGlobal;
+  if (el.btnResetScheduleFilters) el.btnResetScheduleFilters.disabled = isGlobal;
 
   const items = Array.isArray(intervals) ? intervals.slice().sort((a, b) => intervalSortKey(a).localeCompare(intervalSortKey(b))) : [];
   if (!isGlobal) {
@@ -700,11 +719,12 @@ function renderScheduleFilters() {
       });
       listEl.appendChild(label);
     }
+    if (!items.length) {
+      listEl.innerHTML = `<div class="muted small">Нет активных интервалов</div>`;
+    }
   }
 
-  if (!items.length && !isGlobal) {
-    listEl.innerHTML = `<div class="muted small">Активных интервалов пока нет</div>`;
-  }
+  syncScheduleFilterTriggerState();
 }
 
 function hasAssignments(shift) {
@@ -731,24 +751,19 @@ el.btnUnstaffedOnly?.addEventListener("click", async () => {
 el.btnScheduleFilter?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
-  const willOpen = el.scheduleFilterMenu?.classList.contains("hidden");
-  el.scheduleFilterMenu?.classList.toggle("hidden", !willOpen);
-  el.btnScheduleFilter?.setAttribute("aria-expanded", String(!!willOpen));
+  toggleScheduleFilterDropdown();
 });
 
 el.scheduleFilterMenu?.addEventListener("click", (event) => {
   event.stopPropagation();
 });
 
-document.addEventListener("click", () => {
-  el.scheduleFilterMenu?.classList.add("hidden");
-  el.btnScheduleFilter?.setAttribute("aria-expanded", "false");
+document.addEventListener("click", (event) => {
+  if (!el.scheduleFilterDropdown?.contains(event.target)) closeScheduleFilterDropdown();
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
-  el.scheduleFilterMenu?.classList.add("hidden");
-  el.btnScheduleFilter?.setAttribute("aria-expanded", "false");
+  if (event.key === "Escape") closeScheduleFilterDropdown();
 });
 
 
