@@ -58,7 +58,6 @@ let venueId = params.get("venue_id") || getActiveVenueId();
 
 if (!venueId) toast("Сначала выбери заведение в «Настройках»", "warn");
 if (venueId) setActiveVenueId(venueId);
-loadScheduleFilters();
 
 await mountNav({ activeTab: "shifts", requireVenue: true });
 
@@ -76,9 +75,6 @@ const el = {
   scheduleDropdownWrap: document.getElementById("scheduleDropdownWrap"),
   scheduleIntervalDropdown: document.getElementById("scheduleIntervalDropdown"),
   btnScheduleIntervals: document.getElementById("btnScheduleIntervals"),
-  scheduleFilterScopeNote: document.getElementById("scheduleFilterScopeNote"),
-  btnResetScheduleFilters: document.getElementById("btnResetScheduleFilters"),
-  btnUnstaffedOnly: document.getElementById("btnUnstaffedOnly"),
 };
 
 // DayPanel удалён: у нас есть отдельная страница/экран для графика
@@ -110,6 +106,8 @@ let curWeekStart = null; // Date (Monday)
 let selectedIntervalIds = new Set();
 let unstaffedOnly = false;
 let scheduleDropdownOpen = false;
+
+loadScheduleFilters();
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
@@ -658,14 +656,7 @@ async function reloadCurrentView() {
 }
 
 function scheduleIntervalsButtonLabel(items) {
-  const total = Array.isArray(items) ? items.length : 0;
-  const selected = Array.from(selectedIntervalIds).length;
-  if (!selected) return total ? "Интервалы" : "Нет интервалов";
-  if (selected === 1) {
-    const match = (items || []).find((it) => selectedIntervalIds.has(String(it?.id ?? "")));
-    return match?.title ? `Интервал: ${match.title}` : "1 интервал";
-  }
-  return `Интервалы: ${selected}`;
+  return "Фильтр";
 }
 
 function setScheduleDropdownOpen(next) {
@@ -679,26 +670,31 @@ function setScheduleDropdownOpen(next) {
 
 function renderScheduleFilters() {
   const menuEl = el.scheduleIntervalDropdown;
-  const noteEl = el.scheduleFilterScopeNote;
   if (!menuEl) return;
 
   const isGlobal = calendarScope === "global";
   el.scheduleFilters?.classList.toggle("hidden", false);
-  noteEl?.classList.toggle("hidden", !isGlobal);
   menuEl.innerHTML = "";
-  el.btnUnstaffedOnly?.classList.toggle("active", !!unstaffedOnly);
-  el.btnUnstaffedOnly && (el.btnUnstaffedOnly.disabled = isGlobal);
-  el.btnResetScheduleFilters && (el.btnResetScheduleFilters.disabled = isGlobal);
-  el.btnScheduleIntervals && (el.btnScheduleIntervals.disabled = isGlobal);
+  el.btnScheduleIntervals && (el.btnScheduleIntervals.disabled = false);
+  el.btnScheduleIntervals && (el.btnScheduleIntervals.textContent = scheduleIntervalsButtonLabel(intervals));
 
-  const items = Array.isArray(intervals) ? intervals.slice().sort((a, b) => intervalSortKey(a).localeCompare(intervalSortKey(b))) : [];
-  el.btnScheduleIntervals && (el.btnScheduleIntervals.textContent = scheduleIntervalsButtonLabel(items));
+  const controls = document.createElement("div");
+  controls.className = "schedule-dropdown__actions";
+  controls.innerHTML = `
+    <button class="btn btn-sm" type="button" data-filter-action="reset" ${isGlobal ? "disabled" : ""}>Сбросить</button>
+    <button class="btn btn-sm btn-chip ${unstaffedOnly ? "active" : ""}" type="button" data-filter-action="unstaffed" ${isGlobal ? "disabled" : ""}>Без назначений</button>
+  `;
+  menuEl.appendChild(controls);
 
   if (isGlobal) {
-    setScheduleDropdownOpen(false);
+    const note = document.createElement("div");
+    note.className = "schedule-dropdown__empty muted small";
+    note.textContent = "В режиме «Общий» фильтры по интервалам недоступны.";
+    menuEl.appendChild(note);
     return;
   }
 
+  const items = Array.isArray(intervals) ? intervals.slice().sort((a, b) => intervalSortKey(a).localeCompare(intervalSortKey(b))) : [];
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "schedule-dropdown__empty muted small";
@@ -736,33 +732,19 @@ function hasAssignments(shift) {
 }
 
 
-el.btnResetScheduleFilters?.addEventListener("click", async () => {
-  selectedIntervalIds = new Set();
-  unstaffedOnly = false;
-  persistScheduleFilters();
-  renderScheduleFilters();
-  await reloadCurrentView();
-});
-
-el.btnScheduleIntervals?.addEventListener("click", () => {
+el.scheduleIntervalDropdown?.addEventListener("click", async (event) => {
+  const actionBtn = event.target?.closest?.("[data-filter-action]");
+  if (!actionBtn) return;
   if (calendarScope === "global") return;
-  setScheduleDropdownOpen(!scheduleDropdownOpen);
-});
-
-document.addEventListener("click", (event) => {
-  if (!scheduleDropdownOpen) return;
-  const target = event.target;
-  if (el.scheduleDropdownWrap?.contains(target)) return;
-  setScheduleDropdownOpen(false);
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && scheduleDropdownOpen) setScheduleDropdownOpen(false);
-});
-
-el.btnUnstaffedOnly?.addEventListener("click", async () => {
-  if (calendarScope === "global") return;
-  unstaffedOnly = !unstaffedOnly;
+  const action = actionBtn.getAttribute("data-filter-action");
+  if (action === "reset") {
+    selectedIntervalIds = new Set();
+    unstaffedOnly = false;
+  } else if (action === "unstaffed") {
+    unstaffedOnly = !unstaffedOnly;
+  } else {
+    return;
+  }
   persistScheduleFilters();
   renderScheduleFilters();
   await reloadCurrentView();

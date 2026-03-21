@@ -536,24 +536,15 @@ input[type="checkbox"],input[type="radio"]{
   outline-offset:2px;
 }
 .schedule-filters{
-  padding:14px;
-  border-radius:16px;
-  border:1px solid var(--border);
-  background:var(--surface2);
-}
-.schedule-filterbar{
   display:flex;
-  align-items:center;
-  gap:8px;
-  flex-wrap:wrap;
+  justify-content:flex-start;
 }
 .schedule-dropdown{
   position:relative;
   min-width:0;
-  flex:1 1 220px;
 }
 .schedule-dropdown__toggle{
-  width:100%;
+  min-width:148px;
   justify-content:flex-start;
   text-align:left;
   position:relative;
@@ -575,7 +566,7 @@ input[type="checkbox"],input[type="radio"]{
 .schedule-dropdown__menu{
   position:absolute;
   left:0;
-  right:0;
+  min-width:min(320px, calc(100vw - 32px));
   top:calc(100% + 8px);
   z-index:35;
   display:grid;
@@ -587,6 +578,16 @@ input[type="checkbox"],input[type="radio"]{
   box-shadow:var(--shadow);
   max-height:min(320px, 55vh);
   overflow:auto;
+}
+.schedule-dropdown__actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  padding-bottom:2px;
+}
+.schedule-dropdown__actions .btn{
+  flex:1 1 120px;
+  justify-content:center;
 }
 .schedule-dropdown__empty{
   padding:10px 12px;
@@ -617,9 +618,10 @@ input[type="checkbox"],input[type="radio"]{
 @media (max-width:420px){
   .shift-toggle{padding:3px}
   .shift-toggle button{padding:9px 10px;font-size:12px}
-  .schedule-filters{padding:12px}
-  .schedule-filterbar{gap:6px}
-  .schedule-dropdown{flex-basis:100%}
+  .schedule-dropdown{width:100%}
+  .schedule-dropdown__toggle{width:100%}
+  .schedule-dropdown__menu{min-width:0; width:100%}
+  .schedule-dropdown__actions .btn{flex:1 1 100%}
 }
 
 

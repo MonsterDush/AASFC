@@ -135,21 +135,10 @@
       </div>
 
       <div class="schedule-filters mt-10" id="scheduleFilters">
-        <div class="section-head">
-          <div class="section-title minw-0">
-            <b>Фильтры графика</b>
-            <div class="muted small" id="scheduleFilterHint">Показываются только активные интервалы заведения</div>
-          </div>
+        <div class="schedule-dropdown" id="scheduleDropdownWrap">
+          <button class="btn schedule-dropdown__toggle" id="btnScheduleIntervals" type="button" aria-haspopup="true" aria-expanded="false">Фильтр</button>
+          <div class="schedule-dropdown__menu hidden" id="scheduleIntervalDropdown"></div>
         </div>
-        <div class="schedule-filterbar mt-10">
-          <button class="btn" id="btnResetScheduleFilters" type="button">Сбросить</button>
-          <div class="schedule-dropdown" id="scheduleDropdownWrap">
-            <button class="btn schedule-dropdown__toggle" id="btnScheduleIntervals" type="button" aria-haspopup="true" aria-expanded="false">Интервалы</button>
-            <div class="schedule-dropdown__menu hidden" id="scheduleIntervalDropdown"></div>
-          </div>
-          <button class="btn btn-chip" id="btnUnstaffedOnly" type="button">Без назначений</button>
-        </div>
-        <div class="muted small mt-10 hidden" id="scheduleFilterScopeNote">В режиме «Общий» фильтры по интервалам недоступны.</div>
       </div>
 
 
