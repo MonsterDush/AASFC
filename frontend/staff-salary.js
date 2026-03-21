@@ -43,6 +43,8 @@ if (!venueId && Array.isArray(__venues) && __venues.length) {
 if (venueId) setActiveVenueId(venueId);
 
 let scopeMode = (params.get("scope") || "venue").toLowerCase();
+const requestedOpenDay = String(params.get("date") || "").slice(0, 10);
+let pendingOpenDay = ["1", "true", "yes"].includes(String(params.get("open_day") || "").toLowerCase()) && /^\d{4}-\d{2}-\d{2}$/.test(requestedOpenDay);
 if (scopeMode !== "all") scopeMode = "venue";
 if (!Array.isArray(__venues) || __venues.length < 2) scopeMode = "venue";
 
@@ -258,6 +260,9 @@ function syncUrl() {
     const p = new URLSearchParams(location.search);
     p.set("month", ym(curMonth));
     if (venueId) p.set("venue_id", String(venueId));
+    if (requestedOpenDay) p.set("date", requestedOpenDay);
+    if (pendingOpenDay && requestedOpenDay) p.set("open_day", "1");
+    else p.delete("open_day");
     history.replaceState(null, "", `${location.pathname}?${p.toString()}`);
   } catch {}
 }
@@ -287,6 +292,87 @@ function formatDateRu(iso) {
   const mm = String(dt.getMonth() + 1).padStart(2, "0");
   const yyyy = dt.getFullYear();
   return `${dd}.${mm}.${yyyy}`;
+}
+
+function breakdownCategoryLabel(category) {
+  const key = String(category || "").toLowerCase();
+  if (key === "earning") return "начисление";
+  if (key === "tip") return "чаевые";
+  if (key === "bonus") return "премия";
+  if (key === "penalty") return "штраф";
+  if (key === "writeoff") return "списание";
+  return key || "позиция";
+}
+
+function breakdownStateText(state) {
+  const key = String(state || "").toLowerCase();
+  if (key === "ready") return "Детализация готова";
+  if (key === "partial") return "Доступно частично";
+  if (key === "no_payroll") return "Payroll ещё не рассчитан";
+  if (key === "empty") return "За день пока нет начислений";
+  return "Детализация дня";
+}
+
+function renderDayBreakdownModal(payload, d) {
+  const summary = payload?.summary || {};
+  const context = payload?.context || {};
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const hoursText = Number.isFinite(Number(context?.hours_total)) ? String(context.hours_total).replace('.', ',') : '0';
+  const summaryHtml = `
+    <div class="grid mt-12 salary-all-kpis">
+      <div class="mini-kpi"><div class="muted small">Начислено</div><b>${esc(formatMoneyMinor(summary.earnings_minor || 0))}</b></div>
+      <div class="mini-kpi"><div class="muted small">Чаевые</div><b>${esc(formatMoneyMinor(summary.tips_minor || 0))}</b></div>
+      <div class="mini-kpi"><div class="muted small">Премии</div><b>${esc(formatMoneyMinor(summary.bonuses_minor || 0))}</b></div>
+      <div class="mini-kpi"><div class="muted small">Штрафы/списания</div><b>${esc(formatMoneyMinor(-(Number(summary.penalties_minor || 0))))}</b></div>
+      <div class="mini-kpi total"><div class="muted small">Итого</div><b>${esc(formatMoneyMinor(summary.total_minor || 0))}</b></div>
+    </div>`;
+
+  const itemsHtml = items.length ? items.map((item) => `
+    <div class="payroll-breakdown__row">
+      <div>
+        <div class="row gap-8 ai-center" style="flex-wrap:wrap">
+          <b>${esc(item?.title || 'Позиция')}</b>
+          <span class="badge">${esc(breakdownCategoryLabel(item?.category))}</span>
+        </div>
+        <div class="muted small mt-4">Компонент: ${esc(item?.component_type || '—')}</div>
+        <div class="muted small mt-4">База расчёта: ${esc(item?.base_text || '—')}</div>
+        <div class="muted small mt-4">Формула: ${esc(item?.formula_text || '—')}</div>
+      </div>
+      <div><b>${esc(formatMoneyMinor(item?.amount_minor || 0))}</b></div>
+    </div>`).join('') : `<div class="muted">За этот день breakdown ещё пустой</div>`;
+
+  openModal(
+    `${formatDateRu(d.date)}`,
+    breakdownStateText(payload?.state),
+    `<div class="itemcard" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="muted">Профиль</div>
+        <div>${esc(context?.pay_profile_title || '—')}</div>
+      </div>
+      <div class="muted small mt-8">Часы: ${esc(hoursText)} · Смены: ${esc(context?.shifts_count ?? 0)} · Выручка дня: ${esc(formatMoneyMinor(context?.revenue_minor || 0))}</div>
+      ${context?.calculated_at ? `<div class="muted small mt-6">Пересчитано: ${esc(new Date(context.calculated_at).toLocaleString('ru-RU'))}</div>` : ''}
+      ${(payload?.state === 'partial' || payload?.state === 'no_payroll') ? `<div class="muted small mt-6">Часть месячных компонентов может быть ещё недоступна. Показываем всё, что уже удалось собрать.</div>` : ''}
+      ${summaryHtml}
+      <div class="payroll-breakdown mt-12">
+        <div class="payroll-breakdown__body mt-8">${itemsHtml}</div>
+      </div>
+    </div>`
+  );
+}
+
+async function loadDayBreakdown(dateIso) {
+  if (!venueId || !dateIso) return null;
+  return await api(`/me/salary-day-breakdown?venue_id=${encodeURIComponent(venueId)}&date=${encodeURIComponent(dateIso)}`);
+}
+
+async function maybeOpenRequestedDay() {
+  if (!pendingOpenDay || !requestedOpenDay || scopeMode !== 'venue') return;
+  if (!String(requestedOpenDay).startsWith(`${ym(curMonth)}-`)) return;
+  const d = days.find((x) => String(x?.date || '') === requestedOpenDay);
+  if (!d) return;
+  pendingOpenDay = false;
+  syncUrl();
+  await openDayModal(d);
 }
 
 let shifts = [];
@@ -484,6 +570,7 @@ async function refresh() {
     return;
   }
   await loadMonth();
+  await maybeOpenRequestedDay();
 }
 
 function renderSummary() {
@@ -669,7 +756,7 @@ function openPayrollBreakdown() {
   );
 }
 
-function openDayModal(d) {
+function openLegacyDayModal(d) {
   const isPayroll = monthSummaryItem?.source === "payroll";
   const shiftsHtml = (d.shifts || []).map((s) => {
     const interval = s.interval?.title || s.interval_title || s.interval?.id || "Смена";
@@ -704,6 +791,18 @@ function openDayModal(d) {
       <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
     </div>`
   );
+}
+
+async function openDayModal(d) {
+  openModal(`${formatDateRu(d?.date || '')}`, 'Загружаем детализацию…', `<div class="itemcard" style="margin-top:12px"><div class="muted">Пожалуйста, подожди…</div></div>`);
+  try {
+    const payload = await loadDayBreakdown(String(d?.date || '').slice(0, 10));
+    if (payload && (Array.isArray(payload.items) || payload.state)) {
+      renderDayBreakdownModal(payload, d);
+      return;
+    }
+  } catch {}
+  openLegacyDayModal(d);
 }
 
 el.prev?.addEventListener("click", async () => {

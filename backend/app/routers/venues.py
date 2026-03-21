@@ -63,6 +63,7 @@ from app.services.finance.recurring_expenses import (
     sync_daily_recurring_accruals_for_date,
 )
 from app.services.payroll.calculator import PAY_COMPONENT_TYPES, calculate_payroll_for_month, parse_month_start
+from app.services.payroll import build_member_day_breakdown
 from app.services.tips import build_equal_tip_allocations, build_weighted_by_position_tip_allocations
 
 from app.models.user import User
@@ -112,9 +113,10 @@ from app.services.invites import build_invite_link, create_venue_invite, normali
 from app.settings import settings
 
 router = APIRouter(prefix="/venues", tags=["venues"])
-log = logging.getLogger("axelio.day_economics_notifications")
+log = logging.getLogger("axelio.notifications")
 
 _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY = "day_economics_summary"
+_NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN = "salary_day_breakdown"
 _NOTIFICATION_JOB_STATUS_PENDING = "pending"
 _NOTIFICATION_JOB_STATUS_PROCESSING = "processing"
 _NOTIFICATION_JOB_STATUS_SENT = "sent"
@@ -3232,6 +3234,7 @@ def close_daily_report(
         force=True,
     )
     _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date)
+    _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date)
 
     db.commit()
     background_tasks.add_task(process_pending_notification_jobs_once, 10)
@@ -4361,6 +4364,24 @@ def _build_owner_day_economics_link(*, venue_id: int, target_date: date) -> str:
     return f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}&date={quote(target_date.isoformat())}"
 
 
+def _build_staff_salary_day_link(*, venue_id: int, target_date: date) -> str:
+    month = target_date.strftime("%Y-%m")
+    return (
+        f"{_frontend_base_url()}/staff-salary.html?venue_id={int(venue_id)}"
+        f"&month={quote(month)}&date={quote(target_date.isoformat())}&open_day=1"
+    )
+
+
+def _can_receive_salary_day_breakdown(user: User) -> bool:
+    if user is None:
+        return False
+    if not _should_notify_user(user, "salary"):
+        return False
+    if not getattr(user, "tg_user_id", None):
+        return False
+    return True
+
+
 def _can_receive_day_economics_summary(db: Session, *, venue_id: int, user: User) -> bool:
     if user is None:
         return False
@@ -4415,6 +4436,40 @@ def _render_breakdown(title: str, items: list[dict], *, limit: int) -> list[str]
     return lines
 
 
+def _build_salary_day_breakdown_notification_text(*, venue_name: str, target_date: date, payload: dict, detail_level: str) -> str:
+    level = str(detail_level or "standard").strip().lower()
+    if level not in {"short", "standard", "detailed"}:
+        level = "standard"
+
+    summary = payload.get("summary") or {}
+    items = payload.get("items") or []
+    context = payload.get("context") or {}
+
+    lines: list[str] = [
+        f"💸 Начисление за день · {_format_ru_date(target_date)}",
+        f"Заведение: {venue_name}",
+        f"Итого: {_fmt_money_minor(summary.get('total_minor'))}",
+    ]
+
+    if level in {"standard", "detailed"}:
+        lines.append(f"Начислено: {_fmt_money_minor(summary.get('earnings_minor'))}")
+        lines.append(f"Чаевые: {_fmt_money_minor(summary.get('tips_minor'))}")
+        lines.append(f"Премии: {_fmt_money_minor(summary.get('bonuses_minor'))}")
+        lines.append(f"Штрафы/списания: {_fmt_money_minor(-(int(summary.get('penalties_minor') or 0)))}")
+        if context.get("hours_total"):
+            lines.append(f"Часы: {context.get('hours_total')} · Смены: {int(context.get('shifts_count') or 0)}")
+
+    if level == "detailed":
+        lines.extend(_render_breakdown("Из чего сложилось", items, limit=8))
+    elif level == "standard":
+        lines.extend(_render_breakdown("Из чего сложилось", items, limit=4))
+
+    if str(payload.get("state") or "") in {"partial", "no_payroll"}:
+        lines.append("Часть данных может быть недоступна: payroll за месяц ещё не рассчитан полностью.")
+
+    return "\n".join(lines)
+
+
 def _build_day_economics_notification_text(*, venue_name: str, target_date: date, economics: dict, detail_level: str) -> str:
     level = str(detail_level or "standard").strip().lower()
     if level not in {"short", "standard", "detailed"}:
@@ -4454,6 +4509,34 @@ def _build_day_economics_notification_text(*, venue_name: str, target_date: date
             lines.extend(_render_breakdown("Детализация регулярных расходов", recurring_expenses, limit=6))
 
     return "\n".join(lines)
+
+
+def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
+    idempotency_key = f"job:salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}"
+    existing = db.execute(
+        select(NotificationJob)
+        .where(
+            NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN,
+            NotificationJob.idempotency_key == idempotency_key,
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+        )
+        .order_by(NotificationJob.id.desc())
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    job = NotificationJob(
+        job_type=_NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN,
+        status=_NOTIFICATION_JOB_STATUS_PENDING,
+        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat()}, ensure_ascii=False),
+        attempts=0,
+        max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
+        run_after=datetime.utcnow(),
+        idempotency_key=idempotency_key,
+    )
+    db.add(job)
+    db.flush()
+    return job
 
 
 def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
@@ -4561,6 +4644,12 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
                         venue_id=int(payload.get("venue_id")),
                         target_date=date.fromisoformat(str(payload.get("target_date"))),
                     )
+                elif job.job_type == _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN:
+                    _send_salary_day_breakdown_notifications(
+                        db,
+                        venue_id=int(payload.get("venue_id")),
+                        target_date=date.fromisoformat(str(payload.get("target_date"))),
+                    )
                 else:
                     raise ValueError(f"Unsupported notification job type: {job.job_type}")
                 _complete_notification_job(db, job, status=_NOTIFICATION_JOB_STATUS_SENT)
@@ -4581,6 +4670,133 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
             processed += 1
 
     return processed
+
+
+def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
+    candidate_rows: list[User] = []
+    candidate_rows.extend(
+        db.execute(
+            select(User)
+            .join(ShiftAssignment, ShiftAssignment.member_user_id == User.id)
+            .join(Shift, Shift.id == ShiftAssignment.shift_id)
+            .where(
+                Shift.venue_id == int(venue_id),
+                Shift.is_active.is_(True),
+                Shift.date == target_date,
+            )
+            .order_by(User.id.asc())
+        ).scalars().all()
+    )
+    candidate_rows.extend(
+        db.execute(
+            select(User)
+            .join(Adjustment, Adjustment.member_user_id == User.id)
+            .where(
+                Adjustment.venue_id == int(venue_id),
+                Adjustment.date == target_date,
+                Adjustment.is_active.is_(True),
+                Adjustment.member_user_id.is_not(None),
+            )
+            .order_by(User.id.asc())
+        ).scalars().all()
+    )
+    candidate_rows.extend(
+        db.execute(
+            select(User)
+            .join(DailyReportTipAllocation, DailyReportTipAllocation.user_id == User.id)
+            .join(DailyReport, DailyReport.id == DailyReportTipAllocation.report_id)
+            .where(
+                DailyReport.venue_id == int(venue_id),
+                DailyReport.status == "CLOSED",
+                DailyReport.date == target_date,
+            )
+            .order_by(User.id.asc())
+        ).scalars().all()
+    )
+
+    recipients: list[User] = []
+    seen_user_ids: set[int] = set()
+    seen_tg_ids: set[int] = set()
+    for recipient in candidate_rows:
+        if not _can_receive_salary_day_breakdown(recipient):
+            continue
+        user_id = int(recipient.id)
+        tg_user_id = int(recipient.tg_user_id) if getattr(recipient, "tg_user_id", None) is not None else None
+        if user_id in seen_user_ids:
+            continue
+        if tg_user_id is not None and tg_user_id in seen_tg_ids:
+            continue
+        seen_user_ids.add(user_id)
+        if tg_user_id is not None:
+            seen_tg_ids.add(tg_user_id)
+        recipients.append(recipient)
+
+    if not recipients:
+        return
+
+    venue_name = _venue_name(db, venue_id)
+    link = _build_staff_salary_day_link(venue_id=venue_id, target_date=target_date)
+    planned_at = datetime.utcnow().replace(tzinfo=timezone.utc)
+
+    for recipient in recipients:
+        day_payload = build_member_day_breakdown(
+            db,
+            member_user_id=int(recipient.id),
+            venue_id=int(venue_id),
+            target_date=target_date,
+        )
+        summary = day_payload.get("summary") or {}
+        if int(summary.get("total_minor") or 0) == 0 and not (day_payload.get("items") or []):
+            continue
+
+        chat_id = int(recipient.tg_user_id)
+        idempotency_key = f"salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}:tg:{chat_id}"
+        existing_log = db.execute(
+            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
+            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
+            .order_by(NotificationDeliveryLog.id.desc())
+        ).first()
+        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+            continue
+
+        detail_level = getattr(recipient, "notification_detail_level", "standard")
+        text = _build_salary_day_breakdown_notification_text(
+            venue_name=venue_name,
+            target_date=target_date,
+            payload=day_payload,
+            detail_level=detail_level,
+        )
+
+        pending_log = log_notification_attempt(
+            db,
+            notification_type="salary_day_breakdown",
+            status="pending",
+            user_id=int(recipient.id),
+            venue_id=int(venue_id),
+            planned_at=planned_at,
+            idempotency_key=idempotency_key,
+            payload_preview=text[:2000],
+        )
+        db.flush()
+        db.commit()
+
+        ok = tg_notify.notify(
+            chat_id=chat_id,
+            text=text,
+            url=link,
+            button_text="Открыть начисления",
+        )
+        try:
+            pending_log.status = "sent" if ok else "failed"
+            pending_log.sent_at = planned_at if ok else None
+            pending_log.error_text = None if ok else "notify() returned False"
+            db.add(pending_log)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+    db.commit()
 
 
 def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, target_date: date) -> None:

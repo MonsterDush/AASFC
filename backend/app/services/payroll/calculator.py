@@ -528,6 +528,9 @@ def calculate_payroll_for_month(
                 "minutes_total": int(metrics.minutes_total),
                 "hours_total": round(int(metrics.minutes_total) / 60.0, 2),
                 "shifts_count": int(metrics.shifts_count),
+                "source_amount_minor": int(component.amount_minor or 0) if component.amount_minor is not None else None,
+                "source_rate_minor": int(component.rate_minor or 0) if component.rate_minor is not None else None,
+                "source_percent_bps": int(component.percent_bps or 0) if component.percent_bps is not None else None,
             }
             if component_type == "PERCENT_TOTAL_REVENUE":
                 breakdown_item["percent_bps"] = int(component.percent_bps or 0)
