@@ -542,29 +542,47 @@ input[type="checkbox"],input[type="radio"]{
   flex:0 0 auto;
 }
 .schedule-filter-trigger{
+  appearance:none;
+  -webkit-appearance:none;
+  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--text);
+  font-weight:800;
+  font-size:14px;
+  line-height:1;
+  min-height:43px;
+  padding:0 38px 0 14px;
+  border-radius:12px;
+  cursor:pointer;
+  position:relative;
   display:inline-flex;
   align-items:center;
-  justify-content:center;
+  justify-content:flex-start;
   white-space:nowrap;
+  box-shadow:none;
 }
 .schedule-filter-trigger::after{
   content:"▾";
+  position:absolute;
+  right:12px;
+  top:50%;
+  transform:translateY(-50%);
   font-size:11px;
-  margin-left:6px;
   opacity:.72;
+  transition:transform .15s ease;
 }
 .schedule-filter-dropdown.open .schedule-filter-trigger::after{
-  transform:rotate(180deg);
+  transform:translateY(-50%) rotate(180deg);
 }
 .schedule-filter-dropdown.has-active .schedule-filter-trigger{
   background:var(--accentSoftBg);
   border-color:var(--accentSoftBorder);
 }
 .schedule-filter-menu{
-  position:absolute;
-  top:calc(100% + 8px);
-  left:50%;
-  z-index:40;
+  position:fixed;
+  top:0;
+  left:0;
+  z-index:10020;
   width:min(360px, calc(100vw - 24px));
   max-width:calc(100vw - 24px);
   padding:12px;
@@ -572,20 +590,22 @@ input[type="checkbox"],input[type="radio"]{
   border:1px solid var(--border);
   background:var(--card);
   box-shadow:var(--shadow);
+  overflow:hidden;
 }
 .schedule-filter-actions{
-  display:flex;
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
   gap:8px;
   margin-bottom:10px;
 }
 .schedule-filter-actions .btn{
-  flex:1 1 0;
+  width:100%;
 }
 .schedule-interval-list{
   display:grid;
   grid-template-columns:1fr;
   gap:8px;
-  max-height:min(48vh, 280px);
+  max-height:min(46vh, 280px);
   overflow:auto;
   padding-right:2px;
 }
@@ -611,13 +631,19 @@ input[type="checkbox"],input[type="radio"]{
   color:var(--text);
 }
 @media (max-width:560px){
+  .schedule-filter-trigger{
+    min-height:43px;
+    padding:0 36px 0 14px;
+  }
   .schedule-filter-menu{
     width:min(340px, calc(100vw - 20px));
     max-width:calc(100vw - 20px);
     padding:10px;
   }
+}
+@media (max-width:360px){
   .schedule-filter-actions{
-    flex-direction:column;
+    grid-template-columns:1fr;
   }
 }
 @media (max-width:420px){

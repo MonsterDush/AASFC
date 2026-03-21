@@ -708,14 +708,32 @@ let scheduleFilterMenuOpen = false;
 
 function positionScheduleFilterMenu() {
   const menu = el.scheduleFilterMenu;
-  if (!menu || menu.classList.contains("hidden")) return;
-  menu.style.transform = "translateX(-50%)";
+  const trigger = el.btnScheduleFiltersToggle;
+  if (!menu || !trigger || menu.classList.contains("hidden")) return;
+
   const pad = 12;
-  const rect = menu.getBoundingClientRect();
-  let dx = 0;
-  if (rect.left < pad) dx = pad - rect.left;
-  else if (rect.right > window.innerWidth - pad) dx = (window.innerWidth - pad) - rect.right;
-  if (dx) menu.style.transform = `translateX(calc(-50% + ${dx}px))`;
+  const triggerRect = trigger.getBoundingClientRect();
+  const menuWidth = Math.min(360, Math.max(280, window.innerWidth - pad * 2));
+
+  menu.style.position = "fixed";
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  menu.style.width = `${menuWidth}px`;
+  menu.style.maxWidth = `${Math.max(240, window.innerWidth - pad * 2)}px`;
+  menu.style.transform = "none";
+
+  const menuRect = menu.getBoundingClientRect();
+  let left = triggerRect.left + (triggerRect.width / 2) - (menuRect.width / 2);
+  left = Math.max(pad, Math.min(left, window.innerWidth - pad - menuRect.width));
+
+  let top = triggerRect.bottom + 8;
+  const fitsBelow = top + menuRect.height <= window.innerHeight - pad;
+  const fitsAbove = triggerRect.top - 8 - menuRect.height >= pad;
+  if (!fitsBelow && fitsAbove) top = triggerRect.top - 8 - menuRect.height;
+  else if (!fitsBelow) top = Math.max(pad, window.innerHeight - pad - menuRect.height);
+
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
 }
 
 function setScheduleFilterMenuOpen(open) {
@@ -745,6 +763,10 @@ document.addEventListener("keydown", (ev) => {
 window.addEventListener("resize", () => {
   if (scheduleFilterMenuOpen) positionScheduleFilterMenu();
 });
+
+window.addEventListener("scroll", () => {
+  if (scheduleFilterMenuOpen) positionScheduleFilterMenu();
+}, true);
 
 el.btnResetScheduleFilters?.addEventListener("click", async () => {
   selectedIntervalIds = new Set();
