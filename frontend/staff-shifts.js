@@ -72,9 +72,13 @@ const el = {
   legendModal: document.getElementById("legendModal"),
   legendBody: document.getElementById("legendBody"),
   scheduleFilters: document.getElementById("scheduleFilters"),
-  scheduleDropdownWrap: document.getElementById("scheduleDropdownWrap"),
-  scheduleIntervalDropdown: document.getElementById("scheduleIntervalDropdown"),
-  btnScheduleIntervals: document.getElementById("btnScheduleIntervals"),
+  scheduleFilterDropdown: document.getElementById("scheduleFilterDropdown"),
+  btnScheduleFilter: document.getElementById("btnScheduleFilter"),
+  scheduleFilterMenu: document.getElementById("scheduleFilterMenu"),
+  scheduleIntervalList: document.getElementById("scheduleIntervalList"),
+  scheduleFilterScopeNote: document.getElementById("scheduleFilterScopeNote"),
+  btnResetScheduleFilters: document.getElementById("btnResetScheduleFilters"),
+  btnUnstaffedOnly: document.getElementById("btnUnstaffedOnly"),
 };
 
 // DayPanel удалён: у нас есть отдельная страница/экран для графика
@@ -105,8 +109,6 @@ if (calendarView !== "week") calendarView = "month";
 let curWeekStart = null; // Date (Monday)
 let selectedIntervalIds = new Set();
 let unstaffedOnly = false;
-let scheduleDropdownOpen = false;
-
 loadScheduleFilters();
 
 const modal = document.getElementById("modal");
@@ -655,75 +657,53 @@ async function reloadCurrentView() {
   return (calendarView === "week") ? loadWeek() : loadMonth();
 }
 
-function scheduleIntervalsButtonLabel(items) {
-  return "Фильтр";
-}
-
-function setScheduleDropdownOpen(next) {
-  scheduleDropdownOpen = !!next;
-  el.scheduleDropdownWrap?.classList.toggle("open", scheduleDropdownOpen);
-  el.scheduleIntervalDropdown?.classList.toggle("hidden", !scheduleDropdownOpen);
-  if (el.btnScheduleIntervals) {
-    el.btnScheduleIntervals.setAttribute("aria-expanded", scheduleDropdownOpen ? "true" : "false");
-  }
-}
-
 function renderScheduleFilters() {
-  const menuEl = el.scheduleIntervalDropdown;
-  if (!menuEl) return;
+  const listEl = el.scheduleIntervalList;
+  const noteEl = el.scheduleFilterScopeNote;
+  if (!listEl) return;
 
   const isGlobal = calendarScope === "global";
   el.scheduleFilters?.classList.toggle("hidden", false);
-  menuEl.innerHTML = "";
-  el.btnScheduleIntervals && (el.btnScheduleIntervals.disabled = false);
-  el.btnScheduleIntervals && (el.btnScheduleIntervals.textContent = scheduleIntervalsButtonLabel(intervals));
+  noteEl?.classList.toggle("hidden", !isGlobal);
+  listEl.innerHTML = "";
+  el.btnUnstaffedOnly?.classList.toggle("active", !!unstaffedOnly);
+  el.btnUnstaffedOnly && (el.btnUnstaffedOnly.disabled = isGlobal);
+  el.btnResetScheduleFilters && (el.btnResetScheduleFilters.disabled = isGlobal);
 
-  const controls = document.createElement("div");
-  controls.className = "schedule-dropdown__actions";
-  controls.innerHTML = `
-    <button class="btn btn-sm" type="button" data-filter-action="reset" ${isGlobal ? "disabled" : ""}>Сбросить</button>
-    <button class="btn btn-sm btn-chip ${unstaffedOnly ? "active" : ""}" type="button" data-filter-action="unstaffed" ${isGlobal ? "disabled" : ""}>Без назначений</button>
-  `;
-  menuEl.appendChild(controls);
-
-  if (isGlobal) {
-    const note = document.createElement("div");
-    note.className = "schedule-dropdown__empty muted small";
-    note.textContent = "В режиме «Общий» фильтры по интервалам недоступны.";
-    menuEl.appendChild(note);
-    return;
+  const hasActiveFilters = !!unstaffedOnly || selectedIntervalIds.size > 0;
+  el.btnScheduleFilter?.classList.toggle("active", hasActiveFilters);
+  if (el.btnScheduleFilter) {
+    el.btnScheduleFilter.setAttribute("aria-expanded", String(!el.scheduleFilterMenu?.classList.contains("hidden")));
   }
 
   const items = Array.isArray(intervals) ? intervals.slice().sort((a, b) => intervalSortKey(a).localeCompare(intervalSortKey(b))) : [];
-  if (!items.length) {
-    const empty = document.createElement("div");
-    empty.className = "schedule-dropdown__empty muted small";
-    empty.textContent = "Нет активных интервалов";
-    menuEl.appendChild(empty);
-    return;
+  if (!isGlobal) {
+    for (const it of items) {
+      const id = String(it?.id ?? "");
+      if (!id) continue;
+      const label = document.createElement("label");
+      label.className = "schedule-check";
+      label.innerHTML = `
+        <input type="checkbox" ${selectedIntervalIds.has(id) ? "checked" : ""} />
+        <span class="schedule-check__text">
+          <span class="schedule-check__title">${escapeHtml(it.title || "Интервал")}</span>
+          <span class="schedule-check__meta">${escapeHtml(it.start_time || "?")}-${escapeHtml(it.end_time || "?")}</span>
+        </span>
+      `;
+      const input = label.querySelector("input");
+      input?.addEventListener("change", async () => {
+        if (input.checked) selectedIntervalIds.add(id);
+        else selectedIntervalIds.delete(id);
+        persistScheduleFilters();
+        renderScheduleFilters();
+        await reloadCurrentView();
+      });
+      listEl.appendChild(label);
+    }
   }
 
-  for (const it of items) {
-    const id = String(it?.id ?? "");
-    if (!id) continue;
-    const label = document.createElement("label");
-    label.className = "schedule-check";
-    label.innerHTML = `
-      <input type="checkbox" ${selectedIntervalIds.has(id) ? "checked" : ""} />
-      <span class="schedule-check__text">
-        <span class="schedule-check__title">${escapeHtml(it.title || "Интервал")}</span>
-        <span class="schedule-check__meta">${escapeHtml(it.start_time || "?")}-${escapeHtml(it.end_time || "?")}</span>
-      </span>
-    `;
-    const input = label.querySelector("input");
-    input?.addEventListener("change", async () => {
-      if (input.checked) selectedIntervalIds.add(id);
-      else selectedIntervalIds.delete(id);
-      persistScheduleFilters();
-      renderScheduleFilters();
-      await reloadCurrentView();
-    });
-    menuEl.appendChild(label);
+  if (!items.length && !isGlobal) {
+    listEl.innerHTML = `<div class="muted small">Активных интервалов пока нет</div>`;
   }
 }
 
@@ -732,22 +712,43 @@ function hasAssignments(shift) {
 }
 
 
-el.scheduleIntervalDropdown?.addEventListener("click", async (event) => {
-  const actionBtn = event.target?.closest?.("[data-filter-action]");
-  if (!actionBtn) return;
-  if (calendarScope === "global") return;
-  const action = actionBtn.getAttribute("data-filter-action");
-  if (action === "reset") {
-    selectedIntervalIds = new Set();
-    unstaffedOnly = false;
-  } else if (action === "unstaffed") {
-    unstaffedOnly = !unstaffedOnly;
-  } else {
-    return;
-  }
+el.btnResetScheduleFilters?.addEventListener("click", async () => {
+  selectedIntervalIds = new Set();
+  unstaffedOnly = false;
   persistScheduleFilters();
   renderScheduleFilters();
   await reloadCurrentView();
+});
+
+el.btnUnstaffedOnly?.addEventListener("click", async () => {
+  if (calendarScope === "global") return;
+  unstaffedOnly = !unstaffedOnly;
+  persistScheduleFilters();
+  renderScheduleFilters();
+  await reloadCurrentView();
+});
+
+el.btnScheduleFilter?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  const willOpen = el.scheduleFilterMenu?.classList.contains("hidden");
+  el.scheduleFilterMenu?.classList.toggle("hidden", !willOpen);
+  el.btnScheduleFilter?.setAttribute("aria-expanded", String(!!willOpen));
+});
+
+el.scheduleFilterMenu?.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
+
+document.addEventListener("click", () => {
+  el.scheduleFilterMenu?.classList.add("hidden");
+  el.btnScheduleFilter?.setAttribute("aria-expanded", "false");
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  el.scheduleFilterMenu?.classList.add("hidden");
+  el.btnScheduleFilter?.setAttribute("aria-expanded", "false");
 });
 
 

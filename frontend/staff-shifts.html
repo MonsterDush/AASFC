@@ -135,9 +135,16 @@
       </div>
 
       <div class="schedule-filters mt-10" id="scheduleFilters">
-        <div class="schedule-dropdown" id="scheduleDropdownWrap">
-          <button class="btn schedule-dropdown__toggle" id="btnScheduleIntervals" type="button" aria-haspopup="true" aria-expanded="false">Фильтр</button>
-          <div class="schedule-dropdown__menu hidden" id="scheduleIntervalDropdown"></div>
+        <div class="schedule-filter-dropdown" id="scheduleFilterDropdown">
+          <button class="btn schedule-filter-trigger" id="btnScheduleFilter" type="button" aria-expanded="false" aria-haspopup="true">Фильтр</button>
+          <div class="schedule-filter-menu hidden" id="scheduleFilterMenu">
+            <div class="schedule-filter-menu__actions">
+              <button class="btn" id="btnResetScheduleFilters" type="button">Сбросить</button>
+              <button class="btn" id="btnUnstaffedOnly" type="button">Без назначений</button>
+            </div>
+            <div class="schedule-interval-list mt-10" id="scheduleIntervalList"></div>
+            <div class="muted small mt-10 hidden" id="scheduleFilterScopeNote">В режиме «Общий» фильтры по интервалам недоступны.</div>
+          </div>
         </div>
       </div>
 
