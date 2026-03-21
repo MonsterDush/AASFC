@@ -2471,9 +2471,9 @@ function drawBadge(ctx, text, x, y, { fill = "#EEF2FF", color = "#334155" } = {}
   return width;
 }
 
-function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2, color = "#475569") {
+function wrapCanvasText(ctx, text, maxWidth, maxLines = 2) {
   const value = String(text || "").trim();
-  if (!value) return y;
+  if (!value) return [];
   const words = value.split(/\s+/).filter(Boolean);
   const lines = [];
   let current = "";
@@ -2488,9 +2488,42 @@ function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2, co
   if (current) lines.push(current);
   const visible = lines.slice(0, Math.max(1, maxLines));
   if (lines.length > visible.length) visible[visible.length - 1] = truncateCanvasText(ctx, `${visible[visible.length - 1]} …`, maxWidth);
+  return visible;
+}
+
+function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2, color = "#475569", align = "left") {
+  const lines = wrapCanvasText(ctx, text, maxWidth, maxLines);
+  if (!lines.length) return y;
   ctx.fillStyle = color;
-  for (let i = 0; i < visible.length; i++) ctx.fillText(visible[i], x, y + i * lineHeight);
-  return y + visible.length * lineHeight;
+  const prevAlign = ctx.textAlign;
+  ctx.textAlign = align;
+  const drawX = align === "right" ? x + maxWidth : x;
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], drawX, y + i * lineHeight);
+  ctx.textAlign = prevAlign;
+  return y + lines.length * lineHeight;
+}
+
+function getCssVar(name, fallback) {
+  try {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getExportPalette() {
+  return {
+    bg: getCssVar("--bg", "#F3F5F9"),
+    card: getCssVar("--card", "#FFFFFF"),
+    border: getCssVar("--border", "#D9E0EA"),
+    text: getCssVar("--text", "#0F172A"),
+    muted: getCssVar("--muted", "#64748B"),
+    subtle: getCssVar("--surface2", "#E8EDF5"),
+    accent: getCssVar("--accent", "#6366F1"),
+    accentSoft: getCssVar("--accentSoftBg", "rgba(99,102,241,.12)"),
+    shadow: getCssVar("--shadow", "0 10px 24px rgba(11,18,32,.10)"),
+  };
 }
 
 function loadImage(src) {
@@ -2514,28 +2547,114 @@ async function loadExportLogo(meta) {
 async function renderScheduleExportCanvas(meta) {
   const range = currentRangeContext();
   const isWeek = range.view === "week";
-  const padding = isWeek ? 36 : 40;
-  const gridGap = isWeek ? 14 : 12;
-  const bg = "#F3F5F9";
-  const card = "#FFFFFF";
-  const border = "#D9E0EA";
-  const text = "#0F172A";
-  const muted = "#64748B";
-  const subtle = "#E8EDF5";
-  const accent = "#6366F1";
+  const padding = isWeek ? 42 : 40;
+  const gridGap = isWeek ? 16 : 12;
+  const palette = getExportPalette();
+  const bg = palette.bg;
+  const card = palette.card;
+  const border = palette.border;
+  const text = palette.text;
+  const muted = palette.muted;
+  const subtle = palette.subtle;
+  const accent = palette.accent;
+  const accentSoft = palette.accentSoft;
   const todayIso = ymd(new Date());
   const logo = await loadExportLogo(meta);
 
+  function drawHeader(ctx, width, headerY, headerH) {
+    fillRoundRect(ctx, padding, headerY, width - padding * 2, headerH, 28, card, border, 1);
+
+    const leftX = padding + 28;
+    let logoX = leftX;
+    let textX = leftX;
+    const contentTop = headerY + 28;
+    if (logo) {
+      const size = 64;
+      ctx.drawImage(logo, logoX, contentTop + 6, size, size);
+      textX = logoX + size + 18;
+    }
+
+    const rightBlockW = Math.min(400, Math.max(280, width * 0.28));
+    const rightX = width - padding - 28 - rightBlockW;
+    const leftMaxW = Math.max(280, rightX - textX - 24);
+    const periodLabel = meta?.period_label || range.periodLabel;
+    const filtersText = meta?.filters_text || buildLocalExportMetadata().filters_text;
+    const venueLabel = meta?.venue_name || currentVenueName || "График смен";
+    const viewLabel = range.view === "week" ? "Недельный вид" : "Месячный вид";
+
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillStyle = text;
+    ctx.font = "700 34px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText(venueLabel, textX, contentTop + 2);
+
+    ctx.fillStyle = muted;
+    ctx.font = "600 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText(viewLabel, textX, contentTop + 46);
+
+    ctx.font = "500 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    drawWrappedText(ctx, filtersText, textX, contentTop + 82, leftMaxW, 24, 3, muted, "left");
+
+    const rightInnerX = width - padding - 28 - rightBlockW;
+    const pillW = 168;
+    const pillH = 34;
+    fillRoundRect(ctx, rightInnerX + rightBlockW - pillW, headerY + 24, pillW, pillH, 17, accentSoft, "");
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = accent;
+    ctx.font = "700 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText(range.view === "week" ? "НЕДЕЛЯ" : "МЕСЯЦ", rightInnerX + rightBlockW - pillW / 2, headerY + 24 + pillH / 2 + 1);
+
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = text;
+    ctx.font = isWeek
+      ? "800 48px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+      : "800 52px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    const periodLines = wrapCanvasText(ctx, periodLabel, rightBlockW, 2);
+    const periodLineHeight = isWeek ? 50 : 54;
+    const periodBlockH = Math.max(1, periodLines.length) * periodLineHeight;
+    const periodTop = headerY + Math.round((headerH - periodBlockH) / 2) + 8;
+    for (let i = 0; i < periodLines.length; i++) {
+      ctx.fillText(periodLines[i], width - padding - 28, periodTop + i * periodLineHeight);
+    }
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+  }
+
+  function drawStatsRow(ctx, width, statsY, statItems, columns, statsH, gap) {
+    const statW = (width - padding * 2 - gap * (columns - 1)) / columns;
+    for (let i = 0; i < statItems.length; i++) {
+      const row = Math.floor(i / columns);
+      const col = i % columns;
+      const x = padding + col * (statW + gap);
+      const y = statsY + row * (statsH + gap);
+      fillRoundRect(ctx, x, y, statW, statsH, 22, card, border, 1);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = muted;
+      ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+      ctx.fillText(statItems[i].title, x + 20, y + 18);
+      ctx.fillStyle = text;
+      ctx.font = "700 28px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+      ctx.fillText(statItems[i].value, x + 20, y + 42);
+    }
+  }
+
   if (isWeek) {
-    const width = 1180;
-    const headerCardH = 164;
-    const statsY = 222;
+    const width = 1120;
+    const headerCardH = 196;
+    const statsY = 248;
     const statGap = 14;
     const statsCols = 2;
-    const statW = (width - padding * 2 - statGap) / statsCols;
     const statsH = 82;
     const statsRows = 2;
-    const daysTop = statsY + statsRows * statsH + statGap + 26;
+    const daysTop = statsY + statsRows * statsH + statGap + 28;
+    const daysCols = 2;
+    const dayGapX = 16;
+    const dayGapY = 16;
+    const dayW = (width - padding * 2 - dayGapX * (daysCols - 1)) / daysCols;
     const stats = countVisibleStats(range.periodDates);
     const scopeLabel = calendarScope === "global" ? "Общий" : (showAllOnCalendar ? "Все" : "Мои");
     const statItems = [
@@ -2548,8 +2667,8 @@ async function renderScheduleExportCanvas(meta) {
     const dayCards = range.gridDates.map((dateStr, index) => {
       const dayDate = new Date(`${dateStr}T00:00:00`);
       const lines = buildExportLinesForDate(dateStr);
-      const visibleCount = Math.max(1, Math.min(lines.length, 9));
-      const cardH = Math.max(122, 78 + visibleCount * 28 + (lines.length > visibleCount ? 28 : 0));
+      const visibleCount = Math.max(1, Math.min(lines.length, 10));
+      const cardH = Math.max(144, 86 + visibleCount * 27 + (lines.length > visibleCount ? 28 : 0));
       return {
         dateStr,
         index,
@@ -2560,7 +2679,12 @@ async function renderScheduleExportCanvas(meta) {
       };
     });
 
-    const daysHeight = dayCards.reduce((sum, item, idx) => sum + item.cardH + (idx ? gridGap : 0), 0);
+    const rowHeights = [];
+    for (let i = 0; i < dayCards.length; i += daysCols) {
+      const pair = dayCards.slice(i, i + daysCols);
+      rowHeights.push(Math.max(...pair.map((item) => item.cardH)));
+    }
+    const daysHeight = rowHeights.reduce((sum, h, idx) => sum + h + (idx ? dayGapY : 0), 0);
     const footerH = 42;
     const height = daysTop + daysHeight + footerH;
     const canvas = document.createElement("canvas");
@@ -2572,48 +2696,28 @@ async function renderScheduleExportCanvas(meta) {
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, width, height);
 
-    fillRoundRect(ctx, padding, 32, width - padding * 2, headerCardH, 28, card, border, 1);
+    drawHeader(ctx, width, 32, headerCardH);
+    drawStatsRow(ctx, width, statsY, statItems, statsCols, statsH, statGap);
 
-    let titleX = padding + 28;
-    if (logo) {
-      const size = 64;
-      ctx.drawImage(logo, padding + 24, 50, size, size);
-      titleX = padding + 24 + size + 18;
+    const rowStarts = [];
+    let accY = daysTop;
+    for (let i = 0; i < rowHeights.length; i++) {
+      rowStarts.push(accY);
+      accY += rowHeights[i] + dayGapY;
     }
 
-    ctx.fillStyle = text;
-    ctx.textBaseline = "top";
-    ctx.font = "700 38px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(meta?.venue_name || currentVenueName || "График смен", titleX, 54);
-
-    ctx.font = "600 24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillStyle = muted;
-    ctx.fillText(meta?.period_label || range.periodLabel, titleX, 102);
-
-    ctx.font = "500 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    drawWrappedText(ctx, meta?.filters_text || buildLocalExportMetadata().filters_text, titleX, 136, width - padding * 2 - (titleX - padding) - 24, 24, 2, muted);
-
-    for (let i = 0; i < statItems.length; i++) {
-      const row = Math.floor(i / statsCols);
-      const col = i % statsCols;
-      const x = padding + col * (statW + statGap);
-      const y = statsY + row * (statsH + statGap);
-      fillRoundRect(ctx, x, y, statW, statsH, 22, card, border, 1);
-      ctx.fillStyle = muted;
-      ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-      ctx.fillText(statItems[i].title, x + 20, y + 18);
-      ctx.fillStyle = text;
-      ctx.font = "700 28px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-      ctx.fillText(statItems[i].value, x + 20, y + 42);
-    }
-
-    let y = daysTop;
     for (const item of dayCards) {
-      const x = padding;
+      const row = Math.floor(item.index / daysCols);
+      const col = item.index % daysCols;
+      const x = padding + col * (dayW + dayGapX);
+      const y = rowStarts[row];
+      const isToday = item.dateStr === todayIso;
       const dayDate = item.dayDate;
       const dateLabel = `${WEEKDAYS[item.index]} · ${pad2(dayDate.getDate())}.${pad2(dayDate.getMonth() + 1)}`;
-      fillRoundRect(ctx, x, y, width - padding * 2, item.cardH, 22, card, item.dateStr === todayIso ? accent : border, item.dateStr === todayIso ? 2 : 1);
+      fillRoundRect(ctx, x, y, dayW, item.cardH, 22, card, isToday ? accent : border, isToday ? 2 : 1);
 
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
       ctx.fillStyle = text;
       ctx.font = "700 24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
       ctx.fillText(dateLabel, x + 20, y + 18);
@@ -2622,35 +2726,35 @@ async function renderScheduleExportCanvas(meta) {
       ctx.fillStyle = muted;
       ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
       const countWidth = ctx.measureText(countLabel).width;
-      ctx.fillText(countLabel, x + (width - padding * 2) - 20 - countWidth, y + 22);
+      ctx.fillText(countLabel, x + dayW - 20 - countWidth, y + 22);
 
       if (!item.lines.length) {
         ctx.fillStyle = muted;
         ctx.font = "500 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-        ctx.fillText("Нет смен", x + 20, y + 62);
+        ctx.fillText("Нет смен", x + 20, y + 66);
       } else {
-        ctx.font = "500 19px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+        ctx.font = "500 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
         const lineStartY = y + 58;
-        const maxTextWidth = width - padding * 2 - 60;
+        const maxTextWidth = dayW - 58;
         const visible = item.lines.slice(0, item.visibleCount);
         for (let i = 0; i < visible.length; i++) {
           const line = visible[i];
-          const lineY = lineStartY + i * 28;
-          fillRoundRect(ctx, x + 20, lineY + 8, 9, 9, 4.5, line.color || "#94A3B8", "");
+          const lineY = lineStartY + i * 27;
+          fillRoundRect(ctx, x + 20, lineY + 8, 9, 9, 4.5, line.color || accent, "");
           ctx.fillStyle = text;
           ctx.fillText(truncateCanvasText(ctx, line.text, maxTextWidth), x + 36, lineY);
         }
         if (item.lines.length > visible.length) {
           ctx.fillStyle = muted;
-          ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-          ctx.fillText(`+${item.lines.length - visible.length} ещё`, x + 20, lineStartY + visible.length * 28 + 4);
+          ctx.font = "600 17px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+          ctx.fillText(`+${item.lines.length - visible.length} ещё`, x + 20, lineStartY + visible.length * 27 + 4);
         }
       }
-
-      y += item.cardH + gridGap;
     }
 
     ctx.fillStyle = muted;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
     ctx.font = "500 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
     ctx.fillText("Экспортировано из Axelio", padding, height - 22);
     return canvas;
@@ -2659,10 +2763,10 @@ async function renderScheduleExportCanvas(meta) {
   const width = 1820;
   const cols = 7;
   const rows = 6;
-  const headerCardH = 168;
-  const statsY = 228;
+  const headerCardH = 196;
+  const statsY = 252;
   const statsH = 86;
-  const gridTop = 360;
+  const gridTop = 392;
   const footerH = 46;
   const cellW = (width - padding * 2 - gridGap * (cols - 1)) / cols;
   const cellH = 160;
@@ -2676,26 +2780,7 @@ async function renderScheduleExportCanvas(meta) {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);
 
-  fillRoundRect(ctx, padding, 32, width - padding * 2, headerCardH, 28, card, border, 1);
-
-  let titleX = padding + 28;
-  if (logo) {
-    const size = 64;
-    ctx.drawImage(logo, padding + 24, 50, size, size);
-    titleX = padding + 24 + size + 18;
-  }
-
-  ctx.fillStyle = text;
-  ctx.textBaseline = "top";
-  ctx.font = "700 38px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-  ctx.fillText(meta?.venue_name || currentVenueName || "График смен", titleX, 54);
-
-  ctx.font = "600 24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-  ctx.fillStyle = muted;
-  ctx.fillText(meta?.period_label || range.periodLabel, titleX, 102);
-
-  ctx.font = "500 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-  drawWrappedText(ctx, meta?.filters_text || buildLocalExportMetadata().filters_text, titleX, 136, width - padding * 2 - (titleX - padding) - 24, 24, 2, muted);
+  drawHeader(ctx, width, 32, headerCardH);
 
   const stats = countVisibleStats(range.periodDates);
   const scopeLabel = calendarScope === "global" ? "Общий" : (showAllOnCalendar ? "Все" : "Мои");
@@ -2705,23 +2790,14 @@ async function renderScheduleExportCanvas(meta) {
     { title: "Неукомплектовано", value: String(stats.unstaffed) },
     { title: "Режим", value: scopeLabel },
   ];
-  const statGap = 12;
-  const statW = (width - padding * 2 - statGap * 3) / 4;
-  for (let i = 0; i < statItems.length; i++) {
-    const x = padding + i * (statW + statGap);
-    fillRoundRect(ctx, x, statsY, statW, statsH, 22, card, border, 1);
-    ctx.fillStyle = muted;
-    ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(statItems[i].title, x + 20, statsY + 18);
-    ctx.fillStyle = text;
-    ctx.font = "700 28px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(statItems[i].value, x + 20, statsY + 42);
-  }
+  drawStatsRow(ctx, width, statsY, statItems, 4, statsH, 12);
 
   const weekdayY = gridTop - 34;
   for (let i = 0; i < 7; i++) {
     const colX = padding + i * (cellW + gridGap);
     ctx.fillStyle = muted;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
     ctx.font = "700 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
     ctx.fillText(WEEKDAYS[i], colX + 4, weekdayY);
   }
@@ -2739,6 +2815,8 @@ async function renderScheduleExportCanvas(meta) {
 
     const dayDate = new Date(`${dateStr}T00:00:00`);
     ctx.fillStyle = text;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
     ctx.font = "700 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
     ctx.fillText(`${dayDate.getDate()}`, x + 16, y + 14);
 
@@ -2750,7 +2828,7 @@ async function renderScheduleExportCanvas(meta) {
     for (let i = 0; i < visible.length; i++) {
       const line = visible[i];
       const lineY = lineYStart + i * lineH;
-      fillRoundRect(ctx, x + 16, lineY + 6, 8, 7, 4, line.color || "#94A3B8", "");
+      fillRoundRect(ctx, x + 16, lineY + 6, 8, 7, 4, line.color || accent, "");
       ctx.fillStyle = text;
       const maxTextWidth = cellW - 48;
       ctx.fillText(truncateCanvasText(ctx, line.text, maxTextWidth), x + 30, lineY);
@@ -2770,6 +2848,8 @@ async function renderScheduleExportCanvas(meta) {
   }
 
   ctx.fillStyle = muted;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
   ctx.font = "500 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.fillText("Экспортировано из Axelio", padding, height - 24);
   return canvas;
