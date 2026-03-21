@@ -4597,39 +4597,39 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
         return
 
     recipients: list[User] = []
-    seen_user_ids: set[int] = set()
-    seen_chat_ids: set[int] = set()
+    seen_recipient_ids: set[int] = set()
+    seen_tg_user_ids: set[int] = set()
     for user in members:
         if not _can_receive_day_economics_summary(db, venue_id=venue_id, user=user):
             continue
         user_id = int(user.id)
-        chat_id = int(user.tg_user_id) if getattr(user, "tg_user_id", None) else None
-        if user_id in seen_user_ids or (chat_id is not None and chat_id in seen_chat_ids):
+        tg_user_id = int(user.tg_user_id) if getattr(user, "tg_user_id", None) is not None else None
+        if user_id in seen_recipient_ids:
             continue
-        seen_user_ids.add(user_id)
-        if chat_id is not None:
-            seen_chat_ids.add(chat_id)
+        if tg_user_id is not None and tg_user_id in seen_tg_user_ids:
+            continue
         recipients.append(user)
+        seen_recipient_ids.add(user_id)
+        if tg_user_id is not None:
+            seen_tg_user_ids.add(tg_user_id)
     if not recipients:
         return
 
     economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
     venue_name = _venue_name(db, venue_id)
     link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
-    planned_at = datetime.utcnow().replace(tzinfo=timezone.utc)
+    sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
 
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
-        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{chat_id}"
+        dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
+        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}"
         existing_log = db.execute(
-            select(NotificationDeliveryLog)
-            .where(
-                NotificationDeliveryLog.idempotency_key == idempotency_key,
-                NotificationDeliveryLog.status.in_(["pending", "sent"]),
-            )
+            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
+            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
             .order_by(NotificationDeliveryLog.id.desc())
-        ).scalar_one_or_none()
-        if existing_log is not None:
+        ).first()
+        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
@@ -4639,17 +4639,19 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             economics=economics,
             detail_level=detail_level,
         )
+
         pending_log = log_notification_attempt(
             db,
             notification_type="day_economics_summary",
             status="pending",
             user_id=int(recipient.id),
             venue_id=int(venue_id),
-            planned_at=planned_at,
+            planned_at=sent_at,
             idempotency_key=idempotency_key,
             payload_preview=text[:2000],
         )
         db.flush()
+        db.commit()
 
         ok = tg_notify.notify(
             chat_id=chat_id,
@@ -4657,10 +4659,17 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             url=link,
             button_text="Открыть экономику дня",
         )
-        pending_log.status = "sent" if ok else "failed"
-        pending_log.sent_at = planned_at if ok else None
-        pending_log.error_text = None if ok else "notify() returned False"
+        try:
+            pending_log.status = "sent" if ok else "failed"
+            pending_log.sent_at = sent_at if ok else None
+            pending_log.error_text = None if ok else "notify() returned False"
+            db.add(pending_log)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
+    db.commit()
 
 
 @router.post("/{venue_id}/adjustments")

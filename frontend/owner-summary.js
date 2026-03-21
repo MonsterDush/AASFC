@@ -207,7 +207,17 @@ async function loadSummary(monthYYYYMM) {
   }
 
   try {
-    const summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/finance/summary?month=${encodeURIComponent(monthYYYYMM)}`, 10000, "OWNER_SUMMARY_TIMEOUT");
+    let summary;
+    try {
+      summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/finance/summary?month=${encodeURIComponent(monthYYYYMM)}`, 10000, "OWNER_SUMMARY_TIMEOUT");
+    } catch (primaryError) {
+      summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/summary/monthly?month=${encodeURIComponent(monthYYYYMM)}&income_mode=PAYMENTS`, 10000, "OWNER_SUMMARY_TIMEOUT");
+      summary = {
+        ...summary,
+        expense_without_payroll_minor: summary?.expense_without_payroll_minor ?? summary?.expense_minor,
+        total_cost_minor: summary?.total_cost_minor ?? ((Number(summary?.expense_minor || 0)) + (Number(summary?.payroll_minor || 0))),
+      };
+    }
     setText("summaryRevenue", fmtMoneyMinor(summary?.revenue_minor));
     setText("summaryExpenses", fmtMoneyMinor(summary?.expense_without_payroll_minor ?? summary?.expense_minor));
     setText("summaryPayroll", fmtMoneyMinor(summary?.payroll_minor));
