@@ -550,7 +550,7 @@ input[type="checkbox"],input[type="radio"]{
   font-weight:800;
   font-size:14px;
   line-height:1;
-  min-height:43px;
+  max-height:37px;
   padding:0 38px 0 14px;
   border-radius:12px;
   cursor:pointer;
