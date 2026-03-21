@@ -2663,9 +2663,9 @@ async function renderScheduleExportCanvas(meta) {
     const shiftGapX = 14;
     const shiftColW = (dayW - innerPad * 2 - shiftGapX) / 2;
     const lineTop = 58;
-    const rowGap = 10;
-    const shiftLineHeight = 20;
-    const shiftCellH = 52;
+    const rowGap = 4;
+    const shiftLineHeight = 18;
+    const shiftCellH = 44;
     const overflowH = 28;
 
     const dayCards = range.gridDates.map((dateStr, index) => {
@@ -2739,7 +2739,7 @@ async function renderScheduleExportCanvas(meta) {
           ctx.fillStyle = text;
           ctx.font = "600 17px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
           const textX = cellX;
-          const textY = cellY + 8;
+          const textY = cellY + 5;
           const maxTextWidth = shiftColW - 6;
           drawWrappedText(ctx, line.text, textX, textY, maxTextWidth, shiftLineHeight, 2, text, "left");
         }
