@@ -2471,26 +2471,6 @@ function drawBadge(ctx, text, x, y, { fill = "#EEF2FF", color = "#334155" } = {}
   return width;
 }
 
-function wrapCanvasText(ctx, text, maxWidth, maxLines = 2) {
-  const value = String(text || "").trim();
-  if (!value) return [];
-  const words = value.split(/\s+/).filter(Boolean);
-  const lines = [];
-  let current = "";
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (ctx.measureText(candidate).width <= maxWidth || !current) current = candidate;
-    else {
-      lines.push(current);
-      current = word;
-    }
-  }
-  if (current) lines.push(current);
-  const visible = lines.slice(0, Math.max(1, maxLines));
-  if (lines.length > visible.length) visible[visible.length - 1] = truncateCanvasText(ctx, `${visible[visible.length - 1]} …`, maxWidth);
-  return visible;
-}
-
 function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2, color = "#475569", align = "left") {
   const lines = wrapCanvasText(ctx, text, maxWidth, maxLines);
   if (!lines.length) return y;
@@ -2663,9 +2643,9 @@ async function renderScheduleExportCanvas(meta) {
     const shiftGapX = 14;
     const shiftColW = (dayW - innerPad * 2 - shiftGapX) / 2;
     const lineTop = 58;
-    const rowGap = 4;
-    const shiftLineHeight = 18;
-    const shiftCellH = 44;
+    const rowGap = 10;
+    const shiftLineHeight = 20;
+    const shiftCellH = 52;
     const overflowH = 28;
 
     const dayCards = range.gridDates.map((dateStr, index) => {
@@ -2739,7 +2719,7 @@ async function renderScheduleExportCanvas(meta) {
           ctx.fillStyle = text;
           ctx.font = "600 17px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
           const textX = cellX;
-          const textY = cellY + 5;
+          const textY = cellY + 8;
           const maxTextWidth = shiftColW - 6;
           drawWrappedText(ctx, line.text, textX, textY, maxTextWidth, shiftLineHeight, 2, text, "left");
         }
