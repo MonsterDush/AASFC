@@ -58,7 +58,6 @@ let venueId = params.get("venue_id") || getActiveVenueId();
 
 if (!venueId) toast("Сначала выбери заведение в «Настройках»", "warn");
 if (venueId) setActiveVenueId(venueId);
-loadScheduleFilters();
 
 await mountNav({ activeTab: "shifts", requireVenue: true });
 
@@ -76,7 +75,6 @@ const el = {
   scheduleIntervalList: document.getElementById("scheduleIntervalList"),
   scheduleFilterSummary: document.getElementById("scheduleFilterSummary"),
   scheduleFilterScopeNote: document.getElementById("scheduleFilterScopeNote"),
-  scheduleSummary: document.getElementById("scheduleSummary"),
   btnResetScheduleFilters: document.getElementById("btnResetScheduleFilters"),
   btnUnstaffedOnly: document.getElementById("btnUnstaffedOnly"),
 };
@@ -109,6 +107,8 @@ if (calendarView !== "week") calendarView = "month";
 let curWeekStart = null; // Date (Monday)
 let selectedIntervalIds = new Set();
 let unstaffedOnly = false;
+
+loadScheduleFilters();
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
