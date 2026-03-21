@@ -67,6 +67,20 @@ def _sum_amount(db: Session, *, venue_id: int, period_start: date, period_end: d
     )
 
 
+def _allocate_amount_minor_by_dates(amount_minor: int, worked_dates: list[str]) -> dict[str, int]:
+    dates = sorted({str(item or '').strip() for item in (worked_dates or []) if str(item or '').strip()})
+    if not dates:
+        return {}
+    sign = 1 if int(amount_minor or 0) >= 0 else -1
+    abs_amount = abs(int(amount_minor or 0))
+    base_minor, remainder_minor = divmod(abs_amount, len(dates))
+    allocation: dict[str, int] = {}
+    for index, day_iso in enumerate(dates):
+        current = base_minor + (1 if index < remainder_minor else 0)
+        allocation[day_iso] = int(sign * current)
+    return allocation
+
+
 def _sum_daily_payroll_allocated_minor(db: Session, *, venue_id: int, target_date: date) -> int:
     month_start = target_date.replace(day=1)
     rows = db.execute(
@@ -81,7 +95,7 @@ def _sum_daily_payroll_allocated_minor(db: Session, *, venue_id: int, target_dat
     total_minor = 0
     target_date_iso = target_date.isoformat()
     for amount_minor, breakdown_json in rows:
-        if int(amount_minor or 0) <= 0 or not breakdown_json:
+        if int(amount_minor or 0) == 0 or not breakdown_json:
             continue
         try:
             breakdown = json.loads(breakdown_json)
@@ -89,15 +103,10 @@ def _sum_daily_payroll_allocated_minor(db: Session, *, venue_id: int, target_dat
             continue
         metrics = breakdown.get('metrics') or {}
         worked_dates = metrics.get('worked_dates') or []
-        if target_date_iso not in worked_dates:
+        allocation = _allocate_amount_minor_by_dates(int(amount_minor or 0), worked_dates)
+        if not allocation:
             continue
-        try:
-            worked_dates_count = int(metrics.get('worked_dates_count') or 0)
-        except Exception:
-            worked_dates_count = 0
-        if worked_dates_count <= 0:
-            worked_dates_count = len(worked_dates) or 1
-        total_minor += int(round(int(amount_minor or 0) / worked_dates_count))
+        total_minor += int(allocation.get(target_date_iso) or 0)
     return int(total_minor)
 
 

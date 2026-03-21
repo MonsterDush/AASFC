@@ -6,10 +6,18 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from app.services.finance.revenue import build_report_revenue_plan
-from app.services.finance.summary import get_day_finance_summary, get_finance_summary, get_monthly_finance_summary
+from app.services.finance.summary import _allocate_amount_minor_by_dates, get_day_finance_summary, get_finance_summary, get_monthly_finance_summary
 
 
 class FinanceRevenueServiceTests(TestCase):
+    def test_allocate_amount_minor_by_dates_preserves_total_exactly(self):
+        allocation = _allocate_amount_minor_by_dates(100001, ["2026-03-01", "2026-03-02", "2026-03-03"])
+
+        self.assertEqual(sum(allocation.values()), 100001)
+        self.assertEqual(allocation["2026-03-01"], 33334)
+        self.assertEqual(allocation["2026-03-02"], 33334)
+        self.assertEqual(allocation["2026-03-03"], 33333)
+
     def test_build_report_revenue_plan_prefers_payments_for_money_axis(self):
         report = SimpleNamespace(id=1, venue_id=5, date=date(2026, 3, 10), revenue_total=1500)
         values = [

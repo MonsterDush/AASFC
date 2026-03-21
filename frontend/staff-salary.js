@@ -59,6 +59,7 @@ try {
 await mountNav({ activeTab: (__canReports ? "finance" : "salary") });
 
 const el = {
+  subtitle: document.getElementById("subtitle"),
   monthLabel: document.getElementById("monthLabel"),
   periodMonthBtn: document.getElementById("periodMonthBtn"),
   periodRangeBtn: document.getElementById("periodRangeBtn"),
@@ -297,11 +298,18 @@ function getPeriodQuery() {
 function syncPeriodUi() {
   if (el.monthControls) el.monthControls.style.display = periodMode === "month" ? "flex" : "none";
   if (el.rangeControls) el.rangeControls.style.display = periodMode === "range" ? "flex" : "none";
-  if (el.periodMonthBtn) el.periodMonthBtn.disabled = periodMode === "month";
-  if (el.periodRangeBtn) el.periodRangeBtn.disabled = periodMode === "range";
+  if (el.periodMonthBtn) {
+    el.periodMonthBtn.disabled = periodMode === "month";
+    el.periodMonthBtn.classList.toggle("active", periodMode === "month");
+  }
+  if (el.periodRangeBtn) {
+    el.periodRangeBtn.disabled = periodMode === "range";
+    el.periodRangeBtn.classList.toggle("active", periodMode === "range");
+  }
   if (el.rangeFrom) el.rangeFrom.value = rangeFrom || "";
   if (el.rangeTo) el.rangeTo.value = rangeTo || "";
   if (el.monthLabel) el.monthLabel.textContent = periodMode === "month" ? monthTitle(curMonth) : `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}`;
+  if (el.subtitle) el.subtitle.textContent = periodMode === "month" ? "сводка за месяц" : "сводка за выбранный диапазон";
   if (el.daysChartTitle) el.daysChartTitle.textContent = periodMode === "month" ? "График по дням" : "Период по дням";
   if (el.daysListTitle) el.daysListTitle.textContent = periodMode === "month" ? "По дням" : "Дни в диапазоне";
   if (el.daysListHint) el.daysListHint.textContent = periodMode === "month" ? "" : `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}`;
