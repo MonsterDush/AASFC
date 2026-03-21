@@ -72,11 +72,10 @@ const el = {
   legendModal: document.getElementById("legendModal"),
   legendBody: document.getElementById("legendBody"),
   scheduleFilters: document.getElementById("scheduleFilters"),
-  scheduleFilterDropdown: document.getElementById("scheduleFilterDropdown"),
-  btnScheduleFilter: document.getElementById("btnScheduleFilter"),
-  scheduleFilterMenu: document.getElementById("scheduleFilterMenu"),
   scheduleIntervalList: document.getElementById("scheduleIntervalList"),
+  scheduleFilterMenu: document.getElementById("scheduleFilterMenu"),
   scheduleFilterScopeNote: document.getElementById("scheduleFilterScopeNote"),
+  btnScheduleFiltersToggle: document.getElementById("btnScheduleFiltersToggle"),
   btnResetScheduleFilters: document.getElementById("btnResetScheduleFilters"),
   btnUnstaffedOnly: document.getElementById("btnUnstaffedOnly"),
 };
@@ -657,65 +656,21 @@ async function reloadCurrentView() {
   return (calendarView === "week") ? loadWeek() : loadMonth();
 }
 
-function syncScheduleFilterTriggerState() {
-  const active = !!unstaffedOnly || selectedIntervalIds.size > 0;
-  el.btnScheduleFilter?.classList.toggle("active", active || el.scheduleFilterDropdown?.classList.contains("open"));
-  if (el.btnScheduleFilter) {
-    el.btnScheduleFilter.setAttribute("aria-expanded", el.scheduleFilterDropdown?.classList.contains("open") ? "true" : "false");
-  }
-}
-
-
-function positionScheduleFilterMenu() {
-  const dropdown = el.scheduleFilterDropdown;
-  const menu = el.scheduleFilterMenu;
-  if (!dropdown || !menu || menu.classList.contains("hidden")) return;
-
-  const gutter = window.innerWidth <= 560 ? 12 : 16;
-  menu.style.left = "50%";
-  menu.style.right = "auto";
-  menu.style.transform = "translateX(-50%)";
-
-  const rect = menu.getBoundingClientRect();
-  let shift = 0;
-  if (rect.left < gutter) shift += gutter - rect.left;
-  if (rect.right > window.innerWidth - gutter) shift -= rect.right - (window.innerWidth - gutter);
-
-  if (shift) {
-    menu.style.transform = `translateX(calc(-50% + ${shift}px))`;
-  }
-}
-
-function closeScheduleFilterDropdown() {
-  el.scheduleFilterDropdown?.classList.remove("open");
-  el.scheduleFilterMenu?.classList.add("hidden");
-  syncScheduleFilterTriggerState();
-}
-
-function openScheduleFilterDropdown() {
-  el.scheduleFilterDropdown?.classList.add("open");
-  el.scheduleFilterMenu?.classList.remove("hidden");
-  positionScheduleFilterMenu();
-  syncScheduleFilterTriggerState();
-}
-
-function toggleScheduleFilterDropdown() {
-  if (el.scheduleFilterDropdown?.classList.contains("open")) closeScheduleFilterDropdown();
-  else openScheduleFilterDropdown();
-}
-
 function renderScheduleFilters() {
   const listEl = el.scheduleIntervalList;
   const noteEl = el.scheduleFilterScopeNote;
   if (!listEl) return;
 
   const isGlobal = calendarScope === "global";
+  const hasActiveFilters = !!unstaffedOnly || selectedIntervalIds.size > 0;
   el.scheduleFilters?.classList.toggle("hidden", false);
+  el.scheduleFilters?.classList.toggle("has-active", hasActiveFilters);
+  el.btnScheduleFiltersToggle?.classList.toggle("active", hasActiveFilters);
   noteEl?.classList.toggle("hidden", !isGlobal);
   listEl.innerHTML = "";
   el.btnUnstaffedOnly?.classList.toggle("active", !!unstaffedOnly);
-  if (el.btnUnstaffedOnly) el.btnUnstaffedOnly.disabled = isGlobal;
-  if (el.btnResetScheduleFilters) el.btnResetScheduleFilters.disabled = isGlobal;
+  el.btnUnstaffedOnly && (el.btnUnstaffedOnly.disabled = isGlobal);
+  el.btnResetScheduleFilters && (el.btnResetScheduleFilters.disabled = isGlobal);
 
   const items = Array.isArray(intervals) ? intervals.slice().sort((a, b) => intervalSortKey(a).localeCompare(intervalSortKey(b))) : [];
   if (!isGlobal) {
@@ -741,18 +696,55 @@ function renderScheduleFilters() {
       });
       listEl.appendChild(label);
     }
-    if (!items.length) {
-      listEl.innerHTML = `<div class="muted small">Нет активных интервалов</div>`;
-    }
   }
-
-  syncScheduleFilterTriggerState();
 }
 
 function hasAssignments(shift) {
   return ((shift?.assignments || shift?.shift_assignments || []).length || 0) > 0;
 }
 
+
+let scheduleFilterMenuOpen = false;
+
+function positionScheduleFilterMenu() {
+  const menu = el.scheduleFilterMenu;
+  if (!menu || menu.classList.contains("hidden")) return;
+  menu.style.transform = "translateX(-50%)";
+  const pad = 12;
+  const rect = menu.getBoundingClientRect();
+  let dx = 0;
+  if (rect.left < pad) dx = pad - rect.left;
+  else if (rect.right > window.innerWidth - pad) dx = (window.innerWidth - pad) - rect.right;
+  if (dx) menu.style.transform = `translateX(calc(-50% + ${dx}px))`;
+}
+
+function setScheduleFilterMenuOpen(open) {
+  scheduleFilterMenuOpen = !!open;
+  el.scheduleFilters?.classList.toggle("open", scheduleFilterMenuOpen);
+  el.scheduleFilterMenu?.classList.toggle("hidden", !scheduleFilterMenuOpen);
+  if (el.btnScheduleFiltersToggle) el.btnScheduleFiltersToggle.setAttribute("aria-expanded", scheduleFilterMenuOpen ? "true" : "false");
+  if (scheduleFilterMenuOpen) requestAnimationFrame(positionScheduleFilterMenu);
+}
+
+el.btnScheduleFiltersToggle?.addEventListener("click", (ev) => {
+  ev.preventDefault();
+  ev.stopPropagation();
+  setScheduleFilterMenuOpen(!scheduleFilterMenuOpen);
+});
+
+document.addEventListener("click", (ev) => {
+  if (!scheduleFilterMenuOpen) return;
+  if (el.scheduleFilters?.contains(ev.target)) return;
+  setScheduleFilterMenuOpen(false);
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && scheduleFilterMenuOpen) setScheduleFilterMenuOpen(false);
+});
+
+window.addEventListener("resize", () => {
+  if (scheduleFilterMenuOpen) positionScheduleFilterMenu();
+});
 
 el.btnResetScheduleFilters?.addEventListener("click", async () => {
   selectedIntervalIds = new Set();
@@ -769,34 +761,6 @@ el.btnUnstaffedOnly?.addEventListener("click", async () => {
   renderScheduleFilters();
   await reloadCurrentView();
 });
-
-el.btnScheduleFilter?.addEventListener("click", (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  toggleScheduleFilterDropdown();
-});
-
-el.scheduleFilterMenu?.addEventListener("click", (event) => {
-  event.stopPropagation();
-});
-
-document.addEventListener("click", (event) => {
-  if (!el.scheduleFilterDropdown?.contains(event.target)) closeScheduleFilterDropdown();
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeScheduleFilterDropdown();
-});
-
-window.addEventListener("resize", () => {
-  if (el.scheduleFilterDropdown?.classList.contains("open")) positionScheduleFilterMenu();
-});
-window.addEventListener("orientationchange", () => {
-  if (el.scheduleFilterDropdown?.classList.contains("open")) positionScheduleFilterMenu();
-});
-window.addEventListener("scroll", () => {
-  if (el.scheduleFilterDropdown?.classList.contains("open")) positionScheduleFilterMenu();
-}, true);
 
 
 async function loadContext() {
