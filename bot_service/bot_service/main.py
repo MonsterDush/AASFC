@@ -4,8 +4,10 @@ import os
 import json
 import asyncio
 import logging
+import time
 import urllib.request
 import urllib.parse
+import urllib.error
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -44,6 +46,22 @@ class NotifyIn(BaseModel):
     parse_mode: str | None = Field(None, description="Optional parse_mode: HTML or MarkdownV2")
 
 
+def _normalize_telegram_error(status_code: int | None, body_text: str | None) -> tuple[bool, str | None]:
+    retryable = int(status_code or 0) in {408, 409, 425, 429, 500, 502, 503, 504}
+    if not body_text:
+        return retryable, None
+    try:
+        payload = json.loads(body_text)
+        description = str(payload.get("description") or "").strip() or None
+        params = payload.get("parameters") or {}
+        retry_after = params.get("retry_after")
+        if retry_after:
+            retryable = True
+        return retryable, description
+    except Exception:
+        return retryable, str(body_text).strip()[:300] or None
+
+
 def _send_message(
     token: str,
     chat_id: int,
@@ -52,7 +70,7 @@ def _send_message(
     url: str | None = None,
     button_text: str | None = None,
     parse_mode: str | None = None,
-) -> bool:
+) -> dict:
     api_url = f"https://api.telegram.org/bot{token}/sendMessage"
     data_dict = {
         "chat_id": str(chat_id),
@@ -62,8 +80,6 @@ def _send_message(
     if parse_mode:
         data_dict["parse_mode"] = parse_mode
 
-    # If url is provided, attach an inline keyboard with a WebApp button.
-    # Telegram will open WebApp inside the client instead of external browser.
     if url:
         bt = button_text or "Открыть в Axelio"
         reply_markup = {"inline_keyboard": [[{"text": bt, "web_app": {"url": url}}]]}
@@ -71,10 +87,32 @@ def _send_message(
 
     data = urllib.parse.urlencode(data_dict).encode("utf-8")
     req = urllib.request.Request(api_url, data=data, method="POST")
-    with urllib.request.urlopen(req, timeout=7) as resp:
-        body = resp.read().decode("utf-8", errors="ignore")
-        js = json.loads(body) if body else {}
-        return bool(js.get("ok"))
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                js = json.loads(body) if body else {}
+                ok = bool(js.get("ok"))
+                if ok:
+                    return {"ok": True, "retryable": False, "status_code": int(resp.status), "error": None}
+                retryable, description = _normalize_telegram_error(resp.status, body)
+                last_error = description or "telegram sendMessage failed"
+                if attempt == 2 or not retryable:
+                    return {"ok": False, "retryable": retryable, "status_code": int(resp.status), "error": last_error}
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
+            retryable, description = _normalize_telegram_error(e.code, body)
+            last_error = description or str(e)
+            if attempt == 2 or not retryable:
+                return {"ok": False, "retryable": retryable, "status_code": int(e.code), "error": last_error}
+        except Exception as e:
+            last_error = str(e)
+            if attempt == 2:
+                return {"ok": False, "retryable": True, "status_code": None, "error": last_error}
+        time.sleep(min(0.35 * (attempt + 1), 1.0))
+    return {"ok": False, "retryable": True, "status_code": None, "error": last_error or "telegram sendMessage failed"}
 
 
 @app.get("/health")
@@ -91,18 +129,15 @@ def notify(payload: NotifyIn, request: Request):
     if not TG_BOT_TOKEN:
         raise HTTPException(status_code=500, detail="TG_BOT_TOKEN is not configured")
 
-    try:
-        ok = _send_message(
-            TG_BOT_TOKEN,
-            payload.chat_id,
-            payload.text,
-            url=payload.url,
-            button_text=payload.button_text,
-            parse_mode=payload.parse_mode,
-        )
-        return {"ok": ok}
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"telegram error: {e}")
+    result = _send_message(
+        TG_BOT_TOKEN,
+        payload.chat_id,
+        payload.text,
+        url=payload.url,
+        button_text=payload.button_text,
+        parse_mode=payload.parse_mode,
+    )
+    return result
 
 
 @app.post("/internal/run-shift-reminders")

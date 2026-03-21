@@ -5,6 +5,7 @@ import logging
 import os
 import calendar
 import json
+import hashlib
 import re
 import uuid
 
@@ -119,6 +120,7 @@ log = logging.getLogger("axelio.day_economics_notifications")
 
 _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY = "day_economics_summary"
 _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN = "salary_day_breakdown"
+_NOTIFICATION_JOB_TYPE_SOFT_ALERTS = "soft_alerts"
 _NOTIFICATION_JOB_STATUS_PENDING = "pending"
 _NOTIFICATION_JOB_STATUS_PROCESSING = "processing"
 _NOTIFICATION_JOB_STATUS_SENT = "sent"
@@ -3602,6 +3604,7 @@ def close_daily_report(
     )
     _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date)
     _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date)
+    _enqueue_soft_alerts_job(db, venue_id=venue_id, target_date=report_date)
 
     db.commit()
     background_tasks.add_task(process_pending_notification_jobs_once, 10)
@@ -4803,6 +4806,104 @@ def _can_receive_day_economics_summary(db: Session, *, venue_id: int, user: User
     return _has_revenue_view_access(db, venue_id=venue_id, user=user) and _is_report_viewer(db, venue_id=venue_id, user=user)
 
 
+def _can_receive_soft_alerts(db: Session, *, venue_id: int, user: User) -> bool:
+    if user is None:
+        return False
+    if not _should_notify_user(user, "soft_alerts"):
+        return False
+    if not getattr(user, "tg_user_id", None):
+        return False
+    return _has_revenue_view_access(db, venue_id=venue_id, user=user) and _is_report_viewer(db, venue_id=venue_id, user=user)
+
+
+def _notification_detail_level(detail_level: str | None) -> str:
+    level = str(detail_level or "standard").strip().lower()
+    if level not in {"short", "standard", "detailed"}:
+        return "standard"
+    return level
+
+
+def _soft_alert_signature(alerts: list[dict]) -> str:
+    normalized: list[str] = []
+    for item in alerts or []:
+        code = str((item or {}).get("code") or "").strip().upper()
+        severity = str((item or {}).get("severity") or "").strip().upper()
+        if code:
+            normalized.append(f"{severity}:{code}")
+    normalized.sort()
+    return hashlib.sha1("|".join(normalized).encode("utf-8")).hexdigest()[:16] if normalized else "none"
+
+
+def _select_soft_alerts_for_notification(economics: dict) -> list[dict]:
+    alerts = economics.get("alerts") or []
+    selected: list[dict] = []
+    seen_codes: set[str] = set()
+    for item in alerts:
+        severity = str((item or {}).get("severity") or "").strip().upper()
+        code = str((item or {}).get("code") or "").strip().upper()
+        if severity not in {"WARN", "CRITICAL"}:
+            continue
+        if not code or code in seen_codes:
+            continue
+        selected.append(item)
+        seen_codes.add(code)
+    selected.sort(key=lambda item: (0 if str((item or {}).get("severity") or "").strip().upper() == "CRITICAL" else 1, str((item or {}).get("code") or "")))
+    return selected
+
+
+def _build_soft_alerts_notification_text(*, venue_name: str, target_date: date, economics: dict, alerts: list[dict], detail_level: str) -> str:
+    level = _notification_detail_level(detail_level)
+    summary = economics.get("summary") or {}
+    metrics = economics.get("metrics") or {}
+    rules = economics.get("rules") or {}
+
+    lines: list[str] = [
+        f"⚠️ Мягкие алерты · {_format_ru_date(target_date)}",
+        f"Заведение: {venue_name}",
+    ]
+    if level in {"standard", "detailed"}:
+        lines.extend(
+            [
+                f"Выручка: {_fmt_money_minor(summary.get('revenue_minor'))}",
+                f"Расходы: {_fmt_money_minor(summary.get('expense_minor'))} ({_fmt_percent_bps(metrics.get('expense_ratio_bps'))})",
+                f"ФОТ: {_fmt_money_minor(summary.get('payroll_minor'))} ({_fmt_percent_bps(metrics.get('payroll_ratio_bps'))})",
+                f"Прибыль: {_fmt_money_minor(summary.get('profit_minor'))}",
+            ]
+        )
+
+    lines.append("Что требует внимания:")
+    visible = alerts if level == "detailed" else alerts[:4]
+    for alert in visible:
+        severity = str((alert or {}).get("severity") or "").strip().upper()
+        title = str((alert or {}).get("title") or "Алерт").strip()
+        detail = str((alert or {}).get("detail") or "").strip()
+        icon = "🔴" if severity == "CRITICAL" else "🟠"
+        lines.append(f"{icon} {title}")
+        if level in {"standard", "detailed"} and detail:
+            lines.append(f"  {detail}")
+    extra = max(len(alerts) - len(visible), 0)
+    if extra:
+        lines.append(f"• ещё {extra}")
+
+    if level == "detailed":
+        max_payroll_ratio_bps = rules.get("max_payroll_ratio_bps")
+        max_expense_ratio_bps = rules.get("max_expense_ratio_bps")
+        min_coverage_bps = rules.get("min_assigned_shift_coverage_bps")
+        policy_parts: list[str] = []
+        if max_payroll_ratio_bps is not None:
+            policy_parts.append(f"ФОТ ≤ {_fmt_percent_bps(max_payroll_ratio_bps)}")
+        if max_expense_ratio_bps is not None:
+            policy_parts.append(f"расходы ≤ {_fmt_percent_bps(max_expense_ratio_bps)}")
+        if min_coverage_bps is not None:
+            policy_parts.append(f"покрытие смен ≥ {_fmt_percent_bps(min_coverage_bps)}")
+        if bool(rules.get("warn_on_draft_expenses", True)):
+            policy_parts.append("черновые расходы учитываются")
+        if policy_parts:
+            lines.append("Пороговые правила: " + " · ".join(policy_parts))
+
+    return "\n".join(lines)
+
+
 def _fmt_money_minor(value_minor: int | None) -> str:
     minor = int(value_minor or 0)
     sign = "-" if minor < 0 else ""
@@ -4848,9 +4949,7 @@ def _render_breakdown(title: str, items: list[dict], *, limit: int) -> list[str]
 
 
 def _build_day_economics_notification_text(*, venue_name: str, target_date: date, economics: dict, detail_level: str) -> str:
-    level = str(detail_level or "standard").strip().lower()
-    if level not in {"short", "standard", "detailed"}:
-        level = "standard"
+    level = _notification_detail_level(detail_level)
 
     summary = economics.get("summary") or {}
     payment_breakdown = economics.get("payment_revenue_breakdown") or []
@@ -4889,9 +4988,7 @@ def _build_day_economics_notification_text(*, venue_name: str, target_date: date
 
 
 def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, breakdown: dict, detail_level: str) -> str:
-    level = str(detail_level or "standard").strip().lower()
-    if level not in {"short", "standard", "detailed"}:
-        level = "standard"
+    level = _notification_detail_level(detail_level)
 
     summary = breakdown.get("summary") or {}
     context = breakdown.get("context") or {}
@@ -5096,16 +5193,17 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
         db.flush()
         db.commit()
 
-        ok = tg_notify.notify(
+        result = tg_notify.notify_result(
             chat_id=chat_id,
             text=text,
             url=link,
             button_text="Открыть начисления",
         )
+        ok = bool(result.get("ok"))
         try:
             pending_log.status = "sent" if ok else "failed"
             pending_log.sent_at = sent_at if ok else None
-            pending_log.error_text = None if ok else "notify() returned False"
+            pending_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
             db.add(pending_log)
             db.commit()
         except Exception:
@@ -5115,6 +5213,139 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
         seen_tg_user_ids.add(chat_id)
 
     db.commit()
+
+
+def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
+    idempotency_key = f"job:soft_alerts:{int(venue_id)}:{target_date.isoformat()}"
+    existing = db.execute(
+        select(NotificationJob)
+        .where(
+            NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_SOFT_ALERTS,
+            NotificationJob.idempotency_key == idempotency_key,
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+        )
+        .order_by(NotificationJob.id.desc())
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    job = NotificationJob(
+        job_type=_NOTIFICATION_JOB_TYPE_SOFT_ALERTS,
+        status=_NOTIFICATION_JOB_STATUS_PENDING,
+        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat()}, ensure_ascii=False),
+        attempts=0,
+        max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
+        run_after=datetime.utcnow(),
+        idempotency_key=idempotency_key,
+    )
+    db.add(job)
+    db.flush()
+    return job
+
+
+def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
+    members = db.execute(
+        select(User)
+        .join(VenueMember, VenueMember.user_id == User.id)
+        .where(
+            VenueMember.venue_id == int(venue_id),
+            VenueMember.is_active.is_(True),
+        )
+        .order_by(User.id.asc())
+    ).scalars().all()
+    if not members:
+        return
+
+    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
+    alerts = _select_soft_alerts_for_notification(economics)
+    if not alerts:
+        return
+
+    recipients: list[User] = []
+    seen_recipient_ids: set[int] = set()
+    seen_tg_user_ids: set[int] = set()
+    for user in members:
+        if not _can_receive_soft_alerts(db, venue_id=venue_id, user=user):
+            continue
+        user_id = int(user.id)
+        tg_user_id = int(user.tg_user_id) if getattr(user, "tg_user_id", None) is not None else None
+        if user_id in seen_recipient_ids:
+            continue
+        if tg_user_id is not None and tg_user_id in seen_tg_user_ids:
+            continue
+        recipients.append(user)
+        seen_recipient_ids.add(user_id)
+        if tg_user_id is not None:
+            seen_tg_user_ids.add(tg_user_id)
+    if not recipients:
+        return
+
+    venue_name = _venue_name(db, venue_id)
+    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
+    sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
+    alert_signature = _soft_alert_signature(alerts)
+    had_retryable_error = False
+    delivered_any = False
+
+    for recipient in recipients:
+        chat_id = int(recipient.tg_user_id)
+        dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
+        idempotency_key = f"soft_alerts:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}:{alert_signature}"
+        existing_log = db.execute(
+            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
+            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
+            .order_by(NotificationDeliveryLog.id.desc())
+        ).first()
+        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+            continue
+
+        detail_level = getattr(recipient, "notification_detail_level", "standard")
+        text = _build_soft_alerts_notification_text(
+            venue_name=venue_name,
+            target_date=target_date,
+            economics=economics,
+            alerts=alerts,
+            detail_level=detail_level,
+        )
+
+        pending_log = log_notification_attempt(
+            db,
+            notification_type="soft_alerts",
+            status="pending",
+            user_id=int(recipient.id),
+            venue_id=int(venue_id),
+            planned_at=sent_at,
+            idempotency_key=idempotency_key,
+            payload_preview=text[:2000],
+        )
+        db.flush()
+        db.commit()
+
+        result = tg_notify.notify_result(
+            chat_id=chat_id,
+            text=text,
+            url=link,
+            button_text="Открыть экономику дня",
+        )
+        ok = bool(result.get("ok"))
+        retryable = bool(result.get("retryable"))
+        error_text = str(result.get("error") or "notify() returned False")[:2000] if not ok else None
+        try:
+            pending_log.status = "sent" if ok else "failed"
+            pending_log.sent_at = sent_at if ok else None
+            pending_log.error_text = error_text
+            db.add(pending_log)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+        delivered_any = delivered_any or ok
+        had_retryable_error = had_retryable_error or (retryable and not ok)
+
+    db.commit()
+    if had_retryable_error and not delivered_any:
+        raise RuntimeError("soft alerts delivery failed with retryable error")
 
 
 def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
@@ -5228,6 +5459,12 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
                         venue_id=int(payload.get("venue_id")),
                         target_date=date.fromisoformat(str(payload.get("target_date"))),
                     )
+                elif job.job_type == _NOTIFICATION_JOB_TYPE_SOFT_ALERTS:
+                    _send_soft_alert_notifications(
+                        db,
+                        venue_id=int(payload.get("venue_id")),
+                        target_date=date.fromisoformat(str(payload.get("target_date"))),
+                    )
                 else:
                     raise ValueError(f"Unsupported notification job type: {job.job_type}")
                 _complete_notification_job(db, job, status=_NOTIFICATION_JOB_STATUS_SENT)
@@ -5320,16 +5557,17 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
         db.flush()
         db.commit()
 
-        ok = tg_notify.notify(
+        result = tg_notify.notify_result(
             chat_id=chat_id,
             text=text,
             url=link,
             button_text="Открыть экономику дня",
         )
+        ok = bool(result.get("ok"))
         try:
             pending_log.status = "sent" if ok else "failed"
             pending_log.sent_at = sent_at if ok else None
-            pending_log.error_text = None if ok else "notify() returned False"
+            pending_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
             db.add(pending_log)
             db.commit()
         except Exception:

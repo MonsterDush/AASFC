@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Optional
@@ -24,23 +25,32 @@ def _bot_service_secret() -> Optional[str]:
     return os.getenv("BOT_SERVICE_SECRET")
 
 
-def notify(
+def _normalize_error_message(body_text: str | None) -> str | None:
+    if not body_text:
+        return None
+    try:
+        payload = json.loads(body_text)
+        description = str(payload.get("description") or payload.get("detail") or "").strip()
+        if description:
+            return description
+    except Exception:
+        pass
+    body_text = str(body_text).strip()
+    return body_text[:300] if body_text else None
+
+
+def notify_result(
     chat_id: int,
     text: str,
     *,
     url: str | None = None,
     button_text: str | None = None,
     parse_mode: str | None = None,
-) -> bool:
-    """Best-effort notification.
-
-    Preferred route (variant B): send to internal bot-service if BOT_SERVICE_URL is set.
-    Fallback route: send directly via Telegram Bot API if TELEGRAM_BOT_TOKEN/TG_BOT_TOKEN is set.
-
-    Returns True if request succeeded, else False. Never raises.
-    """
+) -> dict:
+    """Best-effort notification with normalized result. Never raises."""
     svc_url = _bot_service_url()
     secret = _bot_service_secret()
+    timeout_seconds = max(float(os.getenv("BOT_SERVICE_TIMEOUT_SECONDS", "5") or 5), 1.0)
 
     if svc_url:
         try:
@@ -62,33 +72,41 @@ def notify(
                     **({"X-Bot-Secret": secret} if secret else {}),
                 },
             )
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
-                    with urllib.request.urlopen(req, timeout=5) as resp:
+                    with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                         body = resp.read().decode("utf-8", errors="ignore")
-                        if 200 <= resp.status < 300:
-                            if not body:
-                                return True
-                            try:
-                                js = json.loads(body)
-                                return bool(js.get("ok", True))
-                            except Exception:
-                                return True
-                        log.warning("bot-service notify failed status=%s body=%s", resp.status, body[:300])
+                        js = json.loads(body) if body else {}
+                        result = {
+                            "ok": bool(js.get("ok", False)),
+                            "retryable": bool(js.get("retryable", False)),
+                            "status_code": int(js.get("status_code") or resp.status),
+                            "error": js.get("error"),
+                        }
+                        if result["ok"]:
+                            return result
+                        if attempt == 2 or not result["retryable"]:
+                            return result
+                except urllib.error.HTTPError as e:
+                    body = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
+                    error_message = _normalize_error_message(body) or str(e)
+                    retryable = e.code in {408, 409, 425, 429, 500, 502, 503, 504}
+                    if attempt == 2 or not retryable:
+                        return {"ok": False, "retryable": retryable, "status_code": int(e.code), "error": error_message}
                 except Exception as e:
-                    if attempt == 1:
+                    retryable = True
+                    if attempt == 2:
                         log.exception("bot-service notify exception: %s", e)
-                        return False
-                    time.sleep(0.35)
-            return False
+                        return {"ok": False, "retryable": retryable, "status_code": None, "error": str(e)}
+                time.sleep(min(0.35 * (attempt + 1), 1.0))
         except Exception as e:
             log.exception("bot-service notify exception: %s", e)
-            return False
+            return {"ok": False, "retryable": True, "status_code": None, "error": str(e)}
 
     token = _direct_bot_token()
     if not token:
         log.warning("notify skipped: no BOT_SERVICE_URL and no telegram token (chat_id=%s)", chat_id)
-        return False
+        return {"ok": False, "retryable": False, "status_code": None, "error": "Telegram bot is not configured"}
 
     try:
         api_url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -106,24 +124,56 @@ def notify(
 
         data = urllib.parse.urlencode(data_dict).encode("utf-8")
         req = urllib.request.Request(api_url, data=data, method="POST")
-        for attempt in range(2):
+        for attempt in range(3):
             try:
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                     body = resp.read().decode("utf-8", errors="ignore")
                     js = json.loads(body) if body else {}
                     ok = bool(js.get("ok"))
-                    if not ok:
-                        log.warning("telegram notify failed status=%s body=%s", resp.status, body[:300])
-                    return ok
+                    if ok:
+                        return {"ok": True, "retryable": False, "status_code": int(resp.status), "error": None}
+                    description = _normalize_error_message(body) or "telegram sendMessage failed"
+                    params = js.get("parameters") or {}
+                    retry_after = params.get("retry_after")
+                    retryable = bool(retry_after) or int(resp.status) in {408, 409, 425, 429, 500, 502, 503, 504}
+                    if attempt == 2 or not retryable:
+                        return {"ok": False, "retryable": retryable, "status_code": int(resp.status), "error": description}
+                    if retry_after:
+                        time.sleep(min(max(float(retry_after), 0.35), 2.0))
+                        continue
+                time.sleep(min(0.35 * (attempt + 1), 1.0))
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
+                description = _normalize_error_message(body) or str(e)
+                retryable = e.code in {408, 409, 425, 429, 500, 502, 503, 504}
+                if attempt == 2 or not retryable:
+                    return {"ok": False, "retryable": retryable, "status_code": int(e.code), "error": description}
+                time.sleep(min(0.35 * (attempt + 1), 1.0))
             except Exception as e:
-                if attempt == 1:
+                if attempt == 2:
                     log.exception("telegram notify exception: %s", e)
-                    return False
-                time.sleep(0.35)
-        return False
+                    return {"ok": False, "retryable": True, "status_code": None, "error": str(e)}
+                time.sleep(min(0.35 * (attempt + 1), 1.0))
     except Exception as e:
         log.exception("telegram notify exception: %s", e)
-        return False
+        return {"ok": False, "retryable": True, "status_code": None, "error": str(e)}
+
+
+def notify(
+    chat_id: int,
+    text: str,
+    *,
+    url: str | None = None,
+    button_text: str | None = None,
+    parse_mode: str | None = None,
+) -> bool:
+    return bool(notify_result(
+        chat_id=chat_id,
+        text=text,
+        url=url,
+        button_text=button_text,
+        parse_mode=parse_mode,
+    ).get("ok"))
 
 
 def send_telegram_message(chat_id: int, text: str) -> bool:
