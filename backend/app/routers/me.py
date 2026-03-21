@@ -31,7 +31,7 @@ from app.models import (
     PayrollRun,
     PayProfile,
 )
-from app.services.payroll import build_member_day_breakdown
+from app.services.payroll.day_breakdown import build_member_day_breakdown
 
 
 router = APIRouter(tags=["me"])
@@ -584,7 +584,7 @@ def my_payroll_line(
 @router.get("/me/salary-day-breakdown")
 def my_salary_day_breakdown(
     venue_id: int = Query(..., gt=0),
-    target_date: date = Query(..., alias="date"),
+    date_value: date = Query(..., alias="date"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -602,7 +602,7 @@ def my_salary_day_breakdown(
         db,
         member_user_id=int(user.id),
         venue_id=int(venue_id),
-        target_date=target_date,
+        target_date=date_value,
     )
 
 

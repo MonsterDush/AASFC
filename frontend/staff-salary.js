@@ -43,8 +43,6 @@ if (!venueId && Array.isArray(__venues) && __venues.length) {
 if (venueId) setActiveVenueId(venueId);
 
 let scopeMode = (params.get("scope") || "venue").toLowerCase();
-const requestedOpenDay = String(params.get("date") || "").slice(0, 10);
-let pendingOpenDay = ["1", "true", "yes"].includes(String(params.get("open_day") || "").toLowerCase()) && /^\d{4}-\d{2}-\d{2}$/.test(requestedOpenDay);
 if (scopeMode !== "all") scopeMode = "venue";
 if (!Array.isArray(__venues) || __venues.length < 2) scopeMode = "venue";
 
@@ -248,10 +246,16 @@ function openManualTipModal() {
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
+const deepLinkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date") || "")) ? String(params.get("date")) : "";
+const shouldAutoOpenDay = String(params.get("open_day") || "") === "1" && !!deepLinkDate;
+let deepLinkAutoOpened = false;
 let curMonth = new Date(); curMonth.setDate(1);
 const qMonth = params.get("month");
 if (qMonth && /^\d{4}-\d{2}$/.test(qMonth)) {
   const [yy, mm] = qMonth.split("-").map((x) => parseInt(x, 10));
+  if (yy && mm) curMonth = new Date(yy, mm - 1, 1);
+} else if (deepLinkDate) {
+  const [yy, mm] = deepLinkDate.slice(0, 7).split("-").map((x) => parseInt(x, 10));
   if (yy && mm) curMonth = new Date(yy, mm - 1, 1);
 }
 
@@ -260,9 +264,6 @@ function syncUrl() {
     const p = new URLSearchParams(location.search);
     p.set("month", ym(curMonth));
     if (venueId) p.set("venue_id", String(venueId));
-    if (requestedOpenDay) p.set("date", requestedOpenDay);
-    if (pendingOpenDay && requestedOpenDay) p.set("open_day", "1");
-    else p.delete("open_day");
     history.replaceState(null, "", `${location.pathname}?${p.toString()}`);
   } catch {}
 }
@@ -294,93 +295,13 @@ function formatDateRu(iso) {
   return `${dd}.${mm}.${yyyy}`;
 }
 
-function breakdownCategoryLabel(category) {
-  const key = String(category || "").toLowerCase();
-  if (key === "earning") return "начисление";
-  if (key === "tip") return "чаевые";
-  if (key === "bonus") return "премия";
-  if (key === "penalty") return "штраф";
-  if (key === "writeoff") return "списание";
-  return key || "позиция";
-}
-
-function breakdownStateText(state) {
-  const key = String(state || "").toLowerCase();
-  if (key === "ready") return "Детализация готова";
-  if (key === "partial") return "Доступно частично";
-  if (key === "no_payroll") return "Payroll ещё не рассчитан";
-  if (key === "empty") return "За день пока нет начислений";
-  return "Детализация дня";
-}
-
-function renderDayBreakdownModal(payload, d) {
-  const summary = payload?.summary || {};
-  const context = payload?.context || {};
-  const items = Array.isArray(payload?.items) ? payload.items : [];
-  const hoursText = Number.isFinite(Number(context?.hours_total)) ? String(context.hours_total).replace('.', ',') : '0';
-  const summaryHtml = `
-    <div class="grid mt-12 salary-all-kpis">
-      <div class="mini-kpi"><div class="muted small">Начислено</div><b>${esc(formatMoneyMinor(summary.earnings_minor || 0))}</b></div>
-      <div class="mini-kpi"><div class="muted small">Чаевые</div><b>${esc(formatMoneyMinor(summary.tips_minor || 0))}</b></div>
-      <div class="mini-kpi"><div class="muted small">Премии</div><b>${esc(formatMoneyMinor(summary.bonuses_minor || 0))}</b></div>
-      <div class="mini-kpi"><div class="muted small">Штрафы/списания</div><b>${esc(formatMoneyMinor(-(Number(summary.penalties_minor || 0))))}</b></div>
-      <div class="mini-kpi total"><div class="muted small">Итого</div><b>${esc(formatMoneyMinor(summary.total_minor || 0))}</b></div>
-    </div>`;
-
-  const itemsHtml = items.length ? items.map((item) => `
-    <div class="payroll-breakdown__row">
-      <div>
-        <div class="row gap-8 ai-center" style="flex-wrap:wrap">
-          <b>${esc(item?.title || 'Позиция')}</b>
-          <span class="badge">${esc(breakdownCategoryLabel(item?.category))}</span>
-        </div>
-        <div class="muted small mt-4">Компонент: ${esc(item?.component_type || '—')}</div>
-        <div class="muted small mt-4">База расчёта: ${esc(item?.base_text || '—')}</div>
-        <div class="muted small mt-4">Формула: ${esc(item?.formula_text || '—')}</div>
-      </div>
-      <div><b>${esc(formatMoneyMinor(item?.amount_minor || 0))}</b></div>
-    </div>`).join('') : `<div class="muted">За этот день breakdown ещё пустой</div>`;
-
-  openModal(
-    `${formatDateRu(d.date)}`,
-    breakdownStateText(payload?.state),
-    `<div class="itemcard" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-        <div class="muted">Профиль</div>
-        <div>${esc(context?.pay_profile_title || '—')}</div>
-      </div>
-      <div class="muted small mt-8">Часы: ${esc(hoursText)} · Смены: ${esc(context?.shifts_count ?? 0)} · Выручка дня: ${esc(formatMoneyMinor(context?.revenue_minor || 0))}</div>
-      ${context?.calculated_at ? `<div class="muted small mt-6">Пересчитано: ${esc(new Date(context.calculated_at).toLocaleString('ru-RU'))}</div>` : ''}
-      ${(payload?.state === 'partial' || payload?.state === 'no_payroll') ? `<div class="muted small mt-6">Часть месячных компонентов может быть ещё недоступна. Показываем всё, что уже удалось собрать.</div>` : ''}
-      ${summaryHtml}
-      <div class="payroll-breakdown mt-12">
-        <div class="payroll-breakdown__body mt-8">${itemsHtml}</div>
-      </div>
-    </div>`
-  );
-}
-
-async function loadDayBreakdown(dateIso) {
-  if (!venueId || !dateIso) return null;
-  return await api(`/me/salary-day-breakdown?venue_id=${encodeURIComponent(venueId)}&date=${encodeURIComponent(dateIso)}`);
-}
-
-async function maybeOpenRequestedDay() {
-  if (!pendingOpenDay || !requestedOpenDay || scopeMode !== 'venue') return;
-  if (!String(requestedOpenDay).startsWith(`${ym(curMonth)}-`)) return;
-  const d = days.find((x) => String(x?.date || '') === requestedOpenDay);
-  if (!d) return;
-  pendingOpenDay = false;
-  syncUrl();
-  await openDayModal(d);
-}
-
 let shifts = [];
 let days = [];
 let adjustments = [];
 let monthSummaryItem = null;
 let payrollLine = null;
 let payrollWorkedDates = new Set();
+const dayBreakdownCache = new Map();
 
 function buildDaysFromShifts() {
   const map = new Map();
@@ -570,7 +491,7 @@ async function refresh() {
     return;
   }
   await loadMonth();
-  await maybeOpenRequestedDay();
+  await maybeAutoOpenDay();
 }
 
 function renderSummary() {
@@ -662,7 +583,7 @@ function renderMonthChart() {
     const date = btn.getAttribute("data-date");
     const d = days.find(x => x.date === date);
     if (!d) return;
-    btn.addEventListener("click", () => openDayModal(d));
+    btn.addEventListener("click", () => { void openDayModal(d); });
   });
 }
 
@@ -696,9 +617,131 @@ function renderDays() {
           <button class="btn" data-open>Подробнее</button>
         </div>
       </div>`;
-    card.querySelector("[data-open]")?.addEventListener("click", () => openDayModal(d));
+    card.querySelector("[data-open]")?.addEventListener("click", () => { void openDayModal(d); });
     el.daysList.appendChild(card);
   }
+}
+
+async function loadDayBreakdown(dateIso) {
+  const key = `${venueId}:${String(dateIso || "").slice(0, 10)}`;
+  if (dayBreakdownCache.has(key)) return dayBreakdownCache.get(key);
+  const req = api(`/me/salary-day-breakdown?venue_id=${encodeURIComponent(venueId)}&date=${encodeURIComponent(String(dateIso || "").slice(0, 10))}`);
+  dayBreakdownCache.set(key, req);
+  try {
+    const data = await req;
+    dayBreakdownCache.set(key, data);
+    return data;
+  } catch (e) {
+    dayBreakdownCache.delete(key);
+    throw e;
+  }
+}
+
+function renderDayBreakdownItems(items, detailed = false) {
+  if (!Array.isArray(items) || !items.length) return `<div class="muted">Нет деталей начисления за этот день</div>`;
+  return items.map((item) => {
+    const amountMinor = Number(item?.amount_minor || 0);
+    const amountClass = amountMinor < 0 ? "day-salary day-salary--muted" : "day-salary";
+    const baseText = String(item?.base_text || "").trim();
+    const formulaText = String(item?.formula_text || "").trim();
+    const sourceLabel = String(item?.source || item?.component_type || "").trim();
+    return `
+      <div class="payroll-breakdown__row">
+        <div>
+          <b>${esc(item?.title || "Компонент")}</b>
+          ${sourceLabel ? `<div class="muted small mt-4">${esc(sourceLabel)}</div>` : ""}
+          ${baseText ? `<div class="muted small mt-4">База: ${esc(baseText)}</div>` : ""}
+          ${formulaText ? `<div class="muted small mt-4">Формула: ${esc(formulaText)}</div>` : ""}
+          ${detailed && item?.component_type ? `<div class="muted small mt-4">Тип: ${esc(item.component_type)}</div>` : ""}
+        </div>
+        <div><b class="${amountClass}">${esc(formatMoneyMinor(amountMinor))}</b></div>
+      </div>`;
+  }).join("");
+}
+
+function fallbackDayModalHtml(d) {
+  const isPayroll = monthSummaryItem?.source === "payroll";
+  const shiftsHtml = (d.shifts || []).map((s) => {
+    const interval = s.interval?.title || s.interval_title || s.interval?.id || "Смена";
+    const status = isPayroll
+      ? (d.includedInPayroll ? "Вошло в payroll" : (s.report_exists ? "Есть отчёт, но не вошло" : "Нет закрытого отчёта"))
+      : (s.report_exists ? "Есть закрытый отчёт" : "Нет закрытого отчёта");
+    return `
+      <div class="section">
+        <div class="row row--between" style="gap:12px; align-items:flex-start;">
+          <div>
+            <b>${esc(interval)}</b>
+            <div class="muted small">${s.report_exists ? "Отчёт есть" : "Нет отчёта"}</div>
+          </div>
+          <div class="muted small">${esc(status)}</div>
+        </div>
+      </div>`;
+  }).join("");
+
+  return `<div class="itemcard" style="margin-top:12px">
+    <div class="row" style="justify-content:space-between;align-items:center; gap:12px;">
+      <div class="muted">Статус дня</div>
+      <div class="day-salary ${isPayroll ? (d.includedInPayroll ? "" : "day-salary--muted") : (d.hasReport ? "" : "day-salary--muted")}">${isPayroll ? (d.includedInPayroll ? "Вошло в расчёт" : "Не вошло") : (d.hasReport ? "Закрытый день" : "Без закрытия")}</div>
+    </div>
+    <div class="muted small mt-8">${isPayroll
+      ? "Месячная сумма берётся из payroll, поэтому здесь показана только справочная детализация по сменам."
+      : "Payroll за этот месяц ещё не рассчитан, поэтому суммы по дням скрыты и ниже показана только справочная детализация по сменам."}</div>
+    <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
+  </div>`;
+}
+
+function renderDayBreakdownModal(d, breakdown) {
+  const state = String(breakdown?.state || "ready");
+  const summary = breakdown?.summary || {};
+  const context = breakdown?.context || {};
+  const detailLevel = String((window.Telegram?.WebApp?.initDataUnsafe?.user ? "detailed" : "standard"));
+  const itemsHtml = renderDayBreakdownItems(breakdown?.items || [], detailLevel === "detailed");
+  const stateText = state === "ready"
+    ? "Начисление рассчитано"
+    : (state === "partial"
+      ? "Данные частичные"
+      : (state === "no_payroll" ? "Начисление ещё не рассчитано" : "Начислений не найдено"));
+  const shiftsCount = Number(context?.shifts_count || d?.shifts?.length || 0);
+  const hoursTotal = Number(context?.hours_total || 0);
+  const hoursText = Number.isFinite(hoursTotal) ? hoursTotal.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : "0";
+  const fallbackShifts = (d?.shifts || []).length ? `<div class="muted small mt-10">Смен за день: ${esc((d.shifts || []).map((s) => s.interval?.title || s.interval_title || "Смена").join(", "))}</div>` : "";
+
+  return `<div class="itemcard" style="margin-top:12px">
+    <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div>
+        <div class="muted small">Статус</div>
+        <b>${esc(stateText)}</b>
+      </div>
+      <div class="day-salary">${esc(formatMoneyMinor(summary?.total_minor || 0))}</div>
+    </div>
+
+    <div class="grid mt-12" style="gap:8px">
+      <div class="row row--between"><div class="muted">Основное начисление</div><b>${esc(formatMoneyMinor(summary?.earnings_minor || 0))}</b></div>
+      <div class="row row--between"><div class="muted">Чаевые</div><b>${esc(formatMoneyMinor(summary?.tips_minor || 0))}</b></div>
+      <div class="row row--between"><div class="muted">Премии</div><b>${esc(formatMoneyMinor(summary?.bonuses_minor || 0))}</b></div>
+      <div class="row row--between"><div class="muted">Штрафы/списания</div><b>${esc(formatMoneyMinor(-(Number(summary?.penalties_minor || 0))))}</b></div>
+      <div class="row row--between"><div class="muted">Смен / часов</div><b>${esc(String(shiftsCount))} / ${esc(hoursText)}</b></div>
+    </div>
+
+    <div class="payroll-breakdown mt-12">
+      <div class="muted small">Компонент · База расчёта · Формула · Итог</div>
+      <div class="payroll-breakdown__body mt-8">${itemsHtml}</div>
+    </div>
+
+    ${state === "partial" ? `<div class="muted small mt-10">Часть начислений ещё в пересчёте или появится после payroll.</div>` : ""}
+    ${state === "no_payroll" ? `<div class="muted small mt-10">За этот день уже могут быть чаевые или корректировки, но payroll-начисление ещё не собрано.</div>` : ""}
+    ${state === "empty" ? `<div class="muted small mt-10">Нет начисления за этот день. Проверь, была ли смена, закрыт ли отчёт и назначен ли профиль оплаты.</div>` : ""}
+    ${fallbackShifts}
+  </div>`;
+}
+
+async function maybeAutoOpenDay() {
+  if (!shouldAutoOpenDay || deepLinkAutoOpened || scopeMode === "all" || !deepLinkDate) return;
+  if (ym(curMonth) !== deepLinkDate.slice(0, 7)) return;
+  const target = days.find((x) => String(x?.date || "").slice(0, 10) === deepLinkDate)
+    || { date: deepLinkDate, shifts: [], hasReport: false, includedInPayroll: payrollWorkedDates.has(deepLinkDate) };
+  deepLinkAutoOpened = true;
+  await openDayModal(target);
 }
 
 function breakdownMetaHtml(c) {
@@ -756,53 +799,27 @@ function openPayrollBreakdown() {
   );
 }
 
-function openLegacyDayModal(d) {
-  const isPayroll = monthSummaryItem?.source === "payroll";
-  const shiftsHtml = (d.shifts || []).map((s) => {
-    const interval = s.interval?.title || s.interval_title || s.interval?.id || "Смена";
-    const status = isPayroll
-      ? (d.includedInPayroll ? "Вошло в payroll" : (s.report_exists ? "Есть отчёт, но не вошло" : "Нет закрытого отчёта"))
-      : (s.report_exists ? "Есть закрытый отчёт" : "Нет закрытого отчёта");
-    return `
-      <div class="section">
-        <div class="row row--between" style="gap:12px; align-items:flex-start;">
-          <div>
-            <b>${esc(interval)}</b>
-            <div class="muted small">${s.report_exists ? "Отчёт есть" : "Нет отчёта"}</div>
-          </div>
-          <div class="muted small">${esc(status)}</div>
-        </div>
-      </div>`;
-  }).join("");
-
+async function openDayModal(d) {
+  const subtitle = monthSummaryItem?.source === "payroll"
+    ? (d?.includedInPayroll ? "Этот день попал в payroll-расчёт" : "Детализация начисления за день")
+    : "Детализация начисления за день";
   openModal(
     `${formatDateRu(d.date)}`,
-    isPayroll
-      ? (d.includedInPayroll ? "Этот день попал в payroll-расчёт" : "Этот день не участвует в payroll-итоге")
-      : "Начисление за месяц ещё не рассчитано",
-    `<div class="itemcard" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between;align-items:center; gap:12px;">
-        <div class="muted">Статус дня</div>
-        <div class="day-salary ${isPayroll ? (d.includedInPayroll ? "" : "day-salary--muted") : (d.hasReport ? "" : "day-salary--muted")}">${isPayroll ? (d.includedInPayroll ? "Вошло в расчёт" : "Не вошло") : (d.hasReport ? "Закрытый день" : "Без закрытия")}</div>
-      </div>
-      <div class="muted small mt-8">${isPayroll
-        ? "Месячная сумма берётся из payroll, поэтому здесь показана только справочная детализация по сменам."
-        : "Payroll за этот месяц ещё не рассчитан, поэтому суммы по дням скрыты и ниже показана только справочная детализация по сменам."}</div>
-      <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
-    </div>`
+    subtitle,
+    `<div class="itemcard" style="margin-top:12px"><div class="muted">Загружаем breakdown начисления…</div></div>`
   );
-}
 
-async function openDayModal(d) {
-  openModal(`${formatDateRu(d?.date || '')}`, 'Загружаем детализацию…', `<div class="itemcard" style="margin-top:12px"><div class="muted">Пожалуйста, подожди…</div></div>`);
   try {
-    const payload = await loadDayBreakdown(String(d?.date || '').slice(0, 10));
-    if (payload && (Array.isArray(payload.items) || payload.state)) {
-      renderDayBreakdownModal(payload, d);
-      return;
-    }
-  } catch {}
-  openLegacyDayModal(d);
+    const breakdown = await loadDayBreakdown(d.date);
+    if (modalTitle) modalTitle.textContent = formatDateRu(d.date);
+    if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle;
+    if (modalBody) modalBody.innerHTML = renderDayBreakdownModal(d, breakdown);
+  } catch (e) {
+    if (modalTitle) modalTitle.textContent = formatDateRu(d.date);
+    if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle;
+    if (modalBody) modalBody.innerHTML = fallbackDayModalHtml(d);
+    toast(e?.data?.detail || e?.message || "Не удалось загрузить breakdown начисления", "err");
+  }
 }
 
 el.prev?.addEventListener("click", async () => {
