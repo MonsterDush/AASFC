@@ -101,6 +101,17 @@ def _sum_daily_payroll_allocated_minor(db: Session, *, venue_id: int, target_dat
     return int(total_minor)
 
 
+def _sum_payroll_minor_for_period(db: Session, *, venue_id: int, period_start: date, period_end: date) -> int:
+    day = period_start
+    allocated_total_minor = 0
+    while day <= period_end:
+        allocated_total_minor += _sum_daily_payroll_allocated_minor(db, venue_id=venue_id, target_date=day)
+        day += timedelta(days=1)
+    if allocated_total_minor > 0:
+        return int(allocated_total_minor)
+    return _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='PAYROLL')
+
+
 def _sum_closed_report_revenue_minor(db: Session, *, venue_id: int, period_start: date, period_end: date) -> int:
     return int(
         db.execute(
@@ -445,9 +456,7 @@ def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None,
 
     revenue_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REVENUE')
     expense_minor = _sum_expense_recognition_minor(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
-    payroll_minor = _sum_daily_payroll_allocated_minor(db, venue_id=venue_id, target_date=target_date)
-    if payroll_minor <= 0:
-        payroll_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='PAYROLL')
+    payroll_minor = _sum_payroll_minor_for_period(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
     adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='ADJUSTMENT')
     adjustment_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='ADJUSTMENT')
     refund_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REFUND')
@@ -512,7 +521,7 @@ def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, in
     point_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in point_expenses))
     recurring_expenses = _group_daily_recurring_expenses(db, venue_id=venue_id, target_date=target_date)
     recurring_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in recurring_expenses))
-    payroll_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='PAYROLL')
+    payroll_minor = _sum_payroll_minor_for_period(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
     adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='ADJUSTMENT')
     adjustment_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='ADJUSTMENT')
     refund_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REFUND')
