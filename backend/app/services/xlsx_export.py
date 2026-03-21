@@ -347,7 +347,9 @@ def build_expenses_xlsx(
 
 def build_monthly_summary_xlsx(
     *,
-    month: str,
+    month: str | None,
+    period_start: Any | None,
+    period_end: Any | None,
     venue_name: str,
     payments_summary: dict[str, Any],
     departments_summary: dict[str, Any],
@@ -355,11 +357,19 @@ def build_monthly_summary_xlsx(
     wb = Workbook()
     ws = wb.active
     ws.title = "Сводка"
-    _write_title(ws, f"Месячная сводка · {venue_name}")
+    period_label = month or ""
+    if not period_label:
+        if period_start and period_end:
+            period_label = f"{period_start.isoformat()} — {period_end.isoformat()}"
+        elif period_start:
+            period_label = str(period_start)
+        else:
+            period_label = "—"
+    _write_title(ws, f"Сводка · {venue_name}")
     _write_key_values(
         ws,
         [
-            ("Месяц", month),
+            ("Период", period_label),
             ("Выручка, ₽", _minor_to_major(payments_summary.get("revenue_minor"))),
             ("Расходы без ФОТ, ₽", _minor_to_major(payments_summary.get("expense_without_payroll_minor"))),
             ("ФОТ, ₽", _minor_to_major(payments_summary.get("payroll_minor"))),

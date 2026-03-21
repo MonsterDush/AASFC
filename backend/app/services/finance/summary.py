@@ -67,20 +67,6 @@ def _sum_amount(db: Session, *, venue_id: int, period_start: date, period_end: d
     )
 
 
-def _allocate_amount_minor_by_dates(amount_minor: int, worked_dates: list[str]) -> dict[str, int]:
-    dates = sorted({str(item or '').strip() for item in (worked_dates or []) if str(item or '').strip()})
-    if not dates:
-        return {}
-    sign = 1 if int(amount_minor or 0) >= 0 else -1
-    abs_amount = abs(int(amount_minor or 0))
-    base_minor, remainder_minor = divmod(abs_amount, len(dates))
-    allocation: dict[str, int] = {}
-    for index, day_iso in enumerate(dates):
-        current = base_minor + (1 if index < remainder_minor else 0)
-        allocation[day_iso] = int(sign * current)
-    return allocation
-
-
 def _sum_daily_payroll_allocated_minor(db: Session, *, venue_id: int, target_date: date) -> int:
     month_start = target_date.replace(day=1)
     rows = db.execute(
@@ -95,7 +81,7 @@ def _sum_daily_payroll_allocated_minor(db: Session, *, venue_id: int, target_dat
     total_minor = 0
     target_date_iso = target_date.isoformat()
     for amount_minor, breakdown_json in rows:
-        if int(amount_minor or 0) == 0 or not breakdown_json:
+        if int(amount_minor or 0) <= 0 or not breakdown_json:
             continue
         try:
             breakdown = json.loads(breakdown_json)
@@ -103,10 +89,15 @@ def _sum_daily_payroll_allocated_minor(db: Session, *, venue_id: int, target_dat
             continue
         metrics = breakdown.get('metrics') or {}
         worked_dates = metrics.get('worked_dates') or []
-        allocation = _allocate_amount_minor_by_dates(int(amount_minor or 0), worked_dates)
-        if not allocation:
+        if target_date_iso not in worked_dates:
             continue
-        total_minor += int(allocation.get(target_date_iso) or 0)
+        try:
+            worked_dates_count = int(metrics.get('worked_dates_count') or 0)
+        except Exception:
+            worked_dates_count = 0
+        if worked_dates_count <= 0:
+            worked_dates_count = len(worked_dates) or 1
+        total_minor += int(round(int(amount_minor or 0) / worked_dates_count))
     return int(total_minor)
 
 
@@ -502,15 +493,23 @@ def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None,
     }
 
 
-def get_monthly_finance_summary(*, db: Session, venue_id: int, month: str | None, income_mode: str = 'PAYMENTS') -> dict:
-    period_start, period_end = resolve_finance_period(month=month, date_from=None, date_to=None)
-    base = get_finance_summary(db=db, venue_id=venue_id, month=month)
+def get_monthly_finance_summary(
+    *,
+    db: Session,
+    venue_id: int,
+    month: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    income_mode: str = 'PAYMENTS',
+) -> dict:
+    period_start, period_end = resolve_finance_period(month=month, date_from=date_from, date_to=date_to)
+    base = get_finance_summary(db=db, venue_id=venue_id, month=month, date_from=date_from, date_to=date_to)
     mode = str(income_mode or 'PAYMENTS').upper()
     if mode not in {'PAYMENTS', 'DEPARTMENTS'}:
         raise ValueError('Bad income_mode, expected PAYMENTS or DEPARTMENTS')
     return {
         **base,
-        'month': month or period_start.strftime('%Y-%m'),
+        'month': month or None,
         'income_mode': mode,
         'revenue_breakdown': _group_revenue_breakdown(db, venue_id=venue_id, period_start=period_start, period_end=period_end, income_mode=mode),
         'expense_categories': _group_expense_categories(db, venue_id=venue_id, period_start=period_start, period_end=period_end),

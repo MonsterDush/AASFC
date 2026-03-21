@@ -6,18 +6,10 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from app.services.finance.revenue import build_report_revenue_plan
-from app.services.finance.summary import _allocate_amount_minor_by_dates, get_day_finance_summary, get_finance_summary, get_monthly_finance_summary
+from app.services.finance.summary import get_day_finance_summary, get_finance_summary, get_monthly_finance_summary
 
 
 class FinanceRevenueServiceTests(TestCase):
-    def test_allocate_amount_minor_by_dates_preserves_total_exactly(self):
-        allocation = _allocate_amount_minor_by_dates(100001, ["2026-03-01", "2026-03-02", "2026-03-03"])
-
-        self.assertEqual(sum(allocation.values()), 100001)
-        self.assertEqual(allocation["2026-03-01"], 33334)
-        self.assertEqual(allocation["2026-03-02"], 33334)
-        self.assertEqual(allocation["2026-03-03"], 33333)
-
     def test_build_report_revenue_plan_prefers_payments_for_money_axis(self):
         report = SimpleNamespace(id=1, venue_id=5, date=date(2026, 3, 10), revenue_total=1500)
         values = [
@@ -80,6 +72,34 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertEqual(summary["income_mode"], "PAYMENTS")
         self.assertEqual(summary["revenue_breakdown"][0]["amount_minor"], 300000)
         self.assertEqual(summary["expense_categories"][0]["title"], "Аренда")
+
+    def test_get_monthly_finance_summary_supports_date_range(self):
+        with patch("app.services.finance.summary.get_finance_summary", return_value={
+            "month": None,
+            "period_start": date(2026, 3, 10),
+            "period_end": date(2026, 3, 15),
+            "revenue_minor": 250000,
+            "expense_minor": 60000,
+            "payroll_minor": 40000,
+            "adjustments_minor": 0,
+            "refunds_minor": 0,
+            "profit_minor": 150000,
+            "margin_bps": 6000,
+        }) as get_base, patch("app.services.finance.summary._group_revenue_breakdown", return_value=[]), patch("app.services.finance.summary._group_expense_categories", return_value=[]), patch("app.services.finance.summary._group_payment_method_balances", return_value=[]):
+            summary = get_monthly_finance_summary(
+                db=object(),
+                venue_id=5,
+                month=None,
+                date_from=date(2026, 3, 10),
+                date_to=date(2026, 3, 15),
+                income_mode="PAYMENTS",
+            )
+
+        self.assertIsNone(summary["month"])
+        self.assertEqual(summary["period_start"], date(2026, 3, 10))
+        self.assertEqual(summary["period_end"], date(2026, 3, 15))
+        self.assertEqual(get_base.call_args.kwargs["date_from"], date(2026, 3, 10))
+        self.assertEqual(get_base.call_args.kwargs["date_to"], date(2026, 3, 15))
 
     def test_get_day_finance_summary_includes_point_and_recurring(self):
         with patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=100000), \

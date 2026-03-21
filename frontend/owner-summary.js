@@ -48,6 +48,13 @@ function currentMonth() {
   return `${y}-${m}`;
 }
 
+let state = {
+  period: "month",
+  month: currentMonth(),
+  from: todayISO(),
+  to: todayISO(),
+};
+
 function setText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
@@ -58,6 +65,55 @@ function showBlock(id, visible) {
   if (el) el.style.display = visible ? "" : "none";
 }
 
+function normalizeRange() {
+  if (!state.from) state.from = todayISO();
+  if (!state.to) state.to = state.from;
+  if (state.from > state.to) {
+    const tmp = state.from;
+    state.from = state.to;
+    state.to = tmp;
+  }
+}
+
+function setActiveSeg(containerId, dataKey, value) {
+  document.querySelectorAll(`#${containerId} button`).forEach((btn) => {
+    if (btn.dataset[dataKey] === value) btn.classList.add("active");
+    else btn.classList.remove("active");
+  });
+}
+
+function syncPickers() {
+  const monthPick = document.getElementById("summaryMonthPick");
+  const rangePick = document.getElementById("summaryRangePick");
+  if (monthPick) monthPick.style.display = state.period === "month" ? "" : "none";
+  if (rangePick) rangePick.style.display = state.period === "range" ? "flex" : "none";
+}
+
+function buildSummaryQuery() {
+  const qp = new URLSearchParams();
+  qp.set("period", state.period);
+  if (state.period === "month") {
+    qp.set("month", state.month || currentMonth());
+  } else {
+    normalizeRange();
+    qp.set("date_from", state.from || todayISO());
+    qp.set("date_to", state.to || todayISO());
+  }
+  return qp;
+}
+
+function syncUrl() {
+  const qp = buildSummaryQuery();
+  const venueId = getActiveVenueId();
+  if (venueId) qp.set("venue_id", String(venueId));
+  history.replaceState(null, "", `${location.pathname}?${qp.toString()}`);
+}
+
+function statePeriodText() {
+  if (state.period === "month") return state.month || currentMonth();
+  normalizeRange();
+  return `${state.from} — ${state.to}`;
+}
 
 function withTimeout(promise, ms, label = "REQUEST_TIMEOUT") {
   let timer = null;
@@ -119,7 +175,7 @@ async function loadFinanceAccess() {
   return financeAccess;
 }
 
-function syncActions(month) {
+function syncActions() {
   const venueId = getActiveVenueId();
   const exportSummaryBtn = document.getElementById("exportSummaryBtn");
   const revenueBtn = document.getElementById("openRevenueBtn");
@@ -131,7 +187,7 @@ function syncActions(month) {
     exportSummaryBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
     exportSummaryBtn.onclick = async () => {
       try {
-        await openExportLink(`/venues/${encodeURIComponent(venueId)}/summary/monthly/export-link?month=${encodeURIComponent(month)}`);
+        await openExportLink(`/venues/${encodeURIComponent(venueId)}/summary/monthly/export-link?${buildSummaryQuery().toString()}`);
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось начать экспорт", "err");
       }
@@ -141,11 +197,9 @@ function syncActions(month) {
   if (revenueBtn) {
     revenueBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
     revenueBtn.onclick = () => {
-      const qp = new URLSearchParams();
+      const qp = buildSummaryQuery();
       qp.set("venue_id", String(venueId));
-      qp.set("month", month);
       qp.set("mode", "PAYMENTS");
-      qp.set("period", "month");
       location.href = `/owner-turnover.html?${qp.toString()}`;
     };
   }
@@ -155,7 +209,7 @@ function syncActions(month) {
     expensesBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
-      qp.set("month", month);
+      qp.set("month", state.month || currentMonth());
       location.href = `/owner-expenses.html?${qp.toString()}`;
     };
   }
@@ -165,7 +219,7 @@ function syncActions(month) {
     payrollBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
-      qp.set("month", month);
+      qp.set("month", state.month || currentMonth());
       location.href = `/owner-payroll.html?${qp.toString()}`;
     };
   }
@@ -173,22 +227,23 @@ function syncActions(month) {
   if (economicsBtn) {
     economicsBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
     economicsBtn.onclick = () => {
-      const params = new URLSearchParams(location.search);
-      const targetDate = params.get("date") || `${month}-01` || todayISO();
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
-      qp.set("date", targetDate);
+      qp.set("date", state.period === "month" ? `${state.month || currentMonth()}-01` : (state.to || state.from || todayISO()));
       location.href = `/owner-day-economics.html?${qp.toString()}`;
     };
   }
 }
 
-async function loadSummary(monthYYYYMM) {
+async function loadSummary() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
 
+  normalizeRange();
+  syncPickers();
+  syncUrl();
   await loadFinanceAccess();
-  syncActions(monthYYYYMM);
+  syncActions();
 
   showBlock("revenueCard", financeAccess.canViewRevenue);
   showBlock("expensesCard", financeAccess.canViewExpenses);
@@ -208,10 +263,11 @@ async function loadSummary(monthYYYYMM) {
 
   try {
     let summary;
+    const qs = buildSummaryQuery().toString();
     try {
-      summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/finance/summary?month=${encodeURIComponent(monthYYYYMM)}`, 10000, "OWNER_SUMMARY_TIMEOUT");
-    } catch (primaryError) {
-      summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/summary/monthly?month=${encodeURIComponent(monthYYYYMM)}&income_mode=PAYMENTS`, 10000, "OWNER_SUMMARY_TIMEOUT");
+      summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/finance/summary?${qs}`, 10000, "OWNER_SUMMARY_TIMEOUT");
+    } catch {
+      summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/summary/monthly?${qs}&income_mode=PAYMENTS`, 10000, "OWNER_SUMMARY_TIMEOUT");
       summary = {
         ...summary,
         expense_without_payroll_minor: summary?.expense_without_payroll_minor ?? summary?.expense_minor,
@@ -224,7 +280,7 @@ async function loadSummary(monthYYYYMM) {
     setText("summaryTotalCost", fmtMoneyMinor(summary?.total_cost_minor ?? ((Number(summary?.expense_minor || 0)) + (Number(summary?.payroll_minor || 0)))));
     setText("summaryProfit", fmtMoneyMinor(summary?.profit_minor));
     setText("summaryMargin", fmtPercentBps(summary?.margin_bps));
-    setText("summaryPeriodText", `${summary?.period_start || monthYYYYMM} — ${summary?.period_end || monthYYYYMM}`);
+    setText("summaryPeriodText", summary?.period_start && summary?.period_end ? `${summary.period_start} — ${summary.period_end}` : statePeriodText());
     setText("summaryHint", `Доли от выручки: расходы ${fmtPercentBps(summary?.expense_ratio_bps)} · ФОТ ${fmtPercentBps(summary?.payroll_ratio_bps)} · всего затрат ${fmtPercentBps(summary?.total_cost_ratio_bps)} · корректировки ${fmtMoneyMinor(summary?.adjustments_minor)} · возвраты ${fmtMoneyMinor(summary?.refunds_minor)}`);
   } catch (e) {
     setText("summaryRevenue", "—");
@@ -251,21 +307,70 @@ async function boot() {
 
   try {
     const venues = await getMyVenues();
-    const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
+    const v = venues.find((x) => String(x.id) === String(getActiveVenueId()));
     if (v) {
       const subtitle = document.getElementById("subtitle");
       if (subtitle) subtitle.textContent = v.name || "";
     }
   } catch {}
 
+  state.period = params.get("period") || (params.get("date_from") && params.get("date_to") ? "range" : "month");
+  state.month = (params.get("month") || currentMonth()).slice(0, 7);
+  state.from = params.get("date_from") || todayISO();
+  state.to = params.get("date_to") || state.from;
+  normalizeRange();
+
   const monthPick = document.getElementById("summaryMonthPick");
-  const month = params.get("month") || currentMonth();
+  const fromPick = document.getElementById("summaryFromPick");
+  const toPick = document.getElementById("summaryToPick");
+  const rangeApplyBtn = document.getElementById("summaryRangeApplyBtn");
+
   if (monthPick) {
-    monthPick.value = month;
-    monthPick.onchange = (e) => loadSummary(e.target.value || currentMonth());
+    monthPick.value = state.month;
+    monthPick.onchange = (e) => {
+      state.month = (e.target.value || currentMonth()).slice(0, 7);
+      state.period = "month";
+      setActiveSeg("summaryPeriodSeg", "period", "month");
+      loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
+    };
+  }
+  if (fromPick) {
+    fromPick.value = state.from;
+    fromPick.onchange = (e) => {
+      state.from = e.target.value || todayISO();
+    };
+  }
+  if (toPick) {
+    toPick.value = state.to;
+    toPick.onchange = (e) => {
+      state.to = e.target.value || state.from || todayISO();
+    };
+  }
+  if (rangeApplyBtn) {
+    rangeApplyBtn.onclick = () => {
+      state.period = "range";
+      setActiveSeg("summaryPeriodSeg", "period", "range");
+      loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
+    };
   }
 
-  await loadSummary(month);
+  document.querySelectorAll(`#summaryPeriodSeg button`).forEach((btn) => {
+    btn.onclick = () => {
+      const nextPeriod = btn.dataset.period || "month";
+      state.period = nextPeriod;
+      setActiveSeg("summaryPeriodSeg", "period", nextPeriod);
+      if (nextPeriod === "month") {
+        loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
+      } else {
+        syncPickers();
+        syncUrl();
+      }
+    };
+  });
+
+  setActiveSeg("summaryPeriodSeg", "period", state.period);
+  syncPickers();
+  await loadSummary();
 }
 
 document.addEventListener("DOMContentLoaded", () => { boot(); });
