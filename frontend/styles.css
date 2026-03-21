@@ -541,10 +541,57 @@ input[type="checkbox"],input[type="radio"]{
   border:1px solid var(--border);
   background:var(--surface2);
 }
-.schedule-interval-list{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+.schedule-filterbar{
+  display:flex;
+  align-items:center;
   gap:8px;
+  flex-wrap:wrap;
+}
+.schedule-dropdown{
+  position:relative;
+  min-width:0;
+  flex:1 1 220px;
+}
+.schedule-dropdown__toggle{
+  width:100%;
+  justify-content:flex-start;
+  text-align:left;
+  position:relative;
+  padding-right:36px;
+}
+.schedule-dropdown__toggle::after{
+  content:"▾";
+  position:absolute;
+  right:12px;
+  top:50%;
+  transform:translateY(-50%);
+  font-size:12px;
+  opacity:.8;
+  pointer-events:none;
+}
+.schedule-dropdown.open .schedule-dropdown__toggle::after{
+  content:"▴";
+}
+.schedule-dropdown__menu{
+  position:absolute;
+  left:0;
+  right:0;
+  top:calc(100% + 8px);
+  z-index:35;
+  display:grid;
+  gap:8px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:var(--surface2);
+  box-shadow:var(--shadow);
+  max-height:min(320px, 55vh);
+  overflow:auto;
+}
+.schedule-dropdown__empty{
+  padding:10px 12px;
+  border:1px dashed var(--border);
+  border-radius:14px;
 }
 .schedule-check{
   display:flex;
@@ -561,14 +608,6 @@ input[type="checkbox"],input[type="radio"]{
 .schedule-check__text{display:flex;flex-direction:column;min-width:0}
 .schedule-check__title{font-weight:800;line-height:1.2}
 .schedule-check__meta{font-size:12px;line-height:1.25;color:var(--muted)}
-.schedule-filterchips,
-.schedule-summary{
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-}
-.schedule-filterchips .badge,
-.schedule-summary .badge{font-size:12px;padding:7px 10px}
 .btn-chip{border-radius:999px}
 .btn-chip.active{
   background:var(--accentSoftBg);
@@ -579,6 +618,8 @@ input[type="checkbox"],input[type="radio"]{
   .shift-toggle{padding:3px}
   .shift-toggle button{padding:9px 10px;font-size:12px}
   .schedule-filters{padding:12px}
+  .schedule-filterbar{gap:6px}
+  .schedule-dropdown{flex-basis:100%}
 }
 
 
