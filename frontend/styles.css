@@ -1190,3 +1190,9 @@ input[type="checkbox"],input[type="radio"]{
 @media (max-width:640px){
   .payroll-breakdown__row{grid-template-columns:1fr}
 }
+
+.modal__panel--wide{max-width:min(1100px,calc(100vw - 24px));width:min(1100px,calc(100vw - 24px));}
+.export-status{margin-bottom:12px;}
+.export-preview-wrap{display:flex;justify-content:center;align-items:flex-start;min-height:160px;}
+.export-preview-image{display:block;max-width:100%;max-height:70vh;border-radius:16px;border:1px solid var(--line);background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.12);}
+.export-preview-image.hidden{display:none;}

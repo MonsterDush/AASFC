@@ -78,6 +78,15 @@ const el = {
   btnScheduleFiltersToggle: document.getElementById("btnScheduleFiltersToggle"),
   btnResetScheduleFilters: document.getElementById("btnResetScheduleFilters"),
   btnUnstaffedOnly: document.getElementById("btnUnstaffedOnly"),
+  btnExportImage: document.getElementById("btnExportImage"),
+  exportModal: document.getElementById("exportModal"),
+  exportStatus: document.getElementById("exportStatus"),
+  exportPreviewImage: document.getElementById("exportPreviewImage"),
+  exportModalSubtitle: document.getElementById("exportModalSubtitle"),
+  btnExportShare: document.getElementById("btnExportShare"),
+  btnExportTelegram: document.getElementById("btnExportTelegram"),
+  btnExportDownloadPng: document.getElementById("btnExportDownloadPng"),
+  btnExportDownloadWebp: document.getElementById("btnExportDownloadWebp"),
 };
 
 // DayPanel удалён: у нас есть отдельная страница/экран для графика
@@ -467,6 +476,8 @@ try {
 
 let intervals = [];
 let positions = [];
+let currentVenueName = "";
+let currentVenues = [];
 let shifts = [];
 let globalShifts = [];
 let shiftsByDate = new Map();
@@ -790,6 +801,8 @@ async function loadContext() {
 
   me = await getMe().catch(() => null);
   const venuesList = await getMyVenues().catch(() => []);
+  currentVenues = Array.isArray(venuesList) ? venuesList : [];
+  currentVenueName = currentVenues.find((v) => String(v?.id ?? "") === String(venueId))?.name || currentVenueName || "Заведение";
   isMultiVenue = Array.isArray(venuesList) && venuesList.length >= 2;
 
   perms = await getMyVenuePermissions(venueId).catch(() => null);
@@ -2182,6 +2195,649 @@ function openDay(dateStr) {
   }
 
 }
+
+
+
+const exportState = {
+  canvas: null,
+  meta: null,
+  pngBlob: null,
+  webpBlob: null,
+  previewUrl: "",
+  filenameBase: "schedule",
+};
+
+function releaseExportPreviewUrl() {
+  if (exportState.previewUrl) {
+    try { URL.revokeObjectURL(exportState.previewUrl); } catch {}
+    exportState.previewUrl = "";
+  }
+}
+
+function resetExportState() {
+  releaseExportPreviewUrl();
+  exportState.canvas = null;
+  exportState.meta = null;
+  exportState.pngBlob = null;
+  exportState.webpBlob = null;
+  exportState.filenameBase = "schedule";
+}
+
+function closeExportModal() {
+  el.exportModal?.classList.remove("open");
+  releaseExportPreviewUrl();
+  if (el.exportPreviewImage) {
+    el.exportPreviewImage.src = "";
+    el.exportPreviewImage.classList.add("hidden");
+  }
+}
+
+el.exportModal?.querySelectorAll("[data-close-export]")?.forEach((btn) => btn.addEventListener("click", closeExportModal));
+el.exportModal?.querySelector(".modal__backdrop")?.addEventListener("click", closeExportModal);
+
+function setExportButtonsDisabled(disabled) {
+  [
+    el.btnExportShare,
+    el.btnExportTelegram,
+    el.btnExportDownloadPng,
+    el.btnExportDownloadWebp,
+  ].forEach((btn) => {
+    if (btn) btn.disabled = !!disabled;
+  });
+}
+
+function setExportStatus(text, { error = false } = {}) {
+  if (!el.exportStatus) return;
+  el.exportStatus.textContent = text || "";
+  el.exportStatus.classList.toggle("err", !!error);
+}
+
+function currentUserLabel() {
+  const full = (me?.full_name || "").trim();
+  const fi = fioInitials(full);
+  if (fi) return fi;
+  const short = (me?.short_name || "").trim();
+  if (short) return short;
+  const username = (me?.tg_username || "").trim();
+  if (username) return username.startsWith("@") ? username : `@${username}`;
+  return "Я";
+}
+
+function currentRangeContext() {
+  if (calendarView === "week") {
+    const start = curWeekStart ? startOfWeek(curWeekStart) : startOfWeek(new Date());
+    const end = addDays(start, 6);
+    const dates = [];
+    for (let i = 0; i < 7; i++) dates.push(ymd(addDays(start, i)));
+    return {
+      view: "week",
+      periodStart: ymd(start),
+      periodEnd: ymd(end),
+      periodLabel: weekTitle(start),
+      periodDates: dates,
+      gridDates: dates,
+    };
+  }
+
+  const first = new Date(curMonth);
+  first.setDate(1);
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const start = new Date(first);
+  start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+  const gridDates = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    gridDates.push(ymd(d));
+  }
+  const periodDates = [];
+  for (let d = new Date(first); d <= last; d = addDays(d, 1)) periodDates.push(ymd(d));
+  return {
+    view: "month",
+    periodStart: ymd(first),
+    periodEnd: ymd(last),
+    periodLabel: monthTitle(first),
+    periodDates,
+    gridDates,
+  };
+}
+
+function selectedIntervalTitles() {
+  const byId = new Map((Array.isArray(intervals) ? intervals : []).map((it) => [String(it?.id ?? ""), it]));
+  return Array.from(selectedIntervalIds)
+    .map((id) => byId.get(String(id))?.title)
+    .filter(Boolean);
+}
+
+function buildLocalExportMetadata() {
+  const range = currentRangeContext();
+  const intervalTitles = selectedIntervalTitles();
+  const parts = [range.view === "month" ? "Месяц" : "Неделя"];
+  if (calendarScope === "global") parts.push("Общий режим");
+  else parts.push(showAllOnCalendar ? "Все сотрудники" : "Только мои");
+  if (intervalTitles.length) parts.push(`Интервалы: ${intervalTitles.join(", ")}`);
+  if (unstaffedOnly) parts.push("Только без назначений");
+
+  const venueLabel = calendarScope === "global" ? "Мой график" : (currentVenueName || "Заведение");
+  return {
+    venue_id: Number(venueId || 0) || 0,
+    venue_name: venueLabel,
+    view: range.view,
+    period_start: range.periodStart,
+    period_end: range.periodEnd,
+    period_label: range.periodLabel,
+    filters_text: parts.join(" • "),
+    interval_titles: intervalTitles,
+    staffing_state: unstaffedOnly ? "unstaffed" : "all",
+    logo_url: null,
+    app_logo_url: "/logo.png",
+    deep_link_path: "/staff-shifts.html",
+    share_title: `График смен · ${venueLabel}`,
+    share_text: `${venueLabel}\n${range.periodLabel}\n${parts.join(" • ")}`,
+  };
+}
+
+async function getExportMetadata() {
+  const fallback = buildLocalExportMetadata();
+  if (!venueId || calendarScope === "global") return fallback;
+
+  try {
+    const range = currentRangeContext();
+    const q = new URLSearchParams();
+    q.set("view", range.view);
+    if (range.view === "week") q.set("week_start", range.periodStart);
+    else {
+      const dt = new Date(`${range.periodStart}T00:00:00`);
+      q.set("month", `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}`);
+    }
+    const ids = Array.from(selectedIntervalIds)
+      .map((x) => Number(x))
+      .filter((x) => Number.isInteger(x) && x > 0)
+      .sort((a, b) => a - b);
+    for (const id of ids) q.append("interval_ids", String(id));
+    if (unstaffedOnly) q.set("staffing_state", "unstaffed");
+    const meta = await api(`/venues/${encodeURIComponent(venueId)}/shifts/export-metadata?${q.toString()}`);
+    return { ...fallback, ...(meta || {}) };
+  } catch {
+    return fallback;
+  }
+}
+
+function visibleShiftsForDate(dateStr) {
+  return filterForCalendar(shiftsByDate.get(dateStr) || [], dateStr);
+}
+
+function countVisibleStats(dateList) {
+  let total = 0;
+  let staffed = 0;
+  let unstaffed = 0;
+  for (const dateStr of dateList || []) {
+    for (const shift of visibleShiftsForDate(dateStr)) {
+      total += 1;
+      if (hasAssignments(shift)) staffed += 1;
+      else unstaffed += 1;
+    }
+  }
+  return { total, staffed, unstaffed };
+}
+
+function buildExportLinesForDate(dateStr) {
+  const list = sortShiftsForBadges(visibleShiftsForDate(dateStr));
+  const lines = [];
+  const meLabel = currentUserLabel();
+
+  for (const shift of list) {
+    const color = colorForInterval(shiftIntervalId(shift));
+    const intervalTitle = shiftIntervalTitle(shift);
+    const startLabel = shiftStartHHMM(shift) || "—";
+
+    if (calendarScope === "global") {
+      const venueLabel = shift?.venue?.name || currentVenueName || "Заведение";
+      lines.push({ color, text: `${venueLabel} — ${startLabel}` });
+      continue;
+    }
+
+    if (showAllOnCalendar) {
+      const assigns = Array.isArray(shift?.assignments) && shift.assignments.length ? shift.assignments : [null];
+      for (const assignment of assigns) {
+        const person = assignment ? displayPerson(assignment) : "Без назначения";
+        lines.push({ color, text: `${intervalTitle} — ${startLabel} — ${person}` });
+      }
+      continue;
+    }
+
+    const myAssignment = Array.isArray(shift?.assignments) && shift.assignments.length ? shift.assignments[0] : null;
+    const person = myAssignment ? displayPerson(myAssignment) : meLabel;
+    lines.push({ color, text: `${intervalTitle} — ${startLabel} — ${person}` });
+  }
+
+  return lines;
+}
+
+function sanitizeFilePart(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё_-]+/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "schedule";
+}
+
+function buildExportFilenameBase(meta) {
+  const range = currentRangeContext();
+  const venuePart = sanitizeFilePart(meta?.venue_name || currentVenueName || "schedule");
+  const periodPart = range.view === "week" ? `${range.periodStart}_${range.periodEnd}` : range.periodStart.slice(0, 7);
+  return `schedule_${venuePart}_${periodPart}`;
+}
+
+function drawRoundRect(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function fillRoundRect(ctx, x, y, w, h, r, fillStyle, strokeStyle = "", lineWidth = 1) {
+  drawRoundRect(ctx, x, y, w, h, r);
+  if (fillStyle) {
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+  }
+  if (strokeStyle) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+}
+
+function truncateCanvasText(ctx, text, maxWidth) {
+  const value = String(text || "");
+  if (!value) return "";
+  if (ctx.measureText(value).width <= maxWidth) return value;
+  let result = value;
+  while (result.length > 1 && ctx.measureText(`${result}…`).width > maxWidth) result = result.slice(0, -1);
+  return `${result}…`;
+}
+
+function drawBadge(ctx, text, x, y, { fill = "#EEF2FF", color = "#334155" } = {}) {
+  ctx.save();
+  ctx.font = "600 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  const padX = 16;
+  const width = ctx.measureText(text).width + padX * 2;
+  fillRoundRect(ctx, x, y, width, 38, 19, fill, "");
+  ctx.fillStyle = color;
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x + padX, y + 19);
+  ctx.restore();
+  return width;
+}
+
+function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2, color = "#475569") {
+  const value = String(text || "").trim();
+  if (!value) return y;
+  const words = value.split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth || !current) current = candidate;
+    else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  const visible = lines.slice(0, Math.max(1, maxLines));
+  if (lines.length > visible.length) visible[visible.length - 1] = truncateCanvasText(ctx, `${visible[visible.length - 1]} …`, maxWidth);
+  ctx.fillStyle = color;
+  for (let i = 0; i < visible.length; i++) ctx.fillText(visible[i], x, y + i * lineHeight);
+  return y + visible.length * lineHeight;
+}
+
+function loadImage(src) {
+  return new Promise((resolve) => {
+    if (!src) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function loadExportLogo(meta) {
+  const preferred = meta?.app_logo_url || "/logo.png";
+  const sameOriginUrl = preferred.startsWith("http") ? preferred : new URL(preferred, window.location.origin).toString();
+  return loadImage(sameOriginUrl);
+}
+
+async function renderScheduleExportCanvas(meta) {
+  const range = currentRangeContext();
+  const isWeek = range.view === "week";
+  const width = isWeek ? 1750 : 1820;
+  const padding = 40;
+  const gridGap = 12;
+  const cols = 7;
+  const rows = isWeek ? 1 : 6;
+  const headerCardH = 168;
+  const statsY = 228;
+  const statsH = 86;
+  const gridTop = 360;
+  const footerH = 46;
+  const cellW = (width - padding * 2 - gridGap * (cols - 1)) / cols;
+  const cellH = isWeek ? 420 : 160;
+  const height = gridTop + rows * cellH + (rows - 1) * gridGap + footerH;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas not supported");
+
+  const bg = "#F3F5F9";
+  const card = "#FFFFFF";
+  const border = "#D9E0EA";
+  const text = "#0F172A";
+  const muted = "#64748B";
+  const subtle = "#E8EDF5";
+  const todayIso = ymd(new Date());
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  fillRoundRect(ctx, padding, 32, width - padding * 2, headerCardH, 28, card, border, 1);
+
+  const logo = await loadExportLogo(meta);
+  let titleX = padding + 28;
+  if (logo) {
+    const size = 64;
+    ctx.drawImage(logo, padding + 24, 50, size, size);
+    titleX = padding + 24 + size + 18;
+  }
+
+  ctx.fillStyle = text;
+  ctx.textBaseline = "top";
+  ctx.font = "700 38px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.fillText(meta?.venue_name || currentVenueName || "График смен", titleX, 54);
+
+  ctx.font = "600 24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.fillStyle = muted;
+  ctx.fillText(meta?.period_label || range.periodLabel, titleX, 102);
+
+  ctx.font = "500 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  drawWrappedText(ctx, meta?.filters_text || buildLocalExportMetadata().filters_text, titleX, 136, width - padding * 2 - (titleX - padding) - 24, 24, 2, muted);
+
+  const stats = countVisibleStats(range.periodDates);
+  const scopeLabel = calendarScope === "global" ? "Общий" : (showAllOnCalendar ? "Все" : "Мои");
+  const statItems = [
+    { title: "Всего смен", value: String(stats.total) },
+    { title: "Укомплектовано", value: String(stats.staffed) },
+    { title: "Неукомплектовано", value: String(stats.unstaffed) },
+    { title: "Режим", value: scopeLabel },
+  ];
+  const statGap = 12;
+  const statW = (width - padding * 2 - statGap * 3) / 4;
+  for (let i = 0; i < statItems.length; i++) {
+    const x = padding + i * (statW + statGap);
+    fillRoundRect(ctx, x, statsY, statW, statsH, 22, card, border, 1);
+    ctx.fillStyle = muted;
+    ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText(statItems[i].title, x + 20, statsY + 18);
+    ctx.fillStyle = text;
+    ctx.font = "700 28px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText(statItems[i].value, x + 20, statsY + 42);
+  }
+
+  const weekdayY = gridTop - 34;
+  for (let i = 0; i < 7; i++) {
+    const colX = padding + i * (cellW + gridGap);
+    ctx.fillStyle = muted;
+    ctx.font = "700 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText(WEEKDAYS[i], colX + 4, weekdayY);
+  }
+
+  const monthKey = ym(curMonth);
+  for (let index = 0; index < range.gridDates.length; index++) {
+    const dateStr = range.gridDates[index];
+    const row = isWeek ? 0 : Math.floor(index / 7);
+    const col = index % 7;
+    const x = padding + col * (cellW + gridGap);
+    const y = gridTop + row * (cellH + gridGap);
+    const inMonth = isWeek || dateStr.startsWith(monthKey);
+    const isToday = dateStr === todayIso;
+    fillRoundRect(ctx, x, y, cellW, cellH, 18, inMonth ? card : subtle, isToday ? "#6366F1" : border, isToday ? 2 : 1);
+
+    const dayDate = new Date(`${dateStr}T00:00:00`);
+    ctx.fillStyle = text;
+    ctx.font = "700 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    const dateLabel = isWeek ? `${WEEKDAYS[col]} · ${pad2(dayDate.getDate())}.${pad2(dayDate.getMonth() + 1)}` : `${dayDate.getDate()}`;
+    ctx.fillText(dateLabel, x + 16, y + 14);
+
+    const lines = buildExportLinesForDate(dateStr);
+    const maxLines = isWeek ? 11 : 4;
+    const visible = lines.slice(0, maxLines);
+    const lineYStart = y + 48;
+    const lineH = isWeek ? 28 : 22;
+    ctx.font = `${isWeek ? 500 : 600} ${isWeek ? 19 : 15}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
+    for (let i = 0; i < visible.length; i++) {
+      const line = visible[i];
+      const lineY = lineYStart + i * lineH;
+      ctx.fillStyle = line.color || "#94A3B8";
+      fillRoundRect(ctx, x + 16, lineY + (isWeek ? 8 : 6), 8, isWeek ? 8 : 7, 4, line.color || "#94A3B8", "");
+      ctx.fillStyle = text;
+      const maxTextWidth = cellW - 16 - 16 - 16;
+      ctx.fillText(truncateCanvasText(ctx, line.text, maxTextWidth), x + 30, lineY);
+    }
+
+    if (lines.length > visible.length) {
+      ctx.fillStyle = muted;
+      ctx.font = `${isWeek ? 600 : 600} ${isWeek ? 18 : 15}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
+      ctx.fillText(`+${lines.length - visible.length} ещё`, x + 16, lineYStart + visible.length * lineH + 2);
+    }
+
+    if (!lines.length) {
+      ctx.fillStyle = muted;
+      ctx.font = `${isWeek ? 500 : 500} ${isWeek ? 18 : 15}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
+      ctx.fillText("Нет смен", x + 16, lineYStart);
+    }
+  }
+
+  ctx.fillStyle = muted;
+  ctx.font = "500 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.fillText("Экспортировано из Axelio · учитываются активные фильтры графика", padding, height - 24);
+  return canvas;
+}
+
+function dataUrlToBlob(dataUrl) {
+  const parts = String(dataUrl || "").split(",");
+  const mimeMatch = /^data:(.*?);base64$/.exec(parts[0] || "");
+  const mime = mimeMatch?.[1] || "application/octet-stream";
+  const binary = atob(parts[1] || "");
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function canvasToBlob(canvas, type, quality = 0.95) {
+  return await new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else resolve(dataUrlToBlob(canvas.toDataURL(type, quality)));
+    }, type, quality);
+  });
+}
+
+async function ensureExportArtifact() {
+  if (exportState.canvas && exportState.pngBlob && exportState.meta) return exportState;
+  const meta = await getExportMetadata();
+  const canvas = await renderScheduleExportCanvas(meta);
+  const pngBlob = await canvasToBlob(canvas, "image/png", 0.95);
+  exportState.canvas = canvas;
+  exportState.meta = meta;
+  exportState.pngBlob = pngBlob;
+  exportState.filenameBase = buildExportFilenameBase(meta);
+  return exportState;
+}
+
+async function ensureWebpBlob() {
+  await ensureExportArtifact();
+  if (!exportState.webpBlob && exportState.canvas) exportState.webpBlob = await canvasToBlob(exportState.canvas, "image/webp", 0.94);
+  return exportState.webpBlob;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    setTimeout(() => {
+      try { URL.revokeObjectURL(url); } catch {}
+    }, 1000);
+  }
+}
+
+function currentShiftsPageUrl() {
+  return new URL(`${location.pathname}${location.search}`, location.origin).toString();
+}
+
+function canShareFile(file) {
+  try {
+    return !!(navigator.canShare && navigator.canShare({ files: [file] }));
+  } catch {
+    return false;
+  }
+}
+
+async function shareExportImage() {
+  const art = await ensureExportArtifact();
+  const file = new File([art.pngBlob], `${art.filenameBase}.png`, { type: "image/png" });
+  const shareUrl = currentShiftsPageUrl();
+
+  if (canShareFile(file) && navigator.share) {
+    await navigator.share({
+      title: art.meta?.share_title || "График смен",
+      text: art.meta?.share_text || art.meta?.period_label || "График смен",
+      files: [file],
+    });
+    return;
+  }
+
+  if (navigator.share) {
+    await navigator.share({
+      title: art.meta?.share_title || "График смен",
+      text: art.meta?.share_text || art.meta?.period_label || "График смен",
+      url: shareUrl,
+    });
+    return;
+  }
+
+  openTelegramShare();
+}
+
+function openTelegramShare() {
+  const meta = exportState.meta || buildLocalExportMetadata();
+  const shareUrl = currentShiftsPageUrl();
+  const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(meta.share_text || meta.period_label || "График смен")}`;
+  const tg = window.Telegram?.WebApp;
+  try {
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(tgUrl);
+      return true;
+    }
+    if (tg?.openLink) {
+      tg.openLink(tgUrl, { try_instant_view: false });
+      return true;
+    }
+  } catch {}
+  try {
+    window.open(tgUrl, "_blank", "noopener,noreferrer");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function refreshExportPreview() {
+  setExportButtonsDisabled(true);
+  setExportStatus("Готовим изображение…");
+  if (el.exportPreviewImage) {
+    el.exportPreviewImage.src = "";
+    el.exportPreviewImage.classList.add("hidden");
+  }
+
+  try {
+    resetExportState();
+    const art = await ensureExportArtifact();
+    releaseExportPreviewUrl();
+    exportState.previewUrl = URL.createObjectURL(art.pngBlob);
+    if (el.exportPreviewImage) {
+      el.exportPreviewImage.src = exportState.previewUrl;
+      el.exportPreviewImage.classList.remove("hidden");
+    }
+    if (el.exportModalSubtitle) el.exportModalSubtitle.textContent = `${art.meta?.period_label || ""} · ${art.meta?.filters_text || ""}`;
+    setExportStatus("Можно поделиться или скачать текущий вид графика.");
+    setExportButtonsDisabled(false);
+    if (el.btnExportTelegram) el.btnExportTelegram.disabled = !window.Telegram?.WebApp;
+  } catch (e) {
+    setExportStatus(e?.message || "Не удалось подготовить экспорт", { error: true });
+    toast(e?.message || "Не удалось подготовить экспорт", "err");
+  }
+}
+
+async function openExportModal() {
+  el.exportModal?.classList.add("open");
+  await refreshExportPreview();
+}
+
+async function downloadExportAs(type) {
+  const art = await ensureExportArtifact();
+  if (type === "webp") {
+    const blob = await ensureWebpBlob();
+    downloadBlob(blob, `${art.filenameBase}.webp`);
+    return;
+  }
+  downloadBlob(art.pngBlob, `${art.filenameBase}.png`);
+}
+
+el.btnExportImage?.addEventListener("click", () => {
+  openExportModal();
+});
+
+el.btnExportShare?.addEventListener("click", async () => {
+  try {
+    await shareExportImage();
+  } catch (e) {
+    toast(e?.message || "Не удалось поделиться", "err");
+  }
+});
+
+el.btnExportTelegram?.addEventListener("click", () => {
+  if (!openTelegramShare()) toast("Не удалось открыть Telegram share", "err");
+});
+
+el.btnExportDownloadPng?.addEventListener("click", async () => {
+  try {
+    await downloadExportAs("png");
+  } catch (e) {
+    toast(e?.message || "Не удалось скачать PNG", "err");
+  }
+});
+
+el.btnExportDownloadWebp?.addEventListener("click", async () => {
+  try {
+    await downloadExportAs("webp");
+  } catch (e) {
+    toast(e?.message || "Не удалось скачать WebP", "err");
+  }
+});
 
 // navigation (month/week)
 el.prev.onclick = async () => {
