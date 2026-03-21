@@ -535,11 +535,6 @@ input[type="checkbox"],input[type="radio"]{
   outline:2px solid var(--accent);
   outline-offset:2px;
 }
-.schedule-filters{
-  display:flex;
-  justify-content:flex-start;
-  align-items:flex-start;
-}
 .schedule-filter-dropdown{
   position:relative;
   display:inline-block;
@@ -574,7 +569,8 @@ input[type="checkbox"],input[type="radio"]{
 .schedule-filter-menu{
   position:absolute;
   top:calc(100% + 8px);
-  left:0;
+  left:50%;
+  transform:translateX(-50%);
   width:min(420px, calc(100vw - 32px));
   min-width:min(320px, calc(100vw - 32px));
   max-width:calc(100vw - 32px);
@@ -598,6 +594,16 @@ input[type="checkbox"],input[type="radio"]{
 .schedule-filter-menu__actions .btn.active{
   background:var(--accentSoftBg);
   border-color:var(--accentSoftBorder);
+}
+@media (max-width:380px){
+  .schedule-filter-menu{
+    width:min(340px, calc(100vw - 20px));
+    min-width:min(280px, calc(100vw - 20px));
+    max-width:calc(100vw - 20px);
+  }
+  .schedule-filter-menu__actions{
+    grid-template-columns:1fr;
+  }
 }
 .schedule-interval-list{
   display:grid;
@@ -639,9 +645,6 @@ input[type="checkbox"],input[type="radio"]{
   color:var(--muted);
 }
 @media (max-width:560px){
-  .schedule-filters{
-    margin-top:12px;
-  }
   .schedule-filter-dropdown{
     max-width:100%;
   }
@@ -654,8 +657,9 @@ input[type="checkbox"],input[type="radio"]{
   }
   .schedule-filter-menu{
     position:absolute;
-    left:0;
+    left:50%;
     right:auto;
+    transform:translateX(-50%);
     width:min(360px, calc(100vw - 24px));
     min-width:min(300px, calc(100vw - 24px));
     max-width:calc(100vw - 24px);

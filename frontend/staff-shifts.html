@@ -119,36 +119,34 @@
           <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
         <div class="row ai-center gap-10 row--center">
-          <div id="calendarView" class="shift-toggle">
-            <button type="button" id="viewMonth">Месяц</button>
-            <button type="button" id="viewWeek">Неделя</button>
-          </div>
-          <button class="btn hidden" id="btnIntervals" type="button">Интервалы</button>
-          <button class="btn" id="btnLegend" type="button">Легенда</button>
+<div id="calendarView" class="shift-toggle">
+  <button type="button" id="viewMonth">Месяц</button>
+  <button type="button" id="viewWeek">Неделя</button>
+</div>
           <div id="calendarMode" class="shift-toggle hidden">
             <button type="button" id="modeAll">Все</button>
             <button type="button" id="modeMine">Только мои</button>
             <button type="button" id="modeGlobal">Общий</button>
           </div>
-          <div class="schedule-filters mt-10" id="scheduleFilters">
-        <div class="schedule-filter-dropdown" id="scheduleFilterDropdown">
-          <button class="btn schedule-filter-trigger" id="btnScheduleFilter" type="button" aria-expanded="false" aria-haspopup="true">
-            <span>Фильтры</span>
-            <span class="schedule-filter-trigger__chevron" aria-hidden="true">▾</span>
-          </button>
-          <div class="schedule-filter-menu hidden" id="scheduleFilterMenu">
-            <div class="schedule-filter-menu__actions">
-              <button class="btn" id="btnResetScheduleFilters" type="button">Сбросить</button>
-              <button class="btn" id="btnUnstaffedOnly" type="button">Без назначений</button>
+          <button class="btn hidden" id="btnIntervals" type="button">Интервалы</button>
+          <button class="btn" id="btnLegend" type="button">Легенда</button>
+          <div class="schedule-filter-dropdown" id="scheduleFilterDropdown">
+            <button class="btn schedule-filter-trigger" id="btnScheduleFilter" type="button" aria-expanded="false" aria-haspopup="true">
+              <span>Фильтр</span>
+              <span class="schedule-filter-trigger__chevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="schedule-filter-menu hidden" id="scheduleFilterMenu">
+              <div class="schedule-filter-menu__actions">
+                <button class="btn" id="btnResetScheduleFilters" type="button">Сбросить</button>
+                <button class="btn" id="btnUnstaffedOnly" type="button">Без назначений</button>
+              </div>
+              <div class="schedule-interval-list mt-10" id="scheduleIntervalList"></div>
+              <div class="muted small mt-10 hidden" id="scheduleFilterScopeNote">В режиме «Общий» фильтры по интервалам недоступны.</div>
             </div>
-            <div class="schedule-interval-list mt-10" id="scheduleIntervalList"></div>
-            <div class="muted small mt-10 hidden" id="scheduleFilterScopeNote">В режиме «Общий» фильтры по интервалам недоступны.</div>
           </div>
-        </div>
-      </div>
-        </div>
-      </div>
+</div>
 
+      </div>
 
       <div id="calGrid" class="cal mt-10"></div>
     </div>
