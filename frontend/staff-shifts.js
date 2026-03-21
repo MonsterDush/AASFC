@@ -2592,7 +2592,6 @@ async function renderScheduleExportCanvas(meta) {
     const periodLabel = meta?.period_label || range.periodLabel;
     const filtersText = meta?.filters_text || buildLocalExportMetadata().filters_text;
     const venueLabel = meta?.venue_name || currentVenueName || "График смен";
-    const viewLabel = range.view === "week" ? "Недельный вид" : "Месячный вид";
 
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
@@ -2601,11 +2600,8 @@ async function renderScheduleExportCanvas(meta) {
     ctx.fillText(venueLabel, textX, contentTop + 2);
 
     ctx.fillStyle = muted;
-    ctx.font = "600 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(viewLabel, textX, contentTop + 46);
-
     ctx.font = "500 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    drawWrappedText(ctx, filtersText, textX, contentTop + 82, leftMaxW, 24, 3, muted, "left");
+    drawWrappedText(ctx, filtersText, textX, contentTop + 54, leftMaxW, 24, 3, muted, "left");
 
     const pillW = 168;
     const pillH = 34;
@@ -2625,7 +2621,8 @@ async function renderScheduleExportCanvas(meta) {
     const periodLines = wrapCanvasText(ctx, periodLabel, rightBlockW, 2);
     const periodLineHeight = isWeek ? 50 : 54;
     const periodBlockH = Math.max(1, periodLines.length) * periodLineHeight;
-    const periodTop = headerY + Math.round((headerH - periodBlockH) / 2) + 8;
+    const centeredPeriodTop = headerY + Math.round((headerH - periodBlockH) / 2) + 8;
+    const periodTop = Math.max(centeredPeriodTop, headerY + 102);
     for (let i = 0; i < periodLines.length; i++) {
       ctx.fillText(periodLines[i], width - padding - 28, periodTop + i * periodLineHeight);
     }

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/styles.css?20260322-exportfix1" />
+  <link rel="stylesheet" href="/styles.css?20260322-exportmodalpos1" />
 <style>
   /* ===== Week view (HARD 2 columns inside a day) =====
      IMPORTANT: JS toggles `is-week` on #calGrid, so selectors must match that element.
@@ -193,7 +193,7 @@
       <div class="modal__panel modal__panel--wide export-modal-panel">
         <div class="modal__head export-modal-head">
           <div class="minw-0 export-modal-copy">
-            <b class="modal__title">Экспорт графика</b>
+            <b class="modal__title">Поделиться графиком</b>
             <div class="modal__subtitle" id="exportModalSubtitle">Текущее состояние графика</div>
           </div>
         </div>
@@ -204,8 +204,8 @@
           </div>
           <div class="export-actions">
             <button class="btn primary" type="button" id="btnExportShare">Поделиться</button>
-            <button class="btn" type="button" id="btnExportTelegram">В Telegram</button>
-            <button class="btn" type="button" id="btnExportDownload">Скачать</button>
+            <button class="btn hidden" type="button" id="btnExportTelegram">В Telegram</button>
+            <button class="btn hidden" type="button" id="btnExportDownload">Скачать</button>
             <button class="btn" type="button" data-close-export>Закрыть</button>
           </div>
         </div>
