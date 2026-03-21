@@ -2471,6 +2471,33 @@ function drawBadge(ctx, text, x, y, { fill = "#EEF2FF", color = "#334155" } = {}
   return width;
 }
 
+function wrapCanvasText(ctx, text, maxWidth, maxLines = 2) {
+  const value = String(text || "").trim();
+  if (!value) return [];
+  const words = value.split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || ctx.measureText(candidate).width <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+    lines.push(current);
+    current = word;
+    if (lines.length >= Math.max(1, maxLines)) break;
+  }
+  if (current && lines.length < Math.max(1, maxLines)) lines.push(current);
+  if (lines.length > Math.max(1, maxLines)) lines.length = Math.max(1, maxLines);
+  if (lines.length) {
+    const last = lines.length - 1;
+    const originalWords = words.join(' ');
+    const usedWords = lines.join(' ');
+    if (usedWords.length < originalWords.length) lines[last] = truncateCanvasText(ctx, lines[last], maxWidth);
+  }
+  return lines;
+}
+
 function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2, color = "#475569", align = "left") {
   const lines = wrapCanvasText(ctx, text, maxWidth, maxLines);
   if (!lines.length) return y;
