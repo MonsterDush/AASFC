@@ -30,6 +30,7 @@ from app.models import (
     PayrollLine,
     PayrollRun,
     PayProfile,
+    NotificationDeliveryLog,
 )
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.payroll.period_summary import build_member_period_summary, resolve_salary_period
@@ -83,6 +84,38 @@ class ManualTipCreateIn(BaseModel):
     amount: int = Field(..., gt=0)
     note: str | None = Field(default=None, max_length=500)
 
+
+
+
+def _notification_settings_meta(user: User) -> dict:
+    telegram_linked = bool(getattr(user, "tg_user_id", None))
+    disabled_reason = None
+    if not telegram_linked:
+        disabled_reason = "Привяжите Telegram в профиле, чтобы бот мог отправлять уведомления."
+    return {
+        "telegram_linked": telegram_linked,
+        "tg_user_id": getattr(user, "tg_user_id", None),
+        "tg_username": getattr(user, "tg_username", None),
+        "can_receive_bot_notifications": telegram_linked,
+        "settings_locked": not telegram_linked,
+        "disabled_reason": disabled_reason,
+    }
+
+
+def _notification_settings_payload(user: User) -> dict:
+    return {
+        "notify_enabled": user.notify_enabled,
+        "notify_adjustments": user.notify_adjustments,
+        "notify_shifts": user.notify_shifts,
+        "notify_day_economics": user.notify_day_economics,
+        "notify_salary": user.notify_salary,
+        "notify_soft_alerts": user.notify_soft_alerts,
+        "shift_reminder_lead_time_hours": user.shift_reminder_lead_time_hours,
+        "notification_detail_level": user.notification_detail_level,
+        "shift_reminder_lead_time_options": [1, 2, 6, 12, 18, 24],
+        "notification_detail_level_options": ["short", "standard", "detailed"],
+        **_notification_settings_meta(user),
+    }
 
 @router.get("/me")
 def me(
@@ -166,18 +199,7 @@ def update_profile(
 
 @router.get("/me/notification-settings")
 def get_notification_settings(user: User = Depends(get_current_user)):
-    return {
-        "notify_enabled": user.notify_enabled,
-        "notify_adjustments": user.notify_adjustments,
-        "notify_shifts": user.notify_shifts,
-        "notify_day_economics": user.notify_day_economics,
-        "notify_salary": user.notify_salary,
-        "notify_soft_alerts": user.notify_soft_alerts,
-        "shift_reminder_lead_time_hours": user.shift_reminder_lead_time_hours,
-        "notification_detail_level": user.notification_detail_level,
-        "shift_reminder_lead_time_options": [1, 2, 6, 12, 18, 24],
-        "notification_detail_level_options": ["short", "standard", "detailed"],
-    }
+    return _notification_settings_payload(user)
 
 
 @router.patch("/me/notification-settings")
@@ -205,16 +227,56 @@ def update_notification_settings(
     db.commit()
     return {
         "ok": True,
-        "settings": {
-            "notify_enabled": user.notify_enabled,
-            "notify_adjustments": user.notify_adjustments,
-            "notify_shifts": user.notify_shifts,
-            "notify_day_economics": user.notify_day_economics,
-            "notify_salary": user.notify_salary,
-            "notify_soft_alerts": user.notify_soft_alerts,
-            "shift_reminder_lead_time_hours": user.shift_reminder_lead_time_hours,
-            "notification_detail_level": user.notification_detail_level,
-        },
+        "settings": _notification_settings_payload(user),
+    }
+
+
+@router.get("/me/notification-history")
+def get_notification_history(
+    limit: int = Query(30, ge=1, le=100),
+    notification_type: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(NotificationDeliveryLog, Venue.name.label("venue_name"))
+        .outerjoin(Venue, Venue.id == NotificationDeliveryLog.venue_id)
+        .where(NotificationDeliveryLog.user_id == user.id)
+    )
+    if notification_type:
+        stmt = stmt.where(NotificationDeliveryLog.notification_type == str(notification_type).strip())
+    if status:
+        stmt = stmt.where(NotificationDeliveryLog.status == str(status).strip())
+    stmt = stmt.order_by(
+        func.coalesce(NotificationDeliveryLog.sent_at, NotificationDeliveryLog.planned_at).desc(),
+        NotificationDeliveryLog.id.desc(),
+    ).limit(int(limit))
+
+    rows = db.execute(stmt).all()
+    items = []
+    for row in rows:
+        log_entry = row[0]
+        venue_name = row[1]
+        items.append({
+            "id": int(log_entry.id),
+            "notification_type": log_entry.notification_type,
+            "status": log_entry.status,
+            "venue_id": log_entry.venue_id,
+            "venue_name": venue_name,
+            "shift_id": log_entry.shift_id,
+            "shift_assignment_id": log_entry.shift_assignment_id,
+            "planned_at": log_entry.planned_at.isoformat() if log_entry.planned_at else None,
+            "sent_at": log_entry.sent_at.isoformat() if log_entry.sent_at else None,
+            "idempotency_key": log_entry.idempotency_key,
+            "error_text": log_entry.error_text,
+            "payload_preview": log_entry.payload_preview,
+        })
+
+    return {
+        "items": items,
+        "limit": int(limit),
+        **_notification_settings_meta(user),
     }
 
 
