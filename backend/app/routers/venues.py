@@ -109,7 +109,7 @@ from app.models.payroll_run import PayrollRun
 from app.models.payroll_line import PayrollLine
 from app.models.payroll_recalculation_log import PayrollRecalculationLog
 
-from app.auth.venue_permissions import require_venue_permission
+from app.auth.venue_permissions import require_venue_permission, has_venue_permission
 
 from app.services.venues import create_venue
 from app.services.invites import build_invite_link, create_venue_invite, normalize_phone_e164
@@ -5809,20 +5809,19 @@ def create_dispute(
         )
     ).scalars().all()
 
-    # Managers = users who have ADJUSTMENTS_MANAGE in position.permission_codes
+    # Managers = users who effectively have ADJUSTMENTS_MANAGE (with implied/default permissions too)
     mgr_rows = db.execute(
-        select(User, VenuePosition.permission_codes)
+        select(User)
         .join(VenuePosition, VenuePosition.member_user_id == User.id)
         .where(
             VenuePosition.venue_id == venue_id,
             VenuePosition.is_active.is_(True),
             User.tg_user_id.is_not(None),
         )
-    ).all()
+    ).scalars().all()
     managers: list[User] = []
-    for u, pc in mgr_rows:
-        codes = {c.strip().upper() for c in _parse_position_permission_codes(pc)}
-        if "ADJUSTMENTS_MANAGE" in codes:
+    for u in mgr_rows:
+        if has_venue_permission(db, venue_id=venue_id, user=u, permission_code="ADJUSTMENTS_MANAGE"):
             managers.append(u)
 
     uniq = {u.id: u for u in (owners + managers)}
@@ -5974,18 +5973,17 @@ def add_dispute_comment(
                 )
             ).scalars().all()
             mgr_rows = db.execute(
-                select(User, VenuePosition.permission_codes)
+                select(User)
                 .join(VenuePosition, VenuePosition.member_user_id == User.id)
                 .where(
                     VenuePosition.venue_id == venue_id,
                     VenuePosition.is_active.is_(True),
                     User.tg_user_id.is_not(None),
                 )
-            ).all()
+            ).scalars().all()
             managers: list[User] = []
-            for u, pc in mgr_rows:
-                codes = {c.strip().upper() for c in _parse_position_permission_codes(pc)}
-                if "ADJUSTMENTS_MANAGE" in codes:
+            for u in mgr_rows:
+                if has_venue_permission(db, venue_id=venue_id, user=u, permission_code="ADJUSTMENTS_MANAGE"):
                     managers.append(u)
             uniq = {u.id: u for u in (owners + managers)}
             recipients = list(uniq.values())

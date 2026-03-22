@@ -14,6 +14,7 @@ from app.core.db import get_db
 from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
 from app.core.permissions_registry import PERMISSIONS as PERMISSIONS_REGISTRY
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes, unique_permission_codes
+from app.core.permission_policy import expand_permission_codes, get_default_permission_codes_for_role
 from app.models import (
     User,
     Venue,
@@ -367,19 +368,22 @@ def my_venue_permissions(
         }
 
     if user.system_role == "MODERATOR":
-        codes = db.scalars(
-            select(RolePermissionDefault.permission_code)
-            .join(Permission, Permission.code == RolePermissionDefault.permission_code)
-            .where(
-                RolePermissionDefault.role == "MODERATOR",
-                RolePermissionDefault.is_granted_by_default.is_(True),
-                Permission.is_active.is_(True),
-            )
-        ).all()
+        codes = set(get_default_permission_codes_for_role("MODERATOR"))
+        codes.update(
+            db.scalars(
+                select(RolePermissionDefault.permission_code)
+                .join(Permission, Permission.code == RolePermissionDefault.permission_code)
+                .where(
+                    RolePermissionDefault.role == "MODERATOR",
+                    RolePermissionDefault.is_granted_by_default.is_(True),
+                    Permission.is_active.is_(True),
+                )
+            ).all()
+        )
         return {
             "venue_id": venue_id,
             "role": "MODERATOR",
-            "permissions": list(codes),
+            "permissions": sorted(expand_permission_codes(codes)),
             "position": None,
         }
 
@@ -410,15 +414,18 @@ def my_venue_permissions(
         if not defaults_role:
             codes = []
         else:
-            codes = db.scalars(
-                select(RolePermissionDefault.permission_code)
-                .join(Permission, Permission.code == RolePermissionDefault.permission_code)
-                .where(
-                    RolePermissionDefault.role == defaults_role,
-                    RolePermissionDefault.is_granted_by_default.is_(True),
-                    Permission.is_active.is_(True),
-                )
-            ).all()
+            codes = list(get_default_permission_codes_for_role(defaults_role))
+            codes.extend(
+                db.scalars(
+                    select(RolePermissionDefault.permission_code)
+                    .join(Permission, Permission.code == RolePermissionDefault.permission_code)
+                    .where(
+                        RolePermissionDefault.role == defaults_role,
+                        RolePermissionDefault.is_granted_by_default.is_(True),
+                        Permission.is_active.is_(True),
+                    )
+                ).all()
+            )
 
     # ---- position permission codes (fine-grained) ----
     pos = db.execute(
@@ -448,6 +455,7 @@ def my_venue_permissions(
         for c in normalize_known_permission_codes(db, position_codes):
             if c not in merged:
                 merged.append(c)
+    merged = sorted(expand_permission_codes(merged))
 
     return {
         "venue_id": venue_id,
