@@ -169,6 +169,7 @@
         let canViewPayroll = false;
         let canOpenVenue = false;
 
+        let accessError = "";
         try {
           const me = await getMe().catch(() => null);
           isAdmin = isSysAdminRole(String(me?.system_role || ""));
@@ -198,7 +199,7 @@
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
 
         } catch (e) {
-          // keep all false
+          accessError = e?.data?.detail || e?.message || "";
         }
 
         // keep active venue in sync
@@ -206,6 +207,22 @@
 
         // Guard: if user cannot open venue page, redirect to schedule/dashboard
         if (!canOpenVenue) {
+          if (/не активно/i.test(String(accessError || ""))) {
+            document.body.innerHTML = `
+              <div class="container">
+                <div class="card">
+                  <div class="topbar">
+                    <div class="title"><b>Заведение недоступно</b></div>
+                  </div>
+                  <div class="muted">Заведение сейчас не активно. Для стаффа доступ к архивным заведениям закрыт.</div>
+                  <div class="row mt-12">
+                    <a class="btn" href="/app-venues.html">Назад к заведениям</a>
+                  </div>
+                </div>
+              </div>
+            `;
+            return;
+          }
           location.replace(`/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`);
           return;
         }

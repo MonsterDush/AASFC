@@ -287,7 +287,7 @@ def my_venues(
     user: User = Depends(get_current_user),
 ):
     rows = db.execute(
-        select(Venue.id, Venue.name, VenueMember.venue_role)
+        select(Venue.id, Venue.name, Venue.is_archived, Venue.archived_at, VenueMember.venue_role)
         .join(VenueMember, VenueMember.venue_id == Venue.id)
         .where(
             VenueMember.user_id == user.id,
@@ -296,7 +296,20 @@ def my_venues(
         .order_by(Venue.id.desc())
     ).all()
 
-    return [{"id": r.id, "name": r.name, "my_role": r.venue_role} for r in rows]
+    items = []
+    for r in rows:
+        role = str(r.venue_role or "").upper()
+        is_archived = bool(r.is_archived)
+        if is_archived and role != "OWNER":
+            continue
+        items.append({
+            "id": r.id,
+            "name": r.name,
+            "my_role": r.venue_role,
+            "is_archived": is_archived,
+            "archived_at": r.archived_at.isoformat() if r.archived_at else None,
+        })
+    return items
 
 
 @router.get("/me/venues/{venue_id}/members")
@@ -388,6 +401,10 @@ def my_venue_permissions(
         }
 
     # ---- venue membership ----
+    venue = db.execute(
+        select(Venue).where(Venue.id == venue_id)
+    ).scalar_one_or_none()
+
     vm = db.execute(
         select(VenueMember).where(
             VenueMember.venue_id == venue_id,
@@ -403,6 +420,9 @@ def my_venue_permissions(
             "permissions": [],
             "position": None,
         }
+
+    if venue is not None and bool(venue.is_archived) and str(vm.venue_role or "").upper() != "OWNER":
+        raise HTTPException(status_code=403, detail="Заведение сейчас не активно")
 
     if str(vm.venue_role or "").upper() == "OWNER":
         # OWNER has full access inside their venue

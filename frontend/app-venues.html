@@ -49,6 +49,7 @@
 
   <script type="module">
 import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountNav } from "/app.js?v=20260321-miniappfix2";
+import { permSetFromResponse, hasPerm, roleUpper } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("app");
@@ -70,14 +71,29 @@ function card(v){
       <a class="link" href="/app-venue.html?venue_id=${v.id}" data-open>Открыть →</a>
     </div>
   `;
-  div.querySelector("[data-open]").onclick = (e) => {
-    e.preventDefault();
-    setActiveVenueId(v.id);
-    const role = String(v.my_role || "").toUpperCase();
-    location.href = (role === "STAFF")
-      ? `/staff-shifts.html?venue_id=${encodeURIComponent(v.id)}`
-      : `/owner-summary.html?venue_id=${encodeURIComponent(v.id)}`;
-  };
+div.querySelector("[data-open]").onclick = async (e) => {
+  e.preventDefault();
+  setActiveVenueId(v.id);
+
+  const role = String(v.my_role || "").toUpperCase();
+  if (role !== "STAFF") {
+    location.href = `/owner-summary.html?venue_id=${encodeURIComponent(v.id)}`;
+    return;
+  }
+
+  try {
+    const perms = await api(`/me/venues/${encodeURIComponent(v.id)}/permissions`);
+    const pset = permSetFromResponse(perms);
+    const venueRole = roleUpper(perms);
+    const canOpenVenue = venueRole === "OWNER" || venueRole === "VENUE_OWNER" || hasPerm(pset, "VENUE_VIEW");
+    location.href = canOpenVenue
+      ? `/app-venue.html?venue_id=${encodeURIComponent(v.id)}`
+      : `/staff-shifts.html?venue_id=${encodeURIComponent(v.id)}`;
+  } catch (e2) {
+    const msg = e2?.data?.detail || e2?.message || "Не удалось открыть заведение";
+    toast(msg, "err");
+  }
+};
   return div;
 }
 

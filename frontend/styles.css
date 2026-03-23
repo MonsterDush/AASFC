@@ -273,14 +273,15 @@ body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);pad
 a.link{color:var(--accent);text-decoration:none;font-weight:800}
 
 input,select,textarea{
-  padding:10px 10px;
-  border-radius:12px;
+  padding:10px 12px;
+  border-radius:14px;
   border:1px solid var(--border);
   background:var(--inputBg);
   color:var(--text);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+  transition:border-color .18s ease, box-shadow .18s ease, background .18s ease, transform .12s ease;
 }
-select option{color:#0B1220}
-input{min-width:220px}
+input:not([type="checkbox"]):not([type="radio"]){min-width:220px}
 select{min-width:180px}
 textarea{
   width:100%;
@@ -289,13 +290,30 @@ textarea{
   resize:none;
   outline:none;
 }
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:.72}
+select option{color:#0B1220}
+input:hover,select:hover,textarea:hover{border-color:var(--accentSoftBorder)}
 input:focus,select:focus,textarea:focus{
-  outline:2px solid var(--accentSoftBorder);
-  outline-offset:0;
+  outline:none;
+  border-color:var(--accentSoftBorder);
+  box-shadow:var(--focusRing), inset 0 1px 0 rgba(255,255,255,.04);
+}
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea,
+:root[data-theme="hookahplace"] input,
+:root[data-theme="hookahplace"] select,
+:root[data-theme="hookahplace"] textarea{
+  background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02)), var(--inputBg);
+}
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea{
+  background:linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.56)), var(--inputBg);
 }
 
 @media (max-width:420px){
-  input,select{min-width:0;width:100%}
+  input:not([type="checkbox"]):not([type="radio"]),select{min-width:0;width:100%}
 }
 
 
@@ -304,16 +322,31 @@ input[type="checkbox"],input[type="radio"]{
   -webkit-appearance:auto;
   appearance:auto;
   padding:0;
+  margin:0;
   border:none;
   background:transparent;
-  min-width:0;
-  width:auto;
+  min-width:18px !important;
+  width:18px !important;
   height:18px;
+  display:block;
+  flex:0 0 18px;
   accent-color:var(--accent);
 }
 
-.chk{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
-.chk .muted{margin:0}
+.chk{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  cursor:pointer;
+  user-select:none;
+  min-width:0;
+  max-width:100%;
+}
+.chk > span,
+.chk .muted{
+  margin:0;
+  min-width:0;
+}
 
 .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .section-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -357,6 +390,15 @@ input[type="checkbox"],input[type="radio"]{
 .listrow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border);padding:10px 0}
 .listrow__left{flex:1 1 auto;min-width:0}
 .listrow__meta{margin-top:4px;overflow-wrap:anywhere;word-break:break-word}
+@media (max-width:640px){
+  .listrow{flex-direction:column;align-items:stretch}
+  .listrow > .row.row--nowrap,
+  .listrow > .row{
+    width:100%;
+    justify-content:flex-start;
+  }
+  .listrow > .row.row--nowrap{flex-wrap:wrap !important}
+}
 
 
 .json{margin:12px 0 0;padding:12px;border-radius:14px;border:1px solid var(--border);background:var(--surface2);font-family:var(--mono);font-size:12px;white-space:pre;overflow:auto}
@@ -1244,16 +1286,4 @@ input[type="checkbox"],input[type="radio"]{
 @media (max-width:640px){
   .notif-state-banner{padding:10px 12px;}
   .notif-badge{width:100%;justify-content:flex-start;}
-}
-
-@media (max-width:760px){
-  .listrow{flex-direction:column;align-items:stretch;}
-  .listrow__left{width:100%;} 
-  .listrow .row--nowrap{width:100%;flex-wrap:wrap;gap:8px;}
-  .listrow .row--nowrap > .btn,
-  .listrow .row--nowrap > a.btn{flex:1 1 calc(50% - 8px);min-width:0;text-align:center;justify-content:center;}
-}
-@media (max-width:420px){
-  .listrow .row--nowrap > .btn,
-  .listrow .row--nowrap > a.btn{flex:1 1 100%;}
 }
