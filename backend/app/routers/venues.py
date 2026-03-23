@@ -16,7 +16,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, delete, update, func
+from sqlalchemy import select, delete, update, func, inspect
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
@@ -2008,6 +2008,13 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
 
 
 
+def _payroll_recalculation_logs_table_exists(db: Session) -> bool:
+    try:
+        return bool(inspect(db.get_bind()).has_table(PayrollRecalculationLog.__tablename__))
+    except Exception:
+        return True
+
+
 def _serialize_payroll_recalculation_log(row: PayrollRecalculationLog | None) -> dict | None:
     if row is None:
         return None
@@ -2037,7 +2044,9 @@ def _create_payroll_recalculation_log(
     triggered_by_user_id: int | None = None,
     target_dates: list[date] | tuple[date, ...] | None = None,
     details: dict | None = None,
-) -> PayrollRecalculationLog:
+) -> PayrollRecalculationLog | None:
+    if not _payroll_recalculation_logs_table_exists(db):
+        return None
     obj = PayrollRecalculationLog(
         venue_id=int(venue_id),
         period_month=period_month,
@@ -2053,6 +2062,8 @@ def _create_payroll_recalculation_log(
 
 
 def _latest_payroll_recalculation_log(db: Session, *, venue_id: int, period_month: date) -> PayrollRecalculationLog | None:
+    if not _payroll_recalculation_logs_table_exists(db):
+        return None
     return db.execute(
         select(PayrollRecalculationLog)
         .where(
@@ -2060,6 +2071,7 @@ def _latest_payroll_recalculation_log(db: Session, *, venue_id: int, period_mont
             PayrollRecalculationLog.period_month == period_month,
         )
         .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+        .limit(1)
     ).scalar_one_or_none()
 
 
@@ -2195,7 +2207,7 @@ def _month_starts_between(period_start: date, period_end: date) -> list[date]:
 
 def _latest_payroll_recalculation_for_period(db: Session, *, venue_id: int, period_start: date, period_end: date) -> dict | None:
     months = _month_starts_between(period_start, period_end)
-    if not months:
+    if not months or not _payroll_recalculation_logs_table_exists(db):
         return None
     row = db.execute(
         select(PayrollRecalculationLog)
@@ -2204,6 +2216,7 @@ def _latest_payroll_recalculation_for_period(db: Session, *, venue_id: int, peri
             PayrollRecalculationLog.period_month.in_(months),
         )
         .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+        .limit(1)
     ).scalar_one_or_none()
     return _serialize_payroll_recalculation_log(row)
 
@@ -3094,15 +3107,18 @@ def get_payroll_recalculation_log(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    rows = db.execute(
-        select(PayrollRecalculationLog)
-        .where(
-            PayrollRecalculationLog.venue_id == int(venue_id),
-            PayrollRecalculationLog.period_month == month_start,
-        )
-        .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
-        .limit(int(limit))
-    ).scalars().all()
+    if not _payroll_recalculation_logs_table_exists(db):
+        rows = []
+    else:
+        rows = db.execute(
+            select(PayrollRecalculationLog)
+            .where(
+                PayrollRecalculationLog.venue_id == int(venue_id),
+                PayrollRecalculationLog.period_month == month_start,
+            )
+            .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+            .limit(int(limit))
+        ).scalars().all()
 
     return {
         "month": month,

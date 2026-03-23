@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, inspect
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -24,6 +24,13 @@ from app.models import (
     VenueMember,
 )
 from app.services.payroll.calculator import interval_duration_minutes
+
+
+def _payroll_recalculation_logs_table_exists(db: Session) -> bool:
+    try:
+        return bool(inspect(db.get_bind()).has_table(PayrollRecalculationLog.__tablename__))
+    except Exception:
+        return True
 
 
 _COMPONENT_TITLES = {
@@ -363,14 +370,17 @@ def build_member_day_breakdown(
     payroll_line = line_row[0] if line_row else None
     payroll_run = line_row[1] if line_row else None
     breakdown = _safe_json(getattr(payroll_line, "breakdown_json", None))
-    latest_recalculation = db.execute(
-        select(PayrollRecalculationLog)
-        .where(
-            PayrollRecalculationLog.venue_id == int(venue_id),
-            PayrollRecalculationLog.period_month == month_start,
-        )
-        .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
-    ).scalar_one_or_none()
+    latest_recalculation = None
+    if _payroll_recalculation_logs_table_exists(db):
+        latest_recalculation = db.execute(
+            select(PayrollRecalculationLog)
+            .where(
+                PayrollRecalculationLog.venue_id == int(venue_id),
+                PayrollRecalculationLog.period_month == month_start,
+            )
+            .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
     metrics = breakdown.get("metrics") if isinstance(breakdown.get("metrics"), dict) else {}
     worked_dates = []
     for raw_day in (metrics.get("worked_dates") or []):
