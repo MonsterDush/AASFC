@@ -33,7 +33,7 @@ REMINDER_INTERVAL_SECONDS = int(os.getenv("REMINDER_INTERVAL_SECONDS", "900"))  
 _reminder_lock = asyncio.Lock()
 
 try:
-    import send_shift_reminders as _ssr  # noqa: WPS433
+    from . import send_shift_reminders as _ssr  # noqa: WPS433
 except Exception:  # pragma: no cover
     _ssr = None
 

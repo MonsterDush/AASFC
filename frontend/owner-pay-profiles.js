@@ -193,7 +193,7 @@ function renderList() {
     `;
 
     const right = document.createElement("div");
-    right.className = "row row--nowrap";
+    right.className = "row row--nowrap listrow__actions";
     right.style = "gap:8px; flex:0 0 auto;";
 
     const openBtn = document.createElement("a");

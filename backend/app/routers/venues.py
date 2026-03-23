@@ -16,7 +16,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, delete, update, func
+from sqlalchemy import select, delete, update, func, inspect
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
@@ -2006,6 +2006,17 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
 
 
 
+def _has_db_table(db: Session, table_name: str) -> bool:
+    try:
+        bind = db.get_bind()
+    except Exception:
+        return False
+    try:
+        return bool(inspect(bind).has_table(table_name))
+    except Exception:
+        return False
+
+
 def _serialize_payroll_recalculation_log(row: PayrollRecalculationLog | None) -> dict | None:
     if row is None:
         return None
@@ -2035,7 +2046,10 @@ def _create_payroll_recalculation_log(
     triggered_by_user_id: int | None = None,
     target_dates: list[date] | tuple[date, ...] | None = None,
     details: dict | None = None,
-) -> PayrollRecalculationLog:
+) -> PayrollRecalculationLog | None:
+    if not _has_db_table(db, "payroll_recalculation_logs"):
+        return None
+
     obj = PayrollRecalculationLog(
         venue_id=int(venue_id),
         period_month=period_month,
@@ -2051,6 +2065,8 @@ def _create_payroll_recalculation_log(
 
 
 def _latest_payroll_recalculation_log(db: Session, *, venue_id: int, period_month: date) -> PayrollRecalculationLog | None:
+    if not _has_db_table(db, "payroll_recalculation_logs"):
+        return None
     return db.execute(
         select(PayrollRecalculationLog)
         .where(
@@ -2192,6 +2208,8 @@ def _month_starts_between(period_start: date, period_end: date) -> list[date]:
 
 
 def _latest_payroll_recalculation_for_period(db: Session, *, venue_id: int, period_start: date, period_end: date) -> dict | None:
+    if not _has_db_table(db, "payroll_recalculation_logs"):
+        return None
     months = _month_starts_between(period_start, period_end)
     if not months:
         return None

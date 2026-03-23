@@ -1245,3 +1245,15 @@ input[type="checkbox"],input[type="radio"]{
   .notif-state-banner{padding:10px 12px;}
   .notif-badge{width:100%;justify-content:flex-start;}
 }
+
+@media (max-width:760px){
+  .listrow{flex-direction:column;align-items:stretch;}
+  .listrow__left{width:100%;} 
+  .listrow .row--nowrap{width:100%;flex-wrap:wrap;gap:8px;}
+  .listrow .row--nowrap > .btn,
+  .listrow .row--nowrap > a.btn{flex:1 1 calc(50% - 8px);min-width:0;text-align:center;justify-content:center;}
+}
+@media (max-width:420px){
+  .listrow .row--nowrap > .btn,
+  .listrow .row--nowrap > a.btn{flex:1 1 100%;}
+}

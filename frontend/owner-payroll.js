@@ -55,7 +55,8 @@ function monthEndIso(month) {
   const year = Number(yearS || 0);
   const monthI = Number(monthS || 0);
   if (!year || !monthI) return todayIso();
-  return new Date(year, monthI, 0).toISOString().slice(0, 10);
+  const lastDay = new Date(year, monthI, 0).getDate();
+  return `${year}-${String(monthI).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
 function formatDateRu(iso) {
@@ -429,7 +430,8 @@ async function load() {
     state.data = await api(buildPayrollPath());
     renderLines();
   } catch (e) {
-    if (linesList) linesList.innerHTML = `<div class="muted">Ошибка: ${esc(e?.data?.detail || e?.message || "не удалось загрузить")}</div>`;
+    const detail = e?.data?.detail || e?.message || "не удалось загрузить";
+    if (linesList) linesList.innerHTML = `<div class="muted">Ошибка: ${esc(detail)}</div>`;
     toast("Не удалось загрузить начисления", "err");
   }
 }
