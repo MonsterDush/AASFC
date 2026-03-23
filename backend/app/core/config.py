@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     PHONE_AUTH_MAX_SENDS_PER_WINDOW: int = 5
     PHONE_AUTH_BLOCK_SECONDS: int = 60 * 30
     PHONE_AUTH_CALL_FALLBACK_AFTER_SECONDS: int = 10
+    PHONE_AUTH_CALL_ENABLED: bool = True
+    PHONE_AUTH_SMS_ENABLED: bool = True
     PHONE_AUTH_SMS_TEMPLATE: str = "Ваш код: {code}"
 
     # Пароли

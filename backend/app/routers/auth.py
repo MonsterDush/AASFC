@@ -213,6 +213,25 @@ def _auth_state(db: Session, *, user: User) -> AuthStateOut:
     )
 
 
+def _phone_auth_config_payload() -> dict:
+    return {
+        "ok": True,
+        "call_enabled": bool(settings.PHONE_AUTH_CALL_ENABLED),
+        "sms_enabled": bool(settings.PHONE_AUTH_SMS_ENABLED),
+        "fallback_after_seconds": int(settings.PHONE_AUTH_CALL_FALLBACK_AFTER_SECONDS or 10),
+    }
+
+
+def _ensure_phone_call_enabled() -> None:
+    if not bool(settings.PHONE_AUTH_CALL_ENABLED):
+        raise HTTPException(status_code=503, detail="Подтверждение звонком временно отключено")
+
+
+def _ensure_phone_sms_enabled() -> None:
+    if not bool(settings.PHONE_AUTH_SMS_ENABLED):
+        raise HTTPException(status_code=503, detail="Подтверждение по SMS временно отключено")
+
+
 def _challenge_to_status_out(challenge, *, status_text: str | None = None) -> PhoneCallStatusOut:
     verified = challenge.status == OTP_STATUS_VERIFIED
     expired = challenge.status == OTP_STATUS_EXPIRED
@@ -399,14 +418,21 @@ def auth_telegram_widget(payload: TelegramWidgetAuthIn, response: Response, db: 
     return
 
 
+@router.get("/phone/config")
+def phone_auth_config():
+    return _phone_auth_config_payload()
+
+
 @router.post("/phone/request-call")
 def request_phone_call(payload: PhoneCodeRequestIn, request: Request, db: Session = Depends(get_db)):
+    _ensure_phone_call_enabled()
     phone_e164 = normalize_phone_e164(payload.phone)
     return _request_call_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_PHONE_LOGIN)
 
 
 @router.post("/phone/request-code")
 def request_phone_code(payload: PhoneCodeRequestIn, request: Request, db: Session = Depends(get_db)):
+    _ensure_phone_sms_enabled()
     phone_e164 = normalize_phone_e164(payload.phone)
     return _request_sms_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_PHONE_LOGIN)
 
@@ -495,6 +521,7 @@ def set_password_after_phone_verify(payload: PasswordResetConfirmIn, response: R
 
 @router.post("/password/reset/request-call")
 def request_password_reset_call(payload: PhoneCodeRequestIn, request: Request, db: Session = Depends(get_db)):
+    _ensure_phone_call_enabled()
     phone_e164 = normalize_phone_e164(payload.phone)
     user = find_user_by_phone(db, phone_e164=phone_e164)
     if user is None or not has_password(user):
@@ -504,6 +531,7 @@ def request_password_reset_call(payload: PhoneCodeRequestIn, request: Request, d
 
 @router.post("/password/reset/request-code")
 def request_password_reset_code(payload: PhoneCodeRequestIn, request: Request, db: Session = Depends(get_db)):
+    _ensure_phone_sms_enabled()
     phone_e164 = normalize_phone_e164(payload.phone)
     user = find_user_by_phone(db, phone_e164=phone_e164)
     if user is None or not has_password(user):
@@ -581,6 +609,7 @@ def request_link_phone_call(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _ensure_phone_call_enabled()
     phone_e164 = normalize_phone_e164(payload.phone)
     out = _request_call_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_LINK_PHONE)
     out["link_mode"] = True
@@ -595,6 +624,7 @@ def request_link_phone_code(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _ensure_phone_sms_enabled()
     phone_e164 = normalize_phone_e164(payload.phone)
     out = _request_sms_challenge(db, phone_e164=phone_e164, request=request, purpose=OTP_PURPOSE_LINK_PHONE)
     out["link_mode"] = True

@@ -470,6 +470,12 @@ export async function loginWithTelegramWidget(authData) {
   });
 }
 
+export async function getPhoneAuthConfig() {
+  return api("/auth/phone/config", {
+    handle401: false,
+  });
+}
+
 export async function requestPhoneCall(phone) {
   return api("/auth/phone/request-call", {
     method: "POST",

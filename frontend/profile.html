@@ -52,7 +52,7 @@
 
     <div class="card">
       <b>Способы входа</b>
-      <div class="muted mt-6">Можно привязать телефон к старому Telegram-аккаунту или привязать Telegram к phone-аккаунту. Подтверждение номера теперь начинается со звонка; если он не проходит, позже можно запросить SMS.</div>
+      <div class="muted mt-6">Можно привязать телефон к старому Telegram-аккаунту или привязать Telegram к phone-аккаунту. Подтверждение номера начинается со звонка. SMS можно временно отключать через настройку на backend.</div>
 
       <div class="auth-methods" id="authMethods"></div>
 
@@ -137,6 +137,7 @@
       toast,
       wa,
       mountLogo,
+      getPhoneAuthConfig,
       requestLinkPhoneCall,
       requestLinkPhoneCode,
       verifyLinkPhoneCode,
@@ -192,10 +193,41 @@
 
     let currentProfile = null;
     let currentPasswordState = null;
+    let phoneAuthConfig = { call_enabled: true, sms_enabled: true, fallback_after_seconds: 10 };
+
+    const isCallEnabled = () => Boolean(phoneAuthConfig?.call_enabled);
+    const isSmsEnabled = () => Boolean(phoneAuthConfig?.sms_enabled);
     const flows = {
       link: { challengeId: null, verified: false, pollTimer: null, fallbackTimer: null },
       reset: { challengeId: null, verified: false, pollTimer: null, fallbackTimer: null },
     };
+
+    function applyPhoneAuthConfig() {
+      const callEnabled = isCallEnabled();
+      const smsEnabled = isSmsEnabled();
+      els.requestLinkCallBtn.disabled = !callEnabled;
+      els.requestPasswordResetCallBtn.disabled = !callEnabled;
+      if (!smsEnabled) {
+        els.requestLinkCodeBtn.classList.add("hidden");
+        els.requestPasswordResetBtn.classList.add("hidden");
+        els.linkPhoneSmsBlock.classList.add("hidden");
+        els.passwordResetSmsBlock.classList.add("hidden");
+        els.linkPhoneCodeInput.value = "";
+        els.passwordResetCodeInput.value = "";
+      }
+    }
+
+    async function loadPhoneAuthConfig() {
+      try {
+        const out = await getPhoneAuthConfig();
+        phoneAuthConfig = {
+          call_enabled: out?.call_enabled !== false,
+          sms_enabled: out?.sms_enabled !== false,
+          fallback_after_seconds: Number(out?.fallback_after_seconds || 10),
+        };
+      } catch {}
+      applyPhoneAuthConfig();
+    }
 
     function clearFlow(kind) {
       const state = flows[kind];
@@ -259,7 +291,9 @@
           ? `Пароль установлен. Последнее обновление: ${changedAt}`
           : "Пароль установлен и активен.";
       } else {
-        els.passwordState.textContent = "Пароль пока не установлен. Его можно создать после подтверждения номера звонком или через запасной SMS-код.";
+        els.passwordState.textContent = isSmsEnabled()
+          ? "Пароль пока не установлен. Его можно создать после подтверждения номера звонком или через запасной SMS-код."
+          : "Пароль пока не установлен. Его можно создать после подтверждения номера звонком.";
       }
       els.currentPasswordInput.disabled = !hasPassword;
     }
@@ -317,6 +351,7 @@
     });
 
     async function startCall(kind) {
+      if (!isCallEnabled()) throw new Error("Подтверждение звонком временно отключено");
       const phone = (kind === "link" ? els.linkPhoneInput.value : (currentProfile?.phone || els.linkPhoneInput.value)).trim();
       if (!phone) throw new Error("Сначала укажи номер телефона");
       clearFlow(kind);
@@ -332,17 +367,19 @@
         numberEl.classList.remove("hidden");
       }
       flows[kind].pollTimer = setInterval(() => pollCall(kind, out?.phone || phone), 2500);
-      flows[kind].fallbackTimer = setTimeout(() => {
-        if (kind === "link") {
-          els.requestLinkCodeBtn.classList.remove("hidden");
-          els.linkPhoneSmsBlock.classList.remove("hidden");
-          if (!flows[kind].verified) els.linkPhoneMeta.textContent += "\n\nЕсли звонок не проходит, можно получить SMS.";
-        } else {
-          els.requestPasswordResetBtn.classList.remove("hidden");
-          els.passwordResetSmsBlock.classList.remove("hidden");
-          if (!flows[kind].verified) els.passwordResetMeta.textContent += "\n\nЕсли звонок не проходит, можно получить SMS.";
-        }
-      }, Math.max(1, Number(out?.fallback_after_seconds || 10)) * 1000);
+      if (isSmsEnabled()) {
+        flows[kind].fallbackTimer = setTimeout(() => {
+          if (kind === "link") {
+            els.requestLinkCodeBtn.classList.remove("hidden");
+            els.linkPhoneSmsBlock.classList.remove("hidden");
+            if (!flows[kind].verified) els.linkPhoneMeta.textContent += "\n\nЕсли звонок не проходит, можно получить SMS.";
+          } else {
+            els.requestPasswordResetBtn.classList.remove("hidden");
+            els.passwordResetSmsBlock.classList.remove("hidden");
+            if (!flows[kind].verified) els.passwordResetMeta.textContent += "\n\nЕсли звонок не проходит, можно получить SMS.";
+          }
+        }, Math.max(1, Number(out?.fallback_after_seconds || phoneAuthConfig?.fallback_after_seconds || 10)) * 1000);
+      }
       await pollCall(kind, out?.phone || phone);
     }
 
@@ -365,11 +402,13 @@
         if (out?.expired) {
           if (state.pollTimer) clearInterval(state.pollTimer);
           state.pollTimer = null;
-          metaEl.textContent = out?.status_text || "Время подтверждения истекло.";
-          if (kind === "link") {
-            els.requestLinkCodeBtn.classList.remove("hidden");
-          } else {
-            els.requestPasswordResetBtn.classList.remove("hidden");
+          metaEl.textContent = out?.status_text || (isSmsEnabled() ? "Время подтверждения истекло. Можно запросить новый звонок или SMS." : "Время подтверждения истекло. Запроси новый звонок.");
+          if (isSmsEnabled()) {
+            if (kind === "link") {
+              els.requestLinkCodeBtn.classList.remove("hidden");
+            } else {
+              els.requestPasswordResetBtn.classList.remove("hidden");
+            }
           }
         }
       } catch (e) {
@@ -401,6 +440,7 @@
 
     els.requestLinkCodeBtn.onclick = async () => {
       try {
+        if (!isSmsEnabled()) throw new Error("Подтверждение по SMS временно отключено");
         const out = await requestLinkPhoneCode(els.linkPhoneInput.value.trim());
         els.linkPhoneSmsBlock.classList.remove("hidden");
         els.linkPhoneMeta.textContent = out?.debug_code
@@ -419,6 +459,9 @@
           els.linkPhonePasswordInput.value,
           els.linkPhonePasswordConfirmInput.value,
         );
+        if (!flows.link.verified && !els.linkPhoneCodeInput.value.trim()) {
+          throw new Error(isSmsEnabled() ? "Сначала подтверди номер звонком или введи код из SMS" : "Сначала подтверди номер звонком");
+        }
         const out = await verifyLinkPhoneCode(
           els.linkPhoneInput.value.trim(),
           els.linkPhoneCodeInput.value.trim(),
@@ -475,6 +518,7 @@
 
     els.requestPasswordResetBtn.onclick = async () => {
       try {
+        if (!isSmsEnabled()) throw new Error("Подтверждение по SMS временно отключено");
         const phone = currentProfile?.phone || els.linkPhoneInput.value.trim();
         if (!phone) throw new Error("Сначала привяжи номер телефона");
         const out = await requestPasswordResetCode(phone);
@@ -498,6 +542,9 @@
           els.passwordResetConfirmInput.value,
         );
         if (!newPassword) throw new Error("Введи новый пароль");
+        if (!flows.reset.verified && !els.passwordResetCodeInput.value.trim()) {
+          throw new Error(isSmsEnabled() ? "Сначала подтверди номер звонком или введи код из SMS" : "Сначала подтверди номер звонком");
+        }
         await confirmPasswordReset(
           phone,
           els.passwordResetCodeInput.value.trim(),
@@ -514,6 +561,7 @@
       }
     };
 
+    await loadPhoneAuthConfig();
     await loadProfile();
   </script>
 </body>

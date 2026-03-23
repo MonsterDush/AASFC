@@ -32,7 +32,7 @@
     <div class="auth-grid">
       <div class="card">
         <b>Вход по телефону</b>
-        <div class="muted mt-8">Основной сценарий — вход по номеру телефона и паролю. Звонок нужен только для первой настройки номера и для сброса пароля. Если звонок не проходит, через 10 секунд появится запасной вариант с SMS.</div>
+        <div class="muted mt-8">Основной сценарий — вход по номеру телефона и паролю. Звонок нужен только для первой настройки номера и для сброса пароля. SMS можно временно отключать через настройку на backend.</div>
 
         <div class="stack mt-16">
           <div>
@@ -129,6 +129,7 @@
       applyTelegramTheme,
       ensureLogin,
       loginWithPassword,
+      getPhoneAuthConfig,
       requestPhoneCall,
       getPhoneCallStatus,
       requestPhoneCode,
@@ -158,6 +159,10 @@
     let callPollTimer = null;
     let callFallbackTimer = null;
     let smsChallengeId = null;
+    let phoneAuthConfig = { call_enabled: true, sms_enabled: true, fallback_after_seconds: 10 };
+
+    const isCallEnabled = () => Boolean(phoneAuthConfig?.call_enabled);
+    const isSmsEnabled = () => Boolean(phoneAuthConfig?.sms_enabled);
 
     function getSafeNext() {
       if (!next || /\/auth\.html(\?|$)/i.test(next)) return "/";
@@ -232,6 +237,30 @@
       telegramWidgetHint: document.getElementById("telegramWidgetHint"),
     };
 
+    function applyPhoneAuthConfig() {
+      const callEnabled = isCallEnabled();
+      const smsEnabled = isSmsEnabled();
+      els.btnRequestCall.disabled = !callEnabled;
+      if (!smsEnabled) {
+        els.btnRequestSmsFallback.classList.add("hidden");
+        els.smsFallbackBlock.classList.add("hidden");
+        els.smsCodeInput.value = "";
+        els.smsMeta.textContent = "";
+      }
+    }
+
+    async function loadPhoneAuthConfig() {
+      try {
+        const out = await getPhoneAuthConfig();
+        phoneAuthConfig = {
+          call_enabled: out?.call_enabled !== false,
+          sms_enabled: out?.sms_enabled !== false,
+          fallback_after_seconds: Number(out?.fallback_after_seconds || 10),
+        };
+      } catch {}
+      applyPhoneAuthConfig();
+    }
+
     function clearCallTimers() {
       if (callPollTimer) {
         clearInterval(callPollTimer);
@@ -274,9 +303,12 @@
       els.modeSetupBtn.classList.toggle("primary", !isReset);
       els.modeResetBtn.classList.toggle("primary", isReset);
       els.passwordFlowTitle.textContent = isReset ? "Сброс пароля" : "Первичная настройка";
+      const fallbackHint = isSmsEnabled()
+        ? "Если звонок не проходит, через 10 секунд можно запросить SMS."
+        : "Сейчас подтверждение доступно только звонком.";
       els.passwordFlowHint.textContent = isReset
-        ? "Сначала подтвердите номер звонком. Если звонок не проходит, через 10 секунд можно запросить SMS. После подтверждения задайте новый пароль."
-        : "Сначала подтвердите номер звонком. Если звонок не проходит, через 10 секунд можно запросить SMS. После подтверждения задайте пароль для следующих входов.";
+        ? `Сначала подтвердите номер звонком. ${fallbackHint} После подтверждения задайте новый пароль.`
+        : `Сначала подтвердите номер звонком. ${fallbackHint} После подтверждения задайте пароль для следующих входов.`;
       els.btnRequestCall.textContent = isReset ? "Получить номер для звонка" : "Получить номер для звонка";
       els.btnCompletePasswordFlow.textContent = isReset
         ? "Сбросить пароль"
@@ -303,8 +335,10 @@
         }
         if (status?.expired) {
           clearCallTimers();
-          els.callMeta.textContent = status?.status_text || "Время подтверждения истекло. Запроси новый звонок или воспользуйся SMS.";
-          els.btnRequestSmsFallback.classList.remove("hidden");
+          els.callMeta.textContent = status?.status_text || (isSmsEnabled()
+            ? "Время подтверждения истекло. Запроси новый звонок или воспользуйся SMS."
+            : "Время подтверждения истекло. Запроси новый звонок.");
+          if (isSmsEnabled()) els.btnRequestSmsFallback.classList.remove("hidden");
           return;
         }
         if (status?.status_text) {
@@ -317,6 +351,7 @@
     }
 
     async function startCallFlow() {
+      if (!isCallEnabled()) throw new Error("Подтверждение звонком временно отключено");
       const phone = els.verifyPhoneInput.value.trim() || els.loginPhoneInput.value.trim();
       if (!phone) throw new Error("Сначала введи номер телефона");
       resetVerificationState();
@@ -333,16 +368,19 @@
         els.callNumberBlock.classList.remove("hidden");
       }
       callPollTimer = setInterval(() => pollCallStatus(out?.phone || phone, callChallengeId), 2500);
-      callFallbackTimer = setTimeout(() => {
-        els.btnRequestSmsFallback.classList.remove("hidden");
-        if (!callVerified) {
-          els.smsMeta.textContent = "Если звонок не проходит, можно запросить SMS с кодом.";
-        }
-      }, Math.max(1, Number(out?.fallback_after_seconds || 10)) * 1000);
+      if (isSmsEnabled()) {
+        callFallbackTimer = setTimeout(() => {
+          els.btnRequestSmsFallback.classList.remove("hidden");
+          if (!callVerified) {
+            els.smsMeta.textContent = "Если звонок не проходит, можно запросить SMS с кодом.";
+          }
+        }, Math.max(1, Number(out?.fallback_after_seconds || phoneAuthConfig?.fallback_after_seconds || 10)) * 1000);
+      }
       await pollCallStatus(out?.phone || phone, callChallengeId);
     }
 
     async function requestSmsFallback() {
+      if (!isSmsEnabled()) throw new Error("Подтверждение по SMS временно отключено");
       const phone = els.verifyPhoneInput.value.trim() || els.loginPhoneInput.value.trim();
       if (!phone) throw new Error("Сначала введи номер телефона");
       const out = passwordFlowMode === MODE_RESET
@@ -363,7 +401,9 @@
       const password = validateNewPassword();
       const smsCode = els.smsCodeInput.value.trim();
       if (!callVerified && !smsCode) {
-        throw new Error("Сначала подтверди номер звонком или введи код из SMS");
+        throw new Error(isSmsEnabled()
+          ? "Сначала подтверди номер звонком или введи код из SMS"
+          : "Сначала подтверди номер звонком");
       }
       if (passwordFlowMode === MODE_RESET) {
         await confirmPasswordReset(phone, smsCode, password, callVerified ? callChallengeId : null);
@@ -481,6 +521,7 @@
     }
 
     nextHint.textContent = `После входа тебя вернёт на ${getSafeNext()}.`;
+    await loadPhoneAuthConfig();
     setPasswordMode(MODE_SETUP);
     if (!(await initExistingSession())) {
       await renderTelegramLogin();
