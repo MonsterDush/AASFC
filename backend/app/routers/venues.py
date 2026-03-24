@@ -16,7 +16,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, delete, update, func
+from sqlalchemy import select, delete, update, func, inspect
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
@@ -108,6 +108,14 @@ from app.models.pay_component import PayComponent
 from app.models.payroll_run import PayrollRun
 from app.models.payroll_line import PayrollLine
 from app.models.payroll_recalculation_log import PayrollRecalculationLog
+from app.models.penalty import Penalty
+from app.models.bonus import Bonus
+from app.models.writeoff import Writeoff
+from app.models.expense_recognition_entry import ExpenseRecognitionEntry
+from app.models.day_economics_plan import DayEconomicsPlan
+from app.models.day_economics_month_plan import DayEconomicsMonthPlan
+from app.models.day_economics_plan_template import DayEconomicsPlanTemplate
+from app.models.venue_economics_rule import VenueEconomicsRule
 
 from app.auth.venue_permissions import require_venue_permission, has_venue_permission
 
@@ -121,6 +129,8 @@ log = logging.getLogger("axelio.day_economics_notifications")
 _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY = "day_economics_summary"
 _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN = "salary_day_breakdown"
 _NOTIFICATION_JOB_TYPE_SOFT_ALERTS = "soft_alerts"
+_NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED = "adjustment_assigned"
+_NOTIFICATION_JOB_TYPE_ADJUSTMENT_DISPUTE_EVENT = "adjustment_dispute_event"
 _NOTIFICATION_JOB_STATUS_PENDING = "pending"
 _NOTIFICATION_JOB_STATUS_PROCESSING = "processing"
 _NOTIFICATION_JOB_STATUS_SENT = "sent"
@@ -834,46 +844,17 @@ def _require_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> 
 def _is_active_member_or_admin(db: Session, *, venue_id: int, user: User) -> bool:
     if user.system_role in ("SUPER_ADMIN", "MODERATOR"):
         return True
-
-    row = db.execute(
-        select(VenueMember.venue_role, Venue.is_archived)
-        .join(Venue, Venue.id == VenueMember.venue_id)
-        .where(
-            VenueMember.venue_id == venue_id,
-            VenueMember.user_id == user.id,
-            VenueMember.is_active.is_(True),
-        )
-    ).first()
-
-    if row is None:
-        return False
-
-    role = str(row.venue_role or "").upper()
-    is_archived = bool(row.is_archived)
-    if is_archived and role != "OWNER":
-        return False
-
-    return True
+    m = db.query(VenueMember).filter(
+        VenueMember.venue_id == venue_id,
+        VenueMember.user_id == user.id,
+        VenueMember.is_active.is_(True),
+    ).one_or_none()
+    return bool(m)
 
 
 def _require_active_member_or_admin(db: Session, *, venue_id: int, user: User) -> None:
-    if _is_active_member_or_admin(db, venue_id=venue_id, user=user):
-        return
-
-    row = db.execute(
-        select(VenueMember.venue_role, Venue.is_archived)
-        .join(Venue, Venue.id == VenueMember.venue_id)
-        .where(
-            VenueMember.venue_id == venue_id,
-            VenueMember.user_id == user.id,
-            VenueMember.is_active.is_(True),
-        )
-    ).first()
-
-    if row is not None and bool(row.is_archived) and str(row.venue_role or "").upper() != "OWNER":
-        raise HTTPException(status_code=403, detail="Заведение сейчас не активно")
-
-    raise HTTPException(status_code=403, detail="Forbidden")
+    if not _is_active_member_or_admin(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _get_expense_category_or_404(db: Session, *, venue_id: int, category_id: int) -> ExpenseCategory:
@@ -1581,6 +1562,146 @@ def update_venue(
     return {"id": venue.id, "name": venue.name}
 
 
+def _table_exists(db: Session, model_or_table_name) -> bool:
+    table_name = model_or_table_name if isinstance(model_or_table_name, str) else model_or_table_name.__tablename__
+    try:
+        return bool(inspect(db.get_bind()).has_table(table_name))
+    except Exception:
+        return True
+
+
+def _safe_scalar_count(db: Session, stmt) -> int:
+    try:
+        return int(db.execute(stmt).scalar_one() or 0)
+    except Exception:
+        return 0
+
+
+def _safe_delete_where(db: Session, model, *conditions) -> int:
+    if not _table_exists(db, model):
+        return 0
+    stmt = delete(model)
+    for condition in conditions:
+        stmt = stmt.where(condition)
+    try:
+        result = db.execute(stmt)
+    except Exception:
+        return 0
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
+def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
+    venue_id = int(venue.id)
+    shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+    report_ids = select(DailyReport.id).where(DailyReport.venue_id == venue_id)
+    adjustment_ids = select(Adjustment.id).where(Adjustment.venue_id == venue_id)
+    dispute_ids = select(AdjustmentDispute.id).where(AdjustmentDispute.venue_id == venue_id)
+    expense_ids = select(Expense.id).where(Expense.venue_id == venue_id)
+    recurring_rule_ids = select(RecurringExpenseRule.id).where(RecurringExpenseRule.venue_id == venue_id)
+    pay_profile_ids = select(PayProfile.id).where(PayProfile.venue_id == venue_id)
+    payroll_run_ids = select(PayrollRun.id).where(PayrollRun.venue_id == venue_id)
+
+    counts: dict[str, int] = {}
+
+    def add_count(key: str, model, stmt) -> None:
+        if not _table_exists(db, model):
+            counts[key] = 0
+            return
+        counts[key] = _safe_scalar_count(db, stmt)
+
+    add_count("venue_members", VenueMember, select(func.count(VenueMember.id)).where(VenueMember.venue_id == venue_id))
+    add_count("venue_invites", VenueInvite, select(func.count(VenueInvite.id)).where(VenueInvite.venue_id == venue_id))
+    add_count("venue_positions", VenuePosition, select(func.count(VenuePosition.id)).where(VenuePosition.venue_id == venue_id))
+
+    add_count("shift_intervals", ShiftInterval, select(func.count(ShiftInterval.id)).where(ShiftInterval.venue_id == venue_id))
+    add_count("shifts", Shift, select(func.count(Shift.id)).where(Shift.venue_id == venue_id))
+    add_count("shift_assignments", ShiftAssignment, select(func.count(ShiftAssignment.id)).where(ShiftAssignment.shift_id.in_(shift_ids)))
+    add_count("shift_comments", ShiftComment, select(func.count(ShiftComment.id)).where(ShiftComment.shift_id.in_(shift_ids)))
+
+    add_count("daily_reports", DailyReport, select(func.count(DailyReport.id)).where(DailyReport.venue_id == venue_id))
+    add_count("daily_report_attachments", DailyReportAttachment, select(func.count(DailyReportAttachment.id)).where(DailyReportAttachment.venue_id == venue_id))
+    add_count("daily_report_values", DailyReportValue, select(func.count(DailyReportValue.id)).where(DailyReportValue.report_id.in_(report_ids)))
+    add_count("daily_report_audits", DailyReportAudit, select(func.count(DailyReportAudit.id)).where(DailyReportAudit.report_id.in_(report_ids)))
+    add_count("daily_report_tip_allocations", DailyReportTipAllocation, select(func.count(DailyReportTipAllocation.id)).where(DailyReportTipAllocation.report_id.in_(report_ids)))
+
+    add_count("adjustments", Adjustment, select(func.count(Adjustment.id)).where(Adjustment.venue_id == venue_id))
+    add_count("adjustment_disputes", AdjustmentDispute, select(func.count(AdjustmentDispute.id)).where(AdjustmentDispute.venue_id == venue_id))
+    add_count("adjustment_dispute_comments", AdjustmentDisputeComment, select(func.count(AdjustmentDisputeComment.id)).where(AdjustmentDisputeComment.dispute_id.in_(dispute_ids)))
+    add_count("penalties", Penalty, select(func.count(Penalty.id)).where(Penalty.venue_id == venue_id))
+    add_count("bonuses", Bonus, select(func.count(Bonus.id)).where(Bonus.venue_id == venue_id))
+    add_count("writeoffs", Writeoff, select(func.count(Writeoff.id)).where(Writeoff.venue_id == venue_id))
+
+    add_count("departments", Department, select(func.count(Department.id)).where(Department.venue_id == venue_id))
+    add_count("payment_methods", PaymentMethod, select(func.count(PaymentMethod.id)).where(PaymentMethod.venue_id == venue_id))
+    add_count("kpi_metrics", KpiMetric, select(func.count(KpiMetric.id)).where(KpiMetric.venue_id == venue_id))
+    add_count("expense_categories", ExpenseCategory, select(func.count(ExpenseCategory.id)).where(ExpenseCategory.venue_id == venue_id))
+    add_count("suppliers", Supplier, select(func.count(Supplier.id)).where(Supplier.venue_id == venue_id))
+
+    add_count("expenses", Expense, select(func.count(Expense.id)).where(Expense.venue_id == venue_id))
+    add_count("expense_allocations", ExpenseAllocation, select(func.count(ExpenseAllocation.id)).where(ExpenseAllocation.venue_id == venue_id))
+    add_count("expense_recognition_entries", ExpenseRecognitionEntry, select(func.count(ExpenseRecognitionEntry.id)).where(ExpenseRecognitionEntry.venue_id == venue_id))
+    add_count("finance_entries", FinanceEntry, select(func.count(FinanceEntry.id)).where(FinanceEntry.venue_id == venue_id))
+    add_count("balance_adjustments", BalanceAdjustment, select(func.count(BalanceAdjustment.id)).where(BalanceAdjustment.venue_id == venue_id))
+    add_count("payment_method_transfers", PaymentMethodTransfer, select(func.count(PaymentMethodTransfer.id)).where(PaymentMethodTransfer.venue_id == venue_id))
+    add_count("recurring_expense_rules", RecurringExpenseRule, select(func.count(RecurringExpenseRule.id)).where(RecurringExpenseRule.venue_id == venue_id))
+    add_count("recurring_expense_rule_payment_methods", RecurringExpenseRulePaymentMethod, select(func.count(RecurringExpenseRulePaymentMethod.rule_id)).where(RecurringExpenseRulePaymentMethod.rule_id.in_(recurring_rule_ids)))
+    add_count("recurring_expense_accruals", RecurringExpenseAccrual, select(func.count(RecurringExpenseAccrual.id)).where(RecurringExpenseAccrual.venue_id == venue_id))
+
+    add_count("day_economics_plans", DayEconomicsPlan, select(func.count(DayEconomicsPlan.id)).where(DayEconomicsPlan.venue_id == venue_id))
+    add_count("day_economics_month_plans", DayEconomicsMonthPlan, select(func.count(DayEconomicsMonthPlan.id)).where(DayEconomicsMonthPlan.venue_id == venue_id))
+    add_count("day_economics_plan_templates", DayEconomicsPlanTemplate, select(func.count(DayEconomicsPlanTemplate.id)).where(DayEconomicsPlanTemplate.venue_id == venue_id))
+    add_count("venue_economics_rules", VenueEconomicsRule, select(func.count(VenueEconomicsRule.id)).where(VenueEconomicsRule.venue_id == venue_id))
+
+    add_count("pay_profiles", PayProfile, select(func.count(PayProfile.id)).where(PayProfile.venue_id == venue_id))
+    add_count("pay_components", PayComponent, select(func.count(PayComponent.id)).where(PayComponent.venue_id == venue_id))
+    add_count("pay_profile_assignments", PayProfileAssignment, select(func.count(PayProfileAssignment.id)).where(PayProfileAssignment.venue_id == venue_id))
+    add_count("payroll_runs", PayrollRun, select(func.count(PayrollRun.id)).where(PayrollRun.venue_id == venue_id))
+    add_count("payroll_lines", PayrollLine, select(func.count(PayrollLine.id)).where(PayrollLine.venue_id == venue_id))
+    add_count("payroll_recalculation_logs", PayrollRecalculationLog, select(func.count(PayrollRecalculationLog.id)).where(PayrollRecalculationLog.venue_id == venue_id))
+
+    add_count("notification_delivery_logs", NotificationDeliveryLog, select(func.count(NotificationDeliveryLog.id)).where(NotificationDeliveryLog.venue_id == venue_id))
+
+    non_zero = [
+        {"key": key, "count": value}
+        for key, value in counts.items()
+        if int(value or 0) > 0
+    ]
+    non_zero.sort(key=lambda item: (-item["count"], item["key"]))
+
+    return {
+        "venue": {
+            "id": venue_id,
+            "name": venue.name,
+            "is_archived": bool(venue.is_archived),
+            "archived_at": venue.archived_at.isoformat() if venue.archived_at else None,
+        },
+        "requires_archive": not bool(venue.is_archived),
+        "can_delete": bool(venue.is_archived),
+        "counts": counts,
+        "non_zero_groups": non_zero,
+        "totals": {
+            "groups": len(counts),
+            "groups_non_zero": len(non_zero),
+            "rows": int(sum(int(v or 0) for v in counts.values())),
+        },
+    }
+
+
+@router.get("/{venue_id}/delete-check")
+def get_venue_delete_check(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(404, "Venue not found")
+
+    return _build_venue_delete_check_payload(db, venue)
+
+
 @router.post("/{venue_id}/archive")
 def archive_venue(
     venue_id: int,
@@ -1598,8 +1719,14 @@ def archive_venue(
         venue.archived_at = datetime.now(timezone.utc)
 
     db.commit()
+    db.refresh(venue)
 
-    return {"ok": True}
+    return {
+        "ok": True,
+        "id": venue.id,
+        "is_archived": bool(venue.is_archived),
+        "archived_at": venue.archived_at.isoformat() if venue.archived_at else None,
+    }
 
 
 @router.post("/{venue_id}/unarchive")
@@ -1617,9 +1744,16 @@ def unarchive_venue(
     if venue.is_archived:
         venue.is_archived = False
         venue.archived_at = None
-        db.commit()
 
-    return {"ok": True}
+    db.commit()
+    db.refresh(venue)
+
+    return {
+        "ok": True,
+        "id": venue.id,
+        "is_archived": bool(venue.is_archived),
+        "archived_at": venue.archived_at.isoformat() if venue.archived_at else None,
+    }
 
 
 @router.delete("/{venue_id}")
@@ -1630,8 +1764,8 @@ def delete_venue(
 ):
     """Hard-delete venue (allowed only when archived).
 
-    We delete dependent rows explicitly using bulk deletes to avoid SQLAlchemy
-    trying to NULL-out NOT NULL FKs (e.g. venue_members.venue_id).
+    Deletes dependent rows explicitly in a safe order to avoid FK errors on
+    installations where DB-level cascades are incomplete or old migrations are still present.
     """
     _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
 
@@ -1642,28 +1776,101 @@ def delete_venue(
     if not venue.is_archived:
         raise HTTPException(400, "Archive venue before delete")
 
-    venue_shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+    shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+    report_ids = select(DailyReport.id).where(DailyReport.venue_id == venue_id)
+    dispute_ids = select(AdjustmentDispute.id).where(AdjustmentDispute.venue_id == venue_id)
+    recurring_rule_ids = select(RecurringExpenseRule.id).where(RecurringExpenseRule.venue_id == venue_id)
 
-    # Shift assignments
-    db.execute(delete(ShiftAssignment).where(ShiftAssignment.shift_id.in_(venue_shift_ids)))
+    summary_before = _build_venue_delete_check_payload(db, venue)
+    deleted: dict[str, int] = {}
 
-    # Shifts & intervals
-    db.execute(delete(Shift).where(Shift.venue_id == venue_id))
-    db.execute(delete(ShiftInterval).where(ShiftInterval.venue_id == venue_id))
+    try:
+        deleted["shift_comments"] = _safe_delete_where(db, ShiftComment, ShiftComment.shift_id.in_(shift_ids))
+        deleted["shift_assignments"] = _safe_delete_where(db, ShiftAssignment, ShiftAssignment.shift_id.in_(shift_ids))
 
-    # Positions / invites / members
-    db.execute(delete(VenuePosition).where(VenuePosition.venue_id == venue_id))
-    db.execute(delete(VenueInvite).where(VenueInvite.venue_id == venue_id))
-    db.execute(delete(VenueMember).where(VenueMember.venue_id == venue_id))
+        deleted["daily_report_tip_allocations"] = _safe_delete_where(db, DailyReportTipAllocation, DailyReportTipAllocation.report_id.in_(report_ids))
+        deleted["daily_report_values"] = _safe_delete_where(db, DailyReportValue, DailyReportValue.report_id.in_(report_ids))
+        deleted["daily_report_audits"] = _safe_delete_where(db, DailyReportAudit, DailyReportAudit.report_id.in_(report_ids))
+        deleted["daily_report_attachments"] = _safe_delete_where(db, DailyReportAttachment, DailyReportAttachment.venue_id == venue_id)
 
-    # Daily reports
-    db.execute(delete(DailyReport).where(DailyReport.venue_id == venue_id))
+        deleted["adjustment_dispute_comments"] = _safe_delete_where(db, AdjustmentDisputeComment, AdjustmentDisputeComment.dispute_id.in_(dispute_ids))
+        deleted["adjustment_disputes"] = _safe_delete_where(db, AdjustmentDispute, AdjustmentDispute.venue_id == venue_id)
 
-    # Venue itself
-    db.execute(delete(Venue).where(Venue.id == venue_id))
+        deleted["expense_allocations"] = _safe_delete_where(db, ExpenseAllocation, ExpenseAllocation.venue_id == venue_id)
+        deleted["expense_recognition_entries"] = _safe_delete_where(db, ExpenseRecognitionEntry, ExpenseRecognitionEntry.venue_id == venue_id)
+        deleted["recurring_expense_rule_payment_methods"] = _safe_delete_where(db, RecurringExpenseRulePaymentMethod, RecurringExpenseRulePaymentMethod.rule_id.in_(recurring_rule_ids))
+        deleted["recurring_expense_accruals"] = _safe_delete_where(db, RecurringExpenseAccrual, RecurringExpenseAccrual.venue_id == venue_id)
 
-    db.commit()
-    return {"ok": True}
+        deleted["payroll_lines"] = _safe_delete_where(db, PayrollLine, PayrollLine.venue_id == venue_id)
+        deleted["pay_profile_assignments"] = _safe_delete_where(db, PayProfileAssignment, PayProfileAssignment.venue_id == venue_id)
+        deleted["pay_components"] = _safe_delete_where(db, PayComponent, PayComponent.venue_id == venue_id)
+
+        deleted["notification_delivery_logs"] = _safe_delete_where(db, NotificationDeliveryLog, NotificationDeliveryLog.venue_id == venue_id)
+
+        deleted["shifts"] = _safe_delete_where(db, Shift, Shift.venue_id == venue_id)
+        deleted["shift_intervals"] = _safe_delete_where(db, ShiftInterval, ShiftInterval.venue_id == venue_id)
+
+        deleted["daily_reports"] = _safe_delete_where(db, DailyReport, DailyReport.venue_id == venue_id)
+
+        deleted["adjustments"] = _safe_delete_where(db, Adjustment, Adjustment.venue_id == venue_id)
+        deleted["penalties"] = _safe_delete_where(db, Penalty, Penalty.venue_id == venue_id)
+        deleted["bonuses"] = _safe_delete_where(db, Bonus, Bonus.venue_id == venue_id)
+        deleted["writeoffs"] = _safe_delete_where(db, Writeoff, Writeoff.venue_id == venue_id)
+
+        deleted["finance_entries"] = _safe_delete_where(db, FinanceEntry, FinanceEntry.venue_id == venue_id)
+        deleted["balance_adjustments"] = _safe_delete_where(db, BalanceAdjustment, BalanceAdjustment.venue_id == venue_id)
+        deleted["payment_method_transfers"] = _safe_delete_where(db, PaymentMethodTransfer, PaymentMethodTransfer.venue_id == venue_id)
+        deleted["expenses"] = _safe_delete_where(db, Expense, Expense.venue_id == venue_id)
+        deleted["recurring_expense_rules"] = _safe_delete_where(db, RecurringExpenseRule, RecurringExpenseRule.venue_id == venue_id)
+
+        deleted["day_economics_plans"] = _safe_delete_where(db, DayEconomicsPlan, DayEconomicsPlan.venue_id == venue_id)
+        deleted["day_economics_month_plans"] = _safe_delete_where(db, DayEconomicsMonthPlan, DayEconomicsMonthPlan.venue_id == venue_id)
+        deleted["day_economics_plan_templates"] = _safe_delete_where(db, DayEconomicsPlanTemplate, DayEconomicsPlanTemplate.venue_id == venue_id)
+        deleted["venue_economics_rules"] = _safe_delete_where(db, VenueEconomicsRule, VenueEconomicsRule.venue_id == venue_id)
+
+        deleted["payroll_recalculation_logs"] = _safe_delete_where(db, PayrollRecalculationLog, PayrollRecalculationLog.venue_id == venue_id)
+        deleted["payroll_runs"] = _safe_delete_where(db, PayrollRun, PayrollRun.venue_id == venue_id)
+        deleted["pay_profiles"] = _safe_delete_where(db, PayProfile, PayProfile.venue_id == venue_id)
+
+        deleted["departments"] = _safe_delete_where(db, Department, Department.venue_id == venue_id)
+        deleted["payment_methods"] = _safe_delete_where(db, PaymentMethod, PaymentMethod.venue_id == venue_id)
+        deleted["kpi_metrics"] = _safe_delete_where(db, KpiMetric, KpiMetric.venue_id == venue_id)
+        deleted["expense_categories"] = _safe_delete_where(db, ExpenseCategory, ExpenseCategory.venue_id == venue_id)
+        deleted["suppliers"] = _safe_delete_where(db, Supplier, Supplier.venue_id == venue_id)
+
+        deleted["venue_positions"] = _safe_delete_where(db, VenuePosition, VenuePosition.venue_id == venue_id)
+        deleted["venue_invites"] = _safe_delete_where(db, VenueInvite, VenueInvite.venue_id == venue_id)
+        deleted["venue_members"] = _safe_delete_where(db, VenueMember, VenueMember.venue_id == venue_id)
+
+        venue_deleted = _safe_delete_where(db, Venue, Venue.id == venue_id)
+        if venue_deleted <= 0:
+            raise HTTPException(404, "Venue not found")
+        deleted["venue"] = venue_deleted
+
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except sa.exc.IntegrityError:
+        db.rollback()
+        current_check = _build_venue_delete_check_payload(db, venue)
+        blockers = ", ".join(
+            f"{item['key']}={item['count']}" for item in current_check.get("non_zero_groups", [])[:6]
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Не удалось удалить заведение: в базе остались связанные записи"
+                + (f" ({blockers})" if blockers else "")
+            ),
+        )
+
+    return {
+        "ok": True,
+        "id": venue_id,
+        "deleted": deleted,
+        "delete_check_before": summary_before,
+    }
 
 
 @router.get("/{venue_id}/members")
@@ -2035,6 +2242,13 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
 
 
 
+def _payroll_recalculation_logs_table_exists(db: Session) -> bool:
+    try:
+        return bool(inspect(db.get_bind()).has_table(PayrollRecalculationLog.__tablename__))
+    except Exception:
+        return True
+
+
 def _serialize_payroll_recalculation_log(row: PayrollRecalculationLog | None) -> dict | None:
     if row is None:
         return None
@@ -2064,7 +2278,9 @@ def _create_payroll_recalculation_log(
     triggered_by_user_id: int | None = None,
     target_dates: list[date] | tuple[date, ...] | None = None,
     details: dict | None = None,
-) -> PayrollRecalculationLog:
+) -> PayrollRecalculationLog | None:
+    if not _payroll_recalculation_logs_table_exists(db):
+        return None
     obj = PayrollRecalculationLog(
         venue_id=int(venue_id),
         period_month=period_month,
@@ -2080,6 +2296,8 @@ def _create_payroll_recalculation_log(
 
 
 def _latest_payroll_recalculation_log(db: Session, *, venue_id: int, period_month: date) -> PayrollRecalculationLog | None:
+    if not _payroll_recalculation_logs_table_exists(db):
+        return None
     return db.execute(
         select(PayrollRecalculationLog)
         .where(
@@ -2087,6 +2305,7 @@ def _latest_payroll_recalculation_log(db: Session, *, venue_id: int, period_mont
             PayrollRecalculationLog.period_month == period_month,
         )
         .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+        .limit(1)
     ).scalar_one_or_none()
 
 
@@ -2222,7 +2441,7 @@ def _month_starts_between(period_start: date, period_end: date) -> list[date]:
 
 def _latest_payroll_recalculation_for_period(db: Session, *, venue_id: int, period_start: date, period_end: date) -> dict | None:
     months = _month_starts_between(period_start, period_end)
-    if not months:
+    if not months or not _payroll_recalculation_logs_table_exists(db):
         return None
     row = db.execute(
         select(PayrollRecalculationLog)
@@ -2231,6 +2450,7 @@ def _latest_payroll_recalculation_for_period(db: Session, *, venue_id: int, peri
             PayrollRecalculationLog.period_month.in_(months),
         )
         .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+        .limit(1)
     ).scalar_one_or_none()
     return _serialize_payroll_recalculation_log(row)
 
@@ -3121,15 +3341,18 @@ def get_payroll_recalculation_log(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    rows = db.execute(
-        select(PayrollRecalculationLog)
-        .where(
-            PayrollRecalculationLog.venue_id == int(venue_id),
-            PayrollRecalculationLog.period_month == month_start,
-        )
-        .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
-        .limit(int(limit))
-    ).scalars().all()
+    if not _payroll_recalculation_logs_table_exists(db):
+        rows = []
+    else:
+        rows = db.execute(
+            select(PayrollRecalculationLog)
+            .where(
+                PayrollRecalculationLog.venue_id == int(venue_id),
+                PayrollRecalculationLog.period_month == month_start,
+            )
+            .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+            .limit(int(limit))
+        ).scalars().all()
 
     return {
         "month": month,
@@ -4825,6 +5048,336 @@ def _build_staff_salary_day_link(*, venue_id: int, target_date: date) -> str:
     )
 
 
+def _build_staff_adjustments_link(*, venue_id: int, adjustment_id: int, tab: str | None = None) -> str:
+    suffix = f"&tab={quote(str(tab))}" if tab else ""
+    return f"{_frontend_base_url()}/staff-adjustments.html?venue_id={int(venue_id)}&open={int(adjustment_id)}{suffix}"
+
+
+def _build_owner_adjustments_link(*, venue_id: int, adjustment_id: int, tab: str | None = None) -> str:
+    suffix = f"&tab={quote(str(tab))}" if tab else ""
+    return f"{_frontend_base_url()}/app-adjustments.html?venue_id={int(venue_id)}&open={int(adjustment_id)}{suffix}"
+
+
+def _display_user_name(user: User | None) -> str:
+    if user is None:
+        return "Сотрудник"
+    return (user.short_name or user.full_name or (user.tg_username or str(user.id))).strip()
+
+
+def _collect_adjustment_manager_recipients(db: Session, *, venue_id: int) -> list[User]:
+    owners = db.execute(
+        select(User)
+        .join(VenueMember, VenueMember.user_id == User.id)
+        .where(
+            VenueMember.venue_id == int(venue_id),
+            VenueMember.is_active.is_(True),
+            VenueMember.venue_role == "OWNER",
+            User.tg_user_id.is_not(None),
+        )
+        .order_by(User.id.asc())
+    ).scalars().all()
+
+    mgr_rows = db.execute(
+        select(User)
+        .join(VenuePosition, VenuePosition.member_user_id == User.id)
+        .where(
+            VenuePosition.venue_id == int(venue_id),
+            VenuePosition.is_active.is_(True),
+            User.tg_user_id.is_not(None),
+        )
+        .order_by(User.id.asc())
+    ).scalars().all()
+
+    uniq: dict[int, User] = {int(u.id): u for u in owners if getattr(u, "tg_user_id", None) is not None}
+    for candidate in mgr_rows:
+        if getattr(candidate, "tg_user_id", None) is None:
+            continue
+        if has_venue_permission(db, venue_id=venue_id, user=candidate, permission_code="ADJUSTMENTS_MANAGE"):
+            uniq.setdefault(int(candidate.id), candidate)
+    return list(uniq.values())
+
+
+def _deliver_user_notification(
+    db: Session,
+    *,
+    notification_type: str,
+    recipient: User,
+    venue_id: int,
+    idempotency_key: str,
+    text: str,
+    url: str | None = None,
+    button_text: str | None = None,
+) -> tuple[bool, bool]:
+    existing_log = db.execute(
+        select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
+        .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
+        .order_by(NotificationDeliveryLog.id.desc())
+    ).first()
+    if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+        return False, False
+
+    planned_at = datetime.utcnow().replace(tzinfo=timezone.utc)
+    pending_log = log_notification_attempt(
+        db,
+        notification_type=notification_type,
+        status="pending",
+        user_id=int(recipient.id),
+        venue_id=int(venue_id),
+        planned_at=planned_at,
+        idempotency_key=idempotency_key,
+        payload_preview=text[:2000],
+    )
+    db.flush()
+    db.commit()
+
+    result = tg_notify.notify_result(
+        chat_id=int(recipient.tg_user_id),
+        text=text,
+        url=url,
+        button_text=button_text,
+    )
+    ok = bool(result.get("ok"))
+    retryable = bool(result.get("retryable"))
+    try:
+        pending_log.status = "sent" if ok else "failed"
+        pending_log.sent_at = planned_at if ok else None
+        pending_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
+        db.add(pending_log)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return ok, (retryable and not ok)
+
+
+def _enqueue_adjustment_assigned_job(db: Session, *, venue_id: int, adjustment_id: int) -> NotificationJob:
+    idempotency_key = f"job:adjustment_assigned:{int(adjustment_id)}"
+    existing = db.execute(
+        select(NotificationJob)
+        .where(
+            NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED,
+            NotificationJob.idempotency_key == idempotency_key,
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+        )
+        .order_by(NotificationJob.id.desc())
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    job = NotificationJob(
+        job_type=_NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED,
+        status=_NOTIFICATION_JOB_STATUS_PENDING,
+        payload_json=json.dumps({"venue_id": int(venue_id), "adjustment_id": int(adjustment_id)}, ensure_ascii=False),
+        attempts=0,
+        max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
+        run_after=datetime.utcnow(),
+        idempotency_key=idempotency_key,
+    )
+    db.add(job)
+    db.flush()
+    return job
+
+
+def _enqueue_adjustment_dispute_event_job(
+    db: Session,
+    *,
+    venue_id: int,
+    dispute_id: int,
+    comment_id: int,
+    event_kind: str,
+) -> NotificationJob:
+    normalized_kind = str(event_kind or "comment").strip().lower()
+    if normalized_kind not in {"opened", "comment"}:
+        normalized_kind = "comment"
+    idempotency_key = f"job:adjustment_dispute_event:{int(comment_id)}"
+    existing = db.execute(
+        select(NotificationJob)
+        .where(
+            NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_DISPUTE_EVENT,
+            NotificationJob.idempotency_key == idempotency_key,
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+        )
+        .order_by(NotificationJob.id.desc())
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    job = NotificationJob(
+        job_type=_NOTIFICATION_JOB_TYPE_ADJUSTMENT_DISPUTE_EVENT,
+        status=_NOTIFICATION_JOB_STATUS_PENDING,
+        payload_json=json.dumps(
+            {
+                "venue_id": int(venue_id),
+                "dispute_id": int(dispute_id),
+                "comment_id": int(comment_id),
+                "event_kind": normalized_kind,
+            },
+            ensure_ascii=False,
+        ),
+        attempts=0,
+        max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
+        run_after=datetime.utcnow(),
+        idempotency_key=idempotency_key,
+    )
+    db.add(job)
+    db.flush()
+    return job
+
+
+def _send_adjustment_assigned_notification(db: Session, *, venue_id: int, adjustment_id: int) -> None:
+    adj = db.execute(
+        select(Adjustment).where(
+            Adjustment.id == int(adjustment_id),
+            Adjustment.venue_id == int(venue_id),
+            Adjustment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if adj is None or not getattr(adj, "member_user_id", None):
+        return
+
+    recipient = db.execute(select(User).where(User.id == int(adj.member_user_id))).scalar_one_or_none()
+    if recipient is None or not getattr(recipient, "tg_user_id", None):
+        return
+    if not _should_notify_user(recipient, "adjustments"):
+        return
+
+    venue_name = _venue_name(db, venue_id)
+    label = _adj_type_label(adj.type)
+    text = (
+        f"{venue_name}: вам добавлен(а) {label} на {adj.date.isoformat()} "
+        f"на сумму {adj.amount}. Причина: {(adj.reason or '—')}"
+    )
+    ok, retryable_error = _deliver_user_notification(
+        db,
+        notification_type="adjustment_assigned",
+        recipient=recipient,
+        venue_id=venue_id,
+        idempotency_key=f"adjustment_assigned:{int(adj.id)}:user:{int(recipient.id)}",
+        text=text,
+        url=_build_staff_adjustments_link(venue_id=venue_id, adjustment_id=int(adj.id), tab=adj.type),
+        button_text="Открыть",
+    )
+    if retryable_error and not ok:
+        raise RuntimeError("adjustment assigned delivery failed with retryable error")
+
+
+def _send_adjustment_dispute_event_notifications(
+    db: Session,
+    *,
+    venue_id: int,
+    dispute_id: int,
+    comment_id: int,
+    event_kind: str,
+) -> None:
+    dis = db.execute(
+        select(AdjustmentDispute).where(
+            AdjustmentDispute.id == int(dispute_id),
+            AdjustmentDispute.venue_id == int(venue_id),
+            AdjustmentDispute.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if dis is None:
+        return
+
+    adj = db.execute(
+        select(Adjustment).where(
+            Adjustment.id == int(dis.adjustment_id),
+            Adjustment.venue_id == int(venue_id),
+            Adjustment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if adj is None:
+        return
+
+    comment = db.execute(
+        select(AdjustmentDisputeComment).where(
+            AdjustmentDisputeComment.id == int(comment_id),
+            AdjustmentDisputeComment.dispute_id == int(dis.id),
+            AdjustmentDisputeComment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if comment is None:
+        return
+
+    author = db.execute(select(User).where(User.id == int(comment.author_user_id))).scalar_one_or_none()
+    if author is None:
+        return
+
+    author_is_manager = _has_adjustments_manage_access(db, venue_id=venue_id, user=author)
+    recipients: list[User] = []
+    if author_is_manager:
+        if getattr(adj, "member_user_id", None):
+            employee = db.execute(
+                select(User).where(
+                    User.id == int(adj.member_user_id),
+                    User.tg_user_id.is_not(None),
+                )
+            ).scalar_one_or_none()
+            if employee is not None:
+                recipients.append(employee)
+    else:
+        recipients.extend(_collect_adjustment_manager_recipients(db, venue_id=venue_id))
+
+    if not recipients:
+        return
+
+    venue_name = _venue_name(db, venue_id)
+    who = _display_user_name(author)
+    label = _adj_type_label(adj.type)
+    prefix = "Новый спор" if str(event_kind or "comment").strip().lower() == "opened" else "Новый комментарий"
+    message_text = (comment.message or dis.message or "—").strip() or "—"
+
+    seen_recipient_ids: set[int] = set()
+    seen_tg_user_ids: set[int] = set()
+    had_retryable_error = False
+    delivered_any = False
+
+    for recipient in recipients:
+        if recipient is None or int(recipient.id) == int(author.id):
+            continue
+        if not getattr(recipient, "tg_user_id", None):
+            continue
+        if not _should_notify_user(recipient, "adjustments"):
+            continue
+        recipient_id = int(recipient.id)
+        chat_id = int(recipient.tg_user_id)
+        if recipient_id in seen_recipient_ids or chat_id in seen_tg_user_ids:
+            continue
+
+        recipient_is_manager = _has_adjustments_manage_access(db, venue_id=venue_id, user=recipient)
+        link = (
+            _build_owner_adjustments_link(venue_id=venue_id, adjustment_id=int(adj.id), tab="disputes")
+            if recipient_is_manager
+            else _build_staff_adjustments_link(venue_id=venue_id, adjustment_id=int(adj.id), tab="disputes")
+        )
+        if prefix == "Новый спор":
+            text = (
+                f"{venue_name}: {prefix}. {who} оспорил {label} #{adj.id} на {adj.date.isoformat()} "
+                f"(сумма {adj.amount}).\nКомментарий: {message_text}"
+            )
+        else:
+            text = f"{venue_name}: новый комментарий в споре по {label} #{adj.id} от {who}.\n{message_text}"
+
+        ok, retryable_error = _deliver_user_notification(
+            db,
+            notification_type="adjustment_dispute_event",
+            recipient=recipient,
+            venue_id=venue_id,
+            idempotency_key=f"adjustment_dispute_event:{int(comment.id)}:user:{recipient_id}",
+            text=text,
+            url=link,
+            button_text="Открыть спор",
+        )
+        delivered_any = delivered_any or ok
+        had_retryable_error = had_retryable_error or retryable_error
+        seen_recipient_ids.add(recipient_id)
+        seen_tg_user_ids.add(chat_id)
+
+    if had_retryable_error and not delivered_any:
+        raise RuntimeError("adjustment dispute delivery failed with retryable error")
+
+
 def _can_receive_day_economics_summary(db: Session, *, venue_id: int, user: User) -> bool:
     if user is None:
         return False
@@ -5494,6 +6047,20 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
                         venue_id=int(payload.get("venue_id")),
                         target_date=date.fromisoformat(str(payload.get("target_date"))),
                     )
+                elif job.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED:
+                    _send_adjustment_assigned_notification(
+                        db,
+                        venue_id=int(payload.get("venue_id")),
+                        adjustment_id=int(payload.get("adjustment_id")),
+                    )
+                elif job.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_DISPUTE_EVENT:
+                    _send_adjustment_dispute_event_notifications(
+                        db,
+                        venue_id=int(payload.get("venue_id")),
+                        dispute_id=int(payload.get("dispute_id")),
+                        comment_id=int(payload.get("comment_id")),
+                        event_kind=str(payload.get("event_kind") or "comment"),
+                    )
                 else:
                     raise ValueError(f"Unsupported notification job type: {job.job_type}")
                 _complete_notification_job(db, job, status=_NOTIFICATION_JOB_STATUS_SENT)
@@ -5644,33 +6211,14 @@ def create_adjustment(
         is_active=True,
     )
     db.add(obj)
+    db.flush()
+
+    if payload.member_user_id:
+        _enqueue_adjustment_assigned_job(db, venue_id=venue_id, adjustment_id=int(obj.id))
+
     db.commit()
     db.refresh(obj)
-
-    # notify target member
-
-    # notify target member (best-effort)
-    if payload.member_user_id:
-        target = db.execute(select(User).where(User.id == payload.member_user_id)).scalar_one_or_none()
-        if target and target.tg_user_id:
-            vname = _venue_name(db, venue_id=venue_id)
-            label = _adj_type_label(payload.type)
-            link = (
-                f"https://app-dev.axelio.ru/staff-adjustments.html?"
-                f"venue_id={venue_id}&open={obj.id}&tab={payload.type}"
-            )
-            if _should_notify_user(target, "adjustments"):
-                tg_notify.notify(
-                                chat_id=int(target.tg_user_id),
-                                text=(
-                                    f"{vname}: вам добавлен(а) {label} на {payload.date.isoformat()} "
-                                    f"на сумму {payload.amount}. Причина: {(payload.reason or '—')}"
-                                ),
-                                url=link,
-                                button_text="Открыть",
-                            )
-
-        return {"id": obj.id}
+    return {"id": obj.id}
 
 import datetime as dt
 
@@ -5816,7 +6364,7 @@ def create_dispute(
             status="OPEN",
         )
         db.add(dis)
-        db.flush()  # get dis.id
+        db.flush()
 
     com = AdjustmentDisputeComment(
         dispute_id=dis.id,
@@ -5825,51 +6373,17 @@ def create_dispute(
         is_active=True,
     )
     db.add(com)
+    db.flush()
+
+    _enqueue_adjustment_dispute_event_job(
+        db,
+        venue_id=venue_id,
+        dispute_id=int(dis.id),
+        comment_id=int(com.id),
+        event_kind="opened" if created_new else "comment",
+    )
+
     db.commit()
-    # notify all managers/owners (best-effort)
-    owners = db.execute(
-        select(User)
-        .join(VenueMember, VenueMember.user_id == User.id)
-        .where(
-            VenueMember.venue_id == venue_id,
-            VenueMember.is_active.is_(True),
-            VenueMember.venue_role == "OWNER",
-            User.tg_user_id.is_not(None),
-        )
-    ).scalars().all()
-
-    # Managers = users who effectively have ADJUSTMENTS_MANAGE (with implied/default permissions too)
-    mgr_rows = db.execute(
-        select(User)
-        .join(VenuePosition, VenuePosition.member_user_id == User.id)
-        .where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.is_active.is_(True),
-            User.tg_user_id.is_not(None),
-        )
-    ).scalars().all()
-    managers: list[User] = []
-    for u in mgr_rows:
-        if has_venue_permission(db, venue_id=venue_id, user=u, permission_code="ADJUSTMENTS_MANAGE"):
-            managers.append(u)
-
-    uniq = {u.id: u for u in (owners + managers)}
-    who = user.short_name or user.full_name or (user.tg_username or str(user.id))
-    link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
-    prefix = "Новый спор" if created_new else "Новый комментарий"
-    vname = _venue_name(db, venue_id=venue_id)
-    label = _adj_type_label(adj.type)
-    for u in uniq.values():
-        if _should_notify_user(u, "adjustments"):
-            tg_notify.notify(
-                        chat_id=int(u.tg_user_id),
-                        text=(
-                            f"{vname}: {prefix}. {who} оспорил {label} #{adj.id} на {adj.date.isoformat()} (сумма {adj.amount}).\n"
-                            f"Комментарий: {message}"
-                        ),
-                        url=link,
-                        button_text="Открыть спор",
-                    )
     return {"ok": True, "dispute_id": dis.id}
 
 @router.get("/{venue_id}/adjustments/{adj_type}/{adj_id}/dispute")
@@ -5977,61 +6491,17 @@ def add_dispute_comment(
         is_active=True,
     )
     db.add(com)
+    db.flush()
+
+    _enqueue_adjustment_dispute_event_job(
+        db,
+        venue_id=venue_id,
+        dispute_id=int(dis.id),
+        comment_id=int(com.id),
+        event_kind="comment",
+    )
+
     db.commit()
-
-    # notify the other side (best effort)
-    recipients = []
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if token:
-        if is_manager:
-            # notify employee
-            if adj.member_user_id:
-                emp = db.execute(select(User).where(User.id == adj.member_user_id, User.tg_user_id.is_not(None))).scalar_one_or_none()
-                if emp:
-                    recipients.append(emp)
-        else:
-            # notify managers/owners
-            owners = db.execute(
-                select(User)
-                .join(VenueMember, VenueMember.user_id == User.id)
-                .where(
-                    VenueMember.venue_id == venue_id,
-                    VenueMember.is_active.is_(True),
-                    VenueMember.venue_role == "OWNER",
-                    User.tg_user_id.is_not(None),
-                )
-            ).scalars().all()
-            mgr_rows = db.execute(
-                select(User)
-                .join(VenuePosition, VenuePosition.member_user_id == User.id)
-                .where(
-                    VenuePosition.venue_id == venue_id,
-                    VenuePosition.is_active.is_(True),
-                    User.tg_user_id.is_not(None),
-                )
-            ).scalars().all()
-            managers: list[User] = []
-            for u in mgr_rows:
-                if has_venue_permission(db, venue_id=venue_id, user=u, permission_code="ADJUSTMENTS_MANAGE"):
-                    managers.append(u)
-            uniq = {u.id: u for u in (owners + managers)}
-            recipients = list(uniq.values())
-
-    who = user.short_name or user.full_name or (user.tg_username or str(user.id))
-    vname = _venue_name(db, venue_id=venue_id)
-    label = _adj_type_label(adj.type)
-    link = f"https://app-dev.axelio.ru/app-adjustments.html?venue_id={venue_id}&open={adj.id}&tab=disputes"
-    if token and recipients:
-        for r in recipients:
-            if _should_notify_user(r, "adjustments"):
-                tg_notify.notify(
-                    chat_id=int(r.tg_user_id),
-                    text=f"{vname}: новый комментарий в споре по {label} #{adj.id} от {who}.\n{msg}",
-                    url=link,
-                    button_text="Открыть спор",
-                )
-
-
     return {"ok": True}
 
 

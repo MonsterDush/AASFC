@@ -210,6 +210,7 @@
         ? `<span class="tag">archived</span>`
         : `<span class="tag muted">active</span>`;
 
+      const deleteCheckBtn = `<button class="btn" data-action="deleteCheck" data-id="${id}">Проверка удаления</button>`;
       const deleteBtn = isArchived
         ? `<button class="btn danger" data-action="delete" data-id="${id}">Delete</button>`
         : `<button class="btn danger" disabled title="Delete allowed only for archived">Delete</button>`;
@@ -232,6 +233,7 @@
               <button class="btn" data-action="toggleArchive" data-id="${id}" data-arch="${isArchived ? "1":"0"}">
                 ${isArchived ? "Unarchive" : "Archive"}
               </button>
+              ${deleteCheckBtn}
               ${deleteBtn}
             </div>
           </div>
@@ -330,6 +332,85 @@
     }
   }
 
+  const DELETE_LABELS = {
+    venue_members: "участники",
+    venue_invites: "инвайты",
+    venue_positions: "должности",
+    shift_intervals: "интервалы",
+    shifts: "смены",
+    shift_assignments: "назначения",
+    shift_comments: "комментарии к сменам",
+    daily_reports: "отчёты",
+    daily_report_attachments: "вложения отчётов",
+    daily_report_values: "значения отчётов",
+    daily_report_audits: "аудит отчётов",
+    daily_report_tip_allocations: "распределения чаевых",
+    adjustments: "корректировки",
+    adjustment_disputes: "оспаривания",
+    adjustment_dispute_comments: "комментарии в спорах",
+    penalties: "штрафы",
+    bonuses: "премии",
+    writeoffs: "списания",
+    departments: "департаменты",
+    payment_methods: "способы оплаты",
+    kpi_metrics: "KPI",
+    expense_categories: "категории расходов",
+    suppliers: "поставщики",
+    expenses: "расходы",
+    expense_allocations: "распределения расходов",
+    expense_recognition_entries: "признание расходов",
+    finance_entries: "финансовые движения",
+    balance_adjustments: "корректировки баланса",
+    payment_method_transfers: "переводы между оплатами",
+    recurring_expense_rules: "правила регулярных расходов",
+    recurring_expense_rule_payment_methods: "связки правил и оплат",
+    recurring_expense_accruals: "начисления регулярных расходов",
+    day_economics_plans: "планы экономики дня",
+    day_economics_month_plans: "месячные планы экономики",
+    day_economics_plan_templates: "шаблоны экономики дня",
+    venue_economics_rules: "правила экономики",
+    pay_profiles: "профили начислений",
+    pay_components: "компоненты начислений",
+    pay_profile_assignments: "назначения профилей",
+    payroll_runs: "расчёты начислений",
+    payroll_lines: "строки начислений",
+    payroll_recalculation_logs: "логи перерасчёта",
+    notification_delivery_logs: "логи уведомлений",
+  };
+
+  function buildDeleteSummary(check) {
+    if (!check || typeof check !== "object") return "Проверка удаления недоступна";
+    if (check.requires_archive) return "Сначала отправь заведение в архив, затем удаляй.";
+    const groups = Array.isArray(check.non_zero_groups) ? check.non_zero_groups.slice(0, 8) : [];
+    if (!groups.length) return "Связанных записей почти нет. Можно удалять.";
+    const details = groups.map((item) => `${DELETE_LABELS[item.key] || item.key}: ${item.count}`).join(", ");
+    const totalRows = Number(check?.totals?.rows || 0);
+    return `Будут удалены связанные данные: ${details}. Всего записей: ${totalRows}.`;
+  }
+
+  async function getVenueDeleteCheck(id) {
+    return api(`/venues/${encodeURIComponent(id)}/delete-check`);
+  }
+
+  async function showDeleteCheck(id) {
+    setStatus("Проверяем удаление...");
+    try {
+      const check = await getVenueDeleteCheck(id);
+      setLastJson({ deleteCheck: "OK", response: check });
+      openModal("Проверка удаления", {
+        venue: check?.venue,
+        can_delete: check?.can_delete,
+        totals: check?.totals,
+        non_zero_groups: check?.non_zero_groups,
+      });
+      setStatus("Проверка готова");
+    } catch (e) {
+      setLastJson({ deleteCheck: "FAILED", message: e?.message, status: e?.status, data: e?.data });
+      setStatus("Ошибка проверки удаления");
+      toast(e?.message || "Ошибка проверки удаления", "err");
+    }
+  }
+
   async function renameVenue(id) {
     // найдём текущее имя из allVenues
     const v = allVenues.find(x => String(x?.id) === String(id));
@@ -371,9 +452,16 @@
   }
 
   async function deleteVenue(id) {
+    let check = null;
+    try {
+      check = await getVenueDeleteCheck(id);
+    } catch (e) {
+      setLastJson({ deleteCheckBeforeDelete: "FAILED", message: e?.message, status: e?.status, data: e?.data });
+    }
+
     const ok = await confirmModal({
       title: "Delete venue",
-      text: "Удаление разрешено только для archived venue. Продолжить?",
+      text: buildDeleteSummary(check),
       confirmText: "Delete",
       danger: true
     });
@@ -382,15 +470,18 @@
     setStatus("Deleting...");
     try {
       const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "DELETE" });
-      setLastJson({ delete: "OK", response: out });
+      setLastJson({ delete: "OK", response: out, deleteCheck: check });
       setStatus("Deleted");
       toast("Удалено", "ok");
       mode = "archived";
       await loadVenues();
     } catch (e) {
-      setLastJson({ delete: "FAILED", message: e?.message, status: e?.status, data: e?.data });
+      setLastJson({ delete: "FAILED", message: e?.message, status: e?.status, data: e?.data, deleteCheck: check });
       setStatus("Ошибка удаления");
       toast(e?.message || "Ошибка удаления", "err");
+      try {
+        await showDeleteCheck(id);
+      } catch {}
     }
   }
 
@@ -441,6 +532,7 @@
       const isArchived = btn.dataset.arch === "1";
       return toggleArchiveVenue(id, isArchived);
     }
+    if (action === "deleteCheck") return showDeleteCheck(id);
     if (action === "delete") return deleteVenue(id);
   });
 

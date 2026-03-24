@@ -123,7 +123,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe } from "/app.js?v=20260321-miniappfix2";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, openModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe } from "/app.js?v=20260321-miniappfix2";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, hasReportAccess, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix2";
 
     applyTelegramTheme();
@@ -169,7 +169,6 @@
         let canViewPayroll = false;
         let canOpenVenue = false;
 
-        let accessError = "";
         try {
           const me = await getMe().catch(() => null);
           isAdmin = isSysAdminRole(String(me?.system_role || ""));
@@ -199,7 +198,7 @@
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
 
         } catch (e) {
-          accessError = e?.data?.detail || e?.message || "";
+          // keep all false
         }
 
         // keep active venue in sync
@@ -207,22 +206,6 @@
 
         // Guard: if user cannot open venue page, redirect to schedule/dashboard
         if (!canOpenVenue) {
-          if (/не активно/i.test(String(accessError || ""))) {
-            document.body.innerHTML = `
-              <div class="container">
-                <div class="card">
-                  <div class="topbar">
-                    <div class="title"><b>Заведение недоступно</b></div>
-                  </div>
-                  <div class="muted">Заведение сейчас не активно. Для стаффа доступ к архивным заведениям закрыт.</div>
-                  <div class="row mt-12">
-                    <a class="btn" href="/app-venues.html">Назад к заведениям</a>
-                  </div>
-                </div>
-              </div>
-            `;
-            return;
-          }
           location.replace(`/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`);
           return;
         }
@@ -504,6 +487,54 @@ if (tipsModeEl) {
 
         // --- Actions ---
 
+        const DELETE_LABELS = {
+          venue_members: "участники",
+          venue_invites: "инвайты",
+          venue_positions: "должности",
+          shifts: "смены",
+          shift_assignments: "назначения",
+          daily_reports: "отчёты",
+          adjustments: "корректировки",
+          penalties: "штрафы",
+          bonuses: "премии",
+          writeoffs: "списания",
+          expenses: "расходы",
+          finance_entries: "финансовые движения",
+          pay_profiles: "профили начислений",
+          payroll_runs: "расчёты начислений",
+          payroll_lines: "строки начислений",
+        };
+
+        function buildDeleteSummary(check) {
+          if (!check || typeof check !== "object") return "Удаление разрешено только если заведение уже в архиве.";
+          if (check.requires_archive) return "Сначала отправь заведение в архив, затем удаляй.";
+          const groups = Array.isArray(check.non_zero_groups) ? check.non_zero_groups.slice(0, 8) : [];
+          if (!groups.length) return "Связанных записей почти нет. Можно удалять.";
+          const details = groups.map((item) => `${DELETE_LABELS[item.key] || item.key}: ${item.count}`).join(", ");
+          const totalRows = Number(check?.totals?.rows || 0);
+          return `Будут удалены связанные данные: ${details}. Всего записей: ${totalRows}.`;
+        }
+
+        async function getDeleteCheck() {
+          return api(`/venues/${venueId}/delete-check`);
+        }
+
+        async function showDeleteCheck() {
+          try {
+            const check = await getDeleteCheck();
+            openModal("Проверка удаления", {
+              venue: check?.venue,
+              can_delete: check?.can_delete,
+              totals: check?.totals,
+              non_zero_groups: check?.non_zero_groups,
+            });
+            return check;
+          } catch (e) {
+            toast("Ошибка проверки удаления: " + e.message, "err");
+            return null;
+          }
+        }
+
         btnRename.onclick = async () => {
           if (!venueId) return;
           const current = last.name || "";
@@ -568,9 +599,10 @@ if (tipsModeEl) {
         };
 
         btnDelete.onclick = async () => {
+          const check = await getDeleteCheck().catch(() => null);
           const ok = await confirmModal({
             title: "Удалить навсегда?",
-            text: "Удалить заведение навсегда? (разрешено только если оно в архиве)",
+            text: buildDeleteSummary(check),
             confirmText: "Удалить",
             danger: true,
           });
@@ -582,6 +614,7 @@ if (tipsModeEl) {
             location.href = "/app-venues.html";
           } catch (e) {
             toast("Ошибка удаления: " + e.message, "err");
+            await showDeleteCheck();
           }
         };
 
