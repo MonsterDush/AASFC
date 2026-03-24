@@ -392,7 +392,7 @@ function renderState() {
   periodRangeBtn?.classList.toggle("active", state.periodMode === "range");
 
   if (btnCalculate) btnCalculate.style.display = (state.can.calculate && state.periodMode === "month") ? "" : "none";
-  if (btnExport) btnExport.style.display = (state.can.view && state.periodMode === "month") ? "" : "none";
+  if (btnExport) btnExport.style.display = state.can.view ? "" : "none";
   if (backVenue) backVenue.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
   if (openSummary) {
     if (state.periodMode === "month") {
@@ -621,7 +621,14 @@ async function boot() {
   document.getElementById("btnCalculate")?.addEventListener("click", onCalculate);
   document.getElementById("btnExport")?.addEventListener("click", async () => {
     try {
-      await openExportLink(`/venues/${encodeURIComponent(state.venueId)}/payroll/export-link?month=${encodeURIComponent(state.month)}`);
+      const qs = new URLSearchParams();
+      if (state.periodMode === "range") {
+        qs.set("date_from", state.dateFrom);
+        qs.set("date_to", state.dateTo);
+      } else {
+        qs.set("month", state.month);
+      }
+      await openExportLink(`/venues/${encodeURIComponent(state.venueId)}/payroll/export-link?${qs.toString()}`);
     } catch (e) {
       toast(e?.data?.detail || e?.message || "Не удалось начать экспорт", "err");
     }

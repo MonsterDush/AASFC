@@ -436,7 +436,7 @@ def build_monthly_summary_xlsx(
 
 def build_payroll_xlsx(
     *,
-    month: str,
+    period_label: str,
     venue_name: str,
     payload: dict[str, Any],
 ) -> bytes:
@@ -450,7 +450,7 @@ def build_payroll_xlsx(
     _write_key_values(
         ws,
         [
-            ("Месяц", month),
+            ("Период", period_label),
             ("Строк начислений", int(payload.get("lines_count") or 0)),
             ("Итого, ₽", _minor_to_major(payload.get("total_amount_minor"))),
             ("Рассчитано", run.get("calculated_at")),

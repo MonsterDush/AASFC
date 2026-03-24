@@ -5056,15 +5056,44 @@ def export_monthly_summary(
     return _build_monthly_summary_export_response(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=user)
 
 
-def _build_payroll_export_response(*, venue_id: int, month: str, db: Session, user: User | None = None):
+def _build_payroll_export_response(
+    *,
+    venue_id: int,
+    month: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session,
+    user: User | None = None,
+):
     if user is not None:
         _require_payroll_view(db, venue_id=venue_id, user=user)
 
+    try:
+        period_start, period_end, period_meta = resolve_salary_period(month=month, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     venue_name = _load_export_venue_name(db, venue_id=venue_id)
     safe_venue = _safe_export_venue_slug(venue_name, venue_id)
-    payload = _load_payroll_payload(db, venue_id=venue_id, month=month)
-    xlsx_bytes = build_payroll_xlsx(month=month, venue_name=venue_name, payload=payload)
-    filename = f"payroll_{safe_venue}_{month}.xlsx"
+
+    if period_meta.get("mode") == "month":
+        period_month = str(period_meta.get("month") or month)
+        payload = _load_payroll_payload(db, venue_id=venue_id, month=period_month)
+        period_label = period_month
+        filename_period = period_month
+    else:
+        payload = _build_venue_payroll_period_payload(
+            db,
+            venue_id=venue_id,
+            period_start=period_start,
+            period_end=period_end,
+            period_meta=period_meta,
+        )
+        period_label = f"{period_start.isoformat()} — {period_end.isoformat()}"
+        filename_period = f"{period_start.isoformat()}_{period_end.isoformat()}"
+
+    xlsx_bytes = build_payroll_xlsx(period_label=period_label, venue_name=venue_name, payload=payload)
+    filename = f"payroll_{safe_venue}_{filename_period}.xlsx"
     return StreamingResponse(
         BytesIO(xlsx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -5081,20 +5110,35 @@ def _build_payroll_export_response(*, venue_id: int, month: str, db: Session, us
 def get_payroll_export_link(
     venue_id: int,
     request: Request,
-    month: str = Query(..., description="YYYY-MM"),
+    month: str | None = Query(None, description="YYYY-MM"),
+    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_payroll_view(db, venue_id=venue_id, user=user)
-    parse_month_start(month)
+    try:
+        resolve_salary_period(month=month, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     token = make_signed_token({
         "action": "payroll_export",
         "venue_id": int(venue_id),
-        "month": month,
+        "month": month or None,
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
         "user_id": int(user.id),
     })
+    q: list[str] = []
+    if month:
+        q.append(f"month={quote(month)}")
+    if date_from:
+        q.append(f"date_from={quote(date_from.isoformat())}")
+    if date_to:
+        q.append(f"date_to={quote(date_to.isoformat())}")
+    q.append(f"token={quote(token)}")
     base = str(request.base_url).rstrip("/")
-    export_path = f"/venues/{venue_id}/payroll/export?month={quote(month)}&token={quote(token)}"
+    export_path = f"/venues/{venue_id}/payroll/export?{'&'.join(q)}"
     return {
         "export_path": export_path,
         "export_link": f"{base}{export_path}",
@@ -5105,7 +5149,9 @@ def get_payroll_export_link(
 @router.get("/{venue_id}/payroll/export")
 def export_payroll(
     venue_id: int,
-    month: str = Query(..., description="YYYY-MM"),
+    month: str | None = Query(None, description="YYYY-MM"),
+    date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
+    date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     token: str | None = Query(None, description="Signed export token for external browser"),
     db: Session = Depends(get_db),
     user: User | None = Depends(get_current_user_optional),
@@ -5117,14 +5163,16 @@ def export_payroll(
             raise HTTPException(status_code=401, detail="Invalid export token")
         if str(payload.get("action") or "") != "payroll_export" or int(payload.get("venue_id") or 0) != int(venue_id):
             raise HTTPException(status_code=401, detail="Invalid export token")
-        month = str(payload.get("month") or month)
-        parse_month_start(month)
-        return _build_payroll_export_response(venue_id=venue_id, month=month, db=db, user=None)
+        month = payload.get("month") or None
+        raw_date_from = payload.get("date_from") or None
+        raw_date_to = payload.get("date_to") or None
+        date_from = date.fromisoformat(raw_date_from) if raw_date_from else None
+        date_to = date.fromisoformat(raw_date_to) if raw_date_to else None
+        return _build_payroll_export_response(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=None)
 
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    parse_month_start(month)
-    return _build_payroll_export_response(venue_id=venue_id, month=month, db=db, user=user)
+    return _build_payroll_export_response(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=user)
 
 
 
