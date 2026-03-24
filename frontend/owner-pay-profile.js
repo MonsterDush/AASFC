@@ -773,7 +773,7 @@ function componentForm({ mode, item }) {
         <span>Порядок</span>
         <input id="f_sort_order" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
       </label>
-      <label class="chk">
+      <label class="chk" style="display:flex; align-items:center; gap:4px;">
         <input type="checkbox" id="f_active" ${activeChecked} />
         <span>Компонент активен</span>
       </label>
