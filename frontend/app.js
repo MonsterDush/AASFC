@@ -1295,7 +1295,7 @@ export async function mountVenueMenu({ containerSelector = "#venueMenu", onVenue
   label.textContent = t("venue") + ":";
 
   const sel = document.createElement("select");
-  sel.className = "venue-switch__select";
+  sel.className = "input min-w240";
 
   if (!venues.length) {
     const opt = document.createElement("option");
