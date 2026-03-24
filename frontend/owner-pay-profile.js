@@ -1185,7 +1185,7 @@ function assignmentForm({ mode, item }) {
         <span>Дата окончания</span>
         <input id="f_end_date" type="date" value="${esc(it.end_date || "")}" />
       </label>
-      <label class="chk">
+      <label class="chk" style="display:flex; align-items:center; gap:4px;">
         <input type="checkbox" id="f_active" ${activeChecked} />
         <span>Назначение активно</span>
       </label>
@@ -1258,7 +1258,7 @@ function openProfileEditor() {
           <span>Описание</span>
           <textarea id="f_description" rows="4">${esc(state.profile.description || "")}</textarea>
         </label>
-        <label class="chk">
+        <label class="chk" style="display:flex; align-items:center; gap:4px;">
           <input type="checkbox" id="f_active" ${state.profile.is_active ? "checked" : ""} />
           <span>Профиль активен</span>
         </label>
