@@ -53,7 +53,7 @@ function templateOptionsHtml(selected) {
 
 function customTargetsHtml(selected = []) {
   const set = new Set((Array.isArray(selected) ? selected : []).map((v) => Number(v)));
-  return WEEKDAYS.map(([id, title]) => `<label class="badge" style="cursor:pointer;"><input type="checkbox" name="custom_target_weekday" value="${id}" ${set.has(id) ? 'checked' : ''} /> ${esc(title)}</label>`).join(' ');
+  return WEEKDAYS.map(([id, title]) => `<label class="badge checkline" style="cursor:pointer;"><input type="checkbox" name="custom_target_weekday" value="${id}" ${set.has(id) ? 'checked' : ''} /><span class="checkline__text">${esc(title)}</span></label>`).join(' ');
 }
 
 function setAllPlanToggles(form, prefix, checked) {
@@ -186,24 +186,24 @@ function planFormHtml(prefix, title, subtitle, plan = {}, options = {}) {
       </div>
     </div>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_revenue" ${enabled.revenue ? "checked" : ""} /> Использовать план выручки</span>
+      <span class="checkline"><input type="checkbox" name="${prefix}_enable_revenue" ${enabled.revenue ? "checked" : ""} /><span class="checkline__text">Использовать план выручки</span></span>
       <input name="${prefix}_revenue_plan" type="text" placeholder="150000.00" value="${esc(toInputMoney(plan?.revenue_plan_minor))}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_profit" ${enabled.profit ? "checked" : ""} /> Использовать план прибыли</span>
+      <span class="checkline"><input type="checkbox" name="${prefix}_enable_profit" ${enabled.profit ? "checked" : ""} /><span class="checkline__text">Использовать план прибыли</span></span>
       <input name="${prefix}_profit_plan" type="text" placeholder="50000.00" value="${esc(toInputMoney(plan?.profit_plan_minor))}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_revenue_per_assigned" ${enabled.revenuePerAssigned ? "checked" : ""} /> Использовать план выручки на сотрудника</span>
+      <span class="checkline"><input type="checkbox" name="${prefix}_enable_revenue_per_assigned" ${enabled.revenuePerAssigned ? "checked" : ""} /><span class="checkline__text">Использовать план выручки на сотрудника</span></span>
       <input name="${prefix}_revenue_per_assigned_plan" type="text" placeholder="30000.00" value="${esc(toInputMoney(plan?.revenue_per_assigned_plan_minor))}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_assigned_user_target" ${enabled.assignedUsers ? "checked" : ""} /> Использовать цель по сотрудникам</span>
+      <span class="checkline"><input type="checkbox" name="${prefix}_enable_assigned_user_target" ${enabled.assignedUsers ? "checked" : ""} /><span class="checkline__text">Использовать цель по сотрудникам</span></span>
       <input name="${prefix}_assigned_user_target" type="number" min="0" step="1" placeholder="5" value="${plan?.assigned_user_target == null ? "" : esc(String(plan.assigned_user_target))}" />
     </label>
     ${includeDayMeta ? `
       <label>
-        <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_day_meta" ${dayKind ? "checked" : ""} /> Отметить как спец-день / праздник</span>
+        <span class="checkline"><input type="checkbox" name="${prefix}_enable_day_meta" ${dayKind ? "checked" : ""} /><span class="checkline__text">Отметить как спец-день / праздник</span></span>
         <select name="${prefix}_day_kind">
           <option value="SPECIAL" ${dayKind === 'SPECIAL' ? 'selected' : ''}>Спец-день</option>
           <option value="HOLIDAY" ${dayKind === 'HOLIDAY' ? 'selected' : ''}>Праздник</option>

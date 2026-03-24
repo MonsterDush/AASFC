@@ -153,26 +153,26 @@ function buildRulesForm(rules = {}) {
   };
   return `
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="enable_max_expense_ratio" ${isEnabled.expense ? "checked" : ""} /> Контролировать макс. расходы / выручка</span>
+      <span class="checkline"><input type="checkbox" name="enable_max_expense_ratio" ${isEnabled.expense ? "checked" : ""} /><span class="checkline__text">Контролировать макс. расходы / выручка</span></span>
       <input name="max_expense_ratio_pct" type="text" placeholder="35" value="${rules.max_expense_ratio_bps != null ? esc((Number(rules.max_expense_ratio_bps) / 100).toFixed(2)) : ""}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="enable_max_payroll_ratio" ${isEnabled.payroll ? "checked" : ""} /> Контролировать макс. ФОТ / выручка</span>
+      <span class="checkline"><input type="checkbox" name="enable_max_payroll_ratio" ${isEnabled.payroll ? "checked" : ""} /><span class="checkline__text">Контролировать макс. ФОТ / выручка</span></span>
       <input name="max_payroll_ratio_pct" type="text" placeholder="20" value="${rules.max_payroll_ratio_bps != null ? esc((Number(rules.max_payroll_ratio_bps) / 100).toFixed(2)) : ""}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="enable_min_revenue_per_assigned" ${isEnabled.revenuePerAssigned ? "checked" : ""} /> Контролировать мин. выручку на сотрудника</span>
+      <span class="checkline"><input type="checkbox" name="enable_min_revenue_per_assigned" ${isEnabled.revenuePerAssigned ? "checked" : ""} /><span class="checkline__text">Контролировать мин. выручку на сотрудника</span></span>
       <input name="min_revenue_per_assigned" type="text" placeholder="25000.00" value="${rules.min_revenue_per_assigned_minor != null ? esc((Number(rules.min_revenue_per_assigned_minor) / 100).toFixed(2)) : ""}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="enable_min_assigned_shift_coverage" ${isEnabled.coverage ? "checked" : ""} /> Контролировать мин. покрытие смен</span>
+      <span class="checkline"><input type="checkbox" name="enable_min_assigned_shift_coverage" ${isEnabled.coverage ? "checked" : ""} /><span class="checkline__text">Контролировать мин. покрытие смен</span></span>
       <input name="min_assigned_shift_coverage_pct" type="text" placeholder="80" value="${rules.min_assigned_shift_coverage_bps != null ? esc((Number(rules.min_assigned_shift_coverage_bps) / 100).toFixed(2)) : ""}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="enable_min_profit" ${isEnabled.profit ? "checked" : ""} /> Контролировать мин. прибыль дня</span>
+      <span class="checkline"><input type="checkbox" name="enable_min_profit" ${isEnabled.profit ? "checked" : ""} /><span class="checkline__text">Контролировать мин. прибыль дня</span></span>
       <input name="min_profit" type="text" placeholder="10000.00" value="${rules.min_profit_minor != null ? esc((Number(rules.min_profit_minor) / 100).toFixed(2)) : ""}" />
     </label>
-    <label class="row" style="gap:8px; align-items:center;"><input name="warn_on_draft_expenses" type="checkbox" ${rules.warn_on_draft_expenses !== false ? "checked" : ""} /> Предупреждать о черновых расходах</label>
+    <label class="checkline checkline--block"><input name="warn_on_draft_expenses" type="checkbox" ${rules.warn_on_draft_expenses !== false ? "checked" : ""} /><span class="checkline__text">Предупреждать о черновых расходах</span></label>
     <div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить нормативы</button></div>
   `;
 }

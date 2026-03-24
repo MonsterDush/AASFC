@@ -48,8 +48,7 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountNav } from "/app.js?v=20260321-miniappfix2";
-import { permSetFromResponse, hasPerm, roleUpper } from "/permissions.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountNav } from "/app.js?v=20260324-venuesflow";
 
 applyTelegramTheme();
 mountCommonUI("app");
@@ -59,54 +58,64 @@ await mountNav({ activeTab: "none" });
 const list = document.getElementById("list");
 function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
 
-function card(v){
-  const div = document.createElement("div");
-  div.className = "itemcard";
-  div.innerHTML = `
-    <div class="row" style="justify-content:space-between;align-items:flex-start">
-      <div>
-        <b>${esc(v.name)}</b>
-        <div class="small">id=${v.id} · my_role=${esc(v.my_role || "")}</div>
+function venueCard(v){
+  const archived = !!v.is_archived;
+  const chip = archived ? '<span class="badge" style="margin-left:8px">архив</span>' : '';
+  const hint = archived
+    ? '<div class="small" style="margin-top:6px">Заведение сейчас не активно. Доступно только владельцу.</div>'
+    : '';
+  const href = v.open_target || `/staff-shifts.html?venue_id=${encodeURIComponent(v.id)}`;
+  return `
+    <div class="itemcard">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div style="min-width:0;flex:1 1 auto;">
+          <b>${esc(v.name)}${chip}</b>
+          <div class="small">id=${v.id} · my_role=${esc(v.my_role || "")}</div>
+          ${hint}
+        </div>
+        <a class="link" href="${href}" data-open data-id="${v.id}">Открыть →</a>
       </div>
-      <a class="link" href="/app-venue.html?venue_id=${v.id}" data-open>Открыть →</a>
     </div>
   `;
-div.querySelector("[data-open]").onclick = async (e) => {
-  e.preventDefault();
-  setActiveVenueId(v.id);
+}
 
-  const role = String(v.my_role || "").toUpperCase();
-  if (role !== "STAFF") {
-    location.href = `/owner-summary.html?venue_id=${encodeURIComponent(v.id)}`;
+function renderSections(data){
+  const active = (data || []).filter((v) => !v.is_archived);
+  const archived = (data || []).filter((v) => !!v.is_archived);
+  if (!active.length && !archived.length) {
+    list.innerHTML = `<div class="muted">Пока нет заведений</div>`;
     return;
   }
-
-  try {
-    const perms = await api(`/me/venues/${encodeURIComponent(v.id)}/permissions`);
-    const pset = permSetFromResponse(perms);
-    const venueRole = roleUpper(perms);
-    const canOpenVenue = venueRole === "OWNER" || venueRole === "VENUE_OWNER" || hasPerm(pset, "VENUE_VIEW");
-    location.href = canOpenVenue
-      ? `/app-venue.html?venue_id=${encodeURIComponent(v.id)}`
-      : `/staff-shifts.html?venue_id=${encodeURIComponent(v.id)}`;
-  } catch (e2) {
-    const msg = e2?.data?.detail || e2?.message || "Не удалось открыть заведение";
-    toast(msg, "err");
+  let html = '';
+  if (active.length) {
+    html += `
+      <div class="section-head" style="margin-top:6px"><div class="section-title"><b>Активные заведения</b></div></div>
+      <div class="list">${active.map(venueCard).join('')}</div>
+    `;
   }
-};
-  return div;
+  if (archived.length) {
+    html += `
+      <div class="section-head" style="margin-top:14px"><div class="section-title"><b>Архив</b></div><div class="small">Скрыт для staff, доступен только владельцу.</div></div>
+      <div class="list">${archived.map(venueCard).join('')}</div>
+    `;
+  }
+  list.innerHTML = html;
+  list.querySelectorAll('[data-open]').forEach((el) => {
+    el.onclick = (e) => {
+      e.preventDefault();
+      const id = el.getAttribute('data-id');
+      if (id) setActiveVenueId(id);
+      location.href = el.getAttribute('href') || '/app-venues.html';
+    };
+  });
 }
 
 async function load(){
   list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
   try{
-    const data = await api("/me/venues");
+    const data = await api("/me/venues?include_archived=true");
     window.__lastJson = data;
-    list.innerHTML = "";
-    if (!data.length) list.innerHTML = `<div class="muted">Пока нет заведений</div>`;
-    data.forEach(v => list.appendChild(card(v)));
-
-
+    renderSections(Array.isArray(data) ? data : []);
   }catch(e){
     list.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
     toast("Ошибка загрузки: " + e.message, "err");

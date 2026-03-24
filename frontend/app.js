@@ -706,8 +706,9 @@ export async function getMe({ timeoutMs = 8000 } = {}) {
   return withTimeout(api("/me"), timeoutMs, "ME_TIMEOUT");
 }
 
-export async function getMyVenues({ timeoutMs = 8000 } = {}) {
-  return withTimeout(api("/me/venues"), timeoutMs, "MY_VENUES_TIMEOUT");
+export async function getMyVenues({ timeoutMs = 8000, includeArchived = false } = {}) {
+  const suffix = includeArchived ? "?include_archived=true" : "";
+  return withTimeout(api(`/me/venues${suffix}`), timeoutMs, "MY_VENUES_TIMEOUT");
 }
 
 export async function getMyVenuePermissions(venueId, { timeoutMs = 8000 } = {}) {
@@ -1093,7 +1094,7 @@ export async function getVenueById(venueId) {
   if (!venueId) return null;
 
   // Берём из "моих заведений" (это доступно OWNER/STAFF)
-  const list = await api("/me/venues");
+  const list = await api("/me/venues?include_archived=true");
   const v = (list || []).find(x => String(x.id) === String(venueId));
   return v || null;
 }

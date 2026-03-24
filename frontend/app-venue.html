@@ -23,6 +23,11 @@
     <div class="card">
       <div class="muted">Управление заведением и участниками.</div>
 
+      <div class="itemcard mt-12 hidden" id="archiveNotice">
+        <b>Заведение в архиве</b>
+        <div class="muted mt-6">Оно скрыто из активного списка staff. Владелец может просматривать карточку, вернуть заведение или удалить его.</div>
+      </div>
+
       <div class="itemcard mt-12">
         <b>Информация</b>
         <div class="mono" id="meta">…</div>
@@ -123,7 +128,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, openModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe } from "/app.js?v=20260321-miniappfix2";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe } from "/app.js?v=20260324-venuesflow";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, hasReportAccess, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix2";
 
     applyTelegramTheme();
@@ -197,6 +202,12 @@
 
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
 
+          if (perms?.venue_inactive && !isOwner && !isAdmin) {
+            toast(perms?.access_denied_reason || "Заведение сейчас не активно", "warn");
+            location.replace(`/app-venues.html?venue_id=${encodeURIComponent(venueId)}`);
+            return;
+          }
+
         } catch (e) {
           // keep all false
         }
@@ -214,6 +225,7 @@ const titleEl = document.getElementById("title");
         const metaEl = document.getElementById("meta");
         const metaHint = document.getElementById("metaHint");
         const membersEl = document.getElementById("members");
+        const archiveNotice = document.getElementById("archiveNotice");
 
         // tips settings UI
         const tipsEnabledEl = document.getElementById("tipsEnabled");
@@ -462,6 +474,7 @@ if (tipsModeEl) {
               last.is_archived = !!v.is_archived;
               titleEl.textContent = v.name || `Заведение ${venueId}`;
               metaEl.textContent = `venue_id=${venueId} · ${last.is_archived ? "в архиве" : "активно"}` + (v.archived_at ? ` · archived_at=${v.archived_at}` : "");
+              if (archiveNotice) archiveNotice.classList.toggle("hidden", !last.is_archived);
             } else {
               titleEl.textContent = `Заведение ${venueId}`;
             }
@@ -486,54 +499,6 @@ if (tipsModeEl) {
         }
 
         // --- Actions ---
-
-        const DELETE_LABELS = {
-          venue_members: "участники",
-          venue_invites: "инвайты",
-          venue_positions: "должности",
-          shifts: "смены",
-          shift_assignments: "назначения",
-          daily_reports: "отчёты",
-          adjustments: "корректировки",
-          penalties: "штрафы",
-          bonuses: "премии",
-          writeoffs: "списания",
-          expenses: "расходы",
-          finance_entries: "финансовые движения",
-          pay_profiles: "профили начислений",
-          payroll_runs: "расчёты начислений",
-          payroll_lines: "строки начислений",
-        };
-
-        function buildDeleteSummary(check) {
-          if (!check || typeof check !== "object") return "Удаление разрешено только если заведение уже в архиве.";
-          if (check.requires_archive) return "Сначала отправь заведение в архив, затем удаляй.";
-          const groups = Array.isArray(check.non_zero_groups) ? check.non_zero_groups.slice(0, 8) : [];
-          if (!groups.length) return "Связанных записей почти нет. Можно удалять.";
-          const details = groups.map((item) => `${DELETE_LABELS[item.key] || item.key}: ${item.count}`).join(", ");
-          const totalRows = Number(check?.totals?.rows || 0);
-          return `Будут удалены связанные данные: ${details}. Всего записей: ${totalRows}.`;
-        }
-
-        async function getDeleteCheck() {
-          return api(`/venues/${venueId}/delete-check`);
-        }
-
-        async function showDeleteCheck() {
-          try {
-            const check = await getDeleteCheck();
-            openModal("Проверка удаления", {
-              venue: check?.venue,
-              can_delete: check?.can_delete,
-              totals: check?.totals,
-              non_zero_groups: check?.non_zero_groups,
-            });
-            return check;
-          } catch (e) {
-            toast("Ошибка проверки удаления: " + e.message, "err");
-            return null;
-          }
-        }
 
         btnRename.onclick = async () => {
           if (!venueId) return;
@@ -599,10 +564,9 @@ if (tipsModeEl) {
         };
 
         btnDelete.onclick = async () => {
-          const check = await getDeleteCheck().catch(() => null);
           const ok = await confirmModal({
             title: "Удалить навсегда?",
-            text: buildDeleteSummary(check),
+            text: "Удалить заведение навсегда? (разрешено только если оно в архиве)",
             confirmText: "Удалить",
             danger: true,
           });
@@ -614,7 +578,6 @@ if (tipsModeEl) {
             location.href = "/app-venues.html";
           } catch (e) {
             toast("Ошибка удаления: " + e.message, "err");
-            await showDeleteCheck();
           }
         };
 

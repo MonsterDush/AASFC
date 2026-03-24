@@ -266,9 +266,9 @@ function buildBasisPaymentMethodCheckboxes(selectedIds = []) {
   const selected = new Set((selectedIds || []).map((x) => String(x)));
   if (!state.paymentMethods.length) return `<div class="muted">Нет типов оплат.</div>`;
   return state.paymentMethods.map((pm) => `
-    <label style="display:flex; gap:8px; align-items:center; font-weight:600; color:inherit;">
+    <label class="checkline checkline--block">
       <input type="checkbox" name="basis_payment_method_ids" value="${pm.id}" ${selected.has(String(pm.id)) ? "checked" : ""} />
-      <span>${esc(pm.title)}</span>
+      <span class="checkline__text">${esc(pm.title)}</span>
     </label>
   `).join("");
 }
@@ -293,9 +293,9 @@ function buildRuleForm(item = null) {
       </label>
       <label id="ruleAmountWrap">Сумма, ₽<input name="amount" type="text" placeholder="150000.00" value="${item?.amount_minor != null ? esc((Number(item.amount_minor) / 100).toFixed(2)) : ""}" /></label>
       <label id="rulePercentWrap">Процент, %<input name="percent" type="text" placeholder="2.50" value="${item?.percent_bps != null ? esc((Number(item.percent_bps) / 100).toFixed(2)) : ""}" /></label>
-      <label style="display:flex; gap:8px; align-items:center; font-weight:600; color:inherit;">
+      <label class="checkline checkline--block">
         <input name="is_active" type="checkbox" ${item?.is_active === false ? "" : "checked"} />
-        <span>Правило активно</span>
+        <span class="checkline__text">Правило активно</span>
       </label>
       <label>Комментарий / описание<textarea name="description" rows="4" placeholder="Например: аренда помещения">${esc(item?.description || "")}</textarea></label>
       <div id="basisPaymentMethodsWrap">

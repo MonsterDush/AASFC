@@ -283,6 +283,7 @@ def get_notification_history(
 
 @router.get("/me/venues")
 def my_venues(
+    include_archived: bool = Query(default=False),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -296,19 +297,69 @@ def my_venues(
         .order_by(Venue.id.desc())
     ).all()
 
+    venue_ids = [int(r.id) for r in rows]
+    position_codes_by_venue: dict[int, set[str]] = {}
+    if venue_ids:
+        position_rows = db.execute(
+            select(VenuePosition.venue_id, VenuePosition.permission_codes)
+            .where(
+                VenuePosition.member_user_id == user.id,
+                VenuePosition.is_active.is_(True),
+                VenuePosition.venue_id.in_(venue_ids),
+            )
+        ).all()
+        for row in position_rows:
+            vid = int(row.venue_id)
+            position_codes_by_venue.setdefault(vid, set()).update(parse_permission_codes(row.permission_codes))
+
     items = []
+    is_admin = user.system_role in {"SUPER_ADMIN", "MODERATOR"}
     for r in rows:
         role = str(r.venue_role or "").upper()
+        is_owner = role == "OWNER"
         is_archived = bool(r.is_archived)
-        if is_archived and role != "OWNER":
+
+        if is_archived and not (is_owner or is_admin):
             continue
+        if is_archived and not include_archived:
+            continue
+
+        raw_codes = sorted(position_codes_by_venue.get(int(r.id), set()))
+        normalized_codes = set(normalize_known_permission_codes(db, raw_codes)) if raw_codes else set()
+        expanded_codes = expand_permission_codes(normalized_codes) if normalized_codes else set()
+
+        defaults_role = VENUE_ROLE_TO_DEFAULT_ROLE.get(r.venue_role)
+        default_codes = set(get_default_permission_codes_for_role(defaults_role)) if defaults_role else set()
+        if defaults_role:
+            default_codes.update(
+                db.scalars(
+                    select(RolePermissionDefault.permission_code)
+                    .join(Permission, Permission.code == RolePermissionDefault.permission_code)
+                    .where(
+                        RolePermissionDefault.role == defaults_role,
+                        RolePermissionDefault.is_granted_by_default.is_(True),
+                        Permission.is_active.is_(True),
+                    )
+                ).all()
+            )
+        expanded_codes.update(expand_permission_codes(default_codes) if default_codes else set())
+        can_open_venue = bool(is_owner or is_admin or {"VENUE_VIEW", "VENUE_SETTINGS_EDIT"}.intersection(expanded_codes))
+        open_target = (
+            f"/app-venue.html?venue_id={int(r.id)}"
+            if can_open_venue
+            else f"/staff-shifts.html?venue_id={int(r.id)}"
+        )
+
         items.append({
-            "id": r.id,
+            "id": int(r.id),
             "name": r.name,
             "my_role": r.venue_role,
             "is_archived": is_archived,
             "archived_at": r.archived_at.isoformat() if r.archived_at else None,
+            "can_open_venue": can_open_venue,
+            "open_target": open_target,
         })
+
     return items
 
 
@@ -401,10 +452,6 @@ def my_venue_permissions(
         }
 
     # ---- venue membership ----
-    venue = db.execute(
-        select(Venue).where(Venue.id == venue_id)
-    ).scalar_one_or_none()
-
     vm = db.execute(
         select(VenueMember).where(
             VenueMember.venue_id == venue_id,
@@ -413,18 +460,31 @@ def my_venue_permissions(
         )
     ).scalar_one_or_none()
 
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    venue_inactive = bool(getattr(venue, "is_archived", False))
+
     if vm is None:
         return {
             "venue_id": venue_id,
             "role": None,
             "permissions": [],
             "position": None,
+            "venue_inactive": venue_inactive,
+            "access_denied_reason": "Заведение сейчас не активно" if venue_inactive else None,
         }
 
-    if venue is not None and bool(venue.is_archived) and str(vm.venue_role or "").upper() != "OWNER":
-        raise HTTPException(status_code=403, detail="Заведение сейчас не активно")
+    role_upper = str(vm.venue_role or "").upper()
+    if venue_inactive and user.system_role not in ("SUPER_ADMIN", "MODERATOR") and role_upper != "OWNER":
+        return {
+            "venue_id": venue_id,
+            "role": vm.venue_role,
+            "permissions": [],
+            "position": None,
+            "venue_inactive": True,
+            "access_denied_reason": "Заведение сейчас не активно",
+        }
 
-    if str(vm.venue_role or "").upper() == "OWNER":
+    if role_upper == "OWNER":
         # OWNER has full access inside their venue
         all_codes = db.scalars(select(Permission.code).where(Permission.is_active.is_(True))).all()
         codes = list(all_codes)
@@ -482,6 +542,8 @@ def my_venue_permissions(
         "role": vm.venue_role,
         "permissions": merged,
         "position": position_obj,
+        "venue_inactive": venue_inactive,
+        "access_denied_reason": None,
     }
 
 

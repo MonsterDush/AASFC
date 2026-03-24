@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.permission_codes import parse_permission_codes
 from app.core.permission_policy import expand_permission_codes, get_default_permission_codes_for_role, normalize_permission_code
 from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
-from app.models import Permission, RolePermissionDefault, User, VenueMember, VenuePosition
+from app.models import Permission, RolePermissionDefault, User, Venue, VenueMember, VenuePosition
 
 
 def require_venue_permission(
@@ -70,9 +70,18 @@ def require_venue_permission(
     if vm is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a venue member")
 
+    venue_is_archived = bool(
+        db.execute(
+            select(Venue.is_archived).where(Venue.id == venue_id)
+        ).scalar_one_or_none()
+    )
+
     # venue OWNER: full access inside this venue
     if str(vm.venue_role or "").upper() == "OWNER":
         return
+
+    if venue_is_archived:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Заведение сейчас не активно")
 
     # ---- per-position permissions (fine-grained) ----
     pos = db.execute(
