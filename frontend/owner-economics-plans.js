@@ -145,6 +145,14 @@ function toInputMoney(minor) {
   return (Number(minor) / 100).toFixed(2);
 }
 
+
+function usageInlineText(payload, { empty = 'Пока не используется в процентных начислениях' } = {}) {
+  const componentCount = Number(payload?.usage_component_count || 0);
+  const profileCount = Number(payload?.usage_profile_count || 0);
+  if (!componentCount) return empty;
+  return `Используется в ${componentCount} компонент(ах)${profileCount ? ` · профилей: ${profileCount}` : ''}`;
+}
+
 function departmentPlansTableHtml(prefix, payload = {}, options = {}) {
   const rows = Array.isArray(payload?.items) ? payload.items : [];
   const canManage = !!options.canManage;
@@ -162,6 +170,7 @@ function departmentPlansTableHtml(prefix, payload = {}, options = {}) {
           <div>
             <b>${esc(row.department_title || 'Департамент')}</b>
             <div class="muted mt-6">${esc(row.department_code || '')}</div>
+            <div class="muted mt-6">${esc(usageInlineText(row))}</div>
             <input type="hidden" name="${prefix}_department_id" value="${esc(row.department_id)}" />
           </div>
           <div>
@@ -338,12 +347,14 @@ function renderEffective(plan) {
   if (kind) parts.push(kind);
   if (title) parts.push(title);
   if (plan?.notes) parts.push(plan.notes);
+  setText("effectivePlanUsage", usageInlineText(plan, { empty: 'Этот источник пока не используется в повышенном проценте.' }));
   setText("effectivePlanNotes", parts.length ? parts.join(" · ") : "Без комментария.");
 }
 
 function renderMonthPlan(plan) {
   setText("monthPlanBadge", plan?.template_month_title || state.month || "—");
   setText("monthPlanHint", plan?.notes || "Этот план применяется ко всем дням выбранного месяца, если на дату нет override.");
+  setText("monthPlanUsage", usageInlineText(plan, { empty: 'Месячный план заведения пока не участвует в повышенном проценте.' }));
   const form = document.getElementById("monthPlanForm");
   if (!form) return;
   form.innerHTML = planFormHtml("month", "План на месяц", `Шаблон для ${plan?.template_month_title || state.month}`, plan) + `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить план месяца</button></div>`;

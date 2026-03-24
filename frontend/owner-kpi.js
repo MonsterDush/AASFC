@@ -137,6 +137,18 @@ function wireEditModalClose() {
   m.querySelectorAll("[data-close]").forEach((x) => x.addEventListener("click", closeEditModal));
 }
 
+
+function usageSummary(metric) {
+  const total = Number(metric?.usage_component_count || 0);
+  const boost = Number(metric?.usage_boost_component_count || 0);
+  const bonus = Number(metric?.usage_bonus_component_count || 0);
+  if (!total) return 'Пока не используется в начислениях';
+  const parts = [];
+  if (bonus) parts.push(`бонусов: ${bonus}`);
+  if (boost) parts.push(`повышений %: ${boost}`);
+  return `Используется в начислениях · ${parts.join(' · ')}`;
+}
+
 const UNIT_LABEL = {
   QTY: "Штуки (QTY)",
   RUB: "Рубли (RUB)",
@@ -192,9 +204,11 @@ function renderList() {
     left.innerHTML = `
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
         <b>${esc(it.title)}</b>
-        ${it.is_active ? "" : `<span class=\"badge\">архив</span>`}
+        ${it.is_active ? "" : `<span class="badge">архив</span>`}
+        ${Number(it.usage_component_count || 0) > 0 ? `<span class="badge">в начислениях: ${esc(it.usage_component_count)}</span>` : ``}
       </div>
       <div class="mono muted listrow__meta">code=${esc(it.code)} · unit=${esc(unit)} · sort=${esc(it.sort_order)}</div>
+      <div class="muted mt-6">${esc(usageSummary(it))}</div>
     `;
 
     const right = document.createElement("div");
@@ -216,7 +230,7 @@ function renderList() {
       btn.onclick = async () => {
         const ok = await confirmModal({
           title: it.is_active ? "Архивировать KPI?" : "Восстановить KPI?",
-          text: `${it.is_active ? "Убрать" : "Вернуть"} "${it.title}"?`,
+          text: `${it.is_active ? "Убрать" : "Вернуть"} "${it.title}"?${Number(it.usage_component_count || 0) > 0 ? ` Метрика используется в ${it.usage_component_count} компонент(ах) начислений.` : ''}`,
           confirmText: it.is_active ? "В архив" : "Вернуть",
           danger: it.is_active,
         });

@@ -357,6 +357,8 @@ class DepartmentPlanItemOut(BaseModel):
     notes: str | None = None
     actual_current_minor: int = 0
     actual_previous_minor: int | None = None
+    usage_component_count: int = 0
+    usage_profile_count: int = 0
 
 
 class DepartmentPlanMonthOut(BaseModel):
@@ -622,6 +624,8 @@ class DayEconomicsPlanOut(BaseModel):
     day_kind_title: str | None = None
     title: str | None = None
     notes: str | None = None
+    usage_component_count: int = 0
+    usage_profile_count: int = 0
 
 
 class DayEconomicsPlanIn(BaseModel):
@@ -668,6 +672,8 @@ class DayEconomicsMonthPlanOut(BaseModel):
     revenue_per_assigned_plan_minor: int | None = None
     assigned_user_target: int | None = None
     notes: str | None = None
+    usage_component_count: int = 0
+    usage_profile_count: int = 0
 
 
 class DayEconomicsMonthPlanIn(BaseModel):
@@ -2412,6 +2418,159 @@ def _serialize_pay_profile_assignment(assignment: PayProfileAssignment, member: 
         "member": member_obj,
     }
 
+
+
+def _empty_usage_counts() -> dict:
+    return {"usage_component_count": 0, "usage_profile_count": 0}
+
+
+def _build_percent_boost_usage_map(db: Session, *, venue_id: int) -> dict:
+    rows = db.execute(
+        select(
+            PayComponent.boost_source_type,
+            PayComponent.boost_department_id,
+            func.count(PayComponent.id),
+            func.count(func.distinct(PayComponent.pay_profile_id)),
+        )
+        .join(PayProfile, PayProfile.id == PayComponent.pay_profile_id)
+        .where(
+            PayComponent.venue_id == int(venue_id),
+            PayComponent.is_active.is_(True),
+            PayProfile.is_active.is_(True),
+            PayComponent.component_type.in_(["PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"]),
+            PayComponent.boost_enabled.is_(True),
+            PayComponent.boost_percent_bps.is_not(None),
+            PayComponent.boost_source_type.in_(
+                [
+                    BOOST_SOURCE_VENUE_MONTH_PLAN,
+                    BOOST_SOURCE_VENUE_DAY_PLAN,
+                    BOOST_SOURCE_DEPARTMENT_MONTH_PLAN,
+                    BOOST_SOURCE_DEPARTMENT_DAY_PLAN,
+                ]
+            ),
+        )
+        .group_by(PayComponent.boost_source_type, PayComponent.boost_department_id)
+    ).all()
+    result = {
+        BOOST_SOURCE_VENUE_MONTH_PLAN: _empty_usage_counts(),
+        BOOST_SOURCE_VENUE_DAY_PLAN: _empty_usage_counts(),
+        BOOST_SOURCE_DEPARTMENT_MONTH_PLAN: {},
+        BOOST_SOURCE_DEPARTMENT_DAY_PLAN: {},
+    }
+    for source_type, department_id, component_count, profile_count in rows:
+        source_key = str(source_type or '').strip().upper()
+        payload = {
+            "usage_component_count": int(component_count or 0),
+            "usage_profile_count": int(profile_count or 0),
+        }
+        if source_key in {BOOST_SOURCE_VENUE_MONTH_PLAN, BOOST_SOURCE_VENUE_DAY_PLAN}:
+            result[source_key] = payload
+        elif source_key in {BOOST_SOURCE_DEPARTMENT_MONTH_PLAN, BOOST_SOURCE_DEPARTMENT_DAY_PLAN}:
+            dep_id = int(department_id or 0)
+            if dep_id > 0:
+                result[source_key][dep_id] = payload
+    return result
+
+
+def _build_kpi_usage_map(db: Session, *, venue_id: int) -> dict[int, dict]:
+    result: dict[int, dict] = {}
+
+    bonus_rows = db.execute(
+        select(
+            PayComponent.kpi_metric_id,
+            func.count(PayComponent.id),
+            func.count(func.distinct(PayComponent.pay_profile_id)),
+        )
+        .join(PayProfile, PayProfile.id == PayComponent.pay_profile_id)
+        .where(
+            PayComponent.venue_id == int(venue_id),
+            PayComponent.is_active.is_(True),
+            PayProfile.is_active.is_(True),
+            PayComponent.component_type == "KPI_BONUS",
+            PayComponent.kpi_metric_id.is_not(None),
+        )
+        .group_by(PayComponent.kpi_metric_id)
+    ).all()
+    for metric_id, component_count, profile_count in bonus_rows:
+        key = int(metric_id or 0)
+        if key <= 0:
+            continue
+        bucket = result.setdefault(key, {
+            "usage_component_count": 0,
+            "usage_bonus_component_count": 0,
+            "usage_boost_component_count": 0,
+            "usage_bonus_profile_count": 0,
+            "usage_boost_profile_count": 0,
+        })
+        bucket["usage_component_count"] += int(component_count or 0)
+        bucket["usage_bonus_component_count"] += int(component_count or 0)
+        bucket["usage_bonus_profile_count"] += int(profile_count or 0)
+
+    boost_rows = db.execute(
+        select(
+            PayComponent.boost_kpi_metric_id,
+            func.count(PayComponent.id),
+            func.count(func.distinct(PayComponent.pay_profile_id)),
+        )
+        .join(PayProfile, PayProfile.id == PayComponent.pay_profile_id)
+        .where(
+            PayComponent.venue_id == int(venue_id),
+            PayComponent.is_active.is_(True),
+            PayProfile.is_active.is_(True),
+            PayComponent.component_type.in_(["PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"]),
+            PayComponent.boost_enabled.is_(True),
+            PayComponent.boost_source_type == BOOST_SOURCE_KPI_METRIC,
+            PayComponent.boost_kpi_metric_id.is_not(None),
+        )
+        .group_by(PayComponent.boost_kpi_metric_id)
+    ).all()
+    for metric_id, component_count, profile_count in boost_rows:
+        key = int(metric_id or 0)
+        if key <= 0:
+            continue
+        bucket = result.setdefault(key, {
+            "usage_component_count": 0,
+            "usage_bonus_component_count": 0,
+            "usage_boost_component_count": 0,
+            "usage_bonus_profile_count": 0,
+            "usage_boost_profile_count": 0,
+        })
+        bucket["usage_component_count"] += int(component_count or 0)
+        bucket["usage_boost_component_count"] += int(component_count or 0)
+        bucket["usage_boost_profile_count"] += int(profile_count or 0)
+
+    return result
+
+
+def _attach_usage_to_day_plan(plan: dict, usage_counts: dict | None) -> dict:
+    payload = dict(plan or {})
+    counts = usage_counts or _empty_usage_counts()
+    payload["usage_component_count"] = int(counts.get("usage_component_count", 0) or 0)
+    payload["usage_profile_count"] = int(counts.get("usage_profile_count", 0) or 0)
+    return payload
+
+
+def _attach_usage_to_department_plan_payload(payload: dict, usage_map: dict[int, dict] | None) -> dict:
+    result = dict(payload or {})
+    items = []
+    for item in list(result.get("items") or []):
+        row = dict(item or {})
+        dep_id = int(row.get("department_id") or 0)
+        counts = (usage_map or {}).get(dep_id) or _empty_usage_counts()
+        row["usage_component_count"] = int(counts.get("usage_component_count", 0) or 0)
+        row["usage_profile_count"] = int(counts.get("usage_profile_count", 0) or 0)
+        items.append(row)
+    result["items"] = items
+    return result
+
+
+def _usage_counts_for_effective_plan(plan: dict, usage_map: dict) -> dict:
+    source = str((plan or {}).get("source") or "").strip().upper()
+    if source == "DATE_OVERRIDE":
+        return dict((usage_map or {}).get(BOOST_SOURCE_VENUE_DAY_PLAN) or _empty_usage_counts())
+    if source == "MONTH_TEMPLATE":
+        return dict((usage_map or {}).get(BOOST_SOURCE_VENUE_MONTH_PLAN) or _empty_usage_counts())
+    return _empty_usage_counts()
 
 
 def _serialize_pay_profile(profile: PayProfile, *, components_count: int | None = None, assignments_count: int | None = None) -> dict:
@@ -8398,6 +8557,7 @@ def list_kpi_metrics(
     if not include_archived:
         stmt = stmt.where(KpiMetric.is_active.is_(True))
     rows = db.scalars(stmt.order_by(KpiMetric.sort_order.asc(), KpiMetric.id.asc())).all()
+    usage_by_metric = _build_kpi_usage_map(db, venue_id=venue_id)
     return [
         {
             "id": r.id,
@@ -8406,6 +8566,13 @@ def list_kpi_metrics(
             "unit": r.unit,
             "is_active": bool(r.is_active),
             "sort_order": int(r.sort_order or 0),
+            **usage_by_metric.get(int(r.id), {
+                "usage_component_count": 0,
+                "usage_bonus_component_count": 0,
+                "usage_boost_component_count": 0,
+                "usage_bonus_profile_count": 0,
+                "usage_boost_profile_count": 0,
+            }),
         }
         for r in rows
     ]
@@ -9486,7 +9653,9 @@ def get_venue_day_economics_plan_route(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
-    return get_day_economics_plan(db=db, venue_id=venue_id, target_date=economics_date)
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    plan = get_day_economics_plan(db=db, venue_id=venue_id, target_date=economics_date)
+    return _attach_usage_to_day_plan(plan, _usage_counts_for_effective_plan(plan, usage_map))
 
 
 @router.get("/{venue_id}/economics/plan-month", response_model=DayEconomicsMonthPlanOut)
@@ -9499,7 +9668,11 @@ def get_venue_day_economics_month_plan_route(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
-    plan = get_day_economics_month_plan(db=db, venue_id=venue_id, month_value=month)
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    plan = _attach_usage_to_day_plan(
+        get_day_economics_month_plan(db=db, venue_id=venue_id, month_value=month),
+        usage_map.get(BOOST_SOURCE_VENUE_MONTH_PLAN),
+    )
     return {
         'month': month,
         **plan,
@@ -9516,7 +9689,9 @@ def get_venue_day_economics_plan_override_route(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
-    return get_day_economics_plan_override(db=db, venue_id=venue_id, target_date=economics_date)
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    plan = get_day_economics_plan_override(db=db, venue_id=venue_id, target_date=economics_date)
+    return _attach_usage_to_day_plan(plan, usage_map.get(BOOST_SOURCE_VENUE_DAY_PLAN))
 
 
 @router.put("/{venue_id}/economics/plan", response_model=DayEconomicsPlanOut)
@@ -9541,7 +9716,8 @@ def put_venue_day_economics_plan(
         notes=payload.notes,
     )
     db.commit()
-    return plan
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    return _attach_usage_to_day_plan(plan, usage_map.get(BOOST_SOURCE_VENUE_DAY_PLAN))
 
 
 @router.put("/{venue_id}/economics/plan-month", response_model=DayEconomicsMonthPlanOut)
@@ -9564,6 +9740,8 @@ def put_venue_day_economics_month_plan(
         notes=payload.notes,
     )
     db.commit()
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    plan = _attach_usage_to_day_plan(plan, usage_map.get(BOOST_SOURCE_VENUE_MONTH_PLAN))
     return {
         'month': month,
         **plan,
@@ -9589,12 +9767,14 @@ def post_venue_day_economics_month_plan_copy_previous(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    plan = _attach_usage_to_day_plan(result.get('plan') or {}, usage_map.get(BOOST_SOURCE_VENUE_MONTH_PLAN))
     return {
         'copied': bool(result['copied']),
         'copied_from_month': result['copied_from_month'],
         'plan': {
             'month': month,
-            **result['plan'],
+            **plan,
         },
     }
 
@@ -9670,7 +9850,9 @@ def get_venue_department_month_plans(
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     try:
-        return list_department_month_plans(db=db, venue_id=venue_id, month_value=month)
+        payload = list_department_month_plans(db=db, venue_id=venue_id, month_value=month)
+        usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+        return _attach_usage_to_department_plan_payload(payload, usage_map.get(BOOST_SOURCE_DEPARTMENT_MONTH_PLAN))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -9689,7 +9871,8 @@ def put_venue_department_month_plans(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
-    return result
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    return _attach_usage_to_department_plan_payload(result, usage_map.get(BOOST_SOURCE_DEPARTMENT_MONTH_PLAN))
 
 
 @router.post("/{venue_id}/economics/department-plan-month/autofill-from-last-month", response_model=DepartmentPlanAutofillOut)
@@ -9706,6 +9889,8 @@ def post_venue_department_month_plans_autofill(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    result["plan"] = _attach_usage_to_department_plan_payload(result.get("plan") or {}, usage_map.get(BOOST_SOURCE_DEPARTMENT_MONTH_PLAN))
     return result
 
 
@@ -9723,6 +9908,8 @@ def post_venue_department_month_plans_distribute(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    result["plan"] = _attach_usage_to_department_plan_payload(result.get("plan") or {}, usage_map.get(BOOST_SOURCE_DEPARTMENT_MONTH_PLAN))
     return result
 
 
@@ -9737,7 +9924,9 @@ def get_venue_department_day_plans(
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     try:
-        return list_department_day_plans(db=db, venue_id=venue_id, target_date=date)
+        payload = list_department_day_plans(db=db, venue_id=venue_id, target_date=date)
+        usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+        return _attach_usage_to_department_plan_payload(payload, usage_map.get(BOOST_SOURCE_DEPARTMENT_DAY_PLAN))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -9756,7 +9945,8 @@ def put_venue_department_day_plans(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
-    return result
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    return _attach_usage_to_department_plan_payload(result, usage_map.get(BOOST_SOURCE_DEPARTMENT_DAY_PLAN))
 
 
 @router.post("/{venue_id}/economics/department-plan-day/copy-from-date", response_model=DepartmentPlanCopyOut)
@@ -9774,6 +9964,8 @@ def post_venue_department_day_plans_copy_from_date(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    result["plan"] = _attach_usage_to_department_plan_payload(result.get("plan") or {}, usage_map.get(BOOST_SOURCE_DEPARTMENT_DAY_PLAN))
     return result
 
 
@@ -9800,6 +9992,8 @@ def post_venue_department_day_plans_autofill_from_history(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
+    usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
+    result["plan"] = _attach_usage_to_department_plan_payload(result.get("plan") or {}, usage_map.get(BOOST_SOURCE_DEPARTMENT_DAY_PLAN))
     return result
 
 

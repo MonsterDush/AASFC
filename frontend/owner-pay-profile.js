@@ -682,6 +682,28 @@ function renderAssignments() {
   });
 }
 
+
+function kpiMetricUsageSuffix(metric) {
+  const total = Number(metric?.usage_component_count || 0);
+  const bonus = Number(metric?.usage_bonus_component_count || 0);
+  const boost = Number(metric?.usage_boost_component_count || 0);
+  if (!total) return '';
+  const parts = [];
+  if (bonus) parts.push(`бонус ${bonus}`);
+  if (boost) parts.push(`boost ${boost}`);
+  return ` · ${parts.join(' · ')}`;
+}
+
+function kpiMetricOptionLabel(metric) {
+  const unit = String(metric?.unit || 'QTY').toUpperCase();
+  return `${metric?.title || 'KPI'} · ${unit}${kpiMetricUsageSuffix(metric)}`;
+}
+
+function findKpiMetricById(value) {
+  const id = Number(value || 0);
+  return Array.isArray(state.kpiMetrics) ? state.kpiMetrics.find((metric) => Number(metric.id) === id) || null : null;
+}
+
 function componentForm({ mode, item }) {
   const it = item || {};
   const type = String(it.component_type || "SALARY_FIXED_MONTH").toUpperCase();
@@ -689,8 +711,8 @@ function componentForm({ mode, item }) {
   const hasDepartments = Array.isArray(state.departments) && state.departments.length > 0;
   const departmentOptions = state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("");
   const hasKpiMetrics = Array.isArray(state.kpiMetrics) && state.kpiMetrics.length > 0;
-  const kpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.kpi_metric_id) ? "selected" : ""}>${esc(metric.title)}</option>`).join("");
-  const boostKpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.boost_kpi_metric_id) ? "selected" : ""}>${esc(metric.title)}</option>`).join("");
+  const kpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.kpi_metric_id) ? "selected" : ""}>${esc(kpiMetricOptionLabel(metric))}</option>`).join("");
+  const boostKpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.boost_kpi_metric_id) ? "selected" : ""}>${esc(kpiMetricOptionLabel(metric))}</option>`).join("");
   const boostEnabled = it?.boost_enabled ? "checked" : "";
   return `
     <div class="finance-form mt-8">
@@ -959,6 +981,8 @@ function syncComponentFields() {
   const percentLabel = document.getElementById("f_percent_label");
   const thresholdLabel = document.getElementById("f_threshold_label");
   const boostThresholdLabel = document.getElementById("f_boost_threshold_label");
+  const selectedBoostMetric = findKpiMetricById(document.getElementById("f_boost_kpi_metric_id")?.value);
+  const selectedBonusMetric = findKpiMetricById(document.getElementById("f_kpi_metric_id")?.value);
 
   [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostDepartmentWrap, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint].forEach((el) => {
     if (el) el.style.display = "none";
@@ -999,7 +1023,7 @@ function syncComponentFields() {
       if (boostSourceType === "KPI_METRIC") {
         if (boostKpiMetricWrap) boostKpiMetricWrap.style.display = "grid";
         if (boostThresholdWrap) boostThresholdWrap.style.display = "grid";
-        if (boostThresholdLabel) boostThresholdLabel.textContent = "Цель KPI";
+        if (boostThresholdLabel) boostThresholdLabel.textContent = `Цель KPI${selectedBoostMetric ? ` (${String(selectedBoostMetric.unit || 'QTY').toUpperCase()})` : ''}`;
       }
     }
     syncComponentSimulator();
@@ -1012,7 +1036,7 @@ function syncComponentFields() {
     if (thresholdWrap) thresholdWrap.style.display = "grid";
     if (useStepsWrap) useStepsWrap.style.display = "flex";
     if (stepsHint) stepsHint.style.display = "";
-    if (thresholdLabel) thresholdLabel.textContent = "Порог KPI";
+    if (thresholdLabel) thresholdLabel.textContent = `Порог KPI${selectedBonusMetric ? ` (${String(selectedBonusMetric.unit || 'QTY').toUpperCase()})` : ''}`;
     if (useSteps) {
       if (stepsWrap) stepsWrap.style.display = "block";
     } else {
@@ -1040,6 +1064,8 @@ function openComponentEditor({ mode, item = null }) {
   document.getElementById("f_boost_recalc_mode")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_department_id")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_boost_department_id")?.addEventListener("change", syncComponentConfigHint);
+  document.getElementById("f_kpi_metric_id")?.addEventListener("change", syncComponentFields);
+  document.getElementById("f_boost_kpi_metric_id")?.addEventListener("change", syncComponentFields);
   ["f_percent","f_boost_percent","f_minimum_guarantee_minor","f_maximum_cap_minor","f_sim_base_rub","f_sim_target","f_sim_actual"].forEach((id) => {
     document.getElementById(id)?.addEventListener("input", () => { syncComponentSimulator(); syncComponentConfigHint(); });
   });
