@@ -871,12 +871,12 @@ async function maybeAutoOpenDay() {
 
 function breakdownMetaHtml(c) {
   const type = String(c?.component_type || "").toUpperCase();
-  if (type === "PERCENT_TOTAL_REVENUE") {
-    return `<div class="muted small mt-4">${esc(((Number(c.percent_bps || 0) / 100).toFixed(2)))}% от базы ${esc(formatMoneyMinor(c.base_amount_minor || 0))}</div>`;
-  }
-  if (type === "PERCENT_DEPARTMENT_REVENUE") {
+  if (type === "PERCENT_TOTAL_REVENUE" || type === "PERCENT_DEPARTMENT_REVENUE") {
     const dep = c?.department_title ? ` · ${esc(c.department_title)}` : "";
-    return `<div class="muted small mt-4">${esc(((Number(c.percent_bps || 0) / 100).toFixed(2)))}% от базы ${esc(formatMoneyMinor(c.base_amount_minor || 0))}${dep}</div>`;
+    const scope = c?.base_scope_title ? ` · ${esc(c.base_scope_title)}` : "";
+    const boost = c?.boost_enabled && c?.boost_percent_bps != null ? ` · boost ${esc(((Number(c.boost_percent_bps || 0) / 100).toFixed(2)))}%${c?.boost_applied ? ' ✓' : ''}` : '';
+    const minMax = `${c?.minimum_applied ? ' · мин. гарантия' : ''}${c?.maximum_applied ? ' · потолок' : ''}`;
+    return `<div class="muted small mt-4">${esc(((Number(c.percent_bps || 0) / 100).toFixed(2)))}% от базы ${esc(formatMoneyMinor(c.base_amount_minor || 0))}${dep}${scope}${boost}${minMax}</div>`;
   }
   if (type === "KPI_BONUS") {
     const threshold = c?.threshold_value ?? "—";

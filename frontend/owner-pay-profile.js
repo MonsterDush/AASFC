@@ -33,6 +33,23 @@ const COMPONENT_LABELS = {
   KPI_BONUS: "KPI-бонус",
 };
 
+const BASE_SCOPE_LABELS = {
+  FULL_PERIOD: "по всему периоду",
+  WORKED_DATES: "по отработанным дням",
+};
+
+const BOOST_SOURCE_LABELS = {
+  NONE: "без условия",
+  VENUE_MONTH_PLAN: "месячный план заведения",
+  VENUE_DAY_PLAN: "суточный план заведения",
+  KPI_METRIC: "KPI",
+};
+
+const BOOST_RECALC_LABELS = {
+  REPLACE_ALL: "весь объём",
+  EXCESS_ONLY: "только превышение",
+};
+
 function esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -112,6 +129,81 @@ function kpiMetricTitleFor(item) {
   if (!metricId) return null;
   const found = (state.kpiMetrics || []).find((m) => Number(m?.id) === metricId);
   return found?.title || `KPI #${metricId}`;
+}
+
+
+function effectiveBaseScopeFor(item) {
+  return String(item?.effective_base_scope || item?.base_scope || (String(item?.component_type || '').toUpperCase() === 'PERCENT_DEPARTMENT_REVENUE' ? 'WORKED_DATES' : 'FULL_PERIOD')).toUpperCase();
+}
+
+function effectiveBoostSourceFor(item) {
+  return String(item?.effective_boost_source_type || item?.boost_source_type || 'NONE').toUpperCase();
+}
+
+function effectiveBoostRecalcModeFor(item) {
+  return String(item?.effective_boost_recalc_mode || item?.boost_recalc_mode || 'REPLACE_ALL').toUpperCase();
+}
+
+function baseScopeLabel(scope) {
+  return BASE_SCOPE_LABELS[String(scope || '').toUpperCase()] || String(scope || '');
+}
+
+function boostSourceLabel(source) {
+  return BOOST_SOURCE_LABELS[String(source || '').toUpperCase()] || String(source || '');
+}
+
+function boostRecalcLabel(mode) {
+  return BOOST_RECALC_LABELS[String(mode || '').toUpperCase()] || String(mode || '');
+}
+
+function formatPercentConfig(item) {
+  const parts = [];
+  parts.push(fmtPercentBps(item.percent_bps));
+  const scope = baseScopeLabel(effectiveBaseScopeFor(item));
+  if (scope) parts.push(scope);
+  if (item.minimum_guarantee_minor != null) parts.push(`мин ${fmtMoneyMinor(item.minimum_guarantee_minor)}`);
+  if (item.maximum_cap_minor != null) parts.push(`потолок ${fmtMoneyMinor(item.maximum_cap_minor)}`);
+  if (item.boost_enabled && item.boost_percent_bps != null) {
+    const sourceLabel = boostSourceLabel(effectiveBoostSourceFor(item));
+    const modeLabel = boostRecalcLabel(effectiveBoostRecalcModeFor(item));
+    const boostBits = [`boost ${fmtPercentBps(item.boost_percent_bps)}`];
+    if (sourceLabel) boostBits.push(sourceLabel);
+    if (modeLabel) boostBits.push(modeLabel);
+    if (item.boost_kpi_metric_title) boostBits.push(item.boost_kpi_metric_title);
+    if (item.boost_threshold_value != null && String(effectiveBoostSourceFor(item)) === 'KPI_METRIC') {
+      boostBits.push(`цель ${item.boost_threshold_value}`);
+    }
+    parts.push(boostBits.join(' · '));
+  }
+  return parts.join(' · ');
+}
+
+function percentBoostOptions(selected) {
+  const value = String(selected || 'NONE').toUpperCase();
+  return [
+    ['NONE', 'Без условия'],
+    ['VENUE_MONTH_PLAN', 'Месячный план заведения'],
+    ['VENUE_DAY_PLAN', 'Суточный план заведения'],
+    ['KPI_METRIC', 'KPI'],
+  ].map(([code, title]) => `<option value="${code}" ${value === code ? 'selected' : ''}>${title}</option>`).join('');
+}
+
+function baseScopeOptions(selected, componentType) {
+  const type = String(componentType || '').toUpperCase();
+  const fallback = type === 'PERCENT_DEPARTMENT_REVENUE' ? 'WORKED_DATES' : 'FULL_PERIOD';
+  const value = String(selected || fallback).toUpperCase();
+  return [
+    ['FULL_PERIOD', 'По всему периоду'],
+    ['WORKED_DATES', 'По отработанным дням'],
+  ].map(([code, title]) => `<option value="${code}" ${value === code ? 'selected' : ''}>${title}</option>`).join('');
+}
+
+function boostRecalcOptions(selected) {
+  const value = String(selected || 'REPLACE_ALL').toUpperCase();
+  return [
+    ['REPLACE_ALL', 'Весь объём по повышенному %'],
+    ['EXCESS_ONLY', 'Только превышение по повышенному %'],
+  ].map(([code, title]) => `<option value="${code}" ${value === code ? 'selected' : ''}>${title}</option>`).join('');
 }
 
 function normalizeStepsForForm(steps) {
@@ -368,10 +460,10 @@ function componentSubtitle(item) {
   if (type === "SALARY_FIXED_MONTH") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)}`;
   if (type === "SALARY_HOURLY") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.rate_minor)} / час`;
   if (type === "SALARY_PER_SHIFT") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)} / смена`;
-  if (type === "PERCENT_TOTAL_REVENUE") return `${COMPONENT_LABELS[type]} · ${fmtPercentBps(item.percent_bps)}`;
+  if (type === "PERCENT_TOTAL_REVENUE") return `${COMPONENT_LABELS[type]} · ${formatPercentConfig(item)}`;
   if (type === "PERCENT_DEPARTMENT_REVENUE") {
     const depTitle = departmentTitleFor(item);
-    return `${COMPONENT_LABELS[type]} · ${fmtPercentBps(item.percent_bps)}${depTitle ? ` · ${depTitle}` : ""} · по отраб. дням`;
+    return `${COMPONENT_LABELS[type]} · ${formatPercentConfig(item)}${depTitle ? ` · ${depTitle}` : ""}`;
   }
   if (type === "KPI_BONUS") {
     const metricTitle = kpiMetricTitleFor(item);
@@ -526,6 +618,8 @@ function componentForm({ mode, item }) {
   const departmentOptions = state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("");
   const hasKpiMetrics = Array.isArray(state.kpiMetrics) && state.kpiMetrics.length > 0;
   const kpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.kpi_metric_id) ? "selected" : ""}>${esc(metric.title)}</option>`).join("");
+  const boostKpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.boost_kpi_metric_id) ? "selected" : ""}>${esc(metric.title)}</option>`).join("");
+  const boostEnabled = it?.boost_enabled ? "checked" : "";
   return `
     <div class="finance-form mt-8">
       <label>
@@ -568,6 +662,69 @@ function componentForm({ mode, item }) {
         <input id="f_department_id" inputmode="numeric" placeholder="Например: 3" value="${esc(it.department_id ?? "")}" />
       </label>
       <div id="f_department_hint" class="muted">Список департаментов не загрузился. Можно указать department_id вручную.</div>`}
+      <label id="f_base_scope_wrap">
+        <span>База расчёта</span>
+        <select id="f_base_scope">${baseScopeOptions(it.base_scope || it.effective_base_scope, type)}</select>
+      </label>
+      <label class="chk" id="f_boost_enabled_wrap">
+        <input type="checkbox" id="f_boost_enabled" ${boostEnabled} />
+        <span>Повышенный процент по плану / KPI</span>
+      </label>
+      <label id="f_boost_percent_wrap">
+        <span>Повышенный процент</span>
+        <input id="f_boost_percent" inputmode="decimal" placeholder="Например, 7" value="${esc(percentInputFromBps(it.boost_percent_bps))}" />
+      </label>
+      <label id="f_boost_source_wrap">
+        <span>Условие повышения</span>
+        <select id="f_boost_source_type">${percentBoostOptions(it.boost_source_type || it.effective_boost_source_type || 'NONE')}</select>
+      </label>
+      <label id="f_boost_recalc_wrap">
+        <span>Режим пересчёта</span>
+        <select id="f_boost_recalc_mode">${boostRecalcOptions(it.boost_recalc_mode || it.effective_boost_recalc_mode || 'REPLACE_ALL')}</select>
+      </label>
+      ${hasKpiMetrics ? `
+      <label id="f_boost_kpi_metric_wrap">
+        <span>KPI для повышения</span>
+        <select id="f_boost_kpi_metric_id">
+          <option value="">Выбери KPI</option>
+          ${boostKpiOptions}
+        </select>
+      </label>` : `
+      <label id="f_boost_kpi_metric_wrap">
+        <span>ID KPI для повышения</span>
+        <input id="f_boost_kpi_metric_id" inputmode="numeric" placeholder="Например: 5" value="${esc(it.boost_kpi_metric_id ?? "")}" />
+      </label>`}
+      <label id="f_boost_threshold_wrap">
+        <span id="f_boost_threshold_label">Цель KPI</span>
+        <input id="f_boost_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.boost_threshold_value ?? "")}" />
+      </label>
+      <label id="f_min_wrap">
+        <span>Минимальная гарантия, ₽</span>
+        <input id="f_minimum_guarantee_minor" inputmode="decimal" placeholder="Например: 40000" value="${esc(moneyInputFromMinor(it.minimum_guarantee_minor))}" />
+      </label>
+      <label id="f_max_wrap">
+        <span>Максимум, ₽</span>
+        <input id="f_maximum_cap_minor" inputmode="decimal" placeholder="Например: 90000" value="${esc(moneyInputFromMinor(it.maximum_cap_minor))}" />
+      </label>
+      <div id="f_percent_help" class="muted">В 5A доступны условия по планам заведения и KPI. Планы департаментов добавим следующим спринтом.</div>
+      <div id="f_sim_wrap" class="pay-sim">
+        <div class="pay-sim__title">Симулятор компонента</div>
+        <div class="pay-sim__grid">
+          <label>
+            <span>Тестовая база, ₽</span>
+            <input id="f_sim_base_rub" inputmode="decimal" placeholder="Например: 500000" />
+          </label>
+          <label id="f_sim_target_wrap">
+            <span id="f_sim_target_label">Цель</span>
+            <input id="f_sim_target" inputmode="decimal" placeholder="Например: 450000" />
+          </label>
+          <label id="f_sim_actual_wrap">
+            <span id="f_sim_actual_label">Факт</span>
+            <input id="f_sim_actual" inputmode="decimal" placeholder="Например: 500000" />
+          </label>
+        </div>
+        <div class="pay-sim__result muted" id="f_sim_result">Укажи процент и базу, чтобы увидеть пример начисления.</div>
+      </div>
       ${hasKpiMetrics ? `
       <label id="f_kpi_metric_wrap">
         <span>KPI-метрика</span>
@@ -617,14 +774,98 @@ function componentForm({ mode, item }) {
   `;
 }
 
+function syncComponentSimulator() {
+  const type = String(document.getElementById("f_component_type")?.value || "").toUpperCase();
+  const wrap = document.getElementById("f_sim_wrap");
+  const result = document.getElementById("f_sim_result");
+  if (!wrap || !result) return;
+  if (!["PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"].includes(type)) {
+    wrap.style.display = "none";
+    return;
+  }
+  wrap.style.display = "block";
+  const baseMinor = parseMoneyRubToMinor(document.getElementById("f_sim_base_rub")?.value || "") || 0;
+  const percentBps = parsePercentInputToBps(document.getElementById("f_percent")?.value || "") || 0;
+  const boostEnabled = !!document.getElementById("f_boost_enabled")?.checked;
+  const boostPercentBps = parsePercentInputToBps(document.getElementById("f_boost_percent")?.value || "") || 0;
+  const sourceType = String(document.getElementById("f_boost_source_type")?.value || "NONE").toUpperCase();
+  const recalcMode = String(document.getElementById("f_boost_recalc_mode")?.value || "REPLACE_ALL").toUpperCase();
+  const minimumMinor = parseMoneyRubToMinor(document.getElementById("f_minimum_guarantee_minor")?.value || "");
+  const maximumMinor = parseMoneyRubToMinor(document.getElementById("f_maximum_cap_minor")?.value || "");
+  const simTargetWrap = document.getElementById("f_sim_target_wrap");
+  const simActualWrap = document.getElementById("f_sim_actual_wrap");
+  const simTargetLabel = document.getElementById("f_sim_target_label");
+  const simActualLabel = document.getElementById("f_sim_actual_label");
+  const targetRaw = String(document.getElementById("f_sim_target")?.value || "").trim();
+  const actualRaw = String(document.getElementById("f_sim_actual")?.value || "").trim();
+  const targetIsMoney = sourceType !== "KPI_METRIC";
+  const targetValue = targetIsMoney ? (parseMoneyRubToMinor(targetRaw) || 0) : Number(targetRaw || 0);
+  const actualValue = targetIsMoney ? (parseMoneyRubToMinor(actualRaw) || 0) : Number(actualRaw || 0);
+  if (simTargetWrap) simTargetWrap.style.display = boostEnabled && sourceType !== "NONE" ? "grid" : "none";
+  if (simActualWrap) simActualWrap.style.display = boostEnabled && sourceType !== "NONE" ? "grid" : "none";
+  if (simTargetLabel) simTargetLabel.textContent = sourceType === "KPI_METRIC" ? "Цель KPI" : "План / цель";
+  if (simActualLabel) simActualLabel.textContent = sourceType === "KPI_METRIC" ? "Факт KPI" : "Факт";
+
+  if (!baseMinor || !percentBps) {
+    result.textContent = "Укажи процент и базу, чтобы увидеть пример начисления.";
+    return;
+  }
+
+  const regular = Math.round((baseMinor * percentBps) / 10000);
+  let finalAmount = regular;
+  let applied = false;
+  let note = `Обычный расчёт: ${fmtMoneyMinor(regular)}.`;
+
+  if (boostEnabled && boostPercentBps > 0 && sourceType !== "NONE") {
+    applied = Number.isFinite(actualValue) && Number.isFinite(targetValue) && actualValue >= targetValue && targetValue > 0;
+    if (applied) {
+      if (recalcMode === "EXCESS_ONLY" && sourceType !== "KPI_METRIC") {
+        const regularPart = Math.round((Math.min(baseMinor, targetValue) * percentBps) / 10000);
+        const boostPart = Math.round((Math.max(baseMinor - targetValue, 0) * boostPercentBps) / 10000);
+        finalAmount = regularPart + boostPart;
+        note = `Условие выполнено. Режим «только превышение»: ${fmtMoneyMinor(finalAmount)}.`;
+      } else {
+        finalAmount = Math.round((baseMinor * boostPercentBps) / 10000);
+        note = `Условие выполнено. Повышенный процент дал ${fmtMoneyMinor(finalAmount)}.`;
+      }
+    } else {
+      note = `Условие не выполнено. Остаётся базовый расчёт ${fmtMoneyMinor(regular)}.`;
+    }
+  }
+
+  if (minimumMinor != null && finalAmount < minimumMinor) {
+    finalAmount = minimumMinor;
+    note += ` Применена минимальная гарантия ${fmtMoneyMinor(minimumMinor)}.`;
+  }
+  if (maximumMinor != null && finalAmount > maximumMinor) {
+    finalAmount = maximumMinor;
+    note += ` Сработал потолок ${fmtMoneyMinor(maximumMinor)}.`;
+  }
+
+  result.innerHTML = `<b>Пример: ${esc(fmtMoneyMinor(finalAmount))}</b><br>${esc(note)}`;
+}
+
 function syncComponentFields() {
   const type = String(document.getElementById("f_component_type")?.value || "SALARY_FIXED_MONTH").toUpperCase();
   const useSteps = !!document.getElementById("f_use_steps")?.checked;
+  const boostEnabled = !!document.getElementById("f_boost_enabled")?.checked;
+  const boostSourceType = String(document.getElementById("f_boost_source_type")?.value || "NONE").toUpperCase();
   const amountWrap = document.getElementById("f_amount_wrap");
   const rateWrap = document.getElementById("f_rate_wrap");
   const percentWrap = document.getElementById("f_percent_wrap");
   const departmentWrap = document.getElementById("f_department_wrap");
   const departmentHint = document.getElementById("f_department_hint");
+  const baseScopeWrap = document.getElementById("f_base_scope_wrap");
+  const boostEnabledWrap = document.getElementById("f_boost_enabled_wrap");
+  const boostPercentWrap = document.getElementById("f_boost_percent_wrap");
+  const boostSourceWrap = document.getElementById("f_boost_source_wrap");
+  const boostRecalcWrap = document.getElementById("f_boost_recalc_wrap");
+  const boostKpiMetricWrap = document.getElementById("f_boost_kpi_metric_wrap");
+  const boostThresholdWrap = document.getElementById("f_boost_threshold_wrap");
+  const minWrap = document.getElementById("f_min_wrap");
+  const maxWrap = document.getElementById("f_max_wrap");
+  const percentHelp = document.getElementById("f_percent_help");
+  const simWrap = document.getElementById("f_sim_wrap");
   const kpiMetricWrap = document.getElementById("f_kpi_metric_wrap");
   const kpiMetricHint = document.getElementById("f_kpi_metric_hint");
   const thresholdWrap = document.getElementById("f_threshold_wrap");
@@ -635,34 +876,50 @@ function syncComponentFields() {
   const rateLabel = document.getElementById("f_rate_label");
   const percentLabel = document.getElementById("f_percent_label");
   const thresholdLabel = document.getElementById("f_threshold_label");
+  const boostThresholdLabel = document.getElementById("f_boost_threshold_label");
 
-  [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint].forEach((el) => {
+  [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint].forEach((el) => {
     if (el) el.style.display = "none";
   });
 
   if (type === "SALARY_HOURLY") {
     if (rateWrap) rateWrap.style.display = "grid";
     if (rateLabel) rateLabel.textContent = "Ставка, ₽ / час";
-    return;
+    return syncComponentSimulator();
   }
 
   if (type === "SALARY_FIXED_MONTH" || type === "SALARY_PER_SHIFT") {
     if (amountWrap) amountWrap.style.display = "grid";
     if (amountLabel) amountLabel.textContent = type === "SALARY_PER_SHIFT" ? "Сумма, ₽ / смена" : "Сумма, ₽ / месяц";
-    return;
+    return syncComponentSimulator();
   }
 
-  if (type === "PERCENT_TOTAL_REVENUE") {
+  if (type === "PERCENT_TOTAL_REVENUE" || type === "PERCENT_DEPARTMENT_REVENUE") {
     if (percentWrap) percentWrap.style.display = "grid";
-    if (percentLabel) percentLabel.textContent = "Процент от общей выручки";
-    return;
-  }
-
-  if (type === "PERCENT_DEPARTMENT_REVENUE") {
-    if (percentWrap) percentWrap.style.display = "grid";
-    if (departmentWrap) departmentWrap.style.display = "grid";
-    if (departmentHint) departmentHint.style.display = "";
-    if (percentLabel) percentLabel.textContent = "Процент от выручки департамента";
+    if (baseScopeWrap) baseScopeWrap.style.display = "grid";
+    if (boostEnabledWrap) boostEnabledWrap.style.display = "flex";
+    if (minWrap) minWrap.style.display = "grid";
+    if (maxWrap) maxWrap.style.display = "grid";
+    if (percentHelp) percentHelp.style.display = "";
+    if (simWrap) simWrap.style.display = "block";
+    if (type === "PERCENT_DEPARTMENT_REVENUE") {
+      if (departmentWrap) departmentWrap.style.display = "grid";
+      if (departmentHint) departmentHint.style.display = "";
+      if (percentLabel) percentLabel.textContent = "Процент от выручки департамента";
+    } else if (percentLabel) {
+      percentLabel.textContent = "Процент от общей выручки";
+    }
+    if (boostEnabled) {
+      if (boostPercentWrap) boostPercentWrap.style.display = "grid";
+      if (boostSourceWrap) boostSourceWrap.style.display = "grid";
+      if (boostRecalcWrap) boostRecalcWrap.style.display = "grid";
+      if (boostSourceType === "KPI_METRIC") {
+        if (boostKpiMetricWrap) boostKpiMetricWrap.style.display = "grid";
+        if (boostThresholdWrap) boostThresholdWrap.style.display = "grid";
+        if (boostThresholdLabel) boostThresholdLabel.textContent = "Цель KPI";
+      }
+    }
+    syncComponentSimulator();
     return;
   }
 
@@ -675,13 +932,13 @@ function syncComponentFields() {
     if (thresholdLabel) thresholdLabel.textContent = "Порог KPI";
     if (useSteps) {
       if (stepsWrap) stepsWrap.style.display = "block";
-      if (amountWrap) amountWrap.style.display = "none";
     } else {
       if (stepsWrap) stepsWrap.style.display = "none";
       if (amountWrap) amountWrap.style.display = "grid";
       if (amountLabel) amountLabel.textContent = "Бонус, ₽";
     }
   }
+  syncComponentSimulator();
 }
 
 function openComponentEditor({ mode, item = null }) {
@@ -694,6 +951,12 @@ function openComponentEditor({ mode, item = null }) {
   });
   document.getElementById("f_component_type")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_use_steps")?.addEventListener("change", syncComponentFields);
+  document.getElementById("f_boost_enabled")?.addEventListener("change", syncComponentFields);
+  document.getElementById("f_boost_source_type")?.addEventListener("change", syncComponentFields);
+  document.getElementById("f_boost_recalc_mode")?.addEventListener("change", syncComponentSimulator);
+  ["f_percent","f_boost_percent","f_minimum_guarantee_minor","f_maximum_cap_minor","f_sim_base_rub","f_sim_target","f_sim_actual"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", syncComponentSimulator);
+  });
   wireStepsBuilder();
   syncComponentFields();
   document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);
@@ -704,6 +967,15 @@ function openComponentEditor({ mode, item = null }) {
     const rateMinorRaw = String(document.getElementById("f_rate_minor")?.value || "").trim();
     const percentRaw = String(document.getElementById("f_percent")?.value || "").trim();
     const departmentRaw = String(document.getElementById("f_department_id")?.value || "").trim();
+    const baseScope = String(document.getElementById("f_base_scope")?.value || "").trim().toUpperCase();
+    const boostEnabled = !!document.getElementById("f_boost_enabled")?.checked;
+    const boostPercentRaw = String(document.getElementById("f_boost_percent")?.value || "").trim();
+    const boostSourceType = String(document.getElementById("f_boost_source_type")?.value || "NONE").trim().toUpperCase();
+    const boostRecalcMode = String(document.getElementById("f_boost_recalc_mode")?.value || "REPLACE_ALL").trim().toUpperCase();
+    const boostKpiMetricRaw = String(document.getElementById("f_boost_kpi_metric_id")?.value || "").trim();
+    const boostThresholdRaw = String(document.getElementById("f_boost_threshold_value")?.value || "").trim();
+    const minGuaranteeRaw = String(document.getElementById("f_minimum_guarantee_minor")?.value || "").trim();
+    const maxCapRaw = String(document.getElementById("f_maximum_cap_minor")?.value || "").trim();
     const sortRaw = String(document.getElementById("f_sort_order")?.value || "0").trim();
     const isActive = !!document.getElementById("f_active")?.checked;
 
@@ -726,6 +998,15 @@ function openComponentEditor({ mode, item = null }) {
       kpi_metric_id: null,
       threshold_value: null,
       steps_json: null,
+      base_scope: null,
+      boost_enabled: false,
+      boost_percent_bps: null,
+      boost_source_type: null,
+      boost_recalc_mode: null,
+      boost_kpi_metric_id: null,
+      boost_threshold_value: null,
+      minimum_guarantee_minor: null,
+      maximum_cap_minor: null,
       sort_order: Number(sortRaw || 0),
       is_active: isActive,
     };
@@ -750,25 +1031,66 @@ function openComponentEditor({ mode, item = null }) {
         toast("Некорректная сумма", "warn");
         return;
       }
-    } else if (componentType === "PERCENT_TOTAL_REVENUE") {
+    } else if (componentType === "PERCENT_TOTAL_REVENUE" || componentType === "PERCENT_DEPARTMENT_REVENUE") {
       const percentBps = parsePercentInputToBps(percentRaw);
       if (percentBps === null) {
         toast("Укажи процент, например 5 или 7.5", "warn");
         return;
       }
       payload.percent_bps = percentBps;
-    } else if (componentType === "PERCENT_DEPARTMENT_REVENUE") {
-      const percentBps = parsePercentInputToBps(percentRaw);
-      if (percentBps === null) {
-        toast("Укажи процент, например 5 или 7.5", "warn");
+      payload.base_scope = baseScope || (componentType === "PERCENT_DEPARTMENT_REVENUE" ? "WORKED_DATES" : "FULL_PERIOD");
+      if (componentType === "PERCENT_DEPARTMENT_REVENUE") {
+        if (!departmentRaw) {
+          toast("Выбери департамент", "warn");
+          return;
+        }
+        payload.department_id = Number(departmentRaw);
+      }
+      if (minGuaranteeRaw) {
+        payload.minimum_guarantee_minor = parseMoneyRubToMinor(minGuaranteeRaw);
+        if (payload.minimum_guarantee_minor == null) {
+          toast("Некорректная минимальная гарантия", "warn");
+          return;
+        }
+      }
+      if (maxCapRaw) {
+        payload.maximum_cap_minor = parseMoneyRubToMinor(maxCapRaw);
+        if (payload.maximum_cap_minor == null) {
+          toast("Некорректный максимум", "warn");
+          return;
+        }
+      }
+      if (boostEnabled) {
+        const boostPercentBps = parsePercentInputToBps(boostPercentRaw);
+        if (boostPercentBps === null) {
+          toast("Укажи повышенный процент", "warn");
+          return;
+        }
+        payload.boost_enabled = true;
+        payload.boost_percent_bps = boostPercentBps;
+        payload.boost_source_type = boostSourceType;
+        payload.boost_recalc_mode = boostRecalcMode;
+        if (!boostSourceType || boostSourceType === "NONE") {
+          toast("Выбери условие повышения", "warn");
+          return;
+        }
+        if (boostSourceType === "KPI_METRIC") {
+          if (!boostKpiMetricRaw) {
+            toast("Выбери KPI для повышения", "warn");
+            return;
+          }
+          if (!boostThresholdRaw) {
+            toast("Укажи цель KPI", "warn");
+            return;
+          }
+          payload.boost_kpi_metric_id = Number(boostKpiMetricRaw);
+          payload.boost_threshold_value = Number(boostThresholdRaw);
+        }
+      }
+      if (payload.minimum_guarantee_minor != null && payload.maximum_cap_minor != null && payload.minimum_guarantee_minor > payload.maximum_cap_minor) {
+        toast("Минимальная гарантия не может быть больше максимума", "warn");
         return;
       }
-      if (!departmentRaw) {
-        toast("Выбери департамент", "warn");
-        return;
-      }
-      payload.percent_bps = percentBps;
-      payload.department_id = Number(departmentRaw);
     } else if (componentType === "KPI_BONUS") {
       if (!kpiMetricRaw) {
         toast("Выбери KPI-метрику", "warn");

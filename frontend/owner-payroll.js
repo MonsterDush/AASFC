@@ -108,20 +108,18 @@ function fmtPercentBps(bps) {
 function breakdownComponentMeta(component) {
   const type = String(component?.component_type || "").toUpperCase();
   const label = COMPONENT_LABELS[type] || type || "Компонент";
-  if (component?.formula_text || component?.base_text) {
-    const parts = [label];
-    if (component?.base_text) parts.push(component.base_text);
-    if (component?.formula_text) parts.push(component.formula_text);
-    return parts.join(" · ");
-  }
-  if (type === "PERCENT_TOTAL_REVENUE") {
-    return `${label} · ${fmtPercentBps(component?.percent_bps)} · база ${fmtMoneyMinor(component?.base_amount_minor || 0)}`;
-  }
-  if (type === "PERCENT_DEPARTMENT_REVENUE") {
-    const depTitle = component?.department_title ? ` · ${component.department_title}` : "";
-    const workedDays = Number(component?.worked_dates_count || 0);
-    const workedDaysLabel = workedDays ? ` · отраб. дней ${workedDays}` : "";
-    return `${label} · ${fmtPercentBps(component?.percent_bps)}${depTitle} · база ${fmtMoneyMinor(component?.base_amount_minor || 0)}${workedDaysLabel}`;
+  if (type === "PERCENT_TOTAL_REVENUE" || type === "PERCENT_DEPARTMENT_REVENUE") {
+    const parts = [label, fmtPercentBps(component?.percent_bps || 0), `база ${fmtMoneyMinor(component?.base_amount_minor || 0)}`];
+    if (component?.department_title) parts.push(component.department_title);
+    if (component?.base_scope_title) parts.push(component.base_scope_title);
+    if (component?.boost_enabled && component?.boost_percent_bps != null) {
+      parts.push(`boost ${fmtPercentBps(component.boost_percent_bps)}`);
+      if (component?.boost_source_title) parts.push(component.boost_source_title);
+      if (component?.boost_applied) parts.push('сработал');
+    }
+    if (component?.minimum_applied) parts.push('мин. гарантия');
+    if (component?.maximum_applied) parts.push('потолок');
+    return parts.join(' · ');
   }
   if (type === "KPI_BONUS") {
     const metricTitle = component?.kpi_metric_title ? ` · ${component.kpi_metric_title}` : "";

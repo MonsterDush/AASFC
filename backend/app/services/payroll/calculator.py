@@ -7,7 +7,7 @@ import json
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.models import DailyReport, DailyReportValue, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
+from app.models import DailyReport, DailyReportValue, DayEconomicsMonthPlan, DayEconomicsPlan, DayEconomicsPlanTemplate, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 
@@ -18,6 +18,36 @@ PAY_COMPONENT_TYPES = {
     "PERCENT_TOTAL_REVENUE",
     "PERCENT_DEPARTMENT_REVENUE",
     "KPI_BONUS",
+}
+
+BASE_SCOPE_FULL_PERIOD = "FULL_PERIOD"
+BASE_SCOPE_WORKED_DATES = "WORKED_DATES"
+
+BOOST_SOURCE_NONE = "NONE"
+BOOST_SOURCE_VENUE_MONTH_PLAN = "VENUE_MONTH_PLAN"
+BOOST_SOURCE_VENUE_DAY_PLAN = "VENUE_DAY_PLAN"
+BOOST_SOURCE_DEPARTMENT_MONTH_PLAN = "DEPARTMENT_MONTH_PLAN"
+BOOST_SOURCE_DEPARTMENT_DAY_PLAN = "DEPARTMENT_DAY_PLAN"
+BOOST_SOURCE_KPI_METRIC = "KPI_METRIC"
+
+BOOST_RECALC_REPLACE_ALL = "REPLACE_ALL"
+BOOST_RECALC_EXCESS_ONLY = "EXCESS_ONLY"
+
+BASE_SCOPE_TITLES = {
+    BASE_SCOPE_FULL_PERIOD: "по всему периоду",
+    BASE_SCOPE_WORKED_DATES: "по отработанным дням",
+}
+BOOST_SOURCE_TITLES = {
+    BOOST_SOURCE_NONE: "без условия",
+    BOOST_SOURCE_VENUE_MONTH_PLAN: "месячный план заведения",
+    BOOST_SOURCE_VENUE_DAY_PLAN: "суточный план заведения",
+    BOOST_SOURCE_DEPARTMENT_MONTH_PLAN: "месячный план департамента",
+    BOOST_SOURCE_DEPARTMENT_DAY_PLAN: "суточный план департамента",
+    BOOST_SOURCE_KPI_METRIC: "KPI",
+}
+BOOST_RECALC_TITLES = {
+    BOOST_RECALC_REPLACE_ALL: "весь объём",
+    BOOST_RECALC_EXCESS_ONLY: "только превышение",
 }
 
 
@@ -31,6 +61,7 @@ class PayrollMemberMetrics:
 @dataclass
 class PayrollRevenueMetrics:
     total_revenue_minor: int = 0
+    total_revenue_by_date_minor: dict[date, int] = field(default_factory=dict)
     department_revenue_minor: dict[int, int] = field(default_factory=dict)
     department_revenue_by_date_minor: dict[int, dict[date, int]] = field(default_factory=dict)
 
@@ -53,6 +84,40 @@ class PayrollKpiBonusDecision:
     threshold_value: int | None = None
     matched_step: dict | None = None
     steps: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class PayrollVenuePlanMetrics:
+    month_revenue_target_minor: int | None = None
+    day_revenue_target_by_date_minor: dict[date, int | None] = field(default_factory=dict)
+
+
+@dataclass
+class PayrollPercentDecision:
+    amount_minor: int
+    base_amount_minor: int
+    base_scope: str
+    regular_percent_bps: int
+    applied_percent_bps: int
+    regular_amount_minor: int
+    boost_enabled: bool
+    boost_applied: bool
+    boost_source_type: str
+    boost_source_title: str
+    boost_recalc_mode: str
+    boost_recalc_mode_effective: str
+    boost_recalc_mode_title: str
+    boost_percent_bps: int | None = None
+    boost_target_minor: int | None = None
+    boost_actual_minor: int | None = None
+    boost_target_value: int | None = None
+    boost_actual_value: int | None = None
+    boost_kpi_metric_id: int | None = None
+    minimum_guarantee_minor: int | None = None
+    maximum_cap_minor: int | None = None
+    minimum_applied: bool = False
+    maximum_applied: bool = False
+    day_rows: list[dict] = field(default_factory=list)
 
 
 def parse_month_start(month: str) -> date:
@@ -231,6 +296,249 @@ def calculate_component_amount_minor(
     return 0
 
 
+
+
+def _round_percent_amount(base_amount_minor: int, percent_bps: int) -> int:
+    return int((int(base_amount_minor) * int(percent_bps) + 5000) // 10000)
+
+
+def _component_base_scope(component: PayComponent) -> str:
+    raw = str(getattr(component, "base_scope", "") or "").strip().upper()
+    if raw in {BASE_SCOPE_FULL_PERIOD, BASE_SCOPE_WORKED_DATES}:
+        return raw
+    component_type = str(getattr(component, "component_type", "") or "").strip().upper()
+    if component_type == "PERCENT_DEPARTMENT_REVENUE":
+        return BASE_SCOPE_WORKED_DATES
+    return BASE_SCOPE_FULL_PERIOD
+
+
+def _component_boost_source_type(component: PayComponent) -> str:
+    raw = str(getattr(component, "boost_source_type", "") or "").strip().upper()
+    if raw in {
+        BOOST_SOURCE_NONE,
+        BOOST_SOURCE_VENUE_MONTH_PLAN,
+        BOOST_SOURCE_VENUE_DAY_PLAN,
+        BOOST_SOURCE_DEPARTMENT_MONTH_PLAN,
+        BOOST_SOURCE_DEPARTMENT_DAY_PLAN,
+        BOOST_SOURCE_KPI_METRIC,
+    }:
+        return raw
+    return BOOST_SOURCE_NONE
+
+
+def _component_boost_recalc_mode(component: PayComponent) -> str:
+    raw = str(getattr(component, "boost_recalc_mode", "") or "").strip().upper()
+    if raw == BOOST_RECALC_EXCESS_ONLY:
+        return BOOST_RECALC_EXCESS_ONLY
+    return BOOST_RECALC_REPLACE_ALL
+
+
+def _load_venue_plan_metrics(
+    db: Session,
+    *,
+    venue_id: int,
+    month_start: date,
+    month_end_excl: date,
+) -> PayrollVenuePlanMetrics:
+    month_plan = db.execute(
+        select(DayEconomicsMonthPlan.revenue_plan_minor).where(
+            DayEconomicsMonthPlan.venue_id == int(venue_id),
+            DayEconomicsMonthPlan.month_start == month_start,
+        )
+    ).scalar_one_or_none()
+
+    weekday_templates = {
+        int(row.weekday): (int(row.revenue_plan_minor) if row.revenue_plan_minor is not None else None)
+        for row in db.execute(
+            select(DayEconomicsPlanTemplate.weekday, DayEconomicsPlanTemplate.revenue_plan_minor).where(
+                DayEconomicsPlanTemplate.venue_id == int(venue_id),
+            )
+        ).all()
+    }
+    date_overrides = {
+        row.target_date: (int(row.revenue_plan_minor) if row.revenue_plan_minor is not None else None)
+        for row in db.execute(
+            select(DayEconomicsPlan.target_date, DayEconomicsPlan.revenue_plan_minor).where(
+                DayEconomicsPlan.venue_id == int(venue_id),
+                DayEconomicsPlan.target_date >= month_start,
+                DayEconomicsPlan.target_date < month_end_excl,
+            )
+        ).all()
+    }
+
+    day_targets: dict[date, int | None] = {}
+    cursor = month_start
+    while cursor < month_end_excl:
+        if cursor in date_overrides:
+            day_targets[cursor] = date_overrides[cursor]
+        elif month_plan is not None:
+            day_targets[cursor] = int(month_plan) if month_plan is not None else None
+        else:
+            day_targets[cursor] = weekday_templates.get(cursor.weekday())
+        cursor += timedelta(days=1)
+
+    return PayrollVenuePlanMetrics(
+        month_revenue_target_minor=int(month_plan) if month_plan is not None else None,
+        day_revenue_target_by_date_minor=day_targets,
+    )
+
+
+def _build_percent_component_decision(
+    component: PayComponent,
+    *,
+    metrics: PayrollMemberMetrics,
+    revenue_metrics: PayrollRevenueMetrics,
+    kpi_metrics: PayrollKpiMetrics,
+    venue_plan_metrics: PayrollVenuePlanMetrics,
+) -> PayrollPercentDecision:
+    component_type = str(component.component_type or "").strip().upper()
+    if component_type not in {"PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"}:
+        raise ValueError(f"Unsupported percent component type: {component.component_type}")
+
+    base_scope = _component_base_scope(component)
+    regular_percent_bps = int(component.percent_bps or 0)
+    boost_percent_bps = int(component.boost_percent_bps or 0) if getattr(component, "boost_percent_bps", None) is not None else None
+    boost_source_type = _component_boost_source_type(component)
+    boost_source_title = BOOST_SOURCE_TITLES.get(boost_source_type, boost_source_type or BOOST_SOURCE_NONE)
+    boost_recalc_mode = _component_boost_recalc_mode(component)
+    boost_recalc_mode_effective = boost_recalc_mode
+    minimum_guarantee_minor = int(component.minimum_guarantee_minor or 0) if getattr(component, "minimum_guarantee_minor", None) is not None else None
+    maximum_cap_minor = int(component.maximum_cap_minor or 0) if getattr(component, "maximum_cap_minor", None) is not None else None
+
+    if component_type == "PERCENT_TOTAL_REVENUE":
+        source_by_date = revenue_metrics.total_revenue_by_date_minor
+    else:
+        source_by_date = revenue_metrics.department_revenue_by_date_minor.get(int(component.department_id or 0), {})
+
+    if base_scope == BASE_SCOPE_WORKED_DATES:
+        base_by_date = {
+            day: int(source_by_date.get(day) or 0)
+            for day in sorted(metrics.worked_dates)
+            if day in source_by_date
+        }
+    else:
+        base_by_date = {day: int(amount or 0) for day, amount in sorted(source_by_date.items(), key=lambda item: item[0])}
+
+    base_amount_minor = int(sum(int(amount or 0) for amount in base_by_date.values()))
+    regular_amount_minor = _round_percent_amount(base_amount_minor, regular_percent_bps)
+
+    boost_enabled = bool(
+        getattr(component, "boost_enabled", False)
+        and boost_percent_bps is not None
+        and boost_percent_bps > 0
+        and boost_source_type != BOOST_SOURCE_NONE
+    )
+
+    amount_minor = int(regular_amount_minor)
+    applied_percent_bps = int(regular_percent_bps)
+    boost_applied = False
+    boost_target_minor: int | None = None
+    boost_actual_minor: int | None = None
+    boost_target_value: int | None = None
+    boost_actual_value: int | None = None
+    day_rows: list[dict] = []
+
+    if boost_enabled and base_amount_minor > 0:
+        if boost_source_type == BOOST_SOURCE_VENUE_MONTH_PLAN:
+            boost_target_minor = venue_plan_metrics.month_revenue_target_minor
+            boost_actual_minor = int(revenue_metrics.total_revenue_minor)
+            boost_applied = boost_target_minor is not None and boost_actual_minor >= boost_target_minor
+            if boost_applied:
+                excess_supported = component_type == "PERCENT_TOTAL_REVENUE" and base_scope == BASE_SCOPE_FULL_PERIOD
+                if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and excess_supported and boost_target_minor is not None:
+                    regular_part = _round_percent_amount(min(base_amount_minor, boost_target_minor), regular_percent_bps)
+                    boost_part = _round_percent_amount(max(base_amount_minor - boost_target_minor, 0), int(boost_percent_bps or 0))
+                    amount_minor = int(regular_part + boost_part)
+                else:
+                    if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and not excess_supported:
+                        boost_recalc_mode_effective = BOOST_RECALC_REPLACE_ALL
+                    amount_minor = _round_percent_amount(base_amount_minor, int(boost_percent_bps or 0))
+                applied_percent_bps = int(boost_percent_bps or 0)
+
+        elif boost_source_type == BOOST_SOURCE_VENUE_DAY_PLAN:
+            excess_supported = component_type == "PERCENT_TOTAL_REVENUE"
+            amount_minor = 0
+            applied_days_count = 0
+            for day, base_day_minor in sorted(base_by_date.items(), key=lambda item: item[0]):
+                actual_day_minor = int(revenue_metrics.total_revenue_by_date_minor.get(day) or 0)
+                target_day_minor = venue_plan_metrics.day_revenue_target_by_date_minor.get(day)
+                day_boost_applied = target_day_minor is not None and actual_day_minor >= int(target_day_minor or 0)
+                day_percent_bps = regular_percent_bps
+                if day_boost_applied:
+                    applied_days_count += 1
+                    day_percent_bps = int(boost_percent_bps or 0)
+                    if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and excess_supported and target_day_minor is not None:
+                        regular_part = _round_percent_amount(min(base_day_minor, int(target_day_minor)), regular_percent_bps)
+                        boost_part = _round_percent_amount(max(base_day_minor - int(target_day_minor), 0), int(boost_percent_bps or 0))
+                        day_amount_minor = int(regular_part + boost_part)
+                    else:
+                        if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and not excess_supported:
+                            boost_recalc_mode_effective = BOOST_RECALC_REPLACE_ALL
+                        day_amount_minor = _round_percent_amount(base_day_minor, int(boost_percent_bps or 0))
+                else:
+                    day_amount_minor = _round_percent_amount(base_day_minor, regular_percent_bps)
+                amount_minor += int(day_amount_minor)
+                day_rows.append(
+                    {
+                        "date": day.isoformat(),
+                        "base_amount_minor": int(base_day_minor),
+                        "actual_amount_minor": int(actual_day_minor),
+                        "target_amount_minor": int(target_day_minor) if target_day_minor is not None else None,
+                        "boost_applied": bool(day_boost_applied),
+                        "percent_bps": int(day_percent_bps),
+                        "amount_minor": int(day_amount_minor),
+                    }
+                )
+            boost_applied = applied_days_count > 0
+            boost_actual_value = int(applied_days_count)
+
+        elif boost_source_type == BOOST_SOURCE_KPI_METRIC:
+            boost_kpi_metric_id = int(component.boost_kpi_metric_id or 0) if getattr(component, "boost_kpi_metric_id", None) is not None else 0
+            boost_target_value = int(component.boost_threshold_value or 0) if getattr(component, "boost_threshold_value", None) is not None else None
+            boost_actual_value = int(kpi_metrics.totals_by_metric_id.get(boost_kpi_metric_id, 0)) if boost_kpi_metric_id else 0
+            boost_applied = bool(boost_target_value is not None and boost_actual_value >= boost_target_value)
+            if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY:
+                boost_recalc_mode_effective = BOOST_RECALC_REPLACE_ALL
+            if boost_applied:
+                amount_minor = _round_percent_amount(base_amount_minor, int(boost_percent_bps or 0))
+                applied_percent_bps = int(boost_percent_bps or 0)
+
+    minimum_applied = False
+    maximum_applied = False
+    if minimum_guarantee_minor is not None and amount_minor < minimum_guarantee_minor:
+        amount_minor = int(minimum_guarantee_minor)
+        minimum_applied = True
+    if maximum_cap_minor is not None and amount_minor > maximum_cap_minor:
+        amount_minor = int(maximum_cap_minor)
+        maximum_applied = True
+
+    return PayrollPercentDecision(
+        amount_minor=int(amount_minor),
+        base_amount_minor=int(base_amount_minor),
+        base_scope=base_scope,
+        regular_percent_bps=int(regular_percent_bps),
+        applied_percent_bps=int(applied_percent_bps),
+        regular_amount_minor=int(regular_amount_minor),
+        boost_enabled=bool(boost_enabled),
+        boost_applied=bool(boost_applied),
+        boost_source_type=boost_source_type,
+        boost_source_title=boost_source_title,
+        boost_recalc_mode=boost_recalc_mode,
+        boost_recalc_mode_effective=boost_recalc_mode_effective,
+        boost_recalc_mode_title=BOOST_RECALC_TITLES.get(boost_recalc_mode_effective, BOOST_RECALC_TITLES[BOOST_RECALC_REPLACE_ALL]),
+        boost_percent_bps=boost_percent_bps,
+        boost_target_minor=boost_target_minor,
+        boost_actual_minor=boost_actual_minor,
+        boost_target_value=boost_target_value,
+        boost_actual_value=boost_actual_value,
+        boost_kpi_metric_id=int(component.boost_kpi_metric_id) if getattr(component, "boost_kpi_metric_id", None) is not None else None,
+        minimum_guarantee_minor=minimum_guarantee_minor,
+        maximum_cap_minor=maximum_cap_minor,
+        minimum_applied=minimum_applied,
+        maximum_applied=maximum_applied,
+        day_rows=day_rows,
+    )
+
 def _assignment_overlaps_month(*, assignment: PayProfileAssignment, month_start: date, month_end_excl: date) -> bool:
     if not assignment.is_active:
         return False
@@ -343,6 +651,25 @@ def _load_revenue_metrics(db: Session, *, venue_id: int, month_start: date, mont
         or 0
     ) * 100
 
+    total_daily_rows = db.execute(
+        select(
+            DailyReport.date.label("report_date"),
+            func.coalesce(func.sum(DailyReport.revenue_total), 0).label("amount"),
+        )
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == "CLOSED",
+            DailyReport.date >= month_start,
+            DailyReport.date < month_end_excl,
+        )
+        .group_by(DailyReport.date)
+    ).all()
+    total_revenue_by_date_minor: dict[date, int] = {
+        row.report_date: int(row.amount or 0) * 100
+        for row in total_daily_rows
+        if row and row.report_date is not None
+    }
+
     dept_rows = db.execute(
         select(
             DailyReportValue.ref_id,
@@ -388,6 +715,7 @@ def _load_revenue_metrics(db: Session, *, venue_id: int, month_start: date, mont
 
     return PayrollRevenueMetrics(
         total_revenue_minor=total_revenue_minor,
+        total_revenue_by_date_minor=total_revenue_by_date_minor,
         department_revenue_minor=department_revenue_minor,
         department_revenue_by_date_minor=department_revenue_by_date_minor,
     )
@@ -490,6 +818,12 @@ def calculate_payroll_for_month(
         month_start=month_start,
         month_end_excl=month_end_excl,
     )
+    venue_plan_metrics = _load_venue_plan_metrics(
+        db,
+        venue_id=int(venue_id),
+        month_start=month_start,
+        month_end_excl=month_end_excl,
+    )
 
     lines: list[PayrollLine] = []
     total_amount_minor = 0
@@ -502,24 +836,40 @@ def calculate_payroll_for_month(
 
         for component in components:
             component_type = str(component.component_type or "").strip().upper()
-            department_base_minor = 0
             worked_dates_sorted = sorted(metrics.worked_dates)
+            department_base_minor = 0
             if component.department_id is not None:
-                department_base_minor = _sum_department_revenue_for_worked_dates(
-                    revenue_metrics.department_revenue_by_date_minor.get(int(component.department_id), {}),
-                    metrics.worked_dates,
-                )
+                base_scope = _component_base_scope(component)
+                if base_scope == BASE_SCOPE_FULL_PERIOD:
+                    department_base_minor = int(revenue_metrics.department_revenue_minor.get(int(component.department_id), 0))
+                else:
+                    department_base_minor = _sum_department_revenue_for_worked_dates(
+                        revenue_metrics.department_revenue_by_date_minor.get(int(component.department_id), {}),
+                        metrics.worked_dates,
+                    )
             kpi_metric_value = 0
             if component.kpi_metric_id is not None:
                 kpi_metric_value = int(kpi_metrics.totals_by_metric_id.get(int(component.kpi_metric_id), 0))
-            amount_minor = calculate_component_amount_minor(
-                component,
-                minutes_total=int(metrics.minutes_total),
-                shifts_count=int(metrics.shifts_count),
-                total_revenue_minor=int(revenue_metrics.total_revenue_minor),
-                department_revenue_minor=int(department_base_minor),
-                kpi_metric_value=int(kpi_metric_value),
-            )
+
+            percent_decision: PayrollPercentDecision | None = None
+            if component_type in {"PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"}:
+                percent_decision = _build_percent_component_decision(
+                    component,
+                    metrics=metrics,
+                    revenue_metrics=revenue_metrics,
+                    kpi_metrics=kpi_metrics,
+                    venue_plan_metrics=venue_plan_metrics,
+                )
+                amount_minor = int(percent_decision.amount_minor)
+            else:
+                amount_minor = calculate_component_amount_minor(
+                    component,
+                    minutes_total=int(metrics.minutes_total),
+                    shifts_count=int(metrics.shifts_count),
+                    total_revenue_minor=int(revenue_metrics.total_revenue_minor),
+                    department_revenue_minor=int(department_base_minor),
+                    kpi_metric_value=int(kpi_metric_value),
+                )
             breakdown_item = {
                 "component_id": int(component.id),
                 "component_type": component.component_type,
@@ -532,16 +882,64 @@ def calculate_payroll_for_month(
                 "source_rate_minor": int(component.rate_minor or 0) if component.rate_minor is not None else None,
                 "source_percent_bps": int(component.percent_bps or 0) if component.percent_bps is not None else None,
             }
-            if component_type == "PERCENT_TOTAL_REVENUE":
-                breakdown_item["percent_bps"] = int(component.percent_bps or 0)
-                breakdown_item["base_amount_minor"] = int(revenue_metrics.total_revenue_minor)
-            elif component_type == "PERCENT_DEPARTMENT_REVENUE":
-                breakdown_item["percent_bps"] = int(component.percent_bps or 0)
+            if component_type == "PERCENT_TOTAL_REVENUE" and percent_decision is not None:
+                breakdown_item["percent_bps"] = int(percent_decision.applied_percent_bps)
+                breakdown_item["regular_percent_bps"] = int(percent_decision.regular_percent_bps)
+                breakdown_item["boost_percent_bps"] = percent_decision.boost_percent_bps
+                breakdown_item["base_amount_minor"] = int(percent_decision.base_amount_minor)
+                breakdown_item["base_scope"] = percent_decision.base_scope
+                breakdown_item["base_scope_title"] = BASE_SCOPE_TITLES.get(percent_decision.base_scope, percent_decision.base_scope)
+                breakdown_item["boost_enabled"] = bool(percent_decision.boost_enabled)
+                breakdown_item["boost_applied"] = bool(percent_decision.boost_applied)
+                breakdown_item["boost_source_type"] = percent_decision.boost_source_type
+                breakdown_item["boost_source_title"] = percent_decision.boost_source_title
+                breakdown_item["boost_recalc_mode"] = percent_decision.boost_recalc_mode
+                breakdown_item["boost_recalc_mode_effective"] = percent_decision.boost_recalc_mode_effective
+                breakdown_item["boost_recalc_mode_title"] = percent_decision.boost_recalc_mode_title
+                breakdown_item["boost_target_minor"] = percent_decision.boost_target_minor
+                breakdown_item["boost_actual_minor"] = percent_decision.boost_actual_minor
+                breakdown_item["boost_target_value"] = percent_decision.boost_target_value
+                breakdown_item["boost_actual_value"] = percent_decision.boost_actual_value
+                breakdown_item["boost_kpi_metric_id"] = percent_decision.boost_kpi_metric_id
+                if getattr(component, "boost_kpi_metric", None) is not None:
+                    breakdown_item["boost_kpi_metric_title"] = component.boost_kpi_metric.title
+                breakdown_item["regular_amount_minor"] = int(percent_decision.regular_amount_minor)
+                breakdown_item["minimum_guarantee_minor"] = percent_decision.minimum_guarantee_minor
+                breakdown_item["maximum_cap_minor"] = percent_decision.maximum_cap_minor
+                breakdown_item["minimum_applied"] = bool(percent_decision.minimum_applied)
+                breakdown_item["maximum_applied"] = bool(percent_decision.maximum_applied)
+                breakdown_item["day_rows"] = percent_decision.day_rows
+            elif component_type == "PERCENT_DEPARTMENT_REVENUE" and percent_decision is not None:
+                breakdown_item["percent_bps"] = int(percent_decision.applied_percent_bps)
+                breakdown_item["regular_percent_bps"] = int(percent_decision.regular_percent_bps)
+                breakdown_item["boost_percent_bps"] = percent_decision.boost_percent_bps
                 breakdown_item["department_id"] = int(component.department_id) if component.department_id is not None else None
                 breakdown_item["department_title"] = component.department.title if getattr(component, "department", None) is not None else None
-                breakdown_item["base_amount_minor"] = int(department_base_minor)
+                breakdown_item["base_amount_minor"] = int(percent_decision.base_amount_minor)
+                breakdown_item["base_scope"] = percent_decision.base_scope
+                breakdown_item["base_scope_title"] = BASE_SCOPE_TITLES.get(percent_decision.base_scope, percent_decision.base_scope)
                 breakdown_item["worked_dates_count"] = len(worked_dates_sorted)
                 breakdown_item["worked_dates"] = [day.isoformat() for day in worked_dates_sorted]
+                breakdown_item["boost_enabled"] = bool(percent_decision.boost_enabled)
+                breakdown_item["boost_applied"] = bool(percent_decision.boost_applied)
+                breakdown_item["boost_source_type"] = percent_decision.boost_source_type
+                breakdown_item["boost_source_title"] = percent_decision.boost_source_title
+                breakdown_item["boost_recalc_mode"] = percent_decision.boost_recalc_mode
+                breakdown_item["boost_recalc_mode_effective"] = percent_decision.boost_recalc_mode_effective
+                breakdown_item["boost_recalc_mode_title"] = percent_decision.boost_recalc_mode_title
+                breakdown_item["boost_target_minor"] = percent_decision.boost_target_minor
+                breakdown_item["boost_actual_minor"] = percent_decision.boost_actual_minor
+                breakdown_item["boost_target_value"] = percent_decision.boost_target_value
+                breakdown_item["boost_actual_value"] = percent_decision.boost_actual_value
+                breakdown_item["boost_kpi_metric_id"] = percent_decision.boost_kpi_metric_id
+                if getattr(component, "boost_kpi_metric", None) is not None:
+                    breakdown_item["boost_kpi_metric_title"] = component.boost_kpi_metric.title
+                breakdown_item["regular_amount_minor"] = int(percent_decision.regular_amount_minor)
+                breakdown_item["minimum_guarantee_minor"] = percent_decision.minimum_guarantee_minor
+                breakdown_item["maximum_cap_minor"] = percent_decision.maximum_cap_minor
+                breakdown_item["minimum_applied"] = bool(percent_decision.minimum_applied)
+                breakdown_item["maximum_applied"] = bool(percent_decision.maximum_applied)
+                breakdown_item["day_rows"] = percent_decision.day_rows
             elif component_type == "KPI_BONUS":
                 kpi_decision = calculate_kpi_bonus(component, kpi_metric_value=int(kpi_metric_value))
                 breakdown_item["kpi_metric_id"] = int(component.kpi_metric_id) if component.kpi_metric_id is not None else None

@@ -5,6 +5,17 @@ from types import SimpleNamespace
 from unittest import TestCase
 
 from app.services.payroll.calculator import (
+    BASE_SCOPE_FULL_PERIOD,
+    BASE_SCOPE_WORKED_DATES,
+    BOOST_RECALC_EXCESS_ONLY,
+    BOOST_SOURCE_KPI_METRIC,
+    BOOST_SOURCE_VENUE_DAY_PLAN,
+    BOOST_SOURCE_VENUE_MONTH_PLAN,
+    PayrollKpiMetrics,
+    PayrollMemberMetrics,
+    PayrollRevenueMetrics,
+    PayrollVenuePlanMetrics,
+    _build_percent_component_decision,
     calculate_component_amount_minor,
     calculate_kpi_bonus,
     interval_duration_minutes,
@@ -88,3 +99,133 @@ class PayrollCalculationHelpersTests(TestCase):
         )
         amount_minor = calculate_component_amount_minor(component, minutes_total=0, shifts_count=0, kpi_metric_value=15)
         self.assertEqual(amount_minor, 90000)
+
+
+class PayrollPercentDecisionTests(TestCase):
+    def test_percent_department_defaults_to_worked_dates_scope(self):
+        component = SimpleNamespace(
+            component_type="PERCENT_DEPARTMENT_REVENUE",
+            percent_bps=500,
+            department_id=3,
+            base_scope=None,
+            boost_enabled=False,
+            boost_percent_bps=None,
+            boost_source_type=None,
+            boost_recalc_mode=None,
+            minimum_guarantee_minor=None,
+            maximum_cap_minor=None,
+        )
+        decision = _build_percent_component_decision(
+            component,
+            metrics=PayrollMemberMetrics(worked_dates={__import__("datetime").date(2026, 3, 2)}),
+            revenue_metrics=PayrollRevenueMetrics(
+                department_revenue_minor={3: 900000},
+                department_revenue_by_date_minor={3: {__import__("datetime").date(2026, 3, 2): 300000, __import__("datetime").date(2026, 3, 3): 600000}},
+            ),
+            kpi_metrics=PayrollKpiMetrics(),
+            venue_plan_metrics=PayrollVenuePlanMetrics(),
+        )
+        self.assertEqual(decision.base_scope, BASE_SCOPE_WORKED_DATES)
+        self.assertEqual(decision.base_amount_minor, 300000)
+        self.assertEqual(decision.amount_minor, 15000)
+
+    def test_percent_total_with_month_plan_boost_replace_all(self):
+        component = SimpleNamespace(
+            component_type="PERCENT_TOTAL_REVENUE",
+            percent_bps=300,
+            base_scope=BASE_SCOPE_FULL_PERIOD,
+            boost_enabled=True,
+            boost_percent_bps=450,
+            boost_source_type=BOOST_SOURCE_VENUE_MONTH_PLAN,
+            boost_recalc_mode=None,
+            boost_kpi_metric_id=None,
+            boost_threshold_value=None,
+            minimum_guarantee_minor=None,
+            maximum_cap_minor=None,
+        )
+        decision = _build_percent_component_decision(
+            component,
+            metrics=PayrollMemberMetrics(),
+            revenue_metrics=PayrollRevenueMetrics(total_revenue_minor=1_500_000, total_revenue_by_date_minor={}),
+            kpi_metrics=PayrollKpiMetrics(),
+            venue_plan_metrics=PayrollVenuePlanMetrics(month_revenue_target_minor=1_200_000),
+        )
+        self.assertTrue(decision.boost_applied)
+        self.assertEqual(decision.amount_minor, 67500)
+        self.assertEqual(decision.applied_percent_bps, 450)
+
+    def test_percent_total_with_day_plan_excess_only(self):
+        from datetime import date
+        component = SimpleNamespace(
+            component_type="PERCENT_TOTAL_REVENUE",
+            percent_bps=500,
+            base_scope=BASE_SCOPE_FULL_PERIOD,
+            boost_enabled=True,
+            boost_percent_bps=700,
+            boost_source_type=BOOST_SOURCE_VENUE_DAY_PLAN,
+            boost_recalc_mode=BOOST_RECALC_EXCESS_ONLY,
+            boost_kpi_metric_id=None,
+            boost_threshold_value=None,
+            minimum_guarantee_minor=None,
+            maximum_cap_minor=None,
+        )
+        decision = _build_percent_component_decision(
+            component,
+            metrics=PayrollMemberMetrics(),
+            revenue_metrics=PayrollRevenueMetrics(
+                total_revenue_minor=400000,
+                total_revenue_by_date_minor={date(2026, 3, 2): 400000},
+            ),
+            kpi_metrics=PayrollKpiMetrics(),
+            venue_plan_metrics=PayrollVenuePlanMetrics(day_revenue_target_by_date_minor={date(2026, 3, 2): 300000}),
+        )
+        self.assertTrue(decision.boost_applied)
+        self.assertEqual(decision.amount_minor, 27000)
+
+    def test_percent_total_applies_minimum_and_cap(self):
+        component = SimpleNamespace(
+            component_type="PERCENT_TOTAL_REVENUE",
+            percent_bps=300,
+            base_scope=BASE_SCOPE_FULL_PERIOD,
+            boost_enabled=False,
+            boost_percent_bps=None,
+            boost_source_type=None,
+            boost_recalc_mode=None,
+            boost_kpi_metric_id=None,
+            boost_threshold_value=None,
+            minimum_guarantee_minor=40000,
+            maximum_cap_minor=45000,
+        )
+        decision = _build_percent_component_decision(
+            component,
+            metrics=PayrollMemberMetrics(),
+            revenue_metrics=PayrollRevenueMetrics(total_revenue_minor=1_000_000),
+            kpi_metrics=PayrollKpiMetrics(),
+            venue_plan_metrics=PayrollVenuePlanMetrics(),
+        )
+        self.assertTrue(decision.minimum_applied)
+        self.assertEqual(decision.amount_minor, 40000)
+
+    def test_percent_total_with_kpi_boost(self):
+        component = SimpleNamespace(
+            component_type="PERCENT_TOTAL_REVENUE",
+            percent_bps=300,
+            base_scope=BASE_SCOPE_FULL_PERIOD,
+            boost_enabled=True,
+            boost_percent_bps=450,
+            boost_source_type=BOOST_SOURCE_KPI_METRIC,
+            boost_recalc_mode=None,
+            boost_kpi_metric_id=8,
+            boost_threshold_value=20,
+            minimum_guarantee_minor=None,
+            maximum_cap_minor=None,
+        )
+        decision = _build_percent_component_decision(
+            component,
+            metrics=PayrollMemberMetrics(),
+            revenue_metrics=PayrollRevenueMetrics(total_revenue_minor=1_000_000),
+            kpi_metrics=PayrollKpiMetrics(totals_by_metric_id={8: 24}),
+            venue_plan_metrics=PayrollVenuePlanMetrics(),
+        )
+        self.assertTrue(decision.boost_applied)
+        self.assertEqual(decision.amount_minor, 45000)

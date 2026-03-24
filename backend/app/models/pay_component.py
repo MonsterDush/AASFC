@@ -19,6 +19,10 @@ class PayComponent(Base):
         CheckConstraint("rate_minor IS NULL OR rate_minor >= 0", name="ck_pay_components_rate_minor_non_negative"),
         CheckConstraint("percent_bps IS NULL OR percent_bps >= 0", name="ck_pay_components_percent_bps_non_negative"),
         CheckConstraint("threshold_value IS NULL OR threshold_value >= 0", name="ck_pay_components_threshold_value_non_negative"),
+        CheckConstraint("boost_percent_bps IS NULL OR boost_percent_bps >= 0", name="ck_pay_components_boost_percent_bps_non_negative"),
+        CheckConstraint("boost_threshold_value IS NULL OR boost_threshold_value >= 0", name="ck_pay_components_boost_threshold_value_non_negative"),
+        CheckConstraint("minimum_guarantee_minor IS NULL OR minimum_guarantee_minor >= 0", name="ck_pay_components_minimum_guarantee_non_negative"),
+        CheckConstraint("maximum_cap_minor IS NULL OR maximum_cap_minor >= 0", name="ck_pay_components_maximum_cap_non_negative"),
         CheckConstraint("sort_order >= 0", name="ck_pay_components_sort_order_non_negative"),
     )
 
@@ -39,6 +43,17 @@ class PayComponent(Base):
     threshold_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
     steps_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    base_scope: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    boost_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    boost_percent_bps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    boost_source_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    boost_recalc_mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    boost_department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), nullable=True)
+    boost_kpi_metric_id: Mapped[int | None] = mapped_column(ForeignKey("kpi_metrics.id"), nullable=True)
+    boost_threshold_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    minimum_guarantee_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    maximum_cap_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
@@ -47,5 +62,7 @@ class PayComponent(Base):
 
     venue = relationship("Venue")
     pay_profile = relationship("PayProfile", back_populates="components")
-    department = relationship("Department")
-    kpi_metric = relationship("KpiMetric")
+    department = relationship("Department", foreign_keys=[department_id])
+    kpi_metric = relationship("KpiMetric", foreign_keys=[kpi_metric_id])
+    boost_department = relationship("Department", foreign_keys=[boost_department_id])
+    boost_kpi_metric = relationship("KpiMetric", foreign_keys=[boost_kpi_metric_id])

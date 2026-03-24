@@ -1286,3 +1286,13 @@ input[type="checkbox"],input[type="radio"]{
   .listrow .row--nowrap > .btn,
   .listrow .row--nowrap > a.btn{flex:1 1 100%;}
 }
+
+
+/* pay component simulator */
+.pay-sim{display:grid;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.04);}
+.pay-sim__title{font-size:13px;font-weight:800;}
+.pay-sim__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+.pay-sim__result{padding:10px 12px;border-radius:14px;border:1px dashed var(--border);background:rgba(255,255,255,.03);line-height:1.45;}
+@media (max-width:760px){
+  .pay-sim__grid{grid-template-columns:1fr;}
+}
