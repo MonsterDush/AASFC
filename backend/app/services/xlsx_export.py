@@ -444,6 +444,7 @@ def build_payroll_xlsx(
     ws = wb.active
     ws.title = "Сводка"
     run = payload.get("run") or {}
+    latest_recalculation = payload.get("latest_recalculation") or {}
     lines = payload.get("lines") or []
     _write_title(ws, f"Начисления · {venue_name}")
     _write_key_values(
@@ -453,12 +454,14 @@ def build_payroll_xlsx(
             ("Строк начислений", int(payload.get("lines_count") or 0)),
             ("Итого, ₽", _minor_to_major(payload.get("total_amount_minor"))),
             ("Рассчитано", run.get("calculated_at")),
+            ("Последний перерасчёт", latest_recalculation.get("created_at")),
+            ("Причина перерасчёта", latest_recalculation.get("trigger_reason")),
             ("Run ID", run.get("id")),
         ],
     )
     ws[4][1].number_format = INTEGER_FORMAT
     ws[5][1].number_format = CURRENCY_FORMAT
-    ws[7][1].number_format = INTEGER_FORMAT
+    ws[9][1].number_format = INTEGER_FORMAT
 
     lines_ws = wb.create_sheet("Начисления")
     _write_title(lines_ws, "Строки начислений")
@@ -484,11 +487,21 @@ def build_payroll_xlsx(
     comp_ws = wb.create_sheet("Разбор")
     _write_title(comp_ws, "Детализация компонентов")
     component_rows: list[list[Any]] = []
+    percent_day_rows: list[list[Any]] = []
     for line in lines:
         member = (line.get("member") or {}).get("short_name") or (line.get("member") or {}).get("full_name") or f"user #{line.get('member_user_id')}"
         profile = line.get("pay_profile_title")
         for comp in (((line.get("breakdown") or {}).get("components")) or []):
             matched_step = comp.get("matched_step") or {}
+            snapshot = comp.get("calculation_snapshot") if isinstance(comp.get("calculation_snapshot"), dict) else {}
+            base_scope_title = snapshot.get("base_scope_title") or comp.get("base_scope_title")
+            boost_source_title = snapshot.get("boost_source_title") or comp.get("boost_source_title")
+            boost_mode_title = snapshot.get("boost_recalc_mode_title") or comp.get("boost_recalc_mode_title")
+            boost_mode_effective = snapshot.get("boost_recalc_mode_effective") or comp.get("boost_recalc_mode_effective")
+            boost_target_minor = snapshot.get("boost_target_minor") if snapshot.get("boost_target_minor") is not None else comp.get("boost_target_minor")
+            boost_actual_minor = snapshot.get("boost_actual_minor") if snapshot.get("boost_actual_minor") is not None else comp.get("boost_actual_minor")
+            boost_target_value = snapshot.get("boost_target_value") if snapshot.get("boost_target_value") is not None else comp.get("boost_target_value")
+            boost_actual_value = snapshot.get("boost_actual_value") if snapshot.get("boost_actual_value") is not None else comp.get("boost_actual_value")
             component_rows.append(
                 [
                     member,
@@ -496,16 +509,49 @@ def build_payroll_xlsx(
                     comp.get("title") or comp.get("component_type"),
                     comp.get("component_type"),
                     _minor_to_major(comp.get("amount_minor")),
-                    (comp.get("percent_bps") or 0) / 100 if comp.get("percent_bps") is not None else None,
                     _minor_to_major(comp.get("base_amount_minor")) if comp.get("base_amount_minor") is not None else None,
+                    base_scope_title,
+                    (comp.get("regular_percent_bps") or 0) / 100 if comp.get("regular_percent_bps") is not None else None,
+                    (comp.get("percent_bps") or 0) / 100 if comp.get("percent_bps") is not None else None,
+                    boost_source_title,
+                    _minor_to_major(boost_target_minor) if boost_target_minor is not None else None,
+                    _minor_to_major(boost_actual_minor) if boost_actual_minor is not None else None,
+                    boost_target_value,
+                    boost_actual_value,
+                    (comp.get("boost_percent_bps") or 0) / 100 if comp.get("boost_percent_bps") is not None else None,
+                    boost_mode_title,
+                    boost_mode_effective,
+                    _minor_to_major(comp.get("minimum_guarantee_minor")) if comp.get("minimum_guarantee_minor") is not None else None,
+                    _minor_to_major(comp.get("maximum_cap_minor")) if comp.get("maximum_cap_minor") is not None else None,
                     comp.get("department_title"),
-                    comp.get("kpi_metric_title"),
-                    comp.get("metric_value"),
-                    comp.get("threshold_value"),
+                    comp.get("boost_department_title"),
+                    comp.get("boost_kpi_metric_title") or comp.get("kpi_metric_title"),
+                    "Да" if comp.get("boost_applied") else "Нет",
+                    "Да" if comp.get("minimum_applied") else "Нет",
+                    "Да" if comp.get("maximum_applied") else "Нет",
                     matched_step.get("threshold_value"),
                     matched_step.get("bonus_minor") / 100.0 if matched_step.get("bonus_minor") is not None else None,
                 ]
             )
+            for day_row in (snapshot.get("day_rows") or comp.get("day_rows") or []):
+                if not isinstance(day_row, dict):
+                    continue
+                percent_day_rows.append(
+                    [
+                        member,
+                        profile,
+                        comp.get("title") or comp.get("component_type"),
+                        boost_source_title,
+                        day_row.get("date"),
+                        _minor_to_major(day_row.get("base_amount_minor")) if day_row.get("base_amount_minor") is not None else None,
+                        _minor_to_major(day_row.get("target_amount_minor")) if day_row.get("target_amount_minor") is not None else None,
+                        _minor_to_major(day_row.get("actual_amount_minor")) if day_row.get("actual_amount_minor") is not None else None,
+                        (day_row.get("percent_bps") or 0) / 100 if day_row.get("percent_bps") is not None else None,
+                        _minor_to_major(day_row.get("amount_minor")) if day_row.get("amount_minor") is not None else None,
+                        "Да" if day_row.get("boost_applied") else "Нет",
+                        boost_mode_effective,
+                    ]
+                )
     _write_table(
         comp_ws,
         [
@@ -514,17 +560,56 @@ def build_payroll_xlsx(
             "Компонент",
             "Тип",
             "Сумма, ₽",
-            "Процент, %",
             "База, ₽",
-            "Департамент",
-            "KPI",
+            "База расчёта",
+            "Обычный %, %",
+            "Применённый %, %",
+            "Условие",
+            "Цель, ₽",
+            "Факт, ₽",
+            "Цель KPI",
             "Факт KPI",
-            "Порог",
+            "Повышенный %, %",
+            "Режим",
+            "Эффективный режим",
+            "Мин. гарантия, ₽",
+            "Максимум, ₽",
+            "Департамент",
+            "Департамент условия",
+            "KPI",
+            "Boost",
+            "Мин. гарантия",
+            "Потолок",
             "Сработавшая ступень",
             "Бонус ступени, ₽",
         ],
         component_rows,
-        currency_cols={5, 7, 13},
+        currency_cols={5, 6, 11, 12, 18, 19, 27},
     )
+
+    if percent_day_rows:
+        day_ws = wb.create_sheet("Проценты по дням")
+        _write_title(day_ws, "Посуточная детализация процентных компонентов")
+        _write_table(
+            day_ws,
+            [
+                "Сотрудник",
+                "Профиль",
+                "Компонент",
+                "Условие",
+                "Дата",
+                "База, ₽",
+                "Цель, ₽",
+                "Факт, ₽",
+                "Применённый %, %",
+                "Сумма, ₽",
+                "Boost",
+                "Режим",
+            ],
+            percent_day_rows,
+            currency_cols={6, 7, 8, 10},
+        )
+
+    return _finalize_workbook(wb)
 
     return _finalize_workbook(wb)

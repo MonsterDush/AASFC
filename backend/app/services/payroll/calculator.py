@@ -122,6 +122,44 @@ class PayrollPercentDecision:
     day_rows: list[dict] = field(default_factory=list)
 
 
+def _build_percent_component_snapshot(component: PayComponent, decision: PayrollPercentDecision) -> dict:
+    snapshot = {
+        "kind": "percent_component",
+        "component_type": str(getattr(component, "component_type", "") or ""),
+        "base_scope": decision.base_scope,
+        "base_scope_title": BASE_SCOPE_TITLES.get(decision.base_scope, decision.base_scope),
+        "base_amount_minor": int(decision.base_amount_minor),
+        "regular_percent_bps": int(decision.regular_percent_bps),
+        "applied_percent_bps": int(decision.applied_percent_bps),
+        "regular_amount_minor": int(decision.regular_amount_minor),
+        "final_amount_minor": int(decision.amount_minor),
+        "boost_enabled": bool(decision.boost_enabled),
+        "boost_applied": bool(decision.boost_applied),
+        "boost_source_type": decision.boost_source_type,
+        "boost_source_title": decision.boost_source_title,
+        "boost_recalc_mode": decision.boost_recalc_mode,
+        "boost_recalc_mode_effective": decision.boost_recalc_mode_effective,
+        "boost_recalc_mode_title": decision.boost_recalc_mode_title,
+        "boost_percent_bps": int(decision.boost_percent_bps) if decision.boost_percent_bps is not None else None,
+        "boost_target_minor": int(decision.boost_target_minor) if decision.boost_target_minor is not None else None,
+        "boost_actual_minor": int(decision.boost_actual_minor) if decision.boost_actual_minor is not None else None,
+        "boost_target_value": int(decision.boost_target_value) if decision.boost_target_value is not None else None,
+        "boost_actual_value": int(decision.boost_actual_value) if decision.boost_actual_value is not None else None,
+        "boost_department_id": int(getattr(component, "boost_department_id", 0) or 0) if getattr(component, "boost_department_id", None) is not None else None,
+        "boost_department_title": getattr(getattr(component, "boost_department", None), "title", None),
+        "boost_kpi_metric_id": int(decision.boost_kpi_metric_id) if decision.boost_kpi_metric_id is not None else None,
+        "boost_kpi_metric_title": getattr(getattr(component, "boost_kpi_metric", None), "title", None),
+        "minimum_guarantee_minor": int(decision.minimum_guarantee_minor) if decision.minimum_guarantee_minor is not None else None,
+        "maximum_cap_minor": int(decision.maximum_cap_minor) if decision.maximum_cap_minor is not None else None,
+        "minimum_applied": bool(decision.minimum_applied),
+        "maximum_applied": bool(decision.maximum_applied),
+        "department_id": int(getattr(component, "department_id", 0) or 0) if getattr(component, "department_id", None) is not None else None,
+        "department_title": getattr(getattr(component, "department", None), "title", None),
+        "day_rows": [dict(row) for row in (decision.day_rows or [])],
+    }
+    return snapshot
+
+
 def parse_month_start(month: str) -> date:
     try:
         y_s, m_s = str(month or "").split("-")
@@ -992,6 +1030,7 @@ def calculate_payroll_for_month(
                 breakdown_item["minimum_applied"] = bool(percent_decision.minimum_applied)
                 breakdown_item["maximum_applied"] = bool(percent_decision.maximum_applied)
                 breakdown_item["day_rows"] = percent_decision.day_rows
+                breakdown_item["calculation_snapshot"] = _build_percent_component_snapshot(component, percent_decision)
             elif component_type == "PERCENT_DEPARTMENT_REVENUE" and percent_decision is not None:
                 breakdown_item["percent_bps"] = int(percent_decision.applied_percent_bps)
                 breakdown_item["regular_percent_bps"] = int(percent_decision.regular_percent_bps)
@@ -1025,6 +1064,7 @@ def calculate_payroll_for_month(
                 breakdown_item["minimum_applied"] = bool(percent_decision.minimum_applied)
                 breakdown_item["maximum_applied"] = bool(percent_decision.maximum_applied)
                 breakdown_item["day_rows"] = percent_decision.day_rows
+                breakdown_item["calculation_snapshot"] = _build_percent_component_snapshot(component, percent_decision)
             elif component_type == "KPI_BONUS":
                 kpi_decision = calculate_kpi_bonus(component, kpi_metric_value=int(kpi_metric_value))
                 breakdown_item["kpi_metric_id"] = int(component.kpi_metric_id) if component.kpi_metric_id is not None else None

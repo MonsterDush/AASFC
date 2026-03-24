@@ -278,24 +278,120 @@ def _component_allocation_for_day(
         source_amount_minor = component.get("source_amount_minor", month_component_amount_minor)
         formula_text = f"{_fmt_money_minor(int(source_amount_minor or 0))} / {len(ordered_dates)} рабочих дней"
     elif component_type == "PERCENT_TOTAL_REVENUE":
-        weights = {day: int(context.revenue_by_date_minor.get(day, 0)) for day in ordered_dates}
-        base_text = f"{_fmt_money_minor(context.revenue_by_date_minor.get(target_date, 0))} из {_fmt_money_minor(sum(weights.values()))}"
-        percent_bps = component.get("percent_bps") or component.get("source_percent_bps")
-        if percent_bps not in (None, ""):
-            formula_text = f"{(int(percent_bps) / 100):.2f}% от общей выручки месяца, доля дня по выручке"
+        day_rows = [row for row in (component.get("day_rows") or []) if isinstance(row, dict)]
+        day_snapshot = next((row for row in day_rows if str(row.get("date") or "") == target_date.isoformat()), None)
+        if day_snapshot is not None:
+            amount_minor = int(day_snapshot.get("amount_minor") or 0)
+            if amount_minor == 0:
+                return None
+            percent_bps = int(day_snapshot.get("percent_bps") or component.get("percent_bps") or component.get("source_percent_bps") or 0)
+            actual_minor = day_snapshot.get("actual_amount_minor")
+            target_minor = day_snapshot.get("target_amount_minor")
+            base_text = f"база {_fmt_money_minor(day_snapshot.get('base_amount_minor'))}"
+            if actual_minor is not None:
+                base_text += f" · факт {_fmt_money_minor(actual_minor)}"
+            if target_minor is not None:
+                base_text += f" · цель {_fmt_money_minor(target_minor)}"
+            formula_text = f"{(percent_bps / 100):.2f}% от базы дня"
+            if day_snapshot.get("boost_applied"):
+                formula_text += " · план выполнен"
         else:
-            formula_text = "Распределено по выручке дня"
+            weights = {day: int(context.revenue_by_date_minor.get(day, 0)) for day in ordered_dates}
+            base_text = f"{_fmt_money_minor(context.revenue_by_date_minor.get(target_date, 0))} из {_fmt_money_minor(sum(weights.values()))}"
+            percent_bps = component.get("percent_bps") or component.get("source_percent_bps")
+            if percent_bps not in (None, ""):
+                formula_text = f"{(int(percent_bps) / 100):.2f}% от общей выручки месяца, доля дня по выручке"
+            else:
+                formula_text = "Распределено по выручке дня"
+            allocation = _allocate_minor_by_keys(month_component_amount_minor, ordered_dates, weights)
+            amount_minor = int(allocation.get(target_date, 0))
+            if amount_minor == 0:
+                return None
+            title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
+            return {
+                "category": "earning",
+                "source": "payroll_component",
+                "component_type": component_type,
+                "title": title,
+                "base_text": base_text,
+                "formula_text": formula_text,
+                "amount_minor": amount_minor,
+                "month_component_amount_minor": month_component_amount_minor,
+                "month_share_ratio": None,
+                "is_estimated": False,
+            }
+        title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
+        return {
+            "category": "earning",
+            "source": "payroll_component",
+            "component_type": component_type,
+            "title": title,
+            "base_text": base_text,
+            "formula_text": formula_text,
+            "amount_minor": amount_minor,
+            "month_component_amount_minor": month_component_amount_minor,
+            "month_share_ratio": None,
+            "is_estimated": False,
+        }
     elif component_type == "PERCENT_DEPARTMENT_REVENUE":
         department_id = int(component.get("department_id") or 0)
-        department_weights = context.department_revenue_by_date_minor.get(department_id, {})
-        weights = {day: int(department_weights.get(day, 0)) for day in ordered_dates}
         dep_title = str(component.get("department_title") or "департамента").strip()
-        base_text = f"{_fmt_money_minor(department_weights.get(target_date, 0))} из {_fmt_money_minor(sum(weights.values()))}"
-        percent_bps = component.get("percent_bps") or component.get("source_percent_bps")
-        if percent_bps not in (None, ""):
-            formula_text = f"{(int(percent_bps) / 100):.2f}% от {dep_title}, доля дня по выручке"
+        day_rows = [row for row in (component.get("day_rows") or []) if isinstance(row, dict)]
+        day_snapshot = next((row for row in day_rows if str(row.get("date") or "") == target_date.isoformat()), None)
+        if day_snapshot is not None:
+            amount_minor = int(day_snapshot.get("amount_minor") or 0)
+            if amount_minor == 0:
+                return None
+            percent_bps = int(day_snapshot.get("percent_bps") or component.get("percent_bps") or component.get("source_percent_bps") or 0)
+            actual_minor = day_snapshot.get("actual_amount_minor")
+            target_minor = day_snapshot.get("target_amount_minor")
+            base_text = f"база {_fmt_money_minor(day_snapshot.get('base_amount_minor'))}"
+            if actual_minor is not None:
+                base_text += f" · факт {_fmt_money_minor(actual_minor)}"
+            if target_minor is not None:
+                base_text += f" · цель {_fmt_money_minor(target_minor)}"
+            formula_text = f"{(percent_bps / 100):.2f}% от {dep_title}"
+            if day_snapshot.get("boost_applied"):
+                formula_text += " · план выполнен"
         else:
-            formula_text = f"Распределено по выручке {dep_title}"
+            department_weights = context.department_revenue_by_date_minor.get(department_id, {})
+            weights = {day: int(department_weights.get(day, 0)) for day in ordered_dates}
+            base_text = f"{_fmt_money_minor(department_weights.get(target_date, 0))} из {_fmt_money_minor(sum(weights.values()))}"
+            percent_bps = component.get("percent_bps") or component.get("source_percent_bps")
+            if percent_bps not in (None, ""):
+                formula_text = f"{(int(percent_bps) / 100):.2f}% от {dep_title}, доля дня по выручке"
+            else:
+                formula_text = f"Распределено по выручке {dep_title}"
+            allocation = _allocate_minor_by_keys(month_component_amount_minor, ordered_dates, weights)
+            amount_minor = int(allocation.get(target_date, 0))
+            if amount_minor == 0:
+                return None
+            title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
+            return {
+                "category": "earning",
+                "source": "payroll_component",
+                "component_type": component_type,
+                "title": title,
+                "base_text": base_text,
+                "formula_text": formula_text,
+                "amount_minor": amount_minor,
+                "month_component_amount_minor": month_component_amount_minor,
+                "month_share_ratio": None,
+                "is_estimated": False,
+            }
+        title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
+        return {
+            "category": "earning",
+            "source": "payroll_component",
+            "component_type": component_type,
+            "title": title,
+            "base_text": base_text,
+            "formula_text": formula_text,
+            "amount_minor": amount_minor,
+            "month_component_amount_minor": month_component_amount_minor,
+            "month_share_ratio": None,
+            "is_estimated": False,
+        }
     elif component_type == "KPI_BONUS":
         metric_id = int(component.get("kpi_metric_id") or 0)
         metric_weights = context.kpi_by_date.get(metric_id, {})

@@ -125,10 +125,74 @@ function breakdownComponentMeta(component) {
     const metricTitle = component?.kpi_metric_title ? ` · ${component.kpi_metric_title}` : "";
     const metricValue = component?.metric_value != null ? ` · факт ${component.metric_value}` : "";
     const thresholdValue = component?.threshold_value != null ? ` · порог ${component.threshold_value}` : "";
-    const matchedStep = component?.matched_step?.threshold_value != null ? ` · ступень ${component.matched_step.threshold_value}` : "";
+    const matchedStep = component?.matched_step?.threshold_value != null ? ` · ступень ${component.matchedStep?.threshold_value}` : "";
     return `${label}${metricTitle}${metricValue}${thresholdValue}${matchedStep}`;
   }
   return label;
+}
+
+function componentSnapshot(component) {
+  return component && typeof component.calculation_snapshot === 'object' && component.calculation_snapshot
+    ? component.calculation_snapshot
+    : (component || {});
+}
+
+function breakdownBadges(component) {
+  const snap = componentSnapshot(component);
+  const badges = [];
+  if (snap?.boost_enabled && snap?.boost_percent_bps != null) {
+    badges.push(`<span class="payroll-chip ${snap?.boost_applied ? 'payroll-chip--ok' : 'payroll-chip--muted'}">boost ${esc(fmtPercentBps(snap.boost_percent_bps))}${snap?.boost_applied ? ' ✓' : ''}</span>`);
+  }
+  if (snap?.boost_source_title) badges.push(`<span class="payroll-chip payroll-chip--muted">${esc(snap.boost_source_title)}</span>`);
+  if (snap?.minimum_applied) badges.push(`<span class="payroll-chip payroll-chip--warn">мин. гарантия</span>`);
+  if (snap?.maximum_applied) badges.push(`<span class="payroll-chip payroll-chip--warn">потолок</span>`);
+  if (Array.isArray(snap?.day_rows) && snap.day_rows.length) badges.push(`<span class="payroll-chip payroll-chip--muted">по дням</span>`);
+  return badges.length ? `<div class="payroll-breakdown__badges">${badges.join('')}</div>` : '';
+}
+
+function breakdownKv(component) {
+  const snap = componentSnapshot(component);
+  const rows = [];
+  const push = (label, value) => {
+    if (value == null || value === '') return;
+    rows.push(`<div class="payroll-breakdown__kv-item"><span class="payroll-breakdown__kv-label">${esc(label)}</span><span class="payroll-breakdown__kv-value">${esc(value)}</span></div>`);
+  };
+  const type = String(component?.component_type || '').toUpperCase();
+  if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
+    push('База', fmtMoneyMinor(snap.base_amount_minor || component?.base_amount_minor || 0));
+    if (snap.base_scope_title || component?.base_scope_title) push('База расчёта', snap.base_scope_title || component?.base_scope_title);
+    if (snap.regular_percent_bps != null || component?.regular_percent_bps != null) push('Обычный %', fmtPercentBps(snap.regular_percent_bps ?? component?.regular_percent_bps ?? 0));
+    if (snap.applied_percent_bps != null || component?.percent_bps != null) push('Применённый %', fmtPercentBps(snap.applied_percent_bps ?? component?.percent_bps ?? 0));
+    if (snap.boost_target_minor != null) push('Цель', fmtMoneyMinor(snap.boost_target_minor));
+    else if (snap.boost_target_value != null) push('Цель KPI', String(snap.boost_target_value));
+    if (snap.boost_actual_minor != null) push('Факт', fmtMoneyMinor(snap.boost_actual_minor));
+    else if (snap.boost_actual_value != null) push('Факт KPI', String(snap.boost_actual_value));
+    if (snap.boost_recalc_mode_title) push('Режим', snap.boost_recalc_mode_title);
+    if (snap.boost_recalc_mode_effective && snap.boost_recalc_mode_effective !== snap.boost_recalc_mode) push('Эффективно', snap.boost_recalc_mode_effective);
+    if (snap.minimum_guarantee_minor != null) push('Мин. гарантия', fmtMoneyMinor(snap.minimum_guarantee_minor));
+    if (snap.maximum_cap_minor != null) push('Максимум', fmtMoneyMinor(snap.maximum_cap_minor));
+  }
+  if (type === 'KPI_BONUS') {
+    if (component?.kpi_metric_title) push('KPI', component.kpi_metric_title);
+    if (component?.metric_value != null) push('Факт KPI', String(component.metric_value));
+    if (component?.threshold_value != null) push('Порог', String(component.threshold_value));
+  }
+  return rows.length ? `<div class="payroll-breakdown__kv">${rows.join('')}</div>` : '';
+}
+
+function breakdownDayRows(component) {
+  const snap = componentSnapshot(component);
+  const rows = Array.isArray(snap?.day_rows) ? snap.day_rows : [];
+  if (!rows.length) return '';
+  return `<div class="payroll-breakdown__dayrows">${rows.map((row) => {
+    const meta = [];
+    if (row?.base_amount_minor != null) meta.push(`база ${fmtMoneyMinor(row.base_amount_minor)}`);
+    if (row?.target_amount_minor != null) meta.push(`цель ${fmtMoneyMinor(row.target_amount_minor)}`);
+    if (row?.actual_amount_minor != null) meta.push(`факт ${fmtMoneyMinor(row.actual_amount_minor)}`);
+    if (row?.percent_bps != null) meta.push(fmtPercentBps(row.percent_bps));
+    if (row?.boost_applied) meta.push('boost ✓');
+    return `<div class="payroll-breakdown__dayrow"><div class="payroll-breakdown__dayrow-main"><div class="payroll-breakdown__dayrow-date">${esc(formatDateRu(row.date))}</div><div class="payroll-breakdown__dayrow-meta">${esc(meta.join(' · '))}</div></div><div class="payroll-breakdown__dayrow-amount">${esc(fmtMoneyMinor(row.amount_minor || 0))}</div></div>`;
+  }).join('')}</div>`;
 }
 
 let state = {
@@ -396,9 +460,12 @@ function renderLines() {
           <div class="payroll-breakdown__body mt-8">
             ${components.length ? components.map((c) => `
               <div class="payroll-breakdown__row">
-                <div>
+                <div class="payroll-breakdown__meta">
                   <b>${esc(c.title || c.component_type || "Компонент")}</b>
                   <div class="mono mt-4">${esc(breakdownComponentMeta(c))}</div>
+                  ${breakdownBadges(c)}
+                  ${breakdownKv(c)}
+                  ${breakdownDayRows(c)}
                 </div>
                 <div><b>${esc(fmtMoneyMinor(c.amount_minor || 0))}</b></div>
               </div>
