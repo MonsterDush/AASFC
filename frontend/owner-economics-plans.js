@@ -95,6 +95,20 @@ function monthISO(dateStr) {
   return `${y}-${m}`;
 }
 
+function shiftISODate(dateStr, deltaDays) {
+  const d = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
+  d.setDate(d.getDate() + Number(deltaDays || 0));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function syncDepartmentDayQuickControls() {
+  const copyInput = document.getElementById('departmentDayCopyFromDate');
+  if (copyInput) copyInput.value = shiftISODate(state.date || todayISO(), -7);
+}
+
 function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -473,6 +487,7 @@ async function loadData() {
   renderMonthPlan(state.monthPlan);
   renderDepartmentMonthPlans(state.departmentMonthPlans);
   renderDepartmentDayPlans(state.departmentDayPlans);
+  syncDepartmentDayQuickControls();
   renderOverride(state.overridePlan);
   renderTemplates(state.templates);
 }
@@ -587,6 +602,37 @@ async function distributeDepartmentMonthPlans() {
   }
 }
 
+async function copyDepartmentDayPlansFromDate() {
+  if (!state.access.canManage) return;
+  const sourceInput = document.getElementById('departmentDayCopyFromDate');
+  const sourceDate = String(sourceInput?.value || '').trim();
+  if (!sourceDate) {
+    toast('Выбери дату-источник', 'warn');
+    return;
+  }
+  try {
+    const venueId = getVenueId();
+    const result = await api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-day/copy-from-date?source_date=${encodeURIComponent(sourceDate)}&target_date=${encodeURIComponent(state.date)}&overwrite=true`, { method: 'POST' });
+    toast(`Скопировано: ${result?.copied || 0}`, 'ok');
+    await loadData();
+  } catch (err) {
+    toast(err?.data?.detail || err.message || 'Не удалось скопировать планы с даты', 'err');
+  }
+}
+
+async function autofillDepartmentDayPlansFromHistory(mode = 'SAME_WEEKDAY_AVG') {
+  if (!state.access.canManage) return;
+  try {
+    const venueId = getVenueId();
+    const result = await api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-day/autofill-from-history?target_date=${encodeURIComponent(state.date)}&mode=${encodeURIComponent(mode)}&overwrite=true&lookback_weeks=4`, { method: 'POST' });
+    const label = mode === 'PREVIOUS_WEEK' ? 'прошлой недели' : mode === 'PREVIOUS_DAY' ? 'вчера' : 'похожих дней';
+    toast(`Автозаполнено из ${label}: ${result?.copied || 0}`, 'ok');
+    await loadData();
+  } catch (err) {
+    toast(err?.data?.detail || err.message || 'Не удалось автозаполнить планы на дату', 'err');
+  }
+}
+
 async function saveMonthPlan(event) {
   event.preventDefault();
   if (!state.access.canManage) return;
@@ -666,6 +712,7 @@ async function boot() {
         const monthPick = document.getElementById("plansMonthPick");
         if (monthPick) monthPick.value = state.month;
       }
+      syncDepartmentDayQuickControls();
       await loadData();
     };
   }
@@ -694,6 +741,12 @@ async function boot() {
   if (deptAutofillBtn) deptAutofillBtn.onclick = () => { autofillDepartmentMonthPlans(); };
   const deptDistributeBtn = document.getElementById('deptDistributeMonthBtn');
   if (deptDistributeBtn) deptDistributeBtn.onclick = () => { distributeDepartmentMonthPlans(); };
+  const deptCopyDayBtn = document.getElementById('deptCopyDayBtn');
+  if (deptCopyDayBtn) deptCopyDayBtn.onclick = () => { copyDepartmentDayPlansFromDate(); };
+  const deptFillPrevWeekBtn = document.getElementById('deptFillPrevWeekBtn');
+  if (deptFillPrevWeekBtn) deptFillPrevWeekBtn.onclick = () => { autofillDepartmentDayPlansFromHistory('PREVIOUS_WEEK'); };
+  const deptFillAvgWeekdayBtn = document.getElementById('deptFillAvgWeekdayBtn');
+  if (deptFillAvgWeekdayBtn) deptFillAvgWeekdayBtn.onclick = () => { autofillDepartmentDayPlansFromHistory('SAME_WEEKDAY_AVG'); };
   const weekdayCopyForm = document.getElementById('weekdayCopyForm');
   if (weekdayCopyForm) weekdayCopyForm.addEventListener('submit', copyWeekdayTemplates);
 

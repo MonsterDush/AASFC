@@ -50,7 +50,9 @@ from app.services.finance.day_economics import (
     list_day_economics_plan_templates,
     list_department_day_plans,
     list_department_month_plans,
+    autofill_department_day_plans_from_history,
     autofill_department_month_plans_from_last_month,
+    copy_department_day_plans_from_date,
     distribute_department_month_plans_from_venue_plan,
     upsert_department_day_plans,
     upsert_department_month_plans,
@@ -343,6 +345,53 @@ class DepartmentPlanItemIn(BaseModel):
 
 class DepartmentPlanBulkIn(BaseModel):
     items: list[DepartmentPlanItemIn] = Field(default_factory=list)
+
+
+class DepartmentPlanItemOut(BaseModel):
+    department_id: int
+    department_title: str
+    department_code: str | None = None
+    month: str | None = None
+    date: str | None = None
+    revenue_plan_minor: int | None = None
+    notes: str | None = None
+    actual_current_minor: int = 0
+    actual_previous_minor: int | None = None
+
+
+class DepartmentPlanMonthOut(BaseModel):
+    month: str
+    items: list[DepartmentPlanItemOut] = Field(default_factory=list)
+    department_count: int = 0
+    saved_count: int | None = None
+    deleted_count: int | None = None
+
+
+class DepartmentPlanDayOut(BaseModel):
+    date: str
+    items: list[DepartmentPlanItemOut] = Field(default_factory=list)
+    department_count: int = 0
+    saved_count: int | None = None
+    deleted_count: int | None = None
+
+
+class DepartmentPlanCopyOut(BaseModel):
+    copied: int = 0
+    skipped: int = 0
+    copied_from_date: str | None = None
+    plan: DepartmentPlanDayOut
+
+
+class DepartmentPlanAutofillOut(BaseModel):
+    copied: int = 0
+    skipped: int = 0
+    copied_from_month: str | None = None
+    distributed_total_minor: int | None = None
+    mode: str | None = None
+    lookback_weeks: int | None = None
+    used_source_dates: list[str] = Field(default_factory=list)
+    used_points: int | None = None
+    plan: dict
 
 
 class PayrollCalculateIn(BaseModel):
@@ -9603,6 +9652,150 @@ def post_venue_day_economics_plan_templates_copy(
             source_weekday=payload.source_weekday,
             target_weekdays=payload.target_weekdays,
             overwrite=payload.overwrite,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return result
+
+
+@router.get("/{venue_id}/economics/department-plan-month", response_model=DepartmentPlanMonthOut)
+def get_venue_department_month_plans(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    try:
+        return list_department_month_plans(db=db, venue_id=venue_id, month_value=month)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.put("/{venue_id}/economics/department-plan-month", response_model=DepartmentPlanMonthOut)
+def put_venue_department_month_plans(
+    venue_id: int,
+    payload: DepartmentPlanBulkIn,
+    month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    try:
+        result = upsert_department_month_plans(db=db, venue_id=venue_id, month_value=month, items=[item.model_dump() for item in payload.items])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return result
+
+
+@router.post("/{venue_id}/economics/department-plan-month/autofill-from-last-month", response_model=DepartmentPlanAutofillOut)
+def post_venue_department_month_plans_autofill(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    overwrite: bool = Query(True),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    try:
+        result = autofill_department_month_plans_from_last_month(db=db, venue_id=venue_id, month_value=month, overwrite=overwrite)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return result
+
+
+@router.post("/{venue_id}/economics/department-plan-month/distribute-from-venue-plan", response_model=DepartmentPlanAutofillOut)
+def post_venue_department_month_plans_distribute(
+    venue_id: int,
+    month: str = Query(..., description="YYYY-MM"),
+    overwrite: bool = Query(True),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    try:
+        result = distribute_department_month_plans_from_venue_plan(db=db, venue_id=venue_id, month_value=month, overwrite=overwrite)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return result
+
+
+@router.get("/{venue_id}/economics/department-plan-day", response_model=DepartmentPlanDayOut)
+def get_venue_department_day_plans(
+    venue_id: int,
+    date: date = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_revenue_viewer(db, venue_id=venue_id, user=user)
+    _require_report_viewer(db, venue_id=venue_id, user=user)
+    try:
+        return list_department_day_plans(db=db, venue_id=venue_id, target_date=date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.put("/{venue_id}/economics/department-plan-day", response_model=DepartmentPlanDayOut)
+def put_venue_department_day_plans(
+    venue_id: int,
+    payload: DepartmentPlanBulkIn,
+    date: date = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    try:
+        result = upsert_department_day_plans(db=db, venue_id=venue_id, target_date=date, items=[item.model_dump() for item in payload.items])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return result
+
+
+@router.post("/{venue_id}/economics/department-plan-day/copy-from-date", response_model=DepartmentPlanCopyOut)
+def post_venue_department_day_plans_copy_from_date(
+    venue_id: int,
+    source_date: date = Query(..., description="YYYY-MM-DD"),
+    target_date: date = Query(..., description="YYYY-MM-DD"),
+    overwrite: bool = Query(True),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    try:
+        result = copy_department_day_plans_from_date(db=db, venue_id=venue_id, source_date=source_date, target_date=target_date, overwrite=overwrite)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return result
+
+
+@router.post("/{venue_id}/economics/department-plan-day/autofill-from-history", response_model=DepartmentPlanAutofillOut)
+def post_venue_department_day_plans_autofill_from_history(
+    venue_id: int,
+    target_date: date = Query(..., description="YYYY-MM-DD"),
+    mode: str = Query('SAME_WEEKDAY_AVG'),
+    overwrite: bool = Query(True),
+    lookback_weeks: int = Query(4, ge=1, le=12),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    try:
+        result = autofill_department_day_plans_from_history(
+            db=db,
+            venue_id=venue_id,
+            target_date=target_date,
+            mode=mode,
+            overwrite=overwrite,
+            lookback_weeks=lookback_weeks,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

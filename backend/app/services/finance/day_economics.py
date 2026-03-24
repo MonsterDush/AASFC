@@ -1116,3 +1116,116 @@ def upsert_department_day_plans(*, db: Session, venue_id: int, target_date: date
     result['saved_count'] = touched
     result['deleted_count'] = deleted
     return result
+
+
+
+def copy_department_day_plans_from_date(*, db: Session, venue_id: int, source_date: date, target_date: date, overwrite: bool = True) -> dict:
+    if source_date == target_date:
+        raise ValueError('Дата-источник и дата-назначение совпадают')
+    allowed_ids = {int(dep.id) for dep in _list_active_departments(db, venue_id=venue_id)}
+    source_rows = {
+        int(row.department_id): row
+        for row in db.execute(
+            select(DepartmentDayPlan).where(
+                DepartmentDayPlan.venue_id == int(venue_id),
+                DepartmentDayPlan.target_date == source_date,
+            )
+        ).scalars().all()
+    }
+    existing = {
+        int(row.department_id): row
+        for row in db.execute(
+            select(DepartmentDayPlan).where(
+                DepartmentDayPlan.venue_id == int(venue_id),
+                DepartmentDayPlan.target_date == target_date,
+            )
+        ).scalars().all()
+    }
+    copied = 0
+    skipped = 0
+    for dep_id in sorted(allowed_ids):
+        source = source_rows.get(dep_id)
+        if source is None:
+            skipped += 1
+            continue
+        row = existing.get(dep_id)
+        if row is not None and (row.revenue_plan_minor is not None or (row.notes or '').strip()) and not overwrite:
+            skipped += 1
+            continue
+        if row is None:
+            row = DepartmentDayPlan(venue_id=int(venue_id), department_id=int(dep_id), target_date=target_date)
+            db.add(row)
+        row.revenue_plan_minor = int(source.revenue_plan_minor) if source.revenue_plan_minor is not None else None
+        row.notes = source.notes
+        row.updated_at = datetime.utcnow()
+        copied += 1
+    db.flush()
+    return {
+        'copied': copied,
+        'skipped': skipped,
+        'copied_from_date': source_date.isoformat(),
+        'plan': list_department_day_plans(db=db, venue_id=venue_id, target_date=target_date),
+    }
+
+
+
+def autofill_department_day_plans_from_history(*, db: Session, venue_id: int, target_date: date, mode: str = 'SAME_WEEKDAY_AVG', overwrite: bool = True, lookback_weeks: int = 4) -> dict:
+    normalized_mode = str(mode or 'SAME_WEEKDAY_AVG').strip().upper()
+    if normalized_mode not in {'PREVIOUS_DAY', 'PREVIOUS_WEEK', 'SAME_WEEKDAY_AVG'}:
+        raise ValueError('Неподдерживаемый режим автозаполнения')
+    lookback_weeks = max(1, min(int(lookback_weeks or 4), 12))
+
+    if normalized_mode == 'PREVIOUS_DAY':
+        source_dates = [target_date - timedelta(days=1)]
+    elif normalized_mode == 'PREVIOUS_WEEK':
+        source_dates = [target_date - timedelta(days=7)]
+    else:
+        source_dates = [target_date - timedelta(days=7 * step) for step in range(1, lookback_weeks + 1)]
+
+    allowed_ids = {int(dep.id) for dep in _list_active_departments(db, venue_id=venue_id)}
+    existing = {
+        int(row.department_id): row
+        for row in db.execute(
+            select(DepartmentDayPlan).where(
+                DepartmentDayPlan.venue_id == int(venue_id),
+                DepartmentDayPlan.target_date == target_date,
+            )
+        ).scalars().all()
+    }
+    actuals_by_date = {src_date: _department_actuals_for_day(db, venue_id=venue_id, target_date=src_date) for src_date in source_dates}
+    copied = 0
+    skipped = 0
+    used_points = 0
+    for dep_id in sorted(allowed_ids):
+        row = existing.get(dep_id)
+        if row is not None and (row.revenue_plan_minor is not None or (row.notes or '').strip()) and not overwrite:
+            skipped += 1
+            continue
+        values = [int((actuals_by_date.get(src_date) or {}).get(dep_id, 0) or 0) for src_date in source_dates]
+        values = [value for value in values if value > 0]
+        if not values:
+            skipped += 1
+            continue
+        if normalized_mode == 'SAME_WEEKDAY_AVG':
+            revenue_plan_minor = int(round(sum(values) / len(values)))
+        else:
+            revenue_plan_minor = int(values[0])
+        if row is None:
+            row = DepartmentDayPlan(venue_id=int(venue_id), department_id=int(dep_id), target_date=target_date)
+            db.add(row)
+        row.revenue_plan_minor = revenue_plan_minor
+        label = 'среднее похожих дней' if normalized_mode == 'SAME_WEEKDAY_AVG' else ('вчерашний факт' if normalized_mode == 'PREVIOUS_DAY' else 'факт прошлой недели')
+        row.notes = f'Автозаполнено: {label}'
+        row.updated_at = datetime.utcnow()
+        copied += 1
+        used_points = max(used_points, len(values))
+    db.flush()
+    return {
+        'copied': copied,
+        'skipped': skipped,
+        'mode': normalized_mode,
+        'lookback_weeks': lookback_weeks,
+        'used_source_dates': [src.isoformat() for src in source_dates],
+        'used_points': used_points,
+        'plan': list_department_day_plans(db=db, venue_id=venue_id, target_date=target_date),
+    }
