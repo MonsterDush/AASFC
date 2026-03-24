@@ -248,34 +248,51 @@ function syncComponentConfigHint() {
   const box = document.getElementById('f_config_hint');
   if (!box) return;
   const type = String(document.getElementById('f_component_type')?.value || '').toUpperCase();
-  const messages = [];
+  const warnings = [];
+  const infos = [];
   if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
     const percentBps = parsePercentInputToBps(document.getElementById('f_percent')?.value || '') || 0;
     const boostEnabled = !!document.getElementById('f_boost_enabled')?.checked;
     const boostBps = parsePercentInputToBps(document.getElementById('f_boost_percent')?.value || '') || 0;
     const boostSourceType = String(document.getElementById('f_boost_source_type')?.value || 'NONE').toUpperCase();
     const recalcMode = String(document.getElementById('f_boost_recalc_mode')?.value || 'REPLACE_ALL').toUpperCase();
+    const baseScope = String(document.getElementById('f_base_scope')?.value || '').toUpperCase();
     const minMinor = parseMoneyRubToMinor(document.getElementById('f_minimum_guarantee_minor')?.value || '');
     const maxMinor = parseMoneyRubToMinor(document.getElementById('f_maximum_cap_minor')?.value || '');
     const boostDepartmentId = String(document.getElementById('f_boost_department_id')?.value || '').trim();
+
+    infos.push('Процентные компоненты считаются только по закрытым отчётам.');
+    if (baseScope === 'WORKED_DATES') infos.push('База будет собрана только по дням, когда сотрудник реально работал.');
+    if (baseScope === 'FULL_PERIOD') infos.push('База будет собрана по всему выбранному периоду, даже если сотрудник работал не каждый день.');
+
     if (boostEnabled && percentBps > 0 && boostBps > 0 && boostBps < percentBps) {
-      messages.push('Повышенный процент сейчас меньше базового — проверь настройки.');
+      warnings.push('Повышенный процент сейчас меньше базового — проверь настройки.');
     }
     if (minMinor != null && maxMinor != null && minMinor > maxMinor) {
-      messages.push('Минимальная гарантия больше максимума — сохранить такой компонент не получится.');
+      warnings.push('Минимальная гарантия больше максимума — сохранить такой компонент не получится.');
+    }
+    if (boostEnabled && (!boostSourceType || boostSourceType === 'NONE')) {
+      warnings.push('Включено повышение, но не выбрано условие.');
     }
     if (isDepartmentBoostSource(boostSourceType) && !boostDepartmentId) {
-      messages.push('Для плана департамента нужно выбрать департамент в блоке условия повышения.');
+      warnings.push('Для плана департамента нужно выбрать департамент в блоке условия повышения.');
     }
     if (type === 'PERCENT_TOTAL_REVENUE' && isDepartmentBoostSource(boostSourceType)) {
-      messages.push('Процент считается от общей выручки, а условие повышения — по департаменту. Это допустимо, но проверь, что именно так и задумано.');
+      warnings.push('Процент считается от общей выручки, а условие повышения — по департаменту. Это допустимо, но проверь, что именно так и задумано.');
     }
     if (boostSourceType === 'KPI_METRIC' && recalcMode === 'EXCESS_ONLY') {
-      messages.push('Для KPI режим «только превышение» всё равно считается как полный пересчёт по повышенному %.');
+      warnings.push('Для KPI режим «только превышение» всё равно считается как полный пересчёт по повышенному %.');
     }
   }
-  box.innerHTML = messages.length ? messages.map((msg) => `<div>${esc(msg)}</div>`).join('') : '';
-  box.style.display = messages.length ? 'grid' : 'none';
+  const parts = [];
+  if (warnings.length) {
+    parts.push(`<div class="form-note form-note--warn">${warnings.map((msg) => `<div>${esc(msg)}</div>`).join('')}</div>`);
+  }
+  if (infos.length) {
+    parts.push(`<div class="form-note form-note--info">${infos.map((msg) => `<div>${esc(msg)}</div>`).join('')}</div>`);
+  }
+  box.innerHTML = parts.join('');
+  box.style.display = parts.length ? 'grid' : 'none';
 }
 
 function normalizeStepsForForm(steps) {
@@ -456,7 +473,7 @@ function renderShell() {
 
     <div id="editModal" class="modal">
       <div class="modal__backdrop" data-close></div>
-      <div class="modal__panel">
+      <div class="modal__panel modal__panel--wide">
         <div class="modal__head">
           <div>
             <b class="modal__title" id="editTitle">Редактирование</b>
@@ -704,169 +721,283 @@ function findKpiMetricById(value) {
   return Array.isArray(state.kpiMetrics) ? state.kpiMetrics.find((metric) => Number(metric.id) === id) || null : null;
 }
 
+function syncComponentSummary() {
+  const box = document.getElementById('f_live_summary');
+  if (!box) return;
+  const type = String(document.getElementById('f_component_type')?.value || '').toUpperCase();
+  const typeTitle = COMPONENT_LABELS[type] || 'Компонент';
+  const titleRaw = String(document.getElementById('f_title')?.value || '').trim();
+  const amountMinor = parseMoneyRubToMinor(document.getElementById('f_amount_minor')?.value || '');
+  const rateMinor = parseMoneyRubToMinor(document.getElementById('f_rate_minor')?.value || '');
+  const percentBps = parsePercentInputToBps(document.getElementById('f_percent')?.value || '');
+  const departmentId = Number(document.getElementById('f_department_id')?.value || 0);
+  const department = Array.isArray(state.departments) ? state.departments.find((dep) => Number(dep.id) === departmentId) : null;
+  const baseScope = String(document.getElementById('f_base_scope')?.value || '').toUpperCase();
+  const boostEnabled = !!document.getElementById('f_boost_enabled')?.checked;
+  const boostPercentBps = parsePercentInputToBps(document.getElementById('f_boost_percent')?.value || '');
+  const boostSourceType = String(document.getElementById('f_boost_source_type')?.value || 'NONE').toUpperCase();
+  const boostDepartmentId = Number(document.getElementById('f_boost_department_id')?.value || 0);
+  const boostDepartment = Array.isArray(state.departments) ? state.departments.find((dep) => Number(dep.id) === boostDepartmentId) : null;
+  const boostMetric = findKpiMetricById(document.getElementById('f_boost_kpi_metric_id')?.value);
+  const kpiMetric = findKpiMetricById(document.getElementById('f_kpi_metric_id')?.value);
+  const thresholdValue = String(document.getElementById('f_threshold_value')?.value || '').trim();
+  const boostThresholdValue = String(document.getElementById('f_boost_threshold_value')?.value || '').trim();
+  let heading = titleRaw || typeTitle;
+  const bits = [];
+  if (type === 'SALARY_FIXED_MONTH' || type === 'SALARY_PER_SHIFT') {
+    if (amountMinor != null) bits.push(fmtMoneyMinor(amountMinor));
+  } else if (type === 'SALARY_HOURLY') {
+    if (rateMinor != null) bits.push(`${fmtMoneyMinor(rateMinor)} / час`);
+  } else if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
+    if (percentBps != null) bits.push(fmtPercentBps(percentBps));
+    if (type === 'PERCENT_DEPARTMENT_REVENUE' && department?.title) bits.push(department.title);
+    if (baseScope) bits.push(baseScopeLabel(baseScope));
+    if (boostEnabled && boostPercentBps != null) {
+      const boostBits = [`boost ${fmtPercentBps(boostPercentBps)}`];
+      if (boostSourceType && boostSourceType !== 'NONE') boostBits.push(boostSourceLabel(boostSourceType));
+      if (boostDepartment?.title) boostBits.push(boostDepartment.title);
+      if (boostMetric?.title) boostBits.push(boostMetric.title);
+      if (boostThresholdValue && boostSourceType === 'KPI_METRIC') boostBits.push(`цель ${boostThresholdValue}`);
+      bits.push(boostBits.join(' · '));
+    }
+  } else if (type === 'KPI_BONUS') {
+    if (kpiMetric?.title) bits.push(kpiMetric.title);
+    if (thresholdValue) bits.push(`порог ${thresholdValue}`);
+  }
+  box.innerHTML = `
+    <div class="pay-config-summary__eyebrow">Как будет работать компонент</div>
+    <div class="pay-config-summary__title">${esc(heading)}</div>
+    <div class="pay-config-summary__meta">${esc(bits.filter(Boolean).join(' · ') || 'Заполни поля — здесь появится краткая схема расчёта.')}</div>
+  `;
+  box.style.display = 'grid';
+}
+
 function componentForm({ mode, item }) {
   const it = item || {};
   const type = String(it.component_type || "SALARY_FIXED_MONTH").toUpperCase();
   const activeChecked = (mode === "edit" ? !!it.is_active : true) ? "checked" : "";
   const hasDepartments = Array.isArray(state.departments) && state.departments.length > 0;
   const departmentOptions = state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("");
+  const boostDepartmentOptions = state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.boost_department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("");
   const hasKpiMetrics = Array.isArray(state.kpiMetrics) && state.kpiMetrics.length > 0;
   const kpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.kpi_metric_id) ? "selected" : ""}>${esc(kpiMetricOptionLabel(metric))}</option>`).join("");
   const boostKpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.boost_kpi_metric_id) ? "selected" : ""}>${esc(kpiMetricOptionLabel(metric))}</option>`).join("");
   const boostEnabled = it?.boost_enabled ? "checked" : "";
   return `
     <div class="finance-form mt-8">
-      <label>
-        <span>Тип</span>
-        <select id="f_component_type">
-          <option value="SALARY_FIXED_MONTH" ${type === "SALARY_FIXED_MONTH" ? "selected" : ""}>Оклад за месяц</option>
-          <option value="SALARY_HOURLY" ${type === "SALARY_HOURLY" ? "selected" : ""}>Почасовая ставка</option>
-          <option value="SALARY_PER_SHIFT" ${type === "SALARY_PER_SHIFT" ? "selected" : ""}>Фикс за смену</option>
-          <option value="PERCENT_TOTAL_REVENUE" ${type === "PERCENT_TOTAL_REVENUE" ? "selected" : ""}>% от общей выручки</option>
-          <option value="PERCENT_DEPARTMENT_REVENUE" ${type === "PERCENT_DEPARTMENT_REVENUE" ? "selected" : ""}>% от выручки департамента</option>
-          <option value="KPI_BONUS" ${type === "KPI_BONUS" ? "selected" : ""}>KPI-бонус</option>
-        </select>
-      </label>
-      <label>
-        <span>Название компонента</span>
-        <input id="f_title" placeholder="Оклад" value="${esc(it.title || "")}" />
-      </label>
-      <label id="f_amount_wrap">
-        <span id="f_amount_label">Сумма, ₽</span>
-        <input id="f_amount_minor" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(it.amount_minor))}" />
-      </label>
-      <label id="f_rate_wrap">
-        <span id="f_rate_label">Ставка, ₽ / час</span>
-        <input id="f_rate_minor" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(it.rate_minor))}" />
-      </label>
-      <label id="f_percent_wrap">
-        <span id="f_percent_label">Процент</span>
-        <input id="f_percent" inputmode="decimal" placeholder="Например, 5" value="${esc(percentInputFromBps(it.percent_bps))}" />
-      </label>
-      ${hasDepartments ? `
-      <label id="f_department_wrap">
-        <span>Департамент</span>
-        <select id="f_department_id">
-          <option value="">Выбери департамент</option>
-          ${departmentOptions}
-        </select>
-      </label>` : `
-      <label id="f_department_wrap">
-        <span>ID департамента</span>
-        <input id="f_department_id" inputmode="numeric" placeholder="Например: 3" value="${esc(it.department_id ?? "")}" />
-      </label>
-      <div id="f_department_hint" class="muted">Список департаментов не загрузился. Можно указать department_id вручную.</div>`}
-      <label id="f_base_scope_wrap">
-        <span>База расчёта</span>
-        <select id="f_base_scope">${baseScopeOptions(it.base_scope || it.effective_base_scope, type)}</select>
-      </label>
-      <label class="chk" id="f_boost_enabled_wrap">
-        <input type="checkbox" id="f_boost_enabled" ${boostEnabled} />
-        <span>Повышенный процент по плану / KPI</span>
-      </label>
-      <label id="f_boost_percent_wrap">
-        <span>Повышенный процент</span>
-        <input id="f_boost_percent" inputmode="decimal" placeholder="Например, 7" value="${esc(percentInputFromBps(it.boost_percent_bps))}" />
-      </label>
-      <label id="f_boost_source_wrap">
-        <span>Условие повышения</span>
-        <select id="f_boost_source_type">${percentBoostOptions(it.boost_source_type || it.effective_boost_source_type || 'NONE')}</select>
-      </label>
-      <label id="f_boost_department_wrap">
-        <span>Департамент для условия</span>
-        <select id="f_boost_department_id">
-          <option value="">Выбери департамент</option>
-          ${state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.boost_department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("")}
-        </select>
-      </label>
-      <label id="f_boost_recalc_wrap">
-        <span>Режим пересчёта</span>
-        <select id="f_boost_recalc_mode">${boostRecalcOptions(it.boost_recalc_mode || it.effective_boost_recalc_mode || 'REPLACE_ALL')}</select>
-      </label>
-      ${hasKpiMetrics ? `
-      <label id="f_boost_kpi_metric_wrap">
-        <span>KPI для повышения</span>
-        <select id="f_boost_kpi_metric_id">
-          <option value="">Выбери KPI</option>
-          ${boostKpiOptions}
-        </select>
-      </label>` : `
-      <label id="f_boost_kpi_metric_wrap">
-        <span>ID KPI для повышения</span>
-        <input id="f_boost_kpi_metric_id" inputmode="numeric" placeholder="Например: 5" value="${esc(it.boost_kpi_metric_id ?? "")}" />
-      </label>`}
-      <label id="f_boost_threshold_wrap">
-        <span id="f_boost_threshold_label">Цель KPI</span>
-        <input id="f_boost_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.boost_threshold_value ?? "")}" />
-      </label>
-      <label id="f_min_wrap">
-        <span>Минимальная гарантия, ₽</span>
-        <input id="f_minimum_guarantee_minor" inputmode="decimal" placeholder="Например: 40000" value="${esc(moneyInputFromMinor(it.minimum_guarantee_minor))}" />
-      </label>
-      <label id="f_max_wrap">
-        <span>Максимум, ₽</span>
-        <input id="f_maximum_cap_minor" inputmode="decimal" placeholder="Например: 90000" value="${esc(moneyInputFromMinor(it.maximum_cap_minor))}" />
-      </label>
-      <div id="f_percent_help" class="muted">Можно привязать повышенный процент к плану заведения, плану департамента или KPI.</div>
-      <div id="f_config_hint" class="form-note form-note--warn" style="display:none;"></div>
-      <div id="f_sim_wrap" class="pay-sim">
-        <div class="pay-sim__title">Симулятор компонента</div>
-        <div class="pay-sim__grid">
+      <div class="form-section">
+        <div class="form-section__head">
+          <div class="form-section__title">Основа компонента</div>
+          <div class="form-section__subtitle">Сначала выбери тип и базовые параметры. Остальные блоки подстроятся автоматически.</div>
+        </div>
+        <div class="form-section__grid">
           <label>
-            <span>Тестовая база, ₽</span>
-            <input id="f_sim_base_rub" inputmode="decimal" placeholder="Например: 500000" />
+            <span>Тип</span>
+            <select id="f_component_type">
+              <option value="SALARY_FIXED_MONTH" ${type === "SALARY_FIXED_MONTH" ? "selected" : ""}>Оклад за месяц</option>
+              <option value="SALARY_HOURLY" ${type === "SALARY_HOURLY" ? "selected" : ""}>Почасовая ставка</option>
+              <option value="SALARY_PER_SHIFT" ${type === "SALARY_PER_SHIFT" ? "selected" : ""}>Фикс за смену</option>
+              <option value="PERCENT_TOTAL_REVENUE" ${type === "PERCENT_TOTAL_REVENUE" ? "selected" : ""}>% от общей выручки</option>
+              <option value="PERCENT_DEPARTMENT_REVENUE" ${type === "PERCENT_DEPARTMENT_REVENUE" ? "selected" : ""}>% от выручки департамента</option>
+              <option value="KPI_BONUS" ${type === "KPI_BONUS" ? "selected" : ""}>KPI-бонус</option>
+            </select>
           </label>
-          <label id="f_sim_target_wrap">
-            <span id="f_sim_target_label">Цель</span>
-            <input id="f_sim_target" inputmode="decimal" placeholder="Например: 450000" />
-          </label>
-          <label id="f_sim_actual_wrap">
-            <span id="f_sim_actual_label">Факт</span>
-            <input id="f_sim_actual" inputmode="decimal" placeholder="Например: 500000" />
+          <label>
+            <span>Название компонента</span>
+            <input id="f_title" placeholder="Например: % бара" value="${esc(it.title || "")}" />
           </label>
         </div>
-        <div class="pay-sim__result muted" id="f_sim_result">Укажи процент и базу, чтобы увидеть пример начисления.</div>
+        <div class="form-section__grid">
+          <label id="f_amount_wrap">
+            <span id="f_amount_label">Сумма, ₽</span>
+            <input id="f_amount_minor" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(it.amount_minor))}" />
+          </label>
+          <label id="f_rate_wrap">
+            <span id="f_rate_label">Ставка, ₽ / час</span>
+            <input id="f_rate_minor" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(it.rate_minor))}" />
+          </label>
+          <label id="f_percent_wrap">
+            <span id="f_percent_label">Процент</span>
+            <input id="f_percent" inputmode="decimal" placeholder="Например, 5" value="${esc(percentInputFromBps(it.percent_bps))}" />
+          </label>
+        </div>
+        <div class="form-section__grid">
+          <label>
+            <span>Порядок</span>
+            <input id="f_sort_order" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
+          </label>
+          <label class="chk" style="margin-top:auto;">
+            <input type="checkbox" id="f_active" ${activeChecked} />
+            <span>Компонент активен</span>
+          </label>
+        </div>
+        <div id="f_live_summary" class="pay-config-summary"></div>
       </div>
-      ${hasKpiMetrics ? `
-      <label id="f_kpi_metric_wrap">
-        <span>KPI-метрика</span>
-        <select id="f_kpi_metric_id">
-          <option value="">Выбери KPI</option>
-          ${kpiOptions}
-        </select>
-      </label>` : `
-      <label id="f_kpi_metric_wrap">
-        <span>ID KPI-метрики</span>
-        <input id="f_kpi_metric_id" inputmode="numeric" placeholder="Например: 5" value="${esc(it.kpi_metric_id ?? "")}" />
-      </label>
-      <div id="f_kpi_metric_hint" class="muted">Список KPI не загрузился. Можно указать kpi_metric_id вручную.</div>`}
-      <label id="f_threshold_wrap">
-        <span id="f_threshold_label">Порог KPI</span>
-        <input id="f_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.threshold_value ?? "")}" />
-      </label>
-      <label id="f_use_steps_wrap" class="chk">
-        <input type="checkbox" id="f_use_steps" ${Array.isArray(it.steps) && it.steps.length ? "checked" : ""} />
-        <span>Использовать ступени бонуса</span>
-      </label>
-      <div id="f_steps_wrap" class="kpi-steps-builder">
-        <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-          <div>
-            <b>Ступени бонуса</b>
-            <div class="muted mt-4">Будет выбрана максимальная подходящая ступень.</div>
+
+      <div class="form-section" id="f_percent_section">
+        <div class="form-section__head">
+          <div class="form-section__title">Расчёт процента</div>
+          <div class="form-section__subtitle">Настрой базу расчёта и, при необходимости, департамент.</div>
+        </div>
+        <div class="form-section__grid">
+          ${hasDepartments ? `
+          <label id="f_department_wrap">
+            <span>Департамент</span>
+            <select id="f_department_id">
+              <option value="">Выбери департамент</option>
+              ${departmentOptions}
+            </select>
+          </label>` : `
+          <label id="f_department_wrap">
+            <span>ID департамента</span>
+            <input id="f_department_id" inputmode="numeric" placeholder="Например: 3" value="${esc(it.department_id ?? "")}" />
+          </label>
+          <div id="f_department_hint" class="form-inline-note">Список департаментов не загрузился. Можно указать department_id вручную.</div>`}
+          <label id="f_base_scope_wrap">
+            <span>База расчёта</span>
+            <select id="f_base_scope">${baseScopeOptions(it.base_scope || it.effective_base_scope, type)}</select>
+          </label>
+        </div>
+        <div id="f_percent_help" class="form-inline-note">Можно считать по всему периоду или только по отработанным дням сотрудника.</div>
+      </div>
+
+      <div class="form-section" id="f_boost_section">
+        <div class="form-section__head">
+          <div class="form-section__title">Повышение процента</div>
+          <div class="form-section__subtitle">Этот блок нужен только для процентных компонентов. Повышение можно привязать к плану заведения, плану департамента или KPI.</div>
+        </div>
+        <label class="chk" id="f_boost_enabled_wrap">
+          <input type="checkbox" id="f_boost_enabled" ${boostEnabled} />
+          <span>Повышенный процент по плану / KPI</span>
+        </label>
+        <div id="f_boost_details" class="form-section__grid">
+          <label id="f_boost_percent_wrap">
+            <span>Повышенный процент</span>
+            <input id="f_boost_percent" inputmode="decimal" placeholder="Например, 7" value="${esc(percentInputFromBps(it.boost_percent_bps))}" />
+          </label>
+          <label id="f_boost_source_wrap">
+            <span>Условие повышения</span>
+            <select id="f_boost_source_type">${percentBoostOptions(it.boost_source_type || it.effective_boost_source_type || 'NONE')}</select>
+          </label>
+          ${hasDepartments ? `
+          <label id="f_boost_department_wrap">
+            <span>Департамент для условия</span>
+            <select id="f_boost_department_id">
+              <option value="">Выбери департамент</option>
+              ${boostDepartmentOptions}
+            </select>
+          </label>` : `
+          <label id="f_boost_department_wrap">
+            <span>ID департамента для условия</span>
+            <input id="f_boost_department_id" inputmode="numeric" placeholder="Например: 3" value="${esc(it.boost_department_id ?? "")}" />
+          </label>
+          <div id="f_boost_department_hint" class="form-inline-note">Если условие привязано к департаменту, укажи его ID вручную.</div>`}
+          <label id="f_boost_recalc_wrap">
+            <span>Режим пересчёта</span>
+            <select id="f_boost_recalc_mode">${boostRecalcOptions(it.boost_recalc_mode || it.effective_boost_recalc_mode || 'REPLACE_ALL')}</select>
+          </label>
+          ${hasKpiMetrics ? `
+          <label id="f_boost_kpi_metric_wrap">
+            <span>KPI для повышения</span>
+            <select id="f_boost_kpi_metric_id">
+              <option value="">Выбери KPI</option>
+              ${boostKpiOptions}
+            </select>
+          </label>` : `
+          <label id="f_boost_kpi_metric_wrap">
+            <span>ID KPI для повышения</span>
+            <input id="f_boost_kpi_metric_id" inputmode="numeric" placeholder="Например: 5" value="${esc(it.boost_kpi_metric_id ?? "")}" />
+          </label>`}
+          <label id="f_boost_threshold_wrap">
+            <span id="f_boost_threshold_label">Цель KPI</span>
+            <input id="f_boost_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.boost_threshold_value ?? "")}" />
+          </label>
+        </div>
+        <div id="f_config_hint" style="display:none;"></div>
+      </div>
+
+      <div class="form-section" id="f_limits_section">
+        <div class="form-section__head">
+          <div class="form-section__title">Ограничения</div>
+          <div class="form-section__subtitle">Эти ограничения применяются уже после расчёта суммы компонента.</div>
+        </div>
+        <div class="form-section__grid">
+          <label id="f_min_wrap">
+            <span>Минимальная гарантия, ₽</span>
+            <input id="f_minimum_guarantee_minor" inputmode="decimal" placeholder="Например: 40000" value="${esc(moneyInputFromMinor(it.minimum_guarantee_minor))}" />
+          </label>
+          <label id="f_max_wrap">
+            <span>Максимум, ₽</span>
+            <input id="f_maximum_cap_minor" inputmode="decimal" placeholder="Например: 90000" value="${esc(moneyInputFromMinor(it.maximum_cap_minor))}" />
+          </label>
+        </div>
+      </div>
+
+      <div class="form-section" id="f_sim_section">
+        <div class="form-section__head">
+          <div class="form-section__title">Симулятор</div>
+          <div class="form-section__subtitle">Помогает быстро проверить базовую и повышенную логику до сохранения компонента.</div>
+        </div>
+        <div id="f_sim_wrap" class="pay-sim">
+          <div class="pay-sim__title">Симулятор компонента</div>
+          <div class="pay-sim__grid">
+            <label>
+              <span>Тестовая база, ₽</span>
+              <input id="f_sim_base_rub" inputmode="decimal" placeholder="Например: 500000" />
+            </label>
+            <label id="f_sim_target_wrap">
+              <span id="f_sim_target_label">Цель</span>
+              <input id="f_sim_target" inputmode="decimal" placeholder="Например: 450000" />
+            </label>
+            <label id="f_sim_actual_wrap">
+              <span id="f_sim_actual_label">Факт</span>
+              <input id="f_sim_actual" inputmode="decimal" placeholder="Например: 500000" />
+            </label>
           </div>
-          <button class="btn sm" type="button" id="btnAddStep">+ Ступень</button>
+          <div class="pay-sim__result muted" id="f_sim_result">Укажи процент и базу, чтобы увидеть пример начисления.</div>
         </div>
-        <div id="f_steps_rows">${stepsRowsMarkup(it.steps)}</div>
       </div>
-      <div id="f_steps_hint" class="muted">Ступени можно не использовать: тогда сработает обычный порог и фиксированный бонус.</div>
-      <label>
-        <span>Порядок</span>
-        <input id="f_sort_order" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
-      </label>
-      <label class="chk">
-        <input type="checkbox" id="f_active" ${activeChecked} />
-        <span>Компонент активен</span>
-      </label>
+
+      <div class="form-section" id="f_kpi_section">
+        <div class="form-section__head">
+          <div class="form-section__title">KPI-бонус</div>
+          <div class="form-section__subtitle">Для бонуса можно использовать фиксированную сумму или ступени по мере роста значения KPI.</div>
+        </div>
+        <div class="form-section__grid">
+          ${hasKpiMetrics ? `
+          <label id="f_kpi_metric_wrap">
+            <span>KPI-метрика</span>
+            <select id="f_kpi_metric_id">
+              <option value="">Выбери KPI</option>
+              ${kpiOptions}
+            </select>
+          </label>` : `
+          <label id="f_kpi_metric_wrap">
+            <span>ID KPI-метрики</span>
+            <input id="f_kpi_metric_id" inputmode="numeric" placeholder="Например: 5" value="${esc(it.kpi_metric_id ?? "")}" />
+          </label>
+          <div id="f_kpi_metric_hint" class="form-inline-note">Список KPI не загрузился. Можно указать kpi_metric_id вручную.</div>`}
+          <label id="f_threshold_wrap">
+            <span id="f_threshold_label">Порог KPI</span>
+            <input id="f_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.threshold_value ?? "")}" />
+          </label>
+          <label id="f_use_steps_wrap" class="chk" style="margin-top:auto;">
+            <input type="checkbox" id="f_use_steps" ${Array.isArray(it.steps) && it.steps.length ? "checked" : ""} />
+            <span>Использовать ступени бонуса</span>
+          </label>
+        </div>
+        <div id="f_steps_wrap" class="kpi-steps-builder">
+          <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+            <div>
+              <b>Ступени бонуса</b>
+              <div class="muted mt-4">Будет выбрана максимальная подходящая ступень.</div>
+            </div>
+            <button class="btn sm" type="button" id="btnAddStep">+ Ступень</button>
+          </div>
+          <div id="f_steps_rows">${stepsRowsMarkup(it.steps)}</div>
+        </div>
+        <div id="f_steps_hint" class="form-inline-note">Ступени можно не использовать: тогда сработает обычный порог и фиксированный бонус.</div>
+      </div>
     </div>
 
     <div class="row mt-12" style="justify-content:flex-end; gap:8px">
@@ -885,7 +1016,7 @@ function syncComponentSimulator() {
     wrap.style.display = "none";
     return;
   }
-  wrap.style.display = "block";
+  wrap.style.display = "grid";
   const baseMinor = parseMoneyRubToMinor(document.getElementById("f_sim_base_rub")?.value || "") || 0;
   const percentBps = parsePercentInputToBps(document.getElementById("f_percent")?.value || "") || 0;
   const boostEnabled = !!document.getElementById("f_boost_enabled")?.checked;
@@ -916,7 +1047,8 @@ function syncComponentSimulator() {
   const regular = Math.round((baseMinor * percentBps) / 10000);
   let finalAmount = regular;
   let applied = false;
-  let note = `Обычный расчёт: ${fmtMoneyMinor(regular)}.`;
+  let modeLabel = 'базовый расчёт';
+  let note = `Без дополнительных условий компонент дал бы ${fmtMoneyMinor(regular)}.`;
 
   if (boostEnabled && boostPercentBps > 0 && sourceType !== "NONE") {
     applied = Number.isFinite(actualValue) && Number.isFinite(targetValue) && actualValue >= targetValue && targetValue > 0;
@@ -925,31 +1057,54 @@ function syncComponentSimulator() {
         const regularPart = Math.round((Math.min(baseMinor, targetValue) * percentBps) / 10000);
         const boostPart = Math.round((Math.max(baseMinor - targetValue, 0) * boostPercentBps) / 10000);
         finalAmount = regularPart + boostPart;
-        note = `Условие выполнено. Режим «только превышение»: ${fmtMoneyMinor(finalAmount)}.`;
+        modeLabel = 'повышение на превышение';
+        note = `Условие выполнено. До цели действует базовый %, а сверх цели — повышенный.`;
       } else {
         finalAmount = Math.round((baseMinor * boostPercentBps) / 10000);
-        note = `Условие выполнено. Повышенный процент дал ${fmtMoneyMinor(finalAmount)}.`;
+        modeLabel = 'повышенный процент';
+        note = `Условие выполнено. Ко всей тестовой базе применился повышенный процент.`;
       }
     } else {
-      note = `Условие не выполнено. Остаётся базовый расчёт ${fmtMoneyMinor(regular)}.`;
+      note = `Условие пока не выполнено, поэтому остаётся базовый процент.`;
     }
   }
 
+  const rawBeforeCaps = finalAmount;
   if (minimumMinor != null && finalAmount < minimumMinor) {
     finalAmount = minimumMinor;
-    note += ` Применена минимальная гарантия ${fmtMoneyMinor(minimumMinor)}.`;
+    note += ` Сработала минимальная гарантия ${fmtMoneyMinor(minimumMinor)}.`;
   }
   if (maximumMinor != null && finalAmount > maximumMinor) {
     finalAmount = maximumMinor;
     note += ` Сработал потолок ${fmtMoneyMinor(maximumMinor)}.`;
   }
 
-  result.innerHTML = `<b>Пример: ${esc(fmtMoneyMinor(finalAmount))}</b><br>${esc(note)}`;
+  result.innerHTML = `
+    <div class="pay-sim__stats">
+      <div class="pay-sim__stat">
+        <div class="pay-sim__stat-label">Базовый расчёт</div>
+        <div class="pay-sim__stat-value">${esc(fmtMoneyMinor(regular))}</div>
+      </div>
+      <div class="pay-sim__stat ${applied ? 'pay-sim__stat--accent' : ''}">
+        <div class="pay-sim__stat-label">Режим</div>
+        <div class="pay-sim__stat-value">${esc(applied ? modeLabel : 'базовый %')}</div>
+      </div>
+      <div class="pay-sim__stat">
+        <div class="pay-sim__stat-label">До ограничений</div>
+        <div class="pay-sim__stat-value">${esc(fmtMoneyMinor(rawBeforeCaps))}</div>
+      </div>
+      <div class="pay-sim__stat pay-sim__stat--accent">
+        <div class="pay-sim__stat-label">Итог</div>
+        <div class="pay-sim__stat-value">${esc(fmtMoneyMinor(finalAmount))}</div>
+      </div>
+    </div>
+    <div class="pay-sim__note">${esc(note)}</div>
+  `;
 }
 
 function syncComponentFields() {
   applyPercentSmartDefaults();
-  const type = String(document.getElementById("f_component_type")?.value || "SALARY_FIXED_MONTH").toUpperCase();
+  const type = String(document.getElementById("f_component_type")?.value || "").toUpperCase();
   const useSteps = !!document.getElementById("f_use_steps")?.checked;
   const boostEnabled = !!document.getElementById("f_boost_enabled")?.checked;
   const boostSourceType = String(document.getElementById("f_boost_source_type")?.value || "NONE").toUpperCase();
@@ -963,6 +1118,7 @@ function syncComponentFields() {
   const boostPercentWrap = document.getElementById("f_boost_percent_wrap");
   const boostSourceWrap = document.getElementById("f_boost_source_wrap");
   const boostDepartmentWrap = document.getElementById("f_boost_department_wrap");
+  const boostDepartmentHint = document.getElementById("f_boost_department_hint");
   const boostRecalcWrap = document.getElementById("f_boost_recalc_wrap");
   const boostKpiMetricWrap = document.getElementById("f_boost_kpi_metric_wrap");
   const boostThresholdWrap = document.getElementById("f_boost_threshold_wrap");
@@ -983,31 +1139,43 @@ function syncComponentFields() {
   const boostThresholdLabel = document.getElementById("f_boost_threshold_label");
   const selectedBoostMetric = findKpiMetricById(document.getElementById("f_boost_kpi_metric_id")?.value);
   const selectedBonusMetric = findKpiMetricById(document.getElementById("f_kpi_metric_id")?.value);
+  const percentSection = document.getElementById('f_percent_section');
+  const boostSection = document.getElementById('f_boost_section');
+  const limitsSection = document.getElementById('f_limits_section');
+  const simSection = document.getElementById('f_sim_section');
+  const kpiSection = document.getElementById('f_kpi_section');
+  const boostDetails = document.getElementById('f_boost_details');
 
-  [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostDepartmentWrap, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint].forEach((el) => {
+  [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostDepartmentWrap, boostDepartmentHint, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint, percentSection, boostSection, limitsSection, simSection, kpiSection, boostDetails].forEach((el) => {
     if (el) el.style.display = "none";
   });
 
   if (type === "SALARY_HOURLY") {
     if (rateWrap) rateWrap.style.display = "grid";
     if (rateLabel) rateLabel.textContent = "Ставка, ₽ / час";
+    syncComponentSummary();
     return syncComponentSimulator();
   }
 
   if (type === "SALARY_FIXED_MONTH" || type === "SALARY_PER_SHIFT") {
     if (amountWrap) amountWrap.style.display = "grid";
     if (amountLabel) amountLabel.textContent = type === "SALARY_PER_SHIFT" ? "Сумма, ₽ / смена" : "Сумма, ₽ / месяц";
+    syncComponentSummary();
     return syncComponentSimulator();
   }
 
   if (type === "PERCENT_TOTAL_REVENUE" || type === "PERCENT_DEPARTMENT_REVENUE") {
+    if (percentSection) percentSection.style.display = "grid";
+    if (boostSection) boostSection.style.display = "grid";
+    if (limitsSection) limitsSection.style.display = "grid";
+    if (simSection) simSection.style.display = "grid";
     if (percentWrap) percentWrap.style.display = "grid";
     if (baseScopeWrap) baseScopeWrap.style.display = "grid";
     if (boostEnabledWrap) boostEnabledWrap.style.display = "flex";
     if (minWrap) minWrap.style.display = "grid";
     if (maxWrap) maxWrap.style.display = "grid";
     if (percentHelp) percentHelp.style.display = "";
-    if (simWrap) simWrap.style.display = "block";
+    if (simWrap) simWrap.style.display = "grid";
     if (type === "PERCENT_DEPARTMENT_REVENUE") {
       if (departmentWrap) departmentWrap.style.display = "grid";
       if (departmentHint) departmentHint.style.display = "";
@@ -1016,21 +1184,26 @@ function syncComponentFields() {
       percentLabel.textContent = "Процент от общей выручки";
     }
     if (boostEnabled) {
+      if (boostDetails) boostDetails.style.display = 'grid';
       if (boostPercentWrap) boostPercentWrap.style.display = "grid";
       if (boostSourceWrap) boostSourceWrap.style.display = "grid";
       if (boostRecalcWrap) boostRecalcWrap.style.display = "grid";
       if (isDepartmentBoostSource(boostSourceType) && boostDepartmentWrap) boostDepartmentWrap.style.display = "grid";
+      if (isDepartmentBoostSource(boostSourceType) && boostDepartmentHint) boostDepartmentHint.style.display = "";
       if (boostSourceType === "KPI_METRIC") {
         if (boostKpiMetricWrap) boostKpiMetricWrap.style.display = "grid";
         if (boostThresholdWrap) boostThresholdWrap.style.display = "grid";
         if (boostThresholdLabel) boostThresholdLabel.textContent = `Цель KPI${selectedBoostMetric ? ` (${String(selectedBoostMetric.unit || 'QTY').toUpperCase()})` : ''}`;
       }
     }
+    syncComponentSummary();
     syncComponentSimulator();
+    syncComponentConfigHint();
     return;
   }
 
   if (type === "KPI_BONUS") {
+    if (kpiSection) kpiSection.style.display = "grid";
     if (kpiMetricWrap) kpiMetricWrap.style.display = "grid";
     if (kpiMetricHint) kpiMetricHint.style.display = "";
     if (thresholdWrap) thresholdWrap.style.display = "grid";
@@ -1045,6 +1218,7 @@ function syncComponentFields() {
       if (amountLabel) amountLabel.textContent = "Бонус, ₽";
     }
   }
+  syncComponentSummary();
   syncComponentSimulator();
   syncComponentConfigHint();
 }
@@ -1063,14 +1237,16 @@ function openComponentEditor({ mode, item = null }) {
   document.getElementById("f_boost_source_type")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_boost_recalc_mode")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_department_id")?.addEventListener("change", syncComponentFields);
-  document.getElementById("f_boost_department_id")?.addEventListener("change", syncComponentConfigHint);
+  document.getElementById("f_boost_department_id")?.addEventListener("change", syncComponentFields);
+  document.getElementById("f_base_scope")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_kpi_metric_id")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_boost_kpi_metric_id")?.addEventListener("change", syncComponentFields);
-  ["f_percent","f_boost_percent","f_minimum_guarantee_minor","f_maximum_cap_minor","f_sim_base_rub","f_sim_target","f_sim_actual"].forEach((id) => {
-    document.getElementById(id)?.addEventListener("input", () => { syncComponentSimulator(); syncComponentConfigHint(); });
+  ["f_title","f_amount_minor","f_rate_minor","f_percent","f_boost_percent","f_threshold_value","f_boost_threshold_value","f_minimum_guarantee_minor","f_maximum_cap_minor","f_sim_base_rub","f_sim_target","f_sim_actual"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", () => { syncComponentSummary(); syncComponentSimulator(); syncComponentConfigHint(); });
   });
   wireStepsBuilder();
   syncComponentFields();
+  syncComponentSummary();
   document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);
   document.getElementById("btnSave")?.addEventListener("click", async () => {
     const componentType = String(document.getElementById("f_component_type")?.value || "").toUpperCase();

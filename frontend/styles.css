@@ -284,7 +284,26 @@ input:not([type="checkbox"]):not([type="radio"]),select,textarea{
   transition:border-color .16s ease, box-shadow .16s ease, background .16s ease, transform .16s ease;
 }
 input[type="text"],input[type="search"],input[type="number"],input[type="date"],input[type="month"],input[type="tel"],input[type="password"],input[type="email"]{min-width:min(220px,100%)}
-select{min-width:min(180px,100%)}
+select{
+  min-width:min(180px,100%);
+  appearance:none;
+  -webkit-appearance:none;
+  padding-right:40px;
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0)),
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    0 0,
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size:
+    auto,
+    6px 6px,
+    6px 6px;
+  background-repeat:no-repeat;
+}
+select[multiple]{padding-right:12px;background-image:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0));background-position:0 0;background-size:auto;background-repeat:no-repeat;}
 select option{color:#0B1220}
 textarea{
   min-height:96px;
@@ -1163,11 +1182,28 @@ input[type="checkbox"],input[type="radio"]{
 .finance-form label.chk,
 .finance-form label.checkline,
 .finance-form label.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:100%}
+.finance-form > label.chk,
+.finance-form > label.checkline,
+.finance-form > label.row,
+.finance-form > .chk,
+.finance-form > .checkline{justify-self:start;width:auto}
 .finance-form label.chk{font-size:13px;color:var(--text);font-weight:700}
 .finance-form label.row{font-size:13px;color:var(--muted);font-weight:700}
 .finance-form input,.finance-form select,.finance-form textarea{width:100%}
+.form-section{display:grid;gap:10px;padding:14px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.03)}
+.form-section__head{display:grid;gap:4px}
+.form-section__title{font-size:13px;font-weight:900;letter-spacing:.02em}
+.form-section__subtitle{font-size:12px;color:var(--muted);line-height:1.4}
+.form-section__grid{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.form-section__grid--3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.form-inline-note{font-size:12px;color:var(--muted);line-height:1.45}
 .form-note{display:grid;gap:6px;padding:10px 12px;border-radius:14px;border:1px solid var(--border);background:var(--surface2);font-size:13px;color:var(--muted)}
 .form-note--warn{border-color:var(--accentSoftBorder);background:rgba(255,255,255,0.03)}
+.form-note--info{border-color:rgba(137,180,255,.25);background:rgba(137,180,255,.08)}
+.pay-config-summary{display:grid;gap:6px;padding:12px;border-radius:14px;border:1px dashed var(--accentSoftBorder);background:var(--accentSoftBg)}
+.pay-config-summary__eyebrow{font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pay-config-summary__title{font-size:14px;font-weight:900;line-height:1.35}
+.pay-config-summary__meta{font-size:12px;color:var(--muted);line-height:1.45}
 .btn.ghost{background:transparent}
 .btn.small{padding:8px 10px;font-size:13px}
 @media (max-width:900px){
@@ -1183,6 +1219,11 @@ input[type="checkbox"],input[type="radio"]{
   .finance-stat__value{font-size:15px}
 }
 
+
+@media (max-width:760px){
+  .form-section__grid,
+  .form-section__grid--3{grid-template-columns:1fr;}
+}
 
 .auth-shell{padding-top:8px}
 .auth-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -1299,9 +1340,40 @@ input[type="checkbox"],input[type="radio"]{
 .pay-sim{display:grid;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.04);}
 .pay-sim__title{font-size:13px;font-weight:800;}
 .pay-sim__grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
-.pay-sim__result{padding:10px 12px;border-radius:14px;border:1px dashed var(--border);background:rgba(255,255,255,.03);line-height:1.45;}
+.pay-sim__result{display:grid;gap:10px;padding:10px 12px;border-radius:14px;border:1px dashed var(--border);background:rgba(255,255,255,.03);line-height:1.45;}
+.pay-sim__stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+.pay-sim__stat{display:grid;gap:4px;padding:10px 12px;border-radius:14px;border:1px solid var(--border);background:rgba(255,255,255,.03);}
+.pay-sim__stat--accent{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);}
+.pay-sim__stat-label{font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.pay-sim__stat-value{font-size:14px;font-weight:900;line-height:1.25;}
+.pay-sim__note{font-size:12px;color:var(--muted);line-height:1.5;}
 @media (max-width:760px){
-  .pay-sim__grid{grid-template-columns:1fr;}
+  .pay-sim__grid,.pay-sim__stats{grid-template-columns:1fr;}
+}
+
+.payroll-breakdown__header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start;}
+.payroll-breakdown__eyebrow{font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.payroll-breakdown__title{font-size:15px;font-weight:900;line-height:1.3;}
+.payroll-breakdown__explain{font-size:12px;color:var(--muted);line-height:1.45;margin-top:4px;}
+.payroll-breakdown__amount{font-size:16px;font-weight:900;white-space:nowrap;}
+.payroll-breakdown__badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.payroll-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:11px;font-weight:800;letter-spacing:.03em;background:var(--surface2);}
+.payroll-chip--ok{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);}
+.payroll-chip--warn{border-color:rgba(255,184,77,.35);background:rgba(255,184,77,.12);}
+.payroll-chip--muted{opacity:.92;}
+.payroll-breakdown__kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;}
+.payroll-breakdown__kv-item{display:grid;gap:4px;padding:10px 12px;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.02);}
+.payroll-breakdown__kv-label{font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.payroll-breakdown__kv-value{font-size:13px;font-weight:800;line-height:1.35;}
+.payroll-breakdown__dayrows{display:grid;gap:8px;margin-top:10px;}
+.payroll-breakdown__dayrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;border:1px dashed var(--border);background:rgba(255,255,255,.02);}
+.payroll-breakdown__dayrow-main{min-width:0;}
+.payroll-breakdown__dayrow-date{font-size:13px;font-weight:900;}
+.payroll-breakdown__dayrow-meta{font-size:12px;color:var(--muted);line-height:1.4;margin-top:3px;}
+.payroll-breakdown__dayrow-amount{font-size:13px;font-weight:900;white-space:nowrap;}
+@media (max-width:760px){
+  .payroll-breakdown__header,.payroll-breakdown__dayrow,.payroll-breakdown__kv{grid-template-columns:1fr;}
+  .payroll-breakdown__amount,.payroll-breakdown__dayrow-amount{white-space:normal;}
 }
 
 .dept-plan-table{display:grid; gap:10px;}

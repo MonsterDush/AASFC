@@ -930,6 +930,31 @@ function breakdownKvHtml(c) {
   return rows.length ? `<div class="payroll-breakdown__kv">${rows.join('')}</div>` : '';
 }
 
+function breakdownExplain(component) {
+  const snap = componentSnapshot(component);
+  const type = String(component?.component_type || '').toUpperCase();
+  if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
+    const parts = [];
+    if (snap?.boost_enabled) {
+      parts.push(snap?.boost_applied ? 'Повышенный процент применился.' : 'Сейчас остаётся базовый процент.');
+    } else {
+      parts.push('Без условия повышения.');
+    }
+    if (snap?.minimum_applied) parts.push('Итог поднят минимальной гарантией.');
+    if (snap?.maximum_applied) parts.push('Итог ограничен потолком.');
+    if (Array.isArray(snap?.day_rows) && snap.day_rows.length) parts.push('Компонент разложен по дням.');
+    return parts.join(' ');
+  }
+  if (type === 'KPI_BONUS') {
+    if (component?.matched_step?.threshold_value != null) return 'Сработала подходящая ступень KPI-бонуса.';
+    return 'Фиксированный бонус за выполнение KPI.';
+  }
+  if (type === 'SALARY_HOURLY') return 'Компонент посчитан по фактически отработанным часам.';
+  if (type === 'SALARY_PER_SHIFT') return 'Компонент посчитан по количеству смен в периоде.';
+  if (type === 'SALARY_FIXED_MONTH') return 'Фиксированная часть за период.';
+  return 'Компонент профиля начисления.';
+}
+
 function breakdownDayRowsHtml(c) {
   const snap = componentSnapshot(c);
   const rows = Array.isArray(snap?.day_rows) ? snap.day_rows : [];
@@ -954,14 +979,19 @@ function openPayrollBreakdown() {
   const componentsHtml = components.length ? components.map((c) => `
     <div class="payroll-breakdown__row">
       <div class="payroll-breakdown__meta">
-        <b>${esc(c.title || c.component_type || "Компонент")}</b>
-        <div class="muted small mt-4">${esc(String(c.component_type || ""))}</div>
+        <div class="payroll-breakdown__header">
+          <div>
+            <div class="payroll-breakdown__eyebrow">${esc(COMPONENT_LABELS[String(c.component_type || '').toUpperCase()] || c.component_type || 'Компонент')}</div>
+            <div class="payroll-breakdown__title">${esc(c.title || c.component_type || "Компонент")}</div>
+            <div class="payroll-breakdown__explain">${esc(breakdownExplain(c))}</div>
+          </div>
+          <div class="payroll-breakdown__amount">${esc(formatMoneyMinor(c.amount_minor || 0))}</div>
+        </div>
         ${breakdownMetaHtml(c)}
         ${breakdownBadgesHtml(c)}
         ${breakdownKvHtml(c)}
         ${breakdownDayRowsHtml(c)}
       </div>
-      <div><b>${esc(formatMoneyMinor(c.amount_minor || 0))}</b></div>
     </div>`).join("") : `<div class="muted">Нет breakdown</div>`;
 
   openModal(
