@@ -108,12 +108,39 @@
               </select>
             </label>
             <div id="weekdayCopyCustomTargets" class="row" style="gap:8px; flex-wrap:wrap; display:none;"></div>
-            <label class="checkline checkline--block"><input type="checkbox" name="overwrite" checked /><span class="checkline__text">Перезаписывать уже существующие шаблоны</span></label>
+            <label class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="overwrite" checked /> Перезаписывать уже существующие шаблоны</label>
             <div class="row gap-8 mt-12"><button class="btn" type="submit">Скопировать шаблон</button></div>
           </form>
           <div class="muted mt-12" id="weekdayCopyHint">—</div>
         </div>
         <div id="planTemplatesList" class="mt-12"></div>
+      </div>
+
+
+
+      <div class="itemcard mt-12" id="departmentMonthPlansCard">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Планы департаментов на месяц</b>
+            <div class="muted mt-6">Нужны для повышенного процента по месячному плану департамента и для ручного планирования по блокам выручки.</div>
+          </div>
+          <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn ghost" id="deptAutofillMonthBtn" type="button">Заполнить из прошлого месяца</button>
+            <button class="btn ghost" id="deptDistributeMonthBtn" type="button">Распределить из плана заведения</button>
+          </div>
+        </div>
+        <form id="departmentMonthPlansForm" class="mt-12"></form>
+      </div>
+
+      <div class="itemcard mt-12" id="departmentDayPlansCard">
+        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div>
+            <b>Планы департаментов на дату</b>
+            <div class="muted mt-6">Используются для повышенного процента по суточному плану департамента и точечной настройки по дням.</div>
+          </div>
+          <span class="badge" id="departmentDayPlansBadge">—</span>
+        </div>
+        <form id="departmentDayPlansForm" class="mt-12"></form>
       </div>
 
       <div class="itemcard mt-12" id="planOverrideCard">

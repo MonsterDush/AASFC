@@ -7,7 +7,7 @@ import json
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.models import DailyReport, DailyReportValue, DayEconomicsMonthPlan, DayEconomicsPlan, DayEconomicsPlanTemplate, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
+from app.models import DailyReport, DailyReportValue, DayEconomicsMonthPlan, DayEconomicsPlan, DayEconomicsPlanTemplate, DepartmentDayPlan, DepartmentMonthPlan, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 
@@ -90,6 +90,8 @@ class PayrollKpiBonusDecision:
 class PayrollVenuePlanMetrics:
     month_revenue_target_minor: int | None = None
     day_revenue_target_by_date_minor: dict[date, int | None] = field(default_factory=dict)
+    department_month_revenue_target_minor: dict[int, int | None] = field(default_factory=dict)
+    department_day_revenue_target_by_date_minor: dict[int, dict[date, int | None]] = field(default_factory=dict)
 
 
 @dataclass
@@ -377,9 +379,32 @@ def _load_venue_plan_metrics(
             day_targets[cursor] = weekday_templates.get(cursor.weekday())
         cursor += timedelta(days=1)
 
+    department_month_targets = {
+        int(row.department_id): (int(row.revenue_plan_minor) if row.revenue_plan_minor is not None else None)
+        for row in db.execute(
+            select(DepartmentMonthPlan.department_id, DepartmentMonthPlan.revenue_plan_minor).where(
+                DepartmentMonthPlan.venue_id == int(venue_id),
+                DepartmentMonthPlan.month_start == month_start,
+            )
+        ).all()
+    }
+    department_day_targets: dict[int, dict[date, int | None]] = {}
+    for row in db.execute(
+        select(DepartmentDayPlan.department_id, DepartmentDayPlan.target_date, DepartmentDayPlan.revenue_plan_minor).where(
+            DepartmentDayPlan.venue_id == int(venue_id),
+            DepartmentDayPlan.target_date >= month_start,
+            DepartmentDayPlan.target_date < month_end_excl,
+        )
+    ).all():
+        dep_id = int(row.department_id)
+        per_day = department_day_targets.setdefault(dep_id, {})
+        per_day[row.target_date] = int(row.revenue_plan_minor) if row.revenue_plan_minor is not None else None
+
     return PayrollVenuePlanMetrics(
         month_revenue_target_minor=int(month_plan) if month_plan is not None else None,
         day_revenue_target_by_date_minor=day_targets,
+        department_month_revenue_target_minor=department_month_targets,
+        department_day_revenue_target_by_date_minor=department_day_targets,
     )
 
 
@@ -401,6 +426,7 @@ def _build_percent_component_decision(
     boost_source_type = _component_boost_source_type(component)
     boost_source_title = BOOST_SOURCE_TITLES.get(boost_source_type, boost_source_type or BOOST_SOURCE_NONE)
     boost_recalc_mode = _component_boost_recalc_mode(component)
+    boost_department_id = int(component.boost_department_id or component.department_id or 0) if getattr(component, "boost_department_id", None) is not None or getattr(component, "department_id", None) is not None else 0
     boost_recalc_mode_effective = boost_recalc_mode
     minimum_guarantee_minor = int(component.minimum_guarantee_minor or 0) if getattr(component, "minimum_guarantee_minor", None) is not None else None
     maximum_cap_minor = int(component.maximum_cap_minor or 0) if getattr(component, "maximum_cap_minor", None) is not None else None
@@ -462,6 +488,61 @@ def _build_percent_component_decision(
             for day, base_day_minor in sorted(base_by_date.items(), key=lambda item: item[0]):
                 actual_day_minor = int(revenue_metrics.total_revenue_by_date_minor.get(day) or 0)
                 target_day_minor = venue_plan_metrics.day_revenue_target_by_date_minor.get(day)
+                day_boost_applied = target_day_minor is not None and actual_day_minor >= int(target_day_minor or 0)
+                day_percent_bps = regular_percent_bps
+                if day_boost_applied:
+                    applied_days_count += 1
+                    day_percent_bps = int(boost_percent_bps or 0)
+                    if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and excess_supported and target_day_minor is not None:
+                        regular_part = _round_percent_amount(min(base_day_minor, int(target_day_minor)), regular_percent_bps)
+                        boost_part = _round_percent_amount(max(base_day_minor - int(target_day_minor), 0), int(boost_percent_bps or 0))
+                        day_amount_minor = int(regular_part + boost_part)
+                    else:
+                        if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and not excess_supported:
+                            boost_recalc_mode_effective = BOOST_RECALC_REPLACE_ALL
+                        day_amount_minor = _round_percent_amount(base_day_minor, int(boost_percent_bps or 0))
+                else:
+                    day_amount_minor = _round_percent_amount(base_day_minor, regular_percent_bps)
+                amount_minor += int(day_amount_minor)
+                day_rows.append(
+                    {
+                        "date": day.isoformat(),
+                        "base_amount_minor": int(base_day_minor),
+                        "actual_amount_minor": int(actual_day_minor),
+                        "target_amount_minor": int(target_day_minor) if target_day_minor is not None else None,
+                        "boost_applied": bool(day_boost_applied),
+                        "percent_bps": int(day_percent_bps),
+                        "amount_minor": int(day_amount_minor),
+                    }
+                )
+            boost_applied = applied_days_count > 0
+            boost_actual_value = int(applied_days_count)
+
+        elif boost_source_type == BOOST_SOURCE_DEPARTMENT_MONTH_PLAN:
+            boost_target_minor = venue_plan_metrics.department_month_revenue_target_minor.get(int(boost_department_id or 0))
+            boost_actual_minor = int(revenue_metrics.department_revenue_minor.get(int(boost_department_id or 0), 0) or 0)
+            boost_applied = boost_target_minor is not None and boost_actual_minor >= boost_target_minor
+            if boost_applied:
+                excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and int(component.department_id or 0) == int(boost_department_id or 0)
+                if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and excess_supported and boost_target_minor is not None:
+                    regular_part = _round_percent_amount(min(base_amount_minor, boost_target_minor), regular_percent_bps)
+                    boost_part = _round_percent_amount(max(base_amount_minor - boost_target_minor, 0), int(boost_percent_bps or 0))
+                    amount_minor = int(regular_part + boost_part)
+                else:
+                    if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and not excess_supported:
+                        boost_recalc_mode_effective = BOOST_RECALC_REPLACE_ALL
+                    amount_minor = _round_percent_amount(base_amount_minor, int(boost_percent_bps or 0))
+                applied_percent_bps = int(boost_percent_bps or 0)
+
+        elif boost_source_type == BOOST_SOURCE_DEPARTMENT_DAY_PLAN:
+            day_targets_by_date = venue_plan_metrics.department_day_revenue_target_by_date_minor.get(int(boost_department_id or 0), {})
+            day_actuals_by_date = revenue_metrics.department_revenue_by_date_minor.get(int(boost_department_id or 0), {})
+            excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and int(component.department_id or 0) == int(boost_department_id or 0)
+            amount_minor = 0
+            applied_days_count = 0
+            for day, base_day_minor in sorted(base_by_date.items(), key=lambda item: item[0]):
+                actual_day_minor = int(day_actuals_by_date.get(day) or 0)
+                target_day_minor = day_targets_by_date.get(day)
                 day_boost_applied = target_day_minor is not None and actual_day_minor >= int(target_day_minor or 0)
                 day_percent_bps = regular_percent_bps
                 if day_boost_applied:
@@ -900,6 +981,8 @@ def calculate_payroll_for_month(
                 breakdown_item["boost_actual_minor"] = percent_decision.boost_actual_minor
                 breakdown_item["boost_target_value"] = percent_decision.boost_target_value
                 breakdown_item["boost_actual_value"] = percent_decision.boost_actual_value
+                breakdown_item["boost_department_id"] = int(component.boost_department_id) if getattr(component, "boost_department_id", None) is not None else None
+                breakdown_item["boost_department_title"] = component.boost_department.title if getattr(component, "boost_department", None) is not None else None
                 breakdown_item["boost_kpi_metric_id"] = percent_decision.boost_kpi_metric_id
                 if getattr(component, "boost_kpi_metric", None) is not None:
                     breakdown_item["boost_kpi_metric_title"] = component.boost_kpi_metric.title
@@ -931,6 +1014,8 @@ def calculate_payroll_for_month(
                 breakdown_item["boost_actual_minor"] = percent_decision.boost_actual_minor
                 breakdown_item["boost_target_value"] = percent_decision.boost_target_value
                 breakdown_item["boost_actual_value"] = percent_decision.boost_actual_value
+                breakdown_item["boost_department_id"] = int(component.boost_department_id) if getattr(component, "boost_department_id", None) is not None else None
+                breakdown_item["boost_department_title"] = component.boost_department.title if getattr(component, "boost_department", None) is not None else None
                 breakdown_item["boost_kpi_metric_id"] = percent_decision.boost_kpi_metric_id
                 if getattr(component, "boost_kpi_metric", None) is not None:
                     breakdown_item["boost_kpi_metric_title"] = component.boost_kpi_metric.title

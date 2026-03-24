@@ -37,6 +37,8 @@ from .recurring_expense_accrual import RecurringExpenseAccrual
 from .day_economics_plan import DayEconomicsPlan
 from .day_economics_month_plan import DayEconomicsMonthPlan
 from .day_economics_plan_template import DayEconomicsPlanTemplate
+from .department_month_plan import DepartmentMonthPlan
+from .department_day_plan import DepartmentDayPlan
 from .venue_economics_rule import VenueEconomicsRule
 from .pay_profile import PayProfile
 from .pay_profile_assignment import PayProfileAssignment
@@ -88,6 +90,8 @@ __all__ = [
     "DayEconomicsPlan",
     "DayEconomicsMonthPlan",
     "DayEconomicsPlanTemplate",
+    "DepartmentMonthPlan",
+    "DepartmentDayPlan",
     "VenueEconomicsRule",
     "PayProfile",
     "PayProfileAssignment",

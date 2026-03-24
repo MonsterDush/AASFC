@@ -48,6 +48,12 @@ from app.services.finance.day_economics import (
     get_day_economics_month_plan,
     get_venue_economics_rules,
     list_day_economics_plan_templates,
+    list_department_day_plans,
+    list_department_month_plans,
+    autofill_department_month_plans_from_last_month,
+    distribute_department_month_plans_from_venue_plan,
+    upsert_department_day_plans,
+    upsert_department_month_plans,
     upsert_day_economics_month_plan,
     upsert_day_economics_plan,
     upsert_day_economics_plan_template,
@@ -129,6 +135,8 @@ from app.models.expense_recognition_entry import ExpenseRecognitionEntry
 from app.models.day_economics_plan import DayEconomicsPlan
 from app.models.day_economics_month_plan import DayEconomicsMonthPlan
 from app.models.day_economics_plan_template import DayEconomicsPlanTemplate
+from app.models.department_month_plan import DepartmentMonthPlan
+from app.models.department_day_plan import DepartmentDayPlan
 from app.models.venue_economics_rule import VenueEconomicsRule
 
 from app.auth.venue_permissions import require_venue_permission, has_venue_permission
@@ -325,6 +333,16 @@ class PayComponentUpdateIn(BaseModel):
     maximum_cap_minor: int | None = Field(default=None, ge=0)
     sort_order: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
+
+
+class DepartmentPlanItemIn(BaseModel):
+    department_id: int = Field(..., gt=0)
+    revenue_plan_minor: int | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class DepartmentPlanBulkIn(BaseModel):
+    items: list[DepartmentPlanItemIn] = Field(default_factory=list)
 
 
 class PayrollCalculateIn(BaseModel):
@@ -1701,6 +1719,8 @@ def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
     add_count("day_economics_plans", DayEconomicsPlan, select(func.count(DayEconomicsPlan.id)).where(DayEconomicsPlan.venue_id == venue_id))
     add_count("day_economics_month_plans", DayEconomicsMonthPlan, select(func.count(DayEconomicsMonthPlan.id)).where(DayEconomicsMonthPlan.venue_id == venue_id))
     add_count("day_economics_plan_templates", DayEconomicsPlanTemplate, select(func.count(DayEconomicsPlanTemplate.id)).where(DayEconomicsPlanTemplate.venue_id == venue_id))
+    add_count("department_day_plans", DepartmentDayPlan, select(func.count(DepartmentDayPlan.id)).where(DepartmentDayPlan.venue_id == venue_id))
+    add_count("department_month_plans", DepartmentMonthPlan, select(func.count(DepartmentMonthPlan.id)).where(DepartmentMonthPlan.venue_id == venue_id))
     add_count("venue_economics_rules", VenueEconomicsRule, select(func.count(VenueEconomicsRule.id)).where(VenueEconomicsRule.venue_id == venue_id))
 
     add_count("pay_profiles", PayProfile, select(func.count(PayProfile.id)).where(PayProfile.venue_id == venue_id))
@@ -1877,6 +1897,8 @@ def delete_venue(
         deleted["day_economics_plans"] = _safe_delete_where(db, DayEconomicsPlan, DayEconomicsPlan.venue_id == venue_id)
         deleted["day_economics_month_plans"] = _safe_delete_where(db, DayEconomicsMonthPlan, DayEconomicsMonthPlan.venue_id == venue_id)
         deleted["day_economics_plan_templates"] = _safe_delete_where(db, DayEconomicsPlanTemplate, DayEconomicsPlanTemplate.venue_id == venue_id)
+        deleted["department_day_plans"] = _safe_delete_where(db, DepartmentDayPlan, DepartmentDayPlan.venue_id == venue_id)
+        deleted["department_month_plans"] = _safe_delete_where(db, DepartmentMonthPlan, DepartmentMonthPlan.venue_id == venue_id)
         deleted["venue_economics_rules"] = _safe_delete_where(db, VenueEconomicsRule, VenueEconomicsRule.venue_id == venue_id)
 
         deleted["payroll_recalculation_logs"] = _safe_delete_where(db, PayrollRecalculationLog, PayrollRecalculationLog.venue_id == venue_id)

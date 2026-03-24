@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
-from app.models import DailyReport, DailyReportValue, KpiMetric, Shift, ShiftAssignment
+from app.models import DailyReport, DailyReportValue, Department, DepartmentDayPlan, DepartmentMonthPlan, KpiMetric, Shift, ShiftAssignment
 from app.models.day_economics_month_plan import DayEconomicsMonthPlan
 from app.models.day_economics_plan import DayEconomicsPlan
 from app.models.day_economics_plan_template import DayEconomicsPlanTemplate
@@ -809,3 +809,310 @@ def get_day_economics(*, db: Session, venue_id: int, target_date: date) -> dict:
         'alerts': alerts,
         'rollup': rollup,
     }
+
+
+
+def _list_active_departments(db: Session, *, venue_id: int) -> list[Department]:
+    return db.execute(
+        select(Department)
+        .where(Department.venue_id == int(venue_id), Department.is_active.is_(True))
+        .order_by(Department.sort_order.asc(), Department.title.asc(), Department.id.asc())
+    ).scalars().all()
+
+
+
+def _department_actuals_for_month(db: Session, *, venue_id: int, month_date: date) -> dict[int, int]:
+    month_start = _month_start(month_date)
+    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    rows = db.execute(
+        select(
+            DailyReportValue.ref_id,
+            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label('amount'),
+        )
+        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == 'CLOSED',
+            DailyReport.date >= month_start,
+            DailyReport.date < next_month,
+            DailyReportValue.kind == 'DEPT',
+        )
+        .group_by(DailyReportValue.ref_id)
+    ).all()
+    return {int(row.ref_id): int(row.amount or 0) * 100 for row in rows}
+
+
+
+def _department_actuals_for_day(db: Session, *, venue_id: int, target_date: date) -> dict[int, int]:
+    rows = db.execute(
+        select(
+            DailyReportValue.ref_id,
+            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label('amount'),
+        )
+        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == 'CLOSED',
+            DailyReport.date == target_date,
+            DailyReportValue.kind == 'DEPT',
+        )
+        .group_by(DailyReportValue.ref_id)
+    ).all()
+    return {int(row.ref_id): int(row.amount or 0) * 100 for row in rows}
+
+
+
+def list_department_month_plans(*, db: Session, venue_id: int, month_value: str) -> dict:
+    month_date = date.fromisoformat(f"{month_value}-01")
+    departments = _list_active_departments(db, venue_id=venue_id)
+    by_department = {
+        int(row.department_id): row
+        for row in db.execute(
+            select(DepartmentMonthPlan).where(
+                DepartmentMonthPlan.venue_id == int(venue_id),
+                DepartmentMonthPlan.month_start == month_date,
+            )
+        ).scalars().all()
+    }
+    actual_current = _department_actuals_for_month(db, venue_id=venue_id, month_date=month_date)
+    prev_month = (month_date - timedelta(days=1)).replace(day=1)
+    actual_previous = _department_actuals_for_month(db, venue_id=venue_id, month_date=prev_month)
+    items = []
+    for dep in departments:
+        row = by_department.get(int(dep.id))
+        items.append({
+            'department_id': int(dep.id),
+            'department_title': dep.title,
+            'department_code': dep.code,
+            'month': month_value,
+            'revenue_plan_minor': int(row.revenue_plan_minor) if row is not None and row.revenue_plan_minor is not None else None,
+            'notes': row.notes if row is not None else None,
+            'actual_current_minor': int(actual_current.get(int(dep.id), 0) or 0),
+            'actual_previous_minor': int(actual_previous.get(int(dep.id), 0) or 0),
+        })
+    return {
+        'month': month_value,
+        'items': items,
+        'department_count': len(items),
+    }
+
+
+
+def upsert_department_month_plans(*, db: Session, venue_id: int, month_value: str, items: list[dict]) -> dict:
+    month_date = date.fromisoformat(f"{month_value}-01")
+    allowed_ids = {int(dep.id) for dep in _list_active_departments(db, venue_id=venue_id)}
+    existing = {
+        int(row.department_id): row
+        for row in db.execute(
+            select(DepartmentMonthPlan).where(
+                DepartmentMonthPlan.venue_id == int(venue_id),
+                DepartmentMonthPlan.month_start == month_date,
+            )
+        ).scalars().all()
+    }
+    touched = 0
+    deleted = 0
+    for item in items or []:
+        dep_id = int(item.get('department_id') or 0)
+        if dep_id <= 0 or dep_id not in allowed_ids:
+            continue
+        revenue_plan_minor = item.get('revenue_plan_minor')
+        if revenue_plan_minor is not None:
+            revenue_plan_minor = int(revenue_plan_minor)
+        notes = (item.get('notes') or '').strip() or None
+        row = existing.get(dep_id)
+        should_delete = revenue_plan_minor is None and notes is None
+        if should_delete:
+            if row is not None:
+                db.delete(row)
+                deleted += 1
+            continue
+        if row is None:
+            row = DepartmentMonthPlan(venue_id=int(venue_id), department_id=dep_id, month_start=month_date)
+            db.add(row)
+        row.revenue_plan_minor = revenue_plan_minor
+        row.notes = notes
+        row.updated_at = datetime.utcnow()
+        touched += 1
+    db.flush()
+    result = list_department_month_plans(db=db, venue_id=venue_id, month_value=month_value)
+    result['saved_count'] = touched
+    result['deleted_count'] = deleted
+    return result
+
+
+
+def autofill_department_month_plans_from_last_month(*, db: Session, venue_id: int, month_value: str, overwrite: bool = True) -> dict:
+    month_date = date.fromisoformat(f"{month_value}-01")
+    previous_month = (month_date - timedelta(days=1)).replace(day=1)
+    previous_actual = _department_actuals_for_month(db, venue_id=venue_id, month_date=previous_month)
+    existing = {
+        int(row.department_id): row
+        for row in db.execute(
+            select(DepartmentMonthPlan).where(
+                DepartmentMonthPlan.venue_id == int(venue_id),
+                DepartmentMonthPlan.month_start == month_date,
+            )
+        ).scalars().all()
+    }
+    copied = 0
+    skipped = 0
+    for dep in _list_active_departments(db, venue_id=venue_id):
+        dep_id = int(dep.id)
+        actual_minor = int(previous_actual.get(dep_id, 0) or 0)
+        row = existing.get(dep_id)
+        if row is not None and row.revenue_plan_minor is not None and not overwrite:
+            skipped += 1
+            continue
+        if row is None:
+            row = DepartmentMonthPlan(venue_id=int(venue_id), department_id=dep_id, month_start=month_date)
+            db.add(row)
+        row.revenue_plan_minor = actual_minor if actual_minor > 0 else None
+        row.updated_at = datetime.utcnow()
+        copied += 1
+    db.flush()
+    return {
+        'copied': copied,
+        'skipped': skipped,
+        'copied_from_month': previous_month.strftime('%Y-%m'),
+        'plan': list_department_month_plans(db=db, venue_id=venue_id, month_value=month_value),
+    }
+
+
+
+def distribute_department_month_plans_from_venue_plan(*, db: Session, venue_id: int, month_value: str, overwrite: bool = True) -> dict:
+    month_date = date.fromisoformat(f"{month_value}-01")
+    departments = _list_active_departments(db, venue_id=venue_id)
+    venue_plan = db.execute(
+        select(DayEconomicsMonthPlan.revenue_plan_minor).where(
+            DayEconomicsMonthPlan.venue_id == int(venue_id),
+            DayEconomicsMonthPlan.month_start == month_date,
+        )
+    ).scalar_one_or_none()
+    if venue_plan is None or int(venue_plan or 0) <= 0:
+        raise ValueError('Нет месячного плана заведения для распределения')
+    previous_month = (month_date - timedelta(days=1)).replace(day=1)
+    previous_actual = _department_actuals_for_month(db, venue_id=venue_id, month_date=previous_month)
+    total_previous = int(sum(int(previous_actual.get(int(dep.id), 0) or 0) for dep in departments))
+    existing = {
+        int(row.department_id): row
+        for row in db.execute(
+            select(DepartmentMonthPlan).where(
+                DepartmentMonthPlan.venue_id == int(venue_id),
+                DepartmentMonthPlan.month_start == month_date,
+            )
+        ).scalars().all()
+    }
+    copied = 0
+    skipped = 0
+    department_count = max(len(departments), 1)
+    base_plan_minor = int(venue_plan or 0)
+    allocations: list[tuple[int, int]] = []
+    if total_previous > 0:
+        running = 0
+        for index, dep in enumerate(departments, start=1):
+            if index == len(departments):
+                amount_minor = base_plan_minor - running
+            else:
+                amount_minor = int(round(base_plan_minor * (int(previous_actual.get(int(dep.id), 0) or 0) / total_previous)))
+                running += amount_minor
+            allocations.append((int(dep.id), max(amount_minor, 0)))
+    else:
+        base = base_plan_minor // department_count
+        rem = base_plan_minor - base * department_count
+        for idx, dep in enumerate(departments):
+            allocations.append((int(dep.id), base + (1 if idx < rem else 0)))
+    for dep_id, amount_minor in allocations:
+        row = existing.get(dep_id)
+        if row is not None and row.revenue_plan_minor is not None and not overwrite:
+            skipped += 1
+            continue
+        if row is None:
+            row = DepartmentMonthPlan(venue_id=int(venue_id), department_id=dep_id, month_start=month_date)
+            db.add(row)
+        row.revenue_plan_minor = int(amount_minor)
+        row.updated_at = datetime.utcnow()
+        copied += 1
+    db.flush()
+    return {
+        'copied': copied,
+        'skipped': skipped,
+        'distributed_total_minor': base_plan_minor,
+        'copied_from_month': previous_month.strftime('%Y-%m'),
+        'plan': list_department_month_plans(db=db, venue_id=venue_id, month_value=month_value),
+    }
+
+
+
+def list_department_day_plans(*, db: Session, venue_id: int, target_date: date) -> dict:
+    departments = _list_active_departments(db, venue_id=venue_id)
+    by_department = {
+        int(row.department_id): row
+        for row in db.execute(
+            select(DepartmentDayPlan).where(
+                DepartmentDayPlan.venue_id == int(venue_id),
+                DepartmentDayPlan.target_date == target_date,
+            )
+        ).scalars().all()
+    }
+    actual_current = _department_actuals_for_day(db, venue_id=venue_id, target_date=target_date)
+    items = []
+    for dep in departments:
+        row = by_department.get(int(dep.id))
+        items.append({
+            'department_id': int(dep.id),
+            'department_title': dep.title,
+            'department_code': dep.code,
+            'date': target_date.isoformat(),
+            'revenue_plan_minor': int(row.revenue_plan_minor) if row is not None and row.revenue_plan_minor is not None else None,
+            'notes': row.notes if row is not None else None,
+            'actual_current_minor': int(actual_current.get(int(dep.id), 0) or 0),
+        })
+    return {
+        'date': target_date.isoformat(),
+        'items': items,
+        'department_count': len(items),
+    }
+
+
+
+def upsert_department_day_plans(*, db: Session, venue_id: int, target_date: date, items: list[dict]) -> dict:
+    allowed_ids = {int(dep.id) for dep in _list_active_departments(db, venue_id=venue_id)}
+    existing = {
+        int(row.department_id): row
+        for row in db.execute(
+            select(DepartmentDayPlan).where(
+                DepartmentDayPlan.venue_id == int(venue_id),
+                DepartmentDayPlan.target_date == target_date,
+            )
+        ).scalars().all()
+    }
+    touched = 0
+    deleted = 0
+    for item in items or []:
+        dep_id = int(item.get('department_id') or 0)
+        if dep_id <= 0 or dep_id not in allowed_ids:
+            continue
+        revenue_plan_minor = item.get('revenue_plan_minor')
+        if revenue_plan_minor is not None:
+            revenue_plan_minor = int(revenue_plan_minor)
+        notes = (item.get('notes') or '').strip() or None
+        row = existing.get(dep_id)
+        should_delete = revenue_plan_minor is None and notes is None
+        if should_delete:
+            if row is not None:
+                db.delete(row)
+                deleted += 1
+            continue
+        if row is None:
+            row = DepartmentDayPlan(venue_id=int(venue_id), department_id=dep_id, target_date=target_date)
+            db.add(row)
+        row.revenue_plan_minor = revenue_plan_minor
+        row.notes = notes
+        row.updated_at = datetime.utcnow()
+        touched += 1
+    db.flush()
+    result = list_department_day_plans(db=db, venue_id=venue_id, target_date=target_date)
+    result['saved_count'] = touched
+    result['deleted_count'] = deleted
+    return result

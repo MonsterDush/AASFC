@@ -42,6 +42,8 @@ const BOOST_SOURCE_LABELS = {
   NONE: "без условия",
   VENUE_MONTH_PLAN: "месячный план заведения",
   VENUE_DAY_PLAN: "суточный план заведения",
+  DEPARTMENT_MONTH_PLAN: "месячный план департамента",
+  DEPARTMENT_DAY_PLAN: "суточный план департамента",
   KPI_METRIC: "KPI",
 };
 
@@ -169,6 +171,7 @@ function formatPercentConfig(item) {
     const boostBits = [`boost ${fmtPercentBps(item.boost_percent_bps)}`];
     if (sourceLabel) boostBits.push(sourceLabel);
     if (modeLabel) boostBits.push(modeLabel);
+    if (item.boost_department_title) boostBits.push(item.boost_department_title);
     if (item.boost_kpi_metric_title) boostBits.push(item.boost_kpi_metric_title);
     if (item.boost_threshold_value != null && String(effectiveBoostSourceFor(item)) === 'KPI_METRIC') {
       boostBits.push(`цель ${item.boost_threshold_value}`);
@@ -184,6 +187,8 @@ function percentBoostOptions(selected) {
     ['NONE', 'Без условия'],
     ['VENUE_MONTH_PLAN', 'Месячный план заведения'],
     ['VENUE_DAY_PLAN', 'Суточный план заведения'],
+    ['DEPARTMENT_MONTH_PLAN', 'Месячный план департамента'],
+    ['DEPARTMENT_DAY_PLAN', 'Суточный план департамента'],
     ['KPI_METRIC', 'KPI'],
   ].map(([code, title]) => `<option value="${code}" ${value === code ? 'selected' : ''}>${title}</option>`).join('');
 }
@@ -678,6 +683,13 @@ function componentForm({ mode, item }) {
         <span>Условие повышения</span>
         <select id="f_boost_source_type">${percentBoostOptions(it.boost_source_type || it.effective_boost_source_type || 'NONE')}</select>
       </label>
+      <label id="f_boost_department_wrap">
+        <span>Департамент для условия</span>
+        <select id="f_boost_department_id">
+          <option value="">Выбери департамент</option>
+          ${state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.boost_department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("")}
+        </select>
+      </label>
       <label id="f_boost_recalc_wrap">
         <span>Режим пересчёта</span>
         <select id="f_boost_recalc_mode">${boostRecalcOptions(it.boost_recalc_mode || it.effective_boost_recalc_mode || 'REPLACE_ALL')}</select>
@@ -706,7 +718,7 @@ function componentForm({ mode, item }) {
         <span>Максимум, ₽</span>
         <input id="f_maximum_cap_minor" inputmode="decimal" placeholder="Например: 90000" value="${esc(moneyInputFromMinor(it.maximum_cap_minor))}" />
       </label>
-      <div id="f_percent_help" class="muted">В 5A доступны условия по планам заведения и KPI. Планы департаментов добавим следующим спринтом.</div>
+      <div id="f_percent_help" class="muted">Можно привязать повышенный процент к плану заведения, плану департамента или KPI.</div>
       <div id="f_sim_wrap" class="pay-sim">
         <div class="pay-sim__title">Симулятор компонента</div>
         <div class="pay-sim__grid">

@@ -1296,3 +1296,14 @@ input[type="checkbox"],input[type="radio"]{
 @media (max-width:760px){
   .pay-sim__grid{grid-template-columns:1fr;}
 }
+
+.dept-plan-table{display:grid; gap:10px;}
+.dept-plan-table__head,
+.dept-plan-table__row{display:grid; grid-template-columns:1.4fr 1fr 1fr 1fr; gap:10px; align-items:start;}
+.dept-plan-table__head{font-size:12px; color:var(--muted); padding:0 4px;}
+.dept-plan-table__row{padding:12px; border:1px solid var(--border); border-radius:14px; background:var(--card);}
+.dept-plan-table textarea{min-height:68px; resize:vertical;}
+@media (max-width: 860px){
+  .dept-plan-table__head{display:none;}
+  .dept-plan-table__row{grid-template-columns:1fr;}
+}
