@@ -36,7 +36,7 @@
           </div>
         </div>
 
-        <div class="action-grid action-grid--3 action-grid--mobile-2">
+        <div class="action-grid action-grid--3">
           <button class="btn" id="btnRename">Переименовать</button>
           <button class="btn" id="btnArchive">В архив</button>
           <button class="btn" id="btnUnarchive">Вернуть</button>
@@ -53,7 +53,7 @@
                   <div class="muted">Основные разделы управления заведением и командой.</div>
                 </div>
               </div>
-              <div class="action-grid action-grid--adaptive action-grid--mobile-2 mt-12">
+              <div class="action-grid action-grid--adaptive mt-12">
                 <a class="btn" id="openPositions" href="#">Должности</a>
                 <a class="btn" id="openInvites" href="#">Приглашения</a>
                 <a class="btn" id="openShifts" href="#">График</a>
@@ -69,7 +69,7 @@
               <div class="muted">Сводка, зарплаты, расходы и аналитика дня.</div>
             </div>
           </div>
-          <div class="action-grid action-grid--adaptive action-grid--mobile-2 mt-12">
+          <div class="action-grid action-grid--adaptive mt-12">
             <a class="btn" id="openSummary" href="#">Сводка</a>
             <a class="btn" id="openPayProfiles" href="#">Профили зарплаты</a>
             <a class="btn" id="openPayroll" href="#">Начисления</a>
@@ -88,10 +88,11 @@
               <div class="muted">Базовые справочники для выручки, расходов и KPI.</div>
             </div>
           </div>
-          <div class="action-grid action-grid--adaptive action-grid--mobile-2 mt-12">
+          <div class="action-grid action-grid--adaptive mt-12">
             <a class="btn" id="openDepartments" href="#">Департаменты</a>
             <a class="btn" id="openPaymentMethods" href="#">Оплаты</a>
             <a class="btn" id="openKpi" href="#">KPI</a>
+            <a class="btn" id="openIntervals" href="#">Интервалы</a>
           </div>
         </div>
       </div>
@@ -197,6 +198,7 @@
         let canViewDepartments = false;
         let canViewPaymentMethods = false;
         let canViewKpi = false;
+        let canManageIntervals = false;
         let canEditVenueSettings = false;
         let canViewReports = false;
         let canViewRevenue = false;
@@ -221,6 +223,7 @@
           canViewDepartments = isOwner || isAdmin || hasPerm(pset, "DEPARTMENTS_VIEW");
           canViewPaymentMethods = isOwner || isAdmin || hasPerm(pset, "PAYMENT_METHODS_VIEW");
           canViewKpi = isOwner || isAdmin || hasPerm(pset, "KPI_METRICS_VIEW");
+          canManageIntervals = isOwner || isAdmin || hasPerm(pset, "SHIFTS_MANAGE");
 
           canEditVenueSettings = isOwner || isAdmin || hasPerm(pset, "VENUE_SETTINGS_EDIT");
 
@@ -287,6 +290,7 @@ const titleEl = document.getElementById("title");
         const openDepartments = document.getElementById("openDepartments");
         const openPaymentMethods = document.getElementById("openPaymentMethods");
         const openKpi = document.getElementById("openKpi");
+        const openIntervals = document.getElementById("openIntervals");
 
         // Owner/admin-only destructive actions
         const canAdminVenue = (isOwner || isAdmin);
@@ -327,6 +331,7 @@ openAdjustments.href = canManageAdjustments
           if (openDepartments) openDepartments.href = `/owner-departments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openPaymentMethods) openPaymentMethods.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openKpi) openKpi.href = `/owner-kpi.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openIntervals) openIntervals.href = `/shift-intervals.html?venue_id=${encodeURIComponent(venueId)}`;
 
           // hide/show by permissions
           if (openInvites) openInvites.style.display = (isOwner || isAdmin) ? "" : "none";
@@ -337,6 +342,7 @@ openAdjustments.href = canManageAdjustments
           if (openDepartments) openDepartments.style.display = canViewDepartments ? "" : "none";
           if (openPaymentMethods) openPaymentMethods.style.display = canViewPaymentMethods ? "" : "none";
           if (openKpi) openKpi.style.display = canViewKpi ? "" : "none";
+          if (openIntervals) openIntervals.style.display = canManageIntervals ? "" : "none";
 
           if (openAdjustments) openAdjustments.style.display = canViewAdjustments ? "" : "none";
           if (openSummary) openSummary.style.display = (canViewRevenue || canViewExpenses) ? "" : "none";
@@ -353,7 +359,7 @@ openAdjustments.href = canManageAdjustments
 
           const referencesCard = document.getElementById("referencesCard");
           if (referencesCard) {
-            const showReferences = (openDepartments?.style.display !== "none") || (openPaymentMethods?.style.display !== "none") || (openKpi?.style.display !== "none");
+            const showReferences = (openDepartments?.style.display !== "none") || (openPaymentMethods?.style.display !== "none") || (openKpi?.style.display !== "none") || (openIntervals?.style.display !== "none");
             referencesCard.style.display = showReferences ? "" : "none";
           }
 
