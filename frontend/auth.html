@@ -18,6 +18,7 @@
     .password-flow-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
     .telegram-login-shell { display:flex; flex-direction:column; gap:12px; }
     .telegram-login-link { word-break:break-all; }
+    .password-rules { border:1px solid var(--border); border-radius:12px; padding:10px 12px; background: rgba(255,255,255,0.02); }
   </style>
 </head>
 <body>
@@ -112,6 +113,7 @@
               <div>
                 <label class="auth-label" for="newPasswordInput">Новый пароль</label>
                 <input id="newPasswordInput" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
+                <div class="password-rules muted mt-8">Пароль должен быть не короче 8 символов и содержать хотя бы одну букву и одну цифру.</div>
               </div>
               <div>
                 <label class="auth-label" for="confirmPasswordInput">Повтори пароль</label>
@@ -123,23 +125,8 @@
             </div>
           </div>
         </div>
-      </div>
-      <div class="card">
-        <b>Подсказки</b>
-        <div class="itemcard mt-16">
-          <b>Что дальше</b>
-          <div class="muted mt-8" id="nextHint">После входа тебя вернёт на страницу, с которой запрашивалась авторизация.</div>
-        </div>
 
-        <div class="itemcard mt-16">
-          <b>Правила пароля</b>
-          <div class="muted mt-8">Пароль должен быть не короче 8 символов и содержать хотя бы одну букву и одну цифру.</div>
-        </div>
-
-        <div class="itemcard mt-16">
-          <b>Telegram на этой странице скрыт</b>
-          <div class="muted mt-8">Чтобы вход по телефону не зависел от блокировок Telegram, здесь не загружаются Telegram-виджет и связанные проверки. Кнопка «Войти через Telegram» использует отдельный flow через бота и не мешает входу по телефону.</div>
-        </div>
+        <div class="muted mt-16" id="nextHint">После входа тебя вернёт на страницу, с которой запрашивалась авторизация.</div>
       </div>
     </div>
   </div>
