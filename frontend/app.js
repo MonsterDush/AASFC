@@ -133,25 +133,6 @@ export function wa() {
   return window.Telegram?.WebApp || null;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export async function waitForTelegramInitData({ timeoutMs = 10000, intervalMs = 100 } = {}) {
-  const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
-
-  while (Date.now() <= deadline) {
-    const w = wa();
-    const initData = String(w?.initData || "").trim();
-    if (initData) return initData;
-
-    try { w?.ready?.(); } catch {}
-    await sleep(Math.max(25, Number(intervalMs) || 100));
-  }
-
-  return "";
-}
-
 // ------------------------------
 // Theme (system / light / dark / hookahplace)
 // ------------------------------
@@ -381,23 +362,57 @@ export async function api(path, opts = {}) {
   if (isPlainObject(body)) body = JSON.stringify(body);
 
   const handle401 = opts.handle401 !== false;
+  const timeoutMs = Number(opts.timeoutMs || 0) > 0 ? Number(opts.timeoutMs) : 0;
+  const externalSignal = opts.signal;
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  let timeoutId = null;
+  let signal = externalSignal || undefined;
 
-  // NOTE: Permission checks rely on fresh /me/* responses.
-  // Some browsers may cache credentialed GET requests aggressively in certain flows.
-  // Default to no-store, allow overriding via opts.cache when needed.
-  const r = await fetch(url, {
-    cache: "no-store",
-    ...opts,
-    body,
-    credentials: "include",
-    headers: {
-      ...(isForm ? {} : { "Content-Type": "application/json" }),
-      // extra cache-busting headers (safe no-op for most backends)
-      "Cache-Control": "no-cache",
-      Pragma: "no-cache",
-      ...(opts.headers || {}),
-    },
-  });
+  if (controller) {
+    signal = controller.signal;
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort(externalSignal.reason);
+      } else {
+        externalSignal.addEventListener("abort", () => controller.abort(externalSignal.reason), { once: true });
+      }
+    }
+    if (timeoutMs > 0) {
+      timeoutId = setTimeout(() => controller.abort(new DOMException("Request timed out", "AbortError")), timeoutMs);
+    }
+  }
+
+  let r;
+  try {
+    // NOTE: Permission checks rely on fresh /me/* responses.
+    // Some browsers may cache credentialed GET requests aggressively in certain flows.
+    // Default to no-store, allow overriding via opts.cache when needed.
+    r = await fetch(url, {
+      cache: "no-store",
+      ...opts,
+      body,
+      signal,
+      credentials: "include",
+      headers: {
+        ...(isForm ? {} : { "Content-Type": "application/json" }),
+        // extra cache-busting headers (safe no-op for most backends)
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+        ...(opts.headers || {}),
+      },
+    });
+  } catch (e) {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (e?.name === "AbortError") {
+      const err = new Error(`HTTP TIMEOUT: ${path}`);
+      err.code = "TIMEOUT";
+      err.url = url;
+      throw err;
+    }
+    throw e;
+  }
+
+  if (timeoutId) clearTimeout(timeoutId);
 
   const text = await r.text();
   let data;
@@ -485,18 +500,35 @@ export async function downloadFile(path, { filenameFallback = "download", opts =
   return { filename };
 }
 
-export async function ensureLogin({ silent = true, redirectOnFail = false } = {}) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function waitForTelegramInitData({ maxMs = 5000, stepMs = 100 } = {}) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < maxMs) {
+    const value = String(wa()?.initData || "").trim();
+    if (value) return value;
+    await sleep(stepMs);
+  }
+  return "";
+}
+
+export async function ensureLogin({ silent = true, redirectOnFail = false, timeoutMs = 5000, telegramWaitMs = 5000 } = {}) {
   try {
-    const me = await api("/me", { handle401: false });
+    const me = await api("/me", { handle401: false, timeoutMs });
     return { ok: true, data: me, source: "cookie" };
   } catch (e) {
     if (e?.status && e.status !== 401) {
       if (!silent) toast(e?.message || "Ошибка авторизации", "err");
       return { ok: false, status: e?.status, data: e?.data, message: e?.message };
     }
+    if (e?.code === "TIMEOUT") {
+      return { ok: false, code: "TIMEOUT", message: "Не удалось связаться с API" };
+    }
   }
 
-  const initData = await waitForTelegramInitData();
+  const initData = await waitForTelegramInitData({ maxMs: telegramWaitMs, stepMs: 100 });
 
   if (!initData) {
     if (!silent) toast("Нужна авторизация: Telegram или телефон.", "warn");
@@ -509,6 +541,7 @@ export async function ensureLogin({ silent = true, redirectOnFail = false } = {}
       method: "POST",
       body: { initData },
       handle401: false,
+      timeoutMs: Math.max(timeoutMs, 10000),
     });
 
     if (!silent) toast("Вход выполнен", "ok");
@@ -521,13 +554,13 @@ export async function ensureLogin({ silent = true, redirectOnFail = false } = {}
     if (redirectOnFail) redirectToAuth();
     return {
       ok: false,
+      code: e?.code,
       status: e?.status,
       data: e?.data,
       message: e?.message,
     };
   }
 }
-
 
 export async function loginWithTelegramWidget(authData) {
   return api("/auth/telegram/widget", {
