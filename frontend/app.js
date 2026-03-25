@@ -559,7 +559,7 @@ export async function downloadFile(path, { filenameFallback = "download", opts =
   return { filename };
 }
 
-function sleep(ms) {
+function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -573,7 +573,7 @@ export async function waitForTelegramInitData({ maxMs = 5000, stepMs = 100 } = {
   while (Date.now() - startedAt < maxMs) {
     const value = String(wa()?.initData || "").trim();
     if (value) return value;
-    await sleep(stepMs);
+    await delay(stepMs);
   }
   return "";
 }
