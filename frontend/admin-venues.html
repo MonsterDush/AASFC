@@ -36,15 +36,15 @@
         <div class="logo"></div>
         <div class="title">
           <b>Админ · Заведения</b>
-          <div class="muted">создание · архив · поиск · linked/pending owner status</div>
+          <div class="muted">создание · архив · поиск · статус владельца</div>
         </div>
       </div>
       <div class="userpill" data-userpill>—</div>
     </div>
 
     <div class="toolbar">
-      <button id="btnActive" class="btn">Активные</button>
-      <button id="btnArchived" class="btn">Архив</button>
+      <button id="btnActive" class="btn subtle">Активные</button>
+      <button id="btnArchived" class="btn subtle">Архив</button>
       <span id="status" class="muted"></span>
     </div>
 
@@ -59,23 +59,23 @@
       <div class="row">
         <div>
           <div><b>Создать заведение</b></div>
-          <div class="muted">если Telegram/телефон уже привязан к существующей учётке, владелец добавится сразу; иначе будет создан pending invite</div>
+          <div class="muted">если Telegram/телефон уже привязан к существующей учётке, владелец добавится сразу; иначе будет создано ожидающее приглашение</div>
         </div>
       </div>
 
       <div class="toolbar">
         <input id="vName" type="text" placeholder="Название заведения" />
         <select id="ownerMode">
-          <option value="tg">Telegram username</option>
+          <option value="tg">username в Telegram</option>
           <option value="phone">Телефон</option>
           <option value="user_id">Существующий user_id</option>
-          <option value="legacy_multi">Legacy: несколько Telegram usernames</option>
+          <option value="legacy_multi">Несколько username в Telegram</option>
         </select>
-        <input id="ownerTg" type="text" placeholder="@owner_username" />
+        <input id="ownerTg" type="text" placeholder="@username" />
         <input id="ownerPhone" type="text" placeholder="+7 999 123-45-67" style="display:none" />
         <input id="ownerUserId" type="text" placeholder="user_id владельца" style="display:none" />
-        <input id="owners" type="text" placeholder="usernames владельцев: ivan, petr" style="display:none" />
-        <button id="btnCreate" class="btn">Создать</button>
+        <input id="owners" type="text" placeholder="username владельцев: ivan, petr" style="display:none" />
+        <button id="btnCreate" class="btn primary">Создать</button>
       </div>
       <div id="createResult" class="muted"></div>
     </div>
@@ -98,8 +98,8 @@
     <div class="modal__backdrop"></div>
     <div class="modal__panel">
       <div class="row">
-        <div class="modal__title"><b>Modal</b></div>
-        <button class="btn" data-close>×</button>
+        <div class="modal__title"><b>Детали</b></div>
+        <button class="btn" data-close>Закрыть</button>
       </div>
       <div class="modal__body"></div>
     </div>
@@ -147,6 +147,13 @@
   function setStatus(s){ statusEl.textContent = s || ""; }
   function setLastJson(obj){ window.__lastJson = obj; }
 
+  function syncModeButtons(){
+    const btnActive = document.getElementById("btnActive");
+    const btnArchived = document.getElementById("btnArchived");
+    btnActive?.classList.toggle("primary", mode === "active");
+    btnArchived?.classList.toggle("primary", mode === "archived");
+  }
+
   function renderSkeleton() {
     listEl.innerHTML = `
       <div class="skeleton"></div>
@@ -177,28 +184,29 @@
     const pending = Array.isArray(s.pending) ? s.pending : [];
     const state = String(s.state || 'UNASSIGNED').toUpperCase();
     const stateChip = state === 'LINKED'
-      ? '<span class="tag">owner linked</span>'
+      ? '<span class="tag">владелец привязан</span>'
       : state === 'PENDING'
-        ? '<span class="tag">owner pending</span>'
-        : '<span class="tag muted">owner missing</span>';
+        ? '<span class="tag">владелец ожидает входа</span>'
+        : '<span class="tag muted">владелец не назначен</span>';
     const ownersHtml = owners.length
       ? owners.map(o => `<span class="tag">${esc(o.display_name || o.tg_username || o.phone || ('user #' + o.user_id))}</span>`).join(' ')
       : '';
     const pendingHtml = pending.length
       ? pending.map(o => {
           const contact = o.contact_label || o.phone || (o.tg_username ? '@' + o.tg_username : '—');
-          return `<span class="tag">pending: ${esc(contact)}</span>`;
+          return `<span class="tag">ожидает: ${esc(contact)}</span>`;
         }).join(' ')
       : '';
     return `<div class="muted mt-6">${stateChip} ${ownersHtml} ${pendingHtml}</div>`;
   }
 
   function renderVenues() {
+    syncModeButtons();
     const items = searchFilter(modeFilter(allVenues));
     countEl.textContent = String(items.length);
 
     if (!items.length) {
-      listEl.innerHTML = `<div class="muted">No venues</div>`;
+      listEl.innerHTML = `<div class="muted">Заведений нет</div>`;
       return;
     }
 
@@ -207,13 +215,13 @@
       const name = esc(v.name);
       const isArchived = !!v.is_archived;
       const badge = isArchived
-        ? `<span class="tag">archived</span>`
-        : `<span class="tag muted">active</span>`;
+        ? `<span class="tag">архив</span>`
+        : `<span class="tag muted">активно</span>`;
 
       const deleteCheckBtn = `<button class="btn" data-action="deleteCheck" data-id="${id}">Проверка удаления</button>`;
       const deleteBtn = isArchived
-        ? `<button class="btn danger" data-action="delete" data-id="${id}">Delete</button>`
-        : `<button class="btn danger" disabled title="Delete allowed only for archived">Delete</button>`;
+        ? `<button class="btn danger" data-action="delete" data-id="${id}">Удалить</button>`
+        : `<button class="btn danger" disabled title="Удаление доступно только для архивных заведений">Удалить</button>`;
 
       return `
         <div class="card">
@@ -229,9 +237,9 @@
               ${ownerStatusHtml(v.owner_status)}
             </div>
             <div class="toolbar">
-              <button class="btn" data-action="rename" data-id="${id}">Rename</button>
+              <button class="btn" data-action="rename" data-id="${id}">Переименовать</button>
               <button class="btn" data-action="toggleArchive" data-id="${id}" data-arch="${isArchived ? "1":"0"}">
-                ${isArchived ? "Unarchive" : "Archive"}
+                ${isArchived ? "Вернуть из архива" : "В архив"}
               </button>
               ${deleteCheckBtn}
               ${deleteBtn}
@@ -256,15 +264,15 @@
       renderVenues();
     } catch (e) {
       setLastJson({ load: "FAILED", message: e?.message, status: e?.status, data: e?.data, url: e?.url });
-      setStatus("Load failed");
+      setStatus("Ошибка загрузки");
       listEl.innerHTML = `
         <div class="card">
-          <b>Error loading venues</b>
-          <pre>${esc(e?.message || "Unknown error")}</pre>
-          <div class="muted">Нажми <b>Details</b> чтобы посмотреть JSON.</div>
+          <b>Не удалось загрузить заведения</b>
+          <pre>${esc(e?.message || "Неизвестная ошибка")}</pre>
+          <div class="muted">Открой детали, если нужно посмотреть служебный ответ.</div>
         </div>
       `;
-      toast(e?.message || "Load failed", "err");
+      toast(e?.message || "Ошибка загрузки", "err");
     }
   }
 
@@ -284,12 +292,12 @@
       ? ownersRaw.split(",").map(s => s.trim().replace(/^@/, "")).filter(Boolean)
       : [];
 
-    if (!name) { toast("Venue name required", "warn"); return; }
+    if (!name) { toast("Укажи название заведения", "warn"); return; }
 
     const body = { name };
     if (modeSel === "tg") {
       const owner_tg_username = document.getElementById("ownerTg").value.trim();
-      if (!owner_tg_username) { toast("Укажи Telegram username владельца", "warn"); return; }
+      if (!owner_tg_username) { toast("Укажи username в Telegram владельца", "warn"); return; }
       body.owner_tg_username = owner_tg_username;
     } else if (modeSel === "phone") {
       const owner_phone = document.getElementById("ownerPhone").value.trim();
@@ -301,34 +309,34 @@
       if (!rawId || !Number.isFinite(owner_user_id) || owner_user_id <= 0) { toast("Укажи корректный user_id", "warn"); return; }
       body.owner_user_id = owner_user_id;
     } else if (modeSel === "legacy_multi") {
-      if (!owner_usernames.length) { toast("Укажи хотя бы один Telegram username", "warn"); return; }
+      if (!owner_usernames.length) { toast("Укажи хотя бы один username в Telegram", "warn"); return; }
       body.owner_usernames = owner_usernames;
     }
 
     createResultEl.textContent = "";
-    setStatus("Creating...");
+    setStatus("Создаю…");
 
     try {
       const out = await api("/venues", { method: "POST", body });
       setLastJson({ create: "OK", response: out });
-      setStatus("Created");
+      setStatus("Создано");
       if (out?.owner_status?.state === 'LINKED' && out?.owner_linked) {
         const ownerName = out.owner_linked.display_name || out.owner_linked.tg_username || out.owner_linked.phone || ('user #' + out.owner_linked.user_id);
-        createResultEl.textContent = out?.id ? `Created id=${out.id} · owner linked: ${ownerName}` : `Owner linked: ${ownerName}`;
+        createResultEl.textContent = out?.id ? `Создано id=${out.id} · владелец привязан: ${ownerName}` : `Владелец привязан: ${ownerName}`;
       } else if (out?.owner_pending && out?.owner_invite?.invite_link) {
-        const pendingContact = out.owner_invite.contact_label || out.owner_invite.phone || (out.owner_invite.tg_username ? '@' + out.owner_invite.tg_username : 'owner');
-        createResultEl.innerHTML = `Created id=${esc(out.id)} · owner pending: ${esc(pendingContact)} · <a class="link" href="${escAttr(out.owner_invite.invite_link)}" target="_blank" rel="noreferrer">invite link</a>`;
+        const pendingContact = out.owner_invite.contact_label || out.owner_invite.phone || (out.owner_invite.tg_username ? '@' + out.owner_invite.tg_username : 'владелец');
+        createResultEl.innerHTML = `Создано id=${esc(out.id)} · владелец ожидает входа: ${esc(pendingContact)} · <a class="link" href="${escAttr(out.owner_invite.invite_link)}" target="_blank" rel="noreferrer">ссылка-приглашение</a>`;
       } else {
-        createResultEl.textContent = out?.id ? `Created id=${out.id}` : "Created";
+        createResultEl.textContent = out?.id ? `Создано id=${out.id}` : "Создано";
       }
-      toast("Venue created", "ok");
+      toast("Заведение создано", "ok");
       mode = "active";
       await loadVenues();
     } catch (e) {
       setLastJson({ create: "FAILED", message: e?.message, status: e?.status, data: e?.data });
-      setStatus("Create failed");
-      createResultEl.textContent = e?.message || "Create failed";
-      toast(e?.message || "Create failed", "err");
+      setStatus("Ошибка создания");
+      createResultEl.textContent = e?.message || "Ошибка создания";
+      toast(e?.message || "Ошибка создания", "err");
     }
   }
 
@@ -416,38 +424,38 @@
     const v = allVenues.find(x => String(x?.id) === String(id));
     const current = v?.name || "";
 
-    const newName = prompt("New venue name:", current);
+    const newName = prompt("Новое название заведения:", current);
     if (!newName) return;
 
     const name = newName.trim();
     if (!name) return;
 
-    setStatus("Renaming...");
+    setStatus("Переименовываю…");
     try {
       const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "PATCH", body: { name } });
       setLastJson({ rename: "OK", response: out });
-      setStatus("Renamed");
-      toast("Renamed", "ok");
+      setStatus("Переименовано");
+      toast("Название обновлено", "ok");
       await loadVenues();
     } catch (e) {
       setLastJson({ rename: "FAILED", message: e?.message, status: e?.status, data: e?.data });
-      setStatus("Rename failed");
-      toast(e?.message || "Rename failed", "err");
+      setStatus("Ошибка переименования");
+      toast(e?.message || "Ошибка переименования", "err");
     }
   }
 
   async function toggleArchiveVenue(id, isArchived) {
-    setStatus(isArchived ? "Unarchiving..." : "Archiving...");
+    setStatus(isArchived ? "Возвращаю из архива…" : "Переношу в архив…");
     try {
       const out = await api(`/venues/${encodeURIComponent(id)}/${isArchived ? "unarchive" : "archive"}`, { method: "POST" });
       setLastJson({ archiveToggle: "OK", response: out });
-      setStatus("OK");
-      toast(isArchived ? "Unarchived" : "Archived", "ok");
+      setStatus("Готово");
+      toast(isArchived ? "Возвращено из архива" : "Перенесено в архив", "ok");
       await loadVenues();
     } catch (e) {
       setLastJson({ archiveToggle: "FAILED", message: e?.message, status: e?.status, data: e?.data });
-      setStatus("Archive toggle failed");
-      toast(e?.message || "Archive toggle failed", "err");
+      setStatus("Ошибка изменения архива");
+      toast(e?.message || "Ошибка изменения архива", "err");
     }
   }
 
@@ -460,18 +468,18 @@
     }
 
     const ok = await confirmModal({
-      title: "Delete venue",
+      title: "Удалить заведение",
       text: buildDeleteSummary(check),
-      confirmText: "Delete",
+      confirmText: "Удалить",
       danger: true
     });
     if (!ok) return;
 
-    setStatus("Deleting...");
+    setStatus("Удаляю…");
     try {
       const out = await api(`/venues/${encodeURIComponent(id)}`, { method: "DELETE" });
       setLastJson({ delete: "OK", response: out, deleteCheck: check });
-      setStatus("Deleted");
+      setStatus("Удалено");
       toast("Удалено", "ok");
       mode = "archived";
       await loadVenues();
@@ -487,11 +495,13 @@
 
   document.getElementById("btnActive").addEventListener("click", async () => {
     mode = "active";
+    syncModeButtons();
     await loadVenues();
   });
 
   document.getElementById("btnArchived").addEventListener("click", async () => {
     mode = "archived";
+    syncModeButtons();
     await loadVenues();
   });
 
@@ -549,6 +559,7 @@
       return;
     }
 
+    syncModeButtons();
     await loadVenues();
   }
   boot();

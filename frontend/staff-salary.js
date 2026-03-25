@@ -135,7 +135,7 @@ function ensureModal() {
             <div class="modal__title">Детали</div>
             <div class="muted small" id="modalSubtitle"></div>
           </div>
-          <button class="btn sm" data-close aria-label="Закрыть">✕</button>
+          <button class="btn sm subtle" data-close>Закрыть</button>
         </div>
         <div class="modal__body"></div>
       </div>

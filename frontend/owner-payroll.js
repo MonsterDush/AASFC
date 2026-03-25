@@ -347,7 +347,7 @@ function renderShell() {
       <div class="modal__backdrop"></div>
       <div class="modal__panel">
         <div class="modal__head">
-          <div class="modal__title">JSON</div>
+          <div class="modal__title">Детали</div>
           <button class="btn" data-close>Закрыть</button>
         </div>
         <div class="modal__body"></div>

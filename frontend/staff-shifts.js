@@ -2155,7 +2155,7 @@ function openDay(dateStr) {
             method: "POST",
             body: { title, start_time: start, end_time: end }
           });
-          toast("Промежуток создан", "ok");
+          toast("Период создан", "ok");
           await loadContext();
           await reloadCurrentView();
           openDay(dateStr);
