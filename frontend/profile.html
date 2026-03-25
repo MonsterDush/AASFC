@@ -15,6 +15,15 @@
     .hidden { display:none !important; }
     .call-number { font-size:18px; font-weight:700; letter-spacing:.02em; }
     .call-number a { color: inherit; text-decoration:none; }
+    .password-note {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      background: color-mix(in srgb, var(--card) 82%, transparent);
+      color: var(--muted);
+    }
   </style>
 </head>
 <body>
@@ -52,7 +61,7 @@
 
     <div class="card">
       <b>Способы входа</b>
-      <div class="muted mt-6">Можно привязать телефон к старому Telegram-аккаунту или привязать Telegram к phone-аккаунту. Подтверждение номера начинается со звонка. SMS можно временно отключать через настройку на backend.</div>
+      <div class="muted mt-6">Здесь можно управлять входом по телефону, Telegram и паролю. Для каждого способа показывается только актуальное действие.</div>
 
       <div class="auth-methods" id="authMethods"></div>
 
@@ -60,7 +69,11 @@
         <div class="auth-box">
           <b>Телефон</b>
           <div class="muted mt-8" id="phoneState">Загрузка…</div>
-          <div class="stack mt-12">
+          <div class="row mt-12" id="phoneActions" style="gap:8px; flex-wrap:wrap;">
+            <button class="btn primary" id="startLinkPhoneBtn">Привязать телефон</button>
+            <button class="btn" id="changePhoneBtn">Изменить номер</button>
+          </div>
+          <div class="stack mt-12 hidden" id="phoneFormBlock">
             <input class="input" id="linkPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
             <div class="row" style="gap:8px; flex-wrap:wrap;">
               <button class="btn" id="requestLinkCallBtn">Получить номер для звонка</button>
@@ -71,9 +84,13 @@
             <div id="linkPhoneSmsBlock" class="hidden">
               <input class="input mt-8" id="linkPhoneCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
             </div>
-            <input class="input" id="linkPhonePasswordInput" type="password" placeholder="Новый пароль сразу после привязки (необязательно)" autocomplete="new-password" />
-            <input class="input" id="linkPhonePasswordConfirmInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
-            <button class="btn primary" id="verifyLinkCodeBtn">Завершить привязку</button>
+            <div class="password-note">Пароль обязателен для входа по номеру телефона. Минимум 8 символов, лучше использовать буквы и цифры.</div>
+            <input class="input" id="linkPhonePasswordInput" type="password" placeholder="Придумайте пароль" autocomplete="new-password" />
+            <input class="input" id="linkPhonePasswordConfirmInput" type="password" placeholder="Повторите пароль" autocomplete="new-password" />
+            <div class="row" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn primary" id="verifyLinkCodeBtn">Привязать телефон</button>
+              <button class="btn subtle" type="button" id="cancelPhoneFormBtn">Закрыть</button>
+            </div>
           </div>
         </div>
 
@@ -88,32 +105,42 @@
         <div class="auth-box">
           <b>Пароль</b>
           <div class="muted mt-8" id="passwordState">Загрузка…</div>
-          <div class="stack mt-12">
-            <div>
-              <div class="muted">Изменить пароль</div>
-              <input class="input mt-8" id="currentPasswordInput" type="password" placeholder="Текущий пароль" autocomplete="current-password" />
-              <input class="input mt-8" id="changePasswordInput" type="password" placeholder="Новый пароль" autocomplete="new-password" />
-              <input class="input mt-8" id="changePasswordConfirmInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
-              <button class="btn primary mt-12" id="changePasswordBtn">Изменить пароль</button>
+          <div class="row mt-12" id="passwordActions" style="gap:8px; flex-wrap:wrap;">
+            <button class="btn primary hidden" id="openChangePasswordBtn">Изменить пароль</button>
+            <button class="btn hidden" id="openPasswordResetBtn">Установить пароль</button>
+          </div>
+          <div class="muted mt-12 hidden" id="passwordNoPhoneHint">Сначала привяжите телефон. После этого можно будет установить или восстановить пароль.</div>
+
+          <div class="stack mt-12 hidden" id="passwordChangeSection">
+            <div class="muted">Изменение пароля</div>
+            <div class="password-note mt-8">Новый пароль должен быть не короче 8 символов.</div>
+            <input class="input mt-8" id="currentPasswordInput" type="password" placeholder="Текущий пароль" autocomplete="current-password" />
+            <input class="input mt-8" id="changePasswordInput" type="password" placeholder="Новый пароль" autocomplete="new-password" />
+            <input class="input mt-8" id="changePasswordConfirmInput" type="password" placeholder="Повторите пароль" autocomplete="new-password" />
+            <div class="row mt-12" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn primary" id="changePasswordBtn">Изменить пароль</button>
+              <button class="btn subtle" type="button" id="cancelChangePasswordBtn">Закрыть</button>
             </div>
+          </div>
 
-            <div class="auth-divider"></div>
-
-            <div>
-              <div class="muted">Сбросить или установить пароль по звонку</div>
-              <div class="muted mt-6" id="passwordResetPhoneHint">Номер загрузится из профиля после привязки телефона.</div>
-              <div class="row mt-8" style="gap:8px; flex-wrap:wrap;">
-                <button class="btn" id="requestPasswordResetCallBtn">Получить номер для звонка</button>
-                <button class="btn hidden" id="requestPasswordResetBtn">Не получается? Получить SMS</button>
-              </div>
-              <div class="muted mono mt-8" id="passwordResetMeta"></div>
-              <div class="call-number hidden mt-8" id="passwordResetCallNumber"></div>
-              <div id="passwordResetSmsBlock" class="hidden">
-                <input class="input mt-8" id="passwordResetCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
-              </div>
-              <input class="input mt-8" id="passwordResetNewInput" type="password" placeholder="Новый пароль" autocomplete="new-password" />
-              <input class="input mt-8" id="passwordResetConfirmInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
-              <button class="btn primary mt-12" id="confirmPasswordResetBtn">Сохранить новый пароль</button>
+          <div class="stack mt-12 hidden" id="passwordResetSection">
+            <div class="muted" id="passwordResetTitle">Установить пароль по подтверждению номера</div>
+            <div class="muted mt-6" id="passwordResetPhoneHint">Номер загрузится из профиля после привязки телефона.</div>
+            <div class="row mt-8" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn" id="requestPasswordResetCallBtn">Получить номер для звонка</button>
+              <button class="btn hidden" id="requestPasswordResetBtn">Не получается? Получить SMS</button>
+            </div>
+            <div class="muted mono mt-8" id="passwordResetMeta"></div>
+            <div class="call-number hidden mt-8" id="passwordResetCallNumber"></div>
+            <div id="passwordResetSmsBlock" class="hidden">
+              <input class="input mt-8" id="passwordResetCodeInput" placeholder="Код из SMS" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+            </div>
+            <div class="password-note mt-8">Пароль обязателен. Минимум 8 символов, лучше использовать буквы и цифры.</div>
+            <input class="input mt-8" id="passwordResetNewInput" type="password" placeholder="Новый пароль" autocomplete="new-password" />
+            <input class="input mt-8" id="passwordResetConfirmInput" type="password" placeholder="Повторите пароль" autocomplete="new-password" />
+            <div class="row mt-12" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn primary" id="confirmPasswordResetBtn">Сохранить новый пароль</button>
+              <button class="btn subtle" type="button" id="cancelPasswordResetBtn">Закрыть</button>
             </div>
           </div>
         </div>
@@ -162,6 +189,10 @@
       saveBtn: document.getElementById("saveBtn"),
       authMethods: document.getElementById("authMethods"),
       phoneState: document.getElementById("phoneState"),
+      startLinkPhoneBtn: document.getElementById("startLinkPhoneBtn"),
+      changePhoneBtn: document.getElementById("changePhoneBtn"),
+      phoneFormBlock: document.getElementById("phoneFormBlock"),
+      cancelPhoneFormBtn: document.getElementById("cancelPhoneFormBtn"),
       linkPhoneInput: document.getElementById("linkPhoneInput"),
       linkPhoneCodeInput: document.getElementById("linkPhoneCodeInput"),
       linkPhonePasswordInput: document.getElementById("linkPhonePasswordInput"),
@@ -175,14 +206,22 @@
       telegramState: document.getElementById("telegramState"),
       linkTelegramBtn: document.getElementById("linkTelegramBtn"),
       passwordState: document.getElementById("passwordState"),
+      openChangePasswordBtn: document.getElementById("openChangePasswordBtn"),
+      openPasswordResetBtn: document.getElementById("openPasswordResetBtn"),
+      passwordNoPhoneHint: document.getElementById("passwordNoPhoneHint"),
+      passwordChangeSection: document.getElementById("passwordChangeSection"),
+      passwordResetSection: document.getElementById("passwordResetSection"),
       currentPasswordInput: document.getElementById("currentPasswordInput"),
       changePasswordInput: document.getElementById("changePasswordInput"),
       changePasswordConfirmInput: document.getElementById("changePasswordConfirmInput"),
       changePasswordBtn: document.getElementById("changePasswordBtn"),
+      cancelChangePasswordBtn: document.getElementById("cancelChangePasswordBtn"),
+      passwordResetTitle: document.getElementById("passwordResetTitle"),
       passwordResetPhoneHint: document.getElementById("passwordResetPhoneHint"),
       requestPasswordResetCallBtn: document.getElementById("requestPasswordResetCallBtn"),
       requestPasswordResetBtn: document.getElementById("requestPasswordResetBtn"),
       confirmPasswordResetBtn: document.getElementById("confirmPasswordResetBtn"),
+      cancelPasswordResetBtn: document.getElementById("cancelPasswordResetBtn"),
       passwordResetCodeInput: document.getElementById("passwordResetCodeInput"),
       passwordResetNewInput: document.getElementById("passwordResetNewInput"),
       passwordResetConfirmInput: document.getElementById("passwordResetConfirmInput"),
@@ -194,6 +233,11 @@
     let currentProfile = null;
     let currentPasswordState = null;
     let phoneAuthConfig = { call_enabled: true, sms_enabled: true, fallback_after_seconds: 10 };
+    const uiState = {
+      phoneFormOpen: false,
+      passwordChangeOpen: false,
+      passwordResetOpen: false,
+    };
 
     const isCallEnabled = () => Boolean(phoneAuthConfig?.call_enabled);
     const isSmsEnabled = () => Boolean(phoneAuthConfig?.sms_enabled);
@@ -201,6 +245,11 @@
       link: { challengeId: null, verified: false, pollTimer: null, fallbackTimer: null },
       reset: { challengeId: null, verified: false, pollTimer: null, fallbackTimer: null },
     };
+
+    function setVisible(el, visible) {
+      if (!el) return;
+      el.classList.toggle("hidden", !visible);
+    }
 
     function applyPhoneAuthConfig() {
       const callEnabled = isCallEnabled();
@@ -273,13 +322,51 @@
       return Boolean(wa()?.initData || "");
     }
 
-    function validatePasswordPair(password, confirm) {
+    function validatePasswordPair(password, confirm, { required = false } = {}) {
       const a = String(password || "").trim();
       const b = String(confirm || "").trim();
-      if (!a && !b) return "";
+      if (!a && !b) {
+        if (required) throw new Error("Укажи пароль и повтори его");
+        return "";
+      }
       if (!a || !b) throw new Error("Заполни оба поля с новым паролем");
+      if (a.length < 8) throw new Error("Пароль должен быть не короче 8 символов");
       if (a !== b) throw new Error("Пароли не совпадают");
       return a;
+    }
+
+    function renderPhoneUi() {
+      const hasPhone = Boolean(currentProfile?.phone);
+      setVisible(els.startLinkPhoneBtn, !hasPhone);
+      setVisible(els.changePhoneBtn, hasPhone);
+      setVisible(els.phoneFormBlock, uiState.phoneFormOpen);
+      els.verifyLinkCodeBtn.textContent = hasPhone ? "Сохранить номер и пароль" : "Привязать телефон";
+    }
+
+    function renderPasswordUi() {
+      const hasPhone = Boolean(currentProfile?.phone);
+      const hasPassword = Boolean(currentPasswordState?.has_password);
+
+      if (!hasPhone) {
+        uiState.passwordChangeOpen = false;
+        uiState.passwordResetOpen = false;
+      }
+      if (!hasPassword) {
+        uiState.passwordChangeOpen = false;
+      }
+
+      setVisible(els.passwordNoPhoneHint, !hasPhone);
+      setVisible(els.openChangePasswordBtn, hasPhone && hasPassword);
+      setVisible(els.openPasswordResetBtn, hasPhone);
+      setVisible(els.passwordChangeSection, hasPhone && hasPassword && uiState.passwordChangeOpen);
+      setVisible(els.passwordResetSection, hasPhone && uiState.passwordResetOpen);
+
+      els.openPasswordResetBtn.textContent = hasPassword ? "Не помню пароль" : "Установить пароль";
+      els.openPasswordResetBtn.classList.toggle("primary", hasPhone && !hasPassword);
+      els.passwordResetTitle.textContent = hasPassword
+        ? "Сбросить пароль по подтверждению номера"
+        : "Установить пароль по подтверждению номера";
+      els.currentPasswordInput.disabled = !hasPassword;
     }
 
     function renderPasswordState(state) {
@@ -290,39 +377,48 @@
         els.passwordState.textContent = changedAt
           ? `Пароль установлен. Последнее обновление: ${changedAt}`
           : "Пароль установлен и активен.";
+      } else if (currentProfile?.phone) {
+        els.passwordState.textContent = "Пароль ещё не установлен. Настройте его для входа по номеру телефона.";
       } else {
-        els.passwordState.textContent = isSmsEnabled()
-          ? "Пароль пока не установлен. Его можно создать после подтверждения номера звонком или через запасной SMS-код."
-          : "Пароль пока не установлен. Его можно создать после подтверждения номера звонком.";
+        els.passwordState.textContent = "Сначала привяжите телефон, затем можно будет установить пароль.";
       }
-      els.currentPasswordInput.disabled = !hasPassword;
+      renderPasswordUi();
     }
 
     function renderProfile(profile) {
       currentProfile = profile || null;
       els.fullName.value = profile?.full_name || "";
       els.shortName.value = profile?.short_name || "";
-      els.linkPhoneInput.value = profile?.phone || "";
+      if (!uiState.phoneFormOpen) {
+        els.linkPhoneInput.value = profile?.phone || "";
+      }
       renderAuthMethods(profile?.auth_methods || []);
 
       if (profile?.phone) {
         els.phoneState.textContent = `Привязанный номер: ${profile.phone}`;
         els.passwordResetPhoneHint.textContent = `Подтверждение будет проходить для номера ${profile.phone}.`;
       } else {
-        els.phoneState.textContent = "Телефон пока не привязан. После привязки в приложение можно будет входить по телефону и паролю.";
-        els.passwordResetPhoneHint.textContent = "Сначала привяжи номер телефона, затем можно будет сбрасывать пароль.";
+        els.phoneState.textContent = "Телефон пока не привязан. После привязки вход по номеру станет доступен вместе с паролем.";
+        els.passwordResetPhoneHint.textContent = "Сначала привяжите номер телефона, затем можно будет устанавливать или восстанавливать пароль.";
       }
 
       if (profile?.tg_user_id) {
         els.telegramState.textContent = profile?.tg_username
           ? `Telegram уже привязан: ${profile.tg_username}`
-          : `Telegram уже привязан к этой учётной записи.`;
+          : "Telegram уже привязан к этой учётной записи.";
+        setVisible(els.linkTelegramBtn, false);
       } else if (telegramMiniAppAvailable()) {
         els.telegramState.textContent = "Telegram Mini App доступен. Можно привязать текущий Telegram-аккаунт к этой учётной записи.";
+        els.linkTelegramBtn.textContent = "Привязать Telegram";
+        els.linkTelegramBtn.disabled = false;
+        setVisible(els.linkTelegramBtn, true);
       } else {
-        els.telegramState.textContent = "Сейчас ты не внутри Telegram Mini App. Открой профиль из Telegram, чтобы привязать аккаунт.";
+        els.telegramState.textContent = "Откройте профиль внутри Telegram Mini App, чтобы привязать Telegram-аккаунт.";
+        setVisible(els.linkTelegramBtn, false);
       }
-      els.linkTelegramBtn.disabled = !telegramMiniAppAvailable();
+
+      renderPhoneUi();
+      renderPasswordUi();
     }
 
     async function loadProfile() {
@@ -336,6 +432,41 @@
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось загрузить профиль", "err");
       }
+    }
+
+    function resetPhoneFormFields({ keepPhone = true } = {}) {
+      clearFlow("link");
+      if (!keepPhone) els.linkPhoneInput.value = "";
+      els.linkPhonePasswordInput.value = "";
+      els.linkPhonePasswordConfirmInput.value = "";
+    }
+
+    function closePhoneForm({ keepPhone = true } = {}) {
+      uiState.phoneFormOpen = false;
+      resetPhoneFormFields({ keepPhone });
+      renderPhoneUi();
+    }
+
+    function openPhoneForm() {
+      uiState.phoneFormOpen = true;
+      els.linkPhoneInput.value = currentProfile?.phone || "";
+      renderPhoneUi();
+    }
+
+    function closePasswordChangeSection() {
+      uiState.passwordChangeOpen = false;
+      els.currentPasswordInput.value = "";
+      els.changePasswordInput.value = "";
+      els.changePasswordConfirmInput.value = "";
+      renderPasswordUi();
+    }
+
+    function closePasswordResetSection() {
+      uiState.passwordResetOpen = false;
+      clearFlow("reset");
+      els.passwordResetNewInput.value = "";
+      els.passwordResetConfirmInput.value = "";
+      renderPasswordUi();
     }
 
     els.backBtn?.addEventListener("click", () => {
@@ -430,6 +561,18 @@
       }
     };
 
+    els.startLinkPhoneBtn.onclick = () => {
+      openPhoneForm();
+    };
+
+    els.changePhoneBtn.onclick = () => {
+      openPhoneForm();
+    };
+
+    els.cancelPhoneFormBtn.onclick = () => {
+      closePhoneForm({ keepPhone: Boolean(currentProfile?.phone) });
+    };
+
     els.requestLinkCallBtn.onclick = async () => {
       try {
         await startCall("link");
@@ -455,9 +598,11 @@
 
     els.verifyLinkCodeBtn.onclick = async () => {
       try {
+        const hadPhoneBefore = Boolean(currentProfile?.phone);
         const newPassword = validatePasswordPair(
           els.linkPhonePasswordInput.value,
           els.linkPhonePasswordConfirmInput.value,
+          { required: true },
         );
         if (!flows.link.verified && !els.linkPhoneCodeInput.value.trim()) {
           throw new Error(isSmsEnabled() ? "Сначала подтверди номер звонком или введи код из SMS" : "Сначала подтверди номер звонком");
@@ -468,11 +613,9 @@
           newPassword,
           flows.link.verified ? flows.link.challengeId : null,
         );
-        toast(newPassword ? "Телефон привязан, пароль установлен" : "Телефон привязан", "ok");
+        toast(hadPhoneBefore ? "Номер обновлён, пароль сохранён" : "Телефон привязан, пароль установлен", "ok");
         renderAuthMethods(out?.auth_methods || []);
-        clearFlow("link");
-        els.linkPhonePasswordInput.value = "";
-        els.linkPhonePasswordConfirmInput.value = "";
+        closePhoneForm({ keepPhone: false });
         await loadProfile();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось привязать номер", "err");
@@ -490,6 +633,26 @@
       }
     };
 
+    els.openChangePasswordBtn.onclick = () => {
+      uiState.passwordChangeOpen = true;
+      uiState.passwordResetOpen = false;
+      renderPasswordUi();
+    };
+
+    els.cancelChangePasswordBtn.onclick = () => {
+      closePasswordChangeSection();
+    };
+
+    els.openPasswordResetBtn.onclick = () => {
+      uiState.passwordResetOpen = true;
+      uiState.passwordChangeOpen = false;
+      renderPasswordUi();
+    };
+
+    els.cancelPasswordResetBtn.onclick = () => {
+      closePasswordResetSection();
+    };
+
     els.changePasswordBtn.onclick = async () => {
       try {
         const newPassword = validatePasswordPair(
@@ -499,9 +662,7 @@
         if (!newPassword) throw new Error("Введи новый пароль");
         await changePassword(els.currentPasswordInput.value, newPassword);
         toast("Пароль изменён", "ok");
-        els.currentPasswordInput.value = "";
-        els.changePasswordInput.value = "";
-        els.changePasswordConfirmInput.value = "";
+        closePasswordChangeSection();
         await loadProfile();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось изменить пароль", "err");
@@ -540,8 +701,8 @@
         const newPassword = validatePasswordPair(
           els.passwordResetNewInput.value,
           els.passwordResetConfirmInput.value,
+          { required: true },
         );
-        if (!newPassword) throw new Error("Введи новый пароль");
         if (!flows.reset.verified && !els.passwordResetCodeInput.value.trim()) {
           throw new Error(isSmsEnabled() ? "Сначала подтверди номер звонком или введи код из SMS" : "Сначала подтверди номер звонком");
         }
@@ -552,9 +713,7 @@
           flows.reset.verified ? flows.reset.challengeId : null,
         );
         toast(currentPasswordState?.has_password ? "Пароль обновлён" : "Пароль установлен", "ok");
-        clearFlow("reset");
-        els.passwordResetNewInput.value = "";
-        els.passwordResetConfirmInput.value = "";
+        closePasswordResetSection();
         await loadProfile();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось сохранить новый пароль", "err");
