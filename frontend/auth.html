@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/styles.css" />
   <title>Axelio · Авторизация</title>
   <style>
@@ -13,7 +12,6 @@
     .hidden { display:none !important; }
     .call-number { font-size:20px; font-weight:700; letter-spacing:.02em; }
     .call-number a { color: inherit; text-decoration: none; }
-    .telegram-widget-host { min-height: 50px; }
     .login-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .login-actions .btn { flex: 0 0 auto; }
     .password-flow-shell { display:flex; flex-direction:column; gap:12px; }
@@ -27,7 +25,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Axelio</b>
-          <div class="muted">вход по телефону и паролю или через Telegram</div>
+          <div class="muted">вход по телефону и паролю</div>
         </div>
       </div>
       <div class="userpill" data-userpill>гость</div>
@@ -38,7 +36,7 @@
         <b>Вход по телефону</b>
         <div class="muted mt-8">Основной сценарий — вход по номеру телефона и паролю. Звонок нужен только для первой настройки номера и для сброса пароля. SMS можно временно отключать через настройку на backend.</div>
 
-        <div class="stack mt-16">
+        <div id="loginPanel" class="stack mt-16">
           <div>
             <label class="auth-label" for="loginPhoneInput">Номер телефона</label>
             <input id="loginPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
@@ -99,20 +97,8 @@
           </div>
         </div>
       </div>
-
       <div class="card">
-        <b>Вход через Telegram</b>
-        <div class="muted mt-8">Телефонный вход — основной и не зависит от Telegram. Вход через Telegram доступен отдельно и подгружается только по нажатию кнопки.</div>
-
-        <div class="itemcard mt-16">
-          <div class="muted" id="telegramState">Telegram не проверяется автоматически и не мешает входу по телефону.</div>
-          <div class="row mt-12" id="telegramMiniAppLoginRow" style="gap:8px; flex-wrap:wrap;">
-            <button class="btn" id="btnTelegramLogin" type="button">Продолжить через Telegram</button>
-          </div>
-          <div id="telegramWidgetHost" class="telegram-widget-host mt-12 hidden"></div>
-          <div id="telegramWidgetHint" class="muted mt-8 hidden">Если ты не в Mini App, ниже откроется официальный Telegram Login Widget.</div>
-        </div>
-
+        <b>Подсказки</b>
         <div class="itemcard mt-16">
           <b>Что дальше</b>
           <div class="muted mt-8" id="nextHint">После входа тебя вернёт на страницу, с которой запрашивалась авторизация.</div>
@@ -121,6 +107,11 @@
         <div class="itemcard mt-16">
           <b>Правила пароля</b>
           <div class="muted mt-8">Пароль должен быть не короче 8 символов и содержать хотя бы одну букву и одну цифру.</div>
+        </div>
+
+        <div class="itemcard mt-16">
+          <b>Telegram на этой странице скрыт</b>
+          <div class="muted mt-8">Чтобы вход по телефону не зависел от блокировок Telegram, на странице авторизации не загружаются Telegram-виджет и связанные проверки. При необходимости их можно вернуть отдельно.</div>
         </div>
       </div>
     </div>
@@ -143,35 +134,11 @@
       confirmPasswordReset,
       api,
       toast,
-      wa,
-      loginWithTelegramWidget,
       mountLogo,
-      waitForTelegramInitData,
     } from "/app.js?v=20260325-indexbootfix2";
 
     applyTelegramTheme();
     mountLogo();
-
-    function withTimeout(promise, ms, label = "TIMEOUT") {
-      let timer = null;
-      return new Promise((resolve, reject) => {
-        timer = setTimeout(() => {
-          const err = new Error(label);
-          err.code = label;
-          reject(err);
-        }, ms);
-        Promise.resolve(promise).then(
-          (value) => {
-            clearTimeout(timer);
-            resolve(value);
-          },
-          (error) => {
-            clearTimeout(timer);
-            reject(error);
-          }
-        );
-      });
-    }
 
     const params = new URLSearchParams(location.search);
     const next = params.get("next") || "/";
@@ -186,8 +153,6 @@
     let callFallbackTimer = null;
     let smsChallengeId = null;
     let phoneAuthConfig = { call_enabled: true, sms_enabled: true, fallback_after_seconds: 10 };
-    let telegramWidgetPrepared = false;
-    let telegramWidgetLoading = false;
 
     const isCallEnabled = () => Boolean(phoneAuthConfig?.call_enabled);
     const isSmsEnabled = () => Boolean(phoneAuthConfig?.sms_enabled);
@@ -229,7 +194,7 @@
     }
 
     async function initExistingSession() {
-      const login = await ensureLogin({ silent: true, redirectOnFail: false, timeoutMs: 5000, telegramWaitMs: 5000 });
+      const login = await ensureLogin({ silent: true, redirectOnFail: false, timeoutMs: 5000, telegramWaitMs: 0 });
       if (login.ok) {
         await finishPostLoginFlow();
         return true;
@@ -241,6 +206,7 @@
       loginPhoneInput: document.getElementById("loginPhoneInput"),
       loginPasswordInput: document.getElementById("loginPasswordInput"),
       btnPasswordLogin: document.getElementById("btnPasswordLogin"),
+      loginPanel: document.getElementById("loginPanel"),
       showSetupModeBtn: document.getElementById("showSetupModeBtn"),
       showResetModeBtn: document.getElementById("showResetModeBtn"),
       passwordFlowShell: document.getElementById("passwordFlowShell"),
@@ -258,11 +224,6 @@
       newPasswordInput: document.getElementById("newPasswordInput"),
       confirmPasswordInput: document.getElementById("confirmPasswordInput"),
       btnCompletePasswordFlow: document.getElementById("btnCompletePasswordFlow"),
-      telegramState: document.getElementById("telegramState"),
-      btnTelegramLogin: document.getElementById("btnTelegramLogin"),
-      telegramMiniAppLoginRow: document.getElementById("telegramMiniAppLoginRow"),
-      telegramWidgetHost: document.getElementById("telegramWidgetHost"),
-      telegramWidgetHint: document.getElementById("telegramWidgetHint"),
     };
 
     function applyPhoneAuthConfig() {
@@ -326,6 +287,8 @@
 
     function openPasswordFlow(mode) {
       setPasswordMode(mode);
+      syncPhoneFields(els.loginPhoneInput.value);
+      els.loginPanel.classList.add("hidden");
       els.passwordFlowShell.classList.remove("hidden");
       els.verifyPhoneInput.focus();
     }
@@ -333,6 +296,9 @@
     function hidePasswordFlow() {
       resetVerificationState();
       els.passwordFlowShell.classList.add("hidden");
+      els.loginPanel.classList.remove("hidden");
+      syncPhoneFields(els.verifyPhoneInput.value);
+      els.loginPhoneInput.focus();
     }
 
     function setPasswordMode(mode) {
@@ -494,120 +460,11 @@
       }
     };
 
-    async function prepareTelegramWidget() {
-      if (telegramWidgetPrepared || telegramWidgetLoading) return telegramWidgetPrepared;
-      telegramWidgetLoading = true;
-      els.telegramState.textContent = "Подготавливаем Telegram-вход…";
-      try {
-        const cfg = await withTimeout(
-          api("/auth/telegram/widget/config", { handle401: false, timeoutMs: 1200 }),
-          1300,
-          "WIDGET_CONFIG_TIMEOUT"
-        );
-        if (!cfg?.enabled || !cfg?.bot_username) {
-          els.telegramState.textContent = "Telegram Login Widget не настроен для этого домена. Входи по телефону.";
-          return false;
-        }
-        window.AxelioTelegramWidgetAuth = async (user) => {
-          try {
-            await loginWithTelegramWidget(user || {});
-            toast("Вход через Telegram выполнен", "ok");
-            await finishPostLoginFlow();
-          } catch (e) {
-            toast(e?.data?.detail || e?.message || "Ошибка входа через Telegram", "err");
-          }
-        };
-        els.telegramWidgetHost.innerHTML = "";
-        await new Promise((resolve, reject) => {
-          const script = document.createElement("script");
-          script.async = true;
-          script.src = "https://telegram.org/js/telegram-widget.js?22";
-          script.setAttribute("data-telegram-login", cfg.bot_username);
-          script.setAttribute("data-size", "large");
-          script.setAttribute("data-radius", "12");
-          script.setAttribute("data-request-access", "write");
-          script.setAttribute("data-userpic", "false");
-          script.setAttribute("data-onauth", "AxelioTelegramWidgetAuth(user)");
-
-          const timer = setTimeout(() => {
-            script.remove();
-            reject(new Error("WIDGET_SCRIPT_TIMEOUT"));
-          }, 1200);
-
-          script.onload = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          script.onerror = () => {
-            clearTimeout(timer);
-            reject(new Error("WIDGET_SCRIPT_LOAD_ERROR"));
-          };
-
-          els.telegramWidgetHost.appendChild(script);
-        });
-        telegramWidgetPrepared = true;
-        els.telegramWidgetHost.classList.remove("hidden");
-        els.telegramWidgetHint.classList.remove("hidden");
-        els.telegramState.textContent = "Если ты не в Mini App, подтверди вход через Telegram ниже.";
-        return true;
-      } catch (e) {
-        els.telegramState.textContent = e?.code === "WIDGET_CONFIG_TIMEOUT" || e?.message === "WIDGET_SCRIPT_TIMEOUT"
-          ? "Telegram сейчас не ответил. Вход по телефону продолжает работать."
-          : (e?.data?.detail || e?.message || "Не удалось подготовить Telegram Login Widget");
-        return false;
-      } finally {
-        telegramWidgetLoading = false;
-      }
-    }
-
-    els.btnTelegramLogin.onclick = async () => {
-      const button = els.btnTelegramLogin;
-      const originalText = button.textContent;
-      button.disabled = true;
-      button.textContent = "Проверяем Telegram…";
-      try {
-        const initData = await waitForTelegramInitData({ maxMs: 1200, stepMs: 100 });
-        if (initData) {
-          els.telegramState.textContent = "Найден Telegram Mini App — выполняем вход…";
-          await api("/auth/telegram", {
-            method: "POST",
-            body: { initData },
-            handle401: false,
-            timeoutMs: 10000,
-          });
-          toast("Вход выполнен", "ok");
-          await finishPostLoginFlow();
-          return;
-        }
-
-        const ready = await prepareTelegramWidget();
-        if (!ready) {
-          toast("Telegram сейчас недоступен. Используй вход по телефону.", "warn");
-          return;
-        }
-        button.textContent = "Telegram вход готов";
-      } catch (e) {
-        toast(e?.data?.detail || e?.message || "Ошибка входа через Telegram", "err");
-      } finally {
-        button.disabled = false;
-        if (button.textContent !== "Telegram вход готов") {
-          button.textContent = originalText;
-        }
-      }
-    };
-
     nextHint.textContent = `После входа тебя вернёт на ${getSafeNext()}.`;
     await loadPhoneAuthConfig();
     setPasswordMode(MODE_SETUP);
     hidePasswordFlow();
-    if (!(await initExistingSession())) {
-      queueMicrotask(async () => {
-        const insideTelegram = Boolean(await waitForTelegramInitData({ maxMs: 800, stepMs: 100 }));
-        if (insideTelegram) {
-          els.telegramState.textContent = "Ты внутри Telegram Mini App. Можно войти по кнопке выше.";
-        }
-      });
-    }
+    await initExistingSession();
   </script>
 </body>
 </html>
