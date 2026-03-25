@@ -12,6 +12,9 @@ class Settings(BaseSettings):
 
     TG_LOGIN_WIDGET_BOT_USERNAME: str = ""
     TG_LOGIN_WIDGET_MAX_AGE_SECONDS: int = 60 * 60
+    TG_BROWSER_LOGIN_BOT_USERNAME: str = ""
+    TG_BROWSER_LOGIN_SESSION_TTL_SECONDS: int = 60 * 10
+    TG_WEBHOOK_SECRET_TOKEN: str = ""
 
     # JWT (cookie-based auth)
     JWT_SECRET: str
