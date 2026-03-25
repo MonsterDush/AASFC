@@ -83,8 +83,8 @@ function renderShell() {
       </div>
 
       <div class="row" style="margin-top:12px; gap:10px; flex-wrap:wrap">
-        <a class="link" id="backToShifts" href="#">← Назад к графику</a>
-        <a class="link" id="backToVenue" href="#">К заведению</a>
+        <a class="btn subtle inline" id="backToShifts" href="#">← Назад к графику</a>
+        <a class="btn subtle inline" id="backToVenue" href="#">К заведению</a>
       </div>
     </div>
 

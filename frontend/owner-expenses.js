@@ -167,6 +167,47 @@ function buildRegularBadges(item) {
   return badges.join(' ');
 }
 
+function expenseFormDraftFromItem(item = null) {
+  return {
+    category_id: item?.category_id ? String(item.category_id) : "",
+    supplier_id: item?.supplier_id ? String(item.supplier_id) : "",
+    payment_method_id: item?.payment_method_id ? String(item.payment_method_id) : "",
+    amount: item ? (Number(item.amount_minor || 0) / 100).toFixed(2) : "",
+    expense_date: item?.expense_date || todayISO(),
+    spread_months: String(item?.spread_months || 1),
+    status: String(item?.status || "DRAFT").toUpperCase(),
+    comment: item?.comment || "",
+  };
+}
+
+function normalizeExpenseDraft(draft = {}) {
+  return {
+    category_id: draft?.category_id ? String(draft.category_id) : "",
+    supplier_id: draft?.supplier_id ? String(draft.supplier_id) : "",
+    payment_method_id: draft?.payment_method_id ? String(draft.payment_method_id) : "",
+    amount: String(draft?.amount || ""),
+    expense_date: String(draft?.expense_date || todayISO()),
+    spread_months: String(draft?.spread_months || 1),
+    status: String(draft?.status || "DRAFT").toUpperCase(),
+    comment: String(draft?.comment || ""),
+  };
+}
+
+function readExpenseFormDraft(form) {
+  const fd = new FormData(form);
+  return normalizeExpenseDraft({
+    category_id: fd.get("category_id"),
+    supplier_id: fd.get("supplier_id"),
+    payment_method_id: fd.get("payment_method_id"),
+    amount: fd.get("amount"),
+    expense_date: fd.get("expense_date"),
+    spread_months: fd.get("spread_months"),
+    status: fd.get("status"),
+    comment: fd.get("comment"),
+  });
+}
+
+
 async function loadAccess() {
   const venueId = getActiveVenueId();
   if (!venueId) return access;
@@ -355,53 +396,80 @@ function renderExpenses() {
   });
 }
 
-function buildExpenseForm(item = null) {
-  const categoryOptions = state.categories.map((cat) => `<option value="${cat.id}" ${String(item?.category_id || "") === String(cat.id) ? "selected" : ""}>${esc(cat.title)}</option>`).join("");
+function buildExpenseForm(draft = null) {
+  const data = normalizeExpenseDraft(draft || {});
+  const categoryOptions = state.categories.map((cat) => `<option value="${cat.id}" ${String(data.category_id || "") === String(cat.id) ? "selected" : ""}>${esc(cat.title)}</option>`).join("");
   const supplierOptions = ['<option value="">Без поставщика</option>'].concat(
-    state.suppliers.map((sup) => `<option value="${sup.id}" ${String(item?.supplier_id || "") === String(sup.id) ? "selected" : ""}>${esc(sup.title)}</option>`)
+    state.suppliers.map((sup) => `<option value="${sup.id}" ${String(data.supplier_id || "") === String(sup.id) ? "selected" : ""}>${esc(sup.title)}</option>`)
   ).join("");
   const paymentMethodOptions = ['<option value="">Не указан</option>'].concat(
-    state.paymentMethods.map((pm) => `<option value="${pm.id}" ${String(item?.payment_method_id || "") === String(pm.id) ? "selected" : ""}>${esc(pm.title)}</option>`)
+    state.paymentMethods.map((pm) => `<option value="${pm.id}" ${String(data.payment_method_id || "") === String(pm.id) ? "selected" : ""}>${esc(pm.title)}</option>`)
   ).join("");
-  const amount = item ? (Number(item.amount_minor || 0) / 100).toFixed(2) : "";
-  const defaultDate = item?.expense_date || todayISO();
-  const status = String(item?.status || "DRAFT").toUpperCase();
+  const inlineCatalogActions = access.canManageCatalogs ? `
+      <div class="inline-actions">
+        <button class="btn subtle inline" type="button" id="expenseAddCategoryInline">+ Добавить категорию</button>
+      </div>
+      <div class="inline-actions">
+        <button class="btn subtle inline" type="button" id="expenseAddSupplierInline">+ Добавить поставщика</button>
+      </div>
+  ` : "";
   return `
     <form id="expenseForm" class="finance-form">
       <label>Категория<select name="category_id" required>${categoryOptions}</select></label>
+      ${access.canManageCatalogs ? `<div class="inline-note">Нужной категории нет? Создай её прямо из формы и продолжай ввод расхода без потери данных.</div>` : ``}
+      ${access.canManageCatalogs ? `<div class="inline-actions"><button class="btn subtle inline" type="button" id="expenseAddCategoryInline">+ Добавить категорию</button></div>` : ``}
       <label>Поставщик<select name="supplier_id">${supplierOptions}</select></label>
+      ${access.canManageCatalogs ? `<div class="inline-actions"><button class="btn subtle inline" type="button" id="expenseAddSupplierInline">+ Добавить поставщика</button></div>` : ``}
       <label>Оплачено через<select name="payment_method_id">${paymentMethodOptions}</select></label>
-      <label>Сумма, ₽<input name="amount" type="text" placeholder="1200.00" value="${esc(amount)}" required /></label>
-      <label>Дата расхода<input name="expense_date" type="date" value="${esc(defaultDate)}" required /></label>
-      <label>Распределить на месяцев<input name="spread_months" type="number" min="1" max="120" value="${esc(String(item?.spread_months || 1))}" required /></label>
+      <label>Сумма, ₽<input name="amount" type="text" placeholder="1200.00" value="${esc(data.amount)}" required /></label>
+      <label>Дата расхода<input name="expense_date" type="date" value="${esc(data.expense_date)}" required /></label>
+      <label>Распределить на месяцев<input name="spread_months" type="number" min="1" max="120" value="${esc(data.spread_months)}" required /></label>
       <label>Статус
         <select name="status">
-          <option value="DRAFT" ${status === "DRAFT" ? "selected" : ""}>Черновик</option>
-          <option value="CONFIRMED" ${status === "CONFIRMED" ? "selected" : ""}>Подтверждён</option>
-          <option value="CANCELLED" ${status === "CANCELLED" ? "selected" : ""}>Отменён</option>
+          <option value="DRAFT" ${data.status === "DRAFT" ? "selected" : ""}>Черновик</option>
+          <option value="CONFIRMED" ${data.status === "CONFIRMED" ? "selected" : ""}>Подтверждён</option>
+          <option value="CANCELLED" ${data.status === "CANCELLED" ? "selected" : ""}>Отменён</option>
         </select>
       </label>
-      <label>Комментарий<textarea name="comment" rows="4" placeholder="Комментарий">${esc(item?.comment || "")}</textarea></label>
+      <label>Комментарий<textarea name="comment" rows="4" placeholder="Комментарий">${esc(data.comment)}</textarea></label>
       <div class="row gap-8 mt-12">
-        <button class="btn" type="submit">${item ? "Сохранить" : "Добавить"}</button>
+        <button class="btn primary" type="submit">${draft?.id ? "Сохранить" : "Добавить"}</button>
         <button class="btn ghost" type="button" id="expenseFormCancel">Отмена</button>
       </div>
     </form>
   `;
 }
 
-function openExpenseForm(expenseId = null) {
+function openExpenseForm(expenseId = null, draftValues = null) {
   if (!access.canEdit) return;
   if (!state.categories.length) {
     toast("Сначала создайте категорию расхода", "warn");
     return;
   }
   const item = expenseId ? state.expenses.find((x) => Number(x.id) === Number(expenseId)) : null;
-  openHtmlModal(expenseId ? "Редактировать расход" : "Добавить расход", buildExpenseForm(item));
+  const formDraft = { ...expenseFormDraftFromItem(item), ...(draftValues || {}) };
+  if (item?.id) formDraft.id = item.id;
+  openHtmlModal(expenseId ? "Редактировать расход" : "Добавить расход", buildExpenseForm(formDraft));
 
   const form = document.getElementById("expenseForm");
   const cancelBtn = document.getElementById("expenseFormCancel");
+  const addCategoryInlineBtn = document.getElementById("expenseAddCategoryInline");
+  const addSupplierInlineBtn = document.getElementById("expenseAddSupplierInline");
   if (cancelBtn) cancelBtn.onclick = () => closeModal();
+  if (addCategoryInlineBtn && form) {
+    addCategoryInlineBtn.onclick = () => openCatalogForm("category", {
+      reopenExpenseForm: true,
+      expenseId,
+      draft: readExpenseFormDraft(form),
+    });
+  }
+  if (addSupplierInlineBtn && form) {
+    addSupplierInlineBtn.onclick = () => openCatalogForm("supplier", {
+      reopenExpenseForm: true,
+      expenseId,
+      draft: readExpenseFormDraft(form),
+    });
+  }
   if (!form) return;
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -470,7 +538,7 @@ function buildCatalogForm(kind) {
   `;
 }
 
-function openCatalogForm(kind) {
+function openCatalogForm(kind, options = {}) {
   if (!access.canManageCatalogs) return;
   const isCategory = kind === "category";
   openHtmlModal(isCategory ? "Добавить категорию расхода" : "Добавить поставщика", buildCatalogForm(kind));
@@ -493,9 +561,10 @@ function openCatalogForm(kind) {
 
     const venueId = getActiveVenueId();
     try {
+      let created = null;
       if (isCategory) {
         const baseCode = slugifyCategoryCode(title);
-        await api(`/venues/${encodeURIComponent(venueId)}/expense-categories`, {
+        created = await api(`/venues/${encodeURIComponent(venueId)}/expense-categories`, {
           method: "POST",
           body: {
             code: baseCode,
@@ -506,7 +575,7 @@ function openCatalogForm(kind) {
         });
         toast("Категория добавлена", "ok");
       } else {
-        await api(`/venues/${encodeURIComponent(venueId)}/suppliers`, {
+        created = await api(`/venues/${encodeURIComponent(venueId)}/suppliers`, {
           method: "POST",
           body: {
             title,
@@ -518,8 +587,20 @@ function openCatalogForm(kind) {
         toast("Поставщик добавлен", "ok");
       }
 
-      closeModal();
       await loadCatalogs();
+
+      if (options.reopenExpenseForm) {
+        const catalogItems = isCategory ? state.categories : state.suppliers;
+        const matched = catalogItems.find((item) => String(item.id) === String(created?.id))
+          || catalogItems.find((item) => String(item.title || "").trim().toLowerCase() === title.toLowerCase());
+        const nextDraft = normalizeExpenseDraft(options.draft || {});
+        if (isCategory) nextDraft.category_id = matched?.id ? String(matched.id) : nextDraft.category_id;
+        else nextDraft.supplier_id = matched?.id ? String(matched.id) : nextDraft.supplier_id;
+        openExpenseForm(options.expenseId || null, nextDraft);
+        return;
+      }
+
+      closeModal();
     } catch (err) {
       toast(err?.data?.detail || err.message || "Не удалось сохранить", "err");
     }
@@ -596,6 +677,14 @@ async function boot() {
     await loadExpenses();
   };
   document.getElementById("addExpenseBtn").onclick = () => openExpenseForm();
+  const toggleExpenseFiltersBtn = document.getElementById("toggleExpenseFiltersBtn");
+  const expenseFiltersWrap = document.getElementById("expenseFiltersWrap");
+  if (toggleExpenseFiltersBtn && expenseFiltersWrap) {
+    toggleExpenseFiltersBtn.onclick = () => {
+      expenseFiltersWrap.open = true;
+      expenseFiltersWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    };
+  }
   document.getElementById("exportExpensesBtn").onclick = async () => {
     try {
       const venueId = getActiveVenueId();

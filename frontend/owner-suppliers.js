@@ -49,7 +49,7 @@ function renderShell() {
         </div>
         <div id="list" style="margin-top:10px"><div class="skeleton"></div><div class="skeleton"></div></div>
       </div>
-      <div class="row" style="margin-top:12px"><a class="link" id="back" href="#">← К расходам</a></div>
+      <div class="row" style="margin-top:12px"><a class="btn subtle inline" id="back" href="#">← К расходам</a></div>
     </div>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>

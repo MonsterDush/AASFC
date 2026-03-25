@@ -21,79 +21,100 @@
     </div>
 
     <div class="card finance-toolbar">
-      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-        <div>
-          <b>Расходы</b>
-          <div class="muted mt-6">документы расходов и сумма, признанная в выбранном месяце</div>
-        </div>
-        <div class="row row--between" style="gap:8px; flex-wrap:wrap; align-items:center;">
-          <input id="expensesMonthPick" type="month" style="width:auto; min-width:160px;" />
-          <button class="btn" id="exportExpensesBtn">Экспорт XLSX</button>
-          <button class="btn" id="addExpenseBtn">Добавить расход</button>
-        </div>
-        <div class="row row--between" style="gap:8px; flex-wrap:wrap; align-items:center;">
-          <a class="btn ghost" id="openExpenseCategoriesBtn" href="#">Категории расходов</a>
-          <a class="btn ghost" id="openSuppliersBtn" href="#">Поставщики</a>
-          <a class="btn ghost" id="openRecurringExpensesBtn" href="#">Регулярные расходы</a>
-        </div>
-      </div>
-
-      <div class="row mt-12 row--between" style="gap:8px; flex-wrap:wrap; align-items:center;">
-        <button class="btn ghost" id="addCategoryBtn">Добавить категорию</button>
-        <button class="btn ghost" id="addSupplierBtn">Добавить поставщика</button>
-      </div>
-
-
-      <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+      <div class="screen-hero">
+        <div class="screen-hero__head">
           <div>
-            <b>Как читать этот экран</b>
-            <div class="muted mt-6">Верхняя сумма — сколько расходов признано в выбранном месяце. ФОТ считается отдельно в сводке и не дублируется в этом экране. В карточке каждой записи справа остаётся полная сумма документа расхода.</div>
+            <b>Расходы</b>
+            <div class="muted mt-6">операционный экран: признано в месяце, фильтры, список и быстрое добавление расхода</div>
+          </div>
+          <div class="screen-hero__actions">
+            <button class="btn ghost" id="exportExpensesBtn">Экспорт XLSX</button>
+            <button class="btn primary" id="addExpenseBtn">Добавить расход</button>
+          </div>
+        </div>
+
+        <div class="screen-hero__toolbar">
+          <div class="screen-hero__period">
+            <input id="expensesMonthPick" type="month" style="width:auto; min-width:160px;" />
+          </div>
+          <div class="expense-hero-total itemcard">
+            <div class="expense-hero-total__label">Признано в выбранном месяце</div>
+            <div class="expense-hero-total__value" id="expensesTotalMinor">—</div>
+            <div class="muted">ФОТ учитывается отдельно в сводке и не дублируется здесь.</div>
           </div>
         </div>
       </div>
 
-      <div class="finance-filters mt-12">
-        <select id="expenseCategoryFilter">
-          <option value="">Все категории</option>
-        </select>
-        <select id="expenseSupplierFilter">
-          <option value="">Все поставщики</option>
-        </select>
-        <select id="expenseStatusFilter">
-          <option value="">Все статусы</option>
-          <option value="DRAFT">Только черновики</option>
-          <option value="CONFIRMED">Только подтверждённые</option>
-          <option value="CANCELLED">Только отменённые</option>
-          <option value="DRAFT,CONFIRMED">Черновики + подтверждённые</option>
-        </select>
+      <div class="btn-row mt-12">
+        <button class="btn subtle" id="toggleExpenseFiltersBtn" type="button">Фильтры и черновики</button>
       </div>
 
-      <div class="itemcard mt-12" id="draftExpensesCard" style="display:none;">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
-            <b>Есть расходы в черновике</b>
-            <div class="muted mt-6" id="draftExpensesHint">—</div>
+      <details class="collapsible-card mt-12" id="expenseFiltersWrap">
+        <summary>Фильтры и черновики</summary>
+        <div class="collapsible-card__body filters-wrap">
+          <div class="finance-filters">
+            <select id="expenseCategoryFilter">
+              <option value="">Все категории</option>
+            </select>
+            <select id="expenseSupplierFilter">
+              <option value="">Все поставщики</option>
+            </select>
+            <select id="expenseStatusFilter">
+              <option value="">Все статусы</option>
+              <option value="DRAFT">Только черновики</option>
+              <option value="CONFIRMED">Только подтверждённые</option>
+              <option value="CANCELLED">Только отменённые</option>
+              <option value="DRAFT,CONFIRMED">Черновики + подтверждённые</option>
+            </select>
           </div>
-          <a class="btn ghost" id="openDraftExpensesBtn" href="#">Открыть черновики</a>
-        </div>
-      </div>
 
-      <div class="finance-stats mt-12">
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Всего расходов</div>
-          <div class="finance-stat__value" id="expensesTotalMinor">—</div>
+          <div class="itemcard" id="draftExpensesCard" style="display:none;">
+            <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+              <div>
+                <b>Есть расходы в черновике</b>
+                <div class="muted mt-6" id="draftExpensesHint">—</div>
+              </div>
+              <a class="btn subtle" id="openDraftExpensesBtn" href="#">Открыть черновики</a>
+            </div>
+          </div>
         </div>
+      </details>
+
+      <details class="collapsible-card mt-12" id="expenseCatalogsWrap">
+        <summary>Справочники и быстрые действия</summary>
+        <div class="collapsible-card__body">
+          <div class="catalog-actions">
+            <a class="btn subtle" id="openExpenseCategoriesBtn" href="#">Категории расходов</a>
+            <a class="btn subtle" id="openSuppliersBtn" href="#">Поставщики</a>
+            <a class="btn subtle" id="openRecurringExpensesBtn" href="#">Регулярные расходы</a>
+            <button class="btn subtle" id="addCategoryBtn" type="button">Добавить категорию</button>
+            <button class="btn subtle" id="addSupplierBtn" type="button">Добавить поставщика</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="collapsible-card mt-12" id="expenseGuideWrap">
+        <summary>Как считается этот экран</summary>
+        <div class="collapsible-card__body">
+          <div class="help-copy muted">Сверху показана сумма, признанная именно в выбранном месяце. В карточке каждой записи справа остаётся полная сумма документа. Если расход распределён на несколько месяцев, в списке отдельно видны признанные аллокации за текущий месяц и все аллокации целиком.</div>
+        </div>
+      </details>
+
+      <div class="finance-kpis finance-kpis--compact mt-12">
         <div class="itemcard finance-stat">
           <div class="finance-stat__label">Записей</div>
           <div class="finance-stat__value" id="expensesCount">—</div>
         </div>
+        <div class="itemcard state-card" style="grid-column:span 2;">
+          <div class="state-card__label">Состояние списка</div>
+          <div class="state-card__value" id="expensesState">—</div>
+        </div>
       </div>
 
       <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <b>Список расходов</b>
-          <div class="muted" id="expensesState">—</div>
+        <div class="section-head">
+          <div class="section-title"><b>Список расходов</b></div>
+          <div class="muted">Полная сумма документа и признание по месяцу показаны отдельно.</div>
         </div>
         <div id="expensesList" class="expense-list mt-12"></div>
       </div>
@@ -111,7 +132,7 @@
       <div class="modal__panel">
         <div class="modal__head">
           <b class="modal__title">JSON</b>
-          <button class="btn" data-close>Close</button>
+          <button class="btn" data-close>Закрыть</button>
         </div>
         <div class="modal__body"></div>
       </div>

@@ -86,7 +86,7 @@ function renderShell() {
       </div>
 
       <div class="row mt-12">
-        <a class="link" id="back" href="#">← Назад к заведению</a>
+        <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
       </div>
     </div>
 

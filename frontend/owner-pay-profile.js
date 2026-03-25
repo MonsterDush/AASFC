@@ -453,8 +453,8 @@ function renderShell() {
       </div>
 
       <div class="row mt-12" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
-        <a class="link" id="backProfiles" href="#">← К списку профилей</a>
-        <a class="link" id="openPayroll" href="#">Открыть начисления →</a>
+        <a class="btn subtle inline" id="backProfiles" href="#">← К списку профилей</a>
+        <a class="btn subtle inline" id="openPayroll" href="#">Открыть начисления →</a>
       </div>
     </div>
 

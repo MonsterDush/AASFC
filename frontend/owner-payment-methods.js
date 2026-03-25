@@ -78,7 +78,7 @@ function renderShell() {
       </div>
 
       <div class="row" style="margin-top:12px">
-        <a class="link" id="back" href="#">← Назад к заведению</a>
+        <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
       </div>
     </div>
 

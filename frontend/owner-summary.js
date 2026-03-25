@@ -246,9 +246,16 @@ async function loadSummary() {
   syncActions();
 
   showBlock("revenueCard", financeAccess.canViewRevenue);
+  showBlock("profitCard", financeAccess.canViewRevenue);
+  showBlock("marginCard", financeAccess.canViewRevenue);
   showBlock("expensesCard", financeAccess.canViewExpenses);
   showBlock("payrollCard", financeAccess.canViewPayroll);
   showBlock("totalCostCard", financeAccess.canViewExpenses || financeAccess.canViewPayroll);
+  showBlock("adjustmentsCard", financeAccess.canViewRevenue);
+  showBlock("refundsCard", financeAccess.canViewRevenue);
+  showBlock("expenseRatioCard", financeAccess.canViewRevenue && financeAccess.canViewExpenses);
+  showBlock("payrollRatioCard", financeAccess.canViewRevenue && financeAccess.canViewPayroll);
+  showBlock("totalCostRatioCard", financeAccess.canViewRevenue && (financeAccess.canViewExpenses || financeAccess.canViewPayroll));
 
   if (!financeAccess.canViewRevenue && !financeAccess.canViewExpenses && !financeAccess.canViewPayroll) {
     setText("summaryRevenue", "—");
@@ -257,6 +264,11 @@ async function loadSummary() {
     setText("summaryTotalCost", "—");
     setText("summaryProfit", "—");
     setText("summaryMargin", "—");
+    setText("summaryAdjustments", "—");
+    setText("summaryRefunds", "—");
+    setText("summaryExpenseRatio", "—");
+    setText("summaryPayrollRatio", "—");
+    setText("summaryTotalCostRatio", "—");
     setText("summaryHint", "Нет прав на финансовую сводку");
     return;
   }
@@ -280,8 +292,13 @@ async function loadSummary() {
     setText("summaryTotalCost", fmtMoneyMinor(summary?.total_cost_minor ?? ((Number(summary?.expense_minor || 0)) + (Number(summary?.payroll_minor || 0)))));
     setText("summaryProfit", fmtMoneyMinor(summary?.profit_minor));
     setText("summaryMargin", fmtPercentBps(summary?.margin_bps));
+    setText("summaryAdjustments", fmtMoneyMinor(summary?.adjustments_minor));
+    setText("summaryRefunds", fmtMoneyMinor(summary?.refunds_minor));
+    setText("summaryExpenseRatio", fmtPercentBps(summary?.expense_ratio_bps));
+    setText("summaryPayrollRatio", fmtPercentBps(summary?.payroll_ratio_bps));
+    setText("summaryTotalCostRatio", fmtPercentBps(summary?.total_cost_ratio_bps));
     setText("summaryPeriodText", summary?.period_start && summary?.period_end ? `${summary.period_start} — ${summary.period_end}` : statePeriodText());
-    setText("summaryHint", `Доли от выручки: расходы ${fmtPercentBps(summary?.expense_ratio_bps)} · ФОТ ${fmtPercentBps(summary?.payroll_ratio_bps)} · всего затрат ${fmtPercentBps(summary?.total_cost_ratio_bps)} · корректировки ${fmtMoneyMinor(summary?.adjustments_minor)} · возвраты ${fmtMoneyMinor(summary?.refunds_minor)}`);
+    setText("summaryHint", `Главный экран оставляет только ключевые метрики. Детальные разделы ниже открываются отдельно.`);
   } catch (e) {
     setText("summaryRevenue", "—");
     setText("summaryExpenses", "—");
@@ -289,6 +306,11 @@ async function loadSummary() {
     setText("summaryTotalCost", "—");
     setText("summaryProfit", "—");
     setText("summaryMargin", "—");
+    setText("summaryAdjustments", "—");
+    setText("summaryRefunds", "—");
+    setText("summaryExpenseRatio", "—");
+    setText("summaryPayrollRatio", "—");
+    setText("summaryTotalCostRatio", "—");
     setText("summaryHint", e?.data?.detail || e.message || "Ошибка загрузки");
     toast("Не удалось загрузить финансовую сводку", "err");
   }

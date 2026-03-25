@@ -261,7 +261,7 @@ function computeCaps(perms, me) {
 function periodTitle() {
   return state.periodMode === "month"
     ? "расчёт зарплаты за месяц"
-    : `сводка начислений за диапазон ${formatDateRu(state.dateFrom)} — ${formatDateRu(state.dateTo)}`;
+    : `сводка начислений за период ${formatDateRu(state.dateFrom)} — ${formatDateRu(state.dateTo)}`;
 }
 
 function renderShell() {
@@ -286,7 +286,7 @@ function renderShell() {
         <div class="pickers pickers--revenue">
           <div class="seg seg--period" id="periodSeg" style="min-width:220px;">
             <button type="button" id="periodMonthBtn">Месяц</button>
-            <button type="button" id="periodRangeBtn">Диапазон</button>
+            <button type="button" id="periodRangeBtn">Период</button>
           </div>
           <div id="monthControls" class="pickers">
             <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
@@ -325,8 +325,8 @@ function renderShell() {
       </div>
 
       <div class="row mt-12" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
-        <a class="link" id="backVenue" href="#">← Назад к заведению</a>
-        <a class="link" id="openSummary" href="#">Открыть сводку →</a>
+        <a class="btn subtle inline" id="backVenue" href="#">← Назад к заведению</a>
+        <a class="btn subtle inline" id="openSummary" href="#">Открыть сводку →</a>
       </div>
     </div>
 
@@ -551,7 +551,7 @@ async function applyRangeFromControls() {
   const nextFrom = String(document.getElementById("rangeFrom")?.value || "").trim();
   const nextTo = String(document.getElementById("rangeTo")?.value || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(nextFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(nextTo)) {
-    toast("Выбери даты диапазона", "err");
+    toast("Выбери даты периода", "err");
     return;
   }
   state.dateFrom = nextFrom <= nextTo ? nextFrom : nextTo;
