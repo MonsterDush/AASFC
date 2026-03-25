@@ -98,15 +98,15 @@
 
       <div class="card">
         <b>Вход через Telegram</b>
-        <div class="muted mt-8">Старый способ входа сохраняется. Внутри Mini App вход остаётся бесшовным, а снаружи используется официальный Telegram Login Widget с окном подтверждения.</div>
+        <div class="muted mt-8">Телефонный вход — основной и не зависит от Telegram. Вход через Telegram доступен отдельно и подгружается только по нажатию кнопки.</div>
 
         <div class="itemcard mt-16">
-          <div class="muted" id="telegramState">Проверка Telegram не мешает входу по телефону.</div>
-          <div class="row mt-12" id="telegramMiniAppLoginRow">
-            <button class="btn" id="btnTelegramLogin">Войти через Telegram</button>
+          <div class="muted" id="telegramState">Telegram не проверяется автоматически и не мешает входу по телефону.</div>
+          <div class="row mt-12" id="telegramMiniAppLoginRow" style="gap:8px; flex-wrap:wrap;">
+            <button class="btn" id="btnTelegramLogin" type="button">Продолжить через Telegram</button>
           </div>
           <div id="telegramWidgetHost" class="telegram-widget-host mt-12 hidden"></div>
-          <div id="telegramWidgetHint" class="muted mt-8 hidden">Откроется официальное окно Telegram для подтверждения входа.</div>
+          <div id="telegramWidgetHint" class="muted mt-8 hidden">Если ты не в Mini App, ниже откроется официальный Telegram Login Widget.</div>
         </div>
 
         <div class="itemcard mt-16">
@@ -182,6 +182,8 @@
     let callFallbackTimer = null;
     let smsChallengeId = null;
     let phoneAuthConfig = { call_enabled: true, sms_enabled: true, fallback_after_seconds: 10 };
+    let telegramWidgetPrepared = false;
+    let telegramWidgetLoading = false;
 
     const isCallEnabled = () => Boolean(phoneAuthConfig?.call_enabled);
     const isSmsEnabled = () => Boolean(phoneAuthConfig?.sms_enabled);
@@ -486,38 +488,20 @@
       }
     };
 
-    async function renderTelegramLogin() {
-      const insideTelegram = Boolean(await waitForTelegramInitData({ maxMs: 1200, stepMs: 100 }));
-      if (insideTelegram) {
-        els.telegramState.textContent = "Ты внутри Telegram Mini App — доступен бесшовный вход.";
-        els.telegramMiniAppLoginRow.classList.remove("hidden");
-        els.telegramWidgetHost.classList.add("hidden");
-        els.telegramWidgetHint.classList.add("hidden");
-        els.btnTelegramLogin.onclick = async () => {
-          try {
-            const initData = wa()?.initData || "";
-            if (!initData) throw new Error("Telegram Mini App недоступен");
-            await api("/auth/telegram", { method: "POST", body: { init_data: initData }, handle401: false, timeoutMs: 10000 });
-            toast("Вход выполнен", "ok");
-            await finishPostLoginFlow();
-          } catch (e) {
-            toast(e?.data?.detail || e?.message || "Ошибка входа через Telegram", "err");
-          }
-        };
-        return;
-      }
-
-      els.telegramMiniAppLoginRow.classList.add("hidden");
-      els.telegramState.textContent = "Проверяем Telegram в фоне… Вход по телефону уже доступен.";
+    async function prepareTelegramWidget() {
+      if (telegramWidgetPrepared || telegramWidgetLoading) return telegramWidgetPrepared;
+      telegramWidgetLoading = true;
+      els.telegramState.textContent = "Подготавливаем Telegram-вход…";
       try {
-        const cfg = await withTimeout(api("/auth/telegram/widget/config", { handle401: false, timeoutMs: 1200 }), 1300, "WIDGET_CONFIG_TIMEOUT");
+        const cfg = await withTimeout(
+          api("/auth/telegram/widget/config", { handle401: false, timeoutMs: 1200 }),
+          1300,
+          "WIDGET_CONFIG_TIMEOUT"
+        );
         if (!cfg?.enabled || !cfg?.bot_username) {
-          els.telegramState.textContent = "Telegram сейчас недоступен, но вход по телефону работает.";
-          return;
+          els.telegramState.textContent = "Telegram Login Widget не настроен для этого домена. Входи по телефону.";
+          return false;
         }
-        els.telegramState.textContent = "Официальный Telegram Login Widget готов к работе.";
-        els.telegramWidgetHost.classList.remove("hidden");
-        els.telegramWidgetHint.classList.remove("hidden");
         window.AxelioTelegramWidgetAuth = async (user) => {
           try {
             await loginWithTelegramWidget(user || {});
@@ -555,21 +539,66 @@
 
           els.telegramWidgetHost.appendChild(script);
         });
+        telegramWidgetPrepared = true;
+        els.telegramWidgetHost.classList.remove("hidden");
+        els.telegramWidgetHint.classList.remove("hidden");
+        els.telegramState.textContent = "Если ты не в Mini App, подтверди вход через Telegram ниже.";
+        return true;
       } catch (e) {
         els.telegramState.textContent = e?.code === "WIDGET_CONFIG_TIMEOUT" || e?.message === "WIDGET_SCRIPT_TIMEOUT"
-          ? "Telegram сейчас недоступен, но вход по телефону работает."
+          ? "Telegram сейчас не ответил. Вход по телефону продолжает работать."
           : (e?.data?.detail || e?.message || "Не удалось подготовить Telegram Login Widget");
+        return false;
+      } finally {
+        telegramWidgetLoading = false;
       }
     }
+
+    els.btnTelegramLogin.onclick = async () => {
+      const button = els.btnTelegramLogin;
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = "Проверяем Telegram…";
+      try {
+        const initData = await waitForTelegramInitData({ maxMs: 1200, stepMs: 100 });
+        if (initData) {
+          els.telegramState.textContent = "Найден Telegram Mini App — выполняем вход…";
+          await api("/auth/telegram", {
+            method: "POST",
+            body: { initData },
+            handle401: false,
+            timeoutMs: 10000,
+          });
+          toast("Вход выполнен", "ok");
+          await finishPostLoginFlow();
+          return;
+        }
+
+        const ready = await prepareTelegramWidget();
+        if (!ready) {
+          toast("Telegram сейчас недоступен. Используй вход по телефону.", "warn");
+          return;
+        }
+        button.textContent = "Telegram вход готов";
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Ошибка входа через Telegram", "err");
+      } finally {
+        button.disabled = false;
+        if (button.textContent !== "Telegram вход готов") {
+          button.textContent = originalText;
+        }
+      }
+    };
 
     nextHint.textContent = `После входа тебя вернёт на ${getSafeNext()}.`;
     await loadPhoneAuthConfig();
     setPasswordMode(MODE_SETUP);
     if (!(await initExistingSession())) {
-      queueMicrotask(() => {
-        renderTelegramLogin().catch((e) => {
-          els.telegramState.textContent = e?.data?.detail || e?.message || "Telegram сейчас недоступен, но вход по телефону работает.";
-        });
+      queueMicrotask(async () => {
+        const insideTelegram = Boolean(await waitForTelegramInitData({ maxMs: 800, stepMs: 100 }));
+        if (insideTelegram) {
+          els.telegramState.textContent = "Ты внутри Telegram Mini App. Можно войти по кнопке выше.";
+        }
       });
     }
   </script>
