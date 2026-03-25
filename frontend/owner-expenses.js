@@ -77,6 +77,15 @@ function parseMoneyToMinor(value) {
   return Math.round(Number(normalized) * 100);
 }
 
+function ensureUniqueCategoryCode(baseCode) {
+  const used = new Set((state.categories || []).map((it) => String(it?.code || "").trim().toLowerCase()).filter(Boolean));
+  const code = String(baseCode || "").trim().toLowerCase() || "expense";
+  if (!used.has(code)) return code;
+  let idx = 2;
+  while (used.has(`${code}_${idx}`)) idx += 1;
+  return `${code}_${idx}`;
+}
+
 function slugifyCategoryCode(value) {
   const map = {
     а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i",
@@ -563,7 +572,7 @@ function openCatalogForm(kind, options = {}) {
     try {
       let created = null;
       if (isCategory) {
-        const baseCode = slugifyCategoryCode(title);
+        const baseCode = ensureUniqueCategoryCode(slugifyCategoryCode(title));
         created = await api(`/venues/${encodeURIComponent(venueId)}/expense-categories`, {
           method: "POST",
           body: {

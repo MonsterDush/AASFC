@@ -22,6 +22,7 @@ class User(Base):
     notify_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_adjustments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_shifts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_shift_comments: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_day_economics: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_salary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_soft_alerts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

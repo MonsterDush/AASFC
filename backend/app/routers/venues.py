@@ -249,6 +249,7 @@ class PositionCreateIn(BaseModel):
     member_user_id: int = Field(..., gt=0)
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
+    pay_profile_id: int | None = Field(default=None, gt=0)
     is_active: bool = True
     # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
@@ -259,6 +260,7 @@ class PositionUpdateIn(BaseModel):
     member_user_id: int | None = Field(default=None, gt=0)
     rate: int | None = Field(default=None, ge=0)
     percent: int | None = Field(default=None, ge=0, le=100)
+    pay_profile_id: int | None = Field(default=None, gt=0)
     is_active: bool | None = None
     # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
@@ -2220,6 +2222,84 @@ def _get_pay_profile_assignment_or_404(db: Session, *, venue_id: int, assignment
 
 
 
+
+
+def _get_member_active_pay_profile_assignment(
+    db: Session,
+    *,
+    venue_id: int,
+    member_user_id: int,
+    on_date: date | None = None,
+) -> tuple[PayProfileAssignment, PayProfile] | tuple[None, None]:
+    target_date = on_date or date.today()
+    row = db.execute(
+        select(PayProfileAssignment, PayProfile)
+        .join(PayProfile, PayProfile.id == PayProfileAssignment.pay_profile_id)
+        .where(
+            PayProfileAssignment.venue_id == int(venue_id),
+            PayProfileAssignment.member_user_id == int(member_user_id),
+            PayProfileAssignment.is_active.is_(True),
+            PayProfile.is_active.is_(True),
+            sa.or_(PayProfileAssignment.start_date.is_(None), PayProfileAssignment.start_date <= target_date),
+            sa.or_(PayProfileAssignment.end_date.is_(None), PayProfileAssignment.end_date >= target_date),
+        )
+        .order_by(PayProfileAssignment.start_date.desc().nullslast(), PayProfileAssignment.updated_at.desc().nullslast(), PayProfileAssignment.id.desc())
+    ).first()
+    if row is None:
+        return None, None
+    return row[0], row[1]
+
+
+def _sync_member_pay_profile_assignment(
+    db: Session,
+    *,
+    venue_id: int,
+    member_user_id: int,
+    pay_profile_id: int | None,
+) -> tuple[PayProfileAssignment | None, PayProfile | None]:
+    today = date.today()
+    current_assignment, current_profile = _get_member_active_pay_profile_assignment(
+        db, venue_id=venue_id, member_user_id=member_user_id, on_date=today
+    )
+
+    target_profile = None
+    target_profile_id = int(pay_profile_id) if pay_profile_id else None
+    if target_profile_id is not None:
+        target_profile = _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=target_profile_id)
+
+    if target_profile_id is not None and current_assignment is not None and int(current_assignment.pay_profile_id) == target_profile_id:
+        return current_assignment, current_profile
+
+    if current_assignment is not None:
+        if current_assignment.start_date is None and current_assignment.end_date is None:
+            db.delete(current_assignment)
+        else:
+            if current_assignment.start_date and current_assignment.start_date > today:
+                current_assignment.is_active = False
+                current_assignment.end_date = current_assignment.start_date
+            else:
+                current_assignment.end_date = today
+                current_assignment.is_active = False
+            current_assignment.updated_at = datetime.utcnow()
+            db.add(current_assignment)
+
+    if target_profile is None:
+        return None, None
+
+    assignment = PayProfileAssignment(
+        venue_id=int(venue_id),
+        pay_profile_id=int(target_profile.id),
+        member_user_id=int(member_user_id),
+        start_date=today,
+        end_date=None,
+        is_active=True,
+        updated_at=datetime.utcnow(),
+    )
+    db.add(assignment)
+    db.flush()
+    return assignment, target_profile
+
+
 def _get_pay_component_or_404(db: Session, *, venue_id: int, component_id: int) -> PayComponent:
     obj = db.execute(
         select(PayComponent).where(PayComponent.id == component_id, PayComponent.venue_id == venue_id)
@@ -3099,13 +3179,18 @@ def list_positions(
 
     rows = db.execute(stmt).all()
 
-    return [
-        {
+    items = []
+    for r in rows:
+        assignment, profile = _get_member_active_pay_profile_assignment(db, venue_id=venue_id, member_user_id=int(r.member_user_id), on_date=date.today())
+        items.append({
             "id": r.id,
             "title": r.title,
             "member_user_id": r.member_user_id,
             "rate": r.rate,
             "percent": r.percent,
+            "pay_profile_id": int(profile.id) if profile is not None else None,
+            "pay_profile_title": profile.title if profile is not None else None,
+            "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
             "permission_codes": _parse_position_permission_codes(getattr(r, "permission_codes", None)),
             "is_active": bool(r.is_active),
             "member": {
@@ -3117,9 +3202,8 @@ def list_positions(
                 "venue_role": r.venue_role,
                 "is_active": bool(r.member_is_active),
             },
-        }
-        for r in rows
-    ]
+        })
+    return items
 
 
 @router.post("/{venue_id}/positions")
@@ -3158,6 +3242,9 @@ def create_position(
         )
     ).scalar_one_or_none()
 
+    if payload.pay_profile_id is not None and not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAY_PROFILES_MANAGE")
+
     if existing is None:
         pos = VenuePosition(
             venue_id=venue_id,
@@ -3169,9 +3256,16 @@ def create_position(
             is_active=payload.is_active,
         )
         db.add(pos)
+        db.flush()
+        assignment, profile = _sync_member_pay_profile_assignment(
+            db,
+            venue_id=venue_id,
+            member_user_id=payload.member_user_id,
+            pay_profile_id=payload.pay_profile_id,
+        )
         db.commit()
         db.refresh(pos)
-        return {"id": pos.id}
+        return {"id": pos.id, "pay_profile_id": int(profile.id) if profile is not None else None, "pay_profile_title": profile.title if profile is not None else None, "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None}
 
     # update-in-place
     existing.title = payload.title.strip()
@@ -3180,9 +3274,15 @@ def create_position(
     if codes_provided:
         existing.permission_codes = json.dumps(norm_codes)
     existing.is_active = payload.is_active
+    assignment, profile = _sync_member_pay_profile_assignment(
+        db,
+        venue_id=venue_id,
+        member_user_id=payload.member_user_id,
+        pay_profile_id=payload.pay_profile_id,
+    )
 
     db.commit()
-    return {"id": existing.id, "mode": "updated"}
+    return {"id": existing.id, "mode": "updated", "pay_profile_id": int(profile.id) if profile is not None else None, "pay_profile_title": profile.title if profile is not None else None, "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None}
 
 
 @router.patch("/{venue_id}/positions/{position_id}")
@@ -3258,6 +3358,21 @@ def update_position(
     if perms_changed:
         pos.permission_codes = json.dumps(norm_codes or [])
 
+    assignment = None
+    profile = None
+    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    if "pay_profile_id" in fields_set:
+        if not is_owner:
+            require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAY_PROFILES_MANAGE")
+        assignment, profile = _sync_member_pay_profile_assignment(
+            db,
+            venue_id=venue_id,
+            member_user_id=pos.member_user_id,
+            pay_profile_id=payload.pay_profile_id,
+        )
+    else:
+        assignment, profile = _get_member_active_pay_profile_assignment(db, venue_id=venue_id, member_user_id=pos.member_user_id, on_date=date.today())
+
     db.commit()
     db.refresh(pos)
 
@@ -3268,6 +3383,9 @@ def update_position(
         "member_user_id": pos.member_user_id,
         "rate": pos.rate,
         "percent": pos.percent,
+        "pay_profile_id": int(profile.id) if profile is not None else None,
+        "pay_profile_title": profile.title if profile is not None else None,
+        "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
         "permission_codes": _parse_position_permission_codes(getattr(pos, "permission_codes", None)),
         "is_active": bool(pos.is_active),
     }

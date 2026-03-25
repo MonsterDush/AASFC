@@ -11,6 +11,7 @@ import {
   getMyVenuePermissions,
   getVenueMembers,
   getVenuePositions,
+  getPayProfiles,
   createVenuePosition,
   updateVenuePosition,
   deleteVenuePosition,
@@ -261,14 +262,14 @@ function renderShell() {
         <div class="logo"></div>
         <div class="title">
           <b id="title">Должности</b>
-          <div class="muted" id="subtitle">настройка ставок и прав</div>
+          <div class="muted" id="subtitle">настройка профилей зарплаты и прав</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
     <div class="card">
-      <div class="muted">Создайте должности, назначьте сотрудников и задайте условия оплаты.</div>
+      <div class="muted">Создайте должности, назначьте сотрудников и при необходимости выберите для них профиль зарплаты.</div>
       <div class="muted small" id="accessHint" style="margin-top:6px"></div>
 
       <div class="itemcard" style="margin-top:12px">
@@ -341,8 +342,8 @@ function applyAccessToShell() {
 
   const sub = document.getElementById("subtitle");
   if (sub) {
-    if (auth.canManage && auth.canManagePerms) sub.textContent = "настройка ставок и прав";
-    else if (auth.canManage) sub.textContent = "настройка ставок";
+    if (auth.canManage && auth.canManagePerms) sub.textContent = "настройка профилей зарплаты и прав";
+    else if (auth.canManage) sub.textContent = "настройка профилей зарплаты";
     else if (auth.canManagePerms) sub.textContent = "настройка прав";
     else sub.textContent = "просмотр";
   }
@@ -382,6 +383,7 @@ let state = {
   members: [],
   positions: [],
   invites: [],
+  payProfiles: [],
 };
 
 
@@ -502,6 +504,7 @@ function normalizePositions(out) {
 
   return items.map((p) => {
     const x = { ...(p || {}) };
+    if (x.pay_profile_id != null && x.pay_profile_id !== "") x.pay_profile_id = Number(x.pay_profile_id) || null;
     const pc = parsePermCodes(x.permission_codes);
     if (pc.length) x.permission_codes = pc;
     else if (typeof x.permission_codes === "string") x.permission_codes = [];
@@ -516,6 +519,21 @@ function uniqueTitles() {
     if (t) set.add(t);
   }
   return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"));
+}
+
+
+function renderPayProfileOptions(selectedId = null) {
+  const current = selectedId == null || selectedId === "" ? "" : String(selectedId);
+  const options = ['<option value="">— без профиля начисления —</option>'];
+  for (const profile of state.payProfiles || []) {
+    if (profile?.is_active === false) continue;
+    const id = String(profile?.id || "");
+    if (!id) continue;
+    const count = Number(profile?.components_count || 0);
+    const suffix = count > 0 ? ` · компонентов: ${count}` : "";
+    options.push(`<option value="${esc(id)}" ${id === current ? "selected" : ""}>${esc(profile.title || `Профиль #${id}`)}${esc(suffix)}</option>`);
+  }
+  return options.join("");
 }
 
 function renderTitleDatalist() {
@@ -617,13 +635,16 @@ function renderPositionForm({ mode, position }) {
       </div>
 
       <div>
-        <div class="muted" style="margin-bottom:6px">Ставка</div>
-        <input id="f_rate" type="number" inputmode="decimal" placeholder="0" value="${esc(p.rate ?? "")}" ${canEditMain ? "" : "disabled"} />
+        <div class="muted" style="margin-bottom:6px">Профиль зарплаты</div>
+        <select id="f_pay_profile" ${canEditMain ? "" : "disabled"}>${renderPayProfileOptions(p.pay_profile_id ?? "")}</select>
+        <div class="muted" style="margin-top:6px; font-size:12px">Можно оставить без профиля, а затем назначить его позже.</div>
       </div>
 
       <div>
-        <div class="muted" style="margin-bottom:6px">Процент от продаж</div>
-        <input id="f_percent" type="number" inputmode="decimal" placeholder="0" value="${esc(p.percent ?? "")}" ${canEditMain ? "" : "disabled"} />
+        <div class="muted" style="margin-bottom:6px">Начисление</div>
+        <div class="itemcard" style="padding:10px 12px; min-height:44px; display:flex; align-items:center">
+          <span class="muted" id="f_pay_profile_hint">${esc(p.pay_profile_title || "Без назначенного профиля")}</span>
+        </div>
       </div>
     </div>
 
@@ -645,25 +666,15 @@ function renderPositionForm({ mode, position }) {
 function collectPayload(base = {}) {
   const titleEl = document.getElementById("f_title");
   const memberEl = document.getElementById("f_member");
-  const rateEl = document.getElementById("f_rate");
-  const percentEl = document.getElementById("f_percent");
+  const payProfileEl = document.getElementById("f_pay_profile");
 
   const title = (titleEl && !titleEl.disabled) ? (titleEl.value || "").trim() : String(base.title || "").trim();
   const member_user_id = (memberEl && !memberEl.disabled) ? Number(memberEl.value) : Number(base.member_user_id);
-
-  const toNum = (v) => {
-    const x = Number(String(v ?? "").replace(",", "."));
-    return Number.isFinite(x) ? x : 0;
-  };
-
-  const rate = (rateEl && !rateEl.disabled) ? toNum(rateEl.value) : toNum(base.rate);
-  const percent = (percentEl && !percentEl.disabled) ? toNum(percentEl.value) : toNum(base.percent);
+  const pay_profile_id = (payProfileEl && !payProfileEl.disabled) ? (payProfileEl.value ? Number(payProfileEl.value) : null) : (base.pay_profile_id ? Number(base.pay_profile_id) : null);
 
   if (!title) throw new Error("Укажите название должности");
   if (!Number.isFinite(member_user_id) || member_user_id <= 0) throw new Error("Выберите сотрудника");
-
-  if (rateEl && !rateEl.disabled && !Number.isFinite(rate)) throw new Error("Укажите корректную ставку (число)");
-  if (percentEl && !percentEl.disabled && !Number.isFinite(percent)) throw new Error("Укажите корректный процент (число)");
+  if (pay_profile_id !== null && (!Number.isFinite(pay_profile_id) || pay_profile_id <= 0)) throw new Error("Выберите корректный профиль зарплаты");
 
   // New permissions list (permission codes)
   const modal = document.getElementById("posModal");
@@ -682,8 +693,9 @@ function collectPayload(base = {}) {
   return {
     title,
     member_user_id,
-    rate: Math.max(0, Math.round(rate)),
-    percent: Math.max(0, Math.min(100, Math.round(percent))),
+    rate: 0,
+    percent: 0,
+    pay_profile_id,
     // keep active by default for create; on update backend accepts bool|None
     is_active: (base.is_active === false) ? false : true,
     // permission codes (source of truth)
@@ -819,6 +831,16 @@ async function openCreateModal() {
   if (sel && sel.options.length) sel.value = sel.options[0].value;
   setupPermUX();
 
+  const payProfileSelectCreate = document.getElementById("f_pay_profile");
+  const payProfileHintCreate = document.getElementById("f_pay_profile_hint");
+  const syncPayProfileHintCreate = () => {
+    if (!payProfileHintCreate) return;
+    const selected = (state.payProfiles || []).find((it) => String(it?.id || "") === String(payProfileSelectCreate?.value || ""));
+    payProfileHintCreate.textContent = selected ? String(selected.title || "") : "Без назначенного профиля";
+  };
+  payProfileSelectCreate?.addEventListener("change", syncPayProfileHintCreate);
+  syncPayProfileHintCreate();
+
   document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
 
   document.getElementById("btnSavePos")?.addEventListener("click", async () => {
@@ -858,6 +880,16 @@ async function openEditModal(p, modeOverride = null) {
   const sel = document.getElementById("f_member");
   if (sel) sel.value = String(p.member_user_id ?? "");
   setupPermUX();
+
+  const payProfileSelectCreate = document.getElementById("f_pay_profile");
+  const payProfileHintCreate = document.getElementById("f_pay_profile_hint");
+  const syncPayProfileHintCreate = () => {
+    if (!payProfileHintCreate) return;
+    const selected = (state.payProfiles || []).find((it) => String(it?.id || "") === String(payProfileSelectCreate?.value || ""));
+    payProfileHintCreate.textContent = selected ? String(selected.title || "") : "Без назначенного профиля";
+  };
+  payProfileSelectCreate?.addEventListener("change", syncPayProfileHintCreate);
+  syncPayProfileHintCreate();
 
   document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
 
@@ -959,12 +991,22 @@ function renderPositions() {
       if (sel && sel.options.length) sel.value = sel.options[0].value;
   setupPermUX();
 
+      const payProfileSelectCreate = document.getElementById("f_pay_profile");
+      const payProfileHintCreate = document.getElementById("f_pay_profile_hint");
+      const syncPayProfileHintCreate = () => {
+        if (!payProfileHintCreate) return;
+        const selected = (state.payProfiles || []).find((it) => String(it?.id || "") === String(payProfileSelectCreate?.value || ""));
+        payProfileHintCreate.textContent = selected ? String(selected.title || "") : "Без назначенного профиля";
+      };
+      payProfileSelectCreate?.addEventListener("change", syncPayProfileHintCreate);
+      syncPayProfileHintCreate();
+
       document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
       document.getElementById("btnSavePos")?.addEventListener("click", async () => {
         let payload;
         try { payload = collectPayload(); } catch (e) { toast(e?.message || "Ошибка формы", "warn"); return; }
         try {
-          await createVenuePosition(state.venueId, payload);
+          await callPositionApiWithPerms({ kind: "create", payload, permCodes: auth.canManagePerms ? payload._perm_codes : null });
           toast("Должность создана", "ok");
           closePosModal();
           await load();
@@ -987,7 +1029,7 @@ function renderPositions() {
         <div class="list__main">
           <div><b>${esc(who)}</b></div>
           <div class="muted" style="margin-top:4px">
-            Ставка: ${esc(money(p.rate))} · Процент: ${esc(money(p.percent))}% ·
+            Профиль: ${esc(p.pay_profile_title || "не назначен")} ·
             Отчёты: ${posReportsEnabled(p) ? "да" : "нет"} · График: ${posScheduleManage(p) ? "да" : "нет"}
           </div>
         </div>
@@ -1146,6 +1188,13 @@ async function load() {
   });
 
   state.invites = (m?.pending_invites || []).slice().sort((a, b) => String(a.tg_username || "").localeCompare(String(b.tg_username || ""), "ru"));
+
+  try {
+    const profiles = await getPayProfiles(state.venueId, { includeInactive: false });
+    state.payProfiles = Array.isArray(profiles) ? profiles : [];
+  } catch {
+    state.payProfiles = [];
+  }
 
   const pos = await getVenuePositions(state.venueId);
   state.positions = normalizePositions(pos);

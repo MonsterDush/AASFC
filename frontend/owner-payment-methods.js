@@ -39,6 +39,35 @@ function isOwner(perms) {
   return String(perms?.role || "").toUpperCase() === "OWNER";
 }
 
+
+function slugifyCode(value, fallback = "item") {
+  const map = { а:"a", б:"b", в:"v", г:"g", д:"d", е:"e", ё:"e", ж:"zh", з:"z", и:"i", й:"y", к:"k", л:"l", м:"m", н:"n", о:"o", п:"p", р:"r", с:"s", т:"t", у:"u", ф:"f", х:"h", ц:"ts", ч:"ch", ш:"sh", щ:"sch", ъ:"", ы:"y", ь:"", э:"e", ю:"yu", я:"ya" };
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .split("")
+    .map((ch) => (map[ch] !== undefined ? map[ch] : ch))
+    .join("")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_")
+    .slice(0, 64) || fallback;
+}
+
+function ensureUniqueCode(baseCode, items = [], currentId = null) {
+  const used = new Set((Array.isArray(items) ? items : [])
+    .filter((it) => currentId == null || String(it?.id ?? "") !== String(currentId))
+    .map((it) => String(it?.code || "").trim().toLowerCase())
+    .filter(Boolean));
+  let code = String(baseCode || "").trim().toLowerCase();
+  if (!code) code = "item";
+  if (!used.has(code)) return code;
+  let idx = 2;
+  while (used.has(`${code}_${idx}`)) idx += 1;
+  return `${code}_${idx}`;
+}
+
+
 function renderShell() {
   root.innerHTML = `
     <div class="topbar">
@@ -236,7 +265,7 @@ function editorForm({ mode, item }) {
       <div>
         <div class="muted" style="margin-bottom:6px">Код (slug)</div>
         <input id="f_code" placeholder="cash" value="${esc(it.code || "")}" />
-        <div class="muted" style="margin-top:6px; font-size:12px">Например: cash, cashless, sbp, transfer</div>
+        <div class="muted" style="margin-top:6px; font-size:12px">Код генерируется из названия автоматически. При желании его можно поправить вручную.</div>
       </div>
       <div>
         <div class="muted" style="margin-bottom:6px">Название</div>
@@ -264,13 +293,23 @@ function editorForm({ mode, item }) {
 
 function wireEditor({ mode, item }) {
   document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);
+  const titleEl = document.getElementById("f_title");
+  const codeEl = document.getElementById("f_code");
+  if (titleEl && codeEl) {
+    const syncCode = () => {
+      if (codeEl.dataset.touched === "1") return;
+      codeEl.value = ensureUniqueCode(slugifyCode(titleEl.value, "payment_method"), state.items, item?.id ?? null);
+    };
+    titleEl.addEventListener("input", syncCode);
+    codeEl.addEventListener("input", () => { codeEl.dataset.touched = "1"; });
+    if (!item) syncCode();
+  }
   document.getElementById("btnSave")?.addEventListener("click", async () => {
-    const code = document.getElementById("f_code")?.value?.trim();
     const title = document.getElementById("f_title")?.value?.trim();
+    const code = String(document.getElementById("f_code")?.value || ensureUniqueCode(slugifyCode(title, "payment_method"), state.items, item?.id ?? null)).trim();
     const sort = document.getElementById("f_sort")?.value;
     const is_active = !!document.getElementById("f_active")?.checked;
 
-    if (!code) return toast("Укажи код", "err");
     if (!title) return toast("Укажи название", "err");
 
     const payload = { code, title, sort_order: Number(sort || 0), is_active };

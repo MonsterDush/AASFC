@@ -53,6 +53,7 @@ class NotificationSettingsIn(BaseModel):
     notify_enabled: bool | None = None
     notify_adjustments: bool | None = None
     notify_shifts: bool | None = None
+    notify_shift_comments: bool | None = None
     notify_day_economics: bool | None = None
     notify_salary: bool | None = None
     notify_soft_alerts: bool | None = None
@@ -108,6 +109,7 @@ def _notification_settings_payload(user: User) -> dict:
         "notify_enabled": user.notify_enabled,
         "notify_adjustments": user.notify_adjustments,
         "notify_shifts": user.notify_shifts,
+        "notify_shift_comments": user.notify_shift_comments,
         "notify_day_economics": user.notify_day_economics,
         "notify_salary": user.notify_salary,
         "notify_soft_alerts": user.notify_soft_alerts,
@@ -133,6 +135,7 @@ def me(
         "notify_enabled": user.notify_enabled,
         "notify_adjustments": user.notify_adjustments,
         "notify_shifts": user.notify_shifts,
+        "notify_shift_comments": user.notify_shift_comments,
         "notify_day_economics": user.notify_day_economics,
         "notify_salary": user.notify_salary,
         "notify_soft_alerts": user.notify_soft_alerts,
@@ -215,6 +218,8 @@ def update_notification_settings(
         user.notify_adjustments = bool(payload.notify_adjustments)
     if payload.notify_shifts is not None:
         user.notify_shifts = bool(payload.notify_shifts)
+    if payload.notify_shift_comments is not None:
+        user.notify_shift_comments = bool(payload.notify_shift_comments)
     if payload.notify_day_economics is not None:
         user.notify_day_economics = bool(payload.notify_day_economics)
     if payload.notify_salary is not None:

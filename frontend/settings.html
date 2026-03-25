@@ -227,6 +227,7 @@
     function typeLabel(value) {
       const code = String(value || "").toLowerCase();
       if (code === "shift_reminder") return "Напоминание о смене";
+      if (code === "shift_comment") return "Комментарий к смене";
       if (code === "day_economics_summary") return "Экономика дня";
       if (code === "salary_day_breakdown") return "Начисления за день";
       if (code === "soft_alerts") return "Мягкий алерт";
@@ -296,6 +297,7 @@
       const enabled = !!state.notify_enabled;
       const adjustments = !!state.notify_adjustments;
       const shifts = !!state.notify_shifts;
+      const shiftComments = !!state.notify_shift_comments;
       const dayEconomics = !!state.notify_day_economics;
       const salary = !!state.notify_salary;
       const softAlerts = !!state.notify_soft_alerts;
@@ -341,6 +343,13 @@
               <select id="shiftLeadHours" class="input minw-240" ${(locked || !enabled || !shifts) ? "disabled" : ""}>
                 ${leadOptions.map((value) => `<option value="${value}" ${Number(value) === leadHours ? "selected" : ""}>За ${value} ${Number(value) === 1 ? "час" : (Number(value) < 5 ? "часа" : "часов")}</option>`).join("")}
               </select>
+            </div>
+            <div class="toggle mt-8">
+              <div class="toggle__label">
+                <div class="toggle__title">Комментарии к смене</div>
+                <div class="toggle__desc">Когда по вашей смене оставили новый комментарий в графике</div>
+              </div>
+              ${sw("swShiftComments", shiftComments, locked || !enabled)}
             </div>
 
             <div class="muted mb-6 mt-10 small">Экономика дня</div>
@@ -390,6 +399,7 @@
       const elAll = document.getElementById("swAll");
       const elAdj = document.getElementById("swAdj");
       const elShift = document.getElementById("swShift");
+      const elShiftComments = document.getElementById("swShiftComments");
       const elDayEconomics = document.getElementById("swDayEconomics");
       const elSalary = document.getElementById("swSalary");
       const elSoftAlerts = document.getElementById("swSoftAlerts");
@@ -408,7 +418,7 @@
       const syncDisabled = () => {
         const on = !!elAll?.checked && !locked;
         if (fieldsWrap) fieldsWrap.classList.toggle("is-dimmed", !on);
-        [elAdj, elShift, elDayEconomics, elSalary, elSoftAlerts, elDetailLevel].forEach((el) => {
+        [elAdj, elShift, elShiftComments, elDayEconomics, elSalary, elSoftAlerts, elDetailLevel].forEach((el) => {
           if (el) el.disabled = !on;
         });
         if (elLeadHours) elLeadHours.disabled = !on || !elShift?.checked;
@@ -428,6 +438,7 @@
             notify_enabled: !!elAll?.checked,
             notify_adjustments: !!elAdj?.checked,
             notify_shifts: !!elShift?.checked,
+            notify_shift_comments: !!elShiftComments?.checked,
             notify_day_economics: !!elDayEconomics?.checked,
             notify_salary: !!elSalary?.checked,
             notify_soft_alerts: !!elSoftAlerts?.checked,
