@@ -21,7 +21,7 @@
     </div>
 
     <div class="card section-card">
-      <div class="page-caption">Управление заведением, участниками и финансовыми разделами. Главные переходы собраны в компактные группы, чтобы экран не выглядел как сплошное меню.</div>
+      <div class="page-caption">Управление заведением, участниками, финансами и справочниками. Главные переходы собраны в компактные группы, чтобы экран не выглядел как сплошное меню.</div>
 
       <div class="itemcard mt-12 hidden" id="archiveNotice">
         <b>Заведение в архиве</b>
@@ -53,34 +53,46 @@
                   <div class="muted">Основные разделы управления заведением и командой.</div>
                 </div>
               </div>
-              <div class="action-grid mt-12">
+              <div class="action-grid action-grid--adaptive mt-12">
                 <a class="btn" id="openPositions" href="#">Должности</a>
                 <a class="btn" id="openInvites" href="#">Приглашения</a>
                 <a class="btn" id="openShifts" href="#">График</a>
                 <a class="btn" id="openReports" href="#">Отчёты</a>
-                <a class="btn" id="openDepartments" href="#">Департаменты</a>
-                <a class="btn" id="openPaymentMethods" href="#">Оплаты</a>
-                <a class="btn" id="openKpi" href="#">KPI</a>
               </div>
       </div>
 
-      
-      <div class="itemcard mt-12 section-card" id="financeCard">
-        <div class="section-card__head">
-          <div class="section-card__title">
-            <b>Финансы</b>
-            <div class="muted">Сводка, зарплаты, расходы и аналитика дня.</div>
+      <div class="section-split-grid mt-12">
+        <div class="itemcard section-card" id="financeCard">
+          <div class="section-card__head">
+            <div class="section-card__title">
+              <b>Финансы</b>
+              <div class="muted">Сводка, зарплаты, расходы и аналитика дня.</div>
+            </div>
+          </div>
+          <div class="action-grid action-grid--adaptive mt-12">
+            <a class="btn" id="openSummary" href="#">Сводка</a>
+            <a class="btn" id="openPayProfiles" href="#">Профили зарплаты</a>
+            <a class="btn" id="openPayroll" href="#">Начисления</a>
+            <a class="btn" id="openDayEconomics" href="#">Экономика дня</a>
+            <a class="btn ghost" id="openEconomicsPlans" href="#">Планы</a>
+            <a class="btn ghost" id="openEconomicsRules" href="#">Нормативы</a>
+            <a class="btn" id="openExpenses" href="#">Расходы</a>
+            <a class="btn" id="openAdjustments" href="#">Штрафы</a>
           </div>
         </div>
-        <div class="action-grid mt-12">
-          <a class="btn" id="openSummary" href="#">Сводка</a>
-          <a class="btn" id="openPayProfiles" href="#">Профили зарплаты</a>
-          <a class="btn" id="openPayroll" href="#">Начисления</a>
-          <a class="btn" id="openDayEconomics" href="#">Экономика дня</a>
-          <a class="btn ghost" id="openEconomicsPlans" href="#">Планы</a>
-          <a class="btn ghost" id="openEconomicsRules" href="#">Нормативы</a>
-          <a class="btn" id="openExpenses" href="#">Расходы</a>
-          <a class="btn" id="openAdjustments" href="#">Штрафы</a>
+
+        <div class="itemcard section-card" id="referencesCard">
+          <div class="section-card__head">
+            <div class="section-card__title">
+              <b>Справочники</b>
+              <div class="muted">Базовые справочники для выручки, расходов и KPI.</div>
+            </div>
+          </div>
+          <div class="action-grid action-grid--adaptive mt-12">
+            <a class="btn" id="openDepartments" href="#">Департаменты</a>
+            <a class="btn" id="openPaymentMethods" href="#">Оплаты</a>
+            <a class="btn" id="openKpi" href="#">KPI</a>
+          </div>
         </div>
       </div>
 
@@ -133,7 +145,7 @@
     <div class="modal__backdrop"></div>
     <div class="modal__panel">
       <div class="modal__head">
-        <div class="modal__title">Детали</div>
+        <div class="modal__title">JSON</div>
         <button class="btn" data-close>Закрыть</button>
       </div>
       <div class="modal__body"></div>
@@ -335,8 +347,14 @@ openAdjustments.href = canManageAdjustments
 
           const financeCard = document.getElementById("financeCard");
           if (financeCard) {
-            const showFinance = (openAdjustments?.style.display !== "none") || (openSummary?.style.display !== "none") || (openPayProfiles?.style.display !== "none") || (openPayroll?.style.display !== "none") || (openExpenses?.style.display !== "none");
+            const showFinance = (openAdjustments?.style.display !== "none") || (openSummary?.style.display !== "none") || (openPayProfiles?.style.display !== "none") || (openPayroll?.style.display !== "none") || (openDayEconomics?.style.display !== "none") || (openExpenses?.style.display !== "none") || (openEconomicsPlans?.style.display !== "none") || (openEconomicsRules?.style.display !== "none");
             financeCard.style.display = showFinance ? "" : "none";
+          }
+
+          const referencesCard = document.getElementById("referencesCard");
+          if (referencesCard) {
+            const showReferences = (openDepartments?.style.display !== "none") || (openPaymentMethods?.style.display !== "none") || (openKpi?.style.display !== "none");
+            referencesCard.style.display = showReferences ? "" : "none";
           }
 
           const tipsCard = document.getElementById("tipsSettingsCard");
