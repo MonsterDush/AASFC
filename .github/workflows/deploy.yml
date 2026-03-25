@@ -68,6 +68,9 @@ jobs:
               "$VENV_BIN/python" -m app.core.sync_permissions
 
               sudo systemctl restart axelio-api-prod
+              sudo systemctl restart axelio-bot-prod
+              sudo systemctl restart axelio-shift-reminders-prod.timer
+              sudo systemctl restart axelio-notification-jobs-prod.timer
               sudo systemctl reload nginx
 
               echo "Deployed main -> prod"
