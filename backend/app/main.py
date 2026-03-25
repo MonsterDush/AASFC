@@ -1,18 +1,16 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.config import settings
 
 app = FastAPI(title="Axelio API")
-
-from fastapi.middleware.cors import CORSMiddleware
 from app.routers.venues import router as venues_router
 from app.routers.public_invites import router as public_invites_router
 from app.routers import auth, me
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://app-dev.axelio.ru",
-        "https://web.telegram.org",
-    ],
+    allow_origins=settings.cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

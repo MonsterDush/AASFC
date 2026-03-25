@@ -1,6 +1,55 @@
 import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
 
-export const API_BASE = "https://api-dev.axelio.ru";
+function normalizeBaseUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw.replace(/\/+$/, "");
+}
+
+function readRuntimeApiBase() {
+  if (!isBrowser()) return "";
+  try {
+    const winValue = normalizeBaseUrl(window.APP_CONFIG?.API_BASE || window.__APP_CONFIG__?.API_BASE || "");
+    if (winValue) return winValue;
+  } catch {}
+  try {
+    const metaValue = normalizeBaseUrl(document.querySelector('meta[name="api-base"]')?.content || "");
+    if (metaValue) return metaValue;
+  } catch {}
+  return "";
+}
+
+function deriveApiBaseFromLocation() {
+  if (!isBrowser()) return "";
+  const proto = location.protocol === "http:" ? "http:" : "https:";
+  const host = String(location.hostname || "").trim().toLowerCase();
+  if (!host) return "";
+
+  if (host === "localhost" || host === "127.0.0.1") {
+    return `${proto}//${host}:9001`;
+  }
+
+  const parts = host.split(".");
+  if (parts[0] === "app") {
+    parts[0] = "api";
+    return `${proto}//${parts.join(".")}`;
+  }
+  if (parts[0].startsWith("app-")) {
+    parts[0] = parts[0].replace(/^app-/, "api-");
+    return `${proto}//${parts.join(".")}`;
+  }
+  if (parts[0] === "api" || parts[0].startsWith("api-")) {
+    return `${proto}//${host}`;
+  }
+
+  return `${proto}//${host}`;
+}
+
+function resolveApiBase() {
+  return normalizeBaseUrl(readRuntimeApiBase() || deriveApiBaseFromLocation());
+}
+
+export const API_BASE = resolveApiBase();
 export const AUTH_PAGE = "/auth.html";
 
 function isBrowser() {

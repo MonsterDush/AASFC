@@ -24,6 +24,11 @@ class Settings(BaseSettings):
 
     # Cookie
     COOKIE_DOMAIN: str = ".axelio.ru"
+
+    # Public app/base URLs
+    FRONTEND_BASE_URL: str = ""
+    APP_BASE_URL: str = ""
+    CORS_ALLOW_ORIGINS: str = ""
     COOKIE_SECURE: bool = True
     ACCESS_TOKEN_TTL_SECONDS: int = 60 * 60 * 24 * 7  # 7 days
 
@@ -60,6 +65,44 @@ class Settings(BaseSettings):
     SMS_RU_FROM: str = ""
     SMS_RU_CALL_ADD_URL: str = "https://sms.ru/callcheck/add"
     SMS_RU_CALL_STATUS_URL: str = "https://sms.ru/callcheck/status"
+
+    def frontend_base_url(self) -> str:
+        raw = (self.FRONTEND_BASE_URL or self.APP_BASE_URL or "").strip().rstrip("/")
+        if raw:
+            return raw
+        iss = (self.JWT_ISS or "").strip().lower()
+        if "dev" in iss:
+            return "https://app-dev.axelio.ru"
+        return "https://app.axelio.ru"
+
+    def cors_allow_origins(self) -> list[str]:
+        raw = (self.CORS_ALLOW_ORIGINS or "").strip()
+        if raw:
+            seen: set[str] = set()
+            origins: list[str] = []
+            for part in raw.replace("\n", ",").replace(";", ",").split(","):
+                item = part.strip().rstrip("/")
+                if not item or item in seen:
+                    continue
+                seen.add(item)
+                origins.append(item)
+            if origins:
+                return origins
+        defaults = [
+            self.frontend_base_url(),
+            "https://app-dev.axelio.ru",
+            "https://app.axelio.ru",
+            "https://web.telegram.org",
+        ]
+        seen: set[str] = set()
+        result: list[str] = []
+        for item in defaults:
+            value = str(item or "").strip().rstrip("/")
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            result.append(value)
+        return result
 
     def super_admin_ids(self) -> set[int]:
         raw = (self.SUPER_ADMIN_TG_USER_IDS or "").strip()

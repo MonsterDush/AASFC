@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import get_current_user, get_current_user_optional
 from app.auth.guards import require_super_admin
 from app.core.db import SessionLocal, get_db
+from app.core.config import settings
 from app.core.tg import normalize_tg_username, send_telegram_message
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.core.permissions_registry import PERMISSIONS
@@ -5648,7 +5649,7 @@ def _should_notify_user(u: User, kind: str) -> bool:
 
 
 def _frontend_base_url() -> str:
-    return (os.getenv("FRONTEND_BASE_URL") or os.getenv("APP_BASE_URL") or "https://app-dev.axelio.ru").rstrip("/")
+    return settings.frontend_base_url()
 
 
 def _build_owner_day_economics_link(*, venue_id: int, target_date: date) -> str:
