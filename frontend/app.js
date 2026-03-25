@@ -133,6 +133,59 @@ export function wa() {
   return window.Telegram?.WebApp || null;
 }
 
+export function looksLikeTelegramWebApp() {
+  try {
+    if (wa()) return true;
+    if (typeof window.TelegramWebviewProxy !== "undefined") return true;
+    if (typeof window.TelegramGameProxy !== "undefined") return true;
+    const raw = `${location.search || ""}&${location.hash || ""}`;
+    if (/tgWebApp(Data|Version|Platform|ThemeParams|StartParam|BotInline)/i.test(raw)) return true;
+    const ua = String(navigator.userAgent || "");
+    if (/Telegram/i.test(ua)) return true;
+  } catch {}
+  return false;
+}
+
+export async function ensureTelegramWebAppLoaded({ timeoutMs = 2500 } = {}) {
+  if (wa()) return wa();
+  try {
+    const loader = window.AxelioTelegramLoader;
+    if (loader && typeof loader.load === "function") {
+      return await loader.load({ timeoutMs });
+    }
+  } catch {}
+
+  if (!looksLikeTelegramWebApp()) return null;
+
+  return await new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(value || wa() || null);
+    };
+    const existing = document.querySelector('script[data-axelio-telegram="external"]');
+    if (existing) {
+      const poll = () => {
+        if (wa()) return finish(wa());
+        if (!settled) setTimeout(poll, 60);
+      };
+      poll();
+    } else {
+      const s = document.createElement("script");
+      s.async = true;
+      s.src = "https://telegram.org/js/telegram-web-app.js";
+      s.setAttribute("data-axelio-telegram", "external");
+      s.onload = () => finish(wa());
+      s.onerror = () => finish(null);
+      document.head.appendChild(s);
+    }
+    timer = setTimeout(() => finish(null), Math.max(300, Number(timeoutMs) || 2500));
+  });
+}
+
 // ------------------------------
 // Theme (system / light / dark / hookahplace)
 // ------------------------------
@@ -237,6 +290,12 @@ export function applyTelegramTheme() {
   const el = document.querySelector("[data-userpill]");
   if (!w) {
     if (el) el.textContent = "не в Telegram";
+    if (looksLikeTelegramWebApp()) {
+      ensureTelegramWebAppLoaded({ timeoutMs: 1800 }).then((loaded) => {
+        if (!loaded) return;
+        try { applyTelegramTheme(); } catch {}
+      }).catch(() => {});
+    }
     return;
   }
 
@@ -505,6 +564,11 @@ function sleep(ms) {
 }
 
 export async function waitForTelegramInitData({ maxMs = 5000, stepMs = 100 } = {}) {
+  if (!wa() && looksLikeTelegramWebApp()) {
+    try {
+      await ensureTelegramWebAppLoaded({ timeoutMs: Math.min(Math.max(stepMs * 5, 1200), maxMs) });
+    } catch {}
+  }
   const startedAt = Date.now();
   while (Date.now() - startedAt < maxMs) {
     const value = String(wa()?.initData || "").trim();
