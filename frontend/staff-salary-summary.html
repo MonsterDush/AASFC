@@ -16,7 +16,7 @@
   </div>
 
   <script type="module">
-import { getActiveVenueId, setActiveVenueId } from "/app.js?v=20260326-tgloader1";
+import { getActiveVenueId, setActiveVenueId } from "/app.js";
 const p = new URLSearchParams(location.search);
 const venueId = p.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);

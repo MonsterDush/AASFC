@@ -10,7 +10,7 @@ import {
   api,
   API_BASE,
   toast,
-} from "/app.js?v=20260321-miniappfix1";
+} from "/app.js";
 import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix1";
 
 function fmtMoneyMinor(minor) {

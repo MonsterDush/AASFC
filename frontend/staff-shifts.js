@@ -11,7 +11,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   getVenuePositions,
-} from "/app.js?v=20260321-miniappfix1";
+} from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
 

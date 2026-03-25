@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
   getMe,
   getMyVenuePermissions,
-} from "/app.js?v=20260321-miniappfix1";
+} from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
 
