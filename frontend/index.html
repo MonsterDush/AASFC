@@ -27,59 +27,48 @@
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <script>
+    window.__axelioIndexWatchdog = setTimeout(() => {
+      const splash = document.getElementById("splash");
+      const fallback = document.getElementById("fallback");
+      if (splash) splash.style.display = "none";
+      if (fallback) fallback.style.display = "block";
+    }, 8000);
+  </script>
  <script type="module">
-  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, wa, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260325-authflowfix3";
+  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260325-indexbootfix2";
 
   const splash = document.getElementById("splash");
   const fallback = document.getElementById("fallback");
   const hideSplash = () => splash && (splash.style.display = "none");
 
-  const splashWatchdog = setTimeout(() => {
-    hideSplash();
-    fallback.style.display = "block";
-    toast("Загрузка заняла слишком много времени. Открой авторизацию вручную.", "warn");
-  }, 12000);
-
   applyTelegramTheme();
-
-  async function waitInitData() {
-    // Ждём, пока Telegram.WebApp станет доступен и появится initData
-    for (let i = 0; i < 100; i++) {
-      const w = wa();
-      const initData = w?.initData || "";
-      if (initData) return true;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    return false;
-  }
 
   (async () => {
     try {
-      const okInit = await waitInitData();
-      const login = await ensureLogin({ silent: true, redirectOnFail: false });
+      const login = await ensureLogin({ silent: true, redirectOnFail: false, timeoutMs: 5000, telegramWaitMs: 5000 });
 
-      if (!login.ok && !okInit) {
-        clearTimeout(splashWatchdog);
+      if (!login.ok && login.reason === "NO_INITDATA") {
         location.replace(buildAuthUrl(`${location.pathname}${location.search}${location.hash}`));
         return;
       }
 
       if (!login.ok) {
-        clearTimeout(splashWatchdog);
         hideSplash();
         fallback.style.display = "block";
         // Покажем понятную причину (если есть)
         const msg =
-          login.reason === "NO_INITDATA"
-            ? "Нет initData. Откройте Mini App через Telegram."
-            : (login.data?.detail || login.message || "Ошибка авторизации");
+          login.code === "TIMEOUT"
+            ? "Не удалось связаться с API. Проверь сервер и CORS."
+            : login.reason === "NO_INITDATA"
+              ? "Нет initData. Откройте Mini App через Telegram."
+              : (login.data?.detail || login.message || "Ошибка авторизации");
         toast(msg, "err");
         return;
       }
 
       const me = await getMe({ timeoutMs: 8000 });
       if (me?.system_role === "SUPER_ADMIN") {
-        clearTimeout(splashWatchdog);
         location.replace("/admin-venues.html");
         return;
       }
@@ -91,7 +80,6 @@
 // - Otherwise -> venues picker
 let venues = [];
 try { venues = await getMyVenues({ timeoutMs: 8000 }); } catch (e) {
-  clearTimeout(splashWatchdog);
   hideSplash();
   fallback.style.display = "block";
   toast(e?.code === "TIMEOUT" || /TIMEOUT/i.test(String(e?.message || "")) ? "Не удалось получить список заведений. Похоже, завис запрос /me/venues в Telegram WebView." : "Не удалось получить список заведений", "err");
@@ -99,7 +87,6 @@ try { venues = await getMyVenues({ timeoutMs: 8000 }); } catch (e) {
 }
 
 if (!Array.isArray(venues) || venues.length === 0) {
-  clearTimeout(splashWatchdog);
   location.replace("/app-venues.html");
   return;
 }
@@ -113,7 +100,6 @@ if (!v && venues.length === 1) v = venues[0];
 
 if (!v) {
   // No active venue and multiple venues -> let user pick
-  clearTimeout(splashWatchdog);
   location.replace("/app-venues.html");
   return;
 }
@@ -124,7 +110,6 @@ if (vid) setActiveVenueId(vid);
 // determine role in active venue
 const role = String(v?.my_role || "").toUpperCase();
 if (role) {
-  clearTimeout(splashWatchdog);
   location.replace(role === "STAFF"
     ? `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`
     : `/owner-summary.html?venue_id=${encodeURIComponent(vid)}`
@@ -136,19 +121,16 @@ if (role) {
 try {
   const perms = await getMyVenuePermissions(vid, { timeoutMs: 8000 });
   const r = String(perms?.role || "").toUpperCase();
-  clearTimeout(splashWatchdog);
   location.replace(r === "STAFF"
     ? `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`
     : `/owner-summary.html?venue_id=${encodeURIComponent(vid)}`
   );
   return;
 } catch {
-  clearTimeout(splashWatchdog);
   location.replace("/app-venues.html");
   return;
 }
 } catch (e) {
-      clearTimeout(splashWatchdog);
       hideSplash();
       fallback.style.display = "block";
       toast("Ошибка загрузки: " + (e?.data?.detail || e?.message || e), "err");
