@@ -4,8 +4,10 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.account_merge import merge_user_accounts
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import JwtConfig, create_access_token
 from app.auth.passwords import has_password, set_password, validate_new_password, verify_password
@@ -647,6 +649,10 @@ def verify_link_phone_code(
         code=payload.code,
         challenge_id=payload.challenge_id,
     )
+    existing_phone_user = find_user_by_phone(db, phone_e164=phone_e164)
+    if existing_phone_user is not None and existing_phone_user.id != user.id:
+        user = merge_user_accounts(db, target_user=user, source_user=existing_phone_user)
+
     link_phone_identity_to_user(db, user=user, phone_e164=phone_e164)
     if payload.new_password:
         set_password(user, payload.new_password)
@@ -683,6 +689,10 @@ def link_telegram_account(
         default_short_name = first_name or (tg_username.lstrip("@") if tg_username else None)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user payload")
+
+    existing_tg_user = db.execute(select(User).where(User.tg_user_id == tg_user_id)).scalar_one_or_none()
+    if existing_tg_user is not None and existing_tg_user.id != user.id:
+        user = merge_user_accounts(db, target_user=user, source_user=existing_tg_user)
 
     link_telegram_identity_to_user(
         db,
