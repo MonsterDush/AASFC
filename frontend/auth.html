@@ -14,6 +14,10 @@
     .call-number { font-size:20px; font-weight:700; letter-spacing:.02em; }
     .call-number a { color: inherit; text-decoration: none; }
     .telegram-widget-host { min-height: 50px; }
+    .login-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .login-actions .btn { flex: 0 0 auto; }
+    .password-flow-shell { display:flex; flex-direction:column; gap:12px; }
+    .password-flow-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   </style>
 </head>
 <body>
@@ -43,54 +47,54 @@
             <label class="auth-label" for="loginPasswordInput">Пароль</label>
             <input id="loginPasswordInput" type="password" placeholder="Минимум 8 символов" autocomplete="current-password" />
           </div>
-          <div class="row mt-4">
+          <div class="login-actions mt-4">
             <button class="btn primary" id="btnPasswordLogin">Войти</button>
-          </div>
-          <div class="row auth-inline-links">
-            <button class="btn sm" id="showSetupModeBtn" type="button">Впервые с номером</button>
             <button class="btn sm" id="showResetModeBtn" type="button">Забыли пароль?</button>
+            <button class="btn sm" id="showSetupModeBtn" type="button">Зарегистрироваться</button>
           </div>
         </div>
 
-        <div class="auth-divider mt-16"></div>
+        <div class="password-flow-shell hidden mt-16" id="passwordFlowShell">
+          <div class="auth-divider"></div>
 
-        <div class="row auth-mode-switch mt-16">
-          <button class="btn sm primary" id="modeSetupBtn" type="button">Первичная настройка</button>
-          <button class="btn sm" id="modeResetBtn" type="button">Сброс пароля</button>
-        </div>
-
-        <div class="verify-box mt-12">
-          <b id="passwordFlowTitle">Первичная настройка</b>
-          <div class="muted mt-8" id="passwordFlowHint">Подтверди номер звонком и сразу задай пароль для следующих входов.</div>
-
-          <div class="stack mt-12">
+          <div class="password-flow-header">
             <div>
-              <label class="auth-label" for="verifyPhoneInput">Номер телефона</label>
-              <input id="verifyPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
+              <b id="passwordFlowTitle">Первичная настройка</b>
+              <div class="muted mt-8" id="passwordFlowHint">Подтверди номер звонком и сразу задай пароль для следующих входов.</div>
             </div>
-            <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
-              <button class="btn" id="btnRequestCall">Получить номер для звонка</button>
-              <button class="btn hidden" id="btnRequestSmsFallback">Не получается? Получить SMS</button>
-            </div>
-            <div id="callMeta" class="muted verify-meta mt-8"></div>
-            <div id="callNumberBlock" class="call-number hidden mt-8"></div>
+            <button class="btn sm" id="hidePasswordFlowBtn" type="button">Назад ко входу</button>
+          </div>
 
-            <div id="smsFallbackBlock" class="hidden">
-              <label class="auth-label" for="smsCodeInput">Код из SMS</label>
-              <input id="smsCodeInput" placeholder="6 цифр" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
-              <div id="smsMeta" class="muted verify-meta mt-8"></div>
-            </div>
+          <div class="verify-box">
+            <div class="stack">
+              <div>
+                <label class="auth-label" for="verifyPhoneInput">Номер телефона</label>
+                <input id="verifyPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
+              </div>
+              <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
+                <button class="btn" id="btnRequestCall">Получить номер для звонка</button>
+                <button class="btn hidden" id="btnRequestSmsFallback">Не получается? Получить SMS</button>
+              </div>
+              <div id="callMeta" class="muted verify-meta mt-8"></div>
+              <div id="callNumberBlock" class="call-number hidden mt-8"></div>
 
-            <div>
-              <label class="auth-label" for="newPasswordInput">Новый пароль</label>
-              <input id="newPasswordInput" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
-            </div>
-            <div>
-              <label class="auth-label" for="confirmPasswordInput">Повтори пароль</label>
-              <input id="confirmPasswordInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
-            </div>
-            <div class="row mt-4">
-              <button class="btn primary" id="btnCompletePasswordFlow">Завершить подтверждение и сохранить пароль</button>
+              <div id="smsFallbackBlock" class="hidden">
+                <label class="auth-label" for="smsCodeInput">Код из SMS</label>
+                <input id="smsCodeInput" placeholder="6 цифр" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+                <div id="smsMeta" class="muted verify-meta mt-8"></div>
+              </div>
+
+              <div>
+                <label class="auth-label" for="newPasswordInput">Новый пароль</label>
+                <input id="newPasswordInput" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
+              </div>
+              <div>
+                <label class="auth-label" for="confirmPasswordInput">Повтори пароль</label>
+                <input id="confirmPasswordInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
+              </div>
+              <div class="row mt-4">
+                <button class="btn primary" id="btnCompletePasswordFlow">Завершить подтверждение и сохранить пароль</button>
+              </div>
             </div>
           </div>
         </div>
@@ -239,8 +243,8 @@
       btnPasswordLogin: document.getElementById("btnPasswordLogin"),
       showSetupModeBtn: document.getElementById("showSetupModeBtn"),
       showResetModeBtn: document.getElementById("showResetModeBtn"),
-      modeSetupBtn: document.getElementById("modeSetupBtn"),
-      modeResetBtn: document.getElementById("modeResetBtn"),
+      passwordFlowShell: document.getElementById("passwordFlowShell"),
+      hidePasswordFlowBtn: document.getElementById("hidePasswordFlowBtn"),
       passwordFlowTitle: document.getElementById("passwordFlowTitle"),
       passwordFlowHint: document.getElementById("passwordFlowHint"),
       verifyPhoneInput: document.getElementById("verifyPhoneInput"),
@@ -320,13 +324,22 @@
       els.smsMeta.textContent = "";
     }
 
+    function openPasswordFlow(mode) {
+      setPasswordMode(mode);
+      els.passwordFlowShell.classList.remove("hidden");
+      els.verifyPhoneInput.focus();
+    }
+
+    function hidePasswordFlow() {
+      resetVerificationState();
+      els.passwordFlowShell.classList.add("hidden");
+    }
+
     function setPasswordMode(mode) {
       passwordFlowMode = mode === MODE_RESET ? MODE_RESET : MODE_SETUP;
       resetVerificationState();
       const isReset = passwordFlowMode === MODE_RESET;
-      els.modeSetupBtn.classList.toggle("primary", !isReset);
-      els.modeResetBtn.classList.toggle("primary", isReset);
-      els.passwordFlowTitle.textContent = isReset ? "Сброс пароля" : "Первичная настройка";
+      els.passwordFlowTitle.textContent = isReset ? "Сброс пароля" : "Регистрация";
       const fallbackHint = isSmsEnabled()
         ? "Если звонок не проходит, через 10 секунд можно запросить SMS."
         : "Сейчас подтверждение доступно только звонком.";
@@ -336,7 +349,7 @@
       els.btnRequestCall.textContent = isReset ? "Получить номер для звонка" : "Получить номер для звонка";
       els.btnCompletePasswordFlow.textContent = isReset
         ? "Сбросить пароль"
-        : "Подтвердить номер и сохранить пароль";
+        : "Подтвердить номер и завершить регистрацию";
     }
 
     function validateNewPassword() {
@@ -453,16 +466,9 @@
       }
     };
 
-    els.showSetupModeBtn.onclick = () => {
-      setPasswordMode(MODE_SETUP);
-      els.verifyPhoneInput.focus();
-    };
-    els.showResetModeBtn.onclick = () => {
-      setPasswordMode(MODE_RESET);
-      els.verifyPhoneInput.focus();
-    };
-    els.modeSetupBtn.onclick = () => setPasswordMode(MODE_SETUP);
-    els.modeResetBtn.onclick = () => setPasswordMode(MODE_RESET);
+    els.showSetupModeBtn.onclick = () => openPasswordFlow(MODE_SETUP);
+    els.showResetModeBtn.onclick = () => openPasswordFlow(MODE_RESET);
+    els.hidePasswordFlowBtn.onclick = () => hidePasswordFlow();
 
     els.btnRequestCall.onclick = async () => {
       try {
@@ -593,6 +599,7 @@
     nextHint.textContent = `После входа тебя вернёт на ${getSafeNext()}.`;
     await loadPhoneAuthConfig();
     setPasswordMode(MODE_SETUP);
+    hidePasswordFlow();
     if (!(await initExistingSession())) {
       queueMicrotask(async () => {
         const insideTelegram = Boolean(await waitForTelegramInitData({ maxMs: 800, stepMs: 100 }));
