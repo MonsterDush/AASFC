@@ -1480,7 +1480,7 @@ a.btn.primary{color:var(--accentText)}
 }
 
 
-.section-card{display:grid;gap:12px}
+.section-card{display:grid;gap:12px;align-content:flex-start;}
 .section-card__head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
 .section-card__title{display:grid;gap:6px}
 .section-card__actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
