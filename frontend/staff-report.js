@@ -370,21 +370,23 @@ function renderMonth() {
     const rep = reportsByDate.get(dStr) || null;
     const hasRep = !!rep;
     const status = String(rep?.status || "").toUpperCase();
-
-    const badgeHtml = hasRep
-      ? `<span class="badge ${status === "CLOSED" ? "badge--closed" : "badge--draft"}">${status === "CLOSED" ? "закрыто" : "черновик"}</span>`
-      : ``;
+    const isCurrentMonth = ym(d) === monthStr;
+    const isPastDay = dStr < todayStr;
+    const isClosed = isCurrentMonth && hasRep && status === "CLOSED";
+    const isDraft = isCurrentMonth && hasRep && status !== "CLOSED";
+    const isOverdue = isCurrentMonth && isPastDay && !isClosed && !isDraft;
 
     cell.innerHTML = `
       <div class="cal-daynum">${d.getDate()}</div>
-      <div class="cal-badges">${badgeHtml}</div>
+      <div class="cal-badges"></div>
     `;
 
     if (ym(d) !== monthStr) cell.classList.add("cal-cell--out");
     if (dStr === todayStr) cell.classList.add("cal-cell--today");
     if (dStr === selectedDayISO) cell.classList.add("cal-cell--selected");
-    if (hasRep && status === "CLOSED") cell.classList.add("cal-cell--closed");
-    if (hasRep && status !== "CLOSED") cell.classList.add("cal-cell--draft");
+    if (isClosed) cell.classList.add("cal-cell--closed");
+    if (isDraft) cell.classList.add("cal-cell--draft");
+    if (isOverdue) cell.classList.add("cal-cell--report-overdue");
 
     cell.onclick = () => {
       selectedDayISO = dStr;
