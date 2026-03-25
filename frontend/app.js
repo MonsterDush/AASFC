@@ -133,6 +133,25 @@ export function wa() {
   return window.Telegram?.WebApp || null;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function waitForTelegramInitData({ timeoutMs = 10000, intervalMs = 100 } = {}) {
+  const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+
+  while (Date.now() <= deadline) {
+    const w = wa();
+    const initData = String(w?.initData || "").trim();
+    if (initData) return initData;
+
+    try { w?.ready?.(); } catch {}
+    await sleep(Math.max(25, Number(intervalMs) || 100));
+  }
+
+  return "";
+}
+
 // ------------------------------
 // Theme (system / light / dark / hookahplace)
 // ------------------------------
@@ -477,8 +496,7 @@ export async function ensureLogin({ silent = true, redirectOnFail = false } = {}
     }
   }
 
-  const w = wa();
-  const initData = w?.initData || "";
+  const initData = await waitForTelegramInitData();
 
   if (!initData) {
     if (!silent) toast("Нужна авторизация: Telegram или телефон.", "warn");

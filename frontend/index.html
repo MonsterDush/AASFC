@@ -28,23 +28,15 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
  <script type="module">
-  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, wa, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260321-miniappfix1";
+  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, setActiveVenueId, buildAuthUrl, waitForTelegramInitData } from "/app.js?v=20260321-miniappfix1";
 
   const splash = document.getElementById("splash");
   const fallback = document.getElementById("fallback");
   const hideSplash = () => splash && (splash.style.display = "none");
 
   applyTelegramTheme();
-
   async function waitInitData() {
-    // Ждём, пока Telegram.WebApp станет доступен и появится initData
-    for (let i = 0; i < 30; i++) {
-      const w = wa();
-      const initData = w?.initData || "";
-      if (initData) return true;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    return false;
+    return Boolean(await waitForTelegramInitData({ timeoutMs: 10000, intervalMs: 100 }));
   }
 
   (async () => {

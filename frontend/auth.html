@@ -465,7 +465,8 @@
     };
 
     async function renderTelegramLogin() {
-      const insideTelegram = Boolean(wa()?.initData || "");
+      const initData = await waitForTelegramInitData({ timeoutMs: 10000, intervalMs: 100 });
+      const insideTelegram = Boolean(initData);
       if (insideTelegram) {
         els.telegramState.textContent = "Ты внутри Telegram Mini App — доступен бесшовный вход.";
         els.telegramMiniAppLoginRow.classList.remove("hidden");
@@ -473,9 +474,9 @@
         els.telegramWidgetHint.classList.add("hidden");
         els.btnTelegramLogin.onclick = async () => {
           try {
-            const initData = wa()?.initData || "";
-            if (!initData) throw new Error("Telegram Mini App недоступен");
-            await api("/auth/telegram", { method: "POST", body: { init_data: initData }, handle401: false });
+            const currentInitData = (wa()?.initData || initData || "").trim();
+            if (!currentInitData) throw new Error("Telegram Mini App недоступен");
+            await api("/auth/telegram", { method: "POST", body: { init_data: currentInitData }, handle401: false });
             toast("Вход выполнен", "ok");
             await finishPostLoginFlow();
           } catch (e) {
