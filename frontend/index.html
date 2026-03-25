@@ -27,16 +27,8 @@
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
-  <script>
-    window.__axelioIndexWatchdog = setTimeout(() => {
-      const splash = document.getElementById("splash");
-      const fallback = document.getElementById("fallback");
-      if (splash) splash.style.display = "none";
-      if (fallback) fallback.style.display = "block";
-    }, 8000);
-  </script>
  <script type="module">
-  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260325-indexbootfix2";
+  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, wa, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260325-authflowfix2";
 
   const splash = document.getElementById("splash");
   const fallback = document.getElementById("fallback");
@@ -44,11 +36,23 @@
 
   applyTelegramTheme();
 
+  async function waitInitData() {
+    // Ждём, пока Telegram.WebApp станет доступен и появится initData
+    for (let i = 0; i < 30; i++) {
+      const w = wa();
+      const initData = w?.initData || "";
+      if (initData) return true;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return false;
+  }
+
   (async () => {
     try {
-      const login = await ensureLogin({ silent: true, redirectOnFail: false, timeoutMs: 5000, telegramWaitMs: 5000 });
+      const okInit = await waitInitData();
+      const login = await ensureLogin({ silent: true, redirectOnFail: false });
 
-      if (!login.ok && login.reason === "NO_INITDATA") {
+      if (!login.ok && !okInit) {
         location.replace(buildAuthUrl(`${location.pathname}${location.search}${location.hash}`));
         return;
       }
@@ -58,11 +62,9 @@
         fallback.style.display = "block";
         // Покажем понятную причину (если есть)
         const msg =
-          login.code === "TIMEOUT"
-            ? "Не удалось связаться с API. Проверь сервер и CORS."
-            : login.reason === "NO_INITDATA"
-              ? "Нет initData. Откройте Mini App через Telegram."
-              : (login.data?.detail || login.message || "Ошибка авторизации");
+          login.reason === "NO_INITDATA"
+            ? "Нет initData. Откройте Mini App через Telegram."
+            : (login.data?.detail || login.message || "Ошибка авторизации");
         toast(msg, "err");
         return;
       }
