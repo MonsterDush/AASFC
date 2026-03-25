@@ -1,7 +1,7 @@
 """add notify_shift_comments user preference
 
 Revision ID: c8d4e2f1a9b7
-Revises: b7d3f1a4c9e2
+Revises: e8f1a2b3c4d5
 Create Date: 2026-03-25 00:00:00.000000
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = 'c8d4e2f1a9b7'
-down_revision = 'b7d3f1a4c9e2'
+down_revision = 'e8f1a2b3c4d5'
 branch_labels = None
 depends_on = None
 
