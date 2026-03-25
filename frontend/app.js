@@ -133,14 +133,14 @@ export function wa() {
   return window.Telegram?.WebApp || null;
 }
 
-export async function waitForTelegramInitData({ timeoutMs = 5000, pollMs = 100 } = {}) {
+export async function waitForTelegramInitData({ timeoutMs = 8000, pollMs = 100 } = {}) {
   const started = Date.now();
   while (Date.now() - started < Math.max(0, Number(timeoutMs || 0))) {
-    const value = wa()?.initData || "";
+    const value = String(wa()?.initData || "").trim();
     if (value) return value;
     await new Promise((resolve) => setTimeout(resolve, Math.max(25, Number(pollMs || 100))));
   }
-  return "";
+  return String(wa()?.initData || "").trim();
 }
 
 // ------------------------------
@@ -476,25 +476,22 @@ export async function downloadFile(path, { filenameFallback = "download", opts =
   return { filename };
 }
 
-export async function ensureLogin({
-  silent = true,
-  redirectOnFail = false,
-  meTimeoutMs = 1500,
-  initDataTimeoutMs = 5000,
-  authTimeoutMs = 8000,
-} = {}) {
+export async function ensureLogin({ silent = true, redirectOnFail = false } = {}) {
   try {
-    const me = await withTimeout(api("/me", { handle401: false }), meTimeoutMs, "ME_TIMEOUT");
+    const me = await withTimeout(api("/me", { handle401: false }), 3500, "ME_TIMEOUT");
     return { ok: true, data: me, source: "cookie" };
   } catch (e) {
-    const isTimeout = e?.code === "TIMEOUT" || /TIMEOUT/i.test(String(e?.message || ""));
-    if (!isTimeout && e?.status && e.status !== 401) {
+    if (e?.status && e.status !== 401) {
+      if (!silent) toast(e?.message || "Ошибка авторизации", "err");
+      return { ok: false, status: e?.status, data: e?.data, message: e?.message };
+    }
+    if (e?.code && e.code !== "TIMEOUT") {
       if (!silent) toast(e?.message || "Ошибка авторизации", "err");
       return { ok: false, status: e?.status, data: e?.data, message: e?.message };
     }
   }
 
-  const initData = await waitForTelegramInitData({ timeoutMs: initDataTimeoutMs, pollMs: 100 });
+  const initData = await waitForTelegramInitData({ timeoutMs: 7000, pollMs: 100 });
 
   if (!initData) {
     if (!silent) toast("Нужна авторизация: Telegram или телефон.", "warn");
@@ -503,11 +500,15 @@ export async function ensureLogin({
   }
 
   try {
-    const out = await withTimeout(api("/auth/telegram", {
-      method: "POST",
-      body: { initData },
-      handle401: false,
-    }), authTimeoutMs, "TELEGRAM_AUTH_TIMEOUT");
+    const out = await withTimeout(
+      api("/auth/telegram", {
+        method: "POST",
+        body: { initData },
+        handle401: false,
+      }),
+      5000,
+      "TELEGRAM_AUTH_TIMEOUT"
+    );
 
     if (!silent) toast("Вход выполнен", "ok");
     return { ok: true, data: out, source: "telegram" };
@@ -522,6 +523,7 @@ export async function ensureLogin({
       status: e?.status,
       data: e?.data,
       message: e?.message,
+      reason: e?.code === "TIMEOUT" ? "TELEGRAM_AUTH_TIMEOUT" : undefined,
     };
   }
 }
