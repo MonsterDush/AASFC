@@ -488,7 +488,7 @@
 
       els.telegramMiniAppLoginRow.classList.add("hidden");
       try {
-        const cfg = await api("/auth/telegram/widget/config", { handle401: false, timeoutMs: 5000 });
+        const cfg = await api("/auth/telegram/widget/config", { handle401: false, timeoutMs: 1500 });
         if (!cfg?.enabled || !cfg?.bot_username) {
           els.telegramState.textContent = "Telegram Login Widget пока не настроен для этого домена.";
           return;
@@ -506,16 +506,33 @@
           }
         };
         els.telegramWidgetHost.innerHTML = "";
-        const script = document.createElement("script");
-        script.async = true;
-        script.src = "https://telegram.org/js/telegram-widget.js?22";
-        script.setAttribute("data-telegram-login", cfg.bot_username);
-        script.setAttribute("data-size", "large");
-        script.setAttribute("data-radius", "12");
-        script.setAttribute("data-request-access", "write");
-        script.setAttribute("data-userpic", "false");
-        script.setAttribute("data-onauth", "AxelioTelegramWidgetAuth(user)");
-        els.telegramWidgetHost.appendChild(script);
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.async = true;
+          script.src = "https://telegram.org/js/telegram-widget.js?22";
+          script.setAttribute("data-telegram-login", cfg.bot_username);
+          script.setAttribute("data-size", "large");
+          script.setAttribute("data-radius", "12");
+          script.setAttribute("data-request-access", "write");
+          script.setAttribute("data-userpic", "false");
+          script.setAttribute("data-onauth", "AxelioTelegramWidgetAuth(user)");
+
+          const timer = setTimeout(() => {
+            script.remove();
+            reject(new Error("WIDGET_SCRIPT_TIMEOUT"));
+          }, 1500);
+
+          script.onload = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          script.onerror = () => {
+            clearTimeout(timer);
+            reject(new Error("WIDGET_SCRIPT_LOAD_ERROR"));
+          };
+
+          els.telegramWidgetHost.appendChild(script);
+        });
       } catch (e) {
         els.telegramState.textContent = e?.data?.detail || e?.message || "Не удалось подготовить Telegram Login Widget";
       }
