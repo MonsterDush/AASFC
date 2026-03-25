@@ -20,21 +20,36 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="grid mt-12">
-      <div class="card">
-        <b>Зарплата</b>
-        <div class="muted mt-6">Сводка по месяцам и детализация по дням</div>
-        <div class="row gap-8 mt-10">
-          <button class="btn primary" id="goSalarySummary">Все заведения</button>
-          <button class="btn" id="goSalary">Это заведение</button>
+    <div class="card finance-toolbar">
+      <div class="screen-hero">
+        <div class="screen-hero__head">
+          <div>
+            <b>Личный финансовый раздел</b>
+            <div class="page-caption mt-6">Здесь собраны только два сценария: посмотреть начисления и открыть корректировки. Экран оставлен коротким, чтобы быстро перейти в нужный раздел.</div>
+          </div>
         </div>
       </div>
 
-      <div class="card">
-        <b>Штрафы / Списания / Премии</b>
-        <div class="muted mt-6">История и детализация по дням</div>
-        <div class="row mt-10">
-          <button class="btn primary" id="goAdjustments">Открыть</button>
+      <div class="action-grid action-grid--2 mt-12">
+        <div class="itemcard section-card">
+          <div class="section-card__title">
+            <b>Зарплата</b>
+            <div class="muted">Сводка по месяцам и детализация по дням.</div>
+          </div>
+          <div class="btn-row mt-12">
+            <button class="btn primary" id="goSalary">Это заведение</button>
+            <button class="btn subtle" id="goSalarySummary">Все заведения</button>
+          </div>
+        </div>
+
+        <div class="itemcard section-card">
+          <div class="section-card__title">
+            <b>Штрафы / Списания / Премии</b>
+            <div class="muted">История и детализация по дням.</div>
+          </div>
+          <div class="btn-row mt-12">
+            <button class="btn primary" id="goAdjustments">Открыть</button>
+          </div>
         </div>
       </div>
     </div>
@@ -58,7 +73,6 @@
     </div>
   </div>
 
-  
   <script type="module">
 import {
   applyTelegramTheme,
@@ -70,7 +84,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
 } from "/app.js";
-import { hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
+import { hasReportAccess, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 applyTelegramTheme();
 mountCommonUI("finance");
@@ -84,7 +98,6 @@ await mountNav({ activeTab: "finance" });
 
 const activeId = getActiveVenueId();
 
-// Subtitle: show active venue name if possible
 try {
   const venues = await getMyVenues();
   const v = venues.find((x) => String(x.id) === String(activeId));
@@ -92,7 +105,6 @@ try {
   if (subtitle) subtitle.textContent = v?.name ? `заведение: ${v.name}` : "зарплата · штрафы";
 } catch {}
 
-// Guard: Finance is for users with report access
 let canReports = false;
 try {
   if (activeId) {
@@ -108,7 +120,6 @@ if (!canReports) {
   location.replace(`/staff-salary.html${qs}`);
 }
 
-// Hide "All venues" option if only one venue
 try {
   const venues = await getMyVenues().catch(() => []);
   const btnAll = document.getElementById("goSalarySummary");
@@ -125,7 +136,6 @@ document.getElementById("goSalarySummary")?.addEventListener("click", () => {
   p.set("scope", "all");
   location.href = `/staff-salary.html?${p.toString()}`;
 });
-// Send owners/managers to management screen, staff to personal screen
 let adjHref = (() => {
   const qs = activeId ? `?venue_id=${encodeURIComponent(activeId)}` : "";
   return `/staff-adjustments.html${qs}`;
@@ -149,3 +159,4 @@ document.getElementById("goAdjustments")?.addEventListener("click", () => {
 });
   </script>
 </body>
+</html>

@@ -21,57 +21,57 @@
     </div>
 
     <div class="card finance-toolbar">
-      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-        <div>
-          <b>Управление планами</b>
-          <div class="muted mt-6">Можно задавать единый план на месяц, план по дням недели и отдельное переопределение на конкретную дату.</div>
-        </div>
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-          <input id="plansMonthPick" type="month" style="width:auto; min-width:160px;" />
-          <input id="plansDatePick" type="date" style="width:auto; min-width:160px;" />
-          <button class="btn ghost" id="openDayEconomicsFromPlansBtn">Экономика дня</button>
-        </div>
-      </div>
-
-      <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+      <div class="screen-hero">
+        <div class="screen-hero__head">
           <div>
-            <b>Эффективный план на выбранную дату</b>
-            <div class="muted mt-6" id="effectivePlanHint">—</div>
+            <b>Управление планами</b>
+            <div class="page-caption mt-6">Можно задать единый план на месяц, шаблон по дням недели и отдельное переопределение на конкретную дату. Эффективный план всегда рассчитывается в верхней карточке.</div>
           </div>
-          <span class="badge" id="effectivePlanSourceBadge">—</span>
+          <div class="screen-hero__actions">
+            <input id="plansMonthPick" type="month" style="width:auto; min-width:160px;" />
+            <input id="plansDatePick" type="date" style="width:auto; min-width:160px;" />
+            <button class="btn subtle" id="openDayEconomicsFromPlansBtn">Экономика дня</button>
+          </div>
         </div>
-        <div class="finance-stats mt-12">
-          <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка</div><div class="finance-stat__value" id="effectivePlanRevenue">—</div></div>
-          <div class="itemcard finance-stat"><div class="finance-stat__label">Прибыль</div><div class="finance-stat__value" id="effectivePlanProfit">—</div></div>
-          <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка / сотрудника</div><div class="finance-stat__value" id="effectivePlanPerAssigned">—</div></div>
-          <div class="itemcard finance-stat"><div class="finance-stat__label">Сотрудников</div><div class="finance-stat__value" id="effectivePlanAssigned">—</div></div>
+
+        <div class="screen-hero__meta-grid">
+          <div class="itemcard finance-period-card">
+            <div class="finance-period-card__label">Эффективный план на дату</div>
+            <div class="finance-period-card__value" id="effectivePlanSourceBadge">—</div>
+            <div class="muted" id="effectivePlanHint">—</div>
+            <div class="muted mt-8" id="effectivePlanUsage">—</div>
+            <div class="muted mt-8" id="effectivePlanNotes">—</div>
+          </div>
+          <div class="finance-kpis finance-kpis--compact">
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка</div><div class="finance-stat__value" id="effectivePlanRevenue">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Прибыль</div><div class="finance-stat__value" id="effectivePlanProfit">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка / сотрудника</div><div class="finance-stat__value" id="effectivePlanPerAssigned">—</div></div>
+            <div class="itemcard finance-stat"><div class="finance-stat__label">Сотрудников</div><div class="finance-stat__value" id="effectivePlanAssigned">—</div></div>
+          </div>
         </div>
-        <div class="muted mt-12" id="effectivePlanUsage">—</div>
-        <div class="muted mt-8" id="effectivePlanNotes">—</div>
       </div>
 
       <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
+        <div class="section-card__head">
+          <div class="section-card__title">
             <b>Режим редактирования</b>
-            <div class="muted mt-6">Выбери, редактируешь ли ты план на весь месяц или шаблоны по дням недели.</div>
+            <div class="muted">Выбери, редактируешь ли ты план на весь месяц или шаблоны по дням недели.</div>
           </div>
-          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-            <label class="badge" style="cursor:pointer;"><input type="radio" name="planMode" value="MONTH" checked /> Месяц</label>
-            <label class="badge" style="cursor:pointer;"><input type="radio" name="planMode" value="WEEKDAYS" /> Дни недели</label>
+          <div class="form-radio-row">
+            <label class="form-radio-chip"><input type="radio" name="planMode" value="MONTH" checked /> Месяц</label>
+            <label class="form-radio-chip"><input type="radio" name="planMode" value="WEEKDAYS" /> Дни недели</label>
           </div>
         </div>
       </div>
 
       <div class="itemcard mt-12" id="monthPlanCard">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
+        <div class="section-card__head">
+          <div class="section-card__title">
             <b>План на месяц</b>
             <div class="muted mt-6" id="monthPlanHint">Этот план применяется ко всем дням выбранного месяца, если на дату нет override.</div>
             <div class="muted mt-6" id="monthPlanUsage">—</div>
           </div>
-          <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+          <div class="section-card__actions">
             <span class="badge" id="monthPlanBadge">—</span>
             <button class="btn ghost" id="copyPrevMonthPlanBtn" type="button">Скопировать прошлый месяц</button>
           </div>
@@ -80,20 +80,20 @@
       </div>
 
       <div class="itemcard mt-12" id="weekdayPlansCard" style="display:none;">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
+        <div class="section-card__head">
+          <div class="section-card__title">
             <b>Шаблоны по дням недели</b>
             <div class="muted mt-6">Используются, если нет override на дату и нет плана на месяц.</div>
           </div>
           <span class="badge">7 шаблонов</span>
         </div>
-        <div class="itemcard mt-12" id="weekdayCopyCard">
-          <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-            <div>
+        <div class="itemcard itemcard--soft mt-12" id="weekdayCopyCard">
+          <div class="section-card__head">
+            <div class="section-card__title">
               <b>Быстрое копирование шаблонов</b>
               <div class="muted mt-6">Например, скопировать понедельник на все будни или разнести шаблон на выходные.</div>
             </div>
-            <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+            <div class="section-card__actions">
               <button class="btn ghost" id="copyMondayToWeekdaysBtn" type="button">Понедельник → будни</button>
             </div>
           </div>
@@ -118,15 +118,13 @@
         <div id="planTemplatesList" class="mt-12"></div>
       </div>
 
-
-
       <div class="itemcard mt-12" id="departmentMonthPlansCard">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
+        <div class="section-card__head">
+          <div class="section-card__title">
             <b>Планы департаментов на месяц</b>
             <div class="muted mt-6">Нужны для повышенного процента по месячному плану департамента и для ручного планирования по блокам выручки.</div>
           </div>
-          <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+          <div class="section-card__actions">
             <button class="btn ghost" id="deptAutofillMonthBtn" type="button">Заполнить из прошлого месяца</button>
             <button class="btn ghost" id="deptDistributeMonthBtn" type="button">Распределить из плана заведения</button>
           </div>
@@ -135,12 +133,12 @@
       </div>
 
       <div class="itemcard mt-12" id="departmentDayPlansCard">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
+        <div class="section-card__head">
+          <div class="section-card__title">
             <b>Планы департаментов на дату</b>
             <div class="muted mt-6">Используются для повышенного процента по суточному плану департамента и точечной настройки по дням.</div>
           </div>
-          <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+          <div class="section-card__actions">
             <span class="badge" id="departmentDayPlansBadge">—</span>
             <input id="departmentDayCopyFromDate" type="date" style="width:auto; min-width:160px;" />
             <button class="btn ghost" id="deptCopyDayBtn" type="button">Копировать с даты</button>
@@ -152,8 +150,8 @@
       </div>
 
       <div class="itemcard mt-12" id="planOverrideCard">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
+        <div class="section-card__head">
+          <div class="section-card__title">
             <b>Переопределение на конкретную дату</b>
             <div class="muted mt-6">Приоритет выше месячного плана и шаблона дня недели.</div>
           </div>

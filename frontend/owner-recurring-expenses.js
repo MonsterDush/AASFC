@@ -222,7 +222,7 @@ function renderRules() {
       : (item.payment_method?.title ? `Списывать через ${esc(item.payment_method.title)}` : "Тип оплаты не указан");
     const actions = access.canManage ? `
       <div class="row gap-8 mt-10" style="flex-wrap:wrap; justify-content:flex-end;">
-        <button class="btn small" data-generate="${item.id}">Сгенерировать</button>
+        <button class="btn subtle small" data-generate="${item.id}">Сгенерировать</button>
         <button class="btn small" data-edit="${item.id}">Изменить</button>
         <button class="btn danger small" data-del="${item.id}">Удалить</button>
       </div>` : "";

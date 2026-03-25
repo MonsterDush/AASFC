@@ -21,20 +21,32 @@
     </div>
 
     <div class="card finance-toolbar">
-      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-        <div>
-          <b>Регулярные расходы</b>
-          <div class="muted mt-6">фиксированные и процентные правила с генерацией расходов в черновик</div>
+      <div class="screen-hero">
+        <div class="screen-hero__head">
+          <div>
+            <b>Регулярные расходы</b>
+            <div class="page-caption mt-6">Фиксированные и процентные правила, которые создают обычные расходы в черновике. Здесь настраивается логика, а подтверждение происходит уже на экране расходов.</div>
+          </div>
+          <div class="screen-hero__actions">
+            <a class="btn subtle" id="openExpensesBtn" href="#">Открыть расходы</a>
+            <button class="btn" id="generateRulesBtn">Сгенерировать за месяц</button>
+            <button class="btn primary" id="addRuleBtn">Добавить правило</button>
+          </div>
         </div>
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-          <input id="rulesMonthPick" type="month" style="width:auto; min-width:160px;" />
-          <a class="btn ghost" id="openExpensesBtn" href="#">Открыть расходы</a>
-          <button class="btn" id="generateRulesBtn">Сгенерировать за месяц</button>
-          <button class="btn" id="addRuleBtn">Добавить правило</button>
+
+        <div class="screen-hero__toolbar">
+          <div class="screen-hero__period">
+            <input id="rulesMonthPick" type="month" style="width:auto; min-width:160px;" />
+          </div>
+          <div class="itemcard hero-summary-card">
+            <div class="hero-summary-card__eyebrow">Месяц генерации</div>
+            <div class="hero-summary-card__meta">Правила применяются к выбранному месяцу и создают черновики расходных документов.</div>
+            <div class="hero-summary-card__value" id="rulesState">—</div>
+          </div>
         </div>
       </div>
 
-      <div class="finance-stats mt-12">
+      <div class="finance-kpis finance-kpis--compact mt-12">
         <div class="itemcard finance-stat">
           <div class="finance-stat__label">Всего правил</div>
           <div class="finance-stat__value" id="rulesCount">—</div>
@@ -45,33 +57,32 @@
         </div>
       </div>
 
-
-      <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
-            <b>Как это работает</b>
-            <div class="muted mt-6">После генерации появятся обычные документы расходов со статусом черновика. Дальше их можно открыть на странице расходов, проверить и подтвердить.</div>
-          </div>
+      <details class="collapsible-card mt-12">
+        <summary>Как это работает</summary>
+        <div class="collapsible-card__body help-copy">
+          После генерации появляются обычные документы расходов со статусом черновика. Дальше их можно открыть на странице расходов, проверить и подтвердить вручную, чтобы они начали участвовать в сводке и прибыли.
         </div>
-      </div>
+      </details>
 
       <div class="itemcard mt-12" id="generationResultCard" style="display:none;">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
+        <div class="section-card__head">
+          <div class="section-card__title">
             <b>Результат последней генерации</b>
             <div class="muted mt-6" id="generationResultHint">—</div>
           </div>
-          <a class="btn ghost" id="openGeneratedExpensesBtn" href="#">Открыть расходы месяца</a>
+          <a class="btn subtle" id="openGeneratedExpensesBtn" href="#">Открыть расходы месяца</a>
         </div>
         <div id="generationResultList" class="mt-12"></div>
       </div>
 
-      <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <b>Список правил</b>
-          <div class="muted" id="rulesState">—</div>
+      <div class="itemcard mt-12 section-card">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Список правил</b>
+            <div class="muted">Каждое правило можно запустить вручную, отредактировать или удалить.</div>
+          </div>
         </div>
-        <div id="rulesList" class="expense-list mt-12"></div>
+        <div id="rulesList" class="expense-list"></div>
       </div>
     </div>
 

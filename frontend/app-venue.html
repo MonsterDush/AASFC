@@ -20,19 +20,23 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div class="muted">Управление заведением и участниками.</div>
+    <div class="card section-card">
+      <div class="page-caption">Управление заведением, участниками и финансовыми разделами. Главные переходы собраны в компактные группы, чтобы экран не выглядел как сплошное меню.</div>
 
       <div class="itemcard mt-12 hidden" id="archiveNotice">
         <b>Заведение в архиве</b>
         <div class="muted mt-6">Оно скрыто из активного списка staff. Владелец может просматривать карточку, вернуть заведение или удалить его.</div>
       </div>
 
-      <div class="itemcard mt-12">
-        <b>Информация</b>
-        <div class="mono" id="meta">…</div>
+      <div class="itemcard mt-12 section-card">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Информация</b>
+            <div class="mono" id="meta">…</div>
+          </div>
+        </div>
 
-        <div class="row gap-8 mt-10">
+        <div class="action-grid action-grid--3">
           <button class="btn" id="btnRename">Переименовать</button>
           <button class="btn" id="btnArchive">В архив</button>
           <button class="btn" id="btnUnarchive">Вернуть</button>
@@ -40,11 +44,16 @@
           <button class="btn danger" id="btnDelete">Удалить</button>
         </div>
 
-        <div class="muted mt-6"id="metaHint"></div>
+        <div class="muted mt-6" id="metaHint"></div>
       </div>
-      <div class="itemcard mt-12">
-              <b>Управление</b>
-              <div class="row gap-8 mt-12">
+      <div class="itemcard mt-12 section-card">
+              <div class="section-card__head">
+                <div class="section-card__title">
+                  <b>Управление</b>
+                  <div class="muted">Основные разделы управления заведением и командой.</div>
+                </div>
+              </div>
+              <div class="action-grid mt-12">
                 <a class="btn" id="openPositions" href="#">Должности</a>
                 <a class="btn" id="openInvites" href="#">Приглашения</a>
                 <a class="btn" id="openShifts" href="#">График</a>
@@ -56,9 +65,14 @@
       </div>
 
       
-      <div class="itemcard mt-12" id="financeCard">
-        <b>Финансы</b>
-        <div class="row gap-8 mt-12">
+      <div class="itemcard mt-12 section-card" id="financeCard">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Финансы</b>
+            <div class="muted">Сводка, зарплаты, расходы и аналитика дня.</div>
+          </div>
+        </div>
+        <div class="action-grid mt-12">
           <a class="btn" id="openSummary" href="#">Сводка</a>
           <a class="btn" id="openPayProfiles" href="#">Профили зарплаты</a>
           <a class="btn" id="openPayroll" href="#">Начисления</a>
@@ -70,7 +84,7 @@
         </div>
       </div>
 
-<div class="itemcard mt-12" id="tipsSettingsCard">
+<div class="itemcard mt-12 section-card" id="tipsSettingsCard">
         <b>Чаевые</b>
         <div class="muted mt-6">Настройка учёта чаевых в отчёте закрытия смены.</div>
 
@@ -100,9 +114,14 @@
         </div>
       </div>
 
-      <div class="itemcard mt-12">
-        <b>Участники</b>
-        <div id="members"class="mt-10">
+      <div class="itemcard mt-12 section-card">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Участники</b>
+            <div class="muted">Текущий состав команды заведения.</div>
+          </div>
+        </div>
+        <div id="members" class="mt-10">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>

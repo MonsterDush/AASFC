@@ -277,28 +277,40 @@ function renderShell() {
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div class="revenue-toolbar__actions">
-        <div class="revenue-toolbar__caption">
-          <b>Расчёт зарплаты</b>
-          <div class="muted mt-6">Считается по активным назначениям профилей. Поддержаны ставки, проценты и KPI-бонусы по закрытым отчётам.</div>
+    <div class="card finance-toolbar">
+      <div class="screen-hero">
+        <div class="screen-hero__head">
+          <div>
+            <b>Расчёт зарплаты</b>
+            <div class="page-caption mt-6">Считается по активным назначениям профилей. Поддержаны ставки, проценты и KPI-бонусы по закрытым отчётам и выбранному периоду.</div>
+          </div>
+          <div class="screen-hero__actions">
+            <button class="btn primary" id="btnCalculate">Рассчитать</button>
+            <button class="btn ghost" id="btnExport">Экспорт XLSX</button>
+            <a class="btn subtle" id="openProfilesBtn" href="#">Профили</a>
+          </div>
         </div>
-        <div class="pickers pickers--revenue">
-          <div class="seg seg--period" id="periodSeg" style="min-width:220px;">
-            <button type="button" id="periodMonthBtn">Месяц</button>
-            <button type="button" id="periodRangeBtn">Период</button>
+
+        <div class="screen-hero__toolbar">
+          <div class="screen-hero__period">
+            <div class="seg seg--period" id="periodSeg" style="min-width:220px;">
+              <button type="button" id="periodMonthBtn">Месяц</button>
+              <button type="button" id="periodRangeBtn">Период</button>
+            </div>
+            <div id="monthControls" class="pickers">
+              <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
+            </div>
+            <div id="rangeControls" class="range-pick" style="display:none;">
+              <input id="rangeFrom" type="date" />
+              <input id="rangeTo" type="date" />
+              <button class="btn" id="rangeApply">Показать</button>
+            </div>
           </div>
-          <div id="monthControls" class="pickers">
-            <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
+          <div class="itemcard finance-period-card">
+            <div class="finance-period-card__label">Период расчёта</div>
+            <div class="finance-period-card__value" id="runMeta">—</div>
+            <div class="muted">Автоматический перерасчёт и экспорт доступны прямо с этого экрана.</div>
           </div>
-          <div id="rangeControls" class="range-pick" style="display:none;">
-            <input id="rangeFrom" type="date" />
-            <input id="rangeTo" type="date" />
-            <button class="btn" id="rangeApply">Показать</button>
-          </div>
-          <button class="btn primary" id="btnCalculate">Рассчитать</button>
-          <button class="btn" id="btnExport">Экспорт XLSX</button>
-          <a class="btn" id="openProfilesBtn" href="#">Профили</a>
         </div>
       </div>
 
@@ -313,7 +325,7 @@ function renderShell() {
         </div>
         <div class="itemcard finance-stat">
           <div class="finance-stat__label">Статус расчёта</div>
-          <div class="finance-stat__value" id="runMeta">—</div>
+          <div class="finance-stat__value" id="runMetaStat">—</div>
         </div>
       </div>
 
@@ -431,6 +443,7 @@ function renderLines() {
   const totalAmount = document.getElementById("totalAmount");
   const linesCount = document.getElementById("linesCount");
   const runMeta = document.getElementById("runMeta");
+  const runMetaStat = document.getElementById("runMetaStat");
   const linesList = document.getElementById("linesList");
   if (!linesList) return;
 
@@ -439,6 +452,7 @@ function renderLines() {
     if (totalAmount) totalAmount.textContent = "—";
     if (linesCount) linesCount.textContent = "—";
     if (runMeta) runMeta.textContent = "нет доступа";
+    if (runMetaStat) runMetaStat.textContent = "нет доступа";
     return;
   }
 
@@ -447,11 +461,17 @@ function renderLines() {
   if (linesCount) linesCount.textContent = String(Number(data.lines_count || 0));
   if (runMeta) {
     if (data.run?.calculated_at) {
-      runMeta.textContent = recalculationText(data.latest_recalculation, data.run.calculated_at);
+      const metaText = recalculationText(data.latest_recalculation, data.run.calculated_at);
+      runMeta.textContent = metaText;
+      if (runMetaStat) runMetaStat.textContent = metaText;
     } else if (data.latest_recalculation?.created_at) {
-      runMeta.textContent = recalculationText(data.latest_recalculation, null);
+      const metaText = recalculationText(data.latest_recalculation, null);
+      runMeta.textContent = metaText;
+      if (runMetaStat) runMetaStat.textContent = metaText;
     } else {
-      runMeta.textContent = state.periodMode === "month" ? "ещё не считалось" : "агрегация по дневным начислениям";
+      const metaText = state.periodMode === "month" ? "ещё не считалось" : "агрегация по дневным начислениям";
+      runMeta.textContent = metaText;
+      if (runMetaStat) runMetaStat.textContent = metaText;
     }
   }
 

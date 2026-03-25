@@ -21,33 +21,32 @@
     </div>
 
     <div class="card finance-toolbar">
-      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-        <div>
-          <b>Правила заведения</b>
-          <div class="muted mt-6">Пустое или выключенное правило не участвует в алертах экономики дня.</div>
-        </div>
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-          <button class="btn ghost" id="openPlansBtn">Планы</button>
-          <button class="btn" id="openDayEconomicsFromRulesBtn">Экономика дня</button>
-        </div>
-      </div>
-
-      <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+      <div class="screen-hero">
+        <div class="screen-hero__head">
           <div>
-            <b>Активные правила</b>
-            <div class="muted mt-6" id="rulesSummaryHint">—</div>
+            <b>Правила заведения</b>
+            <div class="page-caption mt-6">Пустое или выключенное правило не участвует в алертах экономики дня. Здесь лучше держать только те сигналы, которые реально помогают владельцу принимать решение.</div>
           </div>
+          <div class="screen-hero__actions">
+            <button class="btn subtle" id="openPlansBtn">Планы</button>
+            <button class="btn subtle" id="openDayEconomicsFromRulesBtn">Экономика дня</button>
+          </div>
+        </div>
+
+        <div class="itemcard finance-period-card">
+          <div class="finance-period-card__label">Активные правила</div>
+          <div class="finance-period-card__value" id="rulesSummaryHint">—</div>
+          <div class="muted">Правила включаются и выключаются независимо друг от друга.</div>
         </div>
       </div>
 
       <div class="itemcard mt-12" id="rulesManageCard">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div>
+        <div class="section-card__head">
+          <div class="section-card__title">
             <b>Редактировать нормативы</b>
-            <div class="muted mt-6">Можно включать и выключать каждое правило отдельно.</div>
+            <div class="muted mt-6">Можно включать и выключать каждое правило отдельно, чтобы экран «Экономика дня» не был перегружен лишними предупреждениями.</div>
           </div>
-          <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+          <div class="section-card__actions">
             <span class="badge">Owner-only</span>
             <button class="btn ghost" id="enableAllRulesBtn" type="button">Включить всё</button>
             <button class="btn ghost" id="disableAllRulesBtn" type="button">Выключить всё</button>
