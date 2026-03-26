@@ -16,6 +16,13 @@ from pydantic import BaseModel, Field
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_SERVICE_SECRET = os.getenv("BOT_SERVICE_SECRET", "")
+BACKEND_INTERNAL_URL = (
+    os.getenv("BACKEND_INTERNAL_URL")
+    or os.getenv("BACKEND_BASE_URL")
+    or os.getenv("API_BASE")
+    or "http://127.0.0.1:9001"
+).rstrip("/")
+TG_WEBHOOK_SECRET_TOKEN = os.getenv("TG_WEBHOOK_SECRET_TOKEN", "")
 
 app = FastAPI(title="Axelio Bot Service")
 
@@ -60,6 +67,21 @@ def _normalize_telegram_error(status_code: int | None, body_text: str | None) ->
         return retryable, description
     except Exception:
         return retryable, str(body_text).strip()[:300] or None
+
+
+def _forward_telegram_update_to_backend(raw_body: bytes, *, secret_token: str | None = None) -> tuple[int, str]:
+    target_url = f"{BACKEND_INTERNAL_URL}/auth/telegram/browser/webhook"
+    headers = {"Content-Type": "application/json"}
+    if secret_token:
+        headers["X-Telegram-Bot-Api-Secret-Token"] = secret_token
+    req = urllib.request.Request(target_url, data=raw_body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+            return int(resp.status), body
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
+        return int(e.code), body
 
 
 def _send_message(
@@ -181,3 +203,23 @@ async def _start_scheduler():
             await asyncio.sleep(REMINDER_INTERVAL_SECONDS)
 
     asyncio.create_task(_loop())
+
+
+@app.post("/telegram/webhook", status_code=204)
+@app.post("/webhook", status_code=204)
+async def telegram_webhook(request: Request):
+    if TG_WEBHOOK_SECRET_TOKEN:
+        got = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if got != TG_WEBHOOK_SECRET_TOKEN:
+            raise HTTPException(status_code=401, detail="bad telegram secret")
+
+    raw_body = await request.body()
+    status_code, body = _forward_telegram_update_to_backend(
+        raw_body,
+        secret_token=(TG_WEBHOOK_SECRET_TOKEN or request.headers.get("X-Telegram-Bot-Api-Secret-Token") or None),
+    )
+    if 200 <= status_code < 300:
+        return
+
+    log.error("telegram webhook proxy failed: status=%s body=%s", status_code, body[:500])
+    raise HTTPException(status_code=502, detail="telegram webhook proxy failed")
