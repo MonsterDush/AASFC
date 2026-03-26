@@ -12,13 +12,7 @@
     .hidden { display:none !important; }
     .call-number { font-size:20px; font-weight:700; letter-spacing:.02em; }
     .call-number a { color: inherit; text-decoration: none; }
-    .login-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-    .login-actions .btn { flex: 0 0 auto; }
-    .password-flow-shell { display:flex; flex-direction:column; gap:12px; }
-    .password-flow-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .telegram-login-shell { display:flex; flex-direction:column; gap:12px; }
-    .telegram-login-link { word-break:break-all; }
-    .password-rules { border:1px solid var(--border); border-radius:12px; padding:10px 12px; background: rgba(255,255,255,0.02); }
+    .telegram-widget-host { min-height: 50px; }
   </style>
 </head>
 <body>
@@ -28,7 +22,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Axelio</b>
-          <div class="muted">вход по телефону и паролю · Telegram — по кнопке</div>
+          <div class="muted">вход по телефону и паролю</div>
         </div>
       </div>
       <div class="userpill" data-userpill>гость</div>
@@ -39,7 +33,7 @@
         <b>Вход по телефону</b>
         <div class="muted mt-8">Основной сценарий — вход по номеру телефона и паролю. Звонок нужен только для первой настройки номера и для сброса пароля. SMS можно временно отключать через настройку на backend.</div>
 
-        <div id="loginPanel" class="stack mt-16">
+        <div class="stack mt-16">
           <div>
             <label class="auth-label" for="loginPhoneInput">Номер телефона</label>
             <input id="loginPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
@@ -48,85 +42,81 @@
             <label class="auth-label" for="loginPasswordInput">Пароль</label>
             <input id="loginPasswordInput" type="password" placeholder="Минимум 8 символов" autocomplete="current-password" />
           </div>
-          <div class="login-actions mt-4">
+          <div class="row mt-4">
             <button class="btn primary" id="btnPasswordLogin">Войти</button>
+          </div>
+          <div class="row auth-inline-links">
+            <button class="btn sm" id="showSetupModeBtn" type="button">Впервые с номером</button>
             <button class="btn sm" id="showResetModeBtn" type="button">Забыли пароль?</button>
-            <button class="btn sm" id="showSetupModeBtn" type="button">Зарегистрироваться</button>
-            <button class="btn sm" id="showTelegramLoginBtn" type="button">Войти через Telegram</button>
           </div>
         </div>
 
-        <div class="telegram-login-shell hidden mt-16" id="telegramLoginShell">
-          <div class="auth-divider"></div>
+        <div class="auth-divider mt-16"></div>
 
-          <div class="password-flow-header">
+        <div class="row auth-mode-switch mt-16">
+          <button class="btn sm primary" id="modeSetupBtn" type="button">Первичная настройка</button>
+          <button class="btn sm" id="modeResetBtn" type="button">Сброс пароля</button>
+        </div>
+
+        <div class="verify-box mt-12">
+          <b id="passwordFlowTitle">Первичная настройка</b>
+          <div class="muted mt-8" id="passwordFlowHint">Подтверди номер звонком и сразу задай пароль для следующих входов.</div>
+
+          <div class="stack mt-12">
             <div>
-              <b>Вход через Telegram</b>
-              <div class="muted mt-8">Мы не грузим Telegram-скрипты на этой странице. Вместо этого вход подтверждается в боте и затем автоматически завершается в браузере.</div>
+              <label class="auth-label" for="verifyPhoneInput">Номер телефона</label>
+              <input id="verifyPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
             </div>
-            <button class="btn sm" id="hideTelegramLoginBtn" type="button">Назад ко входу</button>
-          </div>
-
-          <div class="verify-box">
-            <div class="stack">
-              <div id="telegramLoginStatus" class="muted">Нажми кнопку ниже, открой бота. Если бот открывается впервые, нажми «Start / Запустить», затем «Подтвердить вход».</div>
-              <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
-                <a class="btn primary" id="telegramLoginOpenLink" href="#" target="_blank" rel="noopener noreferrer">Открыть Telegram</a>
-                <button class="btn sm" id="telegramLoginCopyBtn" type="button">Скопировать ссылку</button>
-                <button class="btn sm" id="telegramLoginRestartBtn" type="button">Обновить ссылку</button>
-              </div>
-              <div class="muted telegram-login-link" id="telegramLoginMeta"></div>
+            <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn" id="btnRequestCall">Получить номер для звонка</button>
+              <button class="btn hidden" id="btnRequestSmsFallback">Не получается? Получить SMS</button>
             </div>
-          </div>
-        </div>
+            <div id="callMeta" class="muted verify-meta mt-8"></div>
+            <div id="callNumberBlock" class="call-number hidden mt-8"></div>
 
-        <div class="password-flow-shell hidden mt-16" id="passwordFlowShell">
-          <div class="auth-divider"></div>
+            <div id="smsFallbackBlock" class="hidden">
+              <label class="auth-label" for="smsCodeInput">Код из SMS</label>
+              <input id="smsCodeInput" placeholder="6 цифр" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
+              <div id="smsMeta" class="muted verify-meta mt-8"></div>
+            </div>
 
-          <div class="password-flow-header">
             <div>
-              <b id="passwordFlowTitle">Первичная настройка</b>
-              <div class="muted mt-8" id="passwordFlowHint">Подтверди номер звонком и сразу задай пароль для следующих входов.</div>
+              <label class="auth-label" for="newPasswordInput">Новый пароль</label>
+              <input id="newPasswordInput" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
             </div>
-            <button class="btn sm" id="hidePasswordFlowBtn" type="button">Назад ко входу</button>
-          </div>
-
-          <div class="verify-box">
-            <div class="stack">
-              <div>
-                <label class="auth-label" for="verifyPhoneInput">Номер телефона</label>
-                <input id="verifyPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
-              </div>
-              <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
-                <button class="btn" id="btnRequestCall">Получить номер для звонка</button>
-                <button class="btn hidden" id="btnRequestSmsFallback">Не получается? Получить SMS</button>
-              </div>
-              <div id="callMeta" class="muted verify-meta mt-8"></div>
-              <div id="callNumberBlock" class="call-number hidden mt-8"></div>
-
-              <div id="smsFallbackBlock" class="hidden">
-                <label class="auth-label" for="smsCodeInput">Код из SMS</label>
-                <input id="smsCodeInput" placeholder="6 цифр" inputmode="numeric" autocomplete="one-time-code" maxlength="8" />
-                <div id="smsMeta" class="muted verify-meta mt-8"></div>
-              </div>
-
-              <div>
-                <label class="auth-label" for="newPasswordInput">Новый пароль</label>
-                <input id="newPasswordInput" type="password" placeholder="Минимум 8 символов, буквы и цифры" autocomplete="new-password" />
-                <div class="password-rules muted mt-8">Пароль должен быть не короче 8 символов и содержать хотя бы одну букву и одну цифру.</div>
-              </div>
-              <div>
-                <label class="auth-label" for="confirmPasswordInput">Повтори пароль</label>
-                <input id="confirmPasswordInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
-              </div>
-              <div class="row mt-4">
-                <button class="btn primary" id="btnCompletePasswordFlow">Завершить подтверждение и сохранить пароль</button>
-              </div>
+            <div>
+              <label class="auth-label" for="confirmPasswordInput">Повтори пароль</label>
+              <input id="confirmPasswordInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
+            </div>
+            <div class="row mt-4">
+              <button class="btn primary" id="btnCompletePasswordFlow">Завершить подтверждение и сохранить пароль</button>
             </div>
           </div>
         </div>
+      </div>
 
-        <div class="muted mt-16" id="nextHint">После входа тебя вернёт на страницу, с которой запрашивалась авторизация.</div>
+      <div class="card">
+        <b>Вход через Telegram</b>
+        <div class="muted mt-8">Дополнительный способ входа для браузера. Мы не встраиваем Telegram в страницу: по кнопке ниже откроется бот, где нужно подтвердить вход, а эта страница завершит авторизацию автоматически.</div>
+
+        <div class="itemcard mt-16">
+          <div class="muted" id="telegramState">Telegram пока не используется. Запусти вход вручную по кнопке ниже.</div>
+          <div class="row mt-12" id="telegramBrowserLoginRow">
+            <button class="btn" id="btnTelegramBrowserStart" type="button">Продолжить через Telegram</button>
+            <a class="btn hidden" id="btnTelegramOpenBot" href="#" target="_blank" rel="noopener">Открыть бота</a>
+          </div>
+          <div class="muted mt-8 hidden" id="telegramBrowserHint">Если бот открывается впервые, нажми <b>Start / Запустить</b>, затем кнопку подтверждения в сообщении от бота.</div>
+        </div>
+
+        <div class="itemcard mt-16">
+          <b>Что дальше</b>
+          <div class="muted mt-8" id="nextHint">После входа тебя вернёт на страницу, с которой запрашивалась авторизация.</div>
+        </div>
+
+        <div class="itemcard mt-16">
+          <b>Правила пароля</b>
+          <div class="muted mt-8">Пароль должен быть не короче 8 символов и содержать хотя бы одну букву и одну цифру.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -138,9 +128,6 @@
       applyTelegramTheme,
       ensureLogin,
       loginWithPassword,
-      startTelegramBrowserLogin,
-      getTelegramBrowserLoginStatus,
-      finalizeTelegramBrowserLogin,
       getPhoneAuthConfig,
       requestPhoneCall,
       getPhoneCallStatus,
@@ -169,11 +156,9 @@
     let callPollTimer = null;
     let callFallbackTimer = null;
     let smsChallengeId = null;
-    let telegramBrowserSessionToken = "";
-    let telegramBrowserDeepLink = "";
-    let telegramBrowserPollTimer = null;
-    let telegramBrowserFinalizing = false;
     let phoneAuthConfig = { call_enabled: true, sms_enabled: true, fallback_after_seconds: 10 };
+    let telegramBrowserToken = "";
+    let telegramBrowserPollTimer = null;
 
     const isCallEnabled = () => Boolean(phoneAuthConfig?.call_enabled);
     const isSmsEnabled = () => Boolean(phoneAuthConfig?.sms_enabled);
@@ -215,7 +200,7 @@
     }
 
     async function initExistingSession() {
-      const login = await ensureLogin({ silent: true, redirectOnFail: false, timeoutMs: 5000, telegramWaitMs: 0 });
+      const login = await ensureLogin({ silent: true, redirectOnFail: false });
       if (login.ok) {
         await finishPostLoginFlow();
         return true;
@@ -227,19 +212,10 @@
       loginPhoneInput: document.getElementById("loginPhoneInput"),
       loginPasswordInput: document.getElementById("loginPasswordInput"),
       btnPasswordLogin: document.getElementById("btnPasswordLogin"),
-      loginPanel: document.getElementById("loginPanel"),
       showSetupModeBtn: document.getElementById("showSetupModeBtn"),
       showResetModeBtn: document.getElementById("showResetModeBtn"),
-      showTelegramLoginBtn: document.getElementById("showTelegramLoginBtn"),
-      telegramLoginShell: document.getElementById("telegramLoginShell"),
-      hideTelegramLoginBtn: document.getElementById("hideTelegramLoginBtn"),
-      telegramLoginStatus: document.getElementById("telegramLoginStatus"),
-      telegramLoginMeta: document.getElementById("telegramLoginMeta"),
-      telegramLoginOpenLink: document.getElementById("telegramLoginOpenLink"),
-      telegramLoginCopyBtn: document.getElementById("telegramLoginCopyBtn"),
-      telegramLoginRestartBtn: document.getElementById("telegramLoginRestartBtn"),
-      passwordFlowShell: document.getElementById("passwordFlowShell"),
-      hidePasswordFlowBtn: document.getElementById("hidePasswordFlowBtn"),
+      modeSetupBtn: document.getElementById("modeSetupBtn"),
+      modeResetBtn: document.getElementById("modeResetBtn"),
       passwordFlowTitle: document.getElementById("passwordFlowTitle"),
       passwordFlowHint: document.getElementById("passwordFlowHint"),
       verifyPhoneInput: document.getElementById("verifyPhoneInput"),
@@ -253,6 +229,10 @@
       newPasswordInput: document.getElementById("newPasswordInput"),
       confirmPasswordInput: document.getElementById("confirmPasswordInput"),
       btnCompletePasswordFlow: document.getElementById("btnCompletePasswordFlow"),
+      telegramState: document.getElementById("telegramState"),
+      btnTelegramBrowserStart: document.getElementById("btnTelegramBrowserStart"),
+      btnTelegramOpenBot: document.getElementById("btnTelegramOpenBot"),
+      telegramBrowserHint: document.getElementById("telegramBrowserHint"),
     };
 
     function applyPhoneAuthConfig() {
@@ -314,108 +294,13 @@
       els.smsMeta.textContent = "";
     }
 
-
-    function clearTelegramBrowserPoll() {
-      if (telegramBrowserPollTimer) {
-        clearInterval(telegramBrowserPollTimer);
-        telegramBrowserPollTimer = null;
-      }
-      telegramBrowserFinalizing = false;
-    }
-
-    function showTelegramLoginShell() {
-      els.passwordFlowShell.classList.add("hidden");
-      els.loginPanel.classList.add("hidden");
-      els.telegramLoginShell.classList.remove("hidden");
-    }
-
-    function hideTelegramLoginShell() {
-      clearTelegramBrowserPoll();
-      els.telegramLoginShell.classList.add("hidden");
-      els.loginPanel.classList.remove("hidden");
-      telegramBrowserSessionToken = "";
-      telegramBrowserDeepLink = "";
-      els.telegramLoginOpenLink.setAttribute("href", "#");
-      els.telegramLoginMeta.textContent = "";
-      els.telegramLoginStatus.textContent = "Нажми кнопку ниже, открой бота. Если бот открывается впервые, нажми «Start / Запустить», затем «Подтвердить вход».";
-    }
-
-    function renderTelegramBrowserState(data) {
-      const status = String(data?.status || "PENDING").toUpperCase();
-      if (status === "COMPLETED" || status === "FINALIZED") {
-        els.telegramLoginStatus.textContent = "Подтверждение получено. Завершаю вход в браузере…";
-        return;
-      }
-      if (status === "EXPIRED") {
-        els.telegramLoginStatus.textContent = "Ссылка истекла. Нажми «Обновить ссылку», чтобы создать новую.";
-        return;
-      }
-      const tgUsername = data?.telegram_username ? ` от @${String(data.telegram_username).replace(/^@+/, "")}` : "";
-      els.telegramLoginStatus.textContent = `Ожидаем подтверждение в Telegram${tgUsername}. После нажатия кнопки в боте браузер завершит вход автоматически.`;
-    }
-
-    async function pollTelegramBrowserSession() {
-      if (!telegramBrowserSessionToken || telegramBrowserFinalizing) return;
-      try {
-        const out = await getTelegramBrowserLoginStatus(telegramBrowserSessionToken);
-        renderTelegramBrowserState(out);
-        if (out?.authorized && !telegramBrowserFinalizing) {
-          telegramBrowserFinalizing = true;
-          clearTelegramBrowserPoll();
-          await finalizeTelegramBrowserLogin(telegramBrowserSessionToken);
-          toast("Вход через Telegram подтверждён", "ok");
-          await finishPostLoginFlow();
-          return;
-        }
-        if (String(out?.status || "").toUpperCase() === "EXPIRED") {
-          clearTelegramBrowserPoll();
-        }
-      } catch (e) {
-        clearTelegramBrowserPoll();
-        toast(e?.data?.detail || e?.message || "Не удалось проверить статус входа через Telegram", "err");
-      }
-    }
-
-    async function startTelegramBrowserFlow() {
-      clearTelegramBrowserPoll();
-      showTelegramLoginShell();
-      els.telegramLoginStatus.textContent = "Создаю ссылку для входа через Telegram…";
-      const out = await startTelegramBrowserLogin(getSafeNext());
-      telegramBrowserSessionToken = String(out?.session_token || "");
-      telegramBrowserDeepLink = String(out?.deep_link_url || "");
-      if (!telegramBrowserSessionToken || !telegramBrowserDeepLink) {
-        throw new Error("Не удалось подготовить вход через Telegram");
-      }
-      els.telegramLoginOpenLink.setAttribute("href", telegramBrowserDeepLink);
-      const expires = Number(out?.expires_in_seconds || 0);
-      const botUsername = String(out?.bot_username || "").replace(/^@+/, "");
-      els.telegramLoginMeta.textContent = `Бот: @${botUsername}. Ссылка действует ${expires} сек. Если бот открывается впервые, после перехода нажми «Start / Запустить». Затем нажми «Подтвердить вход».`;
-      renderTelegramBrowserState({ status: out?.status || "PENDING" });
-      telegramBrowserPollTimer = setInterval(() => { void pollTelegramBrowserSession(); }, Math.max(1500, Number(out?.poll_interval_ms || 2000)));
-      await pollTelegramBrowserSession();
-    }
-
-    function openPasswordFlow(mode) {
-      setPasswordMode(mode);
-      syncPhoneFields(els.loginPhoneInput.value);
-      els.loginPanel.classList.add("hidden");
-      els.passwordFlowShell.classList.remove("hidden");
-      els.verifyPhoneInput.focus();
-    }
-
-    function hidePasswordFlow() {
-      resetVerificationState();
-      els.passwordFlowShell.classList.add("hidden");
-      els.loginPanel.classList.remove("hidden");
-      syncPhoneFields(els.verifyPhoneInput.value);
-      els.loginPhoneInput.focus();
-    }
-
     function setPasswordMode(mode) {
       passwordFlowMode = mode === MODE_RESET ? MODE_RESET : MODE_SETUP;
       resetVerificationState();
       const isReset = passwordFlowMode === MODE_RESET;
-      els.passwordFlowTitle.textContent = isReset ? "Сброс пароля" : "Регистрация";
+      els.modeSetupBtn.classList.toggle("primary", !isReset);
+      els.modeResetBtn.classList.toggle("primary", isReset);
+      els.passwordFlowTitle.textContent = isReset ? "Сброс пароля" : "Первичная настройка";
       const fallbackHint = isSmsEnabled()
         ? "Если звонок не проходит, через 10 секунд можно запросить SMS."
         : "Сейчас подтверждение доступно только звонком.";
@@ -425,7 +310,7 @@
       els.btnRequestCall.textContent = isReset ? "Получить номер для звонка" : "Получить номер для звонка";
       els.btnCompletePasswordFlow.textContent = isReset
         ? "Сбросить пароль"
-        : "Подтвердить номер и завершить регистрацию";
+        : "Подтвердить номер и сохранить пароль";
     }
 
     function validateNewPassword() {
@@ -542,18 +427,16 @@
       }
     };
 
-    els.showSetupModeBtn.onclick = () => openPasswordFlow(MODE_SETUP);
-    els.showResetModeBtn.onclick = () => openPasswordFlow(MODE_RESET);
-    els.showTelegramLoginBtn.onclick = async () => {
-      try {
-        await startTelegramBrowserFlow();
-      } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось подготовить вход через Telegram", "err");
-        hideTelegramLoginShell();
-      }
+    els.showSetupModeBtn.onclick = () => {
+      setPasswordMode(MODE_SETUP);
+      els.verifyPhoneInput.focus();
     };
-    els.hideTelegramLoginBtn.onclick = () => hideTelegramLoginShell();
-    els.hidePasswordFlowBtn.onclick = () => hidePasswordFlow();
+    els.showResetModeBtn.onclick = () => {
+      setPasswordMode(MODE_RESET);
+      els.verifyPhoneInput.focus();
+    };
+    els.modeSetupBtn.onclick = () => setPasswordMode(MODE_SETUP);
+    els.modeResetBtn.onclick = () => setPasswordMode(MODE_RESET);
 
     els.btnRequestCall.onclick = async () => {
       try {
@@ -571,24 +454,6 @@
       }
     };
 
-    els.telegramLoginRestartBtn.onclick = async () => {
-      try {
-        await startTelegramBrowserFlow();
-      } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось обновить ссылку для Telegram", "err");
-      }
-    };
-
-    els.telegramLoginCopyBtn.onclick = async () => {
-      try {
-        if (!telegramBrowserDeepLink) throw new Error("Ссылка ещё не готова");
-        await navigator.clipboard.writeText(telegramBrowserDeepLink);
-        toast("Ссылка скопирована", "ok");
-      } catch (e) {
-        toast(e?.message || "Не удалось скопировать ссылку", "err");
-      }
-    };
-
     els.btnCompletePasswordFlow.onclick = async () => {
       try {
         await completeVerificationFlow();
@@ -597,11 +462,89 @@
       }
     };
 
+    function stopTelegramBrowserPolling() {
+      if (telegramBrowserPollTimer) {
+        clearInterval(telegramBrowserPollTimer);
+        telegramBrowserPollTimer = null;
+      }
+    }
+
+    function resetTelegramBrowserUi() {
+      stopTelegramBrowserPolling();
+      telegramBrowserToken = "";
+      els.btnTelegramOpenBot.classList.add("hidden");
+      els.btnTelegramOpenBot.setAttribute("href", "#");
+      els.telegramBrowserHint.classList.add("hidden");
+    }
+
+    async function completeTelegramBrowserAuth() {
+      if (!telegramBrowserToken) return;
+      await api("/auth/telegram/browser/complete", {
+        method: "POST",
+        body: { token: telegramBrowserToken },
+        handle401: false,
+      });
+      toast("Вход через Telegram выполнен", "ok");
+      resetTelegramBrowserUi();
+      await finishPostLoginFlow();
+    }
+
+    async function checkTelegramBrowserStatus() {
+      if (!telegramBrowserToken) return;
+      try {
+        const out = await api(`/auth/telegram/browser/status/${encodeURIComponent(telegramBrowserToken)}`, { handle401: false });
+        if (out?.status === "approved" || out?.status === "consumed") {
+          els.telegramState.textContent = out?.telegram_display_name
+            ? `Вход подтверждён пользователем ${out.telegram_display_name}. Завершаю авторизацию…`
+            : "Вход подтверждён. Завершаю авторизацию…";
+          stopTelegramBrowserPolling();
+          await completeTelegramBrowserAuth();
+          return;
+        }
+        if (out?.status === "expired") {
+          resetTelegramBrowserUi();
+          els.telegramState.textContent = "Сессия входа истекла. Нажми кнопку ещё раз, чтобы создать новую ссылку.";
+          toast("Сессия Telegram-входа истекла", "warn");
+          return;
+        }
+      } catch (e) {
+        const msg = e?.data?.detail || e?.message || "Не удалось проверить статус входа";
+        els.telegramState.textContent = msg;
+      }
+    }
+
+    async function startTelegramBrowserAuth() {
+      try {
+        stopTelegramBrowserPolling();
+        els.telegramState.textContent = "Создаю ссылку на вход через Telegram…";
+        const out = await api("/auth/telegram/browser/start", { method: "POST", handle401: false });
+        telegramBrowserToken = out?.token || "";
+        if (!telegramBrowserToken || !out?.deep_link) throw new Error("Не удалось подготовить Telegram-вход");
+        els.btnTelegramOpenBot.href = out.deep_link;
+        els.btnTelegramOpenBot.classList.remove("hidden");
+        els.telegramBrowserHint.classList.remove("hidden");
+        els.telegramState.textContent = out?.bot_username
+          ? `Откроется бот @${out.bot_username}. После подтверждения вернись в браузер — вход завершится автоматически.`
+          : "Откроется бот Telegram. После подтверждения вернись в браузер — вход завершится автоматически.";
+        telegramBrowserPollTimer = setInterval(checkTelegramBrowserStatus, Math.max(1000, Number(out?.poll_interval_ms || 2000)));
+        setTimeout(() => {
+          try { window.open(out.deep_link, "_blank", "noopener"); } catch {}
+        }, 50);
+      } catch (e) {
+        resetTelegramBrowserUi();
+        const msg = e?.data?.detail || e?.message || "Не удалось подготовить вход через Telegram";
+        els.telegramState.textContent = msg;
+        toast(msg, "err");
+      }
+    }
+
     nextHint.textContent = `После входа тебя вернёт на ${getSafeNext()}.`;
     await loadPhoneAuthConfig();
     setPasswordMode(MODE_SETUP);
-    hidePasswordFlow();
-    await initExistingSession();
+    if (!(await initExistingSession())) {
+      resetTelegramBrowserUi();
+      els.btnTelegramBrowserStart.onclick = () => { startTelegramBrowserAuth(); };
+    }
   </script>
 </body>
 </html>

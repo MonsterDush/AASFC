@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
-import urllib.parse
+import threading
+import time
+from datetime import datetime, timezone
+import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,7 +44,7 @@ from app.auth.telegram_webapp import TelegramInitDataError, verify_init_data
 from app.auth.telegram_widget import TelegramLoginWidgetError, verify_login_widget_data
 from app.core.db import get_db
 from app.core.tg import normalize_tg_username
-from app.models import TelegramBrowserAuthSession, User
+from app.models import User
 from app.services.invites import accept_invites_for_user, accept_phone_invites_for_user
 from app.services.sms_auth import get_sms_provider
 from app.settings import settings
@@ -107,32 +109,37 @@ class LinkTelegramIn(BaseModel):
     initData: str = Field(alias="init_data")
 
 
-class TelegramBrowserAuthStartIn(BaseModel):
-    next_path: str | None = Field(default=None, max_length=1024)
-
-
-class TelegramBrowserAuthStartOut(BaseModel):
+class TelegramBrowserStartOut(BaseModel):
     ok: bool = True
-    enabled: bool = True
-    session_token: str
+    token: str
+    status: str = "pending"
     bot_username: str
-    deep_link_url: str
-    expires_in_seconds: int
+    deep_link: str
+    expires_at: str
     poll_interval_ms: int = 2000
-    status: str = "PENDING"
 
 
-class TelegramBrowserAuthStatusOut(BaseModel):
+class TelegramBrowserStatusOut(BaseModel):
     ok: bool = True
+    token: str
     status: str
-    authorized: bool = False
-    expires_in_seconds: int = 0
-    finalized: bool = False
+    expires_at: str
+    approved_at: str | None = None
+    consumed_at: str | None = None
     telegram_username: str | None = None
+    telegram_display_name: str | None = None
 
 
-class TelegramBrowserAuthFinalizeIn(BaseModel):
-    session_token: str = Field(..., min_length=16, max_length=64)
+class TelegramBrowserCompleteIn(BaseModel):
+    token: str = Field(..., min_length=8, max_length=128)
+
+
+class TelegramBrowserInternalApproveIn(BaseModel):
+    token: str = Field(..., min_length=8, max_length=128)
+    tg_user_id: int
+    username: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
 
 
 class PasswordStateOut(BaseModel):
@@ -248,255 +255,129 @@ def _auth_state(db: Session, *, user: User) -> AuthStateOut:
     )
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+_BROWSER_TG_LOGIN_TTL_SECONDS = 60 * 10
+_BROWSER_TG_POLL_INTERVAL_MS = 2000
+_BROWSER_TG_SESSION_PREFIX = "axelio_login_"
+_BROWSER_TG_SESSION_LOCK = threading.Lock()
+_BROWSER_TG_SESSIONS: dict[str, dict] = {}
+_BROWSER_TG_BOT_USERNAME_CACHE: dict[str, object] = {"value": None, "checked_at": 0.0}
 
 
-def _normalize_next_path(value: str | None) -> str | None:
-    raw = str(value or "").strip()
-    if not raw:
+def _utc_iso(ts: float | None) -> str | None:
+    if ts is None:
         return None
-    if raw.startswith("http://") or raw.startswith("https://"):
-        return None
-    if not raw.startswith("/"):
-        raw = "/" + raw
-    if raw.startswith("/auth.html"):
-        return "/"
-    if len(raw) > 1024:
-        raw = raw[:1024]
-    return raw
+    return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
 
 
-@lru_cache(maxsize=1)
-def _fetch_telegram_bot_username_from_api() -> str:
-    token = str(settings.TG_BOT_TOKEN or "").strip()
-    if not token:
+def _cleanup_browser_tg_sessions(now_ts: float | None = None) -> None:
+    now = float(now_ts or time.time())
+    stale_before = now - (_BROWSER_TG_LOGIN_TTL_SECONDS * 2)
+    with _BROWSER_TG_SESSION_LOCK:
+        for token, row in list(_BROWSER_TG_SESSIONS.items()):
+            expires_at = float(row.get("expires_at") or 0.0)
+            consumed_at = row.get("consumed_at")
+            created_at = float(row.get("created_at") or 0.0)
+            if expires_at and now > expires_at:
+                row["status"] = "expired"
+            if consumed_at and float(consumed_at) < stale_before:
+                _BROWSER_TG_SESSIONS.pop(token, None)
+                continue
+            if not consumed_at and created_at and created_at < stale_before:
+                _BROWSER_TG_SESSIONS.pop(token, None)
+
+
+def _get_browser_login_bot_username() -> str:
+    cached_value = str(_BROWSER_TG_BOT_USERNAME_CACHE.get("value") or "").strip()
+    checked_at = float(_BROWSER_TG_BOT_USERNAME_CACHE.get("checked_at") or 0.0)
+    now = time.time()
+    if cached_value and (now - checked_at) < 300:
+        return cached_value
+
+    if not settings.TG_BOT_TOKEN:
         return ""
-    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/getMe", method="GET")
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        body = resp.read().decode("utf-8", errors="ignore")
-    payload = json.loads(body or "{}")
-    if not payload.get("ok"):
-        return ""
-    return str((payload.get("result") or {}).get("username") or "").strip().lstrip("@")
-
-
-def _telegram_browser_bot_username() -> str:
-    explicit = str(settings.TG_BROWSER_LOGIN_BOT_USERNAME or settings.TG_LOGIN_WIDGET_BOT_USERNAME or "").strip().lstrip("@")
-    if explicit:
-        return explicit
-    try:
-        return _fetch_telegram_bot_username_from_api()
-    except Exception:
-        return ""
-
-
-def _browser_login_ttl_seconds() -> int:
-    return max(int(settings.TG_BROWSER_LOGIN_SESSION_TTL_SECONDS or 600), 60)
-
-
-def _browser_login_prefix() -> str:
-    return "browser_login_"
-
-
-def _new_browser_login_token() -> str:
-    return secrets.token_hex(16)
-
-
-def _get_browser_login_session(db: Session, *, session_token: str) -> TelegramBrowserAuthSession:
-    token = str(session_token or "").strip().lower()
-    session = db.execute(
-        select(TelegramBrowserAuthSession).where(TelegramBrowserAuthSession.public_token == token)
-    ).scalar_one_or_none()
-    if session is None:
-        raise HTTPException(status_code=404, detail="Сессия входа через Telegram не найдена")
-    return session
-
-
-def _expire_browser_login_session(session: TelegramBrowserAuthSession) -> bool:
-    if str(session.status or "").upper() == "EXPIRED":
-        return True
-    if session.expires_at <= _utcnow():
-        session.status = "EXPIRED"
-        return True
-    return False
-
-
-def _browser_login_status_payload(session: TelegramBrowserAuthSession) -> TelegramBrowserAuthStatusOut:
-    expires_in_seconds = max(0, int((session.expires_at - _utcnow()).total_seconds()))
-    status_value = str(session.status or "PENDING").upper()
-    return TelegramBrowserAuthStatusOut(
-        status=status_value,
-        authorized=status_value in {"COMPLETED", "FINALIZED"} and bool(session.user_id),
-        expires_in_seconds=expires_in_seconds,
-        finalized=status_value == "FINALIZED",
-        telegram_username=(normalize_tg_username(session.tg_username) if session.tg_username else None),
-    )
-
-
-def _telegram_api_post(method: str, payload: dict) -> dict:
-    token = str(settings.TG_BOT_TOKEN or "").strip()
-    if not token:
-        raise RuntimeError("TG_BOT_TOKEN is not configured")
-
-    data: dict[str, str] = {}
-    for key, value in payload.items():
-        if value is None:
-            continue
-        if isinstance(value, (dict, list)):
-            data[key] = json.dumps(value, ensure_ascii=False)
-        else:
-            data[key] = str(value)
 
     req = urllib.request.Request(
-        f"https://api.telegram.org/bot{token}/{method}",
-        data=urllib.parse.urlencode(data).encode("utf-8"),
-        method="POST",
+        f"https://api.telegram.org/bot{settings.TG_BOT_TOKEN}/getMe",
+        method="GET",
     )
-    with urllib.request.urlopen(req, timeout=7) as resp:
-        body = resp.read().decode("utf-8", errors="ignore")
-    result = json.loads(body or "{}")
-    if not result.get("ok"):
-        raise RuntimeError(str(result.get("description") or f"telegram {method} failed"))
-    return result
-
-
-def _telegram_answer_callback_query(callback_query_id: str, text: str | None = None, *, show_alert: bool = False) -> None:
     try:
-        _telegram_api_post("answerCallbackQuery", {
-            "callback_query_id": callback_query_id,
-            "text": text or "",
-            "show_alert": show_alert,
-        })
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="ignore") or "{}")
+        username = str(((payload.get("result") or {}).get("username")) or "").strip()
+        _BROWSER_TG_BOT_USERNAME_CACHE["value"] = username
+        _BROWSER_TG_BOT_USERNAME_CACHE["checked_at"] = now
+        return username
     except Exception:
-        pass
+        fallback = str(settings.TG_LOGIN_WIDGET_BOT_USERNAME or "").strip()
+        if fallback:
+            _BROWSER_TG_BOT_USERNAME_CACHE["value"] = fallback
+            _BROWSER_TG_BOT_USERNAME_CACHE["checked_at"] = now
+            return fallback
+        return ""
 
 
-def _telegram_edit_message(chat_id: int, message_id: int, text: str, *, reply_markup: dict | None = None) -> None:
-    try:
-        _telegram_api_post("editMessageText", {
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
-            "reply_markup": reply_markup,
-        })
-    except Exception:
-        pass
+def _create_browser_tg_session() -> dict:
+    _cleanup_browser_tg_sessions()
+    token = secrets.token_urlsafe(24)
+    now = time.time()
+    row = {
+        "token": token,
+        "status": "pending",
+        "created_at": now,
+        "expires_at": now + _BROWSER_TG_LOGIN_TTL_SECONDS,
+        "approved_at": None,
+        "consumed_at": None,
+        "tg_user_id": None,
+        "tg_username": None,
+        "first_name": None,
+        "last_name": None,
+    }
+    with _BROWSER_TG_SESSION_LOCK:
+        _BROWSER_TG_SESSIONS[token] = row
+    return dict(row)
 
 
-def _telegram_send_browser_login_prompt(*, chat_id: int, session_token: str) -> None:
-    _telegram_api_post("sendMessage", {
-        "chat_id": chat_id,
-        "text": (
-            "Подтвердите вход в Axelio в браузере.\n\n"
-            "Если это были не вы, просто проигнорируйте это сообщение."
-        ),
-        "reply_markup": {"inline_keyboard": [[{"text": "Подтвердить вход", "callback_data": f"browser_login:{session_token}"}]]},
-        "disable_web_page_preview": True,
-    })
+def _get_browser_tg_session(token: str) -> dict | None:
+    normalized = str(token or "").strip()
+    if not normalized:
+        return None
+    _cleanup_browser_tg_sessions()
+    with _BROWSER_TG_SESSION_LOCK:
+        row = _BROWSER_TG_SESSIONS.get(normalized)
+        if not row:
+            return None
+        if float(row.get("expires_at") or 0.0) < time.time() and row.get("status") == "pending":
+            row["status"] = "expired"
+        return dict(row)
 
 
-def _complete_browser_login_session(
-    db: Session,
-    *,
-    session_token: str,
-    tg_user_id: int,
-    tg_username: str | None,
-    first_name: str | None,
-    last_name: str | None,
-) -> tuple[TelegramBrowserAuthSession, User]:
-    session = _get_browser_login_session(db, session_token=session_token)
-    if _expire_browser_login_session(session):
-        db.commit()
-        raise HTTPException(status_code=410, detail="Сессия входа через Telegram истекла")
-
-    if str(session.status or "PENDING").upper() in {"COMPLETED", "FINALIZED"} and session.user_id:
-        user = db.execute(select(User).where(User.id == session.user_id)).scalar_one_or_none()
-        if user is None:
-            raise HTTPException(status_code=404, detail="Пользователь для этой сессии не найден")
-        return session, user
-
-    user = _upsert_user_from_telegram_payload(
-        db,
-        tg_user_id=tg_user_id,
-        tg_username=tg_username,
-        first_name=first_name,
-        last_name=last_name,
+def _browser_tg_public_payload(row: dict) -> TelegramBrowserStatusOut:
+    first_name = str(row.get("first_name") or "").strip()
+    last_name = str(row.get("last_name") or "").strip()
+    tg_username = normalize_tg_username(row.get("tg_username"))
+    display_name = " ".join([part for part in [first_name, last_name] if part]).strip() or (tg_username.lstrip("@") if tg_username else None)
+    return TelegramBrowserStatusOut(
+        token=str(row.get("token") or ""),
+        status=str(row.get("status") or "pending"),
+        expires_at=str(_utc_iso(row.get("expires_at")) or ""),
+        approved_at=_utc_iso(row.get("approved_at")),
+        consumed_at=_utc_iso(row.get("consumed_at")),
+        telegram_username=tg_username,
+        telegram_display_name=display_name,
     )
-    accept_invites_for_user(db, user_id=user.id, tg_username=user.tg_username)
-    session.user_id = user.id
-    session.tg_user_id = tg_user_id
-    session.tg_username = tg_username
-    session.status = "COMPLETED"
-    session.completed_at = _utcnow()
-    db.flush()
-    db.commit()
-    db.refresh(user)
-    return session, user
 
 
-def _handle_browser_login_start_message(db: Session, *, chat_id: int, text: str) -> None:
-    raw = str(text or "").strip()
-    if not raw.startswith("/start"):
+def _bot_service_secret() -> str:
+    return str(os.getenv("BOT_SERVICE_SECRET") or "").strip()
+
+
+def _assert_internal_bot_secret(request: Request) -> None:
+    expected = _bot_service_secret()
+    if not expected:
         return
-
-    start_arg = raw.split(maxsplit=1)[1].strip() if " " in raw else ""
-    prefix = _browser_login_prefix()
-    if not start_arg.startswith(prefix):
-        _telegram_api_post("sendMessage", {
-            "chat_id": chat_id,
-            "text": "Привет! Для входа через Telegram сначала нажмите кнопку «Войти через Telegram» в браузере Axelio.",
-        })
-        return
-
-    session_token = start_arg[len(prefix):].strip().lower()
-    try:
-        session = _get_browser_login_session(db, session_token=session_token)
-        if _expire_browser_login_session(session):
-            db.commit()
-            _telegram_api_post("sendMessage", {
-                "chat_id": chat_id,
-                "text": "Ссылка для входа уже истекла. Вернитесь в браузер и создайте новую.",
-            })
-            return
-        _telegram_send_browser_login_prompt(chat_id=chat_id, session_token=session_token)
-    except HTTPException as exc:
-        _telegram_api_post("sendMessage", {"chat_id": chat_id, "text": str(exc.detail or "Не удалось найти сессию входа.")})
-    except Exception:
-        pass
-
-
-def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None:
-    data = str(callback_query.get("data") or "")
-    if not data.startswith("browser_login:"):
-        return
-
-    session_token = data.split(":", 1)[1].strip().lower()
-    query_id = str(callback_query.get("id") or "")
-    message = callback_query.get("message") or {}
-    from_user = callback_query.get("from") or {}
-    chat = message.get("chat") or {}
-    chat_id = chat.get("id")
-    message_id = message.get("message_id")
-
-    try:
-        _complete_browser_login_session(
-            db,
-            session_token=session_token,
-            tg_user_id=int(from_user.get("id")),
-            tg_username=normalize_tg_username(from_user.get("username")),
-            first_name=(from_user.get("first_name") or "").strip(),
-            last_name=(from_user.get("last_name") or "").strip(),
-        )
-        _telegram_answer_callback_query(query_id, "Вход подтверждён")
-        if chat_id is not None and message_id is not None:
-            _telegram_edit_message(int(chat_id), int(message_id), "Вход подтверждён. Вернитесь в браузер Axelio — страница завершит авторизацию автоматически.")
-    except HTTPException as exc:
-        _telegram_answer_callback_query(query_id, str(exc.detail or "Не удалось подтвердить вход"), show_alert=True)
-        if chat_id is not None and message_id is not None:
-            _telegram_edit_message(int(chat_id), int(message_id), str(exc.detail or "Не удалось подтвердить вход"))
-    except Exception:
-        _telegram_answer_callback_query(query_id, "Не удалось подтвердить вход", show_alert=True)
+    got = request.headers.get("X-Bot-Secret", "")
+    if got != expected:
+        raise HTTPException(status_code=401, detail="bad secret")
 
 
 def _phone_auth_config_payload() -> dict:
@@ -620,100 +501,6 @@ def _resolve_verification(db: Session, *, phone_e164: str, purpose: str, code: s
     )
 
 
-
-@router.post("/telegram/browser/start", response_model=TelegramBrowserAuthStartOut)
-def start_telegram_browser_auth(
-    payload: TelegramBrowserAuthStartIn,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    bot_username = _telegram_browser_bot_username()
-    if not bot_username:
-        raise HTTPException(status_code=503, detail="Telegram browser login is not configured")
-
-    session = TelegramBrowserAuthSession(
-        public_token=_new_browser_login_token(),
-        status="PENDING",
-        next_path=_normalize_next_path(payload.next_path),
-        request_ip=_client_ip(request),
-        user_agent=request.headers.get("user-agent"),
-        expires_at=_utcnow() + timedelta(seconds=_browser_login_ttl_seconds()),
-    )
-    db.add(session)
-    db.commit()
-    db.refresh(session)
-
-    return TelegramBrowserAuthStartOut(
-        session_token=session.public_token,
-        bot_username=bot_username,
-        deep_link_url=f"https://t.me/{bot_username}?start={_browser_login_prefix()}{session.public_token}",
-        expires_in_seconds=_browser_login_ttl_seconds(),
-    )
-
-
-@router.get("/telegram/browser/status/{session_token}", response_model=TelegramBrowserAuthStatusOut)
-def telegram_browser_auth_status(session_token: str, db: Session = Depends(get_db)):
-    session = _get_browser_login_session(db, session_token=session_token)
-    if _expire_browser_login_session(session):
-        db.commit()
-    else:
-        db.flush()
-    return _browser_login_status_payload(session)
-
-
-@router.post("/telegram/browser/finalize", response_model=AuthStateOut)
-def finalize_telegram_browser_auth(
-    payload: TelegramBrowserAuthFinalizeIn,
-    response: Response,
-    db: Session = Depends(get_db),
-):
-    session = _get_browser_login_session(db, session_token=payload.session_token)
-    if _expire_browser_login_session(session):
-        db.commit()
-        raise HTTPException(status_code=410, detail="Сессия входа через Telegram истекла")
-
-    if str(session.status or "PENDING").upper() not in {"COMPLETED", "FINALIZED"} or not session.user_id:
-        raise HTTPException(status_code=409, detail="Подтверждение в Telegram ещё не завершено")
-
-    user = db.execute(select(User).where(User.id == session.user_id)).scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=404, detail="Пользователь для этой сессии не найден")
-
-    session.status = "FINALIZED"
-    if session.finalized_at is None:
-        session.finalized_at = _utcnow()
-    db.commit()
-    db.refresh(user)
-    _write_access_cookie(response, user=user)
-    return _auth_state(db, user=user)
-
-
-@router.post("/telegram/browser/webhook", status_code=status.HTTP_204_NO_CONTENT)
-async def telegram_browser_webhook(
-    request: Request,
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-):
-    secret = str(settings.TG_WEBHOOK_SECRET_TOKEN or "").strip()
-    if secret and str(x_telegram_bot_api_secret_token or "").strip() != secret:
-        raise HTTPException(status_code=401, detail="bad telegram secret")
-
-    update = await request.json()
-    callback_query = update.get("callback_query")
-    if isinstance(callback_query, dict):
-        _handle_browser_login_callback(db, callback_query=callback_query)
-        return
-
-    message = update.get("message")
-    if isinstance(message, dict):
-        chat = message.get("chat") or {}
-        chat_id = chat.get("id")
-        text = message.get("text")
-        if chat_id is not None and text:
-            _handle_browser_login_start_message(db, chat_id=int(chat_id), text=str(text))
-        return
-
-
 @router.post("/telegram", status_code=status.HTTP_204_NO_CONTENT)
 def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Depends(get_db)):
     try:
@@ -796,6 +583,103 @@ def auth_telegram_widget(payload: TelegramWidgetAuthIn, response: Response, db: 
     accept_invites_for_user(db, user_id=user.id, tg_username=user.tg_username)
     _write_access_cookie(response, user=user)
     return
+
+
+@router.post("/telegram/browser/start", response_model=TelegramBrowserStartOut)
+def start_telegram_browser_auth():
+    bot_username = _get_browser_login_bot_username()
+    if not bot_username:
+        raise HTTPException(status_code=503, detail="Telegram browser login is not configured")
+
+    session_row = _create_browser_tg_session()
+    token = str(session_row["token"])
+    return TelegramBrowserStartOut(
+        token=token,
+        bot_username=bot_username,
+        deep_link=f"https://t.me/{bot_username}?start={_BROWSER_TG_SESSION_PREFIX}{token}",
+        expires_at=str(_utc_iso(session_row.get("expires_at")) or ""),
+        poll_interval_ms=_BROWSER_TG_POLL_INTERVAL_MS,
+    )
+
+
+@router.get("/telegram/browser/status/{token}", response_model=TelegramBrowserStatusOut)
+def telegram_browser_auth_status(token: str):
+    row = _get_browser_tg_session(token)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Сессия входа не найдена")
+    return _browser_tg_public_payload(row)
+
+
+@router.post("/telegram/browser/complete", status_code=status.HTTP_204_NO_CONTENT)
+def complete_telegram_browser_auth(payload: TelegramBrowserCompleteIn, response: Response, db: Session = Depends(get_db)):
+    row = _get_browser_tg_session(payload.token)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Сессия входа не найдена")
+    if row.get("status") == "expired":
+        raise HTTPException(status_code=410, detail="Сессия входа истекла")
+    if row.get("status") not in {"approved", "consumed"}:
+        raise HTTPException(status_code=409, detail="Вход через Telegram ещё не подтверждён")
+
+    tg_user_id = row.get("tg_user_id")
+    if not tg_user_id:
+        raise HTTPException(status_code=409, detail="Не удалось получить данные Telegram-пользователя")
+
+    user = _upsert_user_from_telegram_payload(
+        db,
+        tg_user_id=int(tg_user_id),
+        tg_username=normalize_tg_username(row.get("tg_username")),
+        first_name=str(row.get("first_name") or "").strip() or None,
+        last_name=str(row.get("last_name") or "").strip() or None,
+    )
+    db.commit()
+    db.refresh(user)
+
+    accept_invites_for_user(db, user_id=user.id, tg_username=user.tg_username)
+    _write_access_cookie(response, user=user)
+
+    with _BROWSER_TG_SESSION_LOCK:
+        session_ref = _BROWSER_TG_SESSIONS.get(payload.token)
+        if session_ref is not None:
+            session_ref["status"] = "consumed"
+            session_ref["consumed_at"] = time.time()
+    return
+
+
+@router.get("/telegram/browser/internal/session/{token}")
+def telegram_browser_internal_session(token: str, request: Request):
+    _assert_internal_bot_secret(request)
+    row = _get_browser_tg_session(token)
+    if row is None:
+        raise HTTPException(status_code=404, detail="browser auth session not found")
+    payload = _browser_tg_public_payload(row).model_dump()
+    payload["tg_user_id"] = row.get("tg_user_id")
+    return payload
+
+
+@router.post("/telegram/browser/internal/approve")
+def telegram_browser_internal_approve(payload: TelegramBrowserInternalApproveIn, request: Request):
+    _assert_internal_bot_secret(request)
+    normalized_token = str(payload.token or "").strip()
+    if not normalized_token:
+        raise HTTPException(status_code=400, detail="token is required")
+
+    now = time.time()
+    with _BROWSER_TG_SESSION_LOCK:
+        row = _BROWSER_TG_SESSIONS.get(normalized_token)
+        if row is None:
+            raise HTTPException(status_code=404, detail="browser auth session not found")
+        if float(row.get("expires_at") or 0.0) < now:
+            row["status"] = "expired"
+            raise HTTPException(status_code=410, detail="browser auth session expired")
+        if row.get("status") == "consumed":
+            return {"ok": True, "status": "consumed"}
+        row["status"] = "approved"
+        row["approved_at"] = now
+        row["tg_user_id"] = int(payload.tg_user_id)
+        row["tg_username"] = normalize_tg_username(payload.username)
+        row["first_name"] = str(payload.first_name or "").strip() or None
+        row["last_name"] = str(payload.last_name or "").strip() or None
+    return {"ok": True, "status": "approved"}
 
 
 @router.get("/phone/config")
