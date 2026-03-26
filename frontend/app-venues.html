@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Мои заведения</b>
-          <div class="muted">персонал · владелец</div>
+          <div class="muted">список доступных заведений</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -70,7 +70,7 @@ function venueCard(v){
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <div style="min-width:0;flex:1 1 auto;">
           <b>${esc(v.name)}${chip}</b>
-          <div class="small">id=${v.id} · my_role=${esc(v.my_role || "")}</div>
+          <div class="small">ID ${v.id}${v.my_role ? " · " + esc(String(v.my_role).toUpperCase() === "OWNER" ? "Владелец" : "Персонал") : ""}</div>
           ${hint}
         </div>
         <a class="btn subtle inline" href="${href}" data-open data-id="${v.id}">Открыть →</a>
@@ -95,7 +95,7 @@ function renderSections(data){
   }
   if (archived.length) {
     html += `
-      <div class="section-head" style="margin-top:14px"><div class="section-title"><b>Архив</b></div><div class="small">Скрыт для staff, доступен только владельцу.</div></div>
+      <div class="section-head" style="margin-top:14px"><div class="section-title"><b>Архив</b></div><div class="small">Архивные заведения доступны только владельцу.</div></div>
       <div class="list">${archived.map(venueCard).join('')}</div>
     `;
   }

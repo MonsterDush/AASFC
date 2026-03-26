@@ -14,18 +14,18 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">…</b>
-          <div class="muted">управление</div>
+          <div class="muted">карточка заведения</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
     <div class="card section-card">
-      <div class="page-caption">Управление заведением, участниками, финансами и справочниками.</div>
+      <div class="page-caption">Основные разделы заведения, команда и финансовые настройки.</div>
 
       <div class="itemcard mt-12 hidden" id="archiveNotice">
         <b>Заведение в архиве</b>
-        <div class="muted mt-6">Оно скрыто из активного списка staff. Владелец может просматривать карточку, вернуть заведение или удалить его.</div>
+        <div class="muted mt-6">Оно скрыто из списка активных заведений для команды. Владелец может открыть карточку, вернуть заведение или удалить его.</div>
       </div>
 
       <div class="itemcard mt-12 section-card">
@@ -49,8 +49,8 @@
       <div class="itemcard mt-12 section-card">
               <div class="section-card__head">
                 <div class="section-card__title">
-                  <b>Управление</b>
-                  <div class="muted">Основные разделы управления заведением и командой.</div>
+                  <b>Разделы</b>
+                  <div class="muted">Быстрый переход к основным разделам.</div>
                 </div>
               </div>
               <div class="action-grid action-grid--adaptive action-grid--mobile-2 mt-12">
@@ -305,8 +305,8 @@ const titleEl = document.getElementById("title");
         function setMeta() {
           if (!venueId) {
             titleEl.textContent = "Заведение";
-            metaEl.textContent = "no venue_id";
-            metaHint.textContent = "Открой страницу как /app-venue.html?venue_id=123";
+            metaEl.textContent = "Заведение не выбрано";
+            metaHint.textContent = "Вернись к списку заведений и выбери нужное.";
             openInvites.href = "/invites.html";
             return;
           }
@@ -365,7 +365,7 @@ openAdjustments.href = canManageAdjustments
 
           const tipsCard = document.getElementById("tipsSettingsCard");
           if (tipsCard) tipsCard.style.display = canEditVenueSettings ? "" : "none";
-          metaEl.textContent = `venue_id=${venueId}`;
+          metaEl.textContent = `ID ${venueId}`;
           metaHint.textContent = "";
         }
           
@@ -382,8 +382,8 @@ openAdjustments.href = canManageAdjustments
             row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
             row.innerHTML = `
               <div>
-                  <b>@${esc(m.tg_username || "-")}</b> <span class="mono">роль=${esc(m.venue_role)}</span><br/>
-                <span class="mono">user_id=${esc(m.user_id)} · tg_user_id=${esc(m.tg_user_id || "-")}</span>
+                  <b>${esc(m.short_name || m.display_name || m.full_name || (m.tg_username ? "@" + String(m.tg_username).replace(/^@+/, "") : "Участник"))}</b> <span class="muted">${esc(m.venue_role === "OWNER" ? "Владелец" : "Персонал")}</span><br/>
+                <span class="muted">${m.tg_username ? "Telegram: @" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? "Телефон: " + esc(m.phone) : ""}</span>
               </div>
               <button class="btn danger" data-remove>Удалить</button>
             `;
@@ -516,7 +516,7 @@ if (tipsModeEl) {
               last.name = v.name || "";
               last.is_archived = !!v.is_archived;
               titleEl.textContent = v.name || `Заведение ${venueId}`;
-              metaEl.textContent = `venue_id=${venueId} · ${last.is_archived ? "в архиве" : "активно"}` + (v.archived_at ? ` · archived_at=${v.archived_at}` : "");
+              metaEl.textContent = `ID ${venueId} · ${last.is_archived ? "в архиве" : "активно"}` + (v.archived_at ? ` · архивировано: ${v.archived_at}` : "");
               if (archiveNotice) archiveNotice.classList.toggle("hidden", !last.is_archived);
             } else {
               titleEl.textContent = `Заведение ${venueId}`;
@@ -587,7 +587,7 @@ if (tipsModeEl) {
         };
 
         btnLeave.onclick = async () => {
-          if (!venueId) return toast("Нет venue_id", "warn");
+          if (!venueId) return toast("Сначала выбери заведение", "warn");
           const ok = await confirmModal({
             title: "Выйти из заведения",
             text: "Вы уверены, что хотите выйти из заведения?",

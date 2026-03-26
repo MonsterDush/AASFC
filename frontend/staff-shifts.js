@@ -411,7 +411,7 @@ function pickShortName(obj) {
   const un = (obj?.tg_username || obj?.member_username || obj?.user_username || obj?.user?.tg_username || obj?.username || "").trim();
   if (un) return un.replace(/^@/, "");
   const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
-  return uid ? `user#${uid}` : "—";
+  return uid ? `Участник · ID ${uid}` : "—";
 }
 
 function fioInitials(fullName) {
@@ -433,7 +433,7 @@ function displayPerson(obj) {
   const un = (obj?.tg_username || obj?.member?.tg_username || "").trim();
   if (un) return un.startsWith("@") ? un : `@${un}`;
   const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
-  return uid ? `user#${uid}` : "—";
+  return uid ? `Участник · ID ${uid}` : "—";
 }
 
 function normalizeList(out) {

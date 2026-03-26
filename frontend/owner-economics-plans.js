@@ -221,7 +221,7 @@ function sourceLabel(plan) {
   const source = String(plan?.source || "NONE").toUpperCase();
   const kind = dayKindLabel(plan?.day_kind);
   const suffix = kind ? ` · ${kind}` : "";
-  if (source === "DATE_OVERRIDE") return `Override на дату${suffix}`;
+  if (source === "DATE_OVERRIDE") return `Отдельный план на дату${suffix}`;
   if (source === "MONTH_TEMPLATE") return `Месяц · ${plan?.template_month_title || plan?.template_month || state.month}`;
   if (source === "WEEKDAY_TEMPLATE") return `День недели · ${plan?.template_weekday_title || "шаблон"}`;
   return "План не задан";
@@ -231,10 +231,10 @@ function sourceHint(plan) {
   const source = String(plan?.source || "NONE").toUpperCase();
   const kind = dayKindLabel(plan?.day_kind);
   const title = String(plan?.title || '').trim();
-  if (source === "DATE_OVERRIDE") return `Для ${plan?.date || state.date} используется override на дату${kind ? ` (${kind.toLowerCase()})` : ''}${title ? ` — ${title}` : ''}.`;
+  if (source === "DATE_OVERRIDE") return `Для ${plan?.date || state.date} используется отдельный план на дату${kind ? ` (${kind.toLowerCase()})` : ''}${title ? ` — ${title}` : ''}.`;
   if (source === "MONTH_TEMPLATE") return `Для ${plan?.date || state.date} используется общий план на месяц ${plan?.template_month_title || plan?.template_month || state.month}.`;
   if (source === "WEEKDAY_TEMPLATE") return `Для ${plan?.date || state.date} используется шаблон по дню недели.`;
-  return "На дату пока не задан ни override, ни план на месяц, ни шаблон по дню недели.";
+  return "На дату пока не задан отдельный план, план на месяц или шаблон по дню недели.";
 }
 
 function extractEnabled(plan) {
@@ -353,7 +353,7 @@ function renderEffective(plan) {
 
 function renderMonthPlan(plan) {
   setText("monthPlanBadge", plan?.template_month_title || state.month || "—");
-  setText("monthPlanHint", plan?.notes || "Этот план применяется ко всем дням выбранного месяца, если на дату нет override.");
+  setText("monthPlanHint", plan?.notes || "Этот план применяется ко всем дням выбранного месяца, если для даты не задан отдельный план.");
   setText("monthPlanUsage", usageInlineText(plan, { empty: 'Месячный план заведения пока не участвует в повышенном проценте.' }));
   const form = document.getElementById("monthPlanForm");
   if (!form) return;
@@ -386,7 +386,7 @@ function renderOverride(plan) {
   setText("overrideBadge", hasValues ? (dayKindLabel(plan?.day_kind) || "Заполнен") : "Не задан");
   const form = document.getElementById("planOverrideForm");
   if (!form) return;
-  form.innerHTML = planFormHtml("override", "Override на дату", `Для ${state.date} можно задать отдельный план.`, plan, { includeDayMeta: true }) + `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить override</button></div>`;
+  form.innerHTML = planFormHtml("override", "Отдельный план на дату", `Для ${state.date} можно задать отдельный план.`, plan, { includeDayMeta: true }) + `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить план на дату</button></div>`;
   bindToggleDisable(form, "override");
   form.style.display = state.access.canManage ? "" : "none";
   form.onsubmit = saveOverride;
@@ -400,7 +400,7 @@ function templateCard(template) {
       <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
         <div>
           <b>${esc(template.weekday_title || "День недели")}</b>
-          <div class="muted mt-6">Используется, если нет override на дату и плана на месяц.</div>
+          <div class="muted mt-6">Используется, если для даты не задан отдельный план и план на месяц.</div>
         </div>
         <span class="badge">${esc(template.weekday_title || "—")}</span>
       </div>
@@ -674,7 +674,7 @@ async function saveOverride(event) {
     toast("Override сохранён", "ok");
     await loadData();
   } catch (err) {
-    toast(err?.data?.detail || err.message || "Не удалось сохранить override", "err");
+    toast(err?.data?.detail || err.message || "Не удалось сохранить план на дату", "err");
   }
 }
 

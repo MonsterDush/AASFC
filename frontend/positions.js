@@ -55,7 +55,7 @@ function memberNiceName(m) {
   if (fi) return fi;
   const u = (m?.tg_username || "").trim();
   if (u) return u.startsWith("@") ? u : `@${u}`;
-  return m?.user_id ? `user#${m.user_id}` : "—";
+  return m?.user_id ? `Участник · ID ${m.user_id}` : "—";
 }
 
 function memberLabel(m) {
@@ -71,7 +71,7 @@ function buildDefaultPermissionsCatalog() {
     {
       key: "reports",
       title: "Отчёты и финансы",
-      hint: "REPORTS_*, SHIFT_REPORT_*, REVENUE_* — отчёты, закрытие смены и выручка",
+      hint: "Отчёты за день, закрытие смены и выручка",
       items: [
         { code: "REPORTS_VIEW_DAILY", title: "Отчёты за день" },
         { code: "REPORTS_VIEW_MONTHLY", title: "Отчёты за месяц" },
@@ -87,7 +87,7 @@ function buildDefaultPermissionsCatalog() {
     {
       key: "adjustments",
       title: "Штрафы и споры",
-      hint: "ADJUSTMENTS_*, DISPUTES_*",
+      hint: "Штрафы, списания, премии и споры",
       items: [
         { code: "ADJUSTMENTS_VIEW", title: "Просмотр штрафов/премий/списаний" },
         { code: "ADJUSTMENTS_MANAGE", title: "Управление штрафами/премиями/списаниями" },
@@ -97,7 +97,7 @@ function buildDefaultPermissionsCatalog() {
     {
       key: "expenses",
       title: "Расходы",
-      hint: "EXPENSE_*",
+      hint: "Просмотр и добавление расходов",
       items: [
         { code: "EXPENSE_VIEW", title: "Просмотр расходов" },
         { code: "EXPENSE_ADD", title: "Добавление расходов" },
@@ -107,7 +107,7 @@ function buildDefaultPermissionsCatalog() {
     {
       key: "shifts",
       title: "Смены",
-      hint: "SHIFTS_* — график и управление сменами",
+      hint: "Просмотр графика и управление сменами",
       items: [
         { code: "SHIFTS_VIEW", title: "Просмотр смен" },
         { code: "SHIFTS_MANAGE", title: "Управление сменами" },
@@ -116,7 +116,7 @@ function buildDefaultPermissionsCatalog() {
     {
       key: "staff",
       title: "Сотрудники",
-      hint: "STAFF_* — участники заведения",
+      hint: "Просмотр и управление командой",
       items: [
         { code: "STAFF_VIEW", title: "Просмотр сотрудников" },
         { code: "STAFF_MANAGE", title: "Управление сотрудниками" },
@@ -125,7 +125,7 @@ function buildDefaultPermissionsCatalog() {
     {
       key: "positions",
       title: "Должности",
-      hint: "POSITIONS_* — раздел должностей",
+      hint: "Должности, назначения и права",
       items: [
         { code: "POSITIONS_VIEW", title: "Просмотр должностей" },
         { code: "POSITIONS_MANAGE", title: "Управление должностями" },
@@ -136,7 +136,7 @@ function buildDefaultPermissionsCatalog() {
     {
       key: "venue",
       title: "Заведение",
-      hint: "VENUE_VIEW/VENUE_SETTINGS_EDIT — доступ к карточке заведения и настройкам",
+      hint: "Доступ к карточке заведения и настройкам",
       items: [
         { code: "VENUE_VIEW", title: "Открывать заведение" },
         { code: "VENUE_SETTINGS_EDIT", title: "Настройки заведения" },
@@ -145,7 +145,7 @@ function buildDefaultPermissionsCatalog() {
     {
       key: "catalogs",
       title: "Справочники",
-      hint: "DEPARTMENTS_*, PAYMENT_METHODS_*, KPI_METRICS_*",
+      hint: "Департаменты, способы оплаты и KPI",
       items: [
         { code: "DEPARTMENTS_VIEW", title: "Департаменты: просмотр" },
         { code: "DEPARTMENTS_CREATE", title: "Департаменты: создание" },
@@ -168,42 +168,42 @@ const PERM_GROUP_META = {
   Reports: {
     key: "reports",
     title: "Отчёты и финансы",
-    hint: "REPORTS_*, SHIFT_REPORT_*, REVENUE_* — отчёты, закрытие смены и выручка",
+    hint: "Отчёты за день, закрытие смены и выручка",
   },
   Adjustments: {
     key: "adjustments",
     title: "Штрафы и споры",
-    hint: "ADJUSTMENTS_*, DISPUTES_*",
+    hint: "Штрафы, списания, премии и споры",
   },
   Expenses: {
     key: "expenses",
     title: "Расходы",
-    hint: "EXPENSE_*",
+    hint: "Просмотр и добавление расходов",
   },
   Shifts: {
     key: "shifts",
     title: "Смены",
-    hint: "SHIFTS_* — график и управление сменами",
+    hint: "Просмотр графика и управление сменами",
   },
   Staff: {
     key: "staff",
     title: "Сотрудники",
-    hint: "STAFF_* — участники заведения",
+    hint: "Просмотр и управление командой",
   },
   Positions: {
     key: "positions",
     title: "Должности",
-    hint: "POSITIONS_* — раздел должностей",
+    hint: "Должности, назначения и права",
   },
   Venue: {
     key: "venue",
     title: "Заведение",
-    hint: "VENUE_VIEW/VENUE_SETTINGS_EDIT — доступ к карточке заведения и настройкам",
+    hint: "Доступ к карточке заведения и настройкам",
   },
   Catalogs: {
     key: "catalogs",
     title: "Справочники",
-    hint: "DEPARTMENTS_*, PAYMENT_METHODS_*, KPI_METRICS_*",
+    hint: "Департаменты, способы оплаты и KPI",
   },
 };
 
@@ -342,16 +342,16 @@ function applyAccessToShell() {
 
   const sub = document.getElementById("subtitle");
   if (sub) {
-    if (auth.canManage && auth.canManagePerms) sub.textContent = "настройка профилей зарплаты и прав";
-    else if (auth.canManage) sub.textContent = "настройка профилей зарплаты";
-    else if (auth.canManagePerms) sub.textContent = "настройка прав";
-    else sub.textContent = "просмотр";
+    if (auth.canManage && auth.canManagePerms) sub.textContent = "должности, профили зарплаты и права";
+    else if (auth.canManage) sub.textContent = "должности и профили зарплаты";
+    else if (auth.canManagePerms) sub.textContent = "должности и права";
+    else sub.textContent = "список должностей";
   }
 
   const ah = document.getElementById("accessHint");
   if (ah) {
     const marks = (ok) => ok ? "✓" : "—";
-    ah.textContent = `Права: просмотр ${marks(auth.canViewList)} · управление ${marks(auth.canManage)} · права позиции ${marks(auth.canManagePerms)} · назначение ${marks(auth.canAssign)}`;
+    ah.textContent = `Доступ: список ${marks(auth.canViewList)} · редактирование ${marks(auth.canManage)} · права ${marks(auth.canManagePerms)} · назначения ${marks(auth.canAssign)}`;
   }
 }
 
@@ -587,7 +587,7 @@ function renderPositionForm({ mode, position }) {
             <div class="perm-row">
               <div class="perm-text">
                 <div class="perm-title">${esc(it.title)}</div>
-                <div class="perm-desc">${esc(it.description || it.code)}</div>
+                <div class="perm-desc">${esc(it.description || "")}</div>
               </div>
               <label class="switch">
                 <input type="checkbox"
@@ -1020,7 +1020,7 @@ function renderPositions() {
 
     for (const p of arr) {
       const m = memberById.get(String(p.member_user_id || ""));
-      const who = m ? memberLabel(m) : (p.member_user_id ? `user_id=${p.member_user_id}` : "—");
+      const who = m ? memberLabel(m) : (p.member_user_id ? `Участник · ID ${p.member_user_id}` : "—");
 
       const row = document.createElement("div");
       row.className = "list__row";
@@ -1133,14 +1133,14 @@ function renderInvites() {
     row.innerHTML = `
       <div style="min-width:220px">
         <div><b>@${esc(uname || "-")}</b> <span class="badge badge--draft">приглашён</span></div>
-        <div class="muted" style="margin-top:4px; font-size:12px">роль=${esc(inv?.venue_role || "STAFF")}</div>
+        <div class="muted" style="margin-top:4px; font-size:12px">${esc(inv?.venue_role === "OWNER" ? "Владелец" : "Персонал")}</div>
       </div>
       <div style="min-width:240px">
         <div class="muted" style="margin-bottom:6px">Должность</div>
         <select data-invite-id="${esc(String(inv.id))}" ${(!canAssign || !titles.length) ? "disabled" : ""}>
           ${options}
         </select>
-        ${!canAssign ? `<div class="muted small" style="margin-top:6px">Нет права POSITIONS_ASSIGN</div>` : ``}
+        ${!canAssign ? `<div class="muted small" style="margin-top:6px">Недостаточно прав для назначения</div>` : ``}
       </div>
     `;
 

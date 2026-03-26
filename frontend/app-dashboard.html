@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">Моё заведение</b>
-          <div class="muted" id="subtitle">панель сотрудника</div>
+          <div class="muted" id="subtitle">рабочий экран сотрудника</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -94,7 +94,7 @@ try { venues = await getMyVenues(); } catch {}
 const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
 if (v) {
   document.getElementById("title").textContent = v.name || "Заведение";
-  document.getElementById("subtitle").textContent = (v.my_role === "OWNER" ? "панель владельца (персонал)" : "панель сотрудника");
+  document.getElementById("subtitle").textContent = (v.my_role === "OWNER" ? "основные разделы заведения" : "рабочий экран сотрудника");
 }
 
 // show report card only if user has report access (best-effort)

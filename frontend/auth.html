@@ -28,7 +28,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Axelio</b>
-          <div class="muted">вход по телефону и паролю · Telegram — по кнопке</div>
+          <div class="muted">вход по номеру телефона, паролю или через Telegram</div>
         </div>
       </div>
       <div class="userpill" data-userpill>гость</div>
@@ -62,7 +62,7 @@
           <div class="password-flow-header">
             <div>
               <b>Вход через Telegram</b>
-              <div class="muted mt-8">Мы не грузим Telegram-скрипты на этой странице. Вместо этого вход подтверждается в боте и затем автоматически завершается в браузере.</div>
+              <div class="muted mt-8">Вход подтверждается в боте, а затем автоматически завершается в браузере.</div>
             </div>
             <button class="btn sm" id="hideTelegramLoginBtn" type="button">Назад ко входу</button>
           </div>
@@ -501,9 +501,7 @@
         : await requestPhoneCode(phone);
       smsChallengeId = out?.challenge_id || null;
       els.smsFallbackBlock.classList.remove("hidden");
-      els.smsMeta.textContent = out?.debug_code
-        ? `Код отправлен. dev_code=${out.debug_code}`
-        : `Код отправлен на ${out?.phone || phone}.`; 
+      els.smsMeta.textContent = `Код отправлен на ${out?.phone || phone}.`; 
       toast("SMS отправлена", "ok");
       els.smsCodeInput.focus();
     }

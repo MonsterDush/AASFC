@@ -80,7 +80,7 @@ function fmtMoneyMinor(minor) {
 
 function memberName(member) {
   if (!member) return "—";
-  return member.short_name || member.full_name || (member.tg_username ? `@${member.tg_username}` : `user #${member.user_id || ""}`);
+  return member.short_name || member.full_name || (member.tg_username ? `@${member.tg_username}` : `Участник${member.user_id ? " · ID " + member.user_id : ""}`);
 }
 
 const COMPONENT_LABELS = {
@@ -422,8 +422,8 @@ function recalculationText(latestRecalc, runCalculatedAt) {
   const reasonMap = {
     manual_calculation: "ручной расчёт",
     report_closed: "после закрытия отчёта",
-    report_reopened: "после reopen",
-    closed_report_updated: "после правки CLOSED-отчёта",
+    report_reopened: "после переоткрытия отчёта",
+    closed_report_updated: "после правки закрытого отчёта",
     shift_assignment_added: "после назначения",
     shift_assignment_removed: "после снятия назначения",
     shift_updated: "после изменения смены",

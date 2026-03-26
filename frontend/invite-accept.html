@@ -41,6 +41,17 @@
 
     applyTelegramTheme();
 
+    function channelLabel(channel) { return String(channel || '').toUpperCase() === 'PHONE' ? 'Телефон' : 'Telegram'; }
+    function roleLabel(role) { return String(role || '').toUpperCase() === 'OWNER' ? 'Владелец' : 'Персонал'; }
+    function inviteStatusLabel(status) {
+      const s = String(status || '').toUpperCase();
+      if (s === 'PENDING') return 'Ожидает подтверждения';
+      if (s === 'ACCEPTED') return 'Принято';
+      if (s === 'CANCELLED') return 'Отменено';
+      if (s === 'EXPIRED') return 'Истекло';
+      return status || '—';
+    }
+
     function renderInvite(inv) {
       const contact = inv.invite_channel === 'PHONE' ? (inv.contact_label || inv.phone || '—') : ('@' + (inv.tg_username || '—'));
       const loginHint = inv.invite_channel === 'PHONE'
@@ -49,10 +60,10 @@
       card.innerHTML = `
         <div><b>${esc(inv.venue_name || 'Приглашение')}</b></div>
         <div class="invite-meta mt-12">
-          <div><span class="chip">${esc(inv.invite_channel || 'TELEGRAM')}</span></div>
-          <div><span class="chip">${esc(inv.venue_role || '')}</span></div>
+          <div><span class="chip">${esc(channelLabel(inv.invite_channel))}</span></div>
+          <div><span class="chip">${esc(roleLabel(inv.venue_role))}</span></div>
           <div class="muted">Контакт: ${esc(contact)}</div>
-          <div class="muted">Статус: ${esc(inv.status || '')}</div>
+          <div class="muted">Статус: ${esc(inviteStatusLabel(inv.status))}</div>
         </div>
         <div class="muted mt-12">${esc(loginHint)}</div>
         <div class="row mt-12" style="gap:8px;" id="actionsRow"></div>

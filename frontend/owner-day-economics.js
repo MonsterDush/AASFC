@@ -295,7 +295,7 @@ function renderPlanFact(econ) {
 
   let sourceText = "План не задан";
   if (source === "DATE_OVERRIDE") {
-    sourceText = `Используется override на дату ${formatDateRu(plan.date)}${kind ? ` · ${kind}` : ""}${title ? ` · ${title}` : ""}`;
+    sourceText = `Используется отдельный план на дату ${formatDateRu(plan.date)}${kind ? ` · ${kind}` : ""}${title ? ` · ${title}` : ""}`;
   } else if (source === "MONTH_TEMPLATE") {
     sourceText = `Используется план на месяц ${plan.template_month_title || plan.template_month || "месяц"}`;
   } else if (source === "WEEKDAY_TEMPLATE") {

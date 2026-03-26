@@ -309,7 +309,7 @@ function renderNoVenue() {
     <div class="itemcard">
       <b>Не выбрано заведение</b>
       <div class="muted" style="margin-top:6px">
-        Открой страницу с параметром <span class="mono">?venue_id=...</span>.
+        Выбери заведение и открой отчёты ещё раз.
       </div>
     </div>
   `;
@@ -592,7 +592,7 @@ function renderAuditSection(audit, maps) {
 
   return audit
     .map((a) => {
-      const who = a?.user_tg_username ? `@${a.user_tg_username}` : (a?.user_id ? `user#${a.user_id}` : "—");
+      const who = a?.user_tg_username ? `@${a.user_tg_username}` : (a?.user_id ? `Пользователь · ID ${a.user_id}` : "—");
       const when = fmtDtRu(a?.changed_at);
       const lines = diffLines(a?.diff);
       const inner = lines.length
@@ -614,8 +614,8 @@ function renderAuditSection(audit, maps) {
 
 function reportStatusBadge(status) {
   const s = String(status || "DRAFT").toUpperCase();
-  if (s === "CLOSED") return `<span class="rep-badge rep-badge--closed">CLOSED</span>`;
-  return `<span class="rep-badge rep-badge--draft">DRAFT</span>`;
+  if (s === "CLOSED") return `<span class="rep-badge rep-badge--closed">Закрыто</span>`;
+  return `<span class="rep-badge rep-badge--draft">Черновик</span>`;
 }
 
 function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, tipsEnabled }) {
@@ -828,7 +828,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
     ${section("Фото/файлы", `<div style="margin-top:6px">${attHtml}</div>${uploadHtml}`, "Можно прикрепить несколько фотографий")}
 
     <div class="rep-divider"></div>
-    ${section("История изменений", auditHtml, status === "CLOSED" ? "Правки закрытого отчёта логируются" : "Аудит появляется после правок закрытого отчёта")}
+    ${section("История изменений", auditHtml, status === "CLOSED" ? "Все изменения закрытого отчёта сохраняются в истории" : "История появится после изменений закрытого отчёта")}
   `;
 
   return { title: formatDateRuNoG(dayISO), subtitle, body, hasDepartments, editEnabled };
@@ -1100,7 +1100,7 @@ async function openDay(dayISO) {
   // Reopen
   modalBody?.querySelector("#btnReopen")?.addEventListener("click", async () => {
     if (!canReopen()) return;
-    if (!confirm("Переоткрыть отчёт? Он станет DRAFT.")) return;
+    if (!confirm("Переоткрыть отчёт? Он снова станет черновиком.")) return;
     try {
       await reopenReport(dayISO);
       toast("Переоткрыто", "ok");
@@ -1137,7 +1137,7 @@ async function openDay(dayISO) {
     // Reopen handler again
     modalBody?.querySelector("#btnReopen")?.addEventListener("click", async () => {
       if (!canReopen()) return;
-      if (!confirm("Переоткрыть отчёт? Он станет DRAFT.")) return;
+      if (!confirm("Переоткрыть отчёт? Он снова станет черновиком.")) return;
       try {
         await reopenReport(dayISO);
         toast("Переоткрыто", "ok");
