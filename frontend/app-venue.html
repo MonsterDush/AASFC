@@ -14,25 +14,25 @@
         <div class="logo"></div>
         <div class="title">
           <b id="title">…</b>
-          <div class="muted">управление</div>
+          <div class="muted">разделы и настройки</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
     <div class="card section-card">
-      <div class="page-caption">Управление заведением, участниками, финансами и справочниками.</div>
+      <div class="page-caption">Здесь собраны основные разделы, настройки и команда заведения.</div>
 
       <div class="itemcard mt-12 hidden" id="archiveNotice">
         <b>Заведение в архиве</b>
-        <div class="muted mt-6">Оно скрыто из активного списка staff. Владелец может просматривать карточку, вернуть заведение или удалить его.</div>
+        <div class="muted mt-6">Оно скрыто из списка активных заведений для команды. Владелец может открыть карточку, вернуть заведение или удалить его.</div>
       </div>
 
       <div class="itemcard mt-12 section-card">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Информация</b>
-            <div class="mono" id="meta">…</div>
+            <div class="muted" id="meta">…</div>
           </div>
         </div>
 
@@ -49,8 +49,8 @@
       <div class="itemcard mt-12 section-card">
               <div class="section-card__head">
                 <div class="section-card__title">
-                  <b>Управление</b>
-                  <div class="muted">Основные разделы управления заведением и командой.</div>
+                  <b>Разделы</b>
+                  <div class="muted">Быстрый переход к основным разделам.</div>
                 </div>
               </div>
               <div class="action-grid action-grid--adaptive action-grid--mobile-2 mt-12">
@@ -146,7 +146,7 @@
     <div class="modal__backdrop"></div>
     <div class="modal__panel">
       <div class="modal__head">
-        <div class="modal__title">JSON</div>
+        <div class="modal__title">Детали</div>
         <button class="btn" data-close>Закрыть</button>
       </div>
       <div class="modal__body"></div>
@@ -200,6 +200,7 @@
         let canViewKpi = false;
         let canManageIntervals = false;
         let canEditVenueSettings = false;
+        let canManageStaff = false;
         let canViewReports = false;
         let canViewRevenue = false;
         let canViewExpenses = false;
@@ -226,6 +227,7 @@
           canManageIntervals = isOwner || isAdmin || hasPerm(pset, "SHIFTS_MANAGE");
 
           canEditVenueSettings = isOwner || isAdmin || hasPerm(pset, "VENUE_SETTINGS_EDIT");
+          canManageStaff = isOwner || isAdmin || hasPerm(pset, "STAFF_MANAGE");
 
           canViewReports = hasReportAccess(pset, myRole, String(me?.system_role || ""));
 
@@ -305,8 +307,8 @@ const titleEl = document.getElementById("title");
         function setMeta() {
           if (!venueId) {
             titleEl.textContent = "Заведение";
-            metaEl.textContent = "no venue_id";
-            metaHint.textContent = "Открой страницу как /app-venue.html?venue_id=123";
+            metaEl.textContent = "Заведение не выбрано";
+            metaHint.textContent = "Вернись к списку заведений и выбери нужное.";
             openInvites.href = "/invites.html";
             return;
           }
@@ -334,7 +336,7 @@ openAdjustments.href = canManageAdjustments
           if (openIntervals) openIntervals.href = `/shift-intervals.html?venue_id=${encodeURIComponent(venueId)}`;
 
           // hide/show by permissions
-          if (openInvites) openInvites.style.display = (isOwner || isAdmin) ? "" : "none";
+          if (openInvites) openInvites.style.display = canManageStaff ? "" : "none";
           if (openPositions) openPositions.style.display = (isOwner || isAdmin || hasPerm(pset, "POSITIONS_VIEW") || hasPerm(pset, "POSITIONS_MANAGE") || hasPerm(pset, "POSITIONS_ASSIGN") || hasPerm(pset, "POSITION_PERMISSIONS_MANAGE")) ? "" : "none";
 
           if (openReports) openReports.style.display = canViewReports ? "" : "none";
@@ -365,8 +367,10 @@ openAdjustments.href = canManageAdjustments
 
           const tipsCard = document.getElementById("tipsSettingsCard");
           if (tipsCard) tipsCard.style.display = canEditVenueSettings ? "" : "none";
-          metaEl.textContent = `venue_id=${venueId}`;
-          metaHint.textContent = "";
+          metaEl.textContent = last.is_archived ? "В архиве" : "Активно";
+          metaHint.textContent = canAdminVenue
+            ? "Здесь можно управлять настройками и составом команды."
+            : (canManageStaff ? "Здесь можно управлять составом команды." : "");
         }
           
 
@@ -382,18 +386,19 @@ openAdjustments.href = canManageAdjustments
             row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
             row.innerHTML = `
               <div>
-                  <b>@${esc(m.tg_username || "-")}</b> <span class="mono">роль=${esc(m.venue_role)}</span><br/>
-                <span class="mono">user_id=${esc(m.user_id)} · tg_user_id=${esc(m.tg_user_id || "-")}</span>
+                  <b>${esc(m.short_name || m.display_name || m.full_name || (m.tg_username ? "@" + String(m.tg_username).replace(/^@+/, "") : "Участник"))}</b> <span class="muted">${esc(m.venue_role === "OWNER" ? "Владелец" : "Персонал")}</span><br/>
+                <span class="muted">${m.tg_username ? "@" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? esc(m.phone) : ""}</span>
               </div>
               <button class="btn danger" data-remove>Удалить</button>
             `;
 
             const rmBtn = row.querySelector("[data-remove]");
-            if (rmBtn) rmBtn.style.display = canAdminVenue ? "" : "none";
+            const canRemoveMember = canManageStaff && String(m.venue_role || "").toUpperCase() !== "OWNER";
+            if (rmBtn) rmBtn.style.display = canRemoveMember ? "" : "none";
             if (rmBtn) rmBtn.onclick = async () => {
               const ok = await confirmModal({
                 title: "Удалить участника?",
-                text: `Удалить @${m.tg_username || "-"} из заведения?`,
+                text: `Удалить ${m.short_name || m.display_name || m.full_name || (m.tg_username ? "@" + String(m.tg_username).replace(/^@+/, "") : "участника")} из заведения?`,
                 confirmText: "Удалить",
                 danger: true,
               });
@@ -515,14 +520,19 @@ if (tipsModeEl) {
             if (v) {
               last.name = v.name || "";
               last.is_archived = !!v.is_archived;
-              titleEl.textContent = v.name || `Заведение ${venueId}`;
-              metaEl.textContent = `venue_id=${venueId} · ${last.is_archived ? "в архиве" : "активно"}` + (v.archived_at ? ` · archived_at=${v.archived_at}` : "");
+              titleEl.textContent = v.name || "Заведение";
+              metaEl.textContent = last.is_archived ? "В архиве" : "Активно";
+              metaHint.textContent = v.archived_at
+                ? `Архивировано: ${v.archived_at}`
+                : (canAdminVenue
+                    ? "Здесь можно управлять настройками и составом команды."
+                    : (canManageStaff ? "Здесь можно управлять составом команды." : ""));
               if (archiveNotice) archiveNotice.classList.toggle("hidden", !last.is_archived);
             } else {
-              titleEl.textContent = `Заведение ${venueId}`;
+              titleEl.textContent = "Заведение";
             }
           } catch {
-            titleEl.textContent = `Заведение ${venueId}`;
+            titleEl.textContent = "Заведение";
           }
 
           // --- Venue settings: tips ---
@@ -587,7 +597,7 @@ if (tipsModeEl) {
         };
 
         btnLeave.onclick = async () => {
-          if (!venueId) return toast("Нет venue_id", "warn");
+          if (!venueId) return toast("Сначала выбери заведение", "warn");
           const ok = await confirmModal({
             title: "Выйти из заведения",
             text: "Вы уверены, что хотите выйти из заведения?",

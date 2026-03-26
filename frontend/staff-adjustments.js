@@ -253,7 +253,7 @@ function openItem(it) {
 
 async function boot() {
   if (!venueId) {
-    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted" style="margin-top:6px">Открой страницу с параметром <span class="mono">?venue_id=...</span>.</div></div>`;
+    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted" style="margin-top:6px">Выбери заведение и открой раздел ещё раз.</div></div>`;
     return;
   }
 

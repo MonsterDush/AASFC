@@ -32,7 +32,7 @@ function renderShell() {
         <div class="logo"></div>
         <div class="title">
           <b>Поставщики</b>
-          <div class="muted">просмотр, редактирование и архив</div>
+          <div class="muted">для учёта расходов</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -97,10 +97,10 @@ function renderList() {
           <b>${esc(it.title)}</b>
           ${it.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
-        <div class="mono muted listrow__meta">${esc(it.contact || "без контакта")} · sort=${esc(it.sort_order)}</div>
+        <div class="muted listrow__meta">${esc(it.contact || "Контакты не указаны")}</div>
       </div>
       <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;">
-        <button class="btn sm" data-edit="${it.id}">Редакт.</button>
+        <button class="btn sm" data-edit="${it.id}">Изменить</button>
         <button class="btn sm ${it.is_active ? "danger" : ""}" data-archive="${it.id}">${it.is_active ? "В архив" : "Вернуть"}</button>
       </div>
     </div>
@@ -139,14 +139,14 @@ function editorForm(item = null) {
         <input id="f_contact" placeholder="телефон, Telegram, email" value="${esc(it.contact || "")}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Порядок</div>
+        <div class="muted" style="margin-bottom:6px">Порядок в списке</div>
         <input id="f_sort" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Статус</div>
+        <div class="muted" style="margin-bottom:6px">Отображение</div>
         <label class="row" style="gap:8px; align-items:center">
           <input type="checkbox" id="f_active" ${(it.is_active ?? true) ? "checked" : ""} />
-          <span>Активен</span>
+          <span>Показывать в списке</span>
         </label>
       </div>
     </div>

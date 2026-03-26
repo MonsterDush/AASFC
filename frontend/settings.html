@@ -30,13 +30,13 @@
 
     <div class="card mt-12">
       <b>Заведение</b>
-      <div class="muted mt-6">Выберите активное заведение или перейдите в управление</div>
+      <div class="muted mt-6">Выберите активное заведение или откройте нужный раздел</div>
       <div id="venueMenuMount" class="mt-10"></div>
     </div>
 
     <div class="card mt-12">
       <b>Уведомления</b>
-      <div class="muted mt-6">Настройка уведомлений от бота</div>
+      <div class="muted mt-6">Напоминания и история уведомлений</div>
       <div class="row mt-10 gap-8 wrap">
         <button class="btn" id="btnNotifSettings">Настройка уведомлений</button>
         <button class="btn" id="btnNotifHistory">История уведомлений</button>
@@ -466,7 +466,7 @@
       }
       return list.map((item) => {
         const timeLabel = item?.sent_at ? `Отправлено: ${formatDateTime(item.sent_at)}` : (item?.planned_at ? `Планировалось: ${formatDateTime(item.planned_at)}` : "Время не указано");
-        const venue = item?.venue_name ? `<div class="muted small mt-6">Заведение: ${esc(item.venue_name)}</div>` : "";
+        const venue = item?.venue_name ? `<div class="muted small mt-6">${esc(item.venue_name)}</div>` : "";
         const preview = item?.payload_preview ? `<div class="notif-history-preview mt-8">${esc(item.payload_preview)}</div>` : "";
         const error = item?.error_text ? `<div class="notif-history-error mt-8">${esc(item.error_text)}</div>` : "";
         return `

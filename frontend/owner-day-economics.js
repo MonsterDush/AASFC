@@ -241,7 +241,7 @@ function renderStatus(econ) {
   if (card && hint) {
     if (draftCount > 0) {
       card.style.display = "";
-      hint.textContent = `${draftCount} черновик(ов) на сумму ${fmtMoneyMinor(draftTotal)}. Они не участвуют в прибыли дня, пока не подтверждены.`;
+      hint.textContent = `${draftCount} неподтверждённых расходов на сумму ${fmtMoneyMinor(draftTotal)}. Они не участвуют в прибыли дня, пока не подтверждены.`;
     } else {
       card.style.display = "none";
       hint.textContent = "—";
@@ -295,7 +295,7 @@ function renderPlanFact(econ) {
 
   let sourceText = "План не задан";
   if (source === "DATE_OVERRIDE") {
-    sourceText = `Используется override на дату ${formatDateRu(plan.date)}${kind ? ` · ${kind}` : ""}${title ? ` · ${title}` : ""}`;
+    sourceText = `Используется отдельный план на дату ${formatDateRu(plan.date)}${kind ? ` · ${kind}` : ""}${title ? ` · ${title}` : ""}`;
   } else if (source === "MONTH_TEMPLATE") {
     sourceText = `Используется план на месяц ${plan.template_month_title || plan.template_month || "месяц"}`;
   } else if (source === "WEEKDAY_TEMPLATE") {
@@ -314,7 +314,7 @@ function renderRules(econ) {
   if (rules.min_revenue_per_assigned_minor != null) parts.push(`выручка/сотрудник ≥ ${fmtMoneyMinor(rules.min_revenue_per_assigned_minor)}`);
   if (rules.min_assigned_shift_coverage_bps != null) parts.push(`покрытие смен ≥ ${fmtPercentBps(rules.min_assigned_shift_coverage_bps)}`);
   if (rules.min_profit_minor != null) parts.push(`прибыль ≥ ${fmtMoneyMinor(rules.min_profit_minor)}`);
-  if (rules.warn_on_draft_expenses) parts.push(`предупреждать о черновиках`);
+  if (rules.warn_on_draft_expenses) parts.push(`предупреждать о неподтверждённых расходах`);
   setText("economicsRulesHint", parts.length ? parts.join(" · ") : "Нормативы ещё не заданы.");
 }
 

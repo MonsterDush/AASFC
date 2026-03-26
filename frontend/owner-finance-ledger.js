@@ -134,7 +134,7 @@ function renderEntries() {
   el.innerHTML = state.entries.map((item) => {
     const directionText = item.direction === "INCOME" ? "Доход" : "Расход";
     const scope = item.payment_method?.title || item.department?.title || item.source_type || "—";
-    const meta = item.meta_json ? `<div class="muted mt-6">${esc(JSON.stringify(item.meta_json))}</div>` : "";
+    const meta = item.meta_json ? `<div class="muted mt-6">Есть дополнительные данные по операции</div>` : "";
     return `
       <div class="expense-row">
         <div class="expense-row__main">
@@ -143,7 +143,7 @@ function renderEntries() {
             <span class="badge">${esc(directionText)}</span>
             <span class="badge">${esc(scope)}</span>
           </div>
-          <div class="muted mt-6">${esc(item.entry_date || "—")} · source=${esc(item.source_type || "—")} #${esc(item.source_id || "—")}</div>
+          <div class="muted mt-6">${esc(item.entry_date || "—")}${item.source_type ? ` · источник: ${esc(item.source_type)}` : ""}</div>
           ${meta}
         </div>
         <div class="expense-row__side">

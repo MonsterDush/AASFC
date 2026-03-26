@@ -21,7 +21,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Приглашения и участники</b>
-          <div class="muted">приглашение через Telegram или телефон</div>
+          <div class="muted">команда заведения</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -30,28 +30,28 @@
     <div class="card">
       <div id="selectorCard" class="itemcard" style="margin-top:12px; display:none;">
         <b>Выбрать заведение</b>
-        <div class="muted mt-6">Страница открыта без <span class="mono">venue_id</span>. Выбери заведение.</div>
+        <div class="muted mt-6">Сначала выбери заведение, для которого нужно создать приглашение.</div>
         <div class="row mt-10">
           <select id="venueSelect" style="min-width:260px; max-width:100%"></select>
           <button class="btn primary" id="btnUseVenue">Выбрать</button>
-          <a class="btn subtle inline" id="openLink" href="/invites.html">Открыть ссылку</a>
+          <a class="btn subtle inline" id="openLink" href="/invites.html">Открыть страницу</a>
         </div>
       </div>
 
       <div class="itemcard mt-12">
         <b id="inviteTitle">Пригласить участника</b>
-        <div id="venueMeta" class="muted mono mt-6"></div>
+        <div id="venueMeta" class="muted mt-6"></div>
 
         <div class="invite-grid">
           <div>
-            <label class="muted">Канал</label>
+            <label class="muted">Способ приглашения</label>
             <select id="inviteChannel">
               <option value="TELEGRAM">Telegram</option>
               <option value="PHONE">Телефон</option>
             </select>
           </div>
           <div id="tgWrap">
-            <label class="muted">username в Telegram</label>
+            <label class="muted">Ник в Telegram</label>
             <input id="tg" placeholder="@username" />
           </div>
           <div id="phoneWrap" style="display:none">
@@ -59,7 +59,7 @@
             <input id="phone" placeholder="+7 999 123-45-67" />
           </div>
           <div>
-            <label class="muted">Имя/заметка</label>
+            <label class="muted">Имя или заметка</label>
             <input id="contactLabel" placeholder="Иван / Новый кальянщик" />
           </div>
           <div>
@@ -112,11 +112,16 @@
       setActiveVenueId,
       getActiveVenueId,
       mountNav,
-      getVenueById
+      getVenueById,
+      getMyVenuePermissions,
+      getMe
     } from "/app.js";
+    import { isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix2";
 
     function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
     function escAttr(s){ return esc(s).replace(/"/g, '&quot;'); }
+    function roleLabel(role){ return String(role || '').toUpperCase() === 'OWNER' ? 'Владелец' : 'Персонал'; }
+    function channelLabel(channel){ return String(channel || '').toUpperCase() === 'PHONE' ? 'Телефон' : 'Telegram'; }
 
     applyTelegramTheme();
     mountCommonUI("invites");
@@ -126,6 +131,8 @@
     const params = new URLSearchParams(location.search);
     let venueId = params.get("venue_id") || getActiveVenueId();
     let venueName = "";
+    let canManageStaff = false;
+    let canInviteOwners = false;
 
     if (venueId) setActiveVenueId(venueId);
 
@@ -140,6 +147,48 @@
     const inviteChannel = document.getElementById("inviteChannel");
     const tgWrap = document.getElementById("tgWrap");
     const phoneWrap = document.getElementById("phoneWrap");
+    const btnInvite = document.getElementById("btnInvite");
+    const roleSelect = document.getElementById("role");
+
+    async function refreshPermissions() {
+      canManageStaff = false;
+      canInviteOwners = false;
+      if (!venueId) {
+        applyInviteAccess();
+        return;
+      }
+      try {
+        const me = await getMe().catch(() => null);
+        const perms = await getMyVenuePermissions(venueId);
+        const pset = permSetFromResponse(perms);
+        const role = roleUpper(perms);
+        const sysRole = String(me?.system_role || "");
+        const ownerOrAdmin = isOwnerRole(role) || isSysAdminRole(sysRole);
+        canManageStaff = ownerOrAdmin || hasPerm(pset, "STAFF_MANAGE");
+        canInviteOwners = ownerOrAdmin;
+      } catch {
+        canManageStaff = false;
+        canInviteOwners = false;
+      }
+      applyInviteAccess();
+    }
+
+    function applyInviteAccess() {
+      if (!btnInvite || !roleSelect) return;
+      btnInvite.style.display = canManageStaff ? "" : "none";
+      btnInvite.disabled = !canManageStaff;
+      const ownerOption = roleSelect.querySelector('option[value="OWNER"]');
+      if (ownerOption) ownerOption.style.display = canInviteOwners ? "" : "none";
+      if (!canInviteOwners && String(roleSelect.value || "STAFF").toUpperCase() === "OWNER") {
+        roleSelect.value = "STAFF";
+      }
+      const inviteCard = document.getElementById("inviteTitle")?.closest('.itemcard');
+      const inviteResultEl = document.getElementById("inviteResult");
+      if (inviteResultEl) {
+        inviteResultEl.textContent = canManageStaff ? "" : "Нет прав на управление участниками.";
+      }
+      if (inviteCard) inviteCard.style.display = canManageStaff ? "" : "none";
+    }
 
     function syncChannel() {
       const channel = String(inviteChannel.value || "TELEGRAM").toUpperCase();
@@ -148,7 +197,7 @@
     }
 
     function setVenueMeta() {
-      venueMeta.textContent = venueId ? `venue_id=${venueId}` : "Заведение не выбрано";
+      venueMeta.textContent = venueName ? `${venueName}` : (venueId ? "Заведение выбрано" : "Заведение не выбрано");
       const t = document.getElementById("inviteTitle");
       if (t) t.textContent = venueName ? `Пригласить участника в ${venueName}` : "Пригласить участника";
       openLink.href = venueId ? `/invites.html?venue_id=${encodeURIComponent(venueId)}` : "/invites.html";
@@ -176,7 +225,7 @@
         venues.forEach(v => {
           const opt = document.createElement("option");
           opt.value = String(v.id);
-          opt.textContent = `${v.name} (id=${v.id})`;
+          opt.textContent = `${v.name}`;
           if (String(v.id) === String(venueId)) opt.selected = true;
           venueSelect.appendChild(opt);
         });
@@ -193,16 +242,16 @@
 
     function authChips(methods) {
       const list = Array.isArray(methods) ? methods : [];
-      if (!list.length) return '<span class="chip">Без способов входа</span>';
+      if (!list.length) return '<span class="chip">Способ входа не указан</span>';
       return list.map(m => `<span class="chip">${esc(m === 'phone' ? 'Телефон' : m === 'telegram' ? 'Telegram' : m)}</span>`).join(' ');
     }
 
     function linkedTargetHtml(i) {
       const target = i?.target_user || null;
       const targetStatus = String(i?.target_status || 'WAITING_SIGNUP').toUpperCase();
-      if (!target) return `<div class="muted mt-6">Статус: <span class="chip">ждёт регистрации / входа</span></div>`;
-      const label = target.display_name || target.short_name || target.full_name || (target.tg_username ? '@' + target.tg_username : (target.phone || ('user #' + target.user_id)));
-      return `<div class="mt-6"><span class="chip">${esc(targetStatus === 'LINKED_USER' ? 'аккаунт уже есть' : 'ожидает входа')}</span> <span class="muted">${esc(label)}</span> ${authChips(target.auth_methods || [])}</div>`;
+      if (!target) return `<div class="muted mt-6"><span class="chip">Ожидает входа</span></div>`;
+      const label = target.display_name || target.short_name || target.full_name || (target.tg_username ? '@' + target.tg_username : (target.phone || 'Пользователь'));
+      return `<div class="mt-6"><span class="chip">${esc(targetStatus === 'LINKED_USER' ? 'Можно принять' : 'Ожидает входа')}</span> <span class="muted">${esc(label)}</span> ${authChips(target.auth_methods || [])}</div>`;
     }
 
 
@@ -218,10 +267,10 @@
         row.innerHTML = `
           <div class="row" style="justify-content:space-between; align-items:flex-start; gap:12px;">
             <div>
-              <div><b>${pendingContact(i)}</b> <span class="chip">${esc(i.channel || 'TELEGRAM')}</span> <span class="chip">${esc(i.venue_role)}</span></div>
+              <div><b>${pendingContact(i)}</b> <span class="chip">${esc(channelLabel(i.channel))}</span> <span class="chip">${esc(roleLabel(i.venue_role))}</span></div>
               <div class="muted mono-wrap mt-6">${i.phone ? esc(i.phone) + ' · ' : ''}${esc(i.created_at || '')}</div>
               ${linkedTargetHtml(i)}
-              <div class="mono-wrap mt-6"><a class="link" href="${escAttr(i.invite_link || '#')}" target="_blank" rel="noreferrer">${esc(i.invite_link || '')}</a></div>
+              <div class="mt-6"><a class="link" href="${escAttr(i.invite_link || '#')}" target="_blank" rel="noreferrer">Открыть приглашение</a></div>
             </div>
             <div class="invite-actions">
               <button class="btn" data-copy>Скопировать ссылку</button>
@@ -237,7 +286,10 @@
             toast('Не удалось скопировать ссылку', 'warn');
           }
         };
-        row.querySelector('[data-cancel]').onclick = async () => {
+        const cancelBtn = row.querySelector('[data-cancel]');
+        const canCancelInvite = canManageStaff && (canInviteOwners || String(i.venue_role || '').toUpperCase() !== 'OWNER');
+        if (cancelBtn) cancelBtn.style.display = canCancelInvite ? '' : 'none';
+        if (cancelBtn) cancelBtn.onclick = async () => {
           try {
             await api(`/venues/${venueId}/invites/${i.id}`, { method:'DELETE' });
             toast('Приглашение отменено', 'ok');
@@ -259,11 +311,11 @@
       items.forEach(m => {
         const row = document.createElement('div');
         row.className = 'invite-card';
-        const display = m.display_name || m.short_name || m.full_name || (m.tg_username ? '@' + m.tg_username : 'user #' + m.user_id);
+        const display = m.display_name || m.short_name || m.full_name || (m.tg_username ? '@' + m.tg_username : 'Участник');
         row.innerHTML = `
           <div>
-            <div><b>${esc(display)}</b> <span class="chip">${esc(m.venue_role)}</span></div>
-            <div class="muted mono-wrap mt-6">user_id=${esc(m.user_id)} · tg=${esc(m.tg_username || '-')} · phone=${esc(m.phone || '-')}</div>
+            <div><b>${esc(display)}</b> <span class="chip">${esc(roleLabel(m.venue_role))}</span></div>
+            <div class="muted mt-6">${m.tg_username ? "@" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? esc(m.phone) : ""}</div>
             <div class="mt-6">${authChips(m.auth_methods || [])}</div>
           </div>
         `;
@@ -273,10 +325,11 @@
 
     async function loadMembers() {
       if (!venueId) {
-        pending.innerHTML = `<div class="muted">Нужен venue_id</div>`;
-        members.innerHTML = `<div class="muted">Нужен venue_id</div>`;
+        pending.innerHTML = `<div class="muted">Сначала выбери заведение</div>`;
+        members.innerHTML = `<div class="muted">Сначала выбери заведение</div>`;
         return;
       }
+      await refreshPermissions();
       await ensureVenueName();
       setVenueMeta();
       pending.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
@@ -293,15 +346,20 @@
       }
     }
 
-    document.getElementById('btnInvite').onclick = async () => {
+    btnInvite.onclick = async () => {
+      if (!canManageStaff) { toast('Нет прав на управление участниками', 'warn'); return; }
       if (!venueId) { toast('Нет заведения — выбери заведение', 'warn'); return; }
       const channel = String(inviteChannel.value || 'TELEGRAM').toUpperCase();
-      const role = document.getElementById('role').value;
+      const role = roleSelect.value;
       const contact_label = document.getElementById('contactLabel').value.trim() || null;
+      if (!canInviteOwners && String(role || '').toUpperCase() === 'OWNER') {
+        toast('Нет прав на приглашение владельца', 'warn');
+        return;
+      }
       const body = { invite_channel: channel, venue_role: role, contact_label };
       if (channel === 'TELEGRAM') {
         const tg = document.getElementById('tg').value.trim();
-        if (!tg) { toast('Введи username', 'warn'); return; }
+        if (!tg) { toast('Укажи ник в Telegram', 'warn'); return; }
         body.tg_username = tg;
       } else {
         const phone = document.getElementById('phone').value.trim();
@@ -316,13 +374,13 @@
         document.getElementById('phone').value = '';
         document.getElementById('contactLabel').value = '';
         if (out?.mode === 'member_added' && out?.member) {
-          const label = out.member.display_name || out.member.tg_username || out.member.phone || ('user #' + out.member.user_id);
-          inviteResult.innerHTML = `Участник добавлен сразу: <b>${esc(label)}</b> <span class="chip">${esc(out.member.venue_role || role)}</span> <span class="chip">linked</span>`;
+          const label = out.member.display_name || out.member.tg_username || out.member.phone || 'Участник';
+          inviteResult.innerHTML = `Участник добавлен: <b>${esc(label)}</b> <span class="chip">${esc(roleLabel(out.member.venue_role || role))}</span> <span class="chip">Готово</span>`;
         } else if (out?.invite_link) {
           const pendingHint = String(out?.target_status || 'WAITING_SIGNUP').toUpperCase() === 'LINKED_USER'
-            ? 'аккаунт уже есть, ждём подтверждения'
-            : 'ждём регистрации / входа';
-          inviteResult.innerHTML = `${esc(pendingHint)} · <a class="link" href="${escAttr(out.invite_link)}" target="_blank" rel="noreferrer">${esc(out.invite_link)}</a>`;
+            ? 'Приглашение готово к принятию'
+            : 'Приглашение создано';
+          inviteResult.innerHTML = `${esc(pendingHint)} · <a class="link" href="${escAttr(out.invite_link)}" target="_blank" rel="noreferrer">Открыть приглашение</a>`;
         } else {
           inviteResult.textContent = out?.mode || 'ok';
         }

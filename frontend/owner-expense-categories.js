@@ -46,7 +46,7 @@ function renderShell() {
         <div class="logo"></div>
         <div class="title">
           <b>Категории расходов</b>
-          <div class="muted">просмотр, редактирование и архив</div>
+          <div class="muted">для учёта расходов</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -111,10 +111,10 @@ function renderList() {
           <b>${esc(it.title)}</b>
           ${it.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
-        <div class="mono muted listrow__meta">code=${esc(it.code)} · sort=${esc(it.sort_order)}</div>
+        <div class="muted listrow__meta">${it.is_active ? "Доступна при создании расхода" : "Скрыта из списка"}</div>
       </div>
       <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;">
-        <button class="btn sm" data-edit="${it.id}">Редакт.</button>
+        <button class="btn sm" data-edit="${it.id}">Изменить</button>
         <button class="btn sm ${it.is_active ? "danger" : ""}" data-archive="${it.id}">${it.is_active ? "В архив" : "Вернуть"}</button>
       </div>
     </div>
@@ -145,22 +145,18 @@ function editorForm(item = null) {
   return `
     <div class="grid grid2" style="margin-top:10px">
       <div>
-        <div class="muted" style="margin-bottom:6px">Код</div>
-        <input id="f_code" placeholder="rent" value="${esc(it.code || "")}" />
-      </div>
-      <div>
         <div class="muted" style="margin-bottom:6px">Название</div>
         <input id="f_title" placeholder="Аренда" value="${esc(it.title || "")}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Порядок</div>
+        <div class="muted" style="margin-bottom:6px">Порядок в списке</div>
         <input id="f_sort" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Статус</div>
+        <div class="muted" style="margin-bottom:6px">Отображение</div>
         <label class="row" style="gap:8px; align-items:center">
           <input type="checkbox" id="f_active" ${(it.is_active ?? true) ? "checked" : ""} />
-          <span>Активна</span>
+          <span>Показывать в списке</span>
         </label>
       </div>
     </div>
@@ -172,15 +168,12 @@ function editorForm(item = null) {
 }
 
 function openEditor(item = null) {
-  openEditModal({ title: item ? "Редактировать категорию" : "Добавить категорию", hint: item ? "Изменения применятся сразу после сохранения" : "Код можно поправить вручную", bodyHtml: editorForm(item) });
+  openEditModal({ title: item ? "Редактировать категорию" : "Добавить категорию", hint: item ? "Изменения применятся сразу после сохранения" : "Название можно изменить позже", bodyHtml: editorForm(item) });
   document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);
   const titleEl = document.getElementById("f_title");
-  const codeEl = document.getElementById("f_code");
-  if (!item && titleEl && codeEl) titleEl.addEventListener("input", () => { if (!codeEl.dataset.touched) codeEl.value = slugifyCategoryCode(titleEl.value); });
-  if (codeEl) codeEl.addEventListener("input", () => { codeEl.dataset.touched = "1"; });
   document.getElementById("btnSave")?.addEventListener("click", async () => {
     const payload = {
-      code: String(codeEl?.value || slugifyCategoryCode(titleEl?.value || "")).trim() || slugifyCategoryCode(titleEl?.value || ""),
+      code: slugifyCategoryCode(titleEl?.value || ""),
       title: String(titleEl?.value || "").trim(),
       sort_order: Number(document.getElementById("f_sort")?.value || 0),
       is_active: !!document.getElementById("f_active")?.checked,

@@ -61,7 +61,7 @@
           login.code === "TIMEOUT"
             ? "Не удалось связаться с API. Проверь сервер и CORS."
             : login.reason === "NO_INITDATA"
-              ? "Нет initData. Откройте Mini App через Telegram."
+              ? "Откройте приложение через Telegram."
               : (login.data?.detail || login.message || "Ошибка авторизации");
         toast(msg, "err");
         return;

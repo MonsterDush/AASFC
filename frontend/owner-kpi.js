@@ -74,7 +74,7 @@ function renderShell() {
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <b id="title">KPI / Доп. продажи</b>
+          <b id="title">Планы и KPI</b>
           <div class="muted">метрики для бонусов</div>
         </div>
       </div>
@@ -128,7 +128,7 @@ function renderShell() {
       <div class="modal__panel">
         <div class="modal__head">
           <div>
-            <b class="modal__title" id="editTitle">KPI</b>
+            <b class="modal__title" id="editTitle">Показатель</b>
             <div class="muted" id="editHint" style="margin-top:4px; font-size:12px"></div>
           </div>
           <button class="btn" data-close>Закрыть</button>
@@ -236,7 +236,7 @@ function renderList() {
         ${it.is_active ? "" : `<span class="badge">архив</span>`}
         ${Number(it.usage_component_count || 0) > 0 ? `<span class="badge">в начислениях: ${esc(it.usage_component_count)}</span>` : ``}
       </div>
-      <div class="mono muted listrow__meta">code=${esc(it.code)} · unit=${esc(unit)} · sort=${esc(it.sort_order)}</div>
+      <div class="muted listrow__meta">Единица измерения: ${esc(UNIT_LABEL[unit] || unit)}</div>
       <div class="muted mt-6">${esc(usageSummary(it))}</div>
     `;
 
@@ -247,7 +247,7 @@ function renderList() {
     if (state.can.edit) {
       const btnEdit = document.createElement("button");
       btnEdit.className = "btn sm";
-      btnEdit.textContent = "Редакт.";
+      btnEdit.textContent = "Изменить";
       btnEdit.onclick = () => openEditor({ mode: "edit", item: it });
       right.appendChild(btnEdit);
     }
@@ -290,11 +290,6 @@ function editorForm({ mode, item }) {
   return `
     <div class="grid grid2" style="margin-top:10px">
       <div>
-        <div class="muted" style="margin-bottom:6px">Код (slug)</div>
-        <input id="f_code" placeholder="fruit_bowl" value="${esc(it.code || "")}" />
-        <div class="muted" style="margin-top:6px; font-size:12px">Код генерируется из названия автоматически. При желании его можно поправить вручную.</div>
-      </div>
-      <div>
         <div class="muted" style="margin-bottom:6px">Название</div>
         <input id="f_title" placeholder="Фруктовые чаши" value="${esc(it.title || "")}" />
       </div>
@@ -303,14 +298,14 @@ function editorForm({ mode, item }) {
         <select id="f_unit">${unitOptions(unit)}</select>
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Порядок</div>
+        <div class="muted" style="margin-bottom:6px">Порядок в списке</div>
         <input id="f_sort" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Статус</div>
+        <div class="muted" style="margin-bottom:6px">Отображение</div>
         <label class="row" style="gap:8px; align-items:center">
           <input type="checkbox" id="f_active" ${activeChecked} />
-          <span>Активен</span>
+          <span>Показывать в списке</span>
         </label>
       </div>
     </div>
@@ -325,19 +320,9 @@ function editorForm({ mode, item }) {
 function wireEditor({ mode, item }) {
   document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);
   const titleEl = document.getElementById("f_title");
-  const codeEl = document.getElementById("f_code");
-  if (titleEl && codeEl) {
-    const syncCode = () => {
-      if (codeEl.dataset.touched === "1") return;
-      codeEl.value = ensureUniqueCode(slugifyCode(titleEl.value, "kpi_metric"), state.items, item?.id ?? null);
-    };
-    titleEl.addEventListener("input", syncCode);
-    codeEl.addEventListener("input", () => { codeEl.dataset.touched = "1"; });
-    if (!item) syncCode();
-  }
   document.getElementById("btnSave")?.addEventListener("click", async () => {
     const title = document.getElementById("f_title")?.value?.trim();
-    const code = String(document.getElementById("f_code")?.value || ensureUniqueCode(slugifyCode(title, "kpi_metric"), state.items, item?.id ?? null)).trim();
+    const code = ensureUniqueCode(slugifyCode(title, "kpi_metric"), state.items, item?.id ?? null);
     const unit = document.getElementById("f_unit")?.value?.trim();
     const sort = document.getElementById("f_sort")?.value;
     const is_active = !!document.getElementById("f_active")?.checked;

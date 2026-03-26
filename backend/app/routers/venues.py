@@ -968,6 +968,17 @@ def _require_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> 
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def _can_manage_staff(db: Session, *, venue_id: int, user: User) -> bool:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return True
+    return has_venue_permission(db, venue_id=venue_id, user=user, permission_code="STAFF_MANAGE")
+
+
+def _require_staff_manage_or_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> None:
+    if not _can_manage_staff(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def _is_active_member_or_admin(db: Session, *, venue_id: int, user: User) -> bool:
     if user.system_role in ("SUPER_ADMIN", "MODERATOR"):
         return True
@@ -7218,11 +7229,15 @@ def create_invite(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_staff_manage_or_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    can_manage_owner_members = _is_owner_or_super_admin(db, venue_id=venue_id, user=user)
 
     role = str(payload.venue_role or "").strip().upper()
     if role not in ("OWNER", "STAFF"):
         raise HTTPException(status_code=400, detail="Bad venue_role")
+    if role == "OWNER" and not can_manage_owner_members:
+        raise HTTPException(status_code=403, detail="Недостаточно прав для приглашения владельца")
 
     channel = str(payload.invite_channel or "TELEGRAM").strip().upper()
     if channel not in ("TELEGRAM", "PHONE"):
@@ -7243,6 +7258,8 @@ def create_invite(
             ).one_or_none()
 
             if mem:
+                if str(mem.venue_role or "").upper() == "OWNER" and not can_manage_owner_members:
+                    raise HTTPException(status_code=403, detail="Недостаточно прав для изменения владельца")
                 mem.venue_role = role
                 mem.is_active = True
             else:
@@ -7301,6 +7318,8 @@ def create_invite(
                 VenueMember.user_id == existing_user.id,
             ).one_or_none()
             if mem:
+                if str(mem.venue_role or "").upper() == "OWNER" and not can_manage_owner_members:
+                    raise HTTPException(status_code=403, detail="Недостаточно прав для изменения владельца")
                 mem.venue_role = role
                 mem.is_active = True
             else:
@@ -7390,11 +7409,15 @@ def cancel_invite(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_staff_manage_or_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    can_manage_owner_members = _is_owner_or_super_admin(db, venue_id=venue_id, user=user)
 
     inv = db.query(VenueInvite).filter(VenueInvite.id == invite_id, VenueInvite.venue_id == venue_id).one_or_none()
     if not inv:
         raise HTTPException(status_code=404, detail="Invite not found")
+    if str(inv.venue_role or "").upper() == "OWNER" and not can_manage_owner_members:
+        raise HTTPException(status_code=403, detail="Недостаточно прав для отмены приглашения владельца")
 
     inv.is_active = False
     inv.revoked_at = datetime.now(timezone.utc)
@@ -7409,7 +7432,9 @@ def remove_member(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_staff_manage_or_owner_or_super_admin(db, venue_id=venue_id, user=user)
+
+    can_manage_owner_members = _is_owner_or_super_admin(db, venue_id=venue_id, user=user)
 
     vm = db.execute(
         select(VenueMember).where(
@@ -7421,6 +7446,9 @@ def remove_member(
 
     if vm is None:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    if str(vm.venue_role or "").upper() == "OWNER" and not can_manage_owner_members:
+        raise HTTPException(status_code=403, detail="Недостаточно прав для удаления владельца")
 
     if vm.venue_role == "OWNER":
         owners = db.execute(

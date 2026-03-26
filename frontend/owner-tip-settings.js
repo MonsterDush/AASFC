@@ -137,7 +137,7 @@ function validateRows() {
 
 async function load() {
   if (!venueId) {
-    toast("Не указан venue_id", "err");
+    toast("Сначала выбери заведение", "err");
     return;
   }
   if (el.back) el.back.href = `/app-venue.html?venue_id=${encodeURIComponent(venueId)}`;

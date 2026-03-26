@@ -307,7 +307,7 @@ async function renderDisputeUI(venueId, adj) {
       if (btnToggle) btnToggle.disabled = true;
       return;
     }
-    if (statusEl) statusEl.textContent = `Статус: ${dis.status}`;
+    if (statusEl) statusEl.textContent = `Статус: ${disputeStatusLabel(dis.status)}`;
     if (btnToggle) {
       const can = hasResolveAccess();
       btnToggle.disabled = !can;
@@ -447,6 +447,14 @@ async function loadMembers() {
   // backend returns { venue_id, members: [...] }
   const res = await api(`/me/venues/${encodeURIComponent(venueId)}/members`);
   return res?.members || res?.items || [];
+}
+
+function disputeStatusLabel(status) {
+  const s = String(status || "").toUpperCase();
+  if (s === "OPEN") return "открыт";
+  if (s === "RESOLVED") return "решён";
+  if (s === "CLOSED") return "закрыт";
+  return "не указан";
 }
 
 async function loadDisputeThread(venueId, adj) {
@@ -590,7 +598,7 @@ async function openCreate() {
 
 async function boot() {
   if (!venueId) {
-    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted" style="margin-top:6px">Открой страницу с параметром <span class="mono">?venue_id=...</span>.</div></div>`;
+    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted" style="margin-top:6px">Выбери заведение и открой раздел ещё раз.</div></div>`;
     return;
   }
 

@@ -586,9 +586,7 @@
         if (!isSmsEnabled()) throw new Error("Подтверждение по SMS временно отключено");
         const out = await requestLinkPhoneCode(els.linkPhoneInput.value.trim());
         els.linkPhoneSmsBlock.classList.remove("hidden");
-        els.linkPhoneMeta.textContent = out?.debug_code
-          ? `Код отправлен. dev_code=${out.debug_code}`
-          : `Код отправлен на ${out?.phone || els.linkPhoneInput.value.trim()}`;
+        els.linkPhoneMeta.textContent = `Код отправлен на ${out?.phone || els.linkPhoneInput.value.trim()}`;
         toast("SMS отправлена", "ok");
         els.linkPhoneCodeInput.focus();
       } catch (e) {
@@ -684,9 +682,7 @@
         if (!phone) throw new Error("Сначала привяжи номер телефона");
         const out = await requestPasswordResetCode(phone);
         els.passwordResetSmsBlock.classList.remove("hidden");
-        els.passwordResetMeta.textContent = out?.debug_code
-          ? `Код отправлен. dev_code=${out.debug_code}`
-          : `Код отправлен на ${out?.phone || phone}`;
+        els.passwordResetMeta.textContent = `Код отправлен на ${out?.phone || phone}`;
         toast("SMS отправлена", "ok");
         els.passwordResetCodeInput.focus();
       } catch (e) {

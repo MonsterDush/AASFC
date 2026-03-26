@@ -41,6 +41,10 @@ function todayISO() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function expenseStatusLabel(status) {
+  return String(status || "").toUpperCase() === "CONFIRMED" ? "Подтверждён" : "Черновик";
+}
+
 function fmtMinor(minor) {
   const rub = Number(minor || 0) / 100;
   try {
@@ -106,7 +110,7 @@ function renderGenerationResult() {
       <div class="row" style="justify-content:space-between; gap:12px; align-items:flex-start; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06);">
         <div>
           <div><b>${esc(item.category?.title || item.comment || `Расход #${item.id}`)}</b></div>
-          <div class="muted mt-6">${esc(item.expense_date || "—")} · ${esc(item.status || "DRAFT")}</div>
+          <div class="muted mt-6">${esc(item.expense_date || "—")} · ${esc(expenseStatusLabel(item.status))}</div>
         </div>
         <div style="text-align:right; white-space:nowrap;">${esc(fmtMinor(item.amount_minor || 0))}</div>
       </div>`).join(""));
@@ -398,7 +402,7 @@ async function generateRules(ruleId = null) {
     renderGenerationResult();
     toast(`Создано: ${result?.created_count || 0}, обновлено: ${result?.updated_count || 0}, пропущено: ${result?.skipped_count || 0}`, "ok");
   } catch (err) {
-    toast(err?.data?.detail || err.message || "Не удалось сгенерировать черновики", "err");
+    toast(err?.data?.detail || err.message || "Не удалось создать расходы", "err");
   }
 }
 

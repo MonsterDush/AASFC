@@ -193,7 +193,7 @@ function renderRules(rules = {}) {
   if (rules.min_revenue_per_assigned_minor != null) parts.push(`выручка/сотрудник ≥ ${fmtMoneyMinor(rules.min_revenue_per_assigned_minor)}`);
   if (rules.min_assigned_shift_coverage_bps != null) parts.push(`покрытие смен ≥ ${fmtPercentBps(rules.min_assigned_shift_coverage_bps)}`);
   if (rules.min_profit_minor != null) parts.push(`прибыль ≥ ${fmtMoneyMinor(rules.min_profit_minor)}`);
-  if (rules.warn_on_draft_expenses) parts.push(`черновики включены в предупреждения`);
+  if (rules.warn_on_draft_expenses) parts.push(`предупреждения по неподтверждённым расходам включены`);
   setText("rulesSummaryHint", parts.length ? parts.join(" · ") : "Все правила выключены.");
 
   const form = document.getElementById("economicsRulesFormPage");

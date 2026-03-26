@@ -632,14 +632,14 @@ function renderSummary() {
   let hint = "";
   if (!hasAny) {
     hint = periodMode === "month"
-      ? "За этот месяц начислений пока нет. Суммы появятся после payroll-расчёта; чаевые и корректировки показываются отдельно."
+      ? "За этот месяц начислений пока нет. Суммы появятся после расчёта начислений; чаевые и корректировки показываются отдельно."
       : "За выбранный диапазон начислений пока нет.";
   } else if (state === "partial") {
     hint = "Часть дней уже пересчитана автоматически, но часть данных ещё может быть в процессе обновления.";
   } else if (periodMode === "month" && payrollLine?.breakdown) {
-    hint = "Месячная сумма взята из payroll, а детализация по дням собрана из того же расчёта.";
+    hint = "Месячная сумма взята из итогового расчёта, а детализация по дням собрана из тех же данных.";
   } else {
-    hint = "Сводка собрана за выбранный период по дневным breakdown начисления.";
+    hint = "Сводка собрана за выбранный период по дневной детализации начислений.";
   }
   if (latest?.trigger_reason) {
     const suffix = latest?.created_at ? ` · ${new Date(latest.created_at).toLocaleString("ru-RU")}` : "";
@@ -652,8 +652,8 @@ function renderSummary() {
   if (el.payrollBreakdownRow) el.payrollBreakdownRow.style.display = (periodMode === "month" && payrollLine?.breakdown) ? "flex" : "none";
   if (el.daysChartHint) {
     el.daysChartHint.textContent = periodMode === "month"
-      ? ((monthSummaryItem?.source === "payroll") ? "Подсвечены даты, которые реально попали в payroll" : "Выбери день для подробностей")
-      : "Выбери день, чтобы увидеть breakdown начисления и перерасчёта";
+      ? ((monthSummaryItem?.source === "payroll") ? "Подсвечены даты, которые вошли в итоговый расчёт" : "Выбери день для подробностей")
+      : "Выбери день, чтобы увидеть детализацию начисления и перерасчёта";
   }
 }
 
@@ -709,7 +709,7 @@ function renderDays() {
     const dd = formatDateRu(d.date);
     let rightText = "—";
     if (isPayroll) {
-      rightText = d.includedInPayroll ? "Вошло в расчёт" : ((d.shifts?.length || d.adjustmentCount) ? "Есть изменения / вне payroll" : "—");
+      rightText = d.includedInPayroll ? "Вошло в расчёт" : ((d.shifts?.length || d.adjustmentCount) ? "Есть изменения вне итогового расчёта" : "—");
     } else if (d.hasReport) {
       rightText = "Есть закрытый отчёт";
     } else if (d.adjustmentCount) {
@@ -762,15 +762,12 @@ function renderDayBreakdownItems(items, detailed = false) {
     const amountClass = amountMinor < 0 ? "day-salary day-salary--muted" : "day-salary";
     const baseText = String(item?.base_text || "").trim();
     const formulaText = String(item?.formula_text || "").trim();
-    const sourceLabel = String(item?.source || item?.component_type || "").trim();
-    return `
+        return `
       <div class="payroll-breakdown__row">
         <div>
           <b>${esc(item?.title || "Компонент")}</b>
-          ${sourceLabel ? `<div class="muted small mt-4">${esc(sourceLabel)}</div>` : ""}
           ${baseText ? `<div class="muted small mt-4">База: ${esc(baseText)}</div>` : ""}
           ${formulaText ? `<div class="muted small mt-4">Формула: ${esc(formulaText)}</div>` : ""}
-          ${detailed && item?.component_type ? `<div class="muted small mt-4">Тип: ${esc(item.component_type)}</div>` : ""}
         </div>
         <div><b class="${amountClass}">${esc(formatMoneyMinor(amountMinor))}</b></div>
       </div>`;
@@ -782,7 +779,7 @@ function fallbackDayModalHtml(d) {
   const shiftsHtml = (d.shifts || []).map((s) => {
     const interval = s.interval?.title || s.interval_title || s.interval?.id || "Смена";
     const status = isPayroll
-      ? (d.includedInPayroll ? "Вошло в payroll" : (s.report_exists ? "Есть отчёт, но не вошло" : "Нет закрытого отчёта"))
+      ? (d.includedInPayroll ? "Вошло в расчёт" : (s.report_exists ? "Есть отчёт, но не вошло" : "Нет закрытого отчёта"))
       : (s.report_exists ? "Есть закрытый отчёт" : "Нет закрытого отчёта");
     return `
       <div class="section">
@@ -802,8 +799,8 @@ function fallbackDayModalHtml(d) {
       <div class="day-salary ${isPayroll ? (d.includedInPayroll ? "" : "day-salary--muted") : (d.hasReport ? "" : "day-salary--muted")}">${isPayroll ? (d.includedInPayroll ? "Вошло в расчёт" : "Не вошло") : (d.hasReport ? "Закрытый день" : "Без закрытия")}</div>
     </div>
     <div class="muted small mt-8">${isPayroll
-      ? "Месячная сумма берётся из payroll, поэтому здесь показана только справочная детализация по сменам."
-      : "Payroll за этот месяц ещё не рассчитан, поэтому суммы по дням скрыты и ниже показана только справочная детализация по сменам."}</div>
+      ? "Месячная сумма берётся из итогового расчёта, поэтому здесь показана только справочная детализация по сменам."
+      : "Итоговый расчёт за этот месяц ещё не готов, поэтому суммы по дням скрыты и ниже показана только справочная детализация по сменам."}</div>
     <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
   </div>`;
 }
@@ -812,8 +809,7 @@ function renderDayBreakdownModal(d, breakdown) {
   const state = String(breakdown?.state || "ready");
   const summary = breakdown?.summary || {};
   const context = breakdown?.context || {};
-  const detailLevel = String((window.Telegram?.WebApp?.initDataUnsafe?.user ? "detailed" : "standard"));
-  const itemsHtml = renderDayBreakdownItems(breakdown?.items || [], detailLevel === "detailed");
+  const itemsHtml = renderDayBreakdownItems(breakdown?.items || [], false);
   const stateText = state === "ready"
     ? "Начисление рассчитано"
     : (state === "partial"
@@ -884,7 +880,7 @@ function breakdownMetaHtml(c) {
   }
   if (type === "KPI_BONUS") {
     const threshold = c?.threshold_value ?? "—";
-    return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || c.kpi_metric_id || "—")} · факт: ${esc(c.metric_value ?? 0)} · порог: ${esc(threshold)}</div>`;
+    return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || "показатель")} · факт: ${esc(c.metric_value ?? 0)} · порог: ${esc(threshold)}</div>`;
   }
   if (type === "SALARY_HOURLY") {
     return `<div class="muted small mt-4">Часы: ${esc(c.hours_total ?? 0)}</div>`;
@@ -1013,12 +1009,12 @@ function openPayrollBreakdown() {
 
 async function openDayModal(d) {
   const subtitle = monthSummaryItem?.source === "payroll"
-    ? (d?.includedInPayroll ? "Этот день попал в payroll-расчёт" : "Детализация начисления за день")
+    ? (d?.includedInPayroll ? "Этот день вошёл в итоговый расчёт" : "Детализация начисления за день")
     : "Детализация начисления за день";
   openModal(
     `${formatDateRu(d.date)}`,
     subtitle,
-    `<div class="itemcard" style="margin-top:12px"><div class="muted">Загружаем breakdown начисления…</div></div>`
+    `<div class="itemcard" style="margin-top:12px"><div class="muted">Загружаем детализацию начисления…</div></div>`
   );
 
   try {
@@ -1030,7 +1026,7 @@ async function openDayModal(d) {
     if (modalTitle) modalTitle.textContent = formatDateRu(d.date);
     if (modalSubtitleEl) modalSubtitleEl.textContent = subtitle;
     if (modalBody) modalBody.innerHTML = fallbackDayModalHtml(d);
-    toast(e?.data?.detail || e?.message || "Не удалось загрузить breakdown начисления", "err");
+    toast(e?.data?.detail || e?.message || "Не удалось загрузить детализацию начисления", "err");
   }
 }
 
