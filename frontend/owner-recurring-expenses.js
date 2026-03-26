@@ -402,7 +402,7 @@ async function generateRules(ruleId = null) {
     renderGenerationResult();
     toast(`Создано: ${result?.created_count || 0}, обновлено: ${result?.updated_count || 0}, пропущено: ${result?.skipped_count || 0}`, "ok");
   } catch (err) {
-    toast(err?.data?.detail || err.message || "Не удалось сгенерировать черновики", "err");
+    toast(err?.data?.detail || err.message || "Не удалось создать расходы", "err");
   }
 }
 

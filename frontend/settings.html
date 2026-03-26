@@ -466,7 +466,7 @@
       }
       return list.map((item) => {
         const timeLabel = item?.sent_at ? `Отправлено: ${formatDateTime(item.sent_at)}` : (item?.planned_at ? `Планировалось: ${formatDateTime(item.planned_at)}` : "Время не указано");
-        const venue = item?.venue_name ? `<div class="muted small mt-6">Заведение: ${esc(item.venue_name)}</div>` : "";
+        const venue = item?.venue_name ? `<div class="muted small mt-6">${esc(item.venue_name)}</div>` : "";
         const preview = item?.payload_preview ? `<div class="notif-history-preview mt-8">${esc(item.payload_preview)}</div>` : "";
         const error = item?.error_text ? `<div class="notif-history-error mt-8">${esc(item.error_text)}</div>` : "";
         return `

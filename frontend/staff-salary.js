@@ -762,15 +762,12 @@ function renderDayBreakdownItems(items, detailed = false) {
     const amountClass = amountMinor < 0 ? "day-salary day-salary--muted" : "day-salary";
     const baseText = String(item?.base_text || "").trim();
     const formulaText = String(item?.formula_text || "").trim();
-    const sourceLabel = String(item?.source || item?.component_type || "").trim();
-    return `
+        return `
       <div class="payroll-breakdown__row">
         <div>
           <b>${esc(item?.title || "Компонент")}</b>
-          ${sourceLabel ? `<div class="muted small mt-4">${esc(sourceLabel)}</div>` : ""}
           ${baseText ? `<div class="muted small mt-4">База: ${esc(baseText)}</div>` : ""}
           ${formulaText ? `<div class="muted small mt-4">Формула: ${esc(formulaText)}</div>` : ""}
-          ${detailed && item?.component_type ? `<div class="muted small mt-4">Тип: ${esc(item.component_type)}</div>` : ""}
         </div>
         <div><b class="${amountClass}">${esc(formatMoneyMinor(amountMinor))}</b></div>
       </div>`;
@@ -812,8 +809,7 @@ function renderDayBreakdownModal(d, breakdown) {
   const state = String(breakdown?.state || "ready");
   const summary = breakdown?.summary || {};
   const context = breakdown?.context || {};
-  const detailLevel = String((window.Telegram?.WebApp?.initDataUnsafe?.user ? "detailed" : "standard"));
-  const itemsHtml = renderDayBreakdownItems(breakdown?.items || [], detailLevel === "detailed");
+  const itemsHtml = renderDayBreakdownItems(breakdown?.items || [], false);
   const stateText = state === "ready"
     ? "Начисление рассчитано"
     : (state === "partial"

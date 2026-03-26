@@ -21,7 +21,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Приглашения и участники</b>
-          <div class="muted">приглашения и состав команды</div>
+          <div class="muted">команда заведения</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -150,7 +150,7 @@
     }
 
     function setVenueMeta() {
-      venueMeta.textContent = venueName ? `Заведение: ${venueName}` : (venueId ? "Заведение выбрано" : "Заведение не выбрано");
+      venueMeta.textContent = venueName ? `${venueName}` : (venueId ? "Заведение выбрано" : "Заведение не выбрано");
       const t = document.getElementById("inviteTitle");
       if (t) t.textContent = venueName ? `Пригласить участника в ${venueName}` : "Пригласить участника";
       openLink.href = venueId ? `/invites.html?venue_id=${encodeURIComponent(venueId)}` : "/invites.html";
@@ -202,9 +202,9 @@
     function linkedTargetHtml(i) {
       const target = i?.target_user || null;
       const targetStatus = String(i?.target_status || 'WAITING_SIGNUP').toUpperCase();
-      if (!target) return `<div class="muted mt-6"><span class="chip">Ждёт входа</span></div>`;
+      if (!target) return `<div class="muted mt-6"><span class="chip">Ожидает входа</span></div>`;
       const label = target.display_name || target.short_name || target.full_name || (target.tg_username ? '@' + target.tg_username : (target.phone || 'Пользователь'));
-      return `<div class="mt-6"><span class="chip">${esc(targetStatus === 'LINKED_USER' ? 'Есть аккаунт' : 'Ждёт входа')}</span> <span class="muted">${esc(label)}</span> ${authChips(target.auth_methods || [])}</div>`;
+      return `<div class="mt-6"><span class="chip">${esc(targetStatus === 'LINKED_USER' ? 'Можно принять' : 'Ожидает входа')}</span> <span class="muted">${esc(label)}</span> ${authChips(target.auth_methods || [])}</div>`;
     }
 
 
@@ -223,7 +223,7 @@
               <div><b>${pendingContact(i)}</b> <span class="chip">${esc(channelLabel(i.channel))}</span> <span class="chip">${esc(roleLabel(i.venue_role))}</span></div>
               <div class="muted mono-wrap mt-6">${i.phone ? esc(i.phone) + ' · ' : ''}${esc(i.created_at || '')}</div>
               ${linkedTargetHtml(i)}
-              <div class="mt-6"><a class="link" href="${escAttr(i.invite_link || '#')}" target="_blank" rel="noreferrer">Ссылка приглашения</a></div>
+              <div class="mt-6"><a class="link" href="${escAttr(i.invite_link || '#')}" target="_blank" rel="noreferrer">Открыть приглашение</a></div>
             </div>
             <div class="invite-actions">
               <button class="btn" data-copy>Скопировать ссылку</button>
@@ -265,7 +265,7 @@
         row.innerHTML = `
           <div>
             <div><b>${esc(display)}</b> <span class="chip">${esc(roleLabel(m.venue_role))}</span></div>
-            <div class="muted mt-6">${m.tg_username ? "Telegram: @" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? "Телефон: " + esc(m.phone) : ""}</div>
+            <div class="muted mt-6">${m.tg_username ? "@" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? esc(m.phone) : ""}</div>
             <div class="mt-6">${authChips(m.auth_methods || [])}</div>
           </div>
         `;
@@ -322,8 +322,8 @@
           inviteResult.innerHTML = `Участник добавлен: <b>${esc(label)}</b> <span class="chip">${esc(roleLabel(out.member.venue_role || role))}</span> <span class="chip">Готово</span>`;
         } else if (out?.invite_link) {
           const pendingHint = String(out?.target_status || 'WAITING_SIGNUP').toUpperCase() === 'LINKED_USER'
-            ? 'Аккаунт найден, осталось принять приглашение'
-            : 'Приглашение создано и ждёт входа';
+            ? 'Приглашение готово к принятию'
+            : 'Приглашение создано';
           inviteResult.innerHTML = `${esc(pendingHint)} · <a class="link" href="${escAttr(out.invite_link)}" target="_blank" rel="noreferrer">Открыть приглашение</a>`;
         } else {
           inviteResult.textContent = out?.mode || 'ok';

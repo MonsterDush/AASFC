@@ -383,7 +383,7 @@ openAdjustments.href = canManageAdjustments
             row.innerHTML = `
               <div>
                   <b>${esc(m.short_name || m.display_name || m.full_name || (m.tg_username ? "@" + String(m.tg_username).replace(/^@+/, "") : "Участник"))}</b> <span class="muted">${esc(m.venue_role === "OWNER" ? "Владелец" : "Персонал")}</span><br/>
-                <span class="muted">${m.tg_username ? "Telegram: @" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? "Телефон: " + esc(m.phone) : ""}</span>
+                <span class="muted">${m.tg_username ? "@" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? esc(m.phone) : ""}</span>
               </div>
               <button class="btn danger" data-remove>Удалить</button>
             `;

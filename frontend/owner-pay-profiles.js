@@ -205,7 +205,7 @@ function renderList() {
     if (state.can.manage) {
       const editBtn = document.createElement("button");
       editBtn.className = "btn sm";
-      editBtn.textContent = "Редакт.";
+      editBtn.textContent = "Изменить";
       editBtn.onclick = () => openEditor({ mode: "edit", item: it });
       right.appendChild(editBtn);
 

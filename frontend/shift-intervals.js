@@ -186,7 +186,7 @@ function renderList() {
         <div class="mono muted listrow__meta">${esc(item.start_time)}–${esc(item.end_time)} · Смен: ${Number(item.usage_count || 0)}</div>
       </div>
       <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;">
-        <button class="btn sm" data-edit="${item.id}">Редакт.</button>
+        <button class="btn sm" data-edit="${item.id}">Изменить</button>
         <button class="btn sm ${item.is_active ? "danger" : ""}" data-archive="${item.id}">${item.is_active ? "В архив" : "Вернуть"}</button>
         ${item.can_delete ? `<button class="btn sm danger" data-delete="${item.id}">Удалить</button>` : ""}
       </div>
@@ -260,10 +260,10 @@ function editorForm({ mode, item }) {
         <input id="f_title" class="input" placeholder="Например, Утро" value="${esc(it.title || "")}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Статус</div>
+        <div class="muted" style="margin-bottom:6px">Отображение</div>
         <label class="chk">
           <input type="checkbox" id="f_active" ${it.is_active === false ? "" : "checked"} />
-          <span class="muted">Активен</span>
+          <span class="muted">Показывать в списке</span>
         </label>
       </div>
       <div>

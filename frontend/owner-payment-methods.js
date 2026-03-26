@@ -211,7 +211,7 @@ function renderList() {
         <b>${esc(it.title)}</b>
         ${it.is_active ? "" : `<span class=\"badge\">архив</span>`}
       </div>
-      <div class="muted listrow__meta">${it.is_active ? "Доступно для использования" : "Скрыто из выбора"}</div>
+      <div class="muted listrow__meta">${it.is_active ? "Доступен при выборе оплаты" : "Скрыт из списка"}</div>
     `;
 
     const right = document.createElement("div");
@@ -221,7 +221,7 @@ function renderList() {
     if (state.can.edit) {
       const btnEdit = document.createElement("button");
       btnEdit.className = "btn sm";
-      btnEdit.textContent = "Редакт.";
+      btnEdit.textContent = "Изменить";
       btnEdit.onclick = () => openEditor({ mode: "edit", item: it });
       right.appendChild(btnEdit);
     }
@@ -263,23 +263,18 @@ function editorForm({ mode, item }) {
   return `
     <div class="grid grid2" style="margin-top:10px">
       <div>
-        <div class="muted" style="margin-bottom:6px">Код (slug)</div>
-        <input id="f_code" placeholder="cash" value="${esc(it.code || "")}" />
-        <div class="muted" style="margin-top:6px; font-size:12px">Код генерируется из названия автоматически. При желании его можно поправить вручную.</div>
-      </div>
-      <div>
         <div class="muted" style="margin-bottom:6px">Название</div>
         <input id="f_title" placeholder="Наличные" value="${esc(it.title || "")}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Порядок</div>
+        <div class="muted" style="margin-bottom:6px">Порядок в списке</div>
         <input id="f_sort" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Статус</div>
+        <div class="muted" style="margin-bottom:6px">Отображение</div>
         <label class="row" style="gap:8px; align-items:center">
           <input type="checkbox" id="f_active" ${activeChecked} />
-          <span>Активен</span>
+          <span>Показывать в списке</span>
         </label>
       </div>
     </div>
@@ -294,19 +289,9 @@ function editorForm({ mode, item }) {
 function wireEditor({ mode, item }) {
   document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);
   const titleEl = document.getElementById("f_title");
-  const codeEl = document.getElementById("f_code");
-  if (titleEl && codeEl) {
-    const syncCode = () => {
-      if (codeEl.dataset.touched === "1") return;
-      codeEl.value = ensureUniqueCode(slugifyCode(titleEl.value, "payment_method"), state.items, item?.id ?? null);
-    };
-    titleEl.addEventListener("input", syncCode);
-    codeEl.addEventListener("input", () => { codeEl.dataset.touched = "1"; });
-    if (!item) syncCode();
-  }
   document.getElementById("btnSave")?.addEventListener("click", async () => {
     const title = document.getElementById("f_title")?.value?.trim();
-    const code = String(document.getElementById("f_code")?.value || ensureUniqueCode(slugifyCode(title, "payment_method"), state.items, item?.id ?? null)).trim();
+    const code = ensureUniqueCode(slugifyCode(title, "payment_method"), state.items, item?.id ?? null);
     const sort = document.getElementById("f_sort")?.value;
     const is_active = !!document.getElementById("f_active")?.checked;
 

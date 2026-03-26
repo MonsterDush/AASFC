@@ -530,7 +530,7 @@ function renderHeader() {
   document.getElementById("subtitle").textContent = p?.description || "компоненты и назначения";
   document.getElementById("profileTitle").textContent = p?.title || "—";
   document.getElementById("profileDescription").textContent = p?.description || "Без описания";
-  document.getElementById("profileMeta").textContent = `Статус: ${p?.is_active ? "активен" : "неактивен"} · Компонентов: ${Number(p?.components?.length || 0)} · Назначений: ${Number(p?.assignments?.length || 0)}`;
+  document.getElementById("profileMeta").textContent = `${p?.is_active ? "Активный профиль" : "Профиль выключен"} · Компонентов: ${Number(p?.components?.length || 0)} · Назначений: ${Number(p?.assignments?.length || 0)}`;
   document.getElementById("backProfiles").href = `/owner-pay-profiles.html?venue_id=${encodeURIComponent(state.venueId)}`;
   document.getElementById("openPayroll").href = `/owner-payroll.html?venue_id=${encodeURIComponent(state.venueId)}`;
   document.getElementById("btnEditProfile").style.display = state.can.manage ? "" : "none";
@@ -595,7 +595,7 @@ function renderComponents() {
     if (state.can.manage && actions) {
       const editBtn = document.createElement("button");
       editBtn.className = "btn sm";
-      editBtn.textContent = "Редакт.";
+      editBtn.textContent = "Изменить";
       editBtn.onclick = () => openComponentEditor({ mode: "edit", item: it });
       actions.appendChild(editBtn);
 
@@ -670,7 +670,7 @@ function renderAssignments() {
     if (state.can.manage && actions) {
       const editBtn = document.createElement("button");
       editBtn.className = "btn sm";
-      editBtn.textContent = "Редакт.";
+      editBtn.textContent = "Изменить";
       editBtn.onclick = () => openAssignmentEditor({ mode: "edit", item: it });
       actions.appendChild(editBtn);
 
