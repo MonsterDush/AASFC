@@ -28,7 +28,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Axelio</b>
-          <div class="muted">вход по номеру телефона, паролю или через Telegram</div>
+          <div class="muted">вход по телефону или через Telegram</div>
         </div>
       </div>
       <div class="userpill" data-userpill>гость</div>
@@ -37,7 +37,7 @@
     <div class="auth-grid">
       <div class="card">
         <b>Вход по телефону</b>
-        <div class="muted mt-8">Основной сценарий — вход по номеру телефона и паролю. Звонок нужен только для первой настройки номера и для сброса пароля. SMS можно временно отключать через настройку на backend.</div>
+        <div class="muted mt-8">Основной способ входа — по номеру телефона и паролю. Звонок нужен только для первой настройки номера и для сброса пароля.</div>
 
         <div id="loginPanel" class="stack mt-16">
           <div>
@@ -64,7 +64,7 @@
               <b>Вход через Telegram</b>
               <div class="muted mt-8">Вход подтверждается в боте, а затем автоматически завершается в браузере.</div>
             </div>
-            <button class="btn sm" id="hideTelegramLoginBtn" type="button">Назад ко входу</button>
+            <button class="btn sm" id="hideTelegramLoginBtn" type="button">Ко входу</button>
           </div>
 
           <div class="verify-box">
@@ -86,9 +86,9 @@
           <div class="password-flow-header">
             <div>
               <b id="passwordFlowTitle">Первичная настройка</b>
-              <div class="muted mt-8" id="passwordFlowHint">Подтверди номер звонком и сразу задай пароль для следующих входов.</div>
+              <div class="muted mt-8" id="passwordFlowHint">Подтверди номер и задай пароль для следующих входов.</div>
             </div>
-            <button class="btn sm" id="hidePasswordFlowBtn" type="button">Назад ко входу</button>
+            <button class="btn sm" id="hidePasswordFlowBtn" type="button">Ко входу</button>
           </div>
 
           <div class="verify-box">
@@ -116,11 +116,11 @@
                 <div class="password-rules muted mt-8">Пароль должен быть не короче 8 символов и содержать хотя бы одну букву и одну цифру.</div>
               </div>
               <div>
-                <label class="auth-label" for="confirmPasswordInput">Повтори пароль</label>
-                <input id="confirmPasswordInput" type="password" placeholder="Повтори новый пароль" autocomplete="new-password" />
+                <label class="auth-label" for="confirmPasswordInput">Повторите пароль</label>
+                <input id="confirmPasswordInput" type="password" placeholder="Повторите новый пароль" autocomplete="new-password" />
               </div>
               <div class="row mt-4">
-                <button class="btn primary" id="btnCompletePasswordFlow">Завершить подтверждение и сохранить пароль</button>
+                <button class="btn primary" id="btnCompletePasswordFlow">Сохранить пароль</button>
               </div>
             </div>
           </div>

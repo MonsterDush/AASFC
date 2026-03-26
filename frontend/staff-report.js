@@ -592,7 +592,7 @@ function renderAuditSection(audit, maps) {
 
   return audit
     .map((a) => {
-      const who = a?.user_tg_username ? `@${a.user_tg_username}` : (a?.user_id ? `Пользователь · ID ${a.user_id}` : "—");
+      const who = a?.user_tg_username ? `@${a.user_tg_username}` : (a?.user_id ? "Сотрудник" : "—");
       const when = fmtDtRu(a?.changed_at);
       const lines = diffLines(a?.diff);
       const inner = lines.length

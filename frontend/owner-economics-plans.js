@@ -383,10 +383,10 @@ function renderDepartmentDayPlans(payload) {
 
 function renderOverride(plan) {
   const hasValues = plan?.revenue_plan_minor != null || plan?.profit_plan_minor != null || plan?.revenue_per_assigned_plan_minor != null || plan?.assigned_user_target != null || !!plan?.day_kind || !!plan?.title;
-  setText("overrideBadge", hasValues ? (dayKindLabel(plan?.day_kind) || "Заполнен") : "Не задан");
+  setText("overrideBadge", hasValues ? (dayKindLabel(plan?.day_kind) || "Есть план") : "Не задан");
   const form = document.getElementById("planOverrideForm");
   if (!form) return;
-  form.innerHTML = planFormHtml("override", "Отдельный план на дату", `Для ${state.date} можно задать отдельный план.`, plan, { includeDayMeta: true }) + `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить план на дату</button></div>`;
+  form.innerHTML = planFormHtml("override", "План на выбранную дату", `Для ${state.date} можно задать отдельный план.`, plan, { includeDayMeta: true }) + `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить план на дату</button></div>`;
   bindToggleDisable(form, "override");
   form.style.display = state.access.canManage ? "" : "none";
   form.onsubmit = saveOverride;

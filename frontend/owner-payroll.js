@@ -80,7 +80,7 @@ function fmtMoneyMinor(minor) {
 
 function memberName(member) {
   if (!member) return "—";
-  return member.short_name || member.full_name || (member.tg_username ? `@${member.tg_username}` : `Участник${member.user_id ? " · ID " + member.user_id : ""}`);
+  return member.short_name || member.full_name || (member.tg_username ? `@${member.tg_username}` : "Сотрудник");
 }
 
 const COMPONENT_LABELS = {

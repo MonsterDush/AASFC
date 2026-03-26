@@ -884,7 +884,7 @@ function breakdownMetaHtml(c) {
   }
   if (type === "KPI_BONUS") {
     const threshold = c?.threshold_value ?? "—";
-    return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || (c.kpi_metric_id ? "ID " + c.kpi_metric_id : "—"))} · факт: ${esc(c.metric_value ?? 0)} · порог: ${esc(threshold)}</div>`;
+    return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || "показатель")} · факт: ${esc(c.metric_value ?? 0)} · порог: ${esc(threshold)}</div>`;
   }
   if (type === "SALARY_HOURLY") {
     return `<div class="muted small mt-4">Часы: ${esc(c.hours_total ?? 0)}</div>`;

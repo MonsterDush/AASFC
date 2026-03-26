@@ -213,7 +213,7 @@ function renderList() {
         <b>${esc(it.title)}</b>
         ${it.is_active ? "" : `<span class=\"badge\">архив</span>`}
       </div>
-      <div class="mono muted listrow__meta">code=${esc(it.code)} · sort=${esc(it.sort_order)}</div>
+      <div class="muted listrow__meta">${it.is_active ? "Участвует в отчётах и сводке" : "Скрыт из выбора"}</div>
     `;
 
     const right = document.createElement("div");

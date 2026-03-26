@@ -21,7 +21,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Приглашения и участники</b>
-          <div class="muted">добавление людей в команду</div>
+          <div class="muted">приглашения и состав команды</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -34,24 +34,24 @@
         <div class="row mt-10">
           <select id="venueSelect" style="min-width:260px; max-width:100%"></select>
           <button class="btn primary" id="btnUseVenue">Выбрать</button>
-          <a class="btn subtle inline" id="openLink" href="/invites.html">Открыть ссылку</a>
+          <a class="btn subtle inline" id="openLink" href="/invites.html">Открыть страницу</a>
         </div>
       </div>
 
       <div class="itemcard mt-12">
         <b id="inviteTitle">Пригласить участника</b>
-        <div id="venueMeta" class="muted mono mt-6"></div>
+        <div id="venueMeta" class="muted mt-6"></div>
 
         <div class="invite-grid">
           <div>
-            <label class="muted">Канал</label>
+            <label class="muted">Способ приглашения</label>
             <select id="inviteChannel">
               <option value="TELEGRAM">Telegram</option>
               <option value="PHONE">Телефон</option>
             </select>
           </div>
           <div id="tgWrap">
-            <label class="muted">Telegram username</label>
+            <label class="muted">Ник в Telegram</label>
             <input id="tg" placeholder="@username" />
           </div>
           <div id="phoneWrap" style="display:none">
@@ -59,7 +59,7 @@
             <input id="phone" placeholder="+7 999 123-45-67" />
           </div>
           <div>
-            <label class="muted">Имя/заметка</label>
+            <label class="muted">Имя или заметка</label>
             <input id="contactLabel" placeholder="Иван / Новый кальянщик" />
           </div>
           <div>
@@ -150,7 +150,7 @@
     }
 
     function setVenueMeta() {
-      venueMeta.textContent = venueId ? `Выбрано заведение · ID ${venueId}` : "Заведение не выбрано";
+      venueMeta.textContent = venueName ? `Заведение: ${venueName}` : (venueId ? "Заведение выбрано" : "Заведение не выбрано");
       const t = document.getElementById("inviteTitle");
       if (t) t.textContent = venueName ? `Пригласить участника в ${venueName}` : "Пригласить участника";
       openLink.href = venueId ? `/invites.html?venue_id=${encodeURIComponent(venueId)}` : "/invites.html";
@@ -178,7 +178,7 @@
         venues.forEach(v => {
           const opt = document.createElement("option");
           opt.value = String(v.id);
-          opt.textContent = `${v.name} · ID ${v.id}`;
+          opt.textContent = `${v.name}`;
           if (String(v.id) === String(venueId)) opt.selected = true;
           venueSelect.appendChild(opt);
         });
@@ -195,16 +195,16 @@
 
     function authChips(methods) {
       const list = Array.isArray(methods) ? methods : [];
-      if (!list.length) return '<span class="chip">Без способов входа</span>';
+      if (!list.length) return '<span class="chip">Способ входа не указан</span>';
       return list.map(m => `<span class="chip">${esc(m === 'phone' ? 'Телефон' : m === 'telegram' ? 'Telegram' : m)}</span>`).join(' ');
     }
 
     function linkedTargetHtml(i) {
       const target = i?.target_user || null;
       const targetStatus = String(i?.target_status || 'WAITING_SIGNUP').toUpperCase();
-      if (!target) return `<div class="muted mt-6">Статус: <span class="chip">ожидает вход</span></div>`;
-      const label = target.display_name || target.short_name || target.full_name || (target.tg_username ? '@' + target.tg_username : (target.phone || ('Пользователь' + (target.user_id ? ' · ID ' + target.user_id : ''))));
-      return `<div class="mt-6"><span class="chip">${esc(targetStatus === 'LINKED_USER' ? 'аккаунт найден' : 'ожидает вход')}</span> <span class="muted">${esc(label)}</span> ${authChips(target.auth_methods || [])}</div>`;
+      if (!target) return `<div class="muted mt-6"><span class="chip">Ждёт входа</span></div>`;
+      const label = target.display_name || target.short_name || target.full_name || (target.tg_username ? '@' + target.tg_username : (target.phone || 'Пользователь'));
+      return `<div class="mt-6"><span class="chip">${esc(targetStatus === 'LINKED_USER' ? 'Есть аккаунт' : 'Ждёт входа')}</span> <span class="muted">${esc(label)}</span> ${authChips(target.auth_methods || [])}</div>`;
     }
 
 
@@ -223,7 +223,7 @@
               <div><b>${pendingContact(i)}</b> <span class="chip">${esc(channelLabel(i.channel))}</span> <span class="chip">${esc(roleLabel(i.venue_role))}</span></div>
               <div class="muted mono-wrap mt-6">${i.phone ? esc(i.phone) + ' · ' : ''}${esc(i.created_at || '')}</div>
               ${linkedTargetHtml(i)}
-              <div class="mono-wrap mt-6"><a class="link" href="${escAttr(i.invite_link || '#')}" target="_blank" rel="noreferrer">${esc(i.invite_link || '')}</a></div>
+              <div class="mt-6"><a class="link" href="${escAttr(i.invite_link || '#')}" target="_blank" rel="noreferrer">Ссылка приглашения</a></div>
             </div>
             <div class="invite-actions">
               <button class="btn" data-copy>Скопировать ссылку</button>
@@ -261,7 +261,7 @@
       items.forEach(m => {
         const row = document.createElement('div');
         row.className = 'invite-card';
-        const display = m.display_name || m.short_name || m.full_name || (m.tg_username ? '@' + m.tg_username : 'Пользователь' + (m.user_id ? ' · ID ' + m.user_id : ''));
+        const display = m.display_name || m.short_name || m.full_name || (m.tg_username ? '@' + m.tg_username : 'Участник');
         row.innerHTML = `
           <div>
             <div><b>${esc(display)}</b> <span class="chip">${esc(roleLabel(m.venue_role))}</span></div>
@@ -303,7 +303,7 @@
       const body = { invite_channel: channel, venue_role: role, contact_label };
       if (channel === 'TELEGRAM') {
         const tg = document.getElementById('tg').value.trim();
-        if (!tg) { toast('Введи username', 'warn'); return; }
+        if (!tg) { toast('Укажи ник в Telegram', 'warn'); return; }
         body.tg_username = tg;
       } else {
         const phone = document.getElementById('phone').value.trim();
@@ -318,13 +318,13 @@
         document.getElementById('phone').value = '';
         document.getElementById('contactLabel').value = '';
         if (out?.mode === 'member_added' && out?.member) {
-          const label = out.member.display_name || out.member.tg_username || out.member.phone || ('Пользователь' + (out.member.user_id ? ' · ID ' + out.member.user_id : ''));
-          inviteResult.innerHTML = `Участник добавлен сразу: <b>${esc(label)}</b> <span class="chip">${esc(roleLabel(out.member.venue_role || role))}</span> <span class="chip">привязан</span>`;
+          const label = out.member.display_name || out.member.tg_username || out.member.phone || 'Участник';
+          inviteResult.innerHTML = `Участник добавлен: <b>${esc(label)}</b> <span class="chip">${esc(roleLabel(out.member.venue_role || role))}</span> <span class="chip">Готово</span>`;
         } else if (out?.invite_link) {
           const pendingHint = String(out?.target_status || 'WAITING_SIGNUP').toUpperCase() === 'LINKED_USER'
-            ? 'аккаунт найден, осталось подтвердить приглашение'
-            : 'ожидает вход и подтверждение';
-          inviteResult.innerHTML = `${esc(pendingHint)} · <a class="link" href="${escAttr(out.invite_link)}" target="_blank" rel="noreferrer">${esc(out.invite_link)}</a>`;
+            ? 'Аккаунт найден, осталось принять приглашение'
+            : 'Приглашение создано и ждёт входа';
+          inviteResult.innerHTML = `${esc(pendingHint)} · <a class="link" href="${escAttr(out.invite_link)}" target="_blank" rel="noreferrer">Открыть приглашение</a>`;
         } else {
           inviteResult.textContent = out?.mode || 'ok';
         }

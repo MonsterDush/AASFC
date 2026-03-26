@@ -14,7 +14,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Мои заведения</b>
-          <div class="muted">список доступных заведений</div>
+          <div class="muted">выберите заведение</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -22,7 +22,7 @@
 
     <div class="card">
       <div class="muted">
-        Выберите заведение, чтобы открыть панель.
+        Открой нужное заведение.
       </div>
 
       <div id="list" class="list"><div class="skeleton"></div><div class="skeleton"></div></div>
@@ -70,10 +70,10 @@ function venueCard(v){
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <div style="min-width:0;flex:1 1 auto;">
           <b>${esc(v.name)}${chip}</b>
-          <div class="small">ID ${v.id}${v.my_role ? " · " + esc(String(v.my_role).toUpperCase() === "OWNER" ? "Владелец" : "Персонал") : ""}</div>
+          <div class="small">${v.my_role ? esc(String(v.my_role).toUpperCase() === "OWNER" ? "Владелец" : "Персонал") : ""}</div>
           ${hint}
         </div>
-        <a class="btn subtle inline" href="${href}" data-open data-id="${v.id}">Открыть →</a>
+        <a class="btn subtle inline" href="${href}" data-open data-id="${v.id}">Открыть</a>
       </div>
     </div>
   `;

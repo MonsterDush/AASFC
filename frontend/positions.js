@@ -55,7 +55,7 @@ function memberNiceName(m) {
   if (fi) return fi;
   const u = (m?.tg_username || "").trim();
   if (u) return u.startsWith("@") ? u : `@${u}`;
-  return m?.user_id ? `Участник · ID ${m.user_id}` : "—";
+  return m?.user_id ? "Сотрудник" : "—";
 }
 
 function memberLabel(m) {
@@ -1020,7 +1020,7 @@ function renderPositions() {
 
     for (const p of arr) {
       const m = memberById.get(String(p.member_user_id || ""));
-      const who = m ? memberLabel(m) : (p.member_user_id ? `Участник · ID ${p.member_user_id}` : "—");
+      const who = m ? memberLabel(m) : (p.member_user_id ? "Сотрудник" : "—");
 
       const row = document.createElement("div");
       row.className = "list__row";

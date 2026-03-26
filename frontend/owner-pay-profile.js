@@ -121,7 +121,7 @@ function departmentTitleFor(item) {
   const depId = Number(item?.department_id || 0);
   if (!depId) return null;
   const found = (state.departments || []).find((d) => Number(d?.id) === depId);
-  return found?.title || `Департамент · ID ${depId}`;
+  return found?.title || "Департамент";
 }
 
 function kpiMetricTitleFor(item) {
@@ -130,7 +130,7 @@ function kpiMetricTitleFor(item) {
   const metricId = Number(item?.kpi_metric_id || 0);
   if (!metricId) return null;
   const found = (state.kpiMetrics || []).find((m) => Number(m?.id) === metricId);
-  return found?.title || `KPI #${metricId}`;
+  return found?.title || "KPI";
 }
 
 
@@ -586,7 +586,7 @@ function renderComponents() {
           ${it.is_active ? "" : `<span class="badge">неактивен</span>`}
         </div>
         <div class="muted mt-6">${esc(COMPONENT_LABELS[String(it.component_type || "").toUpperCase()] || it.component_type || "Компонент")}</div>
-        <div class="mono listrow__meta">${esc(componentSubtitle(it))} · sort=${Number(it.sort_order || 0)}</div>
+        <div class="muted listrow__meta">${esc(componentSubtitle(it))}</div>
         ${String(it?.component_type || "").toUpperCase() === "KPI_BONUS" ? componentStepsPreview(it) : ""}
       </div>
       <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;" id="componentActions_${it.id}"></div>
@@ -849,10 +849,10 @@ function componentForm({ mode, item }) {
             </select>
           </label>` : `
           <label id="f_department_wrap">
-            <span>ID департамента</span>
-            <input id="f_department_id" inputmode="numeric" placeholder="ID департамента" value="${esc(it.department_id ?? "")}" />
+            <span>Номер департамента</span>
+            <input id="f_department_id" inputmode="numeric" placeholder="Номер департамента" value="${esc(it.department_id ?? "")}" />
           </label>
-          <div id="f_department_hint" class="form-inline-note">Список департаментов не загрузился. Укажи ID вручную.</div>`}
+          <div id="f_department_hint" class="form-inline-note">Список департаментов не загрузился. Укажи номер вручную.</div>`}
           <label id="f_base_scope_wrap">
             <span>База расчёта</span>
             <select id="f_base_scope">${baseScopeOptions(it.base_scope || it.effective_base_scope, type)}</select>
@@ -888,10 +888,10 @@ function componentForm({ mode, item }) {
             </select>
           </label>` : `
           <label id="f_boost_department_wrap">
-            <span>ID департамента для условия</span>
-            <input id="f_boost_department_id" inputmode="numeric" placeholder="ID департамента" value="${esc(it.boost_department_id ?? "")}" />
+            <span>Номер департамента для условия</span>
+            <input id="f_boost_department_id" inputmode="numeric" placeholder="Номер департамента" value="${esc(it.boost_department_id ?? "")}" />
           </label>
-          <div id="f_boost_department_hint" class="form-inline-note">Если условие связано с департаментом, укажи его ID вручную.</div>`}
+          <div id="f_boost_department_hint" class="form-inline-note">Если условие связано с департаментом, укажи его номер вручную.</div>`}
           <label id="f_boost_recalc_wrap">
             <span>Режим пересчёта</span>
             <select id="f_boost_recalc_mode">${boostRecalcOptions(it.boost_recalc_mode || it.effective_boost_recalc_mode || 'REPLACE_ALL')}</select>
@@ -905,8 +905,8 @@ function componentForm({ mode, item }) {
             </select>
           </label>` : `
           <label id="f_boost_kpi_metric_wrap">
-            <span>ID KPI для повышения</span>
-            <input id="f_boost_kpi_metric_id" inputmode="numeric" placeholder="ID KPI" value="${esc(it.boost_kpi_metric_id ?? "")}" />
+            <span>Номер KPI для повышения</span>
+            <input id="f_boost_kpi_metric_id" inputmode="numeric" placeholder="Номер KPI" value="${esc(it.boost_kpi_metric_id ?? "")}" />
           </label>`}
           <label id="f_boost_threshold_wrap">
             <span id="f_boost_threshold_label">Цель KPI</span>
@@ -973,10 +973,10 @@ function componentForm({ mode, item }) {
             </select>
           </label>` : `
           <label id="f_kpi_metric_wrap">
-            <span>ID KPI-метрики</span>
-            <input id="f_kpi_metric_id" inputmode="numeric" placeholder="ID KPI" value="${esc(it.kpi_metric_id ?? "")}" />
+            <span>Номер KPI-метрики</span>
+            <input id="f_kpi_metric_id" inputmode="numeric" placeholder="Номер KPI" value="${esc(it.kpi_metric_id ?? "")}" />
           </label>
-          <div id="f_kpi_metric_hint" class="form-inline-note">Список KPI не загрузился. Укажи ID вручную.</div>`}
+          <div id="f_kpi_metric_hint" class="form-inline-note">Список KPI не загрузился. Укажи номер вручную.</div>`}
           <label id="f_threshold_wrap">
             <span id="f_threshold_label">Порог KPI</span>
             <input id="f_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.threshold_value ?? "")}" />
@@ -1456,10 +1456,10 @@ function assignmentForm({ mode, item }) {
         </label>
       ` : `
         <label>
-          <span>User ID сотрудника</span>
+          <span>Номер сотрудника</span>
           <input id="f_member_user_id" inputmode="numeric" placeholder="Например: 12" />
         </label>
-        <div class="muted">Список сотрудников не загрузился. Можно ввести user_id вручную.</div>
+        <div class="muted">Список сотрудников не загрузился. Можно ввести номер сотрудника вручную.</div>
       `}
       <label>
         <span>Дата начала</span>

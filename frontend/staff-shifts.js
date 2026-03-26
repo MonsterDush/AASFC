@@ -411,7 +411,7 @@ function pickShortName(obj) {
   const un = (obj?.tg_username || obj?.member_username || obj?.user_username || obj?.user?.tg_username || obj?.username || "").trim();
   if (un) return un.replace(/^@/, "");
   const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
-  return uid ? `Участник · ID ${uid}` : "—";
+  return uid ? "Сотрудник" : "—";
 }
 
 function fioInitials(fullName) {
@@ -433,7 +433,7 @@ function displayPerson(obj) {
   const un = (obj?.tg_username || obj?.member?.tg_username || "").trim();
   if (un) return un.startsWith("@") ? un : `@${un}`;
   const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
-  return uid ? `Участник · ID ${uid}` : "—";
+  return uid ? "Сотрудник" : "—";
 }
 
 function normalizeList(out) {
@@ -1867,7 +1867,7 @@ async function loadShiftComments(shiftId) {
 
 function formatCommentAuthor(u) {
   if (!u) return "—";
-  return u.short_name || u.full_name || (u.tg_username ? "@" + u.tg_username : ("#" + (u.id ?? "")));
+  return u.short_name || u.full_name || (u.tg_username ? "@" + u.tg_username : "Сотрудник");
 }
 
 function renderCommentsInto(shiftId, comments) {

@@ -236,7 +236,7 @@ function renderList() {
         ${it.is_active ? "" : `<span class="badge">архив</span>`}
         ${Number(it.usage_component_count || 0) > 0 ? `<span class="badge">в начислениях: ${esc(it.usage_component_count)}</span>` : ``}
       </div>
-      <div class="mono muted listrow__meta">code=${esc(it.code)} · unit=${esc(unit)} · sort=${esc(it.sort_order)}</div>
+      <div class="muted listrow__meta">Единица измерения: ${esc(UNIT_LABEL[unit] || unit)}</div>
       <div class="muted mt-6">${esc(usageSummary(it))}</div>
     `;
 

@@ -36,7 +36,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Админ · Заведения</b>
-          <div class="muted">создание, поиск и статусы заведений</div>
+          <div class="muted">создание и управление заведениями</div>
         </div>
       </div>
       <div class="userpill" data-userpill>—</div>
@@ -59,29 +59,29 @@
       <div class="row">
         <div>
           <div><b>Создать заведение</b></div>
-          <div class="muted">Если аккаунт владельца уже найден, он будет добавлен сразу. Иначе создастся приглашение и владелец сможет присоединиться позже.</div>
+          <div class="muted">Можно сразу назначить владельца или отправить ему приглашение.</div>
         </div>
       </div>
 
       <div class="toolbar">
         <input id="vName" type="text" placeholder="Название заведения" />
         <select id="ownerMode">
-          <option value="tg">Telegram username</option>
+          <option value="tg">Ник в Telegram</option>
           <option value="phone">Телефон</option>
-          <option value="user_id">ID пользователя</option>
-          <option value="legacy_multi">Несколько Telegram username</option>
+          <option value="user_id">Номер пользователя</option>
+          <option value="legacy_multi">Несколько ников в Telegram</option>
         </select>
         <input id="ownerTg" type="text" placeholder="@username" />
         <input id="ownerPhone" type="text" placeholder="+7 999 123-45-67" style="display:none" />
-        <input id="ownerUserId" type="text" placeholder="ID пользователя владельца" style="display:none" />
-        <input id="owners" type="text" placeholder="Username владельцев: ivan, petr" style="display:none" />
+        <input id="ownerUserId" type="text" placeholder="Номер пользователя владельца" style="display:none" />
+        <input id="owners" type="text" placeholder="Ники владельцев: ivan, petr" style="display:none" />
         <button id="btnCreate" class="btn primary">Создать</button>
       </div>
       <div id="createResult" class="muted"></div>
     </div>
 
     <div class="toolbar">
-      <input id="search" type="search" placeholder="По названию или ID" />
+      <input id="search" type="search" placeholder="По названию или номеру" />
       <span class="muted" id="count">0</span>
     </div>
 
@@ -184,12 +184,12 @@
     const pending = Array.isArray(s.pending) ? s.pending : [];
     const state = String(s.state || 'UNASSIGNED').toUpperCase();
     const stateChip = state === 'LINKED'
-      ? '<span class="tag">владелец привязан</span>'
+      ? '<span class="tag">владелец назначен</span>'
       : state === 'PENDING'
-        ? '<span class="tag">владелец ожидает входа</span>'
+        ? '<span class="tag">ждёт подтверждения</span>'
         : '<span class="tag muted">владелец не назначен</span>';
     const ownersHtml = owners.length
-      ? owners.map(o => `<span class="tag">${esc(o.display_name || o.tg_username || o.phone || ('Пользователь' + (o.user_id ? ' · ID ' + o.user_id : '')))}</span>`).join(' ')
+      ? owners.map(o => `<span class="tag">${esc(o.display_name || o.tg_username || o.phone || 'Пользователь')}</span>`).join(' ')
       : '';
     const pendingHtml = pending.length
       ? pending.map(o => {
@@ -233,7 +233,7 @@
                 </a>
                 ${badge}
                 </div>
-              <div class="muted">ID ${esc(v.id)}${v.archived_at ? " · архивировано: " + esc(v.archived_at) : ""}</div>
+              <div class="muted">${v.archived_at ? "В архиве с " + esc(v.archived_at) : "Открыть карточку заведения"}</div>
               ${ownerStatusHtml(v.owner_status)}
             </div>
             <div class="toolbar">
@@ -269,7 +269,7 @@
         <div class="card">
           <b>Не удалось загрузить заведения</b>
           <pre>${esc(e?.message || "Неизвестная ошибка")}</pre>
-          <div class="muted">Открой детали, если нужно посмотреть служебный ответ.</div>
+          <div class="muted">Попробуй обновить страницу или проверить доступ.</div>
         </div>
       `;
       toast(e?.message || "Ошибка загрузки", "err");
@@ -297,7 +297,7 @@
     const body = { name };
     if (modeSel === "tg") {
       const owner_tg_username = document.getElementById("ownerTg").value.trim();
-      if (!owner_tg_username) { toast("Укажи username в Telegram владельца", "warn"); return; }
+      if (!owner_tg_username) { toast("Укажи ник владельца в Telegram", "warn"); return; }
       body.owner_tg_username = owner_tg_username;
     } else if (modeSel === "phone") {
       const owner_phone = document.getElementById("ownerPhone").value.trim();
@@ -306,10 +306,10 @@
     } else if (modeSel === "user_id") {
       const rawId = document.getElementById("ownerUserId").value.trim();
       const owner_user_id = Number(rawId);
-      if (!rawId || !Number.isFinite(owner_user_id) || owner_user_id <= 0) { toast("Укажи корректный ID пользователя", "warn"); return; }
+      if (!rawId || !Number.isFinite(owner_user_id) || owner_user_id <= 0) { toast("Укажи корректный номер пользователя", "warn"); return; }
       body.owner_user_id = owner_user_id;
     } else if (modeSel === "legacy_multi") {
-      if (!owner_usernames.length) { toast("Укажи хотя бы один username в Telegram", "warn"); return; }
+      if (!owner_usernames.length) { toast("Укажи хотя бы один ник в Telegram", "warn"); return; }
       body.owner_usernames = owner_usernames;
     }
 
@@ -321,13 +321,13 @@
       setLastJson({ create: "OK", response: out });
       setStatus("Создано");
       if (out?.owner_status?.state === 'LINKED' && out?.owner_linked) {
-        const ownerName = out.owner_linked.display_name || out.owner_linked.tg_username || out.owner_linked.phone || ('Пользователь' + (out.owner_linked.user_id ? ' · ID ' + out.owner_linked.user_id : ''));
-        createResultEl.textContent = out?.id ? `Создано · ID ${out.id} · владелец назначен: ${ownerName}` : `Владелец назначен: ${ownerName}`;
+        const ownerName = out.owner_linked.display_name || out.owner_linked.tg_username || out.owner_linked.phone || 'Пользователь';
+        createResultEl.textContent = out?.id ? `Заведение создано · владелец: ${ownerName}` : `Владелец: ${ownerName}`;
       } else if (out?.owner_pending && out?.owner_invite?.invite_link) {
         const pendingContact = out.owner_invite.contact_label || out.owner_invite.phone || (out.owner_invite.tg_username ? '@' + out.owner_invite.tg_username : 'владелец');
-        createResultEl.innerHTML = `Создано · ID ${esc(out.id)} · владелец сможет присоединиться позже: ${esc(pendingContact)} · <a class="link" href="${escAttr(out.owner_invite.invite_link)}" target="_blank" rel="noreferrer">открыть приглашение</a>`;
+        createResultEl.innerHTML = `Заведение создано · владелец сможет присоединиться позже: ${esc(pendingContact)} · <a class="link" href="${escAttr(out.owner_invite.invite_link)}" target="_blank" rel="noreferrer">открыть приглашение</a>`;
       } else {
-        createResultEl.textContent = out?.id ? `Создано · ID ${out.id}` : "Создано";
+        createResultEl.textContent = 'Заведение создано';
       }
       toast("Заведение создано", "ok");
       mode = "active";

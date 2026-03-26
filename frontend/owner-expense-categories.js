@@ -111,7 +111,7 @@ function renderList() {
           <b>${esc(it.title)}</b>
           ${it.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
-        <div class="mono muted listrow__meta">code=${esc(it.code)} · sort=${esc(it.sort_order)}</div>
+        <div class="muted listrow__meta">${it.is_active ? "Доступна при создании расхода" : "Скрыта из выбора"}</div>
       </div>
       <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;">
         <button class="btn sm" data-edit="${it.id}">Редакт.</button>
