@@ -200,6 +200,7 @@
         let canViewKpi = false;
         let canManageIntervals = false;
         let canEditVenueSettings = false;
+        let canManageStaff = false;
         let canViewReports = false;
         let canViewRevenue = false;
         let canViewExpenses = false;
@@ -226,6 +227,7 @@
           canManageIntervals = isOwner || isAdmin || hasPerm(pset, "SHIFTS_MANAGE");
 
           canEditVenueSettings = isOwner || isAdmin || hasPerm(pset, "VENUE_SETTINGS_EDIT");
+          canManageStaff = isOwner || isAdmin || hasPerm(pset, "STAFF_MANAGE");
 
           canViewReports = hasReportAccess(pset, myRole, String(me?.system_role || ""));
 
@@ -334,7 +336,7 @@ openAdjustments.href = canManageAdjustments
           if (openIntervals) openIntervals.href = `/shift-intervals.html?venue_id=${encodeURIComponent(venueId)}`;
 
           // hide/show by permissions
-          if (openInvites) openInvites.style.display = (isOwner || isAdmin) ? "" : "none";
+          if (openInvites) openInvites.style.display = canManageStaff ? "" : "none";
           if (openPositions) openPositions.style.display = (isOwner || isAdmin || hasPerm(pset, "POSITIONS_VIEW") || hasPerm(pset, "POSITIONS_MANAGE") || hasPerm(pset, "POSITIONS_ASSIGN") || hasPerm(pset, "POSITION_PERMISSIONS_MANAGE")) ? "" : "none";
 
           if (openReports) openReports.style.display = canViewReports ? "" : "none";
@@ -366,7 +368,9 @@ openAdjustments.href = canManageAdjustments
           const tipsCard = document.getElementById("tipsSettingsCard");
           if (tipsCard) tipsCard.style.display = canEditVenueSettings ? "" : "none";
           metaEl.textContent = last.is_archived ? "В архиве" : "Активно";
-          metaHint.textContent = canAdminVenue ? "Здесь можно управлять настройками и составом команды." : "";
+          metaHint.textContent = canAdminVenue
+            ? "Здесь можно управлять настройками и составом команды."
+            : (canManageStaff ? "Здесь можно управлять составом команды." : "");
         }
           
 
@@ -389,7 +393,8 @@ openAdjustments.href = canManageAdjustments
             `;
 
             const rmBtn = row.querySelector("[data-remove]");
-            if (rmBtn) rmBtn.style.display = canAdminVenue ? "" : "none";
+            const canRemoveMember = canManageStaff && String(m.venue_role || "").toUpperCase() !== "OWNER";
+            if (rmBtn) rmBtn.style.display = canRemoveMember ? "" : "none";
             if (rmBtn) rmBtn.onclick = async () => {
               const ok = await confirmModal({
                 title: "Удалить участника?",
@@ -517,7 +522,11 @@ if (tipsModeEl) {
               last.is_archived = !!v.is_archived;
               titleEl.textContent = v.name || "Заведение";
               metaEl.textContent = last.is_archived ? "В архиве" : "Активно";
-              metaHint.textContent = v.archived_at ? `Архивировано: ${v.archived_at}` : (canAdminVenue ? "Здесь можно управлять настройками и составом команды." : "");
+              metaHint.textContent = v.archived_at
+                ? `Архивировано: ${v.archived_at}`
+                : (canAdminVenue
+                    ? "Здесь можно управлять настройками и составом команды."
+                    : (canManageStaff ? "Здесь можно управлять составом команды." : ""));
               if (archiveNotice) archiveNotice.classList.toggle("hidden", !last.is_archived);
             } else {
               titleEl.textContent = "Заведение";

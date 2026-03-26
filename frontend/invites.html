@@ -112,8 +112,11 @@
       setActiveVenueId,
       getActiveVenueId,
       mountNav,
-      getVenueById
+      getVenueById,
+      getMyVenuePermissions,
+      getMe
     } from "/app.js";
+    import { isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix2";
 
     function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
     function escAttr(s){ return esc(s).replace(/"/g, '&quot;'); }
@@ -128,6 +131,8 @@
     const params = new URLSearchParams(location.search);
     let venueId = params.get("venue_id") || getActiveVenueId();
     let venueName = "";
+    let canManageStaff = false;
+    let canInviteOwners = false;
 
     if (venueId) setActiveVenueId(venueId);
 
@@ -142,6 +147,48 @@
     const inviteChannel = document.getElementById("inviteChannel");
     const tgWrap = document.getElementById("tgWrap");
     const phoneWrap = document.getElementById("phoneWrap");
+    const btnInvite = document.getElementById("btnInvite");
+    const roleSelect = document.getElementById("role");
+
+    async function refreshPermissions() {
+      canManageStaff = false;
+      canInviteOwners = false;
+      if (!venueId) {
+        applyInviteAccess();
+        return;
+      }
+      try {
+        const me = await getMe().catch(() => null);
+        const perms = await getMyVenuePermissions(venueId);
+        const pset = permSetFromResponse(perms);
+        const role = roleUpper(perms);
+        const sysRole = String(me?.system_role || "");
+        const ownerOrAdmin = isOwnerRole(role) || isSysAdminRole(sysRole);
+        canManageStaff = ownerOrAdmin || hasPerm(pset, "STAFF_MANAGE");
+        canInviteOwners = ownerOrAdmin;
+      } catch {
+        canManageStaff = false;
+        canInviteOwners = false;
+      }
+      applyInviteAccess();
+    }
+
+    function applyInviteAccess() {
+      if (!btnInvite || !roleSelect) return;
+      btnInvite.style.display = canManageStaff ? "" : "none";
+      btnInvite.disabled = !canManageStaff;
+      const ownerOption = roleSelect.querySelector('option[value="OWNER"]');
+      if (ownerOption) ownerOption.style.display = canInviteOwners ? "" : "none";
+      if (!canInviteOwners && String(roleSelect.value || "STAFF").toUpperCase() === "OWNER") {
+        roleSelect.value = "STAFF";
+      }
+      const inviteCard = document.getElementById("inviteTitle")?.closest('.itemcard');
+      const inviteResultEl = document.getElementById("inviteResult");
+      if (inviteResultEl) {
+        inviteResultEl.textContent = canManageStaff ? "" : "Нет прав на управление участниками.";
+      }
+      if (inviteCard) inviteCard.style.display = canManageStaff ? "" : "none";
+    }
 
     function syncChannel() {
       const channel = String(inviteChannel.value || "TELEGRAM").toUpperCase();
@@ -239,7 +286,10 @@
             toast('Не удалось скопировать ссылку', 'warn');
           }
         };
-        row.querySelector('[data-cancel]').onclick = async () => {
+        const cancelBtn = row.querySelector('[data-cancel]');
+        const canCancelInvite = canManageStaff && (canInviteOwners || String(i.venue_role || '').toUpperCase() !== 'OWNER');
+        if (cancelBtn) cancelBtn.style.display = canCancelInvite ? '' : 'none';
+        if (cancelBtn) cancelBtn.onclick = async () => {
           try {
             await api(`/venues/${venueId}/invites/${i.id}`, { method:'DELETE' });
             toast('Приглашение отменено', 'ok');
@@ -279,6 +329,7 @@
         members.innerHTML = `<div class="muted">Сначала выбери заведение</div>`;
         return;
       }
+      await refreshPermissions();
       await ensureVenueName();
       setVenueMeta();
       pending.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
@@ -295,11 +346,16 @@
       }
     }
 
-    document.getElementById('btnInvite').onclick = async () => {
+    btnInvite.onclick = async () => {
+      if (!canManageStaff) { toast('Нет прав на управление участниками', 'warn'); return; }
       if (!venueId) { toast('Нет заведения — выбери заведение', 'warn'); return; }
       const channel = String(inviteChannel.value || 'TELEGRAM').toUpperCase();
-      const role = document.getElementById('role').value;
+      const role = roleSelect.value;
       const contact_label = document.getElementById('contactLabel').value.trim() || null;
+      if (!canInviteOwners && String(role || '').toUpperCase() === 'OWNER') {
+        toast('Нет прав на приглашение владельца', 'warn');
+        return;
+      }
       const body = { invite_channel: channel, venue_role: role, contact_label };
       if (channel === 'TELEGRAM') {
         const tg = document.getElementById('tg').value.trim();
