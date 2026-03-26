@@ -16,6 +16,9 @@ from pydantic import BaseModel, Field
 
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
 BOT_SERVICE_SECRET = os.getenv("BOT_SERVICE_SECRET", "")
+TG_WEBHOOK_SECRET_TOKEN = os.getenv("TG_WEBHOOK_SECRET_TOKEN", "")
+BACKEND_INTERNAL_BASE_URL = (os.getenv("BACKEND_INTERNAL_BASE_URL") or os.getenv("BACKEND_API_URL") or "http://127.0.0.1:9001").rstrip("/")
+BROWSER_AUTH_WEBHOOK_PATH = os.getenv("BROWSER_AUTH_WEBHOOK_PATH", "/auth/telegram/browser/webhook")
 
 app = FastAPI(title="Axelio Bot Service")
 
@@ -60,6 +63,25 @@ def _normalize_telegram_error(status_code: int | None, body_text: str | None) ->
         return retryable, description
     except Exception:
         return retryable, str(body_text).strip()[:300] or None
+
+
+def _telegram_browser_webhook_url() -> str:
+    path = BROWSER_AUTH_WEBHOOK_PATH or "/auth/telegram/browser/webhook"
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{BACKEND_INTERNAL_BASE_URL}{path}"
+
+
+def _post_json(url: str, payload: dict, *, headers: dict[str, str] | None = None, timeout: int = 7) -> tuple[int | None, str | None]:
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json", **(headers or {})},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = resp.read().decode("utf-8", errors="ignore")
+        return int(getattr(resp, "status", 200) or 200), body
 
 
 def _send_message(
@@ -138,6 +160,42 @@ def notify(payload: NotifyIn, request: Request):
         parse_mode=payload.parse_mode,
     )
     return result
+
+
+@app.post("/telegram/webhook", status_code=204)
+async def telegram_webhook_proxy(request: Request):
+    """Proxy Telegram updates to backend browser-auth webhook.
+
+    This keeps existing bot webhook installations working even when
+    browser Telegram login is handled by the backend app.
+    """
+
+    expected_secret = (TG_WEBHOOK_SECRET_TOKEN or "").strip()
+    got_secret = (request.headers.get("X-Telegram-Bot-Api-Secret-Token", "") or "").strip()
+    if expected_secret and got_secret != expected_secret:
+        raise HTTPException(status_code=401, detail="bad telegram secret")
+
+    payload = await request.json()
+    forward_headers: dict[str, str] = {}
+    if got_secret:
+        forward_headers["X-Telegram-Bot-Api-Secret-Token"] = got_secret
+
+    try:
+        status_code, body = await asyncio.to_thread(
+            _post_json,
+            _telegram_browser_webhook_url(),
+            payload,
+            headers=forward_headers,
+            timeout=7,
+        )
+        if status_code and status_code >= 400:
+            log.warning("browser auth webhook proxy failed: status=%s body=%s", status_code, (body or "")[:300])
+            raise HTTPException(status_code=502, detail="backend browser auth webhook failed")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("telegram webhook proxy failed")
+        raise HTTPException(status_code=502, detail=f"telegram webhook proxy error: {exc}")
 
 
 @app.post("/internal/run-shift-reminders")
