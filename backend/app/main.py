@@ -6,6 +6,7 @@ from app.core.config import settings
 app = FastAPI(title="Axelio API")
 from app.routers.venues import router as venues_router
 from app.routers.public_invites import router as public_invites_router
+from app.routers.public_leads import router as public_leads_router
 from app.routers import auth, me
 
 app.add_middleware(
@@ -20,6 +21,7 @@ app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(venues_router)
 app.include_router(public_invites_router)
+app.include_router(public_leads_router)
 
 @app.get("/health")
 def health():
