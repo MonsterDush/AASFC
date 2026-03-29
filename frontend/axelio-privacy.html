@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260322-notif72" />
+  <title>Axelio · Политика конфиденциальности</title>
+  <style>
+    .doc-wrap { display:grid; gap:12px; }
+    .doc-card { display:grid; gap:14px; }
+    .doc-card p, .doc-card li { line-height:1.6; }
+    .doc-card h2 { margin:0; font-size:18px; }
+    .doc-card h3 { margin:0; font-size:16px; }
+    .doc-card ul, .doc-card ol { margin:0; padding-left:20px; }
+    .doc-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+    .doc-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .doc-meta { display:grid; gap:8px; }
+    .doc-kv { display:grid; gap:6px; }
+    .doc-kv div { padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface2); }
+    .doc-note { padding:12px; border:1px solid var(--accentSoftBorder); border-radius:14px; background:var(--accentSoftBg); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Политика конфиденциальности</b>
+          <div class="muted">Порядок обработки персональных данных пользователей Axelio</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="doc-wrap">
+      <div class="card doc-card">
+        <div class="doc-head">
+          <div>
+            <b>Политика конфиденциальности</b>
+            <div class="muted mt-6">Актуально на 29.03.2026</div>
+          </div>
+          <div class="doc-actions">
+            <button class="btn subtle inline" type="button" id="backBtn">← Назад</button>
+            <button class="btn" type="button" id="settingsBtn">Настройки</button>
+          </div>
+        </div>
+        
+        <p>Настоящая политика описывает, как самозанятый <b>Таранков Владимир Алексеевич</b> обрабатывает персональные данные пользователей сервиса Axelio.</p>
+        <h2>1. Какие данные могут обрабатываться</h2>
+        <ul>
+          <li>имя, фамилия, отчество и иные данные профиля, указанные пользователем;</li>
+          <li>номер телефона;</li>
+          <li>идентификаторы аккаунта и технические данные, необходимые для авторизации и работы сервиса;</li>
+          <li>информация о подписке, оплатах и статусе доступа;</li>
+          <li>данные, которые пользователь загружает или формирует внутри сервиса в рамках его использования.</li>
+        </ul>
+        <h2>2. Цели обработки</h2>
+        <ul>
+          <li>предоставление доступа к сервису Axelio;</li>
+          <li>идентификация пользователя и поддержание безопасности учетной записи;</li>
+          <li>обработка платежей, управление подпиской и клиентская поддержка;</li>
+          <li>улучшение работы сервиса и разрешение технических обращений.</li>
+        </ul>
+        <h2>3. Правовые основания</h2>
+        <p>Обработка данных осуществляется для исполнения договора с пользователем, соблюдения требований законодательства РФ, а также в иных случаях, допускаемых применимым законодательством.</p>
+        <h2>4. Передача третьим лицам</h2>
+        <p>Данные могут передаваться только в объеме, необходимом для обработки платежей, технического обслуживания сервиса, исполнения требований закона и обеспечения работы подключенных сервисов, включая платежного партнера Robokassa.</p>
+        <h2>5. Хранение и защита</h2>
+        <p>Продавец принимает разумные организационные и технические меры для защиты данных от неправомерного доступа, изменения, раскрытия или уничтожения.</p>
+        <h2>6. Права пользователя</h2>
+        <p>Пользователь вправе запросить актуализацию, уточнение или удаление персональных данных в пределах, допускаемых законодательством и необходимостью исполнения договора по предоставлению доступа к сервису.</p>
+        <h2>7. Обращения по вопросам данных</h2>
+        <p>По вопросам, связанным с обработкой персональных данных, можно обратиться по телефону поддержки <a class="link" href="tel:+79856006599">+7 985 600-65-99</a>.</p>
+    
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { applyTelegramTheme, mountLogo } from "/app.js";
+    applyTelegramTheme();
+    mountLogo();
+    const backBtn = document.getElementById("backBtn");
+    const settingsBtn = document.getElementById("settingsBtn");
+    backBtn?.addEventListener("click", () => {
+      if (history.length > 1) history.back();
+      else location.href = "/settings.html";
+    });
+    settingsBtn?.addEventListener("click", () => {
+      location.href = "/settings.html";
+    });
+  </script>
+</body>
+</html>

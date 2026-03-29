@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260322-notif72" />
+  <title>Axelio · О сервисе</title>
+  <style>
+    .doc-wrap { display:grid; gap:12px; }
+    .doc-card { display:grid; gap:14px; }
+    .doc-card p, .doc-card li { line-height:1.6; }
+    .doc-card h2 { margin:0; font-size:18px; }
+    .doc-card h3 { margin:0; font-size:16px; }
+    .doc-card ul, .doc-card ol { margin:0; padding-left:20px; }
+    .doc-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+    .doc-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .doc-meta { display:grid; gap:8px; }
+    .doc-kv { display:grid; gap:6px; }
+    .doc-kv div { padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface2); }
+    .doc-note { padding:12px; border:1px solid var(--accentSoftBorder); border-radius:14px; background:var(--accentSoftBg); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>О сервисе</b>
+          <div class="muted">Что такое Axelio и на каких условиях предоставляется доступ</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="doc-wrap">
+      <div class="card doc-card">
+        <div class="doc-head">
+          <div>
+            <b>О сервисе</b>
+            <div class="muted mt-6">Актуально на 29.03.2026</div>
+          </div>
+          <div class="doc-actions">
+            <button class="btn subtle inline" type="button" id="backBtn">← Назад</button>
+            <button class="btn" type="button" id="settingsBtn">Настройки</button>
+          </div>
+        </div>
+        
+        <div class="doc-note">
+          Axelio — цифровой сервис для автоматизации управленческих и операционных процессов заведения. Доступ к основному функционалу предоставляется по модели ежемесячной подписки.
+        </div>
+        <div class="doc-kv">
+          <div><b>Продукт:</b> Axelio</div>
+          <div><b>Формат предоставления:</b> удаленный доступ к онлайн-сервису</div>
+          <div><b>Модель оплаты:</b> подписка</div>
+          <div><b>Стоимость на текущий момент:</b> 2 990 ₽ в месяц</div>
+          <div><b>Платежный партнер:</b> Robokassa</div>
+        </div>
+        <h2>Назначение сервиса</h2>
+        <p>Axelio предназначен для учета, управления и анализа процессов заведения. В зависимости от роли пользователя сервис может предоставлять доступ к рабочим графикам, финансовым показателям, отчетам, настройкам ролей и другим внутренним инструментам управления.</p>
+        <h2>Что получает пользователь</h2>
+        <ul>
+          <li>доступ к личному кабинету и интерфейсу сервиса;</li>
+          <li>доступ к функциям, входящим в выбранный тариф и доступным для конкретной учетной записи;</li>
+          <li>обновления сервиса и поддержку в пределах действующей подписки.</li>
+        </ul>
+        <h2>Ограничения</h2>
+        <p>Доступ к сервису предоставляется в формате «как есть» с учетом текущего функционала продукта. Отдельные модули, интеграции и функции могут добавляться, изменяться или дорабатываться по мере развития сервиса.</p>
+        <h2>Кому предоставляется доступ</h2>
+        <p>Подписка оформляется на пользователя или учетную запись в рамках сервиса Axelio. Передача доступа третьим лицам без согласия продавца не допускается, если иное прямо не предусмотрено функционалом сервиса.</p>
+    
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { applyTelegramTheme, mountLogo } from "/app.js";
+    applyTelegramTheme();
+    mountLogo();
+    const backBtn = document.getElementById("backBtn");
+    const settingsBtn = document.getElementById("settingsBtn");
+    backBtn?.addEventListener("click", () => {
+      if (history.length > 1) history.back();
+      else location.href = "/settings.html";
+    });
+    settingsBtn?.addEventListener("click", () => {
+      location.href = "/settings.html";
+    });
+  </script>
+</body>
+</html>

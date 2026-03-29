@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     TG_BROWSER_LOGIN_SESSION_TTL_SECONDS: int = 60 * 10
     TG_WEBHOOK_SECRET_TOKEN: str = ""
 
+    # Public landing leads
+    PUBLIC_LEAD_SITE_KEY: str = ""
+
     # JWT (cookie-based auth)
     JWT_SECRET: str
     JWT_ISS: str = "axelio-api-dev"
@@ -95,6 +98,8 @@ class Settings(BaseSettings):
             self.frontend_base_url(),
             "https://app-dev.axelio.ru",
             "https://app.axelio.ru",
+            "https://axelio.ru",
+            "https://www.axelio.ru",
             "https://web.telegram.org",
         ]
         seen: set[str] = set()
