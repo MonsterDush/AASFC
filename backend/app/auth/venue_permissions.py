@@ -8,6 +8,14 @@ from app.core.permission_codes import parse_permission_codes
 from app.core.permission_policy import expand_permission_codes, get_default_permission_codes_for_role, normalize_permission_code
 from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
 from app.models import Permission, RolePermissionDefault, User, Venue, VenueMember, VenuePosition
+from app.services.billing.access import BILLING_ACCESS_FULL, get_user_billing_access
+
+
+def _raise_billing_forbidden(access: dict) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=access.get("billing_restricted_reason") or "Доступ к заведению ограничен из-за статуса подписки",
+    )
 
 
 def require_venue_permission(
@@ -19,14 +27,9 @@ def require_venue_permission(
 ) -> None:
     """Raises 403 if user doesn't have given permission for the venue.
 
-    Rules:
-    - SUPER_ADMIN: always allow
-    - MODERATOR: allow if permission is granted by default for MODERATOR
-    - Venue members: allow if granted by default for mapped role (OWNER/MANAGER/STAFF)
-
-    Built-in permission dependencies are always respected even if DB defaults were not
-    synced yet. This keeps permission-codes as the only source of truth and avoids
-    false 403 on related catalog screens.
+    Checks order:
+    1) permission / role access
+    2) billing-gate for the venue
     """
 
     requested_code = normalize_permission_code(permission_code)
@@ -59,7 +62,6 @@ def require_venue_permission(
             return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
 
-    # venue membership
     vm = db.execute(
         select(VenueMember).where(
             VenueMember.venue_id == venue_id,
@@ -76,14 +78,17 @@ def require_venue_permission(
         ).scalar_one_or_none()
     )
 
-    # venue OWNER: full access inside this venue
-    if str(vm.venue_role or "").upper() == "OWNER":
-        return
+    role_upper = str(vm.venue_role or "").upper()
 
-    if venue_is_archived:
+    if venue_is_archived and role_upper != "OWNER":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Заведение сейчас не активно")
 
-    # ---- per-position permissions (fine-grained) ----
+    if role_upper == "OWNER":
+        access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role=role_upper)
+        if access.get("billing_access_mode") != BILLING_ACCESS_FULL:
+            _raise_billing_forbidden(access)
+        return
+
     pos = db.execute(
         select(VenuePosition).where(
             VenuePosition.venue_id == venue_id,
@@ -94,17 +99,20 @@ def require_venue_permission(
 
     raw_perm = getattr(pos, "permission_codes", None) if pos is not None else None
     pos_codes = expand_permission_codes(parse_permission_codes(raw_perm)) if pos is not None else set()
-    if requested_code in pos_codes:
-        return
+    allowed = requested_code in pos_codes
 
-    defaults_role = VENUE_ROLE_TO_DEFAULT_ROLE.get(vm.venue_role)
-    if not defaults_role:
+    if not allowed:
+        defaults_role = VENUE_ROLE_TO_DEFAULT_ROLE.get(vm.venue_role)
+        if not defaults_role:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
+        allowed = _has_default(defaults_role)
+
+    if not allowed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
 
-    if _has_default(defaults_role):
-        return
-
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
+    access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role=role_upper)
+    if access.get("billing_access_mode") != BILLING_ACCESS_FULL:
+        _raise_billing_forbidden(access)
 
 
 def has_venue_permission(

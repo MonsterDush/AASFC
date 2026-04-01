@@ -35,6 +35,7 @@ from app.models import (
 )
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.payroll.period_summary import build_member_period_summary, resolve_salary_period
+from app.services.billing.access import BILLING_ACCESS_DENIED, BILLING_ACCESS_FULL, get_user_billing_access, get_venue_billing_snapshot
 
 
 router = APIRouter(tags=["me"])
@@ -101,6 +102,18 @@ def _notification_settings_meta(user: User) -> dict:
         "can_receive_bot_notifications": telegram_linked,
         "settings_locked": not telegram_linked,
         "disabled_reason": disabled_reason,
+    }
+
+
+
+
+def _serialize_billing_access_payload(access: dict) -> dict:
+    return {
+        "billing_status": access.get("billing_status"),
+        "billing_access_mode": access.get("billing_access_mode"),
+        "paid_until": access.get("paid_until").isoformat() if access.get("paid_until") else None,
+        "grace_until": access.get("grace_until").isoformat() if access.get("grace_until") else None,
+        "billing_restricted_reason": access.get("billing_restricted_reason"),
     }
 
 
@@ -320,16 +333,21 @@ def my_venues(
     items = []
     is_admin = user.system_role in {"SUPER_ADMIN", "MODERATOR"}
     for r in rows:
+        venue_id = int(r.id)
         role = str(r.venue_role or "").upper()
         is_owner = role == "OWNER"
         is_archived = bool(r.is_archived)
+        billing_access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role=role)
+        billing_access_mode = str(billing_access.get("billing_access_mode") or BILLING_ACCESS_DENIED).upper()
 
+        if billing_access_mode == BILLING_ACCESS_DENIED and not is_admin:
+            continue
         if is_archived and not (is_owner or is_admin):
             continue
         if is_archived and not include_archived:
             continue
 
-        raw_codes = sorted(position_codes_by_venue.get(int(r.id), set()))
+        raw_codes = sorted(position_codes_by_venue.get(venue_id, set()))
         normalized_codes = set(normalize_known_permission_codes(db, raw_codes)) if raw_codes else set()
         expanded_codes = expand_permission_codes(normalized_codes) if normalized_codes else set()
 
@@ -348,21 +366,25 @@ def my_venues(
                 ).all()
             )
         expanded_codes.update(expand_permission_codes(default_codes) if default_codes else set())
-        can_open_venue = bool(is_owner or is_admin or {"VENUE_VIEW", "VENUE_SETTINGS_EDIT"}.intersection(expanded_codes))
+        can_open_venue = bool(
+            billing_access_mode != BILLING_ACCESS_DENIED
+            and (is_owner or is_admin or {"VENUE_VIEW", "VENUE_SETTINGS_EDIT"}.intersection(expanded_codes))
+        )
         open_target = (
-            f"/app-venue.html?venue_id={int(r.id)}"
-            if can_open_venue
-            else f"/staff-shifts.html?venue_id={int(r.id)}"
+            f"/app-venue.html?venue_id={venue_id}"
+            if (billing_access_mode == "BILLING_READONLY" or can_open_venue)
+            else f"/staff-shifts.html?venue_id={venue_id}"
         )
 
         items.append({
-            "id": int(r.id),
+            "id": venue_id,
             "name": r.name,
             "my_role": r.venue_role,
             "is_archived": is_archived,
             "archived_at": r.archived_at.isoformat() if r.archived_at else None,
-            "can_open_venue": can_open_venue,
+            "can_open_venue": can_open_venue or billing_access_mode == "BILLING_READONLY",
             "open_target": open_target,
+            **_serialize_billing_access_payload(billing_access),
         })
 
     return items
@@ -384,8 +406,12 @@ def my_venue_members(
     ).scalar_one_or_none()
 
     if vm is None and user.system_role not in ("SUPER_ADMIN", "MODERATOR"):
-        # можно 403 — так правильнее
         return {"venue_id": venue_id, "members": []}
+
+    if vm is not None and user.system_role not in ("SUPER_ADMIN", "MODERATOR"):
+        access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role=str(vm.venue_role or ""))
+        if access.get("billing_access_mode") != BILLING_ACCESS_FULL:
+            return {"venue_id": venue_id, "members": []}
 
     rows = db.execute(
         select(User.id, User.tg_user_id, User.tg_username, User.full_name, User.short_name, VenueMember.venue_role)
@@ -419,14 +445,17 @@ def my_venue_permissions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Return permissions + venue role for current user.
+    """Return permissions + venue role for current user and billing state."""
 
-    Source of truth:
-    - System roles / venue role defaults (RolePermissionDefault)
-    - VenuePosition.permission_codes (fine-grained codes)
-    """
+    system_billing_snapshot = get_venue_billing_snapshot(db, venue_id=venue_id)
+    system_billing_payload = {
+        "billing_status": system_billing_snapshot.status,
+        "billing_access_mode": BILLING_ACCESS_FULL,
+        "paid_until": system_billing_snapshot.paid_until.isoformat() if system_billing_snapshot.paid_until else None,
+        "grace_until": system_billing_snapshot.grace_until.isoformat() if system_billing_snapshot.grace_until else None,
+        "billing_restricted_reason": None,
+    }
 
-    # ---- system roles ----
     if user.system_role == "SUPER_ADMIN":
         codes = db.scalars(select(Permission.code).where(Permission.is_active.is_(True))).all()
         return {
@@ -434,6 +463,7 @@ def my_venue_permissions(
             "role": "SUPER_ADMIN",
             "permissions": list(codes),
             "position": None,
+            **system_billing_payload,
         }
 
     if user.system_role == "MODERATOR":
@@ -454,9 +484,9 @@ def my_venue_permissions(
             "role": "MODERATOR",
             "permissions": sorted(expand_permission_codes(codes)),
             "position": None,
+            **system_billing_payload,
         }
 
-    # ---- venue membership ----
     vm = db.execute(
         select(VenueMember).where(
             VenueMember.venue_id == venue_id,
@@ -469,6 +499,13 @@ def my_venue_permissions(
     venue_inactive = bool(getattr(venue, "is_archived", False))
 
     if vm is None:
+        denied_payload = {
+            "billing_status": system_billing_snapshot.status,
+            "billing_access_mode": BILLING_ACCESS_DENIED,
+            "paid_until": system_billing_snapshot.paid_until.isoformat() if system_billing_snapshot.paid_until else None,
+            "grace_until": system_billing_snapshot.grace_until.isoformat() if system_billing_snapshot.grace_until else None,
+            "billing_restricted_reason": system_billing_snapshot.restricted_reason,
+        }
         return {
             "venue_id": venue_id,
             "role": None,
@@ -476,9 +513,12 @@ def my_venue_permissions(
             "position": None,
             "venue_inactive": venue_inactive,
             "access_denied_reason": "Заведение сейчас не активно" if venue_inactive else None,
+            **denied_payload,
         }
 
     role_upper = str(vm.venue_role or "").upper()
+    billing_access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role=role_upper)
+
     if venue_inactive and user.system_role not in ("SUPER_ADMIN", "MODERATOR") and role_upper != "OWNER":
         return {
             "venue_id": venue_id,
@@ -487,13 +527,12 @@ def my_venue_permissions(
             "position": None,
             "venue_inactive": True,
             "access_denied_reason": "Заведение сейчас не активно",
+            **_serialize_billing_access_payload(billing_access),
         }
 
     if role_upper == "OWNER":
-        # OWNER has full access inside their venue
         all_codes = db.scalars(select(Permission.code).where(Permission.is_active.is_(True))).all()
         codes = list(all_codes)
-        defaults_role = None
     else:
         defaults_role = VENUE_ROLE_TO_DEFAULT_ROLE.get(vm.venue_role)
         if not defaults_role:
@@ -512,7 +551,6 @@ def my_venue_permissions(
                 ).all()
             )
 
-    # ---- position permission codes (fine-grained) ----
     pos = db.execute(
         select(VenuePosition).where(
             VenuePosition.venue_id == venue_id,
@@ -534,7 +572,6 @@ def my_venue_permissions(
             "permission_codes": position_codes,
         }
 
-    # Merge default role permissions with position overrides in one shared helper.
     merged = unique_permission_codes(codes)
     if position_codes:
         for c in normalize_known_permission_codes(db, position_codes):
@@ -549,10 +586,8 @@ def my_venue_permissions(
         "position": position_obj,
         "venue_inactive": venue_inactive,
         "access_denied_reason": None,
+        **_serialize_billing_access_payload(billing_access),
     }
-
-
-
 
 
 def _parse_month_range(month: str) -> tuple[date, date]:

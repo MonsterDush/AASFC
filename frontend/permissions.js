@@ -95,3 +95,27 @@ export function canViewAdjustments(permSet, venueRoleUpper, systemRoleUpper) {
 export function canViewRevenue(permSet, venueRoleUpper, systemRoleUpper) {
   return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "REVENUE_VIEW");
 }
+
+
+export function readBillingState(payload) {
+  const src = payload && typeof payload === "object" ? payload : {};
+  return {
+    billing_status: String(src.billing_status || "ACTIVE").trim().toUpperCase() || "ACTIVE",
+    billing_access_mode: String(src.billing_access_mode || "FULL").trim().toUpperCase() || "FULL",
+    billing_restricted_reason: src.billing_restricted_reason || null,
+    paid_until: src.paid_until || null,
+    grace_until: src.grace_until || null,
+  };
+}
+
+export function isBillingReadonly(payload) {
+  return readBillingState(payload).billing_access_mode === "BILLING_READONLY";
+}
+
+export function isBillingDenied(payload) {
+  return readBillingState(payload).billing_access_mode === "DENIED";
+}
+
+export function isBillingFull(payload) {
+  return readBillingState(payload).billing_access_mode === "FULL";
+}
