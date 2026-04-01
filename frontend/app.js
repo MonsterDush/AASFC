@@ -1352,6 +1352,7 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
       container,
       links: [
         { title: t("admin_venues"), href: "/admin-venues.html", tab: "admin-venues" },
+        { title: "Биллинг", href: "/admin-billing.html", tab: "admin-billing" },
         { title: t("admin_invites"), href: "/admin-invites.html", tab: "admin-invites" },
         { title: "⚙️", href: "/settings.html", tab: "settings", className: "icon" },
       ],

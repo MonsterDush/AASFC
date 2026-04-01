@@ -46,7 +46,7 @@
 
         <div class="muted mt-6" id="metaHint"></div>
       </div>
-      <div class="itemcard mt-12 section-card">
+      <div class="itemcard mt-12 section-card" id="sectionsCard">
               <div class="section-card__head">
                 <div class="section-card__title">
                   <b>Разделы</b>
@@ -127,7 +127,7 @@
         </div>
       </div>
 
-      <div class="itemcard mt-12 section-card">
+      <div class="itemcard mt-12 section-card" id="membersCard">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Участники</b>
@@ -161,7 +161,7 @@
 
   <script type="module">
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe } from "/app.js";
-    import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, hasReportAccess, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix2";
+    import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260331-billing2";
 
     applyTelegramTheme();
     mountCommonUI("venue");
@@ -207,6 +207,10 @@
         let canViewPayProfiles = false;
         let canViewPayroll = false;
         let canOpenVenue = false;
+        let billingStatus = "ACTIVE";
+        let billingAccessMode = "FULL";
+        let billingReadonly = false;
+        let billingInfo = null;
 
         try {
           const me = await getMe().catch(() => null);
@@ -236,6 +240,10 @@
           canViewPayProfiles = isOwner || isAdmin || hasPerm(pset, "PAY_PROFILES_VIEW") || hasPerm(pset, "PAY_PROFILES_MANAGE");
           canViewPayroll = isOwner || isAdmin || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");
 
+          billingStatus = getBillingStatus(perms);
+          billingAccessMode = getBillingAccessMode(perms);
+          billingReadonly = isBillingReadonly(perms) && (isOwner || isAdmin);
+
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
 
           if (perms?.venue_inactive && !isOwner && !isAdmin) {
@@ -262,6 +270,143 @@ const titleEl = document.getElementById("title");
         const metaHint = document.getElementById("metaHint");
         const membersEl = document.getElementById("members");
         const archiveNotice = document.getElementById("archiveNotice");
+        const sectionsCard = document.getElementById("sectionsCard");
+        const membersCard = document.getElementById("membersCard");
+
+        const pageRootCard = document.querySelector(".card.section-card");
+        if (pageRootCard && !document.getElementById("billingTopNotice")) {
+          archiveNotice?.insertAdjacentHTML("afterend", `
+            <div class="itemcard mt-12 hidden" id="billingTopNotice"></div>
+          `);
+        }
+        if (membersCard && !document.getElementById("billingCard")) {
+          membersCard.insertAdjacentHTML("beforebegin", `
+            <div class="itemcard mt-12 section-card" id="billingCard"></div>
+          `);
+        }
+        const billingTopNotice = document.getElementById("billingTopNotice");
+        const billingCard = document.getElementById("billingCard");
+
+        function formatDate(value) {
+          if (!value) return "—";
+          const d = new Date(value);
+          if (Number.isNaN(d.getTime())) return String(value);
+          return d.toLocaleDateString("ru-RU");
+        }
+
+        function formatMinor(amountMinor) {
+          const num = Number(amountMinor || 0) / 100;
+          return `${num.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`;
+        }
+
+        function bindBillingActions() {
+          const extendBtn = document.getElementById("billingExtendBtn");
+          if (extendBtn) {
+            extendBtn.onclick = () => {
+              toast("Онлайн-оплата появится следующим спринтом. Пока продление оформляется через поддержку.", "warn");
+              location.href = "/axelio-subscription.html";
+            };
+          }
+        }
+
+        function renderBillingWidgets() {
+          if (!(isOwner || isAdmin)) {
+            if (billingTopNotice) billingTopNotice.classList.add("hidden");
+            if (billingCard) billingCard.style.display = "none";
+            return;
+          }
+          if (billingCard) billingCard.style.display = "";
+          const status = String(billingInfo?.status || billingStatus || getBillingStatus(perms) || "ACTIVE").toUpperCase();
+          const accessMode = String(billingInfo?.billing_access_mode || billingAccessMode || getBillingAccessMode(perms) || "FULL").toUpperCase();
+          const paidUntil = billingInfo?.paid_until || perms?.paid_until || null;
+          const graceUntil = billingInfo?.grace_until || perms?.grace_until || null;
+          const reason = billingInfo?.billing_restricted_reason || perms?.billing_restricted_reason || "";
+          const planLabel = billingInfo?.plan?.label || "Axelio · 2990 ₽ / 30 дней";
+          const txs = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions : [];
+
+          let bannerHtml = "";
+          if (status === "GRACE") {
+            bannerHtml = `<b>Льготный период</b><div class="muted mt-6">Оплата закончилась ${formatDate(paidUntil)}. Льготный период действует до ${formatDate(graceUntil)}.</div>`;
+          } else if (status === "SUSPENDED") {
+            bannerHtml = `<b>Доступ ограничен</b><div class="muted mt-6">${reason || "Подписка заведения не активна. Продлите доступ, чтобы снова открыть рабочие разделы."}</div>`;
+          }
+          if (billingTopNotice) {
+            billingTopNotice.innerHTML = bannerHtml;
+            billingTopNotice.classList.toggle("hidden", !bannerHtml);
+          }
+
+          const lastTxHtml = txs.length
+            ? `<div class="mt-12"><div class="muted" style="margin-bottom:6px">Последние продления</div>${txs.slice(0, 3).map((tx) => `<div class="row" style="justify-content:space-between;gap:8px;margin-top:6px"><div><b>${formatDate(tx.created_at)}</b><div class="muted small">${tx.source === "MANUAL_ADMIN" ? "Ручное продление" : (tx.source || "Операция")}</div></div><div class="small">${tx.days_added ? `+${tx.days_added} дн.` : ""} ${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}</div></div>`).join("")}</div>`
+            : `<div class="muted mt-12">История продлений появится здесь после первых операций.</div>`;
+
+          if (billingCard) {
+            billingCard.innerHTML = `
+              <div class="section-card__head">
+                <div class="section-card__title">
+                  <b>Подписка и доступ</b>
+                  <div class="muted">Статус оплаты по текущему заведению.</div>
+                </div>
+              </div>
+              <div class="list mt-12">
+                <div class="itemcard">
+                  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
+                    <div>
+                      <b>${planLabel}</b>
+                      <div class="muted mt-6">Статус: ${status === "ACTIVE" ? "Активно" : (status === "GRACE" ? "Grace" : "Доступ ограничен")}</div>
+                      <div class="muted mt-6">Оплачено до: ${formatDate(paidUntil)}</div>
+                      ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}
+                    </div>
+                    <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
+                      <button class="btn primary" id="billingExtendBtn">Продлить на 30 дней</button>
+                      <a class="btn subtle" href="https://t.me/axelio_support" target="_blank" rel="noopener">Поддержка</a>
+                    </div>
+                  </div>
+                  ${reason ? `<div class="muted mt-12">${reason}</div>` : ""}
+                  <div class="muted mt-12">Телефон поддержки: <a class="link" href="tel:+79856006599">+7 985 600-65-99</a></div>
+                  ${lastTxHtml}
+                </div>
+              </div>
+            `;
+          }
+          bindBillingActions();
+        }
+
+        function applyBillingReadonlyUi() {
+          billingReadonly = String(billingAccessMode || "FULL").toUpperCase() !== "FULL" && (isOwner || isAdmin);
+          if (!billingReadonly) {
+            renderBillingWidgets();
+            return;
+          }
+
+          canManageAdjustments = false;
+          canViewAdjustments = false;
+          canViewDepartments = false;
+          canViewPaymentMethods = false;
+          canViewKpi = false;
+          canManageIntervals = false;
+          canEditVenueSettings = false;
+          canManageStaff = false;
+          canViewReports = false;
+          canViewRevenue = false;
+          canViewExpenses = false;
+          canViewPayProfiles = false;
+          canViewPayroll = false;
+
+          if (sectionsCard) sectionsCard.style.display = "none";
+          if (financeCard) financeCard.style.display = "none";
+          if (referencesCard) referencesCard.style.display = "none";
+          if (tipsCard) tipsCard.style.display = "none";
+          if (membersCard) membersCard.style.display = "none";
+
+          if (btnRename) btnRename.style.display = "none";
+          if (btnArchive) btnArchive.style.display = "none";
+          if (btnUnarchive) btnUnarchive.style.display = "none";
+          if (btnLeave) btnLeave.style.display = "none";
+          if (btnDelete) btnDelete.style.display = "none";
+
+          metaHint.textContent = "Доступ к рабочим разделам временно ограничен. Можно только просмотреть статус заведения и продлить доступ.";
+          renderBillingWidgets();
+        }
 
         // tips settings UI
         const tipsEnabledEl = document.getElementById("tipsEnabled");
@@ -293,6 +438,9 @@ const titleEl = document.getElementById("title");
         const openPaymentMethods = document.getElementById("openPaymentMethods");
         const openKpi = document.getElementById("openKpi");
         const openIntervals = document.getElementById("openIntervals");
+        const financeCard = document.getElementById("financeCard");
+        const referencesCard = document.getElementById("referencesCard");
+        const tipsCard = document.getElementById("tipsSettingsCard");
 
         // Owner/admin-only destructive actions
         const canAdminVenue = (isOwner || isAdmin);
@@ -353,19 +501,16 @@ openAdjustments.href = canManageAdjustments
           if (openDayEconomics) openDayEconomics.style.display = (canViewRevenue || canViewExpenses) ? "" : "none";
           if (openExpenses) openExpenses.style.display = canViewExpenses ? "" : "none";
 
-          const financeCard = document.getElementById("financeCard");
           if (financeCard) {
             const showFinance = (openAdjustments?.style.display !== "none") || (openSummary?.style.display !== "none") || (openPayProfiles?.style.display !== "none") || (openPayroll?.style.display !== "none") || (openDayEconomics?.style.display !== "none") || (openExpenses?.style.display !== "none") || (openEconomicsPlans?.style.display !== "none") || (openEconomicsRules?.style.display !== "none");
             financeCard.style.display = showFinance ? "" : "none";
           }
 
-          const referencesCard = document.getElementById("referencesCard");
           if (referencesCard) {
             const showReferences = (openDepartments?.style.display !== "none") || (openPaymentMethods?.style.display !== "none") || (openKpi?.style.display !== "none") || (openIntervals?.style.display !== "none");
             referencesCard.style.display = showReferences ? "" : "none";
           }
 
-          const tipsCard = document.getElementById("tipsSettingsCard");
           if (tipsCard) tipsCard.style.display = canEditVenueSettings ? "" : "none";
           metaEl.textContent = last.is_archived ? "В архиве" : "Активно";
           metaHint.textContent = canAdminVenue
@@ -498,20 +643,27 @@ if (tipsModeEl) {
         async function load() {
           if (!venueId) return;
 
-          membersEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+          if (!billingReadonly && membersCard?.style.display !== "none") {
+            membersEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+            try {
+              const data = await api(`/venues/${venueId}/members`);
+              window.__lastJson = data;
+              renderMembers(data.members);
+            } catch (e) {
+              membersEl.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
+              toast("Ошибка загрузки: " + e.message, "err");
+            }
+          }
 
-          try {
-            const data = await api(`/venues/${venueId}/members`);
-            window.__lastJson = data;
-
-            // name/is_archived тут не приходит, поэтому сохраняем только списки.
-            // Статус archived будем брать “опционально” через /venues (если SUPER_ADMIN) — ниже.
-            renderMembers(data.members);
-
-            toast("Загружено", "ok");
-          } catch (e) {
-            membersEl.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
-            toast("Ошибка загрузки: " + e.message, "err");
+          if (isOwner || isAdmin) {
+            try {
+              billingInfo = await api(`/venues/${venueId}/billing`);
+              billingStatus = String(billingInfo?.status || billingStatus || "ACTIVE").toUpperCase();
+              billingAccessMode = String(billingInfo?.billing_access_mode || billingAccessMode || "FULL").toUpperCase();
+              billingReadonly = billingAccessMode !== "FULL" && (isOwner || isAdmin);
+            } catch (e) {
+              billingInfo = null;
+            }
           }
 
                 // Подтянем имя/статус заведения из списка моих заведений
@@ -549,6 +701,7 @@ if (tipsModeEl) {
           syncTipsControls();
 
           applyButtons();
+          applyBillingReadonlyUi();
         }
 
         // --- Actions ---

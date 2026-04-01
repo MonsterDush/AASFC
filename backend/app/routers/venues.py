@@ -966,7 +966,11 @@ def _is_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> bool:
         VenueMember.is_active.is_(True),
     ).one_or_none()
 
-    return bool(m and m.venue_role == "OWNER")
+    if not m or str(m.venue_role or "").upper() != "OWNER":
+        return False
+
+    access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role="OWNER")
+    return access.get("billing_access_mode") == BILLING_ACCESS_FULL
 
 
 def _require_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> None:

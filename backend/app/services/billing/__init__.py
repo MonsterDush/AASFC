@@ -18,6 +18,7 @@ from .manager import (
     extend_venue_billing,
     get_or_create_billing_state,
     list_billing_transactions,
+    set_venue_billing_paid_until,
 )
 
 __all__ = [
@@ -37,5 +38,6 @@ __all__ = [
     "get_user_billing_access",
     "get_venue_billing_snapshot",
     "list_billing_transactions",
+    "set_venue_billing_paid_until",
     "serialize_billing_snapshot",
 ]

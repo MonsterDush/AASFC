@@ -14,13 +14,19 @@ from app.models.venue import Venue
 from app.models.venue_billing_state import VenueBillingState
 from app.models.venue_billing_transaction import VenueBillingTransaction
 from app.models.venue_member import VenueMember
-from app.services.billing import extend_venue_billing, get_billing_snapshot_for_state, get_or_create_billing_state, list_billing_transactions
+from app.services.billing import extend_venue_billing, get_billing_snapshot_for_state, get_or_create_billing_state, list_billing_transactions, set_venue_billing_paid_until
 
 router = APIRouter(prefix="/admin", tags=["admin-billing"])
 
 
 class BillingExtendIn(BaseModel):
     days: int = Field(..., ge=1, le=3650)
+    comment: str | None = Field(default=None, max_length=1000)
+    amount_minor: int | None = Field(default=0, ge=0)
+
+
+class BillingSetPaidUntilIn(BaseModel):
+    paid_until: datetime
     comment: str | None = Field(default=None, max_length=1000)
     amount_minor: int | None = Field(default=0, ge=0)
 
@@ -228,6 +234,61 @@ def extend_admin_venue_billing(
             "status": tx.status,
             "amount_minor": int(tx.amount_minor or 0),
             "days_added": int(tx.days_added or 0) if tx.days_added is not None else None,
+            "period_from": tx.period_from.isoformat() if tx.period_from else None,
+            "period_until": tx.period_until.isoformat() if tx.period_until else None,
+            "comment": tx.comment,
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+        },
+        "event": {
+            "id": int(event.id),
+            "event_type": event.event_type,
+            "old_status": event.old_status,
+            "new_status": event.new_status,
+            "created_at": event.created_at.isoformat() if event.created_at else None,
+        },
+    }
+
+
+@router.post("/venues/{venue_id}/billing/set-paid-until")
+def set_admin_venue_billing_paid_until(
+    venue_id: int,
+    payload: BillingSetPaidUntilIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    venue = db.execute(select(Venue).where(Venue.id == int(venue_id))).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+
+    state, tx, event = set_venue_billing_paid_until(
+        db,
+        venue_id=int(venue_id),
+        paid_until=payload.paid_until,
+        created_by_user_id=user.id,
+        comment=payload.comment,
+        amount_minor=int(payload.amount_minor or 0),
+    )
+    db.commit()
+    db.refresh(state)
+    db.refresh(tx)
+    db.refresh(event)
+    snapshot = get_billing_snapshot_for_state(state)
+
+    return {
+        "venue_id": int(venue.id),
+        "venue_name": venue.name,
+        "billing": {
+            "status": snapshot.status,
+            "paid_until": snapshot.paid_until.isoformat() if snapshot.paid_until else None,
+            "grace_until": snapshot.grace_until.isoformat() if snapshot.grace_until else None,
+            "next_payment_due_at": state.next_payment_due_at.isoformat() if state.next_payment_due_at else None,
+        },
+        "transaction": {
+            "id": int(tx.id),
+            "source": tx.source,
+            "type": tx.type,
+            "status": tx.status,
+            "amount_minor": int(tx.amount_minor or 0),
             "period_from": tx.period_from.isoformat() if tx.period_from else None,
             "period_until": tx.period_until.isoformat() if tx.period_until else None,
             "comment": tx.comment,
