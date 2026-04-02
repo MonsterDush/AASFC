@@ -6,7 +6,7 @@ from datetime import datetime
 import hashlib
 import hmac
 from typing import Mapping
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from app.core.config import settings
 
@@ -110,6 +110,8 @@ def _ordered_modifier_values(modifiers: Mapping[str, str] | None) -> list[str]:
         text = str(raw).strip()
         if not text:
             continue
+        if key in {"Receipt", "ResultUrl2", "SuccessUrl2", "FailUrl2"}:
+            text = quote(text, safe="")
         values.append(text)
     return values
 
