@@ -53,6 +53,13 @@
         <input id="search" type="search" placeholder="Поиск по заведению" />
         <label class="row gap-8"><input id="dueSoon" type="checkbox" /> <span>Скоро заканчивается</span></label>
         <label class="row gap-8"><input id="overdue" type="checkbox" /> <span>Просроченные</span></label>
+        <select id="sortBy">
+          <option value="paid_until_asc">Сначала истекающие</option>
+          <option value="paid_until_desc">Сначала дальние</option>
+          <option value="last_payment_desc">Свежие оплаты</option>
+          <option value="name_asc">По названию А-Я</option>
+          <option value="name_desc">По названию Я-А</option>
+        </select>
         <button class="btn" id="refreshBtn">Обновить</button>
         <span class="muted" id="count">0</span>
       </div>
@@ -116,6 +123,7 @@
   const overdueEl = document.getElementById("overdue");
   const countEl = document.getElementById("count");
   const refreshBtn = document.getElementById("refreshBtn");
+  const sortByEl = document.getElementById("sortBy");
 
   let lastItems = [];
 
@@ -129,8 +137,20 @@
     `;
   }
 
+  function sortItems(items){
+    const list = Array.isArray(items) ? [...items] : [];
+    const sortKey = String(sortByEl?.value || "paid_until_asc");
+    const dateValue = (value) => { const t = value ? new Date(value).getTime() : 0; return Number.isFinite(t) ? t : 0; };
+    if (sortKey === "paid_until_desc") list.sort((a,b) => dateValue(b?.paid_until) - dateValue(a?.paid_until));
+    else if (sortKey === "last_payment_desc") list.sort((a,b) => dateValue(b?.last_payment_at) - dateValue(a?.last_payment_at));
+    else if (sortKey === "name_asc") list.sort((a,b) => String(a?.venue_name || "").localeCompare(String(b?.venue_name || ""), "ru"));
+    else if (sortKey === "name_desc") list.sort((a,b) => String(b?.venue_name || "").localeCompare(String(a?.venue_name || ""), "ru"));
+    else list.sort((a,b) => dateValue(a?.paid_until) - dateValue(b?.paid_until));
+    return list;
+  }
+
   function renderList(items){
-    lastItems = Array.isArray(items) ? items : [];
+    lastItems = sortItems(items);
     countEl.textContent = String(lastItems.length);
     if (!lastItems.length) {
       listEl.innerHTML = `<div class="muted">Ничего не найдено</div>`;
@@ -236,22 +256,35 @@
     try {
       const data = await api(`/venues/${encodeURIComponent(venueId)}/billing`);
       const txs = Array.isArray(data?.transactions) ? data.transactions : [];
-      if (!txs.length) {
+      const events = Array.isArray(data?.events) ? data.events : [];
+      if (!txs.length && !events.length) {
         openModal('История биллинга', 'Пока нет операций по этому заведению.');
         return;
       }
-      const lines = txs.map((tx) => {
+      const txLines = txs.map((tx) => {
         return [
-          `${formatDate(tx.created_at)} · ${tx.status}`,
+          `[Операция] ${formatDate(tx.created_at)} · ${tx.status}`,
           `Источник: ${tx.source || '—'}`,
           `Тип: ${tx.type || '—'}`,
           `Сумма: ${formatMinor(tx.amount_minor || 0)}`,
           `Период: ${formatDate(tx.period_from)} → ${formatDate(tx.period_until)}`,
           tx.comment ? `Комментарий: ${tx.comment}` : '',
-          '—'.repeat(20),
+          '—'.repeat(24),
         ].filter(Boolean).join('\n');
-      }).join('\n');
-      openModal(`История · venue #${venueId}`, lines);
+      });
+      const eventLines = events.map((event) => {
+        const meta = event?.meta && typeof event.meta === 'object' ? event.meta : {};
+        const periodFrom = meta.period_from ? formatDate(meta.period_from) : '—';
+        const periodUntil = meta.period_until ? formatDate(meta.period_until) : '—';
+        return [
+          `[Событие] ${formatDate(event.created_at)} · ${event.event_type || '—'}`,
+          `Статус: ${event.old_status || '—'} → ${event.new_status || '—'}`,
+          (meta.period_from || meta.period_until) ? `Период: ${periodFrom} → ${periodUntil}` : '',
+          meta.transaction_id ? `Transaction ID: ${meta.transaction_id}` : '',
+          '—'.repeat(24),
+        ].filter(Boolean).join('\n');
+      });
+      openModal(`История · venue #${venueId}`, [...txLines, ...eventLines].join('\n'));
     } catch (e) {
       toast(`Не удалось загрузить историю: ${e.message}`, 'err');
     }
@@ -263,7 +296,7 @@
     await Promise.all([loadSummary(), loadList()]);
   }
 
-  [statusFilter, dueSoonEl, overdueEl].forEach((el) => el?.addEventListener('change', () => loadList().catch((e) => toast(e.message, 'err'))));
+  [statusFilter, dueSoonEl, overdueEl, sortByEl].forEach((el) => el?.addEventListener('change', () => loadList().catch((e) => toast(e.message, 'err'))));
   searchEl?.addEventListener('input', () => {
     clearTimeout(searchEl._t);
     searchEl._t = setTimeout(() => loadList().catch((e) => toast(e.message, 'err')), 250);

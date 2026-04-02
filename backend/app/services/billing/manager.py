@@ -97,6 +97,16 @@ def list_billing_transactions(db: Session, *, venue_id: int, limit: int = 10) ->
     return list(db.execute(stmt).scalars().all())
 
 
+def list_billing_events(db: Session, *, venue_id: int, limit: int = 20) -> list[VenueBillingEvent]:
+    stmt = (
+        select(VenueBillingEvent)
+        .where(VenueBillingEvent.venue_id == int(venue_id))
+        .order_by(VenueBillingEvent.created_at.desc(), VenueBillingEvent.id.desc())
+        .limit(max(1, int(limit)))
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
 def get_billing_transaction_by_invoice_id(db: Session, *, invoice_id: str | int) -> VenueBillingTransaction | None:
     invoice_str = str(invoice_id).strip()
     conditions = [VenueBillingTransaction.provider_invoice_id == invoice_str]

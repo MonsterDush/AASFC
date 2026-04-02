@@ -18,6 +18,7 @@ from app.services.billing import (
     apply_checkout_payment_success,
     build_checkout_url,
     create_checkout_transaction,
+    format_expiration_date,
     format_out_sum,
     get_billing_transaction_by_invoice_id,
     get_or_create_billing_state,
@@ -25,6 +26,7 @@ from app.services.billing import (
     get_user_billing_access,
     is_valid_result_signature,
     is_valid_success_signature,
+    list_billing_events,
     list_billing_transactions,
     mark_checkout_transaction_failed,
     parse_amount_minor,
@@ -33,6 +35,37 @@ from app.services.billing import (
 
 router = APIRouter(prefix="/venues", tags=["billing"])
 public_router = APIRouter(tags=["billing-public"])
+
+
+def _serialize_billing_transaction(tx) -> dict[str, Any]:
+    return {
+        "id": int(tx.id),
+        "source": tx.source,
+        "type": tx.type,
+        "status": tx.status,
+        "amount_minor": int(tx.amount_minor or 0),
+        "days_added": int(tx.days_added or 0) if tx.days_added is not None else None,
+        "period_from": tx.period_from.isoformat() if tx.period_from else None,
+        "period_until": tx.period_until.isoformat() if tx.period_until else None,
+        "provider_invoice_id": tx.provider_invoice_id,
+        "provider_payment_id": tx.provider_payment_id,
+        "comment": tx.comment,
+        "created_at": tx.created_at.isoformat() if tx.created_at else None,
+        "updated_at": tx.updated_at.isoformat() if tx.updated_at else None,
+    }
+
+
+def _serialize_billing_event(event) -> dict[str, Any]:
+    meta = event.meta_json if isinstance(event.meta_json, dict) else (event.meta_json or {})
+    return {
+        "id": int(event.id),
+        "event_type": event.event_type,
+        "old_status": event.old_status,
+        "new_status": event.new_status,
+        "meta": meta,
+        "created_by_user_id": int(event.created_by_user_id) if event.created_by_user_id is not None else None,
+        "created_at": event.created_at.isoformat() if event.created_at else None,
+    }
 
 
 def _require_owner_or_admin_billing_access(db: Session, *, venue_id: int, user: User) -> str:
@@ -63,8 +96,17 @@ def get_venue_billing(
 
     state = get_or_create_billing_state(db, venue_id=int(venue_id))
     access = get_user_billing_access(db, venue_id=int(venue_id), user=user, membership_role=role)
-    txs = list_billing_transactions(db, venue_id=int(venue_id), limit=10)
+    txs = list_billing_transactions(db, venue_id=int(venue_id), limit=20)
+    events = list_billing_events(db, venue_id=int(venue_id), limit=20)
     robo_cfg = get_robokassa_config()
+    pending_checkout_expires_at = None
+    for tx in txs:
+        if str(tx.status or '').upper() != 'PENDING':
+            continue
+        payload = tx.provider_payload_json if isinstance(tx.provider_payload_json, dict) else {}
+        pending_checkout_expires_at = payload.get('checkout_expires_at') or payload.get('expiration_date')
+        if pending_checkout_expires_at:
+            break
 
     return {
         "venue_id": int(venue.id),
@@ -87,23 +129,9 @@ def get_venue_billing(
         "auto_renew_enabled": bool(state.auto_renew_enabled),
         "can_extend": True,
         "billing_restricted_reason": access.get("billing_restricted_reason"),
-        "transactions": [
-            {
-                "id": int(tx.id),
-                "source": tx.source,
-                "type": tx.type,
-                "status": tx.status,
-                "amount_minor": int(tx.amount_minor or 0),
-                "days_added": int(tx.days_added or 0) if tx.days_added is not None else None,
-                "period_from": tx.period_from.isoformat() if tx.period_from else None,
-                "period_until": tx.period_until.isoformat() if tx.period_until else None,
-                "provider_invoice_id": tx.provider_invoice_id,
-                "provider_payment_id": tx.provider_payment_id,
-                "comment": tx.comment,
-                "created_at": tx.created_at.isoformat() if tx.created_at else None,
-            }
-            for tx in txs
-        ],
+        "checkout_expires_at": pending_checkout_expires_at,
+        "transactions": [_serialize_billing_transaction(tx) for tx in txs],
+        "events": [_serialize_billing_event(event) for event in events],
     }
 
 
@@ -137,6 +165,11 @@ def create_venue_billing_checkout(
         comment="Robokassa checkout created",
     )
     out_sum = format_out_sum(int(tx.amount_minor or 0), test_mode=robo_cfg.test_mode)
+    checkout_expires_at = tx.created_at
+    if checkout_expires_at is not None:
+        from datetime import timedelta
+        checkout_expires_at = checkout_expires_at + timedelta(minutes=max(5, int(robo_cfg.pending_timeout_minutes or 180)))
+    expiration_date = format_expiration_date(checkout_expires_at)
     extra_params = {
         "Shp_venueId": str(int(venue_id)),
         "Shp_tx": str(int(tx.id)),
@@ -155,6 +188,10 @@ def create_venue_billing_checkout(
         extra_params=extra_params,
         test_mode=robo_cfg.test_mode,
         culture="ru",
+        use_result_url2=False,
+        success_url2_method="GET",
+        fail_url2_method="GET",
+        expiration_date=expiration_date,
     )
     payload = dict(tx.provider_payload_json or {})
     payload.update({
@@ -163,6 +200,8 @@ def create_venue_billing_checkout(
         "checkout_url": checkout_url,
         "extra_params": extra_params,
         "test_mode": robo_cfg.test_mode,
+        "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
+        "expiration_date": expiration_date,
     })
     tx.provider_payload_json = payload
     db.commit()
@@ -174,6 +213,7 @@ def create_venue_billing_checkout(
         "amount_minor": int(tx.amount_minor or 0),
         "checkout_url": checkout_url,
         "test_mode": robo_cfg.test_mode,
+        "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
     }
 
 

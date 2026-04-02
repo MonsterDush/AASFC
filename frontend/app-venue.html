@@ -160,7 +160,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal } from "/app.js";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260331-billing2";
 
     applyTelegramTheme();
@@ -296,6 +296,13 @@ const titleEl = document.getElementById("title");
           return d.toLocaleDateString("ru-RU");
         }
 
+        function formatDateTime(value) {
+          if (!value) return "—";
+          const d = new Date(value);
+          if (Number.isNaN(d.getTime())) return String(value);
+          return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        }
+
         function formatMinor(amountMinor) {
           const num = Number(amountMinor || 0) / 100;
           return `${num.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`;
@@ -361,10 +368,47 @@ const titleEl = document.getElementById("title");
           }
         }
 
+        function showBillingHistory() {
+          const txs = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions : [];
+          const events = Array.isArray(billingInfo?.events) ? billingInfo.events : [];
+          if (!txs.length && !events.length) {
+            openModal("История биллинга", "Пока нет операций по этому заведению.");
+            return;
+          }
+          const txLines = txs.map((tx) => {
+            return [
+              `[Операция] ${formatDate(tx.created_at)} · ${tx.status}`,
+              `Источник: ${tx.source || '—'}`,
+              `Тип: ${tx.type || '—'}`,
+              `Сумма: ${formatMinor(tx.amount_minor || 0)}`,
+              `Период: ${formatDate(tx.period_from)} → ${formatDate(tx.period_until)}`,
+              tx.comment ? `Комментарий: ${tx.comment}` : '',
+              '—'.repeat(24),
+            ].filter(Boolean).join('\n');
+          });
+          const eventLines = events.map((event) => {
+            const meta = event?.meta && typeof event.meta === 'object' ? event.meta : {};
+            const periodFrom = meta.period_from ? formatDate(meta.period_from) : '—';
+            const periodUntil = meta.period_until ? formatDate(meta.period_until) : '—';
+            return [
+              `[Событие] ${formatDate(event.created_at)} · ${event.event_type || '—'}`,
+              `Статус: ${event.old_status || '—'} → ${event.new_status || '—'}`,
+              (meta.period_from || meta.period_until) ? `Период: ${periodFrom} → ${periodUntil}` : '',
+              meta.transaction_id ? `Transaction ID: ${meta.transaction_id}` : '',
+              '—'.repeat(24),
+            ].filter(Boolean).join('\n');
+          });
+          openModal('История биллинга', [...txLines, ...eventLines].join('\n'));
+        }
+
         function bindBillingActions() {
           const extendBtn = document.getElementById("billingExtendBtn");
           if (extendBtn) {
             extendBtn.onclick = () => startBillingCheckout();
+          }
+          const historyBtn = document.getElementById("billingHistoryBtn");
+          if (historyBtn) {
+            historyBtn.onclick = () => showBillingHistory();
           }
         }
 
@@ -414,10 +458,11 @@ const titleEl = document.getElementById("title");
                       <div class="muted mt-6">Статус: ${status === "ACTIVE" ? "Активно" : (status === "GRACE" ? "Grace" : "Доступ ограничен")}</div>
                       <div class="muted mt-6">Платёжный контур: ${billingInfo?.provider_ready === false ? "ещё не настроен" : (billingInfo?.provider_mode === "test" ? "тестовый режим" : "боевой режим")}</div>
                       <div class="muted mt-6">Оплачено до: ${formatDate(paidUntil)}</div>
-                      ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}
+                      ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}${billingInfo?.checkout_expires_at ? `<div class="muted mt-6">Незавершённый checkout истекает: ${formatDateTime(billingInfo.checkout_expires_at)}</div>` : ""}
                     </div>
                     <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
                       <button class="btn primary" id="billingExtendBtn" ${billingInfo?.provider_ready === false ? "disabled" : ""}>Продлить на 30 дней</button>
+                      <button class="btn" id="billingHistoryBtn">История</button>
                       <a class="btn subtle" href="https://t.me/axelio_support" target="_blank" rel="noopener">Поддержка</a>
                     </div>
                   </div>
