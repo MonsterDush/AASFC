@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     ROBOKASSA_TEST_MODE: bool = False
     ROBOKASSA_HASH_ALGORITHM: str = "MD5"
     ROBOKASSA_PAYMENT_URL: str = "https://auth.robokassa.ru/Merchant/Index.aspx"
+    ROBOKASSA_SEND_EXPIRATION_DATE: bool = False
     ROBOKASSA_CHECKOUT_TTL_MINUTES: int = 60
     COOKIE_SECURE: bool = True
     ACCESS_TOKEN_TTL_SECONDS: int = 60 * 60 * 24 * 7  # 7 days

@@ -164,6 +164,7 @@ def create_venue_billing_checkout(
         "Shp_tx": str(int(tx.id)),
     }
     checkout_expires_at = get_checkout_expires_at(tx)
+    expiration_value = checkout_expires_at if bool(getattr(settings, "ROBOKASSA_SEND_EXPIRATION_DATE", False)) else None
     checkout_url = build_checkout_url(
         merchant_login=robo_cfg.merchant_login,
         out_sum=out_sum,
@@ -178,7 +179,7 @@ def create_venue_billing_checkout(
         extra_params=extra_params,
         test_mode=robo_cfg.test_mode,
         culture="ru",
-        expiration_date=checkout_expires_at,
+        expiration_date=expiration_value,
     )
     payload = dict(tx.provider_payload_json or {})
     payload.update({
