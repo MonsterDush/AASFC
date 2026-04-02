@@ -981,6 +981,11 @@ def _require_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> 
         raise HTTPException(status_code=403, detail=access.get("billing_restricted_reason") or "Доступ к заведению ограничен из-за статуса подписки")
 
 
+def _require_super_admin_or_moderator(user: User) -> None:
+    if user.system_role not in ("SUPER_ADMIN", "MODERATOR"):
+        raise HTTPException(status_code=403, detail="Только суперадмин может архивировать заведение")
+
+
 def _can_manage_staff(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return True
@@ -1715,7 +1720,7 @@ def update_venue(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_super_admin_or_moderator(user)
 
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:
@@ -1859,7 +1864,7 @@ def get_venue_delete_check(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_super_admin_or_moderator(user)
 
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:
@@ -1874,7 +1879,7 @@ def archive_venue(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_super_admin_or_moderator(user)
 
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:
@@ -1901,7 +1906,7 @@ def unarchive_venue(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    _require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    _require_super_admin_or_moderator(user)
 
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:

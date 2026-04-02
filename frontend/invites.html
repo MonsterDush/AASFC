@@ -312,13 +312,31 @@
         const row = document.createElement('div');
         row.className = 'invite-card';
         const display = m.display_name || m.short_name || m.full_name || (m.tg_username ? '@' + m.tg_username : 'Участник');
+        const canRemoveMember = canManageStaff && (canInviteOwners || String(m.venue_role || '').toUpperCase() !== 'OWNER');
         row.innerHTML = `
-          <div>
-            <div><b>${esc(display)}</b> <span class="chip">${esc(roleLabel(m.venue_role))}</span></div>
-            <div class="muted mt-6">${m.tg_username ? "@" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? esc(m.phone) : ""}</div>
-            <div class="mt-6">${authChips(m.auth_methods || [])}</div>
+          <div class="row" style="justify-content:space-between; align-items:flex-start; gap:12px;">
+            <div>
+              <div><b>${esc(display)}</b> <span class="chip">${esc(roleLabel(m.venue_role))}</span></div>
+              <div class="muted mt-6">${m.tg_username ? "@" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? esc(m.phone) : ""}</div>
+              <div class="mt-6">${authChips(m.auth_methods || [])}</div>
+            </div>
+            <div class="invite-actions">
+              <button class="btn danger" data-remove style="display:${canRemoveMember ? '' : 'none'}">Удалить</button>
+            </div>
           </div>
         `;
+        const removeBtn = row.querySelector('[data-remove]');
+        if (removeBtn) removeBtn.onclick = async () => {
+          const ok = confirm(`Удалить ${display} из заведения?`);
+          if (!ok) return;
+          try {
+            await api(`/venues/${venueId}/members/${m.user_id}`, { method:'DELETE' });
+            toast('Участник удалён', 'ok');
+            await loadMembers();
+          } catch (e) {
+            toast('Ошибка удаления: ' + e.message, 'err');
+          }
+        };
         members.appendChild(row);
       });
     }
