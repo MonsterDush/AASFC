@@ -659,6 +659,28 @@ export async function finalizeTelegramBrowserLogin(sessionToken) {
   });
 }
 
+export async function startTelegramBrowserLink(nextPath = "") {
+  return api("/auth/link/telegram/browser/start", {
+    method: "POST",
+    body: { next_path: nextPath || null },
+    timeoutMs: 8000,
+  });
+}
+
+export async function getTelegramBrowserLinkStatus(sessionToken) {
+  return api(`/auth/link/telegram/browser/status/${encodeURIComponent(sessionToken)}`, {
+    timeoutMs: 8000,
+  });
+}
+
+export async function finalizeTelegramBrowserLink(sessionToken) {
+  return api("/auth/link/telegram/browser/finalize", {
+    method: "POST",
+    body: { session_token: sessionToken },
+    timeoutMs: 8000,
+  });
+}
+
 export async function getPhoneAuthConfig() {
   return api("/auth/phone/config", {
     handle401: false,
