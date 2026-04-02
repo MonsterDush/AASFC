@@ -180,6 +180,7 @@ def create_venue_billing_checkout(
         test_mode=robo_cfg.test_mode,
         culture="ru",
         expiration_date=expiration_value,
+        use_return_url2=bool(getattr(settings, "ROBOKASSA_USE_RETURN_URL2", False)),
     )
     payload = dict(tx.provider_payload_json or {})
     payload.update({
