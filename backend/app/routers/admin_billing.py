@@ -11,10 +11,16 @@ from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.models.user import User
 from app.models.venue import Venue
-from app.models.venue_billing_state import VenueBillingState
 from app.models.venue_billing_transaction import VenueBillingTransaction
 from app.models.venue_member import VenueMember
-from app.services.billing import extend_venue_billing, get_billing_snapshot_for_state, get_or_create_billing_state, list_billing_transactions, set_venue_billing_paid_until
+from app.services.billing import (
+    extend_venue_billing,
+    get_billing_snapshot_for_state,
+    get_or_create_billing_state,
+    list_billing_transactions,
+    send_owner_billing_notification_once,
+    set_venue_billing_paid_until,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin-billing"])
 
@@ -218,6 +224,17 @@ def extend_admin_venue_billing(
     db.refresh(event)
     snapshot = get_billing_snapshot_for_state(state)
 
+    paid_until_label = snapshot.paid_until.strftime("%d.%m.%Y") if snapshot.paid_until else "—"
+    send_owner_billing_notification_once(
+        db,
+        venue_id=int(venue.id),
+        notification_type="manual_extend",
+        event_key=str(tx.id),
+        text=f"Доступ по заведению «{venue.name}» продлён вручную на {int(payload.days)} дн. Новый срок оплаты — до {paid_until_label}.",
+        button_text="Открыть заведение",
+    )
+    db.commit()
+
     return {
         "venue_id": int(venue.id),
         "venue_name": venue.name,
@@ -273,6 +290,17 @@ def set_admin_venue_billing_paid_until(
     db.refresh(tx)
     db.refresh(event)
     snapshot = get_billing_snapshot_for_state(state)
+
+    paid_until_label = snapshot.paid_until.strftime("%d.%m.%Y") if snapshot.paid_until else "—"
+    send_owner_billing_notification_once(
+        db,
+        venue_id=int(venue.id),
+        notification_type="manual_set_paid_until",
+        event_key=str(tx.id),
+        text=f"Срок оплаты по заведению «{venue.name}» обновлён вручную. Новый paid until — {paid_until_label}.",
+        button_text="Открыть заведение",
+    )
+    db.commit()
 
     return {
         "venue_id": int(venue.id),

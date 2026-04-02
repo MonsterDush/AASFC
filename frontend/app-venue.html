@@ -185,6 +185,8 @@
 
         const params = new URLSearchParams(location.search);
         const venueId = params.get("venue_id") || "";
+        const billingPaymentHint = String(params.get("billing_payment") || "").trim().toLowerCase();
+        const billingPaymentReason = String(params.get("billing_reason") || "").trim();
 
 
         let perms = null;
@@ -299,13 +301,70 @@ const titleEl = document.getElementById("title");
           return `${num.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`;
         }
 
+        function clearBillingPaymentHintFromUrl() {
+          const url = new URL(location.href);
+          url.searchParams.delete("billing_payment");
+          url.searchParams.delete("billing_invoice_id");
+          url.searchParams.delete("billing_reason");
+          history.replaceState({}, "", url.pathname + url.search + url.hash);
+        }
+
+        async function startBillingCheckout() {
+          const extendBtn = document.getElementById("billingExtendBtn");
+          const initialText = extendBtn ? extendBtn.textContent : "";
+          try {
+            if (extendBtn) {
+              extendBtn.disabled = true;
+              extendBtn.textContent = "Переходим к оплате…";
+            }
+            const data = await api(`/venues/${venueId}/billing/checkout`, { method: "POST" });
+            const checkoutUrl = String(data?.checkout_url || "").trim();
+            if (!checkoutUrl) throw new Error("Не получили ссылку на оплату");
+            location.href = checkoutUrl;
+            return;
+          } catch (e) {
+            toast("Не удалось открыть оплату: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+          } finally {
+            if (extendBtn) {
+              extendBtn.disabled = false;
+              extendBtn.textContent = initialText || "Продлить на 30 дней";
+            }
+          }
+        }
+
+        async function handleBillingPaymentHint() {
+          if (!billingPaymentHint || !venueId) return;
+          if (billingPaymentHint === "failed") {
+            toast(billingPaymentReason || "Оплата не завершена. Попробуй ещё раз.", "warn");
+            clearBillingPaymentHintFromUrl();
+            return;
+          }
+          if (billingPaymentHint === "success") {
+            toast("Оплата подтверждена.", "ok");
+            clearBillingPaymentHintFromUrl();
+            return;
+          }
+          if (billingPaymentHint === "processing") {
+            toast("Платёж обрабатывается. Обновляем статус…", "warn");
+            try {
+              billingInfo = await api(`/venues/${venueId}/billing`);
+              billingStatus = String(billingInfo?.status || billingStatus || "ACTIVE").toUpperCase();
+              billingAccessMode = String(billingInfo?.billing_access_mode || billingAccessMode || "FULL").toUpperCase();
+              billingReadonly = billingAccessMode !== "FULL" && (isOwner || isAdmin);
+              renderBillingWidgets();
+              const latestTx = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions[0] : null;
+              if (String(latestTx?.status || "").toUpperCase() === "SUCCEEDED") {
+                toast("Оплата подтверждена.", "ok");
+              }
+            } catch {}
+            clearBillingPaymentHintFromUrl();
+          }
+        }
+
         function bindBillingActions() {
           const extendBtn = document.getElementById("billingExtendBtn");
           if (extendBtn) {
-            extendBtn.onclick = () => {
-              toast("Онлайн-оплата появится следующим спринтом. Пока продление оформляется через поддержку.", "warn");
-              location.href = "/axelio-subscription.html";
-            };
+            extendBtn.onclick = () => startBillingCheckout();
           }
         }
 
@@ -353,11 +412,12 @@ const titleEl = document.getElementById("title");
                     <div>
                       <b>${planLabel}</b>
                       <div class="muted mt-6">Статус: ${status === "ACTIVE" ? "Активно" : (status === "GRACE" ? "Grace" : "Доступ ограничен")}</div>
+                      <div class="muted mt-6">Платёжный контур: ${billingInfo?.provider_ready === false ? "ещё не настроен" : (billingInfo?.provider_mode === "test" ? "тестовый режим" : "боевой режим")}</div>
                       <div class="muted mt-6">Оплачено до: ${formatDate(paidUntil)}</div>
                       ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}
                     </div>
                     <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
-                      <button class="btn primary" id="billingExtendBtn">Продлить на 30 дней</button>
+                      <button class="btn primary" id="billingExtendBtn" ${billingInfo?.provider_ready === false ? "disabled" : ""}>Продлить на 30 дней</button>
                       <a class="btn subtle" href="https://t.me/axelio_support" target="_blank" rel="noopener">Поддержка</a>
                     </div>
                   </div>
@@ -791,6 +851,7 @@ if (tipsModeEl) {
           setMeta();
           await ensureLogin({ silent:true });
           await load();
+          await handleBillingPaymentHint();
         }
         boot();
 

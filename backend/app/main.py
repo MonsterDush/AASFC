@@ -7,7 +7,7 @@ app = FastAPI(title="Axelio API")
 from app.routers.venues import router as venues_router
 from app.routers.public_invites import router as public_invites_router
 from app.routers.public_leads import router as public_leads_router
-from app.routers.billing import router as billing_router
+from app.routers.billing import router as billing_router, public_router as billing_public_router
 from app.routers.admin_billing import router as admin_billing_router
 from app.routers import auth, me
 
@@ -25,6 +25,7 @@ app.include_router(venues_router)
 app.include_router(public_invites_router)
 app.include_router(public_leads_router)
 app.include_router(billing_router)
+app.include_router(billing_public_router)
 app.include_router(admin_billing_router)
 
 @app.get("/health")

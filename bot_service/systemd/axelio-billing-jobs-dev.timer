@@ -1,0 +1,10 @@
+[Unit]
+Description=Axelio dev: run billing jobs every hour
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Unit=axelio-billing-jobs-dev.service
+
+[Install]
+WantedBy=timers.target

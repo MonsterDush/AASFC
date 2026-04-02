@@ -34,7 +34,18 @@ class Settings(BaseSettings):
     # Public app/base URLs
     FRONTEND_BASE_URL: str = ""
     APP_BASE_URL: str = ""
+    API_BASE_URL: str = ""
     CORS_ALLOW_ORIGINS: str = ""
+
+    # Robokassa
+    ROBOKASSA_MERCHANT_LOGIN: str = ""
+    ROBOKASSA_PASSWORD1: str = ""
+    ROBOKASSA_PASSWORD2: str = ""
+    ROBOKASSA_TEST_PASSWORD1: str = ""
+    ROBOKASSA_TEST_PASSWORD2: str = ""
+    ROBOKASSA_TEST_MODE: bool = False
+    ROBOKASSA_HASH_ALGORITHM: str = "MD5"
+    ROBOKASSA_PAYMENT_URL: str = "https://auth.robokassa.ru/Merchant/Index.aspx"
     COOKIE_SECURE: bool = True
     ACCESS_TOKEN_TTL_SECONDS: int = 60 * 60 * 24 * 7  # 7 days
 
@@ -80,6 +91,33 @@ class Settings(BaseSettings):
         if "dev" in iss:
             return "https://app-dev.axelio.ru"
         return "https://app.axelio.ru"
+
+    def api_base_url(self) -> str:
+        raw = (self.API_BASE_URL or "").strip().rstrip("/")
+        if raw:
+            return raw
+        frontend = self.frontend_base_url()
+        if frontend:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(frontend)
+                host = (parsed.hostname or "").strip().lower()
+                if host:
+                    parts = host.split(".")
+                    if parts[0] == "app":
+                        parts[0] = "api"
+                    elif parts[0].startswith("app-"):
+                        parts[0] = parts[0].replace("app-", "api-", 1)
+                    scheme = parsed.scheme or "https"
+                    port = f":{parsed.port}" if parsed.port else ""
+                    host_out = ".".join(parts)
+                    return f"{scheme}://{host_out}{port}"
+            except Exception:
+                pass
+        iss = (self.JWT_ISS or "").strip().lower()
+        if "dev" in iss:
+            return "https://api-dev.axelio.ru"
+        return "https://api.axelio.ru"
 
     def cors_allow_origins(self) -> list[str]:
         raw = (self.CORS_ALLOW_ORIGINS or "").strip()
