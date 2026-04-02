@@ -6,7 +6,7 @@ from datetime import datetime
 import hashlib
 import hmac
 from typing import Mapping
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import urlencode
 
 from app.core.config import settings
 
@@ -110,8 +110,6 @@ def _ordered_modifier_values(modifiers: Mapping[str, str] | None) -> list[str]:
         text = str(raw).strip()
         if not text:
             continue
-        if key in {"Receipt", "ResultUrl2", "SuccessUrl2", "FailUrl2", "Token"}:
-            text = quote_plus(text)
         values.append(text)
     return values
 
@@ -215,23 +213,14 @@ def build_checkout_url(
     expiration_date: datetime | str | None = None,
     use_return_url2: bool = False,
 ) -> str:
-    shp_pairs = _sorted_shp_pairs(extra_params)
-    modifiers: dict[str, str] = {}
-    if use_return_url2:
-        modifiers = {
-            "SuccessUrl2": success_url,
-            "SuccessUrl2Method": "GET",
-            "FailUrl2": fail_url,
-            "FailUrl2Method": "GET",
-        }
     signature = calculate_checkout_signature(
         merchant_login=merchant_login,
         out_sum=out_sum,
         invoice_id=invoice_id,
         password1=password1,
         algorithm=algorithm,
-        modifiers=modifiers,
-        extra_params=dict(shp_pairs),
+        modifiers=None,
+        extra_params=None,
     )
     params: list[tuple[str, str]] = [
         ("MerchantLogin", merchant_login),
@@ -239,19 +228,7 @@ def build_checkout_url(
         ("InvId", invoice_id),
         ("Description", description),
         ("SignatureValue", signature),
-        ("Culture", culture or "ru"),
     ]
-    if use_return_url2:
-        params.extend([
-            ("SuccessUrl2", success_url),
-            ("SuccessUrl2Method", "GET"),
-            ("FailUrl2", fail_url),
-            ("FailUrl2Method", "GET"),
-        ])
-    expiration_value = _format_expiration_date(expiration_date)
-    if expiration_value:
-        params.append(("ExpirationDate", expiration_value))
     if test_mode:
         params.append(("IsTest", "1"))
-    params.extend(shp_pairs)
     return f"{payment_url}?{urlencode(params)}"
