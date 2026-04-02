@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -12,16 +11,15 @@ from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.models.user import User
 from app.models.venue import Venue
-from app.models.venue_billing_event import VenueBillingEvent
 from app.models.venue_billing_transaction import VenueBillingTransaction
 from app.models.venue_member import VenueMember
 from app.services.billing import (
-    create_refund_transaction,
+    create_billing_refund,
+    derive_billing_reconciliation_issues,
     extend_venue_billing,
+    get_billing_health_summary,
     get_billing_snapshot_for_state,
-    get_checkout_expires_at,
     get_or_create_billing_state,
-    list_billing_events,
     list_billing_transactions,
     send_owner_billing_notification_once,
     set_venue_billing_paid_until,
@@ -45,8 +43,6 @@ class BillingSetPaidUntilIn(BaseModel):
 class BillingRefundIn(BaseModel):
     amount_minor: int = Field(..., ge=1)
     comment: str | None = Field(default=None, max_length=1000)
-    related_transaction_id: int | None = Field(default=None, ge=1)
-    revoke_access_hint: bool = Field(default=False)
 
 
 def _utc_now() -> datetime:
@@ -90,20 +86,14 @@ def _load_owner_labels(db: Session, venue_ids: list[int]) -> dict[int, dict]:
     return out
 
 
-def _load_venue_map(db: Session, venue_ids: list[int]) -> dict[int, Venue]:
-    if not venue_ids:
-        return {}
-    rows = db.execute(select(Venue).where(Venue.id.in_(venue_ids))).scalars().all()
-    return {int(v.id): v for v in rows}
 
 
-def _serialize_billing_transaction(tx: VenueBillingTransaction, *, venue_name: str | None = None, owner: dict | None = None) -> dict[str, Any]:
-    payload = tx.provider_payload_json if isinstance(tx.provider_payload_json, dict) else (tx.provider_payload_json or {})
+def _serialize_admin_transaction(tx: VenueBillingTransaction, *, venue_name: str | None = None) -> dict:
+    payload = tx.provider_payload_json if isinstance(tx.provider_payload_json, dict) else {}
     return {
         "id": int(tx.id),
         "venue_id": int(tx.venue_id),
         "venue_name": venue_name,
-        "owner": owner or {},
         "source": tx.source,
         "type": tx.type,
         "status": tx.status,
@@ -114,170 +104,19 @@ def _serialize_billing_transaction(tx: VenueBillingTransaction, *, venue_name: s
         "provider_invoice_id": tx.provider_invoice_id,
         "provider_payment_id": tx.provider_payment_id,
         "comment": tx.comment,
-        "provider_payload_json": payload,
         "created_by_user_id": tx.created_by_user_id,
         "created_at": tx.created_at.isoformat() if tx.created_at else None,
         "updated_at": tx.updated_at.isoformat() if tx.updated_at else None,
+        "provider_payload_json": payload,
     }
 
 
-def _serialize_billing_event(event: VenueBillingEvent, *, venue_name: str | None = None, owner: dict | None = None) -> dict[str, Any]:
-    meta = event.meta_json if isinstance(event.meta_json, dict) else (event.meta_json or {})
-    return {
-        "id": int(event.id),
-        "venue_id": int(event.venue_id),
-        "venue_name": venue_name,
-        "owner": owner or {},
-        "event_type": event.event_type,
-        "old_status": event.old_status,
-        "new_status": event.new_status,
-        "meta": meta,
-        "created_by_user_id": event.created_by_user_id,
-        "created_at": event.created_at.isoformat() if event.created_at else None,
-    }
-
-
-def _to_datetime(value: str | None, *, end_of_day: bool = False) -> datetime | None:
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    try:
-        if len(raw) == 10:
-            base = datetime.fromisoformat(raw)
-            if end_of_day:
-                base = datetime.combine(base.date(), time.max)
-        else:
-            base = datetime.fromisoformat(raw)
-    except Exception:
-        return None
-    if base.tzinfo is None:
-        return base.replace(tzinfo=timezone.utc)
-    return base.astimezone(timezone.utc)
-
-
-def _paginate(items: list[dict[str, Any]], *, page: int, page_size: int) -> dict[str, Any]:
-    page = max(1, int(page))
-    page_size = max(1, int(page_size))
-    total = len(items)
-    offset = (page - 1) * page_size
-    return {
-        "items": items[offset: offset + page_size],
-        "count": min(page_size, max(total - offset, 0)),
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "has_next": offset + page_size < total,
-    }
-
-
-def _build_reconciliation_items(db: Session, *, q: str | None = None, issue_type: str | None = None, days_back: int = 120) -> list[dict[str, Any]]:
-    now = _utc_now()
-    since_dt = now - timedelta(days=max(1, int(days_back or 120)))
-    txs = db.execute(
-        select(VenueBillingTransaction).where(VenueBillingTransaction.created_at >= since_dt)
-    ).scalars().all()
-    events = db.execute(
-        select(VenueBillingEvent).where(VenueBillingEvent.created_at >= since_dt)
-    ).scalars().all()
-    venue_ids = sorted({int(tx.venue_id) for tx in txs} | {int(ev.venue_id) for ev in events})
-    venue_map = _load_venue_map(db, venue_ids)
-    owner_map = _load_owner_labels(db, venue_ids)
-    items: list[dict[str, Any]] = []
-
-    for tx in txs:
-        venue = venue_map.get(int(tx.venue_id))
-        venue_name = venue.name if venue else f"Venue #{int(tx.venue_id)}"
-        owner = owner_map.get(int(tx.venue_id)) or {}
-        created_at = tx.created_at.astimezone(timezone.utc) if tx.created_at and tx.created_at.tzinfo else (tx.created_at.replace(tzinfo=timezone.utc) if tx.created_at else now)
-        status = str(tx.status or "").upper()
-        tx_type = str(tx.type or "").upper()
-        if tx_type == "PAYMENT" and status == "PENDING":
-            expires_at = get_checkout_expires_at(tx)
-            if expires_at and expires_at <= now:
-                items.append({
-                    "issue_type": "STALE_PENDING_CHECKOUT",
-                    "severity": "high",
-                    "venue_id": int(tx.venue_id),
-                    "venue_name": venue_name,
-                    "owner": owner,
-                    "transaction_id": int(tx.id),
-                    "event_id": None,
-                    "status": status,
-                    "amount_minor": int(tx.amount_minor or 0),
-                    "occurred_at": expires_at.isoformat(),
-                    "description": f"Checkout просрочен и всё ещё находится в статусе PENDING.",
-                })
-        if tx_type == "PAYMENT" and status == "SUCCEEDED" and (tx.period_from is None or tx.period_until is None):
-            items.append({
-                "issue_type": "SUCCEEDED_NOT_APPLIED",
-                "severity": "critical",
-                "venue_id": int(tx.venue_id),
-                "venue_name": venue_name,
-                "owner": owner,
-                "transaction_id": int(tx.id),
-                "event_id": None,
-                "status": status,
-                "amount_minor": int(tx.amount_minor or 0),
-                "occurred_at": created_at.isoformat(),
-                "description": "Платёж отмечен как SUCCEEDED, но период продления не записан.",
-            })
-        if tx_type == "PAYMENT" and status == "FAILED":
-            items.append({
-                "issue_type": "FAILED_PAYMENT",
-                "severity": "medium",
-                "venue_id": int(tx.venue_id),
-                "venue_name": venue_name,
-                "owner": owner,
-                "transaction_id": int(tx.id),
-                "event_id": None,
-                "status": status,
-                "amount_minor": int(tx.amount_minor or 0),
-                "occurred_at": created_at.isoformat(),
-                "description": tx.comment or "Платёж завершился ошибкой.",
-            })
-
-    for event in events:
-        et = str(event.event_type or "").upper()
-        if et not in {"ROBOKASSA_RESULT_SIGNATURE_INVALID", "ROBOKASSA_AMOUNT_MISMATCH", "ROBOKASSA_RESULT_DUPLICATE"}:
-            continue
-        venue = venue_map.get(int(event.venue_id))
-        venue_name = venue.name if venue else f"Venue #{int(event.venue_id)}"
-        owner = owner_map.get(int(event.venue_id)) or {}
-        meta = event.meta_json if isinstance(event.meta_json, dict) else {}
-        if et == "ROBOKASSA_RESULT_SIGNATURE_INVALID":
-            item_type = "INVALID_SIGNATURE"
-            severity = "critical"
-            description = "Robokassa callback пришёл с неверной подписью."
-        elif et == "ROBOKASSA_AMOUNT_MISMATCH":
-            item_type = "AMOUNT_MISMATCH"
-            severity = "critical"
-            description = "Сумма в callback не совпала с ожидаемой суммой счета."
-        else:
-            item_type = "DUPLICATE_CALLBACK"
-            severity = "low"
-            description = "Повторный callback по уже обработанному счёту."
-        items.append({
-            "issue_type": item_type,
-            "severity": severity,
-            "venue_id": int(event.venue_id),
-            "venue_name": venue_name,
-            "owner": owner,
-            "transaction_id": int(meta.get("transaction_id") or 0) if meta.get("transaction_id") else None,
-            "event_id": int(event.id),
-            "status": None,
-            "amount_minor": None,
-            "occurred_at": event.created_at.isoformat() if event.created_at else None,
-            "description": description,
-        })
-
-    if q:
-        needle = str(q).strip().lower()
-        items = [item for item in items if needle in str(item.get("venue_name") or "").lower() or needle in str(item.get("description") or "").lower()]
-    if issue_type:
-        issue_upper = str(issue_type).strip().upper()
-        items = [item for item in items if str(item.get("issue_type") or "").upper() == issue_upper]
-    items.sort(key=lambda item: str(item.get("occurred_at") or ""), reverse=True)
-    return items
+@router.get("/billing/health")
+def get_admin_billing_health(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    return get_billing_health_summary(db)
 
 
 @router.get("/billing/summary")
@@ -320,7 +159,6 @@ def get_admin_billing_summary(
         )
     ).scalars().all()
     receipts_minor = sum(int(tx.amount_minor or 0) for tx in tx_rows)
-    reconciliation_items = _build_reconciliation_items(db)
 
     return {
         "totals": {
@@ -332,7 +170,6 @@ def get_admin_billing_summary(
             "receipts_current_month_minor": int(receipts_minor),
             "due_soon": due_soon_count,
             "overdue": overdue_count,
-            "unresolved_issues": len(reconciliation_items),
         },
         "period": {
             "month_start": month_start.isoformat(),
@@ -434,81 +271,6 @@ def get_admin_billing_venues(
     }
 
 
-@router.get("/billing/transactions")
-def get_admin_billing_transactions(
-    q: str | None = Query(default=None),
-    venue_id: int | None = Query(default=None),
-    tx_type: str | None = Query(default=None),
-    tx_status: str | None = Query(default=None),
-    date_from: str | None = Query(default=None),
-    date_to: str | None = Query(default=None),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=200),
-    db: Session = Depends(get_db),
-    user: User = Depends(require_super_admin),
-):
-    stmt = select(VenueBillingTransaction).order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
-    if venue_id:
-        stmt = stmt.where(VenueBillingTransaction.venue_id == int(venue_id))
-    txs = db.execute(stmt).scalars().all()
-    venue_ids = sorted({int(tx.venue_id) for tx in txs})
-    venue_map = _load_venue_map(db, venue_ids)
-    owner_map = _load_owner_labels(db, venue_ids)
-    type_upper = str(tx_type or "").strip().upper()
-    status_upper = str(tx_status or "").strip().upper()
-    from_dt = _to_datetime(date_from)
-    to_dt = _to_datetime(date_to, end_of_day=True)
-    needle = str(q or "").strip().lower()
-
-    items: list[dict[str, Any]] = []
-    for tx in txs:
-        created_at = tx.created_at.astimezone(timezone.utc) if tx.created_at and tx.created_at.tzinfo else (tx.created_at.replace(tzinfo=timezone.utc) if tx.created_at else None)
-        if type_upper and str(tx.type or "").upper() != type_upper:
-            continue
-        if status_upper and str(tx.status or "").upper() != status_upper:
-            continue
-        if from_dt and created_at and created_at < from_dt:
-            continue
-        if to_dt and created_at and created_at > to_dt:
-            continue
-        venue = venue_map.get(int(tx.venue_id))
-        venue_name = venue.name if venue else f"Venue #{int(tx.venue_id)}"
-        if needle:
-            haystack = " ".join([
-                venue_name,
-                str(tx.comment or ""),
-                str(tx.provider_invoice_id or ""),
-                str(tx.provider_payment_id or ""),
-                str(tx.type or ""),
-                str(tx.source or ""),
-            ]).lower()
-            if needle not in haystack:
-                continue
-        items.append(_serialize_billing_transaction(tx, venue_name=venue_name, owner=owner_map.get(int(tx.venue_id)) or {}))
-    return _paginate(items, page=page, page_size=page_size)
-
-
-@router.get("/billing/reconciliation")
-def get_admin_billing_reconciliation(
-    q: str | None = Query(default=None),
-    issue_type: str | None = Query(default=None),
-    days_back: int = Query(default=120, ge=1, le=3650),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=200),
-    db: Session = Depends(get_db),
-    user: User = Depends(require_super_admin),
-):
-    items = _build_reconciliation_items(db, q=q, issue_type=issue_type, days_back=days_back)
-    out = _paginate(items, page=page, page_size=page_size)
-    out["summary"] = {
-        "critical": sum(1 for item in items if item.get("severity") == "critical"),
-        "high": sum(1 for item in items if item.get("severity") == "high"),
-        "medium": sum(1 for item in items if item.get("severity") == "medium"),
-        "low": sum(1 for item in items if item.get("severity") == "low"),
-    }
-    return out
-
-
 @router.post("/venues/{venue_id}/billing/extend")
 def extend_admin_venue_billing(
     venue_id: int,
@@ -546,14 +308,32 @@ def extend_admin_venue_billing(
     db.commit()
 
     return {
-        "ok": True,
         "venue_id": int(venue.id),
-        "transaction": _serialize_billing_transaction(tx, venue_name=venue.name),
-        "event": _serialize_billing_event(event, venue_name=venue.name),
+        "venue_name": venue.name,
         "billing": {
             "status": snapshot.status,
             "paid_until": snapshot.paid_until.isoformat() if snapshot.paid_until else None,
             "grace_until": snapshot.grace_until.isoformat() if snapshot.grace_until else None,
+            "next_payment_due_at": state.next_payment_due_at.isoformat() if state.next_payment_due_at else None,
+        },
+        "transaction": {
+            "id": int(tx.id),
+            "source": tx.source,
+            "type": tx.type,
+            "status": tx.status,
+            "amount_minor": int(tx.amount_minor or 0),
+            "days_added": int(tx.days_added or 0) if tx.days_added is not None else None,
+            "period_from": tx.period_from.isoformat() if tx.period_from else None,
+            "period_until": tx.period_until.isoformat() if tx.period_until else None,
+            "comment": tx.comment,
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+        },
+        "event": {
+            "id": int(event.id),
+            "event_type": event.event_type,
+            "old_status": event.old_status,
+            "new_status": event.new_status,
+            "created_at": event.created_at.isoformat() if event.created_at else None,
         },
     }
 
@@ -595,15 +375,84 @@ def set_admin_venue_billing_paid_until(
     db.commit()
 
     return {
-        "ok": True,
         "venue_id": int(venue.id),
-        "transaction": _serialize_billing_transaction(tx, venue_name=venue.name),
-        "event": _serialize_billing_event(event, venue_name=venue.name),
+        "venue_name": venue.name,
         "billing": {
             "status": snapshot.status,
             "paid_until": snapshot.paid_until.isoformat() if snapshot.paid_until else None,
             "grace_until": snapshot.grace_until.isoformat() if snapshot.grace_until else None,
+            "next_payment_due_at": state.next_payment_due_at.isoformat() if state.next_payment_due_at else None,
         },
+        "transaction": {
+            "id": int(tx.id),
+            "source": tx.source,
+            "type": tx.type,
+            "status": tx.status,
+            "amount_minor": int(tx.amount_minor or 0),
+            "period_from": tx.period_from.isoformat() if tx.period_from else None,
+            "period_until": tx.period_until.isoformat() if tx.period_until else None,
+            "comment": tx.comment,
+            "created_at": tx.created_at.isoformat() if tx.created_at else None,
+        },
+        "event": {
+            "id": int(event.id),
+            "event_type": event.event_type,
+            "old_status": event.old_status,
+            "new_status": event.new_status,
+            "created_at": event.created_at.isoformat() if event.created_at else None,
+        },
+    }
+
+
+@router.get("/billing/transactions")
+def get_admin_billing_transactions(
+    tx_type: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    venue_id: int | None = Query(default=None),
+    q: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    stmt = select(VenueBillingTransaction).order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
+    if tx_type:
+        stmt = stmt.where(VenueBillingTransaction.type == str(tx_type).strip().upper())
+    if status:
+        stmt = stmt.where(VenueBillingTransaction.status == str(status).strip().upper())
+    if venue_id is not None:
+        stmt = stmt.where(VenueBillingTransaction.venue_id == int(venue_id))
+    txs = list(db.execute(stmt.limit(int(limit))).scalars().all())
+    venue_ids = sorted({int(tx.venue_id) for tx in txs})
+    venue_names = {int(v.id): str(v.name or f"Заведение #{int(v.id)}") for v in db.execute(select(Venue).where(Venue.id.in_(venue_ids))).scalars().all()} if venue_ids else {}
+    items = [_serialize_admin_transaction(tx, venue_name=venue_names.get(int(tx.venue_id))) for tx in txs]
+    if q:
+        needle = str(q).strip().lower()
+        items = [
+            item for item in items
+            if needle in str(item.get("venue_name") or "").lower()
+            or needle in str(item.get("comment") or "").lower()
+            or needle in str(item.get("source") or "").lower()
+            or needle in str(item.get("type") or "").lower()
+            or needle in str(item.get("status") or "").lower()
+        ]
+    return {
+        "items": items,
+        "count": len(items),
+    }
+
+
+@router.get("/billing/reconciliation")
+def get_admin_billing_reconciliation(
+    venue_id: int | None = Query(default=None),
+    q: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    items = derive_billing_reconciliation_issues(db, venue_id=venue_id, search=q, limit=limit)
+    return {
+        "items": items,
+        "count": len(items),
     }
 
 
@@ -618,53 +467,42 @@ def refund_admin_venue_billing(
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found")
 
-    latest_payment = db.execute(
-        select(VenueBillingTransaction)
-        .where(
-            VenueBillingTransaction.venue_id == int(venue_id),
-            VenueBillingTransaction.status == "SUCCEEDED",
-            VenueBillingTransaction.type.in_(["PAYMENT", "EXTEND", "SET_PAID_UNTIL"]),
-        )
-        .order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
-        .limit(1)
-    ).scalar_one_or_none()
-    latest_amount = int(latest_payment.amount_minor or 0) if latest_payment else 0
-    if latest_amount and int(payload.amount_minor or 0) > latest_amount:
-        raise HTTPException(status_code=400, detail="Сумма возврата больше последней успешной операции")
-
-    state, tx, event = create_refund_transaction(
+    state, tx, event = create_billing_refund(
         db,
         venue_id=int(venue_id),
         amount_minor=int(payload.amount_minor),
         created_by_user_id=user.id,
         comment=payload.comment,
-        related_transaction_id=payload.related_transaction_id or (int(latest_payment.id) if latest_payment else None),
-        revoke_access_hint=bool(payload.revoke_access_hint),
     )
     db.commit()
     db.refresh(tx)
     db.refresh(event)
-    snapshot = get_billing_snapshot_for_state(state)
 
     send_owner_billing_notification_once(
         db,
         venue_id=int(venue.id),
-        notification_type="billing_refund",
+        notification_type="refund_created",
         event_key=str(tx.id),
-        text=f"По заведению «{venue.name}» оформлен возврат на сумму {int(payload.amount_minor or 0) / 100:.2f} ₽. Доступ не менялся автоматически.",
+        text=(
+            f"По заведению «{venue.name}» оформлен возврат на сумму {int(payload.amount_minor) / 100:.2f} ₽. "
+            f"Доступ не менялся автоматически."
+        ),
         button_text="Открыть заведение",
     )
     db.commit()
 
     return {
-        "ok": True,
         "venue_id": int(venue.id),
-        "transaction": _serialize_billing_transaction(tx, venue_name=venue.name),
-        "event": _serialize_billing_event(event, venue_name=venue.name),
+        "venue_name": venue.name,
         "billing": {
-            "status": snapshot.status,
-            "paid_until": snapshot.paid_until.isoformat() if snapshot.paid_until else None,
-            "grace_until": snapshot.grace_until.isoformat() if snapshot.grace_until else None,
-            "revoke_access_hint": bool(payload.revoke_access_hint),
+            "status": get_billing_snapshot_for_state(state).status,
+            "paid_until": state.paid_until.isoformat() if state.paid_until else None,
+            "grace_until": state.grace_until.isoformat() if state.grace_until else None,
+        },
+        "transaction": _serialize_admin_transaction(tx, venue_name=venue.name),
+        "event": {
+            "id": int(event.id),
+            "event_type": event.event_type,
+            "created_at": event.created_at.isoformat() if event.created_at else None,
         },
     }

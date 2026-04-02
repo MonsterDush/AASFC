@@ -9,17 +9,18 @@
   <style>
     .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
     .summary-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-    @media (min-width: 900px) { .summary-grid { grid-template-columns:repeat(5,minmax(0,1fr)); } }
+    @media (min-width: 900px) { .summary-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
     .summary-card { border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; }
     .summary-card b { display:block; font-size:20px; margin-top:6px; }
     .billing-table-row { border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; margin-top:10px; }
-    .status-chip, .severity-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.14); font-size:12px; }
-    .severity-chip.critical { font-weight:700; }
-    .severity-chip.high { font-weight:600; }
-    .section-grid { display:grid; grid-template-columns:1fr; gap:12px; }
-    @media (min-width: 1000px) { .section-grid { grid-template-columns:1fr 1fr; } }
+    .status-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.14); font-size:12px; }
+    .issue-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.14); font-size:12px; }
+    .issue-chip.critical { font-weight:700; }
+    .issue-chip.warning { font-weight:600; }
     input[type="search"], select { min-width: 180px; }
+    .section-title { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .divider { height:1px; background:rgba(0,0,0,.08); margin:12px 0; }
   </style>
 </head>
 <body>
@@ -29,7 +30,7 @@
         <div class="logo"></div>
         <div class="title">
           <b>Админ · Биллинг</b>
-          <div class="muted">статусы, возвраты, операции и сверка</div>
+          <div class="muted">статусы, продления, возвраты и сверка</div>
         </div>
       </div>
       <div class="userpill" data-userpill>—</div>
@@ -38,10 +39,35 @@
     <div class="card">
       <div class="summary-grid" id="summaryGrid">
         <div class="summary-card"><div class="muted">Загрузка…</div><b>—</b></div>
+        <div class="summary-card"><div class="muted">Загрузка…</div><b>—</b></div>
+        <div class="summary-card"><div class="muted">Загрузка…</div><b>—</b></div>
+        <div class="summary-card"><div class="muted">Загрузка…</div><b>—</b></div>
       </div>
     </div>
 
     <div class="card">
+      <div class="section-title">
+        <div>
+          <b>Состояние биллинга</b>
+          <div class="muted">операционные проблемы и быстрые сигналы</div>
+        </div>
+        <button class="btn subtle" id="refreshHealthBtn">Обновить блок</button>
+      </div>
+      <div class="summary-grid" id="healthGrid">
+        <div class="summary-card"><div class="muted">Загрузка…</div><b>—</b></div>
+        <div class="summary-card"><div class="muted">Загрузка…</div><b>—</b></div>
+        <div class="summary-card"><div class="muted">Загрузка…</div><b>—</b></div>
+        <div class="summary-card"><div class="muted">Загрузка…</div><b>—</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <div>
+          <b>Заведения</b>
+          <div class="muted">сводка по статусам и ручные действия</div>
+        </div>
+      </div>
       <div class="toolbar">
         <select id="statusFilter">
           <option value="">Все статусы</option>
@@ -70,57 +96,42 @@
       <div id="list"><div class="skeleton"></div><div class="skeleton"></div></div>
     </div>
 
-    <div class="section-grid">
-      <div class="card">
-        <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-          <div>
-            <b>Операции</b>
-            <div class="muted">Платежи, ручные продления, возвраты и ошибки.</div>
-          </div>
-          <div class="toolbar" style="margin:0">
-            <select id="txTypeFilter">
-              <option value="">Все типы</option>
-              <option value="PAYMENT">PAYMENT</option>
-              <option value="EXTEND">EXTEND</option>
-              <option value="SET_PAID_UNTIL">SET_PAID_UNTIL</option>
-              <option value="REFUND">REFUND</option>
-            </select>
-            <select id="txStatusFilter">
-              <option value="">Все статусы</option>
-              <option value="SUCCEEDED">SUCCEEDED</option>
-              <option value="PENDING">PENDING</option>
-              <option value="FAILED">FAILED</option>
-              <option value="CANCELED">CANCELED</option>
-            </select>
-            <input id="txSearch" type="search" placeholder="Поиск по операциям" />
-            <button class="btn subtle" id="txRefreshBtn">Обновить</button>
-          </div>
+    <div class="card">
+      <div class="section-title">
+        <div>
+          <b>Проблемы и сверка</b>
+          <div class="muted">ошибки callback, stale checkout, дубликаты, mismatch</div>
         </div>
-        <div id="transactionsList"><div class="skeleton"></div></div>
+        <button class="btn subtle" id="refreshIssuesBtn">Обновить</button>
       </div>
+      <div id="issuesList"><div class="muted">Загрузка…</div></div>
+    </div>
 
-      <div class="card">
-        <div class="row" style="justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-          <div>
-            <b>Проблемы и сверка</b>
-            <div class="muted">Незакрытые ошибки и спорные кейсы биллинга.</div>
-          </div>
-          <div class="toolbar" style="margin:0">
-            <select id="issueTypeFilter">
-              <option value="">Все типы</option>
-              <option value="STALE_PENDING_CHECKOUT">STALE_PENDING_CHECKOUT</option>
-              <option value="SUCCEEDED_NOT_APPLIED">SUCCEEDED_NOT_APPLIED</option>
-              <option value="INVALID_SIGNATURE">INVALID_SIGNATURE</option>
-              <option value="AMOUNT_MISMATCH">AMOUNT_MISMATCH</option>
-              <option value="FAILED_PAYMENT">FAILED_PAYMENT</option>
-              <option value="DUPLICATE_CALLBACK">DUPLICATE_CALLBACK</option>
-            </select>
-            <input id="issueSearch" type="search" placeholder="Поиск по проблемам" />
-            <button class="btn subtle" id="issuesRefreshBtn">Обновить</button>
-          </div>
+    <div class="card">
+      <div class="section-title">
+        <div>
+          <b>Операции</b>
+          <div class="muted">платежи, ручные продления, возвраты</div>
         </div>
-        <div id="issuesList"><div class="skeleton"></div></div>
+        <button class="btn subtle" id="refreshTransactionsBtn">Обновить</button>
       </div>
+      <div class="toolbar">
+        <select id="txTypeFilter">
+          <option value="">Все типы</option>
+          <option value="PAYMENT">Оплаты</option>
+          <option value="EXTEND">Продления</option>
+          <option value="SET_PAID_UNTIL">SET_PAID_UNTIL</option>
+          <option value="REFUND">Возвраты</option>
+        </select>
+        <select id="txStatusFilter">
+          <option value="">Все статусы</option>
+          <option value="SUCCEEDED">SUCCEEDED</option>
+          <option value="PENDING">PENDING</option>
+          <option value="FAILED">FAILED</option>
+          <option value="CANCELED">CANCELED</option>
+        </select>
+      </div>
+      <div id="transactionsList"><div class="muted">Загрузка…</div></div>
     </div>
   </div>
 
@@ -166,12 +177,11 @@
     if (!value) return "—";
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString("ru-RU", { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    return d.toLocaleString("ru-RU");
   }
   function formatMinor(value){
-    return `${(Number(value || 0) / 100).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`;
+    return `${(Number(value || 0) / 100).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ₽`;
   }
-
   function txSourceLabel(value){
     const v = String(value || '').toUpperCase();
     if (v === 'MANUAL_ADMIN') return 'Ручная операция';
@@ -199,27 +209,15 @@
     const map = {
       BILLING_EXTENDED_MANUALLY: 'Ручное продление',
       BILLING_PAID_UNTIL_SET_MANUALLY: 'Ручная установка paid until',
-      BILLING_REFUND_CREATED: 'Возврат оформлен',
       BILLING_STATUS_CHANGED_AUTO: 'Автопереход статуса',
       ROBOKASSA_PAYMENT_SUCCEEDED: 'Оплата подтверждена',
       ROBOKASSA_PAYMENT_FAILED: 'Ошибка оплаты',
       ROBOKASSA_PAYMENT_CANCELED: 'Платёж отменён',
       ROBOKASSA_PAYMENT_EXPIRED: 'Checkout истёк',
       ROBOKASSA_RESULT_SIGNATURE_INVALID: 'Неверная подпись callback',
-      ROBOKASSA_AMOUNT_MISMATCH: 'Несовпадение суммы',
+      ROBOKASSA_AMOUNT_MISMATCH: 'Расхождение суммы',
       ROBOKASSA_RESULT_DUPLICATE: 'Повторный callback',
-    };
-    return map[v] || v || '—';
-  }
-  function issueTypeLabel(value){
-    const v = String(value || '').toUpperCase();
-    const map = {
-      STALE_PENDING_CHECKOUT: 'Зависший pending checkout',
-      SUCCEEDED_NOT_APPLIED: 'SUCCEEDED без периода',
-      INVALID_SIGNATURE: 'Неверная подпись callback',
-      AMOUNT_MISMATCH: 'Несовпадение суммы',
-      FAILED_PAYMENT: 'Ошибка платежа',
-      DUPLICATE_CALLBACK: 'Повторный callback',
+      BILLING_REFUND_CREATED: 'Возврат создан',
     };
     return map[v] || v || '—';
   }
@@ -228,33 +226,34 @@
     const cls = s === 'ACTIVE' ? 'active' : (s === 'GRACE' ? 'grace' : 'suspended');
     return `<span class="status-chip ${cls}">${esc(s || '—')}</span>`;
   }
-  function severityChip(level){
-    const v = String(level || '').toLowerCase();
-    return `<span class="severity-chip ${v}">${esc(v || 'unknown')}</span>`;
+  function issueChip(severity){
+    const s = String(severity || 'info').toLowerCase();
+    const label = s === 'critical' ? 'Критично' : (s === 'warning' ? 'Внимание' : 'Инфо');
+    return `<span class="issue-chip ${s}">${label}</span>`;
   }
 
   const summaryGrid = document.getElementById('summaryGrid');
+  const healthGrid = document.getElementById('healthGrid');
   const listEl = document.getElementById('list');
-  const transactionsListEl = document.getElementById('transactionsList');
-  const issuesListEl = document.getElementById('issuesList');
+  const issuesList = document.getElementById('issuesList');
+  const transactionsList = document.getElementById('transactionsList');
   const statusFilter = document.getElementById('statusFilter');
   const searchEl = document.getElementById('search');
   const dueSoonEl = document.getElementById('dueSoon');
   const overdueEl = document.getElementById('overdue');
   const countEl = document.getElementById('count');
   const refreshBtn = document.getElementById('refreshBtn');
+  const refreshHealthBtn = document.getElementById('refreshHealthBtn');
+  const refreshIssuesBtn = document.getElementById('refreshIssuesBtn');
+  const refreshTransactionsBtn = document.getElementById('refreshTransactionsBtn');
   const sortByEl = document.getElementById('sortBy');
   const prevPageBtn = document.getElementById('prevPageBtn');
   const nextPageBtn = document.getElementById('nextPageBtn');
   const pageInfoEl = document.getElementById('pageInfo');
   const txTypeFilter = document.getElementById('txTypeFilter');
   const txStatusFilter = document.getElementById('txStatusFilter');
-  const txSearch = document.getElementById('txSearch');
-  const txRefreshBtn = document.getElementById('txRefreshBtn');
-  const issueTypeFilter = document.getElementById('issueTypeFilter');
-  const issueSearch = document.getElementById('issueSearch');
-  const issuesRefreshBtn = document.getElementById('issuesRefreshBtn');
 
+  let lastItems = [];
   let currentPage = 1;
   let hasNextPage = false;
 
@@ -265,24 +264,46 @@
       <div class="summary-card"><div class="muted">Grace</div><b>${Number(t.grace || 0)}</b><div class="small">Скоро закончится: ${Number(t.due_soon || 0)}</div></div>
       <div class="summary-card"><div class="muted">Suspended</div><b>${Number(t.suspended || 0)}</b><div class="small">Просрочено: ${Number(t.overdue || 0)}</div></div>
       <div class="summary-card"><div class="muted">Поступления за месяц</div><b>${formatMinor(t.receipts_current_month_minor || 0)}</b><div class="small">Всего заведений: ${Number(t.venues_total || 0)}</div></div>
-      <div class="summary-card"><div class="muted">Проблемы сверки</div><b>${Number(t.unresolved_issues || 0)}</b><div class="small">Требуют внимания</div></div>
     `;
   }
 
-  function renderVenues(items, meta = {}){
-    const rows = Array.isArray(items) ? items : [];
-    const total = Number(meta?.total || rows.length || 0);
+  function renderHealth(data){
+    const t = data?.totals || {};
+    const byCode = data?.by_issue_code || {};
+    healthGrid.innerHTML = `
+      <div class="summary-card"><div class="muted">Открытые проблемы</div><b>${Number(t.issues_total || 0)}</b><div class="small">Critical: ${Number(t.critical || 0)} · Warning: ${Number(t.warning || 0)}</div></div>
+      <div class="summary-card"><div class="muted">Failed за 24 часа</div><b>${Number(t.failed_payments_24h || 0)}</b><div class="small">Порог алерта: 5+</div></div>
+      <div class="summary-card"><div class="muted">Stale pending</div><b>${Number(t.stale_pending || 0)}</b><div class="small">Незавершённые checkout</div></div>
+      <div class="summary-card"><div class="muted">Топ-коды</div><b>${Object.keys(byCode).length}</b><div class="small">${Object.entries(byCode).slice(0,2).map(([k,v]) => `${esc(k)}: ${Number(v || 0)}`).join(' · ') || '—'}</div></div>
+    `;
+  }
+
+  function sortItems(items){
+    const list = Array.isArray(items) ? [...items] : [];
+    const sortKey = String(sortByEl?.value || 'paid_until_asc');
+    const dateValue = (value) => { const t = value ? new Date(value).getTime() : 0; return Number.isFinite(t) ? t : 0; };
+    if (sortKey === 'paid_until_desc') list.sort((a,b) => dateValue(b?.paid_until) - dateValue(a?.paid_until));
+    else if (sortKey === 'last_payment_desc') list.sort((a,b) => dateValue(b?.last_payment_at) - dateValue(a?.last_payment_at));
+    else if (sortKey === 'name_asc') list.sort((a,b) => String(a?.venue_name || '').localeCompare(String(b?.venue_name || ''), 'ru'));
+    else if (sortKey === 'name_desc') list.sort((a,b) => String(b?.venue_name || '').localeCompare(String(a?.venue_name || ''), 'ru'));
+    else list.sort((a,b) => dateValue(a?.paid_until) - dateValue(b?.paid_until));
+    return list;
+  }
+
+  function renderList(items, meta = {}){
+    lastItems = sortItems(items);
+    const total = Number(meta?.total || lastItems.length || 0);
     currentPage = Number(meta?.page || currentPage || 1);
     hasNextPage = Boolean(meta?.has_next);
-    countEl.textContent = `${rows.length} / ${total}`;
+    countEl.textContent = `${lastItems.length} / ${total}`;
     pageInfoEl.textContent = `Стр. ${currentPage}`;
     prevPageBtn.disabled = currentPage <= 1;
     nextPageBtn.disabled = !hasNextPage;
-    if (!rows.length) {
+    if (!lastItems.length) {
       listEl.innerHTML = `<div class="muted">Ничего не найдено</div>`;
       return;
     }
-    listEl.innerHTML = rows.map((item) => `
+    listEl.innerHTML = lastItems.map((item) => `
       <div class="billing-table-row">
         <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
           <div style="min-width:0;flex:1 1 auto;">
@@ -295,13 +316,13 @@
             <div class="small" style="margin-top:6px">Оплачено до: ${esc(formatDate(item.paid_until))}</div>
             <div class="small" style="margin-top:6px">Grace до: ${esc(formatDate(item.grace_until))}</div>
             <div class="small" style="margin-top:6px">Последняя оплата: ${esc(formatDate(item.last_payment_at))}</div>
-            <div class="small" style="margin-top:6px">Источник последней операции: ${esc(item?.last_extension_source || '—')}</div>
+            <div class="small" style="margin-top:6px">Источник последнего продления: ${esc(item?.last_extension_source || '—')}</div>
           </div>
-          <div class="toolbar" style="justify-content:flex-end;max-width:460px">
+          <div class="toolbar" style="justify-content:flex-end;max-width:520px">
             <button class="btn primary" data-action="extend30" data-id="${item.venue_id}">+30 дней</button>
             <button class="btn" data-action="extendCustom" data-id="${item.venue_id}">Продлить на N</button>
-            <button class="btn" data-action="refund" data-id="${item.venue_id}" data-name="${esc(item.venue_name)}" data-amount="${Number(item?.last_extension_transaction?.amount_minor || 0)}">Возврат</button>
             <button class="btn" data-action="setPaidUntil" data-id="${item.venue_id}">Установить дату</button>
+            <button class="btn" data-action="refund" data-id="${item.venue_id}">Возврат</button>
             <button class="btn subtle" data-action="history" data-id="${item.venue_id}">История</button>
           </div>
         </div>
@@ -316,47 +337,57 @@
         if (action === 'extend30') return extendVenue(venueId, 30);
         if (action === 'extendCustom') return promptExtendVenue(venueId);
         if (action === 'setPaidUntil') return promptSetPaidUntil(venueId);
+        if (action === 'refund') return promptRefundVenue(venueId);
         if (action === 'history') return showHistory(venueId);
-        if (action === 'refund') return promptRefund(venueId, btn.getAttribute('data-name') || '', Number(btn.getAttribute('data-amount') || 0));
       });
     });
   }
 
-  function renderTransactions(items){
-    const rows = Array.isArray(items) ? items : [];
-    if (!rows.length) {
-      transactionsListEl.innerHTML = `<div class="muted">Операций пока нет</div>`;
+  function renderIssues(items){
+    if (!Array.isArray(items) || !items.length) {
+      issuesList.innerHTML = `<div class="muted">Открытых проблем не найдено</div>`;
       return;
     }
-    transactionsListEl.innerHTML = rows.map((tx) => `
+    issuesList.innerHTML = items.map((item) => `
       <div class="billing-table-row">
         <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
           <div style="min-width:0;flex:1 1 auto;">
-            <div class="row gap-8" style="flex-wrap:wrap"><b>${esc(tx.venue_name || ('Venue #' + tx.venue_id))}</b><span class="muted">${esc(txTypeLabel(tx.type))}</span><span class="muted">${esc(txStatusLabel(tx.status))}</span></div>
-            <div class="small" style="margin-top:6px">${esc(formatDateTime(tx.created_at))} · ${esc(txSourceLabel(tx.source))}</div>
-            <div class="small" style="margin-top:6px">Сумма: ${esc(formatMinor(tx.amount_minor || 0))}${tx.days_added ? ` · ${esc('+' + tx.days_added + ' дн.')}` : ''}</div>
-            <div class="small" style="margin-top:6px">Счёт: <span class="mono">${esc(tx.provider_invoice_id || '—')}</span></div>
-            ${tx.comment ? `<div class="small" style="margin-top:6px">${esc(tx.comment)}</div>` : ''}
+            <div class="row gap-8" style="align-items:center;flex-wrap:wrap">
+              ${issueChip(item.severity)}
+              <b>${esc(item.label || item.issue_code || 'Проблема')}</b>
+            </div>
+            <div class="small mt-6">${esc(item.venue_name || '—')}</div>
+            <div class="small mt-6">${esc(item.details || '—')}</div>
+            <div class="small mt-6 mono">Issue code: ${esc(item.issue_code || '—')}</div>
+            <div class="small mt-6">Создано: ${esc(formatDateTime(item.created_at))}</div>
+          </div>
+          <div class="toolbar" style="justify-content:flex-end;max-width:300px">
+            ${item.venue_id ? `<a class="btn subtle" href="/app-venue.html?venue_id=${item.venue_id}">Открыть venue</a>` : ''}
           </div>
         </div>
       </div>
     `).join('');
   }
 
-  function renderIssues(data){
-    const rows = Array.isArray(data?.items) ? data.items : [];
-    if (!rows.length) {
-      issuesListEl.innerHTML = `<div class="muted">Открытых проблем не найдено</div>`;
+  function renderTransactions(items){
+    if (!Array.isArray(items) || !items.length) {
+      transactionsList.innerHTML = `<div class="muted">Операции не найдены</div>`;
       return;
     }
-    issuesListEl.innerHTML = rows.map((item) => `
+    transactionsList.innerHTML = items.map((tx) => `
       <div class="billing-table-row">
         <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
           <div style="min-width:0;flex:1 1 auto;">
-            <div class="row gap-8" style="flex-wrap:wrap"><b>${esc(item.venue_name || ('Venue #' + item.venue_id))}</b>${severityChip(item.severity)}<span class="muted">${esc(issueTypeLabel(item.issue_type))}</span></div>
-            <div class="small" style="margin-top:6px">${esc(formatDateTime(item.occurred_at))}</div>
-            <div class="small" style="margin-top:6px">${esc(item.description || '—')}</div>
-            <div class="small" style="margin-top:6px">Владелец: ${esc(item?.owner?.label || '—')}${item.transaction_id ? ` · Transaction #${esc(item.transaction_id)}` : ''}</div>
+            <div class="row gap-8" style="align-items:center;flex-wrap:wrap">
+              <b>${esc(tx.venue_name || ('Заведение #' + tx.venue_id))}</b>
+              <span class="status-chip">${esc(txStatusLabel(tx.status))}</span>
+              <span class="status-chip">${esc(txTypeLabel(tx.type))}</span>
+            </div>
+            <div class="small mt-6">Источник: ${esc(txSourceLabel(tx.source))}</div>
+            <div class="small mt-6">Сумма: ${esc(formatMinor(tx.amount_minor || 0))}</div>
+            <div class="small mt-6">Период: ${esc(formatDate(tx.period_from))} → ${esc(formatDate(tx.period_until))}</div>
+            <div class="small mt-6">Создано: ${esc(formatDateTime(tx.created_at))}</div>
+            ${tx.comment ? `<div class="small mt-6">Комментарий: ${esc(tx.comment)}</div>` : ''}
           </div>
         </div>
       </div>
@@ -364,11 +395,26 @@
   }
 
   async function loadSummary(){
-    const data = await api('/admin/billing/summary');
-    renderSummary(data);
+    const summary = await api('/admin/billing/summary');
+    renderSummary(summary);
   }
-
-  async function loadVenues(page = currentPage){
+  async function loadHealth(){
+    const health = await api('/admin/billing/health');
+    renderHealth(health);
+  }
+  async function loadIssues(){
+    const data = await api('/admin/billing/reconciliation?limit=50');
+    renderIssues(data?.items || []);
+  }
+  async function loadTransactions(){
+    const params = new URLSearchParams();
+    if (txTypeFilter.value) params.set('tx_type', txTypeFilter.value);
+    if (txStatusFilter.value) params.set('status', txStatusFilter.value);
+    params.set('limit', '50');
+    const data = await api(`/admin/billing/transactions?${params.toString()}`);
+    renderTransactions(data?.items || []);
+  }
+  async function loadList(page = currentPage){
     listEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
     const params = new URLSearchParams();
     if (statusFilter.value) params.set('status', statusFilter.value);
@@ -380,28 +426,7 @@
     params.set('page', String(Math.max(1, Number(page || 1))));
     params.set('page_size', '50');
     const data = await api(`/admin/billing/venues?${params.toString()}`);
-    renderVenues(data?.items || [], data || {});
-  }
-
-  async function loadTransactions(){
-    transactionsListEl.innerHTML = `<div class="skeleton"></div>`;
-    const params = new URLSearchParams();
-    if (txTypeFilter.value) params.set('tx_type', txTypeFilter.value);
-    if (txStatusFilter.value) params.set('tx_status', txStatusFilter.value);
-    if (txSearch.value.trim()) params.set('q', txSearch.value.trim());
-    params.set('page_size', '20');
-    const data = await api(`/admin/billing/transactions?${params.toString()}`);
-    renderTransactions(data?.items || []);
-  }
-
-  async function loadIssues(){
-    issuesListEl.innerHTML = `<div class="skeleton"></div>`;
-    const params = new URLSearchParams();
-    if (issueTypeFilter.value) params.set('issue_type', issueTypeFilter.value);
-    if (issueSearch.value.trim()) params.set('q', issueSearch.value.trim());
-    params.set('page_size', '20');
-    const data = await api(`/admin/billing/reconciliation?${params.toString()}`);
-    renderIssues(data || {});
+    renderList(data?.items || [], data || {});
   }
 
   async function extendVenue(venueId, days, comment = ''){
@@ -416,19 +441,14 @@
       toast(`Не удалось продлить: ${e.message}`, 'err');
     }
   }
-
   async function promptExtendVenue(venueId){
     const rawDays = prompt('На сколько дней продлить?', '30');
     if (!rawDays) return;
     const days = Number(rawDays);
-    if (!Number.isFinite(days) || days <= 0) {
-      toast('Введите корректное количество дней', 'warn');
-      return;
-    }
+    if (!Number.isFinite(days) || days <= 0) return toast('Введите корректное количество дней', 'warn');
     const comment = prompt('Комментарий для истории (необязательно)', '') || '';
     await extendVenue(venueId, Math.round(days), comment);
   }
-
   async function promptSetPaidUntil(venueId){
     const rawDate = prompt('Установить paid_until (формат YYYY-MM-DD)', '');
     if (!rawDate) return;
@@ -444,23 +464,18 @@
       toast(`Не удалось обновить дату: ${e.message}`, 'err');
     }
   }
-
-  async function promptRefund(venueId, venueName, lastAmountMinor = 0){
-    const defaultRub = ((Number(lastAmountMinor || 0) / 100) || 2990).toString().replace(/\.0+$/, '');
-    const rawAmount = prompt(`Сумма возврата для «${venueName || ('venue #' + venueId)}» в рублях`, defaultRub);
-    if (!rawAmount) return;
-    const amount = Number(String(rawAmount).replace(',', '.'));
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast('Введите корректную сумму возврата', 'warn');
-      return;
-    }
-    const comment = prompt('Причина возврата (необязательно)', '') || '';
+  async function promptRefundVenue(venueId){
+    const raw = prompt('Сумма возврата в рублях', '2990');
+    if (!raw) return;
+    const rub = Number(String(raw).replace(',', '.'));
+    if (!Number.isFinite(rub) || rub <= 0) return toast('Введите корректную сумму', 'warn');
+    const comment = prompt('Причина возврата', '') || '';
     try {
       await api(`/admin/venues/${encodeURIComponent(venueId)}/billing/refund`, {
         method: 'POST',
-        body: { amount_minor: Math.round(amount * 100), comment, revoke_access_hint: false },
+        body: { amount_minor: Math.round(rub * 100), comment },
       });
-      toast('Возврат записан в историю', 'ok');
+      toast('Возврат записан в биллинг', 'ok');
       await boot();
     } catch (e) {
       toast(`Не удалось оформить возврат: ${e.message}`, 'err');
@@ -472,29 +487,30 @@
       const data = await api(`/venues/${encodeURIComponent(venueId)}/billing`);
       const txs = Array.isArray(data?.transactions) ? data.transactions : [];
       const events = Array.isArray(data?.events) ? data.events : [];
-      if (!txs.length && !events.length) {
-        openModal('История биллинга', 'Пока нет операций по этому заведению.');
-        return;
-      }
-      const txLines = txs.map((tx) => [
-        `[Операция] ${formatDateTime(tx.created_at)} · ${txStatusLabel(tx.status)}`,
-        `Источник: ${txSourceLabel(tx.source)}`,
-        `Тип: ${txTypeLabel(tx.type)}`,
-        `Сумма: ${formatMinor(tx.amount_minor || 0)}`,
-        `Период: ${formatDate(tx.period_from)} → ${formatDate(tx.period_until)}`,
-        tx.comment ? `Комментарий: ${tx.comment}` : '',
-        '—'.repeat(24),
-      ].filter(Boolean).join('\n'));
-      const eventLines = events.map((event) => {
+      if (!txs.length && !events.length) return openModal('История биллинга', 'Пока нет операций по этому заведению.');
+      const lines = [];
+      txs.forEach((tx) => {
+        lines.push([
+          `[Операция] ${formatDateTime(tx.created_at)} · ${txStatusLabel(tx.status)}`,
+          `Источник: ${txSourceLabel(tx.source)}`,
+          `Тип: ${txTypeLabel(tx.type)}`,
+          `Сумма: ${formatMinor(tx.amount_minor || 0)}`,
+          `Период: ${formatDate(tx.period_from)} → ${formatDate(tx.period_until)}`,
+          tx.comment ? `Комментарий: ${tx.comment}` : '',
+          '—'.repeat(24),
+        ].filter(Boolean).join('\n'));
+      });
+      events.forEach((event) => {
         const meta = event?.meta && typeof event.meta === 'object' ? event.meta : {};
-        return [
+        lines.push([
           `[Событие] ${formatDateTime(event.created_at)} · ${eventLabel(event.event_type)}`,
           `Статус: ${event.old_status || '—'} → ${event.new_status || '—'}`,
           meta.transaction_id ? `Transaction ID: ${meta.transaction_id}` : '',
+          meta.details ? `Детали: ${meta.details}` : '',
           '—'.repeat(24),
-        ].filter(Boolean).join('\n');
+        ].filter(Boolean).join('\n'));
       });
-      openModal(`История · venue #${venueId}`, [...txLines, ...eventLines].join('\n'));
+      openModal(`История · venue #${venueId}`, lines.join('\n'));
     } catch (e) {
       toast(`Не удалось загрузить историю: ${e.message}`, 'err');
     }
@@ -503,22 +519,23 @@
   async function boot(){
     const ok = await ensureLogin({ silent: true });
     if (!ok.ok) return;
-    await Promise.all([loadSummary(), loadVenues(), loadTransactions(), loadIssues()]);
+    await Promise.all([loadSummary(), loadHealth(), loadList(), loadIssues(), loadTransactions()]);
   }
 
-  [statusFilter, dueSoonEl, overdueEl, sortByEl].forEach((el) => el?.addEventListener('change', () => { currentPage = 1; loadVenues(1).catch((e) => toast(e.message, 'err')); }));
+  [statusFilter, dueSoonEl, overdueEl, sortByEl].forEach((el) => el?.addEventListener('change', () => { currentPage = 1; loadList(1).catch((e) => toast(e.message, 'err')); }));
   [txTypeFilter, txStatusFilter].forEach((el) => el?.addEventListener('change', () => loadTransactions().catch((e) => toast(e.message, 'err'))));
-  issueTypeFilter?.addEventListener('change', () => loadIssues().catch((e) => toast(e.message, 'err')));
-  searchEl?.addEventListener('input', () => { clearTimeout(searchEl._t); searchEl._t = setTimeout(() => { currentPage = 1; loadVenues(1).catch((e) => toast(e.message, 'err')); }, 250); });
-  txSearch?.addEventListener('input', () => { clearTimeout(txSearch._t); txSearch._t = setTimeout(() => loadTransactions().catch((e) => toast(e.message, 'err')), 250); });
-  issueSearch?.addEventListener('input', () => { clearTimeout(issueSearch._t); issueSearch._t = setTimeout(() => loadIssues().catch((e) => toast(e.message, 'err')), 250); });
+  searchEl?.addEventListener('input', () => {
+    clearTimeout(searchEl._t);
+    searchEl._t = setTimeout(() => { currentPage = 1; loadList(1).catch((e) => toast(e.message, 'err')); }, 250);
+  });
   refreshBtn?.addEventListener('click', () => boot().catch((e) => toast(e.message, 'err')));
-  txRefreshBtn?.addEventListener('click', () => loadTransactions().catch((e) => toast(e.message, 'err')));
-  issuesRefreshBtn?.addEventListener('click', () => loadIssues().catch((e) => toast(e.message, 'err')));
-  prevPageBtn?.addEventListener('click', () => { if (currentPage <= 1) return; currentPage -= 1; loadVenues(currentPage).catch((e) => toast(e.message, 'err')); });
-  nextPageBtn?.addEventListener('click', () => { if (!hasNextPage) return; currentPage += 1; loadVenues(currentPage).catch((e) => toast(e.message, 'err')); });
+  refreshHealthBtn?.addEventListener('click', () => loadHealth().catch((e) => toast(e.message, 'err')));
+  refreshIssuesBtn?.addEventListener('click', () => loadIssues().catch((e) => toast(e.message, 'err')));
+  refreshTransactionsBtn?.addEventListener('click', () => loadTransactions().catch((e) => toast(e.message, 'err')));
+  prevPageBtn?.addEventListener('click', () => { if (currentPage > 1) loadList(currentPage - 1).catch((e) => toast(e.message, 'err')); });
+  nextPageBtn?.addEventListener('click', () => { if (hasNextPage) loadList(currentPage + 1).catch((e) => toast(e.message, 'err')); });
 
-  await boot();
+  boot().catch((e) => toast(e.message, 'err'));
 </script>
 </body>
 </html>

@@ -310,7 +310,7 @@ const titleEl = document.getElementById("title");
 
         function billingTxSourceLabel(value) {
           const v = String(value || "").toUpperCase();
-          if (v === "MANUAL_ADMIN") return "Ручная операция";
+          if (v === "MANUAL_ADMIN") return "Ручное продление";
           if (v === "ROBOKASSA") return "Robokassa";
           return v || "—";
         }
@@ -344,9 +344,9 @@ const titleEl = document.getElementById("title");
             ROBOKASSA_PAYMENT_CANCELED: "Платёж отменён",
             ROBOKASSA_PAYMENT_EXPIRED: "Checkout истёк",
             ROBOKASSA_RESULT_SIGNATURE_INVALID: "Неверная подпись callback",
-            ROBOKASSA_AMOUNT_MISMATCH: "Несовпадение суммы",
+            ROBOKASSA_AMOUNT_MISMATCH: "Расхождение суммы",
             ROBOKASSA_RESULT_DUPLICATE: "Повторный callback",
-            BILLING_REFUND_CREATED: "Возврат оформлен",
+            BILLING_REFUND_CREATED: "Возврат создан",
           };
           return map[v] || v || "—";
         }
@@ -488,8 +488,8 @@ const titleEl = document.getElementById("title");
           }
 
           const lastTxHtml = txs.length
-            ? `<div class="mt-12"><div class="muted" style="margin-bottom:6px">Последние операции</div>${txs.slice(0, 3).map((tx) => `<div class="row" style="justify-content:space-between;gap:8px;margin-top:6px"><div><b>${formatDate(tx.created_at)}</b><div class="muted small">${billingTxTypeLabel(tx.type)} · ${billingTxStatusLabel(tx.status)}</div></div><div class="small">${tx.days_added ? `+${tx.days_added} дн.` : ""} ${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}</div></div>`).join("")}</div>`
-            : `<div class="muted mt-12">История операций появится здесь после первых событий.</div>`;
+            ? `<div class="mt-12"><div class="muted" style="margin-bottom:6px">Последние продления</div>${txs.slice(0, 3).map((tx) => `<div class="row" style="justify-content:space-between;gap:8px;margin-top:6px"><div><b>${formatDate(tx.created_at)}</b><div class="muted small">${tx.source === "MANUAL_ADMIN" ? "Ручное продление" : (tx.source || "Операция")}</div></div><div class="small">${tx.days_added ? `+${tx.days_added} дн.` : ""} ${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}</div></div>`).join("")}</div>`
+            : `<div class="muted mt-12">История продлений появится здесь после первых операций.</div>`;
 
           if (billingCard) {
             billingCard.innerHTML = `

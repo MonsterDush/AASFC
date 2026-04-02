@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
 
@@ -13,11 +14,11 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.models.user import User
 from app.models.venue import Venue
+from app.models.venue_billing_event import VenueBillingEvent
 from app.models.venue_member import VenueMember
 from app.services.billing import (
     apply_checkout_payment_success,
     build_checkout_url,
-    create_billing_event,
     create_checkout_transaction,
     format_out_sum,
     get_billing_transaction_by_invoice_id,
@@ -32,10 +33,15 @@ from app.services.billing import (
     mark_checkout_transaction_failed,
     parse_amount_minor,
     send_owner_billing_notification_once,
+    send_super_admin_billing_alert_once,
 )
 
 router = APIRouter(prefix="/venues", tags=["billing"])
 public_router = APIRouter(tags=["billing-public"])
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _require_owner_or_admin_billing_access(db: Session, *, venue_id: int, user: User) -> str:
@@ -253,7 +259,7 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
         algorithm=robo_cfg.hash_algorithm,
         extra_params=extra_params,
     ):
-        mark_checkout_transaction_failed(
+        tx, event = mark_checkout_transaction_failed(
             db,
             transaction=tx,
             status="FAILED",
@@ -262,6 +268,18 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
             event_type="ROBOKASSA_RESULT_SIGNATURE_INVALID",
         )
         db.commit()
+        if event is not None:
+            send_super_admin_billing_alert_once(
+                db,
+                notification_type="invalid_signature",
+                event_key=str(event.id),
+                venue_id=int(tx.venue_id),
+                text=(
+                    f"Проблема биллинга: по заведению #{int(tx.venue_id)} Robokassa прислала callback с неверной подписью. "
+                    f"Invoice #{invoice_id}."
+                ),
+            )
+            db.commit()
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     amount_minor = parse_amount_minor(out_sum)
@@ -274,40 +292,75 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
             amount_minor=amount_minor,
         )
     except ValueError:
-        mark_checkout_transaction_failed(
+        tx, event = mark_checkout_transaction_failed(
             db,
             transaction=tx,
             status="FAILED",
-            provider_payload_json={"result_params": params, "amount_mismatch": True, "received_amount_minor": amount_minor},
+            provider_payload_json={
+                "result_params": params,
+                "amount_mismatch": True,
+                "received_amount_minor": amount_minor,
+                "expected_amount_minor": int(tx.amount_minor or 0),
+            },
             comment="Robokassa amount mismatch",
             event_type="ROBOKASSA_AMOUNT_MISMATCH",
         )
         db.commit()
+        if event is not None:
+            send_super_admin_billing_alert_once(
+                db,
+                notification_type="amount_mismatch",
+                event_key=str(event.id),
+                venue_id=int(tx.venue_id),
+                text=(
+                    f"Проблема биллинга: mismatch суммы по заведению #{int(tx.venue_id)}. "
+                    f"Invoice #{invoice_id}, ожидалось {int(tx.amount_minor or 0)} коп., пришло {int(amount_minor or 0)} коп."
+                ),
+            )
+            db.commit()
         raise HTTPException(status_code=400, detail="Amount mismatch")
 
     if not applied:
-        create_billing_event(
-            db,
+        event = VenueBillingEvent(
             venue_id=int(tx.venue_id),
             event_type="ROBOKASSA_RESULT_DUPLICATE",
             old_status=None,
             new_status=None,
-            meta_json={"transaction_id": int(tx.id), "invoice_id": invoice_id},
+            meta_json={
+                "transaction_id": int(tx.id),
+                "invoice_id": invoice_id,
+                "details": "Повторный callback Robokassa для уже применённой оплаты.",
+            },
             created_by_user_id=tx.created_by_user_id,
+            created_at=_now_utc(),
         )
-    db.commit()
-    if applied:
-        venue_name = db.execute(select(Venue.name).where(Venue.id == int(tx.venue_id))).scalar_one_or_none() or f"Заведение #{int(tx.venue_id)}"
-        paid_until = state.paid_until.strftime("%d.%m.%Y") if state.paid_until else "—"
-        send_owner_billing_notification_once(
+        db.add(event)
+        db.commit()
+        send_super_admin_billing_alert_once(
             db,
+            notification_type="duplicate_callback",
+            event_key=str(event.id),
             venue_id=int(tx.venue_id),
-            notification_type="payment_success",
-            event_key=str(tx.id),
-            text=f"Оплата по заведению «{venue_name}» подтверждена. Доступ продлён до {paid_until}.",
-            button_text="Открыть заведение",
+            text=(
+                f"Проблема биллинга: повторный callback Robokassa по заведению #{int(tx.venue_id)}. "
+                f"Invoice #{invoice_id}."
+            ),
         )
         db.commit()
+        return PlainTextResponse(f"OK{invoice_id}")
+
+    db.commit()
+    venue_name = db.execute(select(Venue.name).where(Venue.id == int(tx.venue_id))).scalar_one_or_none() or f"Заведение #{int(tx.venue_id)}"
+    paid_until = state.paid_until.strftime("%d.%m.%Y") if state.paid_until else "—"
+    send_owner_billing_notification_once(
+        db,
+        venue_id=int(tx.venue_id),
+        notification_type="payment_success",
+        event_key=str(tx.id),
+        text=f"Оплата по заведению «{venue_name}» подтверждена. Доступ продлён до {paid_until}.",
+        button_text="Открыть заведение",
+    )
+    db.commit()
     return PlainTextResponse(f"OK{invoice_id}")
 
 

@@ -5,13 +5,15 @@ Run periodically (for example, every hour) from the backend environment.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Venue, VenueBillingState
-from app.services.billing import expire_stale_pending_checkouts, get_billing_snapshot_for_state, send_owner_billing_notification_once, sync_billing_state
+from app.models.venue_billing_transaction import VenueBillingTransaction
+from app.services.billing import expire_stale_pending_checkouts, get_billing_health_summary, get_billing_snapshot_for_state, send_owner_billing_notification_once, send_super_admin_billing_alert_once, sync_billing_state
 
 
 def _utc_now() -> datetime:
@@ -36,11 +38,25 @@ def main() -> int:
     changed_states = 0
     sent_notifications = 0
     expired_checkouts = 0
+    sent_admin_alerts = 0
 
     with SessionLocal() as db:
-        expired_checkouts, _events = expire_stale_pending_checkouts(db, now=now)
+        expired_checkouts, events = expire_stale_pending_checkouts(db, now=now)
         if expired_checkouts:
             db.commit()
+            for event in events:
+                sent_admin_alerts += send_super_admin_billing_alert_once(
+                    db,
+                    notification_type="stale_pending",
+                    event_key=str(event.id),
+                    venue_id=int(event.venue_id),
+                    text=(
+                        f"Проблема биллинга: checkout по заведению #{int(event.venue_id)} истёк без оплаты. "
+                        f"Проверьте pending-платежи и историю операций."
+                    ),
+                )
+            if sent_admin_alerts:
+                db.commit()
 
         rows = db.execute(
             select(VenueBillingState, Venue.name)
@@ -115,7 +131,30 @@ def main() -> int:
 
             db.commit()
 
-    print(f"changed_states={changed_states} sent_notifications={sent_notifications} expired_checkouts={expired_checkouts}")
+        failed_threshold = max(1, int(getattr(settings, "BILLING_ALERT_FAILED_THRESHOLD_24H", 5) or 5))
+        failed_24h = db.execute(
+            select(VenueBillingTransaction.id).where(
+                VenueBillingTransaction.type == "PAYMENT",
+                VenueBillingTransaction.status == "FAILED",
+                VenueBillingTransaction.created_at >= now - timedelta(hours=24),
+            )
+        ).all()
+        if len(failed_24h) >= failed_threshold:
+            sent_admin_alerts += send_super_admin_billing_alert_once(
+                db,
+                notification_type="failed_threshold_24h",
+                event_key=now.date().isoformat(),
+                text=(
+                    f"Проблема биллинга: за последние 24 часа накопилось {len(failed_24h)} failed checkout. "
+                    f"Проверьте раздел биллинга и сверку."
+                ),
+            )
+            if sent_admin_alerts:
+                db.commit()
+
+        get_billing_health_summary(db)
+
+    print(f"changed_states={changed_states} sent_notifications={sent_notifications} expired_checkouts={expired_checkouts} sent_admin_alerts={sent_admin_alerts}")
     return 0
 
 
