@@ -159,12 +159,7 @@ def create_venue_billing_checkout(
         comment="Robokassa checkout created",
     )
     out_sum = format_out_sum(int(tx.amount_minor or 0), test_mode=robo_cfg.test_mode)
-    extra_params = {
-        "Shp_venueId": str(int(venue_id)),
-        "Shp_tx": str(int(tx.id)),
-    }
     checkout_expires_at = get_checkout_expires_at(tx)
-    expiration_value = checkout_expires_at if bool(getattr(settings, "ROBOKASSA_SEND_EXPIRATION_DATE", False)) else None
     checkout_url = build_checkout_url(
         merchant_login=robo_cfg.merchant_login,
         out_sum=out_sum,
@@ -176,18 +171,17 @@ def create_venue_billing_checkout(
         result_url=robo_cfg.result_url,
         success_url=robo_cfg.success_url,
         fail_url=robo_cfg.fail_url,
-        extra_params=extra_params,
+        extra_params=None,
         test_mode=robo_cfg.test_mode,
         culture="ru",
-        expiration_date=expiration_value,
-        use_return_url2=bool(getattr(settings, "ROBOKASSA_USE_RETURN_URL2", False)),
+        expiration_date=None,
+        use_return_url2=False,
     )
     payload = dict(tx.provider_payload_json or {})
     payload.update({
         "out_sum": out_sum,
         "venue_name": venue.name,
         "checkout_url": checkout_url,
-        "extra_params": extra_params,
         "test_mode": robo_cfg.test_mode,
         "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
     })
@@ -242,7 +236,6 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
     if tx is None:
         raise HTTPException(status_code=404, detail="Billing transaction not found")
 
-    extra_params = {k: v for k, v in params.items() if str(k).startswith("Shp_")}
     robo_cfg = get_robokassa_config()
     if not is_valid_result_signature(
         out_sum=out_sum,
@@ -250,7 +243,7 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
         received_signature=signature,
         password2=robo_cfg.password2,
         algorithm=robo_cfg.hash_algorithm,
-        extra_params=extra_params,
+        extra_params=None,
     ):
         mark_checkout_transaction_failed(
             db,
@@ -292,7 +285,7 @@ async def robokassa_success(request: Request, db: Session = Depends(get_db)):
     params = await _extract_callback_params(request)
     invoice_id = str(params.get("InvId") or params.get("InvoiceID") or "").strip()
     tx = get_billing_transaction_by_invoice_id(db, invoice_id=invoice_id) if invoice_id else None
-    venue_id = int(tx.venue_id) if tx is not None else int(params.get("Shp_venueId") or 0)
+    venue_id = int(tx.venue_id) if tx is not None else 0
     if venue_id <= 0:
         return RedirectResponse(url=f"{settings.frontend_base_url()}/app-venues.html?billing_payment=success", status_code=302)
 
@@ -302,7 +295,6 @@ async def robokassa_success(request: Request, db: Session = Depends(get_db)):
         payment_status = "success" if str(tx.status or "").upper() == "SUCCEEDED" else "processing"
         out_sum = str(params.get("OutSum") or params.get("IncSum") or "").strip()
         signature = str(params.get("SignatureValue") or "").strip()
-        extra_params = {k: v for k, v in params.items() if str(k).startswith("Shp_")}
         if out_sum and signature:
             if not is_valid_success_signature(
                 out_sum=out_sum,
@@ -310,7 +302,7 @@ async def robokassa_success(request: Request, db: Session = Depends(get_db)):
                 received_signature=signature,
                 password1=robo_cfg.password1,
                 algorithm=robo_cfg.hash_algorithm,
-                extra_params=extra_params,
+                extra_params=None,
             ):
                 payment_status = "processing"
     return RedirectResponse(url=_frontend_payment_redirect(venue_id=venue_id, invoice_id=invoice_id, payment_status=payment_status), status_code=302)
@@ -321,7 +313,7 @@ async def robokassa_fail(request: Request, db: Session = Depends(get_db)):
     params = await _extract_callback_params(request)
     invoice_id = str(params.get("InvId") or params.get("InvoiceID") or "").strip()
     tx = get_billing_transaction_by_invoice_id(db, invoice_id=invoice_id) if invoice_id else None
-    venue_id = int(tx.venue_id) if tx is not None else int(params.get("Shp_venueId") or 0)
+    venue_id = int(tx.venue_id) if tx is not None else 0
     if tx is not None:
         mark_checkout_transaction_failed(
             db,
