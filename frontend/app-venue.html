@@ -601,12 +601,14 @@ const titleEl = document.getElementById("title");
         const referencesCard = document.getElementById("referencesCard");
         const tipsCard = document.getElementById("tipsSettingsCard");
 
-        // Owner/admin-only destructive actions
+        // Rename is available to owner/admin, archive/delete actions — only to superadmin/moderator.
         const canAdminVenue = (isOwner || isAdmin);
+        const canArchiveVenue = !!isAdmin;
+        const canDeleteVenue = !!isAdmin;
         if (btnRename) btnRename.style.display = canAdminVenue ? "" : "none";
-        if (btnArchive) btnArchive.style.display = canAdminVenue ? "" : "none";
-        if (btnUnarchive) btnUnarchive.style.display = canAdminVenue ? "" : "none";
-        if (btnDelete) btnDelete.style.display = canAdminVenue ? "" : "none";
+        if (btnArchive) btnArchive.style.display = canArchiveVenue ? "" : "none";
+        if (btnUnarchive) btnUnarchive.style.display = canArchiveVenue ? "" : "none";
+        if (btnDelete) btnDelete.style.display = canDeleteVenue ? "" : "none";
 
 
         let last = { is_archived: false, name: "" };
