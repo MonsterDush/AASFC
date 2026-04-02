@@ -64,11 +64,9 @@ def get_robokassa_config() -> RobokassaConfig:
 def format_out_sum(amount_minor: int, *, test_mode: bool) -> str:
     amount_minor_int = max(0, int(amount_minor or 0))
     amount_rub = (Decimal(amount_minor_int) / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    if test_mode:
-        if amount_rub == amount_rub.to_integral_value():
-            return str(int(amount_rub))
-        return format(amount_rub, "f")
-    return format(amount_rub.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP), "f")
+    # Robokassa в текущей документации рекомендует передавать сумму с точностью
+    # до двух знаков после запятой как в тестовом, так и в боевом режиме.
+    return format(amount_rub, ".2f")
 
 
 def _hash_value(payload: str, *, algorithm: str) -> str:
@@ -98,9 +96,23 @@ def calculate_checkout_signature(
     invoice_id: str,
     password1: str,
     algorithm: str,
+    receipt: str | None = None,
+    step_by_step: str | None = None,
+    result_url2: str | None = None,
+    success_url2: str | None = None,
+    success_url2_method: str | None = None,
+    fail_url2: str | None = None,
+    fail_url2_method: str | None = None,
+    token: str | None = None,
     extra_params: Mapping[str, str] | None = None,
 ) -> str:
-    base = f"{merchant_login}:{out_sum}:{invoice_id}:{password1}"
+    parts = [merchant_login, out_sum, invoice_id]
+    for value in [receipt, step_by_step, result_url2, success_url2, success_url2_method, fail_url2, fail_url2_method, token]:
+        normalized = str(value or "")
+        if normalized:
+            parts.append(normalized)
+    parts.append(password1)
+    base = ":".join(parts)
     for key, value in _sorted_shp_pairs(extra_params):
         base += f":{key}={value}"
     return _hash_value(base, algorithm=algorithm)
@@ -185,12 +197,18 @@ def build_checkout_url(
     expiration_date: datetime | str | None = None,
 ) -> str:
     shp_pairs = _sorted_shp_pairs(extra_params)
+    success_method = "GET"
+    fail_method = "GET"
     signature = calculate_checkout_signature(
         merchant_login=merchant_login,
         out_sum=out_sum,
         invoice_id=invoice_id,
         password1=password1,
         algorithm=algorithm,
+        success_url2=success_url,
+        success_url2_method=success_method,
+        fail_url2=fail_url,
+        fail_url2_method=fail_method,
         extra_params=dict(shp_pairs),
     )
     params: list[tuple[str, str]] = [
@@ -203,9 +221,9 @@ def build_checkout_url(
         # Основной ResultURL остаётся в настройках магазина; здесь задаём только
         # пользовательские обратные адреса второго уровня.
         ("SuccessUrl2", success_url),
-        ("SuccessUrl2Method", "GET"),
+        ("SuccessUrl2Method", success_method),
         ("FailUrl2", fail_url),
-        ("FailUrl2Method", "GET"),
+        ("FailUrl2Method", fail_method),
     ]
     expiration_value = _format_expiration_date(expiration_date)
     if expiration_value:
