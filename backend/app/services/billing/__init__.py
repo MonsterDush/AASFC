@@ -17,8 +17,11 @@ from .manager import (
     DEFAULT_BILLING_PROVIDER,
     create_default_billing_state,
     create_checkout_transaction,
+    expire_stale_pending_checkouts,
     extend_venue_billing,
     get_billing_transaction_by_invoice_id,
+    get_checkout_expires_at,
+    get_latest_pending_checkout,
     get_or_create_billing_state,
     list_billing_events,
     list_billing_transactions,
@@ -28,7 +31,7 @@ from .manager import (
     sync_billing_state,
 )
 from .notifications import billing_open_url, list_owner_notification_recipients, send_owner_billing_notification_once
-from .robokassa import build_checkout_url, format_expiration_date, format_out_sum, get_robokassa_config, is_valid_result_signature, is_valid_success_signature
+from .robokassa import build_checkout_url, format_out_sum, get_robokassa_config, is_valid_result_signature, is_valid_success_signature
 
 __all__ = [
     "BILLING_ACCESS_DENIED",
@@ -44,11 +47,13 @@ __all__ = [
     "billing_open_url",
     "build_checkout_url",
     "create_checkout_transaction",
+    "expire_stale_pending_checkouts",
     "create_default_billing_state",
     "extend_venue_billing",
-    "format_expiration_date",
     "format_out_sum",
     "get_billing_transaction_by_invoice_id",
+    "get_checkout_expires_at",
+    "get_latest_pending_checkout",
     "get_billing_snapshot_for_state",
     "get_or_create_billing_state",
     "get_robokassa_config",

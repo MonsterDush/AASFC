@@ -144,6 +144,9 @@ def get_admin_billing_venues(
     only_due_soon: bool = Query(default=False),
     only_overdue: bool = Query(default=False),
     include_archived: bool = Query(default=True),
+    sort_by: str = Query(default="paid_until_asc"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
@@ -193,9 +196,37 @@ def get_admin_billing_venues(
             } if last_tx else None,
         })
 
+    def _date_value(value):
+        if value is None:
+            return datetime(1970, 1, 1, tzinfo=timezone.utc)
+        if getattr(value, "tzinfo", None) is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    sort_key = str(sort_by or "paid_until_asc").strip().lower()
+    if sort_key == "paid_until_desc":
+        result.sort(key=lambda item: _date_value(item.get("paid_until") and datetime.fromisoformat(item["paid_until"])), reverse=True)
+    elif sort_key == "last_payment_desc":
+        result.sort(key=lambda item: _date_value(item.get("last_payment_at") and datetime.fromisoformat(item["last_payment_at"])), reverse=True)
+    elif sort_key == "name_asc":
+        result.sort(key=lambda item: str(item.get("venue_name") or "").lower())
+    elif sort_key == "name_desc":
+        result.sort(key=lambda item: str(item.get("venue_name") or "").lower(), reverse=True)
+    else:
+        result.sort(key=lambda item: _date_value(item.get("paid_until") and datetime.fromisoformat(item["paid_until"])))
+
+    total = len(result)
+    offset = (int(page) - 1) * int(page_size)
+    paged = result[offset: offset + int(page_size)]
+
     return {
-        "items": result,
-        "count": len(result),
+        "items": paged,
+        "count": len(paged),
+        "total": total,
+        "page": int(page),
+        "page_size": int(page_size),
+        "sort_by": sort_key,
+        "has_next": offset + int(page_size) < total,
     }
 
 

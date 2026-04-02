@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.venue_billing_event import VenueBillingEvent
 from app.models.venue_billing_state import VenueBillingState
 from app.models.venue_billing_transaction import VenueBillingTransaction
@@ -26,6 +27,7 @@ DEFAULT_BILLING_CURRENCY = "RUB"
 DEFAULT_BILLING_PROVIDER = "ROBOKASSA"
 DEFAULT_BILLING_DAYS = 30
 DEFAULT_BILLING_GRACE_DAYS = _DEFAULT_GRACE_DAYS
+DEFAULT_CHECKOUT_TTL_MINUTES = 60
 
 
 def _ensure_aware(dt: datetime | None) -> datetime | None:
@@ -42,6 +44,35 @@ def _json_object(value: Any) -> dict[str, Any]:
     if value is None:
         return {}
     return {"value": value}
+
+
+def _checkout_ttl_minutes() -> int:
+    configured = getattr(settings, "ROBOKASSA_CHECKOUT_TTL_MINUTES", None)
+    try:
+        value = int(configured or DEFAULT_CHECKOUT_TTL_MINUTES)
+    except (TypeError, ValueError):
+        value = DEFAULT_CHECKOUT_TTL_MINUTES
+    return max(5, value)
+
+
+def _pending_checkout_expires_at(*, created_at: datetime | None) -> datetime | None:
+    created = _ensure_aware(created_at)
+    if created is None:
+        return None
+    return created + timedelta(minutes=_checkout_ttl_minutes())
+
+
+def get_checkout_expires_at(transaction: VenueBillingTransaction | None) -> datetime | None:
+    if transaction is None:
+        return None
+    payload = _json_object(getattr(transaction, "provider_payload_json", None))
+    value = payload.get("checkout_expires_at")
+    if value:
+        try:
+            return _ensure_aware(datetime.fromisoformat(str(value)))
+        except Exception:
+            pass
+    return _pending_checkout_expires_at(created_at=getattr(transaction, "created_at", None))
 
 
 def parse_amount_minor(value: str | int | float | Decimal | None) -> int:
@@ -105,6 +136,26 @@ def list_billing_events(db: Session, *, venue_id: int, limit: int = 20) -> list[
         .limit(max(1, int(limit)))
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def get_latest_pending_checkout(db: Session, *, venue_id: int) -> VenueBillingTransaction | None:
+    stmt = (
+        select(VenueBillingTransaction)
+        .where(
+            VenueBillingTransaction.venue_id == int(venue_id),
+            VenueBillingTransaction.type == "PAYMENT",
+            VenueBillingTransaction.status == "PENDING",
+        )
+        .order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
+        .limit(1)
+    )
+    tx = db.execute(stmt).scalar_one_or_none()
+    if tx is None:
+        return None
+    expires_at = get_checkout_expires_at(tx)
+    if expires_at is not None and expires_at <= utcnow():
+        return None
+    return tx
 
 
 def get_billing_transaction_by_invoice_id(db: Session, *, invoice_id: str | int) -> VenueBillingTransaction | None:
@@ -336,8 +387,13 @@ def create_checkout_transaction(
     provider: str = DEFAULT_BILLING_PROVIDER,
     comment: str | None = None,
 ) -> VenueBillingTransaction:
+    existing = get_latest_pending_checkout(db, venue_id=int(venue_id))
+    if existing is not None:
+        return existing
+
     now = utcnow()
     state = get_or_create_billing_state(db, venue_id=int(venue_id))
+    checkout_expires_at = _pending_checkout_expires_at(created_at=now)
     tx = VenueBillingTransaction(
         venue_id=int(venue_id),
         source=str(provider or DEFAULT_BILLING_PROVIDER).upper(),
@@ -349,7 +405,10 @@ def create_checkout_transaction(
         period_until=None,
         provider_invoice_id=None,
         provider_payment_id=None,
-        provider_payload_json={"checkout_created_at": now.isoformat()},
+        provider_payload_json={
+            "checkout_created_at": now.isoformat(),
+            "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
+        },
         comment=comment,
         created_by_user_id=created_by_user_id,
         created_at=now,
@@ -361,6 +420,34 @@ def create_checkout_transaction(
     tx.updated_at = now
     db.flush()
     return tx
+
+
+def expire_stale_pending_checkouts(db: Session, *, now: datetime | None = None) -> tuple[int, list[VenueBillingEvent]]:
+    current = _ensure_aware(now) or utcnow()
+    txs = db.execute(
+        select(VenueBillingTransaction).where(
+            VenueBillingTransaction.type == "PAYMENT",
+            VenueBillingTransaction.status == "PENDING",
+        )
+    ).scalars().all()
+    expired_count = 0
+    events: list[VenueBillingEvent] = []
+    for tx in txs:
+        expires_at = get_checkout_expires_at(tx)
+        if expires_at is None or expires_at > current:
+            continue
+        tx, event = mark_checkout_transaction_failed(
+            db,
+            transaction=tx,
+            status="FAILED",
+            provider_payload_json={"expired_at": current.isoformat()},
+            comment="Billing checkout expired",
+            event_type="ROBOKASSA_PAYMENT_EXPIRED",
+        )
+        expired_count += 1
+        if event is not None:
+            events.append(event)
+    return expired_count, events
 
 
 def apply_checkout_payment_success(

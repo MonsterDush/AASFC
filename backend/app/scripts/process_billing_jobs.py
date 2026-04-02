@@ -5,13 +5,13 @@ Run periodically (for example, every hour) from the backend environment.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
-from app.models import Venue, VenueBillingState, VenueBillingTransaction
-from app.services.billing import get_billing_snapshot_for_state, get_robokassa_config, mark_checkout_transaction_failed, send_owner_billing_notification_once, sync_billing_state
+from app.models import Venue, VenueBillingState
+from app.services.billing import expire_stale_pending_checkouts, get_billing_snapshot_for_state, send_owner_billing_notification_once, sync_billing_state
 
 
 def _utc_now() -> datetime:
@@ -36,31 +36,11 @@ def main() -> int:
     changed_states = 0
     sent_notifications = 0
     expired_checkouts = 0
-    robo_cfg = get_robokassa_config()
 
     with SessionLocal() as db:
-        pending_before = now - timedelta(minutes=max(5, int(robo_cfg.pending_timeout_minutes or 180)))
-        pending_rows = db.execute(
-            select(VenueBillingTransaction)
-            .where(
-                VenueBillingTransaction.source == "ROBOKASSA",
-                VenueBillingTransaction.status == "PENDING",
-                VenueBillingTransaction.created_at < pending_before,
-            )
-            .order_by(VenueBillingTransaction.created_at.asc(), VenueBillingTransaction.id.asc())
-        ).scalars().all()
-        for tx in pending_rows:
-            _, event = mark_checkout_transaction_failed(
-                db,
-                transaction=tx,
-                status="EXPIRED",
-                provider_payload_json={"expired_by_job_at": now.isoformat()},
-                comment="Robokassa checkout expired before successful callback",
-                event_type="ROBOKASSA_PAYMENT_TIMEOUT",
-            )
-            if event is not None:
-                expired_checkouts += 1
-        db.commit()
+        expired_checkouts, _events = expire_stale_pending_checkouts(db, now=now)
+        if expired_checkouts:
+            db.commit()
 
         rows = db.execute(
             select(VenueBillingState, Venue.name)

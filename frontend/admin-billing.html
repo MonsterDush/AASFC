@@ -62,6 +62,11 @@
         </select>
         <button class="btn" id="refreshBtn">Обновить</button>
         <span class="muted" id="count">0</span>
+        <div class="row gap-8" style="margin-left:auto">
+          <button class="btn subtle" id="prevPageBtn">← Назад</button>
+          <span class="muted" id="pageInfo">1</span>
+          <button class="btn subtle" id="nextPageBtn">Вперёд →</button>
+        </div>
       </div>
       <div id="list"><div class="skeleton"></div><div class="skeleton"></div></div>
     </div>
@@ -108,6 +113,43 @@
   function formatMinor(value){
     return `${(Number(value || 0) / 100).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`;
   }
+
+  function txSourceLabel(value){
+    const v = String(value || '').toUpperCase();
+    if (v === 'MANUAL_ADMIN') return 'Ручное продление';
+    if (v === 'ROBOKASSA') return 'Robokassa';
+    return v || '—';
+  }
+  function txTypeLabel(value){
+    const v = String(value || '').toUpperCase();
+    if (v === 'PAYMENT') return 'Оплата';
+    if (v === 'EXTEND') return 'Продление';
+    if (v === 'SET_PAID_UNTIL') return 'Установка paid until';
+    if (v === 'REFUND') return 'Возврат';
+    return v || '—';
+  }
+  function txStatusLabel(value){
+    const v = String(value || '').toUpperCase();
+    if (v === 'SUCCEEDED') return 'Успешно';
+    if (v === 'PENDING') return 'Ожидает';
+    if (v === 'FAILED') return 'Ошибка';
+    if (v === 'CANCELED') return 'Отменено';
+    return v || '—';
+  }
+  function eventLabel(value){
+    const v = String(value || '').toUpperCase();
+    const map = {
+      BILLING_EXTENDED_MANUALLY: 'Ручное продление',
+      BILLING_PAID_UNTIL_SET_MANUALLY: 'Ручная установка paid until',
+      BILLING_STATUS_CHANGED_AUTO: 'Автопереход статуса',
+      ROBOKASSA_PAYMENT_SUCCEEDED: 'Оплата подтверждена',
+      ROBOKASSA_PAYMENT_FAILED: 'Ошибка оплаты',
+      ROBOKASSA_PAYMENT_CANCELED: 'Платёж отменён',
+      ROBOKASSA_PAYMENT_EXPIRED: 'Checkout истёк',
+      ROBOKASSA_RESULT_SIGNATURE_INVALID: 'Неверная подпись callback',
+    };
+    return map[v] || v || '—';
+  }
   function statusChip(status){
     const s = String(status || "").toUpperCase();
     const label = s === "ACTIVE" ? "ACTIVE" : (s === "GRACE" ? "GRACE" : "SUSPENDED");
@@ -124,8 +166,13 @@
   const countEl = document.getElementById("count");
   const refreshBtn = document.getElementById("refreshBtn");
   const sortByEl = document.getElementById("sortBy");
+  const prevPageBtn = document.getElementById("prevPageBtn");
+  const nextPageBtn = document.getElementById("nextPageBtn");
+  const pageInfoEl = document.getElementById("pageInfo");
 
   let lastItems = [];
+  let currentPage = 1;
+  let hasNextPage = false;
 
   function renderSummary(data){
     const t = data?.totals || {};
@@ -149,9 +196,15 @@
     return list;
   }
 
-  function renderList(items){
+  function renderList(items, meta = {}){
     lastItems = sortItems(items);
-    countEl.textContent = String(lastItems.length);
+    const total = Number(meta?.total || lastItems.length || 0);
+    currentPage = Number(meta?.page || currentPage || 1);
+    hasNextPage = Boolean(meta?.has_next);
+    countEl.textContent = `${lastItems.length} / ${total}`;
+    if (pageInfoEl) pageInfoEl.textContent = `Стр. ${currentPage}`;
+    if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
+    if (nextPageBtn) nextPageBtn.disabled = !hasNextPage;
     if (!lastItems.length) {
       listEl.innerHTML = `<div class="muted">Ничего не найдено</div>`;
       return;
@@ -199,7 +252,7 @@
     renderSummary(summary);
   }
 
-  async function loadList(){
+  async function loadList(page = currentPage){
     listEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
     const params = new URLSearchParams();
     if (statusFilter.value) params.set('status', statusFilter.value);
@@ -207,8 +260,11 @@
     if (dueSoonEl.checked) params.set('only_due_soon', 'true');
     if (overdueEl.checked) params.set('only_overdue', 'true');
     params.set('include_archived', 'true');
+    params.set('sort_by', String(sortByEl?.value || 'paid_until_asc'));
+    params.set('page', String(Math.max(1, Number(page || 1))));
+    params.set('page_size', '50');
     const data = await api(`/admin/billing/venues?${params.toString()}`);
-    renderList(data?.items || []);
+    renderList(data?.items || [], data || {});
   }
 
   async function extendVenue(venueId, days, comment = ''){
@@ -263,9 +319,9 @@
       }
       const txLines = txs.map((tx) => {
         return [
-          `[Операция] ${formatDate(tx.created_at)} · ${tx.status}`,
-          `Источник: ${tx.source || '—'}`,
-          `Тип: ${tx.type || '—'}`,
+          `[Операция] ${formatDate(tx.created_at)} · ${txStatusLabel(tx.status)}`,
+          `Источник: ${txSourceLabel(tx.source)}`,
+          `Тип: ${txTypeLabel(tx.type)}`,
           `Сумма: ${formatMinor(tx.amount_minor || 0)}`,
           `Период: ${formatDate(tx.period_from)} → ${formatDate(tx.period_until)}`,
           tx.comment ? `Комментарий: ${tx.comment}` : '',
@@ -277,7 +333,7 @@
         const periodFrom = meta.period_from ? formatDate(meta.period_from) : '—';
         const periodUntil = meta.period_until ? formatDate(meta.period_until) : '—';
         return [
-          `[Событие] ${formatDate(event.created_at)} · ${event.event_type || '—'}`,
+          `[Событие] ${formatDate(event.created_at)} · ${eventLabel(event.event_type)}`,
           `Статус: ${event.old_status || '—'} → ${event.new_status || '—'}`,
           (meta.period_from || meta.period_until) ? `Период: ${periodFrom} → ${periodUntil}` : '',
           meta.transaction_id ? `Transaction ID: ${meta.transaction_id}` : '',
@@ -296,12 +352,14 @@
     await Promise.all([loadSummary(), loadList()]);
   }
 
-  [statusFilter, dueSoonEl, overdueEl, sortByEl].forEach((el) => el?.addEventListener('change', () => loadList().catch((e) => toast(e.message, 'err'))));
+  [statusFilter, dueSoonEl, overdueEl, sortByEl].forEach((el) => el?.addEventListener('change', () => { currentPage = 1; loadList(1).catch((e) => toast(e.message, 'err')); }));
   searchEl?.addEventListener('input', () => {
     clearTimeout(searchEl._t);
-    searchEl._t = setTimeout(() => loadList().catch((e) => toast(e.message, 'err')), 250);
+    searchEl._t = setTimeout(() => { currentPage = 1; loadList(1).catch((e) => toast(e.message, 'err')); }, 250);
   });
   refreshBtn?.addEventListener('click', () => boot().catch((e) => toast(e.message, 'err')));
+  prevPageBtn?.addEventListener('click', () => { if (currentPage > 1) loadList(currentPage - 1).catch((e) => toast(e.message, 'err')); });
+  nextPageBtn?.addEventListener('click', () => { if (hasNextPage) loadList(currentPage + 1).catch((e) => toast(e.message, 'err')); });
 
   boot().catch((e) => toast(e.message, 'err'));
 </script>
