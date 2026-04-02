@@ -25,7 +25,7 @@
 
       <div class="itemcard mt-12 hidden" id="archiveNotice">
         <b>Заведение в архиве</b>
-        <div class="muted mt-6">Оно скрыто из списка активных заведений для команды. Владелец может открыть карточку, вернуть заведение или удалить его.</div>
+        <div class="muted mt-6">Оно скрыто из списка активных заведений для команды. Суперадмин может открыть карточку, вернуть заведение или удалить его.</div>
       </div>
 
       <div class="itemcard mt-12 section-card">
@@ -409,6 +409,7 @@ const titleEl = document.getElementById("title");
 
         function showBillingHistory() {
           const txs = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions : [];
+          const pendingCheckout = txs.find((tx) => String(tx?.status || "").toUpperCase() === "PENDING" && String(tx?.type || "").toUpperCase() === "PAYMENT") || null;
           const events = Array.isArray(billingInfo?.events) ? billingInfo.events : [];
           if (!txs.length && !events.length) {
             openModal("История биллинга", "Пока нет операций по этому заведению.");
@@ -422,7 +423,8 @@ const titleEl = document.getElementById("title");
                 `Источник: ${billingTxSourceLabel(tx.source)}`,
                 `Тип: ${billingTxTypeLabel(tx.type)}`,
                 `Сумма: ${formatMinor(tx.amount_minor || 0)}`,
-                `Период: ${formatDate(tx.period_from)} → ${formatDate(tx.period_until)}`,
+                String(tx?.status || "").toUpperCase() === "SUCCEEDED" && (tx?.period_from || tx?.period_until) ? `Период: ${formatDate(tx.period_from)} → ${formatDate(tx.period_until)}` : "",
+                String(tx?.status || "").toUpperCase() === "PENDING" ? "Доступ будет продлён только после подтверждения оплаты." : "",
                 tx.comment ? `Комментарий: ${tx.comment}` : '',
                 '—'.repeat(24),
               ].filter(Boolean).join('\n'),
@@ -471,6 +473,7 @@ const titleEl = document.getElementById("title");
           const reason = billingInfo?.billing_restricted_reason || perms?.billing_restricted_reason || "";
           const planLabel = billingInfo?.plan?.label || "Axelio · 2990 ₽ / 30 дней";
           const txs = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions : [];
+          const pendingCheckout = txs.find((tx) => String(tx?.status || "").toUpperCase() === "PENDING" && String(tx?.type || "").toUpperCase() === "PAYMENT") || null;
 
           let bannerHtml = "";
           if (status === "GRACE") {
@@ -484,8 +487,20 @@ const titleEl = document.getElementById("title");
           }
 
           const lastTxHtml = txs.length
-            ? `<div class="mt-12"><div class="muted" style="margin-bottom:6px">Последние продления</div>${txs.slice(0, 3).map((tx) => `<div class="row" style="justify-content:space-between;gap:8px;margin-top:6px"><div><b>${formatDate(tx.created_at)}</b><div class="muted small">${tx.source === "MANUAL_ADMIN" ? "Ручное продление" : (tx.source || "Операция")}</div></div><div class="small">${tx.days_added ? `+${tx.days_added} дн.` : ""} ${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}</div></div>`).join("")}</div>`
-            : `<div class="muted mt-12">История продлений появится здесь после первых операций.</div>`;
+            ? `<div class="mt-12"><div class="muted" style="margin-bottom:6px">Последние операции</div>${txs.slice(0, 3).map((tx) => {
+                const status = String(tx?.status || "").toUpperCase();
+                const type = String(tx?.type || "").toUpperCase();
+                const sourceLabel = billingTxSourceLabel(tx.source);
+                const statusLabel = billingTxStatusLabel(tx.status);
+                const rightLabel = status === "SUCCEEDED"
+                  ? `${tx.days_added ? `+${tx.days_added} дн. · ` : ""}${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}`
+                  : (tx.amount_minor ? `${formatMinor(tx.amount_minor)} · ${statusLabel}` : statusLabel);
+                const subLabel = status === "PENDING" && type === "PAYMENT"
+                  ? `${sourceLabel} · ожидает оплаты`
+                  : `${sourceLabel} · ${billingTxTypeLabel(tx.type)}`;
+                return `<div class="row" style="justify-content:space-between;gap:8px;margin-top:6px"><div><b>${formatDate(tx.created_at)}</b><div class="muted small">${subLabel}</div></div><div class="small">${rightLabel}</div></div>`;
+              }).join("")}</div>`
+            : `<div class="muted mt-12">История операций появится здесь после первых действий.</div>`;
 
           if (billingCard) {
             billingCard.innerHTML = `
@@ -503,7 +518,7 @@ const titleEl = document.getElementById("title");
                       <div class="muted mt-6">Статус: ${status === "ACTIVE" ? "Активно" : (status === "GRACE" ? "Grace" : "Доступ ограничен")}</div>
                       <div class="muted mt-6">Платёжный контур: ${billingInfo?.provider_ready === false ? "ещё не настроен" : (billingInfo?.provider_mode === "test" ? "тестовый режим" : "боевой режим")}</div>
                       <div class="muted mt-6">Оплачено до: ${formatDate(paidUntil)}</div>
-                      ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}${billingInfo?.checkout_expires_at ? `<div class="muted mt-6">Незавершённый checkout истекает: ${formatDateTime(billingInfo.checkout_expires_at)}</div>` : ""}
+                      ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}${billingInfo?.checkout_expires_at ? `<div class="muted mt-6">Незавершённая оплата действует до: ${formatDateTime(billingInfo.checkout_expires_at)}</div><div class="muted small mt-6">Доступ продлится только после успешного подтверждения оплаты.</div>` : ""}
                     </div>
                     <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
                       <button class="btn primary" id="billingExtendBtn" ${billingInfo?.provider_ready === false ? "disabled" : ""}>Продлить на 30 дней</button>
@@ -592,12 +607,14 @@ const titleEl = document.getElementById("title");
         const referencesCard = document.getElementById("referencesCard");
         const tipsCard = document.getElementById("tipsSettingsCard");
 
-        // Owner/admin-only destructive actions
+        // Rename is available to owner/admin, archive actions — only to superadmin.
         const canAdminVenue = (isOwner || isAdmin);
+        const canArchiveVenue = !!isAdmin;
+        const canDeleteVenue = !!isAdmin;
         if (btnRename) btnRename.style.display = canAdminVenue ? "" : "none";
-        if (btnArchive) btnArchive.style.display = canAdminVenue ? "" : "none";
-        if (btnUnarchive) btnUnarchive.style.display = canAdminVenue ? "" : "none";
-        if (btnDelete) btnDelete.style.display = canAdminVenue ? "" : "none";
+        if (btnArchive) btnArchive.style.display = canArchiveVenue ? "" : "none";
+        if (btnUnarchive) btnUnarchive.style.display = canArchiveVenue ? "" : "none";
+        if (btnDelete) btnDelete.style.display = canDeleteVenue ? "" : "none";
 
 
         let last = { is_archived: false, name: "" };
@@ -785,9 +802,9 @@ if (tipsModeEl) {
 }
         function applyButtons() {
           // Удаление разрешено только для архивного заведения
-          btnDelete.style.display = last.is_archived ? "" : "none";
-          btnArchive.style.display = last.is_archived ? "none" : "";
-          btnUnarchive.style.display = last.is_archived ? "" : "none";
+          btnDelete.style.display = canDeleteVenue ? (last.is_archived ? "" : "none") : "none";
+          btnArchive.style.display = canArchiveVenue ? (last.is_archived ? "none" : "") : "none";
+          btnUnarchive.style.display = canArchiveVenue ? (last.is_archived ? "" : "none") : "none";
         }
 
         async function load() {
