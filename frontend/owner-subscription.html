@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Подписка</title>
+  <style>
+    .meta-grid { display:grid; grid-template-columns:1fr; gap:12px; }
+    @media (min-width: 860px) { .meta-grid { grid-template-columns:1fr 1fr; } }
+    .info-card { border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; }
+    .history-row { border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; margin-top:10px; }
+    .status-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.14); font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Подписка</b>
+          <div class="muted" id="venueName">Загрузка…</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>—</div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div>
+          <div><b id="planLabel">Тариф</b></div>
+          <div class="muted mt-6" id="statusLine">—</div>
+        </div>
+        <div class="row gap-8" style="flex-wrap:wrap">
+          <button class="btn primary" id="extendBtn">Продлить на 30 дней</button>
+          <button class="btn" id="exportBtn">Экспорт XLSX</button>
+          <a class="btn subtle" id="backBtn" href="/app-venues.html">Назад</a>
+        </div>
+      </div>
+      <div class="meta-grid mt-12">
+        <div class="info-card">
+          <div class="muted">Оплачено до</div>
+          <b id="paidUntil">—</b>
+          <div class="muted mt-12">Льготный период до</div>
+          <b id="graceUntil">—</b>
+        </div>
+        <div class="info-card">
+          <div class="muted">Последняя оплата</div>
+          <b id="lastPaymentAt">—</b>
+          <div class="muted mt-12">Следующий ориентир оплаты</div>
+          <b id="nextPaymentDueAt">—</b>
+        </div>
+      </div>
+      <div class="muted mt-12">Возвраты, ручные продления и оплаты собираются в единой истории ниже.</div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+        <div>
+          <b>История операций</b>
+          <div class="muted">Оплаты, продления, возвраты и события статуса.</div>
+        </div>
+      </div>
+      <div id="historyBlock" class="mt-12"><div class="muted">Загрузка…</div></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+
+<script type="module">
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast } from '/app.js';
+  import { getBillingAccessMode, getBillingStatus, isOwnerRole, isSysAdminRole } from '/permissions.js?v=20260331-billing2';
+
+  applyTelegramTheme();
+  mountCommonUI('owner-subscription');
+
+  const params = new URLSearchParams(location.search || '');
+  const venueId = Number(params.get('venue_id') || 0);
+  const venueNameEl = document.getElementById('venueName');
+  const planLabelEl = document.getElementById('planLabel');
+  const statusLineEl = document.getElementById('statusLine');
+  const paidUntilEl = document.getElementById('paidUntil');
+  const graceUntilEl = document.getElementById('graceUntil');
+  const lastPaymentAtEl = document.getElementById('lastPaymentAt');
+  const nextPaymentDueAtEl = document.getElementById('nextPaymentDueAt');
+  const historyBlock = document.getElementById('historyBlock');
+  const extendBtn = document.getElementById('extendBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const backBtn = document.getElementById('backBtn');
+
+  function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
+  function formatDate(value){ if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString('ru-RU'); }
+  function formatDateTime(value){ if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString('ru-RU'); }
+  function formatMinor(value){ return `${(Number(value || 0)/100).toLocaleString('ru-RU', {minimumFractionDigits:0, maximumFractionDigits:0})} ₽`; }
+  function txTypeLabel(v){ return ({ PAYMENT:'Оплата', EXTEND:'Продление', SET_PAID_UNTIL:'Установка paid until', REFUND:'Возврат' }[String(v || '').toUpperCase()]) || String(v || '—'); }
+  function txStatusLabel(v){ return ({ SUCCEEDED:'Успешно', PENDING:'Ожидает', FAILED:'Ошибка', CANCELED:'Отменено' }[String(v || '').toUpperCase()]) || String(v || '—'); }
+  function eventLabel(v){ const map = { BILLING_REFUND_CREATED:'Возврат создан', BILLING_EXTENDED_MANUALLY:'Ручное продление', BILLING_PAID_UNTIL_SET_MANUALLY:'Установка paid until', BILLING_STATUS_CHANGED_AUTO:'Автопереход статуса', ROBOKASSA_PAYMENT_SUCCEEDED:'Оплата подтверждена', ROBOKASSA_PAYMENT_FAILED:'Ошибка оплаты', ROBOKASSA_PAYMENT_CANCELED:'Платёж отменён', ROBOKASSA_PAYMENT_EXPIRED:'Checkout истёк', ROBOKASSA_RESULT_SIGNATURE_INVALID:'Неверная подпись callback', ROBOKASSA_AMOUNT_MISMATCH:'Сумма callback не совпала', ROBOKASSA_RESULT_DUPLICATE:'Повторный callback' }; return map[String(v || '').toUpperCase()] || String(v || '—'); }
+
+  async function startCheckout(){
+    try {
+      extendBtn.disabled = true;
+      const data = await api(`/venues/${venueId}/billing/checkout`, { method: 'POST' });
+      const checkoutUrl = String(data?.checkout_url || '').trim();
+      if (!checkoutUrl) throw new Error('Не получили ссылку на оплату');
+      location.href = checkoutUrl;
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось открыть оплату', 'err');
+    } finally {
+      extendBtn.disabled = false;
+    }
+  }
+
+  function renderHistory(data){
+    const txs = Array.isArray(data?.transactions) ? data.transactions : [];
+    const events = Array.isArray(data?.events) ? data.events : [];
+    const entries = [
+      ...txs.map((tx) => ({ ts: new Date(tx.created_at || 0).getTime(), html: `
+        <div class="history-row">
+          <div><b>${esc(txTypeLabel(tx.type))}</b> · ${esc(txStatusLabel(tx.status))}</div>
+          <div class="small mt-6">${esc(formatDateTime(tx.created_at))}</div>
+          <div class="small mt-6">Сумма: ${esc(formatMinor(tx.amount_minor || 0))}</div>
+          <div class="small mt-6">Источник: ${esc(tx.source || '—')}</div>
+          ${tx.period_from || tx.period_until ? `<div class="small mt-6">Период: ${esc(formatDate(tx.period_from))} → ${esc(formatDate(tx.period_until))}</div>` : ''}
+          ${tx.comment ? `<div class="small mt-6">Комментарий: ${esc(tx.comment)}</div>` : ''}
+        </div>` })),
+      ...events.map((event) => ({ ts: new Date(event.created_at || 0).getTime(), html: `
+        <div class="history-row">
+          <div><b>${esc(eventLabel(event.event_type))}</b></div>
+          <div class="small mt-6">${esc(formatDateTime(event.created_at))}</div>
+        </div>` }))
+    ].sort((a, b) => b.ts - a.ts);
+    historyBlock.innerHTML = entries.length ? entries.map((item) => item.html).join('') : '<div class="muted">История пока пуста</div>';
+  }
+
+  async function boot(){
+    const ok = await ensureLogin({ silent: true });
+    if (!ok.ok) return;
+    if (!venueId) { historyBlock.innerHTML = '<div class="muted">Не выбрано заведение</div>'; return; }
+    const perms = await api(`/me/venues/${venueId}/permissions`);
+    const role = String(perms?.venue_role || '').toUpperCase();
+    const isOwner = isOwnerRole(role);
+    const isAdmin = isSysAdminRole(String(perms?.system_role || '').toUpperCase());
+    if (!(isOwner || isAdmin)) { historyBlock.innerHTML = '<div class="muted">Нет доступа</div>'; return; }
+    const accessMode = String(getBillingAccessMode(perms) || 'FULL').toUpperCase();
+    const status = String(getBillingStatus(perms) || 'ACTIVE').toUpperCase();
+    const data = await api(`/venues/${venueId}/billing`);
+    venueNameEl.textContent = data?.venue_name || `Заведение #${venueId}`;
+    planLabelEl.textContent = data?.plan?.label || 'Axelio · 2990 ₽ / 30 дней';
+    statusLineEl.textContent = `Статус: ${status} · Режим доступа: ${accessMode}`;
+    paidUntilEl.textContent = formatDate(data?.paid_until);
+    graceUntilEl.textContent = formatDate(data?.grace_until);
+    lastPaymentAtEl.textContent = formatDateTime(data?.last_payment_at);
+    nextPaymentDueAtEl.textContent = formatDate(data?.next_payment_due_at);
+    backBtn.href = `/app-venue.html?venue_id=${encodeURIComponent(venueId)}`;
+    renderHistory(data);
+  }
+
+  extendBtn.addEventListener('click', startCheckout);
+  exportBtn.addEventListener('click', () => { location.href = `/venues/${encodeURIComponent(venueId)}/billing/transactions/export`; });
+  boot().catch((e) => toast(e?.data?.detail || e?.message || 'Не удалось загрузить подписку', 'err'));
+</script>
+</body>
+</html>

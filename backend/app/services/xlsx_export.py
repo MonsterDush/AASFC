@@ -613,3 +613,66 @@ def build_payroll_xlsx(
     return _finalize_workbook(wb)
 
     return _finalize_workbook(wb)
+
+
+def build_billing_transactions_xlsx(*, title: str, rows: list[dict[str, Any]], filters: list[tuple[str, Any]] | None = None) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Операции"
+    _write_title(ws, title)
+    _write_key_values(ws, filters or [])
+    table_rows: list[list[Any]] = []
+    for row in rows:
+        table_rows.append([
+            row.get("created_at"),
+            row.get("venue_name"),
+            row.get("status"),
+            row.get("type"),
+            row.get("source"),
+            row.get("amount_major", 0.0),
+            row.get("days_added"),
+            row.get("period_from"),
+            row.get("period_until"),
+            row.get("provider_invoice_id"),
+            row.get("provider_payment_id"),
+            row.get("comment"),
+        ])
+    _write_table(
+        ws,
+        [
+            "Создано", "Заведение", "Статус", "Тип", "Источник", "Сумма, ₽", "Дней",
+            "Период c", "Период до", "Invoice", "Payment ID", "Комментарий",
+        ],
+        table_rows,
+        currency_cols={6},
+        datetime_cols={1, 8, 9},
+        integer_cols={7},
+    )
+    return _finalize_workbook(wb)
+
+
+def build_billing_reconciliation_xlsx(*, title: str, rows: list[dict[str, Any]], filters: list[tuple[str, Any]] | None = None) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Сверка"
+    _write_title(ws, title)
+    _write_key_values(ws, filters or [])
+    table_rows: list[list[Any]] = []
+    for row in rows:
+        table_rows.append([
+            row.get("created_at"),
+            row.get("severity"),
+            row.get("issue_code"),
+            row.get("venue_name"),
+            row.get("transaction_id"),
+            row.get("event_id"),
+            row.get("message"),
+        ])
+    _write_table(
+        ws,
+        ["Создано", "Severity", "Код", "Заведение", "Transaction ID", "Event ID", "Описание"],
+        table_rows,
+        datetime_cols={1},
+        integer_cols={5, 6},
+    )
+    return _finalize_workbook(wb)

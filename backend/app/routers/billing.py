@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import csv
 from datetime import datetime, timezone
+from io import BytesIO, StringIO
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -33,15 +35,11 @@ from app.services.billing import (
     mark_checkout_transaction_failed,
     parse_amount_minor,
     send_owner_billing_notification_once,
-    send_super_admin_billing_alert_once,
 )
+from app.services.xlsx_export import build_billing_transactions_xlsx
 
 router = APIRouter(prefix="/venues", tags=["billing"])
 public_router = APIRouter(tags=["billing-public"])
-
-
-def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _require_owner_or_admin_billing_access(db: Session, *, venue_id: int, user: User) -> str:
@@ -212,6 +210,51 @@ def create_venue_billing_checkout(
     }
 
 
+@router.get("/{venue_id}/billing/transactions/export")
+def export_venue_billing_transactions(
+    venue_id: int,
+    fmt: str = Query(default="xlsx"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    role = _require_owner_or_admin_billing_access(db, venue_id=venue_id, user=user)
+    venue = db.execute(select(Venue).where(Venue.id == int(venue_id))).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    access = get_user_billing_access(db, venue_id=int(venue_id), user=user, membership_role=role)
+    if str(access.get("billing_access_mode") or "").upper() not in {"FULL", "BILLING_READONLY"}:
+        raise HTTPException(status_code=403, detail="Billing access denied")
+    txs = list_billing_transactions(db, venue_id=int(venue_id), limit=500)
+    rows = [
+        {
+            "created_at": tx.created_at,
+            "venue_name": venue.name,
+            "status": tx.status,
+            "type": tx.type,
+            "source": tx.source,
+            "amount_major": int(tx.amount_minor or 0) / 100.0,
+            "days_added": int(tx.days_added or 0) if tx.days_added is not None else None,
+            "period_from": tx.period_from,
+            "period_until": tx.period_until,
+            "provider_invoice_id": tx.provider_invoice_id,
+            "provider_payment_id": tx.provider_payment_id,
+            "comment": tx.comment,
+        }
+        for tx in txs
+    ]
+    fmt_norm = str(fmt or "xlsx").lower().strip()
+    if fmt_norm == "csv":
+        out = StringIO()
+        writer = csv.writer(out)
+        writer.writerow(["created_at", "venue_name", "status", "type", "source", "amount_major", "days_added", "period_from", "period_until", "provider_invoice_id", "provider_payment_id", "comment"])
+        for row in rows:
+            writer.writerow([row.get("created_at"), row.get("venue_name"), row.get("status"), row.get("type"), row.get("source"), row.get("amount_major"), row.get("days_added"), row.get("period_from"), row.get("period_until"), row.get("provider_invoice_id"), row.get("provider_payment_id"), row.get("comment")])
+        data = out.getvalue().encode("utf-8-sig")
+        return StreamingResponse(BytesIO(data), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="billing_{int(venue_id)}.csv"'})
+    xlsx = build_billing_transactions_xlsx(title=f"Axelio · Подписка · {venue.name}", rows=rows, filters=[("Заведение", venue.name)])
+    return StreamingResponse(BytesIO(xlsx), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f'attachment; filename="billing_{int(venue_id)}.xlsx"'})
+
+
 async def _extract_callback_params(request: Request) -> dict[str, str]:
     params: dict[str, str] = {}
     for key, value in request.query_params.multi_items():
@@ -259,7 +302,7 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
         algorithm=robo_cfg.hash_algorithm,
         extra_params=extra_params,
     ):
-        tx, event = mark_checkout_transaction_failed(
+        mark_checkout_transaction_failed(
             db,
             transaction=tx,
             status="FAILED",
@@ -268,18 +311,6 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
             event_type="ROBOKASSA_RESULT_SIGNATURE_INVALID",
         )
         db.commit()
-        if event is not None:
-            send_super_admin_billing_alert_once(
-                db,
-                notification_type="invalid_signature",
-                event_key=str(event.id),
-                venue_id=int(tx.venue_id),
-                text=(
-                    f"Проблема биллинга: по заведению #{int(tx.venue_id)} Robokassa прислала callback с неверной подписью. "
-                    f"Invoice #{invoice_id}."
-                ),
-            )
-            db.commit()
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     amount_minor = parse_amount_minor(out_sum)
@@ -292,75 +323,39 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
             amount_minor=amount_minor,
         )
     except ValueError:
-        tx, event = mark_checkout_transaction_failed(
+        mark_checkout_transaction_failed(
             db,
             transaction=tx,
             status="FAILED",
-            provider_payload_json={
-                "result_params": params,
-                "amount_mismatch": True,
-                "received_amount_minor": amount_minor,
-                "expected_amount_minor": int(tx.amount_minor or 0),
-            },
+            provider_payload_json={"result_params": params, "amount_mismatch": True},
             comment="Robokassa amount mismatch",
             event_type="ROBOKASSA_AMOUNT_MISMATCH",
         )
         db.commit()
-        if event is not None:
-            send_super_admin_billing_alert_once(
-                db,
-                notification_type="amount_mismatch",
-                event_key=str(event.id),
-                venue_id=int(tx.venue_id),
-                text=(
-                    f"Проблема биллинга: mismatch суммы по заведению #{int(tx.venue_id)}. "
-                    f"Invoice #{invoice_id}, ожидалось {int(tx.amount_minor or 0)} коп., пришло {int(amount_minor or 0)} коп."
-                ),
-            )
-            db.commit()
         raise HTTPException(status_code=400, detail="Amount mismatch")
-
     if not applied:
-        event = VenueBillingEvent(
+        db.add(VenueBillingEvent(
             venue_id=int(tx.venue_id),
             event_type="ROBOKASSA_RESULT_DUPLICATE",
             old_status=None,
             new_status=None,
-            meta_json={
-                "transaction_id": int(tx.id),
-                "invoice_id": invoice_id,
-                "details": "Повторный callback Robokassa для уже применённой оплаты.",
-            },
+            meta_json={"transaction_id": int(tx.id), "invoice_id": invoice_id},
             created_by_user_id=tx.created_by_user_id,
-            created_at=_now_utc(),
-        )
-        db.add(event)
-        db.commit()
-        send_super_admin_billing_alert_once(
+            created_at=datetime.now(timezone.utc),
+        ))
+    db.commit()
+    if applied:
+        venue_name = db.execute(select(Venue.name).where(Venue.id == int(tx.venue_id))).scalar_one_or_none() or f"Заведение #{int(tx.venue_id)}"
+        paid_until = state.paid_until.strftime("%d.%m.%Y") if state.paid_until else "—"
+        send_owner_billing_notification_once(
             db,
-            notification_type="duplicate_callback",
-            event_key=str(event.id),
             venue_id=int(tx.venue_id),
-            text=(
-                f"Проблема биллинга: повторный callback Robokassa по заведению #{int(tx.venue_id)}. "
-                f"Invoice #{invoice_id}."
-            ),
+            notification_type="payment_success",
+            event_key=str(tx.id),
+            text=f"Оплата по заведению «{venue_name}» подтверждена. Доступ продлён до {paid_until}.",
+            button_text="Открыть заведение",
         )
         db.commit()
-        return PlainTextResponse(f"OK{invoice_id}")
-
-    db.commit()
-    venue_name = db.execute(select(Venue.name).where(Venue.id == int(tx.venue_id))).scalar_one_or_none() or f"Заведение #{int(tx.venue_id)}"
-    paid_until = state.paid_until.strftime("%d.%m.%Y") if state.paid_until else "—"
-    send_owner_billing_notification_once(
-        db,
-        venue_id=int(tx.venue_id),
-        notification_type="payment_success",
-        event_key=str(tx.id),
-        text=f"Оплата по заведению «{venue_name}» подтверждена. Доступ продлён до {paid_until}.",
-        button_text="Открыть заведение",
-    )
-    db.commit()
     return PlainTextResponse(f"OK{invoice_id}")
 
 

@@ -344,7 +344,7 @@ const titleEl = document.getElementById("title");
             ROBOKASSA_PAYMENT_CANCELED: "Платёж отменён",
             ROBOKASSA_PAYMENT_EXPIRED: "Checkout истёк",
             ROBOKASSA_RESULT_SIGNATURE_INVALID: "Неверная подпись callback",
-            ROBOKASSA_AMOUNT_MISMATCH: "Расхождение суммы",
+            ROBOKASSA_AMOUNT_MISMATCH: "Сумма callback не совпала",
             ROBOKASSA_RESULT_DUPLICATE: "Повторный callback",
             BILLING_REFUND_CREATED: "Возврат создан",
           };
@@ -459,6 +459,10 @@ const titleEl = document.getElementById("title");
           if (historyBtn) {
             historyBtn.onclick = () => showBillingHistory();
           }
+          const subscriptionBtn = document.getElementById("billingSubscriptionBtn");
+          if (subscriptionBtn) {
+            subscriptionBtn.href = `/owner-subscription.html?venue_id=${encodeURIComponent(venueId)}`;
+          }
         }
 
         function renderBillingWidgets() {
@@ -489,7 +493,7 @@ const titleEl = document.getElementById("title");
 
           const lastTxHtml = txs.length
             ? `<div class="mt-12"><div class="muted" style="margin-bottom:6px">Последние продления</div>${txs.slice(0, 3).map((tx) => `<div class="row" style="justify-content:space-between;gap:8px;margin-top:6px"><div><b>${formatDate(tx.created_at)}</b><div class="muted small">${tx.source === "MANUAL_ADMIN" ? "Ручное продление" : (tx.source || "Операция")}</div></div><div class="small">${tx.days_added ? `+${tx.days_added} дн.` : ""} ${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}</div></div>`).join("")}</div>`
-            : `<div class="muted mt-12">История продлений появится здесь после первых операций.</div>`;
+            : `<div class="muted mt-12">Последние операции появятся здесь после первых оплат, ручных продлений или возвратов.</div>`;
 
           if (billingCard) {
             billingCard.innerHTML = `
@@ -512,6 +516,7 @@ const titleEl = document.getElementById("title");
                     <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
                       <button class="btn primary" id="billingExtendBtn" ${billingInfo?.provider_ready === false ? "disabled" : ""}>Продлить на 30 дней</button>
                       <button class="btn" id="billingHistoryBtn">История</button>
+                      <a class="btn" id="billingSubscriptionBtn" href="/owner-subscription.html?venue_id=${venueId}">Подписка</a>
                       <a class="btn subtle" href="https://t.me/axelio_support" target="_blank" rel="noopener">Поддержка</a>
                     </div>
                   </div>

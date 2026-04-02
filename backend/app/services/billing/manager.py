@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -126,6 +126,34 @@ def list_billing_transactions(db: Session, *, venue_id: int, limit: int = 10) ->
         .limit(max(1, int(limit)))
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def list_billing_transactions_global(
+    db: Session,
+    *,
+    venue_id: int | None = None,
+    status: str | None = None,
+    tx_type: str | None = None,
+    source: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> tuple[list[VenueBillingTransaction], int]:
+    stmt = select(VenueBillingTransaction)
+    if venue_id is not None:
+        stmt = stmt.where(VenueBillingTransaction.venue_id == int(venue_id))
+    if status:
+        stmt = stmt.where(VenueBillingTransaction.status == str(status).upper())
+    if tx_type:
+        stmt = stmt.where(VenueBillingTransaction.type == str(tx_type).upper())
+    if source:
+        stmt = stmt.where(VenueBillingTransaction.source == str(source).upper())
+    stmt = stmt.order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
+    count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
+    total = int(db.execute(count_stmt).scalar() or 0)
+    page_norm = max(1, int(page or 1))
+    size_norm = max(1, min(500, int(page_size or 50)))
+    items = list(db.execute(stmt.offset((page_norm - 1) * size_norm).limit(size_norm)).scalars().all())
+    return items, total
 
 
 def list_billing_events(db: Session, *, venue_id: int, limit: int = 20) -> list[VenueBillingEvent]:
@@ -377,34 +405,28 @@ def set_venue_billing_paid_until(
     return state, tx, event
 
 
-
-def create_billing_refund(
+def create_refund_transaction(
     db: Session,
     *,
     venue_id: int,
     amount_minor: int,
-    created_by_user_id: int | None = None,
+    created_by_user_id: int | None,
     comment: str | None = None,
-    source: str = "MANUAL_ADMIN",
-) -> tuple[VenueBillingState, VenueBillingTransaction, VenueBillingEvent]:
+    revoke_access_hint: bool = False,
+) -> tuple[VenueBillingTransaction, VenueBillingEvent]:
     now = utcnow()
-    state = get_or_create_billing_state(db, venue_id=int(venue_id))
-    amount_value = max(1, int(amount_minor or 0))
     tx = VenueBillingTransaction(
         venue_id=int(venue_id),
-        source=str(source or "MANUAL_ADMIN").upper(),
+        source="MANUAL_ADMIN",
         type="REFUND",
         status="SUCCEEDED",
-        amount_minor=amount_value,
-        days_added=None,
+        amount_minor=max(0, int(amount_minor or 0)),
+        days_added=0,
         period_from=None,
         period_until=None,
         provider_invoice_id=None,
         provider_payment_id=None,
-        provider_payload_json={
-            "refund_created_at": now.isoformat(),
-            "revoke_access_hint": False,
-        },
+        provider_payload_json={"revoke_access_hint": bool(revoke_access_hint)},
         comment=comment,
         created_by_user_id=created_by_user_id,
         created_at=now,
@@ -412,24 +434,24 @@ def create_billing_refund(
     )
     db.add(tx)
     db.flush()
-
     event = VenueBillingEvent(
         venue_id=int(venue_id),
         event_type="BILLING_REFUND_CREATED",
-        old_status=str(state.status or BILLING_STATUS_ACTIVE).upper(),
-        new_status=str(state.status or BILLING_STATUS_ACTIVE).upper(),
+        old_status=None,
+        new_status=None,
         meta_json={
             "transaction_id": int(tx.id),
-            "amount_minor": amount_value,
-            "comment": comment,
-            "revoke_access_hint": False,
+            "amount_minor": int(tx.amount_minor or 0),
+            "revoke_access_hint": bool(revoke_access_hint),
         },
         created_by_user_id=created_by_user_id,
         created_at=now,
     )
     db.add(event)
     db.flush()
-    return state, tx, event
+    return tx, event
+
+
 
 def create_checkout_transaction(
     db: Session,
