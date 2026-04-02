@@ -7,7 +7,8 @@ import hashlib
 import hmac
 from typing import Mapping
 from urllib.parse import urlencode
-
+import logging
+logger = logging.getLogger(__name__)
 from app.core.config import settings
 
 
@@ -131,6 +132,8 @@ def calculate_checkout_signature(
     base += f":{password1}"
     for key, value in _sorted_shp_pairs(extra_params):
         base += f":{key}={value}"
+    logger.warning("ROBOKASSA BASE STRING: %s", base)
+    logger.warning("ROBOKASSA SIGNATURE : %s", _hash_value(base, algorithm=algorithm))
     return _hash_value(base, algorithm=algorithm)
 
 
