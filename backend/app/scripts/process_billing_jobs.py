@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Venue, VenueBillingState
 from app.models.venue_billing_transaction import VenueBillingTransaction
-from app.services.billing import expire_stale_pending_checkouts, get_billing_health_summary, get_billing_snapshot_for_state, send_owner_billing_notification_once, send_super_admin_billing_alert_once, sync_billing_state
+from app.services.billing import expire_stale_pending_checkouts, get_billing_health_summary, get_billing_snapshot_for_state, send_owner_billing_notification_once, send_super_admin_billing_alert_once, sync_billing_reconciliation_issues, sync_billing_state
 
 
 def _utc_now() -> datetime:
@@ -152,6 +152,8 @@ def main() -> int:
             if sent_admin_alerts:
                 db.commit()
 
+        sync_billing_reconciliation_issues(db)
+        db.commit()
         get_billing_health_summary(db)
 
     print(f"changed_states={changed_states} sent_notifications={sent_notifications} expired_checkouts={expired_checkouts} sent_admin_alerts={sent_admin_alerts}")

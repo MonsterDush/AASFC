@@ -35,6 +35,7 @@ from app.services.billing import (
     mark_checkout_transaction_failed,
     parse_amount_minor,
     send_owner_billing_notification_once,
+    sync_billing_reconciliation_issues,
 )
 from app.services.xlsx_export import build_billing_transactions_xlsx
 
@@ -310,6 +311,7 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
             comment="Robokassa invalid result signature",
             event_type="ROBOKASSA_RESULT_SIGNATURE_INVALID",
         )
+        sync_billing_reconciliation_issues(db, venue_id=int(tx.venue_id))
         db.commit()
         raise HTTPException(status_code=400, detail="Invalid signature")
 
@@ -331,6 +333,7 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
             comment="Robokassa amount mismatch",
             event_type="ROBOKASSA_AMOUNT_MISMATCH",
         )
+        sync_billing_reconciliation_issues(db, venue_id=int(tx.venue_id))
         db.commit()
         raise HTTPException(status_code=400, detail="Amount mismatch")
     if not applied:
@@ -343,6 +346,7 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
             created_by_user_id=tx.created_by_user_id,
             created_at=datetime.now(timezone.utc),
         ))
+    sync_billing_reconciliation_issues(db, venue_id=int(tx.venue_id))
     db.commit()
     if applied:
         venue_name = db.execute(select(Venue.name).where(Venue.id == int(tx.venue_id))).scalar_one_or_none() or f"Заведение #{int(tx.venue_id)}"

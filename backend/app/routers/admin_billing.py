@@ -19,15 +19,20 @@ from app.models.venue_billing_event import VenueBillingEvent
 from app.models.venue_billing_transaction import VenueBillingTransaction
 from app.models.venue_member import VenueMember
 from app.services.billing import (
+    ISSUE_STATUS_OPEN,
     create_refund_transaction,
     extend_venue_billing,
+    get_billing_health_summary,
     get_billing_snapshot_for_state,
     get_or_create_billing_state,
     list_billing_events,
+    list_billing_reconciliation_issues,
     list_billing_transactions,
     list_billing_transactions_global,
     send_owner_billing_notification_once,
+    set_billing_reconciliation_issue_status,
     set_venue_billing_paid_until,
+    sync_billing_reconciliation_issues,
 )
 from app.services.xlsx_export import build_billing_reconciliation_xlsx, build_billing_transactions_xlsx
 
@@ -58,6 +63,10 @@ class BillingExportParams(BaseModel):
     source: str | None = None
     q: str | None = None
     venue_id: int | None = None
+
+
+class BillingIssueActionIn(BaseModel):
+    comment: str | None = Field(default=None, max_length=1000)
 
 
 def _utc_now() -> datetime:
@@ -470,22 +479,22 @@ def get_admin_billing_transactions(
 def get_admin_billing_reconciliation(
     venue_id: int | None = Query(default=None),
     q: str | None = Query(default=None),
+    status: str = Query(default=ISSUE_STATUS_OPEN),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    issues = _derive_reconciliation_issues(db, venue_id=venue_id, q=q)
-    total = len(issues)
-    offset = (int(page) - 1) * int(page_size)
-    paged = issues[offset: offset + int(page_size)]
+    sync_billing_reconciliation_issues(db, venue_id=venue_id)
+    db.commit()
+    items, total = list_billing_reconciliation_issues(db, venue_id=venue_id, search=q, status=status, page=page, page_size=page_size)
     return {
-        "items": [_serialize_issue(issue) for issue in paged],
-        "count": len(paged),
+        "items": items,
+        "count": len(items),
         "total": total,
         "page": int(page),
         "page_size": int(page_size),
-        "has_next": offset + int(page_size) < total,
+        "has_next": int(page) * int(page_size) < total,
     }
 
 
@@ -494,34 +503,9 @@ def get_admin_billing_health(
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    issues = _derive_reconciliation_issues(db)
-    critical = sum(1 for item in issues if item.get("severity") == "critical")
-    warning = sum(1 for item in issues if item.get("severity") == "warning")
-    info = sum(1 for item in issues if item.get("severity") == "info")
-    day_ago = _utc_now() - timedelta(hours=24)
-    failed_24h = db.execute(
-        select(func.count())
-        .select_from(VenueBillingTransaction)
-        .where(
-            VenueBillingTransaction.type == "PAYMENT",
-            VenueBillingTransaction.status == "FAILED",
-            VenueBillingTransaction.created_at >= day_ago,
-        )
-    ).scalar() or 0
-    top_codes: dict[str, int] = {}
-    for item in issues:
-        code = str(item.get("issue_code") or "UNKNOWN")
-        top_codes[code] = int(top_codes.get(code, 0)) + 1
-    return {
-        "severity": {
-            "critical": int(critical),
-            "warning": int(warning),
-            "info": int(info),
-        },
-        "failed_checkout_24h": int(failed_24h),
-        "issues_total": len(issues),
-        "top_issue_codes": [{"code": code, "count": count} for code, count in sorted(top_codes.items(), key=lambda kv: kv[1], reverse=True)[:5]],
-    }
+    sync_billing_reconciliation_issues(db)
+    db.commit()
+    return get_billing_health_summary(db)
 
 
 @router.get("/billing/transactions/export")
@@ -557,23 +541,62 @@ def export_admin_billing_transactions(
 def export_admin_billing_reconciliation(
     venue_id: int | None = Query(default=None),
     q: str | None = Query(default=None),
+    status: str = Query(default=ISSUE_STATUS_OPEN),
     fmt: str = Query(default="xlsx"),
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    issues = _derive_reconciliation_issues(db, venue_id=venue_id, q=q)
-    filters = [("Venue ID", venue_id or "Все"), ("Search", q or "—")]
+    sync_billing_reconciliation_issues(db, venue_id=venue_id)
+    db.commit()
+    issues, _ = list_billing_reconciliation_issues(db, venue_id=venue_id, search=q, status=status, page=1, page_size=1000)
+    filters = [("Venue ID", venue_id or "Все"), ("Status", status or "Все"), ("Search", q or "—")]
     fmt_norm = str(fmt or "xlsx").lower().strip()
     if fmt_norm == "csv":
         out = StringIO()
         writer = csv.writer(out)
-        writer.writerow(["created_at", "severity", "issue_code", "venue_name", "transaction_id", "event_id", "message"])
+        writer.writerow(["created_at", "last_seen_at", "resolved_at", "status", "severity", "issue_code", "venue_name", "transaction_id", "event_id", "message", "resolution_comment"])
         for row in issues:
-            writer.writerow([row.get("created_at"), row.get("severity"), row.get("issue_code"), row.get("venue_name"), row.get("transaction_id"), row.get("event_id"), row.get("message")])
+            writer.writerow([row.get("created_at") or row.get("first_detected_at"), row.get("last_seen_at"), row.get("resolved_at"), row.get("status"), row.get("severity"), row.get("issue_code"), row.get("venue_name"), row.get("transaction_id"), row.get("event_id"), row.get("message"), row.get("resolution_comment")])
         data = out.getvalue().encode("utf-8-sig")
         return StreamingResponse(BytesIO(data), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="billing_reconciliation.csv"'})
     xlsx = build_billing_reconciliation_xlsx(title="Axelio · Billing reconciliation", rows=issues, filters=filters)
     return StreamingResponse(BytesIO(xlsx), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="billing_reconciliation.xlsx"'})
+
+
+@router.post("/billing/reconciliation/{issue_id}/resolve")
+def resolve_billing_reconciliation_issue(
+    issue_id: int,
+    payload: BillingIssueActionIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    issue = set_billing_reconciliation_issue_status(db, issue_id=int(issue_id), new_status="RESOLVED", acted_by_user_id=int(user.id), comment=payload.comment)
+    db.commit()
+    return {"ok": True, "issue_id": int(issue.id), "status": issue.status}
+
+
+@router.post("/billing/reconciliation/{issue_id}/ignore")
+def ignore_billing_reconciliation_issue(
+    issue_id: int,
+    payload: BillingIssueActionIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    issue = set_billing_reconciliation_issue_status(db, issue_id=int(issue_id), new_status="IGNORED", acted_by_user_id=int(user.id), comment=payload.comment)
+    db.commit()
+    return {"ok": True, "issue_id": int(issue.id), "status": issue.status}
+
+
+@router.post("/billing/reconciliation/{issue_id}/reopen")
+def reopen_billing_reconciliation_issue(
+    issue_id: int,
+    payload: BillingIssueActionIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    issue = set_billing_reconciliation_issue_status(db, issue_id=int(issue_id), new_status="OPEN", acted_by_user_id=int(user.id), comment=payload.comment)
+    db.commit()
+    return {"ok": True, "issue_id": int(issue.id), "status": issue.status}
 
 
 @router.post("/venues/{venue_id}/billing/extend")

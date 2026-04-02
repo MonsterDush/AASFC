@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import datetime
 import hashlib
 import hmac
 from typing import Mapping
 from urllib.parse import urlencode
-import logging
-logger = logging.getLogger(__name__)
+
 from app.core.config import settings
 
 
@@ -45,6 +43,7 @@ def _normalize_hash_algorithm(value: str | None) -> str:
 
 def get_robokassa_config() -> RobokassaConfig:
     api_base = settings.api_base_url()
+    frontend_base = settings.frontend_base_url()
     test_mode = bool(settings.ROBOKASSA_TEST_MODE)
     password1 = settings.ROBOKASSA_TEST_PASSWORD1 if test_mode and settings.ROBOKASSA_TEST_PASSWORD1 else settings.ROBOKASSA_PASSWORD1
     password2 = settings.ROBOKASSA_TEST_PASSWORD2 if test_mode and settings.ROBOKASSA_TEST_PASSWORD2 else settings.ROBOKASSA_PASSWORD2
@@ -65,7 +64,11 @@ def get_robokassa_config() -> RobokassaConfig:
 def format_out_sum(amount_minor: int, *, test_mode: bool) -> str:
     amount_minor_int = max(0, int(amount_minor or 0))
     amount_rub = (Decimal(amount_minor_int) / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return format(amount_rub, "f")
+    if test_mode:
+        if amount_rub == amount_rub.to_integral_value():
+            return str(int(amount_rub))
+        return format(amount_rub, "f")
+    return format(amount_rub.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP), "f")
 
 
 def _hash_value(payload: str, *, algorithm: str) -> str:
@@ -88,33 +91,6 @@ def _sorted_shp_pairs(extra_params: Mapping[str, str] | None) -> list[tuple[str,
     return pairs
 
 
-_CHECKOUT_MODIFIER_ORDER = (
-    "Receipt",
-    "StepByStep",
-    "ResultUrl2",
-    "SuccessUrl2",
-    "SuccessUrl2Method",
-    "FailUrl2",
-    "FailUrl2Method",
-    "Token",
-)
-
-
-def _ordered_modifier_values(modifiers: Mapping[str, str] | None) -> list[str]:
-    if not modifiers:
-        return []
-    values: list[str] = []
-    for key in _CHECKOUT_MODIFIER_ORDER:
-        raw = modifiers.get(key) if isinstance(modifiers, Mapping) else None
-        if raw is None:
-            continue
-        text = str(raw).strip()
-        if not text:
-            continue
-        values.append(text)
-    return values
-
-
 def calculate_checkout_signature(
     *,
     merchant_login: str,
@@ -122,18 +98,11 @@ def calculate_checkout_signature(
     invoice_id: str,
     password1: str,
     algorithm: str,
-    modifiers: Mapping[str, str] | None = None,
     extra_params: Mapping[str, str] | None = None,
 ) -> str:
-    invoice_slot = str(invoice_id or "")
-    base = f"{merchant_login}:{out_sum}:{invoice_slot}"
-    for value in _ordered_modifier_values(modifiers):
-        base += f":{value}"
-    base += f":{password1}"
+    base = f"{merchant_login}:{out_sum}:{invoice_id}:{password1}"
     for key, value in _sorted_shp_pairs(extra_params):
         base += f":{key}={value}"
-    logger.warning("ROBOKASSA BASE STRING: %s", base)
-    logger.warning("ROBOKASSA SIGNATURE : %s", _hash_value(base, algorithm=algorithm))
     return _hash_value(base, algorithm=algorithm)
 
 
@@ -189,15 +158,6 @@ def is_valid_success_signature(
     return hmac.compare_digest(expected.lower(), str(received_signature or "").strip().lower())
 
 
-def _format_expiration_date(value: datetime | str | None) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        raw = value.strip()
-        return raw or None
-    return value.strftime("%Y-%m-%dT%H:%M")
-
-
 def build_checkout_url(
     *,
     merchant_login: str,
@@ -213,17 +173,15 @@ def build_checkout_url(
     extra_params: Mapping[str, str] | None = None,
     test_mode: bool = False,
     culture: str = "ru",
-    expiration_date: datetime | str | None = None,
-    use_return_url2: bool = False,
 ) -> str:
+    shp_pairs = _sorted_shp_pairs(extra_params)
     signature = calculate_checkout_signature(
         merchant_login=merchant_login,
         out_sum=out_sum,
         invoice_id=invoice_id,
         password1=password1,
         algorithm=algorithm,
-        modifiers=None,
-        extra_params=None,
+        extra_params=dict(shp_pairs),
     )
     params: list[tuple[str, str]] = [
         ("MerchantLogin", merchant_login),
@@ -231,7 +189,12 @@ def build_checkout_url(
         ("InvId", invoice_id),
         ("Description", description),
         ("SignatureValue", signature),
+        ("Culture", culture or "ru"),
+        ("ResultURL", result_url),
+        ("SuccessURL", success_url),
+        ("FailURL", fail_url),
     ]
     if test_mode:
         params.append(("IsTest", "1"))
+    params.extend(shp_pairs)
     return f"{payment_url}?{urlencode(params)}"

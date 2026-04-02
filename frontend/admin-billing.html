@@ -102,6 +102,12 @@
             <div class="muted">Критичные и предупреждающие billing-кейсы.</div>
           </div>
           <div class="row gap-8">
+            <select id="issueStatusFilter">
+              <option value="OPEN">Открытые</option>
+              <option value="RESOLVED">Решённые</option>
+              <option value="IGNORED">Игнорируемые</option>
+              <option value="ALL">Все</option>
+            </select>
             <button class="btn subtle" id="exportReconBtn">Экспорт XLSX</button>
           </div>
         </div>
@@ -139,6 +145,7 @@
   function txTypeLabel(value){ const v = String(value || '').toUpperCase(); return ({ PAYMENT:'Оплата', EXTEND:'Продление', SET_PAID_UNTIL:'Установка paid until', REFUND:'Возврат' }[v]) || v || '—'; }
   function txStatusLabel(value){ const v = String(value || '').toUpperCase(); return ({ SUCCEEDED:'Успешно', PENDING:'Ожидает', FAILED:'Ошибка', CANCELED:'Отменено' }[v]) || v || '—'; }
   function issueChip(severity){ const s = String(severity || 'info').toLowerCase(); return `<span class="issue-chip ${s}">${esc(s)}</span>`; }
+  function issueStatusLabel(value){ const v = String(value || '').toUpperCase(); return ({ OPEN:'Открыта', RESOLVED:'Решена', IGNORED:'Игнорируется' }[v]) || v || '—'; }
   function statusChip(status){ const s = String(status || '').toUpperCase(); const cls = s === 'ACTIVE' ? 'active' : (s === 'GRACE' ? 'grace' : 'suspended'); return `<span class="status-chip ${cls}">${esc(s || '—')}</span>`; }
 
   const summaryGrid = document.getElementById('summaryGrid');
@@ -159,6 +166,7 @@
   const countEl = document.getElementById('count');
   const exportOpsBtn = document.getElementById('exportOpsBtn');
   const exportReconBtn = document.getElementById('exportReconBtn');
+  const issueStatusFilter = document.getElementById('issueStatusFilter');
 
   let currentPage = 1;
   let hasNextPage = false;
@@ -257,18 +265,36 @@
 
   function renderReconciliation(items){
     const rows = Array.isArray(items) ? items : [];
-    if (!rows.length) { reconciliationBlock.innerHTML = '<div class="muted">Открытых проблем не найдено</div>'; return; }
+    if (!rows.length) { reconciliationBlock.innerHTML = '<div class="muted">Проблем по выбранному фильтру не найдено</div>'; return; }
     reconciliationBlock.innerHTML = rows.slice(0, 20).map((item) => `
       <div class="billing-table-row">
         <div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start">
           <div>
-            <div class="row gap-8">${issueChip(item.severity)}<b>${esc(item.issue_code || '—')}</b></div>
-            <div class="small mt-6">${esc(item.venue_name || '—')} · ${esc(formatDateTime(item.created_at))}</div>
+            <div class="row gap-8" style="flex-wrap:wrap">${issueChip(item.severity)}<span class="status-chip">${esc(issueStatusLabel(item.status))}</span><b>${esc(item.issue_code || '—')}</b></div>
+            <div class="small mt-6">${esc(item.venue_name || '—')} · обнаружено ${esc(formatDateTime(item.first_detected_at || item.created_at))}</div>
+            <div class="small mt-6">Последний раз: ${esc(formatDateTime(item.last_seen_at || item.created_at))}</div>
+            ${item.resolved_at ? `<div class="small mt-6">Закрыто: ${esc(formatDateTime(item.resolved_at))}</div>` : ''}
             <div class="small mt-6">${esc(item.message || '')}</div>
+            ${item.resolution_comment ? `<div class="small mt-6">Комментарий: ${esc(item.resolution_comment)}</div>` : ''}
+          </div>
+          <div class="toolbar" style="justify-content:flex-end">
+            ${String(item.status || '').toUpperCase() === 'OPEN' ? `<button class="btn subtle" data-issue-action="resolve" data-issue-id="${item.id}">Решено</button><button class="btn subtle" data-issue-action="ignore" data-issue-id="${item.id}">Игнор</button>` : `<button class="btn subtle" data-issue-action="reopen" data-issue-id="${item.id}">Переоткрыть</button>`}
           </div>
         </div>
       </div>
     `).join('');
+    reconciliationBlock.querySelectorAll('[data-issue-action]').forEach((btn) => btn.addEventListener('click', async () => {
+      const issueId = btn.getAttribute('data-issue-id');
+      const action = btn.getAttribute('data-issue-action');
+      if (!issueId || !action) return;
+      const comment = prompt('Комментарий', '') || '';
+      try {
+        await api(`/admin/billing/reconciliation/${encodeURIComponent(issueId)}/${encodeURIComponent(action)}`, { method:'POST', body:{ comment } });
+        toast('Статус проблемы обновлён', 'ok');
+        await loadHealth();
+        await loadReconciliation();
+      } catch (e) { toast(e?.data?.detail || e.message || 'Не удалось обновить проблему', 'err'); }
+    }));
   }
 
   async function loadSummary(){ renderSummary(await api('/admin/billing/summary')); }
@@ -294,6 +320,7 @@
   }
   async function loadReconciliation(){
     const qp = buildCommonQuery();
+    qp.set('status', issueStatusFilter?.value || 'OPEN');
     qp.set('page', '1'); qp.set('page_size', '20');
     const data = await api(`/admin/billing/reconciliation?${qp.toString()}`);
     renderReconciliation(data?.items || []);
@@ -312,11 +339,11 @@
   async function showHistory(venueId){ try { const data = await api(`/venues/${encodeURIComponent(venueId)}/billing`); const txs = Array.isArray(data?.transactions) ? data.transactions : []; const events = Array.isArray(data?.events) ? data.events : []; const lines = []; txs.forEach((tx) => lines.push(`[Операция] ${formatDateTime(tx.created_at)} · ${txStatusLabel(tx.status)}\nИсточник: ${txSourceLabel(tx.source)}\nТип: ${txTypeLabel(tx.type)}\nСумма: ${formatMinor(tx.amount_minor || 0)}${tx.comment ? `\nКомментарий: ${tx.comment}` : ''}`)); events.forEach((event) => lines.push(`[Событие] ${formatDateTime(event.created_at)} · ${esc(event.event_type || '—')}`)); openModal(`История · venue #${venueId}`, lines.join('\n\n——————————\n\n') || 'История пуста'); } catch (e) { toast(e?.data?.detail || e.message || 'Не удалось загрузить историю', 'err'); } }
 
   function exportTransactions(){ const qp = buildCommonQuery(); if (txTypeFilter.value) qp.set('tx_type', txTypeFilter.value); location.href = `/admin/billing/transactions/export?${qp.toString()}`; }
-  function exportReconciliation(){ const qp = buildCommonQuery(); location.href = `/admin/billing/reconciliation/export?${qp.toString()}`; }
+  function exportReconciliation(){ const qp = buildCommonQuery(); qp.set('status', issueStatusFilter?.value || 'OPEN'); location.href = `/admin/billing/reconciliation/export?${qp.toString()}`; }
 
   async function boot(){ const ok = await ensureLogin({ silent: true }); if (!ok.ok) return; const venuesPromise = (async () => { const qp = buildCommonQuery(); if (statusFilter.value) qp.set('status', statusFilter.value); if (dueSoonEl.checked) qp.set('only_due_soon', 'true'); if (overdueEl.checked) qp.set('only_overdue', 'true'); qp.set('include_archived', 'true'); qp.set('sort_by', sortByEl.value || 'paid_until_asc'); qp.set('page', String(currentPage)); qp.set('page_size', '50'); const data = await api(`/admin/billing/venues?${qp.toString()}`); renderVenues(data?.items || [], data || {}); })(); await Promise.all([loadSummary(), loadHealth(), venuesPromise, loadOperations(), loadReconciliation()]); }
 
-  [statusFilter, txTypeFilter, dueSoonEl, overdueEl, sortByEl].forEach((el) => el?.addEventListener('change', () => { currentPage = 1; boot().catch((e) => toast(e.message, 'err')); }));
+  [statusFilter, txTypeFilter, dueSoonEl, overdueEl, sortByEl, issueStatusFilter].forEach((el) => el?.addEventListener('change', () => { currentPage = 1; boot().catch((e) => toast(e.message, 'err')); }));
   searchEl?.addEventListener('input', () => { clearTimeout(searchEl._t); searchEl._t = setTimeout(() => { currentPage = 1; boot().catch((e) => toast(e.message, 'err')); }, 300); });
   refreshBtn?.addEventListener('click', () => boot().catch((e) => toast(e.message, 'err')));
   prevPageBtn?.addEventListener('click', () => { if (currentPage > 1) { currentPage -= 1; boot().catch((e) => toast(e.message, 'err')); } });
