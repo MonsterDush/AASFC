@@ -516,7 +516,6 @@ const titleEl = document.getElementById("title");
                     <div>
                       <b>${planLabel}</b>
                       <div class="muted mt-6">Статус: ${status === "ACTIVE" ? "Активно" : (status === "GRACE" ? "Grace" : "Доступ ограничен")}</div>
-                      <div class="muted mt-6">Платёжный контур: ${billingInfo?.provider_ready === false ? "ещё не настроен" : (billingInfo?.provider_mode === "test" ? "тестовый режим" : "боевой режим")}</div>
                       <div class="muted mt-6">Оплачено до: ${formatDate(paidUntil)}</div>
                       ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}${billingInfo?.checkout_expires_at ? `<div class="muted mt-6">Незавершённая оплата действует до: ${formatDateTime(billingInfo.checkout_expires_at)}</div><div class="muted small mt-6">Доступ продлится только после успешного подтверждения оплаты.</div>` : ""}
                     </div>
