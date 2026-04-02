@@ -82,6 +82,30 @@ def parse_amount_minor(value: str | int | float | Decimal | None) -> int:
     return int((dec * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
+def create_billing_event(
+    db: Session,
+    *,
+    venue_id: int,
+    event_type: str,
+    old_status: str | None = None,
+    new_status: str | None = None,
+    meta_json: dict | list | None = None,
+    created_by_user_id: int | None = None,
+) -> VenueBillingEvent:
+    event = VenueBillingEvent(
+        venue_id=int(venue_id),
+        event_type=str(event_type or "BILLING_EVENT").upper(),
+        old_status=old_status,
+        new_status=new_status,
+        meta_json=meta_json if meta_json is not None else {},
+        created_by_user_id=created_by_user_id,
+        created_at=utcnow(),
+    )
+    db.add(event)
+    db.flush()
+    return event
+
+
 def create_default_billing_state(db: Session, *, venue_id: int, commit: bool = False) -> VenueBillingState:
     now = utcnow()
     paid_until = now + timedelta(days=DEFAULT_BILLING_DAYS)
@@ -149,17 +173,13 @@ def get_latest_pending_checkout(db: Session, *, venue_id: int) -> VenueBillingTr
         .order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
         .limit(1)
     )
-    tx = db.execute(stmt).scalar_one_or_none()
-    if tx is None:
-        return None
-    expires_at = get_checkout_expires_at(tx)
-    if expires_at is not None and expires_at <= utcnow():
-        return None
-    return tx
+    return db.execute(stmt).scalar_one_or_none()
 
 
 def get_billing_transaction_by_invoice_id(db: Session, *, invoice_id: str | int) -> VenueBillingTransaction | None:
     invoice_str = str(invoice_id).strip()
+    if not invoice_str:
+        return None
     conditions = [VenueBillingTransaction.provider_invoice_id == invoice_str]
     if invoice_str.isdigit():
         conditions.append(VenueBillingTransaction.id == int(invoice_str))
@@ -171,50 +191,41 @@ def sync_billing_state(
     *,
     state: VenueBillingState,
     now: datetime | None = None,
+    create_event: bool = True,
     created_by_user_id: int | None = None,
-    event_type: str = "BILLING_STATUS_CHANGED_AUTO",
 ) -> tuple[VenueBillingState, Any, VenueBillingEvent | None]:
-    current = _ensure_aware(now) or utcnow()
+    current_now = _ensure_aware(now) or utcnow()
     snapshot = build_billing_snapshot(
         paid_until=state.paid_until,
         grace_until=state.grace_until,
         status=state.status,
-        now=current,
-        grace_days=DEFAULT_BILLING_GRACE_DAYS,
-    )
-    event: VenueBillingEvent | None = None
-    old_status = str(state.status or BILLING_STATUS_ACTIVE).upper()
-    paid_until, grace_until = derive_billing_dates(
-        paid_until=state.paid_until,
-        grace_until=state.grace_until,
+        now=current_now,
         grace_days=DEFAULT_BILLING_GRACE_DAYS,
     )
 
-    changed = (
-        old_status != snapshot.status
-        or _ensure_aware(state.paid_until) != paid_until
-        or _ensure_aware(state.grace_until) != grace_until
-    )
-    if changed:
-        state.status = snapshot.status
-        state.paid_until = paid_until
-        state.grace_until = grace_until
-        state.next_payment_due_at = paid_until
-        state.updated_at = current
-        event = VenueBillingEvent(
+    old_status = str(state.status or BILLING_STATUS_ACTIVE).upper()
+    event: VenueBillingEvent | None = None
+
+    state.status = snapshot.status
+    state.paid_until = snapshot.paid_until
+    state.grace_until = snapshot.grace_until
+    state.next_payment_due_at = snapshot.paid_until
+    state.updated_at = current_now
+
+    if create_event and old_status != snapshot.status:
+        event = create_billing_event(
+            db,
             venue_id=int(state.venue_id),
-            event_type=event_type,
+            event_type="BILLING_STATUS_CHANGED_AUTO",
             old_status=old_status,
             new_status=snapshot.status,
             meta_json={
-                "paid_until": paid_until.isoformat() if paid_until else None,
-                "grace_until": grace_until.isoformat() if grace_until else None,
+                "paid_until": snapshot.paid_until.isoformat() if snapshot.paid_until else None,
+                "grace_until": snapshot.grace_until.isoformat() if snapshot.grace_until else None,
             },
             created_by_user_id=created_by_user_id,
-            created_at=current,
         )
-        db.add(event)
-        db.flush()
+
     return state, snapshot, event
 
 
@@ -222,44 +233,38 @@ def extend_venue_billing(
     db: Session,
     *,
     venue_id: int,
-    days: int,
+    days: int = DEFAULT_BILLING_DAYS,
     created_by_user_id: int | None = None,
-    comment: str | None = None,
     source: str = "MANUAL_ADMIN",
     tx_type: str = "EXTEND",
     tx_status: str = "SUCCEEDED",
-    amount_minor: int = 0,
-    provider: str | None = None,
+    comment: str | None = None,
     provider_invoice_id: str | None = None,
     provider_payment_id: str | None = None,
     provider_payload_json: dict | list | None = None,
+    amount_minor: int = 0,
 ) -> tuple[VenueBillingState, VenueBillingTransaction, VenueBillingEvent]:
-    add_days = max(1, int(days))
     now = utcnow()
     state = get_or_create_billing_state(db, venue_id=int(venue_id))
-    current_paid_until, _ = derive_billing_dates(
-        paid_until=state.paid_until,
-        grace_until=state.grace_until,
-        grace_days=DEFAULT_BILLING_GRACE_DAYS,
-    )
-    period_from = current_paid_until if current_paid_until is not None and current_paid_until > now else now
-    period_until = period_from + timedelta(days=add_days)
-
     old_status = str(state.status or BILLING_STATUS_ACTIVE).upper()
-    old_paid_until = state.paid_until
-    old_grace_until = state.grace_until
+    old_paid_until = _ensure_aware(state.paid_until)
+    old_grace_until = _ensure_aware(state.grace_until)
+
+    add_days = max(1, int(days or DEFAULT_BILLING_DAYS))
+    period_from = old_paid_until if old_paid_until is not None and old_paid_until > now else now
+    period_until = period_from + timedelta(days=add_days)
 
     state.status = BILLING_STATUS_ACTIVE
     state.paid_until = period_until
     state.grace_until = period_until + timedelta(days=DEFAULT_BILLING_GRACE_DAYS)
-    state.last_payment_at = now
+    state.last_payment_at = now if str(tx_type or "").upper() == "PAYMENT" else state.last_payment_at
     state.next_payment_due_at = period_until
-    state.provider = provider or state.provider or DEFAULT_BILLING_PROVIDER
+    state.provider = str(source or DEFAULT_BILLING_PROVIDER).upper()
     state.updated_at = now
 
     tx = VenueBillingTransaction(
         venue_id=int(venue_id),
-        source=str(source or "MANUAL_ADMIN").upper(),
+        source=str(source or DEFAULT_BILLING_PROVIDER).upper(),
         type=str(tx_type or "EXTEND").upper(),
         status=str(tx_status or "SUCCEEDED").upper(),
         amount_minor=int(amount_minor or 0),
@@ -277,7 +282,8 @@ def extend_venue_billing(
     db.add(tx)
     db.flush()
 
-    event = VenueBillingEvent(
+    event = create_billing_event(
+        db,
         venue_id=int(venue_id),
         event_type="BILLING_EXTENDED_MANUALLY" if str(source or "").upper() == "MANUAL_ADMIN" else "BILLING_EXTENDED",
         old_status=old_status,
@@ -292,10 +298,7 @@ def extend_venue_billing(
             "source": str(source or "").upper() or None,
         },
         created_by_user_id=created_by_user_id,
-        created_at=now,
     )
-    db.add(event)
-    db.flush()
 
     return state, tx, event
 
@@ -357,7 +360,8 @@ def set_venue_billing_paid_until(
     db.add(tx)
     db.flush()
 
-    event = VenueBillingEvent(
+    event = create_billing_event(
+        db,
         venue_id=int(venue_id),
         event_type="BILLING_PAID_UNTIL_SET_MANUALLY",
         old_status=old_status,
@@ -369,11 +373,63 @@ def set_venue_billing_paid_until(
             "new_paid_until": paid_until_value.isoformat() if paid_until_value else None,
         },
         created_by_user_id=created_by_user_id,
-        created_at=now,
     )
-    db.add(event)
+
+    return state, tx, event
+
+
+def create_refund_transaction(
+    db: Session,
+    *,
+    venue_id: int,
+    amount_minor: int,
+    created_by_user_id: int | None = None,
+    comment: str | None = None,
+    related_transaction_id: int | None = None,
+    revoke_access_hint: bool = False,
+) -> tuple[VenueBillingState, VenueBillingTransaction, VenueBillingEvent]:
+    now = utcnow()
+    state = get_or_create_billing_state(db, venue_id=int(venue_id))
+    normalized_amount = max(1, int(amount_minor or 0))
+    current_status = str(state.status or BILLING_STATUS_ACTIVE).upper()
+    tx = VenueBillingTransaction(
+        venue_id=int(venue_id),
+        source="MANUAL_ADMIN",
+        type="REFUND",
+        status="SUCCEEDED",
+        amount_minor=normalized_amount,
+        days_added=0,
+        period_from=None,
+        period_until=None,
+        provider_invoice_id=None,
+        provider_payment_id=None,
+        provider_payload_json={
+            "related_transaction_id": int(related_transaction_id) if related_transaction_id else None,
+            "revoke_access_hint": bool(revoke_access_hint),
+            "refund_created_at": now.isoformat(),
+        },
+        comment=comment,
+        created_by_user_id=created_by_user_id,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(tx)
     db.flush()
 
+    event = create_billing_event(
+        db,
+        venue_id=int(venue_id),
+        event_type="BILLING_REFUND_CREATED",
+        old_status=current_status,
+        new_status=current_status,
+        meta_json={
+            "transaction_id": int(tx.id),
+            "refund_amount_minor": normalized_amount,
+            "related_transaction_id": int(related_transaction_id) if related_transaction_id else None,
+            "revoke_access_hint": bool(revoke_access_hint),
+        },
+        created_by_user_id=created_by_user_id,
+    )
     return state, tx, event
 
 
@@ -498,7 +554,8 @@ def apply_checkout_payment_success(
     tx.provider_payload_json = payload
     tx.updated_at = now
 
-    event = VenueBillingEvent(
+    event = create_billing_event(
+        db,
         venue_id=int(tx.venue_id),
         event_type="ROBOKASSA_PAYMENT_SUCCEEDED",
         old_status=old_status,
@@ -510,10 +567,7 @@ def apply_checkout_payment_success(
             "provider_payment_id": provider_payment_id or tx.provider_payment_id,
         },
         created_by_user_id=tx.created_by_user_id,
-        created_at=now,
     )
-    db.add(event)
-    db.flush()
     return state, tx, event, True
 
 
@@ -541,7 +595,8 @@ def mark_checkout_transaction_failed(
     tx.updated_at = now
     if comment:
         tx.comment = comment
-    event = VenueBillingEvent(
+    event = create_billing_event(
+        db,
         venue_id=int(tx.venue_id),
         event_type=event_type,
         old_status=None,
@@ -552,8 +607,5 @@ def mark_checkout_transaction_failed(
             "transaction_new_status": tx.status,
         },
         created_by_user_id=tx.created_by_user_id,
-        created_at=now,
     )
-    db.add(event)
-    db.flush()
     return tx, event
