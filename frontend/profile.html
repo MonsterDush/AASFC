@@ -15,6 +15,7 @@
     .hidden { display:none !important; }
     .call-number { font-size:18px; font-weight:700; letter-spacing:.02em; }
     .call-number a { color: inherit; text-decoration:none; }
+    .telegram-browser-link { word-break: break-all; }
     .password-note {
       border: 1px solid var(--border);
       border-radius: 12px;
@@ -100,6 +101,16 @@
           <div class="row mt-12" style="gap:8px; flex-wrap:wrap;">
             <button class="btn primary" id="linkTelegramBtn">Привязать Telegram</button>
           </div>
+          <div class="stack mt-12 hidden" id="telegramBrowserLinkBlock">
+            <div class="muted" id="telegramBrowserLinkStatus">Нажми кнопку ниже, открой бота и подтверди привязку.</div>
+            <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
+              <a class="btn primary" id="telegramBrowserLinkOpenLink" href="#" target="_blank" rel="noopener noreferrer">Открыть Telegram</a>
+              <button class="btn sm" id="telegramBrowserLinkCopyBtn" type="button">Скопировать ссылку</button>
+              <button class="btn sm" id="telegramBrowserLinkRestartBtn" type="button">Обновить ссылку</button>
+              <button class="btn subtle" id="telegramBrowserLinkCancelBtn" type="button">Закрыть</button>
+            </div>
+            <div class="muted telegram-browser-link" id="telegramBrowserLinkMeta"></div>
+          </div>
         </div>
 
         <div class="auth-box">
@@ -169,6 +180,9 @@
       requestLinkPhoneCode,
       verifyLinkPhoneCode,
       linkTelegramAccount,
+      startTelegramBrowserLink,
+      getTelegramBrowserLinkStatus,
+      finalizeTelegramBrowserLink,
       getPasswordState,
       changePassword,
       requestPasswordResetCall,
@@ -205,6 +219,13 @@
       verifyLinkCodeBtn: document.getElementById("verifyLinkCodeBtn"),
       telegramState: document.getElementById("telegramState"),
       linkTelegramBtn: document.getElementById("linkTelegramBtn"),
+      telegramBrowserLinkBlock: document.getElementById("telegramBrowserLinkBlock"),
+      telegramBrowserLinkStatus: document.getElementById("telegramBrowserLinkStatus"),
+      telegramBrowserLinkMeta: document.getElementById("telegramBrowserLinkMeta"),
+      telegramBrowserLinkOpenLink: document.getElementById("telegramBrowserLinkOpenLink"),
+      telegramBrowserLinkCopyBtn: document.getElementById("telegramBrowserLinkCopyBtn"),
+      telegramBrowserLinkRestartBtn: document.getElementById("telegramBrowserLinkRestartBtn"),
+      telegramBrowserLinkCancelBtn: document.getElementById("telegramBrowserLinkCancelBtn"),
       passwordState: document.getElementById("passwordState"),
       openChangePasswordBtn: document.getElementById("openChangePasswordBtn"),
       openPasswordResetBtn: document.getElementById("openPasswordResetBtn"),
@@ -238,6 +259,10 @@
       passwordChangeOpen: false,
       passwordResetOpen: false,
     };
+    let telegramBrowserLinkSessionToken = "";
+    let telegramBrowserLinkDeepLink = "";
+    let telegramBrowserLinkPollTimer = null;
+    let telegramBrowserLinkFinalizing = false;
 
     const isCallEnabled = () => Boolean(phoneAuthConfig?.call_enabled);
     const isSmsEnabled = () => Boolean(phoneAuthConfig?.sms_enabled);
@@ -301,6 +326,81 @@
         els.requestPasswordResetBtn.classList.add("hidden");
         els.passwordResetCodeInput.value = "";
       }
+    }
+
+    function clearTelegramBrowserLinkPoll() {
+      if (telegramBrowserLinkPollTimer) {
+        clearInterval(telegramBrowserLinkPollTimer);
+        telegramBrowserLinkPollTimer = null;
+      }
+      telegramBrowserLinkFinalizing = false;
+    }
+
+    function hideTelegramBrowserLinkBlock({ reset = true } = {}) {
+      clearTelegramBrowserLinkPoll();
+      setVisible(els.telegramBrowserLinkBlock, false);
+      if (!reset) return;
+      telegramBrowserLinkSessionToken = "";
+      telegramBrowserLinkDeepLink = "";
+      els.telegramBrowserLinkOpenLink?.setAttribute("href", "#");
+      els.telegramBrowserLinkMeta.textContent = "";
+      els.telegramBrowserLinkStatus.textContent = "Нажми кнопку ниже, открой бота и подтверди привязку.";
+    }
+
+    function renderTelegramBrowserLinkState(data) {
+      const status = String(data?.status || "PENDING").toUpperCase();
+      if (status === "COMPLETED" || status === "FINALIZED") {
+        els.telegramBrowserLinkStatus.textContent = "Подтверждение получено. Завершаю привязку в браузере…";
+        return;
+      }
+      if (status === "EXPIRED") {
+        els.telegramBrowserLinkStatus.textContent = "Ссылка истекла. Нажми «Обновить ссылку», чтобы создать новую.";
+        return;
+      }
+      const tgUsername = data?.telegram_username ? ` от @${String(data.telegram_username).replace(/^@+/, "")}` : "";
+      els.telegramBrowserLinkStatus.textContent = `Ожидаем подтверждение в Telegram${tgUsername}. После нажатия кнопки в боте профиль обновится автоматически.`;
+    }
+
+    async function pollTelegramBrowserLinkSession() {
+      if (!telegramBrowserLinkSessionToken || telegramBrowserLinkFinalizing) return;
+      try {
+        const out = await getTelegramBrowserLinkStatus(telegramBrowserLinkSessionToken);
+        renderTelegramBrowserLinkState(out);
+        if (out?.authorized && !telegramBrowserLinkFinalizing) {
+          telegramBrowserLinkFinalizing = true;
+          clearTelegramBrowserLinkPoll();
+          await finalizeTelegramBrowserLink(telegramBrowserLinkSessionToken);
+          toast("Telegram привязан", "ok");
+          hideTelegramBrowserLinkBlock();
+          await loadProfile();
+          return;
+        }
+        if (String(out?.status || "").toUpperCase() === "EXPIRED") {
+          clearTelegramBrowserLinkPoll();
+        }
+      } catch (e) {
+        clearTelegramBrowserLinkPoll();
+        toast(e?.data?.detail || e?.message || "Не удалось проверить статус привязки Telegram", "err");
+      }
+    }
+
+    async function startTelegramBrowserLinkFlow() {
+      hideTelegramBrowserLinkBlock();
+      setVisible(els.telegramBrowserLinkBlock, true);
+      els.telegramBrowserLinkStatus.textContent = "Создаю ссылку для привязки Telegram…";
+      const out = await startTelegramBrowserLink(location.pathname + location.search);
+      telegramBrowserLinkSessionToken = String(out?.session_token || "");
+      telegramBrowserLinkDeepLink = String(out?.deep_link_url || "");
+      if (!telegramBrowserLinkSessionToken || !telegramBrowserLinkDeepLink) {
+        throw new Error("Не удалось подготовить привязку Telegram");
+      }
+      els.telegramBrowserLinkOpenLink.setAttribute("href", telegramBrowserLinkDeepLink);
+      const expires = Number(out?.expires_in_seconds || 0);
+      const botUsername = String(out?.bot_username || "").replace(/^@+/, "");
+      els.telegramBrowserLinkMeta.textContent = `Бот: @${botUsername}. Ссылка действует ${expires} сек. Если бот открывается впервые, после перехода нажми «Start / Запустить», затем кнопку «Привязать Telegram».`;
+      renderTelegramBrowserLinkState({ status: out?.status || "PENDING" });
+      telegramBrowserLinkPollTimer = setInterval(() => { void pollTelegramBrowserLinkSession(); }, Math.max(1500, Number(out?.poll_interval_ms || 2000)));
+      await pollTelegramBrowserLinkSession();
     }
 
     function renderAuthMethods(methods) {
@@ -407,14 +507,17 @@
           ? `Telegram уже привязан: ${profile.tg_username}`
           : "Telegram уже привязан к этой учётной записи.";
         setVisible(els.linkTelegramBtn, false);
+        hideTelegramBrowserLinkBlock();
       } else if (telegramMiniAppAvailable()) {
-        els.telegramState.textContent = "Telegram Mini App доступен. Можно привязать текущий Telegram-аккаунт к этой учётной записи.";
+        els.telegramState.textContent = "Telegram Mini App доступен. Можно сразу привязать текущий Telegram-аккаунт. Если удобнее, можно подтвердить привязку и через бота.";
         els.linkTelegramBtn.textContent = "Привязать Telegram";
         els.linkTelegramBtn.disabled = false;
         setVisible(els.linkTelegramBtn, true);
       } else {
-        els.telegramState.textContent = "Откройте профиль внутри Telegram Mini App, чтобы привязать Telegram-аккаунт.";
-        setVisible(els.linkTelegramBtn, false);
+        els.telegramState.textContent = "Telegram к профилю ещё не привязан. Подтверди привязку через бота, как при входе через Telegram.";
+        els.linkTelegramBtn.textContent = "Привязать через бота";
+        els.linkTelegramBtn.disabled = false;
+        setVisible(els.linkTelegramBtn, true);
       }
 
       renderPhoneUi();
@@ -622,13 +725,39 @@
 
     els.linkTelegramBtn.onclick = async () => {
       try {
-        const out = await linkTelegramAccount();
-        toast("Telegram привязан", "ok");
-        renderAuthMethods(out?.auth_methods || []);
-        await loadProfile();
+        if (telegramMiniAppAvailable()) {
+          const out = await linkTelegramAccount();
+          toast("Telegram привязан", "ok");
+          renderAuthMethods(out?.auth_methods || []);
+          await loadProfile();
+          return;
+        }
+        await startTelegramBrowserLinkFlow();
       } catch (e) {
         toast(e?.data?.detail || e?.message || "Не удалось привязать Telegram", "err");
       }
+    };
+
+    els.telegramBrowserLinkRestartBtn.onclick = async () => {
+      try {
+        await startTelegramBrowserLinkFlow();
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось обновить ссылку для Telegram", "err");
+      }
+    };
+
+    els.telegramBrowserLinkCopyBtn.onclick = async () => {
+      try {
+        if (!telegramBrowserLinkDeepLink) throw new Error("Ссылка ещё не готова");
+        await navigator.clipboard.writeText(telegramBrowserLinkDeepLink);
+        toast("Ссылка скопирована", "ok");
+      } catch (e) {
+        toast(e?.message || "Не удалось скопировать ссылку", "err");
+      }
+    };
+
+    els.telegramBrowserLinkCancelBtn.onclick = () => {
+      hideTelegramBrowserLinkBlock();
     };
 
     els.openChangePasswordBtn.onclick = () => {

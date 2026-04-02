@@ -299,6 +299,10 @@ def _browser_login_prefix() -> str:
     return "browser_login_"
 
 
+def _browser_link_prefix() -> str:
+    return "browser_link_"
+
+
 def _new_browser_login_token() -> str:
     return secrets.token_hex(16)
 
@@ -435,40 +439,118 @@ def _complete_browser_login_session(
     return session, user
 
 
+def _complete_browser_link_session(
+    db: Session,
+    *,
+    session_token: str,
+    tg_user_id: int,
+    tg_username: str | None,
+    first_name: str | None,
+    last_name: str | None,
+) -> tuple[TelegramBrowserAuthSession, User]:
+    session = _get_browser_login_session(db, session_token=session_token)
+    if _expire_browser_login_session(session):
+        db.commit()
+        raise HTTPException(status_code=410, detail="Сессия привязки Telegram истекла")
+    if not session.user_id:
+        raise HTTPException(status_code=409, detail="Для этой сессии не найден пользователь")
+
+    target_user = db.execute(select(User).where(User.id == session.user_id)).scalar_one_or_none()
+    if target_user is None:
+        raise HTTPException(status_code=404, detail="Пользователь для этой сессии не найден")
+
+    if str(session.status or "PENDING").upper() in {"COMPLETED", "FINALIZED"} and session.tg_user_id == tg_user_id:
+        return session, target_user
+
+    default_full_name = " ".join([p for p in [(last_name or "").strip(), (first_name or "").strip()] if p]) or None
+    default_short_name = (first_name or "").strip() or (tg_username.lstrip("@") if tg_username else None)
+
+    existing_tg_user = db.execute(select(User).where(User.tg_user_id == tg_user_id)).scalar_one_or_none()
+    if existing_tg_user is not None and existing_tg_user.id != target_user.id:
+        target_user = merge_user_accounts(db, target_user=target_user, source_user=existing_tg_user)
+
+    link_telegram_identity_to_user(
+        db,
+        user=target_user,
+        tg_user_id=tg_user_id,
+        tg_username=tg_username,
+        default_full_name=default_full_name,
+        default_short_name=default_short_name,
+    )
+    if tg_user_id in settings.super_admin_ids() and target_user.system_role != "SUPER_ADMIN":
+        target_user.system_role = "SUPER_ADMIN"
+
+    accept_invites_for_user(db, user_id=target_user.id, tg_username=target_user.tg_username)
+    session.user_id = target_user.id
+    session.tg_user_id = tg_user_id
+    session.tg_username = tg_username
+    session.status = "COMPLETED"
+    session.completed_at = _utcnow()
+    db.flush()
+    db.commit()
+    db.refresh(target_user)
+    return session, target_user
+
+
 def _handle_browser_login_start_message(db: Session, *, chat_id: int, text: str) -> None:
     raw = str(text or "").strip()
     if not raw.startswith("/start"):
         return
 
     start_arg = raw.split(maxsplit=1)[1].strip() if " " in raw else ""
-    prefix = _browser_login_prefix()
-    if not start_arg.startswith(prefix):
+    login_prefix = _browser_login_prefix()
+    link_prefix = _browser_link_prefix()
+    mode = None
+    session_token = ""
+    if start_arg.startswith(login_prefix):
+        mode = "login"
+        session_token = start_arg[len(login_prefix):].strip().lower()
+    elif start_arg.startswith(link_prefix):
+        mode = "link"
+        session_token = start_arg[len(link_prefix):].strip().lower()
+    else:
         _telegram_api_post("sendMessage", {
             "chat_id": chat_id,
-            "text": "Привет! Для входа через Telegram сначала нажмите кнопку «Войти через Telegram» в браузере Axelio.",
+            "text": "Привет! Для входа или привязки Telegram сначала нажмите соответствующую кнопку в Axelio.",
         })
         return
 
-    session_token = start_arg[len(prefix):].strip().lower()
     try:
         session = _get_browser_login_session(db, session_token=session_token)
         if _expire_browser_login_session(session):
             db.commit()
             _telegram_api_post("sendMessage", {
                 "chat_id": chat_id,
-                "text": "Ссылка для входа уже истекла. Вернитесь в браузер и создайте новую.",
+                "text": "Ссылка уже истекла. Вернитесь в Axelio и создайте новую.",
             })
             return
-        _telegram_send_browser_login_prompt(chat_id=chat_id, session_token=session_token)
+        prompt_text = (
+            "Подтвердите вход в Axelio в браузере.\n\nЕсли это были не вы, просто проигнорируйте это сообщение."
+            if mode == "login" else
+            "Подтвердите привязку Telegram к вашему профилю Axelio.\n\nЕсли это были не вы, просто проигнорируйте это сообщение."
+        )
+        button_text = "Подтвердить вход" if mode == "login" else "Привязать Telegram"
+        callback_data = f"browser_{mode}:{session_token}"
+        _telegram_api_post("sendMessage", {
+            "chat_id": chat_id,
+            "text": prompt_text,
+            "reply_markup": {"inline_keyboard": [[{"text": button_text, "callback_data": callback_data}]]},
+            "disable_web_page_preview": True,
+        })
     except HTTPException as exc:
-        _telegram_api_post("sendMessage", {"chat_id": chat_id, "text": str(exc.detail or "Не удалось найти сессию входа.")})
+        _telegram_api_post("sendMessage", {"chat_id": chat_id, "text": str(exc.detail or "Не удалось найти сессию.")})
     except Exception:
         pass
 
 
 def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None:
     data = str(callback_query.get("data") or "")
-    if not data.startswith("browser_login:"):
+    mode = None
+    if data.startswith("browser_login:"):
+        mode = "login"
+    elif data.startswith("browser_link:"):
+        mode = "link"
+    else:
         return
 
     session_token = data.split(":", 1)[1].strip().lower()
@@ -480,23 +562,38 @@ def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None
     message_id = message.get("message_id")
 
     try:
-        _complete_browser_login_session(
-            db,
-            session_token=session_token,
-            tg_user_id=int(from_user.get("id")),
-            tg_username=normalize_tg_username(from_user.get("username")),
-            first_name=(from_user.get("first_name") or "").strip(),
-            last_name=(from_user.get("last_name") or "").strip(),
-        )
-        _telegram_answer_callback_query(query_id, "Вход подтверждён")
+        if mode == "login":
+            _complete_browser_login_session(
+                db,
+                session_token=session_token,
+                tg_user_id=int(from_user.get("id")),
+                tg_username=normalize_tg_username(from_user.get("username")),
+                first_name=(from_user.get("first_name") or "").strip(),
+                last_name=(from_user.get("last_name") or "").strip(),
+            )
+            answer_text = "Вход подтверждён"
+            done_text = "Вход подтверждён. Вернитесь в браузер Axelio — страница завершит авторизацию автоматически."
+        else:
+            _complete_browser_link_session(
+                db,
+                session_token=session_token,
+                tg_user_id=int(from_user.get("id")),
+                tg_username=normalize_tg_username(from_user.get("username")),
+                first_name=(from_user.get("first_name") or "").strip(),
+                last_name=(from_user.get("last_name") or "").strip(),
+            )
+            answer_text = "Telegram привязан"
+            done_text = "Telegram успешно привязан. Вернитесь в Axelio — профиль обновится автоматически."
+
+        _telegram_answer_callback_query(query_id, answer_text)
         if chat_id is not None and message_id is not None:
-            _telegram_edit_message(int(chat_id), int(message_id), "Вход подтверждён. Вернитесь в браузер Axelio — страница завершит авторизацию автоматически.")
+            _telegram_edit_message(int(chat_id), int(message_id), done_text)
     except HTTPException as exc:
-        _telegram_answer_callback_query(query_id, str(exc.detail or "Не удалось подтвердить вход"), show_alert=True)
+        _telegram_answer_callback_query(query_id, str(exc.detail or "Не удалось завершить операцию"), show_alert=True)
         if chat_id is not None and message_id is not None:
-            _telegram_edit_message(int(chat_id), int(message_id), str(exc.detail or "Не удалось подтвердить вход"))
+            _telegram_edit_message(int(chat_id), int(message_id), str(exc.detail or "Не удалось завершить операцию"))
     except Exception:
-        _telegram_answer_callback_query(query_id, "Не удалось подтвердить вход", show_alert=True)
+        _telegram_answer_callback_query(query_id, "Не удалось завершить операцию", show_alert=True)
 
 
 def _phone_auth_config_payload() -> dict:
@@ -1040,6 +1137,81 @@ def verify_link_phone_code(
     if payload.new_password:
         _write_access_cookie(response, user=user)
     return _auth_state(db, user=user)
+
+
+@router.post("/link/telegram/browser/start", response_model=TelegramBrowserAuthStartOut)
+def start_telegram_browser_link(
+    payload: TelegramBrowserAuthStartIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    bot_username = _telegram_browser_bot_username()
+    if not bot_username:
+        raise HTTPException(status_code=503, detail="Telegram browser login is not configured")
+
+    session = TelegramBrowserAuthSession(
+        public_token=_new_browser_login_token(),
+        status="PENDING",
+        next_path=_normalize_next_path(payload.next_path),
+        user_id=user.id,
+        request_ip=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        expires_at=_utcnow() + timedelta(seconds=_browser_login_ttl_seconds()),
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+
+    return TelegramBrowserAuthStartOut(
+        session_token=session.public_token,
+        bot_username=bot_username,
+        deep_link_url=f"https://t.me/{bot_username}?start={_browser_link_prefix()}{session.public_token}",
+        expires_in_seconds=_browser_login_ttl_seconds(),
+    )
+
+
+@router.get("/link/telegram/browser/status/{session_token}", response_model=TelegramBrowserAuthStatusOut)
+def telegram_browser_link_status(
+    session_token: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    session = _get_browser_login_session(db, session_token=session_token)
+    if int(session.user_id or 0) != int(user.id):
+        raise HTTPException(status_code=404, detail="Сессия привязки Telegram не найдена")
+    if _expire_browser_login_session(session):
+        db.commit()
+    else:
+        db.flush()
+    return _browser_login_status_payload(session)
+
+
+@router.post("/link/telegram/browser/finalize", response_model=AuthStateOut)
+def finalize_telegram_browser_link(
+    payload: TelegramBrowserAuthFinalizeIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    session = _get_browser_login_session(db, session_token=payload.session_token)
+    if int(session.user_id or 0) != int(user.id):
+        raise HTTPException(status_code=404, detail="Сессия привязки Telegram не найдена")
+    if _expire_browser_login_session(session):
+        db.commit()
+        raise HTTPException(status_code=410, detail="Сессия привязки Telegram истекла")
+    if str(session.status or "PENDING").upper() not in {"COMPLETED", "FINALIZED"} or not session.tg_user_id:
+        raise HTTPException(status_code=409, detail="Подтверждение в Telegram ещё не завершено")
+
+    linked_user = db.execute(select(User).where(User.id == session.user_id)).scalar_one_or_none()
+    if linked_user is None:
+        raise HTTPException(status_code=404, detail="Пользователь для этой сессии не найден")
+
+    session.status = "FINALIZED"
+    if session.finalized_at is None:
+        session.finalized_at = _utcnow()
+    db.commit()
+    db.refresh(linked_user)
+    return _auth_state(db, user=linked_user)
 
 
 @router.post("/link/telegram", response_model=AuthStateOut)
