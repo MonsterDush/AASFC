@@ -146,6 +146,12 @@ from app.auth.venue_permissions import require_venue_permission, has_venue_permi
 
 from app.services.venues import create_venue
 from app.services.invites import build_invite_link, create_venue_invite, normalize_phone_e164
+from app.services.billing import (
+    BILLING_ACCESS_FULL,
+    get_user_billing_access,
+    get_venue_billing_snapshot,
+    list_billing_transactions,
+)
 from app.settings import settings
 
 router = APIRouter(prefix="/venues", tags=["venues"])
@@ -960,12 +966,19 @@ def _is_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> bool:
         VenueMember.is_active.is_(True),
     ).one_or_none()
 
-    return bool(m and m.venue_role == "OWNER")
+    if not m or str(m.venue_role or "").upper() != "OWNER":
+        return False
+
+    access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role="OWNER")
+    return access.get("billing_access_mode") == BILLING_ACCESS_FULL
 
 
 def _require_owner_or_super_admin(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
+    access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role="OWNER")
+    if access.get("billing_access_mode") != BILLING_ACCESS_FULL:
+        raise HTTPException(status_code=403, detail=access.get("billing_restricted_reason") or "Доступ к заведению ограничен из-за статуса подписки")
 
 
 def _can_manage_staff(db: Session, *, venue_id: int, user: User) -> bool:
@@ -987,12 +1000,25 @@ def _is_active_member_or_admin(db: Session, *, venue_id: int, user: User) -> boo
         VenueMember.user_id == user.id,
         VenueMember.is_active.is_(True),
     ).one_or_none()
-    return bool(m)
+    if not m:
+        return False
+    access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role=str(m.venue_role or ""))
+    return access.get("billing_access_mode") == BILLING_ACCESS_FULL
 
 
 def _require_active_member_or_admin(db: Session, *, venue_id: int, user: User) -> None:
-    if not _is_active_member_or_admin(db, venue_id=venue_id, user=user):
+    if user.system_role in ("SUPER_ADMIN", "MODERATOR"):
+        return
+    m = db.query(VenueMember).filter(
+        VenueMember.venue_id == venue_id,
+        VenueMember.user_id == user.id,
+        VenueMember.is_active.is_(True),
+    ).one_or_none()
+    if not m:
         raise HTTPException(status_code=403, detail="Forbidden")
+    access = get_user_billing_access(db, venue_id=venue_id, user=user, membership_role=str(m.venue_role or ""))
+    if access.get("billing_access_mode") != BILLING_ACCESS_FULL:
+        raise HTTPException(status_code=403, detail=access.get("billing_restricted_reason") or "Доступ к заведению ограничен из-за статуса подписки")
 
 
 def _get_expense_category_or_404(db: Session, *, venue_id: int, category_id: int) -> ExpenseCategory:

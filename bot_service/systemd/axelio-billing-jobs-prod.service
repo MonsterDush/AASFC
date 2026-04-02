@@ -1,0 +1,9 @@
+[Unit]
+Description=Axelio prod: process billing jobs
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/axelio/prod/repo/backend
+EnvironmentFile=/var/www/axelio/prod/repo/backend/.env
+ExecStart=/var/www/axelio/prod/venv/bin/python app/scripts/process_billing_jobs.py

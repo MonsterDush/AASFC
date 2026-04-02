@@ -49,6 +49,7 @@
 
   <script type="module">
 import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountNav } from "/app.js";
+import { getBillingAccessMode, getBillingStatus, isOwnerRole } from "/permissions.js?v=20260331-billing2";
 
 applyTelegramTheme();
 mountCommonUI("app");
@@ -56,34 +57,73 @@ mountCommonUI("app");
 await mountNav({ activeTab: "none" });
 
 const list = document.getElementById("list");
-function esc(s){ return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+function esc(s){
+  return String(s ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;");
+}
+
+function formatDateTime(value){
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString("ru-RU");
+}
+
+function billingChip(v){
+  const status = getBillingStatus(v);
+  if (status === "GRACE") return '<span class="badge" style="margin-left:8px">grace</span>';
+  if (status === "SUSPENDED") return '<span class="badge" style="margin-left:8px">доступ ограничен</span>';
+  return '';
+}
+
+function billingHint(v){
+  const status = getBillingStatus(v);
+  const paidUntil = v?.paid_until ? `Оплачено до ${esc(formatDateTime(v.paid_until))}` : 'Срок оплаты не задан';
+  const graceUntil = v?.grace_until ? `Льготный период до ${esc(formatDateTime(v.grace_until))}` : '';
+  const reason = v?.billing_restricted_reason ? esc(v.billing_restricted_reason) : '';
+
+  if (status === "GRACE") {
+    return `<div class="small" style="margin-top:6px">${paidUntil}. ${graceUntil || 'Доступ ограничится после окончания льготного периода.'}</div>`;
+  }
+  if (status === "SUSPENDED") {
+    return `<div class="small" style="margin-top:6px">${graceUntil || paidUntil}. ${reason || 'Функции заведения ограничены до продления.'}</div>`;
+  }
+  return `<div class="small" style="margin-top:6px">${paidUntil}</div>`;
+}
 
 function venueCard(v){
   const archived = !!v.is_archived;
   const chip = archived ? '<span class="badge" style="margin-left:8px">архив</span>' : '';
+  const billing = billingChip(v);
   const hint = archived
-    ? '<div class="small" style="margin-top:6px">Заведение сейчас не активно. Доступно только владельцу.</div>'
-    : '';
+    ? '<div class="small" style="margin-top:6px">Заведение сейчас в архиве. Доступно только владельцу.</div>'
+    : billingHint(v);
   const href = v.open_target || `/staff-shifts.html?venue_id=${encodeURIComponent(v.id)}`;
+  const accessMode = getBillingAccessMode(v);
+  const isReadonlyOwner = isOwnerRole(v?.my_role) && accessMode === "BILLING_READONLY";
+  const buttonLabel = isReadonlyOwner ? 'Открыть оплату' : 'Открыть';
   return `
     <div class="itemcard">
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <div style="min-width:0;flex:1 1 auto;">
-          <b>${esc(v.name)}${chip}</b>
+          <b>${esc(v.name)}${chip}${billing}</b>
           <div class="small">${v.my_role ? esc(String(v.my_role).toUpperCase() === "OWNER" ? "Владелец" : "Персонал") : ""}</div>
           ${hint}
         </div>
-        <a class="btn subtle inline" href="${href}" data-open data-id="${v.id}">Открыть</a>
+        <a class="btn subtle inline" href="${href}" data-open data-id="${v.id}">${buttonLabel}</a>
       </div>
     </div>
   `;
 }
 
 function renderSections(data){
-  const active = (data || []).filter((v) => !v.is_archived);
-  const archived = (data || []).filter((v) => !!v.is_archived);
+  const visible = (data || []).filter((v) => String(getBillingAccessMode(v)) !== "DENIED");
+  const active = visible.filter((v) => !v.is_archived);
+  const archived = visible.filter((v) => !!v.is_archived);
   if (!active.length && !archived.length) {
-    list.innerHTML = `<div class="muted">Пока нет заведений</div>`;
+    list.innerHTML = `<div class="muted">Пока нет доступных заведений</div>`;
     return;
   }
   let html = '';

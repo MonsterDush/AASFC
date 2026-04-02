@@ -59,6 +59,37 @@ export function isOwnerRole(venueRoleUpper) {
   return r === "OWNER" || r === "VENUE_OWNER";
 }
 
+export function getBillingStatus(resp) {
+  return String(resp?.billing_status || "ACTIVE").trim().toUpperCase() || "ACTIVE";
+}
+
+export function getBillingAccessMode(resp) {
+  return String(resp?.billing_access_mode || "FULL").trim().toUpperCase() || "FULL";
+}
+
+export function getBillingState(resp) {
+  return {
+    status: getBillingStatus(resp),
+    accessMode: getBillingAccessMode(resp),
+    paidUntil: resp?.paid_until || null,
+    graceUntil: resp?.grace_until || null,
+    restrictedReason: resp?.billing_restricted_reason || null,
+  };
+}
+
+export function isBillingReadonly(resp) {
+  return getBillingAccessMode(resp) === "BILLING_READONLY";
+}
+
+export function isBillingDenied(resp) {
+  return getBillingAccessMode(resp) === "DENIED";
+}
+
+export function isBillingRestricted(resp) {
+  const mode = getBillingAccessMode(resp);
+  return mode === "BILLING_READONLY" || mode === "DENIED";
+}
+
 export function hasReportAccess(permSet, venueRoleUpper, systemRoleUpper) {
   const role = String(venueRoleUpper || "").trim().toUpperCase();
   const sys = String(systemRoleUpper || "").trim().toUpperCase();

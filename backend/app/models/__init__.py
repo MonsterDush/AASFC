@@ -49,6 +49,9 @@ from .payroll_line import PayrollLine
 from .payroll_recalculation_log import PayrollRecalculationLog
 from .notification_delivery_log import NotificationDeliveryLog
 from .notification_job import NotificationJob
+from .venue_billing_state import VenueBillingState
+from .venue_billing_transaction import VenueBillingTransaction
+from .venue_billing_event import VenueBillingEvent
 
 __all__ = [
     "SystemRole",
@@ -103,4 +106,7 @@ __all__ = [
     "PayrollRecalculationLog",
     "NotificationDeliveryLog",
     "NotificationJob",
+    "VenueBillingState",
+    "VenueBillingTransaction",
+    "VenueBillingEvent",
 ]
