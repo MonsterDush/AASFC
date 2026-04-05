@@ -148,6 +148,119 @@ function clearDemoUiState() {
   try { sessionStorage.removeItem(SS_DEMO_UI_STATE); } catch {}
 }
 
+function getEffectiveDemoUiState(source = null) {
+  if (source && typeof source === "object") {
+    const built = buildDemoUiState(source);
+    if (built?.demo_mode) return built;
+    if (source.demo_mode) return source;
+  }
+  return readStoredDemoUiState();
+}
+
+const __demoPeriodWarned = new Set();
+
+function warnDemoPeriodOnce(key, message) {
+  if (!key || __demoPeriodWarned.has(key)) return;
+  __demoPeriodWarned.add(key);
+  toast(message || "В пробном режиме подготовлены данные только за демонстрационный период.", "warn");
+}
+
+function buildDemoMonthIso(year, month) {
+  const y = Number(year || 0);
+  const m = Number(month || 0);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || y <= 0 || m <= 0 || m > 12) return "";
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+export function getDemoUiState(source = null) {
+  return getEffectiveDemoUiState(source);
+}
+
+export function isDemoUiMode(source = null) {
+  return !!getEffectiveDemoUiState(source)?.demo_mode;
+}
+
+export function getDemoReferenceMonth(source = null) {
+  const state = getEffectiveDemoUiState(source);
+  if (!state?.demo_mode) return "";
+  return buildDemoMonthIso(state.demo_reference_year, state.demo_reference_month);
+}
+
+export function getDemoReferenceRange(source = null) {
+  const month = getDemoReferenceMonth(source);
+  if (!month) return { month: "", from: "", to: "" };
+  const [ys, ms] = month.split("-");
+  const y = Number(ys || 0);
+  const m = Number(ms || 0);
+  if (!y || !m) return { month: "", from: "", to: "" };
+  const lastDay = new Date(y, m, 0).getDate();
+  return {
+    month,
+    from: `${month}-01`,
+    to: `${month}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+export function coerceDemoMonth(value, { source = null, notify = true, context = "month" } = {}) {
+  const demoMonth = getDemoReferenceMonth(source);
+  const normalized = String(value || "").slice(0, 7);
+  if (!demoMonth) return normalized;
+  if (!normalized || normalized === demoMonth) return demoMonth;
+  if (notify) {
+    const state = getEffectiveDemoUiState(source);
+    const label = state?.demo_month_label || formatDemoMonthLabel(state?.demo_reference_year, state?.demo_reference_month);
+    warnDemoPeriodOnce(`month:${context}`, `В пробном режиме подготовлены данные за ${label}.`);
+  }
+  return demoMonth;
+}
+
+export function coerceDemoDate(value, { source = null, notify = true, context = "date" } = {}) {
+  const range = getDemoReferenceRange(source);
+  const normalized = String(value || "").slice(0, 10);
+  if (!range.month) return normalized;
+  if (!normalized || normalized.slice(0, 7) === range.month) return normalized || range.from;
+  if (notify) {
+    const state = getEffectiveDemoUiState(source);
+    const label = state?.demo_month_label || formatDemoMonthLabel(state?.demo_reference_year, state?.demo_reference_month);
+    warnDemoPeriodOnce(`date:${context}`, `В пробном режиме подготовлены данные за ${label}.`);
+  }
+  return range.from;
+}
+
+export function coerceDemoRange(from, to, { source = null, notify = true, context = "range" } = {}) {
+  const range = getDemoReferenceRange(source);
+  if (!range.month) return { from: String(from || "").slice(0, 10), to: String(to || "").slice(0, 10), changed: false };
+  const normFrom = String(from || "").slice(0, 10);
+  const normTo = String(to || "").slice(0, 10);
+  const changed = !(normFrom === range.from && normTo === range.to);
+  if (changed && notify) {
+    const state = getEffectiveDemoUiState(source);
+    const label = state?.demo_month_label || formatDemoMonthLabel(state?.demo_reference_year, state?.demo_reference_month);
+    warnDemoPeriodOnce(`range:${context}`, `В пробном режиме подготовлены данные за ${label}.`);
+  }
+  return { from: range.from, to: range.to, changed };
+}
+
+export function applyDemoReadonlyCaps(caps, { source = null, preserve = [] } = {}) {
+  if (!caps || typeof caps !== "object" || !isDemoUiMode(source)) return caps;
+  const preserved = new Set([...(preserve || [])].map((x) => String(x)));
+  const next = Array.isArray(caps) ? caps.slice() : { ...caps };
+  const shouldDisable = (key) => {
+    if (preserved.has(key)) return false;
+    if (/view/i.test(key)) return false;
+    return /(create|edit|manage|delete|archive|close|reopen|assign|remove|calculate|invite|cancel|save|update|rename|leave)/i.test(key);
+  };
+  Object.keys(next).forEach((key) => {
+    const value = next[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      next[key] = applyDemoReadonlyCaps(value, { source, preserve });
+      return;
+    }
+    if (typeof value === "boolean" && shouldDisable(key)) next[key] = false;
+  });
+  return next;
+}
+
 function isStaffOnlyDemoPage(pathname) {
   const page = String(pathname || location.pathname || "").split("/").pop().toLowerCase();
   return page.startsWith("staff-");

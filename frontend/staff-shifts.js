@@ -11,6 +11,8 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   getVenuePositions,
+  coerceDemoMonth,
+  isDemoUiMode,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
@@ -459,7 +461,7 @@ let showAllOnCalendar = false;
 let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "venue";
 let isMultiVenue = false;
 
-let curMonth = new Date();
+let curMonth = new Date(`${coerceDemoMonth(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`, { notify: false, context: "staff-shifts" })}-01T00:00:00`);
 let selectedDate = null;
 curMonth.setDate(1);
 
@@ -815,6 +817,7 @@ async function loadContext() {
   const isOwner = myRole === "OWNER" || myRole === "VENUE_OWNER";
 
   canEdit = isOwner || isAdmin || hasPerm(pset, "SHIFTS_MANAGE");
+  if (isDemoUiMode(perms)) canEdit = false;
 
   // numbers on calendar (salary / revenue) should be shown only to report viewers
   canViewRevenue =
@@ -3022,6 +3025,7 @@ el.prev.onclick = async () => {
     return;
   }
   curMonth.setMonth(curMonth.getMonth() - 1);
+  curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-shifts" })}-01T00:00:00`);
   curMonth.setDate(1);
   await loadMonth();
 };
@@ -3034,6 +3038,7 @@ el.next.onclick = async () => {
     return;
   }
   curMonth.setMonth(curMonth.getMonth() + 1);
+  curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-shifts" })}-01T00:00:00`);
   curMonth.setDate(1);
   await loadMonth();
 };

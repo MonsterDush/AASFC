@@ -160,7 +160,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode } from "/app.js";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260331-billing2";
 
     applyTelegramTheme();
@@ -213,6 +213,7 @@
         let billingAccessMode = "FULL";
         let billingReadonly = false;
         let billingInfo = null;
+        let demoReadonly = false;
 
         try {
           const me = await getMe().catch(() => null);
@@ -245,6 +246,14 @@
           billingStatus = getBillingStatus(perms);
           billingAccessMode = getBillingAccessMode(perms);
           billingReadonly = isBillingReadonly(perms) && (isOwner || isAdmin);
+          demoReadonly = isDemoUiMode(perms);
+
+          if (demoReadonly) {
+            canManageAdjustments = false;
+            canManageIntervals = false;
+            canEditVenueSettings = false;
+            canManageStaff = false;
+          }
 
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
 
@@ -602,9 +611,9 @@ const titleEl = document.getElementById("title");
         const tipsCard = document.getElementById("tipsSettingsCard");
 
         // Rename is available to owner/admin, archive/delete actions — only to superadmin/moderator.
-        const canAdminVenue = (isOwner || isAdmin);
-        const canArchiveVenue = !!isAdmin;
-        const canDeleteVenue = !!isAdmin;
+        const canAdminVenue = (isOwner || isAdmin) && !demoReadonly;
+        const canArchiveVenue = !!isAdmin && !demoReadonly;
+        const canDeleteVenue = !!isAdmin && !demoReadonly;
         if (btnRename) btnRename.style.display = canAdminVenue ? "" : "none";
         if (btnArchive) btnArchive.style.display = canArchiveVenue ? "" : "none";
         if (btnUnarchive) btnUnarchive.style.display = canArchiveVenue ? "" : "none";
@@ -674,9 +683,11 @@ openAdjustments.href = canManageAdjustments
 
           if (tipsCard) tipsCard.style.display = canEditVenueSettings ? "" : "none";
           metaEl.textContent = last.is_archived ? "В архиве" : "Активно";
-          metaHint.textContent = canAdminVenue
-            ? "Здесь можно управлять настройками и составом команды."
-            : (canManageStaff ? "Здесь можно управлять составом команды." : "");
+          metaHint.textContent = demoReadonly
+            ? "Пробный режим: здесь можно изучить структуру заведения и разделы без внесения изменений."
+            : (canAdminVenue
+              ? "Здесь можно управлять настройками и составом команды."
+              : (canManageStaff ? "Здесь можно управлять составом команды." : ""));
         }
           
 

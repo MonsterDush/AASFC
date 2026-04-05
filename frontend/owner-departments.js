@@ -10,6 +10,7 @@ import {
   getDepartments,
   createDepartment,
   updateDepartment,
+  applyDemoReadonlyCaps,
 } from "/app.js";
 
 const root = document.getElementById("root");
@@ -383,7 +384,7 @@ async function load() {
   } catch {
     state.perms = null;
   }
-  state.can = computeCaps(state.perms);
+  state.can = applyDemoReadonlyCaps(computeCaps(state.perms), { source: state.perms });
 
   // create button gating
   const btnCreate = document.getElementById("btnCreate");

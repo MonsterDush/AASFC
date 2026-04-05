@@ -11,6 +11,8 @@ import {
   API_BASE,
   toast,
   closeModal,
+  coerceDemoMonth,
+  applyDemoReadonlyCaps,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -50,7 +52,7 @@ function currentMonth() {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+  return coerceDemoMonth(`${y}-${m}`, { notify: false, context: "owner-expenses" });
 }
 
 function todayISO() {
@@ -225,11 +227,11 @@ async function loadAccess() {
     const role = roleUpper(permsResp);
     const pset = permSetFromResponse(permsResp);
     const isOwner = role === "OWNER" || role === "VENUE_OWNER";
-    access = {
+    access = applyDemoReadonlyCaps({
       canView: isOwner || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
       canEdit: isOwner || hasPerm(pset, "EXPENSE_ADD"),
       canManageCatalogs: isOwner || hasPerm(pset, "EXPENSE_CATEGORIES_MANAGE"),
-    };
+    }, { source: permsResp });
   } catch {
     access = { canView: false, canEdit: false, canManageCatalogs: false };
   }
@@ -657,13 +659,13 @@ async function boot() {
   if (openExpenseCategoriesBtn) openExpenseCategoriesBtn.href = `/owner-expense-categories.html?venue_id=${encodeURIComponent(activeVenueId)}`;
   if (openSuppliersBtn) openSuppliersBtn.href = `/owner-suppliers.html?venue_id=${encodeURIComponent(activeVenueId)}`;
 
-  state.month = params.get("month") || currentMonth();
+  state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-expenses" });
   state.statuses = params.get("statuses") || "";
   const monthPick = document.getElementById("expensesMonthPick");
   if (monthPick) {
     monthPick.value = state.month;
     monthPick.onchange = async (e) => {
-      state.month = e.target.value || currentMonth();
+      state.month = coerceDemoMonth(e.target.value || currentMonth(), { context: "owner-expenses" });
       await loadExpenses();
     };
   }

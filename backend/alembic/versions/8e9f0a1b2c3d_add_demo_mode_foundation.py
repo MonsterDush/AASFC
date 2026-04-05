@@ -1,7 +1,7 @@
 """add demo mode foundation
 
 Revision ID: 8e9f0a1b2c3d
-Revises: b1c23d4e5f6a
+Revises: b1c2d3e4f5a6
 Create Date: 2026-04-05 18:30:00.000000
 """
 

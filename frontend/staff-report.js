@@ -13,6 +13,8 @@ import {
   getPaymentMethods,
   getKpiMetrics,
   getVenueSettings,
+  coerceDemoMonth,
+  isDemoUiMode,
 } from "/app.js";
 
 
@@ -215,7 +217,7 @@ function withTimeout(p, ms, label) {
 
 // ---- Calendar ----
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-let curMonth = new Date();
+let curMonth = new Date(`${coerceDemoMonth(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`, { notify: false, context: "staff-report" })}-01T00:00:00`);
 curMonth.setDate(1);
 
 let reportsByDate = new Map(); // dateISO -> report
@@ -237,6 +239,7 @@ function isOwnerOrAdmin() {
 }
 
 function canMake() {
+  if (isDemoUiMode(permsResp)) return false;
   return isOwnerOrAdmin() || hasAnyPerm(pset, ["SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"]);
 }
 
@@ -254,15 +257,18 @@ function canSeeMoney() {
 }
 
 function canClose() {
+  if (isDemoUiMode(permsResp)) return false;
   return isOwnerOrAdmin() || hasAnyPerm(pset, ["SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"]);
 }
 
 function canReopen() {
+  if (isDemoUiMode(permsResp)) return false;
   return isOwnerOrAdmin() || hasPerm("SHIFT_REPORT_REOPEN");
 }
 
 function canEditClosed() {
   // Backend requires SHIFT_REPORT_EDIT for CLOSED edits (unless OWNER / admin)
+  if (isDemoUiMode(permsResp)) return false;
   return isOwnerOrAdmin() || hasPerm("SHIFT_REPORT_EDIT");
 }
 
@@ -1196,6 +1202,7 @@ async function openDay(dayISO) {
 if (el.prev) {
   el.prev.addEventListener("click", async () => {
     curMonth.setMonth(curMonth.getMonth() - 1);
+    curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-report" })}-01T00:00:00`);
     await loadMonthReports();
     renderMonth();
   });
@@ -1203,6 +1210,7 @@ if (el.prev) {
 if (el.next) {
   el.next.addEventListener("click", async () => {
     curMonth.setMonth(curMonth.getMonth() + 1);
+    curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-report" })}-01T00:00:00`);
     await loadMonthReports();
     renderMonth();
   });

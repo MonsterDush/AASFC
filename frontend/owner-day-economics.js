@@ -9,6 +9,8 @@ import {
   getMyVenuePermissions,
   api,
   toast,
+  coerceDemoDate,
+  applyDemoReadonlyCaps,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -46,7 +48,7 @@ function todayISO() {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return coerceDemoDate(`${y}-${m}-${day}`, { notify: false, context: "owner-day-economics" });
 }
 
 function formatDateRu(iso) {
@@ -205,8 +207,10 @@ async function loadAccess() {
     const role = roleUpper(resp);
     const isOwner = role === "OWNER" || role === "VENUE_OWNER";
     const pset = permSetFromResponse(resp);
-    access.canView = isOwner || hasPerm(pset, "REVENUE_VIEW") || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
-    access.canManage = isOwner;
+    Object.assign(access, applyDemoReadonlyCaps({
+      canView: isOwner || hasPerm(pset, "REVENUE_VIEW") || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
+      canManage: isOwner,
+    }, { source: resp }));
   } catch {
     access.canView = false;
     access.canManage = false;
@@ -410,12 +414,12 @@ async function boot() {
   await loadAccess();
 
   const params = new URLSearchParams(location.search);
-  state.date = params.get("date") || todayISO();
+  state.date = coerceDemoDate(params.get("date") || todayISO(), { notify: false, context: "owner-day-economics" });
   const datePick = document.getElementById("economicsDatePick");
   if (datePick) {
     datePick.value = state.date;
     datePick.onchange = async (e) => {
-      state.date = e.target.value || todayISO();
+      state.date = coerceDemoDate(e.target.value || todayISO(), { context: "owner-day-economics" });
       await loadEconomics();
     };
   }

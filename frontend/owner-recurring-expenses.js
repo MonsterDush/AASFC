@@ -10,6 +10,8 @@ import {
   api,
   toast,
   closeModal,
+  coerceDemoMonth,
+  applyDemoReadonlyCaps,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -33,7 +35,7 @@ function esc(s) {
 
 function currentMonth() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return coerceDemoMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, { notify: false, context: "owner-recurring-expenses" });
 }
 
 function todayISO() {
@@ -161,10 +163,10 @@ async function loadAccess() {
     const role = roleUpper(permsResp);
     const pset = permSetFromResponse(permsResp);
     const isOwner = role === "OWNER" || role === "VENUE_OWNER";
-    access = {
+    access = applyDemoReadonlyCaps({
       canView: isOwner || hasPerm(pset, "RECURRING_EXPENSES_VIEW") || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
       canManage: isOwner || hasPerm(pset, "RECURRING_EXPENSES_MANAGE") || hasPerm(pset, "EXPENSE_ADD"),
-    };
+    }, { source: permsResp });
   } catch {
     access = { canView: false, canManage: false };
   }
@@ -424,12 +426,12 @@ async function boot() {
   } catch {}
 
   await loadAccess();
-  state.month = params.get("month") || currentMonth();
+  state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-recurring-expenses" });
   const monthPick = document.getElementById("rulesMonthPick");
   if (monthPick) {
     monthPick.value = state.month;
     monthPick.onchange = (e) => {
-      state.month = e.target.value || currentMonth();
+      state.month = coerceDemoMonth(e.target.value || currentMonth(), { context: "owner-recurring-expenses" });
       if (openExpensesBtn) openExpensesBtn.href = buildExpensesMonthLink(state.month);
       if (openGeneratedExpensesBtn) openGeneratedExpensesBtn.href = buildExpensesMonthLink(state.month);
       renderRules();

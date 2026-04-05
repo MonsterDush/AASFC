@@ -10,6 +10,9 @@ import {
   api,
   API_BASE,
   toast,
+  coerceDemoMonth,
+  coerceDemoRange,
+  isDemoUiMode,
 } from "/app.js";
 import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix1";
 
@@ -45,7 +48,7 @@ function currentMonth() {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+  return coerceDemoMonth(`${y}-${m}`, { notify: false, context: "owner-summary" });
 }
 
 let state = {
@@ -66,6 +69,12 @@ function showBlock(id, visible) {
 }
 
 function normalizeRange() {
+  const demoRange = coerceDemoRange(state.from, state.to, { notify: false, context: "owner-summary" });
+  if (demoRange.from && demoRange.to) {
+    state.from = demoRange.from;
+    state.to = demoRange.to;
+    return;
+  }
   if (!state.from) state.from = todayISO();
   if (!state.to) state.to = state.from;
   if (state.from > state.to) {
@@ -337,9 +346,11 @@ async function boot() {
   } catch {}
 
   state.period = params.get("period") || (params.get("date_from") && params.get("date_to") ? "range" : "month");
-  state.month = (params.get("month") || currentMonth()).slice(0, 7);
-  state.from = params.get("date_from") || todayISO();
-  state.to = params.get("date_to") || state.from;
+  state.month = coerceDemoMonth((params.get("month") || currentMonth()).slice(0, 7), { notify: false, context: "owner-summary" });
+  const demoRange = coerceDemoRange(params.get("date_from") || todayISO(), params.get("date_to") || (params.get("date_from") || todayISO()), { notify: false, context: "owner-summary" });
+  state.from = demoRange.from || params.get("date_from") || todayISO();
+  state.to = demoRange.to || params.get("date_to") || state.from;
+  if (isDemoUiMode()) state.period = "month";
   normalizeRange();
 
   const monthPick = document.getElementById("summaryMonthPick");
@@ -350,7 +361,7 @@ async function boot() {
   if (monthPick) {
     monthPick.value = state.month;
     monthPick.onchange = (e) => {
-      state.month = (e.target.value || currentMonth()).slice(0, 7);
+      state.month = coerceDemoMonth((e.target.value || currentMonth()).slice(0, 7), { context: "owner-summary" });
       state.period = "month";
       setActiveSeg("summaryPeriodSeg", "period", "month");
       loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
@@ -359,19 +370,27 @@ async function boot() {
   if (fromPick) {
     fromPick.value = state.from;
     fromPick.onchange = (e) => {
-      state.from = e.target.value || todayISO();
+      state.from = coerceDemoRange(e.target.value || todayISO(), state.to || e.target.value || todayISO(), { context: "owner-summary" }).from;
     };
   }
   if (toPick) {
     toPick.value = state.to;
     toPick.onchange = (e) => {
-      state.to = e.target.value || state.from || todayISO();
+      state.to = coerceDemoRange(state.from || todayISO(), e.target.value || state.from || todayISO(), { context: "owner-summary" }).to;
     };
   }
   if (rangeApplyBtn) {
     rangeApplyBtn.onclick = () => {
-      state.period = "range";
-      setActiveSeg("summaryPeriodSeg", "period", "range");
+      if (isDemoUiMode()) {
+        const demoRange = coerceDemoRange(state.from, state.to, { context: "owner-summary" });
+        state.from = demoRange.from;
+        state.to = demoRange.to;
+        state.period = "month";
+        setActiveSeg("summaryPeriodSeg", "period", "month");
+      } else {
+        state.period = "range";
+        setActiveSeg("summaryPeriodSeg", "period", "range");
+      }
       loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
     };
   }
@@ -379,7 +398,7 @@ async function boot() {
   document.querySelectorAll(`#summaryPeriodSeg button`).forEach((btn) => {
     btn.onclick = () => {
       const nextPeriod = btn.dataset.period || "month";
-      state.period = nextPeriod;
+      state.period = (isDemoUiMode() && nextPeriod === "range") ? "month" : nextPeriod;
       setActiveSeg("summaryPeriodSeg", "period", nextPeriod);
       if (nextPeriod === "month") {
         loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
@@ -390,6 +409,10 @@ async function boot() {
     };
   });
 
+  if (isDemoUiMode()) {
+    document.querySelector(`#summaryPeriodSeg button[data-period="range"]`)?.style?.setProperty("display", "none");
+    document.getElementById("summaryRangePick")?.style?.setProperty("display", "none");
+  }
   setActiveSeg("summaryPeriodSeg", "period", state.period);
   syncPickers();
   await loadSummary();

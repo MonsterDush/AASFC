@@ -10,6 +10,10 @@ import {
   calculatePayroll,
   api,
   API_BASE,
+  coerceDemoMonth,
+  coerceDemoRange,
+  applyDemoReadonlyCaps,
+  isDemoUiMode,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -43,7 +47,7 @@ function currentMonth() {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+  return coerceDemoMonth(`${y}-${m}`, { notify: false, context: "owner-payroll" });
 }
 
 function monthStartIso(month) {
@@ -399,7 +403,7 @@ function renderState() {
   if (rangeFrom) rangeFrom.value = state.dateFrom;
   if (rangeTo) rangeTo.value = state.dateTo;
   if (monthControls) monthControls.style.display = state.periodMode === "month" ? "" : "none";
-  if (rangeControls) rangeControls.style.display = state.periodMode === "range" ? "" : "none";
+  if (rangeControls) rangeControls.style.display = isDemoUiMode() ? "none" : (state.periodMode === "range" ? "" : "none");
   periodMonthBtn?.classList.toggle("active", state.periodMode === "month");
   periodRangeBtn?.classList.toggle("active", state.periodMode === "range");
 
@@ -577,6 +581,11 @@ async function applyRangeFromControls() {
   state.dateFrom = nextFrom <= nextTo ? nextFrom : nextTo;
   state.dateTo = nextTo >= nextFrom ? nextTo : nextFrom;
   renderState();
+  if (isDemoUiMode()) {
+    document.getElementById("periodRangeBtn")?.style?.setProperty("display", "none");
+    document.getElementById("rangeControls")?.style?.setProperty("display", "none");
+  }
+
   await load();
 }
 
@@ -592,11 +601,13 @@ async function boot() {
   }
 
   const params = new URLSearchParams(location.search);
-  state.month = params.get("month") || currentMonth();
+  state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-payroll" });
   const hasRange = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_from") || "")) && /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_to") || ""));
   state.periodMode = (params.get("period_mode") || (hasRange ? "range" : "month")).toLowerCase() === "range" ? "range" : "month";
-  state.dateFrom = hasRange ? String(params.get("date_from")) : monthStartIso(state.month);
-  state.dateTo = hasRange ? String(params.get("date_to")) : monthEndIso(state.month);
+  if (isDemoUiMode()) state.periodMode = "month";
+  const demoRangePayroll = coerceDemoRange(hasRange ? String(params.get("date_from")) : monthStartIso(state.month), hasRange ? String(params.get("date_to")) : monthEndIso(state.month), { notify: false, context: "owner-payroll" });
+  state.dateFrom = demoRangePayroll.from || (hasRange ? String(params.get("date_from")) : monthStartIso(state.month));
+  state.dateTo = demoRangePayroll.to || (hasRange ? String(params.get("date_to")) : monthEndIso(state.month));
   if (state.dateTo < state.dateFrom) state.dateTo = state.dateFrom;
 
   await mountNav({ activeTab: "summary" });
@@ -613,7 +624,7 @@ async function boot() {
     state.perms = null;
   }
 
-  state.can = computeCaps(state.perms, state.me);
+  state.can = applyDemoReadonlyCaps(computeCaps(state.perms, state.me), { source: state.perms });
   renderState();
 
   document.getElementById("periodMonthBtn")?.addEventListener("click", async () => {
@@ -623,12 +634,13 @@ async function boot() {
   });
   document.getElementById("periodRangeBtn")?.addEventListener("click", async () => {
     if (state.periodMode === "range") return;
+    if (isDemoUiMode()) return;
     setPeriodMode("range");
     await load();
   });
 
   document.getElementById("monthPick")?.addEventListener("change", async (e) => {
-    state.month = e.target.value || currentMonth();
+    state.month = coerceDemoMonth(e.target.value || currentMonth(), { context: "owner-payroll" });
     if (!state.dateFrom || !state.dateTo) {
       state.dateFrom = monthStartIso(state.month);
       state.dateTo = monthEndIso(state.month);
@@ -637,7 +649,18 @@ async function boot() {
     await load();
   });
 
-  document.getElementById("rangeApply")?.addEventListener("click", applyRangeFromControls);
+  document.getElementById("rangeApply")?.addEventListener("click", async () => {
+    if (isDemoUiMode()) {
+      const demoRange = coerceDemoRange(state.dateFrom, state.dateTo, { context: "owner-payroll" });
+      state.dateFrom = demoRange.from;
+      state.dateTo = demoRange.to;
+      state.periodMode = "month";
+      renderState();
+      await load();
+      return;
+    }
+    await applyRangeFromControls();
+  });
   document.getElementById("btnCalculate")?.addEventListener("click", onCalculate);
   document.getElementById("btnExport")?.addEventListener("click", async () => {
     try {

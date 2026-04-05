@@ -16,6 +16,7 @@ import {
   updateVenuePosition,
   deleteVenuePosition,
   patchInviteDefaultPosition,
+  isDemoUiMode,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
@@ -424,6 +425,11 @@ function computeAuth(perms) {
   auth.canManage = isOwnerOrAdmin || pset.has("POSITIONS_MANAGE");
   auth.canAssign = isOwnerOrAdmin || pset.has("POSITIONS_ASSIGN");
   auth.canManagePerms = isOwnerOrAdmin || pset.has("POSITION_PERMISSIONS_MANAGE");
+  if (isDemoUiMode(perms)) {
+    auth.canManage = false;
+    auth.canAssign = false;
+    auth.canManagePerms = false;
+  }
 }
 
 function parseVenueId() {

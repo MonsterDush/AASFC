@@ -8,6 +8,8 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
+  coerceDemoMonth,
+  isDemoUiMode,
 } from "/app.js";
 
 import { hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
@@ -180,6 +182,7 @@ function monthEndIso(d) {
 
 let periodMode = (params.get("period_mode") || ((params.get("date_from") && params.get("date_to")) ? "range" : "month")).toLowerCase();
 if (periodMode !== "range") periodMode = "month";
+if (isDemoUiMode()) periodMode = "month";
 
 function defaultTipDate() {
   const today = isoToday();
@@ -269,14 +272,14 @@ function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 const deepLinkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date") || "")) ? String(params.get("date")) : "";
 const shouldAutoOpenDay = String(params.get("open_day") || "") === "1" && !!deepLinkDate;
 let deepLinkAutoOpened = false;
-let curMonth = new Date(); curMonth.setDate(1);
+let curMonth = new Date(`${coerceDemoMonth(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`, { notify: false, context: "staff-salary" })}-01T00:00:00`); curMonth.setDate(1);
 const qMonth = params.get("month");
 if (qMonth && /^\d{4}-\d{2}$/.test(qMonth)) {
   const [yy, mm] = qMonth.split("-").map((x) => parseInt(x, 10));
-  if (yy && mm) curMonth = new Date(yy, mm - 1, 1);
+  if (yy && mm) curMonth = new Date(`${coerceDemoMonth(`${yy}-${String(mm).padStart(2, "0")}`, { notify: false, context: "staff-salary" })}-01T00:00:00`);
 } else if (deepLinkDate) {
   const [yy, mm] = deepLinkDate.slice(0, 7).split("-").map((x) => parseInt(x, 10));
-  if (yy && mm) curMonth = new Date(yy, mm - 1, 1);
+  if (yy && mm) curMonth = new Date(`${coerceDemoMonth(`${yy}-${String(mm).padStart(2, "0")}`, { notify: false, context: "staff-salary" })}-01T00:00:00`);
 }
 let rangeFrom = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_from") || "")) ? String(params.get("date_from")) : monthStartIso(curMonth);
 let rangeTo = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_to") || "")) ? String(params.get("date_to")) : (deepLinkDate || isoToday());
@@ -296,9 +299,12 @@ function getPeriodQuery() {
 
 function syncPeriodUi() {
   if (el.monthControls) el.monthControls.style.display = periodMode === "month" ? "flex" : "none";
-  if (el.rangeControls) el.rangeControls.style.display = periodMode === "range" ? "flex" : "none";
+  if (el.rangeControls) el.rangeControls.style.display = isDemoUiMode() ? "none" : (periodMode === "range" ? "flex" : "none");
   if (el.periodMonthBtn) el.periodMonthBtn.disabled = periodMode === "month";
-  if (el.periodRangeBtn) el.periodRangeBtn.disabled = periodMode === "range";
+  if (el.periodRangeBtn) {
+    el.periodRangeBtn.disabled = isDemoUiMode() || periodMode === "range";
+    el.periodRangeBtn.style.display = isDemoUiMode() ? "none" : "";
+  }
   if (el.rangeFrom) el.rangeFrom.value = rangeFrom || "";
   if (el.rangeTo) el.rangeTo.value = rangeTo || "";
   if (el.monthLabel) el.monthLabel.textContent = periodMode === "month" ? monthTitle(curMonth) : `${formatDateRu(rangeFrom)} — ${formatDateRu(rangeTo)}`;
@@ -1032,12 +1038,14 @@ async function openDayModal(d) {
 
 el.prev?.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() - 1);
+  curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-salary" })}-01T00:00:00`);
   curMonth.setDate(1);
   syncUrl();
   await refresh();
 });
 el.next?.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() + 1);
+  curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-salary" })}-01T00:00:00`);
   curMonth.setDate(1);
   syncUrl();
   await refresh();
@@ -1049,6 +1057,7 @@ el.periodMonthBtn?.addEventListener("click", async () => {
   await refresh();
 });
 el.periodRangeBtn?.addEventListener("click", async () => {
+  if (isDemoUiMode()) return;
   periodMode = "range";
   if (!rangeFrom || !rangeTo) {
     rangeFrom = monthStartIso(curMonth);
@@ -1059,6 +1068,7 @@ el.periodRangeBtn?.addEventListener("click", async () => {
   await refresh();
 });
 el.rangeApply?.addEventListener("click", async () => {
+  if (isDemoUiMode()) return;
   const from = String(el.rangeFrom?.value || "").trim();
   const to = String(el.rangeTo?.value || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
