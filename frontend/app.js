@@ -114,7 +114,7 @@ function buildDemoUiState(source) {
     demo_banner: {
       return_url: banner.return_url || "https://axelio.ru",
       primary_cta_url: banner.primary_cta_url || "https://axelio.ru/#contact",
-      secondary_cta_url: banner.secondary_cta_url || `${location.origin}${AUTH_PAGE}`,
+      secondary_cta_url: banner.secondary_cta_url || "https://axelio.ru/#contact",
       primary_cta_label: banner.primary_cta_label || "Оставить заявку",
       secondary_cta_label: banner.secondary_cta_label || "Начать пользоваться",
     },
@@ -332,14 +332,14 @@ async function switchDemoPersona(targetPersona, buttonEl = null) {
   }
 }
 
-async function exitDemoMode(buttonEl = null) {
+async function exitDemoMode(buttonEl = null, targetUrl = null) {
   if (buttonEl) buttonEl.disabled = true;
   try {
     const currentState = getStoredDemoUiState();
-    const fallbackReturnUrl = currentState?.demo_banner?.return_url || "https://axelio.ru";
+    const fallbackReturnUrl = targetUrl || currentState?.demo_banner?.return_url || "https://axelio.ru";
     const out = await api("/auth/demo/exit", { method: "POST", skipDemoReadonlyToast: true });
     clearDemoUiState();
-    location.href = out?.redirect_url || fallbackReturnUrl;
+    location.href = targetUrl || out?.redirect_url || fallbackReturnUrl;
   } catch (e) {
     toast(e?.data?.detail || e?.message || "Не удалось выйти из DEMO", "err");
   } finally {
@@ -361,7 +361,7 @@ function buildDemoBannerMarkup(state) {
       <span class="demo-banner__pill demo-banner__pill--muted">${monthLabel}</span>
       <a class="demo-banner__link" href="${String(banner.return_url || "https://axelio.ru")}">На сайт</a>
       <a class="demo-banner__link demo-banner__link--primary" href="${String(banner.primary_cta_url || "https://axelio.ru/#contact")}">${String(banner.primary_cta_label || "Оставить заявку")}</a>
-      <a class="demo-banner__link" href="${String(banner.secondary_cta_url || `${location.origin}${AUTH_PAGE}`)}">${String(banner.secondary_cta_label || "Начать пользоваться")}</a>
+      <button type="button" class="demo-banner__link" data-demo-exit-cta="1" data-demo-exit-url="${String(banner.secondary_cta_url || "https://axelio.ru/#contact")}">${String(banner.secondary_cta_label || "Начать пользоваться")}</button>
     </div>`;
 }
 
@@ -402,6 +402,13 @@ function mountDemoBanner(state = null) {
       const target = btn.getAttribute("data-demo-persona") || "OWNER";
       if (String(effectiveState.demo_persona || "OWNER").toUpperCase() === String(target).toUpperCase()) return;
       switchDemoPersona(target, btn);
+    });
+  });
+
+  host.querySelectorAll("[data-demo-exit-cta]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetUrl = btn.getAttribute("data-demo-exit-url") || "https://axelio.ru/#contact";
+      exitDemoMode(btn, targetUrl);
     });
   });
 }
