@@ -11,10 +11,10 @@ from typing import Sequence, Union
 
 
 # revision identifiers, used by Alembic.
-revision = "8e9f0a1b2c3d"
-down_revision: Union[str, Sequence[str], None] = 'b1c23d4e5f6a'
-branch_labels = None
-depends_on = None
+revision: str = "8e9f0a1b2c3d"
+down_revision: Union[str, Sequence[str], None] = "b1c23d4e5f6a"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
