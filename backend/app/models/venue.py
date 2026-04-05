@@ -1,4 +1,4 @@
-from sqlalchemy import String, Boolean, DateTime
+from sqlalchemy import String, Boolean, DateTime, Integer
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,11 @@ class Venue(Base):
     # NEW: archive flags
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     archived_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # DEMO mode metadata
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    demo_reference_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    demo_reference_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # NEW: tips settings (B2+)
     tips_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

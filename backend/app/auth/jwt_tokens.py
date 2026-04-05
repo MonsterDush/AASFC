@@ -15,7 +15,13 @@ class JwtConfig:
     ttl_seconds: int
 
 
-def create_access_token(cfg: JwtConfig, user_id: int, *, session_version: int = 0) -> str:
+def create_access_token(
+    cfg: JwtConfig,
+    user_id: int,
+    *,
+    session_version: int = 0,
+    extra_claims: dict[str, Any] | None = None,
+) -> str:
     now = int(time.time())
     payload: dict[str, Any] = {
         "sub": str(user_id),
@@ -26,6 +32,8 @@ def create_access_token(cfg: JwtConfig, user_id: int, *, session_version: int = 
         "aud": cfg.audience,
         "typ": "access",
     }
+    if extra_claims:
+        payload.update(extra_claims)
     return jwt.encode(payload, cfg.secret, algorithm="HS256")
 
 

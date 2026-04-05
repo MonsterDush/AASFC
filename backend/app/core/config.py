@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     SUPER_ADMIN_TG_USER_IDS: str = ""
 
     # Phone auth / OTP
+    DEMO_ENABLED: bool = True
+    DEMO_RETURN_URL: str = "https://axelio.ru"
+    DEMO_PRIMARY_CTA_URL: str = "https://axelio.ru/#contact"
+    DEMO_PRIMARY_CTA_LABEL: str = "Оставить заявку"
+    DEMO_SECONDARY_CTA_URL: str = ""
+    DEMO_SECONDARY_CTA_LABEL: str = "Начать пользоваться"
+
     PHONE_AUTH_PROVIDER: str = "debug"  # debug | console | sms_ru
     PHONE_AUTH_DEBUG_REVEAL_CODE: bool = True
     PHONE_AUTH_DEFAULT_COUNTRY_CODE: str = "7"

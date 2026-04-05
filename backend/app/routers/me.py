@@ -36,6 +36,7 @@ from app.models import (
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.payroll.period_summary import build_member_period_summary, resolve_salary_period
 from app.services.billing.access import BILLING_ACCESS_DENIED, BILLING_ACCESS_FULL, get_user_billing_access, get_venue_billing_snapshot
+from app.services.demo.access import build_demo_banner_payload, build_demo_context_payload
 
 
 router = APIRouter(tags=["me"])
@@ -117,6 +118,12 @@ def _serialize_billing_access_payload(access: dict) -> dict:
     }
 
 
+def _serialize_demo_payload(user: User | None, *, venue: Venue | None = None, venue_id: int | None = None) -> dict:
+    payload = build_demo_context_payload(user, venue=venue, venue_id=venue_id)
+    payload["demo_banner"] = build_demo_banner_payload()
+    return payload
+
+
 def _notification_settings_payload(user: User) -> dict:
     return {
         "notify_enabled": user.notify_enabled,
@@ -158,6 +165,7 @@ def me(
         "auth_methods": get_user_auth_methods(db, user_id=user.id),
         "has_password": has_password(user),
         "password_set_at": user.password_set_at.isoformat() if user.password_set_at else None,
+        **_serialize_demo_payload(user),
     }
 
 
@@ -306,7 +314,7 @@ def my_venues(
     user: User = Depends(get_current_user),
 ):
     rows = db.execute(
-        select(Venue.id, Venue.name, Venue.is_archived, Venue.archived_at, VenueMember.venue_role)
+        select(Venue.id, Venue.name, Venue.is_archived, Venue.archived_at, Venue.is_demo, Venue.demo_reference_year, Venue.demo_reference_month, VenueMember.venue_role)
         .join(VenueMember, VenueMember.venue_id == Venue.id)
         .where(
             VenueMember.user_id == user.id,
@@ -366,15 +374,24 @@ def my_venues(
                 ).all()
             )
         expanded_codes.update(expand_permission_codes(default_codes) if default_codes else set())
+        demo_payload = _serialize_demo_payload(user, venue=r, venue_id=venue_id)
         can_open_venue = bool(
             billing_access_mode != BILLING_ACCESS_DENIED
             and (is_owner or is_admin or {"VENUE_VIEW", "VENUE_SETTINGS_EDIT"}.intersection(expanded_codes))
         )
-        open_target = (
-            f"/app-venue.html?venue_id={venue_id}"
-            if (billing_access_mode == "BILLING_READONLY" or can_open_venue)
-            else f"/staff-shifts.html?venue_id={venue_id}"
-        )
+        if demo_payload.get("demo_mode"):
+            can_open_venue = True
+            open_target = (
+                f"/staff-shifts.html?venue_id={venue_id}"
+                if str(demo_payload.get("demo_persona") or "").upper() == "STAFF"
+                else f"/app-venue.html?venue_id={venue_id}"
+            )
+        else:
+            open_target = (
+                f"/app-venue.html?venue_id={venue_id}"
+                if (billing_access_mode == "BILLING_READONLY" or can_open_venue)
+                else f"/staff-shifts.html?venue_id={venue_id}"
+            )
 
         items.append({
             "id": venue_id,
@@ -385,6 +402,7 @@ def my_venues(
             "can_open_venue": can_open_venue or billing_access_mode == "BILLING_READONLY",
             "open_target": open_target,
             **_serialize_billing_access_payload(billing_access),
+            **demo_payload,
         })
 
     return items
@@ -455,6 +473,9 @@ def my_venue_permissions(
         "grace_until": system_billing_snapshot.grace_until.isoformat() if system_billing_snapshot.grace_until else None,
         "billing_restricted_reason": None,
     }
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    venue_inactive = bool(getattr(venue, "is_archived", False))
+    demo_payload = _serialize_demo_payload(user, venue=venue, venue_id=venue_id)
 
     if user.system_role == "SUPER_ADMIN":
         codes = db.scalars(select(Permission.code).where(Permission.is_active.is_(True))).all()
@@ -464,6 +485,7 @@ def my_venue_permissions(
             "permissions": list(codes),
             "position": None,
             **system_billing_payload,
+            **demo_payload,
         }
 
     if user.system_role == "MODERATOR":
@@ -485,6 +507,7 @@ def my_venue_permissions(
             "permissions": sorted(expand_permission_codes(codes)),
             "position": None,
             **system_billing_payload,
+            **demo_payload,
         }
 
     vm = db.execute(
@@ -494,9 +517,6 @@ def my_venue_permissions(
             VenueMember.is_active.is_(True),
         )
     ).scalar_one_or_none()
-
-    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
-    venue_inactive = bool(getattr(venue, "is_archived", False))
 
     if vm is None:
         denied_payload = {
@@ -514,6 +534,7 @@ def my_venue_permissions(
             "venue_inactive": venue_inactive,
             "access_denied_reason": "Заведение сейчас не активно" if venue_inactive else None,
             **denied_payload,
+            **demo_payload,
         }
 
     role_upper = str(vm.venue_role or "").upper()
@@ -528,6 +549,7 @@ def my_venue_permissions(
             "venue_inactive": True,
             "access_denied_reason": "Заведение сейчас не активно",
             **_serialize_billing_access_payload(billing_access),
+            **demo_payload,
         }
 
     if role_upper == "OWNER":
@@ -587,6 +609,7 @@ def my_venue_permissions(
         "venue_inactive": venue_inactive,
         "access_denied_reason": None,
         **_serialize_billing_access_payload(billing_access),
+        **demo_payload,
     }
 
 

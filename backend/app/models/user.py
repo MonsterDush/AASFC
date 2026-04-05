@@ -34,3 +34,7 @@ class User(Base):
     password_set_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     password_changed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     session_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # DEMO mode
+    is_demo_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    demo_persona: Mapped[str | None] = mapped_column(String(16), nullable=True)
