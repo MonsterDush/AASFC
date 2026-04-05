@@ -41,3 +41,4 @@
 - API dev: `sudo journalctl -u axelio-api-dev -f`
 - Billing jobs prod: `sudo journalctl -u axelio-billing-jobs-prod.service -n 100 --no-pager`
 - Billing jobs dev: `sudo journalctl -u axelio-billing-jobs-dev.service -n 100 --no-pager`
+sudo journalctl -u axelio-api-dev -n 100 --no-pager

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
@@ -128,6 +128,8 @@ def _serialize_scalar(value: Any) -> Any:
         return value.isoformat()
     if isinstance(value, date):
         return value.isoformat()
+    if isinstance(value, time):
+        return value.isoformat()
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, (str, int, float, bool)) or value is None:
@@ -147,6 +149,8 @@ def _restore_scalar(column, value: Any) -> Any:
         return datetime.fromisoformat(value)
     if isinstance(col_type, sqltypes.Date) and isinstance(value, str):
         return date.fromisoformat(value)
+    if isinstance(col_type, sqltypes.Time) and isinstance(value, str):
+        return time.fromisoformat(value)
     if isinstance(col_type, sqltypes.Integer) and value != '':
         return int(value)
     if isinstance(col_type, sqltypes.Numeric) and value != '':
