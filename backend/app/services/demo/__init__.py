@@ -1,11 +1,17 @@
 from .access import (
     DEMO_ACCESS_FULL,
     DEMO_ACCESS_READONLY,
+    DEMO_ALLOWED_MUTATION_PATHS,
+    DEMO_READONLY_ERROR_CODE,
+    DEMO_READONLY_MESSAGE,
+    SAFE_HTTP_METHODS,
     build_demo_banner_payload,
     build_demo_context_payload,
+    build_demo_readonly_error_payload,
     get_demo_session_context,
     get_demo_session_or_none,
     is_demo_session_for_venue,
+    should_block_demo_request,
 )
 from .session import (
     DEMO_PERSONA_OWNER,
@@ -25,13 +31,18 @@ from .session import (
 __all__ = [
     "DEMO_ACCESS_FULL",
     "DEMO_ACCESS_READONLY",
+    "DEMO_ALLOWED_MUTATION_PATHS",
     "DEMO_PERSONA_OWNER",
     "DEMO_PERSONA_STAFF",
+    "DEMO_READONLY_ERROR_CODE",
+    "DEMO_READONLY_MESSAGE",
     "DEMO_SESSION_MODE",
     "DemoSessionContext",
+    "SAFE_HTTP_METHODS",
     "apply_auth_payload_to_user",
     "build_demo_banner_payload",
     "build_demo_context_payload",
+    "build_demo_readonly_error_payload",
     "build_demo_session_claims",
     "build_demo_start_url",
     "get_demo_session_context",
@@ -42,4 +53,5 @@ __all__ = [
     "is_demo_session_payload",
     "normalize_demo_persona",
     "sanitize_frontend_next_path",
+    "should_block_demo_request",
 ]

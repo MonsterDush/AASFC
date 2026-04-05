@@ -6,6 +6,15 @@ from .session import DemoSessionContext, DEMO_PERSONA_OWNER
 
 DEMO_ACCESS_FULL = "FULL"
 DEMO_ACCESS_READONLY = "DEMO_READONLY"
+DEMO_READONLY_ERROR_CODE = "DEMO_READONLY"
+DEMO_READONLY_MESSAGE = "Это пробный режим. Изменения здесь недоступны."
+
+SAFE_HTTP_METHODS = {"GET", "HEAD", "OPTIONS"}
+DEMO_ALLOWED_MUTATION_PATHS = {
+    "/auth/demo/switch-persona",
+    "/auth/demo/exit",
+    "/auth/logout",
+}
 
 
 def build_demo_banner_payload() -> dict:
@@ -63,5 +72,30 @@ def build_demo_context_payload(user: User | None, *, venue: Venue | None = None,
         "demo_venue_id": ctx.venue_id if ctx.is_demo else None,
         "demo_reference_year": reference_year,
         "demo_reference_month": reference_month,
-        "demo_restricted_reason": "Это пробный режим. Изменения здесь недоступны." if session_matches_venue else None,
+        "demo_restricted_reason": DEMO_READONLY_MESSAGE if session_matches_venue else None,
     }
+
+
+def build_demo_readonly_error_payload() -> dict:
+    return {
+        "detail": DEMO_READONLY_MESSAGE,
+        "error_code": DEMO_READONLY_ERROR_CODE,
+    }
+
+
+def is_demo_mutation_allowed_path(path: str | None) -> bool:
+    raw = str(path or "").strip()
+    if not raw:
+        return False
+    return raw in DEMO_ALLOWED_MUTATION_PATHS
+
+
+def should_block_demo_request(*, method: str | None, path: str | None, is_demo_session: bool) -> bool:
+    if not is_demo_session:
+        return False
+
+    method_upper = str(method or "GET").strip().upper()
+    if method_upper in SAFE_HTTP_METHODS:
+        return False
+
+    return not is_demo_mutation_allowed_path(path)
