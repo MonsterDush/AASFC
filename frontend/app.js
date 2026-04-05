@@ -159,6 +159,124 @@ export function getDemoMonthLabel(state = null) {
   return current?.demo_month_label || formatDemoMonthLabel(current?.demo_reference_year, current?.demo_reference_month);
 }
 
+
+function __demoPad2(value) {
+  return String(Number(value || 0)).padStart(2, "0");
+}
+
+function __normalizeMonthValue(value) {
+  const raw = String(value || "").trim();
+  const m = raw.match(/^(\d{4})-(\d{2})/);
+  if (!m) return "";
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  if (!Number.isFinite(year) || year <= 0 || !Number.isFinite(month) || month < 1 || month > 12) return "";
+  return `${year}-${__demoPad2(month)}`;
+}
+
+function __daysInMonth(year, month) {
+  return new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
+}
+
+function __normalizeDateValue(value) {
+  const raw = String(value || "").trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (!Number.isFinite(year) || year <= 0 || !Number.isFinite(month) || month < 1 || month > 12) return "";
+  const maxDay = __daysInMonth(year, month);
+  if (!Number.isFinite(day) || day < 1 || day > maxDay) return "";
+  return `${year}-${__demoPad2(month)}-${__demoPad2(day)}`;
+}
+
+function __getDemoMonthBounds(source = null) {
+  const state = source?.demo_mode ? source : getStoredDemoUiState();
+  if (!state?.demo_mode) return null;
+  const year = Number(state.demo_reference_year || 0);
+  const month = Number(state.demo_reference_month || 0);
+  if (!Number.isFinite(year) || year <= 0 || !Number.isFinite(month) || month < 1 || month > 12) return null;
+  const ym = `${year}-${__demoPad2(month)}`;
+  const lastDay = __daysInMonth(year, month);
+  return {
+    year,
+    month,
+    ym,
+    start: `${ym}-01`,
+    end: `${ym}-${__demoPad2(lastDay)}`,
+  };
+}
+
+function __notifyDemoClamp(bounds, options = {}) {
+  if (options?.notify === false || !bounds) return;
+  const label = formatDemoMonthLabel(bounds.year, bounds.month);
+  toast(`Пробный режим: подготовлены данные за ${label}.`, "warn");
+}
+
+export function isDemoUiMode(source = null) {
+  if (source?.demo_mode) return true;
+  const mode = String(source?.demo_access_mode || "").toUpperCase();
+  if (mode === "DEMO_READONLY") return true;
+  return isDemoReadonlyUi(source);
+}
+
+export function coerceDemoMonth(value, options = {}) {
+  const normalized = __normalizeMonthValue(value);
+  const bounds = __getDemoMonthBounds(options?.source);
+  if (!bounds || !isDemoUiMode(options?.source)) return normalized || String(value || "");
+  if (normalized && normalized === bounds.ym) return bounds.ym;
+  __notifyDemoClamp(bounds, options);
+  return bounds.ym;
+}
+
+export function coerceDemoDate(value, options = {}) {
+  const normalized = __normalizeDateValue(value);
+  const bounds = __getDemoMonthBounds(options?.source);
+  if (!bounds || !isDemoUiMode(options?.source)) return normalized || String(value || "");
+  if (normalized && normalized.startsWith(`${bounds.ym}-`)) return normalized;
+  const fallbackDay = normalized ? Number(normalized.slice(-2)) : 1;
+  const safeDay = Math.min(Math.max(fallbackDay || 1, 1), __daysInMonth(bounds.year, bounds.month));
+  if (normalized !== `${bounds.ym}-${__demoPad2(safeDay)}`) __notifyDemoClamp(bounds, options);
+  return `${bounds.ym}-${__demoPad2(safeDay)}`;
+}
+
+export function coerceDemoRange(fromValue, toValue, options = {}) {
+  const bounds = __getDemoMonthBounds(options?.source);
+  const demoMode = isDemoUiMode(options?.source);
+  const normalizedFrom = __normalizeDateValue(fromValue) || "";
+  const normalizedTo = __normalizeDateValue(toValue) || "";
+  let from = normalizedFrom || normalizedTo || "";
+  let to = normalizedTo || normalizedFrom || "";
+  if (!demoMode || !bounds) {
+    if (from && to && from > to) [from, to] = [to, from];
+    return { from, to };
+  }
+  const coercedFrom = coerceDemoDate(from || bounds.start, { ...options, notify: false, source: options?.source });
+  const coercedTo = coerceDemoDate(to || coercedFrom || bounds.end, { ...options, notify: false, source: options?.source });
+  let outFrom = coercedFrom || bounds.start;
+  let outTo = coercedTo || outFrom || bounds.end;
+  if (outFrom > outTo) [outFrom, outTo] = [outTo, outFrom];
+  if ((normalizedFrom && normalizedFrom !== outFrom) || (normalizedTo && normalizedTo !== outTo)) {
+    __notifyDemoClamp(bounds, options);
+  }
+  return { from: outFrom, to: outTo };
+}
+
+export function applyDemoReadonlyCaps(caps = {}, options = {}) {
+  const out = { ...(caps || {}) };
+  if (!isDemoUiMode(options?.source)) return out;
+
+  for (const [key, value] of Object.entries(out)) {
+    if (typeof value !== "boolean") continue;
+    const lower = String(key || "").toLowerCase();
+    const allowReadOnly = /(view|read|open|list|show|details?)/.test(lower) && !/(edit|create|delete|archive|manage|add|write|update|remove|close|reopen|invite|calculate|generate|toggle|assign|upload|save|confirm)/.test(lower);
+    if (!allowReadOnly) out[key] = false;
+  }
+
+  return out;
+}
+
 function isStaffOnlyDemoPage(pathname) {
   const page = String(pathname || location.pathname || "").split("/").pop().toLowerCase();
   return page.startsWith("staff-");

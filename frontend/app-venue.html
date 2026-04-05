@@ -264,7 +264,8 @@
           }
 
         } catch (e) {
-          // keep all false
+          console.error("app-venue access init failed", e);
+          toast(e?.data?.detail || e?.message || "Не удалось загрузить данные доступа по заведению", "err");
         }
 
         // keep active venue in sync
