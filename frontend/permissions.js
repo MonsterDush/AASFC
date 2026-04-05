@@ -126,3 +126,36 @@ export function canViewAdjustments(permSet, venueRoleUpper, systemRoleUpper) {
 export function canViewRevenue(permSet, venueRoleUpper, systemRoleUpper) {
   return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "REVENUE_VIEW");
 }
+
+
+export function isDemoMode(resp) {
+  return !!resp?.demo_mode;
+}
+
+export function getDemoAccessMode(resp) {
+  return String(resp?.demo_access_mode || "FULL").trim().toUpperCase() || "FULL";
+}
+
+export function getDemoPersona(resp) {
+  return String(resp?.demo_persona || "OWNER").trim().toUpperCase() || "OWNER";
+}
+
+export function getDemoReference(resp) {
+  return {
+    year: resp?.demo_reference_year ?? null,
+    month: resp?.demo_reference_month ?? null,
+  };
+}
+
+export function getDemoState(resp) {
+  return {
+    isDemo: !!resp?.is_demo,
+    demoMode: isDemoMode(resp),
+    accessMode: getDemoAccessMode(resp),
+    persona: getDemoPersona(resp),
+    venueId: resp?.demo_venue_id ?? null,
+    referenceYear: resp?.demo_reference_year ?? null,
+    referenceMonth: resp?.demo_reference_month ?? null,
+    restrictedReason: resp?.demo_restricted_reason || null,
+  };
+}

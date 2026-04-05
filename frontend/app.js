@@ -52,6 +52,11 @@ function resolveApiBase() {
 export const API_BASE = resolveApiBase();
 export const AUTH_PAGE = "/auth.html";
 
+const SS_DEMO_UI_STATE = "axelio.demo_ui_state";
+const DEMO_READONLY_ERROR_CODE = "DEMO_READONLY";
+let __demoBannerBootstrapped = false;
+let __lastToastMeta = { text: "", type: "", at: 0 };
+
 function isBrowser() {
   return typeof window !== "undefined" && typeof location !== "undefined";
 }
@@ -76,6 +81,205 @@ export function redirectToAuth(next = "", reason = "") {
   const current = next || `${location.pathname || "/"}${location.search || ""}${location.hash || ""}`;
   location.replace(buildAuthUrl(current, reason));
 }
+
+function currentAppPath() {
+  if (!isBrowser()) return "/";
+  return `${location.pathname || "/"}${location.search || ""}${location.hash || ""}`;
+}
+
+function formatDemoMonthLabel(year, month) {
+  const y = Number(year || 0);
+  const m = Number(month || 0);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || y <= 0 || m <= 0 || m > 12) return "Демо-данные";
+  const date = new Date(Date.UTC(y, m - 1, 1));
+  try {
+    const label = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" }).format(date);
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  } catch {
+    return `${String(m).padStart(2, "0")}.${y}`;
+  }
+}
+
+function buildDemoUiState(source) {
+  if (!source || !source.demo_mode) return null;
+  const banner = source.demo_banner || source.banner || {};
+  return {
+    demo_mode: true,
+    demo_access_mode: String(source.demo_access_mode || "DEMO_READONLY").toUpperCase(),
+    demo_persona: String(source.demo_persona || "OWNER").toUpperCase(),
+    demo_venue_id: source.demo_venue_id || null,
+    demo_reference_year: source.demo_reference_year || null,
+    demo_reference_month: source.demo_reference_month || null,
+    demo_month_label: formatDemoMonthLabel(source.demo_reference_year, source.demo_reference_month),
+    demo_banner: {
+      return_url: banner.return_url || "https://axelio.ru",
+      primary_cta_url: banner.primary_cta_url || "https://axelio.ru/#contact",
+      secondary_cta_url: banner.secondary_cta_url || `${location.origin}${AUTH_PAGE}`,
+      primary_cta_label: banner.primary_cta_label || "Оставить заявку",
+      secondary_cta_label: banner.secondary_cta_label || "Начать пользоваться",
+    },
+  };
+}
+
+function readStoredDemoUiState() {
+  if (!isBrowser()) return null;
+  try {
+    const raw = sessionStorage.getItem(SS_DEMO_UI_STATE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.demo_mode ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeDemoUiState(source) {
+  if (!isBrowser()) return null;
+  const state = buildDemoUiState(source);
+  try {
+    if (state) sessionStorage.setItem(SS_DEMO_UI_STATE, JSON.stringify(state));
+    else sessionStorage.removeItem(SS_DEMO_UI_STATE);
+  } catch {}
+  return state;
+}
+
+function clearDemoUiState() {
+  if (!isBrowser()) return;
+  try { sessionStorage.removeItem(SS_DEMO_UI_STATE); } catch {}
+}
+
+function isStaffOnlyDemoPage(pathname) {
+  const page = String(pathname || location.pathname || "").split("/").pop().toLowerCase();
+  return page.startsWith("staff-");
+}
+
+function isOwnerOnlyDemoPage(pathname) {
+  const page = String(pathname || location.pathname || "").split("/").pop().toLowerCase();
+  return (
+    page.startsWith("owner-") ||
+    page === "app-venue.html" ||
+    page === "invites.html" ||
+    page === "positions.html" ||
+    page === "shift-intervals.html"
+  );
+}
+
+function resolveDemoSwitchNextPath(targetPersona, state = null) {
+  if (!isBrowser()) return null;
+  const persona = String(targetPersona || "OWNER").toUpperCase();
+  const current = currentAppPath();
+  const venueId = state?.demo_venue_id || getActiveVenueId() || "";
+
+  if (persona === "STAFF" && isOwnerOnlyDemoPage(location.pathname)) {
+    return venueId ? `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}` : "/staff-shifts.html";
+  }
+  if (persona === "OWNER" && isStaffOnlyDemoPage(location.pathname)) {
+    return venueId ? `/app-venue.html?venue_id=${encodeURIComponent(venueId)}` : "/app-venue.html";
+  }
+  return current;
+}
+
+async function switchDemoPersona(targetPersona, buttonEl = null) {
+  const currentState = readStoredDemoUiState();
+  const persona = String(targetPersona || "OWNER").toUpperCase();
+  const nextPath = resolveDemoSwitchNextPath(persona, currentState);
+  if (buttonEl) buttonEl.disabled = true;
+  try {
+    const out = await api("/auth/demo/switch-persona", {
+      method: "POST",
+      body: { persona, next_path: nextPath },
+      skipDemoReadonlyToast: true,
+    });
+    storeDemoUiState(out);
+    location.href = out?.redirect_url || nextPath || "/";
+  } catch (e) {
+    toast(e?.data?.detail || e?.message || "Не удалось переключить DEMO-режим", "err");
+  } finally {
+    if (buttonEl) buttonEl.disabled = false;
+  }
+}
+
+async function exitDemoMode(buttonEl = null) {
+  if (buttonEl) buttonEl.disabled = true;
+  try {
+    const out = await api("/auth/demo/exit", { method: "POST", skipDemoReadonlyToast: true });
+    clearDemoUiState();
+    location.href = out?.redirect_url || (readStoredDemoUiState()?.demo_banner?.return_url) || "https://axelio.ru";
+  } catch (e) {
+    toast(e?.data?.detail || e?.message || "Не удалось выйти из DEMO", "err");
+  } finally {
+    if (buttonEl) buttonEl.disabled = false;
+  }
+}
+
+function buildDemoBannerMarkup(state) {
+  const persona = String(state?.demo_persona || "OWNER").toUpperCase();
+  const banner = state?.demo_banner || {};
+  const monthLabel = state?.demo_month_label || formatDemoMonthLabel(state?.demo_reference_year, state?.demo_reference_month);
+  return `
+    <div class="demo-banner__bar" role="region" aria-label="Пробный режим Axelio">
+      <span class="demo-banner__pill demo-banner__pill--brand">Пробный режим Axelio</span>
+      <div class="demo-banner__seg" role="tablist" aria-label="Режим просмотра">
+        <button type="button" class="demo-banner__segbtn ${persona === "OWNER" ? "is-active" : ""}" data-demo-persona="OWNER">Владелец</button>
+        <button type="button" class="demo-banner__segbtn ${persona === "STAFF" ? "is-active" : ""}" data-demo-persona="STAFF">Персонал</button>
+      </div>
+      <span class="demo-banner__pill demo-banner__pill--muted">${monthLabel}</span>
+      <a class="demo-banner__link" href="${String(banner.return_url || "https://axelio.ru")}">На сайт</a>
+      <a class="demo-banner__link demo-banner__link--primary" href="${String(banner.primary_cta_url || "https://axelio.ru/#contact")}">${String(banner.primary_cta_label || "Оставить заявку")}</a>
+      <a class="demo-banner__link" href="${String(banner.secondary_cta_url || `${location.origin}${AUTH_PAGE}`)}">${String(banner.secondary_cta_label || "Начать пользоваться")}</a>
+    </div>`;
+}
+
+function removeDemoBanner() {
+  const banner = document.getElementById("demoBanner");
+  if (banner) banner.remove();
+  try { document.body?.classList?.remove("has-demo-banner"); } catch {}
+}
+
+function mountDemoBanner(state = null) {
+  if (!isBrowser() || !document.body) return;
+  const effectiveState = state?.demo_mode ? state : readStoredDemoUiState();
+  if (!effectiveState?.demo_mode) {
+    removeDemoBanner();
+    return;
+  }
+
+  let host = document.getElementById("demoBanner");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "demoBanner";
+    host.className = "demo-banner";
+    const anchor = document.querySelector(".topbar") || document.body.firstElementChild || null;
+    document.body.insertBefore(host, anchor);
+  }
+
+  host.innerHTML = buildDemoBannerMarkup(effectiveState);
+  document.body.classList.add("has-demo-banner");
+
+  host.querySelectorAll("[data-demo-persona]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = btn.getAttribute("data-demo-persona") || "OWNER";
+      if (String(effectiveState.demo_persona || "OWNER").toUpperCase() === String(target).toUpperCase()) return;
+      switchDemoPersona(target, btn);
+    });
+  });
+}
+
+function bootstrapStoredDemoBanner() {
+  if (!isBrowser() || __demoBannerBootstrapped) return;
+  __demoBannerBootstrapped = true;
+  const run = () => {
+    const stored = readStoredDemoUiState();
+    if (stored?.demo_mode) mountDemoBanner(stored);
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run, { once: true });
+  } else {
+    run();
+  }
+}
+
+bootstrapStoredDemoBanner();
 
 // ------------------------------
 // i18n (RU/EN) MVP
@@ -307,11 +511,18 @@ export function applyTelegramTheme() {
 }
 
 export function toast(msg, type = "info") {
+  const text = String(msg ?? "").trim();
+  const now = Date.now();
+  if (text && __lastToastMeta.text === text && __lastToastMeta.type === type && (now - (__lastToastMeta.at || 0)) < 900) {
+    return;
+  }
+  __lastToastMeta = { text, type, at: now };
+
   const box = document.getElementById("toast");
-  if (!box) return alert(msg);
+  if (!box) return alert(text || msg);
 
   box.className = "toast show " + type;
-  box.querySelector(".toast__text").textContent = msg;
+  box.querySelector(".toast__text").textContent = text || String(msg || "");
 
   clearTimeout(box._t);
   box._t = setTimeout(() => (box.className = "toast"), 2400);
@@ -365,6 +576,8 @@ export function mountCommonUI(activeTab) {
   document.querySelectorAll("[data-tab]").forEach((a) => {
     if (a.getAttribute("data-tab") === activeTab) a.classList.add("active");
   });
+
+  mountDemoBanner();
 
   const modal = document.getElementById("modal");
   if (modal) {
@@ -482,10 +695,16 @@ export async function api(path, opts = {}) {
   }
 
   if (!r.ok) {
-    const err = new Error(`HTTP ${r.status} ${r.statusText}: ${extractErrorMessage(data)}`);
+    const errorCode = String(data?.error_code || data?.code || "").trim().toUpperCase();
+    const err = new Error(errorCode === DEMO_READONLY_ERROR_CODE ? (data?.detail || "Это пробный режим. Изменения здесь недоступны.") : `HTTP ${r.status} ${r.statusText}: ${extractErrorMessage(data)}`);
     err.status = r.status;
     err.data = data;
     err.url = r.url;
+    err.code = errorCode || err.code;
+
+    if (errorCode === DEMO_READONLY_ERROR_CODE && !opts.skipDemoReadonlyToast) {
+      toast(data?.detail || "Это пробный режим. Изменения здесь недоступны.", "warn");
+    }
 
     if (r.status === 401 && handle401) {
       redirectToAuth("", "unauthorized");
@@ -914,7 +1133,11 @@ export function setActiveVenueId(id) {
 }
 
 export async function getMe({ timeoutMs = 8000 } = {}) {
-  return withTimeout(api("/me"), timeoutMs, "ME_TIMEOUT");
+  const me = await withTimeout(api("/me"), timeoutMs, "ME_TIMEOUT");
+  const demoState = storeDemoUiState(me);
+  if (demoState?.demo_mode) mountDemoBanner(demoState);
+  else removeDemoBanner();
+  return me;
 }
 
 export async function getMyVenues({ timeoutMs = 8000, includeArchived = false } = {}) {
