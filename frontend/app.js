@@ -133,6 +133,10 @@ export function getStoredDemoUiState() {
   }
 }
 
+export function readStoredDemoUiState() {
+  return getStoredDemoUiState();
+}
+
 function storeDemoUiState(source) {
   if (!isBrowser()) return null;
   const state = buildDemoUiState(source);
@@ -331,9 +335,11 @@ async function switchDemoPersona(targetPersona, buttonEl = null) {
 async function exitDemoMode(buttonEl = null) {
   if (buttonEl) buttonEl.disabled = true;
   try {
+    const currentState = getStoredDemoUiState();
+    const fallbackReturnUrl = currentState?.demo_banner?.return_url || "https://axelio.ru";
     const out = await api("/auth/demo/exit", { method: "POST", skipDemoReadonlyToast: true });
     clearDemoUiState();
-    location.href = out?.redirect_url || (getStoredDemoUiState()?.demo_banner?.return_url) || "https://axelio.ru";
+    location.href = out?.redirect_url || fallbackReturnUrl;
   } catch (e) {
     toast(e?.data?.detail || e?.message || "Не удалось выйти из DEMO", "err");
   } finally {
@@ -367,7 +373,7 @@ function removeDemoBanner() {
 
 function mountDemoBanner(state = null) {
   if (!isBrowser() || !document.body) return;
-  const effectiveState = state?.demo_mode ? state : readStoredDemoUiState();
+  const effectiveState = state?.demo_mode ? state : getStoredDemoUiState();
   if (!effectiveState?.demo_mode) {
     removeDemoBanner();
     return;
