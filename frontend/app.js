@@ -121,7 +121,7 @@ function buildDemoUiState(source) {
   };
 }
 
-function readStoredDemoUiState() {
+export function getStoredDemoUiState() {
   if (!isBrowser()) return null;
   try {
     const raw = sessionStorage.getItem(SS_DEMO_UI_STATE);
@@ -146,6 +146,17 @@ function storeDemoUiState(source) {
 function clearDemoUiState() {
   if (!isBrowser()) return;
   try { sessionStorage.removeItem(SS_DEMO_UI_STATE); } catch {}
+}
+
+export function isDemoReadonlyUi(state = null) {
+  const current = state?.demo_mode ? state : getStoredDemoUiState();
+  if (!current?.demo_mode) return false;
+  return String(current.demo_access_mode || "DEMO_READONLY").toUpperCase() === "DEMO_READONLY";
+}
+
+export function getDemoMonthLabel(state = null) {
+  const current = state?.demo_mode ? state : getStoredDemoUiState();
+  return current?.demo_month_label || formatDemoMonthLabel(current?.demo_reference_year, current?.demo_reference_month);
 }
 
 function isStaffOnlyDemoPage(pathname) {
@@ -180,7 +191,7 @@ function resolveDemoSwitchNextPath(targetPersona, state = null) {
 }
 
 async function switchDemoPersona(targetPersona, buttonEl = null) {
-  const currentState = readStoredDemoUiState();
+  const currentState = getStoredDemoUiState();
   const persona = String(targetPersona || "OWNER").toUpperCase();
   const nextPath = resolveDemoSwitchNextPath(persona, currentState);
   if (buttonEl) buttonEl.disabled = true;
@@ -204,7 +215,7 @@ async function exitDemoMode(buttonEl = null) {
   try {
     const out = await api("/auth/demo/exit", { method: "POST", skipDemoReadonlyToast: true });
     clearDemoUiState();
-    location.href = out?.redirect_url || (readStoredDemoUiState()?.demo_banner?.return_url) || "https://axelio.ru";
+    location.href = out?.redirect_url || (getStoredDemoUiState()?.demo_banner?.return_url) || "https://axelio.ru";
   } catch (e) {
     toast(e?.data?.detail || e?.message || "Не удалось выйти из DEMO", "err");
   } finally {
@@ -238,7 +249,7 @@ function removeDemoBanner() {
 
 function mountDemoBanner(state = null) {
   if (!isBrowser() || !document.body) return;
-  const effectiveState = state?.demo_mode ? state : readStoredDemoUiState();
+  const effectiveState = state?.demo_mode ? state : getStoredDemoUiState();
   if (!effectiveState?.demo_mode) {
     removeDemoBanner();
     return;
@@ -269,7 +280,7 @@ function bootstrapStoredDemoBanner() {
   if (!isBrowser() || __demoBannerBootstrapped) return;
   __demoBannerBootstrapped = true;
   const run = () => {
-    const stored = readStoredDemoUiState();
+    const stored = getStoredDemoUiState();
     if (stored?.demo_mode) mountDemoBanner(stored);
   };
   if (document.readyState === "loading") {

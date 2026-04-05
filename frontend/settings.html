@@ -163,6 +163,9 @@
       setActiveVenueId,
       wa,
       toast,
+      getStoredDemoUiState,
+      isDemoReadonlyUi,
+      getDemoMonthLabel,
     } from "/app.js";
 
     applyTelegramTheme();
@@ -172,6 +175,23 @@
     await mountVenueMenu({ containerSelector: "#venueMenuMount" });
     const me = navState?.me || null;
     const isSuperAdmin = String(me?.system_role || "").toUpperCase() === "SUPER_ADMIN";
+    const demoState = getStoredDemoUiState();
+    const demoReadonly = isDemoReadonlyUi(demoState);
+    if (demoReadonly) {
+      const notifBtn = document.getElementById("btnNotifSettings");
+      if (notifBtn) {
+        notifBtn.disabled = true;
+        notifBtn.title = `В пробном режиме настройки уведомлений недоступны (${getDemoMonthLabel(demoState)})`;
+      }
+      const notifCard = document.getElementById("btnNotifSettings")?.closest('.card');
+      if (notifCard && !notifCard.querySelector('[data-demo-note]')) {
+        const note = document.createElement('div');
+        note.className = 'muted mt-8';
+        note.dataset.demoNote = '1';
+        note.textContent = `Пробный режим: изменение уведомлений отключено. Подготовлены данные за ${getDemoMonthLabel(demoState)}.`;
+        notifCard.appendChild(note);
+      }
+    }
 
     const hint = document.getElementById("langHint");
     const paintLang = () => {

@@ -359,6 +359,17 @@ def load_demo_fixture(*, fixture_path: str | None = None) -> dict[str, Any]:
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def clear_demo_venue_data(db: Session, *, venue_id: int) -> dict[str, int]:
+    ctx = _collect_live_context(db, int(venue_id))
+    plans = [plan for plan in _fixture_table_plans() if plan.name != 'venues']
+    deleted: dict[str, int] = {}
+    for plan in reversed(plans):
+        table = plan.model.__table__
+        result = db.execute(delete(table).where(plan.delete_where(ctx, table)))
+        deleted[plan.name] = int(result.rowcount or 0)
+    return deleted
+
+
 def reset_demo_fixture(db: Session, *, fixture_path: str | None = None, venue_id: int | None = None) -> DemoFixtureResetResult:
     fixture = load_demo_fixture(fixture_path=fixture_path)
     meta = fixture.get('meta', {}) or {}

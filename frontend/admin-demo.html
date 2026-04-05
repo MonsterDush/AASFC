@@ -48,11 +48,14 @@
         </div>
         <div class="demo-admin-form mt-12">
           <label class="field"><span class="muted">Venue ID</span><input id="venueId" type="number" min="1" placeholder="ID demo venue" /></label>
+          <label class="field"><span class="muted">Название DEMO venue</span><input id="venueName" type="text" placeholder="Axelio DEMO · Hookah Lounge" /></label>
           <label class="field"><span class="muted">Файл fixture</span><input id="fixturePath" type="text" placeholder="app/demo/demo_fixture.json" /></label>
           <label class="field"><span class="muted">Reference year</span><input id="referenceYear" type="number" min="2020" max="2100" placeholder="2026" /></label>
           <label class="field"><span class="muted">Reference month</span><input id="referenceMonth" type="number" min="1" max="12" placeholder="3" /></label>
+          <label class="field"><span class="muted">Публичный DEMO</span><select id="makePublicSel"><option value="1">Да</option><option value="0">Нет</option></select></label>
         </div>
         <div class="demo-admin-actions">
+          <button class="btn" id="bootstrapBtn">Собрать DEMO заново</button>
           <button class="btn" id="enableBtn">Сделать публичным DEMO</button>
           <button class="btn subtle" id="disableBtn">Выключить DEMO</button>
           <button class="btn subtle" id="exportBtn">Экспорт fixture</button>
@@ -82,9 +85,12 @@
   const statusBlock = document.getElementById('statusBlock');
   const refreshBtn = document.getElementById('refreshBtn');
   const venueIdEl = document.getElementById('venueId');
+  const venueNameEl = document.getElementById('venueName');
   const fixturePathEl = document.getElementById('fixturePath');
   const referenceYearEl = document.getElementById('referenceYear');
   const referenceMonthEl = document.getElementById('referenceMonth');
+  const makePublicSel = document.getElementById('makePublicSel');
+  const bootstrapBtn = document.getElementById('bootstrapBtn');
   const enableBtn = document.getElementById('enableBtn');
   const disableBtn = document.getElementById('disableBtn');
   const exportBtn = document.getElementById('exportBtn');
@@ -98,6 +104,7 @@
   function renderStatus(data){
     const venue = data?.venue || null;
     if (venue && !venueIdEl.value) venueIdEl.value = venue.id || '';
+    if (venue && !venueNameEl.value && venue.name) venueNameEl.value = venue.name;
     if (venue && !referenceYearEl.value && venue.demo_reference_year) referenceYearEl.value = venue.demo_reference_year;
     if (venue && !referenceMonthEl.value && venue.demo_reference_month) referenceMonthEl.value = venue.demo_reference_month;
     if (!fixturePathEl.value && data?.fixture_path) fixturePathEl.value = data.fixture_path;
@@ -133,13 +140,38 @@
 
   function currentPayload(){
     const venueId = Number(venueIdEl.value || 0) || null;
+    const venueName = venueNameEl.value.trim() || null;
     const fixturePath = fixturePathEl.value.trim() || null;
     const referenceYear = Number(referenceYearEl.value || 0) || null;
     const referenceMonth = Number(referenceMonthEl.value || 0) || null;
-    return { venueId, fixturePath, referenceYear, referenceMonth };
+    const makePublic = String(makePublicSel?.value || '1') === '1';
+    return { venueId, venueName, fixturePath, referenceYear, referenceMonth, makePublic };
   }
 
   refreshBtn.addEventListener('click', loadStatus);
+
+
+  bootstrapBtn.addEventListener('click', async () => {
+    const p = currentPayload();
+    if (!confirm('Собрать DEMO-заведение заново? Старые demo-данные в целевом venue будут заменены.')) return;
+    const out = await api('/admin/demo/bootstrap', {
+      method: 'POST',
+      body: JSON.stringify({
+        venue_id: p.venueId,
+        venue_name: p.venueName,
+        reference_year: p.referenceYear,
+        reference_month: p.referenceMonth,
+        make_public: p.makePublic,
+        export_fixture_after: true,
+        fixture_path: p.fixturePath,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (out?.venue_id) venueIdEl.value = out.venue_id;
+    if (out?.venue_name) venueNameEl.value = out.venue_name;
+    toast(`DEMO собрано: ${out?.venue_name || 'готово'}`);
+    await loadStatus();
+  });
 
   enableBtn.addEventListener('click', async () => {
     const p = currentPayload();

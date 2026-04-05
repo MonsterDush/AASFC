@@ -55,20 +55,35 @@ __all__ = [
     "sanitize_frontend_next_path",
     "should_block_demo_request",
     "DEFAULT_DEMO_FIXTURE_PATH",
+    "DEFAULT_DEMO_REFERENCE_MONTH",
+    "DEFAULT_DEMO_REFERENCE_YEAR",
+    "DEFAULT_DEMO_VENUE_NAME",
+    "DemoBootstrapResult",
     "DemoFixtureExportResult",
     "DemoFixtureResetResult",
+    "bootstrap_demo_venue",
+    "clear_demo_venue_data",
     "export_demo_fixture",
     "get_demo_fixture_status",
     "load_demo_fixture",
     "reset_demo_fixture",
 ]
 
+
 from .fixture import (
     DEFAULT_DEMO_FIXTURE_PATH,
     DemoFixtureExportResult,
     DemoFixtureResetResult,
+    clear_demo_venue_data,
     export_demo_fixture,
     get_demo_fixture_status,
     load_demo_fixture,
     reset_demo_fixture,
+)
+from .bootstrap import (
+    DEFAULT_DEMO_REFERENCE_MONTH,
+    DEFAULT_DEMO_REFERENCE_YEAR,
+    DEFAULT_DEMO_VENUE_NAME,
+    DemoBootstrapResult,
+    bootstrap_demo_venue,
 )

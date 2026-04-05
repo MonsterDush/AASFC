@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.models import User, Venue, VenueMember
+from app.services.demo.bootstrap import bootstrap_demo_venue
 from app.services.demo.fixture import export_demo_fixture, get_demo_fixture_status, reset_demo_fixture
 
 router = APIRouter(prefix='/admin/demo', tags=['admin-demo'])
@@ -31,6 +32,16 @@ class DemoEnableIn(BaseModel):
 
 class DemoDisableIn(BaseModel):
     venue_id: int | None = Field(default=None, ge=1)
+
+
+class DemoBootstrapIn(BaseModel):
+    venue_id: int | None = Field(default=None, ge=1)
+    venue_name: str | None = Field(default=None, max_length=200)
+    reference_year: int | None = Field(default=None, ge=2020, le=2100)
+    reference_month: int | None = Field(default=None, ge=1, le=12)
+    make_public: bool = True
+    export_fixture_after: bool = True
+    fixture_path: str | None = Field(default=None, max_length=500)
 
 
 @router.get('/status')
@@ -140,4 +151,36 @@ def admin_demo_disable(
     return {
         'ok': True,
         'disabled_count': int(result.rowcount or 0),
+    }
+
+
+@router.post('/bootstrap')
+def admin_demo_bootstrap(
+    payload: DemoBootstrapIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    try:
+        result = bootstrap_demo_venue(
+            db,
+            venue_id=payload.venue_id,
+            venue_name=str(payload.venue_name or '').strip() or 'Axelio DEMO · Hookah Lounge',
+            reference_year=int(payload.reference_year or 2026),
+            reference_month=int(payload.reference_month or 3),
+            make_public=bool(payload.make_public),
+            export_fixture_after=bool(payload.export_fixture_after),
+            export_fixture_path=payload.fixture_path,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return {
+        'ok': True,
+        'venue_id': result.venue_id,
+        'venue_name': result.venue_name,
+        'reference_year': result.reference_year,
+        'reference_month': result.reference_month,
+        'fixture_path': result.fixture_path,
+        'counts': result.counts,
+        'warnings': result.warnings,
     }
