@@ -367,7 +367,7 @@ function removeDemoBanner() {
 
 function mountDemoBanner(state = null) {
   if (!isBrowser() || !document.body) return;
-  const effectiveState = state?.demo_mode ? state : getStoredDemoUiState();
+  const effectiveState = state?.demo_mode ? state : readStoredDemoUiState();
   if (!effectiveState?.demo_mode) {
     removeDemoBanner();
     return;
@@ -378,8 +378,14 @@ function mountDemoBanner(state = null) {
     host = document.createElement("div");
     host.id = "demoBanner";
     host.className = "demo-banner";
+
     const anchor = document.querySelector(".topbar") || document.body.firstElementChild || null;
-    document.body.insertBefore(host, anchor);
+
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(host, anchor);
+    } else {
+      document.body.prepend(host);
+    }
   }
 
   host.innerHTML = buildDemoBannerMarkup(effectiveState);
