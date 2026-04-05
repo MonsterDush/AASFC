@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     DEMO_PRIMARY_CTA_LABEL: str = "Оставить заявку"
     DEMO_SECONDARY_CTA_URL: str = ""
     DEMO_SECONDARY_CTA_LABEL: str = "Начать пользоваться"
+    DEMO_FIXTURE_PATH: str = "app/demo/demo_fixture.json"
 
     PHONE_AUTH_PROVIDER: str = "debug"  # debug | console | sms_ru
     PHONE_AUTH_DEBUG_REVEAL_CODE: bool = True

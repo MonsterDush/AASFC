@@ -127,6 +127,7 @@ def get_public_demo_venue(db: Session) -> Venue | None:
         select(Venue)
         .where(Venue.is_demo.is_(True))
         .order_by(Venue.id.asc())
+        .limit(1)
     ).scalar_one_or_none()
 
 

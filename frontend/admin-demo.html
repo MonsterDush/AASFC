@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Админ · DEMO</title>
+  <style>
+    .demo-admin-grid{display:grid;grid-template-columns:1fr;gap:14px}
+    @media (min-width:960px){.demo-admin-grid{grid-template-columns:1.1fr .9fr}}
+    .demo-admin-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    @media (min-width:900px){.demo-admin-kpis{grid-template-columns:repeat(4,minmax(0,1fr));}}
+    .demo-admin-kpi{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:12px}
+    .demo-admin-kpi b{display:block;font-size:18px;margin-top:6px}
+    .demo-admin-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .demo-admin-form .field{display:flex;flex-direction:column;gap:6px}
+    .demo-admin-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .demo-admin-pre{white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.45;border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:12px;background:rgba(0,0,0,.02)}
+    @media (max-width:680px){.demo-admin-form{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Админ · DEMO</b>
+          <div class="muted">управление публичным демо, fixture export/reset</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>—</div>
+    </div>
+
+    <div class="card">
+      <div class="demo-admin-kpis" id="demoKpis"></div>
+    </div>
+
+    <div class="demo-admin-grid">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+          <div>
+            <div class="section-title"><b>Настройки DEMO</b></div>
+            <div class="muted">Можно переключить публичное демо-заведение, выгрузить или восстановить fixture.</div>
+          </div>
+          <button class="btn subtle" id="refreshBtn">Обновить</button>
+        </div>
+        <div class="demo-admin-form mt-12">
+          <label class="field"><span class="muted">Venue ID</span><input id="venueId" type="number" min="1" placeholder="ID demo venue" /></label>
+          <label class="field"><span class="muted">Файл fixture</span><input id="fixturePath" type="text" placeholder="app/demo/demo_fixture.json" /></label>
+          <label class="field"><span class="muted">Reference year</span><input id="referenceYear" type="number" min="2020" max="2100" placeholder="2026" /></label>
+          <label class="field"><span class="muted">Reference month</span><input id="referenceMonth" type="number" min="1" max="12" placeholder="3" /></label>
+        </div>
+        <div class="demo-admin-actions">
+          <button class="btn" id="enableBtn">Сделать публичным DEMO</button>
+          <button class="btn subtle" id="disableBtn">Выключить DEMO</button>
+          <button class="btn subtle" id="exportBtn">Экспорт fixture</button>
+          <button class="btn subtle" id="resetBtn">Сбросить из fixture</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title"><b>Состояние</b></div>
+        <div id="statusBlock" class="demo-admin-pre">Загрузка…</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+
+<script type="module">
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav } from "/app.js";
+
+  applyTelegramTheme();
+  mountCommonUI("admin-demo");
+  await mountNav({ activeTab: "admin-demo" });
+  await ensureLogin();
+
+  const kpis = document.getElementById('demoKpis');
+  const statusBlock = document.getElementById('statusBlock');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const venueIdEl = document.getElementById('venueId');
+  const fixturePathEl = document.getElementById('fixturePath');
+  const referenceYearEl = document.getElementById('referenceYear');
+  const referenceMonthEl = document.getElementById('referenceMonth');
+  const enableBtn = document.getElementById('enableBtn');
+  const disableBtn = document.getElementById('disableBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
+  function monthLabel(year, month){ const y=Number(year||0), m=Number(month||0); if(!y||!m) return '—'; return new Date(y, Math.max(0,m-1), 1).toLocaleDateString('ru-RU', { month:'long', year:'numeric' }); }
+  function boolBadge(v, yes='Да', no='Нет'){ return v ? yes : no; }
+  function compactJson(v){ try { return JSON.stringify(v ?? {}, null, 2); } catch { return String(v ?? ''); } }
+
+  function renderStatus(data){
+    const venue = data?.venue || null;
+    if (venue && !venueIdEl.value) venueIdEl.value = venue.id || '';
+    if (venue && !referenceYearEl.value && venue.demo_reference_year) referenceYearEl.value = venue.demo_reference_year;
+    if (venue && !referenceMonthEl.value && venue.demo_reference_month) referenceMonthEl.value = venue.demo_reference_month;
+    if (!fixturePathEl.value && data?.fixture_path) fixturePathEl.value = data.fixture_path;
+
+    kpis.innerHTML = `
+      <div class="demo-admin-kpi"><div class="muted">Публичное DEMO</div><b>${boolBadge(data?.enabled, 'Включено', 'Выключено')}</b></div>
+      <div class="demo-admin-kpi"><div class="muted">DEMO users</div><b>${Number(data?.demo_users_total || 0)}</b></div>
+      <div class="demo-admin-kpi"><div class="muted">OWNER persona</div><b>${boolBadge(data?.personas?.OWNER)}</b></div>
+      <div class="demo-admin-kpi"><div class="muted">STAFF persona</div><b>${boolBadge(data?.personas?.STAFF)}</b></div>
+    `;
+
+    statusBlock.textContent = compactJson({
+      enabled: data?.enabled,
+      venue: venue ? {
+        id: venue.id,
+        name: venue.name,
+        demo_reference_year: venue.demo_reference_year,
+        demo_reference_month: venue.demo_reference_month,
+        month_label: monthLabel(venue.demo_reference_year, venue.demo_reference_month),
+      } : null,
+      fixture_exists: data?.fixture_exists,
+      fixture_path: data?.fixture_path,
+      fixture_meta: data?.fixture_meta || {},
+      personas: data?.personas || {},
+      demo_users_total: data?.demo_users_total || 0,
+    });
+  }
+
+  async function loadStatus(){
+    const data = await api('/admin/demo/status');
+    renderStatus(data || {});
+  }
+
+  function currentPayload(){
+    const venueId = Number(venueIdEl.value || 0) || null;
+    const fixturePath = fixturePathEl.value.trim() || null;
+    const referenceYear = Number(referenceYearEl.value || 0) || null;
+    const referenceMonth = Number(referenceMonthEl.value || 0) || null;
+    return { venueId, fixturePath, referenceYear, referenceMonth };
+  }
+
+  refreshBtn.addEventListener('click', loadStatus);
+
+  enableBtn.addEventListener('click', async () => {
+    const p = currentPayload();
+    if (!p.venueId) return toast('Укажи venue ID для публичного DEMO');
+    const out = await api('/admin/demo/enable', {
+      method: 'POST',
+      body: JSON.stringify({ venue_id: p.venueId, reference_year: p.referenceYear, reference_month: p.referenceMonth }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    toast(`DEMO включён для venue #${out?.venue_id || p.venueId}`);
+    await loadStatus();
+  });
+
+  disableBtn.addEventListener('click', async () => {
+    const p = currentPayload();
+    await api('/admin/demo/disable', {
+      method: 'POST',
+      body: JSON.stringify({ venue_id: p.venueId || null }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    toast('Публичный DEMO выключен');
+    await loadStatus();
+  });
+
+  exportBtn.addEventListener('click', async () => {
+    const p = currentPayload();
+    const out = await api('/admin/demo/export-fixture', {
+      method: 'POST',
+      body: JSON.stringify({ venue_id: p.venueId, fixture_path: p.fixturePath }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    toast(`Fixture сохранён: ${out?.fixture_path || p.fixturePath || 'готово'}`);
+    await loadStatus();
+  });
+
+  resetBtn.addEventListener('click', async () => {
+    const p = currentPayload();
+    if (!confirm('Сбросить DEMO из fixture? Текущие demo-данные будут перезаписаны.')) return;
+    const out = await api('/admin/demo/reset', {
+      method: 'POST',
+      body: JSON.stringify({ venue_id: p.venueId, fixture_path: p.fixturePath }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    toast(`DEMO восстановлен из fixture (${out?.venue_name || 'ok'})`);
+    await loadStatus();
+  });
+
+  await loadStatus();
+</script>
+</body>
+</html>
