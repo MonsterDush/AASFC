@@ -872,6 +872,10 @@ function fmtMoney(n) {
   return v.toLocaleString("ru-RU");
 }
 
+function isDemoIndicatorsOnlyMode() {
+  return !!isDemoUiMode();
+}
+
 function formatGlobalLine(item) {
   const venueName = item?.venue?.name || "Заведение";
   const t = shiftStartHHMM(item) || (item?.interval?.start_time ? String(item.interval.start_time).slice(0, 5) : "");
@@ -1061,7 +1065,7 @@ function renderWeek(ws) {
       meta.className = "cal-daymeta";
       const dayList = filterForCalendar(shiftsByDate.get(dateStr) || [], dateStr);
       const sal = salaryByDate.get(dateStr);
-      if (isPastDay(dateStr) && Number.isFinite(Number(sal))) meta.textContent = fmtMoney(sal);
+      if (!isDemoIndicatorsOnlyMode() && isPastDay(dateStr) && Number.isFinite(Number(sal))) meta.textContent = fmtMoney(sal);
       else if (dayList.length) meta.textContent = `${dayList.length} смен`;
       else meta.textContent = "";
 
@@ -1115,7 +1119,7 @@ function buildIndex() {
 
     // salaryByDate: суммируем только если my_salary есть (backend выдаёт только при наличии отчёта)
     const sal = Number(s.my_salary);
-    if (Number.isFinite(sal)) {
+    if (!isDemoIndicatorsOnlyMode() && Number.isFinite(sal)) {
       salaryByDate.set(date, (salaryByDate.get(date) || 0) + sal);
     }
   }
@@ -1246,7 +1250,7 @@ function renderDayTimeline(shiftsList) {
     const sal = sumMySalary(arr);
 
     let meta = '';
-    if (sal != null) meta = `${fmtMoney(sal)}`;
+    if (!isDemoIndicatorsOnlyMode() && sal != null) meta = `${fmtMoney(sal)}`;
     else if (people != null && people > 0) meta = `${people} чел.`;
     else if (assigns != null && assigns > 0) meta = `${assigns} назнач.`;
 
@@ -1311,7 +1315,7 @@ function renderDayPanel(dateStr) {
   ];
   if (people != null) kpis.push(`<div class="kpi">Людей: <span class="muted">${people}</span></div>`);
   if (assigns != null) kpis.push(`<div class="kpi">Назначений: <span class="muted">${assigns}</span></div>`);
-  if (total != null) kpis.push(`<div class="kpi">Итого: <span class="muted">${fmtMoney(total)}</span></div>`);
+  if (!isDemoIndicatorsOnlyMode() && total != null) kpis.push(`<div class="kpi">Итого: <span class="muted">${fmtMoney(total)}</span></div>`);
 
   el.dayPanel.innerHTML = `
     <div class="card daypanel-card">
@@ -1574,7 +1578,7 @@ function renderCellBadges(dateStr, box, { isWeek = false, forceText = false, exp
   const maxMine = isWeek ? 10 : 3;
   const maxAll = isWeek ? 12 : 2;
 // MONTH + ALL: show interval dots (no text), 4 max
-if (showAllOnCalendar && !isWeek && !forceText && calendarScope !== "global") {
+if ((showAllOnCalendar || isDemoIndicatorsOnlyMode()) && !isWeek && !forceText && calendarScope !== "global") {
   box.classList.add("cal-badges--dots");
 
   const sorted = sortShiftsForBadges(list);
@@ -1631,14 +1635,14 @@ if (showAllOnCalendar && !isWeek && !forceText && calendarScope !== "global") {
 
         if (pastDay) {
           const sal = Number(s?.my_salary);
-          txt = Number.isFinite(sal) ? fmtMoney(sal) : (t ? `${venueName} • ${t}` : `${venueName}`);
+          txt = (!isDemoIndicatorsOnlyMode() && Number.isFinite(sal)) ? fmtMoney(sal) : (t ? `${venueName} • ${t}` : `${venueName}`);
         } else {
           txt = t ? `${venueName} • ${t}` : `${venueName}`;
         }
       } else {
         if (pastDay) {
           const sal = Number(s?.my_salary);
-          txt = Number.isFinite(sal) ? fmtMoney(sal) : shiftStartHHMM(s);
+          txt = (!isDemoIndicatorsOnlyMode() && Number.isFinite(sal)) ? fmtMoney(sal) : shiftStartHHMM(s);
         } else {
           txt = shiftStartHHMM(s);
         }

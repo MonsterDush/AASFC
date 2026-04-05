@@ -41,6 +41,7 @@ from app.services.billing.manager import get_or_create_billing_state
 from app.services.demo.fixture import clear_demo_venue_data, export_demo_fixture
 from app.services.demo.session import DEMO_PERSONA_OWNER, DEMO_PERSONA_STAFF
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense
+from app.services.finance.revenue import rebuild_revenue_entries_for_report
 from app.services.payroll import calculate_payroll_for_month
 
 
@@ -437,6 +438,10 @@ def _daily_base_minor(day: date) -> int:
     return 6100000
 
 
+def _minor_to_report_units(amount_minor: int) -> int:
+    return int(round(int(amount_minor or 0) / 100))
+
+
 def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference_month: int, users_by_key: dict[str, User], dictionaries: dict) -> dict[str, int]:
     pm = dictionaries["payment_methods"]
     dept = dictionaries["departments"]
@@ -445,34 +450,37 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
     created_values = 0
     created_audits = 0
     created_tips = 0
+    created_finance_entries = 0
     owner_user = users_by_key["owner"]
     admin_user = users_by_key["anna_admin"]
 
     for idx, day in enumerate(_month_iter(reference_year, reference_month)):
         total_minor = _daily_base_minor(day) + ((idx % 5) * 250000)
-        hookah_minor = int(total_minor * 0.58)
-        bar_minor = int(total_minor * 0.27)
-        kitchen_minor = total_minor - hookah_minor - bar_minor
+        total_value = _minor_to_report_units(total_minor)
 
-        cash_minor = int(total_minor * 0.22)
-        cashless_minor = int(total_minor * 0.53)
-        sbp_minor = int(total_minor * 0.20)
-        other_minor = total_minor - cash_minor - cashless_minor - sbp_minor
+        hookah_value = int(total_value * 0.58)
+        bar_value = int(total_value * 0.27)
+        kitchen_value = int(total_value - hookah_value - bar_value)
+
+        cash_value = int(total_value * 0.22)
+        cashless_value = int(total_value * 0.53)
+        sbp_value = int(total_value * 0.20)
+        other_value = int(total_value - cash_value - cashless_value - sbp_value)
 
         discrepancy = 0
         comment = None
         if day.day in {12, 27}:
-            discrepancy = 70000
-            cash_minor += discrepancy
+            discrepancy = _minor_to_report_units(70000)
+            cash_value += discrepancy
             comment = "В пробном режиме показан день с расхождением: часть оплаты прошла после закрытия смены."
 
-        tips_total = 340000 + (idx % 4) * 55000
+        tips_total = _minor_to_report_units(340000 + (idx % 4) * 55000)
         report = DailyReport(
             venue_id=int(venue.id),
             date=day,
-            cash=cash_minor,
-            cashless=cashless_minor + sbp_minor,
-            revenue_total=total_minor,
+            cash=cash_value,
+            cashless=cashless_value + sbp_value,
+            revenue_total=total_value,
             tips_total=tips_total,
             status="CLOSED",
             comment=comment,
@@ -488,20 +496,30 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
         created_reports += 1
 
         values = [
-            ("PAYMENT", int(pm["cash"].id), cash_minor),
-            ("PAYMENT", int(pm["cashless"].id), cashless_minor),
-            ("PAYMENT", int(pm["sbp"].id), sbp_minor),
-            ("PAYMENT", int(pm["other"].id), other_minor),
-            ("DEPT", int(dept["hookah"].id), hookah_minor),
-            ("DEPT", int(dept["bar"].id), bar_minor),
-            ("DEPT", int(dept["kitchen"].id), kitchen_minor),
+            ("PAYMENT", int(pm["cash"].id), cash_value),
+            ("PAYMENT", int(pm["cashless"].id), cashless_value),
+            ("PAYMENT", int(pm["sbp"].id), sbp_value),
+            ("PAYMENT", int(pm["other"].id), other_value),
+            ("DEPT", int(dept["hookah"].id), hookah_value),
+            ("DEPT", int(dept["bar"].id), bar_value),
+            ("DEPT", int(dept["kitchen"].id), kitchen_value),
             ("KPI", int(kpis["upsale"].id), 12 + (idx % 7)),
             ("KPI", int(kpis["vip"].id), 2 + (1 if day.weekday() in {4, 5} else 0)),
-            ("KPI", int(kpis["retail"].id), 70000 + (idx % 6) * 10000),
+            ("KPI", int(kpis["retail"].id), _minor_to_report_units(70000 + (idx % 6) * 10000)),
         ]
+        report_values: list[DailyReportValue] = []
         for kind, ref_id, value in values:
-            db.add(DailyReportValue(report_id=int(report.id), kind=kind, ref_id=int(ref_id), value_numeric=int(value)))
+            row = DailyReportValue(report_id=int(report.id), kind=kind, ref_id=int(ref_id), value_numeric=int(value))
+            db.add(row)
+            report_values.append(row)
             created_values += 1
+        db.flush()
+
+        created_finance_entries += rebuild_revenue_entries_for_report(
+            db=db,
+            report=report,
+            values=report_values,
+        )
 
         tip_receivers = ["staff_persona", "kirill_hookah", "maria_bar"] if day.weekday() in {4, 5} else ["staff_persona", "aleksey_waiter"]
         share = tips_total // len(tip_receivers)
@@ -535,6 +553,7 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
         "daily_report_values": created_values,
         "daily_report_tip_allocations": created_tips,
         "daily_report_audits": created_audits,
+        "finance_entries_revenue": created_finance_entries,
     }
 
 
