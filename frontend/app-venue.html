@@ -46,6 +46,21 @@
 
         <div class="muted mt-6" id="metaHint"></div>
       </div>
+      <div class="itemcard mt-12 section-card hidden" id="demoVenueGuideCard">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Куда идти в DEMO дальше</b>
+            <div class="muted" id="demoVenueGuideText">Открой сводку, расходы и начисления — это лучший маршрут для владельца.</div>
+          </div>
+          <button class="btn sm subtle" id="demoVenueGuideClose" type="button">Скрыть</button>
+        </div>
+        <div class="action-grid action-grid--adaptive action-grid--mobile-2 mt-12">
+          <button class="btn" id="demoVenueOpenSummary" type="button">Сводка</button>
+          <button class="btn" id="demoVenueOpenExpenses" type="button">Расходы</button>
+          <button class="btn subtle" id="demoVenueOpenPayroll" type="button">Начисления</button>
+        </div>
+      </div>
+
       <div class="itemcard mt-12 section-card" id="sectionsCard">
               <div class="section-card__head">
                 <div class="section-card__title">
@@ -160,7 +175,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel } from "/app.js";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260331-billing2";
 
     applyTelegramTheme();
@@ -173,6 +188,23 @@
 
 
         // без replaceAll — Telegram WebView иногда капризничает
+
+        const DEMO_VENUE_GUIDE_DISMISSED_KEY = "axelio.demo_intro.venue.dismissed";
+        function renderDemoVenueGuide(){
+          const card = document.getElementById("demoVenueGuideCard");
+          if (!card) return;
+          if (!demoReadonly) { card.classList.add("hidden"); return; }
+          try { if (sessionStorage.getItem(DEMO_VENUE_GUIDE_DISMISSED_KEY) === "1") { card.classList.add("hidden"); return; } } catch {}
+          const monthLabel = getDemoMonthLabel(perms) || "";
+          const textEl = document.getElementById("demoVenueGuideText");
+          if (textEl && monthLabel) textEl.textContent = `Подготовленные данные за ${monthLabel}. Лучший маршрут: сводка → расходы → начисления.`;
+          document.getElementById("demoVenueOpenSummary")?.addEventListener("click", () => location.href = `/owner-summary.html?venue_id=${encodeURIComponent(String(venueId))}`);
+          document.getElementById("demoVenueOpenExpenses")?.addEventListener("click", () => location.href = `/owner-expenses.html?venue_id=${encodeURIComponent(String(venueId))}`);
+          document.getElementById("demoVenueOpenPayroll")?.addEventListener("click", () => location.href = `/owner-payroll.html?venue_id=${encodeURIComponent(String(venueId))}`);
+          document.getElementById("demoVenueGuideClose")?.addEventListener("click", () => { card.classList.add("hidden"); try { sessionStorage.setItem(DEMO_VENUE_GUIDE_DISMISSED_KEY, "1"); } catch {} });
+          card.classList.remove("hidden");
+        }
+
         function esc(s){
           return String(s ?? "")
             .replace(/&/g, "&amp;")

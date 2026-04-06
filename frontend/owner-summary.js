@@ -13,6 +13,8 @@ import {
   coerceDemoMonth,
   coerceDemoRange,
   isDemoUiMode,
+  getStoredDemoUiState,
+  getDemoMonthLabel,
 } from "/app.js";
 import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix1";
 
@@ -57,6 +59,45 @@ let state = {
   from: todayISO(),
   to: todayISO(),
 };
+
+
+const DEMO_OWNER_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_summary.dismissed";
+
+function renderDemoOwnerIntro() {
+  const intro = document.getElementById("demoSummaryIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) {
+    intro.classList.add("hidden");
+    return;
+  }
+  try {
+    if (sessionStorage.getItem(DEMO_OWNER_INTRO_DISMISSED_KEY) === "1") {
+      intro.classList.add("hidden");
+      return;
+    }
+  } catch {}
+  const monthLabel = getDemoMonthLabel(demoState) || "подготовленный период";
+  const introText = document.getElementById("demoSummaryIntroText");
+  if (introText) introText.textContent = `Подготовленные данные за ${monthLabel}. Начни со сводки, затем посмотри расходы и начисления команды.`;
+  document.getElementById("demoGoExpenses")?.addEventListener("click", () => {
+    const venueId = getActiveVenueId();
+    if (venueId) window.location.href = `/owner-expenses.html?venue_id=${encodeURIComponent(String(venueId))}`;
+  });
+  document.getElementById("demoGoPayroll")?.addEventListener("click", () => {
+    const venueId = getActiveVenueId();
+    if (venueId) window.location.href = `/owner-payroll.html?venue_id=${encodeURIComponent(String(venueId))}`;
+  });
+  document.getElementById("demoGoVenue")?.addEventListener("click", () => {
+    const venueId = getActiveVenueId();
+    if (venueId) window.location.href = `/app-venue.html?venue_id=${encodeURIComponent(String(venueId))}`;
+  });
+  document.getElementById("demoSummaryIntroClose")?.addEventListener("click", () => {
+    intro.classList.add("hidden");
+    try { sessionStorage.setItem(DEMO_OWNER_INTRO_DISMISSED_KEY, "1"); } catch {}
+  });
+  intro.classList.remove("hidden");
+}
 
 function setText(id, value) {
   const el = document.getElementById(id);
@@ -252,6 +293,7 @@ async function loadSummary() {
   syncPickers();
   syncUrl();
   await loadFinanceAccess();
+  renderDemoOwnerIntro();
   syncActions();
 
   showBlock("revenueCard", financeAccess.canViewRevenue);

@@ -110,7 +110,7 @@ def default_demo_target_path(*, venue_id: int, persona: str | None = None) -> st
     persona_upper = normalize_demo_persona(persona, default=DEMO_PERSONA_OWNER)
     if persona_upper == DEMO_PERSONA_STAFF:
         return f"/staff-shifts.html?venue_id={int(venue_id)}"
-    return f"/app-venue.html?venue_id={int(venue_id)}"
+    return f"/owner-summary.html?venue_id={int(venue_id)}"
 
 
 def build_demo_start_url(*, venue_id: int, persona: str | None = None, next_path: str | None = None) -> str:

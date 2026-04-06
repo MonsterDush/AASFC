@@ -263,6 +263,11 @@ body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);pad
 .demo-banner__segbtn:disabled{opacity:.6;cursor:not-allowed}
 .demo-banner__link{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--border);text-decoration:none;color:var(--text);font-size:12px;font-weight:700;background:rgba(255,255,255,.02)}
 .demo-banner__link--primary{border-color:transparent;background:var(--accent);color:var(--accentText)}
+.demo-flow-card{position:relative}
+.demo-flow-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.demo-flow-card__chips{display:flex;flex-wrap:wrap;gap:8px}
+.demo-flow-card__chip{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.03);font-size:12px;font-weight:700;color:var(--text)}
+.demo-flow-card__actions{display:flex;flex-wrap:wrap;gap:8px}
 
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
 .itemcard{border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--surface2)}

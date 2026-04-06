@@ -13,6 +13,8 @@ import {
   getVenuePositions,
   coerceDemoMonth,
   isDemoUiMode,
+  getStoredDemoUiState,
+  getDemoMonthLabel,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
@@ -31,6 +33,41 @@ window.onunhandledrejection = function (e) {
   console.error(e);
 };
 
+
+
+const DEMO_STAFF_INTRO_DISMISSED_KEY = "axelio.demo_intro.staff_shifts.dismissed";
+
+function renderDemoStaffIntro() {
+  const intro = document.getElementById("demoStaffIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) {
+    intro.classList.add("hidden");
+    return;
+  }
+  try {
+    if (sessionStorage.getItem(DEMO_STAFF_INTRO_DISMISSED_KEY) === "1") {
+      intro.classList.add("hidden");
+      return;
+    }
+  } catch {}
+  const monthLabel = getDemoMonthLabel(demoState) || "подготовленный период";
+  const introText = document.getElementById("demoStaffIntroText");
+  if (introText) introText.textContent = `Подготовленные данные за ${monthLabel}. Сначала посмотри график, затем открой начисления и сводку по зарплате.`;
+  document.getElementById("demoOpenStaffSalary")?.addEventListener("click", () => {
+    const venue = venueId || getActiveVenueId();
+    if (venue) window.location.href = `/staff-salary.html?venue_id=${encodeURIComponent(String(venue))}`;
+  });
+  document.getElementById("demoOpenStaffSalarySummary")?.addEventListener("click", () => {
+    const venue = venueId || getActiveVenueId();
+    if (venue) window.location.href = `/staff-salary-summary.html?venue_id=${encodeURIComponent(String(venue))}`;
+  });
+  document.getElementById("demoStaffIntroClose")?.addEventListener("click", () => {
+    intro.classList.add("hidden");
+    try { sessionStorage.setItem(DEMO_STAFF_INTRO_DISMISSED_KEY, "1"); } catch {}
+  });
+  intro.classList.remove("hidden");
+}
 
 function withTimeout(promise, ms, label = "REQUEST_TIMEOUT") {
   let timer = null;
@@ -62,6 +99,7 @@ if (!venueId) toast("Сначала выбери заведение в «Нас�
 if (venueId) setActiveVenueId(venueId);
 
 await mountNav({ activeTab: "shifts", requireVenue: true });
+renderDemoStaffIntro();
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),
