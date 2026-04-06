@@ -221,18 +221,14 @@ python -m app.scripts.bootstrap_demo_data --make-public --export-fixture-after
    - `owner-summary`
    - `owner-expenses`
    - `owner-payroll`
-3. Проверить owner advanced flow:
-   - `owner-turnover`
-   - `owner-finance-ledger`
-   - `owner-day-economics`
-4. Переключиться в staff.
-5. Проверить staff flow:
+3. Переключиться в staff.
+4. Проверить staff flow:
    - `staff-shifts`
    - `staff-salary`
    - `staff-report`
-6. Нажать любое запрещённое действие и убедиться, что оно заблокировано.
-7. Вернуться на сайт через DEMO-панель.
-8. Если DEMO готов к показу — зафиксировать fixture заново.
+5. Нажать любое запрещённое действие и убедиться, что оно заблокировано.
+6. Вернуться на сайт через DEMO-панель.
+7. Если DEMO готов к показу — зафиксировать fixture заново.
 
 ## Когда обновлять fixture
 1. После заметного ручного улучшения demo-данных.
@@ -249,3 +245,22 @@ python -m app.scripts.bootstrap_demo_data --make-public --export-fixture-after
 5. Проверить bootstrap.
 6. Проверить fixture export/reset.
 7. Проверить кэш фронта.
+
+
+## Template/Public split
+1. Template DEMO хранится как venue с `demo_kind = TEMPLATE`.
+2. Public DEMO хранится как venue с `demo_kind = PUBLIC` и `is_demo = true`.
+3. Публикация шаблона выполняется через `/admin/demo/publish-template`.
+4. После публикации `GET /auth/demo/start` всегда должен открывать именно PUBLIC DEMO.
+
+## Аналитика DEMO
+1. События пишутся в `demo_events`.
+2. Базовые события:
+   - `demo_start`
+   - `page_view`
+   - `switch_persona`
+   - `cta_click`
+   - `tour_started`
+   - `tour_completed`
+   - `exit_demo`
+3. Агрегаты и recent events доступны через `/admin/demo/status` в блоке `analytics`.

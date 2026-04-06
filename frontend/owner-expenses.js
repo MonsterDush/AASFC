@@ -16,6 +16,8 @@ import {
   isDemoUiMode,
   getStoredDemoUiState,
   getDemoMonthLabel,
+  mountDemoPageTour,
+  trackDemoEvent,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -745,3 +747,22 @@ async function boot() {
 document.addEventListener("DOMContentLoaded", () => {
   boot();
 });
+
+
+function mountDemoFlowTour() {
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) return;
+  const venue = getActiveVenueId();
+  const q = venue ? `?venue_id=${encodeURIComponent(String(venue))}` : "";
+  mountDemoPageTour({
+    tourId: "demo-owner-flow",
+    step: 2,
+    total: 4,
+    title: "Продолжение DEMO-тура",
+    text: "На этом шаге видно, как расходы собраны по категориям и как они влияют на экономику месяца.",
+    prevPath: `/owner-summary.html${q}`,
+    nextPath: `/owner-payroll.html${q}`,
+  });
+}
+
+try { mountDemoFlowTour(); } catch {}

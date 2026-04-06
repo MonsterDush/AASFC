@@ -347,6 +347,119 @@ async function exitDemoMode(buttonEl = null, targetUrl = null) {
   }
 }
 
+
+const LS_DEMO_LAST_VIEW = "axelio.demo_last_view";
+const LS_DEMO_TOUR_PREFIX = "axelio.demo_tour.";
+
+export async function trackDemoEvent(eventName, payload = {}, options = {}) {
+  const state = options?.state?.demo_mode ? options.state : getStoredDemoUiState();
+  if (!state?.demo_mode || !eventName) return false;
+  try {
+    await api("/demo/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event_name: String(eventName),
+        page_path: payload.page_path || `${location.pathname || "/"}${location.search || ""}`.slice(0, 255),
+        cta_code: payload.cta_code || null,
+        meta: payload.meta || null,
+      }),
+      skipDemoReadonlyToast: true,
+      skip401Redirect: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function autoTrackDemoPageView(state = null) {
+  if (!isBrowser()) return;
+  const effective = state?.demo_mode ? state : getStoredDemoUiState();
+  if (!effective?.demo_mode) return;
+  const key = `${location.pathname || "/"}${location.search || ""}`;
+  try {
+    if (sessionStorage.getItem(LS_DEMO_LAST_VIEW) === key) return;
+    sessionStorage.setItem(LS_DEMO_LAST_VIEW, key);
+  } catch {}
+  queueMicrotask(() => { trackDemoEvent("page_view", { page_path: key }, { state: effective }); });
+}
+
+function __demoTourKey(tourId, suffix) {
+  return `${LS_DEMO_TOUR_PREFIX}${String(tourId || "default")}.${suffix}`;
+}
+
+function removeDemoTour() {
+  document.getElementById("demoTourOverlay")?.remove();
+}
+
+export function resetDemoTour(tourId) {
+  if (!isBrowser()) return;
+  try {
+    localStorage.removeItem(__demoTourKey(tourId, "dismissed"));
+    localStorage.removeItem(__demoTourKey(tourId, "completed"));
+  } catch {}
+}
+
+export function mountDemoPageTour(config = {}) {
+  if (!isBrowser() || !document.body) return;
+  const state = getStoredDemoUiState();
+  if (!state?.demo_mode) { removeDemoTour(); return; }
+  const tourId = String(config.tourId || "demo");
+  const title = String(config.title || "Маршрут DEMO");
+  const textBody = String(config.text || "");
+  const step = Number(config.step || 1);
+  const total = Number(config.total || step || 1);
+  const prevPath = config.prevPath || "";
+  const nextPath = config.nextPath || "";
+  const finalStep = !nextPath;
+  try {
+    if (localStorage.getItem(__demoTourKey(tourId, "dismissed")) === "1") return;
+    if (localStorage.getItem(__demoTourKey(tourId, "completed")) === "1") return;
+  } catch {}
+  let host = document.getElementById("demoTourOverlay");
+  const firstMount = !host;
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "demoTourOverlay";
+    host.className = "demo-tour";
+    document.body.appendChild(host);
+  }
+  host.innerHTML = `
+    <div class="demo-tour__backdrop"></div>
+    <div class="demo-tour__panel">
+      <div class="demo-tour__meta">Шаг ${step} из ${total}</div>
+      <div class="demo-tour__title">${title}</div>
+      <div class="demo-tour__text">${textBody}</div>
+      <div class="demo-tour__actions">
+        ${prevPath ? `<button type="button" class="btn subtle" data-demo-tour-prev="1">Назад</button>` : ""}
+        <button type="button" class="btn subtle" data-demo-tour-hide="1">Скрыть</button>
+        <button type="button" class="btn" data-demo-tour-next="1">${finalStep ? (config.finishLabel || "Готово") : (config.nextLabel || "Дальше")}</button>
+      </div>
+    </div>`;
+  host.querySelector('[data-demo-tour-hide]')?.addEventListener('click', () => {
+    try { localStorage.setItem(__demoTourKey(tourId, 'dismissed'), '1'); } catch {}
+    trackDemoEvent('tour_dismissed', { meta: { tour_id: tourId, step } }, { state });
+    removeDemoTour();
+  });
+  host.querySelector('[data-demo-tour-prev]')?.addEventListener('click', () => {
+    trackDemoEvent('tour_prev', { meta: { tour_id: tourId, step } }, { state });
+    location.href = prevPath;
+  });
+  host.querySelector('[data-demo-tour-next]')?.addEventListener('click', () => {
+    if (finalStep) {
+      try { localStorage.setItem(__demoTourKey(tourId, 'completed'), '1'); } catch {}
+      trackDemoEvent('tour_completed', { meta: { tour_id: tourId, step } }, { state });
+      removeDemoTour();
+      if (config.finishPath) location.href = config.finishPath;
+      return;
+    }
+    trackDemoEvent('tour_next', { meta: { tour_id: tourId, step } }, { state });
+    location.href = nextPath;
+  });
+  trackDemoEvent(firstMount && step === 1 ? 'tour_started' : 'tour_step_view', { meta: { tour_id: tourId, step, total } }, { state });
+}
+
 function buildDemoBannerMarkup(state) {
   const persona = String(state?.demo_persona || "OWNER").toUpperCase();
   const banner = state?.demo_banner || {};
@@ -359,9 +472,9 @@ function buildDemoBannerMarkup(state) {
         <button type="button" class="demo-banner__segbtn ${persona === "STAFF" ? "is-active" : ""}" data-demo-persona="STAFF">Персонал</button>
       </div>
       <span class="demo-banner__pill demo-banner__pill--muted">${monthLabel}</span>
-      <a class="demo-banner__link" href="${String(banner.return_url || "https://axelio.ru")}">На сайт</a>
-      <a class="demo-banner__link demo-banner__link--primary" href="${String(banner.primary_cta_url || "https://axelio.ru/#contact")}">${String(banner.primary_cta_label || "Оставить заявку")}</a>
-      <button type="button" class="demo-banner__link" data-demo-exit-cta="1" data-demo-exit-url="${String(banner.secondary_cta_url || "https://axelio.ru/#contact")}">${String(banner.secondary_cta_label || "Начать пользоваться")}</button>
+      <a class="demo-banner__link" data-demo-cta="return_site" href="${String(banner.return_url || "https://axelio.ru")}">На сайт</a>
+      <a class="demo-banner__link demo-banner__link--primary" data-demo-cta="primary_cta" href="${String(banner.primary_cta_url || "https://axelio.ru/#contact")}">${String(banner.primary_cta_label || "Оставить заявку")}</a>
+      <button type="button" class="demo-banner__link" data-demo-cta="secondary_cta" data-demo-exit-cta="1" data-demo-exit-url="${String(banner.secondary_cta_url || "https://axelio.ru/#contact")}">${String(banner.secondary_cta_label || "Начать пользоваться")}</button>
     </div>`;
 }
 
@@ -405,6 +518,13 @@ function mountDemoBanner(state = null) {
     });
   });
 
+  host.querySelectorAll("[data-demo-cta]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const code = el.getAttribute("data-demo-cta") || "cta";
+      trackDemoEvent("cta_click", { cta_code: code }, { state: effectiveState });
+    });
+  });
+
   host.querySelectorAll("[data-demo-exit-cta]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const targetUrl = btn.getAttribute("data-demo-exit-url") || "https://axelio.ru/#contact";
@@ -418,7 +538,7 @@ function bootstrapStoredDemoBanner() {
   __demoBannerBootstrapped = true;
   const run = () => {
     const stored = getStoredDemoUiState();
-    if (stored?.demo_mode) mountDemoBanner(stored);
+    if (stored?.demo_mode) { mountDemoBanner(stored); autoTrackDemoPageView(stored); }
   };
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", run, { once: true });

@@ -16,6 +16,8 @@ import {
   isDemoUiMode,
   getStoredDemoUiState,
   getDemoMonthLabel,
+  mountDemoPageTour,
+  trackDemoEvent,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -720,3 +722,22 @@ async function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
+function mountDemoFlowTour() {
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) return;
+  const venue = parseVenueId();
+  const q = venue ? `?venue_id=${encodeURIComponent(String(venue))}` : "";
+  mountDemoPageTour({
+    tourId: "demo-owner-flow",
+    step: 3,
+    total: 4,
+    title: "Продолжение DEMO-тура",
+    text: "Здесь видно ФОТ и детализацию начислений. После этого открой карточку заведения как финальный экран маршрута.",
+    prevPath: `/owner-expenses.html${q}`,
+    nextPath: `/app-venue.html${q}`,
+  });
+}
+
+try { mountDemoFlowTour(); } catch {}

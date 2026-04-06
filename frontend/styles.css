@@ -1547,3 +1547,12 @@ a.btn.primary{color:var(--accentText)}
   .action-grid--mobile-2{grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr)) !important}
   .hero-summary-card__value{font-size:24px}
 }
+
+
+.demo-tour{position:fixed;inset:0;z-index:1400;display:flex;align-items:flex-end;justify-content:center;padding:18px;pointer-events:none}
+.demo-tour__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.22);backdrop-filter:blur(2px);pointer-events:auto}
+.demo-tour__panel{position:relative;width:min(560px,100%);border:1px solid var(--border);border-radius:18px;background:var(--card);box-shadow:var(--shadow);padding:16px;pointer-events:auto}
+.demo-tour__meta{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px}
+.demo-tour__title{font-size:18px;font-weight:800;line-height:1.25}
+.demo-tour__text{margin-top:8px;color:var(--text);font-size:14px;line-height:1.5}
+.demo-tour__actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:14px}

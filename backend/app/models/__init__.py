@@ -53,6 +53,7 @@ from .venue_billing_state import VenueBillingState
 from .venue_billing_transaction import VenueBillingTransaction
 from .venue_billing_event import VenueBillingEvent
 from .billing_reconciliation_issue import BillingReconciliationIssue
+from .demo_event import DemoEvent
 
 __all__ = [
     "SystemRole",
@@ -111,4 +112,5 @@ __all__ = [
     "VenueBillingTransaction",
     "VenueBillingEvent",
     "BillingReconciliationIssue",
+    "DemoEvent",
 ]

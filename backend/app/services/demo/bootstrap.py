@@ -39,7 +39,7 @@ from app.models import (
 )
 from app.services.billing.manager import get_or_create_billing_state
 from app.services.demo.fixture import clear_demo_venue_data, export_demo_fixture
-from app.services.demo.session import DEMO_PERSONA_OWNER, DEMO_PERSONA_STAFF
+from app.services.demo.session import DEMO_KIND_PUBLIC, DEMO_KIND_TEMPLATE, DEMO_PERSONA_OWNER, DEMO_PERSONA_STAFF
 from app.services.finance.expenses import rebuild_expense_allocations_for_expense
 from app.services.finance.revenue import rebuild_revenue_entries_for_report
 from app.services.payroll import calculate_payroll_for_month
@@ -130,6 +130,7 @@ def _ensure_venue(db: Session, *, venue_id: int | None, venue_name: str, referen
 
     venue.name = venue_name
     venue.is_demo = bool(make_public)
+    venue.demo_kind = DEMO_KIND_PUBLIC if bool(make_public) else DEMO_KIND_TEMPLATE
     venue.demo_reference_year = int(reference_year)
     venue.demo_reference_month = int(reference_month)
     venue.is_archived = False

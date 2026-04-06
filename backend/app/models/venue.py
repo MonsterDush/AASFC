@@ -17,6 +17,7 @@ class Venue(Base):
 
     # DEMO mode metadata
     is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    demo_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)  # PUBLIC | TEMPLATE
     demo_reference_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     demo_reference_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

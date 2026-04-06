@@ -12,6 +12,8 @@ import {
   isDemoUiMode,
   getStoredDemoUiState,
   getDemoMonthLabel,
+  mountDemoPageTour,
+  trackDemoEvent,
 } from "/app.js";
 
 import { hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
@@ -1114,3 +1116,22 @@ el.addManualTipBtn?.addEventListener("click", async () => {
 syncPeriodUi();
 syncUrl();
 refresh();
+
+
+function mountDemoFlowTour() {
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) return;
+  const v = venueId || getActiveVenueId();
+  const q = v ? `?venue_id=${encodeURIComponent(String(v))}` : "";
+  mountDemoPageTour({
+    tourId: "demo-staff-flow",
+    step: 2,
+    total: 3,
+    title: "Продолжение DEMO-тура",
+    text: "На этом шаге показана зарплата сотрудника за подготовленный месяц и разрез по дням.",
+    prevPath: `/staff-shifts.html${q}`,
+    nextPath: `/staff-salary-summary.html${q}`,
+  });
+}
+
+try { mountDemoFlowTour(); } catch {}

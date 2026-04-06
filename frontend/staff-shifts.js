@@ -15,6 +15,8 @@ import {
   isDemoUiMode,
   getStoredDemoUiState,
   getDemoMonthLabel,
+  mountDemoPageTour,
+  trackDemoEvent,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
@@ -3097,3 +3099,21 @@ if (calendarView === "week") {
 } else {
   await loadMonth();
 }
+
+
+function mountDemoFlowTour() {
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) return;
+  const venue = getActiveVenueId();
+  const q = venue ? `?venue_id=${encodeURIComponent(String(venue))}` : "";
+  mountDemoPageTour({
+    tourId: "demo-staff-flow",
+    step: 1,
+    total: 3,
+    title: "Быстрый тур для персонала",
+    text: "Сначала посмотри график и индикаторы, затем открой начисления и краткую сводку по зарплате.",
+    nextPath: `/staff-salary.html${q}`,
+  });
+}
+
+try { mountDemoFlowTour(); } catch {}

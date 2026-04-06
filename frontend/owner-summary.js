@@ -15,6 +15,8 @@ import {
   isDemoUiMode,
   getStoredDemoUiState,
   getDemoMonthLabel,
+  mountDemoPageTour,
+  trackDemoEvent,
 } from "/app.js";
 import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix1";
 
@@ -461,3 +463,22 @@ async function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", () => { boot(); });
+
+
+function mountDemoFlowTour() {
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) return;
+  const venue = getActiveVenueId();
+  const q = venue ? `?venue_id=${encodeURIComponent(String(venue))}` : "";
+  mountDemoPageTour({
+    tourId: "demo-owner-flow",
+    step: 1,
+    total: 4,
+    title: "Быстрый тур для владельца",
+    text: "Пройди по главным экранам: сводка → расходы → начисления → карточка заведения.",
+    nextPath: `/owner-expenses.html${q}`,
+    finishPath: `/owner-summary.html${q}`,
+  });
+}
+
+try { mountDemoFlowTour(); } catch {}

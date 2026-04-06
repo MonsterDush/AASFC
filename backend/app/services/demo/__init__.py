@@ -16,6 +16,8 @@ from .access import (
 from .session import (
     DEMO_PERSONA_OWNER,
     DEMO_PERSONA_STAFF,
+    DEMO_KIND_PUBLIC,
+    DEMO_KIND_TEMPLATE,
     DEMO_SESSION_MODE,
     DemoSessionContext,
     apply_auth_payload_to_user,
@@ -23,6 +25,7 @@ from .session import (
     build_demo_start_url,
     get_demo_user_for_venue,
     get_public_demo_venue,
+    get_demo_template_venue,
     is_demo_session_payload,
     normalize_demo_persona,
     sanitize_frontend_next_path,
@@ -34,6 +37,8 @@ __all__ = [
     "DEMO_ALLOWED_MUTATION_PATHS",
     "DEMO_PERSONA_OWNER",
     "DEMO_PERSONA_STAFF",
+    "DEMO_KIND_PUBLIC",
+    "DEMO_KIND_TEMPLATE",
     "DEMO_READONLY_ERROR_CODE",
     "DEMO_READONLY_MESSAGE",
     "DEMO_SESSION_MODE",
@@ -49,6 +54,7 @@ __all__ = [
     "get_demo_session_or_none",
     "get_demo_user_for_venue",
     "get_public_demo_venue",
+    "get_demo_template_venue",
     "is_demo_session_for_venue",
     "is_demo_session_payload",
     "normalize_demo_persona",
@@ -67,6 +73,9 @@ __all__ = [
     "get_demo_fixture_status",
     "load_demo_fixture",
     "reset_demo_fixture",
+    "ensure_demo_session_id",
+    "get_demo_analytics_summary",
+    "record_demo_event",
 ]
 
 
@@ -80,6 +89,7 @@ from .fixture import (
     load_demo_fixture,
     reset_demo_fixture,
 )
+from .analytics import ensure_demo_session_id, get_demo_analytics_summary, record_demo_event
 from .bootstrap import (
     DEFAULT_DEMO_REFERENCE_MONTH,
     DEFAULT_DEMO_REFERENCE_YEAR,

@@ -175,7 +175,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260331-billing2";
 
     applyTelegramTheme();
@@ -203,6 +203,17 @@
           document.getElementById("demoVenueOpenPayroll")?.addEventListener("click", () => location.href = `/owner-payroll.html?venue_id=${encodeURIComponent(String(venueId))}`);
           document.getElementById("demoVenueGuideClose")?.addEventListener("click", () => { card.classList.add("hidden"); try { sessionStorage.setItem(DEMO_VENUE_GUIDE_DISMISSED_KEY, "1"); } catch {} });
           card.classList.remove("hidden");
+          try {
+            mountDemoPageTour({
+              tourId: "demo-owner-flow",
+              step: 4,
+              total: 4,
+              title: "Финальный экран DEMO-тура",
+              text: "Карточка заведения завершает маршрут владельца. Можно вернуться в сводку или закрыть тур и продолжить свободный просмотр.",
+              prevPath: `/owner-payroll.html?venue_id=${encodeURIComponent(String(venueId))}`,
+              finishPath: `/owner-summary.html?venue_id=${encodeURIComponent(String(venueId))}`,
+            });
+          } catch {}
         }
 
         function esc(s){

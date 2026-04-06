@@ -33,6 +33,7 @@ from app.routers.public_leads import router as public_leads_router
 from app.routers.billing import router as billing_router, public_router as billing_public_router
 from app.routers.admin_billing import router as admin_billing_router
 from app.routers.admin_demo import router as admin_demo_router
+from app.routers.demo_telemetry import router as demo_telemetry_router
 from app.routers import auth, me
 
 app.add_middleware(
@@ -65,6 +66,7 @@ app.include_router(billing_router)
 app.include_router(billing_public_router)
 app.include_router(admin_billing_router)
 app.include_router(admin_demo_router)
+app.include_router(demo_telemetry_router)
 
 @app.get("/health")
 def health():

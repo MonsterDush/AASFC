@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import uuid
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
@@ -13,6 +14,8 @@ from app.settings import settings
 DEMO_SESSION_MODE = "DEMO"
 DEMO_PERSONA_OWNER = "OWNER"
 DEMO_PERSONA_STAFF = "STAFF"
+DEMO_KIND_PUBLIC = "PUBLIC"
+DEMO_KIND_TEMPLATE = "TEMPLATE"
 ALLOWED_DEMO_PERSONAS = {DEMO_PERSONA_OWNER, DEMO_PERSONA_STAFF}
 
 
@@ -23,6 +26,7 @@ class DemoSessionContext:
     persona: str | None = None
     reference_year: int | None = None
     reference_month: int | None = None
+    session_id: str | None = None
 
 
 def normalize_demo_persona(value: str | None, *, default: str = DEMO_PERSONA_OWNER) -> str:
@@ -60,12 +64,16 @@ def _parse_demo_context_from_payload(payload: dict[str, Any] | None) -> DemoSess
     except Exception:
         reference_month = None
 
+    session_id_raw = payload.get("demo_session_id")
+    session_id = str(session_id_raw or "").strip()[:64] or None
+
     return DemoSessionContext(
         is_demo=True,
         venue_id=venue_id,
         persona=normalize_demo_persona(payload.get("demo_persona"), default=DEMO_PERSONA_OWNER),
         reference_year=reference_year,
         reference_month=reference_month,
+        session_id=session_id,
     )
 
 
@@ -79,6 +87,7 @@ def apply_auth_payload_to_user(user: User | None, payload: dict[str, Any] | None
     setattr(user, "_demo_persona", ctx.persona)
     setattr(user, "_demo_reference_year", ctx.reference_year)
     setattr(user, "_demo_reference_month", ctx.reference_month)
+    setattr(user, "_demo_session_id", ctx.session_id)
     return user
 
 
@@ -138,9 +147,19 @@ def build_demo_auth_start_url(*, persona: str | None = None, next_path: str | No
     return f"{path}?{qs}"
 
 def get_public_demo_venue(db: Session) -> Venue | None:
+    venue = db.execute(
+        select(Venue)
+        .where((Venue.demo_kind == DEMO_KIND_PUBLIC) | (Venue.is_demo.is_(True)))
+        .order_by((Venue.demo_kind == DEMO_KIND_PUBLIC).desc(), Venue.id.asc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return venue
+
+
+def get_demo_template_venue(db: Session) -> Venue | None:
     return db.execute(
         select(Venue)
-        .where(Venue.is_demo.is_(True))
+        .where(Venue.demo_kind == DEMO_KIND_TEMPLATE)
         .order_by(Venue.id.asc())
         .limit(1)
     ).scalar_one_or_none()
@@ -162,12 +181,14 @@ def get_demo_user_for_venue(db: Session, *, venue_id: int, persona: str) -> User
     ).scalar_one_or_none()
 
 
-def build_demo_session_claims(*, venue: Venue, persona: str) -> dict[str, Any]:
+def build_demo_session_claims(*, venue: Venue, persona: str, session_id: str | None = None) -> dict[str, Any]:
     persona_upper = normalize_demo_persona(persona, default=DEMO_PERSONA_OWNER)
+    normalized_session_id = str(session_id or uuid.uuid4().hex).strip()[:64] or uuid.uuid4().hex
     return {
         "session_mode": DEMO_SESSION_MODE,
         "demo_venue_id": int(venue.id),
         "demo_persona": persona_upper,
         "demo_reference_year": getattr(venue, "demo_reference_year", None),
         "demo_reference_month": getattr(venue, "demo_reference_month", None),
+        "demo_session_id": normalized_session_id,
     }

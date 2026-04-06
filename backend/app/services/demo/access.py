@@ -14,6 +14,7 @@ DEMO_ALLOWED_MUTATION_PATHS = {
     "/auth/demo/switch-persona",
     "/auth/demo/exit",
     "/auth/logout",
+    "/demo/event",
 }
 
 
