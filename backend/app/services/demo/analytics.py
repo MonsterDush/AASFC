@@ -108,26 +108,30 @@ def get_demo_analytics_summary(db: Session, *, limit_pages: int = 6, limit_event
     ).all()
     events_by_name = [{"event_name": row[0], "count": int(row[1] or 0)} for row in event_name_rows]
 
+    persona_expr = func.coalesce(DemoEvent.persona, 'UNKNOWN')
+    page_expr = func.coalesce(DemoEvent.page_path, 'UNKNOWN')
+    cta_expr = func.coalesce(DemoEvent.cta_code, 'UNKNOWN')
+
     persona_rows = db.execute(
-        select(func.coalesce(DemoEvent.persona, 'UNKNOWN').label('persona'), func.count(DemoEvent.id).label('cnt'))
-        .group_by(func.coalesce(DemoEvent.persona, 'UNKNOWN'))
+        select(persona_expr.label('persona'), func.count(DemoEvent.id).label('cnt'))
+        .group_by(persona_expr)
         .order_by(func.count(DemoEvent.id).desc())
     ).all()
     events_by_persona = [{"persona": row[0], "count": int(row[1] or 0)} for row in persona_rows]
 
     cta_rows = db.execute(
-        select(DemoEvent.cta_code, func.count(DemoEvent.id).label('cnt'))
+        select(cta_expr.label('cta_code'), func.count(DemoEvent.id).label('cnt'))
         .where(DemoEvent.event_name == 'cta_click', DemoEvent.cta_code.is_not(None))
-        .group_by(DemoEvent.cta_code)
-        .order_by(func.count(DemoEvent.id).desc(), DemoEvent.cta_code.asc())
+        .group_by(cta_expr)
+        .order_by(func.count(DemoEvent.id).desc(), cta_expr.asc())
     ).all()
     cta_breakdown = [{"cta_code": row[0], "count": int(row[1] or 0)} for row in cta_rows]
 
     page_persona_rows = db.execute(
-        select(func.coalesce(DemoEvent.persona, 'UNKNOWN').label('persona'), DemoEvent.page_path, func.count(DemoEvent.id).label('cnt'))
+        select(persona_expr.label('persona'), page_expr.label('page_path'), func.count(DemoEvent.id).label('cnt'))
         .where(DemoEvent.event_name == 'page_view', DemoEvent.page_path.is_not(None))
-        .group_by(func.coalesce(DemoEvent.persona, 'UNKNOWN'), DemoEvent.page_path)
-        .order_by(func.count(DemoEvent.id).desc(), DemoEvent.page_path.asc())
+        .group_by(persona_expr, page_expr)
+        .order_by(func.count(DemoEvent.id).desc(), page_expr.asc())
     ).all()
     top_pages_by_persona: dict[str, list[dict[str, Any]]] = {}
     for persona, page_path, cnt in page_persona_rows:
@@ -136,9 +140,9 @@ def get_demo_analytics_summary(db: Session, *, limit_pages: int = 6, limit_event
             bucket.append({"page_path": page_path, "views": int(cnt or 0)})
 
     session_persona_rows = db.execute(
-        select(func.coalesce(DemoEvent.persona, 'UNKNOWN').label('persona'), func.count(func.distinct(DemoEvent.session_id)).label('cnt'))
+        select(persona_expr.label('persona'), func.count(func.distinct(DemoEvent.session_id)).label('cnt'))
         .where(DemoEvent.session_id.is_not(None))
-        .group_by(func.coalesce(DemoEvent.persona, 'UNKNOWN'))
+        .group_by(persona_expr)
         .order_by(func.count(func.distinct(DemoEvent.session_id)).desc())
     ).all()
     sessions_by_persona = [{"persona": row[0], "sessions": int(row[1] or 0)} for row in session_persona_rows]
