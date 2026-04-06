@@ -180,6 +180,13 @@ node --check /var/www/axelio/dev/repo/frontend/app.js
 node --check /var/www/axelio/dev/repo/frontend/owner-summary.js
 ```
 
+## Template/Public split
+1. Убедиться, что существует public DEMO.
+2. Создать template, если его ещё нет, через admin-demo кнопку или endpoint `/admin/demo/ensure-template`.
+3. Редактировать template venue под суперадмином.
+4. После готовности опубликовать template через `/admin/demo/publish-template`.
+5. После публикации проверить preview owner/staff и smoke-check.
+
 ## Полезные команды
 - API dev:
 ```bash
@@ -213,6 +220,14 @@ python -m app.scripts.reset_demo_fixture
 ```bash
 python -m app.scripts.bootstrap_demo_data --make-public --export-fixture-after
 ```
+
+## Что смотреть в аналитике DEMO
+1. `unique_sessions` — сколько уникальных DEMO-сеансов было.
+2. `cta_clicks` и `cta_breakdown` — какие CTA реально жмут.
+3. `events_by_persona` и `sessions_by_persona` — как ведут себя owner/staff.
+4. `top_pages` и `top_pages_by_persona` — какие экраны наиболее сильные.
+5. `conversion_rate_tour` — доходят ли до завершения guided tour.
+6. `activity_by_day` — жива ли DEMO-воронка по дням.
 
 ## Минимальный smoke test после деплоя
 1. Открыть DEMO с лендинга.

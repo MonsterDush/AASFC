@@ -16,7 +16,9 @@ from app.services.demo.session import (
     DEMO_KIND_TEMPLATE,
     build_demo_auth_start_url,
     build_demo_start_url,
+    build_frontend_route_url,
     get_demo_template_venue,
+    get_public_demo_venue,
 )
 
 router = APIRouter(prefix='/admin/demo', tags=['admin-demo'])
@@ -56,6 +58,12 @@ class DemoPublishTemplateIn(BaseModel):
     venue_id: int | None = Field(default=None, ge=1)
 
 
+class DemoEnsureTemplateIn(BaseModel):
+    venue_name: str | None = Field(default=None, max_length=200)
+    reference_year: int | None = Field(default=None, ge=2020, le=2100)
+    reference_month: int | None = Field(default=None, ge=1, le=12)
+
+
 def _demo_personas_for_venue(db: Session, venue_id: int) -> dict[str, bool]:
     member_rows = db.execute(
         select(VenueMember.user_id, User.demo_persona)
@@ -67,13 +75,34 @@ def _demo_personas_for_venue(db: Session, venue_id: int) -> dict[str, bool]:
 
 
 @router.get('/status')
+def _venue_status_payload(db: Session, venue: Venue | None) -> dict | None:
+    if venue is None:
+        return None
+    return {
+        'id': int(venue.id),
+        'name': venue.name,
+        'demo_kind': getattr(venue, 'demo_kind', None),
+        'is_demo': bool(getattr(venue, 'is_demo', False)),
+        'demo_reference_year': getattr(venue, 'demo_reference_year', None),
+        'demo_reference_month': getattr(venue, 'demo_reference_month', None),
+        'personas': _demo_personas_for_venue(db, int(venue.id)),
+        'open_urls': {
+            'venue': build_frontend_route_url(venue_id=int(venue.id), path='/app-venue.html'),
+            'summary': build_frontend_route_url(venue_id=int(venue.id), path='/owner-summary.html'),
+            'expenses': build_frontend_route_url(venue_id=int(venue.id), path='/owner-expenses.html'),
+            'payroll': build_frontend_route_url(venue_id=int(venue.id), path='/owner-payroll.html'),
+            'staff_shifts': build_frontend_route_url(venue_id=int(venue.id), path='/staff-shifts.html'),
+        },
+    }
+
+
 def admin_demo_status(db: Session = Depends(get_db), user: User = Depends(require_super_admin)):
     status = get_demo_fixture_status(db)
-    venue = status.get('venue') or {}
-    venue_id = int(venue.get('id') or 0) if venue else 0
+    public_venue = get_public_demo_venue(db)
     template_venue = get_demo_template_venue(db)
+    public_venue_id = int(public_venue.id) if public_venue is not None else 0
     analytics = get_demo_analytics_summary(db)
-    if venue_id:
+    if public_venue_id:
         status['preview_urls'] = {
             'owner': build_demo_auth_start_url(persona='OWNER'),
             'staff': build_demo_auth_start_url(persona='STAFF'),
@@ -86,18 +115,8 @@ def admin_demo_status(db: Session = Depends(get_db), user: User = Depends(requir
             'staff_shifts': build_demo_auth_start_url(persona='STAFF', next_path='/staff-shifts.html'),
             'staff_salary': build_demo_auth_start_url(persona='STAFF', next_path='/staff-salary.html'),
         }
-        status['open_urls'] = {
-            'owner_summary': build_demo_start_url(venue_id=venue_id, persona='OWNER', next_path='/owner-summary.html'),
-            'staff_shifts': build_demo_start_url(venue_id=venue_id, persona='STAFF', next_path='/staff-shifts.html'),
-        }
-    status['template_venue'] = {
-        'id': int(template_venue.id),
-        'name': template_venue.name,
-        'demo_kind': getattr(template_venue, 'demo_kind', None),
-        'demo_reference_year': getattr(template_venue, 'demo_reference_year', None),
-        'demo_reference_month': getattr(template_venue, 'demo_reference_month', None),
-        'personas': _demo_personas_for_venue(db, int(template_venue.id)),
-    } if template_venue else None
+    status['public_venue'] = _venue_status_payload(db, public_venue)
+    status['template_venue'] = _venue_status_payload(db, template_venue)
     status['analytics'] = analytics
     return status
 
@@ -157,6 +176,42 @@ def admin_demo_publish_template(payload: DemoPublishTemplateIn, db: Session = De
     return {'ok': True, 'venue_id': int(venue.id), 'venue_name': venue.name, 'demo_kind': venue.demo_kind, 'personas': _demo_personas_for_venue(db, int(venue.id))}
 
 
+
+
+@router.post('/ensure-template')
+def admin_demo_ensure_template(payload: DemoEnsureTemplateIn, db: Session = Depends(get_db), user: User = Depends(require_super_admin)):
+    existing = get_demo_template_venue(db)
+    if existing is not None:
+        return {
+            'ok': True,
+            'created': False,
+            'venue_id': int(existing.id),
+            'venue_name': existing.name,
+            'demo_kind': existing.demo_kind,
+            'personas': _demo_personas_for_venue(db, int(existing.id)),
+        }
+    public = get_public_demo_venue(db)
+    reference_year = int(payload.reference_year or getattr(public, 'demo_reference_year', None) or 2026)
+    reference_month = int(payload.reference_month or getattr(public, 'demo_reference_month', None) or 3)
+    venue_name = str(payload.venue_name or (f"{getattr(public, 'name', 'Axelio DEMO')} · TEMPLATE" if public is not None else 'Axelio DEMO · TEMPLATE')).strip()
+    result = bootstrap_demo_venue(
+        db,
+        venue_name=venue_name,
+        reference_year=reference_year,
+        reference_month=reference_month,
+        make_public=False,
+        export_fixture_after=False,
+    )
+    db.commit()
+    return {
+        'ok': True,
+        'created': True,
+        'venue_id': result.venue_id,
+        'venue_name': result.venue_name,
+        'demo_kind': DEMO_KIND_TEMPLATE,
+        'personas': _demo_personas_for_venue(db, int(result.venue_id)),
+        'counts': result.counts,
+    }
 @router.post('/disable')
 def admin_demo_disable(payload: DemoDisableIn, db: Session = Depends(get_db), user: User = Depends(require_super_admin)):
     stmt = update(Venue).values(is_demo=False, demo_kind=None)

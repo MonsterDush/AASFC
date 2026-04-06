@@ -133,6 +133,11 @@ def build_demo_start_url(*, venue_id: int, persona: str | None = None, next_path
 
 
 
+def build_frontend_route_url(*, venue_id: int, path: str) -> str:
+    safe_path = sanitize_frontend_next_path(path) or default_demo_target_path(venue_id=int(venue_id), persona=DEMO_PERSONA_OWNER)
+    return build_demo_start_url(venue_id=int(venue_id), persona=DEMO_PERSONA_OWNER, next_path=safe_path)
+
+
 def build_demo_auth_start_url(*, persona: str | None = None, next_path: str | None = None) -> str:
     persona_upper = normalize_demo_persona(persona, default=DEMO_PERSONA_OWNER)
     api_base = (settings.api_base_url() or '').rstrip('/')

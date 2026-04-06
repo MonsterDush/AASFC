@@ -22,6 +22,13 @@
     .demo-admin-checklist{display:grid;gap:8px}
     .demo-admin-check{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid rgba(0,0,0,.08);border-radius:12px;background:rgba(0,0,0,.02)}
     .demo-admin-check b{display:block}
+    .demo-admin-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+    @media (min-width:900px){.demo-admin-stats{grid-template-columns:repeat(3,minmax(0,1fr));}}
+    .demo-admin-list{display:grid;gap:8px;margin-top:12px}
+    .demo-admin-item{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(0,0,0,.08);border-radius:12px;background:rgba(0,0,0,.02)}
+    .demo-admin-item small{display:block;color:var(--muted);font-size:12px}
+    .demo-admin-split{display:grid;grid-template-columns:1fr;gap:14px}
+    @media (min-width:900px){.demo-admin-split{grid-template-columns:1fr 1fr;}}
   </style>
 </head>
 <body>
@@ -75,7 +82,29 @@
 
       <div class="card">
         <div class="section-title"><b>Аналитика DEMO</b></div>
-        <div id="analyticsBlock" class="demo-admin-pre mt-12">Загрузка…</div>
+        <div id="analyticsStats" class="demo-admin-stats"></div>
+        <div class="demo-admin-split">
+          <div>
+            <div class="section-title mt-12"><b>CTA и события</b></div>
+            <div id="analyticsBlock" class="demo-admin-list mt-12">Загрузка…</div>
+          </div>
+          <div>
+            <div class="section-title mt-12"><b>Топ страниц и активность</b></div>
+            <div id="analyticsSecondary" class="demo-admin-list mt-12">Загрузка…</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title"><b>Template / Public</b></div>
+        <div class="muted mt-6">Поддержка рабочего template и отдельного публичного DEMO без ручной магии.</div>
+        <div class="demo-admin-actions">
+          <button class="btn subtle" id="ensureTemplateBtn" type="button">Создать template</button>
+          <button class="btn subtle" id="openPublicDirectBtn" type="button">Открыть public напрямую</button>
+          <button class="btn subtle" id="openTemplateDirectBtn" type="button">Открыть template напрямую</button>
+          <button class="btn subtle" id="resetOwnerTourBtn" type="button">Сбросить тур owner</button>
+          <button class="btn subtle" id="resetStaffTourBtn" type="button">Сбросить тур staff</button>
+        </div>
       </div>
 
       <div class="card">
@@ -107,7 +136,7 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE } from "/app.js";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour } from "/app.js";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");
@@ -117,6 +146,8 @@
   const kpis = document.getElementById('demoKpis');
   const statusBlock = document.getElementById('statusBlock');
   const analyticsBlock = document.getElementById('analyticsBlock');
+  const analyticsStats = document.getElementById('analyticsStats');
+  const analyticsSecondary = document.getElementById('analyticsSecondary');
   const refreshBtn = document.getElementById('refreshBtn');
   const venueIdEl = document.getElementById('venueId');
   const venueNameEl = document.getElementById('venueName');
@@ -135,6 +166,11 @@
   const previewOwnerPayrollBtn = document.getElementById('previewOwnerPayrollBtn');
   const previewStaffBtn = document.getElementById('previewStaffBtn');
   const previewStaffSalaryBtn = document.getElementById('previewStaffSalaryBtn');
+  const ensureTemplateBtn = document.getElementById('ensureTemplateBtn');
+  const openPublicDirectBtn = document.getElementById('openPublicDirectBtn');
+  const openTemplateDirectBtn = document.getElementById('openTemplateDirectBtn');
+  const resetOwnerTourBtn = document.getElementById('resetOwnerTourBtn');
+  const resetStaffTourBtn = document.getElementById('resetStaffTourBtn');
 
   function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
   function monthLabel(year, month){ const y=Number(year||0), m=Number(month||0); if(!y||!m) return '—'; return new Date(y, Math.max(0,m-1), 1).toLocaleDateString('ru-RU', { month:'long', year:'numeric' }); }
@@ -150,9 +186,15 @@
     catch { location.href = url; }
   }
 
+  function renderList(el, rows, formatter){
+    if (!el) return;
+    if (!rows || !rows.length) { el.innerHTML = '<div class="muted">Пока нет данных</div>'; return; }
+    el.innerHTML = rows.map(formatter).join('');
+  }
+
   function renderStatus(data){
     previewUrls = data?.preview_urls || {};
-    const venue = data?.venue || null;
+    const venue = data?.public_venue || data?.venue || null;
     if (venue && !venueIdEl.value) venueIdEl.value = venue.id || '';
     if (venue && !venueNameEl.value && venue.name) venueNameEl.value = venue.name;
     if (venue && !referenceYearEl.value && venue.demo_reference_year) referenceYearEl.value = venue.demo_reference_year;
@@ -168,26 +210,34 @@
 
     statusBlock.textContent = compactJson({
       enabled: data?.enabled,
-      venue: venue ? {
-        id: venue.id,
-        name: venue.name,
-        demo_reference_year: venue.demo_reference_year,
-        demo_reference_month: venue.demo_reference_month,
-        month_label: monthLabel(venue.demo_reference_year, venue.demo_reference_month),
-      } : null,
+      public_venue: data?.public_venue || null,
+      template_venue: data?.template_venue || null,
       fixture_exists: data?.fixture_exists,
       fixture_path: data?.fixture_path,
       fixture_meta: data?.fixture_meta || {},
-      personas: data?.personas || {},
-      demo_users_total: data?.demo_users_total || 0,
-      template_venue: data?.template_venue || null,
       analytics_totals: data?.analytics?.totals || {},
     });
-    analyticsBlock.textContent = compactJson({
-      totals: data?.analytics?.totals || {},
-      top_pages: data?.analytics?.top_pages || [],
-      recent_events: data?.analytics?.recent_events || [],
-    });
+
+    const totals = data?.analytics?.totals || {};
+    analyticsStats.innerHTML = `
+      <div class="demo-admin-kpi"><div class="muted">События</div><b>${Number(totals.events || 0)}</b></div>
+      <div class="demo-admin-kpi"><div class="muted">Page views</div><b>${Number(totals.page_views || 0)}</b></div>
+      <div class="demo-admin-kpi"><div class="muted">Переключения persona</div><b>${Number(totals.persona_switches || 0)}</b></div>
+      <div class="demo-admin-kpi"><div class="muted">Tour completion</div><b>${totals.conversion_rate_tour == null ? '—' : `${totals.conversion_rate_tour}%`}</b></div>
+      <div class="demo-admin-kpi"><div class="muted">Tour started</div><b>${Number(totals.tour_started || 0)}</b></div>
+      <div class="demo-admin-kpi"><div class="muted">Tour completed</div><b>${Number(totals.tour_completed || 0)}</b></div>
+    `;
+
+    const ctaRows = (data?.analytics?.cta_breakdown || []).map((row) => ({ label: row.cta_code, value: row.count, sub: 'CTA' }));
+    const eventRows = (data?.analytics?.events_by_name || []).slice(0, 6).map((row) => ({ label: row.event_name, value: row.count, sub: 'Событие' }));
+    const personaRows = (data?.analytics?.events_by_persona || []).map((row) => ({ label: row.persona, value: row.count, sub: 'События по persona' }));
+    renderList(analyticsBlock, [...ctaRows, ...personaRows, ...eventRows], (row) => `<div class="demo-admin-item"><div><b>${esc(row.label)}</b><small>${esc(row.sub)}</small></div><div><b>${Number(row.value || 0)}</b></div></div>`);
+
+    const topPages = (data?.analytics?.top_pages || []).map((row) => ({ label: row.page_path, value: row.views, sub: 'Просмотры' }));
+    const topOwner = (data?.analytics?.top_pages_by_persona?.OWNER || []).slice(0, 3).map((row) => ({ label: row.page_path, value: row.views, sub: 'OWNER' }));
+    const topStaff = (data?.analytics?.top_pages_by_persona?.STAFF || []).slice(0, 3).map((row) => ({ label: row.page_path, value: row.views, sub: 'STAFF' }));
+    const days = (data?.analytics?.activity_by_day || []).slice(-6).map((row) => ({ label: row.date, value: row.events, sub: 'Событий/день' }));
+    renderList(analyticsSecondary, [...topPages, ...topOwner, ...topStaff, ...days], (row) => `<div class="demo-admin-item"><div><b>${esc(row.label)}</b><small>${esc(row.sub)}</small></div><div><b>${Number(row.value || 0)}</b></div></div>`);
   }
 
   async function loadStatus(){
