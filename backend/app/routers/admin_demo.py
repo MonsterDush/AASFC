@@ -74,7 +74,6 @@ def _demo_personas_for_venue(db: Session, venue_id: int) -> dict[str, bool]:
     return {'OWNER': 'OWNER' in personas, 'STAFF': 'STAFF' in personas}
 
 
-@router.get('/status')
 def _venue_status_payload(db: Session, venue: Venue | None) -> dict | None:
     if venue is None:
         return None
@@ -96,6 +95,7 @@ def _venue_status_payload(db: Session, venue: Venue | None) -> dict | None:
     }
 
 
+@router.get('/status')
 def admin_demo_status(db: Session = Depends(get_db), user: User = Depends(require_super_admin)):
     status = get_demo_fixture_status(db)
     public_venue = get_public_demo_venue(db)

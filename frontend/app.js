@@ -350,6 +350,8 @@ async function exitDemoMode(buttonEl = null, targetUrl = null) {
 
 const LS_DEMO_LAST_VIEW = "axelio.demo_last_view";
 const LS_DEMO_TOUR_PREFIX = "axelio.demo_tour.";
+const SS_DEMO_TOUR_PREFIX = "axelio.demo_tour.session.";
+let __currentDemoTour = null;
 
 export async function trackDemoEvent(eventName, payload = {}, options = {}) {
   const state = options?.state?.demo_mode ? options.state : getStoredDemoUiState();
@@ -389,8 +391,42 @@ function __demoTourKey(tourId, suffix) {
   return `${LS_DEMO_TOUR_PREFIX}${String(tourId || "default")}.${suffix}`;
 }
 
+function __demoTourSessionKey(tourId, suffix) {
+  return `${SS_DEMO_TOUR_PREFIX}${String(tourId || "default")}.${suffix}`;
+}
+
+function __getCurrentDemoTourState() {
+  const state = getStoredDemoUiState();
+  if (!state?.demo_mode || !__currentDemoTour) return null;
+  return { state, tour: __currentDemoTour };
+}
+
 function removeDemoTour() {
   document.getElementById("demoTourOverlay")?.remove();
+}
+
+function removeDemoTourDock() {
+  document.getElementById("demoTourDock")?.remove();
+  try { document.body?.classList?.remove("has-demo-tour-dock"); } catch {}
+}
+
+function __isDemoTourHidden(tourId) {
+  if (!isBrowser()) return false;
+  try { return sessionStorage.getItem(__demoTourSessionKey(tourId, "hidden")) === "1"; } catch { return false; }
+}
+
+function __setDemoTourHidden(tourId, hidden) {
+  if (!isBrowser()) return;
+  try {
+    const key = __demoTourSessionKey(tourId, "hidden");
+    if (hidden) sessionStorage.setItem(key, "1");
+    else sessionStorage.removeItem(key);
+  } catch {}
+}
+
+function __syncDemoTourBanner() {
+  const state = getStoredDemoUiState();
+  if (state?.demo_mode) mountDemoBanner(state);
 }
 
 export function resetDemoTour(tourId) {
@@ -398,13 +434,87 @@ export function resetDemoTour(tourId) {
   try {
     localStorage.removeItem(__demoTourKey(tourId, "dismissed"));
     localStorage.removeItem(__demoTourKey(tourId, "completed"));
+    sessionStorage.removeItem(__demoTourSessionKey(tourId, "hidden"));
   } catch {}
+}
+
+function hideDemoTourControls(tourId, { persistHidden = false } = {}) {
+  if (persistHidden) __setDemoTourHidden(tourId, true);
+  removeDemoTour();
+  removeDemoTourDock();
+  __syncDemoTourBanner();
+}
+
+function navigateDemoTour(path, state, eventName, meta) {
+  if (!path) return;
+  trackDemoEvent(eventName, { meta }, { state });
+  location.href = path;
+}
+
+function mountDemoTourDock(config = {}, state = null) {
+  if (!isBrowser() || !document.body) return;
+  const effective = state?.demo_mode ? state : getStoredDemoUiState();
+  if (!effective?.demo_mode) return;
+  const tourId = String(config.tourId || "demo");
+  if (__isDemoTourHidden(tourId)) { removeDemoTourDock(); return; }
+  let host = document.getElementById("demoTourDock");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "demoTourDock";
+    host.className = "demo-tour-dock";
+    document.body.appendChild(host);
+  }
+  const step = Number(config.step || 1);
+  const total = Number(config.total || step || 1);
+  const prevPath = config.prevPath || "";
+  const nextPath = config.nextPath || "";
+  const finalStep = !nextPath;
+  host.innerHTML = `
+    <div class="demo-tour-dock__bar">
+      <div class="demo-tour-dock__meta">Экскурсия · Шаг ${step}/${total}</div>
+      <div class="demo-tour-dock__actions">
+        <button type="button" class="demo-tour-dock__btn" data-demo-tour-prev="1" ${prevPath ? "" : "disabled"}>Назад</button>
+        <button type="button" class="demo-tour-dock__btn demo-tour-dock__btn--primary" data-demo-tour-next="1">${finalStep ? (config.finishLabel || "Готово") : (config.nextLabel || "Вперёд")}</button>
+        <button type="button" class="demo-tour-dock__btn" data-demo-tour-hide="1">Скрыть</button>
+      </div>
+    </div>`;
+  document.body.classList.add("has-demo-tour-dock");
+
+  host.querySelector('[data-demo-tour-prev]')?.addEventListener('click', () => {
+    if (!prevPath) return;
+    navigateDemoTour(prevPath, effective, 'tour_prev', { tour_id: tourId, step });
+  });
+  host.querySelector('[data-demo-tour-next]')?.addEventListener('click', () => {
+    if (finalStep) {
+      try { localStorage.setItem(__demoTourKey(tourId, 'completed'), '1'); } catch {}
+      __currentDemoTour = null;
+      __setDemoTourHidden(tourId, false);
+      trackDemoEvent('tour_completed', { meta: { tour_id: tourId, step } }, { state: effective });
+      hideDemoTourControls(tourId, { persistHidden: false });
+      if (config.finishPath) location.href = config.finishPath;
+      return;
+    }
+    navigateDemoTour(nextPath, effective, 'tour_next', { tour_id: tourId, step });
+  });
+  host.querySelector('[data-demo-tour-hide]')?.addEventListener('click', () => {
+    trackDemoEvent('tour_dock_hidden', { meta: { tour_id: tourId, step } }, { state: effective });
+    hideDemoTourControls(tourId, { persistHidden: true });
+  });
+}
+
+export function reopenDemoTour() {
+  const payload = __getCurrentDemoTourState();
+  if (!payload) return false;
+  __setDemoTourHidden(payload.tour.tourId, false);
+  removeDemoTourDock();
+  mountDemoPageTour(payload.tour);
+  return true;
 }
 
 export function mountDemoPageTour(config = {}) {
   if (!isBrowser() || !document.body) return;
   const state = getStoredDemoUiState();
-  if (!state?.demo_mode) { removeDemoTour(); return; }
+  if (!state?.demo_mode) { removeDemoTour(); removeDemoTourDock(); __currentDemoTour = null; __syncDemoTourBanner(); return; }
   const tourId = String(config.tourId || "demo");
   const title = String(config.title || "Маршрут DEMO");
   const textBody = String(config.text || "");
@@ -413,12 +523,16 @@ export function mountDemoPageTour(config = {}) {
   const prevPath = config.prevPath || "";
   const nextPath = config.nextPath || "";
   const finalStep = !nextPath;
+  __currentDemoTour = { ...config, tourId, title, text: textBody, step, total, prevPath, nextPath };
   try {
-    if (localStorage.getItem(__demoTourKey(tourId, "dismissed")) === "1") return;
-    if (localStorage.getItem(__demoTourKey(tourId, "completed")) === "1") return;
+    if (localStorage.getItem(__demoTourKey(tourId, "dismissed")) === "1") { __currentDemoTour = null; removeDemoTour(); removeDemoTourDock(); __syncDemoTourBanner(); return; }
+    if (localStorage.getItem(__demoTourKey(tourId, "completed")) === "1") { __currentDemoTour = null; removeDemoTour(); removeDemoTourDock(); __syncDemoTourBanner(); return; }
   } catch {}
+  __syncDemoTourBanner();
+  if (__isDemoTourHidden(tourId)) { removeDemoTour(); removeDemoTourDock(); return; }
   let host = document.getElementById("demoTourOverlay");
   const firstMount = !host;
+  removeDemoTourDock();
   if (!host) {
     host = document.createElement("div");
     host.id = "demoTourOverlay";
@@ -438,24 +552,26 @@ export function mountDemoPageTour(config = {}) {
       </div>
     </div>`;
   host.querySelector('[data-demo-tour-hide]')?.addEventListener('click', () => {
-    try { localStorage.setItem(__demoTourKey(tourId, 'dismissed'), '1'); } catch {}
     trackDemoEvent('tour_dismissed', { meta: { tour_id: tourId, step } }, { state });
-    removeDemoTour();
+    hideDemoTourControls(tourId, { persistHidden: true });
   });
   host.querySelector('[data-demo-tour-prev]')?.addEventListener('click', () => {
-    trackDemoEvent('tour_prev', { meta: { tour_id: tourId, step } }, { state });
-    location.href = prevPath;
+    if (!prevPath) return;
+    navigateDemoTour(prevPath, state, 'tour_prev', { tour_id: tourId, step });
   });
   host.querySelector('[data-demo-tour-next]')?.addEventListener('click', () => {
     if (finalStep) {
       try { localStorage.setItem(__demoTourKey(tourId, 'completed'), '1'); } catch {}
+      __currentDemoTour = null;
+      __setDemoTourHidden(tourId, false);
       trackDemoEvent('tour_completed', { meta: { tour_id: tourId, step } }, { state });
-      removeDemoTour();
+      hideDemoTourControls(tourId, { persistHidden: false });
       if (config.finishPath) location.href = config.finishPath;
       return;
     }
-    trackDemoEvent('tour_next', { meta: { tour_id: tourId, step } }, { state });
-    location.href = nextPath;
+    trackDemoEvent('tour_overlay_dismissed_for_review', { meta: { tour_id: tourId, step } }, { state });
+    removeDemoTour();
+    mountDemoTourDock({ ...config, tourId, step, total, prevPath, nextPath }, state);
   });
   trackDemoEvent(firstMount && step === 1 ? 'tour_started' : 'tour_step_view', { meta: { tour_id: tourId, step, total } }, { state });
 }
@@ -472,6 +588,7 @@ function buildDemoBannerMarkup(state) {
         <button type="button" class="demo-banner__segbtn ${persona === "STAFF" ? "is-active" : ""}" data-demo-persona="STAFF">Персонал</button>
       </div>
       <span class="demo-banner__pill demo-banner__pill--muted">${monthLabel}</span>
+      ${__currentDemoTour ? `<button type="button" class="demo-banner__link" data-demo-tour-open="1">Экскурсия</button>` : ""}
       <a class="demo-banner__link" data-demo-cta="return_site" href="${String(banner.return_url || "https://axelio.ru")}">На сайт</a>
       <a class="demo-banner__link demo-banner__link--primary" data-demo-cta="primary_cta" href="${String(banner.primary_cta_url || "https://axelio.ru/#contact")}">${String(banner.primary_cta_label || "Оставить заявку")}</a>
       <button type="button" class="demo-banner__link" data-demo-cta="secondary_cta" data-demo-exit-cta="1" data-demo-exit-url="${String(banner.secondary_cta_url || "https://axelio.ru/#contact")}">${String(banner.secondary_cta_label || "Начать пользоваться")}</button>
@@ -517,6 +634,13 @@ function mountDemoBanner(state = null) {
       switchDemoPersona(target, btn);
     });
   });
+
+  host.querySelectorAll("[data-demo-tour-open]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!reopenDemoTour()) toast("Экскурсия для этой страницы уже завершена или недоступна.", "warn");
+    });
+  });
+
 
   host.querySelectorAll("[data-demo-cta]").forEach((el) => {
     el.addEventListener("click", () => {
