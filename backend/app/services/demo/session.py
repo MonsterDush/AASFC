@@ -122,6 +122,21 @@ def build_demo_start_url(*, venue_id: int, persona: str | None = None, next_path
     return target_path
 
 
+
+
+def build_demo_auth_start_url(*, persona: str | None = None, next_path: str | None = None) -> str:
+    persona_upper = normalize_demo_persona(persona, default=DEMO_PERSONA_OWNER)
+    api_base = (settings.api_base_url() or '').rstrip('/')
+    path = '/auth/demo/start'
+    query: list[tuple[str, str]] = [('persona', persona_upper)]
+    safe_path = sanitize_frontend_next_path(next_path)
+    if safe_path:
+        query.append(('next_path', safe_path))
+    qs = urlencode(query)
+    if api_base:
+        return f"{api_base}{path}?{qs}"
+    return f"{path}?{qs}"
+
 def get_public_demo_venue(db: Session) -> Venue | None:
     return db.execute(
         select(Venue)

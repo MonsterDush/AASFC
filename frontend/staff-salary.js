@@ -10,9 +10,27 @@ import {
   getMyVenues,
   coerceDemoMonth,
   isDemoUiMode,
+  getStoredDemoUiState,
+  getDemoMonthLabel,
 } from "/app.js";
 
 import { hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
+
+
+const DEMO_STAFF_SALARY_INTRO_DISMISSED_KEY = "axelio.demo_intro.staff_salary.dismissed";
+
+function renderDemoStaffSalaryIntro() {
+  const intro = document.getElementById("demoStaffSalaryIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try { if (sessionStorage.getItem(DEMO_STAFF_SALARY_INTRO_DISMISSED_KEY) === "1") { intro.classList.add("hidden"); return; } } catch {}
+  const introText = document.getElementById("demoStaffSalaryIntroText");
+  if (introText) introText.textContent = `Подготовленные начисления за ${getDemoMonthLabel(demoState) || 'DEMO-месяц'}. Посмотри итог, разрез по дням и потом вернись к графику.`;
+  document.getElementById("demoStaffSalaryGoShifts")?.addEventListener("click", () => { const v = venueId || getActiveVenueId(); if (v) location.href = `/staff-shifts.html?venue_id=${encodeURIComponent(String(v))}`; });
+  document.getElementById("demoStaffSalaryIntroClose")?.addEventListener("click", () => { intro.classList.add("hidden"); try { sessionStorage.setItem(DEMO_STAFF_SALARY_INTRO_DISMISSED_KEY, "1"); } catch {} });
+  intro.classList.remove("hidden");
+}
 
 applyTelegramTheme();
 mountCommonUI("salary");
@@ -59,6 +77,7 @@ try {
 } catch {}
 
 await mountNav({ activeTab: (__canReports ? "finance" : "salary") });
+renderDemoStaffSalaryIntro();
 
 const el = {
   monthLabel: document.getElementById("monthLabel"),

@@ -18,6 +18,10 @@
     .demo-admin-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .demo-admin-pre{white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.45;border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:12px;background:rgba(0,0,0,.02)}
     @media (max-width:680px){.demo-admin-form{grid-template-columns:1fr}}
+    .demo-admin-preview{display:flex;flex-wrap:wrap;gap:8px}
+    .demo-admin-checklist{display:grid;gap:8px}
+    .demo-admin-check{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid rgba(0,0,0,.08);border-radius:12px;background:rgba(0,0,0,.02)}
+    .demo-admin-check b{display:block}
   </style>
 </head>
 <body>
@@ -67,6 +71,30 @@
         <div class="section-title"><b>Состояние</b></div>
         <div id="statusBlock" class="demo-admin-pre">Загрузка…</div>
       </div>
+
+
+      <div class="card">
+        <div class="section-title"><b>Быстрый preview DEMO</b></div>
+        <div class="muted mt-6">Открывает новый DEMO-сеанс в выбранной persona и сразу ведёт в нужный экран.</div>
+        <div class="demo-admin-preview mt-12" id="previewActions">
+          <button class="btn" id="previewOwnerBtn" type="button">Preview owner</button>
+          <button class="btn subtle" id="previewOwnerExpensesBtn" type="button">Owner → расходы</button>
+          <button class="btn subtle" id="previewOwnerPayrollBtn" type="button">Owner → начисления</button>
+          <button class="btn" id="previewStaffBtn" type="button">Preview staff</button>
+          <button class="btn subtle" id="previewStaffSalaryBtn" type="button">Staff → зарплата</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title"><b>Smoke-check после публикации</b></div>
+        <div class="demo-admin-checklist mt-12">
+          <div class="demo-admin-check"><span>1.</span><div><b>Проверь owner flow</b><div class="muted">Сводка → расходы → начисления → карточка заведения.</div></div></div>
+          <div class="demo-admin-check"><span>2.</span><div><b>Проверь staff flow</b><div class="muted">График → зарплата → смены и индикаторы без боевых действий.</div></div></div>
+          <div class="demo-admin-check"><span>3.</span><div><b>Проверь CTA и выход</b><div class="muted">Кнопки в DEMO-панели должны вести на сайт/форму и закрывать DEMO-сеанс.</div></div></div>
+          <div class="demo-admin-check"><span>4.</span><div><b>Проверь fixture</b><div class="muted">После ручной доводки сохрани новый fixture, чтобы эталон не потерялся.</div></div></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -74,7 +102,7 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav } from "/app.js";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE } from "/app.js";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");
@@ -95,13 +123,28 @@
   const disableBtn = document.getElementById('disableBtn');
   const exportBtn = document.getElementById('exportBtn');
   const resetBtn = document.getElementById('resetBtn');
+  const previewOwnerBtn = document.getElementById('previewOwnerBtn');
+  const previewOwnerExpensesBtn = document.getElementById('previewOwnerExpensesBtn');
+  const previewOwnerPayrollBtn = document.getElementById('previewOwnerPayrollBtn');
+  const previewStaffBtn = document.getElementById('previewStaffBtn');
+  const previewStaffSalaryBtn = document.getElementById('previewStaffSalaryBtn');
 
   function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
   function monthLabel(year, month){ const y=Number(year||0), m=Number(month||0); if(!y||!m) return '—'; return new Date(y, Math.max(0,m-1), 1).toLocaleDateString('ru-RU', { month:'long', year:'numeric' }); }
   function boolBadge(v, yes='Да', no='Нет'){ return v ? yes : no; }
   function compactJson(v){ try { return JSON.stringify(v ?? {}, null, 2); } catch { return String(v ?? ''); } }
 
+
+  let previewUrls = {};
+
+  function openPreview(url){
+    if (!url) return toast('Сначала собери и включи публичное DEMO', 'err');
+    try { window.open(url, '_blank', 'noopener,noreferrer'); }
+    catch { location.href = url; }
+  }
+
   function renderStatus(data){
+    previewUrls = data?.preview_urls || {};
     const venue = data?.venue || null;
     if (venue && !venueIdEl.value) venueIdEl.value = venue.id || '';
     if (venue && !venueNameEl.value && venue.name) venueNameEl.value = venue.name;
@@ -218,6 +261,14 @@
     toast(`DEMO восстановлен из fixture (${out?.venue_name || 'ok'})`);
     await loadStatus();
   });
+
+
+
+  previewOwnerBtn?.addEventListener('click', () => openPreview(previewUrls.owner_summary || previewUrls.owner || `${API_BASE}/auth/demo/start?persona=OWNER`));
+  previewOwnerExpensesBtn?.addEventListener('click', () => openPreview(previewUrls.owner_expenses || `${API_BASE}/auth/demo/start?persona=OWNER&next_path=/owner-expenses.html`));
+  previewOwnerPayrollBtn?.addEventListener('click', () => openPreview(previewUrls.owner_payroll || `${API_BASE}/auth/demo/start?persona=OWNER&next_path=/owner-payroll.html`));
+  previewStaffBtn?.addEventListener('click', () => openPreview(previewUrls.staff_shifts || previewUrls.staff || `${API_BASE}/auth/demo/start?persona=STAFF`));
+  previewStaffSalaryBtn?.addEventListener('click', () => openPreview(previewUrls.staff_salary || `${API_BASE}/auth/demo/start?persona=STAFF&next_path=/staff-salary.html`));
 
   await loadStatus();
 </script>

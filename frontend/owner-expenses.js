@@ -13,8 +13,28 @@ import {
   closeModal,
   coerceDemoMonth,
   applyDemoReadonlyCaps,
+  isDemoUiMode,
+  getStoredDemoUiState,
+  getDemoMonthLabel,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+
+
+const DEMO_EXPENSES_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_expenses.dismissed";
+
+function renderDemoExpensesIntro() {
+  const intro = document.getElementById("demoExpensesIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try { if (sessionStorage.getItem(DEMO_EXPENSES_INTRO_DISMISSED_KEY) === "1") { intro.classList.add("hidden"); return; } } catch {}
+  const introText = document.getElementById("demoExpensesIntroText");
+  if (introText) introText.textContent = `Подготовленные расходы за ${getDemoMonthLabel(demoState) || 'выбранный DEMO-период'}. Здесь видно признание по месяцу, категории и поставщиков.`;
+  document.getElementById("demoExpensesGoSummary")?.addEventListener("click", () => { const venueId = getActiveVenueId(); if (venueId) location.href = `/owner-summary.html?venue_id=${encodeURIComponent(String(venueId))}`; });
+  document.getElementById("demoExpensesGoPayroll")?.addEventListener("click", () => { const venueId = getActiveVenueId(); if (venueId) location.href = `/owner-payroll.html?venue_id=${encodeURIComponent(String(venueId))}`; });
+  document.getElementById("demoExpensesIntroClose")?.addEventListener("click", () => { intro.classList.add("hidden"); try { sessionStorage.setItem(DEMO_EXPENSES_INTRO_DISMISSED_KEY, "1"); } catch {} });
+  intro.classList.remove("hidden");
+}
 
 let access = {
   canView: false,
@@ -641,6 +661,7 @@ async function boot() {
   if (venueId) setActiveVenueId(venueId);
 
   await mountNav({ activeTab: "expenses", requireVenue: true });
+  renderDemoExpensesIntro();
 
   try {
     const venues = await getMyVenues();

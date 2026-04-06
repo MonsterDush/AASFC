@@ -10,6 +10,7 @@ from app.core.db import get_db
 from app.models import User, Venue, VenueMember
 from app.services.demo.bootstrap import bootstrap_demo_venue
 from app.services.demo.fixture import export_demo_fixture, get_demo_fixture_status, reset_demo_fixture
+from app.services.demo.session import build_demo_auth_start_url, build_demo_start_url
 
 router = APIRouter(prefix='/admin/demo', tags=['admin-demo'])
 
@@ -49,7 +50,24 @@ def admin_demo_status(
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    return get_demo_fixture_status(db)
+    status = get_demo_fixture_status(db)
+    venue = status.get("venue") or {}
+    venue_id = int(venue.get("id") or 0) if venue else 0
+    if venue_id:
+        status["preview_urls"] = {
+            "owner": build_demo_auth_start_url(persona="OWNER"),
+            "staff": build_demo_auth_start_url(persona="STAFF"),
+            "owner_summary": build_demo_auth_start_url(persona="OWNER", next_path="/owner-summary.html"),
+            "owner_expenses": build_demo_auth_start_url(persona="OWNER", next_path="/owner-expenses.html"),
+            "owner_payroll": build_demo_auth_start_url(persona="OWNER", next_path="/owner-payroll.html"),
+            "staff_shifts": build_demo_auth_start_url(persona="STAFF", next_path="/staff-shifts.html"),
+            "staff_salary": build_demo_auth_start_url(persona="STAFF", next_path="/staff-salary.html"),
+        }
+        status["open_urls"] = {
+            "owner_summary": build_demo_start_url(venue_id=venue_id, persona="OWNER", next_path="/owner-summary.html"),
+            "staff_shifts": build_demo_start_url(venue_id=venue_id, persona="STAFF", next_path="/staff-shifts.html"),
+        }
+    return status
 
 
 @router.post('/export-fixture')

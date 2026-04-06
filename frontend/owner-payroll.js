@@ -14,10 +14,29 @@ import {
   coerceDemoRange,
   applyDemoReadonlyCaps,
   isDemoUiMode,
+  getStoredDemoUiState,
+  getDemoMonthLabel,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 const root = document.getElementById("root");
+
+const DEMO_OWNER_PAYROLL_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_payroll.dismissed";
+
+function renderDemoOwnerPayrollIntro() {
+  const intro = document.getElementById("demoOwnerPayrollIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try { if (sessionStorage.getItem(DEMO_OWNER_PAYROLL_INTRO_DISMISSED_KEY) === "1") { intro.classList.add("hidden"); return; } } catch {}
+  const textEl = document.getElementById("demoOwnerPayrollIntroText");
+  if (textEl) textEl.textContent = `Здесь видно итоговый ФОТ и детализацию начислений за ${getDemoMonthLabel(demoState) || 'DEMO-месяц'}.`;
+  document.getElementById("demoOwnerPayrollGoSummary")?.addEventListener("click", () => { const v = parseVenueId(); if (v) location.href = `/owner-summary.html?venue_id=${encodeURIComponent(String(v))}`; });
+  document.getElementById("demoOwnerPayrollGoExpenses")?.addEventListener("click", () => { const v = parseVenueId(); if (v) location.href = `/owner-expenses.html?venue_id=${encodeURIComponent(String(v))}`; });
+  document.getElementById("demoOwnerPayrollIntroClose")?.addEventListener("click", () => { intro.classList.add("hidden"); try { sessionStorage.setItem(DEMO_OWNER_PAYROLL_INTRO_DISMISSED_KEY, "1"); } catch {} });
+  intro.classList.remove("hidden");
+}
+
 
 function esc(s) {
   return String(s ?? "")
@@ -279,6 +298,25 @@ function renderShell() {
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <div class="card demo-flow-card hidden" id="demoOwnerPayrollIntro">
+      <div class="demo-flow-card__head">
+        <div>
+          <b>Что посмотреть в DEMO владельца</b>
+          <div class="muted mt-6" id="demoOwnerPayrollIntroText">Здесь видно общий ФОТ и разбор начислений команды по профилям.</div>
+        </div>
+        <button class="btn sm subtle" id="demoOwnerPayrollIntroClose" type="button">Скрыть</button>
+      </div>
+      <div class="demo-flow-card__chips mt-10">
+        <span class="demo-flow-card__chip">Общий ФОТ</span>
+        <span class="demo-flow-card__chip">Строки начислений</span>
+        <span class="demo-flow-card__chip">Детализация по сотруднику</span>
+      </div>
+      <div class="demo-flow-card__actions mt-12">
+        <button class="btn" id="demoOwnerPayrollGoSummary" type="button">Открыть сводку</button>
+        <button class="btn subtle" id="demoOwnerPayrollGoExpenses" type="button">Открыть расходы</button>
+      </div>
     </div>
 
     <div class="card finance-toolbar">
@@ -626,6 +664,7 @@ async function boot() {
 
   state.can = applyDemoReadonlyCaps(computeCaps(state.perms, state.me), { source: state.perms });
   renderState();
+  renderDemoOwnerPayrollIntro();
 
   document.getElementById("periodMonthBtn")?.addEventListener("click", async () => {
     if (state.periodMode === "month") return;
