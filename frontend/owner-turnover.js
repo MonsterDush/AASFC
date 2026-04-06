@@ -10,8 +10,38 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
+  getStoredDemoUiState,
+  isDemoUiMode,
+  getDemoMonthLabel,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+
+
+const DEMO_OWNER_REVENUE_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_revenue.dismissed";
+
+function setupDemoRevenueIntro() {
+  const intro = $("demoOwnerRevenueIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try {
+    if (sessionStorage.getItem(DEMO_OWNER_REVENUE_INTRO_DISMISSED_KEY) === "1") {
+      intro.classList.add("hidden");
+      return;
+    }
+  } catch {}
+  const textEl = $("demoOwnerRevenueIntroText");
+  if (textEl) textEl.textContent = `Здесь удобно оценить структуру выручки за ${getDemoMonthLabel(demoState) || 'DEMO-месяц'}: сначала департаменты, затем оплаты и переход к финансовым движениям.`;
+  const venueId = getActiveVenueId();
+  $("demoOwnerRevenueGoSummary")?.addEventListener("click", () => { if (venueId) location.href = `/owner-summary.html?venue_id=${encodeURIComponent(String(venueId))}`; });
+  $("demoOwnerRevenueGoLedger")?.addEventListener("click", () => { if (venueId) location.href = `/owner-finance-ledger.html?venue_id=${encodeURIComponent(String(venueId))}&month=${encodeURIComponent(state.month || currentMonth())}`; });
+  $("demoOwnerRevenueGoEconomics")?.addEventListener("click", () => { if (venueId) location.href = `/owner-day-economics.html?venue_id=${encodeURIComponent(String(venueId))}`; });
+  $("demoOwnerRevenueIntroClose")?.addEventListener("click", () => {
+    intro.classList.add("hidden");
+    try { sessionStorage.setItem(DEMO_OWNER_REVENUE_INTRO_DISMISSED_KEY, "1"); } catch {}
+  });
+  intro.classList.remove("hidden");
+}
 
 let state = {
   period: "month",
@@ -298,6 +328,7 @@ async function boot() {
   bindPickers();
   await resolveRevenueAccess();
   if (!state.canView) return;
+  setupDemoRevenueIntro();
   await load();
 }
 

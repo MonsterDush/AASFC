@@ -11,8 +11,36 @@ import {
   toast,
   coerceDemoDate,
   applyDemoReadonlyCaps,
+  getStoredDemoUiState,
+  isDemoUiMode,
+  getDemoMonthLabel,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+
+
+const DEMO_OWNER_DAY_ECONOMICS_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_day_economics.dismissed";
+
+function setupDemoDayEconomicsIntro() {
+  const intro = document.getElementById("demoOwnerDayEconomicsIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try {
+    if (sessionStorage.getItem(DEMO_OWNER_DAY_ECONOMICS_INTRO_DISMISSED_KEY) === "1") {
+      intro.classList.add("hidden");
+      return;
+    }
+  } catch {}
+  const textEl = document.getElementById("demoOwnerDayEconomicsIntroText");
+  if (textEl) textEl.textContent = `Экономика дня показывает управленческий срез внутри ${getDemoMonthLabel(demoState) || 'DEMO-месяца'}: план/факт, сигналы и rollup месяца к выбранной дате.`;
+  document.getElementById("demoOwnerDayEconomicsGoSummary")?.addEventListener("click", () => { location.href = buildSummaryLink(); });
+  document.getElementById("demoOwnerDayEconomicsGoRevenue")?.addEventListener("click", () => { const venueId = getActiveVenueId(); if (venueId) location.href = `/owner-turnover.html?venue_id=${encodeURIComponent(String(venueId))}&month=${encodeURIComponent(String((state.date || todayISO()).slice(0,7)))}`; });
+  document.getElementById("demoOwnerDayEconomicsIntroClose")?.addEventListener("click", () => {
+    intro.classList.add("hidden");
+    try { sessionStorage.setItem(DEMO_OWNER_DAY_ECONOMICS_INTRO_DISMISSED_KEY, "1"); } catch {}
+  });
+  intro.classList.remove("hidden");
+}
 
 function fmtMoneyMinor(minor) {
   if (minor === null || minor === undefined) return "—";
@@ -412,6 +440,7 @@ async function boot() {
   if (!getActiveVenueId() && Array.isArray(venues) && venues.length) setActiveVenueId(venues[0].id);
   await mountNav({ activeTab: "summary" });
   await loadAccess();
+  setupDemoDayEconomicsIntro();
 
   const params = new URLSearchParams(location.search);
   state.date = coerceDemoDate(params.get("date") || todayISO(), { notify: false, context: "owner-day-economics" });

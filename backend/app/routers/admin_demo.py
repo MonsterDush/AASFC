@@ -60,6 +60,9 @@ def admin_demo_status(
             "owner_summary": build_demo_auth_start_url(persona="OWNER", next_path="/owner-summary.html"),
             "owner_expenses": build_demo_auth_start_url(persona="OWNER", next_path="/owner-expenses.html"),
             "owner_payroll": build_demo_auth_start_url(persona="OWNER", next_path="/owner-payroll.html"),
+            "owner_revenue": build_demo_auth_start_url(persona="OWNER", next_path="/owner-turnover.html"),
+            "owner_ledger": build_demo_auth_start_url(persona="OWNER", next_path="/owner-finance-ledger.html"),
+            "owner_day_economics": build_demo_auth_start_url(persona="OWNER", next_path="/owner-day-economics.html"),
             "staff_shifts": build_demo_auth_start_url(persona="STAFF", next_path="/staff-shifts.html"),
             "staff_salary": build_demo_auth_start_url(persona="STAFF", next_path="/staff-salary.html"),
         }

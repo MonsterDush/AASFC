@@ -221,14 +221,18 @@ python -m app.scripts.bootstrap_demo_data --make-public --export-fixture-after
    - `owner-summary`
    - `owner-expenses`
    - `owner-payroll`
-3. Переключиться в staff.
-4. Проверить staff flow:
+3. Проверить owner advanced flow:
+   - `owner-turnover`
+   - `owner-finance-ledger`
+   - `owner-day-economics`
+4. Переключиться в staff.
+5. Проверить staff flow:
    - `staff-shifts`
    - `staff-salary`
    - `staff-report`
-5. Нажать любое запрещённое действие и убедиться, что оно заблокировано.
-6. Вернуться на сайт через DEMO-панель.
-7. Если DEMO готов к показу — зафиксировать fixture заново.
+6. Нажать любое запрещённое действие и убедиться, что оно заблокировано.
+7. Вернуться на сайт через DEMO-панель.
+8. Если DEMO готов к показу — зафиксировать fixture заново.
 
 ## Когда обновлять fixture
 1. После заметного ручного улучшения demo-данных.

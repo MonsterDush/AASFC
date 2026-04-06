@@ -80,6 +80,9 @@
           <button class="btn" id="previewOwnerBtn" type="button">Preview owner</button>
           <button class="btn subtle" id="previewOwnerExpensesBtn" type="button">Owner → расходы</button>
           <button class="btn subtle" id="previewOwnerPayrollBtn" type="button">Owner → начисления</button>
+          <button class="btn subtle" id="previewOwnerRevenueBtn" type="button">Owner → выручка</button>
+          <button class="btn subtle" id="previewOwnerLedgerBtn" type="button">Owner → движения</button>
+          <button class="btn subtle" id="previewOwnerDayEconomicsBtn" type="button">Owner → экономика дня</button>
           <button class="btn" id="previewStaffBtn" type="button">Preview staff</button>
           <button class="btn subtle" id="previewStaffSalaryBtn" type="button">Staff → зарплата</button>
         </div>
@@ -89,9 +92,10 @@
         <div class="section-title"><b>Smoke-check после публикации</b></div>
         <div class="demo-admin-checklist mt-12">
           <div class="demo-admin-check"><span>1.</span><div><b>Проверь owner flow</b><div class="muted">Сводка → расходы → начисления → карточка заведения.</div></div></div>
-          <div class="demo-admin-check"><span>2.</span><div><b>Проверь staff flow</b><div class="muted">График → зарплата → смены и индикаторы без боевых действий.</div></div></div>
-          <div class="demo-admin-check"><span>3.</span><div><b>Проверь CTA и выход</b><div class="muted">Кнопки в DEMO-панели должны вести на сайт/форму и закрывать DEMO-сеанс.</div></div></div>
-          <div class="demo-admin-check"><span>4.</span><div><b>Проверь fixture</b><div class="muted">После ручной доводки сохрани новый fixture, чтобы эталон не потерялся.</div></div></div>
+          <div class="demo-admin-check"><span>2.</span><div><b>Проверь owner advanced flow</b><div class="muted">Выручка → движения → экономика дня. На этих экранах должны быть intro-подсказки и связанный маршрут.</div></div></div>
+          <div class="demo-admin-check"><span>3.</span><div><b>Проверь staff flow</b><div class="muted">График → зарплата → смены и индикаторы без боевых действий.</div></div></div>
+          <div class="demo-admin-check"><span>4.</span><div><b>Проверь CTA и выход</b><div class="muted">Кнопки в DEMO-панели должны вести на сайт/форму и закрывать DEMO-сеанс.</div></div></div>
+          <div class="demo-admin-check"><span>5.</span><div><b>Проверь fixture</b><div class="muted">После ручной доводки сохрани новый fixture, чтобы эталон не потерялся.</div></div></div>
         </div>
       </div>
 
@@ -126,6 +130,9 @@
   const previewOwnerBtn = document.getElementById('previewOwnerBtn');
   const previewOwnerExpensesBtn = document.getElementById('previewOwnerExpensesBtn');
   const previewOwnerPayrollBtn = document.getElementById('previewOwnerPayrollBtn');
+  const previewOwnerRevenueBtn = document.getElementById('previewOwnerRevenueBtn');
+  const previewOwnerLedgerBtn = document.getElementById('previewOwnerLedgerBtn');
+  const previewOwnerDayEconomicsBtn = document.getElementById('previewOwnerDayEconomicsBtn');
   const previewStaffBtn = document.getElementById('previewStaffBtn');
   const previewStaffSalaryBtn = document.getElementById('previewStaffSalaryBtn');
 
@@ -267,6 +274,9 @@
   previewOwnerBtn?.addEventListener('click', () => openPreview(previewUrls.owner_summary || previewUrls.owner || `${API_BASE}/auth/demo/start?persona=OWNER`));
   previewOwnerExpensesBtn?.addEventListener('click', () => openPreview(previewUrls.owner_expenses || `${API_BASE}/auth/demo/start?persona=OWNER&next_path=/owner-expenses.html`));
   previewOwnerPayrollBtn?.addEventListener('click', () => openPreview(previewUrls.owner_payroll || `${API_BASE}/auth/demo/start?persona=OWNER&next_path=/owner-payroll.html`));
+  previewOwnerRevenueBtn?.addEventListener('click', () => openPreview(previewUrls.owner_revenue || `${API_BASE}/auth/demo/start?persona=OWNER&next_path=/owner-turnover.html`));
+  previewOwnerLedgerBtn?.addEventListener('click', () => openPreview(previewUrls.owner_ledger || `${API_BASE}/auth/demo/start?persona=OWNER&next_path=/owner-finance-ledger.html`));
+  previewOwnerDayEconomicsBtn?.addEventListener('click', () => openPreview(previewUrls.owner_day_economics || `${API_BASE}/auth/demo/start?persona=OWNER&next_path=/owner-day-economics.html`));
   previewStaffBtn?.addEventListener('click', () => openPreview(previewUrls.staff_shifts || previewUrls.staff || `${API_BASE}/auth/demo/start?persona=STAFF`));
   previewStaffSalaryBtn?.addEventListener('click', () => openPreview(previewUrls.staff_salary || `${API_BASE}/auth/demo/start?persona=STAFF&next_path=/staff-salary.html`));
 
