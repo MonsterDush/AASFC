@@ -47,7 +47,7 @@ from app.services.payroll import calculate_payroll_for_month
 
 DEFAULT_DEMO_REFERENCE_YEAR = 2026
 DEFAULT_DEMO_REFERENCE_MONTH = 3
-DEFAULT_DEMO_VENUE_NAME = "Axelio DEMO · Hookah Lounge"
+DEFAULT_DEMO_VENUE_NAME = "NOIR Lounge · DEMO by Axelio"
 
 OWNER_PERMISSIONS: list[str] = []
 HOOKAH_REPORTER_PERMISSIONS = [
@@ -147,7 +147,7 @@ def _build_demo_users() -> list[dict]:
             "key": "owner",
             "persona": DEMO_PERSONA_OWNER,
             "venue_role": "OWNER",
-            "full_name": "Владимир Демов",
+            "full_name": "Владимир Сергеев",
             "short_name": "Владелец",
             "tg_username": "axelio_demo_owner",
             "position_title": None,
@@ -205,7 +205,7 @@ def _build_demo_users() -> list[dict]:
             "full_name": "Мария Белова",
             "short_name": "Мария",
             "tg_username": "axelio_demo_maria",
-            "position_title": "Бар",
+            "position_title": "Бармен",
             "profile_key": "bar",
             "permission_codes": [],
         },
@@ -249,7 +249,7 @@ def _build_demo_users() -> list[dict]:
             "full_name": "София Волкова",
             "short_name": "София",
             "tg_username": "axelio_demo_sofia",
-            "position_title": "Старший смены",
+            "position_title": "Старший менеджер",
             "profile_key": "admin",
             "permission_codes": HOOKAH_REPORTER_PERMISSIONS,
         },
@@ -308,28 +308,28 @@ def _create_dictionaries(db: Session, *, venue: Venue) -> dict:
     departments = [
         Department(venue_id=int(venue.id), code="hookah", title="Кальянный зал", sort_order=10, is_active=True),
         Department(venue_id=int(venue.id), code="bar", title="Бар", sort_order=20, is_active=True),
-        Department(venue_id=int(venue.id), code="kitchen", title="Кухня", sort_order=30, is_active=True),
+        Department(venue_id=int(venue.id), code="kitchen", title="VIP-комнаты", sort_order=30, is_active=True),
     ]
     payment_methods = [
         PaymentMethod(venue_id=int(venue.id), code="cash", title="Наличные", sort_order=10, is_active=True),
-        PaymentMethod(venue_id=int(venue.id), code="cashless", title="Карта", sort_order=20, is_active=True),
+        PaymentMethod(venue_id=int(venue.id), code="cashless", title="Эквайринг", sort_order=20, is_active=True),
         PaymentMethod(venue_id=int(venue.id), code="sbp", title="СБП", sort_order=30, is_active=True),
         PaymentMethod(venue_id=int(venue.id), code="other", title="Прочее", sort_order=40, is_active=True),
     ]
     kpis = [
         KpiMetric(venue_id=int(venue.id), code="upsale", title="Допродажи", unit="QTY", sort_order=10, is_active=True),
-        KpiMetric(venue_id=int(venue.id), code="vip", title="VIP столы", unit="QTY", sort_order=20, is_active=True),
+        KpiMetric(venue_id=int(venue.id), code="vip", title="VIP-брони", unit="QTY", sort_order=20, is_active=True),
         KpiMetric(venue_id=int(venue.id), code="retail", title="Ритейл", unit="RUB", sort_order=30, is_active=True),
     ]
     categories = [
         ExpenseCategory(venue_id=int(venue.id), code="rent", title="Аренда", sort_order=10, is_active=True),
-        ExpenseCategory(venue_id=int(venue.id), code="tobacco", title="Табак и смеси", sort_order=20, is_active=True),
-        ExpenseCategory(venue_id=int(venue.id), code="barstock", title="Закуп бара", sort_order=30, is_active=True),
-        ExpenseCategory(venue_id=int(venue.id), code="supplies", title="Хоз. расходы", sort_order=40, is_active=True),
+        ExpenseCategory(venue_id=int(venue.id), code="tobacco", title="Табак и уголь", sort_order=20, is_active=True),
+        ExpenseCategory(venue_id=int(venue.id), code="barstock", title="Барная закупка", sort_order=30, is_active=True),
+        ExpenseCategory(venue_id=int(venue.id), code="supplies", title="Хозтовары", sort_order=40, is_active=True),
         ExpenseCategory(venue_id=int(venue.id), code="marketing", title="Маркетинг", sort_order=50, is_active=True),
     ]
     suppliers = [
-        Supplier(venue_id=int(venue.id), title="Darkside Distribution", contact="@darkside_demo", sort_order=10, is_active=True),
+        Supplier(venue_id=int(venue.id), title="Hookah Trade", contact="@hookah_trade_demo", sort_order=10, is_active=True),
         Supplier(venue_id=int(venue.id), title="Metro Cash & Carry", contact="+7 800 700-10-77", sort_order=20, is_active=True),
         Supplier(venue_id=int(venue.id), title="Local Partner", contact="@axelio_partner", sort_order=30, is_active=True),
     ]
@@ -346,8 +346,8 @@ def _create_dictionaries(db: Session, *, venue: Venue) -> dict:
 
 
 def _create_intervals(db: Session, *, venue: Venue) -> dict[str, ShiftInterval]:
-    opening = ShiftInterval(venue_id=int(venue.id), title="Открытие", start_time=time(12, 0), end_time=time(18, 0), is_active=True)
-    evening = ShiftInterval(venue_id=int(venue.id), title="Вечер", start_time=time(18, 0), end_time=time(23, 45), is_active=True)
+    opening = ShiftInterval(venue_id=int(venue.id), title="День", start_time=time(12, 0), end_time=time(18, 0), is_active=True)
+    evening = ShiftInterval(venue_id=int(venue.id), title="Прайм-тайм", start_time=time(18, 0), end_time=time(23, 45), is_active=True)
     db.add_all([opening, evening])
     db.flush()
     return {"opening": opening, "evening": evening}
@@ -411,11 +411,21 @@ def _create_schedule(db: Session, *, venue: Venue, reference_year: int, referenc
                 ))
                 created_assignments += 1
 
-        if day.day in {3, 8, 15, 22, 28}:
+        shift_note = None
+        if day.day == 8:
+            shift_note = "Праздничный день: усилить VIP-зал, собрать предзаказы и держать запас льда и фруктов."
+        elif day.day in {14, 15}:
+            shift_note = "Пятница/суббота: готовим две VIP-комнаты и держим запас по топовым вкусам."
+        elif day.day in {22, 28}:
+            shift_note = "Акцент на сервис: проверить посадку, подготовить welcome-комплименты и сделать фотоотчёт по залу."
+        elif day.day == 3:
+            shift_note = "Старт месяца: проверить остатки табака, угля и ритейла перед вечерней волной."
+
+        if shift_note:
             db.add(ShiftComment(
                 shift_id=int(evening_shift.id),
                 author_user_id=int(users_by_key["anna_admin"].id),
-                text="Подготовить VIP-зал, проверить остатки табака и открыть предзаказы на вечер.",
+                text=shift_note,
             ))
             created_comments += 1
 
@@ -429,13 +439,17 @@ def _create_schedule(db: Session, *, venue: Venue, reference_year: int, referenc
 
 
 def _daily_base_minor(day: date) -> int:
+    if day.day == 8:
+        return 11800000
+    if day.day in {14, 15, 28, 29}:
+        return 10300000
     if day.weekday() in {4, 5}:  # fri/sat
-        return 9200000
+        return 9400000
     if day.weekday() == 6:
-        return 7600000
+        return 7900000
     if day.weekday() == 0:
-        return 4800000
-    return 6100000
+        return 4700000
+    return 6250000
 
 
 def _minor_to_report_units(amount_minor: int) -> int:
@@ -458,23 +472,46 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
         total_minor = _daily_base_minor(day) + ((idx % 5) * 250000)
         total_value = _minor_to_report_units(total_minor)
 
-        hookah_value = int(total_value * 0.58)
-        bar_value = int(total_value * 0.27)
+        hookah_ratio = 0.58
+        bar_ratio = 0.27
+        if day.day in {8, 14, 15, 28, 29}:
+            hookah_ratio = 0.61
+            bar_ratio = 0.24
+        elif day.weekday() == 0:
+            hookah_ratio = 0.54
+            bar_ratio = 0.29
+        hookah_value = int(total_value * hookah_ratio)
+        bar_value = int(total_value * bar_ratio)
         kitchen_value = int(total_value - hookah_value - bar_value)
 
-        cash_value = int(total_value * 0.22)
-        cashless_value = int(total_value * 0.53)
-        sbp_value = int(total_value * 0.20)
+        cash_ratio = 0.22
+        cashless_ratio = 0.53
+        sbp_ratio = 0.20
+        if day.day in {8, 14, 15, 28, 29}:
+            cash_ratio = 0.17
+            cashless_ratio = 0.55
+            sbp_ratio = 0.24
+        cash_value = int(total_value * cash_ratio)
+        cashless_value = int(total_value * cashless_ratio)
+        sbp_value = int(total_value * sbp_ratio)
         other_value = int(total_value - cash_value - cashless_value - sbp_value)
 
         discrepancy = 0
         comment = None
-        if day.day in {12, 27}:
+        if day.day == 12:
             discrepancy = _minor_to_report_units(70000)
             cash_value += discrepancy
-            comment = "В пробном режиме показан день с расхождением: часть оплаты прошла после закрытия смены."
+            comment = "Пример дня с расхождением: часть оплаты по СБП подтвердилась уже после закрытия смены."
+        elif day.day == 27:
+            discrepancy = _minor_to_report_units(50000)
+            cash_value += discrepancy
+            comment = "Пример дня с расхождением: гость доплатил наличными после сверки кассы."
+        elif day.day == 8:
+            comment = "Праздничный вечер: усиленная посадка, две VIP-комнаты и повышенный спрос на премиум-миксы."
+        elif day.day in {14, 15}:
+            comment = "Пиковая пятница/суббота: высокий оборот по кальянам и СБП, усиленный состав на вечер."
 
-        tips_total = _minor_to_report_units(340000 + (idx % 4) * 55000)
+        tips_total = _minor_to_report_units(360000 + (idx % 4) * 65000 + (120000 if day.day in {8, 14, 15, 28, 29} else 0))
         report = DailyReport(
             venue_id=int(venue.id),
             date=day,
@@ -503,9 +540,9 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
             ("DEPT", int(dept["hookah"].id), hookah_value),
             ("DEPT", int(dept["bar"].id), bar_value),
             ("DEPT", int(dept["kitchen"].id), kitchen_value),
-            ("KPI", int(kpis["upsale"].id), 12 + (idx % 7)),
-            ("KPI", int(kpis["vip"].id), 2 + (1 if day.weekday() in {4, 5} else 0)),
-            ("KPI", int(kpis["retail"].id), _minor_to_report_units(70000 + (idx % 6) * 10000)),
+            ("KPI", int(kpis["upsale"].id), 11 + (idx % 7) + (2 if day.day in {8, 14, 15, 28, 29} else 0)),
+            ("KPI", int(kpis["vip"].id), 2 + (1 if day.weekday() in {4, 5} else 0) + (1 if day.day in {8, 14, 15, 28, 29} else 0)),
+            ("KPI", int(kpis["retail"].id), _minor_to_report_units(85000 + (idx % 6) * 12000 + (25000 if day.day in {8, 14, 15} else 0))),
         ]
         report_values: list[DailyReportValue] = []
         for kind, ref_id, value in values:
@@ -534,7 +571,7 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
             ))
             created_tips += 1
 
-        if day.day in {5, 12}:
+        if day.day in {5, 12, 27}:
             db.add(DailyReportAudit(
                 report_id=int(report.id),
                 user_id=int(owner_user.id),
@@ -542,7 +579,7 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
                 diff_json={
                     "status": "CLOSED",
                     "comment": comment,
-                    "note": "Демо-аудит: фиксируем пример правки закрытого отчёта",
+                    "note": "Демо-аудит: пример истории изменений после закрытия смены",
                 },
             ))
             created_audits += 1
@@ -563,14 +600,14 @@ def _create_expenses(db: Session, *, venue: Venue, dictionaries: dict, users_by_
     payment_methods = dictionaries["payment_methods"]
     owner = users_by_key["owner"]
     items = [
-        ("rent", "Metro Cash & Carry", 13500000, date(reference_year, reference_month, 5), 1, "Аренда помещения за месяц"),
-        ("tobacco", "Darkside Distribution", 4800000, date(reference_year, reference_month, 3), 2, "Основная закупка табака и чаш"),
-        ("barstock", "Metro Cash & Carry", 2600000, date(reference_year, reference_month, 7), 1, "Сиропы, лимонады и лёд"),
-        ("supplies", "Local Partner", 950000, date(reference_year, reference_month, 10), 1, "Химия и расходники"),
-        ("marketing", "Local Partner", 1800000, date(reference_year, reference_month, 12), 3, "Таргет и блогеры"),
-        ("tobacco", "Darkside Distribution", 3200000, date(reference_year, reference_month, 17), 2, "Дозакупка топовых вкусов"),
-        ("barstock", "Metro Cash & Carry", 1400000, date(reference_year, reference_month, 21), 1, "Фрукты и барная закупка"),
-        ("supplies", "Local Partner", 700000, date(reference_year, reference_month, 25), 1, "Текстиль и уборка"),
+        ("rent", "Metro Cash & Carry", 13500000, date(reference_year, reference_month, 5), 1, "Аренда помещения за март"),
+        ("tobacco", "Hookah Trade", 5200000, date(reference_year, reference_month, 3), 2, "Стартовая закупка табака, угля и чаш перед пиковыми выходными"),
+        ("barstock", "Metro Cash & Carry", 2850000, date(reference_year, reference_month, 7), 1, "Барная закупка: лимонады, пюре, лёд и стекло"),
+        ("supplies", "Local Partner", 980000, date(reference_year, reference_month, 10), 1, "Хозтовары, расходники и уборка после первых пиковых дней"),
+        ("marketing", "Local Partner", 1800000, date(reference_year, reference_month, 12), 3, "Таргет и блогеры под пятничные и праздничные посадки"),
+        ("tobacco", "Hookah Trade", 3450000, date(reference_year, reference_month, 17), 2, "Дозакупка премиум-линеек и самых ходовых вкусов"),
+        ("barstock", "Metro Cash & Carry", 1620000, date(reference_year, reference_month, 21), 1, "Дозакупка фруктов, напитков и сиропов под конец месяца"),
+        ("supplies", "Local Partner", 760000, date(reference_year, reference_month, 25), 1, "Текстиль, аромасвечи и расходники для VIP-комнат"),
     ]
     created = 0
     for category_code, supplier_title, amount_minor, expense_date, spread_months, comment in items:
@@ -598,9 +635,9 @@ def _create_expenses(db: Session, *, venue: Venue, dictionaries: dict, users_by_
 
 
 def _create_pay_profiles(db: Session, *, venue: Venue, dictionaries: dict, users_by_key: dict[str, User], reference_year: int, reference_month: int) -> dict[str, int]:
-    hookah_profile = PayProfile(venue_id=int(venue.id), title="Кальянный мастер", description="Почасовая ставка + % от зала + KPI", is_active=True)
-    admin_profile = PayProfile(venue_id=int(venue.id), title="Администратор", description="Фикс за месяц + смены", is_active=True)
-    bar_profile = PayProfile(venue_id=int(venue.id), title="Бар и зал", description="Почасовая ставка + фикс за смену", is_active=True)
+    hookah_profile = PayProfile(venue_id=int(venue.id), title="Кальянный мастер", description="Почасовая ставка + % от выручки кальянного зала + KPI за допродажи", is_active=True)
+    admin_profile = PayProfile(venue_id=int(venue.id), title="Администратор", description="Фикс за месяц + оплата за смены старшего состава", is_active=True)
+    bar_profile = PayProfile(venue_id=int(venue.id), title="Бар и зал", description="Почасовая ставка + фикс за смену для бара и сервиса", is_active=True)
     db.add_all([hookah_profile, admin_profile, bar_profile])
     db.flush()
 
@@ -608,13 +645,13 @@ def _create_pay_profiles(db: Session, *, venue: Venue, dictionaries: dict, users
     kpi_upsale = dictionaries["kpis"]["upsale"]
 
     components = [
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(hookah_profile.id), component_type="SALARY_HOURLY", title="Почасовая ставка", rate_minor=48000, is_active=True, sort_order=10),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(hookah_profile.id), component_type="PERCENT_DEPARTMENT_REVENUE", title="% от кальянного зала", percent_bps=320, department_id=int(hookah_dept.id), base_scope="WORKED_DATES", is_active=True, sort_order=20),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(hookah_profile.id), component_type="KPI_BONUS", title="Бонус за допродажи", amount_minor=350000, kpi_metric_id=int(kpi_upsale.id), threshold_value=12, is_active=True, sort_order=30),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(admin_profile.id), component_type="SALARY_FIXED_MONTH", title="Фикс за месяц", amount_minor=6500000, is_active=True, sort_order=10),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(admin_profile.id), component_type="SALARY_PER_SHIFT", title="Смена администратора", amount_minor=180000, is_active=True, sort_order=20),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(bar_profile.id), component_type="SALARY_HOURLY", title="Почасовая ставка", rate_minor=32000, is_active=True, sort_order=10),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(bar_profile.id), component_type="SALARY_PER_SHIFT", title="Фикс за смену", amount_minor=90000, is_active=True, sort_order=20),
+        PayComponent(venue_id=int(venue.id), pay_profile_id=int(hookah_profile.id), component_type="SALARY_HOURLY", title="Почасовая ставка", rate_minor=52000, is_active=True, sort_order=10),
+        PayComponent(venue_id=int(venue.id), pay_profile_id=int(hookah_profile.id), component_type="PERCENT_DEPARTMENT_REVENUE", title="% от кальянного зала", percent_bps=340, department_id=int(hookah_dept.id), base_scope="WORKED_DATES", is_active=True, sort_order=20),
+        PayComponent(venue_id=int(venue.id), pay_profile_id=int(hookah_profile.id), component_type="KPI_BONUS", title="Бонус за допродажи", amount_minor=420000, kpi_metric_id=int(kpi_upsale.id), threshold_value=13, is_active=True, sort_order=30),
+        PayComponent(venue_id=int(venue.id), pay_profile_id=int(admin_profile.id), component_type="SALARY_FIXED_MONTH", title="Фикс за месяц", amount_minor=6900000, is_active=True, sort_order=10),
+        PayComponent(venue_id=int(venue.id), pay_profile_id=int(admin_profile.id), component_type="SALARY_PER_SHIFT", title="Смена администратора", amount_minor=220000, is_active=True, sort_order=20),
+        PayComponent(venue_id=int(venue.id), pay_profile_id=int(bar_profile.id), component_type="SALARY_HOURLY", title="Почасовая ставка", rate_minor=35000, is_active=True, sort_order=10),
+        PayComponent(venue_id=int(venue.id), pay_profile_id=int(bar_profile.id), component_type="SALARY_PER_SHIFT", title="Фикс за смену", amount_minor=100000, is_active=True, sort_order=20),
     ]
     db.add_all(components)
     db.flush()
@@ -653,10 +690,10 @@ def _create_pay_profiles(db: Session, *, venue: Venue, dictionaries: dict, users
 
 def _create_adjustments(db: Session, *, venue: Venue, users_by_key: dict[str, User], owner_user: User, reference_year: int, reference_month: int) -> dict[str, int]:
     items = [
-        ("bonus", "staff_persona", date(reference_year, reference_month, 6), 120000, "Лучшие допродажи недели"),
-        ("penalty", "aleksey_waiter", date(reference_year, reference_month, 11), 60000, "Опоздание на смену"),
-        ("writeoff", None, date(reference_year, reference_month, 19), 95000, "Списание инвентаря"),
-        ("bonus", "anna_admin", date(reference_year, reference_month, 28), 150000, "Хорошая оценка гостей по сервису"),
+        ("bonus", "staff_persona", date(reference_year, reference_month, 6), 140000, "Лучшие допродажи недели по кальянному залу"),
+        ("penalty", "aleksey_waiter", date(reference_year, reference_month, 11), 60000, "Опоздание на вечернюю смену"),
+        ("writeoff", None, date(reference_year, reference_month, 19), 95000, "Списание инвентаря после инвентаризации"),
+        ("bonus", "anna_admin", date(reference_year, reference_month, 28), 180000, "Высокая оценка сервиса и сильная координация вечерних смен"),
     ]
     for adj_type, member_key, adj_date, amount, reason in items:
         db.add(Adjustment(
@@ -699,7 +736,7 @@ def _configure_billing(db: Session, *, venue: Venue, owner_user: User) -> dict[s
         provider_invoice_id="DEMO-EXTEND-1",
         provider_payment_id="DEMO-PAY-1",
         provider_payload_json={"demo": True},
-        comment="Первое продление демо-заведения",
+        comment="Тестовое продление DEMO после оплаты тарифа владельцем",
         created_by_user_id=int(owner_user.id),
         created_at=datetime(2026, 3, 19, 11, 30, tzinfo=timezone.utc),
         updated_at=datetime(2026, 3, 19, 11, 30, tzinfo=timezone.utc),
