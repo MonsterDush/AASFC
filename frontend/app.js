@@ -144,6 +144,9 @@ function storeDemoUiState(source) {
     if (state) sessionStorage.setItem(SS_DEMO_UI_STATE, JSON.stringify(state));
     else sessionStorage.removeItem(SS_DEMO_UI_STATE);
   } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent("axelio:demo-state-ready", { detail: state || null }));
+  } catch {}
   return state;
 }
 
@@ -352,6 +355,8 @@ const LS_DEMO_LAST_VIEW = "axelio.demo_last_view";
 const LS_DEMO_TOUR_PREFIX = "axelio.demo_tour.";
 const SS_DEMO_TOUR_PREFIX = "axelio.demo_tour.session.";
 let __currentDemoTour = null;
+let __pageDemoTourConfig = null;
+let __pendingDemoTourListenerAttached = false;
 
 export async function trackDemoEvent(eventName, payload = {}, options = {}) {
   const state = options?.state?.demo_mode ? options.state : getStoredDemoUiState();
@@ -387,6 +392,47 @@ function autoTrackDemoPageView(state = null) {
   queueMicrotask(() => { trackDemoEvent("page_view", { page_path: key }, { state: effective }); });
 }
 
+
+function __cloneDemoTourConfig(config) {
+  return config ? { ...config } : null;
+}
+
+function __getDefaultDemoTourConfig(state = null) {
+  const effective = state?.demo_mode ? state : getStoredDemoUiState();
+  if (!effective?.demo_mode) return null;
+  const venue = effective.demo_venue_id || getActiveVenueId() || "";
+  const q = venue ? `?venue_id=${encodeURIComponent(String(venue))}` : "";
+  const persona = String(effective.demo_persona || "OWNER").toUpperCase();
+  if (persona === "STAFF") {
+    return {
+      tourId: "demo-staff-flow",
+      step: 1,
+      total: 3,
+      title: "Быстрый тур для персонала",
+      text: "Сначала посмотри график и индикаторы, затем открой начисления и краткую сводку по зарплате.",
+      nextPath: `/staff-salary.html${q}`,
+    };
+  }
+  return {
+    tourId: "demo-owner-flow",
+    step: 1,
+    total: 4,
+    title: "Быстрый тур для владельца",
+    text: "Пройди по главным экранам: сводка → расходы → начисления → карточка заведения.",
+    nextPath: `/owner-expenses.html${q}`,
+    finishPath: `/owner-summary.html${q}`,
+  };
+}
+
+function __ensurePendingDemoTourReplay() {
+  if (!isBrowser() || __pendingDemoTourListenerAttached) return;
+  __pendingDemoTourListenerAttached = true;
+  window.addEventListener('axelio:demo-state-ready', () => {
+    __pendingDemoTourListenerAttached = false;
+    if (__pageDemoTourConfig) queueMicrotask(() => mountDemoPageTour(__pageDemoTourConfig));
+  }, { once: true });
+}
+
 function __demoTourKey(tourId, suffix) {
   return `${LS_DEMO_TOUR_PREFIX}${String(tourId || "default")}.${suffix}`;
 }
@@ -397,8 +443,10 @@ function __demoTourSessionKey(tourId, suffix) {
 
 function __getCurrentDemoTourState() {
   const state = getStoredDemoUiState();
-  if (!state?.demo_mode || !__currentDemoTour) return null;
-  return { state, tour: __currentDemoTour };
+  if (!state?.demo_mode) return null;
+  const tour = __currentDemoTour || __pageDemoTourConfig || __getDefaultDemoTourConfig(state);
+  if (!tour) return null;
+  return { state, tour: __cloneDemoTourConfig(tour) };
 }
 
 function removeDemoTour() {
@@ -505,7 +553,9 @@ function mountDemoTourDock(config = {}, state = null) {
 export function reopenDemoTour() {
   const payload = __getCurrentDemoTourState();
   if (!payload) return false;
-  __setDemoTourHidden(payload.tour.tourId, false);
+  const tourId = String(payload.tour.tourId || 'demo');
+  try { localStorage.removeItem(__demoTourKey(tourId, 'completed')); } catch {}
+  __setDemoTourHidden(tourId, false);
   removeDemoTourDock();
   mountDemoPageTour(payload.tour);
   return true;
@@ -513,8 +563,6 @@ export function reopenDemoTour() {
 
 export function mountDemoPageTour(config = {}) {
   if (!isBrowser() || !document.body) return;
-  const state = getStoredDemoUiState();
-  if (!state?.demo_mode) { removeDemoTour(); removeDemoTourDock(); __currentDemoTour = null; __syncDemoTourBanner(); return; }
   const tourId = String(config.tourId || "demo");
   const title = String(config.title || "Маршрут DEMO");
   const textBody = String(config.text || "");
@@ -523,7 +571,10 @@ export function mountDemoPageTour(config = {}) {
   const prevPath = config.prevPath || "";
   const nextPath = config.nextPath || "";
   const finalStep = !nextPath;
-  __currentDemoTour = { ...config, tourId, title, text: textBody, step, total, prevPath, nextPath };
+  __pageDemoTourConfig = { ...config, tourId, title, text: textBody, step, total, prevPath, nextPath };
+  const state = getStoredDemoUiState();
+  if (!state?.demo_mode) { __currentDemoTour = null; removeDemoTour(); removeDemoTourDock(); __syncDemoTourBanner(); __ensurePendingDemoTourReplay(); return; }
+  __currentDemoTour = __cloneDemoTourConfig(__pageDemoTourConfig);
   try {
     if (localStorage.getItem(__demoTourKey(tourId, "dismissed")) === "1") { __currentDemoTour = null; removeDemoTour(); removeDemoTourDock(); __syncDemoTourBanner(); return; }
     if (localStorage.getItem(__demoTourKey(tourId, "completed")) === "1") { __currentDemoTour = null; removeDemoTour(); removeDemoTourDock(); __syncDemoTourBanner(); return; }
@@ -588,7 +639,7 @@ function buildDemoBannerMarkup(state) {
         <button type="button" class="demo-banner__segbtn ${persona === "STAFF" ? "is-active" : ""}" data-demo-persona="STAFF">Персонал</button>
       </div>
       <span class="demo-banner__pill demo-banner__pill--muted">${monthLabel}</span>
-      ${__currentDemoTour ? `<button type="button" class="demo-banner__link" data-demo-tour-open="1">Экскурсия</button>` : ""}
+      <button type="button" class="demo-banner__link" data-demo-tour-open="1">Экскурсия</button>
       <a class="demo-banner__link" data-demo-cta="return_site" href="${String(banner.return_url || "https://axelio.ru")}">На сайт</a>
       <a class="demo-banner__link demo-banner__link--primary" data-demo-cta="primary_cta" href="${String(banner.primary_cta_url || "https://axelio.ru/#contact")}">${String(banner.primary_cta_label || "Оставить заявку")}</a>
       <button type="button" class="demo-banner__link" data-demo-cta="secondary_cta" data-demo-exit-cta="1" data-demo-exit-url="${String(banner.secondary_cta_url || "https://axelio.ru/#contact")}">${String(banner.secondary_cta_label || "Начать пользоваться")}</button>
