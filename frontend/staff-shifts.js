@@ -11,8 +11,8 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   getVenuePositions,
-  getStoredDemoUiState,
   isDemoUiMode,
+  getStoredDemoUiState,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
@@ -464,22 +464,17 @@ let isMultiVenue = false;
 let curMonth = new Date();
 let selectedDate = null;
 curMonth.setDate(1);
-
-try {
-  const demoState = getStoredDemoUiState();
-  const demoYear = Number(demoState?.demo_reference_year || 0);
-  const demoMonth = Number(demoState?.demo_reference_month || 0);
-  const hasMonthInUrl = !!params.get("month");
-  if (isDemoUiMode(demoState) && !hasMonthInUrl && demoYear >= 2000 && demoMonth >= 1 && demoMonth <= 12) {
+const __demoState = getStoredDemoUiState();
+if (isDemoUiMode(__demoState) && !params.get("month")) {
+  const demoYear = Number(__demoState?.demo_reference_year || 0);
+  const demoMonth = Number(__demoState?.demo_reference_month || 0);
+  if (demoYear >= 2000 && demoMonth >= 1 && demoMonth <= 12) {
     curMonth = new Date(demoYear, demoMonth - 1, 1);
-    try {
-      const p = new URLSearchParams(location.search);
-      p.set("month", `${demoYear}-${String(demoMonth).padStart(2, "0")}`);
-      if (venueId) p.set("venue_id", String(venueId));
-      history.replaceState({}, "", `${location.pathname}?${p.toString()}`);
-    } catch {}
+    const p = new URLSearchParams(location.search);
+    p.set("month", ym(curMonth));
+    history.replaceState({}, "", `${location.pathname}?${p.toString()}`);
   }
-} catch {}
+}
 
 // init week start (Monday) from query/localStorage
 try {

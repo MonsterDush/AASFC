@@ -783,8 +783,6 @@ function renderDemoTourDock(persona = null) {
   }
   const totalSteps = Number(pageCfg?.total || steps.length || 1);
   const currentStepNo = Number(pageCfg?.step || (index + 1) || 1);
-  const isFirst = pageCfg ? !pageCfg.prevPath : index <= 0;
-  const isLast = pageCfg ? !pageCfg.nextPath : currentStepNo >= totalSteps;
   let dock = document.getElementById("demoTourDock");
   if (!dock) {
     dock = document.createElement("div");
@@ -794,8 +792,8 @@ function renderDemoTourDock(persona = null) {
   }
   dock.innerHTML = `
     <div class="demo-tour-dock__bar">
-      <button type="button" class="demo-tour-dock__btn demo-tour-dock__btn--ghost" data-demo-tour-prev ${isFirst ? "disabled" : ""}>Назад</button>
-      <button type="button" class="demo-tour-dock__btn demo-tour-dock__btn--primary" data-demo-tour-next>${isLast ? "Готово" : "Вперёд"}</button>
+      <button type="button" class="demo-tour-dock__btn demo-tour-dock__btn--ghost" data-demo-tour-prev ${(pageCfg ? !pageCfg.prevPath : index <= 0) ? "disabled" : ""}>Назад</button>
+      <button type="button" class="demo-tour-dock__btn demo-tour-dock__btn--primary" data-demo-tour-next>${(pageCfg ? !pageCfg.nextPath : currentStepNo >= totalSteps) ? "Готово" : "Вперёд"}</button>
       <button type="button" class="demo-tour-dock__btn demo-tour-dock__btn--ghost" data-demo-tour-hide>Скрыть</button>
     </div>
   `;

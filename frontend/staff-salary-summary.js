@@ -202,20 +202,3 @@ el.reload.onclick = () => load();
 
 await load();
 
-function mountDemoFlowTour() {
-  const demoState = getStoredDemoUiState();
-  if (!demoState?.demo_mode) return;
-  const v = venueId || getActiveVenueId();
-  const q = v ? `?venue_id=${encodeURIComponent(String(v))}` : "";
-  mountDemoPageTour({
-    tourId: "demo-staff-flow",
-    step: 3,
-    total: 3,
-    title: "Финальный экран DEMO-тура",
-    text: "Маршрут персонала завершён. Можно закрыть тур и продолжить смотреть продукт свободно.",
-    prevPath: `/staff-salary.html${q}`,
-    finishPath: `/staff-shifts.html${q}`,
-  });
-}
-
-try { mountDemoFlowTour(); } catch {}

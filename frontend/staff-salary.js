@@ -1126,11 +1126,11 @@ function mountDemoFlowTour() {
   mountDemoPageTour({
     tourId: "demo-staff-flow",
     step: 2,
-    total: 3,
-    title: "Продолжение DEMO-тура",
-    text: "На этом шаге показана зарплата сотрудника за подготовленный месяц и разрез по дням.",
+    total: 2,
+    title: "Финальный шаг DEMO-тура",
+    text: "Здесь сотрудник видит зарплату за подготовленный месяц и разрез по дням. После этого можно завершить тур и продолжить свободный просмотр.",
     prevPath: `/staff-shifts.html${q}`,
-    nextPath: `/staff-salary-summary.html${q}`,
+    finishPath: `/staff-shifts.html${q}`,
   });
 }
 
