@@ -11,6 +11,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   getVenuePositions,
+  isDemoUiMode,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
