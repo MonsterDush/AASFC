@@ -12,8 +12,6 @@ import {
   getMyVenuePermissions,
   getVenuePositions,
   isDemoUiMode,
-  getStoredDemoUiState,
-  coerceDemoMonth,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
@@ -120,15 +118,6 @@ let curWeekStart = null; // Date (Monday)
 let selectedIntervalIds = new Set();
 let unstaffedOnly = false;
 loadScheduleFilters();
-if (isDemoUiMode(demoUiState) && !params.get("month")) {
-  try {
-    const p = new URLSearchParams(location.search);
-    p.set("month", ym(curMonth));
-    const nextUrl = `${location.pathname}?${p.toString()}`;
-    history.replaceState({}, "", nextUrl);
-  } catch {}
-}
-
 
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
@@ -471,20 +460,7 @@ let showAllOnCalendar = false;
 let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "venue";
 let isMultiVenue = false;
 
-const demoUiState = getStoredDemoUiState();
-let curMonth = (() => {
-  const monthParam = params.get("month") || "";
-  const resolvedMonth = coerceDemoMonth(monthParam, { source: demoUiState });
-  const baseMonth = resolvedMonth || monthParam;
-  if (baseMonth && /^\d{4}-\d{2}$/.test(baseMonth)) {
-    const [yy, mm] = baseMonth.split("-").map(Number);
-    return new Date(yy, (mm || 1) - 1, 1);
-  }
-  if (isDemoUiMode(demoUiState)) {
-    return new Date(2026, 2, 1);
-  }
-  return new Date();
-})();
+let curMonth = new Date();
 let selectedDate = null;
 curMonth.setDate(1);
 
