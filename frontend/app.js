@@ -77,6 +77,124 @@ export function redirectToAuth(next = "", reason = "") {
   location.replace(buildAuthUrl(current, reason));
 }
 
+const SS_DEMO_UI_STATE = "axelio.demo_ui_state.v1";
+
+export function getStoredDemoUiState() {
+  if (!isBrowser()) return null;
+  try {
+    const raw = sessionStorage.getItem(SS_DEMO_UI_STATE);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function readStoredDemoUiState() {
+  return getStoredDemoUiState();
+}
+
+export function storeDemoUiState(state) {
+  if (!isBrowser()) return null;
+  const next = state && typeof state === "object" ? state : null;
+  try {
+    if (next) sessionStorage.setItem(SS_DEMO_UI_STATE, JSON.stringify(next));
+    else sessionStorage.removeItem(SS_DEMO_UI_STATE);
+  } catch {}
+  try { window.dispatchEvent(new CustomEvent("axelio:demo-ui-state", { detail: next })); } catch {}
+  return next;
+}
+
+export function clearDemoUiState() {
+  return storeDemoUiState(null);
+}
+
+export function isDemoUiMode(state = null) {
+  const st = state && typeof state === "object" ? state : getStoredDemoUiState();
+  return !!(st && st.demo_mode);
+}
+
+export function getDemoMonthLabel(state = null) {
+  const st = state && typeof state === "object" ? state : getStoredDemoUiState();
+  const year = Number(st?.demo_reference_year || 0);
+  const month = Number(st?.demo_reference_month || 0);
+  if (!year || !month || month < 1 || month > 12) return "";
+  const months = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+  return `${months[month - 1]} ${year}`;
+}
+
+export function coerceDemoMonth(year, month, state = null) {
+  const st = state && typeof state === "object" ? state : getStoredDemoUiState();
+  if (!st?.demo_mode) return { year, month };
+  const y = Number(st.demo_reference_year || year || 0);
+  const m = Number(st.demo_reference_month || month || 0);
+  return { year: y || year, month: m || month };
+}
+
+export function coerceDemoDate(input, state = null) {
+  const st = state && typeof state === "object" ? state : getStoredDemoUiState();
+  if (!st?.demo_mode) return input;
+  const year = Number(st.demo_reference_year || 0);
+  const month = Number(st.demo_reference_month || 0);
+  if (!year || !month) return input;
+  const str = String(input || "");
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return input;
+  return `${year}-${String(month).padStart(2, '0')}-${m[3]}`;
+}
+
+export function coerceDemoRange(range, state = null) {
+  const st = state && typeof state === "object" ? state : getStoredDemoUiState();
+  if (!st?.demo_mode || !range || typeof range !== "object") return range;
+  return {
+    ...range,
+    date_from: range.date_from ? coerceDemoDate(range.date_from, st) : range.date_from,
+    date_to: range.date_to ? coerceDemoDate(range.date_to, st) : range.date_to,
+  };
+}
+
+export function applyDemoReadonlyCaps(caps, state = null) {
+  const st = state && typeof state === "object" ? state : getStoredDemoUiState();
+  if (!st?.demo_mode || !caps || typeof caps !== "object") return caps;
+  const out = { ...caps };
+  for (const key of Object.keys(out)) {
+    if (/(create|edit|update|delete|remove|archive|close|reopen|write|manage|calculate|save|invite|upload)/i.test(key)) out[key] = false;
+  }
+  return out;
+}
+
+function removeDemoBanner() {
+  const el = document.getElementById("demoBanner");
+  if (el) el.remove();
+}
+
+function buildDemoBannerMarkup(state) {
+  const label = getDemoMonthLabel(state);
+  return `
+    <div class="demo-banner__inner">
+      <div class="demo-banner__title">Пробный режим Axelio${label ? ` · ${label}` : ""}</div>
+      <div class="demo-banner__actions">
+        <button type="button" class="demo-banner__btn" data-demo-reopen-tour>Экскурсия</button>
+      </div>
+    </div>
+  `;
+}
+
+function mountDemoBanner(state = null) {
+  if (!isBrowser() || !document.body) return;
+  const st = state && typeof state === "object" ? state : getStoredDemoUiState();
+  if (!st?.demo_mode) { removeDemoBanner(); return; }
+  let host = document.getElementById("demoBanner");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "demoBanner";
+    host.className = "demo-banner";
+    document.body.prepend(host);
+  }
+  host.innerHTML = buildDemoBannerMarkup(st);
+  host.querySelector('[data-demo-reopen-tour]')?.addEventListener('click', () => { try { reopenDemoTour(); } catch {} });
+}
+
 
 
 const SS_DEMO_TOUR_STATE = "axelio.demo_tour_state.v2";
