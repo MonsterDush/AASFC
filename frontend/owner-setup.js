@@ -10,6 +10,7 @@ import {
   getMe,
   getMyVenuePermissions,
   getVenueById,
+  getVenueMembers,
   getDepartments,
   createDepartment,
   updateDepartment,
@@ -19,6 +20,11 @@ import {
   getKpiMetrics,
   createKpiMetric,
   updateKpiMetric,
+  getPayProfiles,
+  createPayProfile,
+  updatePayProfile,
+  deletePayProfile,
+  patchInviteDefaultPosition,
 } from "/app.js";
 
 import {
@@ -158,7 +164,7 @@ const STATUS_LABELS = {
   LOCKED: "Недоступно",
 };
 
-const INLINE_STEP_KEYS = new Set(["welcome", "payment_methods", "departments", "kpi"]);
+const INLINE_STEP_KEYS = new Set(["welcome", "payment_methods", "departments", "kpi", "pay_profiles", "positions", "invites", "shift_intervals"]);
 
 const CATALOG_CONFIG = {
   payment_methods: {
@@ -218,7 +224,12 @@ const state = {
     payment_methods: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
     departments: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
     kpi: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
+    pay_profiles: { items: null, showInactive: false, editor: { mode: "create", id: null }, loading: false },
+    positions: { presets: null, editorId: null, loading: false },
+    invites: { data: null, loading: false },
+    shift_intervals: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
   },
+  permissionsCatalog: null,
 };
 
 function esc(value) {
@@ -255,6 +266,202 @@ function ensureUniqueCode(baseCode, items = [], currentId = null) {
   let idx = 2;
   while (used.has(`${code}_${idx}`)) idx += 1;
   return `${code}_${idx}`;
+}
+
+
+function fmtDateTime(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function roleLabel(value) {
+  const code = String(value || "").toUpperCase();
+  if (code === "OWNER") return "Владелец";
+  if (code === "STAFF") return "Сотрудник";
+  return value || "—";
+}
+
+function memberDisplayName(member) {
+  if (!member) return "—";
+  return String(member.display_name || member.short_name || member.full_name || member.tg_username || member.phone || member.user_id || "—");
+}
+
+function buildDefaultPermissionsCatalog() {
+  return [
+    {
+      key: "reports",
+      title: "Отчёты и финансы",
+      hint: "Закрытие смены, финансы и сводка",
+      items: [
+        { code: "SHIFT_REPORT_VIEW", title: "Отчёты: просмотр" },
+        { code: "SHIFT_REPORT_CLOSE", title: "Отчёты: закрытие" },
+        { code: "SHIFT_REPORT_EDIT", title: "Отчёты: редактирование" },
+        { code: "MONTHLY_SUMMARY_VIEW", title: "Сводка: просмотр" },
+        { code: "PAYROLL_VIEW", title: "Начисления: просмотр" },
+      ],
+    },
+    {
+      key: "shifts",
+      title: "Смены",
+      hint: "График и управление сменами",
+      items: [
+        { code: "SHIFTS_VIEW", title: "График: просмотр" },
+        { code: "SHIFTS_MANAGE", title: "График: управление" },
+      ],
+    },
+    {
+      key: "staff",
+      title: "Команда",
+      hint: "Сотрудники, должности и права",
+      items: [
+        { code: "STAFF_VIEW", title: "Сотрудники: просмотр" },
+        { code: "STAFF_MANAGE", title: "Сотрудники: управление" },
+        { code: "POSITIONS_VIEW", title: "Должности: просмотр" },
+        { code: "POSITIONS_MANAGE", title: "Должности: управление" },
+        { code: "POSITION_PERMISSIONS_MANAGE", title: "Права должностей" },
+        { code: "POSITIONS_ASSIGN", title: "Назначение должностей" },
+      ],
+    },
+    {
+      key: "catalogs",
+      title: "Справочники",
+      hint: "Департаменты, оплаты и KPI",
+      items: [
+        { code: "DEPARTMENTS_VIEW", title: "Департаменты: просмотр" },
+        { code: "DEPARTMENTS_CREATE", title: "Департаменты: создание" },
+        { code: "DEPARTMENTS_EDIT", title: "Департаменты: редактирование" },
+        { code: "PAYMENT_METHODS_VIEW", title: "Оплаты: просмотр" },
+        { code: "PAYMENT_METHODS_CREATE", title: "Оплаты: создание" },
+        { code: "PAYMENT_METHODS_EDIT", title: "Оплаты: редактирование" },
+        { code: "KPI_METRICS_VIEW", title: "KPI: просмотр" },
+        { code: "KPI_METRICS_CREATE", title: "KPI: создание" },
+        { code: "KPI_METRICS_EDIT", title: "KPI: редактирование" },
+      ],
+    },
+    {
+      key: "venue",
+      title: "Заведение",
+      hint: "Карточка, настройки и расходы",
+      items: [
+        { code: "VENUE_VIEW", title: "Открывать заведение" },
+        { code: "VENUE_SETTINGS_EDIT", title: "Настройки заведения" },
+        { code: "EXPENSES_VIEW", title: "Расходы: просмотр" },
+        { code: "EXPENSES_CREATE", title: "Расходы: создание" },
+      ],
+    },
+  ];
+}
+
+const PERM_GROUP_META = {
+  Reports: { key: "reports", title: "Отчёты и финансы", hint: "Закрытие смены, финансы и сводка" },
+  Adjustments: { key: "adjustments", title: "Штрафы и споры", hint: "Штрафы, списания и споры" },
+  Expenses: { key: "expenses", title: "Расходы", hint: "Расходы и категории" },
+  Shifts: { key: "shifts", title: "Смены", hint: "График и смены" },
+  Staff: { key: "staff", title: "Команда", hint: "Сотрудники и должности" },
+  Positions: { key: "positions", title: "Должности", hint: "Должности и права" },
+  Venue: { key: "venue", title: "Заведение", hint: "Карточка и настройки" },
+  Catalogs: { key: "catalogs", title: "Справочники", hint: "Департаменты, оплаты и KPI" },
+};
+
+function normalizePermissionCatalog(items = []) {
+  const groups = [];
+  const byKey = new Map();
+  for (const raw of Array.isArray(items) ? items : []) {
+    const code = String(raw?.code || "").trim().toUpperCase();
+    if (!code) continue;
+    const sourceGroup = String(raw?.group || "Other").trim() || "Other";
+    const meta = PERM_GROUP_META[sourceGroup] || {
+      key: sourceGroup.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other",
+      title: sourceGroup,
+      hint: "",
+    };
+    let group = byKey.get(meta.key);
+    if (!group) {
+      group = { key: meta.key, title: meta.title, hint: meta.hint, items: [] };
+      byKey.set(meta.key, group);
+      groups.push(group);
+    }
+    group.items.push({
+      code,
+      title: String(raw?.title || raw?.description || code).trim(),
+      description: String(raw?.description || "").trim(),
+    });
+  }
+  groups.forEach((group) => group.items.sort((a, b) => a.title.localeCompare(b.title, "ru")));
+  return groups.length ? groups : buildDefaultPermissionsCatalog();
+}
+
+async function ensurePermissionsCatalog() {
+  if (Array.isArray(state.permissionsCatalog) && state.permissionsCatalog.length) return state.permissionsCatalog;
+  try {
+    const resp = await api("/me/permissions/catalog");
+    state.permissionsCatalog = normalizePermissionCatalog(resp?.items || []);
+  } catch {
+    state.permissionsCatalog = buildDefaultPermissionsCatalog();
+  }
+  return state.permissionsCatalog;
+}
+
+function parsePermissionCodes(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean);
+  if (!value) return [];
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsePermissionCodes(parsed);
+    } catch {}
+  }
+  return [];
+}
+
+function defaultPositionPresetMeta() {
+  const raw = state.setup?.step_meta?.positions;
+  return raw && typeof raw === "object" ? raw : { presets: [], seq: 0 };
+}
+
+function getPositionPresets() {
+  const raw = defaultPositionPresetMeta().presets;
+  return Array.isArray(raw) ? raw.map((item, idx) => ({
+    id: String(item?.id || `preset-${idx + 1}`),
+    title: String(item?.title || "").trim(),
+    pay_profile_id: item?.pay_profile_id ? Number(item.pay_profile_id) : null,
+    pay_profile_title: String(item?.pay_profile_title || "").trim(),
+    permission_codes: parsePermissionCodes(item?.permission_codes),
+    rate: Number(item?.rate || 0) || 0,
+    percent: Number(item?.percent || 0) || 0,
+    is_active: item?.is_active !== false,
+  })).filter((item) => item.title) : [];
+}
+
+async function savePositionPresets(presets) {
+  const meta = defaultPositionPresetMeta();
+  const next = {
+    presets,
+    seq: Math.max(Number(meta.seq || 0) || 0, presets.length),
+    updated_at: new Date().toISOString(),
+  };
+  await api(`/venues/${encodeURIComponent(state.venueId)}/setup`, {
+    method: "PATCH",
+    body: { current_step_key: "positions", step_meta: { positions: next } },
+  });
+}
+
+function buildPresetOptionList(selectedId = "") {
+  const current = String(selectedId || "");
+  const presets = getPositionPresets().filter((item) => item.is_active);
+  return ['<option value="">Без должности</option>']
+    .concat(presets.map((item) => `<option value="${esc(item.id)}" ${String(item.id) === current ? "selected" : ""}>${esc(item.title)}${item.pay_profile_title ? ` · ${esc(item.pay_profile_title)}` : ""}</option>`))
+    .join("");
+}
+
+function buildPayProfileOptions(selectedId = "") {
+  const current = String(selectedId || "");
+  const items = Array.isArray(state.inline?.pay_profiles?.items) ? state.inline.pay_profiles.items : [];
+  return ['<option value="">Без профиля</option>']
+    .concat(items.filter((item) => item.is_active !== false).map((item) => `<option value="${esc(item.id)}" ${String(item.id) === current ? "selected" : ""}>${esc(item.title)}</option>`))
+    .join("");
 }
 
 function parseVenueId() {
@@ -905,7 +1112,878 @@ async function mountInlineEditor(currentStep) {
     await mountWelcomeEditor(getStepByKey("welcome") || currentStep);
     return;
   }
+  if (currentStep.key === "pay_profiles") {
+    await mountPayProfilesEditor(getStepByKey("pay_profiles") || currentStep);
+    return;
+  }
+  if (currentStep.key === "positions") {
+    await mountPositionsEditor(getStepByKey("positions") || currentStep);
+    return;
+  }
+  if (currentStep.key === "invites") {
+    await mountInvitesEditor(getStepByKey("invites") || currentStep);
+    return;
+  }
+  if (currentStep.key === "shift_intervals") {
+    await mountShiftIntervalsEditor(getStepByKey("shift_intervals") || currentStep);
+    return;
+  }
   await mountCatalogEditor(getStepByKey(currentStep.key) || currentStep);
+}
+
+async function loadInlinePayProfiles({ force = false } = {}) {
+  const inlineState = state.inline.pay_profiles;
+  if (!force && Array.isArray(inlineState.items)) return inlineState.items;
+  inlineState.loading = true;
+  try {
+    const items = await getPayProfiles(state.venueId, { includeInactive: true });
+    inlineState.items = Array.isArray(items) ? items : [];
+    return inlineState.items;
+  } finally {
+    inlineState.loading = false;
+  }
+}
+
+function renderPayProfilesEditor(items, currentStep) {
+  const inlineState = state.inline.pay_profiles;
+  const visibleItems = inlineState.showInactive ? items : items.filter((item) => item.is_active !== false);
+  const editingId = inlineState.editor?.id || null;
+  const editingItem = editingId ? items.find((item) => String(item.id) === String(editingId)) : null;
+  const mode = editingItem ? "edit" : "create";
+  const activeCount = items.filter((item) => item.is_active !== false).length;
+  return `
+    <div class="setup-editor__panel">
+      <div class="setup-editor__toolbar">
+        <div class="setup-inline-list setup-inline-list--compact">
+          <span class="setup-chip">Активных: ${activeCount}</span>
+          <span class="setup-chip">Всего: ${items.length}</span>
+        </div>
+        <label class="setup-toggle">
+          <input type="checkbox" id="inlineShowInactiveProfiles" ${inlineState.showInactive ? "checked" : ""} />
+          <span>Показывать неактивные</span>
+        </label>
+      </div>
+      <div class="setup-editor__grid mt-12">
+        <div>
+          <div class="setup-editor__title">Профили зарплаты</div>
+          <div class="setup-minirows mt-8">
+            ${visibleItems.length ? visibleItems.map((item) => `
+              <div class="setup-minirow">
+                <div class="setup-minirow__main">
+                  <div class="setup-minirow__titlewrap">
+                    <b>${esc(item.title)}</b>
+                    ${item.is_active === false ? '<span class="badge">неактивен</span>' : ''}
+                  </div>
+                  <div class="setup-minirow__meta">${esc(item.description || 'Без описания')} · Компонентов: ${Number(item.components_count || 0)}</div>
+                </div>
+                <div class="setup-minirow__actions">
+                  <button class="btn sm" type="button" data-inline-edit-profile="${esc(item.id)}">Изменить</button>
+                  <button class="btn sm ${item.is_active === false ? '' : 'danger'}" type="button" data-inline-toggle-profile="${esc(item.id)}">${item.is_active === false ? 'Включить' : 'Отключить'}</button>
+                  <button class="btn sm danger" type="button" data-inline-delete-profile="${esc(item.id)}">Удалить</button>
+                </div>
+              </div>
+            `).join('') : '<div class="setup-empty">Пока нет профилей зарплаты. Создай хотя бы один базовый профиль, чтобы потом связать его с должностями.</div>'}
+          </div>
+        </div>
+        <div class="setup-formcard">
+          <div class="setup-editor__title">${mode === 'edit' ? 'Редактирование профиля' : 'Новый профиль'}</div>
+          <div class="muted mt-6">Профили создаются без назначения на сотрудников. Сейчас важно собрать базовые шаблоны.</div>
+          <div class="setup-formgrid mt-12">
+            <label>
+              <span>Название</span>
+              <input class="input" id="inlineProfileTitle" placeholder="Например, Официант / Бар" value="${esc(editingItem?.title || '')}" />
+            </label>
+            <label>
+              <span>Активность</span>
+              <select class="input" id="inlineProfileActive">
+                <option value="1" ${(editingItem?.is_active === false) ? '' : 'selected'}>Активен</option>
+                <option value="0" ${(editingItem?.is_active === false) ? 'selected' : ''}>Неактивен</option>
+              </select>
+            </label>
+            <label style="grid-column:1 / -1">
+              <span>Описание</span>
+              <textarea class="input" id="inlineProfileDescription" rows="4" placeholder="Коротко опиши, для какой роли нужен этот профиль">${esc(editingItem?.description || '')}</textarea>
+            </label>
+          </div>
+          <div class="setup-actionbar mt-12">
+            <button class="btn primary" id="btnInlineSaveProfile" type="button">${mode === 'edit' ? 'Сохранить' : 'Создать'}</button>
+            ${mode === 'edit' ? '<button class="btn subtle" id="btnInlineCancelProfileEdit" type="button">Отмена</button>' : ''}
+            <button class="btn subtle" id="btnInlineReloadProfiles" type="button">Обновить список</button>
+          </div>
+        </div>
+      </div>
+      <div class="setup-actionbar mt-14">
+        ${activeCount > 0 && !currentStep.completed ? '<button class="btn" id="btnInlineCompleteProfiles" type="button">Подтвердить шаг</button>' : ''}
+        ${activeCount > 0 && !currentStep.completed ? '<button class="btn subtle" id="btnInlineCompleteProfilesNext" type="button">Подтвердить и дальше</button>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function mountPayProfilesEditor(currentStep) {
+  const host = document.getElementById('setupInlineEditor');
+  if (!host) return;
+  host.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+  const items = await loadInlinePayProfiles();
+  if (Number(currentStep.count || 0) !== items.filter((item) => item.is_active !== false).length) {
+    await loadSetup({ preserveSelection: true });
+    return;
+  }
+  host.innerHTML = renderPayProfilesEditor(items, getStepByKey('pay_profiles') || currentStep);
+  const inlineState = state.inline.pay_profiles;
+
+  document.getElementById('inlineShowInactiveProfiles')?.addEventListener('change', async (e) => {
+    inlineState.showInactive = !!e.target?.checked;
+    await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+  });
+
+  document.getElementById('btnInlineReloadProfiles')?.addEventListener('click', async () => {
+    await loadInlinePayProfiles({ force: true });
+    await loadSetup({ preserveSelection: true });
+    await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+    toast('Список обновлён', 'ok');
+  });
+
+  document.getElementById('btnInlineCancelProfileEdit')?.addEventListener('click', async () => {
+    inlineState.editor = { mode: 'create', id: null };
+    await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+  });
+
+  document.getElementById('btnInlineSaveProfile')?.addEventListener('click', async () => {
+    const title = String(document.getElementById('inlineProfileTitle')?.value || '').trim();
+    const description = String(document.getElementById('inlineProfileDescription')?.value || '').trim();
+    const is_active = String(document.getElementById('inlineProfileActive')?.value || '1') === '1';
+    if (!title) return toast('Укажи название профиля', 'err');
+    try {
+      if (inlineState.editor?.id) await updatePayProfile(state.venueId, inlineState.editor.id, { title, description: description || null, is_active });
+      else await createPayProfile(state.venueId, { title, description: description || null, is_active });
+      inlineState.editor = { mode: 'create', id: null };
+      await loadInlinePayProfiles({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+      if (!currentStep.completed) {
+        try {
+          await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'pay_profiles' } });
+          await loadSetup({ preserveSelection: true });
+        } catch {}
+      }
+      toast('Профиль сохранён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось сохранить профиль', 'err');
+    }
+  });
+
+  host.querySelectorAll('[data-inline-edit-profile]').forEach((btn) => btn.addEventListener('click', async () => {
+    inlineState.editor = { mode: 'edit', id: btn.getAttribute('data-inline-edit-profile') || null };
+    await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+  }));
+
+  host.querySelectorAll('[data-inline-toggle-profile]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-inline-toggle-profile') || '';
+    const item = (state.inline.pay_profiles.items || []).find((row) => String(row.id) === String(id));
+    if (!item) return;
+    try {
+      await updatePayProfile(state.venueId, item.id, { is_active: !(item.is_active !== false) });
+      await loadInlinePayProfiles({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+      toast('Состояние профиля обновлено', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось изменить профиль', 'err');
+    }
+  }));
+
+  host.querySelectorAll('[data-inline-delete-profile]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-inline-delete-profile') || '';
+    const item = (state.inline.pay_profiles.items || []).find((row) => String(row.id) === String(id));
+    if (!item) return;
+    const ok = await confirmModal({ title: 'Удалить профиль?', text: `Профиль «${item.title}» будет удалён безвозвратно.`, confirmText: 'Удалить', danger: true });
+    if (!ok) return;
+    try {
+      await deletePayProfile(state.venueId, item.id);
+      await loadInlinePayProfiles({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+      toast('Профиль удалён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось удалить профиль', 'err');
+    }
+  }));
+
+  document.getElementById('btnInlineCompleteProfiles')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'pay_profiles' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+
+  document.getElementById('btnInlineCompleteProfilesNext')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'pay_profiles' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+      const next = getNextStepKey('pay_profiles');
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+}
+
+function renderPermissionChecklist(selectedCodes = []) {
+  const groups = Array.isArray(state.permissionsCatalog) && state.permissionsCatalog.length ? state.permissionsCatalog : buildDefaultPermissionsCatalog();
+  const selected = new Set(parsePermissionCodes(selectedCodes));
+  return groups.map((group) => `
+    <div class="card" style="padding:12px">
+      <div class="perm-group-title">
+        <div>
+          <b>${esc(group.title)}</b>
+          ${group.hint ? `<div class="muted mt-6" style="font-size:12px">${esc(group.hint)}</div>` : ''}
+        </div>
+        <div class="row" style="gap:6px; flex:0 0 auto">
+          <button class="btn sm" type="button" data-preset-group="${esc(group.key)}" data-value="1">Все</button>
+          <button class="btn sm" type="button" data-preset-group="${esc(group.key)}" data-value="0">Ничего</button>
+        </div>
+      </div>
+      ${(group.items || []).map((item) => `
+        <div class="perm-row">
+          <div class="perm-text">
+            <div class="perm-title">${esc(item.title)}</div>
+            ${item.description ? `<div class="perm-desc">${esc(item.description)}</div>` : ''}
+          </div>
+          <label class="switch">
+            <input type="checkbox" data-preset-perm-code="${esc(item.code)}" data-preset-perm-group="${esc(group.key)}" ${selected.has(String(item.code).toUpperCase()) ? 'checked' : ''} />
+            <span class="slider"></span>
+          </label>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+function collectPresetPermissionCodes(host) {
+  return Array.from(host.querySelectorAll('input[data-preset-perm-code]:checked'))
+    .map((el) => String(el.getAttribute('data-preset-perm-code') || '').trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function renderPositionPresetForm(preset) {
+  return `
+    <div class="setup-formgrid mt-12">
+      <label>
+        <span>Название должности</span>
+        <input class="input" id="positionPresetTitle" placeholder="Например, Бармен" value="${esc(preset?.title || '')}" />
+      </label>
+      <label>
+        <span>Профиль зарплаты</span>
+        <select class="input" id="positionPresetPayProfile">${buildPayProfileOptions(preset?.pay_profile_id || '')}</select>
+      </label>
+    </div>
+    <div class="setup-inline-note">На этом этапе ты создаёшь именно заготовки должностей. Людей на них назначим на следующем шаге через приглашения.</div>
+    <div style="margin-top:12px; display:grid; grid-template-columns:1fr; gap:10px">${renderPermissionChecklist(preset?.permission_codes || [])}</div>
+  `;
+}
+
+function renderPositionsEditor(currentStep) {
+  const presets = getPositionPresets();
+  const inlineState = state.inline.positions;
+  const editingId = inlineState.editorId || '';
+  const editing = presets.find((item) => String(item.id) === String(editingId)) || null;
+  return `
+    <div class="setup-editor__panel">
+      <div class="setup-editor__toolbar">
+        <div class="setup-inline-list setup-inline-list--compact">
+          <span class="setup-chip">Активных заготовок: ${presets.filter((item) => item.is_active).length}</span>
+          <span class="setup-chip">Всего: ${presets.length}</span>
+        </div>
+      </div>
+      <div class="setup-editor__grid mt-12">
+        <div>
+          <div class="setup-editor__title">Заготовки должностей</div>
+          <div class="setup-minirows mt-8">
+            ${presets.length ? presets.map((item) => `
+              <div class="setup-minirow">
+                <div class="setup-minirow__main">
+                  <div class="setup-minirow__titlewrap">
+                    <b>${esc(item.title)}</b>
+                    ${item.is_active ? '' : '<span class="badge">архив</span>'}
+                  </div>
+                  <div class="setup-minirow__meta">${item.pay_profile_title ? `Профиль: ${esc(item.pay_profile_title)} · ` : ''}Прав: ${item.permission_codes.length}</div>
+                </div>
+                <div class="setup-minirow__actions">
+                  <button class="btn sm" type="button" data-edit-preset="${esc(item.id)}">Изменить</button>
+                  <button class="btn sm ${item.is_active ? 'danger' : ''}" type="button" data-toggle-preset="${esc(item.id)}">${item.is_active ? 'В архив' : 'Вернуть'}</button>
+                  <button class="btn sm danger" type="button" data-delete-preset="${esc(item.id)}">Удалить</button>
+                </div>
+              </div>
+            `).join('') : '<div class="setup-empty">Пока нет заготовок должностей. Создай хотя бы одну должность, чтобы потом быстро назначать её приглашённым сотрудникам.</div>'}
+          </div>
+        </div>
+        <div class="setup-formcard">
+          <div class="setup-editor__title">${editing ? 'Редактирование должности' : 'Новая должность'}</div>
+          <div class="muted mt-6">На этом шаге должности создаются без привязки к конкретным людям. На следующем шаге их можно будет назначать прямо в приглашении.</div>
+          ${renderPositionPresetForm(editing)}
+          <div class="setup-actionbar mt-12">
+            <button class="btn primary" id="btnSavePreset" type="button">${editing ? 'Сохранить' : 'Создать'}</button>
+            ${editing ? '<button class="btn subtle" id="btnCancelPresetEdit" type="button">Отмена</button>' : ''}
+          </div>
+        </div>
+      </div>
+      <div class="setup-actionbar mt-14">
+        ${presets.filter((item) => item.is_active).length > 0 && !currentStep.completed ? '<button class="btn" id="btnInlineCompletePositions" type="button">Подтвердить шаг</button>' : ''}
+        ${presets.filter((item) => item.is_active).length > 0 && !currentStep.completed ? '<button class="btn subtle" id="btnInlineCompletePositionsNext" type="button">Подтвердить и дальше</button>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function mountPositionsEditor(currentStep) {
+  const host = document.getElementById('setupInlineEditor');
+  if (!host) return;
+  await ensurePermissionsCatalog();
+  await loadInlinePayProfiles();
+  host.innerHTML = renderPositionsEditor(getStepByKey('positions') || currentStep);
+  const presets = getPositionPresets();
+
+  host.querySelectorAll('[data-preset-group]').forEach((btn) => btn.addEventListener('click', () => {
+    const group = btn.getAttribute('data-preset-group') || '';
+    const turnOn = btn.getAttribute('data-value') === '1';
+    host.querySelectorAll(`input[data-preset-perm-group="${group}"]`).forEach((el) => { el.checked = turnOn; });
+  }));
+
+  document.getElementById('btnCancelPresetEdit')?.addEventListener('click', async () => {
+    state.inline.positions.editorId = null;
+    await mountPositionsEditor(getStepByKey('positions') || currentStep);
+  });
+
+  document.getElementById('btnSavePreset')?.addEventListener('click', async () => {
+    const title = String(document.getElementById('positionPresetTitle')?.value || '').trim();
+    const payProfileIdRaw = String(document.getElementById('positionPresetPayProfile')?.value || '').trim();
+    if (!title) return toast('Укажи название должности', 'err');
+    const selectedProfile = (state.inline.pay_profiles.items || []).find((item) => String(item.id) === payProfileIdRaw) || null;
+    const next = [...presets];
+    const payload = {
+      id: state.inline.positions.editorId || `preset-${Date.now()}`,
+      title,
+      pay_profile_id: payProfileIdRaw ? Number(payProfileIdRaw) : null,
+      pay_profile_title: selectedProfile?.title || '',
+      permission_codes: collectPresetPermissionCodes(host),
+      rate: 0,
+      percent: 0,
+      is_active: true,
+    };
+    const idx = next.findIndex((item) => String(item.id) === String(payload.id));
+    if (idx >= 0) next[idx] = { ...next[idx], ...payload };
+    else next.push(payload);
+    try {
+      await savePositionPresets(next);
+      state.inline.positions.editorId = null;
+      await loadSetup({ preserveSelection: true });
+      await mountPositionsEditor(getStepByKey('positions') || currentStep);
+      toast('Заготовка должности сохранена', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось сохранить должность', 'err');
+    }
+  });
+
+  host.querySelectorAll('[data-edit-preset]').forEach((btn) => btn.addEventListener('click', async () => {
+    state.inline.positions.editorId = btn.getAttribute('data-edit-preset') || null;
+    await mountPositionsEditor(getStepByKey('positions') || currentStep);
+  }));
+
+  host.querySelectorAll('[data-toggle-preset]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-toggle-preset') || '';
+    const next = presets.map((item) => String(item.id) === String(id) ? { ...item, is_active: !item.is_active } : item);
+    try {
+      await savePositionPresets(next);
+      await loadSetup({ preserveSelection: true });
+      await mountPositionsEditor(getStepByKey('positions') || currentStep);
+      toast('Состояние должности обновлено', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось обновить должность', 'err');
+    }
+  }));
+
+  host.querySelectorAll('[data-delete-preset]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-delete-preset') || '';
+    const target = presets.find((item) => String(item.id) === String(id));
+    if (!target) return;
+    const ok = await confirmModal({ title: 'Удалить заготовку?', text: `Заготовка «${target.title}» будет удалена из мастера настройки.`, confirmText: 'Удалить', danger: true });
+    if (!ok) return;
+    try {
+      await savePositionPresets(presets.filter((item) => String(item.id) !== String(id)));
+      await loadSetup({ preserveSelection: true });
+      await mountPositionsEditor(getStepByKey('positions') || currentStep);
+      toast('Заготовка удалена', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось удалить заготовку', 'err');
+    }
+  }));
+
+  document.getElementById('btnInlineCompletePositions')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'positions' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+
+  document.getElementById('btnInlineCompletePositionsNext')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'positions' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+      const next = getNextStepKey('positions');
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+}
+
+async function loadInlineInvites({ force = false } = {}) {
+  const inlineState = state.inline.invites;
+  if (!force && inlineState.data) return inlineState.data;
+  inlineState.loading = true;
+  try {
+    const data = await getVenueMembers(state.venueId);
+    inlineState.data = data || { members: [], pending_invites: [] };
+    return inlineState.data;
+  } finally {
+    inlineState.loading = false;
+  }
+}
+
+function renderInvitesEditor(data, currentStep) {
+  const pending = Array.isArray(data?.pending_invites) ? data.pending_invites : [];
+  const members = Array.isArray(data?.members) ? data.members : [];
+  return `
+    <div class="setup-editor__panel">
+      <div class="setup-editor__toolbar">
+        <div class="setup-inline-list setup-inline-list--compact">
+          <span class="setup-chip">Участников: ${members.length}</span>
+          <span class="setup-chip">Ожидают: ${pending.length}</span>
+        </div>
+      </div>
+      <div class="setup-editor__grid mt-12">
+        <div>
+          <div class="setup-editor__title">Ожидающие приглашения</div>
+          <div class="setup-minirows mt-8">
+            ${pending.length ? pending.map((item) => `
+              <div class="setup-minirow">
+                <div class="setup-minirow__main">
+                  <div class="setup-minirow__titlewrap">
+                    <b>${esc(item.contact_label || item.tg_username || item.phone || 'Приглашение')}</b>
+                    <span class="badge">${esc(roleLabel(item.venue_role))}</span>
+                  </div>
+                  <div class="setup-minirow__meta">${esc(item.channel === 'PHONE' ? (item.phone || 'Телефон') : (item.tg_username || 'Telegram'))} · ${esc(item.default_position?.title || 'Без должности')} · Создано: ${esc(fmtDateTime(item.created_at))}</div>
+                </div>
+                <div class="setup-minirow__actions">
+                  <select class="input" data-invite-preset="${esc(item.id)}" style="max-width:220px">${buildPresetOptionList(item.default_position?.id || '')}</select>
+                  <button class="btn sm" type="button" data-apply-invite-preset="${esc(item.id)}">Назначить</button>
+                  <button class="btn sm danger" type="button" data-delete-invite="${esc(item.id)}">Отменить</button>
+                </div>
+              </div>
+            `).join('') : '<div class="setup-empty">Пока нет приглашений. Можно пригласить людей сейчас или отложить этот шаг.</div>'}
+          </div>
+          ${members.length ? `<div class="setup-inline-note">Уже в заведении: ${members.map((item) => esc(memberDisplayName(item))).join(', ')}</div>` : ''}
+        </div>
+        <div class="setup-formcard">
+          <div class="setup-editor__title">Новое приглашение</div>
+          <div class="muted mt-6">Можно пригласить по Telegram или по телефону и сразу заранее назначить должность.</div>
+          <div class="setup-formgrid mt-12">
+            <label>
+              <span>Канал</span>
+              <select class="input" id="inviteChannel">
+                <option value="TELEGRAM">Telegram</option>
+                <option value="PHONE">Телефон</option>
+              </select>
+            </label>
+            <label>
+              <span>Роль</span>
+              <select class="input" id="inviteRole">
+                <option value="STAFF">Сотрудник</option>
+                <option value="OWNER">Владелец</option>
+              </select>
+            </label>
+            <label id="inviteTelegramWrap">
+              <span>Ник в Telegram</span>
+              <input class="input" id="inviteTelegram" placeholder="@username" />
+            </label>
+            <label id="invitePhoneWrap" style="display:none">
+              <span>Телефон</span>
+              <input class="input" id="invitePhone" placeholder="+7 ..." />
+            </label>
+            <label>
+              <span>Контакт / имя</span>
+              <input class="input" id="inviteContactLabel" placeholder="Например, Иван" />
+            </label>
+            <label>
+              <span>Назначить должность</span>
+              <select class="input" id="invitePresetSelect">${buildPresetOptionList('')}</select>
+            </label>
+          </div>
+          <div class="setup-actionbar mt-12">
+            <button class="btn primary" id="btnCreateInviteInline" type="button">Создать приглашение</button>
+            <button class="btn subtle" id="btnReloadInvitesInline" type="button">Обновить список</button>
+          </div>
+        </div>
+      </div>
+      <div class="setup-actionbar mt-14">
+        ${pending.length > 0 && !currentStep.completed ? '<button class="btn" id="btnInlineCompleteInvites" type="button">Подтвердить шаг</button>' : ''}
+        ${pending.length > 0 && !currentStep.completed ? '<button class="btn subtle" id="btnInlineCompleteInvitesNext" type="button">Подтвердить и дальше</button>' : ''}
+        ${!currentStep.completed && !currentStep.skipped ? '<button class="btn subtle" id="btnInlineSkipInvites" type="button">Приглашу позже</button>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function mountInvitesEditor(currentStep) {
+  const host = document.getElementById('setupInlineEditor');
+  if (!host) return;
+  host.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+  const data = await loadInlineInvites();
+  host.innerHTML = renderInvitesEditor(data, getStepByKey('invites') || currentStep);
+  const syncChannel = () => {
+    const channel = String(document.getElementById('inviteChannel')?.value || 'TELEGRAM').toUpperCase();
+    const tgWrap = document.getElementById('inviteTelegramWrap');
+    const phWrap = document.getElementById('invitePhoneWrap');
+    if (tgWrap) tgWrap.style.display = channel === 'TELEGRAM' ? '' : 'none';
+    if (phWrap) phWrap.style.display = channel === 'PHONE' ? '' : 'none';
+  };
+  document.getElementById('inviteChannel')?.addEventListener('change', syncChannel);
+  syncChannel();
+
+  document.getElementById('btnReloadInvitesInline')?.addEventListener('click', async () => {
+    await loadInlineInvites({ force: true });
+    await loadSetup({ preserveSelection: true });
+    await mountInvitesEditor(getStepByKey('invites') || currentStep);
+    toast('Список обновлён', 'ok');
+  });
+
+  document.getElementById('btnCreateInviteInline')?.addEventListener('click', async () => {
+    const channel = String(document.getElementById('inviteChannel')?.value || 'TELEGRAM').toUpperCase();
+    const venue_role = String(document.getElementById('inviteRole')?.value || 'STAFF').toUpperCase();
+    const contact_label = String(document.getElementById('inviteContactLabel')?.value || '').trim() || null;
+    const body = { invite_channel: channel, venue_role, contact_label };
+    if (channel === 'PHONE') {
+      const phone = String(document.getElementById('invitePhone')?.value || '').trim();
+      if (!phone) return toast('Укажи телефон', 'err');
+      body.phone = phone;
+    } else {
+      const tg = String(document.getElementById('inviteTelegram')?.value || '').trim();
+      if (!tg) return toast('Укажи Telegram', 'err');
+      body.tg_username = tg;
+    }
+    const selectedPresetId = String(document.getElementById('invitePresetSelect')?.value || '').trim();
+    const selectedPreset = getPositionPresets().find((item) => String(item.id) === selectedPresetId) || null;
+    try {
+      const out = await api(`/venues/${encodeURIComponent(state.venueId)}/invites`, { method: 'POST', body });
+      if (out?.invite_id && selectedPreset) {
+        await patchInviteDefaultPosition(state.venueId, out.invite_id, {
+          title: selectedPreset.title,
+          rate: Number(selectedPreset.rate || 0) || 0,
+          percent: Number(selectedPreset.percent || 0) || 0,
+          pay_profile_id: selectedPreset.pay_profile_id || null,
+          pay_profile_title: selectedPreset.pay_profile_title || null,
+          permission_codes: selectedPreset.permission_codes || [],
+        });
+      }
+      await loadInlineInvites({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountInvitesEditor(getStepByKey('invites') || currentStep);
+      toast(out?.mode === 'member_added' ? 'Участник добавлен' : 'Приглашение создано', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось создать приглашение', 'err');
+    }
+  });
+
+  host.querySelectorAll('[data-apply-invite-preset]').forEach((btn) => btn.addEventListener('click', async () => {
+    const inviteId = btn.getAttribute('data-apply-invite-preset') || '';
+    const select = host.querySelector(`[data-invite-preset="${inviteId}"]`);
+    const presetId = String(select?.value || '').trim();
+    const selectedPreset = getPositionPresets().find((item) => String(item.id) === presetId) || null;
+    try {
+      await patchInviteDefaultPosition(state.venueId, inviteId, selectedPreset ? {
+        title: selectedPreset.title,
+        rate: Number(selectedPreset.rate || 0) || 0,
+        percent: Number(selectedPreset.percent || 0) || 0,
+        pay_profile_id: selectedPreset.pay_profile_id || null,
+        pay_profile_title: selectedPreset.pay_profile_title || null,
+        permission_codes: selectedPreset.permission_codes || [],
+      } : null);
+      await loadInlineInvites({ force: true });
+      await mountInvitesEditor(getStepByKey('invites') || currentStep);
+      toast(selectedPreset ? 'Должность назначена приглашению' : 'Должность снята', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось обновить приглашение', 'err');
+    }
+  }));
+
+  host.querySelectorAll('[data-delete-invite]').forEach((btn) => btn.addEventListener('click', async () => {
+    const inviteId = btn.getAttribute('data-delete-invite') || '';
+    const ok = await confirmModal({ title: 'Отменить приглашение?', text: 'Приглашение станет недействительным.', confirmText: 'Отменить', danger: true });
+    if (!ok) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/invites/${encodeURIComponent(inviteId)}`, { method: 'DELETE' });
+      await loadInlineInvites({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountInvitesEditor(getStepByKey('invites') || currentStep);
+      toast('Приглашение отменено', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось отменить приглашение', 'err');
+    }
+  }));
+
+  document.getElementById('btnInlineCompleteInvites')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'invites' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+
+  document.getElementById('btnInlineCompleteInvitesNext')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'invites' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+      const next = getNextStepKey('invites');
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+
+  document.getElementById('btnInlineSkipInvites')?.addEventListener('click', async () => {
+    const ok = await confirmModal({ title: 'Пригласить позже?', text: 'Этот шаг будет помечен как отложенный. К нему можно вернуться в любой момент.', confirmText: 'Отложить', danger: false });
+    if (!ok) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/skip-step`, { method: 'POST', body: { step_key: 'invites' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг отложен', 'ok');
+      const next = getNextStepKey('invites');
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось отложить шаг', 'err');
+    }
+  });
+}
+
+async function loadInlineShiftIntervals({ force = false } = {}) {
+  const inlineState = state.inline.shift_intervals;
+  if (!force && Array.isArray(inlineState.items)) return inlineState.items;
+  inlineState.loading = true;
+  try {
+    const items = await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals?include_inactive=true`);
+    inlineState.items = Array.isArray(items) ? items : [];
+    return inlineState.items;
+  } finally {
+    inlineState.loading = false;
+  }
+}
+
+function renderShiftIntervalsEditor(items, currentStep) {
+  const inlineState = state.inline.shift_intervals;
+  const visibleItems = inlineState.showArchived ? items : items.filter((item) => item.is_active !== false);
+  const editingId = inlineState.editor?.id || null;
+  const editing = editingId ? items.find((item) => String(item.id) === String(editingId)) : null;
+  const activeCount = items.filter((item) => item.is_active !== false).length;
+  return `
+    <div class="setup-editor__panel">
+      <div class="setup-editor__toolbar">
+        <div class="setup-inline-list setup-inline-list--compact">
+          <span class="setup-chip">Активных: ${activeCount}</span>
+          <span class="setup-chip">Всего: ${items.length}</span>
+        </div>
+        <label class="setup-toggle">
+          <input type="checkbox" id="inlineShowArchivedIntervals" ${inlineState.showArchived ? 'checked' : ''} />
+          <span>Показывать архив</span>
+        </label>
+      </div>
+      <div class="setup-editor__grid mt-12">
+        <div>
+          <div class="setup-editor__title">Интервалы смен</div>
+          <div class="setup-minirows mt-8">
+            ${visibleItems.length ? visibleItems.map((item) => `
+              <div class="setup-minirow">
+                <div class="setup-minirow__main">
+                  <div class="setup-minirow__titlewrap">
+                    <b>${esc(item.title)}</b>
+                    ${item.is_active === false ? '<span class="badge">архив</span>' : ''}
+                  </div>
+                  <div class="setup-minirow__meta">${esc(item.start_time)}–${esc(item.end_time)} · Смен: ${Number(item.usage_count || 0)}</div>
+                </div>
+                <div class="setup-minirow__actions">
+                  <button class="btn sm" type="button" data-edit-interval="${esc(item.id)}">Изменить</button>
+                  <button class="btn sm ${item.is_active === false ? '' : 'danger'}" type="button" data-toggle-interval="${esc(item.id)}">${item.is_active === false ? 'Вернуть' : 'В архив'}</button>
+                  ${item.can_delete ? `<button class="btn sm danger" type="button" data-delete-interval="${esc(item.id)}">Удалить</button>` : ''}
+                </div>
+              </div>
+            `).join('') : '<div class="setup-empty">Пока нет интервалов. Добавь хотя бы один, чтобы график и часть зарплатной логики были готовы к работе.</div>'}
+          </div>
+        </div>
+        <div class="setup-formcard">
+          <div class="setup-editor__title">${editing ? 'Редактирование интервала' : 'Новый интервал'}</div>
+          <div class="muted mt-6">Интервалы используются в графике и могут участвовать в расчётах начислений.</div>
+          <div class="setup-formgrid mt-12">
+            <label>
+              <span>Название</span>
+              <input class="input" id="intervalTitle" placeholder="Например, Вечер" value="${esc(editing?.title || '')}" />
+            </label>
+            <label>
+              <span>Активность</span>
+              <select class="input" id="intervalActive">
+                <option value="1" ${(editing?.is_active === false) ? '' : 'selected'}>Активен</option>
+                <option value="0" ${(editing?.is_active === false) ? 'selected' : ''}>Неактивен</option>
+              </select>
+            </label>
+            <label>
+              <span>Начало</span>
+              <input class="input" id="intervalStart" type="time" value="${esc(editing?.start_time || '')}" />
+            </label>
+            <label>
+              <span>Окончание</span>
+              <input class="input" id="intervalEnd" type="time" value="${esc(editing?.end_time || '')}" />
+            </label>
+          </div>
+          <div class="setup-actionbar mt-12">
+            <button class="btn primary" id="btnSaveIntervalInline" type="button">${editing ? 'Сохранить' : 'Создать'}</button>
+            ${editing ? '<button class="btn subtle" id="btnCancelIntervalEdit" type="button">Отмена</button>' : ''}
+            <button class="btn subtle" id="btnReloadIntervalsInline" type="button">Обновить список</button>
+          </div>
+        </div>
+      </div>
+      <div class="setup-actionbar mt-14">
+        ${activeCount > 0 && !currentStep.completed ? '<button class="btn" id="btnInlineCompleteIntervals" type="button">Подтвердить шаг</button>' : ''}
+        ${activeCount > 0 && !currentStep.completed ? '<button class="btn subtle" id="btnInlineCompleteIntervalsNext" type="button">Подтвердить и дальше</button>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function mountShiftIntervalsEditor(currentStep) {
+  const host = document.getElementById('setupInlineEditor');
+  if (!host) return;
+  host.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+  const items = await loadInlineShiftIntervals();
+  if (Number(currentStep.count || 0) !== items.filter((item) => item.is_active !== false).length) {
+    await loadSetup({ preserveSelection: true });
+    return;
+  }
+  host.innerHTML = renderShiftIntervalsEditor(items, getStepByKey('shift_intervals') || currentStep);
+  const inlineState = state.inline.shift_intervals;
+
+  document.getElementById('inlineShowArchivedIntervals')?.addEventListener('change', async (e) => {
+    inlineState.showArchived = !!e.target?.checked;
+    await mountShiftIntervalsEditor(getStepByKey('shift_intervals') || currentStep);
+  });
+
+  document.getElementById('btnReloadIntervalsInline')?.addEventListener('click', async () => {
+    await loadInlineShiftIntervals({ force: true });
+    await loadSetup({ preserveSelection: true });
+    await mountShiftIntervalsEditor(getStepByKey('shift_intervals') || currentStep);
+    toast('Список обновлён', 'ok');
+  });
+
+  document.getElementById('btnCancelIntervalEdit')?.addEventListener('click', async () => {
+    inlineState.editor = { mode: 'create', id: null };
+    await mountShiftIntervalsEditor(getStepByKey('shift_intervals') || currentStep);
+  });
+
+  document.getElementById('btnSaveIntervalInline')?.addEventListener('click', async () => {
+    const title = String(document.getElementById('intervalTitle')?.value || '').trim();
+    const start_time = String(document.getElementById('intervalStart')?.value || '').trim();
+    const end_time = String(document.getElementById('intervalEnd')?.value || '').trim();
+    const is_active = String(document.getElementById('intervalActive')?.value || '1') === '1';
+    if (!title) return toast('Укажи название интервала', 'err');
+    if (!/^\d{2}:\d{2}$/.test(start_time)) return toast('Укажи время начала', 'err');
+    if (!/^\d{2}:\d{2}$/.test(end_time)) return toast('Укажи время окончания', 'err');
+    try {
+      if (inlineState.editor?.id) {
+        await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: { title, start_time, end_time, is_active } });
+      } else {
+        await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals`, { method: 'POST', body: { title, start_time, end_time, is_active } });
+      }
+      inlineState.editor = { mode: 'create', id: null };
+      await loadInlineShiftIntervals({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountShiftIntervalsEditor(getStepByKey('shift_intervals') || currentStep);
+      if (!currentStep.completed) {
+        try {
+          await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'shift_intervals' } });
+          await loadSetup({ preserveSelection: true });
+        } catch {}
+      }
+      toast('Интервал сохранён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось сохранить интервал', 'err');
+    }
+  });
+
+  host.querySelectorAll('[data-edit-interval]').forEach((btn) => btn.addEventListener('click', async () => {
+    inlineState.editor = { mode: 'edit', id: btn.getAttribute('data-edit-interval') || null };
+    await mountShiftIntervalsEditor(getStepByKey('shift_intervals') || currentStep);
+  }));
+
+  host.querySelectorAll('[data-toggle-interval]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-toggle-interval') || '';
+    const item = (state.inline.shift_intervals.items || []).find((row) => String(row.id) === String(id));
+    if (!item) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals/${encodeURIComponent(item.id)}`, { method: 'PATCH', body: { is_active: !(item.is_active !== false) } });
+      await loadInlineShiftIntervals({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountShiftIntervalsEditor(getStepByKey('shift_intervals') || currentStep);
+      toast('Интервал обновлён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось обновить интервал', 'err');
+    }
+  }));
+
+  host.querySelectorAll('[data-delete-interval]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-delete-interval') || '';
+    const ok = await confirmModal({ title: 'Удалить интервал?', text: 'Интервал будет удалён без возможности восстановления.', confirmText: 'Удалить', danger: true });
+    if (!ok) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await loadInlineShiftIntervals({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountShiftIntervalsEditor(getStepByKey('shift_intervals') || currentStep);
+      toast('Интервал удалён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось удалить интервал', 'err');
+    }
+  }));
+
+  document.getElementById('btnInlineCompleteIntervals')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'shift_intervals' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+
+  document.getElementById('btnInlineCompleteIntervalsNext')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'shift_intervals' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+      const next = getNextStepKey('shift_intervals');
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
 }
 
 function wireSetupActions(currentStep, visibleSteps) {

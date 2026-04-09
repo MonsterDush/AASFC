@@ -167,6 +167,24 @@ def _step_meta_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _position_preset_count_from_step_meta(step_meta: dict[str, Any] | None) -> int:
+    if not isinstance(step_meta, dict):
+        return 0
+    raw = step_meta.get(STEP_POSITIONS)
+    if not isinstance(raw, dict):
+        return 0
+    presets = raw.get("presets")
+    if not isinstance(presets, list):
+        return 0
+    count = 0
+    for item in presets:
+        if not isinstance(item, dict):
+            continue
+        if item.get("is_active", True):
+            count += 1
+    return count
+
+
 def _state_attr(state: Any, attr: str, default: Any = None) -> Any:
     if state is None:
         return default
@@ -276,6 +294,8 @@ def build_setup_summary_from_data(*, state: Any = None, counts: dict[str, int] |
     completed = _step_key_set(_state_attr(state, "completed_steps_json", []))
     skipped = _step_key_set(_state_attr(state, "skipped_steps_json", []))
     step_meta = _step_meta_dict(_state_attr(state, "step_meta_json", {}))
+    preset_positions_count = _position_preset_count_from_step_meta(step_meta)
+    counts["positions_count"] = max(int(counts.get("positions_count", 0) or 0), preset_positions_count)
     current_step_key = _state_attr(state, "current_step_key")
     explicit_phase = str(_state_attr(state, "phase", SETUP_PHASE_PREPARE) or SETUP_PHASE_PREPARE).strip().upper()
     prepare_completed_at = _state_attr(state, "prepare_completed_at")

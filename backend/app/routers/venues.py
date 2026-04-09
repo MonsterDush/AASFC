@@ -231,6 +231,8 @@ class InviteDefaultPositionIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
+    pay_profile_id: int | None = Field(default=None, gt=0)
+    pay_profile_title: str | None = Field(default=None, max_length=120)
     # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
 
@@ -7442,6 +7444,15 @@ def set_invite_default_position(
     if payload.default_position is None:
         inv.default_position_json = None
     else:
+        if payload.default_position.pay_profile_id is not None:
+            profile_ok = db.execute(
+                select(PayProfile.id).where(
+                    PayProfile.id == int(payload.default_position.pay_profile_id),
+                    PayProfile.venue_id == venue_id,
+                )
+            ).scalar_one_or_none()
+            if profile_ok is None:
+                raise HTTPException(status_code=400, detail="Pay profile not found in venue")
         inv.default_position_json = payload.default_position.dict()
 
     db.commit()
