@@ -10,10 +10,18 @@ import {
   getMe,
   getMyVenuePermissions,
   getVenueById,
+  getDepartments,
+  createDepartment,
+  updateDepartment,
+  getPaymentMethods,
+  createPaymentMethod,
+  updatePaymentMethod,
+  getKpiMetrics,
+  createKpiMetric,
+  updateKpiMetric,
 } from "/app.js";
 
 import {
-  permSetFromResponse,
   roleUpper,
   isOwnerRole,
   isSysAdminRole,
@@ -33,17 +41,22 @@ await mountNav({ activeTab: "venue" });
 
 const root = document.getElementById("root");
 
+const UNIT_LABEL = {
+  QTY: "Штуки",
+  RUB: "Рубли",
+  PERCENT: "Проценты",
+  CUSTOM: "Другое",
+};
+
 const STEP_CONTENT = {
   welcome: {
     title: "Приветствие и название",
     subtitle: "Подтверди текущее название или переименуй заведение до старта настройки.",
     what: "Это базовая карточка заведения, с которой начинается дальнейшая настройка.",
     where: "Название показывается в навигации, в списке заведений и в командных сценариях.",
-    later: "Можно оставить как есть и вернуться позже.",
-    primaryLabel: "Переименовать",
-    primaryAction: "rename",
-    secondaryLabel: "Открыть карточку заведения",
-    secondaryHref: (venueId) => `/app-venue.html?venue_id=${encodeURIComponent(String(venueId))}`,
+    later: "Можно оставить как есть и вернуться к редактированию позже.",
+    primaryLabel: "Открыть карточку заведения",
+    primaryHref: (venueId) => `/app-venue.html?venue_id=${encodeURIComponent(String(venueId))}`,
   },
   payment_methods: {
     title: "Способы оплат",
@@ -51,7 +64,7 @@ const STEP_CONTENT = {
     what: "Это список способов оплаты: наличные, безналичные и любые твои дополнительные варианты.",
     where: "Используются в закрытии смены, выручке и месячной сводке.",
     later: "Лучше не откладывать, потому что это основа отчётов.",
-    primaryLabel: "Открыть оплаты",
+    primaryLabel: "Открыть полную страницу",
     primaryHref: (venueId) => `/owner-payment-methods.html?venue_id=${encodeURIComponent(String(venueId))}`,
   },
   departments: {
@@ -60,7 +73,7 @@ const STEP_CONTENT = {
     what: "Обычно это кальяны, бар, кухня и другие внутренние направления дохода.",
     where: "Используются в закрытии смены, аналитике и процентах в зарплатах.",
     later: "Лучше заполнить на старте, чтобы сразу вести корректную детализацию.",
-    primaryLabel: "Открыть департаменты",
+    primaryLabel: "Открыть полную страницу",
     primaryHref: (venueId) => `/owner-departments.html?venue_id=${encodeURIComponent(String(venueId))}`,
   },
   kpi: {
@@ -69,7 +82,7 @@ const STEP_CONTENT = {
     what: "Это счётчики и суммы, которые можно собирать при закрытии смены: допродажи, штуки, KPI.",
     where: "Используются в отчётах и KPI-бонусах в зарплатных профилях.",
     later: "Да, этот шаг можно спокойно отложить и вернуться позже.",
-    primaryLabel: "Открыть KPI",
+    primaryLabel: "Открыть полную страницу",
     primaryHref: (venueId) => `/owner-kpi.html?venue_id=${encodeURIComponent(String(venueId))}`,
   },
   pay_profiles: {
@@ -145,6 +158,53 @@ const STATUS_LABELS = {
   LOCKED: "Недоступно",
 };
 
+const INLINE_STEP_KEYS = new Set(["welcome", "payment_methods", "departments", "kpi"]);
+
+const CATALOG_CONFIG = {
+  payment_methods: {
+    title: "способ оплаты",
+    titlePlural: "способы оплат",
+    listLabel: "Настроенные способы оплат",
+    emptyText: "Пока пусто. При первом открытии будут доступны базовые оплаты, а дальше можно добавить свои.",
+    createCta: "+ Добавить способ оплаты",
+    activeHint: "Участвует в закрытии смены",
+    archivedHint: "Скрыт из списка оплат",
+    load: async (venueId) => getPaymentMethods(venueId, { includeArchived: true }),
+    create: async (venueId, payload) => createPaymentMethod(venueId, payload),
+    update: async (venueId, itemId, payload) => updatePaymentMethod(venueId, itemId, payload),
+    includeUnit: false,
+    skippableInline: false,
+  },
+  departments: {
+    title: "департамент",
+    titlePlural: "департаменты",
+    listLabel: "Настроенные департаменты",
+    emptyText: "Пока нет ни одного департамента. Обычно начинают с кальянов, бара, кухни и прочего.",
+    createCta: "+ Добавить департамент",
+    activeHint: "Участвует в отчётах и сводке",
+    archivedHint: "Скрыт из выбора",
+    load: async (venueId) => getDepartments(venueId, { includeArchived: true }),
+    create: async (venueId, payload) => createDepartment(venueId, payload),
+    update: async (venueId, itemId, payload) => updateDepartment(venueId, itemId, payload),
+    includeUnit: false,
+    skippableInline: false,
+  },
+  kpi: {
+    title: "KPI",
+    titlePlural: "KPI",
+    listLabel: "Настроенные KPI",
+    emptyText: "Пока нет KPI. Этот шаг можно отложить, если сначала хочешь запустить базовые процессы без дополнительных показателей.",
+    createCta: "+ Добавить KPI",
+    activeHint: "Будет доступен в закрытии смены",
+    archivedHint: "Скрыт из формы закрытия смены",
+    load: async (venueId) => getKpiMetrics(venueId, { includeArchived: true }),
+    create: async (venueId, payload) => createKpiMetric(venueId, payload),
+    update: async (venueId, itemId, payload) => updateKpiMetric(venueId, itemId, payload),
+    includeUnit: true,
+    skippableInline: true,
+  },
+};
+
 const state = {
   venueId: "",
   me: null,
@@ -153,8 +213,12 @@ const state = {
   setup: null,
   selectedStepKey: "",
   selectedPhase: "PREPARE",
-  loading: true,
   accessError: "",
+  inline: {
+    payment_methods: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
+    departments: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
+    kpi: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
+  },
 };
 
 function esc(value) {
@@ -164,6 +228,33 @@ function esc(value) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function slugifyCode(value, fallback = "item") {
+  const map = { а:"a", б:"b", в:"v", г:"g", д:"d", е:"e", ё:"e", ж:"zh", з:"z", и:"i", й:"y", к:"k", л:"l", м:"m", н:"n", о:"o", п:"p", р:"r", с:"s", т:"t", у:"u", ф:"f", х:"h", ц:"ts", ч:"ch", ш:"sh", щ:"sch", ъ:"", ы:"y", ь:"", э:"e", ю:"yu", я:"ya" };
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .split("")
+    .map((ch) => (map[ch] !== undefined ? map[ch] : ch))
+    .join("")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_")
+    .slice(0, 64) || fallback;
+}
+
+function ensureUniqueCode(baseCode, items = [], currentId = null) {
+  const used = new Set((Array.isArray(items) ? items : [])
+    .filter((it) => currentId == null || String(it?.id ?? "") !== String(currentId))
+    .map((it) => String(it?.code || "").trim().toLowerCase())
+    .filter(Boolean));
+  let code = String(baseCode || "").trim().toLowerCase();
+  if (!code) code = "item";
+  if (!used.has(code)) return code;
+  let idx = 2;
+  while (used.has(`${code}_${idx}`)) idx += 1;
+  return `${code}_${idx}`;
 }
 
 function parseVenueId() {
@@ -204,12 +295,50 @@ function getVisibleSteps() {
 function getCurrentStep() {
   const steps = Array.isArray(state.setup?.steps) ? state.setup.steps : [];
   const fallbackKey = getStepFromUrl() || state.selectedStepKey || getSetupResumeStep(state.setup) || steps[0]?.key || "";
-  const found = steps.find((step) => step.key === fallbackKey) || steps.find((step) => step.key === getSetupResumeStep(state.setup)) || steps[0] || null;
-  return found;
+  return steps.find((step) => step.key === fallbackKey)
+    || steps.find((step) => step.key === getSetupResumeStep(state.setup))
+    || steps[0]
+    || null;
+}
+
+function getStepByKey(stepKey) {
+  return (state.setup?.steps || []).find((step) => step.key === stepKey) || null;
 }
 
 function phaseTitle() {
   return String(state.selectedPhase || "PREPARE").toUpperCase() === "EXTRA" ? "Дополнительная настройка" : "Базовая настройка";
+}
+
+function shouldUseInlineEditor(stepKey) {
+  return INLINE_STEP_KEYS.has(String(stepKey || ""));
+}
+
+function getInlineCatalogState(stepKey) {
+  const key = String(stepKey || "");
+  if (!state.inline[key]) {
+    state.inline[key] = { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false };
+  }
+  return state.inline[key];
+}
+
+function buildUnitOptions(selected = "QTY") {
+  const current = String(selected || "QTY").toUpperCase();
+  return ["QTY", "RUB", "PERCENT", "CUSTOM"]
+    .map((unit) => `<option value="${unit}" ${unit === current ? "selected" : ""}>${esc(UNIT_LABEL[unit] || unit)}</option>`)
+    .join("");
+}
+
+function getNextStepKey(currentStepKey) {
+  const visibleSteps = getVisibleSteps();
+  const idx = visibleSteps.findIndex((step) => step.key === currentStepKey);
+  if (idx >= 0 && idx < visibleSteps.length - 1) return visibleSteps[idx + 1].key;
+  return "";
+}
+
+function moveToStep(stepKey) {
+  if (!stepKey) return;
+  state.selectedStepKey = stepKey;
+  renderSetup();
 }
 
 function renderAccessError(message) {
@@ -275,6 +404,24 @@ function renderStartScreen() {
   });
 }
 
+function renderInlineEditorHost(currentStep) {
+  if (!shouldUseInlineEditor(currentStep?.key)) return "";
+  return `
+    <div class="setup-editor mt-14">
+      <div class="setup-editor__head">
+        <div>
+          <b>Настройка прямо в мастере</b>
+          <div class="muted mt-6">Здесь можно быстро пройти шаг, а при необходимости открыть полный экран модуля.</div>
+        </div>
+      </div>
+      <div id="setupInlineEditor" class="setup-editor__body">
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+      </div>
+    </div>
+  `;
+}
+
 function renderSetup() {
   const currentStep = getCurrentStep();
   if (!currentStep) {
@@ -301,6 +448,7 @@ function renderSetup() {
   const done = isSetupDone(state.setup);
   const canOpenExtra = prepareDone || state.selectedPhase === "EXTRA";
   const canCompleteStep = currentStep.key === "welcome" || currentStep.data_ready;
+  const useInlineEditor = shouldUseInlineEditor(currentStep.key);
 
   root.innerHTML = `
     <div class="itemcard section-card">
@@ -387,18 +535,18 @@ function renderSetup() {
           <div class="setup-helper"><b>Можно ли позже</b>${esc(meta.later || "")}</div>
         </div>
 
+        ${renderInlineEditorHost(currentStep)}
+
         <div class="setup-actionbar">
-          ${meta.primaryAction === "rename" ? `<button class="btn primary" id="btnRenameVenue" type="button">${esc(meta.primaryLabel || "Переименовать")}</button>` : ""}
-          ${typeof meta.primaryHref === "function" ? `<a class="btn primary" href="${esc(meta.primaryHref(state.venueId, state))}">${esc(meta.primaryLabel || "Открыть")}</a>` : ""}
-          ${typeof meta.secondaryHref === "function" ? `<a class="btn subtle" href="${esc(meta.secondaryHref(state.venueId, state))}">${esc(meta.secondaryLabel || "Открыть")}</a>` : ""}
+          ${typeof meta.primaryHref === "function" ? `<a class="btn ${useInlineEditor ? "subtle" : "primary"}" href="${esc(meta.primaryHref(state.venueId, state))}">${esc(meta.primaryLabel || "Открыть")}</a>` : ""}
           <button class="btn" id="btnReloadCurrent" type="button">Проверить шаг</button>
-          ${canCompleteStep && !currentStep.completed ? `<button class="btn" id="btnCompleteStep" type="button">Отметить завершённым</button>` : ""}
+          ${canCompleteStep && !currentStep.completed && !useInlineEditor ? `<button class="btn" id="btnCompleteStep" type="button">Отметить завершённым</button>` : ""}
           ${currentStep.skippable && !currentStep.completed && !currentStep.skipped ? `<button class="btn subtle" id="btnSkipStep" type="button">Вернуться позже</button>` : ""}
           ${(currentStep.completed || currentStep.skipped || currentStep.requires_attention) ? `<button class="btn subtle" id="btnResetStep" type="button">Сбросить шаг</button>` : ""}
         </div>
 
         <div class="setup-inline-note">
-          ${currentStep.requires_attention ? "Шаг был отмечен завершённым, но сейчас данные выглядят неполными. Проверь страницу настройки и обнови шаг." : (currentStep.completed ? "Шаг завершён и учитывается в общем прогрессе мастера." : (currentStep.skipped ? "Шаг отложен и не блокирует общий прогресс." : "После изменений на целевой странице вернись сюда и нажми «Проверить шаг» или «Отметить завершённым»."))}
+          ${currentStep.requires_attention ? "Шаг был отмечен завершённым, но сейчас данные выглядят неполными. Проверь блок настройки и обнови шаг." : (currentStep.completed ? "Шаг завершён и учитывается в общем прогрессе мастера." : (currentStep.skipped ? "Шаг отложен и не блокирует общий прогресс." : "После изменений в мастере или на целевой странице вернись сюда и нажми «Проверить шаг»."))}
         </div>
 
         <div class="setup-footer">
@@ -416,6 +564,348 @@ function renderSetup() {
   `;
 
   wireSetupActions(currentStep, visibleSteps);
+}
+
+function renderCatalogListItems(stepKey, items, currentStep) {
+  const cfg = CATALOG_CONFIG[stepKey];
+  const inlineState = getInlineCatalogState(stepKey);
+  const visibleItems = inlineState.showArchived ? items : items.filter((item) => item.is_active);
+  if (!visibleItems.length) {
+    return `<div class="setup-empty">${esc(cfg.emptyText)}</div>`;
+  }
+  return visibleItems.map((item) => {
+    const unit = cfg.includeUnit ? String(item.unit || "QTY").toUpperCase() : "";
+    return `
+      <div class="setup-minirow">
+        <div class="setup-minirow__main">
+          <div class="setup-minirow__titlewrap">
+            <b>${esc(item.title)}</b>
+            ${item.is_active ? "" : `<span class="badge">архив</span>`}
+            ${cfg.includeUnit ? `<span class="badge">${esc(UNIT_LABEL[unit] || unit)}</span>` : ""}
+          </div>
+          <div class="setup-minirow__meta">Код: ${esc(item.code || "—")} · ${esc(item.is_active ? cfg.activeHint : cfg.archivedHint)}</div>
+        </div>
+        <div class="setup-minirow__actions">
+          <button class="btn sm" type="button" data-inline-edit="${esc(stepKey)}" data-item-id="${esc(item.id)}">Изменить</button>
+          <button class="btn sm ${item.is_active ? "danger" : ""}" type="button" data-inline-toggle="${esc(stepKey)}" data-item-id="${esc(item.id)}">${item.is_active ? "В архив" : "Вернуть"}</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderCatalogEditor(stepKey, items, currentStep) {
+  const cfg = CATALOG_CONFIG[stepKey];
+  const inlineState = getInlineCatalogState(stepKey);
+  const activeCount = items.filter((item) => item.is_active).length;
+  const editingId = inlineState.editor?.id;
+  const editingItem = editingId ? items.find((item) => String(item.id) === String(editingId)) : null;
+  const mode = editingItem ? "edit" : "create";
+  const initialTitle = editingItem?.title || "";
+  const initialCode = editingItem?.code || "";
+  const initialUnit = String(editingItem?.unit || "QTY").toUpperCase();
+
+  return `
+    <div class="setup-editor__panel">
+      <div class="setup-editor__toolbar">
+        <div class="setup-inline-list setup-inline-list--compact">
+          <span class="setup-chip">Активных: ${activeCount}</span>
+          <span class="setup-chip">Всего: ${items.length}</span>
+        </div>
+        <label class="setup-toggle">
+          <input type="checkbox" id="inlineShowArchived" ${inlineState.showArchived ? "checked" : ""} />
+          <span>Показывать архив</span>
+        </label>
+      </div>
+
+      <div class="setup-editor__grid mt-12">
+        <div>
+          <div class="setup-editor__title">${esc(cfg.listLabel)}</div>
+          <div class="setup-minirows mt-8">${renderCatalogListItems(stepKey, items, currentStep)}</div>
+        </div>
+
+        <div class="setup-formcard">
+          <div class="setup-editor__title">${mode === "edit" ? `Изменить ${cfg.title}` : `Новый ${cfg.title}`}</div>
+          <div class="muted mt-6">${mode === "edit" ? "Сохрани изменения и шаг останется завершённым." : "Можно создать базовые элементы прямо здесь и сразу продолжить настройку."}</div>
+          <div class="setup-formgrid mt-12">
+            <label>
+              <span>Название</span>
+              <input class="input" id="inlineTitle" placeholder="Введите название" value="${esc(initialTitle)}" />
+            </label>
+            <label>
+              <span>Код</span>
+              <input class="input" id="inlineCode" placeholder="Будет сгенерирован автоматически" value="${esc(initialCode)}" />
+            </label>
+            ${cfg.includeUnit ? `
+              <label>
+                <span>Единица</span>
+                <select class="input" id="inlineUnit">${buildUnitOptions(initialUnit)}</select>
+              </label>
+            ` : ""}
+          </div>
+
+          <div class="setup-actionbar mt-12">
+            <button class="btn primary" id="btnInlineSave" type="button">${mode === "edit" ? "Сохранить" : "Создать"}</button>
+            ${mode === "edit" ? `<button class="btn subtle" id="btnInlineCancelEdit" type="button">Отмена</button>` : ""}
+            <button class="btn subtle" id="btnInlineReloadItems" type="button">Обновить список</button>
+          </div>
+
+          <div class="setup-inline-note">Код нужен для внутренней логики. Если не менять его вручную, он соберётся автоматически из названия.</div>
+        </div>
+      </div>
+
+      <div class="setup-actionbar mt-14">
+        ${activeCount > 0 && !currentStep.completed ? `<button class="btn" id="btnInlineComplete" type="button">Подтвердить шаг</button>` : ""}
+        ${activeCount > 0 && !currentStep.completed ? `<button class="btn subtle" id="btnInlineCompleteNext" type="button">Подтвердить и дальше</button>` : ""}
+        ${cfg.skippableInline && !currentStep.completed && !currentStep.skipped ? `<button class="btn subtle" id="btnInlineSkip" type="button">KPI пока не нужны</button>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+async function mountWelcomeEditor(currentStep) {
+  const host = document.getElementById("setupInlineEditor");
+  if (!host) return;
+  const currentName = String(state.venue?.name || "").trim();
+  host.innerHTML = `
+    <div class="setup-editor__panel">
+      <div class="setup-formcard">
+        <div class="setup-editor__title">Как будет называться заведение</div>
+        <div class="muted mt-6">Название можно подтвердить как есть или поменять прямо сейчас. Это не блокирует дальнейшую работу и позже его тоже можно будет изменить.</div>
+        <div class="setup-formgrid mt-12">
+          <label>
+            <span>Название заведения</span>
+            <input class="input" id="welcomeVenueName" placeholder="Введите название" value="${esc(currentName)}" />
+          </label>
+        </div>
+        <div class="setup-actionbar mt-14">
+          <button class="btn primary" id="btnWelcomeSave" type="button">Сохранить и продолжить</button>
+          ${!currentStep.completed ? `<button class="btn subtle" id="btnWelcomeKeep" type="button">Оставить как есть</button>` : ""}
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("btnWelcomeSave")?.addEventListener("click", async () => {
+    const input = document.getElementById("welcomeVenueName");
+    const name = String(input?.value || "").trim();
+    if (!name) {
+      toast("Введите название заведения", "err");
+      input?.focus();
+      return;
+    }
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}`, { method: "PATCH", body: { name } });
+      if (!currentStep.completed) {
+        await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: "POST", body: { step_key: currentStep.key } });
+      }
+      state.venue = await getVenueById(state.venueId);
+      await loadSetup({ preserveSelection: true });
+      toast("Название сохранено", "ok");
+      const next = getNextStepKey(currentStep.key);
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || "Не удалось сохранить название", "err");
+    }
+  });
+
+  document.getElementById("btnWelcomeKeep")?.addEventListener("click", async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: "POST", body: { step_key: currentStep.key } });
+      await loadSetup({ preserveSelection: true });
+      toast("Название подтверждено", "ok");
+      const next = getNextStepKey(currentStep.key);
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || "Не удалось завершить шаг", "err");
+    }
+  });
+}
+
+async function loadInlineCatalogItems(stepKey, { force = false } = {}) {
+  const cfg = CATALOG_CONFIG[stepKey];
+  const inlineState = getInlineCatalogState(stepKey);
+  if (!cfg) return [];
+  if (!force && Array.isArray(inlineState.items)) return inlineState.items;
+  inlineState.loading = true;
+  try {
+    const items = await cfg.load(state.venueId);
+    inlineState.items = Array.isArray(items) ? items : [];
+    return inlineState.items;
+  } finally {
+    inlineState.loading = false;
+  }
+}
+
+async function refreshCatalogStepAndSetup(stepKey, currentStep, { tryNext = false } = {}) {
+  await loadInlineCatalogItems(stepKey, { force: true });
+  await loadSetup({ preserveSelection: true });
+  if (tryNext) {
+    const next = getNextStepKey(currentStep.key);
+    if (next) moveToStep(next);
+  }
+}
+
+async function mountCatalogEditor(currentStep) {
+  const stepKey = currentStep.key;
+  const host = document.getElementById("setupInlineEditor");
+  if (!host) return;
+  const cfg = CATALOG_CONFIG[stepKey];
+  if (!cfg) {
+    host.innerHTML = "";
+    return;
+  }
+
+  host.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+  const items = await loadInlineCatalogItems(stepKey);
+  const activeCount = items.filter((item) => item.is_active).length;
+  if ((stepKey === "payment_methods" || stepKey === "departments" || stepKey === "kpi") && Number(currentStep.count || 0) !== activeCount && !(stepKey === "kpi" && currentStep.skipped)) {
+    await loadSetup({ preserveSelection: true });
+    return;
+  }
+
+  host.innerHTML = renderCatalogEditor(stepKey, items, getStepByKey(stepKey) || currentStep);
+  const inlineState = getInlineCatalogState(stepKey);
+  const titleInput = document.getElementById("inlineTitle");
+  const codeInput = document.getElementById("inlineCode");
+  const unitInput = document.getElementById("inlineUnit");
+
+  const applyAutoCode = () => {
+    if (!codeInput || codeInput.dataset.touched === "1") return;
+    codeInput.value = ensureUniqueCode(slugifyCode(titleInput?.value || "", stepKey === "kpi" ? "kpi" : "item"), items, inlineState.editor?.id || null);
+  };
+  titleInput?.addEventListener("input", applyAutoCode);
+  codeInput?.addEventListener("input", () => { if (codeInput) codeInput.dataset.touched = codeInput.value ? "1" : ""; });
+  if (titleInput && !codeInput?.value) applyAutoCode();
+
+  document.getElementById("inlineShowArchived")?.addEventListener("change", async (e) => {
+    inlineState.showArchived = !!e.target?.checked;
+    await mountCatalogEditor(getStepByKey(stepKey) || currentStep);
+  });
+
+  document.getElementById("btnInlineReloadItems")?.addEventListener("click", async () => {
+    await refreshCatalogStepAndSetup(stepKey, currentStep);
+    toast("Список обновлён", "ok");
+  });
+
+  document.getElementById("btnInlineCancelEdit")?.addEventListener("click", async () => {
+    inlineState.editor = { mode: "create", id: null };
+    await mountCatalogEditor(getStepByKey(stepKey) || currentStep);
+  });
+
+  document.getElementById("btnInlineSave")?.addEventListener("click", async () => {
+    const title = String(titleInput?.value || "").trim();
+    let code = String(codeInput?.value || "").trim().toLowerCase();
+    if (!title) {
+      toast("Заполни название", "err");
+      titleInput?.focus();
+      return;
+    }
+    if (!code) code = ensureUniqueCode(slugifyCode(title, stepKey === "kpi" ? "kpi" : "item"), items, inlineState.editor?.id || null);
+    const payload = {
+      title,
+      code,
+      is_active: true,
+      sort_order: (Math.max(0, ...items.map((item) => Number(item.sort_order || 0))) || 0) + 10,
+    };
+    if (cfg.includeUnit) payload.unit = String(unitInput?.value || "QTY").toUpperCase();
+    try {
+      const wasEdit = Boolean(inlineState.editor?.id);
+      if (wasEdit) await cfg.update(state.venueId, inlineState.editor.id, payload);
+      else await cfg.create(state.venueId, payload);
+      inlineState.editor = { mode: "create", id: null };
+      await refreshCatalogStepAndSetup(stepKey, currentStep);
+      if (!currentStep.completed) {
+        try {
+          await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: "POST", body: { step_key: stepKey } });
+          await loadSetup({ preserveSelection: true });
+        } catch {}
+      }
+      toast(wasEdit ? "Изменения сохранены" : "Элемент создан", "ok");
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || "Не удалось сохранить", "err");
+    }
+  });
+
+  document.querySelectorAll(`[data-inline-edit="${stepKey}"]`).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      inlineState.editor = { mode: "edit", id: btn.getAttribute("data-item-id") || null };
+      await mountCatalogEditor(getStepByKey(stepKey) || currentStep);
+    });
+  });
+
+  document.querySelectorAll(`[data-inline-toggle="${stepKey}"]`).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const itemId = btn.getAttribute("data-item-id") || "";
+      const item = items.find((row) => String(row.id) === String(itemId));
+      if (!item) return;
+      const makeActive = !item.is_active;
+      const ok = await confirmModal({
+        title: makeActive ? `Вернуть ${cfg.title}?` : `Архивировать ${cfg.title}?`,
+        text: `${makeActive ? "Вернуть" : "Убрать"} «${item.title}»?`,
+        confirmText: makeActive ? "Вернуть" : "В архив",
+        danger: !makeActive,
+      });
+      if (!ok) return;
+      try {
+        await cfg.update(state.venueId, item.id, { is_active: makeActive });
+        await refreshCatalogStepAndSetup(stepKey, currentStep);
+        toast(makeActive ? "Элемент восстановлен" : "Элемент архивирован", "ok");
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось изменить состояние", "err");
+      }
+    });
+  });
+
+  document.getElementById("btnInlineComplete")?.addEventListener("click", async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: "POST", body: { step_key: stepKey } });
+      await loadSetup({ preserveSelection: true });
+      toast("Шаг подтверждён", "ok");
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || "Не удалось завершить шаг", "err");
+    }
+  });
+
+  document.getElementById("btnInlineCompleteNext")?.addEventListener("click", async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: "POST", body: { step_key: stepKey } });
+      await loadSetup({ preserveSelection: true });
+      toast("Шаг подтверждён", "ok");
+      const next = getNextStepKey(stepKey);
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || "Не удалось завершить шаг", "err");
+    }
+  });
+
+  document.getElementById("btnInlineSkip")?.addEventListener("click", async () => {
+    const ok = await confirmModal({
+      title: "Отложить KPI?",
+      text: "Этот шаг будет помечен как отложенный. К нему можно будет вернуться в любой момент.",
+      confirmText: "Отложить",
+      danger: false,
+    });
+    if (!ok) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/skip-step`, { method: "POST", body: { step_key: stepKey } });
+      await loadSetup({ preserveSelection: true });
+      toast("Шаг отложен", "ok");
+      const next = getNextStepKey(stepKey);
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || "Не удалось отложить шаг", "err");
+    }
+  });
+}
+
+async function mountInlineEditor(currentStep) {
+  if (!shouldUseInlineEditor(currentStep?.key)) return;
+  if (currentStep.key === "welcome") {
+    await mountWelcomeEditor(getStepByKey("welcome") || currentStep);
+    return;
+  }
+  await mountCatalogEditor(getStepByKey(currentStep.key) || currentStep);
 }
 
 function wireSetupActions(currentStep, visibleSteps) {
@@ -444,20 +934,6 @@ function wireSetupActions(currentStep, visibleSteps) {
       state.selectedStepKey = String(btn.getAttribute("data-step-key") || "");
       renderSetup();
     });
-  });
-
-  document.getElementById("btnRenameVenue")?.addEventListener("click", async () => {
-    const current = state.venue?.name || "";
-    const name = window.prompt("Новое название заведения:", current);
-    if (!name || !String(name).trim()) return;
-    try {
-      await api(`/venues/${encodeURIComponent(state.venueId)}`, { method: "PATCH", body: { name: String(name).trim() } });
-      state.venue = await getVenueById(state.venueId);
-      toast("Название обновлено", "ok");
-      await loadSetup({ preserveSelection: true });
-    } catch (e) {
-      toast(e?.data?.detail || e?.message || "Не удалось переименовать заведение", "err");
-    }
   });
 
   document.getElementById("btnReloadCurrent")?.addEventListener("click", async () => {
@@ -552,6 +1028,12 @@ function wireSetupActions(currentStep, visibleSteps) {
     } catch (e) {
       toast(e?.data?.detail || e?.message || "Не удалось завершить мастер", "err");
     }
+  });
+
+  Promise.resolve().then(() => mountInlineEditor(currentStep)).catch((e) => {
+    console.error(e);
+    const host = document.getElementById("setupInlineEditor");
+    if (host) host.innerHTML = `<div class="setup-empty">Не удалось загрузить встроенный редактор для этого шага.</div>`;
   });
 }
 
