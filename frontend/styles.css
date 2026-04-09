@@ -1455,7 +1455,8 @@ a.btn.primary{color:var(--accentText)}
 .screen-hero__actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .finance-period-card{display:grid;gap:6px}
 .finance-period-card__label{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.finance-period-card__value{font-size:18px;font-weight:900;letter-spacing:-0.02em}
+.finance-period-card__value{font-size:18px;font-weight:900;letter-spacing:-0.02em;line-height:1.18;overflow-wrap:anywhere;word-break:break-word}
+.finance-stats--payroll{grid-template-columns:repeat(3,minmax(0,1fr))}
 .finance-kpis{display:grid;gap:12px}
 .finance-kpis--primary{grid-template-columns:repeat(3,minmax(0,1fr))}
 .finance-kpis--secondary{grid-template-columns:repeat(5,minmax(0,1fr))}
@@ -1497,6 +1498,11 @@ a.btn.primary{color:var(--accentText)}
   .screen-hero__actions--adaptive{width:100%}
   .finance-kpis--primary,.finance-kpis--secondary,.finance-kpis--ratios,.finance-kpis--compact,.finance-shortcuts{grid-template-columns:1fr}
   .finance-stat--hero .finance-stat__value,.expense-hero-total__value{font-size:24px}
+  .finance-stats--payroll{grid-template-columns:1fr}
+  .finance-stats--payroll .finance-stat__label{font-size:12px;line-height:1.25;overflow-wrap:anywhere}
+  .finance-stats--payroll .finance-stat__value{font-size:clamp(18px,6vw,24px);line-height:1.12}
+  .finance-period-card{width:100%;min-width:0}
+  .finance-period-card__value{font-size:clamp(16px,5vw,18px)}
   .modal__panel{max-height:calc(100vh - 20px)}
 }
 

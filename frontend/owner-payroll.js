@@ -358,7 +358,7 @@ function renderShell() {
         </div>
       </div>
 
-      <div class="finance-stats finance-stats-1 mt-12" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+      <div class="finance-stats finance-stats--payroll mt-12">
         <div class="itemcard finance-stat">
           <div class="finance-stat__label">Итого</div>
           <div class="finance-stat__value" id="totalAmount">—</div>
