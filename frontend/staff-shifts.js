@@ -1438,6 +1438,14 @@ function filterForCalendar(listAll, dateStr) {
     });
   }
 
+  const canUseAllMode = canEdit || DEMO_MODE;
+
+  // В DEMO/режиме редактора переключатель «Все» должен реально показывать все интервалы дня,
+  // а не только назначения текущего пользователя.
+  if (canUseAllMode && calendarScope === "venue" && showAllOnCalendar) {
+    return Array.isArray(listAll) ? listAll : [];
+  }
+
   // staff w/o edit -> only mine
   if (!canEdit && myId) {
     return (Array.isArray(listAll) ? listAll : [])
