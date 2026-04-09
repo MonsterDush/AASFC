@@ -37,6 +37,7 @@ from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.payroll.period_summary import build_member_period_summary, resolve_salary_period
 from app.services.billing.access import BILLING_ACCESS_DENIED, BILLING_ACCESS_FULL, get_user_billing_access, get_venue_billing_snapshot
 from app.services.demo.access import build_demo_banner_payload, build_demo_context_payload
+from app.services.setup import build_setup_summary, build_setup_summary_map
 
 
 router = APIRouter(tags=["me"])
@@ -117,6 +118,21 @@ def _serialize_billing_access_payload(access: dict) -> dict:
         "billing_restricted_reason": access.get("billing_restricted_reason"),
     }
 
+
+
+
+def _serialize_setup_payload(summary: dict | None) -> dict:
+    summary = dict(summary or {})
+    return {
+        "setup_status": summary.get("status"),
+        "setup_phase": summary.get("phase"),
+        "setup_progress_total": int(summary.get("progress_total") or 0),
+        "setup_progress_done": int(summary.get("progress_done") or 0),
+        "setup_progress_resolved": int(summary.get("progress_resolved") or 0),
+        "setup_resume_step": summary.get("resume_step"),
+        "setup_prepare_done": bool(summary.get("prepare_done")),
+        "setup_extra_done": bool(summary.get("extra_done")),
+    }
 
 def _serialize_demo_payload(user: User | None, *, venue: Venue | None = None, venue_id: int | None = None) -> dict:
     payload = build_demo_context_payload(user, venue=venue, venue_id=venue_id)
@@ -338,6 +354,8 @@ def my_venues(
             vid = int(row.venue_id)
             position_codes_by_venue.setdefault(vid, set()).update(parse_permission_codes(row.permission_codes))
 
+    setup_summary_map = build_setup_summary_map(db, venue_ids, create_missing=False) if venue_ids else {}
+
     items = []
     is_admin = user.system_role in {"SUPER_ADMIN", "MODERATOR"}
     for r in rows:
@@ -402,6 +420,7 @@ def my_venues(
             "can_open_venue": can_open_venue or billing_access_mode == "BILLING_READONLY",
             "open_target": open_target,
             **_serialize_billing_access_payload(billing_access),
+            **_serialize_setup_payload(setup_summary_map.get(venue_id)),
             **demo_payload,
         })
 
@@ -476,6 +495,7 @@ def my_venue_permissions(
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     venue_inactive = bool(getattr(venue, "is_archived", False))
     demo_payload = _serialize_demo_payload(user, venue=venue, venue_id=venue_id)
+    setup_summary = build_setup_summary(db, venue_id=venue_id, create_missing=False)
 
     if user.system_role == "SUPER_ADMIN":
         codes = db.scalars(select(Permission.code).where(Permission.is_active.is_(True))).all()
@@ -485,6 +505,7 @@ def my_venue_permissions(
             "permissions": list(codes),
             "position": None,
             **system_billing_payload,
+            **_serialize_setup_payload(setup_summary),
             **demo_payload,
         }
 
@@ -507,6 +528,7 @@ def my_venue_permissions(
             "permissions": sorted(expand_permission_codes(codes)),
             "position": None,
             **system_billing_payload,
+            **_serialize_setup_payload(setup_summary),
             **demo_payload,
         }
 
@@ -534,6 +556,7 @@ def my_venue_permissions(
             "venue_inactive": venue_inactive,
             "access_denied_reason": "Заведение сейчас не активно" if venue_inactive else None,
             **denied_payload,
+            **_serialize_setup_payload(setup_summary),
             **demo_payload,
         }
 
@@ -549,6 +572,7 @@ def my_venue_permissions(
             "venue_inactive": True,
             "access_denied_reason": "Заведение сейчас не активно",
             **_serialize_billing_access_payload(billing_access),
+            **_serialize_setup_payload(setup_summary),
             **demo_payload,
         }
 
@@ -609,6 +633,7 @@ def my_venue_permissions(
         "venue_inactive": venue_inactive,
         "access_denied_reason": None,
         **_serialize_billing_access_payload(billing_access),
+        **_serialize_setup_payload(setup_summary),
         **demo_payload,
     }
 

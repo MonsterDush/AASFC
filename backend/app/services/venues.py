@@ -10,6 +10,7 @@ from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.services.invites import create_venue_invite, normalize_phone_e164
 from app.services.billing.manager import get_or_create_billing_state
+from app.services.setup import get_or_create_setup_state
 
 
 def _find_verified_phone_user(db: Session, phone_e164: str) -> User | None:
@@ -141,6 +142,7 @@ def create_venue(
                 )
 
     get_or_create_billing_state(db, venue_id=venue.id)
+    get_or_create_setup_state(db, venue_id=venue.id)
 
     db.commit()
     db.refresh(venue)

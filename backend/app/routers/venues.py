@@ -146,6 +146,7 @@ from app.auth.venue_permissions import require_venue_permission, has_venue_permi
 
 from app.services.venues import create_venue
 from app.services.invites import build_invite_link, create_venue_invite, normalize_phone_e164
+from app.services.setup import build_setup_summary, build_setup_summary_map
 from app.services.billing import (
     BILLING_ACCESS_FULL,
     get_user_billing_access,
@@ -1669,6 +1670,7 @@ def create_venue_admin_only(
     owner_summary = _build_owner_summary_by_venue(db, [venue.id]).get(venue.id, {"state": "UNASSIGNED", "owners": [], "pending": []})
     owner_pending_invite = owner_summary["pending"][0] if owner_summary.get("pending") else None
     owner_linked = owner_summary["owners"][0] if owner_summary.get("owners") else None
+    setup_summary = build_setup_summary(db, venue_id=venue.id, create_missing=False)
     return {
         "id": venue.id,
         "name": venue.name,
@@ -1676,6 +1678,14 @@ def create_venue_admin_only(
         "owner_linked": owner_linked,
         "owner_invite": owner_pending_invite,
         "owner_status": owner_summary,
+        "setup_status": setup_summary.get("status"),
+        "setup_phase": setup_summary.get("phase"),
+        "setup_progress_total": int(setup_summary.get("progress_total") or 0),
+        "setup_progress_done": int(setup_summary.get("progress_done") or 0),
+        "setup_progress_resolved": int(setup_summary.get("progress_resolved") or 0),
+        "setup_resume_step": setup_summary.get("resume_step"),
+        "setup_prepare_done": bool(setup_summary.get("prepare_done")),
+        "setup_extra_done": bool(setup_summary.get("extra_done")),
     }
 
 
@@ -1695,7 +1705,9 @@ def list_venues_admin_only(
         stmt = stmt.where(Venue.is_archived.is_(False))
 
     rows = db.execute(stmt).all()
-    owner_summary_map = _build_owner_summary_by_venue(db, [int(r.id) for r in rows])
+    venue_ids = [int(r.id) for r in rows]
+    owner_summary_map = _build_owner_summary_by_venue(db, venue_ids)
+    setup_summary_map = build_setup_summary_map(db, venue_ids, create_missing=False) if venue_ids else {}
     return [
         {
             "id": r.id,
@@ -1703,6 +1715,14 @@ def list_venues_admin_only(
             "is_archived": bool(r.is_archived),
             "archived_at": r.archived_at.isoformat() if r.archived_at else None,
             "owner_status": owner_summary_map.get(int(r.id), {"state": "UNASSIGNED", "owners": [], "pending": []}),
+            "setup_status": (setup_summary_map.get(int(r.id)) or {}).get("status"),
+            "setup_phase": (setup_summary_map.get(int(r.id)) or {}).get("phase"),
+            "setup_progress_total": int(((setup_summary_map.get(int(r.id)) or {}).get("progress_total") or 0)),
+            "setup_progress_done": int(((setup_summary_map.get(int(r.id)) or {}).get("progress_done") or 0)),
+            "setup_progress_resolved": int(((setup_summary_map.get(int(r.id)) or {}).get("progress_resolved") or 0)),
+            "setup_resume_step": (setup_summary_map.get(int(r.id)) or {}).get("resume_step"),
+            "setup_prepare_done": bool((setup_summary_map.get(int(r.id)) or {}).get("prepare_done")),
+            "setup_extra_done": bool((setup_summary_map.get(int(r.id)) or {}).get("extra_done")),
         }
         for r in rows
     ]
