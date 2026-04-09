@@ -179,6 +179,7 @@
 
 
   let previewUrls = {};
+  let lastStatusData = null;
 
   function openPreview(url){
     if (!url) return toast('Сначала собери и включи публичное DEMO', 'err');
@@ -193,6 +194,7 @@
   }
 
   function renderStatus(data){
+    lastStatusData = data || {};
     previewUrls = data?.preview_urls || {};
     const venue = data?.public_venue || data?.venue || null;
     if (venue && !venueIdEl.value) venueIdEl.value = venue.id || '';
@@ -237,7 +239,9 @@
     const topOwner = (data?.analytics?.top_pages_by_persona?.OWNER || []).slice(0, 3).map((row) => ({ label: row.page_path, value: row.views, sub: 'OWNER' }));
     const topStaff = (data?.analytics?.top_pages_by_persona?.STAFF || []).slice(0, 3).map((row) => ({ label: row.page_path, value: row.views, sub: 'STAFF' }));
     const days = (data?.analytics?.activity_by_day || []).slice(-6).map((row) => ({ label: row.date, value: row.events, sub: 'Событий/день' }));
-    renderList(analyticsSecondary, [...topPages, ...topOwner, ...topStaff, ...days], (row) => `<div class="demo-admin-item"><div><b>${esc(row.label)}</b><small>${esc(row.sub)}</small></div><div><b>${Number(row.value || 0)}</b></div></div>`);
+    const sessions = (data?.analytics?.sessions_by_persona || []).map((row) => ({ label: row.persona, value: row.sessions, sub: 'Сессии' }));
+    const recent = (data?.analytics?.recent_events || []).slice(0, 4).map((row) => ({ label: row.event_name || 'event', value: row.persona || '—', sub: row.page_path || 'recent' }));
+    renderList(analyticsSecondary, [...topPages, ...topOwner, ...topStaff, ...days, ...sessions, ...recent], (row) => `<div class="demo-admin-item"><div><b>${esc(row.label)}</b><small>${esc(row.sub)}</small></div><div><b>${esc(row.value ?? 0)}</b></div></div>`);
   }
 
   async function loadStatus(){
@@ -339,6 +343,40 @@
     await loadStatus();
   });
 
+
+
+  ensureTemplateBtn?.addEventListener('click', async () => {
+    const p = currentPayload();
+    const out = await api('/admin/demo/ensure-template', {
+      method: 'POST',
+      body: JSON.stringify({ venue_name: p.venueName, reference_year: p.referenceYear, reference_month: p.referenceMonth }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    toast(out?.created ? `Template создан: ${out?.venue_name || out?.venue_id}` : `Template уже существует: ${out?.venue_name || out?.venue_id}`);
+    await loadStatus();
+  });
+
+  openPublicDirectBtn?.addEventListener('click', () => {
+    const url = previewUrls.owner_summary || previewUrls.owner || `${API_BASE}/auth/demo/start?persona=OWNER`;
+    openPreview(url);
+  });
+
+  openTemplateDirectBtn?.addEventListener('click', () => {
+    const template = lastStatusData?.template_venue || null;
+    const url = template?.open_urls?.summary || template?.open_urls?.venue || null;
+    if (!url) return toast('Template DEMO пока не найден', 'err');
+    openPreview(url);
+  });
+
+  resetOwnerTourBtn?.addEventListener('click', () => {
+    resetDemoTour('OWNER');
+    toast('Tour OWNER сброшен для текущей вкладки');
+  });
+
+  resetStaffTourBtn?.addEventListener('click', () => {
+    resetDemoTour('STAFF');
+    toast('Tour STAFF сброшен для текущей вкладки');
+  });
 
 
   previewOwnerBtn?.addEventListener('click', () => openPreview(previewUrls.owner_summary || previewUrls.owner || `${API_BASE}/auth/demo/start?persona=OWNER`));

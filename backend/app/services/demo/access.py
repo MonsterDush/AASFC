@@ -22,7 +22,7 @@ def build_demo_banner_payload() -> dict:
     return {
         "return_url": (settings.DEMO_RETURN_URL or "https://axelio.ru").strip() or "https://axelio.ru",
         "primary_cta_url": (settings.DEMO_PRIMARY_CTA_URL or "https://axelio.ru/#contact").strip() or "https://axelio.ru/#contact",
-        "secondary_cta_url": (settings.DEMO_SECONDARY_CTA_URL or f"{settings.frontend_base_url()}/auth.html").strip() or f"{settings.frontend_base_url()}/auth.html",
+        "secondary_cta_url": (settings.DEMO_SECONDARY_CTA_URL or "https://axelio.ru/#contact").strip() or "https://axelio.ru/#contact",
         "primary_cta_label": (settings.DEMO_PRIMARY_CTA_LABEL or "Оставить заявку").strip() or "Оставить заявку",
         "secondary_cta_label": (settings.DEMO_SECONDARY_CTA_LABEL or "Начать пользоваться").strip() or "Начать пользоваться",
     }

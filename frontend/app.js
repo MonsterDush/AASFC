@@ -55,6 +55,7 @@ export const AUTH_PAGE = "/auth.html";
 const SS_DEMO_UI_STATE = "axelio.demo_ui_state";
 const DEMO_READONLY_ERROR_CODE = "DEMO_READONLY";
 let __demoBannerBootstrapped = false;
+let __demoPageViewSent = false;
 let __lastToastMeta = { text: "", type: "", at: 0 };
 
 function isBrowser() {
@@ -114,7 +115,7 @@ function buildDemoUiState(source) {
     demo_banner: {
       return_url: banner.return_url || "https://axelio.ru",
       primary_cta_url: banner.primary_cta_url || "https://axelio.ru/#contact",
-      secondary_cta_url: banner.secondary_cta_url || `${location.origin}${AUTH_PAGE}`,
+      secondary_cta_url: banner.secondary_cta_url || "https://axelio.ru/#contact",
       primary_cta_label: banner.primary_cta_label || "Оставить заявку",
       secondary_cta_label: banner.secondary_cta_label || "Начать пользоваться",
     },
@@ -138,7 +139,7 @@ export function readStoredDemoUiState() {
   return getStoredDemoUiState();
 }
 
-function storeDemoUiState(source) {
+export function storeDemoUiState(source) {
   if (!isBrowser()) return null;
   const state = buildDemoUiState(source);
   try {
@@ -151,7 +152,7 @@ function storeDemoUiState(source) {
   return state;
 }
 
-function clearDemoUiState() {
+export function clearDemoUiState() {
   if (!isBrowser()) return;
   try { sessionStorage.removeItem(SS_DEMO_UI_STATE); } catch {}
   try {
@@ -354,10 +355,25 @@ async function exitDemoMode(buttonEl = null) {
   }
 }
 
+async function exitDemoModeToUrl(targetUrl, { buttonEl = null, fallbackUrl = null } = {}) {
+  const safeTargetUrl = String(targetUrl || "").trim() || String(fallbackUrl || "https://axelio.ru").trim() || "https://axelio.ru";
+  if (buttonEl) buttonEl.disabled = true;
+  try {
+    await api("/auth/demo/exit", { method: "POST", skipDemoReadonlyToast: true });
+  } catch {}
+  try { clearDemoUiState(); } catch {}
+  try { location.href = safeTargetUrl; } finally {
+    if (buttonEl) buttonEl.disabled = false;
+  }
+}
+
 function buildDemoBannerMarkup(state) {
   const persona = String(state?.demo_persona || "OWNER").toUpperCase();
   const banner = state?.demo_banner || {};
   const monthLabel = state?.demo_month_label || formatDemoMonthLabel(state?.demo_reference_year, state?.demo_reference_month);
+  const returnUrl = String(banner.return_url || "https://axelio.ru");
+  const primaryUrl = String(banner.primary_cta_url || "https://axelio.ru/#contact");
+  const secondaryUrl = String(banner.secondary_cta_url || "https://axelio.ru/#contact");
   return `
     <div class="demo-banner__bar" role="region" aria-label="Пробный режим Axelio">
       <span class="demo-banner__pill demo-banner__pill--brand">Пробный режим Axelio</span>
@@ -367,9 +383,9 @@ function buildDemoBannerMarkup(state) {
       </div>
       <span class="demo-banner__pill demo-banner__pill--muted">${monthLabel}</span>
       <button type="button" class="demo-banner__link" data-demo-tour-open="1">Экскурсия</button>
-      <a class="demo-banner__link" href="${String(banner.return_url || "https://axelio.ru")}">На сайт</a>
-      <a class="demo-banner__link demo-banner__link--primary" href="${String(banner.primary_cta_url || "https://axelio.ru/#contact")}">${String(banner.primary_cta_label || "Оставить заявку")}</a>
-      <a class="demo-banner__link" href="${String(banner.secondary_cta_url || `${location.origin}${AUTH_PAGE}`)}" data-demo-cta="secondary">${String(banner.secondary_cta_label || "Начать пользоваться")}</a>
+      <a class="demo-banner__link" href="${returnUrl}" data-demo-cta="site" data-demo-exit-link="1" data-demo-url="${returnUrl}">На сайт</a>
+      <a class="demo-banner__link demo-banner__link--primary" href="${primaryUrl}" data-demo-cta="primary" data-demo-exit-link="1" data-demo-url="${primaryUrl}">${String(banner.primary_cta_label || "Оставить заявку")}</a>
+      <a class="demo-banner__link" href="${secondaryUrl}" data-demo-cta="secondary" data-demo-exit-link="1" data-demo-url="${secondaryUrl}">${String(banner.secondary_cta_label || "Начать пользоваться")}</a>
     </div>`;
 }
 
@@ -419,6 +435,35 @@ function mountDemoBanner(state = null) {
       reopenDemoTour();
     });
   }
+
+  host.querySelectorAll('[data-demo-exit-link="1"]').forEach((link) => {
+    link.addEventListener("click", async (event) => {
+      event.preventDefault();
+      const ctaCode = String(link.getAttribute("data-demo-cta") || "link").trim() || "link";
+      const targetUrl = String(link.getAttribute("data-demo-url") || link.getAttribute("href") || "").trim();
+      try {
+        await postDemoTelemetry("cta_click", { cta_code: ctaCode, page_path: currentAppPath(), meta: { target_url: targetUrl || null } });
+      } catch {}
+      await exitDemoModeToUrl(targetUrl, { buttonEl: link, fallbackUrl: effectiveState?.demo_banner?.return_url || "https://axelio.ru" });
+    });
+  });
+}
+
+function maybeTrackDemoPageView(state = null) {
+  if (!isBrowser() || __demoPageViewSent) return;
+  const effectiveState = state?.demo_mode ? state : getStoredDemoUiState();
+  if (!effectiveState?.demo_mode) return;
+  __demoPageViewSent = true;
+  setTimeout(() => {
+    postDemoTelemetry("page_view", {
+      persona: effectiveState.demo_persona || null,
+      page_path: currentAppPath(),
+      meta: {
+        page: String(location.pathname || ""),
+        month_label: effectiveState.demo_month_label || null,
+      },
+    });
+  }, 0);
 }
 
 function bootstrapStoredDemoBanner() {
@@ -436,6 +481,15 @@ function bootstrapStoredDemoBanner() {
 }
 
 bootstrapStoredDemoBanner();
+window.addEventListener("axelio:demo-state-changed", (event) => {
+  const state = event?.detail?.demo_mode ? event.detail : getStoredDemoUiState();
+  if (state?.demo_mode) {
+    mountDemoBanner(state);
+    maybeTrackDemoPageView(state);
+  } else {
+    removeDemoBanner();
+  }
+});
 
 const SS_DEMO_TOUR_STATE = "axelio.demo_tour_state";
 const DEMO_TOUR_STEPS = {
@@ -841,11 +895,11 @@ function showDemoTourOverlay(persona = null) {
     renderDemoTourDock(state.persona);
   });
 
-  if (!state.started || pageCfg) {
+  if (!state.started) {
     writeDemoTourState({ ...state, started: true, hidden: false, completed: false });
     postDemoTelemetry("tour_started", { persona: state.persona, meta: { step_id: effectiveStep.id || pageCfg?.tourId || step?.id || null, steps_total: effectiveTotal } });
   } else {
-    writeDemoTourState({ ...state, hidden: false });
+    writeDemoTourState({ ...state, hidden: false, completed: false });
   }
 }
 
@@ -1296,6 +1350,7 @@ export function mountCommonUI(activeTab) {
   });
 
   mountDemoBanner();
+  maybeTrackDemoPageView();
 
   const modal = document.getElementById("modal");
   if (modal) {
@@ -1853,7 +1908,7 @@ export function setActiveVenueId(id) {
 export async function getMe({ timeoutMs = 8000 } = {}) {
   const me = await withTimeout(api("/me"), timeoutMs, "ME_TIMEOUT");
   const demoState = storeDemoUiState(me);
-  if (demoState?.demo_mode) mountDemoBanner(demoState);
+  if (demoState?.demo_mode) { mountDemoBanner(demoState); maybeTrackDemoPageView(demoState); }
   else removeDemoBanner();
   return me;
 }

@@ -13,6 +13,8 @@ import {
   getVenuePositions,
   isDemoUiMode,
   getStoredDemoUiState,
+  getDemoMonthLabel,
+  mountDemoPageTour,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
@@ -56,6 +58,45 @@ mountCommonUI("shifts");
 await ensureLogin({ silent: true });
 
 const params = new URLSearchParams(location.search);
+const DEMO_STAFF_INTRO_DISMISSED_KEY = "axelio.demo_intro.staff_shifts.dismissed";
+const DEMO_MODE = isDemoUiMode(getStoredDemoUiState());
+
+function shouldShowDemoSalaryValue(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return false;
+  if (!DEMO_MODE) return true;
+  return num > 0;
+}
+
+function renderDemoStaffIntro() {
+  const intro = document.getElementById("demoStaffIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try { if (sessionStorage.getItem(DEMO_STAFF_INTRO_DISMISSED_KEY) === "1") { intro.classList.add("hidden"); return; } } catch {}
+  const introText = document.getElementById("demoStaffIntroText");
+  if (introText) introText.textContent = `Подготовленный график за ${getDemoMonthLabel(demoState) || "DEMO-месяц"}. Здесь смотри индикаторы смен и затем переходи к начислениям.`;
+  document.getElementById("demoOpenStaffSalary")?.addEventListener("click", () => { const v = venueId || getActiveVenueId(); if (v) location.href = `/staff-salary.html?venue_id=${encodeURIComponent(String(v))}`; });
+  document.getElementById("demoStaffIntroClose")?.addEventListener("click", () => { intro.classList.add("hidden"); try { sessionStorage.setItem(DEMO_STAFF_INTRO_DISMISSED_KEY, "1"); } catch {} });
+  intro.classList.remove("hidden");
+}
+
+function mountDemoFlowTour() {
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) return;
+  const v = venueId || getActiveVenueId();
+  const q = v ? `?venue_id=${encodeURIComponent(String(v))}` : "";
+  mountDemoPageTour({
+    tourId: "demo-staff-flow",
+    step: 1,
+    total: 2,
+    title: "Быстрый тур для персонала",
+    text: "Сначала посмотри график и индикаторы смен, затем открой начисления за подготовленный месяц.",
+    nextPath: `/staff-salary.html${q}`,
+    finishPath: `/staff-shifts.html${q}`,
+  });
+}
+
 let venueId = params.get("venue_id") || getActiveVenueId();
 
 if (!venueId) toast("Сначала выбери заведение в «Настройках»", "warn");
@@ -573,7 +614,7 @@ function renderModeToggle() {
   const setActive = () => {
     // editor toggle
     mode.all?.classList.toggle("active", canUseAllMode && calendarScope === "venue" && !!showAllOnCalendar);
-    mode.mine?.classList.toggle("active", calendarScope === "venue" && (!canEdit || !showAllOnCalendar));
+    mode.mine?.classList.toggle("active", calendarScope === "venue" && !showAllOnCalendar);
     mode.global?.classList.toggle("active", calendarScope === "global");
   };
 
@@ -840,9 +881,9 @@ async function loadContext() {
     hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]);
 
   // default: editor and DEMO see all
-  showAllOnCalendar = (canEdit || isDemoUiMode()) ? true : false;
+  showAllOnCalendar = (canEdit || DEMO_MODE) ? true : false;
   const saved = localStorage.getItem(LS_SHOW_ALL);
-  if (saved !== null) showAllOnCalendar = saved === "1";
+  if (!DEMO_MODE && saved !== null) showAllOnCalendar = saved === "1";
 
   try {
     const out = await startupApi(`/venues/${encodeURIComponent(venueId)}/shift-intervals`, 10000, "SHIFT_INTERVALS_TIMEOUT");
@@ -893,7 +934,7 @@ function formatGlobalLine(item) {
   // Прошедшие: показываем зарплату, а если её нет (ещё нет отчёта) — показываем "Заведение • Время".
   if (isPastDateISO(item.date)) {
     const sal = Number(item?.my_salary);
-    if (Number.isFinite(sal)) return fmtMoney(sal);
+    if (shouldShowDemoSalaryValue(sal)) return fmtMoney(sal);
     return t ? `${venueName} • ${t}` : `${venueName}`;
   }
 
@@ -1075,7 +1116,7 @@ function renderWeek(ws) {
       meta.className = "cal-daymeta";
       const dayList = filterForCalendar(shiftsByDate.get(dateStr) || [], dateStr);
       const sal = salaryByDate.get(dateStr);
-      if (isPastDay(dateStr) && Number.isFinite(Number(sal))) meta.textContent = fmtMoney(sal);
+      if (isPastDay(dateStr) && shouldShowDemoSalaryValue(sal)) meta.textContent = fmtMoney(sal);
       else if (dayList.length) meta.textContent = `${dayList.length} смен`;
       else meta.textContent = "";
 
@@ -1129,7 +1170,7 @@ function buildIndex() {
 
     // salaryByDate: суммируем только если my_salary есть (backend выдаёт только при наличии отчёта)
     const sal = Number(s.my_salary);
-    if (Number.isFinite(sal)) {
+    if (shouldShowDemoSalaryValue(sal)) {
       salaryByDate.set(date, (salaryByDate.get(date) || 0) + sal);
     }
   }
@@ -1198,7 +1239,7 @@ function sumMySalary(shiftsList) {
   let has = false;
   for (const s of (shiftsList || [])) {
     const sal = Number(s?.my_salary);
-    if (Number.isFinite(sal)) { total += sal; has = true; }
+    if (shouldShowDemoSalaryValue(sal)) { total += sal; has = true; }
   }
   return has ? total : null;
 }
@@ -1260,7 +1301,7 @@ function renderDayTimeline(shiftsList) {
     const sal = sumMySalary(arr);
 
     let meta = '';
-    if (sal != null) meta = `${fmtMoney(sal)}`;
+    if (sal != null && shouldShowDemoSalaryValue(sal)) meta = `${fmtMoney(sal)}`;
     else if (people != null && people > 0) meta = `${people} чел.`;
     else if (assigns != null && assigns > 0) meta = `${assigns} назнач.`;
 
@@ -1392,7 +1433,7 @@ function filterForCalendar(listAll, dateStr) {
     if (!myId) return [];
     return arr.filter((s) => {
       const sal = Number(s?.my_salary);
-      if (Number.isFinite(sal)) return true;
+      if (shouldShowDemoSalaryValue(sal)) return true;
       return shiftHasMyAssignment(s, myId);
     });
   }
@@ -1645,14 +1686,14 @@ if (showAllOnCalendar && !isWeek && !forceText && calendarScope !== "global") {
 
         if (pastDay) {
           const sal = Number(s?.my_salary);
-          txt = Number.isFinite(sal) ? fmtMoney(sal) : (t ? `${venueName} • ${t}` : `${venueName}`);
+          txt = shouldShowDemoSalaryValue(sal) ? fmtMoney(sal) : (t ? `${venueName} • ${t}` : `${venueName}`);
         } else {
           txt = t ? `${venueName} • ${t}` : `${venueName}`;
         }
       } else {
         if (pastDay) {
           const sal = Number(s?.my_salary);
-          txt = Number.isFinite(sal) ? fmtMoney(sal) : shiftStartHHMM(s);
+          txt = shouldShowDemoSalaryValue(sal) ? fmtMoney(sal) : shiftStartHHMM(s);
         } else {
           txt = shiftStartHHMM(s);
         }
@@ -3067,3 +3108,6 @@ if (calendarView === "week") {
 } else {
   await loadMonth();
 }
+
+try { renderDemoStaffIntro(); } catch {}
+try { mountDemoFlowTour(); } catch {}
