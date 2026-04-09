@@ -38,6 +38,7 @@
 
         <div class="action-grid action-grid--3 action-grid--mobile-2">
           <button class="btn" id="btnRename">Переименовать</button>
+          <a class="btn" id="openSetup" href="#">Быстрая настройка</a>
           <button class="btn" id="btnArchive">В архив</button>
           <button class="btn" id="btnUnarchive">Вернуть</button>
                     <button class="btn danger" id="btnLeave">Выйти из заведения</button>
@@ -615,6 +616,7 @@ const titleEl = document.getElementById("title");
           if (btnUnarchive) btnUnarchive.style.display = "none";
           if (btnLeave) btnLeave.style.display = "none";
           if (btnDelete) btnDelete.style.display = "none";
+          if (openSetup) openSetup.style.display = "none";
 
           metaHint.textContent = "Доступ к рабочим разделам временно ограничен. Можно только просмотреть статус заведения и продлить доступ.";
           renderBillingWidgets();
@@ -636,6 +638,7 @@ const titleEl = document.getElementById("title");
         const btnUnarchive = document.getElementById("btnUnarchive");
         const btnLeave = document.getElementById("btnLeave");
         const btnDelete = document.getElementById("btnDelete");
+        const openSetup = document.getElementById("openSetup");
         const openInvites = document.getElementById("openInvites");
         const openPositions = document.getElementById("openPositions");
         const openSummary = document.getElementById("openSummary");
@@ -659,6 +662,7 @@ const titleEl = document.getElementById("title");
         const canArchiveVenue = !!isAdmin && !demoReadonly;
         const canDeleteVenue = !!isAdmin && !demoReadonly;
         if (btnRename) btnRename.style.display = canAdminVenue ? "" : "none";
+        if (openSetup) openSetup.style.display = canAdminVenue ? "" : "none";
         if (btnArchive) btnArchive.style.display = canArchiveVenue ? "" : "none";
         if (btnUnarchive) btnUnarchive.style.display = canArchiveVenue ? "" : "none";
         if (btnDelete) btnDelete.style.display = canDeleteVenue ? "" : "none";
@@ -674,6 +678,7 @@ const titleEl = document.getElementById("title");
             openInvites.href = "/invites.html";
             return;
           }
+          if (openSetup) openSetup.href = `/owner-setup.html?venue_id=${encodeURIComponent(venueId)}`;
           openInvites.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;

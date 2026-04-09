@@ -423,3 +423,41 @@ export function getDemoState(resp) {
     restrictedReason: resp?.demo_restricted_reason || null,
   };
 }
+
+
+export function getSetupStatus(resp) {
+  return String(resp?.setup_status || resp?.status || "NOT_STARTED").trim().toUpperCase() || "NOT_STARTED";
+}
+
+export function getSetupPhase(resp) {
+  return String(resp?.setup_phase || resp?.phase || "PREPARE").trim().toUpperCase() || "PREPARE";
+}
+
+export function getSetupResumeStep(resp) {
+  return String(resp?.setup_resume_step || resp?.resume_step || "").trim();
+}
+
+export function getSetupProgress(resp) {
+  return {
+    total: Number(resp?.setup_progress_total ?? resp?.progress_total ?? 0) || 0,
+    done: Number(resp?.setup_progress_done ?? resp?.progress_done ?? 0) || 0,
+    resolved: Number(resp?.setup_progress_resolved ?? resp?.progress_resolved ?? 0) || 0,
+  };
+}
+
+export function isSetupPrepareDone(resp) {
+  return !!(resp?.setup_prepare_done ?? resp?.prepare_done);
+}
+
+export function isSetupExtraDone(resp) {
+  return !!(resp?.setup_extra_done ?? resp?.extra_done);
+}
+
+export function isSetupDone(resp) {
+  return getSetupStatus(resp) === "DONE";
+}
+
+export function hasPendingSetup(resp) {
+  const status = getSetupStatus(resp);
+  return !["PREPARE_DONE", "DONE"].includes(status);
+}
