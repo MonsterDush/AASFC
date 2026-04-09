@@ -794,6 +794,19 @@ export async function trackDemoEvent(eventName, payload = {}) {
   return postDemoTelemetry(eventName, payload);
 }
 
+function syncDemoTourStateToPage(persona = null, pageCfg = null) {
+  const currentState = getStoredDemoUiState();
+  const resolvedPersona = String(persona || currentState?.demo_persona || "OWNER").toUpperCase();
+  const cfg = pageCfg || __pageTourConfigFor();
+  if (!cfg || String(cfg.persona || resolvedPersona).toUpperCase() !== resolvedPersona) {
+    return readDemoTourState(resolvedPersona);
+  }
+  const currentTour = readDemoTourState(resolvedPersona);
+  const targetIndex = Math.max(0, Number(cfg.step || 1) - 1);
+  if (Number(currentTour.index || 0) === targetIndex) return currentTour;
+  return writeDemoTourState({ ...currentTour, index: targetIndex });
+}
+
 export function mountDemoPageTour(config = {}) {
   if (!isBrowser()) return null;
   const currentState = getStoredDemoUiState();
@@ -812,6 +825,7 @@ export function mountDemoPageTour(config = {}) {
     persona,
   };
   __demoPageTourConfig.set(key, normalized);
+  syncDemoTourStateToPage(persona, normalized);
   setTimeout(() => maybeAutoStartDemoTour(), 0);
   return normalized;
 }
@@ -933,8 +947,11 @@ function navigateDemoTour(direction = 1) {
   const persona = currentState?.demo_persona || "OWNER";
   const pageCfg = __pageTourConfigFor();
   if (pageCfg) {
+    const syncedState = syncDemoTourStateToPage(persona, pageCfg);
     if (Number(direction || 0) < 0) {
       if (pageCfg.prevPath) {
+        const prevIndex = Math.max(0, Number(pageCfg.step || 1) - 2);
+        writeDemoTourState({ ...syncedState, index: prevIndex, hidden: false, completed: false });
         location.href = routeWithVenue(pageCfg.prevPath, currentState?.demo_venue_id);
       } else {
         removeDemoTourOverlay();
@@ -943,6 +960,8 @@ function navigateDemoTour(direction = 1) {
       return;
     }
     if (pageCfg.nextPath) {
+      const nextIndex = Math.max(0, Number(pageCfg.step || 1));
+      writeDemoTourState({ ...syncedState, index: nextIndex, hidden: false, completed: false });
       location.href = routeWithVenue(pageCfg.nextPath, currentState?.demo_venue_id);
       return;
     }
@@ -1005,8 +1024,11 @@ function maybeAutoStartDemoTour() {
   clearTimeout(__demoTourRetryTimer);
 
   const persona = String(currentState.demo_persona || "OWNER").toUpperCase();
-  const state = readDemoTourState(persona);
+  let state = readDemoTourState(persona);
   const pageCfg = __pageTourConfigFor();
+  if (pageCfg) {
+    state = syncDemoTourStateToPage(persona, pageCfg);
+  }
   const info = currentTourStep(persona, state.index);
 
   if (pageCfg) {
