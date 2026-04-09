@@ -11,6 +11,7 @@ import {
   getStoredDemoUiState,
   isDemoReadonlyUi,
   getDemoMonthLabel,
+  coerceDemoMonth,
 } from "/app.js";
 
 
@@ -124,6 +125,11 @@ curMonth.setDate(1);
 let perms = null;
 const demoState = getStoredDemoUiState();
 const demoReadonly = isDemoReadonlyUi(demoState);
+const demoMonth = coerceDemoMonth(ym(curMonth), { source: demoState, notify: false });
+const demoMonthMatch = String(demoMonth || "").match(/^(\d{4})-(\d{2})$/);
+if (demoMonthMatch) {
+  curMonth = new Date(Number(demoMonthMatch[1]), Number(demoMonthMatch[2]) - 1, 1);
+}
 
 function hasManageAccess() {
   const pset = permSetFromResponse(perms);
