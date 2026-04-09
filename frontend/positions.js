@@ -20,6 +20,7 @@ import {
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
+import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPermissionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260409-setup-polish1";
 
 const root = document.getElementById("root");
 
@@ -258,50 +259,48 @@ async function ensurePermissionTemplates() {
   if (Array.isArray(state.permissionTemplates)) return state.permissionTemplates;
   try {
     const resp = await api('/position-permission-templates');
-    state.permissionTemplates = Array.isArray(resp?.items) ? resp.items : [];
+    state.permissionTemplates = normalizePermissionTemplates(resp?.items || []);
   } catch {
-    state.permissionTemplates = [];
+    state.permissionTemplates = normalizePermissionTemplates([]);
   }
   return state.permissionTemplates;
 }
 
 function getPermissionTemplateById(templateId) {
-  return (Array.isArray(state.permissionTemplates) ? state.permissionTemplates : []).find((item) => String(item?.id || "") === String(templateId || "")) || null;
+  return getSharedPermissionTemplateById(state.permissionTemplates, templateId);
 }
 
 function renderPermissionTemplateSelect(selectedId = "") {
-  const current = String(selectedId || "");
-  const items = Array.isArray(state.permissionTemplates) ? state.permissionTemplates.filter((item) => item?.is_active !== false) : [];
-  return ['<option value="">— выбрать шаблон прав —</option>']
-    .concat(items.map((item) => `<option value="${esc(item.id)}" ${String(item.id) === current ? "selected" : ""}>${esc(item.title || `Шаблон #${item.id}`)}${item.is_system ? " · system" : ""}</option>`))
-    .join("");
+  return buildPermissionTemplateOptions(state.permissionTemplates, {
+    selectedId,
+    emptyLabel: "— выбрать шаблон прав —",
+    includeSystemBadge: true,
+  });
 }
 
 function renderTemplateSummaryBlock(templateId = "") {
-  const tpl = getPermissionTemplateById(templateId);
-  if (!tpl) return `<div class="muted" id="f_perm_template_summary">Шаблон не выбран. Можно включить права вручную ниже.</div>`;
-  const labels = Array.isArray(tpl?.permission_summary?.summary_labels) ? tpl.permission_summary.summary_labels : [];
-  return `
-    <div id="f_perm_template_summary">
-      <div class="muted">${esc(tpl.description || "Шаблон без описания")}</div>
-      <div class="row" style="gap:6px; flex-wrap:wrap; margin-top:6px">${labels.length ? labels.map((label) => `<span class="badge">${esc(label)}</span>`).join("") : `<span class="muted">Прав: ${Number(tpl?.permission_summary?.permission_count || (tpl.permission_codes || []).length || 0)}</span>`}</div>
-    </div>
-  `;
+  return renderPermissionTemplateSummaryById(state.permissionTemplates, templateId, {
+    emptyText: "Шаблон не выбран. Можно включить права вручную ниже.",
+    noDescriptionText: "Шаблон без описания",
+    wrapId: "f_perm_template_summary",
+  });
 }
 
 function applyPermissionTemplateToModal(templateId) {
-  const template = getPermissionTemplateById(templateId);
-  if (!template) return false;
-  const titleEl = document.getElementById('f_title');
-  if (titleEl && !String(titleEl.value || "").trim() && template.title) titleEl.value = String(template.title || "").trim();
-  const selected = new Set((template.permission_codes || []).map((code) => String(code || "").trim().toUpperCase()));
-  document.querySelectorAll('input[data-perm-code]').forEach((el) => {
-    const code = String(el.getAttribute('data-perm-code') || "").trim().toUpperCase();
-    el.checked = selected.has(code);
+  return applyPermissionTemplateToCheckboxHost({
+    templates: state.permissionTemplates,
+    templateId,
+    checkboxSelector: 'input[data-perm-code]',
+    checkboxAttr: 'data-perm-code',
+    summaryHost: document.getElementById('f_perm_template_summary_wrap'),
+    titleInput: document.getElementById('f_title'),
+    fillTitleWhenEmpty: true,
+    summaryOptions: {
+      emptyText: "Шаблон не выбран. Можно включить права вручную ниже.",
+      noDescriptionText: "Шаблон без описания",
+      wrapId: "f_perm_template_summary",
+    },
   });
-  const summaryHost = document.getElementById('f_perm_template_summary_wrap');
-  if (summaryHost) summaryHost.innerHTML = renderTemplateSummaryBlock(templateId);
-  return true;
 }
 
 /* ---------- Page shell ---------- */

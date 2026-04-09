@@ -39,6 +39,7 @@ import {
   isSetupDone,
   isSetupPrepareDone,
 } from "/permissions.js?v=20260409-setup2";
+import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPositionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260409-setup-polish1";
 
 applyTelegramTheme();
 mountCommonUI("venue");
@@ -474,48 +475,44 @@ async function ensurePositionPermissionTemplates() {
   if (Array.isArray(state.positionPermissionTemplates)) return state.positionPermissionTemplates;
   try {
     const resp = await api("/position-permission-templates");
-    state.positionPermissionTemplates = Array.isArray(resp?.items) ? resp.items : [];
+    state.positionPermissionTemplates = normalizePermissionTemplates(resp?.items || []);
   } catch {
-    state.positionPermissionTemplates = [];
+    state.positionPermissionTemplates = normalizePermissionTemplates([]);
   }
   return state.positionPermissionTemplates;
 }
 
 function getPositionTemplateById(templateId) {
-  return (Array.isArray(state.positionPermissionTemplates) ? state.positionPermissionTemplates : []).find((item) => String(item?.id || "") === String(templateId || "")) || null;
+  return getSharedPositionTemplateById(state.positionPermissionTemplates, templateId);
 }
 
 function buildPositionTemplateOptions(selectedId = "") {
-  const current = String(selectedId || "");
-  const items = Array.isArray(state.positionPermissionTemplates) ? state.positionPermissionTemplates.filter((item) => item?.is_active !== false) : [];
-  return ['<option value="">Без шаблона</option>']
-    .concat(items.map((item) => `<option value="${esc(item.id)}" ${String(item.id) === current ? "selected" : ""}>${esc(item.title)}${item.is_system ? " · system" : ""}</option>`))
-    .join("");
+  return buildPermissionTemplateOptions(state.positionPermissionTemplates, {
+    selectedId,
+    emptyLabel: "Без шаблона",
+    includeSystemBadge: true,
+  });
 }
 
 function renderPositionTemplateSummary(templateId = "") {
-  const template = getPositionTemplateById(templateId);
-  if (!template) return `<div class="muted">Шаблон не выбран. Можно собрать права вручную ниже.</div>`;
-  const labels = Array.isArray(template?.permission_summary?.summary_labels) ? template.permission_summary.summary_labels : [];
-  return `
-    <div>
-      <div class="muted">${esc(template.description || "Шаблон без описания")}</div>
-      <div class="row" style="gap:6px; flex-wrap:wrap; margin-top:6px">${labels.length ? labels.map((label) => `<span class="badge">${esc(label)}</span>`).join("") : `<span class="muted">Прав: ${Number(template?.permission_summary?.permission_count || (template.permission_codes || []).length || 0)}</span>`}</div>
-    </div>
-  `;
+  return renderPermissionTemplateSummaryById(state.positionPermissionTemplates, templateId, {
+    emptyText: "Шаблон не выбран. Можно собрать права вручную ниже.",
+    noDescriptionText: "Шаблон без описания",
+  });
 }
 
 function applyPositionTemplateSelection(host, templateId) {
-  const template = getPositionTemplateById(templateId);
-  if (!template) return false;
-  const selected = new Set((template.permission_codes || []).map((code) => String(code || "").trim().toUpperCase()));
-  host.querySelectorAll('input[data-preset-perm-code]').forEach((el) => {
-    const code = String(el.getAttribute('data-preset-perm-code') || "").trim().toUpperCase();
-    el.checked = selected.has(code);
+  return applyPermissionTemplateToCheckboxHost({
+    templates: state.positionPermissionTemplates,
+    templateId,
+    checkboxSelector: 'input[data-preset-perm-code]',
+    checkboxAttr: 'data-preset-perm-code',
+    summaryHost: host.querySelector('#positionPresetTemplateSummary'),
+    summaryOptions: {
+      emptyText: "Шаблон не выбран. Можно собрать права вручную ниже.",
+      noDescriptionText: "Шаблон без описания",
+    },
   });
-  const summary = host.querySelector('#positionPresetTemplateSummary');
-  if (summary) summary.innerHTML = renderPositionTemplateSummary(templateId);
-  return true;
 }
 
 function parsePermissionCodes(value) {
