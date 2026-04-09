@@ -177,7 +177,7 @@
 
   <script type="module">
     import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js";
-    import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260331-billing2";
+    import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSetupDone, isSetupPrepareDone, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260409-setup5";
 
     applyTelegramTheme();
     mountCommonUI("venue");
@@ -258,6 +258,7 @@
         let billingReadonly = false;
         let billingInfo = null;
         let demoReadonly = false;
+        let currentVenueSummary = null;
 
         try {
           const me = await getMe().catch(() => null);
@@ -330,8 +331,14 @@ const titleEl = document.getElementById("title");
         const membersCard = document.getElementById("membersCard");
 
         const pageRootCard = document.querySelector(".card.section-card");
-        if (pageRootCard && !document.getElementById("billingTopNotice")) {
+        if (pageRootCard && !document.getElementById("setupTopNotice")) {
           archiveNotice?.insertAdjacentHTML("afterend", `
+            <div class="itemcard mt-12 hidden" id="setupTopNotice"></div>
+          `);
+        }
+        const setupTopNotice = document.getElementById("setupTopNotice");
+        if (pageRootCard && !document.getElementById("billingTopNotice")) {
+          (setupTopNotice || archiveNotice)?.insertAdjacentHTML("afterend", `
             <div class="itemcard mt-12 hidden" id="billingTopNotice"></div>
           `);
         }
@@ -519,6 +526,83 @@ const titleEl = document.getElementById("title");
           }
         }
 
+        function getSetupSource() {
+          return currentVenueSummary || perms || {};
+        }
+
+        function buildSetupHref(source) {
+          const resumeStep = getSetupResumeStep(source);
+          const prepareDone = isSetupPrepareDone(source);
+          const params = new URLSearchParams();
+          params.set("venue_id", String(venueId));
+          params.set("phase", prepareDone ? "extra" : "prepare");
+          if (resumeStep) params.set("step", String(resumeStep));
+          return `/owner-setup.html?${params.toString()}`;
+        }
+
+        function refreshSetupEntryPoint() {
+          if (!openSetup) return;
+          const source = getSetupSource();
+          openSetup.href = buildSetupHref(source);
+          openSetup.textContent = getSetupActionLabel(source);
+        }
+
+        function renderSetupWidgets() {
+          if (!setupTopNotice) return;
+          if (!venueId || !(isOwner || isAdmin) || demoReadonly || billingReadonly) {
+            setupTopNotice.classList.add("hidden");
+            refreshSetupEntryPoint();
+            return;
+          }
+
+          const source = getSetupSource();
+          const status = getSetupStatus(source);
+          const progress = getSetupProgress(source);
+          const prepareDone = isSetupPrepareDone(source);
+          const done = isSetupDone(source);
+          const actionHref = buildSetupHref(source);
+          const actionLabel = getSetupActionLabel(source);
+          const resolved = Number(progress.resolved || progress.done || 0) || 0;
+          const total = Number(progress.total || 0) || 0;
+          const unresolved = Math.max(total - resolved, 0);
+          refreshSetupEntryPoint();
+
+          if (done) {
+            setupTopNotice.classList.add("hidden");
+            return;
+          }
+
+          const title = prepareDone
+            ? "Базовая настройка завершена"
+            : (status === "NOT_STARTED" ? "Подготовь заведение к работе" : "Базовая настройка ещё не завершена");
+          const subtitle = prepareDone
+            ? "Можно перейти к дополнительной настройке: расходы, поставщики и регулярные правила."
+            : "Пройди базовые шаги, чтобы отчёты, должности, команда и график были готовы к запуску.";
+          const progressText = total > 0
+            ? (prepareDone
+              ? `Общий прогресс мастера: ${resolved} из ${total}. Дополнительных шагов осталось: ${unresolved}.`
+              : `Готово ${resolved} из ${total} шагов. Осталось пройти ещё ${unresolved}.`)
+            : (prepareDone ? "Базовая часть уже готова. Можно добить дополнительную настройку позже." : "Мастер пока не запускался.");
+          const extraHint = prepareDone
+            ? "Эти шаги не блокируют запуск, но помогают быстрее завести расходы и регулярные правила без ручной доводки."
+            : "После завершения базового этапа сверху здесь же появится предложение добить дополнительную настройку.";
+          setupTopNotice.innerHTML = `
+            <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+              <div style="min-width:0;flex:1 1 340px;">
+                <b>${esc(title)}</b>
+                <div class="muted mt-6">${esc(subtitle)}</div>
+                <div class="muted mt-6">${esc(progressText)}</div>
+                <div class="muted mt-6">${esc(extraHint)}</div>
+              </div>
+              <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
+                <a class="btn" href="${actionHref}">${esc(actionLabel)}</a>
+                ${prepareDone ? `<a class="btn subtle" href="/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}">Расходы</a>` : `<a class="btn subtle" href="/owner-pay-profiles.html?venue_id=${encodeURIComponent(venueId)}">Профили зарплаты</a>`}
+              </div>
+            </div>
+          `;
+          setupTopNotice.classList.remove("hidden");
+        }
+
         function renderBillingWidgets() {
           if (!(isOwner || isAdmin)) {
             if (billingTopNotice) billingTopNotice.classList.add("hidden");
@@ -587,6 +671,7 @@ const titleEl = document.getElementById("title");
         function applyBillingReadonlyUi() {
           billingReadonly = String(billingAccessMode || "FULL").toUpperCase() !== "FULL" && (isOwner || isAdmin);
           if (!billingReadonly) {
+            renderSetupWidgets();
             renderBillingWidgets();
             return;
           }
@@ -617,6 +702,7 @@ const titleEl = document.getElementById("title");
           if (btnLeave) btnLeave.style.display = "none";
           if (btnDelete) btnDelete.style.display = "none";
           if (openSetup) openSetup.style.display = "none";
+          if (setupTopNotice) setupTopNotice.classList.add("hidden");
 
           metaHint.textContent = "Доступ к рабочим разделам временно ограничен. Можно только просмотреть статус заведения и продлить доступ.";
           renderBillingWidgets();
@@ -678,7 +764,7 @@ const titleEl = document.getElementById("title");
             openInvites.href = "/invites.html";
             return;
           }
-          if (openSetup) openSetup.href = `/owner-setup.html?venue_id=${encodeURIComponent(venueId)}`;
+          refreshSetupEntryPoint();
           openInvites.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
@@ -891,6 +977,7 @@ if (tipsModeEl) {
           try {
             const v = await getVenueById(venueId);
             if (v) {
+              currentVenueSummary = v;
               last.name = v.name || "";
               last.is_archived = !!v.is_archived;
               titleEl.textContent = v.name || "Заведение";
@@ -922,6 +1009,7 @@ if (tipsModeEl) {
           syncTipsControls();
 
           applyButtons();
+          renderSetupWidgets();
           applyBillingReadonlyUi();
         }
 

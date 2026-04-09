@@ -457,6 +457,22 @@ export function isSetupDone(resp) {
   return getSetupStatus(resp) === "DONE";
 }
 
+export function needsPrepareSetup(resp) {
+  return !isSetupPrepareDone(resp);
+}
+
+export function needsExtraSetup(resp) {
+  return isSetupPrepareDone(resp) && !isSetupDone(resp);
+}
+
+export function getSetupActionLabel(resp) {
+  if (needsPrepareSetup(resp)) {
+    return getSetupStatus(resp) === "NOT_STARTED" ? "Начать настройку" : "Продолжить настройку";
+  }
+  if (needsExtraSetup(resp)) return "Доп. настройка";
+  return "Мастер настройки";
+}
+
 export function hasPendingSetup(resp) {
   const status = getSetupStatus(resp);
   return !["PREPARE_DONE", "DONE"].includes(status);
