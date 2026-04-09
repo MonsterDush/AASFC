@@ -164,7 +164,7 @@ const STATUS_LABELS = {
   LOCKED: "Недоступно",
 };
 
-const INLINE_STEP_KEYS = new Set(["welcome", "payment_methods", "departments", "kpi", "pay_profiles", "positions", "invites", "shift_intervals"]);
+const INLINE_STEP_KEYS = new Set(["welcome", "payment_methods", "departments", "kpi", "pay_profiles", "positions", "invites", "shift_intervals", "expense_categories", "suppliers", "recurring_expenses"]);
 
 const CATALOG_CONFIG = {
   payment_methods: {
@@ -208,6 +208,28 @@ const CATALOG_CONFIG = {
     update: async (venueId, itemId, payload) => updateKpiMetric(venueId, itemId, payload),
     includeUnit: true,
     skippableInline: true,
+    skipLabel: "KPI пока не нужны",
+    skipConfirmTitle: "Отложить KPI?",
+    skipConfirmText: "Этот шаг будет помечен как отложенный. К нему можно будет вернутьcя в любой момент.",
+  },
+  expense_categories: {
+    title: "категорию",
+    titlePlural: "категории расходов",
+    listLabel: "Настроенные категории расходов",
+    emptyText: "Пока нет категорий расходов. Можно добавить базовые категории сейчас или отложить шаг на потом.",
+    createCta: "+ Добавить категорию",
+    activeHint: "Доступна при создании расхода",
+    archivedHint: "Скрыта из списка расходов",
+    load: async (venueId) => api(`/venues/${encodeURIComponent(venueId)}/expense-categories?include_archived=true`),
+    create: async (venueId, payload) => api(`/venues/${encodeURIComponent(venueId)}/expense-categories`, { method: "POST", body: payload }),
+    update: async (venueId, itemId, payload) => api(`/venues/${encodeURIComponent(venueId)}/expense-categories/${encodeURIComponent(itemId)}`, { method: "PATCH", body: payload }),
+    includeUnit: false,
+    createTitle: "Новая категория расходов",
+    editTitle: "Изменить категорию расходов",
+    skippableInline: true,
+    skipLabel: "Категории добавлю позже",
+    skipConfirmTitle: "Отложить категории расходов?",
+    skipConfirmText: "Шаг будет помечен как отложенный. Категории можно будет добавить позже без потери прогресса.",
   },
 };
 
@@ -228,6 +250,9 @@ const state = {
     positions: { presets: null, editorId: null, loading: false },
     invites: { data: null, loading: false },
     shift_intervals: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
+    expense_categories: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
+    suppliers: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
+    recurring_expenses: { items: null, categories: null, suppliers: null, paymentMethods: null, showInactive: false, editor: { mode: "create", id: null }, loading: false },
   },
   permissionsCatalog: null,
 };
@@ -268,6 +293,46 @@ function ensureUniqueCode(baseCode, items = [], currentId = null) {
   return `${code}_${idx}`;
 }
 
+
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function parseMoneyToMinor(value) {
+  const normalized = String(value ?? "").trim().replace(/\s+/g, "").replace(",", ".");
+  if (!normalized) return 0;
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) throw new Error("Введите сумму в формате 1234.56");
+  return Math.round(Number(normalized) * 100);
+}
+
+function minorToMoneyInput(minor) {
+  if (minor == null || minor === "") return "";
+  return (Number(minor || 0) / 100).toFixed(2);
+}
+
+function buildSelectOptions(items = [], current = "", placeholder = "—") {
+  const currentValue = String(current ?? "");
+  return [`<option value="">${esc(placeholder)}</option>`]
+    .concat((Array.isArray(items) ? items : []).map((item) => `<option value="${esc(item.id)}" ${String(item.id) === currentValue ? "selected" : ""}>${esc(item.title || `#${item.id}`)}</option>`))
+    .join("");
+}
+
+function recurringModeLabel(value) {
+  return String(value || "FIXED").toUpperCase() === "PERCENT" ? "Процент" : "Фикс";
+}
+
+function buildBasisPaymentMethodCheckboxes(items = [], selectedIds = []) {
+  const selected = new Set((selectedIds || []).map((x) => String(x)));
+  if (!Array.isArray(items) || !items.length) return `<div class="muted">Нет доступных типов оплат.</div>`;
+  return items.map((pm) => `
+    <label class="checkline checkline--block">
+      <input type="checkbox" name="recurringBasisPaymentMethod" value="${esc(pm.id)}" ${selected.has(String(pm.id)) ? "checked" : ""} />
+      <span class="checkline__text">${esc(pm.title)}</span>
+    </label>
+  `).join("");
+}
 
 function fmtDateTime(value) {
   if (!value) return "—";
@@ -832,7 +897,7 @@ function renderCatalogEditor(stepKey, items, currentStep) {
         </div>
 
         <div class="setup-formcard">
-          <div class="setup-editor__title">${mode === "edit" ? `Изменить ${cfg.title}` : `Новый ${cfg.title}`}</div>
+          <div class="setup-editor__title">${mode === "edit" ? (cfg.editTitle || `Изменить ${cfg.title}`) : (cfg.createTitle || `Новый ${cfg.title}`)}</div>
           <div class="muted mt-6">${mode === "edit" ? "Сохрани изменения и шаг останется завершённым." : "Можно создать базовые элементы прямо здесь и сразу продолжить настройку."}</div>
           <div class="setup-formgrid mt-12">
             <label>
@@ -864,7 +929,7 @@ function renderCatalogEditor(stepKey, items, currentStep) {
       <div class="setup-actionbar mt-14">
         ${activeCount > 0 && !currentStep.completed ? `<button class="btn" id="btnInlineComplete" type="button">Подтвердить шаг</button>` : ""}
         ${activeCount > 0 && !currentStep.completed ? `<button class="btn subtle" id="btnInlineCompleteNext" type="button">Подтвердить и дальше</button>` : ""}
-        ${cfg.skippableInline && !currentStep.completed && !currentStep.skipped ? `<button class="btn subtle" id="btnInlineSkip" type="button">KPI пока не нужны</button>` : ""}
+        ${cfg.skippableInline && !currentStep.completed && !currentStep.skipped ? `<button class="btn subtle" id="btnInlineSkip" type="button">${esc(cfg.skipLabel || "Вернуться позже")}</button>` : ""}
       </div>
     </div>
   `;
@@ -966,7 +1031,7 @@ async function mountCatalogEditor(currentStep) {
   host.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
   const items = await loadInlineCatalogItems(stepKey);
   const activeCount = items.filter((item) => item.is_active).length;
-  if ((stepKey === "payment_methods" || stepKey === "departments" || stepKey === "kpi") && Number(currentStep.count || 0) !== activeCount && !(stepKey === "kpi" && currentStep.skipped)) {
+  if (stepKey in CATALOG_CONFIG && Number(currentStep.count || 0) !== activeCount && !(cfg.skippableInline && currentStep.skipped)) {
     await loadSetup({ preserveSelection: true });
     return;
   }
@@ -1088,8 +1153,8 @@ async function mountCatalogEditor(currentStep) {
 
   document.getElementById("btnInlineSkip")?.addEventListener("click", async () => {
     const ok = await confirmModal({
-      title: "Отложить KPI?",
-      text: "Этот шаг будет помечен как отложенный. К нему можно будет вернуться в любой момент.",
+      title: cfg.skipConfirmTitle || "Отложить шаг?",
+      text: cfg.skipConfirmText || "Этот шаг будет помечен как отложенный. К нему можно будет вернуться в любой момент.",
       confirmText: "Отложить",
       danger: false,
     });
@@ -1126,6 +1191,14 @@ async function mountInlineEditor(currentStep) {
   }
   if (currentStep.key === "shift_intervals") {
     await mountShiftIntervalsEditor(getStepByKey("shift_intervals") || currentStep);
+    return;
+  }
+  if (currentStep.key === "suppliers") {
+    await mountSuppliersEditor(getStepByKey("suppliers") || currentStep);
+    return;
+  }
+  if (currentStep.key === "recurring_expenses") {
+    await mountRecurringExpensesEditor(getStepByKey("recurring_expenses") || currentStep);
     return;
   }
   await mountCatalogEditor(getStepByKey(currentStep.key) || currentStep);
@@ -1982,6 +2055,470 @@ async function mountShiftIntervalsEditor(currentStep) {
       if (next) moveToStep(next);
     } catch (e) {
       toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+}
+
+
+async function loadInlineSuppliers({ force = false } = {}) {
+  const inlineState = state.inline.suppliers;
+  if (!force && Array.isArray(inlineState.items)) return inlineState.items;
+  inlineState.loading = true;
+  try {
+    const items = await api(`/venues/${encodeURIComponent(state.venueId)}/suppliers?include_archived=true`);
+    inlineState.items = Array.isArray(items) ? items : [];
+    return inlineState.items;
+  } finally {
+    inlineState.loading = false;
+  }
+}
+
+function renderSuppliersEditor(items, currentStep) {
+  const inlineState = state.inline.suppliers;
+  const showArchived = !!inlineState.showArchived;
+  const visibleItems = showArchived ? items : items.filter((item) => item.is_active !== false);
+  const activeCount = items.filter((item) => item.is_active !== false).length;
+  const editingId = inlineState.editor?.id;
+  const editing = editingId ? items.find((item) => String(item.id) === String(editingId)) : null;
+  return `
+    <div class="setup-editor__panel">
+      <div class="setup-editor__toolbar">
+        <div class="setup-inline-list setup-inline-list--compact">
+          <span class="setup-chip">Активных: ${activeCount}</span>
+          <span class="setup-chip">Всего: ${items.length}</span>
+        </div>
+        <label class="setup-toggle">
+          <input type="checkbox" id="inlineShowArchivedSuppliers" ${showArchived ? "checked" : ""} />
+          <span>Показывать архив</span>
+        </label>
+      </div>
+      <div class="setup-editor__grid mt-12">
+        <div>
+          <div class="setup-editor__title">Настроенные поставщики</div>
+          <div class="setup-minirows mt-8">
+            ${visibleItems.length ? visibleItems.map((item) => `
+              <div class="setup-minirow">
+                <div class="setup-minirow__main">
+                  <div class="setup-minirow__titlewrap">
+                    <b>${esc(item.title)}</b>
+                    ${item.is_active === false ? '<span class="badge">архив</span>' : ''}
+                  </div>
+                  <div class="setup-minirow__meta">${esc(item.contact || 'Контакты не указаны')}</div>
+                </div>
+                <div class="setup-minirow__actions">
+                  <button class="btn sm" type="button" data-edit-supplier="${esc(item.id)}">Изменить</button>
+                  <button class="btn sm ${item.is_active === false ? '' : 'danger'}" type="button" data-toggle-supplier="${esc(item.id)}">${item.is_active === false ? 'Вернуть' : 'В архив'}</button>
+                </div>
+              </div>`).join('') : '<div class="setup-empty">Пока нет поставщиков. Этот шаг можно отложить и вернуться позже.</div>'}
+          </div>
+        </div>
+        <div class="setup-formcard">
+          <div class="setup-editor__title">${editing ? 'Редактировать поставщика' : 'Новый поставщик'}</div>
+          <div class="muted mt-6">Поставщики ускоряют занесение расходов и помогают держать закупки в порядке.</div>
+          <div class="setup-formgrid mt-12">
+            <label>
+              <span>Название</span>
+              <input class="input" id="supplierTitle" placeholder="Например, ООО Поставщик" value="${esc(editing?.title || '')}" />
+            </label>
+            <label>
+              <span>Контакт</span>
+              <input class="input" id="supplierContact" placeholder="Телефон, Telegram, email" value="${esc(editing?.contact || '')}" />
+            </label>
+            <label>
+              <span>Активность</span>
+              <select class="input" id="supplierActive">
+                <option value="1" ${editing?.is_active === false ? '' : 'selected'}>Активен</option>
+                <option value="0" ${editing?.is_active === false ? 'selected' : ''}>Неактивен</option>
+              </select>
+            </label>
+          </div>
+          <div class="setup-actionbar mt-12">
+            <button class="btn primary" id="btnSaveSupplierInline" type="button">${editing ? 'Сохранить' : 'Создать'}</button>
+            ${editing ? '<button class="btn subtle" id="btnCancelSupplierEdit" type="button">Отмена</button>' : ''}
+            <button class="btn subtle" id="btnReloadSuppliersInline" type="button">Обновить список</button>
+          </div>
+        </div>
+      </div>
+      <div class="setup-actionbar mt-14">
+        ${activeCount > 0 && !currentStep.completed ? '<button class="btn" id="btnInlineCompleteSuppliers" type="button">Подтвердить шаг</button>' : ''}
+        ${activeCount > 0 && !currentStep.completed ? '<button class="btn subtle" id="btnInlineCompleteSuppliersNext" type="button">Подтвердить и дальше</button>' : ''}
+        ${!currentStep.completed && !currentStep.skipped ? '<button class="btn subtle" id="btnInlineSkipSuppliers" type="button">Поставщиков добавлю позже</button>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function mountSuppliersEditor(currentStep) {
+  const host = document.getElementById('setupInlineEditor');
+  if (!host) return;
+  host.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+  const items = await loadInlineSuppliers();
+  if (Number(currentStep.count || 0) !== items.filter((item) => item.is_active !== false).length && !currentStep.skipped) {
+    await loadSetup({ preserveSelection: true });
+    return;
+  }
+  host.innerHTML = renderSuppliersEditor(items, getStepByKey('suppliers') || currentStep);
+  const inlineState = state.inline.suppliers;
+
+  document.getElementById('inlineShowArchivedSuppliers')?.addEventListener('change', async (e) => {
+    inlineState.showArchived = !!e.target?.checked;
+    await mountSuppliersEditor(getStepByKey('suppliers') || currentStep);
+  });
+
+  document.getElementById('btnReloadSuppliersInline')?.addEventListener('click', async () => {
+    await loadInlineSuppliers({ force: true });
+    await loadSetup({ preserveSelection: true });
+    await mountSuppliersEditor(getStepByKey('suppliers') || currentStep);
+    toast('Список обновлён', 'ok');
+  });
+
+  document.getElementById('btnCancelSupplierEdit')?.addEventListener('click', async () => {
+    inlineState.editor = { mode: 'create', id: null };
+    await mountSuppliersEditor(getStepByKey('suppliers') || currentStep);
+  });
+
+  document.getElementById('btnSaveSupplierInline')?.addEventListener('click', async () => {
+    const title = String(document.getElementById('supplierTitle')?.value || '').trim();
+    const contact = String(document.getElementById('supplierContact')?.value || '').trim() || null;
+    const is_active = String(document.getElementById('supplierActive')?.value || '1') === '1';
+    if (!title) return toast('Укажи название поставщика', 'err');
+    const sortOrderBase = Math.max(0, ...(items || []).map((item) => Number(item.sort_order || 0))) || 0;
+    const payload = { title, contact, is_active, sort_order: inlineState.editor?.id ? undefined : (sortOrderBase + 10) };
+    try {
+      if (inlineState.editor?.id) await api(`/venues/${encodeURIComponent(state.venueId)}/suppliers/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: payload });
+      else await api(`/venues/${encodeURIComponent(state.venueId)}/suppliers`, { method: 'POST', body: payload });
+      inlineState.editor = { mode: 'create', id: null };
+      await loadInlineSuppliers({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountSuppliersEditor(getStepByKey('suppliers') || currentStep);
+      if (!currentStep.completed) {
+        try {
+          await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'suppliers' } });
+          await loadSetup({ preserveSelection: true });
+        } catch {}
+      }
+      toast('Поставщик сохранён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось сохранить поставщика', 'err');
+    }
+  });
+
+  host.querySelectorAll('[data-edit-supplier]').forEach((btn) => btn.addEventListener('click', async () => {
+    inlineState.editor = { mode: 'edit', id: btn.getAttribute('data-edit-supplier') || null };
+    await mountSuppliersEditor(getStepByKey('suppliers') || currentStep);
+  }));
+
+  host.querySelectorAll('[data-toggle-supplier]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-toggle-supplier') || '';
+    const item = (state.inline.suppliers.items || []).find((row) => String(row.id) === String(id));
+    if (!item) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/suppliers/${encodeURIComponent(item.id)}`, { method: 'PATCH', body: { is_active: !(item.is_active !== false) } });
+      await loadInlineSuppliers({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountSuppliersEditor(getStepByKey('suppliers') || currentStep);
+      toast('Поставщик обновлён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось обновить поставщика', 'err');
+    }
+  }));
+
+  document.getElementById('btnInlineCompleteSuppliers')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'suppliers' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+
+  document.getElementById('btnInlineCompleteSuppliersNext')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'suppliers' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+      const next = getNextStepKey('suppliers');
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+
+  document.getElementById('btnInlineSkipSuppliers')?.addEventListener('click', async () => {
+    const ok = await confirmModal({ title: 'Отложить поставщиков?', text: 'Этот шаг можно завершить позже без потери прогресса мастера.', confirmText: 'Отложить', danger: false });
+    if (!ok) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/skip-step`, { method: 'POST', body: { step_key: 'suppliers' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг отложен', 'ok');
+      const next = getNextStepKey('suppliers');
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось отложить шаг', 'err');
+    }
+  });
+}
+
+async function loadInlineRecurringExpenses({ force = false } = {}) {
+  const inlineState = state.inline.recurring_expenses;
+  if (!force && Array.isArray(inlineState.items) && Array.isArray(inlineState.categories) && Array.isArray(inlineState.suppliers) && Array.isArray(inlineState.paymentMethods)) return inlineState;
+  inlineState.loading = true;
+  try {
+    const [items, categories, suppliers, paymentMethods] = await Promise.all([
+      api(`/venues/${encodeURIComponent(state.venueId)}/recurring-expense-rules`),
+      api(`/venues/${encodeURIComponent(state.venueId)}/expense-categories`),
+      api(`/venues/${encodeURIComponent(state.venueId)}/suppliers`),
+      getPaymentMethods(state.venueId, { includeArchived: false }).catch(() => []),
+    ]);
+    inlineState.items = Array.isArray(items) ? items : [];
+    inlineState.categories = Array.isArray(categories) ? categories : [];
+    inlineState.suppliers = Array.isArray(suppliers) ? suppliers : [];
+    inlineState.paymentMethods = Array.isArray(paymentMethods) ? paymentMethods : [];
+    return inlineState;
+  } finally {
+    inlineState.loading = false;
+  }
+}
+
+function renderRecurringExpensesEditor(data, currentStep) {
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const categories = Array.isArray(data?.categories) ? data.categories : [];
+  const suppliers = Array.isArray(data?.suppliers) ? data.suppliers : [];
+  const paymentMethods = Array.isArray(data?.paymentMethods) ? data.paymentMethods : [];
+  const inlineState = state.inline.recurring_expenses;
+  const showInactive = !!inlineState.showInactive;
+  const visibleItems = showInactive ? items : items.filter((item) => item.is_active !== false);
+  const activeCount = items.filter((item) => item.is_active !== false).length;
+  const editingId = inlineState.editor?.id;
+  const editing = editingId ? items.find((item) => String(item.id) === String(editingId)) : null;
+  const isPercent = String(editing?.generation_mode || 'FIXED').toUpperCase() === 'PERCENT';
+  return `
+    <div class="setup-editor__panel">
+      <div class="setup-editor__toolbar">
+        <div class="setup-inline-list setup-inline-list--compact">
+          <span class="setup-chip">Активных правил: ${activeCount}</span>
+          <span class="setup-chip">Всего: ${items.length}</span>
+        </div>
+        <label class="setup-toggle">
+          <input type="checkbox" id="inlineShowInactiveRecurring" ${showInactive ? 'checked' : ''} />
+          <span>Показывать неактивные</span>
+        </label>
+      </div>
+      <div class="setup-editor__grid mt-12">
+        <div>
+          <div class="setup-editor__title">Правила регулярных расходов</div>
+          <div class="setup-minirows mt-8">
+            ${visibleItems.length ? visibleItems.map((item) => `
+              <div class="setup-minirow">
+                <div class="setup-minirow__main">
+                  <div class="setup-minirow__titlewrap">
+                    <b>${esc(item.title || 'Без названия')}</b>
+                    <span class="badge">${esc(recurringModeLabel(item.generation_mode))}</span>
+                    ${item.is_active === false ? '<span class="badge">выключено</span>' : ''}
+                  </div>
+                  <div class="setup-minirow__meta">${esc(item.category?.title || 'Без категории')} · день ${esc(item.day_of_month || 1)} · ${String(item.generation_mode || 'FIXED').toUpperCase() === 'PERCENT' ? `${esc(minorToMoneyInput(item.percent_bps || 0))}%` : `${esc(minorToMoneyInput(item.amount_minor || 0))} ₽`}</div>
+                </div>
+                <div class="setup-minirow__actions">
+                  <button class="btn sm" type="button" data-edit-recurring="${esc(item.id)}">Изменить</button>
+                  <button class="btn sm ${item.is_active === false ? '' : 'danger'}" type="button" data-toggle-recurring="${esc(item.id)}">${item.is_active === false ? 'Включить' : 'Выключить'}</button>
+                  <button class="btn sm danger" type="button" data-delete-recurring="${esc(item.id)}">Удалить</button>
+                </div>
+              </div>`).join('') : '<div class="setup-empty">Пока нет правил. Можно добавить первое правило прямо здесь или отложить шаг на потом.</div>'}
+          </div>
+        </div>
+        <div class="setup-formcard">
+          <div class="setup-editor__title">${editing ? 'Редактировать правило' : 'Новое правило'}</div>
+          <div class="muted mt-6">Регулярные расходы помогают автоматизировать повторяющиеся траты без ручного ввода каждый месяц.</div>
+          ${!categories.length ? '<div class="setup-inline-note mt-12">Сначала создай хотя бы одну категорию расходов, иначе правило не получится сохранить.</div>' : `
+          <div class="setup-formgrid mt-12">
+            <label><span>Название</span><input class="input" id="recurringTitle" placeholder="Например, аренда" value="${esc(editing?.title || '')}" /></label>
+            <label><span>Категория</span><select class="input" id="recurringCategoryId">${buildSelectOptions(categories, editing?.category_id, 'Выбери категорию')}</select></label>
+            <label><span>Поставщик</span><select class="input" id="recurringSupplierId">${buildSelectOptions(suppliers, editing?.supplier_id, 'Без поставщика')}</select></label>
+            <label><span>Оплачивать через</span><select class="input" id="recurringPaymentMethodId">${buildSelectOptions(paymentMethods, editing?.payment_method_id, 'Не указано')}</select></label>
+            <label><span>Дата старта</span><input class="input" id="recurringStartDate" type="date" value="${esc(editing?.start_date || todayIso())}" /></label>
+            <label><span>Дата окончания</span><input class="input" id="recurringEndDate" type="date" value="${esc(editing?.end_date || '')}" /></label>
+            <label><span>День месяца</span><input class="input" id="recurringDayOfMonth" type="number" min="1" max="31" value="${esc(editing?.day_of_month || 1)}" /></label>
+            <label><span>Размазать на месяцев</span><input class="input" id="recurringSpreadMonths" type="number" min="1" max="120" value="${esc(editing?.spread_months || 1)}" /></label>
+            <label><span>Режим</span><select class="input" id="recurringGenerationMode"><option value="FIXED" ${isPercent ? '' : 'selected'}>Фиксированная сумма</option><option value="PERCENT" ${isPercent ? 'selected' : ''}>Процент от оплат</option></select></label>
+            <label id="recurringAmountWrap"><span>Сумма, ₽</span><input class="input" id="recurringAmount" placeholder="150000.00" value="${esc(minorToMoneyInput(editing?.amount_minor))}" /></label>
+            <label id="recurringPercentWrap"><span>Процент, %</span><input class="input" id="recurringPercent" placeholder="2.50" value="${esc(minorToMoneyInput(editing?.percent_bps))}" /></label>
+            <label><span>Активность</span><select class="input" id="recurringActive"><option value="1" ${editing?.is_active === false ? '' : 'selected'}>Активно</option><option value="0" ${editing?.is_active === false ? 'selected' : ''}>Неактивно</option></select></label>
+            <label class="setup-formgrid__full"><span>Комментарий</span><textarea class="input" id="recurringDescription" rows="3" placeholder="Например, аренда помещения">${esc(editing?.description || '')}</textarea></label>
+            <div class="setup-formgrid__full" id="recurringBasisWrap">
+              <span>База для процента</span>
+              <div class="finance-form mt-8">${buildBasisPaymentMethodCheckboxes(paymentMethods, editing?.payment_method_ids || [])}</div>
+            </div>
+          </div>
+          <div class="setup-actionbar mt-12">
+            <button class="btn primary" id="btnSaveRecurringInline" type="button">${editing ? 'Сохранить' : 'Создать'}</button>
+            ${editing ? '<button class="btn subtle" id="btnCancelRecurringEdit" type="button">Отмена</button>' : ''}
+            <button class="btn subtle" id="btnReloadRecurringInline" type="button">Обновить список</button>
+          </div>`}
+        </div>
+      </div>
+      <div class="setup-actionbar mt-14">
+        ${activeCount > 0 && !currentStep.completed ? '<button class="btn" id="btnInlineCompleteRecurring" type="button">Подтвердить шаг</button>' : ''}
+        ${activeCount > 0 && !currentStep.completed ? '<button class="btn subtle" id="btnInlineCompleteRecurringNext" type="button">Подтвердить и дальше</button>' : ''}
+        ${!currentStep.completed && !currentStep.skipped ? '<button class="btn subtle" id="btnInlineSkipRecurring" type="button">Регулярные правила добавлю позже</button>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+function syncRecurringModeVisibility() {
+  const mode = String(document.getElementById('recurringGenerationMode')?.value || 'FIXED').toUpperCase();
+  const amountWrap = document.getElementById('recurringAmountWrap');
+  const percentWrap = document.getElementById('recurringPercentWrap');
+  const basisWrap = document.getElementById('recurringBasisWrap');
+  if (amountWrap) amountWrap.style.display = mode === 'FIXED' ? '' : 'none';
+  if (percentWrap) percentWrap.style.display = mode === 'PERCENT' ? '' : 'none';
+  if (basisWrap) basisWrap.style.display = mode === 'PERCENT' ? '' : 'none';
+}
+
+async function mountRecurringExpensesEditor(currentStep) {
+  const host = document.getElementById('setupInlineEditor');
+  if (!host) return;
+  host.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+  const data = await loadInlineRecurringExpenses();
+  if (Number(currentStep.count || 0) !== (data.items || []).filter((item) => item.is_active !== false).length && !currentStep.skipped) {
+    await loadSetup({ preserveSelection: true });
+    return;
+  }
+  host.innerHTML = renderRecurringExpensesEditor(data, getStepByKey('recurring_expenses') || currentStep);
+  const inlineState = state.inline.recurring_expenses;
+
+  document.getElementById('inlineShowInactiveRecurring')?.addEventListener('change', async (e) => {
+    inlineState.showInactive = !!e.target?.checked;
+    await mountRecurringExpensesEditor(getStepByKey('recurring_expenses') || currentStep);
+  });
+
+  document.getElementById('btnReloadRecurringInline')?.addEventListener('click', async () => {
+    await loadInlineRecurringExpenses({ force: true });
+    await loadSetup({ preserveSelection: true });
+    await mountRecurringExpensesEditor(getStepByKey('recurring_expenses') || currentStep);
+    toast('Список обновлён', 'ok');
+  });
+
+  document.getElementById('btnCancelRecurringEdit')?.addEventListener('click', async () => {
+    inlineState.editor = { mode: 'create', id: null };
+    await mountRecurringExpensesEditor(getStepByKey('recurring_expenses') || currentStep);
+  });
+
+  document.getElementById('recurringGenerationMode')?.addEventListener('change', syncRecurringModeVisibility);
+  syncRecurringModeVisibility();
+
+  document.getElementById('btnSaveRecurringInline')?.addEventListener('click', async () => {
+    if (!(data.categories || []).length) {
+      toast('Сначала создай категорию расходов', 'err');
+      return;
+    }
+    const title = String(document.getElementById('recurringTitle')?.value || '').trim();
+    if (!title) return toast('Укажи название правила', 'err');
+    const generationMode = String(document.getElementById('recurringGenerationMode')?.value || 'FIXED').toUpperCase();
+    const payload = {
+      title,
+      category_id: Number(document.getElementById('recurringCategoryId')?.value || 0),
+      supplier_id: document.getElementById('recurringSupplierId')?.value ? Number(document.getElementById('recurringSupplierId')?.value) : null,
+      payment_method_id: document.getElementById('recurringPaymentMethodId')?.value ? Number(document.getElementById('recurringPaymentMethodId')?.value) : null,
+      is_active: String(document.getElementById('recurringActive')?.value || '1') === '1',
+      start_date: String(document.getElementById('recurringStartDate')?.value || todayIso()),
+      end_date: String(document.getElementById('recurringEndDate')?.value || '').trim() || null,
+      frequency: 'MONTHLY',
+      day_of_month: Number(document.getElementById('recurringDayOfMonth')?.value || 1),
+      spread_months: Number(document.getElementById('recurringSpreadMonths')?.value || 1),
+      generation_mode: generationMode,
+      amount_minor: generationMode === 'FIXED' ? parseMoneyToMinor(document.getElementById('recurringAmount')?.value || '') : null,
+      percent_bps: generationMode === 'PERCENT' ? parseMoneyToMinor(document.getElementById('recurringPercent')?.value || '') : null,
+      description: String(document.getElementById('recurringDescription')?.value || '').trim() || null,
+      payment_method_ids: generationMode === 'PERCENT' ? Array.from(host.querySelectorAll('input[name="recurringBasisPaymentMethod"]:checked')).map((el) => Number(el.value)).filter((x) => Number.isFinite(x) && x > 0) : [],
+    };
+    if (!payload.category_id) return toast('Выбери категорию расхода', 'err');
+    try {
+      if (inlineState.editor?.id) await api(`/venues/${encodeURIComponent(state.venueId)}/recurring-expense-rules/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: payload });
+      else await api(`/venues/${encodeURIComponent(state.venueId)}/recurring-expense-rules`, { method: 'POST', body: payload });
+      inlineState.editor = { mode: 'create', id: null };
+      await loadInlineRecurringExpenses({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountRecurringExpensesEditor(getStepByKey('recurring_expenses') || currentStep);
+      if (!currentStep.completed) {
+        try {
+          await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'recurring_expenses' } });
+          await loadSetup({ preserveSelection: true });
+        } catch {}
+      }
+      toast('Правило сохранено', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось сохранить правило', 'err');
+    }
+  });
+
+  host.querySelectorAll('[data-edit-recurring]').forEach((btn) => btn.addEventListener('click', async () => {
+    inlineState.editor = { mode: 'edit', id: btn.getAttribute('data-edit-recurring') || null };
+    await mountRecurringExpensesEditor(getStepByKey('recurring_expenses') || currentStep);
+  }));
+
+  host.querySelectorAll('[data-toggle-recurring]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-toggle-recurring') || '';
+    const item = (state.inline.recurring_expenses.items || []).find((row) => String(row.id) === String(id));
+    if (!item) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/recurring-expense-rules/${encodeURIComponent(item.id)}`, { method: 'PATCH', body: { is_active: !(item.is_active !== false) } });
+      await loadInlineRecurringExpenses({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountRecurringExpensesEditor(getStepByKey('recurring_expenses') || currentStep);
+      toast('Правило обновлено', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось обновить правило', 'err');
+    }
+  }));
+
+  host.querySelectorAll('[data-delete-recurring]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-delete-recurring') || '';
+    const ok = await confirmModal({ title: 'Удалить правило?', text: 'Правило регулярных расходов будет удалено без возможности восстановления.', confirmText: 'Удалить', danger: true });
+    if (!ok) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/recurring-expense-rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await loadInlineRecurringExpenses({ force: true });
+      await loadSetup({ preserveSelection: true });
+      await mountRecurringExpensesEditor(getStepByKey('recurring_expenses') || currentStep);
+      toast('Правило удалено', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось удалить правило', 'err');
+    }
+  }));
+
+  document.getElementById('btnInlineCompleteRecurring')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'recurring_expenses' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+
+  document.getElementById('btnInlineCompleteRecurringNext')?.addEventListener('click', async () => {
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'recurring_expenses' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг подтверждён', 'ok');
+      const next = getNextStepKey('recurring_expenses');
+      if (next) moveToStep(next);
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
+    }
+  });
+
+  document.getElementById('btnInlineSkipRecurring')?.addEventListener('click', async () => {
+    const ok = await confirmModal({ title: 'Отложить регулярные настройки?', text: 'К этому шагу можно будет спокойно вернуться после запуска заведения.', confirmText: 'Отложить', danger: false });
+    if (!ok) return;
+    try {
+      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/skip-step`, { method: 'POST', body: { step_key: 'recurring_expenses' } });
+      await loadSetup({ preserveSelection: true });
+      toast('Шаг отложен', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось отложить шаг', 'err');
     }
   });
 }
