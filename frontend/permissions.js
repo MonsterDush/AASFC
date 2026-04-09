@@ -128,6 +128,270 @@ export function canViewRevenue(permSet, venueRoleUpper, systemRoleUpper) {
 }
 
 
+
+
+export function hasExpenseViewAccess(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "EXPENSE_VIEW") || hasPerm(permSet, "EXPENSE_ADD");
+}
+
+export function hasPayrollViewAccess(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "PAYROLL_VIEW") || hasPerm(permSet, "PAYROLL_CALCULATE");
+}
+
+export function hasFinanceLedgerViewAccess(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "FINANCE_LEDGER_VIEW") || hasPerm(permSet, "REVENUE_VIEW") || hasPerm(permSet, "EXPENSE_VIEW");
+}
+
+export function hasPayProfilesViewAccess(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "PAY_PROFILES_VIEW") || hasPerm(permSet, "PAY_PROFILES_MANAGE");
+}
+
+export function hasVenuePageAccess(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "VENUE_VIEW") || hasPerm(permSet, "VENUE_SETTINGS_EDIT");
+}
+
+export function hasPositionsViewAccess(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasAnyPerm(permSet, ["POSITIONS_VIEW", "POSITIONS_MANAGE", "POSITIONS_ASSIGN", "POSITION_PERMISSIONS_MANAGE"]);
+}
+
+export function hasIntervalsViewAccess(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "SHIFTS_MANAGE");
+}
+
+export function hasExpenseCatalogsViewAccess(permSet, venueRoleUpper, systemRoleUpper) {
+  return isOwnerRole(venueRoleUpper) || isSysAdminRole(systemRoleUpper) || hasPerm(permSet, "EXPENSE_CATEGORIES_MANAGE");
+}
+
+export function buildStaffDashboardItems(permSet, venueRoleUpper, systemRoleUpper, venueId = "") {
+  const role = String(venueRoleUpper || "").trim().toUpperCase();
+  const sys = String(systemRoleUpper || "").trim().toUpperCase();
+  const qs = venueId ? `?venue_id=${encodeURIComponent(String(venueId))}` : "";
+
+  const canViewReports = hasReportAccess(permSet, role, sys);
+  const canManageAdj = canManageAdjustments(permSet, role, sys);
+  const canViewAdj = canViewAdjustments(permSet, role, sys);
+  const canViewSummary =
+    isOwnerRole(role) ||
+    isSysAdminRole(sys) ||
+    hasPerm(permSet, "MONTHLY_SUMMARY_VIEW") ||
+    hasExpenseViewAccess(permSet, role, sys) ||
+    hasPayrollViewAccess(permSet, role, sys) ||
+    hasPerm(permSet, "REVENUE_VIEW");
+  const canViewRevenuePage = canViewRevenue(permSet, role, sys);
+  const canViewExpensesPage = hasExpenseViewAccess(permSet, role, sys);
+  const canViewPayrollPage = hasPayrollViewAccess(permSet, role, sys);
+  const canViewLedgerPage = hasFinanceLedgerViewAccess(permSet, role, sys);
+  const canViewDayEconomicsPage = canViewRevenuePage || canViewExpensesPage;
+  const canViewDepartmentsPage = isOwnerRole(role) || isSysAdminRole(sys) || hasPerm(permSet, "DEPARTMENTS_VIEW");
+  const canViewPaymentMethodsPage = isOwnerRole(role) || isSysAdminRole(sys) || hasPerm(permSet, "PAYMENT_METHODS_VIEW");
+  const canViewKpiPage = isOwnerRole(role) || isSysAdminRole(sys) || hasPerm(permSet, "KPI_METRICS_VIEW");
+  const canViewPayProfilesPage = hasPayProfilesViewAccess(permSet, role, sys);
+  const canViewVenuePage = hasVenuePageAccess(permSet, role, sys);
+  const canViewPositionsPage = hasPositionsViewAccess(permSet, role, sys);
+  const canViewIntervalsPage = hasIntervalsViewAccess(permSet, role, sys);
+  const canViewExpenseCatalogsPage = hasExpenseCatalogsViewAccess(permSet, role, sys);
+  const canViewRecurringExpensesPage = isOwnerRole(role) || isSysAdminRole(sys) || hasPerm(permSet, "RECURRING_EXPENSES_VIEW") || hasPerm(permSet, "EXPENSE_VIEW") || hasPerm(permSet, "EXPENSE_ADD");
+
+  const items = [
+    {
+      key: "shifts",
+      title: "График",
+      hint: "Календарь смен и детали дня.",
+      href: `/staff-shifts.html${qs}`,
+      isExtra: false,
+    },
+    {
+      key: "salary",
+      title: "Зарплата",
+      hint: "Начисления по сменам и месяцам.",
+      href: `/staff-salary.html${qs}`,
+      isExtra: false,
+    },
+  ];
+
+  if (canViewAdj) {
+    items.push({
+      key: "adjustments",
+      title: "Штрафы / Премии",
+      hint: canManageAdj ? "Управление корректировками и история по дням." : "История штрафов, списаний и премий.",
+      href: `${canManageAdj ? "/app-adjustments.html" : "/staff-adjustments.html"}${qs}`,
+      isExtra: false,
+    });
+  }
+
+  if (canViewReports) {
+    items.push({
+      key: "report",
+      title: "Отчёты",
+      hint: "Отчёт за смену и закрытие дня.",
+      href: `/staff-report.html${qs}`,
+      isExtra: false,
+    });
+  }
+
+  if (canViewSummary) {
+    items.push({
+      key: "summary",
+      title: "Сводка",
+      hint: "Общая картина по выручке, расходам и фонду оплаты.",
+      href: `/owner-summary.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewRevenuePage) {
+    items.push({
+      key: "revenue",
+      title: "Выручка",
+      hint: "Доходы по оплатам и периодам.",
+      href: `/owner-turnover.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewExpensesPage) {
+    items.push({
+      key: "expenses",
+      title: "Расходы",
+      hint: "Список расходов, фильтры и детализация.",
+      href: `/owner-expenses.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewPayrollPage) {
+    items.push({
+      key: "payroll",
+      title: "Начисления",
+      hint: "Расчёты по сотрудникам и детализация компонентов.",
+      href: `/owner-payroll.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewLedgerPage) {
+    items.push({
+      key: "ledger",
+      title: "Движение денег",
+      hint: "Доходы и расходы по оплатам и операциям.",
+      href: `/owner-finance-ledger.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewDayEconomicsPage) {
+    items.push({
+      key: "day-economics",
+      title: "Экономика дня",
+      hint: "Снимок дня по доходам, расходам и прибыли.",
+      href: `/owner-day-economics.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewVenuePage) {
+    items.push({
+      key: "venue",
+      title: "Заведение",
+      hint: "Карточка заведения и быстрые переходы.",
+      href: `/app-venue.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewPositionsPage) {
+    items.push({
+      key: "positions",
+      title: "Должности",
+      hint: "Должности, назначения и права.",
+      href: `/positions.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewIntervalsPage) {
+    items.push({
+      key: "intervals",
+      title: "Интервалы",
+      hint: "Справочник интервалов и времени смен.",
+      href: `/shift-intervals.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewDepartmentsPage) {
+    items.push({
+      key: "departments",
+      title: "Департаменты",
+      hint: "Структура выручки и департаментов.",
+      href: `/owner-departments.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewPaymentMethodsPage) {
+    items.push({
+      key: "payment-methods",
+      title: "Способы оплат",
+      hint: "Наличные, безнал и другие оплаты.",
+      href: `/owner-payment-methods.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewKpiPage) {
+    items.push({
+      key: "kpi",
+      title: "KPI и планы",
+      hint: "Метрики, допродажи и планы.",
+      href: `/owner-kpi.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewPayProfilesPage) {
+    items.push({
+      key: "pay-profiles",
+      title: "Профили зарплаты",
+      hint: "Профили и компоненты начислений.",
+      href: `/owner-pay-profiles.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewRecurringExpensesPage) {
+    items.push({
+      key: "recurring-expenses",
+      title: "Регулярные расходы",
+      hint: "Постоянные расходы по месяцам.",
+      href: `/owner-recurring-expenses.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  if (canViewExpenseCatalogsPage) {
+    items.push({
+      key: "expense-categories",
+      title: "Статьи расходов",
+      hint: "Категории расходов и их структура.",
+      href: `/owner-expense-categories.html${qs}`,
+      isExtra: true,
+    });
+    items.push({
+      key: "suppliers",
+      title: "Поставщики",
+      hint: "Справочник поставщиков и контрагентов.",
+      href: `/owner-suppliers.html${qs}`,
+      isExtra: true,
+    });
+  }
+
+  return items;
+}
+
+export function hasStaffDashboardExtras(permSet, venueRoleUpper, systemRoleUpper) {
+  return buildStaffDashboardItems(permSet, venueRoleUpper, systemRoleUpper).some((item) => item.isExtra);
+}
 export function isDemoMode(resp) {
   return !!resp?.demo_mode;
 }

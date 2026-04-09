@@ -1,4 +1,4 @@
-import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
+import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix, hasStaffDashboardExtras } from "/permissions.js?v=20260409-staffdash1";
 
 function normalizeBaseUrl(value) {
   const raw = String(value || "").trim();
@@ -1090,6 +1090,7 @@ const DICT = {
     salary: "Зарплаты",
     report: "Отчёты",
     finance: "Финансы",
+    overview: "Обзор",
     revenue: "Выручка",
     summary: "Сводка",
     expenses: "Расходы",
@@ -1106,6 +1107,7 @@ const DICT = {
     salary: "Salary",
     report: "Reports",
     finance: "Finance",
+    overview: "Overview",
     revenue: "Revenue",
     summary: "Summary",
     expenses: "Expenses",
@@ -2430,6 +2432,7 @@ export async function mountNav({ activeTab = "dashboard", containerSelector = "#
 // Determine permissions for active venue (best-effort)
 let isOwner = false;
 let canViewReports = false;
+let canShowStaffOverview = false;
 
 const activeVenue = activeVenueId ? venues.find(v => String(v.id) === String(activeVenueId)) : null;
 const roleFromList = String(activeVenue?.role || activeVenue?.venue_role || activeVenue?.my_role || "").toUpperCase();
@@ -2456,9 +2459,11 @@ if (activeVenueId) {
         "REPORTS_VIEW_MONTHLY",
         "REPORTS_VIEW_PNL",
       ]);
+    canShowStaffOverview = !isOwner && hasStaffDashboardExtras(pset, role, String(me?.system_role || ""));
   } catch {
     isOwner = roleFromList === "OWNER" || roleFromList === "VENUE_OWNER";
     canViewReports = isOwner;
+    canShowStaffOverview = false;
   }
 }
 
@@ -2478,7 +2483,7 @@ const qp = activeVenueId ? `?venue_id=${encodeURIComponent(activeVenueId)}` : ""
 links.push({ title: t("shifts"), href: `/staff-shifts.html${qp}`, tab: "shifts" });
 
 if (canViewReports) {
-  links.push({ title: t("finance"), href: `/staff-finance.html${qp}`, tab: "finance" });
+  links.push({ title: canShowStaffOverview ? t("overview") : t("finance"), href: `${canShowStaffOverview ? "/app-dashboard.html" : "/staff-finance.html"}${qp}`, tab: canShowStaffOverview ? "overview" : "finance" });
   links.push({ title: t("report"), href: `/staff-report.html${qp}`, tab: "report" });
 } else {
   links.push({ title: t("salary"), href: `/staff-salary.html${qp}`, tab: "salary" });
