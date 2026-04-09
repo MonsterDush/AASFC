@@ -25,6 +25,8 @@
     .setup-status--completed { background:rgba(55,182,123,.12); color:#89dfb7; }
     .setup-status--skipped { background:rgba(255,184,77,.12); color:#ffd08a; }
     .setup-status--attention { background:rgba(255,106,106,.12); color:#ffb0b0; }
+    .setup-status--locked { background:rgba(255,255,255,.08); color:#b8c0d6; }
+    .setup-step:disabled { opacity:.75; cursor:not-allowed; }
     .setup-detail__head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
     .setup-detail__grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px; margin-top:12px; }
     .setup-helper { padding:12px; border:1px solid var(--line,#2a3245); border-radius:16px; background:rgba(255,255,255,.02); }
@@ -101,6 +103,6 @@
     <div class="wrap"><div id="nav"></div></div>
   </div>
 
-  <script type="module" src="/owner-setup.js?v=20260409-setup6"></script>
+  <script type="module" src="/owner-setup.js?v=20260409-setup-ui7"></script>
 </body>
 </html>

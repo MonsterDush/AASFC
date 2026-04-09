@@ -257,7 +257,79 @@ const state = {
   },
   permissionsCatalog: null,
   positionPermissionTemplates: null,
+  viewMode: "overview",
 };
+
+const SETUP_DISMISS_PREFIX = "axelio.setup.dismissed.";
+const STEP_DEPENDENCIES = {
+  positions: ["pay_profiles"],
+  invites: ["positions"],
+};
+
+function navTo(url) {
+  if (!url) return;
+  location.href = url;
+}
+
+function setupDismissKey() {
+  return `${SETUP_DISMISS_PREFIX}${String(state.venueId || "")}`;
+}
+
+function dismissSetupBanner() {
+  try { localStorage.setItem(setupDismissKey(), "1"); } catch {}
+}
+
+function clearDismissedSetupBanner() {
+  try { localStorage.removeItem(setupDismissKey()); } catch {}
+}
+
+function russianSetupStatusLabel(value) {
+  const code = String(value || "NOT_STARTED").toUpperCase();
+  if (code === "NOT_STARTED") return "Не начата";
+  if (code === "IN_PROGRESS") return "В процессе";
+  if (code === "PREPARE_DONE") return "Базовая настройка завершена";
+  if (code === "EXTRA_IN_PROGRESS") return "Дополнительная настройка";
+  if (code === "DONE") return "Завершена";
+  return value || "—";
+}
+
+function findStep(key) {
+  return (state.setup?.steps || []).find((step) => String(step.key) === String(key)) || null;
+}
+
+function isStepResolved(stepOrKey) {
+  const step = typeof stepOrKey === "string" ? findStep(stepOrKey) : stepOrKey;
+  return !!(step && (step.completed || step.skipped || step.status === "COMPLETED" || step.status === "SKIPPED"));
+}
+
+function getStepUiInfo(step) {
+  const deps = STEP_DEPENDENCIES[String(step?.key || "")] || [];
+  const unmet = deps.map((key) => findStep(key)).filter((dep) => dep && !isStepResolved(dep));
+  const locked = unmet.length > 0;
+  const firstUnmet = unmet[0] || null;
+  const lockedReason = firstUnmet ? `Сначала нужно пройти шаг «${firstUnmet.title}».` : "";
+  const uiStatus = locked ? "LOCKED" : String(step?.status || "AVAILABLE").toUpperCase();
+  return { locked, unmet, lockedReason, uiStatus };
+}
+
+async function renameVenue(venueId, name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) throw new Error("Введите название заведения");
+  const attempts = [
+    { path: `/venues/${encodeURIComponent(venueId)}`, method: "PATCH", body: { name: trimmed } },
+    { path: `/admin/venues/${encodeURIComponent(venueId)}`, method: "PATCH", body: { name: trimmed } },
+    { path: `/venues/${encodeURIComponent(venueId)}/rename`, method: "POST", body: { name: trimmed } },
+  ];
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      return await api(attempt.path, { method: attempt.method, body: attempt.body });
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError || new Error("Не удалось сохранить название");
+}
 
 function esc(value) {
   return String(value ?? "")
@@ -603,6 +675,7 @@ function toStepStatusClass(status) {
     case "COMPLETED": return "setup-status setup-status--completed";
     case "SKIPPED": return "setup-status setup-status--skipped";
     case "REQUIRES_ATTENTION": return "setup-status setup-status--attention";
+    case "LOCKED": return "setup-status setup-status--locked";
     default: return "setup-status setup-status--available";
   }
 }
@@ -658,6 +731,22 @@ function getNextStepKey(currentStepKey) {
 function moveToStep(stepKey) {
   if (!stepKey) return;
   state.selectedStepKey = stepKey;
+  state.viewMode = "step";
+  renderSetup();
+}
+
+function moveToPhase(phase) {
+  state.selectedPhase = String(phase || "PREPARE").toUpperCase() === "EXTRA" ? "EXTRA" : "PREPARE";
+  state.viewMode = "phase";
+  const visibleSteps = getVisibleSteps();
+  if (!visibleSteps.some((step) => String(step.key) === String(state.selectedStepKey || ""))) {
+    state.selectedStepKey = visibleSteps[0]?.key || "";
+  }
+  renderSetup();
+}
+
+function moveToOverview() {
+  state.viewMode = "overview";
   renderSetup();
 }
 
@@ -667,11 +756,13 @@ function renderAccessError(message) {
       <b>Быстрая настройка недоступна</b>
       <div class="muted mt-8">${esc(message || "Открыть мастер настройки можно только владельцу заведения с полным доступом.")}</div>
       <div class="setup-actionbar">
-        <a class="btn" href="/app-venue.html?venue_id=${encodeURIComponent(String(state.venueId || ""))}">К заведению</a>
-        <a class="btn subtle" href="/app-venues.html">К списку заведений</a>
+        <button class="btn" id="btnBackToVenue" type="button">К заведению</button>
+        <button class="btn subtle" id="btnBackToVenues" type="button">К списку заведений</button>
       </div>
     </div>
   `;
+  document.getElementById("btnBackToVenue")?.addEventListener("click", () => navTo(`/app-venue.html?venue_id=${encodeURIComponent(String(state.venueId || ""))}`));
+  document.getElementById("btnBackToVenues")?.addEventListener("click", () => navTo('/app-venues.html'));
 }
 
 function renderLoading() {
@@ -689,17 +780,17 @@ function renderStartScreen() {
       <div class="section-card__head">
         <div class="section-card__title">
           <b>Подготовим ${esc(venueName)}</b>
-          <div class="muted">Мастер проведёт по базовой настройке, а потом предложит дополнительную доводку.</div>
+          <div class="muted">Мастер поможет пройти основные шаги, а затем при желании добить дополнительную настройку.</div>
         </div>
       </div>
       <div class="setup-summary">
         <div class="setup-kpi">
           <div class="setup-kpi__value">8 шагов</div>
-          <div class="setup-kpi__hint">Базовый запуск: оплаты, департаменты, зарплаты, должности, команда и интервалы.</div>
+          <div class="setup-kpi__hint">Базовая настройка: оплаты, департаменты, KPI, профили, должности, команда и интервалы.</div>
         </div>
         <div class="setup-kpi">
           <div class="setup-kpi__value">3 шага</div>
-          <div class="setup-kpi__hint">Дополнительная настройка: расходы, поставщики и регулярные правила.</div>
+          <div class="setup-kpi__hint">Дополнительная настройка: категории расходов, поставщики и регулярные правила.</div>
         </div>
         <div class="setup-kpi">
           <div class="setup-kpi__value">Гибко</div>
@@ -708,7 +799,7 @@ function renderStartScreen() {
       </div>
       <div class="setup-actionbar">
         <button class="btn primary" id="btnStartSetup" type="button">Начать настройку</button>
-        <a class="btn subtle" href="/app-venue.html?venue_id=${encodeURIComponent(String(state.venueId))}">Пока к заведению</a>
+        <button class="btn subtle" id="btnStartBack" type="button">К заведению</button>
       </div>
       <div class="setup-inline-note">Базовая настройка нужна для корректной работы графика, закрытия смены, сводки и зарплатных сценариев.</div>
     </div>
@@ -716,12 +807,15 @@ function renderStartScreen() {
   document.getElementById("btnStartSetup")?.addEventListener("click", async () => {
     try {
       await api(`/venues/${encodeURIComponent(state.venueId)}/setup/start`, { method: "POST" });
+      clearDismissedSetupBanner();
       await loadSetup({ preserveSelection: false });
+      state.viewMode = "overview";
       toast("Настройка начата", "ok");
     } catch (e) {
       toast(e?.data?.detail || e?.message || "Не удалось начать настройку", "err");
     }
   });
+  document.getElementById("btnStartBack")?.addEventListener("click", () => navTo(`/app-venue.html?venue_id=${encodeURIComponent(String(state.venueId))}`));
 }
 
 function renderInlineEditorHost(currentStep) {
@@ -742,12 +836,167 @@ function renderInlineEditorHost(currentStep) {
   `;
 }
 
-function renderSetup() {
-  const currentStep = getCurrentStep();
-  if (!currentStep) {
+function getPhaseResumeStep(phase) {
+  const normalized = String(phase || state.selectedPhase || "PREPARE").toUpperCase();
+  const visible = getVisibleSteps().map((step) => ({ step, ui: getStepUiInfo(step) }));
+  const actionable = visible.find(({ step, ui }) => !ui.locked && !step.completed && !step.skipped)
+    || visible.find(({ step, ui }) => !ui.locked && (step.requires_attention || step.status === "REQUIRES_ATTENTION"))
+    || visible.find(({ ui }) => !ui.locked)
+    || visible[0]
+    || null;
+  return actionable?.step || null;
+}
+
+function renderOverview() {
+  const venueName = state.venue?.name || `Заведение #${state.venueId}`;
+  const status = russianSetupStatusLabel(getSetupStatus(state.setup));
+  const progress = getSetupProgress(state.setup);
+  const prepareResolved = Number(state.setup?.prepare_resolved || 0);
+  const prepareTotal = Number(state.setup?.prepare_total || 0);
+  const extraResolved = Number(state.setup?.extra_resolved || 0);
+  const extraTotal = Number(state.setup?.extra_total || 0);
+  const percent = progress.total > 0 ? Math.round((progress.resolved / progress.total) * 100) : 0;
+  const resumeStep = getPhaseResumeStep(state.selectedPhase || getSetupPhase(state.setup));
+  const nextTitle = resumeStep?.title || "Готово";
+  const prepareDone = isSetupPrepareDone(state.setup);
+  const extraDisabled = !prepareDone;
+
+  root.innerHTML = `
+    <div class="itemcard section-card">
+      <div class="section-card__head">
+        <div class="section-card__title">
+          <b>${esc(venueName)}</b>
+          <div class="muted">${esc(status)}</div>
+        </div>
+      </div>
+
+      <div class="setup-inline-list">
+        <span class="setup-chip">Готово: ${progress.done} из ${progress.total}</span>
+        <span class="setup-chip">Решено: ${progress.resolved} из ${progress.total}</span>
+        <span class="setup-chip">Следующий шаг: ${esc(nextTitle)}</span>
+      </div>
+
+      <div class="setup-progressbar"><span style="width:${percent}%"></span></div>
+
+      <div class="setup-summary">
+        <div class="setup-kpi">
+          <div class="setup-kpi__value">${prepareResolved}/${prepareTotal}</div>
+          <div class="setup-kpi__hint">Базовая настройка</div>
+        </div>
+        <div class="setup-kpi">
+          <div class="setup-kpi__value">${extraResolved}/${extraTotal}</div>
+          <div class="setup-kpi__hint">Дополнительная настройка</div>
+        </div>
+        <div class="setup-kpi">
+          <div class="setup-kpi__value">${percent}%</div>
+          <div class="setup-kpi__hint">Общий прогресс мастера</div>
+        </div>
+      </div>
+
+      <div class="setup-phase-switch">
+        <button class="btn ${state.selectedPhase === "PREPARE" ? "primary" : "subtle"}" id="btnOverviewPrepare" type="button">Базовая настройка</button>
+        <button class="btn ${state.selectedPhase === "EXTRA" ? "primary" : "subtle"}" id="btnOverviewExtra" type="button" ${extraDisabled ? "disabled" : ""}>Дополнительная настройка</button>
+      </div>
+
+      <div class="setup-actionbar mt-14">
+        <button class="btn" id="btnOverviewReload" type="button">Обновить прогресс</button>
+        <button class="btn" id="btnOverviewVenue" type="button">К заведению</button>
+        <button class="btn subtle" id="btnSkipSetupAll" type="button">Пропустить настройку</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("btnOverviewPrepare")?.addEventListener("click", () => moveToPhase("PREPARE"));
+  document.getElementById("btnOverviewExtra")?.addEventListener("click", () => {
+    if (extraDisabled) { toast("Сначала заверши базовую настройку", "warn"); return; }
+    moveToPhase("EXTRA");
+  });
+  document.getElementById("btnOverviewReload")?.addEventListener("click", async () => {
+    await loadSetup({ preserveSelection: true });
+    toast("Прогресс обновлён", "ok");
+  });
+  document.getElementById("btnOverviewVenue")?.addEventListener("click", () => navTo(`/app-venue.html?venue_id=${encodeURIComponent(String(state.venueId))}`));
+  document.getElementById("btnSkipSetupAll")?.addEventListener("click", async () => {
+    const ok = await confirmModal({
+      title: "Пропустить настройку?",
+      text: "Мастер можно будет открыть позже с карточки заведения. Баннер с предложением настройки будет скрыт.",
+      confirmText: "Пропустить",
+    });
+    if (!ok) return;
+    dismissSetupBanner();
+    navTo(`/app-venue.html?venue_id=${encodeURIComponent(String(state.venueId))}`);
+  });
+}
+
+function renderPhaseScreen() {
+  const prepareDone = isSetupPrepareDone(state.setup);
+  const visibleSteps = getVisibleSteps();
+  const resumeStep = getPhaseResumeStep(state.selectedPhase);
+  const isExtra = state.selectedPhase === "EXTRA";
+
+  root.innerHTML = `
+    <div class="itemcard section-card">
+      <div class="section-card__head">
+        <div class="section-card__title">
+          <b>${esc(phaseTitle())}</b>
+          <div class="muted">Шаги можно проходить по порядку или возвращаться к уже доступным позже.</div>
+        </div>
+      </div>
+
+      <div class="setup-steps">
+        ${visibleSteps.map((step) => {
+          const ui = getStepUiInfo(step);
+          const statusLabel = STATUS_LABELS[ui.uiStatus] || STATUS_LABELS[String(step.status || "AVAILABLE").toUpperCase()] || step.status;
+          const countText = ui.locked
+            ? ui.lockedReason
+            : (step.count_key ? `Объектов: ${Number(step.count || 0)}` : (step.completed || step.skipped ? "Решение зафиксировано" : "Ожидает решения"));
+          return `
+            <button class="setup-step ${String(step.key) === String(state.selectedStepKey || "") ? "is-active" : ""}" type="button" data-step-key="${esc(step.key)}" ${ui.locked ? "disabled" : ""}>
+              <div class="setup-step__top">
+                <div>
+                  <div class="setup-step__title">${esc(step.title)}</div>
+                  <div class="setup-step__meta">${esc(countText)}</div>
+                </div>
+                <span class="${toStepStatusClass(ui.uiStatus)}">${esc(statusLabel)}</span>
+              </div>
+            </button>
+          `;
+        }).join("")}
+      </div>
+
+      <div class="setup-footer">
+        <div class="setup-actionbar">
+          <button class="btn subtle" id="btnPhaseBack" type="button">← Назад</button>
+          <button class="btn" id="btnPhaseResume" type="button">К следующему шагу</button>
+        </div>
+        <div class="setup-actionbar">
+          ${isExtra ? `<button class="btn subtle" id="btnPhasePrevPhase" type="button">К базовой настройке</button>` : ``}
+          ${!isExtra && prepareDone ? `<button class="btn subtle" id="btnPhaseNextPhase" type="button">К дополнительной настройке</button>` : ``}
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.querySelectorAll('[data-step-key]').forEach((btn) => {
+    btn.addEventListener('click', () => moveToStep(btn.getAttribute('data-step-key') || ''));
+  });
+  document.getElementById('btnPhaseBack')?.addEventListener('click', () => moveToOverview());
+  document.getElementById('btnPhaseResume')?.addEventListener('click', () => {
+    if (!resumeStep) { toast('Все шаги этой части уже просмотрены', 'ok'); return; }
+    moveToStep(resumeStep.key);
+  });
+  document.getElementById('btnPhasePrevPhase')?.addEventListener('click', () => moveToPhase('PREPARE'));
+  document.getElementById('btnPhaseNextPhase')?.addEventListener('click', () => moveToPhase('EXTRA'));
+}
+
+function renderStepDetail() {
+  const currentStepRaw = getCurrentStep();
+  if (!currentStepRaw) {
     root.innerHTML = `<div class="setup-empty">Не удалось определить шаг настройки.</div>`;
     return;
   }
+  const currentStep = currentStepRaw;
+  const ui = getStepUiInfo(currentStep);
   state.selectedStepKey = currentStep.key;
   state.selectedPhase = String(currentStep.phase || state.selectedPhase || "PREPARE").toUpperCase();
   setStepInUrl(currentStep.key, state.selectedPhase);
@@ -760,130 +1009,79 @@ function renderSetup() {
     later: currentStep.skippable ? "Этот шаг можно отложить." : "Этот шаг лучше не откладывать.",
   };
 
-  const progress = getSetupProgress(state.setup);
-  const progressPercent = progress.total > 0 ? Math.round((progress.resolved / progress.total) * 100) : 0;
+  const useInlineEditor = shouldUseInlineEditor(currentStep.key) && !ui.locked;
+  const canCompleteStep = !ui.locked && (currentStep.key === "welcome" || currentStep.data_ready);
   const visibleSteps = getVisibleSteps();
-  const setupStatus = getSetupStatus(state.setup);
-  const prepareDone = isSetupPrepareDone(state.setup);
-  const done = isSetupDone(state.setup);
-  const canOpenExtra = prepareDone || state.selectedPhase === "EXTRA";
-  const canCompleteStep = currentStep.key === "welcome" || currentStep.data_ready;
-  const useInlineEditor = shouldUseInlineEditor(currentStep.key);
+  const idx = visibleSteps.findIndex((step) => String(step.key) === String(currentStep.key));
+  const prevStep = idx > 0 ? visibleSteps[idx - 1] : null;
+  let nextStep = null;
+  for (let i = idx + 1; i < visibleSteps.length; i += 1) {
+    const candidate = visibleSteps[i];
+    if (!getStepUiInfo(candidate).locked) { nextStep = candidate; break; }
+  }
 
   root.innerHTML = `
     <div class="itemcard section-card">
-      <div class="section-card__head">
-        <div class="section-card__title">
-          <b>${esc(state.venue?.name || `Заведение #${state.venueId}`)}</b>
-          <div class="muted">${esc(phaseTitle())} · статус: ${esc(setupStatus)}</div>
+      <div class="setup-detail__head">
+        <div>
+          <b>${esc(meta.title || currentStep.title)}</b>
+          <div class="muted mt-6">${esc(meta.subtitle || "")}</div>
         </div>
-        <div class="setup-inline-list">
-          <span class="setup-chip">Готово: ${progress.done} из ${progress.total}</span>
-          <span class="setup-chip">Решено: ${progress.resolved} из ${progress.total}</span>
-          <span class="setup-chip">Следующий шаг: ${esc(getSetupResumeStep(state.setup) || currentStep.key)}</span>
-        </div>
-      </div>
-      <div class="setup-progressbar"><span style="width:${progressPercent}%"></span></div>
-      <div class="setup-summary">
-        <div class="setup-kpi">
-          <div class="setup-kpi__value">${state.setup?.prepare_resolved || 0}/${state.setup?.prepare_total || 0}</div>
-          <div class="setup-kpi__hint">Базовая настройка</div>
-        </div>
-        <div class="setup-kpi">
-          <div class="setup-kpi__value">${state.setup?.extra_resolved || 0}/${state.setup?.extra_total || 0}</div>
-          <div class="setup-kpi__hint">Дополнительная настройка</div>
-        </div>
-        <div class="setup-kpi">
-          <div class="setup-kpi__value">${progressPercent}%</div>
-          <div class="setup-kpi__hint">Общий прогресс мастера</div>
-        </div>
-      </div>
-      <div class="setup-phase-switch">
-        <button class="btn ${state.selectedPhase === "PREPARE" ? "primary" : "subtle"}" id="btnPhasePrepare" aria-current="${state.selectedPhase === "PREPARE" ? "true" : "false"}" type="button">Базовая настройка</button>
-        <button class="btn ${state.selectedPhase === "EXTRA" ? "primary" : "subtle"}" id="btnPhaseExtra" aria-current="${state.selectedPhase === "EXTRA" ? "true" : "false"}" type="button" ${canOpenExtra ? "" : "disabled"}>Дополнительная настройка</button>
-        <button class="btn subtle" id="btnRefreshSetup" type="button">Обновить прогресс</button>
-        <a class="btn subtle" href="/app-venue.html?venue_id=${encodeURIComponent(String(state.venueId))}">К заведению</a>
-      </div>
-    </div>
-
-    <div class="setup-shell mt-12">
-      <div class="itemcard section-card">
-        <div class="section-card__head">
-          <div class="section-card__title">
-            <b>${esc(phaseTitle())}</b>
-            <div class="muted">Шаги можно проходить по порядку или возвращаться к ним позже.</div>
-          </div>
-        </div>
-        <div class="setup-steps mt-12" id="setupStepList">
-          ${visibleSteps.map((step) => {
-            const isActive = step.key === currentStep.key;
-            const statusLabel = STATUS_LABELS[String(step.status || "AVAILABLE").toUpperCase()] || step.status;
-            const countText = step.count_key ? `Объектов: ${Number(step.count || 0)}` : "Подтвердить решение";
-            return `
-              <button class="setup-step ${isActive ? "is-active" : ""}" type="button" data-step-key="${esc(step.key)}">
-                <div class="setup-step__top">
-                  <div>
-                    <div class="setup-step__title">${esc(step.title)}</div>
-                    <div class="setup-step__meta">${esc(countText)}</div>
-                  </div>
-                  <span class="${toStepStatusClass(step.status)}">${esc(statusLabel)}</span>
-                </div>
-              </button>
-            `;
-          }).join("")}
-        </div>
+        <span class="${toStepStatusClass(ui.uiStatus)}">${esc(STATUS_LABELS[ui.uiStatus] || currentStep.status)}</span>
       </div>
 
-      <div class="itemcard section-card">
-        <div class="setup-detail__head">
-          <div>
-            <b>${esc(meta.title || currentStep.title)}</b>
-            <div class="muted mt-6">${esc(meta.subtitle || "")}</div>
-          </div>
-          <span class="${toStepStatusClass(currentStep.status)}">${esc(STATUS_LABELS[String(currentStep.status || "AVAILABLE").toUpperCase()] || currentStep.status)}</span>
-        </div>
+      <div class="setup-inline-list">
+        <span class="setup-chip">Объектов: ${Number(currentStep.count || 0)}</span>
+        ${ui.locked ? `<span class="setup-chip">${esc(ui.lockedReason)}</span>` : ''}
+      </div>
 
-        <div class="setup-inline-list">
-          <span class="setup-chip">Ключ шага: ${esc(currentStep.key)}</span>
-          <span class="setup-chip">Объектов: ${Number(currentStep.count || 0)}</span>
-          <span class="setup-chip">${currentStep.data_ready ? "Данные есть" : "Данные ещё не заполнены"}</span>
-        </div>
+      <div class="setup-detail__grid">
+        <div class="setup-helper"><b>Что это</b>${esc(meta.what || "")}</div>
+        <div class="setup-helper"><b>Где используется</b>${esc(meta.where || "")}</div>
+        <div class="setup-helper"><b>Можно ли позже</b>${esc(meta.later || "")}</div>
+      </div>
 
-        <div class="setup-detail__grid">
-          <div class="setup-helper"><b>Что это</b>${esc(meta.what || "")}</div>
-          <div class="setup-helper"><b>Где используется</b>${esc(meta.where || "")}</div>
-          <div class="setup-helper"><b>Можно ли позже</b>${esc(meta.later || "")}</div>
-        </div>
+      ${ui.locked ? `<div class="setup-empty mt-14">${esc(ui.lockedReason)}</div>` : renderInlineEditorHost(currentStep)}
 
-        ${renderInlineEditorHost(currentStep)}
+      <div class="setup-actionbar">
+        ${typeof meta.primaryHref === "function" ? `<button class="btn ${useInlineEditor ? "subtle" : "primary"}" id="btnOpenFullPage" type="button">${esc(meta.primaryLabel || "Открыть")}</button>` : ""}
+        <button class="btn" id="btnReloadCurrent" type="button">Проверить шаг</button>
+        ${canCompleteStep && !currentStep.completed && !useInlineEditor ? `<button class="btn" id="btnCompleteStep" type="button">Отметить завершённым</button>` : ""}
+        ${currentStep.skippable && !currentStep.completed && !currentStep.skipped && !ui.locked ? `<button class="btn subtle" id="btnSkipStep" type="button">Вернуться позже</button>` : ""}
+        ${(currentStep.completed || currentStep.skipped || currentStep.requires_attention) ? `<button class="btn subtle" id="btnResetStep" type="button">Сбросить шаг</button>` : ""}
+      </div>
 
+      <div class="setup-inline-note">
+        ${ui.locked ? esc(ui.lockedReason) : (currentStep.requires_attention ? "Шаг был отмечен завершённым, но сейчас данные выглядят неполными. Проверь блок настройки и обнови шаг." : (currentStep.completed ? "Шаг завершён и учитывается в общем прогрессе мастера." : (currentStep.skipped ? "Шаг отложен и не блокирует общий прогресс." : "После изменений в мастере или на целевой странице вернись сюда и нажми «Проверить шаг».")))}
+      </div>
+
+      <div class="setup-footer">
         <div class="setup-actionbar">
-          ${typeof meta.primaryHref === "function" ? `<a class="btn ${useInlineEditor ? "subtle" : "primary"}" href="${esc(meta.primaryHref(state.venueId, state))}">${esc(meta.primaryLabel || "Открыть")}</a>` : ""}
-          <button class="btn" id="btnReloadCurrent" type="button">Проверить шаг</button>
-          ${canCompleteStep && !currentStep.completed && !useInlineEditor ? `<button class="btn" id="btnCompleteStep" type="button">Отметить завершённым</button>` : ""}
-          ${currentStep.skippable && !currentStep.completed && !currentStep.skipped ? `<button class="btn subtle" id="btnSkipStep" type="button">Вернуться позже</button>` : ""}
-          ${(currentStep.completed || currentStep.skipped || currentStep.requires_attention) ? `<button class="btn subtle" id="btnResetStep" type="button">Сбросить шаг</button>` : ""}
+          <button class="btn subtle" id="btnBackToPhase" type="button">← К списку шагов</button>
+          <button class="btn subtle" id="btnPrevStep" type="button" ${prevStep ? '' : 'disabled'}>← Назад</button>
+          <button class="btn subtle" id="btnNextStep" type="button" ${nextStep ? '' : 'disabled'}>Дальше →</button>
         </div>
-
-        <div class="setup-inline-note">
-          ${currentStep.requires_attention ? "Шаг был отмечен завершённым, но сейчас данные выглядят неполными. Проверь блок настройки и обнови шаг." : (currentStep.completed ? "Шаг завершён и учитывается в общем прогрессе мастера." : (currentStep.skipped ? "Шаг отложен и не блокирует общий прогресс." : "После изменений в мастере или на целевой странице вернись сюда и нажми «Проверить шаг»."))}
-        </div>
-
-        <div class="setup-footer">
-          <div class="setup-actionbar">
-            <button class="btn subtle" id="btnPrevStep" type="button">← Назад</button>
-            <button class="btn subtle" id="btnNextStep" type="button">Дальше →</button>
-          </div>
-          <div class="setup-actionbar">
-            ${state.selectedPhase === "PREPARE" && prepareDone && !done ? `<button class="btn primary" id="btnFinishPrepare" type="button">Завершить базовую настройку</button>` : ""}
-            ${state.selectedPhase === "EXTRA" && prepareDone && (state.setup?.extra_resolved === state.setup?.extra_total) && !done ? `<button class="btn primary" id="btnFinishExtra" type="button">Завершить весь мастер</button>` : ""}
-          </div>
+        <div class="setup-actionbar">
+          ${state.selectedPhase === "PREPARE" && isSetupPrepareDone(state.setup) && !isSetupDone(state.setup) ? `<button class="btn primary" id="btnFinishPrepare" type="button">Завершить базовую настройку</button>` : ""}
+          ${state.selectedPhase === "EXTRA" && isSetupPrepareDone(state.setup) && (state.setup?.extra_resolved === state.setup?.extra_total) && !isSetupDone(state.setup) ? `<button class="btn primary" id="btnFinishExtra" type="button">Завершить весь мастер</button>` : ""}
         </div>
       </div>
     </div>
   `;
 
+  if (typeof meta.primaryHref === "function") {
+    document.getElementById('btnOpenFullPage')?.addEventListener('click', () => navTo(meta.primaryHref(state.venueId, state)));
+  }
+
   wireSetupActions(currentStep, visibleSteps);
+}
+
+function renderSetup() {
+  if (state.accessError) { renderAccessError(state.accessError); return; }
+  if (!state.setup) { renderLoading(); return; }
+  if (state.viewMode === 'phase') { renderPhaseScreen(); return; }
+  if (state.viewMode === 'step') { renderStepDetail(); return; }
+  renderOverview();
 }
 
 function renderCatalogListItems(stepKey, items, currentStep) {
@@ -1015,7 +1213,7 @@ async function mountWelcomeEditor(currentStep) {
       return;
     }
     try {
-      await api(`/venues/${encodeURIComponent(state.venueId)}`, { method: "PATCH", body: { name } });
+      await renameVenue(state.venueId, name);
       if (!currentStep.completed) {
         await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: "POST", body: { step_key: currentStep.key } });
       }
@@ -2670,20 +2868,31 @@ function wireSetupActions(currentStep, visibleSteps) {
     }
   });
 
+  document.getElementById("btnBackToPhase")?.addEventListener("click", () => {
+    state.viewMode = 'phase';
+    renderSetup();
+  });
+
   document.getElementById("btnPrevStep")?.addEventListener("click", () => {
     const idx = visibleSteps.findIndex((step) => step.key === currentStep.key);
     if (idx > 0) {
-      state.selectedStepKey = visibleSteps[idx - 1].key;
-      renderSetup();
+      const prev = visibleSteps[idx - 1];
+      moveToStep(prev.key);
+    } else {
+      toast('Это первый шаг этого этапа', 'warn');
     }
   });
 
   document.getElementById("btnNextStep")?.addEventListener("click", () => {
     const idx = visibleSteps.findIndex((step) => step.key === currentStep.key);
-    if (idx >= 0 && idx < visibleSteps.length - 1) {
-      state.selectedStepKey = visibleSteps[idx + 1].key;
-      renderSetup();
+    for (let i = idx + 1; i < visibleSteps.length; i += 1) {
+      const candidate = visibleSteps[i];
+      if (!getStepUiInfo(candidate).locked) {
+        moveToStep(candidate.key);
+        return;
+      }
     }
+    toast('Дальше доступных шагов пока нет', 'warn');
   });
 
   document.getElementById("btnFinishPrepare")?.addEventListener("click", async () => {

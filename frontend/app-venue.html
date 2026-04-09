@@ -38,7 +38,7 @@
 
         <div class="action-grid action-grid--3 action-grid--mobile-2">
           <button class="btn" id="btnRename">Переименовать</button>
-          <a class="btn" id="openSetup" href="#">Быстрая настройка</a>
+          <button class="btn" id="openSetup" type="button">Быстрая настройка</button>
           <button class="btn" id="btnArchive">В архив</button>
           <button class="btn" id="btnUnarchive">Вернуть</button>
                     <button class="btn danger" id="btnLeave">Выйти из заведения</button>
@@ -530,6 +530,22 @@ const titleEl = document.getElementById("title");
           return currentVenueSummary || perms || {};
         }
 
+        function getSetupDismissKey() {
+          return `axelio.setup.dismissed.${String(venueId || "")}`;
+        }
+
+        function isSetupDismissed() {
+          try { return localStorage.getItem(getSetupDismissKey()) === "1"; } catch { return false; }
+        }
+
+        function dismissSetupNotice() {
+          try { localStorage.setItem(getSetupDismissKey(), "1"); } catch {}
+        }
+
+        function clearSetupDismissed() {
+          try { localStorage.removeItem(getSetupDismissKey()); } catch {}
+        }
+
         function buildSetupHref(source) {
           const resumeStep = getSetupResumeStep(source);
           const prepareDone = isSetupPrepareDone(source);
@@ -543,13 +559,18 @@ const titleEl = document.getElementById("title");
         function refreshSetupEntryPoint() {
           if (!openSetup) return;
           const source = getSetupSource();
-          openSetup.href = buildSetupHref(source);
+          const href = buildSetupHref(source);
+          openSetup.dataset.href = href;
           openSetup.textContent = getSetupActionLabel(source);
+          openSetup.onclick = () => {
+            clearSetupDismissed();
+            location.href = href;
+          };
         }
 
         function renderSetupWidgets() {
           if (!setupTopNotice) return;
-          if (!venueId || !(isOwner || isAdmin) || demoReadonly || billingReadonly) {
+          if (!venueId || !(isOwner || isAdmin) || demoReadonly || billingReadonly || isSetupDismissed()) {
             setupTopNotice.classList.add("hidden");
             refreshSetupEntryPoint();
             return;
@@ -595,11 +616,20 @@ const titleEl = document.getElementById("title");
                 <div class="muted mt-6">${esc(extraHint)}</div>
               </div>
               <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
-                <a class="btn" href="${actionHref}">${esc(actionLabel)}</a>
-                ${prepareDone ? `<a class="btn subtle" href="/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}">Расходы</a>` : `<a class="btn subtle" href="/owner-pay-profiles.html?venue_id=${encodeURIComponent(venueId)}">Профили зарплаты</a>`}
+                <button class="btn" id="btnOpenSetupNotice" type="button">${esc(actionLabel)}</button>
+                <button class="btn subtle" id="btnSkipSetupNotice" type="button">Пропустить настройку</button>
               </div>
             </div>
           `;
+          document.getElementById("btnOpenSetupNotice")?.addEventListener("click", () => {
+            clearSetupDismissed();
+            location.href = actionHref;
+          });
+          document.getElementById("btnSkipSetupNotice")?.addEventListener("click", () => {
+            dismissSetupNotice();
+            setupTopNotice.classList.add("hidden");
+            toast("Настройку можно продолжить позже", "ok");
+          });
           setupTopNotice.classList.remove("hidden");
         }
 
@@ -1022,7 +1052,18 @@ if (tipsModeEl) {
           if (!name) return;
 
           try {
-            await api(`/venues/${venueId}`, { method:"PATCH", body: { name: name.trim() } });
+            const payload = { name: name.trim() };
+            let renamed = false;
+            const attempts = [
+              () => api(`/venues/${venueId}`, { method:"PATCH", body: payload }),
+              () => api(`/admin/venues/${venueId}`, { method:"PATCH", body: payload }),
+              () => api(`/venues/${venueId}/rename`, { method:"POST", body: payload }),
+            ];
+            let lastErr = null;
+            for (const run of attempts) {
+              try { await run(); renamed = true; break; } catch (err) { lastErr = err; }
+            }
+            if (!renamed) throw lastErr || new Error("Не удалось переименовать заведение");
             toast("Переименовано", "ok");
             await load();
           } catch (e) {
