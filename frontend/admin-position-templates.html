@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · Админ · Шаблоны прав</title>
+  <style>
+    .tpl-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+    .tpl-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:14px}
+    .tpl-list{display:grid;gap:10px}
+    .tpl-item{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:10px;display:grid;gap:8px}
+    .tpl-tags{display:flex;gap:6px;flex-wrap:wrap}
+    .tpl-tag{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;border:1px solid rgba(0,0,0,.12);font-size:12px}
+    .tpl-perm-grid{display:grid;gap:10px}
+    .tpl-perm-group{border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:10px}
+    .tpl-perm-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid rgba(0,0,0,.06)}
+    .tpl-perm-row:first-child{border-top:none;padding-top:0}
+    .tpl-perm-title{font-weight:600}
+    .tpl-perm-desc{font-size:12px;opacity:.72;margin-top:2px}
+    .tpl-perm-tools{display:flex;gap:6px;flex-wrap:wrap}
+    .tpl-field{display:grid;gap:6px}
+    .tpl-sticky{position:sticky;top:10px}
+    .tpl-empty{padding:18px;text-align:center;opacity:.72}
+    @media (max-width:960px){.tpl-grid{grid-template-columns:1fr}.tpl-sticky{position:static}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>Админ · Шаблоны прав должностей</b>
+          <div class="muted">Глобальные пресеты для мастера настройки и страницы должностей</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>—</div>
+    </div>
+
+    <div class="tpl-toolbar">
+      <button id="btnSeedDefaults" class="btn">Добавить базовые шаблоны</button>
+      <button id="btnNew" class="btn primary">Новый шаблон</button>
+      <button id="btnShowInactive" class="btn subtle">Скрыть архив</button>
+      <span id="status" class="muted"></span>
+    </div>
+
+    <div id="root" class="tpl-grid"></div>
+  </div>
+
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+  <script type="module" src="/admin-position-templates.js?v=20260409-setup8"></script>
+</body>
+</html>

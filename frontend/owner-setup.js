@@ -255,6 +255,7 @@ const state = {
     recurring_expenses: { items: null, categories: null, suppliers: null, paymentMethods: null, showInactive: false, editor: { mode: "create", id: null }, loading: false },
   },
   permissionsCatalog: null,
+  positionPermissionTemplates: null,
 };
 
 function esc(value) {
@@ -469,6 +470,54 @@ async function ensurePermissionsCatalog() {
   return state.permissionsCatalog;
 }
 
+async function ensurePositionPermissionTemplates() {
+  if (Array.isArray(state.positionPermissionTemplates)) return state.positionPermissionTemplates;
+  try {
+    const resp = await api("/position-permission-templates");
+    state.positionPermissionTemplates = Array.isArray(resp?.items) ? resp.items : [];
+  } catch {
+    state.positionPermissionTemplates = [];
+  }
+  return state.positionPermissionTemplates;
+}
+
+function getPositionTemplateById(templateId) {
+  return (Array.isArray(state.positionPermissionTemplates) ? state.positionPermissionTemplates : []).find((item) => String(item?.id || "") === String(templateId || "")) || null;
+}
+
+function buildPositionTemplateOptions(selectedId = "") {
+  const current = String(selectedId || "");
+  const items = Array.isArray(state.positionPermissionTemplates) ? state.positionPermissionTemplates.filter((item) => item?.is_active !== false) : [];
+  return ['<option value="">Без шаблона</option>']
+    .concat(items.map((item) => `<option value="${esc(item.id)}" ${String(item.id) === current ? "selected" : ""}>${esc(item.title)}${item.is_system ? " · system" : ""}</option>`))
+    .join("");
+}
+
+function renderPositionTemplateSummary(templateId = "") {
+  const template = getPositionTemplateById(templateId);
+  if (!template) return `<div class="muted">Шаблон не выбран. Можно собрать права вручную ниже.</div>`;
+  const labels = Array.isArray(template?.permission_summary?.summary_labels) ? template.permission_summary.summary_labels : [];
+  return `
+    <div>
+      <div class="muted">${esc(template.description || "Шаблон без описания")}</div>
+      <div class="row" style="gap:6px; flex-wrap:wrap; margin-top:6px">${labels.length ? labels.map((label) => `<span class="badge">${esc(label)}</span>`).join("") : `<span class="muted">Прав: ${Number(template?.permission_summary?.permission_count || (template.permission_codes || []).length || 0)}</span>`}</div>
+    </div>
+  `;
+}
+
+function applyPositionTemplateSelection(host, templateId) {
+  const template = getPositionTemplateById(templateId);
+  if (!template) return false;
+  const selected = new Set((template.permission_codes || []).map((code) => String(code || "").trim().toUpperCase()));
+  host.querySelectorAll('input[data-preset-perm-code]').forEach((el) => {
+    const code = String(el.getAttribute('data-preset-perm-code') || "").trim().toUpperCase();
+    el.checked = selected.has(code);
+  });
+  const summary = host.querySelector('#positionPresetTemplateSummary');
+  if (summary) summary.innerHTML = renderPositionTemplateSummary(templateId);
+  return true;
+}
+
 function parsePermissionCodes(value) {
   if (Array.isArray(value)) return value.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean);
   if (!value) return [];
@@ -493,6 +542,8 @@ function getPositionPresets() {
     title: String(item?.title || "").trim(),
     pay_profile_id: item?.pay_profile_id ? Number(item.pay_profile_id) : null,
     pay_profile_title: String(item?.pay_profile_title || "").trim(),
+    template_id: item?.template_id ? String(item.template_id) : "",
+    template_title: String(item?.template_title || "").trim(),
     permission_codes: parsePermissionCodes(item?.permission_codes),
     rate: Number(item?.rate || 0) || 0,
     percent: Number(item?.percent || 0) || 0,
@@ -1444,6 +1495,7 @@ function collectPresetPermissionCodes(host) {
 }
 
 function renderPositionPresetForm(preset) {
+  const templateId = preset?.template_id || "";
   return `
     <div class="setup-formgrid mt-12">
       <label>
@@ -1454,7 +1506,12 @@ function renderPositionPresetForm(preset) {
         <span>Профиль зарплаты</span>
         <select class="input" id="positionPresetPayProfile">${buildPayProfileOptions(preset?.pay_profile_id || '')}</select>
       </label>
+      <label style="grid-column:1 / -1">
+        <span>Шаблон прав</span>
+        <select class="input" id="positionPresetTemplate">${buildPositionTemplateOptions(templateId)}</select>
+      </label>
     </div>
+    <div id="positionPresetTemplateSummary" class="itemcard" style="margin-top:12px; padding:10px 12px">${renderPositionTemplateSummary(templateId)}</div>
     <div class="setup-inline-note">На этом этапе ты создаёшь именно заготовки должностей. Людей на них назначим на следующем шаге через приглашения.</div>
     <div style="margin-top:12px; display:grid; grid-template-columns:1fr; gap:10px">${renderPermissionChecklist(preset?.permission_codes || [])}</div>
   `;
@@ -1484,7 +1541,7 @@ function renderPositionsEditor(currentStep) {
                     <b>${esc(item.title)}</b>
                     ${item.is_active ? '' : '<span class="badge">архив</span>'}
                   </div>
-                  <div class="setup-minirow__meta">${item.pay_profile_title ? `Профиль: ${esc(item.pay_profile_title)} · ` : ''}Прав: ${item.permission_codes.length}</div>
+                  <div class="setup-minirow__meta">${item.pay_profile_title ? `Профиль: ${esc(item.pay_profile_title)} · ` : ''}${item.template_title ? `Шаблон: ${esc(item.template_title)} · ` : ''}Прав: ${item.permission_codes.length}</div>
                 </div>
                 <div class="setup-minirow__actions">
                   <button class="btn sm" type="button" data-edit-preset="${esc(item.id)}">Изменить</button>
@@ -1516,7 +1573,7 @@ function renderPositionsEditor(currentStep) {
 async function mountPositionsEditor(currentStep) {
   const host = document.getElementById('setupInlineEditor');
   if (!host) return;
-  await ensurePermissionsCatalog();
+  await Promise.all([ensurePermissionsCatalog(), ensurePositionPermissionTemplates()]);
   await loadInlinePayProfiles();
   host.innerHTML = renderPositionsEditor(getStepByKey('positions') || currentStep);
   const presets = getPositionPresets();
@@ -1526,6 +1583,12 @@ async function mountPositionsEditor(currentStep) {
     const turnOn = btn.getAttribute('data-value') === '1';
     host.querySelectorAll(`input[data-preset-perm-group="${group}"]`).forEach((el) => { el.checked = turnOn; });
   }));
+
+  host.querySelector('#positionPresetTemplate')?.addEventListener('change', (e) => {
+    const templateId = String(e?.target?.value || '').trim();
+    if (!templateId) { const summary = host.querySelector('#positionPresetTemplateSummary'); if (summary) summary.innerHTML = renderPositionTemplateSummary(''); return; }
+    if (applyPositionTemplateSelection(host, templateId)) toast('Шаблон применён', 'ok');
+  });
 
   document.getElementById('btnCancelPresetEdit')?.addEventListener('click', async () => {
     state.inline.positions.editorId = null;
@@ -1543,6 +1606,8 @@ async function mountPositionsEditor(currentStep) {
       title,
       pay_profile_id: payProfileIdRaw ? Number(payProfileIdRaw) : null,
       pay_profile_title: selectedProfile?.title || '',
+      template_id: String(document.getElementById('positionPresetTemplate')?.value || '').trim() || null,
+      template_title: getPositionTemplateById(String(document.getElementById('positionPresetTemplate')?.value || '').trim())?.title || null,
       permission_codes: collectPresetPermissionCodes(host),
       rate: 0,
       percent: 0,
