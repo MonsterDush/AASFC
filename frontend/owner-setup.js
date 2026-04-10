@@ -661,6 +661,12 @@ function getStepFromUrl() {
   return String(params.get("step") || "").trim();
 }
 
+function getPhaseFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const raw = String(params.get("phase") || "").trim().toUpperCase();
+  return raw === "EXTRA" ? "EXTRA" : (raw === "PREPARE" ? "PREPARE" : "");
+}
+
 function setStepInUrl(stepKey, phase) {
   const url = new URL(location.href);
   if (stepKey) url.searchParams.set("step", stepKey);
@@ -687,9 +693,12 @@ function getVisibleSteps() {
 
 function getCurrentStep() {
   const steps = Array.isArray(state.setup?.steps) ? state.setup.steps : [];
-  const fallbackKey = getStepFromUrl() || state.selectedStepKey || getSetupResumeStep(state.setup) || steps[0]?.key || "";
-  return steps.find((step) => step.key === fallbackKey)
-    || steps.find((step) => step.key === getSetupResumeStep(state.setup))
+  const fallbackKey = getStepFromUrl() || state.selectedStepKey || getPhaseResumeStep(state.selectedPhase)?.key || steps[0]?.key || "";
+  const selected = steps.find((step) => step.key === fallbackKey) || null;
+  if (selected && String(selected.phase || '').toUpperCase() === String(state.selectedPhase || '').toUpperCase()) return selected;
+  return steps.find((step) => String(step.phase || '').toUpperCase() === String(state.selectedPhase || 'PREPARE').toUpperCase() && !getStepUiInfo(step).locked)
+    || steps.find((step) => String(step.phase || '').toUpperCase() === String(state.selectedPhase || 'PREPARE').toUpperCase())
+    || selected
     || steps[0]
     || null;
 }
@@ -728,10 +737,46 @@ function getNextStepKey(currentStepKey) {
   return "";
 }
 
+function getAdjacentUnlockedStep(steps, currentStepKey, direction = 1) {
+  const list = Array.isArray(steps) ? steps : [];
+  const idx = list.findIndex((step) => String(step.key) === String(currentStepKey || ""));
+  if (idx < 0) return null;
+  if (direction < 0) {
+    for (let i = idx - 1; i >= 0; i -= 1) {
+      const candidate = list[i];
+      if (!getStepUiInfo(candidate).locked) return candidate;
+    }
+    return null;
+  }
+  for (let i = idx + 1; i < list.length; i += 1) {
+    const candidate = list[i];
+    if (!getStepUiInfo(candidate).locked) return candidate;
+  }
+  return null;
+}
+
+function buildQuickStepOptions(steps, currentStepKey) {
+  return ['<option value="">Перейти к шагу…</option>']
+    .concat((Array.isArray(steps) ? steps : []).map((step) => {
+      const ui = getStepUiInfo(step);
+      const statusLabel = STATUS_LABELS[ui.uiStatus] || STATUS_LABELS[String(step.status || "AVAILABLE").toUpperCase()] || step.status || "";
+      return `<option value="${esc(step.key)}" ${String(step.key) === String(currentStepKey || "") ? 'selected' : ''} ${ui.locked ? 'disabled' : ''}>${esc(step.title)}${statusLabel ? ` · ${esc(statusLabel)}` : ''}</option>`;
+    }))
+    .join('');
+}
+
 function moveToStep(stepKey) {
-  if (!stepKey) return;
-  state.selectedStepKey = stepKey;
+  const target = getStepByKey(stepKey);
+  if (!target) return;
+  const ui = getStepUiInfo(target);
+  if (ui.locked) {
+    toast(ui.lockedReason || "Этот шаг пока недоступен", "warn");
+    return;
+  }
+  state.selectedPhase = String(target.phase || state.selectedPhase || "PREPARE").toUpperCase();
+  state.selectedStepKey = target.key;
   state.viewMode = "step";
+  setStepInUrl(target.key, state.selectedPhase);
   renderSetup();
 }
 
@@ -740,13 +785,15 @@ function moveToPhase(phase) {
   state.viewMode = "phase";
   const visibleSteps = getVisibleSteps();
   if (!visibleSteps.some((step) => String(step.key) === String(state.selectedStepKey || ""))) {
-    state.selectedStepKey = visibleSteps[0]?.key || "";
+    state.selectedStepKey = getPhaseResumeStep(state.selectedPhase)?.key || visibleSteps.find((step) => !getStepUiInfo(step).locked)?.key || visibleSteps[0]?.key || "";
   }
+  setStepInUrl("", state.selectedPhase);
   renderSetup();
 }
 
 function moveToOverview() {
   state.viewMode = "overview";
+  setStepInUrl("", state.selectedPhase);
   renderSetup();
 }
 
@@ -838,7 +885,9 @@ function renderInlineEditorHost(currentStep) {
 
 function getPhaseResumeStep(phase) {
   const normalized = String(phase || state.selectedPhase || "PREPARE").toUpperCase();
-  const visible = getVisibleSteps().map((step) => ({ step, ui: getStepUiInfo(step) }));
+  const visible = (Array.isArray(state.setup?.steps) ? state.setup.steps : [])
+    .filter((step) => String(step.phase || "").toUpperCase() === normalized)
+    .map((step) => ({ step, ui: getStepUiInfo(step) }));
   const actionable = visible.find(({ step, ui }) => !ui.locked && !step.completed && !step.skipped)
     || visible.find(({ step, ui }) => !ui.locked && (step.requires_attention || step.status === "REQUIRES_ATTENTION"))
     || visible.find(({ ui }) => !ui.locked)
@@ -1012,13 +1061,8 @@ function renderStepDetail() {
   const useInlineEditor = shouldUseInlineEditor(currentStep.key) && !ui.locked;
   const canCompleteStep = !ui.locked && (currentStep.key === "welcome" || currentStep.data_ready);
   const visibleSteps = getVisibleSteps();
-  const idx = visibleSteps.findIndex((step) => String(step.key) === String(currentStep.key));
-  const prevStep = idx > 0 ? visibleSteps[idx - 1] : null;
-  let nextStep = null;
-  for (let i = idx + 1; i < visibleSteps.length; i += 1) {
-    const candidate = visibleSteps[i];
-    if (!getStepUiInfo(candidate).locked) { nextStep = candidate; break; }
-  }
+  const prevStep = getAdjacentUnlockedStep(visibleSteps, currentStep.key, -1);
+  const nextStep = getAdjacentUnlockedStep(visibleSteps, currentStep.key, 1);
 
   root.innerHTML = `
     <div class="itemcard section-card">
@@ -1045,6 +1089,7 @@ function renderStepDetail() {
 
       <div class="setup-actionbar">
         ${typeof meta.primaryHref === "function" ? `<button class="btn ${useInlineEditor ? "subtle" : "primary"}" id="btnOpenFullPage" type="button">${esc(meta.primaryLabel || "Открыть")}</button>` : ""}
+        <select class="input setup-jump-select" id="setupStepJumpSelect">${buildQuickStepOptions(visibleSteps, currentStep.key)}</select>
         <button class="btn" id="btnReloadCurrent" type="button">Проверить шаг</button>
         ${canCompleteStep && !currentStep.completed && !useInlineEditor ? `<button class="btn" id="btnCompleteStep" type="button">Отметить завершённым</button>` : ""}
         ${currentStep.skippable && !currentStep.completed && !currentStep.skipped && !ui.locked ? `<button class="btn subtle" id="btnSkipStep" type="button">Вернуться позже</button>` : ""}
@@ -2869,28 +2914,29 @@ function wireSetupActions(currentStep, visibleSteps) {
   });
 
   document.getElementById("btnBackToPhase")?.addEventListener("click", () => {
-    state.viewMode = 'phase';
-    renderSetup();
+    moveToPhase(state.selectedPhase);
+  });
+
+  document.getElementById("setupStepJumpSelect")?.addEventListener("change", (e) => {
+    const value = String(e?.target?.value || "");
+    if (!value || value === String(currentStep.key)) return;
+    moveToStep(value);
   });
 
   document.getElementById("btnPrevStep")?.addEventListener("click", () => {
-    const idx = visibleSteps.findIndex((step) => step.key === currentStep.key);
-    if (idx > 0) {
-      const prev = visibleSteps[idx - 1];
+    const prev = getAdjacentUnlockedStep(visibleSteps, currentStep.key, -1);
+    if (prev) {
       moveToStep(prev.key);
     } else {
-      toast('Это первый шаг этого этапа', 'warn');
+      toast('Это первый доступный шаг этого этапа', 'warn');
     }
   });
 
   document.getElementById("btnNextStep")?.addEventListener("click", () => {
-    const idx = visibleSteps.findIndex((step) => step.key === currentStep.key);
-    for (let i = idx + 1; i < visibleSteps.length; i += 1) {
-      const candidate = visibleSteps[i];
-      if (!getStepUiInfo(candidate).locked) {
-        moveToStep(candidate.key);
-        return;
-      }
+    const next = getAdjacentUnlockedStep(visibleSteps, currentStep.key, 1);
+    if (next) {
+      moveToStep(next.key);
+      return;
     }
     toast('Дальше доступных шагов пока нет', 'warn');
   });
@@ -2932,15 +2978,31 @@ async function loadSetup({ preserveSelection = true } = {}) {
   const prevStep = preserveSelection ? state.selectedStepKey : "";
   const prevPhase = preserveSelection ? state.selectedPhase : "";
   state.setup = await api(`/venues/${encodeURIComponent(state.venueId)}/setup`);
-  state.selectedPhase = String(prevPhase || getSetupPhase(state.setup) || "PREPARE").toUpperCase();
+  const urlPhase = getPhaseFromUrl();
+  state.selectedPhase = String(urlPhase || prevPhase || getSetupPhase(state.setup) || "PREPARE").toUpperCase();
   const urlStep = getStepFromUrl();
-  state.selectedStepKey = urlStep || prevStep || getSetupResumeStep(state.setup) || state.setup?.steps?.[0]?.key || "";
+  state.selectedStepKey = urlStep || prevStep || getPhaseResumeStep(state.selectedPhase)?.key || state.setup?.steps?.[0]?.key || "";
   if (getSetupStatus(state.setup) === "NOT_STARTED") {
     renderStartScreen();
     return;
   }
   renderSetup();
 }
+
+window.addEventListener("popstate", () => {
+  const urlPhase = getPhaseFromUrl();
+  const urlStep = getStepFromUrl();
+  if (urlPhase) state.selectedPhase = urlPhase;
+  if (urlStep) {
+    state.selectedStepKey = urlStep;
+    state.viewMode = "step";
+  } else if (urlPhase) {
+    state.viewMode = "phase";
+  } else {
+    state.viewMode = "overview";
+  }
+  renderSetup();
+});
 
 async function bootstrap() {
   try {
