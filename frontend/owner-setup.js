@@ -21,9 +21,13 @@ import {
   createKpiMetric,
   updateKpiMetric,
   getPayProfiles,
+  getPayProfile,
   createPayProfile,
   updatePayProfile,
   deletePayProfile,
+  createPayComponent,
+  updatePayComponent,
+  deletePayComponent,
   patchInviteDefaultPosition,
 } from "/app.js";
 
@@ -247,7 +251,7 @@ const state = {
     payment_methods: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
     departments: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
     kpi: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
-    pay_profiles: { items: null, showInactive: false, editor: { mode: "create", id: null }, loading: false },
+    pay_profiles: { items: null, showInactive: false, editor: { mode: "create", id: null }, selectedProfileId: null, details: {}, componentEditor: { mode: "create", id: null }, loading: false },
     positions: { presets: null, editorId: null, loading: false },
     invites: { data: null, loading: false },
     shift_intervals: { items: null, showArchived: false, editor: { mode: "create", id: null }, loading: false },
@@ -310,6 +314,76 @@ function getStepUiInfo(step) {
   const lockedReason = firstUnmet ? `Сначала нужно пройти шаг «${firstUnmet.title}».` : "";
   const uiStatus = locked ? "LOCKED" : String(step?.status || "AVAILABLE").toUpperCase();
   return { locked, unmet, lockedReason, uiStatus };
+}
+
+function getStepSummaryText(step, ui = getStepUiInfo(step)) {
+  if (!step) return "";
+  if (ui.locked) return ui.lockedReason || "Этот шаг пока недоступен.";
+  if (step.completed) return "Шаг завершён";
+  if (step.skipped) return "Можно вернуться позже";
+  if (step.requires_attention || String(step.status || "").toUpperCase() === "REQUIRES_ATTENTION") return "Нужно проверить настройки";
+  if (step.data_ready) return "Можно переходить дальше";
+  if (step.key === "welcome") return "Подтверди название заведения";
+  if (step.key === "pay_profiles") return "Собери базовые профили начислений";
+  if (step.key === "positions") return "Создай роли и права команды";
+  if (step.key === "invites") return "Добавь команду и назначь должности";
+  return "Открой шаг и настрой его";
+}
+
+function defaultPayComponentTitle(type) {
+  const code = String(type || "SALARY_FIXED_MONTH").toUpperCase();
+  return COMPONENT_LABELS[code] || "Компонент";
+}
+
+function payComponentValueLabel(item) {
+  const type = String(item?.component_type || "").toUpperCase();
+  if (type === "SALARY_FIXED_MONTH") return item?.amount_minor != null ? `${fmtMoneyMinor(item.amount_minor)} в месяц` : "Без суммы";
+  if (type === "SALARY_HOURLY") return item?.rate_minor != null ? `${fmtMoneyMinor(item.rate_minor)} в час` : "Без ставки";
+  if (type === "SALARY_PER_SHIFT") return item?.amount_minor != null ? `${fmtMoneyMinor(item.amount_minor)} за смену` : "Без суммы";
+  if (type === "PERCENT_TOTAL_REVENUE") return item?.percent_bps != null ? `${fmtPercentBps(item.percent_bps)} от общей выручки` : "Без процента";
+  if (type === "PERCENT_DEPARTMENT_REVENUE") {
+    const dep = item?.department_title ? ` · ${item.department_title}` : "";
+    return item?.percent_bps != null ? `${fmtPercentBps(item.percent_bps)} от департамента${dep}` : `Процент по департаменту${dep}`;
+  }
+  if (type === "KPI_BONUS") {
+    const kpi = item?.kpi_metric_title ? ` · ${item.kpi_metric_title}` : "";
+    const amount = item?.amount_minor != null ? ` · ${fmtMoneyMinor(item.amount_minor)}` : "";
+    return `Бонус по KPI${kpi}${amount}`;
+  }
+  return "Компонент";
+}
+
+function payComponentTypeOptions(selected = "SALARY_FIXED_MONTH") {
+  const value = String(selected || "SALARY_FIXED_MONTH").toUpperCase();
+  return [
+    ["SALARY_FIXED_MONTH", "Оклад за месяц"],
+    ["SALARY_HOURLY", "Почасовая ставка"],
+    ["SALARY_PER_SHIFT", "Фикс за смену"],
+    ["PERCENT_TOTAL_REVENUE", "% от общей выручки"],
+    ["PERCENT_DEPARTMENT_REVENUE", "% от выручки департамента"],
+    ["KPI_BONUS", "KPI-бонус"],
+  ].map(([code, title]) => `<option value="${code}" ${value === code ? "selected" : ""}>${title}</option>`).join("");
+}
+
+function buildSimpleOptions(items = [], selected = "", placeholder = "Не выбрано") {
+  const value = String(selected || "");
+  return [`<option value="">${esc(placeholder)}</option>`]
+    .concat((Array.isArray(items) ? items : []).filter((item) => item?.is_active !== false).map((item) => `<option value="${esc(item.id)}" ${String(item.id) === value ? "selected" : ""}>${esc(item.title || item.name || `#${item.id}`)}</option>`))
+    .join("");
+}
+
+function syncInlinePayComponentFields() {
+  const type = String(document.getElementById('inlineComponentType')?.value || 'SALARY_FIXED_MONTH').toUpperCase();
+  const amountRow = document.getElementById('inlineComponentAmountRow');
+  const rateRow = document.getElementById('inlineComponentRateRow');
+  const percentRow = document.getElementById('inlineComponentPercentRow');
+  const depRow = document.getElementById('inlineComponentDepartmentRow');
+  const kpiRow = document.getElementById('inlineComponentKpiRow');
+  if (amountRow) amountRow.style.display = ['SALARY_FIXED_MONTH', 'SALARY_PER_SHIFT', 'KPI_BONUS'].includes(type) ? '' : 'none';
+  if (rateRow) rateRow.style.display = type === 'SALARY_HOURLY' ? '' : 'none';
+  if (percentRow) percentRow.style.display = ['PERCENT_TOTAL_REVENUE', 'PERCENT_DEPARTMENT_REVENUE'].includes(type) ? '' : 'none';
+  if (depRow) depRow.style.display = type === 'PERCENT_DEPARTMENT_REVENUE' ? '' : 'none';
+  if (kpiRow) kpiRow.style.display = type === 'KPI_BONUS' ? '' : 'none';
 }
 
 async function renameVenue(venueId, name) {
@@ -731,10 +805,8 @@ function buildUnitOptions(selected = "QTY") {
 }
 
 function getNextStepKey(currentStepKey) {
-  const visibleSteps = getVisibleSteps();
-  const idx = visibleSteps.findIndex((step) => step.key === currentStepKey);
-  if (idx >= 0 && idx < visibleSteps.length - 1) return visibleSteps[idx + 1].key;
-  return "";
+  const next = getAdjacentUnlockedStep(getVisibleSteps(), currentStepKey, 1);
+  return next?.key || "";
 }
 
 function getAdjacentUnlockedStep(steps, currentStepKey, direction = 1) {
@@ -915,7 +987,7 @@ function renderOverview() {
       <div class="section-card__head">
         <div class="section-card__title">
           <b>${esc(venueName)}</b>
-          <div class="muted">${esc(status)}</div>
+          <div class="muted">Базовая настройка · статус: ${esc(status)}</div>
         </div>
       </div>
 
@@ -948,7 +1020,6 @@ function renderOverview() {
       </div>
 
       <div class="setup-actionbar mt-14">
-        <button class="btn" id="btnOverviewReload" type="button">Обновить прогресс</button>
         <button class="btn" id="btnOverviewVenue" type="button">К заведению</button>
         <button class="btn subtle" id="btnSkipSetupAll" type="button">Пропустить настройку</button>
       </div>
@@ -959,10 +1030,6 @@ function renderOverview() {
   document.getElementById("btnOverviewExtra")?.addEventListener("click", () => {
     if (extraDisabled) { toast("Сначала заверши базовую настройку", "warn"); return; }
     moveToPhase("EXTRA");
-  });
-  document.getElementById("btnOverviewReload")?.addEventListener("click", async () => {
-    await loadSetup({ preserveSelection: true });
-    toast("Прогресс обновлён", "ok");
   });
   document.getElementById("btnOverviewVenue")?.addEventListener("click", () => navTo(`/app-venue.html?venue_id=${encodeURIComponent(String(state.venueId))}`));
   document.getElementById("btnSkipSetupAll")?.addEventListener("click", async () => {
@@ -996,9 +1063,7 @@ function renderPhaseScreen() {
         ${visibleSteps.map((step) => {
           const ui = getStepUiInfo(step);
           const statusLabel = STATUS_LABELS[ui.uiStatus] || STATUS_LABELS[String(step.status || "AVAILABLE").toUpperCase()] || step.status;
-          const countText = ui.locked
-            ? ui.lockedReason
-            : (step.count_key ? `Объектов: ${Number(step.count || 0)}` : (step.completed || step.skipped ? "Решение зафиксировано" : "Ожидает решения"));
+          const countText = getStepSummaryText(step, ui);
           return `
             <button class="setup-step ${String(step.key) === String(state.selectedStepKey || "") ? "is-active" : ""}" type="button" data-step-key="${esc(step.key)}" ${ui.locked ? "disabled" : ""}>
               <div class="setup-step__top">
@@ -1016,7 +1081,7 @@ function renderPhaseScreen() {
       <div class="setup-footer">
         <div class="setup-actionbar">
           <button class="btn subtle" id="btnPhaseBack" type="button">← Назад</button>
-          <button class="btn" id="btnPhaseResume" type="button">К следующему шагу</button>
+          <button class="btn" id="btnPhaseResume" type="button">Продолжить</button>
         </div>
         <div class="setup-actionbar">
           ${isExtra ? `<button class="btn subtle" id="btnPhasePrevPhase" type="button">К базовой настройке</button>` : ``}
@@ -1059,7 +1124,6 @@ function renderStepDetail() {
   };
 
   const useInlineEditor = shouldUseInlineEditor(currentStep.key) && !ui.locked;
-  const canCompleteStep = !ui.locked && (currentStep.key === "welcome" || currentStep.data_ready);
   const visibleSteps = getVisibleSteps();
   const prevStep = getAdjacentUnlockedStep(visibleSteps, currentStep.key, -1);
   const nextStep = getAdjacentUnlockedStep(visibleSteps, currentStep.key, 1);
@@ -1074,10 +1138,7 @@ function renderStepDetail() {
         <span class="${toStepStatusClass(ui.uiStatus)}">${esc(STATUS_LABELS[ui.uiStatus] || currentStep.status)}</span>
       </div>
 
-      <div class="setup-inline-list">
-        <span class="setup-chip">Объектов: ${Number(currentStep.count || 0)}</span>
-        ${ui.locked ? `<span class="setup-chip">${esc(ui.lockedReason)}</span>` : ''}
-      </div>
+      ${ui.locked ? `<div class="setup-inline-list"><span class="setup-chip">${esc(ui.lockedReason)}</span></div>` : ``}
 
       <div class="setup-detail__grid">
         <div class="setup-helper"><b>Что это</b>${esc(meta.what || "")}</div>
@@ -1090,14 +1151,11 @@ function renderStepDetail() {
       <div class="setup-actionbar">
         ${typeof meta.primaryHref === "function" ? `<button class="btn ${useInlineEditor ? "subtle" : "primary"}" id="btnOpenFullPage" type="button">${esc(meta.primaryLabel || "Открыть")}</button>` : ""}
         <select class="input setup-jump-select" id="setupStepJumpSelect">${buildQuickStepOptions(visibleSteps, currentStep.key)}</select>
-        <button class="btn" id="btnReloadCurrent" type="button">Проверить шаг</button>
-        ${canCompleteStep && !currentStep.completed && !useInlineEditor ? `<button class="btn" id="btnCompleteStep" type="button">Отметить завершённым</button>` : ""}
         ${currentStep.skippable && !currentStep.completed && !currentStep.skipped && !ui.locked ? `<button class="btn subtle" id="btnSkipStep" type="button">Вернуться позже</button>` : ""}
-        ${(currentStep.completed || currentStep.skipped || currentStep.requires_attention) ? `<button class="btn subtle" id="btnResetStep" type="button">Сбросить шаг</button>` : ""}
       </div>
 
       <div class="setup-inline-note">
-        ${ui.locked ? esc(ui.lockedReason) : (currentStep.requires_attention ? "Шаг был отмечен завершённым, но сейчас данные выглядят неполными. Проверь блок настройки и обнови шаг." : (currentStep.completed ? "Шаг завершён и учитывается в общем прогрессе мастера." : (currentStep.skipped ? "Шаг отложен и не блокирует общий прогресс." : "После изменений в мастере или на целевой странице вернись сюда и нажми «Проверить шаг».")))}
+        ${ui.locked ? esc(ui.lockedReason) : (currentStep.completed ? "Шаг завершён и уже учитывается в прогрессе настройки." : (currentStep.skipped ? "Шаг отложен. К нему можно вернуться в любой момент." : "Сохраняй изменения прямо в мастере или открой полный экран модуля, если нужен расширенный режим."))}
       </div>
 
       <div class="setup-footer">
@@ -1146,7 +1204,7 @@ function renderCatalogListItems(stepKey, items, currentStep) {
             ${item.is_active ? "" : `<span class="badge">архив</span>`}
             ${cfg.includeUnit ? `<span class="badge">${esc(UNIT_LABEL[unit] || unit)}</span>` : ""}
           </div>
-          <div class="setup-minirow__meta">Код: ${esc(item.code || "—")} · ${esc(item.is_active ? cfg.activeHint : cfg.archivedHint)}</div>
+          <div class="setup-minirow__meta">${esc(item.is_active ? cfg.activeHint : cfg.archivedHint)}</div>
         </div>
         <div class="setup-minirow__actions">
           <button class="btn sm" type="button" data-inline-edit="${esc(stepKey)}" data-item-id="${esc(item.id)}">Изменить</button>
@@ -1171,10 +1229,7 @@ function renderCatalogEditor(stepKey, items, currentStep) {
   return `
     <div class="setup-editor__panel">
       <div class="setup-editor__toolbar">
-        <div class="setup-inline-list setup-inline-list--compact">
-          <span class="setup-chip">Активных: ${activeCount}</span>
-          <span class="setup-chip">Всего: ${items.length}</span>
-        </div>
+        <div class="setup-editor__title">${esc(cfg.listLabel)}</div>
         <label class="setup-toggle">
           <input type="checkbox" id="inlineShowArchived" ${inlineState.showArchived ? "checked" : ""} />
           <span>Показывать архив</span>
@@ -1183,8 +1238,7 @@ function renderCatalogEditor(stepKey, items, currentStep) {
 
       <div class="setup-editor__grid mt-12">
         <div>
-          <div class="setup-editor__title">${esc(cfg.listLabel)}</div>
-          <div class="setup-minirows mt-8">${renderCatalogListItems(stepKey, items, currentStep)}</div>
+          <div class="setup-minirows">${renderCatalogListItems(stepKey, items, currentStep)}</div>
         </div>
 
         <div class="setup-formcard">
@@ -1210,7 +1264,6 @@ function renderCatalogEditor(stepKey, items, currentStep) {
           <div class="setup-actionbar mt-12">
             <button class="btn primary" id="btnInlineSave" type="button">${mode === "edit" ? "Сохранить" : "Создать"}</button>
             ${mode === "edit" ? `<button class="btn subtle" id="btnInlineCancelEdit" type="button">Отмена</button>` : ""}
-            <button class="btn subtle" id="btnInlineReloadItems" type="button">Обновить список</button>
           </div>
 
           <div class="setup-inline-note">Код нужен для внутренней логики. Если не менять его вручную, он соберётся автоматически из названия.</div>
@@ -1344,11 +1397,6 @@ async function mountCatalogEditor(currentStep) {
   document.getElementById("inlineShowArchived")?.addEventListener("change", async (e) => {
     inlineState.showArchived = !!e.target?.checked;
     await mountCatalogEditor(getStepByKey(stepKey) || currentStep);
-  });
-
-  document.getElementById("btnInlineReloadItems")?.addEventListener("click", async () => {
-    await refreshCatalogStepAndSetup(stepKey, currentStep);
-    toast("Список обновлён", "ok");
   });
 
   document.getElementById("btnInlineCancelEdit")?.addEventListener("click", async () => {
@@ -1495,6 +1543,107 @@ async function mountInlineEditor(currentStep) {
   await mountCatalogEditor(getStepByKey(currentStep.key) || currentStep);
 }
 
+
+async function ensurePayProfileAuxData() {
+  if (!Array.isArray(state.departments)) {
+    try { state.departments = await getDepartments(state.venueId, { includeArchived: false }); } catch { state.departments = []; }
+  }
+  if (!Array.isArray(state.kpiMetrics)) {
+    try { state.kpiMetrics = await getKpiMetrics(state.venueId, { includeArchived: false }); } catch { state.kpiMetrics = []; }
+  }
+}
+
+async function loadInlinePayProfileDetail(profileId, { force = false } = {}) {
+  const inlineState = state.inline.pay_profiles;
+  if (!profileId) return null;
+  const key = String(profileId);
+  if (!force && inlineState.details && inlineState.details[key]) return inlineState.details[key];
+  const detail = await getPayProfile(state.venueId, profileId);
+  inlineState.details = inlineState.details || {};
+  inlineState.details[key] = detail;
+  return detail;
+}
+
+function buildPayProfileComponentEditor(detail, editingComponent = null) {
+  const type = String(editingComponent?.component_type || 'SALARY_FIXED_MONTH').toUpperCase();
+  return `
+    <div class="setup-formgrid mt-12">
+      <label>
+        <span>Тип компонента</span>
+        <select class="input" id="inlineComponentType">${payComponentTypeOptions(type)}</select>
+      </label>
+      <label>
+        <span>Название</span>
+        <input class="input" id="inlineComponentTitle" placeholder="Например, Ставка за час" value="${esc(editingComponent?.title || defaultPayComponentTitle(type))}" />
+      </label>
+      <label id="inlineComponentAmountRow" style="display:${['SALARY_FIXED_MONTH','SALARY_PER_SHIFT','KPI_BONUS'].includes(type) ? '' : 'none'}">
+        <span>Сумма, ₽</span>
+        <input class="input" id="inlineComponentAmount" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(editingComponent?.amount_minor))}" />
+      </label>
+      <label id="inlineComponentRateRow" style="display:${type === 'SALARY_HOURLY' ? '' : 'none'}">
+        <span>Ставка в час, ₽</span>
+        <input class="input" id="inlineComponentRate" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(editingComponent?.rate_minor))}" />
+      </label>
+      <label id="inlineComponentPercentRow" style="display:${['PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE'].includes(type) ? '' : 'none'}">
+        <span>Процент</span>
+        <input class="input" id="inlineComponentPercent" inputmode="decimal" placeholder="0" value="${esc(percentInputFromBps(editingComponent?.percent_bps))}" />
+      </label>
+      <label id="inlineComponentDepartmentRow" style="display:${type === 'PERCENT_DEPARTMENT_REVENUE' ? '' : 'none'}">
+        <span>Департамент</span>
+        <select class="input" id="inlineComponentDepartmentId">${buildSimpleOptions(state.departments || [], editingComponent?.department_id, 'Выбери департамент')}</select>
+      </label>
+      <label id="inlineComponentKpiRow" style="display:${type === 'KPI_BONUS' ? '' : 'none'}">
+        <span>KPI</span>
+        <select class="input" id="inlineComponentKpiMetricId">${buildSimpleOptions(state.kpiMetrics || [], editingComponent?.kpi_metric_id, 'Выбери KPI')}</select>
+      </label>
+      <label>
+        <span>Активность</span>
+        <select class="input" id="inlineComponentActive">
+          <option value="1" ${(editingComponent?.is_active === false) ? '' : 'selected'}>Активен</option>
+          <option value="0" ${(editingComponent?.is_active === false) ? 'selected' : ''}>Неактивен</option>
+        </select>
+      </label>
+    </div>
+  `;
+}
+
+function renderPayProfileComponentsBlock(detail, inlineState) {
+  const selectedProfile = detail?.title || 'Профиль';
+  const components = Array.isArray(detail?.components) ? detail.components : [];
+  const editingId = inlineState.componentEditor?.id || null;
+  const editingComponent = editingId ? components.find((item) => String(item.id) === String(editingId)) : null;
+  const mode = editingComponent ? 'edit' : 'create';
+  return `
+    <div class="setup-formcard mt-12">
+      <div class="setup-editor__title">Компоненты профиля «${esc(selectedProfile)}»</div>
+      <div class="muted mt-6">Здесь можно сразу собрать правила начисления для выбранного профиля.</div>
+      <div class="setup-minirows mt-12">
+        ${components.length ? components.map((item) => `
+          <div class="setup-minirow">
+            <div class="setup-minirow__main">
+              <div class="setup-minirow__titlewrap">
+                <b>${esc(item.title || defaultPayComponentTitle(item.component_type))}</b>
+                ${item.is_active === false ? '<span class="badge">неактивен</span>' : ''}
+              </div>
+              <div class="setup-minirow__meta">${esc(payComponentValueLabel(item))}</div>
+            </div>
+            <div class="setup-minirow__actions">
+              <button class="btn sm" type="button" data-inline-edit-component="${esc(item.id)}">Изменить</button>
+              <button class="btn sm danger" type="button" data-inline-delete-component="${esc(item.id)}">Удалить</button>
+            </div>
+          </div>
+        `).join('') : '<div class="setup-empty">Компоненты ещё не добавлены. Создай хотя бы один, чтобы профиль был готов к работе.</div>'}
+      </div>
+      <div class="setup-editor__title mt-12">${mode === 'edit' ? 'Редактирование компонента' : 'Новый компонент'}</div>
+      ${buildPayProfileComponentEditor(detail, editingComponent)}
+      <div class="setup-actionbar mt-12">
+        <button class="btn primary" id="btnInlineSaveComponent" type="button">${mode === 'edit' ? 'Сохранить компонент' : 'Добавить компонент'}</button>
+        ${mode === 'edit' ? '<button class="btn subtle" id="btnInlineCancelComponentEdit" type="button">Отмена</button>' : ''}
+      </div>
+    </div>
+  `;
+}
+
 async function loadInlinePayProfiles({ force = false } = {}) {
   const inlineState = state.inline.pay_profiles;
   if (!force && Array.isArray(inlineState.items)) return inlineState.items;
@@ -1514,14 +1663,13 @@ function renderPayProfilesEditor(items, currentStep) {
   const editingId = inlineState.editor?.id || null;
   const editingItem = editingId ? items.find((item) => String(item.id) === String(editingId)) : null;
   const mode = editingItem ? "edit" : "create";
+  const selectedProfileId = inlineState.selectedProfileId || editingId || "";
+  const detail = selectedProfileId ? (inlineState.details?.[String(selectedProfileId)] || null) : null;
   const activeCount = items.filter((item) => item.is_active !== false).length;
   return `
     <div class="setup-editor__panel">
       <div class="setup-editor__toolbar">
-        <div class="setup-inline-list setup-inline-list--compact">
-          <span class="setup-chip">Активных: ${activeCount}</span>
-          <span class="setup-chip">Всего: ${items.length}</span>
-        </div>
+        <div class="setup-editor__title">Профили зарплаты</div>
         <label class="setup-toggle">
           <input type="checkbox" id="inlineShowInactiveProfiles" ${inlineState.showInactive ? "checked" : ""} />
           <span>Показывать неактивные</span>
@@ -1529,18 +1677,19 @@ function renderPayProfilesEditor(items, currentStep) {
       </div>
       <div class="setup-editor__grid mt-12">
         <div>
-          <div class="setup-editor__title">Профили зарплаты</div>
-          <div class="setup-minirows mt-8">
+          <div class="setup-minirows">
             ${visibleItems.length ? visibleItems.map((item) => `
               <div class="setup-minirow">
                 <div class="setup-minirow__main">
                   <div class="setup-minirow__titlewrap">
                     <b>${esc(item.title)}</b>
                     ${item.is_active === false ? '<span class="badge">неактивен</span>' : ''}
+                    ${String(selectedProfileId) === String(item.id) ? '<span class="badge">выбран</span>' : ''}
                   </div>
-                  <div class="setup-minirow__meta">${esc(item.description || 'Без описания')} · Компонентов: ${Number(item.components_count || 0)}</div>
+                  <div class="setup-minirow__meta">${esc(item.description || 'Без описания')}${Number(item.components_count || 0) > 0 ? ' · Компоненты настроены' : ' · Компоненты пока не добавлены'}</div>
                 </div>
                 <div class="setup-minirow__actions">
+                  <button class="btn sm" type="button" data-inline-select-profile="${esc(item.id)}">Компоненты</button>
                   <button class="btn sm" type="button" data-inline-edit-profile="${esc(item.id)}">Изменить</button>
                   <button class="btn sm ${item.is_active === false ? '' : 'danger'}" type="button" data-inline-toggle-profile="${esc(item.id)}">${item.is_active === false ? 'Включить' : 'Отключить'}</button>
                   <button class="btn sm danger" type="button" data-inline-delete-profile="${esc(item.id)}">Удалить</button>
@@ -1549,31 +1698,33 @@ function renderPayProfilesEditor(items, currentStep) {
             `).join('') : '<div class="setup-empty">Пока нет профилей зарплаты. Создай хотя бы один базовый профиль, чтобы потом связать его с должностями.</div>'}
           </div>
         </div>
-        <div class="setup-formcard">
-          <div class="setup-editor__title">${mode === 'edit' ? 'Редактирование профиля' : 'Новый профиль'}</div>
-          <div class="muted mt-6">Профили создаются без назначения на сотрудников. Сейчас важно собрать базовые шаблоны.</div>
-          <div class="setup-formgrid mt-12">
-            <label>
-              <span>Название</span>
-              <input class="input" id="inlineProfileTitle" placeholder="Например, Официант / Бар" value="${esc(editingItem?.title || '')}" />
-            </label>
-            <label>
-              <span>Активность</span>
-              <select class="input" id="inlineProfileActive">
-                <option value="1" ${(editingItem?.is_active === false) ? '' : 'selected'}>Активен</option>
-                <option value="0" ${(editingItem?.is_active === false) ? 'selected' : ''}>Неактивен</option>
-              </select>
-            </label>
-            <label style="grid-column:1 / -1">
-              <span>Описание</span>
-              <textarea class="input" id="inlineProfileDescription" rows="4" placeholder="Коротко опиши, для какой роли нужен этот профиль">${esc(editingItem?.description || '')}</textarea>
-            </label>
+        <div>
+          <div class="setup-formcard">
+            <div class="setup-editor__title">${mode === 'edit' ? 'Редактирование профиля' : 'Новый профиль'}</div>
+            <div class="muted mt-6">Профили создаются без назначения на сотрудников. Сейчас важно собрать базовые шаблоны.</div>
+            <div class="setup-formgrid mt-12">
+              <label>
+                <span>Название</span>
+                <input class="input" id="inlineProfileTitle" placeholder="Например, Официант / Бар" value="${esc(editingItem?.title || '')}" />
+              </label>
+              <label>
+                <span>Активность</span>
+                <select class="input" id="inlineProfileActive">
+                  <option value="1" ${(editingItem?.is_active === false) ? '' : 'selected'}>Активен</option>
+                  <option value="0" ${(editingItem?.is_active === false) ? 'selected' : ''}>Неактивен</option>
+                </select>
+              </label>
+              <label style="grid-column:1 / -1">
+                <span>Описание</span>
+                <textarea class="input" id="inlineProfileDescription" rows="4" placeholder="Коротко опиши, для какой роли нужен этот профиль">${esc(editingItem?.description || '')}</textarea>
+              </label>
+            </div>
+            <div class="setup-actionbar mt-12">
+              <button class="btn primary" id="btnInlineSaveProfile" type="button">${mode === 'edit' ? 'Сохранить' : 'Создать'}</button>
+              ${mode === 'edit' ? '<button class="btn subtle" id="btnInlineCancelProfileEdit" type="button">Отмена</button>' : ''}
+            </div>
           </div>
-          <div class="setup-actionbar mt-12">
-            <button class="btn primary" id="btnInlineSaveProfile" type="button">${mode === 'edit' ? 'Сохранить' : 'Создать'}</button>
-            ${mode === 'edit' ? '<button class="btn subtle" id="btnInlineCancelProfileEdit" type="button">Отмена</button>' : ''}
-            <button class="btn subtle" id="btnInlineReloadProfiles" type="button">Обновить список</button>
-          </div>
+          ${detail ? renderPayProfileComponentsBlock(detail, inlineState) : (activeCount > 0 ? '<div class="setup-inline-note">Выбери профиль слева, чтобы сразу настроить его компоненты.</div>' : '')}
         </div>
       </div>
       <div class="setup-actionbar mt-14">
@@ -1588,24 +1739,25 @@ async function mountPayProfilesEditor(currentStep) {
   const host = document.getElementById('setupInlineEditor');
   if (!host) return;
   host.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+  await ensurePayProfileAuxData();
   const items = await loadInlinePayProfiles();
+  const inlineState = state.inline.pay_profiles;
   if (Number(currentStep.count || 0) !== items.filter((item) => item.is_active !== false).length) {
     await loadSetup({ preserveSelection: true });
     return;
   }
+  if (inlineState.selectedProfileId && !items.some((item) => String(item.id) === String(inlineState.selectedProfileId))) {
+    inlineState.selectedProfileId = null;
+    inlineState.componentEditor = { mode: 'create', id: null };
+  }
+  if (inlineState.selectedProfileId) {
+    try { await loadInlinePayProfileDetail(inlineState.selectedProfileId, { force: true }); } catch {}
+  }
   host.innerHTML = renderPayProfilesEditor(items, getStepByKey('pay_profiles') || currentStep);
-  const inlineState = state.inline.pay_profiles;
 
   document.getElementById('inlineShowInactiveProfiles')?.addEventListener('change', async (e) => {
     inlineState.showInactive = !!e.target?.checked;
     await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
-  });
-
-  document.getElementById('btnInlineReloadProfiles')?.addEventListener('click', async () => {
-    await loadInlinePayProfiles({ force: true });
-    await loadSetup({ preserveSelection: true });
-    await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
-    toast('Список обновлён', 'ok');
   });
 
   document.getElementById('btnInlineCancelProfileEdit')?.addEventListener('click', async () => {
@@ -1619,10 +1771,13 @@ async function mountPayProfilesEditor(currentStep) {
     const is_active = String(document.getElementById('inlineProfileActive')?.value || '1') === '1';
     if (!title) return toast('Укажи название профиля', 'err');
     try {
-      if (inlineState.editor?.id) await updatePayProfile(state.venueId, inlineState.editor.id, { title, description: description || null, is_active });
-      else await createPayProfile(state.venueId, { title, description: description || null, is_active });
+      let saved = null;
+      if (inlineState.editor?.id) saved = await updatePayProfile(state.venueId, inlineState.editor.id, { title, description: description || null, is_active });
+      else saved = await createPayProfile(state.venueId, { title, description: description || null, is_active });
       inlineState.editor = { mode: 'create', id: null };
+      if (saved?.id) inlineState.selectedProfileId = saved.id;
       await loadInlinePayProfiles({ force: true });
+      if (inlineState.selectedProfileId) await loadInlinePayProfileDetail(inlineState.selectedProfileId, { force: true });
       await loadSetup({ preserveSelection: true });
       await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
       if (!currentStep.completed) {
@@ -1637,8 +1792,18 @@ async function mountPayProfilesEditor(currentStep) {
     }
   });
 
+  host.querySelectorAll('[data-inline-select-profile]').forEach((btn) => btn.addEventListener('click', async () => {
+    inlineState.selectedProfileId = btn.getAttribute('data-inline-select-profile') || null;
+    inlineState.componentEditor = { mode: 'create', id: null };
+    await loadInlinePayProfileDetail(inlineState.selectedProfileId, { force: true });
+    await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+  }));
+
   host.querySelectorAll('[data-inline-edit-profile]').forEach((btn) => btn.addEventListener('click', async () => {
-    inlineState.editor = { mode: 'edit', id: btn.getAttribute('data-inline-edit-profile') || null };
+    const id = btn.getAttribute('data-inline-edit-profile') || null;
+    inlineState.editor = { mode: 'edit', id };
+    inlineState.selectedProfileId = id;
+    await loadInlinePayProfileDetail(id, { force: true });
     await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
   }));
 
@@ -1649,6 +1814,7 @@ async function mountPayProfilesEditor(currentStep) {
     try {
       await updatePayProfile(state.venueId, item.id, { is_active: !(item.is_active !== false) });
       await loadInlinePayProfiles({ force: true });
+      if (inlineState.selectedProfileId) await loadInlinePayProfileDetail(inlineState.selectedProfileId, { force: true });
       await loadSetup({ preserveSelection: true });
       await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
       toast('Состояние профиля обновлено', 'ok');
@@ -1665,6 +1831,7 @@ async function mountPayProfilesEditor(currentStep) {
     if (!ok) return;
     try {
       await deletePayProfile(state.venueId, item.id);
+      if (String(inlineState.selectedProfileId || '') === String(item.id)) inlineState.selectedProfileId = null;
       await loadInlinePayProfiles({ force: true });
       await loadSetup({ preserveSelection: true });
       await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
@@ -1673,6 +1840,88 @@ async function mountPayProfilesEditor(currentStep) {
       toast(e?.data?.detail || e?.message || 'Не удалось удалить профиль', 'err');
     }
   }));
+
+  document.getElementById('inlineComponentType')?.addEventListener('change', () => {
+    const titleEl = document.getElementById('inlineComponentTitle');
+    if (titleEl && !String(titleEl.value || '').trim()) titleEl.value = defaultPayComponentTitle(document.getElementById('inlineComponentType')?.value || '');
+    syncInlinePayComponentFields();
+  });
+  syncInlinePayComponentFields();
+
+  document.getElementById('btnInlineCancelComponentEdit')?.addEventListener('click', async () => {
+    inlineState.componentEditor = { mode: 'create', id: null };
+    await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+  });
+
+  host.querySelectorAll('[data-inline-edit-component]').forEach((btn) => btn.addEventListener('click', async () => {
+    inlineState.componentEditor = { mode: 'edit', id: btn.getAttribute('data-inline-edit-component') || null };
+    await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+  }));
+
+  host.querySelectorAll('[data-inline-delete-component]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-inline-delete-component') || '';
+    if (!inlineState.selectedProfileId) return;
+    const detail = await loadInlinePayProfileDetail(inlineState.selectedProfileId, { force: true });
+    const item = (detail?.components || []).find((row) => String(row.id) === String(id));
+    if (!item) return;
+    const ok = await confirmModal({ title: 'Удалить компонент?', text: `Компонент «${item.title || defaultPayComponentTitle(item.component_type)}» будет удалён.`, confirmText: 'Удалить', danger: true });
+    if (!ok) return;
+    try {
+      await deletePayComponent(state.venueId, item.id);
+      inlineState.componentEditor = { mode: 'create', id: null };
+      await loadInlinePayProfiles({ force: true });
+      await loadInlinePayProfileDetail(inlineState.selectedProfileId, { force: true });
+      await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+      toast('Компонент удалён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось удалить компонент', 'err');
+    }
+  }));
+
+  document.getElementById('btnInlineSaveComponent')?.addEventListener('click', async () => {
+    const profileId = inlineState.selectedProfileId;
+    if (!profileId) return toast('Сначала выбери профиль', 'err');
+    const type = String(document.getElementById('inlineComponentType')?.value || 'SALARY_FIXED_MONTH').toUpperCase();
+    const title = String(document.getElementById('inlineComponentTitle')?.value || '').trim() || defaultPayComponentTitle(type);
+    const is_active = String(document.getElementById('inlineComponentActive')?.value || '1') === '1';
+    const payload = { component_type: type, title, is_active };
+    try {
+      if (type === 'SALARY_FIXED_MONTH' || type === 'SALARY_PER_SHIFT' || type === 'KPI_BONUS') {
+        const amount_minor = parseMoneyRubToMinor(document.getElementById('inlineComponentAmount')?.value || '');
+        if (amount_minor == null) return toast('Укажи сумму', 'err');
+        payload.amount_minor = amount_minor;
+      }
+      if (type === 'SALARY_HOURLY') {
+        const rate_minor = parseMoneyRubToMinor(document.getElementById('inlineComponentRate')?.value || '');
+        if (rate_minor == null) return toast('Укажи ставку', 'err');
+        payload.rate_minor = rate_minor;
+      }
+      if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
+        const percent_bps = parsePercentInputToBps(document.getElementById('inlineComponentPercent')?.value || '');
+        if (percent_bps == null) return toast('Укажи процент', 'err');
+        payload.percent_bps = percent_bps;
+      }
+      if (type === 'PERCENT_DEPARTMENT_REVENUE') {
+        const departmentId = Number(document.getElementById('inlineComponentDepartmentId')?.value || 0);
+        if (!departmentId) return toast('Выбери департамент', 'err');
+        payload.department_id = departmentId;
+      }
+      if (type === 'KPI_BONUS') {
+        const kpiMetricId = Number(document.getElementById('inlineComponentKpiMetricId')?.value || 0);
+        if (!kpiMetricId) return toast('Выбери KPI', 'err');
+        payload.kpi_metric_id = kpiMetricId;
+      }
+      if (inlineState.componentEditor?.id) await updatePayComponent(state.venueId, inlineState.componentEditor.id, payload);
+      else await createPayComponent(state.venueId, profileId, payload);
+      inlineState.componentEditor = { mode: 'create', id: null };
+      await loadInlinePayProfiles({ force: true });
+      await loadInlinePayProfileDetail(profileId, { force: true });
+      await mountPayProfilesEditor(getStepByKey('pay_profiles') || currentStep);
+      toast('Компонент сохранён', 'ok');
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось сохранить компонент', 'err');
+    }
+  });
 
   document.getElementById('btnInlineCompleteProfiles')?.addEventListener('click', async () => {
     try {
@@ -1689,8 +1938,8 @@ async function mountPayProfilesEditor(currentStep) {
       await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: 'POST', body: { step_key: 'pay_profiles' } });
       await loadSetup({ preserveSelection: true });
       toast('Шаг подтверждён', 'ok');
-      const next = getNextStepKey('pay_profiles');
-      if (next) moveToStep(next);
+      const next = getAdjacentUnlockedStep(getVisibleSteps(), 'pay_profiles', 1);
+      if (next) moveToStep(next.key);
     } catch (e) {
       toast(e?.data?.detail || e?.message || 'Не удалось завершить шаг', 'err');
     }
@@ -1765,10 +2014,7 @@ function renderPositionsEditor(currentStep) {
   return `
     <div class="setup-editor__panel">
       <div class="setup-editor__toolbar">
-        <div class="setup-inline-list setup-inline-list--compact">
-          <span class="setup-chip">Активных заготовок: ${presets.filter((item) => item.is_active).length}</span>
-          <span class="setup-chip">Всего: ${presets.length}</span>
-        </div>
+        <div class="setup-editor__title">Заготовки должностей</div>
       </div>
       <div class="setup-editor__grid mt-12">
         <div>
@@ -1781,7 +2027,7 @@ function renderPositionsEditor(currentStep) {
                     <b>${esc(item.title)}</b>
                     ${item.is_active ? '' : '<span class="badge">архив</span>'}
                   </div>
-                  <div class="setup-minirow__meta">${item.pay_profile_title ? `Профиль: ${esc(item.pay_profile_title)} · ` : ''}${item.template_title ? `Шаблон: ${esc(item.template_title)} · ` : ''}Прав: ${item.permission_codes.length}</div>
+                  <div class="setup-minirow__meta">${item.pay_profile_title ? `Профиль: ${esc(item.pay_profile_title)}` : 'Профиль пока не выбран'}${item.template_title ? ` · Шаблон: ${esc(item.template_title)}` : ''}</div>
                 </div>
                 <div class="setup-minirow__actions">
                   <button class="btn sm" type="button" data-edit-preset="${esc(item.id)}">Изменить</button>
@@ -2177,10 +2423,7 @@ function renderShiftIntervalsEditor(items, currentStep) {
   return `
     <div class="setup-editor__panel">
       <div class="setup-editor__toolbar">
-        <div class="setup-inline-list setup-inline-list--compact">
-          <span class="setup-chip">Активных: ${activeCount}</span>
-          <span class="setup-chip">Всего: ${items.length}</span>
-        </div>
+        <div class="setup-editor__title">${esc(cfg.listLabel)}</div>
         <label class="setup-toggle">
           <input type="checkbox" id="inlineShowArchivedIntervals" ${inlineState.showArchived ? 'checked' : ''} />
           <span>Показывать архив</span>
@@ -2388,10 +2631,7 @@ function renderSuppliersEditor(items, currentStep) {
   return `
     <div class="setup-editor__panel">
       <div class="setup-editor__toolbar">
-        <div class="setup-inline-list setup-inline-list--compact">
-          <span class="setup-chip">Активных: ${activeCount}</span>
-          <span class="setup-chip">Всего: ${items.length}</span>
-        </div>
+        <div class="setup-editor__title">${esc(cfg.listLabel)}</div>
         <label class="setup-toggle">
           <input type="checkbox" id="inlineShowArchivedSuppliers" ${showArchived ? "checked" : ""} />
           <span>Показывать архив</span>
@@ -2601,10 +2841,7 @@ function renderRecurringExpensesEditor(data, currentStep) {
   return `
     <div class="setup-editor__panel">
       <div class="setup-editor__toolbar">
-        <div class="setup-inline-list setup-inline-list--compact">
-          <span class="setup-chip">Активных правил: ${activeCount}</span>
-          <span class="setup-chip">Всего: ${items.length}</span>
-        </div>
+        <div class="setup-editor__title">Правила регулярных расходов</div>
         <label class="setup-toggle">
           <input type="checkbox" id="inlineShowInactiveRecurring" ${showInactive ? 'checked' : ''} />
           <span>Показывать неактивные</span>
@@ -2829,50 +3066,6 @@ async function mountRecurringExpensesEditor(currentStep) {
 }
 
 function wireSetupActions(currentStep, visibleSteps) {
-  document.getElementById("btnPhasePrepare")?.addEventListener("click", () => {
-    state.selectedPhase = "PREPARE";
-    const first = (state.setup?.steps || []).find((step) => String(step.phase || "").toUpperCase() === "PREPARE");
-    if (first) state.selectedStepKey = first.key;
-    renderSetup();
-  });
-
-  document.getElementById("btnPhaseExtra")?.addEventListener("click", () => {
-    if (!isSetupPrepareDone(state.setup)) return;
-    state.selectedPhase = "EXTRA";
-    const first = (state.setup?.steps || []).find((step) => String(step.phase || "").toUpperCase() === "EXTRA");
-    if (first) state.selectedStepKey = first.key;
-    renderSetup();
-  });
-
-  document.getElementById("btnRefreshSetup")?.addEventListener("click", async () => {
-    await loadSetup({ preserveSelection: true });
-    toast("Прогресс обновлён", "ok");
-  });
-
-  document.querySelectorAll("[data-step-key]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.selectedStepKey = String(btn.getAttribute("data-step-key") || "");
-      renderSetup();
-    });
-  });
-
-  document.getElementById("btnReloadCurrent")?.addEventListener("click", async () => {
-    await loadSetup({ preserveSelection: true });
-  });
-
-  document.getElementById("btnCompleteStep")?.addEventListener("click", async () => {
-    try {
-      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, {
-        method: "POST",
-        body: { step_key: currentStep.key },
-      });
-      await loadSetup({ preserveSelection: true });
-      toast("Шаг отмечен завершённым", "ok");
-    } catch (e) {
-      toast(e?.data?.detail || e?.message || "Не удалось завершить шаг", "err");
-    }
-  });
-
   document.getElementById("btnSkipStep")?.addEventListener("click", async () => {
     const ok = await confirmModal({
       title: "Вернуться позже?",
@@ -2890,26 +3083,6 @@ function wireSetupActions(currentStep, visibleSteps) {
       toast("Шаг отложен", "ok");
     } catch (e) {
       toast(e?.data?.detail || e?.message || "Не удалось отложить шаг", "err");
-    }
-  });
-
-  document.getElementById("btnResetStep")?.addEventListener("click", async () => {
-    const ok = await confirmModal({
-      title: "Сбросить шаг?",
-      text: "Шаг снова станет незавершённым. Данные в модуле не удаляются, меняется только состояние мастера.",
-      confirmText: "Сбросить",
-      danger: true,
-    });
-    if (!ok) return;
-    try {
-      await api(`/venues/${encodeURIComponent(state.venueId)}/setup/reset-step`, {
-        method: "POST",
-        body: { step_key: currentStep.key },
-      });
-      await loadSetup({ preserveSelection: true });
-      toast("Шаг сброшен", "ok");
-    } catch (e) {
-      toast(e?.data?.detail || e?.message || "Не удалось сбросить шаг", "err");
     }
   });
 
@@ -2946,6 +3119,7 @@ function wireSetupActions(currentStep, visibleSteps) {
       await api(`/venues/${encodeURIComponent(state.venueId)}/setup/finish-prepare`, { method: "POST" });
       await loadSetup({ preserveSelection: false });
       state.selectedPhase = "EXTRA";
+      moveToOverview();
       toast("Базовая настройка завершена", "ok");
     } catch (e) {
       toast(e?.data?.detail || e?.message || "Не удалось завершить базовую настройку", "err");
@@ -2956,6 +3130,7 @@ function wireSetupActions(currentStep, visibleSteps) {
     try {
       await api(`/venues/${encodeURIComponent(state.venueId)}/setup/finish-extra`, { method: "POST" });
       await loadSetup({ preserveSelection: false });
+      moveToOverview();
       toast("Мастер настройки завершён", "ok");
     } catch (e) {
       toast(e?.data?.detail || e?.message || "Не удалось завершить мастер", "err");
