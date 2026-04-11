@@ -2416,6 +2416,7 @@ async function loadInlineShiftIntervals({ force = false } = {}) {
 
 function renderShiftIntervalsEditor(items, currentStep) {
   const inlineState = state.inline.shift_intervals;
+  const cfg = CATALOG_CONFIG.shift_intervals || { listLabel: 'Интервалы смен' };
   const visibleItems = inlineState.showArchived ? items : items.filter((item) => item.is_active !== false);
   const editingId = inlineState.editor?.id || null;
   const editing = editingId ? items.find((item) => String(item.id) === String(editingId)) : null;
@@ -2623,6 +2624,7 @@ async function loadInlineSuppliers({ force = false } = {}) {
 
 function renderSuppliersEditor(items, currentStep) {
   const inlineState = state.inline.suppliers;
+  const cfg = CATALOG_CONFIG.suppliers || { listLabel: 'Поставщики' };
   const showArchived = !!inlineState.showArchived;
   const visibleItems = showArchived ? items : items.filter((item) => item.is_active !== false);
   const activeCount = items.filter((item) => item.is_active !== false).length;
