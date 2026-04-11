@@ -59,6 +59,56 @@ const UNIT_LABEL = {
   CUSTOM: "Другое",
 };
 
+const COMPONENT_LABELS = {
+  SALARY_FIXED_MONTH: "Оклад за месяц",
+  SALARY_HOURLY: "Почасовая ставка",
+  SALARY_PER_SHIFT: "Фикс за смену",
+  PERCENT_TOTAL_REVENUE: "% от общей выручки",
+  PERCENT_DEPARTMENT_REVENUE: "% от выручки департамента",
+  KPI_BONUS: "KPI-бонус",
+};
+
+function fmtMoneyMinor(minor) {
+  const value = Number(minor || 0) / 100;
+  try {
+    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " ₽";
+  } catch {
+    return value.toFixed(2) + " ₽";
+  }
+}
+
+function fmtPercentBps(bps) {
+  const value = Number(bps || 0) / 100;
+  try {
+    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + "%";
+  } catch {
+    return value.toFixed(2) + "%";
+  }
+}
+
+function moneyInputFromMinor(minor) {
+  if (minor == null || minor === "") return "";
+  const value = Number(minor) / 100;
+  if (!Number.isFinite(value)) return "";
+  return String(value).replace(/\.0+$/, "");
+}
+
+function parseMoneyRubToMinor(value) {
+  const normalized = String(value || "").trim().replace(/\s+/g, "").replace(",", ".");
+  if (!normalized) return null;
+  const num = Number(normalized);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num * 100);
+}
+
+function parsePercentInputToBps(value) {
+  const normalized = String(value || "").trim().replace(",", ".");
+  if (!normalized) return null;
+  const num = Number(normalized);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num * 100);
+}
+
 const STEP_CONTENT = {
   welcome: {
     title: "Приветствие и название",
@@ -2416,7 +2466,6 @@ async function loadInlineShiftIntervals({ force = false } = {}) {
 
 function renderShiftIntervalsEditor(items, currentStep) {
   const inlineState = state.inline.shift_intervals;
-  const cfg = CATALOG_CONFIG.shift_intervals || { listLabel: 'Интервалы смен' };
   const visibleItems = inlineState.showArchived ? items : items.filter((item) => item.is_active !== false);
   const editingId = inlineState.editor?.id || null;
   const editing = editingId ? items.find((item) => String(item.id) === String(editingId)) : null;
@@ -2624,7 +2673,6 @@ async function loadInlineSuppliers({ force = false } = {}) {
 
 function renderSuppliersEditor(items, currentStep) {
   const inlineState = state.inline.suppliers;
-  const cfg = CATALOG_CONFIG.suppliers || { listLabel: 'Поставщики' };
   const showArchived = !!inlineState.showArchived;
   const visibleItems = showArchived ? items : items.filter((item) => item.is_active !== false);
   const activeCount = items.filter((item) => item.is_active !== false).length;
