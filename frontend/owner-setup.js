@@ -86,6 +86,13 @@ function fmtPercentBps(bps) {
   }
 }
 
+function percentInputFromBps(bps) {
+  if (bps == null || bps === "") return "";
+  const value = Number(bps || 0) / 100;
+  if (!Number.isFinite(value)) return "";
+  return String(value).replace('.', ',');
+}
+
 function moneyInputFromMinor(minor) {
   if (minor == null || minor === "") return "";
   const value = Number(minor) / 100;
