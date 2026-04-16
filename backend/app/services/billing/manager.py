@@ -84,18 +84,17 @@ def parse_amount_minor(value: str | int | float | Decimal | None) -> int:
 
 def create_default_billing_state(db: Session, *, venue_id: int, commit: bool = False) -> VenueBillingState:
     now = utcnow()
-    paid_until = now + timedelta(days=DEFAULT_BILLING_DAYS)
-    grace_until = paid_until + timedelta(days=DEFAULT_BILLING_GRACE_DAYS)
+    grace_until = now + timedelta(days=DEFAULT_BILLING_GRACE_DAYS)
     state = VenueBillingState(
         venue_id=int(venue_id),
         plan_code=DEFAULT_BILLING_PLAN_CODE,
         price_minor=DEFAULT_BILLING_PRICE_MINOR,
         currency=DEFAULT_BILLING_CURRENCY,
-        status=BILLING_STATUS_ACTIVE,
-        paid_until=paid_until,
+        status=BILLING_STATUS_GRACE,
+        paid_until=None,
         grace_until=grace_until,
-        last_payment_at=now,
-        next_payment_due_at=paid_until,
+        last_payment_at=None,
+        next_payment_due_at=now,
         auto_renew_enabled=False,
         provider=DEFAULT_BILLING_PROVIDER,
         created_at=now,
