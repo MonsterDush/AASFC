@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Iterable
 
@@ -44,9 +45,17 @@ def _write_title(ws, title: str) -> None:
 
 
 
+def _excel_safe_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        if value.tzinfo is not None and value.utcoffset() is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+    return value
+
+
 def _write_key_values(ws, rows: list[tuple[str, Any]]) -> None:
     for key, value in rows:
-        ws.append([key, value])
+        ws.append([_excel_safe_value(key), _excel_safe_value(value)])
     if rows:
         for row in ws.iter_rows(min_row=3, max_row=2 + len(rows), min_col=1, max_col=2):
             row[0].font = HEADER_FONT
@@ -75,7 +84,7 @@ def _write_table(
         cell.alignment = Alignment(vertical="top", wrap_text=True)
 
     for row in rows:
-        ws.append(row)
+        ws.append([_excel_safe_value(value) for value in row])
 
     end_row = ws.max_row
     if end_row >= header_row:
