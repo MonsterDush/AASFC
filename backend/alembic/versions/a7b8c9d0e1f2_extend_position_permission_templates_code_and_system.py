@@ -18,49 +18,95 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+TABLE_NAME = "position_permission_templates"
+UNIQUE_NAME = "uq_position_permission_templates_code"
+CODE_INDEX_NAME = op.f("ix_position_permission_templates_code")
+IS_SYSTEM_INDEX_NAME = op.f("ix_position_permission_templates_is_system")
+
+
+def _column_names(inspector: sa.Inspector, table_name: str) -> set[str]:
+    return {column["name"] for column in inspector.get_columns(table_name)}
+
+
+def _index_names(inspector: sa.Inspector, table_name: str) -> set[str]:
+    return {index["name"] for index in inspector.get_indexes(table_name)}
+
+
+def _unique_constraint_names(inspector: sa.Inspector, table_name: str) -> set[str]:
+    return {constraint["name"] for constraint in inspector.get_unique_constraints(table_name) if constraint.get("name")}
+
+
 def upgrade() -> None:
-    op.add_column(
-        "position_permission_templates",
-        sa.Column("code", sa.String(length=80), nullable=True),
-    )
-    op.add_column(
-        "position_permission_templates",
-        sa.Column("is_system", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
 
-    op.execute(
-        """
-        UPDATE position_permission_templates
-        SET code = 'legacy_' || id::text
-        WHERE code IS NULL OR btrim(code) = ''
-        """
-    )
+    columns = _column_names(inspector, TABLE_NAME)
 
-    op.alter_column("position_permission_templates", "code", nullable=False)
+    if "code" not in columns:
+        op.add_column(
+            TABLE_NAME,
+            sa.Column("code", sa.String(length=80), nullable=True),
+        )
+        columns.add("code")
 
-    op.create_unique_constraint(
-        "uq_position_permission_templates_code",
-        "position_permission_templates",
-        ["code"],
-    )
+    if "is_system" not in columns:
+        op.add_column(
+            TABLE_NAME,
+            sa.Column("is_system", sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
+        columns.add("is_system")
 
-    op.create_index(
-        op.f("ix_position_permission_templates_code"),
-        "position_permission_templates",
-        ["code"],
-        unique=False,
-    )
-    op.create_index(
-        op.f("ix_position_permission_templates_is_system"),
-        "position_permission_templates",
-        ["is_system"],
-        unique=False,
-    )
+    if "code" in columns:
+        op.execute(
+            """
+            UPDATE position_permission_templates
+            SET code = 'legacy_' || id::text
+            WHERE code IS NULL OR btrim(code) = ''
+            """
+        )
+        op.alter_column(TABLE_NAME, "code", nullable=False)
+
+    indexes = _index_names(inspector, TABLE_NAME)
+    unique_constraints = _unique_constraint_names(inspector, TABLE_NAME)
+
+    if UNIQUE_NAME not in unique_constraints:
+        op.create_unique_constraint(
+            UNIQUE_NAME,
+            TABLE_NAME,
+            ["code"],
+        )
+
+    if CODE_INDEX_NAME not in indexes:
+        op.create_index(
+            CODE_INDEX_NAME,
+            TABLE_NAME,
+            ["code"],
+            unique=False,
+        )
+
+    if IS_SYSTEM_INDEX_NAME not in indexes:
+        op.create_index(
+            IS_SYSTEM_INDEX_NAME,
+            TABLE_NAME,
+            ["is_system"],
+            unique=False,
+        )
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_position_permission_templates_is_system"), table_name="position_permission_templates")
-    op.drop_index(op.f("ix_position_permission_templates_code"), table_name="position_permission_templates")
-    op.drop_constraint("uq_position_permission_templates_code", "position_permission_templates", type_="unique")
-    op.drop_column("position_permission_templates", "is_system")
-    op.drop_column("position_permission_templates", "code")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    indexes = _index_names(inspector, TABLE_NAME)
+    unique_constraints = _unique_constraint_names(inspector, TABLE_NAME)
+    columns = _column_names(inspector, TABLE_NAME)
+
+    if IS_SYSTEM_INDEX_NAME in indexes:
+        op.drop_index(IS_SYSTEM_INDEX_NAME, table_name=TABLE_NAME)
+    if CODE_INDEX_NAME in indexes:
+        op.drop_index(CODE_INDEX_NAME, table_name=TABLE_NAME)
+    if UNIQUE_NAME in unique_constraints:
+        op.drop_constraint(UNIQUE_NAME, TABLE_NAME, type_="unique")
+    if "is_system" in columns:
+        op.drop_column(TABLE_NAME, "is_system")
+    if "code" in columns:
+        op.drop_column(TABLE_NAME, "code")
