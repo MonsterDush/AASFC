@@ -16,9 +16,12 @@ from .manager import (
     DEFAULT_BILLING_PRICE_MINOR,
     DEFAULT_BILLING_PROVIDER,
     create_default_billing_state,
+    create_external_refund_transaction,
     create_checkout_transaction,
     create_refund_transaction,
     expire_stale_pending_checkouts,
+    get_refundable_payment_transaction,
+    get_reserved_refund_amount_for_payment,
     extend_venue_billing,
     get_billing_transaction_by_invoice_id,
     get_checkout_expires_at,
@@ -30,6 +33,8 @@ from .manager import (
     mark_checkout_transaction_failed,
     parse_amount_minor,
     set_venue_billing_paid_until,
+    list_pending_external_refund_transactions,
+    sync_external_refund_transaction_state,
     sync_billing_state,
 )
 from .notifications import billing_open_url, list_owner_notification_recipients, send_owner_billing_notification_once
@@ -45,6 +50,7 @@ from .monitoring import (
     sync_billing_reconciliation_issues,
 )
 from .robokassa import build_checkout_url, format_out_sum, get_robokassa_config, is_valid_result_signature, is_valid_success_signature
+from .refunds import create_refund_request, fetch_operation_info, get_refund_request_state, get_robokassa_refund_config
 
 __all__ = [
     "BILLING_ACCESS_DENIED",
@@ -71,7 +77,10 @@ __all__ = [
     "create_checkout_transaction",
     "create_refund_transaction",
     "expire_stale_pending_checkouts",
+    "get_refundable_payment_transaction",
+    "get_reserved_refund_amount_for_payment",
     "create_default_billing_state",
+    "create_external_refund_transaction",
     "extend_venue_billing",
     "format_out_sum",
     "get_billing_transaction_by_invoice_id",
@@ -80,6 +89,10 @@ __all__ = [
     "get_billing_snapshot_for_state",
     "get_or_create_billing_state",
     "get_robokassa_config",
+    "get_robokassa_refund_config",
+    "create_refund_request",
+    "get_refund_request_state",
+    "fetch_operation_info",
     "get_user_billing_access",
     "get_venue_billing_snapshot",
     "is_valid_result_signature",
@@ -94,6 +107,8 @@ __all__ = [
     "send_super_admin_billing_alert_once",
     "send_owner_billing_notification_once",
     "set_venue_billing_paid_until",
+    "list_pending_external_refund_transactions",
+    "sync_external_refund_transaction_state",
     "sync_billing_state",
     "serialize_billing_snapshot",
 ]

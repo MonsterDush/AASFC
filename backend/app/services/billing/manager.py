@@ -632,3 +632,186 @@ def mark_checkout_transaction_failed(
     db.add(event)
     db.flush()
     return tx, event
+
+
+def _refund_target_payment_tx_id(tx: VenueBillingTransaction) -> int | None:
+    payload = _json_object(getattr(tx, "provider_payload_json", None))
+    value = payload.get("target_payment_transaction_id")
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+
+
+def get_reserved_refund_amount_for_payment(
+    db: Session,
+    *,
+    payment_transaction_id: int,
+) -> int:
+    refund_txs = list(db.execute(
+        select(VenueBillingTransaction).where(
+            VenueBillingTransaction.type == "REFUND",
+        )
+    ).scalars().all())
+    total = 0
+    for refund_tx in refund_txs:
+        if _refund_target_payment_tx_id(refund_tx) != int(payment_transaction_id):
+            continue
+        if str(refund_tx.status or "").upper() not in {"PENDING", "SUCCEEDED"}:
+            continue
+        total += int(refund_tx.amount_minor or 0)
+    return total
+def get_refundable_payment_transaction(
+    db: Session,
+    *,
+    venue_id: int,
+    requested_amount_minor: int,
+) -> VenueBillingTransaction | None:
+    payment_txs = list(db.execute(
+        select(VenueBillingTransaction).where(
+            VenueBillingTransaction.venue_id == int(venue_id),
+            VenueBillingTransaction.type == "PAYMENT",
+            VenueBillingTransaction.status == "SUCCEEDED",
+            VenueBillingTransaction.source == "ROBOKASSA",
+        ).order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
+    ).scalars().all())
+    if not payment_txs:
+        return None
+    requested = max(0, int(requested_amount_minor or 0))
+    for payment_tx in payment_txs:
+        op_key = str(payment_tx.provider_payment_id or "").strip()
+        remaining = max(0, int(payment_tx.amount_minor or 0) - get_reserved_refund_amount_for_payment(db, payment_transaction_id=int(payment_tx.id)))
+        if requested > remaining:
+            continue
+        if op_key:
+            return payment_tx
+        payload = _json_object(getattr(payment_tx, "provider_payload_json", None))
+        if payload.get("op_key"):
+            return payment_tx
+        return payment_tx
+    return None
+
+
+def create_external_refund_transaction(
+    db: Session,
+    *,
+    venue_id: int,
+    target_payment_transaction: VenueBillingTransaction,
+    amount_minor: int,
+    request_id: str,
+    op_key: str,
+    created_by_user_id: int | None,
+    comment: str | None = None,
+) -> tuple[VenueBillingTransaction, VenueBillingEvent]:
+    now = utcnow()
+    tx = VenueBillingTransaction(
+        venue_id=int(venue_id),
+        source="ROBOKASSA",
+        type="REFUND",
+        status="PENDING",
+        amount_minor=max(0, int(amount_minor or 0)),
+        days_added=0,
+        period_from=None,
+        period_until=None,
+        provider_invoice_id=str(target_payment_transaction.provider_invoice_id or target_payment_transaction.id),
+        provider_payment_id=str(request_id or "").strip() or None,
+        provider_payload_json={
+            "target_payment_transaction_id": int(target_payment_transaction.id),
+            "target_payment_invoice_id": target_payment_transaction.provider_invoice_id,
+            "op_key": str(op_key or "").strip() or None,
+            "refund_requested_at": now.isoformat(),
+            "refund_state_label": "processing",
+        },
+        comment=comment,
+        created_by_user_id=created_by_user_id,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(tx)
+    db.flush()
+    event = VenueBillingEvent(
+        venue_id=int(venue_id),
+        event_type="ROBOKASSA_REFUND_REQUESTED",
+        old_status=None,
+        new_status=None,
+        meta_json={
+            "transaction_id": int(tx.id),
+            "target_payment_transaction_id": int(target_payment_transaction.id),
+            "request_id": tx.provider_payment_id,
+            "amount_minor": int(tx.amount_minor or 0),
+        },
+        created_by_user_id=created_by_user_id,
+        created_at=now,
+    )
+    db.add(event)
+    db.flush()
+    return tx, event
+
+
+def sync_external_refund_transaction_state(
+    db: Session,
+    *,
+    transaction: VenueBillingTransaction,
+    refund_state_label: str,
+    provider_payload_json: dict | None = None,
+) -> tuple[VenueBillingTransaction, VenueBillingEvent | None]:
+    tx = transaction
+    now = utcnow()
+    label = str(refund_state_label or "").strip().lower()
+    payload = _json_object(getattr(tx, "provider_payload_json", None))
+    payload.update(_json_object(provider_payload_json))
+    payload["refund_state_label"] = label or payload.get("refund_state_label")
+    payload["refund_state_checked_at"] = now.isoformat()
+    tx.provider_payload_json = payload
+    tx.updated_at = now
+
+    current_status = str(tx.status or "").upper()
+    new_status = current_status
+    event_type = None
+    if label == "finished":
+        new_status = "SUCCEEDED"
+        event_type = "ROBOKASSA_REFUND_FINISHED" if current_status != "SUCCEEDED" else None
+    elif label == "canceled":
+        new_status = "CANCELED"
+        event_type = "ROBOKASSA_REFUND_CANCELED" if current_status != "CANCELED" else None
+    elif label == "processing":
+        new_status = "PENDING"
+    elif label:
+        new_status = "FAILED"
+        event_type = "ROBOKASSA_REFUND_FAILED" if current_status != "FAILED" else None
+
+    tx.status = new_status
+    event = None
+    if event_type is not None:
+        event = VenueBillingEvent(
+            venue_id=int(tx.venue_id),
+            event_type=event_type,
+            old_status=current_status or None,
+            new_status=new_status,
+            meta_json={
+                "transaction_id": int(tx.id),
+                "refund_state_label": label,
+            },
+            created_by_user_id=tx.created_by_user_id,
+            created_at=now,
+        )
+        db.add(event)
+        db.flush()
+    return tx, event
+
+
+def list_pending_external_refund_transactions(db: Session, *, limit: int = 100) -> list[VenueBillingTransaction]:
+    stmt = (
+        select(VenueBillingTransaction)
+        .where(
+            VenueBillingTransaction.type == "REFUND",
+            VenueBillingTransaction.source == "ROBOKASSA",
+            VenueBillingTransaction.status == "PENDING",
+            VenueBillingTransaction.provider_payment_id.isnot(None),
+        )
+        .order_by(VenueBillingTransaction.created_at.asc(), VenueBillingTransaction.id.asc())
+        .limit(max(1, int(limit or 100)))
+    )
+    return list(db.execute(stmt).scalars().all())

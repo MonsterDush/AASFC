@@ -24,6 +24,8 @@ ISSUE_LABELS = {
     "FAILED_PAYMENT": "Ошибка оплаты",
     "DUPLICATE_CALLBACK": "Повторный callback",
     "SUCCEEDED_NOT_APPLIED": "Оплата не применена",
+    "REFUND_PROCESSING_TOO_LONG": "Возврат слишком долго в обработке",
+    "REFUND_CANCELED": "Возврат отменён",
 }
 
 
@@ -50,7 +52,7 @@ def _stale_pending_minutes() -> int:
 def _issue_severity(code: str) -> str:
     if code in {"INVALID_SIGNATURE", "AMOUNT_MISMATCH", "SUCCEEDED_NOT_APPLIED"}:
         return "critical"
-    if code in {"STALE_PENDING_CHECKOUT", "FAILED_PAYMENT"}:
+    if code in {"STALE_PENDING_CHECKOUT", "FAILED_PAYMENT", "REFUND_PROCESSING_TOO_LONG", "REFUND_CANCELED"}:
         return "warning"
     return "info"
 
@@ -167,6 +169,27 @@ def derive_billing_reconciliation_issues(
                     message="Транзакция успешна, но событие применения продления не найдено.",
                     raw={"status": tx_status},
                 ))
+        if tx_type == "REFUND" and tx_status == "PENDING":
+            if created_at and created_at <= stale_cutoff:
+                issues.append(_issue_item(
+                    issue_code="REFUND_PROCESSING_TOO_LONG",
+                    venue_id=v_id,
+                    venue_name=v_name,
+                    transaction_id=int(tx.id),
+                    created_at=created_at,
+                    message="Запрос возврата слишком долго остаётся в processing.",
+                    raw={"status": tx_status},
+                ))
+        if tx_type == "REFUND" and tx_status == "CANCELED":
+            issues.append(_issue_item(
+                issue_code="REFUND_CANCELED",
+                venue_id=v_id,
+                venue_name=v_name,
+                transaction_id=int(tx.id),
+                created_at=created_at,
+                message=str(tx.comment or "Возврат отменён на стороне платёжного провайдера."),
+                raw={"status": tx_status},
+            ))
 
     issue_event_codes = {
         "ROBOKASSA_RESULT_SIGNATURE_INVALID": "INVALID_SIGNATURE",

@@ -321,7 +321,11 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
             db,
             transaction=tx,
             provider_payment_id=str(params.get("OpKey") or params.get("PaymentMethod") or tx.provider_payment_id or invoice_id),
-            provider_payload_json={"result_params": params},
+            provider_payload_json={
+                "result_params": params,
+                "op_key": str(params.get("OpKey") or "").strip() or None,
+                "payment_method": str(params.get("PaymentMethod") or "").strip() or None,
+            },
             amount_minor=amount_minor,
         )
     except ValueError:

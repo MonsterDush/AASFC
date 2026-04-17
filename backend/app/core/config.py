@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     ROBOKASSA_MERCHANT_LOGIN: str = ""
     ROBOKASSA_PASSWORD1: str = ""
     ROBOKASSA_PASSWORD2: str = ""
+    ROBOKASSA_PASSWORD3: str = ""
+    ROBOKASSA_REFUND_API_URL: str = "https://services.robokassa.ru/RefundService/Refund/Create"
+    ROBOKASSA_REFUND_STATE_URL: str = "https://services.robokassa.ru/RefundService/Refund/GetState"
+    ROBOKASSA_OPSTATE_URL: str = "https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpStateExt"
+    ROBOKASSA_REFUND_JWT_ALGORITHM: str = "HS256"
+    ROBOKASSA_REFUND_TIMEOUT_SECONDS: int = 15
     ROBOKASSA_TEST_PASSWORD1: str = ""
     ROBOKASSA_TEST_PASSWORD2: str = ""
     ROBOKASSA_TEST_MODE: bool = False

@@ -388,7 +388,7 @@ const titleEl = document.getElementById("title");
         function billingTxStatusLabel(value) {
           const v = String(value || "").toUpperCase();
           if (v === "SUCCEEDED") return "Успешно";
-          if (v === "PENDING") return "Ожидает";
+          if (v === "PENDING") return "В обработке";
           if (v === "FAILED") return "Ошибка";
           if (v === "CANCELED") return "Отменено";
           return v || "—";
@@ -408,6 +408,10 @@ const titleEl = document.getElementById("title");
             ROBOKASSA_AMOUNT_MISMATCH: "Сумма callback не совпала",
             ROBOKASSA_RESULT_DUPLICATE: "Повторный callback",
             BILLING_REFUND_CREATED: "Возврат создан",
+            ROBOKASSA_REFUND_REQUESTED: "Возврат отправлен в Robokassa",
+            ROBOKASSA_REFUND_FINISHED: "Возврат выполнен",
+            ROBOKASSA_REFUND_CANCELED: "Возврат отменён",
+            ROBOKASSA_REFUND_FAILED: "Ошибка возврата",
           };
           return map[v] || v || "—";
         }
