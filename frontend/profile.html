@@ -189,12 +189,18 @@
       requestPasswordResetCode,
       confirmPasswordReset,
       getPhoneCallStatus,
+      getStoredDemoUiState,
+      isDemoReadonlyUi,
+      getDemoMonthLabel,
     } from "/app.js";
 
     applyTelegramTheme();
     mountLogo();
     await ensureLogin({ silent: true });
     await mountNav({ activeTab: "settings" });
+
+    const demoState = getStoredDemoUiState();
+    const demoReadonly = isDemoReadonlyUi(demoState);
 
     const els = {
       backBtn: document.getElementById("backBtn"),

@@ -41,3 +41,12 @@
 - API dev: `sudo journalctl -u axelio-api-dev -f`
 - Billing jobs prod: `sudo journalctl -u axelio-billing-jobs-prod.service -n 100 --no-pager`
 - Billing jobs dev: `sudo journalctl -u axelio-billing-jobs-dev.service -n 100 --no-pager`
+sudo journalctl -u axelio-api-dev -n 100 --no-pager
+
+## Refund API Robokassa
+
+- Для внешних возвратов должен быть настроен `ROBOKASSA_PASSWORD3`.
+- При запросе возврата Axelio использует последний успешный платёж Robokassa по заведению и его `OpKey`.
+- Если `OpKey` не сохранён в callback, backend пытается получить его через `OpStateExt` по `InvoiceID`.
+- После создания заявки Robokassa возвращает `requestId`; он сохраняется в billing-транзакции возврата.
+- Billing jobs периодически опрашивает `Refund/GetState` и переводит возврат в `SUCCEEDED` / `CANCELED` или оставляет в `PENDING`.

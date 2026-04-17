@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css" />
-  <title>Axelio · Dashboard</title>
+  <title>Axelio · Обзор</title>
 </head>
 <body>
   <div class="container">
@@ -13,44 +13,25 @@
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <b id="title">Моё заведение</b>
-          <div class="muted" id="subtitle">рабочий экран сотрудника</div>
+          <b id="title">Обзор разделов</b>
+          <div class="muted" id="subtitle">быстрые переходы по вашим правам</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="grid mt-12">
-      <div class="card">
-        <b>Штрафы / Списания / Премии</b>
-        <div class="muted mt-6">Календарь и детализация по дням</div>
-        <div class="row mt-10">
-          <button class="btn primary" id="goAdjustments">Открыть</button>
+    <div class="card finance-toolbar">
+      <div class="screen-hero">
+        <div class="screen-hero__head">
+          <div>
+            <b>Доступные разделы</b>
+            <div class="page-caption mt-6" id="overviewHint">Здесь собраны разделы, которые доступны вам по правам в этом заведении.</div>
+          </div>
         </div>
       </div>
 
-      <div class="card">
-        <b>Смены</b>
-        <div class="muted mt-6">Календарь смен и детали дня</div>
-        <div class="row mt-10">
-          <button class="btn primary" id="goShifts">Открыть</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <b>Зарплата</b>
-        <div class="muted mt-6">Сводка по месяцам и расчёт по дням</div>
-        <div class="row mt-10">
-          <button class="btn primary" id="goSalary">Открыть</button>
-        </div>
-      </div>
-
-      <div class="card" id="reportCard">
-        <b>Отчёт за смену</b>
-        <div class="muted mt-6">Заполнение выручки за день</div>
-        <div class="row mt-10">
-          <button class="btn primary" id="goReport">Открыть</button>
-        </div>
+      <div class="action-grid action-grid--adaptive action-grid--mobile-2 mt-12" id="sectionsGrid">
+        <div class="itemcard section-card"><div class="muted">Загрузка разделов…</div></div>
       </div>
     </div>
 
@@ -74,61 +55,103 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, toast, mountCommonUI, mountNav, setActiveVenueId, getActiveVenueId, getMyVenues, api } from "/app.js";
-import { canManageAdjustments, hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
+import {
+  applyTelegramTheme,
+  mountCommonUI,
+  ensureLogin,
+  mountNav,
+  getActiveVenueId,
+  setActiveVenueId,
+  getMyVenues,
+  getMyVenuePermissions,
+  getMe,
+} from "/app.js";
+import {
+  permSetFromResponse,
+  roleUpper,
+  buildStaffDashboardItems,
+} from "/permissions.js";
 
 applyTelegramTheme();
-mountCommonUI("dashboard");
-
+mountCommonUI("overview");
 await ensureLogin({ silent: true });
 
-// venue context
 const params = new URLSearchParams(location.search);
-const venueId = params.get("venue_id") || getActiveVenueId();
-if (venueId) setActiveVenueId(venueId);
+const urlVenueId = params.get("venue_id");
+if (urlVenueId) setActiveVenueId(urlVenueId);
 
-await mountNav({ activeTab: "dashboard", requireVenue: true });
+await mountNav({ activeTab: "overview" });
 
-let venues = [];
-try { venues = await getMyVenues(); } catch {}
-const v = venues.find(x => String(x.id) === String(getActiveVenueId()));
-if (v) {
-  document.getElementById("title").textContent = v.name || "Заведение";
-  document.getElementById("subtitle").textContent = (v.my_role === "OWNER" ? "основные разделы заведения" : "рабочий экран сотрудника");
+const activeId = getActiveVenueId();
+const grid = document.getElementById("sectionsGrid");
+const subtitle = document.getElementById("subtitle");
+const overviewHint = document.getElementById("overviewHint");
+
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
-// show report card only if user has report access (best-effort)
+function renderItems(items = []) {
+  if (!grid) return;
+  if (!items.length) {
+    grid.innerHTML = `<div class="itemcard section-card"><b>Нет доступных разделов</b><div class="muted mt-6">Для этого заведения вам пока не выданы права на отдельные экраны.</div></div>`;
+    return;
+  }
+
+  grid.innerHTML = items.map((item) => `
+    <div class="itemcard section-card">
+      <div class="section-card__title">
+        <b>${esc(item.title || "Раздел")}</b>
+        <div class="muted">${esc(item.hint || "")}</div>
+      </div>
+      <div class="btn-row mt-12">
+        <a class="btn primary" href="${esc(item.href || '#')}">Открыть</a>
+      </div>
+    </div>
+  `).join("");
+}
+
 try {
-  const vid = getActiveVenueId();
-  if (vid) {
-    const perms = await api(`/me/venues/${encodeURIComponent(vid)}/permissions`);
-    const pset = permSetFromResponse(perms);
-    const role = roleUpper(perms);
-    const canViewReports = hasReportAccess(pset, role, "");
-    if (canViewReports) document.getElementById("reportCard").style.display = "";
+  const venues = await getMyVenues().catch(() => []);
+  const v = Array.isArray(venues)
+    ? venues.find((x) => String(x.id) === String(activeId))
+    : null;
+  if (v) {
+    document.getElementById("title").textContent = v.name || "Обзор разделов";
+    if (subtitle) subtitle.textContent = "разделы по вашим правам";
   }
 } catch {}
 
-const vid = getActiveVenueId();
-
-// Send owners/managers to management screen, staff to personal screen
-let adjHref = `/staff-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
-try {
-  if (vid) {
-    const perms = await api(`/me/venues/${encodeURIComponent(vid)}/permissions`);
+if (!activeId) {
+  renderItems([]);
+  if (overviewHint) overviewHint.textContent = "Сначала выберите заведение.";
+} else {
+  try {
+    const [me, perms] = await Promise.all([
+      getMe().catch(() => null),
+      getMyVenuePermissions(activeId),
+    ]);
+    perms.system_role = perms?.system_role || me?.system_role || "";
     const pset = permSetFromResponse(perms);
     const role = roleUpper(perms);
-    const canManage = canManageAdjustments(pset, role, "");
-    if (canManage) adjHref = `/app-adjustments.html?venue_id=${encodeURIComponent(vid)}`;
+    const items = buildStaffDashboardItems(pset, role, String(perms?.system_role || ""), activeId);
+    renderItems(items);
+    if (overviewHint) {
+      const extraCount = items.filter((item) => item.isExtra).length;
+      overviewHint.textContent = extraCount
+        ? `Здесь собраны все разделы, которые доступны вам в этом заведении. Дополнительных экранов: ${extraCount}.`
+        : "Здесь собраны ваши основные рабочие разделы для этого заведения.";
+    }
+  } catch (e) {
+    renderItems([]);
+    if (overviewHint) overviewHint.textContent = e?.message || "Не удалось загрузить доступные разделы.";
   }
-} catch {}
-
-document.getElementById("goAdjustments").onclick = () => location.href = adjHref;
-document.getElementById("goShifts").onclick = () => location.href = `/staff-shifts.html?venue_id=${encodeURIComponent(vid)}`;
-document.getElementById("goSalary").onclick = () => location.href = `/staff-salary.html?venue_id=${encodeURIComponent(vid)}`;
-const repBtn = document.getElementById("goReport");
-if (repBtn) repBtn.onclick = () => location.href = `/staff-report.html?venue_id=${encodeURIComponent(vid)}`;
-
+}
   </script>
 </body>
 </html>

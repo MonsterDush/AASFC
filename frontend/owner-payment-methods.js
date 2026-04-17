@@ -10,6 +10,7 @@ import {
   getPaymentMethods,
   createPaymentMethod,
   updatePaymentMethod,
+  applyDemoReadonlyCaps,
 } from "/app.js";
 
 const root = document.getElementById("root");
@@ -375,7 +376,7 @@ async function load() {
   } catch {
     state.perms = null;
   }
-  state.can = computeCaps(state.perms);
+  state.can = applyDemoReadonlyCaps(computeCaps(state.perms), { source: state.perms });
 
   const btnCreate = document.getElementById("btnCreate");
   if (btnCreate) {

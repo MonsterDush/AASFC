@@ -9,8 +9,38 @@ import {
   getMyVenuePermissions,
   api,
   toast,
+  coerceDemoDate,
+  applyDemoReadonlyCaps,
+  getStoredDemoUiState,
+  isDemoUiMode,
+  getDemoMonthLabel,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+
+
+const DEMO_OWNER_DAY_ECONOMICS_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_day_economics.dismissed";
+
+function setupDemoDayEconomicsIntro() {
+  const intro = document.getElementById("demoOwnerDayEconomicsIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try {
+    if (sessionStorage.getItem(DEMO_OWNER_DAY_ECONOMICS_INTRO_DISMISSED_KEY) === "1") {
+      intro.classList.add("hidden");
+      return;
+    }
+  } catch {}
+  const textEl = document.getElementById("demoOwnerDayEconomicsIntroText");
+  if (textEl) textEl.textContent = `Экономика дня показывает управленческий срез внутри ${getDemoMonthLabel(demoState) || 'DEMO-месяца'}: план/факт, сигналы и rollup месяца к выбранной дате.`;
+  document.getElementById("demoOwnerDayEconomicsGoSummary")?.addEventListener("click", () => { location.href = buildSummaryLink(); });
+  document.getElementById("demoOwnerDayEconomicsGoRevenue")?.addEventListener("click", () => { const venueId = getActiveVenueId(); if (venueId) location.href = `/owner-turnover.html?venue_id=${encodeURIComponent(String(venueId))}&month=${encodeURIComponent(String((state.date || todayISO()).slice(0,7)))}`; });
+  document.getElementById("demoOwnerDayEconomicsIntroClose")?.addEventListener("click", () => {
+    intro.classList.add("hidden");
+    try { sessionStorage.setItem(DEMO_OWNER_DAY_ECONOMICS_INTRO_DISMISSED_KEY, "1"); } catch {}
+  });
+  intro.classList.remove("hidden");
+}
 
 function fmtMoneyMinor(minor) {
   if (minor === null || minor === undefined) return "—";
@@ -46,7 +76,7 @@ function todayISO() {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return coerceDemoDate(`${y}-${m}-${day}`, { notify: false, context: "owner-day-economics" });
 }
 
 function formatDateRu(iso) {
@@ -205,8 +235,10 @@ async function loadAccess() {
     const role = roleUpper(resp);
     const isOwner = role === "OWNER" || role === "VENUE_OWNER";
     const pset = permSetFromResponse(resp);
-    access.canView = isOwner || hasPerm(pset, "REVENUE_VIEW") || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
-    access.canManage = isOwner;
+    Object.assign(access, applyDemoReadonlyCaps({
+      canView: isOwner || hasPerm(pset, "REVENUE_VIEW") || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
+      canManage: isOwner,
+    }, { source: resp }));
   } catch {
     access.canView = false;
     access.canManage = false;
@@ -408,14 +440,15 @@ async function boot() {
   if (!getActiveVenueId() && Array.isArray(venues) && venues.length) setActiveVenueId(venues[0].id);
   await mountNav({ activeTab: "summary" });
   await loadAccess();
+  setupDemoDayEconomicsIntro();
 
   const params = new URLSearchParams(location.search);
-  state.date = params.get("date") || todayISO();
+  state.date = coerceDemoDate(params.get("date") || todayISO(), { notify: false, context: "owner-day-economics" });
   const datePick = document.getElementById("economicsDatePick");
   if (datePick) {
     datePick.value = state.date;
     datePick.onchange = async (e) => {
-      state.date = e.target.value || todayISO();
+      state.date = coerceDemoDate(e.target.value || todayISO(), { context: "owner-day-economics" });
       await loadEconomics();
     };
   }

@@ -9,6 +9,7 @@ import {
   getActiveVenueId,
   getMyVenuePermissions,
   api,
+  isDemoUiMode,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -37,7 +38,7 @@ function slugifyCategoryCode(value) {
     .slice(0, 64) || "expense";
 }
 
-let state = { venueId: "", items: [], includeArchived: false, canManage: false };
+let state = { venueId: "", items: [], includeArchived: false, canManage: false, canView: false };
 
 function renderShell() {
   root.innerHTML = `
@@ -102,7 +103,7 @@ function wireEditModalClose() { document.querySelectorAll("#editModal [data-clos
 function renderList() {
   const el = document.getElementById("list");
   if (!el) return;
-  if (!state.canManage) { el.innerHTML = `<div class="muted">Нет доступа</div>`; return; }
+  if (!state.canView) { el.innerHTML = `<div class="muted">Нет доступа</div>`; return; }
   if (!state.items.length) { el.innerHTML = `<div class="muted">Пока пусто</div>`; return; }
   el.innerHTML = state.items.map((it) => `
     <div class="listrow">
@@ -113,7 +114,7 @@ function renderList() {
         </div>
         <div class="muted listrow__meta">${it.is_active ? "Доступна при создании расхода" : "Скрыта из списка"}</div>
       </div>
-      <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;">
+      <div class="row row--nowrap" style="gap:8px; flex:0 0 auto; ${state.canManage ? "" : "display:none;"}">
         <button class="btn sm" data-edit="${it.id}">Изменить</button>
         <button class="btn sm ${it.is_active ? "danger" : ""}" data-archive="${it.id}">${it.is_active ? "В архив" : "Вернуть"}</button>
       </div>
@@ -216,8 +217,10 @@ async function boot() {
     const permsResp = await getMyVenuePermissions(state.venueId);
     const role = roleUpper(permsResp);
     const pset = permSetFromResponse(permsResp);
-    state.canManage = role === "OWNER" || role === "VENUE_OWNER" || hasPerm(pset, "EXPENSE_CATEGORIES_MANAGE");
+    state.canView = role === "OWNER" || role === "VENUE_OWNER" || hasPerm(pset, "EXPENSE_CATEGORIES_MANAGE");
+    state.canManage = !isDemoUiMode(permsResp) && state.canView;
   } catch {
+    state.canView = false;
     state.canManage = false;
   }
 

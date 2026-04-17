@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     ROBOKASSA_MERCHANT_LOGIN: str = ""
     ROBOKASSA_PASSWORD1: str = ""
     ROBOKASSA_PASSWORD2: str = ""
+    ROBOKASSA_PASSWORD3: str = ""
+    ROBOKASSA_REFUND_API_URL: str = "https://services.robokassa.ru/RefundService/Refund/Create"
+    ROBOKASSA_REFUND_STATE_URL: str = "https://services.robokassa.ru/RefundService/Refund/GetState"
+    ROBOKASSA_OPSTATE_URL: str = "https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpStateExt"
+    ROBOKASSA_REFUND_JWT_ALGORITHM: str = "HS256"
+    ROBOKASSA_REFUND_TIMEOUT_SECONDS: int = 15
     ROBOKASSA_TEST_PASSWORD1: str = ""
     ROBOKASSA_TEST_PASSWORD2: str = ""
     ROBOKASSA_TEST_MODE: bool = False
@@ -58,6 +64,14 @@ class Settings(BaseSettings):
     SUPER_ADMIN_TG_USER_IDS: str = ""
 
     # Phone auth / OTP
+    DEMO_ENABLED: bool = True
+    DEMO_RETURN_URL: str = "https://axelio.ru"
+    DEMO_PRIMARY_CTA_URL: str = "https://axelio.ru/#contact"
+    DEMO_PRIMARY_CTA_LABEL: str = "Оставить заявку"
+    DEMO_SECONDARY_CTA_URL: str = ""
+    DEMO_SECONDARY_CTA_LABEL: str = "Начать пользоваться"
+    DEMO_FIXTURE_PATH: str = "app/demo/demo_fixture.json"
+
     PHONE_AUTH_PROVIDER: str = "debug"  # debug | console | sms_ru
     PHONE_AUTH_DEBUG_REVEAL_CODE: bool = True
     PHONE_AUTH_DEFAULT_COUNTRY_CODE: str = "7"
@@ -159,7 +173,8 @@ class Settings(BaseSettings):
         raw = (self.SUPER_ADMIN_TG_USER_IDS or "").strip()
         if not raw:
             return set()
-        return {int(x.strip()) for x in raw.split(",") if x.strip().isdigit()}
+        normalized = raw.replace("\n", ",").replace(";", ",").replace(" ", ",")
+        return {int(x.strip()) for x in normalized.split(",") if x.strip().isdigit()}
 
 
 settings = Settings()

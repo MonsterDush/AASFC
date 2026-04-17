@@ -7,6 +7,8 @@ import {
   api,
   getActiveVenueId,
   setActiveVenueId,
+  getStoredDemoUiState,
+  coerceDemoMonth,
 } from "/app.js";
 
 import { canManageAdjustments, hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
@@ -131,12 +133,19 @@ function openModal(title, subtitle, bodyHtml) {
   modal?.classList.add("open");
 }
 
+const demoState = getStoredDemoUiState();
 let curMonth = new Date();
 curMonth.setDate(1);
 const targetDay = params.get("date");
 if (targetDay) {
   const d = new Date(targetDay);
   if (!isNaN(d)) { curMonth = new Date(d.getFullYear(), d.getMonth(), 1); }
+} else {
+  const demoMonth = coerceDemoMonth(ym(curMonth), { source: demoState, notify: false });
+  const match = String(demoMonth || "").match(/^(\d{4})-(\d{2})$/);
+  if (match) {
+    curMonth = new Date(Number(match[1]), Number(match[2]) - 1, 1);
+  }
 }
 
 async function loadList() {

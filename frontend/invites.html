@@ -114,7 +114,9 @@
       mountNav,
       getVenueById,
       getMyVenuePermissions,
-      getMe
+      getMe,
+      getStoredDemoUiState,
+      isDemoReadonlyUi
     } from "/app.js";
     import { isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix2";
 
@@ -133,6 +135,8 @@
     let venueName = "";
     let canManageStaff = false;
     let canInviteOwners = false;
+    const demoState = getStoredDemoUiState();
+    const demoReadonly = isDemoReadonlyUi(demoState);
 
     if (venueId) setActiveVenueId(venueId);
 
@@ -166,6 +170,7 @@
         const ownerOrAdmin = isOwnerRole(role) || isSysAdminRole(sysRole);
         canManageStaff = ownerOrAdmin || hasPerm(pset, "STAFF_MANAGE");
         canInviteOwners = ownerOrAdmin;
+        if (demoReadonly) { canManageStaff = false; canInviteOwners = false; }
       } catch {
         canManageStaff = false;
         canInviteOwners = false;
@@ -339,6 +344,17 @@
         };
         members.appendChild(row);
       });
+    }
+
+    if (demoReadonly) {
+      const card = document.getElementById('inviteTitle')?.closest('.itemcard');
+      if (card && !document.getElementById('demoInvitesNote')) {
+        const note = document.createElement('div');
+        note.id = 'demoInvitesNote';
+        note.className = 'muted mt-6';
+        note.textContent = `Пробный режим: приглашения и удаление участников недоступны. Подготовлены данные за ${getDemoMonthLabel(demoState)}.`;
+        card.appendChild(note);
+      }
     }
 
     async function loadMembers() {

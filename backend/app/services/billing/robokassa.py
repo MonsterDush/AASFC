@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import hmac
@@ -158,6 +159,18 @@ def is_valid_success_signature(
     return hmac.compare_digest(expected.lower(), str(received_signature or "").strip().lower())
 
 
+def _format_expiration_date(value: datetime | str | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        normalized = value.replace(second=0, microsecond=0)
+        if normalized.tzinfo is not None:
+            normalized = normalized.astimezone(normalized.tzinfo).replace(tzinfo=None)
+        return normalized.isoformat(timespec="minutes")
+    raw = str(value or "").strip()
+    return raw or None
+
+
 def build_checkout_url(
     *,
     merchant_login: str,
@@ -173,6 +186,10 @@ def build_checkout_url(
     extra_params: Mapping[str, str] | None = None,
     test_mode: bool = False,
     culture: str = "ru",
+    expiration_date: datetime | str | None = None,
+    use_return_url2: bool = True,
+    success_url2_method: str = "GET",
+    fail_url2_method: str = "GET",
 ) -> str:
     shp_pairs = _sorted_shp_pairs(extra_params)
     signature = calculate_checkout_signature(
@@ -191,9 +208,22 @@ def build_checkout_url(
         ("SignatureValue", signature),
         ("Culture", culture or "ru"),
         ("ResultURL", result_url),
-        ("SuccessURL", success_url),
-        ("FailURL", fail_url),
     ]
+    if use_return_url2:
+        params.extend([
+            ("SuccessUrl2", success_url),
+            ("SuccessUrl2Method", str(success_url2_method or "GET").upper()),
+            ("FailUrl2", fail_url),
+            ("FailUrl2Method", str(fail_url2_method or "GET").upper()),
+        ])
+    else:
+        params.extend([
+            ("SuccessURL", success_url),
+            ("FailURL", fail_url),
+        ])
+    formatted_expiration_date = _format_expiration_date(expiration_date)
+    if formatted_expiration_date:
+        params.append(("ExpirationDate", formatted_expiration_date))
     if test_mode:
         params.append(("IsTest", "1"))
     params.extend(shp_pairs)

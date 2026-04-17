@@ -38,6 +38,7 @@
 
         <div class="action-grid action-grid--3 action-grid--mobile-2">
           <button class="btn" id="btnRename">Переименовать</button>
+          <button class="btn" id="openSetup" type="button">Быстрая настройка</button>
           <button class="btn" id="btnArchive">В архив</button>
           <button class="btn" id="btnUnarchive">Вернуть</button>
                     <button class="btn danger" id="btnLeave">Выйти из заведения</button>
@@ -46,6 +47,21 @@
 
         <div class="muted mt-6" id="metaHint"></div>
       </div>
+      <div class="itemcard mt-12 section-card hidden" id="demoVenueGuideCard">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Куда идти в DEMO дальше</b>
+            <div class="muted" id="demoVenueGuideText">Открой сводку, расходы и начисления — это лучший маршрут для владельца.</div>
+          </div>
+          <button class="btn sm subtle" id="demoVenueGuideClose" type="button">Скрыть</button>
+        </div>
+        <div class="action-grid action-grid--adaptive action-grid--mobile-2 mt-12">
+          <button class="btn" id="demoVenueOpenSummary" type="button">Сводка</button>
+          <button class="btn" id="demoVenueOpenExpenses" type="button">Расходы</button>
+          <button class="btn subtle" id="demoVenueOpenPayroll" type="button">Начисления</button>
+        </div>
+      </div>
+
       <div class="itemcard mt-12 section-card" id="sectionsCard">
               <div class="section-card__head">
                 <div class="section-card__title">
@@ -160,8 +176,8 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal } from "/app.js";
-    import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260331-billing2";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js";
+    import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSetupDone, isSetupPrepareDone, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260409-setup5";
 
     applyTelegramTheme();
     mountCommonUI("venue");
@@ -173,6 +189,34 @@
 
 
         // без replaceAll — Telegram WebView иногда капризничает
+
+        const DEMO_VENUE_GUIDE_DISMISSED_KEY = "axelio.demo_intro.venue.dismissed";
+        function renderDemoVenueGuide(){
+          const card = document.getElementById("demoVenueGuideCard");
+          if (!card) return;
+          if (!demoReadonly) { card.classList.add("hidden"); return; }
+          try { if (sessionStorage.getItem(DEMO_VENUE_GUIDE_DISMISSED_KEY) === "1") { card.classList.add("hidden"); return; } } catch {}
+          const monthLabel = getDemoMonthLabel(perms) || "";
+          const textEl = document.getElementById("demoVenueGuideText");
+          if (textEl && monthLabel) textEl.textContent = `Подготовленные данные за ${monthLabel}. Лучший маршрут: сводка → расходы → начисления.`;
+          document.getElementById("demoVenueOpenSummary")?.addEventListener("click", () => location.href = `/owner-summary.html?venue_id=${encodeURIComponent(String(venueId))}`);
+          document.getElementById("demoVenueOpenExpenses")?.addEventListener("click", () => location.href = `/owner-expenses.html?venue_id=${encodeURIComponent(String(venueId))}`);
+          document.getElementById("demoVenueOpenPayroll")?.addEventListener("click", () => location.href = `/owner-payroll.html?venue_id=${encodeURIComponent(String(venueId))}`);
+          document.getElementById("demoVenueGuideClose")?.addEventListener("click", () => { card.classList.add("hidden"); try { sessionStorage.setItem(DEMO_VENUE_GUIDE_DISMISSED_KEY, "1"); } catch {} });
+          card.classList.remove("hidden");
+          try {
+            mountDemoPageTour({
+              tourId: "demo-owner-flow",
+              step: 4,
+              total: 4,
+              title: "Финальный экран DEMO-тура",
+              text: "Карточка заведения завершает маршрут владельца. Можно вернуться в сводку или закрыть тур и продолжить свободный просмотр.",
+              prevPath: `/owner-payroll.html?venue_id=${encodeURIComponent(String(venueId))}`,
+              finishPath: `/owner-summary.html?venue_id=${encodeURIComponent(String(venueId))}`,
+            });
+          } catch {}
+        }
+
         function esc(s){
           return String(s ?? "")
             .replace(/&/g, "&amp;")
@@ -213,6 +257,8 @@
         let billingAccessMode = "FULL";
         let billingReadonly = false;
         let billingInfo = null;
+        let demoReadonly = false;
+        let currentVenueSummary = null;
 
         try {
           const me = await getMe().catch(() => null);
@@ -245,6 +291,14 @@
           billingStatus = getBillingStatus(perms);
           billingAccessMode = getBillingAccessMode(perms);
           billingReadonly = isBillingReadonly(perms) && (isOwner || isAdmin);
+          demoReadonly = isDemoUiMode(perms);
+
+          if (demoReadonly) {
+            canManageAdjustments = false;
+            canManageIntervals = false;
+            canEditVenueSettings = false;
+            canManageStaff = false;
+          }
 
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
 
@@ -255,7 +309,8 @@
           }
 
         } catch (e) {
-          // keep all false
+          console.error("app-venue access init failed", e);
+          toast(e?.data?.detail || e?.message || "Не удалось загрузить данные доступа по заведению", "err");
         }
 
         // keep active venue in sync
@@ -276,8 +331,14 @@ const titleEl = document.getElementById("title");
         const membersCard = document.getElementById("membersCard");
 
         const pageRootCard = document.querySelector(".card.section-card");
-        if (pageRootCard && !document.getElementById("billingTopNotice")) {
+        if (pageRootCard && !document.getElementById("setupTopNotice")) {
           archiveNotice?.insertAdjacentHTML("afterend", `
+            <div class="itemcard mt-12 hidden" id="setupTopNotice"></div>
+          `);
+        }
+        const setupTopNotice = document.getElementById("setupTopNotice");
+        if (pageRootCard && !document.getElementById("billingTopNotice")) {
+          (setupTopNotice || archiveNotice)?.insertAdjacentHTML("afterend", `
             <div class="itemcard mt-12 hidden" id="billingTopNotice"></div>
           `);
         }
@@ -327,7 +388,7 @@ const titleEl = document.getElementById("title");
         function billingTxStatusLabel(value) {
           const v = String(value || "").toUpperCase();
           if (v === "SUCCEEDED") return "Успешно";
-          if (v === "PENDING") return "Ожидает";
+          if (v === "PENDING") return "В обработке";
           if (v === "FAILED") return "Ошибка";
           if (v === "CANCELED") return "Отменено";
           return v || "—";
@@ -347,6 +408,10 @@ const titleEl = document.getElementById("title");
             ROBOKASSA_AMOUNT_MISMATCH: "Сумма callback не совпала",
             ROBOKASSA_RESULT_DUPLICATE: "Повторный callback",
             BILLING_REFUND_CREATED: "Возврат создан",
+            ROBOKASSA_REFUND_REQUESTED: "Возврат отправлен в Robokassa",
+            ROBOKASSA_REFUND_FINISHED: "Возврат выполнен",
+            ROBOKASSA_REFUND_CANCELED: "Возврат отменён",
+            ROBOKASSA_REFUND_FAILED: "Ошибка возврата",
           };
           return map[v] || v || "—";
         }
@@ -465,6 +530,113 @@ const titleEl = document.getElementById("title");
           }
         }
 
+        function getSetupSource() {
+          return currentVenueSummary || perms || {};
+        }
+
+        function getSetupDismissKey() {
+          return `axelio.setup.dismissed.${String(venueId || "")}`;
+        }
+
+        function isSetupDismissed() {
+          try { return localStorage.getItem(getSetupDismissKey()) === "1"; } catch { return false; }
+        }
+
+        function dismissSetupNotice() {
+          try { localStorage.setItem(getSetupDismissKey(), "1"); } catch {}
+        }
+
+        function clearSetupDismissed() {
+          try { localStorage.removeItem(getSetupDismissKey()); } catch {}
+        }
+
+        function buildSetupHref(source) {
+          const resumeStep = getSetupResumeStep(source);
+          const prepareDone = isSetupPrepareDone(source);
+          const params = new URLSearchParams();
+          params.set("venue_id", String(venueId));
+          params.set("phase", prepareDone ? "extra" : "prepare");
+          if (resumeStep) params.set("step", String(resumeStep));
+          return `/owner-setup.html?${params.toString()}`;
+        }
+
+        function refreshSetupEntryPoint() {
+          if (!openSetup) return;
+          const source = getSetupSource();
+          const href = buildSetupHref(source);
+          openSetup.dataset.href = href;
+          openSetup.textContent = getSetupActionLabel(source);
+          openSetup.onclick = () => {
+            clearSetupDismissed();
+            location.href = href;
+          };
+        }
+
+        function renderSetupWidgets() {
+          if (!setupTopNotice) return;
+          if (!venueId || !(isOwner || isAdmin) || demoReadonly || billingReadonly || isSetupDismissed()) {
+            setupTopNotice.classList.add("hidden");
+            refreshSetupEntryPoint();
+            return;
+          }
+
+          const source = getSetupSource();
+          const status = getSetupStatus(source);
+          const progress = getSetupProgress(source);
+          const prepareDone = isSetupPrepareDone(source);
+          const done = isSetupDone(source);
+          const actionHref = buildSetupHref(source);
+          const actionLabel = getSetupActionLabel(source);
+          const resolved = Number(progress.resolved || progress.done || 0) || 0;
+          const total = Number(progress.total || 0) || 0;
+          const unresolved = Math.max(total - resolved, 0);
+          refreshSetupEntryPoint();
+
+          if (done) {
+            setupTopNotice.classList.add("hidden");
+            return;
+          }
+
+          const title = prepareDone
+            ? "Базовая настройка завершена"
+            : (status === "NOT_STARTED" ? "Подготовь заведение к работе" : "Базовая настройка ещё не завершена");
+          const subtitle = prepareDone
+            ? "Можно перейти к дополнительной настройке: расходы, поставщики и регулярные правила."
+            : "Пройди базовые шаги, чтобы отчёты, должности, команда и график были готовы к запуску.";
+          const progressText = total > 0
+            ? (prepareDone
+              ? `Общий прогресс мастера: ${resolved} из ${total}. Дополнительных шагов осталось: ${unresolved}.`
+              : `Готово ${resolved} из ${total} шагов. Осталось пройти ещё ${unresolved}.`)
+            : (prepareDone ? "Базовая часть уже готова. Можно добить дополнительную настройку позже." : "Мастер пока не запускался.");
+          const extraHint = prepareDone
+            ? "Эти шаги не блокируют запуск, но помогают быстрее завести расходы и регулярные правила без ручной доводки."
+            : "После завершения базового этапа сверху здесь же появится предложение добить дополнительную настройку.";
+          setupTopNotice.innerHTML = `
+            <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+              <div style="min-width:0;flex:1 1 340px;">
+                <b>${esc(title)}</b>
+                <div class="muted mt-6">${esc(subtitle)}</div>
+                <div class="muted mt-6">${esc(progressText)}</div>
+                <div class="muted mt-6">${esc(extraHint)}</div>
+              </div>
+              <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
+                <button class="btn" id="btnOpenSetupNotice" type="button">${esc(actionLabel)}</button>
+                <button class="btn subtle" id="btnSkipSetupNotice" type="button">Пропустить настройку</button>
+              </div>
+            </div>
+          `;
+          document.getElementById("btnOpenSetupNotice")?.addEventListener("click", () => {
+            clearSetupDismissed();
+            location.href = actionHref;
+          });
+          document.getElementById("btnSkipSetupNotice")?.addEventListener("click", () => {
+            dismissSetupNotice();
+            setupTopNotice.classList.add("hidden");
+            toast("Настройку можно продолжить позже", "ok");
+          });
+          setupTopNotice.classList.remove("hidden");
+        }
+
         function renderBillingWidgets() {
           if (!(isOwner || isAdmin)) {
             if (billingTopNotice) billingTopNotice.classList.add("hidden");
@@ -533,6 +705,7 @@ const titleEl = document.getElementById("title");
         function applyBillingReadonlyUi() {
           billingReadonly = String(billingAccessMode || "FULL").toUpperCase() !== "FULL" && (isOwner || isAdmin);
           if (!billingReadonly) {
+            renderSetupWidgets();
             renderBillingWidgets();
             return;
           }
@@ -562,6 +735,8 @@ const titleEl = document.getElementById("title");
           if (btnUnarchive) btnUnarchive.style.display = "none";
           if (btnLeave) btnLeave.style.display = "none";
           if (btnDelete) btnDelete.style.display = "none";
+          if (openSetup) openSetup.style.display = "none";
+          if (setupTopNotice) setupTopNotice.classList.add("hidden");
 
           metaHint.textContent = "Доступ к рабочим разделам временно ограничен. Можно только просмотреть статус заведения и продлить доступ.";
           renderBillingWidgets();
@@ -583,6 +758,7 @@ const titleEl = document.getElementById("title");
         const btnUnarchive = document.getElementById("btnUnarchive");
         const btnLeave = document.getElementById("btnLeave");
         const btnDelete = document.getElementById("btnDelete");
+        const openSetup = document.getElementById("openSetup");
         const openInvites = document.getElementById("openInvites");
         const openPositions = document.getElementById("openPositions");
         const openSummary = document.getElementById("openSummary");
@@ -602,10 +778,11 @@ const titleEl = document.getElementById("title");
         const tipsCard = document.getElementById("tipsSettingsCard");
 
         // Rename is available to owner/admin, archive/delete actions — only to superadmin/moderator.
-        const canAdminVenue = (isOwner || isAdmin);
-        const canArchiveVenue = !!isAdmin;
-        const canDeleteVenue = !!isAdmin;
+        const canAdminVenue = (isOwner || isAdmin) && !demoReadonly;
+        const canArchiveVenue = !!isAdmin && !demoReadonly;
+        const canDeleteVenue = !!isAdmin && !demoReadonly;
         if (btnRename) btnRename.style.display = canAdminVenue ? "" : "none";
+        if (openSetup) openSetup.style.display = canAdminVenue ? "" : "none";
         if (btnArchive) btnArchive.style.display = canArchiveVenue ? "" : "none";
         if (btnUnarchive) btnUnarchive.style.display = canArchiveVenue ? "" : "none";
         if (btnDelete) btnDelete.style.display = canDeleteVenue ? "" : "none";
@@ -621,6 +798,7 @@ const titleEl = document.getElementById("title");
             openInvites.href = "/invites.html";
             return;
           }
+          refreshSetupEntryPoint();
           openInvites.href = `/invites.html?venue_id=${encodeURIComponent(venueId)}`;
           openPositions.href = `/positions.html?venue_id=${encodeURIComponent(venueId)}`;
           openShifts.href = `/staff-shifts.html?venue_id=${encodeURIComponent(venueId)}`;
@@ -674,9 +852,11 @@ openAdjustments.href = canManageAdjustments
 
           if (tipsCard) tipsCard.style.display = canEditVenueSettings ? "" : "none";
           metaEl.textContent = last.is_archived ? "В архиве" : "Активно";
-          metaHint.textContent = canAdminVenue
-            ? "Здесь можно управлять настройками и составом команды."
-            : (canManageStaff ? "Здесь можно управлять составом команды." : "");
+          metaHint.textContent = demoReadonly
+            ? "Пробный режим: здесь можно изучить структуру заведения и разделы без внесения изменений."
+            : (canAdminVenue
+              ? "Здесь можно управлять настройками и составом команды."
+              : (canManageStaff ? "Здесь можно управлять составом команды." : ""));
         }
           
 
@@ -831,6 +1011,7 @@ if (tipsModeEl) {
           try {
             const v = await getVenueById(venueId);
             if (v) {
+              currentVenueSummary = v;
               last.name = v.name || "";
               last.is_archived = !!v.is_archived;
               titleEl.textContent = v.name || "Заведение";
@@ -862,6 +1043,7 @@ if (tipsModeEl) {
           syncTipsControls();
 
           applyButtons();
+          renderSetupWidgets();
           applyBillingReadonlyUi();
         }
 
@@ -874,7 +1056,18 @@ if (tipsModeEl) {
           if (!name) return;
 
           try {
-            await api(`/venues/${venueId}`, { method:"PATCH", body: { name: name.trim() } });
+            const payload = { name: name.trim() };
+            let renamed = false;
+            const attempts = [
+              () => api(`/venues/${venueId}`, { method:"PATCH", body: payload }),
+              () => api(`/admin/venues/${venueId}`, { method:"PATCH", body: payload }),
+              () => api(`/venues/${venueId}/rename`, { method:"POST", body: payload }),
+            ];
+            let lastErr = null;
+            for (const run of attempts) {
+              try { await run(); renamed = true; break; } catch (err) { lastErr = err; }
+            }
+            if (!renamed) throw lastErr || new Error("Не удалось переименовать заведение");
             toast("Переименовано", "ok");
             await load();
           } catch (e) {

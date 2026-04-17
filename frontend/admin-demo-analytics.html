@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <title>Axelio · DEMO аналитика</title>
+  <style>
+    .demo-analytics-grid{display:grid;gap:14px}
+    .demo-analytics-topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .demo-analytics-topbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .demo-analytics-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .demo-analytics-header-main{min-width:0}
+    .demo-analytics-stacktitle{display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .demo-analytics-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .demo-analytics-actions .btn{min-width:0}
+    .demo-analytics-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    @media (min-width:900px){.demo-analytics-kpis{grid-template-columns:repeat(4,minmax(0,1fr));}}
+    .demo-analytics-kpi{border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:14px;background:rgba(0,0,0,.02);min-width:0}
+    .demo-analytics-kpi b{display:block;font-size:22px;line-height:1.15;margin-top:6px;word-break:break-word}
+    .demo-analytics-controls{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+    @media (max-width:980px){.demo-analytics-controls{grid-template-columns:repeat(2,minmax(0,1fr));}}
+    @media (max-width:640px){.demo-analytics-controls{grid-template-columns:1fr;}}
+    .demo-analytics-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+    .demo-analytics-field label{font-size:13px;color:var(--muted)}
+    .demo-analytics-field input,.demo-analytics-field select{width:100%;min-width:0}
+    .demo-analytics-split{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}
+    @media (max-width:1100px){.demo-analytics-split{grid-template-columns:1fr;}}
+    .demo-analytics-tablewrap{overflow:auto;-webkit-overflow-scrolling:touch}
+    .demo-analytics-table{width:100%;border-collapse:collapse;font-size:14px}
+    .demo-analytics-table th,.demo-analytics-table td{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.08);text-align:left;vertical-align:top;white-space:nowrap}
+    .demo-analytics-table th{font-size:12px;color:var(--muted);font-weight:600}
+    .demo-analytics-table td:last-child,.demo-analytics-table th:last-child{text-align:right}
+    .demo-analytics-metric{display:flex;flex-direction:column;gap:2px;min-width:0}
+    .demo-analytics-metric small{color:var(--muted);font-size:12px;white-space:normal;word-break:break-word}
+    .demo-analytics-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;border:1px solid rgba(0,0,0,.08);font-size:12px;background:rgba(0,0,0,.03);max-width:100%}
+    .demo-analytics-bars{display:grid;gap:10px}
+    .demo-analytics-bar{display:grid;gap:6px}
+    .demo-analytics-barhead{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+    .demo-analytics-barhead span,.demo-analytics-barhead b{min-width:0;word-break:break-word}
+    .demo-analytics-track{height:10px;border-radius:999px;background:rgba(0,0,0,.08);overflow:hidden}
+    .demo-analytics-fill{height:100%;border-radius:999px;background:linear-gradient(90deg, rgba(99,102,241,.95), rgba(34,197,94,.95));width:0%}
+    .demo-analytics-section-label b{display:block;word-break:break-word}
+    .demo-analytics-section-label small{display:block;color:var(--muted);font-size:12px;margin-top:2px;white-space:normal;word-break:break-word}
+    .demo-analytics-mini{display:flex;flex-wrap:wrap;gap:6px}
+    .demo-analytics-empty{padding:18px;border:1px dashed rgba(0,0,0,.14);border-radius:14px;color:var(--muted)}
+    .demo-analytics-note{color:var(--muted);font-size:13px}
+    .demo-analytics-denied{max-width:560px;margin:64px auto;padding:20px;border:1px solid rgba(0,0,0,.08);border-radius:18px;background:rgba(0,0,0,.02)}
+    @media (max-width:760px){
+      .demo-analytics-topbar,.demo-analytics-header,.demo-analytics-stacktitle,.demo-analytics-barhead{flex-direction:column;align-items:stretch}
+      .demo-analytics-topbar-actions{justify-content:flex-start}
+      .demo-analytics-topbar-actions .btn,.demo-analytics-actions .btn{flex:1 1 100%}
+      .demo-analytics-kpis{grid-template-columns:1fr 1fr}
+      .demo-analytics-kpi{padding:12px}
+      .demo-analytics-kpi b{font-size:18px}
+      .demo-analytics-table.mobile-cards thead{display:none}
+      .demo-analytics-table.mobile-cards,.demo-analytics-table.mobile-cards tbody,.demo-analytics-table.mobile-cards tr,.demo-analytics-table.mobile-cards td{display:block;width:100%}
+      .demo-analytics-table.mobile-cards tr{border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:4px 0;margin-bottom:10px;background:rgba(0,0,0,.02)}
+      .demo-analytics-table.mobile-cards td{border-bottom:none;padding:8px 12px 8px 132px;position:relative;white-space:normal;text-align:left !important;min-height:36px;word-break:break-word}
+      .demo-analytics-table.mobile-cards td::before{content:attr(data-label);position:absolute;left:12px;top:8px;width:108px;font-size:11px;line-height:1.35;color:var(--muted);font-weight:600;text-transform:none}
+    }
+    @media (max-width:420px){
+      .demo-analytics-kpis{grid-template-columns:1fr}
+      .demo-analytics-table.mobile-cards td{padding-left:112px}
+      .demo-analytics-table.mobile-cards td::before{width:90px}
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="pageRoot">
+    <div class="topbar demo-analytics-topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b>DEMO аналитика</b>
+          <div class="muted">Отдельная статистика DEMO по месяцам, кварталам, году и произвольному периоду.</div>
+        </div>
+      </div>
+      <div class="row demo-analytics-topbar-actions" style="gap:8px;align-items:center">
+        <a class="btn subtle" href="/admin-demo.html">Назад к DEMO</a>
+        <div class="userpill" data-userpill>—</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row demo-analytics-header" style="justify-content:space-between;align-items:flex-start;gap:12px">
+        <div class="demo-analytics-header-main">
+          <div class="section-title"><b>Фильтр периода</b></div>
+          <div class="demo-analytics-note mt-6">Данные берутся только из DEMO telemetry и показываются отдельно от остальных админских экранов.</div>
+        </div>
+        <div class="demo-analytics-badge" id="periodBadge">—</div>
+      </div>
+      <div class="demo-analytics-controls mt-12">
+        <div class="demo-analytics-field">
+          <label for="rangeType">Срез</label>
+          <select id="rangeType">
+            <option value="month">Месяц</option>
+            <option value="quarter">Квартал</option>
+            <option value="year">Год</option>
+            <option value="period">Период</option>
+          </select>
+        </div>
+        <div class="demo-analytics-field">
+          <label for="yearInput">Год</label>
+          <input id="yearInput" type="number" min="2020" max="2100" />
+        </div>
+        <div class="demo-analytics-field" id="monthField">
+          <label for="monthInput">Месяц</label>
+          <select id="monthInput"></select>
+        </div>
+        <div class="demo-analytics-field hidden" id="quarterField">
+          <label for="quarterInput">Квартал</label>
+          <select id="quarterInput">
+            <option value="1">1 квартал</option>
+            <option value="2">2 квартал</option>
+            <option value="3">3 квартал</option>
+            <option value="4">4 квартал</option>
+          </select>
+        </div>
+        <div class="demo-analytics-field hidden" id="fromField">
+          <label for="fromInput">Дата от</label>
+          <input id="fromInput" type="date" />
+        </div>
+        <div class="demo-analytics-field hidden" id="toField">
+          <label for="toInput">Дата до</label>
+          <input id="toInput" type="date" />
+        </div>
+      </div>
+      <div class="row demo-analytics-actions mt-12" style="gap:8px;flex-wrap:wrap">
+        <button class="btn" id="applyBtn" type="button">Показать</button>
+        <button class="btn subtle" id="resetBtn" type="button">Сбросить</button>
+      </div>
+    </div>
+
+    <div class="demo-analytics-grid">
+      <div class="card">
+        <div class="section-title"><b>Ключевые метрики</b></div>
+        <div class="demo-analytics-kpis mt-12" id="kpisBlock"></div>
+      </div>
+
+      <div class="demo-analytics-split">
+        <div class="card">
+          <div class="section-title"><b>Воронка DEMO</b></div>
+          <div class="demo-analytics-note mt-6">Показывает, сколько сессий дошло от просмотра экрана до клика по целевому действию.</div>
+          <div class="demo-analytics-bars mt-12" id="funnelBlock"></div>
+        </div>
+        <div class="card">
+          <div class="section-title"><b>Активность по дням</b></div>
+          <div class="demo-analytics-note mt-6">Подходит для быстрого просмотра всплесков активности, как в простом срезе Метрики.</div>
+          <div class="demo-analytics-bars mt-12" id="activityBlock"></div>
+        </div>
+      </div>
+
+      <div class="demo-analytics-split">
+        <div class="card">
+          <div class="row demo-analytics-stacktitle" style="justify-content:space-between;align-items:center;gap:10px">
+            <div class="section-title"><b>Разделы DEMO</b></div>
+            <div class="demo-analytics-note">Сырые ссылки заменены на названия разделов.</div>
+          </div>
+          <div class="demo-analytics-tablewrap mt-12" id="sectionsBlock"></div>
+        </div>
+        <div class="card">
+          <div class="section-title"><b>Разбивка по ролям</b></div>
+          <div class="demo-analytics-note mt-6">Отдельно видно владельца и персонал: сессии, просмотры, CTA и завершение экскурсии.</div>
+          <div class="demo-analytics-tablewrap mt-12" id="personasBlock"></div>
+        </div>
+      </div>
+
+      <div class="demo-analytics-split">
+        <div class="card">
+          <div class="section-title"><b>События и CTA</b></div>
+          <div class="demo-analytics-tablewrap mt-12" id="eventsBlock"></div>
+          <div class="demo-analytics-tablewrap mt-12" id="ctaBlock"></div>
+        </div>
+        <div class="card">
+          <div class="section-title"><b>Последние события</b></div>
+          <div class="demo-analytics-tablewrap mt-12" id="recentBlock"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+
+<script type="module">
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, cacheSystemRole } from "/app.js";
+
+  applyTelegramTheme();
+  mountCommonUI("admin-demo");
+
+  const auth = await ensureLogin({ silent: false, redirectOnFail: true });
+  if (!auth?.ok) {
+    throw new Error(auth?.message || "AUTH_REQUIRED");
+  }
+  const me = auth?.data || {};
+  cacheSystemRole(me?.system_role || "");
+  if (String(me?.system_role || "").toUpperCase() !== "SUPER_ADMIN") {
+    document.body.innerHTML = `
+      <div class="container">
+        <div class="demo-analytics-denied">
+          <b>Нет доступа</b>
+          <div class="muted mt-8">Страница аналитики DEMO доступна только SUPER_ADMIN.</div>
+          <div class="row mt-12" style="gap:8px"><a class="btn" href="/">На главную</a><a class="btn subtle" href="/settings.html">Профиль</a></div>
+        </div>
+      </div>
+    `;
+    throw new Error("SUPER_ADMIN_REQUIRED");
+  }
+
+  await mountNav({ activeTab: "admin-demo" });
+
+  const monthNames = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+  const rangeType = document.getElementById("rangeType");
+  const yearInput = document.getElementById("yearInput");
+  const monthInput = document.getElementById("monthInput");
+  const quarterInput = document.getElementById("quarterInput");
+  const fromInput = document.getElementById("fromInput");
+  const toInput = document.getElementById("toInput");
+  const monthField = document.getElementById("monthField");
+  const quarterField = document.getElementById("quarterField");
+  const fromField = document.getElementById("fromField");
+  const toField = document.getElementById("toField");
+  const periodBadge = document.getElementById("periodBadge");
+  const kpisBlock = document.getElementById("kpisBlock");
+  const funnelBlock = document.getElementById("funnelBlock");
+  const activityBlock = document.getElementById("activityBlock");
+  const sectionsBlock = document.getElementById("sectionsBlock");
+  const personasBlock = document.getElementById("personasBlock");
+  const eventsBlock = document.getElementById("eventsBlock");
+  const ctaBlock = document.getElementById("ctaBlock");
+  const recentBlock = document.getElementById("recentBlock");
+
+  function esc(v){ return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;"); }
+  function num(v){ return Number(v || 0); }
+  function pct(v){ return v == null ? "—" : `${Number(v).toFixed(1)}%`; }
+  function compactDate(iso){
+    if (!iso) return "—";
+    try { return new Date(iso).toLocaleString("ru-RU", { dateStyle:"short", timeStyle:"short" }); }
+    catch { return String(iso); }
+  }
+  function dateLabel(iso){
+    if (!iso) return "—";
+    try { return new Date(`${iso}T00:00:00Z`).toLocaleDateString("ru-RU", { day:"2-digit", month:"short" }); }
+    catch { return String(iso); }
+  }
+  function monthLabel(value){ const idx = Number(value || 1) - 1; return monthNames[idx] || String(value); }
+  function setHtml(el, html){ if (el) el.innerHTML = html; }
+  function emptyState(text="Пока нет данных"){ return `<div class="demo-analytics-empty">${esc(text)}</div>`; }
+  function fillPercent(value, max){
+    const safeMax = Math.max(Number(max || 0), 1);
+    return Math.max(0, Math.min(100, (Number(value || 0) / safeMax) * 100));
+  }
+
+  monthInput.innerHTML = monthNames.map((name, idx) => `<option value="${idx+1}">${name}</option>`).join("");
+
+  function syncControls(){
+    const mode = String(rangeType.value || "month");
+    monthField.classList.toggle("hidden", mode !== "month");
+    quarterField.classList.toggle("hidden", mode !== "quarter");
+    fromField.classList.toggle("hidden", mode !== "period");
+    toField.classList.toggle("hidden", mode !== "period");
+  }
+
+  function setDefaults(){
+    const now = new Date();
+    yearInput.value = String(now.getUTCFullYear());
+    monthInput.value = String(now.getUTCMonth() + 1);
+    quarterInput.value = String(Math.floor(now.getUTCMonth() / 3) + 1);
+    const firstDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    fromInput.value = firstDay.toISOString().slice(0,10);
+    toInput.value = now.toISOString().slice(0,10);
+    rangeType.value = "month";
+    syncControls();
+  }
+
+  function buildQuery(){
+    const params = new URLSearchParams();
+    const mode = String(rangeType.value || "month");
+    params.set("range", mode);
+    if (mode === "month") {
+      params.set("year", String(yearInput.value || new Date().getUTCFullYear()));
+      params.set("month", String(monthInput.value || new Date().getUTCMonth() + 1));
+    } else if (mode === "quarter") {
+      params.set("year", String(yearInput.value || new Date().getUTCFullYear()));
+      params.set("quarter", String(quarterInput.value || 1));
+    } else if (mode === "year") {
+      params.set("year", String(yearInput.value || new Date().getUTCFullYear()));
+    } else {
+      if (fromInput.value) params.set("date_from", fromInput.value);
+      if (toInput.value) params.set("date_to", toInput.value);
+    }
+    return params.toString();
+  }
+
+  function renderKpis(totals = {}){
+    const cards = [
+      ["Сессии", num(totals.unique_sessions)],
+      ["События", num(totals.events)],
+      ["Просмотры страниц", num(totals.page_views)],
+      ["CTA клики", num(totals.cta_clicks)],
+      ["CTA конверсия", pct(totals.conversion_rate_cta_sessions)],
+      ["Экскурсия завершена", pct(totals.conversion_rate_tour_sessions)],
+      ["Переключения ролей", num(totals.persona_switches)],
+      ["Выходы из DEMO", num(totals.exit_events)],
+    ];
+    setHtml(kpisBlock, cards.map(([title, value]) => `
+      <div class="demo-analytics-kpi">
+        <div class="muted">${esc(title)}</div>
+        <b>${esc(value)}</b>
+      </div>
+    `).join(""));
+  }
+
+  function renderBars(el, rows, valueKey, valueFormatter){
+    if (!rows?.length) return setHtml(el, emptyState());
+    const max = Math.max(...rows.map((row) => Number(row?.[valueKey] || 0)), 1);
+    setHtml(el, rows.map((row) => `
+      <div class="demo-analytics-bar">
+        <div class="demo-analytics-barhead">
+          <span>${esc(row.label)}</span>
+          <b>${esc(valueFormatter(row))}</b>
+        </div>
+        <div class="demo-analytics-track"><div class="demo-analytics-fill" style="width:${fillPercent(row?.[valueKey], max)}%"></div></div>
+      </div>
+    `).join(""));
+  }
+
+  function renderSections(rows = []){
+    if (!rows.length) return setHtml(sectionsBlock, emptyState());
+    setHtml(sectionsBlock, `
+      <table class="demo-analytics-table mobile-cards">
+        <thead>
+          <tr>
+            <th>Раздел</th>
+            <th>Просмотры</th>
+            <th>Сессии</th>
+            <th>CTA</th>
+            <th>Конверсия</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => {
+            const owner = row?.persona_breakdown?.OWNER || {};
+            const staff = row?.persona_breakdown?.STAFF || {};
+            return `
+              <tr>
+                <td data-label="Раздел">
+                  <div class="demo-analytics-section-label">
+                    <b>${esc(row.label || row.section_key || row.page_path)}</b>
+                    <small>${esc(row.page_path || "")}</small>
+                    <div class="demo-analytics-mini mt-6">
+                      <span class="demo-analytics-badge">OWNER: ${num(owner.views)} / ${num(owner.sessions)}</span>
+                      <span class="demo-analytics-badge">STAFF: ${num(staff.views)} / ${num(staff.sessions)}</span>
+                    </div>
+                  </div>
+                </td>
+                <td data-label="Просмотры">${num(row.views)}</td>
+                <td data-label="Сессии">${num(row.sessions)}</td>
+                <td data-label="CTA">${num(row.cta_sessions)}</td>
+                <td data-label="Конверсия">${pct(row.cta_conversion_pct)}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    `);
+  }
+
+  function renderPersonas(rows = []){
+    if (!rows.length) return setHtml(personasBlock, emptyState());
+    setHtml(personasBlock, `
+      <table class="demo-analytics-table mobile-cards">
+        <thead>
+          <tr>
+            <th>Роль</th>
+            <th>Сессии</th>
+            <th>Просмотры</th>
+            <th>CTA</th>
+            <th>Tour</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              <td data-label="Роль">
+                <div class="demo-analytics-metric">
+                  <b>${esc(row.persona)}</b>
+                  <small>Событий: ${num(row.events)}</small>
+                </div>
+              </td>
+              <td data-label="Сессии">${num(row.sessions)}</td>
+              <td data-label="Просмотры">${num(row.page_views)}</td>
+              <td data-label="CTA">
+                <div class="demo-analytics-metric">
+                  <b>${num(row.cta_sessions)}</b>
+                  <small>${pct(row.conversion_rate_cta_sessions)}</small>
+                </div>
+              </td>
+              <td data-label="Tour">
+                <div class="demo-analytics-metric">
+                  <b>${num(row.tour_completed_sessions)} / ${num(row.tour_started_sessions)}</b>
+                  <small>${pct(row.conversion_rate_tour_sessions)}</small>
+                </div>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `);
+  }
+
+  function renderEvents(rows = []){
+    if (!rows.length) return setHtml(eventsBlock, emptyState());
+    setHtml(eventsBlock, `
+      <table class="demo-analytics-table mobile-cards">
+        <thead>
+          <tr>
+            <th>Событие</th>
+            <th>Сессии</th>
+            <th>Количество</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              <td data-label="Событие">
+                <div class="demo-analytics-metric">
+                  <b>${esc(row.event_label || row.event_name)}</b>
+                  <small>${esc(row.event_name)}</small>
+                </div>
+              </td>
+              <td data-label="Сессии">${num(row.sessions)}</td>
+              <td data-label="Количество">${num(row.count)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `);
+  }
+
+  function renderCtas(rows = []){
+    if (!rows.length) return setHtml(ctaBlock, emptyState("CTA-кликов за этот период пока нет"));
+    setHtml(ctaBlock, `
+      <div class="section-title mt-12"><b>CTA breakdown</b></div>
+      <table class="demo-analytics-table mobile-cards mt-8">
+        <thead>
+          <tr>
+            <th>CTA</th>
+            <th>Сессии</th>
+            <th>Клики</th>
+            <th>Конверсия</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              <td data-label="CTA">
+                <div class="demo-analytics-metric">
+                  <b>${esc(row.cta_label || row.cta_code)}</b>
+                  <small>${esc(row.cta_code)}</small>
+                </div>
+              </td>
+              <td data-label="Сессии">${num(row.sessions)}</td>
+              <td data-label="Клики">${num(row.clicks)}</td>
+              <td data-label="Конверсия">${pct(row.conversion_rate_sessions)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `);
+  }
+
+  function renderRecent(rows = []){
+    if (!rows.length) return setHtml(recentBlock, emptyState());
+    setHtml(recentBlock, `
+      <table class="demo-analytics-table mobile-cards">
+        <thead>
+          <tr>
+            <th>Когда</th>
+            <th>Что произошло</th>
+            <th>Роль</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              <td data-label="Когда">${esc(compactDate(row.created_at))}</td>
+              <td data-label="Событие">
+                <div class="demo-analytics-metric">
+                  <b>${esc(row.event_label || row.event_name)}</b>
+                  <small>${esc(row.section_label || row.page_path || "—")}</small>
+                </div>
+              </td>
+              <td data-label="Роль">${esc(row.persona || "UNKNOWN")}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `);
+  }
+
+  async function loadAnalytics(){
+    try {
+      const data = await api(`/admin/demo/analytics?${buildQuery()}`);
+      const period = data?.period || {};
+      periodBadge.textContent = period.label || "—";
+      renderKpis(data?.totals || {});
+      renderBars(funnelBlock, (data?.funnel || []).map((row) => ({ ...row, label: `${row.label} · ${pct(row.conversion_pct)}` })), "sessions", (row) => `${num(row.sessions)} сессий`);
+      renderBars(activityBlock, (data?.activity_by_day || []).map((row) => ({ ...row, label: dateLabel(row.date) })), "events", (row) => `${num(row.events)} событий · ${num(row.sessions)} сессий`);
+      renderSections(data?.sections || []);
+      renderPersonas(data?.personas || []);
+      renderEvents(data?.events_by_name || []);
+      renderCtas(data?.cta_breakdown || []);
+      renderRecent(data?.recent_events || []);
+    } catch (e) {
+      console.error(e);
+      toast(e?.message || "Не удалось загрузить аналитику", "err");
+    }
+  }
+
+  rangeType.addEventListener("change", syncControls);
+  document.getElementById("applyBtn")?.addEventListener("click", loadAnalytics);
+  document.getElementById("resetBtn")?.addEventListener("click", () => { setDefaults(); loadAnalytics(); });
+
+  setDefaults();
+  await loadAnalytics();
+</script>
+</body>
+</html>

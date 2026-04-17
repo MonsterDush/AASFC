@@ -8,6 +8,10 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenuePermissions,
+  getStoredDemoUiState,
+  isDemoReadonlyUi,
+  getDemoMonthLabel,
+  coerceDemoMonth,
 } from "/app.js";
 
 
@@ -119,6 +123,13 @@ function maybeOpenFromQuery() {
 let curMonth = new Date();
 curMonth.setDate(1);
 let perms = null;
+const demoState = getStoredDemoUiState();
+const demoReadonly = isDemoReadonlyUi(demoState);
+const demoMonth = coerceDemoMonth(ym(curMonth), { source: demoState, notify: false });
+const demoMonthMatch = String(demoMonth || "").match(/^(\d{4})-(\d{2})$/);
+if (demoMonthMatch) {
+  curMonth = new Date(Number(demoMonthMatch[1]), Number(demoMonthMatch[2]) - 1, 1);
+}
 
 function hasManageAccess() {
   const pset = permSetFromResponse(perms);
@@ -172,7 +183,15 @@ function renderList(data) {
     return;
   }
 
-  el.btnCreate.style.display = "";
+  el.btnCreate.style.display = demoReadonly ? "none" : "";
+  if (demoReadonly && !document.getElementById("demoAdjustmentsNote")) {
+    const note = document.createElement("div");
+    note.id = "demoAdjustmentsNote";
+    note.className = "muted";
+    note.style.marginBottom = "10px";
+    note.textContent = `Пробный режим: изменения по штрафам, списаниям и премиям отключены. Подготовлены данные за ${getDemoMonthLabel(demoState)}.`;
+    el.list.parentElement?.insertBefore(note, el.list);
+  }
 
   const items = data?.items || [];
   if (!items.length) {
@@ -194,7 +213,7 @@ function renderList(data) {
         <div class="muted" style="margin-top:4px">${esc(it.date)} · ${esc(who)}</div>
         <div class="muted" style="margin-top:4px">${esc(it.reason || "—")}</div>
       </div>
-      <button class="btn" data-edit data-id="${esc(it.id)}">Открыть</button>
+      <button class="btn" data-edit data-id="${esc(it.id)}">${demoReadonly ? "Просмотр" : "Открыть"}</button>
     `;
 
     row.querySelector("[data-edit]").onclick = async () => {
@@ -396,6 +415,14 @@ openModal("Карточка", "Редактирование", html);
 
       document.getElementById("btnAdjClose")?.addEventListener("click", closeModal);
 
+      if (demoReadonly) {
+        [edType, edDate, edMember, edAmount, edReason].forEach((input) => { if (input) input.disabled = true; });
+        const saveBtn = document.getElementById("btnAdjSave");
+        const delBtn = document.getElementById("btnAdjDelete");
+        if (saveBtn) saveBtn.style.display = "none";
+        if (delBtn) delBtn.style.display = "none";
+      }
+
       document.getElementById("btnAdjSave")?.addEventListener("click", async () => {
         try {
           const payload = {
@@ -538,6 +565,10 @@ function todayISO() {
 }
 
 async function openCreate() {
+  if (demoReadonly) {
+    toast(`Пробный режим: создание записей отключено. Данные за ${getDemoMonthLabel(demoState)}.`, "warn");
+    return;
+  }
   const members = await loadMembers();
   openModal("Создать", "Штраф / Списание / Премия", buildCreateForm(members));
 

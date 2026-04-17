@@ -70,8 +70,8 @@
   <div id="toast" class="toast"><div class="toast__text"></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast } from '/app.js';
-  import { getBillingAccessMode, getBillingStatus, isOwnerRole, isSysAdminRole } from '/permissions.js?v=20260331-billing2';
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, downloadFile } from '/app.js';
+  import { getBillingAccessMode, getBillingStatus, isOwnerRole, isSysAdminRole, roleUpper } from '/permissions.js?v=20260331-billing2';
 
   applyTelegramTheme();
   mountCommonUI('owner-subscription');
@@ -95,8 +95,8 @@
   function formatDateTime(value){ if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString('ru-RU'); }
   function formatMinor(value){ return `${(Number(value || 0)/100).toLocaleString('ru-RU', {minimumFractionDigits:0, maximumFractionDigits:0})} ₽`; }
   function txTypeLabel(v){ return ({ PAYMENT:'Оплата', EXTEND:'Продление', SET_PAID_UNTIL:'Установка paid until', REFUND:'Возврат' }[String(v || '').toUpperCase()]) || String(v || '—'); }
-  function txStatusLabel(v){ return ({ SUCCEEDED:'Успешно', PENDING:'Ожидает', FAILED:'Ошибка', CANCELED:'Отменено' }[String(v || '').toUpperCase()]) || String(v || '—'); }
-  function eventLabel(v){ const map = { BILLING_REFUND_CREATED:'Возврат создан', BILLING_EXTENDED_MANUALLY:'Ручное продление', BILLING_PAID_UNTIL_SET_MANUALLY:'Установка paid until', BILLING_STATUS_CHANGED_AUTO:'Автопереход статуса', ROBOKASSA_PAYMENT_SUCCEEDED:'Оплата подтверждена', ROBOKASSA_PAYMENT_FAILED:'Ошибка оплаты', ROBOKASSA_PAYMENT_CANCELED:'Платёж отменён', ROBOKASSA_PAYMENT_EXPIRED:'Checkout истёк', ROBOKASSA_RESULT_SIGNATURE_INVALID:'Неверная подпись callback', ROBOKASSA_AMOUNT_MISMATCH:'Сумма callback не совпала', ROBOKASSA_RESULT_DUPLICATE:'Повторный callback' }; return map[String(v || '').toUpperCase()] || String(v || '—'); }
+  function txStatusLabel(v){ return ({ SUCCEEDED:'Успешно', PENDING:'В обработке', FAILED:'Ошибка', CANCELED:'Отменено' }[String(v || '').toUpperCase()]) || String(v || '—'); }
+  function eventLabel(v){ const map = { BILLING_REFUND_CREATED:'Возврат создан', BILLING_EXTENDED_MANUALLY:'Ручное продление', BILLING_PAID_UNTIL_SET_MANUALLY:'Установка paid until', BILLING_STATUS_CHANGED_AUTO:'Автопереход статуса', ROBOKASSA_PAYMENT_SUCCEEDED:'Оплата подтверждена', ROBOKASSA_PAYMENT_FAILED:'Ошибка оплаты', ROBOKASSA_PAYMENT_CANCELED:'Платёж отменён', ROBOKASSA_PAYMENT_EXPIRED:'Checkout истёк', ROBOKASSA_RESULT_SIGNATURE_INVALID:'Неверная подпись callback', ROBOKASSA_AMOUNT_MISMATCH:'Сумма callback не совпала', ROBOKASSA_RESULT_DUPLICATE:'Повторный callback', ROBOKASSA_REFUND_REQUESTED:'Возврат отправлен в Robokassa', ROBOKASSA_REFUND_FINISHED:'Возврат выполнен', ROBOKASSA_REFUND_CANCELED:'Возврат отменён', ROBOKASSA_REFUND_FAILED:'Ошибка возврата' }; return map[String(v || '').toUpperCase()] || String(v || '—'); }
 
   async function startCheckout(){
     try {
@@ -134,15 +134,24 @@
     historyBlock.innerHTML = entries.length ? entries.map((item) => item.html).join('') : '<div class="muted">История пока пуста</div>';
   }
 
+  function setPageMessage(message){
+    const text = String(message || '');
+    historyBlock.innerHTML = `<div class="muted">${esc(text || 'Нет данных')}</div>`;
+    statusLineEl.textContent = text || '—';
+  }
+
   async function boot(){
-    const ok = await ensureLogin({ silent: true });
-    if (!ok.ok) return;
-    if (!venueId) { historyBlock.innerHTML = '<div class="muted">Не выбрано заведение</div>'; return; }
+    const auth = await ensureLogin({ silent: true });
+    if (!auth.ok) {
+      setPageMessage(auth?.reason === 'NO_INITDATA' ? 'Нужна авторизация, чтобы открыть страницу подписки.' : 'Не удалось проверить авторизацию.');
+      return;
+    }
+    if (!venueId) { setPageMessage('Не выбрано заведение'); return; }
     const perms = await api(`/me/venues/${venueId}/permissions`);
-    const role = String(perms?.venue_role || '').toUpperCase();
-    const isOwner = isOwnerRole(role);
-    const isAdmin = isSysAdminRole(String(perms?.system_role || '').toUpperCase());
-    if (!(isOwner || isAdmin)) { historyBlock.innerHTML = '<div class="muted">Нет доступа</div>'; return; }
+    const resolvedRole = roleUpper(perms);
+    const isOwner = isOwnerRole(resolvedRole);
+    const isAdmin = isSysAdminRole(resolvedRole) || isSysAdminRole(String(perms?.system_role || '').toUpperCase());
+    if (!(isOwner || isAdmin)) { setPageMessage('Нет доступа'); return; }
     const accessMode = String(getBillingAccessMode(perms) || 'FULL').toUpperCase();
     const status = String(getBillingStatus(perms) || 'ACTIVE').toUpperCase();
     const data = await api(`/venues/${venueId}/billing`);
@@ -158,8 +167,20 @@
   }
 
   extendBtn.addEventListener('click', startCheckout);
-  exportBtn.addEventListener('click', () => { location.href = `/venues/${encodeURIComponent(venueId)}/billing/transactions/export`; });
-  boot().catch((e) => toast(e?.data?.detail || e?.message || 'Не удалось загрузить подписку', 'err'));
+  exportBtn.addEventListener('click', async () => {
+    try {
+      exportBtn.disabled = true;
+      await downloadFile(`/venues/${encodeURIComponent(venueId)}/billing/transactions/export`, { filenameFallback: `billing-transactions-venue-${venueId}.xlsx` });
+    } catch (e) {
+      toast(e?.data?.detail || e?.message || 'Не удалось выгрузить историю', 'err');
+    } finally {
+      exportBtn.disabled = false;
+    }
+  });
+  boot().catch((e) => {
+    setPageMessage(e?.data?.detail || e?.message || 'Не удалось загрузить подписку');
+    toast(e?.data?.detail || e?.message || 'Не удалось загрузить подписку', 'err');
+  });
 </script>
 </body>
 </html>

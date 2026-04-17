@@ -9,6 +9,9 @@ import {
   getPaymentMethods,
   api,
   toast,
+  getStoredDemoUiState,
+  isDemoUiMode,
+  getDemoMonthLabel,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -76,6 +79,32 @@ function openHtmlModal(title, html) {
 
 function closeModal() {
   document.getElementById("modal")?.classList.remove("open");
+}
+
+
+const DEMO_OWNER_LEDGER_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_ledger.dismissed";
+
+function setupDemoLedgerIntro() {
+  const intro = document.getElementById("demoOwnerLedgerIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try {
+    if (sessionStorage.getItem(DEMO_OWNER_LEDGER_INTRO_DISMISSED_KEY) === "1") {
+      intro.classList.add("hidden");
+      return;
+    }
+  } catch {}
+  const textEl = document.getElementById("demoOwnerLedgerIntroText");
+  if (textEl) textEl.textContent = `Здесь видно подтверждённые финансовые движения за ${getDemoMonthLabel(demoState) || 'DEMO-месяц'}: выручку, расходы и переводы между оплатами.`;
+  const venueId = getActiveVenueId();
+  document.getElementById("demoOwnerLedgerGoSummary")?.addEventListener("click", () => { if (venueId) location.href = `/owner-summary.html?venue_id=${encodeURIComponent(String(venueId))}`; });
+  document.getElementById("demoOwnerLedgerGoRevenue")?.addEventListener("click", () => { if (venueId) location.href = `/owner-turnover.html?venue_id=${encodeURIComponent(String(venueId))}&month=${encodeURIComponent(state.month || currentMonth())}`; });
+  document.getElementById("demoOwnerLedgerIntroClose")?.addEventListener("click", () => {
+    intro.classList.add("hidden");
+    try { sessionStorage.setItem(DEMO_OWNER_LEDGER_INTRO_DISMISSED_KEY, "1"); } catch {}
+  });
+  intro.classList.remove("hidden");
 }
 
 let access = {
@@ -313,6 +342,7 @@ async function boot() {
   setActiveVenueId(venueId);
   await mountNav({ activeTab: "venue", requireVenue: true });
   await loadAccess();
+  setupDemoLedgerIntro();
 
   state.paymentMethods = await getPaymentMethods(venueId, { includeArchived: false });
   renderPaymentMethodOptions();

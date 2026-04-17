@@ -52,7 +52,10 @@ from .notification_job import NotificationJob
 from .venue_billing_state import VenueBillingState
 from .venue_billing_transaction import VenueBillingTransaction
 from .venue_billing_event import VenueBillingEvent
+from .venue_setup_state import VenueSetupState
+from .position_permission_template import PositionPermissionTemplate
 from .billing_reconciliation_issue import BillingReconciliationIssue
+from .demo_event import DemoEvent
 
 __all__ = [
     "SystemRole",
@@ -110,5 +113,8 @@ __all__ = [
     "VenueBillingState",
     "VenueBillingTransaction",
     "VenueBillingEvent",
+    "VenueSetupState",
+    "PositionPermissionTemplate",
     "BillingReconciliationIssue",
+    "DemoEvent",
 ]

@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Venue, VenueBillingState
 from app.models.venue_billing_transaction import VenueBillingTransaction
-from app.services.billing import expire_stale_pending_checkouts, get_billing_health_summary, get_billing_snapshot_for_state, send_owner_billing_notification_once, send_super_admin_billing_alert_once, sync_billing_reconciliation_issues, sync_billing_state
+from app.services.billing import expire_stale_pending_checkouts, get_billing_health_summary, get_billing_snapshot_for_state, get_refund_request_state, list_pending_external_refund_transactions, send_owner_billing_notification_once, send_super_admin_billing_alert_once, sync_billing_reconciliation_issues, sync_billing_state, sync_external_refund_transaction_state
 
 
 def _utc_now() -> datetime:
@@ -56,6 +56,47 @@ def main() -> int:
                     ),
                 )
             if sent_admin_alerts:
+                db.commit()
+
+        pending_refunds = list_pending_external_refund_transactions(db, limit=100)
+        for refund_tx in pending_refunds:
+            request_id = str(refund_tx.provider_payment_id or "").strip()
+            if not request_id:
+                continue
+            try:
+                state_data = get_refund_request_state(request_id=request_id)
+            except Exception as exc:
+                sent_admin_alerts += send_super_admin_billing_alert_once(
+                    db,
+                    notification_type="refund_state_error",
+                    event_key=f"refund-state:{int(refund_tx.id)}:{now.date().isoformat()}",
+                    venue_id=int(refund_tx.venue_id),
+                    text=(
+                        f"Проблема биллинга: не удалось проверить статус возврата по заведению #{int(refund_tx.venue_id)} "
+                        f"(refund tx #{int(refund_tx.id)}): {exc}"
+                    ),
+                )
+                db.commit()
+                continue
+            refund_tx, refund_event = sync_external_refund_transaction_state(
+                db,
+                transaction=refund_tx,
+                refund_state_label=str(state_data.get("label") or "processing"),
+                provider_payload_json={"refund_state_result": state_data},
+            )
+            db.commit()
+            if refund_event is not None and str(refund_tx.status or "").upper() == "SUCCEEDED":
+                venue_name = db.execute(select(Venue.name).where(Venue.id == int(refund_tx.venue_id))).scalar_one_or_none() or f"Заведение #{int(refund_tx.venue_id)}"
+                sent_notifications += send_owner_billing_notification_once(
+                    db,
+                    venue_id=int(refund_tx.venue_id),
+                    notification_type="refund_finished",
+                    event_key=str(refund_event.id),
+                    text=(
+                        f"Возврат по заведению «{venue_name}» выполнен. Сумма: {int(refund_tx.amount_minor or 0) / 100:.2f} ₽."
+                    ),
+                    button_text="Открыть подписку",
+                )
                 db.commit()
 
         rows = db.execute(

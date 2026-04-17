@@ -8,6 +8,9 @@ import {
   getActiveVenueId,
   setActiveVenueId,
   getMyVenues,
+  coerceDemoMonth,
+  mountDemoPageTour,
+  trackDemoEvent,
 } from "/app.js";
 
 import { hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
@@ -84,14 +87,14 @@ function esc(s) {
     .replaceAll("'", "&#39;");
 }
 
-let cur = new Date();
+let cur = new Date(`${coerceDemoMonth(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`, { notify: false, context: "staff-salary-summary" })}-01T00:00:00`);
 cur.setDate(1);
 
 // allow ?month=YYYY-MM
 const qMonth = params.get("month");
 if (qMonth && /^\d{4}-\d{2}$/.test(qMonth)) {
   const [yy, mm] = qMonth.split("-").map((x) => parseInt(x, 10));
-  if (yy && mm) cur = new Date(yy, mm - 1, 1);
+  if (yy && mm) cur = new Date(`${coerceDemoMonth(`${yy}-${String(mm).padStart(2, "0")}`, { notify: false, context: "staff-salary-summary" })}-01T00:00:00`);
 }
 
 function syncUrl() {
@@ -177,12 +180,12 @@ async function load() {
 }
 
 el.prev.onclick = () => {
-  cur = new Date(cur.getFullYear(), cur.getMonth() - 1, 1);
+  cur = new Date(`${coerceDemoMonth(ym(new Date(cur.getFullYear(), cur.getMonth() - 1, 1)), { context: "staff-salary-summary" })}-01T00:00:00`);
   load();
 };
 
 el.next.onclick = () => {
-  cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+  cur = new Date(`${coerceDemoMonth(ym(new Date(cur.getFullYear(), cur.getMonth() + 1, 1)), { context: "staff-salary-summary" })}-01T00:00:00`);
   load();
 };
 
@@ -190,7 +193,7 @@ el.monthPicker && (el.monthPicker.onchange = () => {
   const v = String(el.monthPicker.value || "").trim();
   if (/^\d{4}-\d{2}$/.test(v)) {
     const [yy, mm] = v.split("-").map((x) => parseInt(x, 10));
-    if (yy && mm) cur = new Date(yy, mm - 1, 1);
+    if (yy && mm) cur = new Date(`${coerceDemoMonth(`${yy}-${String(mm).padStart(2, "0")}`, { notify: false, context: "staff-salary-summary" })}-01T00:00:00`);
     load();
   }
 });
@@ -198,3 +201,4 @@ el.monthPicker && (el.monthPicker.onchange = () => {
 el.reload.onclick = () => load();
 
 await load();
+

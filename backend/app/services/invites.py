@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import json
 import re
@@ -16,6 +16,8 @@ from app.models.venue import Venue
 from app.models.venue_invite import VenueInvite
 from app.models.venue_member import VenueMember
 from app.models.venue_position import VenuePosition
+from app.models.pay_profile import PayProfile
+from app.models.pay_profile_assignment import PayProfileAssignment
 
 
 def _norm_code(x) -> str:
@@ -60,6 +62,52 @@ def _parse_codes_raw(raw) -> list[str]:
 def _extract_codes_from_preset(preset: dict) -> list[str]:
     raw = preset.get("permission_codes")
     return _parse_codes_raw(raw)
+
+
+def _sync_default_pay_profile_assignment(db: Session, *, venue_id: int, user_id: int, pay_profile_id: int | None) -> None:
+    if pay_profile_id is None:
+        return
+    profile = db.execute(
+        select(PayProfile).where(
+            PayProfile.id == int(pay_profile_id),
+            PayProfile.venue_id == int(venue_id),
+        )
+    ).scalar_one_or_none()
+    if profile is None:
+        return
+
+    rows = db.execute(
+        select(PayProfileAssignment).where(
+            PayProfileAssignment.venue_id == int(venue_id),
+            PayProfileAssignment.member_user_id == int(user_id),
+        )
+    ).scalars().all()
+
+    now_dt = datetime.utcnow()
+    active_same = None
+    for row in rows:
+        if int(row.pay_profile_id) == int(profile.id):
+            active_same = row
+            row.is_active = True
+            row.start_date = None
+            row.end_date = None
+            row.updated_at = now_dt
+        else:
+            row.is_active = False
+            row.updated_at = now_dt
+
+    if active_same is None:
+        db.add(
+            PayProfileAssignment(
+                venue_id=int(venue_id),
+                pay_profile_id=int(profile.id),
+                member_user_id=int(user_id),
+                start_date=None,
+                end_date=None,
+                is_active=True,
+                updated_at=now_dt,
+            )
+        )
 
 
 def normalize_phone_e164(value: str | None) -> str | None:
@@ -121,6 +169,13 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
     else:
         for k, v in data.items():
             setattr(existing_pos, k, v)
+
+    pay_profile_id_raw = preset.get("pay_profile_id")
+    try:
+        pay_profile_id = int(pay_profile_id_raw) if pay_profile_id_raw not in (None, "", 0, "0") else None
+    except Exception:
+        pay_profile_id = None
+    _sync_default_pay_profile_assignment(db, venue_id=int(inv.venue_id), user_id=int(user_id), pay_profile_id=pay_profile_id)
 
 
 def _accept_invite_record(db: Session, *, inv: VenueInvite, user_id: int, accepted_via: str | None = None) -> None:

@@ -10,6 +10,13 @@ import {
   api,
   API_BASE,
   toast,
+  coerceDemoMonth,
+  coerceDemoRange,
+  isDemoUiMode,
+  getStoredDemoUiState,
+  getDemoMonthLabel,
+  mountDemoPageTour,
+  trackDemoEvent,
 } from "/app.js";
 import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix1";
 
@@ -45,7 +52,7 @@ function currentMonth() {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+  return coerceDemoMonth(`${y}-${m}`, { notify: false, context: "owner-summary" });
 }
 
 let state = {
@@ -54,6 +61,45 @@ let state = {
   from: todayISO(),
   to: todayISO(),
 };
+
+
+const DEMO_OWNER_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_summary.dismissed";
+
+function renderDemoOwnerIntro() {
+  const intro = document.getElementById("demoSummaryIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) {
+    intro.classList.add("hidden");
+    return;
+  }
+  try {
+    if (sessionStorage.getItem(DEMO_OWNER_INTRO_DISMISSED_KEY) === "1") {
+      intro.classList.add("hidden");
+      return;
+    }
+  } catch {}
+  const monthLabel = getDemoMonthLabel(demoState) || "подготовленный период";
+  const introText = document.getElementById("demoSummaryIntroText");
+  if (introText) introText.textContent = `Подготовленные данные за ${monthLabel}. Начни со сводки, затем посмотри расходы и начисления команды.`;
+  document.getElementById("demoGoExpenses")?.addEventListener("click", () => {
+    const venueId = getActiveVenueId();
+    if (venueId) window.location.href = `/owner-expenses.html?venue_id=${encodeURIComponent(String(venueId))}`;
+  });
+  document.getElementById("demoGoPayroll")?.addEventListener("click", () => {
+    const venueId = getActiveVenueId();
+    if (venueId) window.location.href = `/owner-payroll.html?venue_id=${encodeURIComponent(String(venueId))}`;
+  });
+  document.getElementById("demoGoVenue")?.addEventListener("click", () => {
+    const venueId = getActiveVenueId();
+    if (venueId) window.location.href = `/app-venue.html?venue_id=${encodeURIComponent(String(venueId))}`;
+  });
+  document.getElementById("demoSummaryIntroClose")?.addEventListener("click", () => {
+    intro.classList.add("hidden");
+    try { sessionStorage.setItem(DEMO_OWNER_INTRO_DISMISSED_KEY, "1"); } catch {}
+  });
+  intro.classList.remove("hidden");
+}
 
 function setText(id, value) {
   const el = document.getElementById(id);
@@ -66,6 +112,12 @@ function showBlock(id, visible) {
 }
 
 function normalizeRange() {
+  const demoRange = coerceDemoRange(state.from, state.to, { notify: false, context: "owner-summary" });
+  if (demoRange.from && demoRange.to) {
+    state.from = demoRange.from;
+    state.to = demoRange.to;
+    return;
+  }
   if (!state.from) state.from = todayISO();
   if (!state.to) state.to = state.from;
   if (state.from > state.to) {
@@ -243,6 +295,7 @@ async function loadSummary() {
   syncPickers();
   syncUrl();
   await loadFinanceAccess();
+  renderDemoOwnerIntro();
   syncActions();
 
   showBlock("revenueCard", financeAccess.canViewRevenue);
@@ -337,9 +390,11 @@ async function boot() {
   } catch {}
 
   state.period = params.get("period") || (params.get("date_from") && params.get("date_to") ? "range" : "month");
-  state.month = (params.get("month") || currentMonth()).slice(0, 7);
-  state.from = params.get("date_from") || todayISO();
-  state.to = params.get("date_to") || state.from;
+  state.month = coerceDemoMonth((params.get("month") || currentMonth()).slice(0, 7), { notify: false, context: "owner-summary" });
+  const demoRange = coerceDemoRange(params.get("date_from") || todayISO(), params.get("date_to") || (params.get("date_from") || todayISO()), { notify: false, context: "owner-summary" });
+  state.from = demoRange.from || params.get("date_from") || todayISO();
+  state.to = demoRange.to || params.get("date_to") || state.from;
+  if (isDemoUiMode()) state.period = "month";
   normalizeRange();
 
   const monthPick = document.getElementById("summaryMonthPick");
@@ -350,7 +405,7 @@ async function boot() {
   if (monthPick) {
     monthPick.value = state.month;
     monthPick.onchange = (e) => {
-      state.month = (e.target.value || currentMonth()).slice(0, 7);
+      state.month = coerceDemoMonth((e.target.value || currentMonth()).slice(0, 7), { context: "owner-summary" });
       state.period = "month";
       setActiveSeg("summaryPeriodSeg", "period", "month");
       loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
@@ -359,19 +414,27 @@ async function boot() {
   if (fromPick) {
     fromPick.value = state.from;
     fromPick.onchange = (e) => {
-      state.from = e.target.value || todayISO();
+      state.from = coerceDemoRange(e.target.value || todayISO(), state.to || e.target.value || todayISO(), { context: "owner-summary" }).from;
     };
   }
   if (toPick) {
     toPick.value = state.to;
     toPick.onchange = (e) => {
-      state.to = e.target.value || state.from || todayISO();
+      state.to = coerceDemoRange(state.from || todayISO(), e.target.value || state.from || todayISO(), { context: "owner-summary" }).to;
     };
   }
   if (rangeApplyBtn) {
     rangeApplyBtn.onclick = () => {
-      state.period = "range";
-      setActiveSeg("summaryPeriodSeg", "period", "range");
+      if (isDemoUiMode()) {
+        const demoRange = coerceDemoRange(state.from, state.to, { context: "owner-summary" });
+        state.from = demoRange.from;
+        state.to = demoRange.to;
+        state.period = "month";
+        setActiveSeg("summaryPeriodSeg", "period", "month");
+      } else {
+        state.period = "range";
+        setActiveSeg("summaryPeriodSeg", "period", "range");
+      }
       loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
     };
   }
@@ -379,7 +442,7 @@ async function boot() {
   document.querySelectorAll(`#summaryPeriodSeg button`).forEach((btn) => {
     btn.onclick = () => {
       const nextPeriod = btn.dataset.period || "month";
-      state.period = nextPeriod;
+      state.period = (isDemoUiMode() && nextPeriod === "range") ? "month" : nextPeriod;
       setActiveSeg("summaryPeriodSeg", "period", nextPeriod);
       if (nextPeriod === "month") {
         loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
@@ -390,9 +453,32 @@ async function boot() {
     };
   });
 
+  if (isDemoUiMode()) {
+    document.querySelector(`#summaryPeriodSeg button[data-period="range"]`)?.style?.setProperty("display", "none");
+    document.getElementById("summaryRangePick")?.style?.setProperty("display", "none");
+  }
   setActiveSeg("summaryPeriodSeg", "period", state.period);
   syncPickers();
   await loadSummary();
 }
 
 document.addEventListener("DOMContentLoaded", () => { boot(); });
+
+
+function mountDemoFlowTour() {
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) return;
+  const venue = getActiveVenueId();
+  const q = venue ? `?venue_id=${encodeURIComponent(String(venue))}` : "";
+  mountDemoPageTour({
+    tourId: "demo-owner-flow",
+    step: 1,
+    total: 4,
+    title: "Быстрый тур для владельца",
+    text: "Пройди по главным экранам: сводка → расходы → начисления → карточка заведения.",
+    nextPath: `/owner-expenses.html${q}`,
+    finishPath: `/owner-summary.html${q}`,
+  });
+}
+
+try { mountDemoFlowTour(); } catch {}

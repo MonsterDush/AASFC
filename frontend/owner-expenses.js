@@ -11,8 +11,32 @@ import {
   API_BASE,
   toast,
   closeModal,
+  coerceDemoMonth,
+  applyDemoReadonlyCaps,
+  isDemoUiMode,
+  getStoredDemoUiState,
+  getDemoMonthLabel,
+  mountDemoPageTour,
+  trackDemoEvent,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+
+
+const DEMO_EXPENSES_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_expenses.dismissed";
+
+function renderDemoExpensesIntro() {
+  const intro = document.getElementById("demoExpensesIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try { if (sessionStorage.getItem(DEMO_EXPENSES_INTRO_DISMISSED_KEY) === "1") { intro.classList.add("hidden"); return; } } catch {}
+  const introText = document.getElementById("demoExpensesIntroText");
+  if (introText) introText.textContent = `Подготовленные расходы за ${getDemoMonthLabel(demoState) || 'выбранный DEMO-период'}. Здесь видно признание по месяцу, категории и поставщиков.`;
+  document.getElementById("demoExpensesGoSummary")?.addEventListener("click", () => { const venueId = getActiveVenueId(); if (venueId) location.href = `/owner-summary.html?venue_id=${encodeURIComponent(String(venueId))}`; });
+  document.getElementById("demoExpensesGoPayroll")?.addEventListener("click", () => { const venueId = getActiveVenueId(); if (venueId) location.href = `/owner-payroll.html?venue_id=${encodeURIComponent(String(venueId))}`; });
+  document.getElementById("demoExpensesIntroClose")?.addEventListener("click", () => { intro.classList.add("hidden"); try { sessionStorage.setItem(DEMO_EXPENSES_INTRO_DISMISSED_KEY, "1"); } catch {} });
+  intro.classList.remove("hidden");
+}
 
 let access = {
   canView: false,
@@ -50,7 +74,7 @@ function currentMonth() {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+  return coerceDemoMonth(`${y}-${m}`, { notify: false, context: "owner-expenses" });
 }
 
 function todayISO() {
@@ -225,11 +249,11 @@ async function loadAccess() {
     const role = roleUpper(permsResp);
     const pset = permSetFromResponse(permsResp);
     const isOwner = role === "OWNER" || role === "VENUE_OWNER";
-    access = {
+    access = applyDemoReadonlyCaps({
       canView: isOwner || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
       canEdit: isOwner || hasPerm(pset, "EXPENSE_ADD"),
       canManageCatalogs: isOwner || hasPerm(pset, "EXPENSE_CATEGORIES_MANAGE"),
-    };
+    }, { source: permsResp });
   } catch {
     access = { canView: false, canEdit: false, canManageCatalogs: false };
   }
@@ -639,6 +663,7 @@ async function boot() {
   if (venueId) setActiveVenueId(venueId);
 
   await mountNav({ activeTab: "expenses", requireVenue: true });
+  renderDemoExpensesIntro();
 
   try {
     const venues = await getMyVenues();
@@ -657,13 +682,13 @@ async function boot() {
   if (openExpenseCategoriesBtn) openExpenseCategoriesBtn.href = `/owner-expense-categories.html?venue_id=${encodeURIComponent(activeVenueId)}`;
   if (openSuppliersBtn) openSuppliersBtn.href = `/owner-suppliers.html?venue_id=${encodeURIComponent(activeVenueId)}`;
 
-  state.month = params.get("month") || currentMonth();
+  state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-expenses" });
   state.statuses = params.get("statuses") || "";
   const monthPick = document.getElementById("expensesMonthPick");
   if (monthPick) {
     monthPick.value = state.month;
     monthPick.onchange = async (e) => {
-      state.month = e.target.value || currentMonth();
+      state.month = coerceDemoMonth(e.target.value || currentMonth(), { context: "owner-expenses" });
       await loadExpenses();
     };
   }
@@ -722,3 +747,22 @@ async function boot() {
 document.addEventListener("DOMContentLoaded", () => {
   boot();
 });
+
+
+function mountDemoFlowTour() {
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) return;
+  const venue = getActiveVenueId();
+  const q = venue ? `?venue_id=${encodeURIComponent(String(venue))}` : "";
+  mountDemoPageTour({
+    tourId: "demo-owner-flow",
+    step: 2,
+    total: 4,
+    title: "Продолжение DEMO-тура",
+    text: "На этом шаге видно, как расходы собраны по категориям и как они влияют на экономику месяца.",
+    prevPath: `/owner-summary.html${q}`,
+    nextPath: `/owner-payroll.html${q}`,
+  });
+}
+
+try { mountDemoFlowTour(); } catch {}

@@ -12,6 +12,7 @@ import {
   createPayProfile,
   updatePayProfile,
   deletePayProfile,
+  applyDemoReadonlyCaps,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -361,7 +362,7 @@ async function boot() {
     state.perms = null;
   }
 
-  state.can = computeCaps(state.perms, state.me);
+  state.can = applyDemoReadonlyCaps(computeCaps(state.perms, state.me), { source: state.perms });
 
   document.getElementById("btnCreate")?.addEventListener("click", () => openEditor({ mode: "create" }));
   document.getElementById("showInactive")?.addEventListener("change", (e) => {

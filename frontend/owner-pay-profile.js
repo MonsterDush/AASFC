@@ -19,6 +19,7 @@ import {
   createPayComponent,
   updatePayComponent,
   deletePayComponent,
+  applyDemoReadonlyCaps,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
@@ -1624,7 +1625,7 @@ async function boot() {
     state.perms = null;
   }
 
-  state.can = computeCaps(state.perms, state.me);
+  state.can = applyDemoReadonlyCaps(computeCaps(state.perms, state.me), { source: state.perms });
 
   try {
     const membersResp = await getVenueMembers(state.venueId);

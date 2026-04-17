@@ -10,10 +10,35 @@ import {
   calculatePayroll,
   api,
   API_BASE,
+  coerceDemoMonth,
+  coerceDemoRange,
+  applyDemoReadonlyCaps,
+  isDemoUiMode,
+  getStoredDemoUiState,
+  getDemoMonthLabel,
+  mountDemoPageTour,
+  trackDemoEvent,
 } from "/app.js";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 const root = document.getElementById("root");
+
+const DEMO_OWNER_PAYROLL_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_payroll.dismissed";
+
+function renderDemoOwnerPayrollIntro() {
+  const intro = document.getElementById("demoOwnerPayrollIntro");
+  if (!intro) return;
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
+  try { if (sessionStorage.getItem(DEMO_OWNER_PAYROLL_INTRO_DISMISSED_KEY) === "1") { intro.classList.add("hidden"); return; } } catch {}
+  const textEl = document.getElementById("demoOwnerPayrollIntroText");
+  if (textEl) textEl.textContent = `Здесь видно итоговый ФОТ и детализацию начислений за ${getDemoMonthLabel(demoState) || 'DEMO-месяц'}.`;
+  document.getElementById("demoOwnerPayrollGoSummary")?.addEventListener("click", () => { const v = parseVenueId(); if (v) location.href = `/owner-summary.html?venue_id=${encodeURIComponent(String(v))}`; });
+  document.getElementById("demoOwnerPayrollGoExpenses")?.addEventListener("click", () => { const v = parseVenueId(); if (v) location.href = `/owner-expenses.html?venue_id=${encodeURIComponent(String(v))}`; });
+  document.getElementById("demoOwnerPayrollIntroClose")?.addEventListener("click", () => { intro.classList.add("hidden"); try { sessionStorage.setItem(DEMO_OWNER_PAYROLL_INTRO_DISMISSED_KEY, "1"); } catch {} });
+  intro.classList.remove("hidden");
+}
+
 
 function esc(s) {
   return String(s ?? "")
@@ -43,7 +68,7 @@ function currentMonth() {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+  return coerceDemoMonth(`${y}-${m}`, { notify: false, context: "owner-payroll" });
 }
 
 function monthStartIso(month) {
@@ -277,6 +302,25 @@ function renderShell() {
       <div class="userpill" data-userpill>…</div>
     </div>
 
+    <div class="card demo-flow-card hidden" id="demoOwnerPayrollIntro">
+      <div class="demo-flow-card__head">
+        <div>
+          <b>Что посмотреть в DEMO владельца</b>
+          <div class="muted mt-6" id="demoOwnerPayrollIntroText">Здесь видно общий ФОТ и разбор начислений команды по профилям.</div>
+        </div>
+        <button class="btn sm subtle" id="demoOwnerPayrollIntroClose" type="button">Скрыть</button>
+      </div>
+      <div class="demo-flow-card__chips mt-10">
+        <span class="demo-flow-card__chip">Общий ФОТ</span>
+        <span class="demo-flow-card__chip">Строки начислений</span>
+        <span class="demo-flow-card__chip">Детализация по сотруднику</span>
+      </div>
+      <div class="demo-flow-card__actions mt-12">
+        <button class="btn" id="demoOwnerPayrollGoSummary" type="button">Открыть сводку</button>
+        <button class="btn subtle" id="demoOwnerPayrollGoExpenses" type="button">Открыть расходы</button>
+      </div>
+    </div>
+
     <div class="card finance-toolbar">
       <div class="screen-hero">
         <div class="screen-hero__head">
@@ -314,7 +358,7 @@ function renderShell() {
         </div>
       </div>
 
-      <div class="finance-stats finance-stats-1 mt-12" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+      <div class="finance-stats finance-stats--payroll mt-12">
         <div class="itemcard finance-stat">
           <div class="finance-stat__label">Итого</div>
           <div class="finance-stat__value" id="totalAmount">—</div>
@@ -399,7 +443,7 @@ function renderState() {
   if (rangeFrom) rangeFrom.value = state.dateFrom;
   if (rangeTo) rangeTo.value = state.dateTo;
   if (monthControls) monthControls.style.display = state.periodMode === "month" ? "" : "none";
-  if (rangeControls) rangeControls.style.display = state.periodMode === "range" ? "" : "none";
+  if (rangeControls) rangeControls.style.display = isDemoUiMode() ? "none" : (state.periodMode === "range" ? "" : "none");
   periodMonthBtn?.classList.toggle("active", state.periodMode === "month");
   periodRangeBtn?.classList.toggle("active", state.periodMode === "range");
 
@@ -577,6 +621,11 @@ async function applyRangeFromControls() {
   state.dateFrom = nextFrom <= nextTo ? nextFrom : nextTo;
   state.dateTo = nextTo >= nextFrom ? nextTo : nextFrom;
   renderState();
+  if (isDemoUiMode()) {
+    document.getElementById("periodRangeBtn")?.style?.setProperty("display", "none");
+    document.getElementById("rangeControls")?.style?.setProperty("display", "none");
+  }
+
   await load();
 }
 
@@ -592,11 +641,13 @@ async function boot() {
   }
 
   const params = new URLSearchParams(location.search);
-  state.month = params.get("month") || currentMonth();
+  state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-payroll" });
   const hasRange = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_from") || "")) && /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_to") || ""));
   state.periodMode = (params.get("period_mode") || (hasRange ? "range" : "month")).toLowerCase() === "range" ? "range" : "month";
-  state.dateFrom = hasRange ? String(params.get("date_from")) : monthStartIso(state.month);
-  state.dateTo = hasRange ? String(params.get("date_to")) : monthEndIso(state.month);
+  if (isDemoUiMode()) state.periodMode = "month";
+  const demoRangePayroll = coerceDemoRange(hasRange ? String(params.get("date_from")) : monthStartIso(state.month), hasRange ? String(params.get("date_to")) : monthEndIso(state.month), { notify: false, context: "owner-payroll" });
+  state.dateFrom = demoRangePayroll.from || (hasRange ? String(params.get("date_from")) : monthStartIso(state.month));
+  state.dateTo = demoRangePayroll.to || (hasRange ? String(params.get("date_to")) : monthEndIso(state.month));
   if (state.dateTo < state.dateFrom) state.dateTo = state.dateFrom;
 
   await mountNav({ activeTab: "summary" });
@@ -613,8 +664,9 @@ async function boot() {
     state.perms = null;
   }
 
-  state.can = computeCaps(state.perms, state.me);
+  state.can = applyDemoReadonlyCaps(computeCaps(state.perms, state.me), { source: state.perms });
   renderState();
+  renderDemoOwnerPayrollIntro();
 
   document.getElementById("periodMonthBtn")?.addEventListener("click", async () => {
     if (state.periodMode === "month") return;
@@ -623,12 +675,13 @@ async function boot() {
   });
   document.getElementById("periodRangeBtn")?.addEventListener("click", async () => {
     if (state.periodMode === "range") return;
+    if (isDemoUiMode()) return;
     setPeriodMode("range");
     await load();
   });
 
   document.getElementById("monthPick")?.addEventListener("change", async (e) => {
-    state.month = e.target.value || currentMonth();
+    state.month = coerceDemoMonth(e.target.value || currentMonth(), { context: "owner-payroll" });
     if (!state.dateFrom || !state.dateTo) {
       state.dateFrom = monthStartIso(state.month);
       state.dateTo = monthEndIso(state.month);
@@ -637,7 +690,18 @@ async function boot() {
     await load();
   });
 
-  document.getElementById("rangeApply")?.addEventListener("click", applyRangeFromControls);
+  document.getElementById("rangeApply")?.addEventListener("click", async () => {
+    if (isDemoUiMode()) {
+      const demoRange = coerceDemoRange(state.dateFrom, state.dateTo, { context: "owner-payroll" });
+      state.dateFrom = demoRange.from;
+      state.dateTo = demoRange.to;
+      state.periodMode = "month";
+      renderState();
+      await load();
+      return;
+    }
+    await applyRangeFromControls();
+  });
   document.getElementById("btnCalculate")?.addEventListener("click", onCalculate);
   document.getElementById("btnExport")?.addEventListener("click", async () => {
     try {
@@ -658,3 +722,22 @@ async function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
+function mountDemoFlowTour() {
+  const demoState = getStoredDemoUiState();
+  if (!isDemoUiMode(demoState)) return;
+  const venue = parseVenueId();
+  const q = venue ? `?venue_id=${encodeURIComponent(String(venue))}` : "";
+  mountDemoPageTour({
+    tourId: "demo-owner-flow",
+    step: 3,
+    total: 4,
+    title: "Продолжение DEMO-тура",
+    text: "Здесь видно ФОТ и детализацию начислений. После этого открой карточку заведения как финальный экран маршрута.",
+    prevPath: `/owner-expenses.html${q}`,
+    nextPath: `/app-venue.html${q}`,
+  });
+}
+
+try { mountDemoFlowTour(); } catch {}

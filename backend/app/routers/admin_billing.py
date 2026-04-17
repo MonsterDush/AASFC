@@ -20,11 +20,16 @@ from app.models.venue_billing_transaction import VenueBillingTransaction
 from app.models.venue_member import VenueMember
 from app.services.billing import (
     ISSUE_STATUS_OPEN,
-    create_refund_transaction,
+    create_external_refund_transaction,
+    create_refund_request,
     extend_venue_billing,
+    fetch_operation_info,
     get_billing_health_summary,
     get_billing_snapshot_for_state,
     get_or_create_billing_state,
+    get_refundable_payment_transaction,
+    get_reserved_refund_amount_for_payment,
+    get_robokassa_refund_config,
     list_billing_events,
     list_billing_reconciliation_issues,
     list_billing_transactions,
@@ -721,28 +726,71 @@ def create_admin_billing_refund(
     venue = db.execute(select(Venue).where(Venue.id == int(venue_id))).scalar_one_or_none()
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found")
+    refund_cfg = get_robokassa_refund_config()
+    if not refund_cfg.is_enabled:
+        raise HTTPException(status_code=503, detail="Robokassa refund API is not configured or unavailable in test mode")
+
     state = get_or_create_billing_state(db, venue_id=int(venue_id))
     amount_minor = int(payload.amount_minor if payload.amount_minor is not None else (state.price_minor or 0))
     if amount_minor <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
-    tx, event = create_refund_transaction(
+
+    target_payment_tx = get_refundable_payment_transaction(db, venue_id=int(venue_id), requested_amount_minor=amount_minor)
+    if target_payment_tx is None:
+        raise HTTPException(status_code=400, detail="No successful Robokassa payment is available for refund")
+
+    target_payload = target_payment_tx.provider_payload_json if isinstance(target_payment_tx.provider_payload_json, dict) else {}
+    op_key = str(target_payment_tx.provider_payment_id or target_payload.get("op_key") or "").strip()
+    if not op_key:
+        try:
+            op_state = fetch_operation_info(invoice_id=str(target_payment_tx.provider_invoice_id or target_payment_tx.id))
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to fetch Robokassa operation info: {exc}")
+        op_key = str(op_state.get("op_key") or "").strip()
+        if not op_key:
+            raise HTTPException(status_code=400, detail="Robokassa OpKey is missing for this payment")
+        target_payload = dict(target_payload)
+        target_payload.update({
+            "op_key": op_key,
+            "op_state": op_state,
+        })
+        target_payment_tx.provider_payment_id = op_key
+        target_payment_tx.provider_payload_json = target_payload
+        db.flush()
+
+    try:
+        reserved_minor = get_reserved_refund_amount_for_payment(db, payment_transaction_id=int(target_payment_tx.id))
+        refund_amount_for_api = None if reserved_minor == 0 and int(amount_minor) == int(target_payment_tx.amount_minor or 0) else amount_minor
+        refund_result = create_refund_request(op_key=op_key, refund_amount_minor=refund_amount_for_api)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Robokassa refund request failed: {exc}")
+
+    if not bool(refund_result.get("success")):
+        message = str(refund_result.get("message") or "Robokassa refund request was rejected")
+        raise HTTPException(status_code=400, detail=message)
+
+    request_id = str(refund_result.get("requestId") or "").strip()
+    if not request_id:
+        raise HTTPException(status_code=502, detail="Robokassa refund API did not return requestId")
+
+    tx, event = create_external_refund_transaction(
         db,
         venue_id=int(venue_id),
+        target_payment_transaction=target_payment_tx,
         amount_minor=amount_minor,
+        request_id=request_id,
+        op_key=op_key,
         created_by_user_id=user.id,
         comment=payload.comment,
-        revoke_access_hint=bool(payload.revoke_access_hint),
     )
+    refund_payload = dict(tx.provider_payload_json or {})
+    refund_payload.update({
+        "refund_create_result": refund_result,
+        "revoke_access_hint": bool(payload.revoke_access_hint),
+    })
+    tx.provider_payload_json = refund_payload
     db.commit()
-    send_owner_billing_notification_once(
-        db,
-        venue_id=int(venue.id),
-        notification_type="refund_created",
-        event_key=str(tx.id),
-        text=f"По заведению «{venue.name}» зафиксирован возврат на сумму {amount_minor / 100:.2f} ₽.",
-        button_text="Открыть подписку",
-    )
-    db.commit()
+
     return {
         "venue_id": int(venue.id),
         "venue_name": venue.name,
@@ -751,5 +799,10 @@ def create_admin_billing_refund(
             "id": int(event.id),
             "event_type": event.event_type,
             "created_at": event.created_at.isoformat() if event.created_at else None,
+        },
+        "refund": {
+            "request_id": request_id,
+            "state": "processing",
+            "message": refund_result.get("message"),
         },
     }

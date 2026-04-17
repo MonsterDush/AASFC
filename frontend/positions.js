@@ -16,9 +16,11 @@ import {
   updateVenuePosition,
   deleteVenuePosition,
   patchInviteDefaultPosition,
+  isDemoUiMode,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
+import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPermissionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260409-setup-polish1";
 
 const root = document.getElementById("root");
 
@@ -253,6 +255,54 @@ async function ensurePermissionsCatalog() {
   return state.permissionsCatalog;
 }
 
+async function ensurePermissionTemplates() {
+  if (Array.isArray(state.permissionTemplates)) return state.permissionTemplates;
+  try {
+    const resp = await api('/position-permission-templates');
+    state.permissionTemplates = normalizePermissionTemplates(resp?.items || []);
+  } catch {
+    state.permissionTemplates = normalizePermissionTemplates([]);
+  }
+  return state.permissionTemplates;
+}
+
+function getPermissionTemplateById(templateId) {
+  return getSharedPermissionTemplateById(state.permissionTemplates, templateId);
+}
+
+function renderPermissionTemplateSelect(selectedId = "") {
+  return buildPermissionTemplateOptions(state.permissionTemplates, {
+    selectedId,
+    emptyLabel: "— выбрать шаблон прав —",
+    includeSystemBadge: true,
+  });
+}
+
+function renderTemplateSummaryBlock(templateId = "") {
+  return renderPermissionTemplateSummaryById(state.permissionTemplates, templateId, {
+    emptyText: "Шаблон не выбран. Можно включить права вручную ниже.",
+    noDescriptionText: "Шаблон без описания",
+    wrapId: "f_perm_template_summary",
+  });
+}
+
+function applyPermissionTemplateToModal(templateId) {
+  return applyPermissionTemplateToCheckboxHost({
+    templates: state.permissionTemplates,
+    templateId,
+    checkboxSelector: 'input[data-perm-code]',
+    checkboxAttr: 'data-perm-code',
+    summaryHost: document.getElementById('f_perm_template_summary_wrap'),
+    titleInput: document.getElementById('f_title'),
+    fillTitleWhenEmpty: true,
+    summaryOptions: {
+      emptyText: "Шаблон не выбран. Можно включить права вручную ниже.",
+      noDescriptionText: "Шаблон без описания",
+      wrapId: "f_perm_template_summary",
+    },
+  });
+}
+
 /* ---------- Page shell ---------- */
 
 function renderShell() {
@@ -424,6 +474,11 @@ function computeAuth(perms) {
   auth.canManage = isOwnerOrAdmin || pset.has("POSITIONS_MANAGE");
   auth.canAssign = isOwnerOrAdmin || pset.has("POSITIONS_ASSIGN");
   auth.canManagePerms = isOwnerOrAdmin || pset.has("POSITION_PERMISSIONS_MANAGE");
+  if (isDemoUiMode(perms)) {
+    auth.canManage = false;
+    auth.canAssign = false;
+    auth.canManagePerms = false;
+  }
 }
 
 function parseVenueId() {
@@ -646,7 +701,18 @@ function renderPositionForm({ mode, position }) {
           <span class="muted" id="f_pay_profile_hint">${esc(p.pay_profile_title || "Без назначенного профиля")}</span>
         </div>
       </div>
+
+      <div>
+        <div class="muted" style="margin-bottom:6px">Шаблон прав</div>
+        <select id="f_perm_template" ${canEditPerms ? "" : "disabled"}>${renderPermissionTemplateSelect(p.template_id || "")}</select>
+        <div class="row" style="gap:8px; margin-top:8px; flex-wrap:wrap">
+          ${canEditPerms ? '<button class="btn sm" type="button" id="btnApplyTemplate">Применить шаблон</button>' : ''}
+          ${(auth.sysRole === "SUPER_ADMIN") ? '<a class="btn sm subtle inline" href="/admin-position-templates.html">Управлять шаблонами</a>' : ''}
+        </div>
+      </div>
     </div>
+
+    <div id="f_perm_template_summary_wrap" class="itemcard" style="margin-top:12px; padding:10px 12px">${renderTemplateSummaryBlock(p.template_id || "")}</div>
 
     ${permCardsHtml}
 
@@ -818,7 +884,7 @@ async function openCreateModal() {
     toast("Нет прав на создание должностей", "err");
     return;
   }
-  await ensurePermissionsCatalog();
+  await Promise.all([ensurePermissionsCatalog(), ensurePermissionTemplates()]);
 
   openPosModal({
     title: "Создать должность",
@@ -840,6 +906,10 @@ async function openCreateModal() {
   };
   payProfileSelectCreate?.addEventListener("change", syncPayProfileHintCreate);
   syncPayProfileHintCreate();
+
+  const permTemplateSelectCreate = document.getElementById("f_perm_template");
+  permTemplateSelectCreate?.addEventListener("change", () => { const wrap = document.getElementById("f_perm_template_summary_wrap"); if (wrap) wrap.innerHTML = renderTemplateSummaryBlock(permTemplateSelectCreate.value); });
+  document.getElementById("btnApplyTemplate")?.addEventListener("click", () => { const templateId = String(document.getElementById("f_perm_template")?.value || "").trim(); if (!templateId) return toast("Выбери шаблон прав", "warn"); if (!applyPermissionTemplateToModal(templateId)) return toast("Шаблон не найден", "err"); toast("Шаблон применён", "ok"); });
 
   document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
 
@@ -869,7 +939,7 @@ async function openEditModal(p, modeOverride = null) {
     toast("Нет прав на изменение должности", "err");
     return;
   }
-  await ensurePermissionsCatalog();
+  await Promise.all([ensurePermissionsCatalog(), ensurePermissionTemplates()]);
 
   openPosModal({
     title: "Изменить должность",
@@ -890,6 +960,10 @@ async function openEditModal(p, modeOverride = null) {
   };
   payProfileSelectCreate?.addEventListener("change", syncPayProfileHintCreate);
   syncPayProfileHintCreate();
+
+  const permTemplateSelectEdit = document.getElementById("f_perm_template");
+  permTemplateSelectEdit?.addEventListener("change", () => { const wrap = document.getElementById("f_perm_template_summary_wrap"); if (wrap) wrap.innerHTML = renderTemplateSummaryBlock(permTemplateSelectEdit.value); });
+  document.getElementById("btnApplyTemplate")?.addEventListener("click", () => { const templateId = String(document.getElementById("f_perm_template")?.value || "").trim(); if (!templateId) return toast("Выбери шаблон прав", "warn"); if (!applyPermissionTemplateToModal(templateId)) return toast("Шаблон не найден", "err"); toast("Шаблон применён", "ok"); });
 
   document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
 
@@ -976,7 +1050,8 @@ function renderPositions() {
 
     // "+ Добавить сотрудника" с предзаполненным title
     const addSameBtn = wrap.querySelector("[data-add-same]");
-    if (addSameBtn) addSameBtn.onclick = () => {
+    if (addSameBtn) addSameBtn.onclick = async () => {
+      await Promise.all([ensurePermissionsCatalog(), ensurePermissionTemplates()]);
       if (!auth.canManage) { toast("Нет прав на создание должностей", "err"); return; }
       openPosModal({
         title: "Создать должность",
@@ -1000,6 +1075,10 @@ function renderPositions() {
       };
       payProfileSelectCreate?.addEventListener("change", syncPayProfileHintCreate);
       syncPayProfileHintCreate();
+
+      const permTemplateSelectCreate = document.getElementById("f_perm_template");
+      permTemplateSelectCreate?.addEventListener("change", () => { const wrap = document.getElementById("f_perm_template_summary_wrap"); if (wrap) wrap.innerHTML = renderTemplateSummaryBlock(permTemplateSelectCreate.value); });
+      document.getElementById("btnApplyTemplate")?.addEventListener("click", () => { const templateId = String(document.getElementById("f_perm_template")?.value || "").trim(); if (!templateId) return toast("Выбери шаблон прав", "warn"); if (!applyPermissionTemplateToModal(templateId)) return toast("Шаблон не найден", "err"); toast("Шаблон применён", "ok"); });
 
       document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
       document.getElementById("btnSavePos")?.addEventListener("click", async () => {
@@ -1244,6 +1323,8 @@ async function main() {
   document.getElementById("back").href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
   const btnCreate = document.getElementById("btnOpenCreate");
   if (btnCreate) btnCreate.onclick = openCreateModal;
+
+  try { await ensurePermissionTemplates(); } catch {}
 
   try {
     await load();

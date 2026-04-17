@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.auth.jwt_tokens import JwtConfig, decode_access_token
 from app.core.db import get_db
 from app.models import User
+from app.services.demo.session import apply_auth_payload_to_user
 from app.settings import settings
 
 
@@ -33,7 +34,7 @@ def _decode_user_from_cookie(db: Session, access_token: str | None) -> User | No
         return None
     if token_session_version != int(user.session_version or 0):
         return None
-    return user
+    return apply_auth_payload_to_user(user, payload)
 
 
 def get_current_user(
