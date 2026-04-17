@@ -446,20 +446,10 @@ function syncInlinePayComponentFields() {
 async function renameVenue(venueId, name) {
   const trimmed = String(name || "").trim();
   if (!trimmed) throw new Error("Введите название заведения");
-  const attempts = [
-    { path: `/venues/${encodeURIComponent(venueId)}`, method: "PATCH", body: { name: trimmed } },
-    { path: `/admin/venues/${encodeURIComponent(venueId)}`, method: "PATCH", body: { name: trimmed } },
-    { path: `/venues/${encodeURIComponent(venueId)}/rename`, method: "POST", body: { name: trimmed } },
-  ];
-  let lastError = null;
-  for (const attempt of attempts) {
-    try {
-      return await api(attempt.path, { method: attempt.method, body: attempt.body });
-    } catch (e) {
-      lastError = e;
-    }
-  }
-  throw lastError || new Error("Не удалось сохранить название");
+  return await api(`/venues/${encodeURIComponent(venueId)}/setup/venue`, {
+    method: "PATCH",
+    body: { name: trimmed },
+  });
 }
 
 function esc(value) {
@@ -2473,6 +2463,7 @@ async function loadInlineShiftIntervals({ force = false } = {}) {
 
 function renderShiftIntervalsEditor(items, currentStep) {
   const inlineState = state.inline.shift_intervals;
+  const cfg = { listLabel: "Настроенные интервалы смен" };
   const visibleItems = inlineState.showArchived ? items : items.filter((item) => item.is_active !== false);
   const editingId = inlineState.editor?.id || null;
   const editing = editingId ? items.find((item) => String(item.id) === String(editingId)) : null;
@@ -2680,6 +2671,7 @@ async function loadInlineSuppliers({ force = false } = {}) {
 
 function renderSuppliersEditor(items, currentStep) {
   const inlineState = state.inline.suppliers;
+  const cfg = { listLabel: "Настроенные поставщики" };
   const showArchived = !!inlineState.showArchived;
   const visibleItems = showArchived ? items : items.filter((item) => item.is_active !== false);
   const activeCount = items.filter((item) => item.is_active !== false).length;

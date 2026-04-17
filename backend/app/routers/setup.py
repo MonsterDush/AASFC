@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import get_current_user
 from app.core.db import get_db
 from app.models.user import User
+from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.services.billing.access import BILLING_ACCESS_FULL, get_user_billing_access
 from app.services.setup import (
@@ -36,6 +37,10 @@ class SetupPatchIn(BaseModel):
 
 class SetupStepActionIn(BaseModel):
     step_key: str = Field(..., max_length=64)
+
+
+class SetupVenueNameIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
 
 
 
@@ -166,6 +171,25 @@ def finish_prepare_venue_setup(
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
     return summary
+
+
+@router.patch("/{venue_id}/setup/venue")
+def patch_setup_venue_name(
+    venue_id: int,
+    payload: SetupVenueNameIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_setup_owner_or_admin(db, venue_id=venue_id, user=user)
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    name = str(payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название заведения не может быть пустым")
+    venue.name = name
+    db.commit()
+    return {"id": int(venue.id), "name": str(venue.name or "")}
 
 
 @router.post("/{venue_id}/setup/finish-extra")

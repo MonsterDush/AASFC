@@ -156,6 +156,12 @@ from app.services.billing import (
 from app.settings import settings
 
 router = APIRouter(prefix="/venues", tags=["venues"])
+
+
+def _require_super_admin_or_moderator(user: User) -> None:
+    role = str(getattr(user, "system_role", "") or "").upper()
+    if role not in {"SUPER_ADMIN", "MODERATOR"}:
+        raise HTTPException(status_code=403, detail="SUPER_ADMIN or MODERATOR required")
 log = logging.getLogger("axelio.day_economics_notifications")
 
 _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY = "day_economics_summary"
