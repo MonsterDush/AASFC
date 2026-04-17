@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -8,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth.guards import require_super_admin
 from app.core.db import get_db
 from app.models import User, Venue, VenueMember
-from app.services.demo.analytics import get_demo_analytics_summary
+from app.services.demo.analytics import get_demo_analytics_dashboard, get_demo_analytics_summary
 from app.services.demo.bootstrap import bootstrap_demo_venue
 from app.services.demo.fixture import export_demo_fixture, get_demo_fixture_status, reset_demo_fixture
 from app.services.demo.session import (
@@ -119,6 +121,28 @@ def admin_demo_status(db: Session = Depends(get_db), user: User = Depends(requir
     status['template_venue'] = _venue_status_payload(db, template_venue)
     status['analytics'] = analytics
     return status
+
+
+@router.get('/analytics')
+def admin_demo_analytics(
+    range_type: str = Query(default='month', alias='range'),
+    year: int | None = Query(default=None, ge=2020, le=2100),
+    month: int | None = Query(default=None, ge=1, le=12),
+    quarter: int | None = Query(default=None, ge=1, le=4),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    return get_demo_analytics_dashboard(
+        db,
+        range_type=range_type,
+        year=year,
+        month=month,
+        quarter=quarter,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 @router.post('/export-fixture')

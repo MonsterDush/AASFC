@@ -81,7 +81,10 @@
       </div>
 
       <div class="card">
-        <div class="section-title"><b>Аналитика DEMO</b></div>
+        <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+          <div class="section-title"><b>Аналитика DEMO</b></div>
+          <a class="btn subtle" href="/admin-demo-analytics.html">Подробная аналитика</a>
+        </div>
         <div id="analyticsStats" class="demo-admin-stats"></div>
         <div class="demo-admin-split">
           <div>
@@ -136,12 +139,19 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour } from "/app.js";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour, cacheSystemRole } from "/app.js";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");
+  const auth = await ensureLogin({ silent: false, redirectOnFail: true });
+  if (!auth?.ok) throw new Error(auth?.message || "AUTH_REQUIRED");
+  const me = auth?.data || {};
+  cacheSystemRole(me?.system_role || "");
+  if (String(me?.system_role || "").toUpperCase() !== "SUPER_ADMIN") {
+    document.body.innerHTML = `<div class="container"><div class="card"><b>Нет доступа</b><div class="muted mt-8">Страница DEMO доступна только SUPER_ADMIN.</div></div></div>`;
+    throw new Error("SUPER_ADMIN_REQUIRED");
+  }
   await mountNav({ activeTab: "admin-demo" });
-  await ensureLogin();
 
   const kpis = document.getElementById('demoKpis');
   const statusBlock = document.getElementById('statusBlock');

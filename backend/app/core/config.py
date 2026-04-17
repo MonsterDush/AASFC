@@ -173,7 +173,8 @@ class Settings(BaseSettings):
         raw = (self.SUPER_ADMIN_TG_USER_IDS or "").strip()
         if not raw:
             return set()
-        return {int(x.strip()) for x in raw.split(",") if x.strip().isdigit()}
+        normalized = raw.replace("\n", ",").replace(";", ",").replace(" ", ",")
+        return {int(x.strip()) for x in normalized.split(",") if x.strip().isdigit()}
 
 
 settings = Settings()
