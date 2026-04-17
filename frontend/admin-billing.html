@@ -128,6 +128,31 @@
     </div>
   </div>
 
+  <div id="refundModal" class="modal">
+    <div class="modal__backdrop" data-refund-close></div>
+    <div class="modal__panel">
+      <div class="modal__head">
+        <div class="modal__title">Возврат</div>
+        <button class="btn" type="button" data-refund-close>Закрыть</button>
+      </div>
+      <div class="modal__body">
+        <div class="small" id="refundVenueLabel">—</div>
+        <label style="display:block;margin-top:12px">
+          <div class="small mb-6">Сумма возврата, ₽</div>
+          <input id="refundAmountInput" type="number" min="0" step="0.01" inputmode="decimal" placeholder="2990" style="width:100%" />
+        </label>
+        <label style="display:block;margin-top:12px">
+          <div class="small mb-6">Причина</div>
+          <textarea id="refundCommentInput" rows="4" placeholder="Причина возврата" style="width:100%"></textarea>
+        </label>
+        <div class="row gap-8" style="justify-content:flex-end;margin-top:14px">
+          <button class="btn subtle" type="button" data-refund-close>Отмена</button>
+          <button class="btn primary" type="button" id="refundSubmitBtn">Отправить возврат</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
@@ -143,7 +168,7 @@
   function formatMinor(value){ return `${(Number(value || 0) / 100).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`; }
   function txSourceLabel(value){ const v = String(value || '').toUpperCase(); if (v === 'MANUAL_ADMIN') return 'Ручное действие'; if (v === 'ROBOKASSA') return 'Robokassa'; return v || '—'; }
   function txTypeLabel(value){ const v = String(value || '').toUpperCase(); return ({ PAYMENT:'Оплата', EXTEND:'Продление', SET_PAID_UNTIL:'Установка paid until', REFUND:'Возврат' }[v]) || v || '—'; }
-  function txStatusLabel(value){ const v = String(value || '').toUpperCase(); return ({ SUCCEEDED:'Успешно', PENDING:'В обработке', FAILED:'Ошибка', CANCELED:'Отменено' }[v]) || v || '—'; }
+  function txStatusLabel(value){ const v = String(value || '').toUpperCase(); return ({ SUCCEEDED:'Успешно', PENDING:'Ожидает', FAILED:'Ошибка', CANCELED:'Отменено' }[v]) || v || '—'; }
   function issueChip(severity){ const s = String(severity || 'info').toLowerCase(); return `<span class="issue-chip ${s}">${esc(s)}</span>`; }
   function issueStatusLabel(value){ const v = String(value || '').toUpperCase(); return ({ OPEN:'Открыта', RESOLVED:'Решена', IGNORED:'Игнорируется' }[v]) || v || '—'; }
   function statusChip(status){ const s = String(status || '').toUpperCase(); const cls = s === 'ACTIVE' ? 'active' : (s === 'GRACE' ? 'grace' : 'suspended'); return `<span class="status-chip ${cls}">${esc(s || '—')}</span>`; }
@@ -167,9 +192,16 @@
   const exportOpsBtn = document.getElementById('exportOpsBtn');
   const exportReconBtn = document.getElementById('exportReconBtn');
   const issueStatusFilter = document.getElementById('issueStatusFilter');
+  const refundModalEl = document.getElementById('refundModal');
+  const refundVenueLabelEl = document.getElementById('refundVenueLabel');
+  const refundAmountInputEl = document.getElementById('refundAmountInput');
+  const refundCommentInputEl = document.getElementById('refundCommentInput');
+  const refundSubmitBtn = document.getElementById('refundSubmitBtn');
 
   let currentPage = 1;
   let hasNextPage = false;
+  let refundVenueId = null;
+  let refundVenueName = '';
 
   function buildCommonQuery(){
     const qp = new URLSearchParams();
@@ -240,7 +272,7 @@
       if (action === 'extend30') return extendVenue(venueId, 30);
       if (action === 'extendCustom') return promptExtendVenue(venueId);
       if (action === 'setPaidUntil') return promptSetPaidUntil(venueId);
-      if (action === 'refund') return promptRefundVenue(venueId);
+      if (action === 'refund') return openRefundModal({ venueId, suggestedMinor: Number(btn.getAttribute('data-price') || 0), venueName: btn.closest('.billing-table-row')?.querySelector('b')?.textContent || '' });
       if (action === 'history') return showHistory(venueId);
     }));
   }
@@ -335,7 +367,38 @@
   }
   async function promptExtendVenue(venueId){ const raw = prompt('На сколько дней продлить?', '30'); if (!raw) return; const days = Number(raw); if (!Number.isFinite(days) || days <= 0) return toast('Введите корректное число', 'warn'); const comment = prompt('Комментарий', '') || ''; await extendVenue(venueId, Math.round(days), comment); }
   async function promptSetPaidUntil(venueId){ const raw = prompt('Установить paid_until (YYYY-MM-DD)', ''); if (!raw) return; const comment = prompt('Комментарий', '') || ''; try { await api(`/admin/venues/${encodeURIComponent(venueId)}/billing/set-paid-until`, { method:'POST', body:{ paid_until:`${raw}T00:00:00+03:00`, comment, amount_minor:0 } }); toast('Дата обновлена', 'ok'); await boot(); } catch (e) { toast(e?.data?.detail || e.message || 'Не удалось обновить дату', 'err'); } }
-  async function promptRefundVenue(venueId){ const raw = prompt('Сумма возврата в рублях', '2990'); if (!raw) return; const rub = Number(String(raw).replace(',', '.')); if (!Number.isFinite(rub) || rub <= 0) return toast('Введите корректную сумму', 'warn'); const comment = prompt('Причина возврата', '') || ''; try { const result = await api(`/admin/venues/${encodeURIComponent(venueId)}/billing/refund`, { method:'POST', body:{ amount_minor: Math.round(rub * 100), comment, revoke_access_hint: false } }); const state = String(result?.refund?.state || 'processing').toLowerCase(); toast(state === 'finished' ? 'Возврат выполнен' : 'Возврат отправлен в Robokassa', 'ok'); await boot(); } catch (e) { toast(e?.data?.detail || e.message || 'Не удалось создать возврат', 'err'); } }
+  function openRefundModal({ venueId, suggestedMinor = 0, venueName = '' }){
+    refundVenueId = venueId ? String(venueId) : null;
+    refundVenueName = String(venueName || '').trim();
+    refundVenueLabelEl.textContent = refundVenueName ? `Заведение: ${refundVenueName}` : `Заведение #${refundVenueId || '—'}`;
+    refundAmountInputEl.value = suggestedMinor > 0 ? String((suggestedMinor / 100).toFixed(2)).replace(/\.00$/, '') : '2990';
+    refundCommentInputEl.value = '';
+    refundModalEl.classList.add('open');
+    setTimeout(() => refundAmountInputEl?.focus(), 0);
+  }
+
+  function closeRefundModal(){
+    refundModalEl.classList.remove('open');
+    refundVenueId = null;
+    refundVenueName = '';
+  }
+
+  async function submitRefundModal(){
+    if (!refundVenueId) return;
+    const rub = Number(String(refundAmountInputEl.value || '').replace(',', '.'));
+    if (!Number.isFinite(rub) || rub <= 0) return toast('Введите корректную сумму', 'warn');
+    refundSubmitBtn.disabled = true;
+    try {
+      await api(`/admin/venues/${encodeURIComponent(refundVenueId)}/billing/refund`, { method:'POST', body:{ amount_minor: Math.round(rub * 100), comment: refundCommentInputEl.value || '', revoke_access_hint: false } });
+      closeRefundModal();
+      toast('Возврат зафиксирован', 'ok');
+      await boot();
+    } catch (e) {
+      toast(e?.data?.detail || e.message || 'Не удалось зафиксировать возврат', 'err');
+    } finally {
+      refundSubmitBtn.disabled = false;
+    }
+  }
   async function showHistory(venueId){ try { const data = await api(`/venues/${encodeURIComponent(venueId)}/billing`); const txs = Array.isArray(data?.transactions) ? data.transactions : []; const events = Array.isArray(data?.events) ? data.events : []; const lines = []; txs.forEach((tx) => lines.push(`[Операция] ${formatDateTime(tx.created_at)} · ${txStatusLabel(tx.status)}\nИсточник: ${txSourceLabel(tx.source)}\nТип: ${txTypeLabel(tx.type)}\nСумма: ${formatMinor(tx.amount_minor || 0)}${tx.comment ? `\nКомментарий: ${tx.comment}` : ''}`)); events.forEach((event) => lines.push(`[Событие] ${formatDateTime(event.created_at)} · ${esc(event.event_type || '—')}`)); openModal(`История · venue #${venueId}`, lines.join('\n\n——————————\n\n') || 'История пуста'); } catch (e) { toast(e?.data?.detail || e.message || 'Не удалось загрузить историю', 'err'); } }
 
   function exportTransactions(){ const qp = buildCommonQuery(); if (txTypeFilter.value) qp.set('tx_type', txTypeFilter.value); location.href = `/admin/billing/transactions/export?${qp.toString()}`; }
@@ -350,6 +413,8 @@
   nextPageBtn?.addEventListener('click', () => { if (hasNextPage) { currentPage += 1; boot().catch((e) => toast(e.message, 'err')); } });
   exportOpsBtn?.addEventListener('click', exportTransactions);
   exportReconBtn?.addEventListener('click', exportReconciliation);
+  refundSubmitBtn?.addEventListener('click', submitRefundModal);
+  refundModalEl?.querySelectorAll('[data-refund-close]').forEach((el) => el.addEventListener('click', closeRefundModal));
 
   boot().catch((e) => toast(e.message, 'err'));
 </script>
