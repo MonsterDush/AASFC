@@ -896,10 +896,28 @@ function componentSnapshot(c) {
   return c && typeof c.calculation_snapshot === 'object' && c.calculation_snapshot ? c.calculation_snapshot : (c || {});
 }
 
+function listTitles(value) {
+  return Array.isArray(value) ? value.map((item) => String(item || '').trim()).filter(Boolean) : [];
+}
+
+function componentDepartmentLabel(component, prefix = 'department') {
+  const titles = listTitles(component?.[`${prefix}_titles`]);
+  if (titles.length) return titles.join(' + ');
+  const title = component?.[`${prefix}_title`];
+  if (title) return String(title);
+  const ids = Array.isArray(component?.[`${prefix}_ids`]) ? component[`${prefix}_ids`].filter(Boolean) : [];
+  return ids.length ? ids.map((id) => `#${id}`).join(' + ') : '';
+}
+
+function minimumScopeLabel(snap) {
+  return String(snap?.minimum_guarantee_scope_title || (String(snap?.minimum_guarantee_scope || '').toUpperCase() === 'DAY' ? 'за день' : 'за месяц'));
+}
+
 function breakdownMetaHtml(c) {
   const type = String(c?.component_type || "").toUpperCase();
   if (type === "PERCENT_TOTAL_REVENUE" || type === "PERCENT_DEPARTMENT_REVENUE") {
-    const dep = c?.department_title ? ` · ${esc(c.department_title)}` : "";
+    const depLabel = componentDepartmentLabel(c, 'department');
+    const dep = depLabel ? ` · ${esc(depLabel)}` : "";
     const scope = c?.base_scope_title ? ` · ${esc(c.base_scope_title)}` : "";
     const boost = c?.boost_enabled && c?.boost_percent_bps != null ? ` · boost ${esc(((Number(c.boost_percent_bps || 0) / 100).toFixed(2)))}%${c?.boost_applied ? ' ✓' : ''}` : '';
     const minMax = `${c?.minimum_applied ? ' · мин. гарантия' : ''}${c?.maximum_applied ? ' · потолок' : ''}`;
@@ -947,7 +965,7 @@ function breakdownKvHtml(c) {
     if (snap.boost_actual_minor != null) push('Факт', formatMoneyMinor(snap.boost_actual_minor));
     else if (snap.boost_actual_value != null) push('Факт KPI', String(snap.boost_actual_value));
     if (snap.boost_recalc_mode_title) push('Режим', snap.boost_recalc_mode_title);
-    if (snap.minimum_guarantee_minor != null) push('Мин. гарантия', formatMoneyMinor(snap.minimum_guarantee_minor));
+    if (snap.minimum_guarantee_minor != null) push('Мин. гарантия', `${formatMoneyMinor(snap.minimum_guarantee_minor)} ${minimumScopeLabel(snap)}`);
     if (snap.maximum_cap_minor != null) push('Максимум', formatMoneyMinor(snap.maximum_cap_minor));
   }
   return rows.length ? `<div class="payroll-breakdown__kv">${rows.join('')}</div>` : '';
@@ -989,6 +1007,7 @@ function breakdownDayRowsHtml(c) {
     if (row?.actual_amount_minor != null) meta.push(`факт ${formatMoneyMinor(row.actual_amount_minor)}`);
     if (row?.percent_bps != null) meta.push(((Number(row.percent_bps || 0) / 100).toFixed(2)) + '%');
     if (row?.boost_applied) meta.push('boost ✓');
+    if (row?.minimum_applied) meta.push('мин ✓');
     return `<div class="payroll-breakdown__dayrow"><div class="payroll-breakdown__dayrow-main"><div class="payroll-breakdown__dayrow-date">${esc(formatDateRu(row.date))}</div><div class="payroll-breakdown__dayrow-meta">${esc(meta.join(' · '))}</div></div><div class="payroll-breakdown__dayrow-amount">${esc(formatMoneyMinor(row.amount_minor || 0))}</div></div>`;
   }).join('')}</div>`;
 }

@@ -130,16 +130,36 @@ function fmtPercentBps(bps) {
   }
 }
 
+function listTitles(value) {
+  return Array.isArray(value) ? value.map((item) => String(item || '').trim()).filter(Boolean) : [];
+}
+
+function componentDepartmentLabel(component, prefix = 'department') {
+  const titles = listTitles(component?.[`${prefix}_titles`]);
+  if (titles.length) return titles.join(' + ');
+  const title = component?.[`${prefix}_title`];
+  if (title) return String(title);
+  const ids = Array.isArray(component?.[`${prefix}_ids`]) ? component[`${prefix}_ids`].filter(Boolean) : [];
+  return ids.length ? ids.map((id) => `#${id}`).join(' + ') : '';
+}
+
+function minimumScopeLabel(snap) {
+  return String(snap?.minimum_guarantee_scope_title || (String(snap?.minimum_guarantee_scope || '').toUpperCase() === 'DAY' ? 'за день' : 'за месяц'));
+}
+
 function breakdownComponentMeta(component) {
   const type = String(component?.component_type || "").toUpperCase();
   const label = COMPONENT_LABELS[type] || type || "Компонент";
   if (type === "PERCENT_TOTAL_REVENUE" || type === "PERCENT_DEPARTMENT_REVENUE") {
     const parts = [label, fmtPercentBps(component?.percent_bps || 0), `база ${fmtMoneyMinor(component?.base_amount_minor || 0)}`];
-    if (component?.department_title) parts.push(component.department_title);
+    const depLabel = componentDepartmentLabel(component, 'department');
+    if (depLabel) parts.push(depLabel);
     if (component?.base_scope_title) parts.push(component.base_scope_title);
     if (component?.boost_enabled && component?.boost_percent_bps != null) {
       parts.push(`boost ${fmtPercentBps(component.boost_percent_bps)}`);
       if (component?.boost_source_title) parts.push(component.boost_source_title);
+      const boostDepLabel = componentDepartmentLabel(component, 'boost_department');
+      if (boostDepLabel) parts.push(boostDepLabel);
       if (component?.boost_applied) parts.push('сработал');
     }
     if (component?.minimum_applied) parts.push('мин. гарантия');
@@ -194,7 +214,7 @@ function breakdownKv(component) {
     else if (snap.boost_actual_value != null) push('Факт KPI', String(snap.boost_actual_value));
     if (snap.boost_recalc_mode_title) push('Режим', snap.boost_recalc_mode_title);
     if (snap.boost_recalc_mode_effective && snap.boost_recalc_mode_effective !== snap.boost_recalc_mode) push('Эффективно', snap.boost_recalc_mode_effective);
-    if (snap.minimum_guarantee_minor != null) push('Мин. гарантия', fmtMoneyMinor(snap.minimum_guarantee_minor));
+    if (snap.minimum_guarantee_minor != null) push('Мин. гарантия', `${fmtMoneyMinor(snap.minimum_guarantee_minor)} ${minimumScopeLabel(snap)}`);
     if (snap.maximum_cap_minor != null) push('Максимум', fmtMoneyMinor(snap.maximum_cap_minor));
   }
   if (type === 'KPI_BONUS') {
@@ -241,6 +261,7 @@ function breakdownDayRows(component) {
     if (row?.actual_amount_minor != null) meta.push(`факт ${fmtMoneyMinor(row.actual_amount_minor)}`);
     if (row?.percent_bps != null) meta.push(fmtPercentBps(row.percent_bps));
     if (row?.boost_applied) meta.push('boost ✓');
+    if (row?.minimum_applied) meta.push('мин ✓');
     return `<div class="payroll-breakdown__dayrow"><div class="payroll-breakdown__dayrow-main"><div class="payroll-breakdown__dayrow-date">${esc(formatDateRu(row.date))}</div><div class="payroll-breakdown__dayrow-meta">${esc(meta.join(' · '))}</div></div><div class="payroll-breakdown__dayrow-amount">${esc(fmtMoneyMinor(row.amount_minor || 0))}</div></div>`;
   }).join('')}</div>`;
 }

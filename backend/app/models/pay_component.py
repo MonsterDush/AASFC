@@ -23,6 +23,7 @@ class PayComponent(Base):
         CheckConstraint("boost_threshold_value IS NULL OR boost_threshold_value >= 0", name="ck_pay_components_boost_threshold_value_non_negative"),
         CheckConstraint("minimum_guarantee_minor IS NULL OR minimum_guarantee_minor >= 0", name="ck_pay_components_minimum_guarantee_non_negative"),
         CheckConstraint("maximum_cap_minor IS NULL OR maximum_cap_minor >= 0", name="ck_pay_components_maximum_cap_non_negative"),
+        CheckConstraint("minimum_guarantee_scope IS NULL OR minimum_guarantee_scope in ('MONTH','DAY')", name="ck_pay_components_minimum_guarantee_scope"),
         CheckConstraint("sort_order >= 0", name="ck_pay_components_sort_order_non_negative"),
     )
 
@@ -39,6 +40,7 @@ class PayComponent(Base):
     percent_bps: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), nullable=True)
+    department_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     kpi_metric_id: Mapped[int | None] = mapped_column(ForeignKey("kpi_metrics.id"), nullable=True)
     threshold_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
     steps_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -49,9 +51,11 @@ class PayComponent(Base):
     boost_source_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     boost_recalc_mode: Mapped[str | None] = mapped_column(String(24), nullable=True)
     boost_department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), nullable=True)
+    boost_department_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     boost_kpi_metric_id: Mapped[int | None] = mapped_column(ForeignKey("kpi_metrics.id"), nullable=True)
     boost_threshold_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
     minimum_guarantee_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    minimum_guarantee_scope: Mapped[str | None] = mapped_column(String(16), nullable=True)
     maximum_cap_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

@@ -81,6 +81,71 @@ def _safe_json(raw: str | None) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _normalize_int_ids(value: object) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            value = json.loads(raw)
+        except Exception:
+            value = [part.strip() for part in raw.split(",") if part.strip()]
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        try:
+            item_id = int(item)
+        except Exception:
+            continue
+        if item_id <= 0 or item_id in seen:
+            continue
+        seen.add(item_id)
+        result.append(item_id)
+    return result
+
+
+def _component_department_ids(component: dict) -> list[int]:
+    ids = _normalize_int_ids(component.get("department_ids"))
+    legacy_id = int(component.get("department_id") or 0)
+    if legacy_id > 0 and legacy_id not in ids:
+        ids.insert(0, legacy_id)
+    return ids
+
+
+def _component_department_titles(component: dict, ids: list[int], *, prefix: str = "department") -> list[str]:
+    raw_titles = component.get(f"{prefix}_titles")
+    titles = [str(title) for title in raw_titles] if isinstance(raw_titles, list) else []
+    out: list[str] = []
+    for index, dep_id in enumerate(ids):
+        if index < len(titles) and titles[index]:
+            out.append(titles[index])
+        else:
+            single_title = component.get(f"{prefix}_title")
+            if len(ids) == 1 and single_title:
+                out.append(str(single_title))
+            else:
+                out.append(f"#{dep_id}")
+    return out
+
+
+def _sum_department_weights_by_date(
+    department_revenue_by_date_minor: dict[int, dict[date, int]],
+    department_ids: list[int],
+    ordered_dates: list[date],
+) -> dict[date, int]:
+    weights: dict[date, int] = {}
+    for day in ordered_dates:
+        weights[day] = sum(
+            int(department_revenue_by_date_minor.get(int(dep_id), {}).get(day, 0) or 0)
+            for dep_id in department_ids
+        )
+    return weights
+
+
 def _serialize_recalculation_log(row: PayrollRecalculationLog | None) -> dict | None:
     if row is None:
         return None
@@ -295,6 +360,8 @@ def _component_allocation_for_day(
             formula_text = f"{(percent_bps / 100):.2f}% от базы дня"
             if day_snapshot.get("boost_applied"):
                 formula_text += " · план выполнен"
+            if day_snapshot.get("minimum_applied"):
+                formula_text += f" · дневная минималка {_fmt_money_minor(day_snapshot.get('amount_minor'))}"
         else:
             weights = {day: int(context.revenue_by_date_minor.get(day, 0)) for day in ordered_dates}
             base_text = f"{_fmt_money_minor(context.revenue_by_date_minor.get(target_date, 0))} из {_fmt_money_minor(sum(weights.values()))}"
@@ -334,8 +401,9 @@ def _component_allocation_for_day(
             "is_estimated": False,
         }
     elif component_type == "PERCENT_DEPARTMENT_REVENUE":
-        department_id = int(component.get("department_id") or 0)
-        dep_title = str(component.get("department_title") or "департамента").strip()
+        department_ids = _component_department_ids(component)
+        dep_titles = _component_department_titles(component, department_ids, prefix="department")
+        dep_title = " + ".join(dep_titles) if dep_titles else "департаментов"
         day_rows = [row for row in (component.get("day_rows") or []) if isinstance(row, dict)]
         day_snapshot = next((row for row in day_rows if str(row.get("date") or "") == target_date.isoformat()), None)
         if day_snapshot is not None:
@@ -353,10 +421,11 @@ def _component_allocation_for_day(
             formula_text = f"{(percent_bps / 100):.2f}% от {dep_title}"
             if day_snapshot.get("boost_applied"):
                 formula_text += " · план выполнен"
+            if day_snapshot.get("minimum_applied"):
+                formula_text += f" · дневная минималка {_fmt_money_minor(day_snapshot.get('amount_minor'))}"
         else:
-            department_weights = context.department_revenue_by_date_minor.get(department_id, {})
-            weights = {day: int(department_weights.get(day, 0)) for day in ordered_dates}
-            base_text = f"{_fmt_money_minor(department_weights.get(target_date, 0))} из {_fmt_money_minor(sum(weights.values()))}"
+            weights = _sum_department_weights_by_date(context.department_revenue_by_date_minor, department_ids, ordered_dates)
+            base_text = f"{_fmt_money_minor(weights.get(target_date, 0))} из {_fmt_money_minor(sum(weights.values()))}"
             percent_bps = component.get("percent_bps") or component.get("source_percent_bps")
             if percent_bps not in (None, ""):
                 formula_text = f"{(int(percent_bps) / 100):.2f}% от {dep_title}, доля дня по выручке"
