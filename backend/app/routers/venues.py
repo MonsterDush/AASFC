@@ -84,6 +84,8 @@ from app.services.payroll.calculator import (
     BOOST_SOURCE_NONE,
     BOOST_SOURCE_VENUE_DAY_PLAN,
     BOOST_SOURCE_VENUE_MONTH_PLAN,
+    MINIMUM_GUARANTEE_DAY,
+    MINIMUM_GUARANTEE_MONTH,
     calculate_payroll_for_month,
     parse_month_start,
 )
@@ -192,6 +194,10 @@ BOOST_SOURCE_TITLES = {
 BOOST_RECALC_TITLES = {
     BOOST_RECALC_REPLACE_ALL: "весь объём",
     BOOST_RECALC_EXCESS_ONLY: "только превышение",
+}
+MINIMUM_GUARANTEE_SCOPE_TITLES = {
+    MINIMUM_GUARANTEE_MONTH: "за месяц",
+    MINIMUM_GUARANTEE_DAY: "за день",
 }
 _SCHEDULE_SHARE_TTL_SECONDS = int(os.getenv("SCHEDULE_SHARE_TTL_SECONDS", "604800"))
 
@@ -314,6 +320,7 @@ class PayComponentCreateIn(BaseModel):
     rate_minor: int | None = Field(default=None, ge=0)
     percent_bps: int | None = Field(default=None, ge=0)
     department_id: int | None = Field(default=None, gt=0)
+    department_ids: list[int] | None = None
     kpi_metric_id: int | None = Field(default=None, gt=0)
     threshold_value: int | None = Field(default=None, ge=0)
     steps_json: dict | list | None = None
@@ -323,9 +330,11 @@ class PayComponentCreateIn(BaseModel):
     boost_source_type: str | None = Field(default=None, min_length=1, max_length=40)
     boost_recalc_mode: str | None = Field(default=None, min_length=1, max_length=24)
     boost_department_id: int | None = Field(default=None, gt=0)
+    boost_department_ids: list[int] | None = None
     boost_kpi_metric_id: int | None = Field(default=None, gt=0)
     boost_threshold_value: int | None = Field(default=None, ge=0)
     minimum_guarantee_minor: int | None = Field(default=None, ge=0)
+    minimum_guarantee_scope: str | None = Field(default=None, min_length=1, max_length=16)
     maximum_cap_minor: int | None = Field(default=None, ge=0)
     sort_order: int = Field(0, ge=0)
     is_active: bool = True
@@ -338,6 +347,7 @@ class PayComponentUpdateIn(BaseModel):
     rate_minor: int | None = Field(default=None, ge=0)
     percent_bps: int | None = Field(default=None, ge=0)
     department_id: int | None = Field(default=None, gt=0)
+    department_ids: list[int] | None = None
     kpi_metric_id: int | None = Field(default=None, gt=0)
     threshold_value: int | None = Field(default=None, ge=0)
     steps_json: dict | list | None = None
@@ -347,9 +357,11 @@ class PayComponentUpdateIn(BaseModel):
     boost_source_type: str | None = Field(default=None, min_length=1, max_length=40)
     boost_recalc_mode: str | None = Field(default=None, min_length=1, max_length=24)
     boost_department_id: int | None = Field(default=None, gt=0)
+    boost_department_ids: list[int] | None = None
     boost_kpi_metric_id: int | None = Field(default=None, gt=0)
     boost_threshold_value: int | None = Field(default=None, ge=0)
     minimum_guarantee_minor: int | None = Field(default=None, ge=0)
+    minimum_guarantee_scope: str | None = Field(default=None, min_length=1, max_length=16)
     maximum_cap_minor: int | None = Field(default=None, ge=0)
     sort_order: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
@@ -2377,6 +2389,88 @@ def _get_pay_component_or_404(db: Session, *, venue_id: int, component_id: int) 
 
 
 
+
+def _normalize_int_ids(value: object) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            value = json.loads(raw)
+        except Exception:
+            return []
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        try:
+            item_id = int(item)
+        except Exception:
+            continue
+        if item_id <= 0 or item_id in seen:
+            continue
+        seen.add(item_id)
+        result.append(item_id)
+    return result
+
+
+def _dump_int_ids(value: object) -> str | None:
+    ids = _normalize_int_ids(value)
+    return json.dumps(ids, ensure_ascii=False) if ids else None
+
+
+def _component_department_ids(component: PayComponent) -> list[int]:
+    ids = _normalize_int_ids(getattr(component, "department_ids_json", None))
+    legacy_id = int(getattr(component, "department_id", 0) or 0)
+    if legacy_id > 0 and legacy_id not in ids:
+        ids.insert(0, legacy_id)
+    return ids
+
+
+def _component_boost_department_ids(component: PayComponent) -> list[int]:
+    ids = _normalize_int_ids(getattr(component, "boost_department_ids_json", None))
+    legacy_id = int(getattr(component, "boost_department_id", 0) or 0)
+    if legacy_id > 0 and legacy_id not in ids:
+        ids.insert(0, legacy_id)
+    return ids
+
+
+def _department_titles_for_ids(db_departments: list[Department] | None, ids: list[int]) -> list[str]:
+    if not ids:
+        return []
+    by_id = {int(dep.id): dep.title for dep in (db_departments or []) if dep is not None}
+    return [str(by_id.get(int(dep_id)) or f"#{dep_id}") for dep_id in ids]
+
+
+def _normalize_minimum_guarantee_scope(value: object) -> str:
+    raw = str(value or "").strip().upper()
+    if raw == MINIMUM_GUARANTEE_DAY:
+        return MINIMUM_GUARANTEE_DAY
+    return MINIMUM_GUARANTEE_MONTH
+
+
+def _ensure_department_ids_in_venue(db: Session, *, venue_id: int, ids: list[int], detail: str) -> None:
+    normalized = _normalize_int_ids(ids)
+    if not normalized:
+        return
+    found = set(
+        int(item)
+        for item in db.execute(
+            select(Department.id).where(
+                Department.venue_id == int(venue_id),
+                Department.id.in_(normalized),
+            )
+        ).scalars().all()
+    )
+    missing = [dep_id for dep_id in normalized if dep_id not in found]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"{detail}: {', '.join(str(dep_id) for dep_id in missing)}")
+
+
+
 def _effective_component_base_scope(component: PayComponent) -> str:
     raw = str(getattr(component, "base_scope", "") or "").strip().upper()
     if raw in {BASE_SCOPE_FULL_PERIOD, BASE_SCOPE_WORKED_DATES}:
@@ -2409,6 +2503,8 @@ def _effective_component_boost_recalc_mode(component: PayComponent) -> str:
 
 def _serialize_pay_component(component: PayComponent) -> dict:
     department = getattr(component, "department", None)
+    department_ids = _component_department_ids(component)
+    boost_department_ids = _component_boost_department_ids(component)
     kpi_metric = getattr(component, "kpi_metric", None)
     boost_department = getattr(component, "boost_department", None)
     boost_kpi_metric = getattr(component, "boost_kpi_metric", None)
@@ -2424,7 +2520,9 @@ def _serialize_pay_component(component: PayComponent) -> dict:
         "rate_minor": component.rate_minor,
         "percent_bps": component.percent_bps,
         "department_id": component.department_id,
+        "department_ids": department_ids,
         "department_title": department.title if department is not None else None,
+        "department_titles": [department.title] if department is not None and int(component.department_id or 0) in department_ids else [],
         "kpi_metric_id": component.kpi_metric_id,
         "kpi_metric_title": kpi_metric.title if kpi_metric is not None else None,
         "threshold_value": component.threshold_value,
@@ -2441,11 +2539,16 @@ def _serialize_pay_component(component: PayComponent) -> dict:
         "effective_boost_recalc_mode": effective_boost_recalc_mode,
         "effective_boost_recalc_mode_title": BOOST_RECALC_TITLES.get(effective_boost_recalc_mode, effective_boost_recalc_mode),
         "boost_department_id": component.boost_department_id,
+        "boost_department_ids": boost_department_ids,
         "boost_department_title": boost_department.title if boost_department is not None else None,
+        "boost_department_titles": [boost_department.title] if boost_department is not None and int(component.boost_department_id or 0) in boost_department_ids else [],
         "boost_kpi_metric_id": component.boost_kpi_metric_id,
         "boost_kpi_metric_title": boost_kpi_metric.title if boost_kpi_metric is not None else None,
         "boost_threshold_value": component.boost_threshold_value,
         "minimum_guarantee_minor": component.minimum_guarantee_minor,
+        "minimum_guarantee_scope": component.minimum_guarantee_scope,
+        "effective_minimum_guarantee_scope": _normalize_minimum_guarantee_scope(component.minimum_guarantee_scope),
+        "effective_minimum_guarantee_scope_title": MINIMUM_GUARANTEE_SCOPE_TITLES.get(_normalize_minimum_guarantee_scope(component.minimum_guarantee_scope), "за месяц"),
         "maximum_cap_minor": component.maximum_cap_minor,
         "sort_order": int(component.sort_order or 0),
         "is_active": bool(component.is_active),
@@ -2460,6 +2563,7 @@ def _validate_pay_component_fields(
     rate_minor: int | None,
     percent_bps: int | None,
     department_id: int | None,
+    department_ids: list[int] | None = None,
     kpi_metric_id: int | None = None,
     threshold_value: int | None = None,
     steps_json: dict | list | None = None,
@@ -2469,9 +2573,11 @@ def _validate_pay_component_fields(
     boost_source_type: str | None = None,
     boost_recalc_mode: str | None = None,
     boost_department_id: int | None = None,
+    boost_department_ids: list[int] | None = None,
     boost_kpi_metric_id: int | None = None,
     boost_threshold_value: int | None = None,
     minimum_guarantee_minor: int | None = None,
+    minimum_guarantee_scope: str | None = None,
     maximum_cap_minor: int | None = None,
 ) -> None:
     component_type = str(component_type or "").strip().upper()
@@ -2479,6 +2585,11 @@ def _validate_pay_component_fields(
     normalized_boost_source_type = str(boost_source_type or "").strip().upper() if boost_source_type is not None else BOOST_SOURCE_NONE
     normalized_boost_recalc_mode = str(boost_recalc_mode or "").strip().upper() if boost_recalc_mode is not None else BOOST_RECALC_REPLACE_ALL
     is_percent_component = component_type in {"PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"}
+    normalized_department_ids = _normalize_int_ids(department_ids)
+    normalized_boost_department_ids = _normalize_int_ids(boost_department_ids)
+    raw_minimum_scope = str(minimum_guarantee_scope or "").strip().upper()
+    if minimum_guarantee_scope is not None and raw_minimum_scope not in {MINIMUM_GUARANTEE_MONTH, MINIMUM_GUARANTEE_DAY}:
+        raise HTTPException(status_code=400, detail="minimum_guarantee_scope must be MONTH or DAY")
     if minimum_guarantee_minor is not None and maximum_cap_minor is not None and minimum_guarantee_minor > maximum_cap_minor:
         raise HTTPException(status_code=400, detail="minimum_guarantee_minor must be <= maximum_cap_minor")
     if component_type == "SALARY_FIXED_MONTH":
@@ -2499,8 +2610,8 @@ def _validate_pay_component_fields(
     if component_type == "PERCENT_DEPARTMENT_REVENUE":
         if percent_bps is None:
             raise HTTPException(status_code=400, detail="percent_bps is required for PERCENT_DEPARTMENT_REVENUE")
-        if department_id is None:
-            raise HTTPException(status_code=400, detail="department_id is required for PERCENT_DEPARTMENT_REVENUE")
+        if department_id is None and not normalized_department_ids:
+            raise HTTPException(status_code=400, detail="department_id or department_ids is required for PERCENT_DEPARTMENT_REVENUE")
     if is_percent_component:
         if normalized_base_scope is not None and normalized_base_scope not in {BASE_SCOPE_FULL_PERIOD, BASE_SCOPE_WORKED_DATES}:
             raise HTTPException(status_code=400, detail="base_scope must be FULL_PERIOD or WORKED_DATES")
@@ -2526,8 +2637,8 @@ def _validate_pay_component_fields(
                     raise HTTPException(status_code=400, detail="boost_threshold_value is required for KPI boost")
                 if normalized_boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY:
                     raise HTTPException(status_code=400, detail="EXCESS_ONLY is not supported for KPI boost")
-            if normalized_boost_source_type in {BOOST_SOURCE_DEPARTMENT_MONTH_PLAN, BOOST_SOURCE_DEPARTMENT_DAY_PLAN} and boost_department_id is None:
-                raise HTTPException(status_code=400, detail="boost_department_id is required for department plan boost")
+            if normalized_boost_source_type in {BOOST_SOURCE_DEPARTMENT_MONTH_PLAN, BOOST_SOURCE_DEPARTMENT_DAY_PLAN} and boost_department_id is None and not normalized_boost_department_ids:
+                raise HTTPException(status_code=400, detail="boost_department_id or boost_department_ids is required for department plan boost")
         return
     if component_type == "KPI_BONUS":
         if kpi_metric_id is None:
@@ -3714,6 +3825,10 @@ def create_pay_component(
         dep = db.execute(select(Department.id).where(Department.id == payload.boost_department_id, Department.venue_id == venue_id)).scalar_one_or_none()
         if dep is None:
             raise HTTPException(status_code=400, detail="Boost department not found in venue")
+    department_ids = _normalize_int_ids(payload.department_ids)
+    boost_department_ids = _normalize_int_ids(payload.boost_department_ids)
+    _ensure_department_ids_in_venue(db, venue_id=venue_id, ids=department_ids, detail="Departments not found in venue")
+    _ensure_department_ids_in_venue(db, venue_id=venue_id, ids=boost_department_ids, detail="Boost departments not found in venue")
     if payload.boost_kpi_metric_id is not None:
         kpi = db.execute(select(KpiMetric.id).where(KpiMetric.id == payload.boost_kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
         if kpi is None:
@@ -3724,6 +3839,7 @@ def create_pay_component(
         rate_minor=payload.rate_minor,
         percent_bps=payload.percent_bps,
         department_id=payload.department_id,
+        department_ids=department_ids,
         kpi_metric_id=payload.kpi_metric_id,
         threshold_value=payload.threshold_value,
         steps_json=payload.steps_json,
@@ -3733,9 +3849,11 @@ def create_pay_component(
         boost_source_type=payload.boost_source_type,
         boost_recalc_mode=payload.boost_recalc_mode,
         boost_department_id=payload.boost_department_id,
+        boost_department_ids=boost_department_ids,
         boost_kpi_metric_id=payload.boost_kpi_metric_id,
         boost_threshold_value=payload.boost_threshold_value,
         minimum_guarantee_minor=payload.minimum_guarantee_minor,
+        minimum_guarantee_scope=payload.minimum_guarantee_scope,
         maximum_cap_minor=payload.maximum_cap_minor,
     )
 
@@ -3747,7 +3865,8 @@ def create_pay_component(
         amount_minor=payload.amount_minor,
         rate_minor=payload.rate_minor,
         percent_bps=payload.percent_bps,
-        department_id=payload.department_id,
+        department_id=payload.department_id or (department_ids[0] if department_ids else None),
+        department_ids_json=_dump_int_ids(department_ids),
         kpi_metric_id=payload.kpi_metric_id,
         threshold_value=payload.threshold_value,
         steps_json=json.dumps(payload.steps_json, ensure_ascii=False) if payload.steps_json is not None else None,
@@ -3756,10 +3875,12 @@ def create_pay_component(
         boost_percent_bps=payload.boost_percent_bps,
         boost_source_type=(payload.boost_source_type or '').strip().upper() or None,
         boost_recalc_mode=(payload.boost_recalc_mode or '').strip().upper() or None,
-        boost_department_id=payload.boost_department_id,
+        boost_department_id=payload.boost_department_id or (boost_department_ids[0] if boost_department_ids else None),
+        boost_department_ids_json=_dump_int_ids(boost_department_ids),
         boost_kpi_metric_id=payload.boost_kpi_metric_id,
         boost_threshold_value=payload.boost_threshold_value,
         minimum_guarantee_minor=payload.minimum_guarantee_minor,
+        minimum_guarantee_scope=_normalize_minimum_guarantee_scope(payload.minimum_guarantee_scope) if payload.minimum_guarantee_minor is not None else None,
         maximum_cap_minor=payload.maximum_cap_minor,
         sort_order=payload.sort_order,
         is_active=payload.is_active,
@@ -3804,6 +3925,12 @@ def update_pay_component(
             if dep is None:
                 raise HTTPException(status_code=400, detail="Department not found in venue")
             component.department_id = payload.department_id
+    if 'department_ids' in fields_set:
+        department_ids_payload = _normalize_int_ids(payload.department_ids)
+        _ensure_department_ids_in_venue(db, venue_id=venue_id, ids=department_ids_payload, detail="Departments not found in venue")
+        component.department_ids_json = _dump_int_ids(department_ids_payload)
+        if 'department_id' not in fields_set:
+            component.department_id = department_ids_payload[0] if department_ids_payload else None
     if 'kpi_metric_id' in fields_set:
         if payload.kpi_metric_id is None:
             component.kpi_metric_id = None
@@ -3820,6 +3947,12 @@ def update_pay_component(
             if dep is None:
                 raise HTTPException(status_code=400, detail="Boost department not found in venue")
             component.boost_department_id = payload.boost_department_id
+    if 'boost_department_ids' in fields_set:
+        boost_department_ids_payload = _normalize_int_ids(payload.boost_department_ids)
+        _ensure_department_ids_in_venue(db, venue_id=venue_id, ids=boost_department_ids_payload, detail="Boost departments not found in venue")
+        component.boost_department_ids_json = _dump_int_ids(boost_department_ids_payload)
+        if 'boost_department_id' not in fields_set:
+            component.boost_department_id = boost_department_ids_payload[0] if boost_department_ids_payload else None
     if 'boost_kpi_metric_id' in fields_set:
         if payload.boost_kpi_metric_id is None:
             component.boost_kpi_metric_id = None
@@ -3842,14 +3975,16 @@ def update_pay_component(
         component.boost_source_type = (payload.boost_source_type or '').strip().upper() or None
     if 'boost_recalc_mode' in fields_set:
         component.boost_recalc_mode = (payload.boost_recalc_mode or '').strip().upper() or None
-    if 'boost_department_id' in fields_set:
-        component.boost_department_id = payload.boost_department_id
-    if 'boost_kpi_metric_id' in fields_set:
-        component.boost_kpi_metric_id = payload.boost_kpi_metric_id
     if 'boost_threshold_value' in fields_set:
         component.boost_threshold_value = payload.boost_threshold_value
     if 'minimum_guarantee_minor' in fields_set:
         component.minimum_guarantee_minor = payload.minimum_guarantee_minor
+        if payload.minimum_guarantee_minor is None and 'minimum_guarantee_scope' not in fields_set:
+            component.minimum_guarantee_scope = None
+    if 'minimum_guarantee_scope' in fields_set:
+        component.minimum_guarantee_scope = _normalize_minimum_guarantee_scope(payload.minimum_guarantee_scope) if component.minimum_guarantee_minor is not None else None
+    elif component.minimum_guarantee_minor is not None and not component.minimum_guarantee_scope:
+        component.minimum_guarantee_scope = MINIMUM_GUARANTEE_MONTH
     if 'maximum_cap_minor' in fields_set:
         component.maximum_cap_minor = payload.maximum_cap_minor
     if 'sort_order' in fields_set and payload.sort_order is not None:
@@ -3862,6 +3997,7 @@ def update_pay_component(
         rate_minor=component.rate_minor,
         percent_bps=component.percent_bps,
         department_id=component.department_id,
+        department_ids=_component_department_ids(component),
         kpi_metric_id=component.kpi_metric_id,
         threshold_value=component.threshold_value,
         steps_json=_parse_json_text(component.steps_json),
@@ -3871,9 +4007,11 @@ def update_pay_component(
         boost_source_type=component.boost_source_type,
         boost_recalc_mode=component.boost_recalc_mode,
         boost_department_id=component.boost_department_id,
+        boost_department_ids=_component_boost_department_ids(component),
         boost_kpi_metric_id=component.boost_kpi_metric_id,
         boost_threshold_value=component.boost_threshold_value,
         minimum_guarantee_minor=component.minimum_guarantee_minor,
+        minimum_guarantee_scope=component.minimum_guarantee_scope,
         maximum_cap_minor=component.maximum_cap_minor,
     )
     component.updated_at = datetime.utcnow()

@@ -7,7 +7,7 @@ import json
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.models import DailyReport, DailyReportValue, DayEconomicsMonthPlan, DayEconomicsPlan, DayEconomicsPlanTemplate, DepartmentDayPlan, DepartmentMonthPlan, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
+from app.models import DailyReport, DailyReportValue, DayEconomicsMonthPlan, DayEconomicsPlan, DayEconomicsPlanTemplate, Department, DepartmentDayPlan, DepartmentMonthPlan, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 
@@ -32,6 +32,9 @@ BOOST_SOURCE_KPI_METRIC = "KPI_METRIC"
 
 BOOST_RECALC_REPLACE_ALL = "REPLACE_ALL"
 BOOST_RECALC_EXCESS_ONLY = "EXCESS_ONLY"
+
+MINIMUM_GUARANTEE_MONTH = "MONTH"
+MINIMUM_GUARANTEE_DAY = "DAY"
 
 BASE_SCOPE_TITLES = {
     BASE_SCOPE_FULL_PERIOD: "по всему периоду",
@@ -115,7 +118,12 @@ class PayrollPercentDecision:
     boost_target_value: int | None = None
     boost_actual_value: int | None = None
     boost_kpi_metric_id: int | None = None
+    department_ids: list[int] = field(default_factory=list)
+    department_titles: list[str] = field(default_factory=list)
+    boost_department_ids: list[int] = field(default_factory=list)
+    boost_department_titles: list[str] = field(default_factory=list)
     minimum_guarantee_minor: int | None = None
+    minimum_guarantee_scope: str = MINIMUM_GUARANTEE_MONTH
     maximum_cap_minor: int | None = None
     minimum_applied: bool = False
     maximum_applied: bool = False
@@ -145,11 +153,17 @@ def _build_percent_component_snapshot(component: PayComponent, decision: Payroll
         "boost_actual_minor": int(decision.boost_actual_minor) if decision.boost_actual_minor is not None else None,
         "boost_target_value": int(decision.boost_target_value) if decision.boost_target_value is not None else None,
         "boost_actual_value": int(decision.boost_actual_value) if decision.boost_actual_value is not None else None,
+        "department_ids": [int(item) for item in (decision.department_ids or [])],
+        "department_titles": [str(item) for item in (decision.department_titles or [])],
         "boost_department_id": int(getattr(component, "boost_department_id", 0) or 0) if getattr(component, "boost_department_id", None) is not None else None,
+        "boost_department_ids": [int(item) for item in (decision.boost_department_ids or [])],
         "boost_department_title": getattr(getattr(component, "boost_department", None), "title", None),
+        "boost_department_titles": [str(item) for item in (decision.boost_department_titles or [])],
         "boost_kpi_metric_id": int(decision.boost_kpi_metric_id) if decision.boost_kpi_metric_id is not None else None,
         "boost_kpi_metric_title": getattr(getattr(component, "boost_kpi_metric", None), "title", None),
         "minimum_guarantee_minor": int(decision.minimum_guarantee_minor) if decision.minimum_guarantee_minor is not None else None,
+        "minimum_guarantee_scope": decision.minimum_guarantee_scope,
+        "minimum_guarantee_scope_title": "за день" if decision.minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY else "за месяц",
         "maximum_cap_minor": int(decision.maximum_cap_minor) if decision.maximum_cap_minor is not None else None,
         "minimum_applied": bool(decision.minimum_applied),
         "maximum_applied": bool(decision.maximum_applied),
@@ -342,6 +356,128 @@ def _round_percent_amount(base_amount_minor: int, percent_bps: int) -> int:
     return int((int(base_amount_minor) * int(percent_bps) + 5000) // 10000)
 
 
+
+def _normalize_int_ids(value: object) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            value = json.loads(raw)
+        except Exception:
+            return []
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        try:
+            item_id = int(item)
+        except Exception:
+            continue
+        if item_id <= 0 or item_id in seen:
+            continue
+        seen.add(item_id)
+        result.append(item_id)
+    return result
+
+
+def _component_department_ids(component: PayComponent) -> list[int]:
+    ids = _normalize_int_ids(getattr(component, "department_ids_json", None))
+    legacy_id = int(getattr(component, "department_id", 0) or 0)
+    if legacy_id > 0 and legacy_id not in ids:
+        ids.insert(0, legacy_id)
+    return ids
+
+
+def _component_boost_department_ids(component: PayComponent, *, fallback_department_ids: list[int] | None = None) -> list[int]:
+    ids = _normalize_int_ids(getattr(component, "boost_department_ids_json", None))
+    legacy_id = int(getattr(component, "boost_department_id", 0) or 0)
+    if legacy_id > 0 and legacy_id not in ids:
+        ids.insert(0, legacy_id)
+    if not ids and fallback_department_ids:
+        ids = [int(item) for item in fallback_department_ids if int(item) > 0]
+    return ids
+
+
+def _department_title_for(component: PayComponent, dep_id: int) -> str:
+    titles_by_id = getattr(component, "_department_titles_by_id", None)
+    if isinstance(titles_by_id, dict) and int(dep_id) in titles_by_id:
+        return str(titles_by_id.get(int(dep_id)) or f"#{int(dep_id)}")
+    for relationship_name in ("department", "boost_department"):
+        department = getattr(component, relationship_name, None)
+        if department is not None and int(getattr(department, "id", 0) or 0) == int(dep_id):
+            title = getattr(department, "title", None)
+            if title:
+                return str(title)
+    return f"#{int(dep_id)}"
+
+
+def _department_titles_for_ids(component: PayComponent, ids: list[int]) -> list[str]:
+    return [_department_title_for(component, int(dep_id)) for dep_id in ids]
+
+
+def _sum_department_revenue_minor(revenue_metrics: PayrollRevenueMetrics, department_ids: list[int]) -> int:
+    return int(sum(int(revenue_metrics.department_revenue_minor.get(int(dep_id), 0) or 0) for dep_id in department_ids))
+
+
+def _sum_department_revenue_by_date_minor(revenue_metrics: PayrollRevenueMetrics, department_ids: list[int]) -> dict[date, int]:
+    out: dict[date, int] = {}
+    for dep_id in department_ids:
+        for day, amount in revenue_metrics.department_revenue_by_date_minor.get(int(dep_id), {}).items():
+            out[day] = int(out.get(day, 0) or 0) + int(amount or 0)
+    return out
+
+
+def _sum_optional_targets(values: list[int | None]) -> int | None:
+    if not values or any(value is None for value in values):
+        return None
+    return int(sum(int(value or 0) for value in values))
+
+
+def _sum_department_month_target_minor(venue_plan_metrics: PayrollVenuePlanMetrics, department_ids: list[int]) -> int | None:
+    return _sum_optional_targets([
+        venue_plan_metrics.department_month_revenue_target_minor.get(int(dep_id))
+        for dep_id in department_ids
+    ])
+
+
+def _sum_department_day_target_minor(venue_plan_metrics: PayrollVenuePlanMetrics, department_ids: list[int], target_date: date) -> int | None:
+    return _sum_optional_targets([
+        venue_plan_metrics.department_day_revenue_target_by_date_minor.get(int(dep_id), {}).get(target_date)
+        for dep_id in department_ids
+    ])
+
+
+def _minimum_guarantee_scope(component: PayComponent) -> str:
+    raw = str(getattr(component, "minimum_guarantee_scope", "") or "").strip().upper()
+    if raw == MINIMUM_GUARANTEE_DAY:
+        return MINIMUM_GUARANTEE_DAY
+    return MINIMUM_GUARANTEE_MONTH
+
+
+def _apply_daily_minimum_to_rows(day_rows: list[dict], minimum_guarantee_minor: int | None) -> tuple[list[dict], bool]:
+    if minimum_guarantee_minor is None:
+        return day_rows, False
+    applied = False
+    result: list[dict] = []
+    for row in day_rows:
+        next_row = dict(row)
+        amount_minor = int(next_row.get("amount_minor") or 0)
+        if amount_minor < int(minimum_guarantee_minor):
+            next_row["amount_before_minimum_minor"] = amount_minor
+            next_row["amount_minor"] = int(minimum_guarantee_minor)
+            next_row["minimum_applied"] = True
+            applied = True
+        else:
+            next_row["minimum_applied"] = False
+        result.append(next_row)
+    return result, applied
+
+
+
 def _component_base_scope(component: PayComponent) -> str:
     raw = str(getattr(component, "base_scope", "") or "").strip().upper()
     if raw in {BASE_SCOPE_FULL_PERIOD, BASE_SCOPE_WORKED_DATES}:
@@ -464,15 +600,17 @@ def _build_percent_component_decision(
     boost_source_type = _component_boost_source_type(component)
     boost_source_title = BOOST_SOURCE_TITLES.get(boost_source_type, boost_source_type or BOOST_SOURCE_NONE)
     boost_recalc_mode = _component_boost_recalc_mode(component)
-    boost_department_id = int(component.boost_department_id or component.department_id or 0) if getattr(component, "boost_department_id", None) is not None or getattr(component, "department_id", None) is not None else 0
+    department_ids = _component_department_ids(component)
+    boost_department_ids = _component_boost_department_ids(component, fallback_department_ids=department_ids)
     boost_recalc_mode_effective = boost_recalc_mode
     minimum_guarantee_minor = int(component.minimum_guarantee_minor or 0) if getattr(component, "minimum_guarantee_minor", None) is not None else None
+    minimum_guarantee_scope = _minimum_guarantee_scope(component)
     maximum_cap_minor = int(component.maximum_cap_minor or 0) if getattr(component, "maximum_cap_minor", None) is not None else None
 
     if component_type == "PERCENT_TOTAL_REVENUE":
         source_by_date = revenue_metrics.total_revenue_by_date_minor
     else:
-        source_by_date = revenue_metrics.department_revenue_by_date_minor.get(int(component.department_id or 0), {})
+        source_by_date = _sum_department_revenue_by_date_minor(revenue_metrics, department_ids)
 
     if base_scope == BASE_SCOPE_WORKED_DATES:
         base_by_date = {
@@ -557,11 +695,11 @@ def _build_percent_component_decision(
             boost_actual_value = int(applied_days_count)
 
         elif boost_source_type == BOOST_SOURCE_DEPARTMENT_MONTH_PLAN:
-            boost_target_minor = venue_plan_metrics.department_month_revenue_target_minor.get(int(boost_department_id or 0))
-            boost_actual_minor = int(revenue_metrics.department_revenue_minor.get(int(boost_department_id or 0), 0) or 0)
+            boost_target_minor = _sum_department_month_target_minor(venue_plan_metrics, boost_department_ids)
+            boost_actual_minor = _sum_department_revenue_minor(revenue_metrics, boost_department_ids)
             boost_applied = boost_target_minor is not None and boost_actual_minor >= boost_target_minor
             if boost_applied:
-                excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and int(component.department_id or 0) == int(boost_department_id or 0)
+                excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and set(department_ids) == set(boost_department_ids)
                 if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and excess_supported and boost_target_minor is not None:
                     regular_part = _round_percent_amount(min(base_amount_minor, boost_target_minor), regular_percent_bps)
                     boost_part = _round_percent_amount(max(base_amount_minor - boost_target_minor, 0), int(boost_percent_bps or 0))
@@ -573,14 +711,13 @@ def _build_percent_component_decision(
                 applied_percent_bps = int(boost_percent_bps or 0)
 
         elif boost_source_type == BOOST_SOURCE_DEPARTMENT_DAY_PLAN:
-            day_targets_by_date = venue_plan_metrics.department_day_revenue_target_by_date_minor.get(int(boost_department_id or 0), {})
-            day_actuals_by_date = revenue_metrics.department_revenue_by_date_minor.get(int(boost_department_id or 0), {})
-            excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and int(component.department_id or 0) == int(boost_department_id or 0)
+            day_actuals_by_date = _sum_department_revenue_by_date_minor(revenue_metrics, boost_department_ids)
+            excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and set(department_ids) == set(boost_department_ids)
             amount_minor = 0
             applied_days_count = 0
             for day, base_day_minor in sorted(base_by_date.items(), key=lambda item: item[0]):
                 actual_day_minor = int(day_actuals_by_date.get(day) or 0)
-                target_day_minor = day_targets_by_date.get(day)
+                target_day_minor = _sum_department_day_target_minor(venue_plan_metrics, boost_department_ids, day)
                 day_boost_applied = target_day_minor is not None and actual_day_minor >= int(target_day_minor or 0)
                 day_percent_bps = regular_percent_bps
                 if day_boost_applied:
@@ -624,7 +761,23 @@ def _build_percent_component_decision(
 
     minimum_applied = False
     maximum_applied = False
-    if minimum_guarantee_minor is not None and amount_minor < minimum_guarantee_minor:
+    if minimum_guarantee_minor is not None and minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY:
+        if not day_rows:
+            day_rows = [
+                {
+                    "date": day.isoformat(),
+                    "base_amount_minor": int(base_day_minor),
+                    "actual_amount_minor": int(base_day_minor),
+                    "target_amount_minor": None,
+                    "boost_applied": bool(boost_applied),
+                    "percent_bps": int(applied_percent_bps),
+                    "amount_minor": _round_percent_amount(int(base_day_minor), int(applied_percent_bps)),
+                }
+                for day, base_day_minor in sorted(base_by_date.items(), key=lambda item: item[0])
+            ]
+        day_rows, minimum_applied = _apply_daily_minimum_to_rows(day_rows, minimum_guarantee_minor)
+        amount_minor = int(sum(int(row.get("amount_minor") or 0) for row in day_rows))
+    elif minimum_guarantee_minor is not None and amount_minor < minimum_guarantee_minor:
         amount_minor = int(minimum_guarantee_minor)
         minimum_applied = True
     if maximum_cap_minor is not None and amount_minor > maximum_cap_minor:
@@ -651,7 +804,12 @@ def _build_percent_component_decision(
         boost_target_value=boost_target_value,
         boost_actual_value=boost_actual_value,
         boost_kpi_metric_id=int(component.boost_kpi_metric_id) if getattr(component, "boost_kpi_metric_id", None) is not None else None,
+        department_ids=[int(item) for item in department_ids],
+        department_titles=_department_titles_for_ids(component, department_ids),
+        boost_department_ids=[int(item) for item in boost_department_ids],
+        boost_department_titles=_department_titles_for_ids(component, boost_department_ids),
         minimum_guarantee_minor=minimum_guarantee_minor,
+        minimum_guarantee_scope=minimum_guarantee_scope,
         maximum_cap_minor=maximum_cap_minor,
         minimum_applied=minimum_applied,
         maximum_applied=maximum_applied,
@@ -693,8 +851,21 @@ def _load_profile_components(db: Session, *, profile_ids: list[int]) -> dict[int
         )
         .order_by(PayComponent.pay_profile_id.asc(), PayComponent.sort_order.asc(), PayComponent.id.asc())
     ).scalars().all()
+    all_department_ids: set[int] = set()
+    for component in rows:
+        all_department_ids.update(_component_department_ids(component))
+        all_department_ids.update(_component_boost_department_ids(component))
+    department_titles_by_id: dict[int, str] = {}
+    if all_department_ids:
+        for dep_id, title in db.execute(
+            select(Department.id, Department.title).where(Department.id.in_(sorted(all_department_ids)))
+        ).all():
+            department_titles_by_id[int(dep_id)] = str(title or f"#{dep_id}")
+
     out: dict[int, list[PayComponent]] = {}
     for component in rows:
+        if department_titles_by_id:
+            setattr(component, "_department_titles_by_id", department_titles_by_id)
         out.setdefault(int(component.pay_profile_id), []).append(component)
     return out
 
@@ -957,13 +1128,15 @@ def calculate_payroll_for_month(
             component_type = str(component.component_type or "").strip().upper()
             worked_dates_sorted = sorted(metrics.worked_dates)
             department_base_minor = 0
-            if component.department_id is not None:
+            component_department_ids = _component_department_ids(component)
+            if component_department_ids:
                 base_scope = _component_base_scope(component)
+                department_revenue_by_date = _sum_department_revenue_by_date_minor(revenue_metrics, component_department_ids)
                 if base_scope == BASE_SCOPE_FULL_PERIOD:
-                    department_base_minor = int(revenue_metrics.department_revenue_minor.get(int(component.department_id), 0))
+                    department_base_minor = _sum_department_revenue_minor(revenue_metrics, component_department_ids)
                 else:
                     department_base_minor = _sum_department_revenue_for_worked_dates(
-                        revenue_metrics.department_revenue_by_date_minor.get(int(component.department_id), {}),
+                        department_revenue_by_date,
                         metrics.worked_dates,
                     )
             kpi_metric_value = 0
@@ -1021,11 +1194,17 @@ def calculate_payroll_for_month(
                 breakdown_item["boost_actual_value"] = percent_decision.boost_actual_value
                 breakdown_item["boost_department_id"] = int(component.boost_department_id) if getattr(component, "boost_department_id", None) is not None else None
                 breakdown_item["boost_department_title"] = component.boost_department.title if getattr(component, "boost_department", None) is not None else None
+                breakdown_item["department_ids"] = percent_decision.department_ids
+                breakdown_item["department_titles"] = percent_decision.department_titles
+                breakdown_item["boost_department_ids"] = percent_decision.boost_department_ids
+                breakdown_item["boost_department_titles"] = percent_decision.boost_department_titles
                 breakdown_item["boost_kpi_metric_id"] = percent_decision.boost_kpi_metric_id
                 if getattr(component, "boost_kpi_metric", None) is not None:
                     breakdown_item["boost_kpi_metric_title"] = component.boost_kpi_metric.title
                 breakdown_item["regular_amount_minor"] = int(percent_decision.regular_amount_minor)
                 breakdown_item["minimum_guarantee_minor"] = percent_decision.minimum_guarantee_minor
+                breakdown_item["minimum_guarantee_scope"] = percent_decision.minimum_guarantee_scope
+                breakdown_item["minimum_guarantee_scope_title"] = "за день" if percent_decision.minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY else "за месяц"
                 breakdown_item["maximum_cap_minor"] = percent_decision.maximum_cap_minor
                 breakdown_item["minimum_applied"] = bool(percent_decision.minimum_applied)
                 breakdown_item["maximum_applied"] = bool(percent_decision.maximum_applied)
@@ -1055,11 +1234,17 @@ def calculate_payroll_for_month(
                 breakdown_item["boost_actual_value"] = percent_decision.boost_actual_value
                 breakdown_item["boost_department_id"] = int(component.boost_department_id) if getattr(component, "boost_department_id", None) is not None else None
                 breakdown_item["boost_department_title"] = component.boost_department.title if getattr(component, "boost_department", None) is not None else None
+                breakdown_item["department_ids"] = percent_decision.department_ids
+                breakdown_item["department_titles"] = percent_decision.department_titles
+                breakdown_item["boost_department_ids"] = percent_decision.boost_department_ids
+                breakdown_item["boost_department_titles"] = percent_decision.boost_department_titles
                 breakdown_item["boost_kpi_metric_id"] = percent_decision.boost_kpi_metric_id
                 if getattr(component, "boost_kpi_metric", None) is not None:
                     breakdown_item["boost_kpi_metric_title"] = component.boost_kpi_metric.title
                 breakdown_item["regular_amount_minor"] = int(percent_decision.regular_amount_minor)
                 breakdown_item["minimum_guarantee_minor"] = percent_decision.minimum_guarantee_minor
+                breakdown_item["minimum_guarantee_scope"] = percent_decision.minimum_guarantee_scope
+                breakdown_item["minimum_guarantee_scope_title"] = "за день" if percent_decision.minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY else "за месяц"
                 breakdown_item["maximum_cap_minor"] = percent_decision.maximum_cap_minor
                 breakdown_item["minimum_applied"] = bool(percent_decision.minimum_applied)
                 breakdown_item["maximum_applied"] = bool(percent_decision.maximum_applied)

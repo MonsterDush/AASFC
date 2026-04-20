@@ -53,6 +53,11 @@ const BOOST_RECALC_LABELS = {
   EXCESS_ONLY: "только превышение",
 };
 
+const MINIMUM_GUARANTEE_SCOPE_LABELS = {
+  MONTH: "за месяц",
+  DAY: "за день",
+};
+
 function esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -116,13 +121,84 @@ function parsePercentInputToBps(value) {
   return Math.round(num * 100);
 }
 
+function normalizeIdsArray(value) {
+  if (Array.isArray(value)) {
+    const out = [];
+    const seen = new Set();
+    value.forEach((raw) => {
+      const id = Number(raw || 0);
+      if (Number.isFinite(id) && id > 0 && !seen.has(id)) {
+        seen.add(id);
+        out.push(id);
+      }
+    });
+    return out;
+  }
+  const id = Number(value || 0);
+  return Number.isFinite(id) && id > 0 ? [id] : [];
+}
+
+function selectedDepartmentIdsFor(item) {
+  const ids = normalizeIdsArray(item?.department_ids);
+  const legacy = Number(item?.department_id || 0);
+  if (legacy > 0 && !ids.includes(legacy)) ids.unshift(legacy);
+  return ids;
+}
+
+function selectedBoostDepartmentIdsFor(item) {
+  const ids = normalizeIdsArray(item?.boost_department_ids);
+  const legacy = Number(item?.boost_department_id || 0);
+  if (legacy > 0 && !ids.includes(legacy)) ids.unshift(legacy);
+  return ids;
+}
+
+function departmentTitlesForIds(ids, explicitTitles = []) {
+  const titles = [];
+  const explicit = Array.isArray(explicitTitles) ? explicitTitles : [];
+  normalizeIdsArray(ids).forEach((id, index) => {
+    const explicitTitle = explicit[index];
+    if (explicitTitle) {
+      titles.push(String(explicitTitle));
+      return;
+    }
+    const found = (state.departments || []).find((d) => Number(d?.id) === id);
+    titles.push(found?.title || `#${id}`);
+  });
+  return titles;
+}
+
 function departmentTitleFor(item) {
+  const ids = selectedDepartmentIdsFor(item);
+  if (ids.length) return departmentTitlesForIds(ids, item?.department_titles).join(" + ");
   const direct = item?.department_title || item?.department?.title;
   if (direct) return direct;
-  const depId = Number(item?.department_id || 0);
-  if (!depId) return null;
-  const found = (state.departments || []).find((d) => Number(d?.id) === depId);
-  return found?.title || "Департамент";
+  return null;
+}
+
+function minimumGuaranteeScopeLabel(scope) {
+  const value = String(scope || "MONTH").toUpperCase();
+  return MINIMUM_GUARANTEE_SCOPE_LABELS[value] || MINIMUM_GUARANTEE_SCOPE_LABELS.MONTH;
+}
+
+function selectedIdsFromField(id) {
+  const el = document.getElementById(id);
+  if (!el) return [];
+  if (el.tagName === "SELECT" && el.multiple) {
+    return Array.from(el.selectedOptions || []).map((option) => Number(option.value || 0)).filter((value) => Number.isFinite(value) && value > 0);
+  }
+  return normalizeIdsArray(String(el.value || "").split(",").map((value) => value.trim()).filter(Boolean));
+}
+
+function selectedDepartmentTitlesFromField(id) {
+  return departmentTitlesForIds(selectedIdsFromField(id));
+}
+
+function departmentsOptionsMarkup(selectedIds = []) {
+  const selected = new Set(normalizeIdsArray(selectedIds).map(String));
+  return (state.departments || []).map((dep) => {
+    const id = String(dep.id);
+    return `<option value="${esc(id)}" ${selected.has(id) ? "selected" : ""}>${esc(dep.title)}</option>`;
+  }).join("");
 }
 
 function kpiMetricTitleFor(item) {
@@ -164,7 +240,9 @@ function formatPercentConfig(item) {
   parts.push(fmtPercentBps(item.percent_bps));
   const scope = baseScopeLabel(effectiveBaseScopeFor(item));
   if (scope) parts.push(scope);
-  if (item.minimum_guarantee_minor != null) parts.push(`мин ${fmtMoneyMinor(item.minimum_guarantee_minor)}`);
+  if (item.minimum_guarantee_minor != null) {
+    parts.push(`мин ${fmtMoneyMinor(item.minimum_guarantee_minor)} ${minimumGuaranteeScopeLabel(item.effective_minimum_guarantee_scope || item.minimum_guarantee_scope)}`);
+  }
   if (item.maximum_cap_minor != null) parts.push(`потолок ${fmtMoneyMinor(item.maximum_cap_minor)}`);
   if (item.boost_enabled && item.boost_percent_bps != null) {
     const sourceLabel = boostSourceLabel(effectiveBoostSourceFor(item));
@@ -172,7 +250,9 @@ function formatPercentConfig(item) {
     const boostBits = [`boost ${fmtPercentBps(item.boost_percent_bps)}`];
     if (sourceLabel) boostBits.push(sourceLabel);
     if (modeLabel) boostBits.push(modeLabel);
-    if (item.boost_department_title) boostBits.push(item.boost_department_title);
+    const boostDepartmentTitles = departmentTitlesForIds(selectedBoostDepartmentIdsFor(item), item.boost_department_titles);
+    if (boostDepartmentTitles.length) boostBits.push(boostDepartmentTitles.join(" + "));
+    else if (item.boost_department_title) boostBits.push(item.boost_department_title);
     if (item.boost_kpi_metric_title) boostBits.push(item.boost_kpi_metric_title);
     if (item.boost_threshold_value != null && String(effectiveBoostSourceFor(item)) === 'KPI_METRIC') {
       boostBits.push(`цель ${item.boost_threshold_value}`);
@@ -237,8 +317,15 @@ function applyPercentSmartDefaults() {
   if (boostEnabled && boostSourceEl && (!String(boostSourceEl.value || '').trim() || String(boostSourceEl.value).toUpperCase() === 'NONE')) {
     boostSourceEl.value = defaultBoostSourceForType(type);
   }
-  if (boostSourceEl && isDepartmentBoostSource(boostSourceEl.value) && boostDepartmentEl && !String(boostDepartmentEl.value || '').trim() && String(departmentEl?.value || '').trim()) {
-    boostDepartmentEl.value = String(departmentEl.value || '');
+  if (boostSourceEl && isDepartmentBoostSource(boostSourceEl.value) && boostDepartmentEl && !selectedIdsFromField('f_boost_department_id').length && selectedIdsFromField('f_department_id').length) {
+    const baseIds = new Set(selectedIdsFromField('f_department_id').map(String));
+    if (boostDepartmentEl.tagName === "SELECT" && boostDepartmentEl.multiple) {
+      Array.from(boostDepartmentEl.options || []).forEach((option) => {
+        option.selected = baseIds.has(String(option.value || ""));
+      });
+    } else {
+      boostDepartmentEl.value = selectedIdsFromField('f_department_id').join(",");
+    }
   }
   if (boostSourceEl && String(boostSourceEl.value || '').toUpperCase() === 'KPI_METRIC' && boostKpiMetricEl && !String(boostKpiMetricEl.value || '').trim() && Array.isArray(state.kpiMetrics) && state.kpiMetrics.length) {
     boostKpiMetricEl.value = String(state.kpiMetrics[0].id);
@@ -260,7 +347,8 @@ function syncComponentConfigHint() {
     const baseScope = String(document.getElementById('f_base_scope')?.value || '').toUpperCase();
     const minMinor = parseMoneyRubToMinor(document.getElementById('f_minimum_guarantee_minor')?.value || '');
     const maxMinor = parseMoneyRubToMinor(document.getElementById('f_maximum_cap_minor')?.value || '');
-    const boostDepartmentId = String(document.getElementById('f_boost_department_id')?.value || '').trim();
+    const boostDepartmentIds = selectedIdsFromField('f_boost_department_id');
+    const minScope = String(document.getElementById('f_minimum_guarantee_scope')?.value || 'MONTH').toUpperCase();
 
     infos.push('Процентные компоненты считаются только по закрытым отчётам.');
     if (baseScope === 'WORKED_DATES') infos.push('База будет собрана только по дням, когда сотрудник реально работал.');
@@ -275,8 +363,11 @@ function syncComponentConfigHint() {
     if (boostEnabled && (!boostSourceType || boostSourceType === 'NONE')) {
       warnings.push('Включено повышение, но не выбрано условие.');
     }
-    if (isDepartmentBoostSource(boostSourceType) && !boostDepartmentId) {
-      warnings.push('Для плана департамента нужно выбрать департамент в блоке условия повышения.');
+    if (minMinor != null && minScope === 'DAY') {
+      infos.push('Дневная минималка применяется отдельно к каждому рабочему дню компонента.');
+    }
+    if (isDepartmentBoostSource(boostSourceType) && !boostDepartmentIds.length) {
+      warnings.push('Для плана департамента нужно выбрать один или несколько департаментов в блоке условия повышения.');
     }
     if (type === 'PERCENT_TOTAL_REVENUE' && isDepartmentBoostSource(boostSourceType)) {
       warnings.push('Процент считается от общей выручки, а условие повышения — по департаменту. Это допустимо, но проверь, что именно так и задумано.');
@@ -731,14 +822,16 @@ function syncComponentSummary() {
   const amountMinor = parseMoneyRubToMinor(document.getElementById('f_amount_minor')?.value || '');
   const rateMinor = parseMoneyRubToMinor(document.getElementById('f_rate_minor')?.value || '');
   const percentBps = parsePercentInputToBps(document.getElementById('f_percent')?.value || '');
-  const departmentId = Number(document.getElementById('f_department_id')?.value || 0);
-  const department = Array.isArray(state.departments) ? state.departments.find((dep) => Number(dep.id) === departmentId) : null;
+  const departmentIds = selectedIdsFromField('f_department_id');
+  const departmentTitles = selectedDepartmentTitlesFromField('f_department_id');
   const baseScope = String(document.getElementById('f_base_scope')?.value || '').toUpperCase();
   const boostEnabled = !!document.getElementById('f_boost_enabled')?.checked;
   const boostPercentBps = parsePercentInputToBps(document.getElementById('f_boost_percent')?.value || '');
   const boostSourceType = String(document.getElementById('f_boost_source_type')?.value || 'NONE').toUpperCase();
-  const boostDepartmentId = Number(document.getElementById('f_boost_department_id')?.value || 0);
-  const boostDepartment = Array.isArray(state.departments) ? state.departments.find((dep) => Number(dep.id) === boostDepartmentId) : null;
+  const boostDepartmentIds = selectedIdsFromField('f_boost_department_id');
+  const boostDepartmentTitles = selectedDepartmentTitlesFromField('f_boost_department_id');
+  const minimumMinor = parseMoneyRubToMinor(document.getElementById('f_minimum_guarantee_minor')?.value || '');
+  const minimumScope = String(document.getElementById('f_minimum_guarantee_scope')?.value || 'MONTH').toUpperCase();
   const boostMetric = findKpiMetricById(document.getElementById('f_boost_kpi_metric_id')?.value);
   const kpiMetric = findKpiMetricById(document.getElementById('f_kpi_metric_id')?.value);
   const thresholdValue = String(document.getElementById('f_threshold_value')?.value || '').trim();
@@ -751,12 +844,13 @@ function syncComponentSummary() {
     if (rateMinor != null) bits.push(`${fmtMoneyMinor(rateMinor)} / час`);
   } else if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
     if (percentBps != null) bits.push(fmtPercentBps(percentBps));
-    if (type === 'PERCENT_DEPARTMENT_REVENUE' && department?.title) bits.push(department.title);
+    if (type === 'PERCENT_DEPARTMENT_REVENUE' && departmentTitles.length) bits.push(departmentTitles.join(' + '));
     if (baseScope) bits.push(baseScopeLabel(baseScope));
+    if (minimumMinor != null) bits.push(`мин ${fmtMoneyMinor(minimumMinor)} ${minimumGuaranteeScopeLabel(minimumScope)}`);
     if (boostEnabled && boostPercentBps != null) {
       const boostBits = [`boost ${fmtPercentBps(boostPercentBps)}`];
       if (boostSourceType && boostSourceType !== 'NONE') boostBits.push(boostSourceLabel(boostSourceType));
-      if (boostDepartment?.title) boostBits.push(boostDepartment.title);
+      if (boostDepartmentIds.length && boostDepartmentTitles.length) boostBits.push(boostDepartmentTitles.join(' + '));
       if (boostMetric?.title) boostBits.push(boostMetric.title);
       if (boostThresholdValue && boostSourceType === 'KPI_METRIC') boostBits.push(`цель ${boostThresholdValue}`);
       bits.push(boostBits.join(' · '));
@@ -778,8 +872,11 @@ function componentForm({ mode, item }) {
   const type = String(it.component_type || "SALARY_FIXED_MONTH").toUpperCase();
   const activeChecked = (mode === "edit" ? !!it.is_active : true) ? "checked" : "";
   const hasDepartments = Array.isArray(state.departments) && state.departments.length > 0;
-  const departmentOptions = state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("");
-  const boostDepartmentOptions = state.departments.map((dep) => `<option value="${esc(dep.id)}" ${Number(dep.id) === Number(it.boost_department_id) ? "selected" : ""}>${esc(dep.title)}</option>`).join("");
+  const departmentIds = selectedDepartmentIdsFor(it);
+  const boostDepartmentIds = selectedBoostDepartmentIdsFor(it);
+  const departmentOptions = departmentsOptionsMarkup(departmentIds);
+  const boostDepartmentOptions = departmentsOptionsMarkup(boostDepartmentIds);
+  const minScope = String(it.effective_minimum_guarantee_scope || it.minimum_guarantee_scope || "MONTH").toUpperCase();
   const hasKpiMetrics = Array.isArray(state.kpiMetrics) && state.kpiMetrics.length > 0;
   const kpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.kpi_metric_id) ? "selected" : ""}>${esc(kpiMetricOptionLabel(metric))}</option>`).join("");
   const boostKpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.boost_kpi_metric_id) ? "selected" : ""}>${esc(kpiMetricOptionLabel(metric))}</option>`).join("");
@@ -843,17 +940,16 @@ function componentForm({ mode, item }) {
         <div class="form-section__grid">
           ${hasDepartments ? `
           <label id="f_department_wrap">
-            <span>Департамент</span>
-            <select id="f_department_id">
-              <option value="">Выбери департамент</option>
+            <span>Департаменты</span>
+            <select id="f_department_id" multiple size="${Math.min(Math.max(state.departments.length, 3), 6)}">
               ${departmentOptions}
             </select>
           </label>` : `
           <label id="f_department_wrap">
-            <span>Номер департамента</span>
-            <input id="f_department_id" inputmode="numeric" placeholder="Номер департамента" value="${esc(it.department_id ?? "")}" />
+            <span>Номера департаментов</span>
+            <input id="f_department_id" inputmode="numeric" placeholder="Например: 1,2" value="${esc(departmentIds.join(","))}" />
           </label>
-          <div id="f_department_hint" class="form-inline-note">Список департаментов не загрузился. Укажи номер вручную.</div>`}
+          <div id="f_department_hint" class="form-inline-note">Список департаментов не загрузился. Укажи номера вручную через запятую.</div>`}
           <label id="f_base_scope_wrap">
             <span>База расчёта</span>
             <select id="f_base_scope">${baseScopeOptions(it.base_scope || it.effective_base_scope, type)}</select>
@@ -882,17 +978,16 @@ function componentForm({ mode, item }) {
           </label>
           ${hasDepartments ? `
           <label id="f_boost_department_wrap">
-            <span>Департамент для условия</span>
-            <select id="f_boost_department_id">
-              <option value="">Выбери департамент</option>
+            <span>Департаменты для условия</span>
+            <select id="f_boost_department_id" multiple size="${Math.min(Math.max(state.departments.length, 3), 6)}">
               ${boostDepartmentOptions}
             </select>
           </label>` : `
           <label id="f_boost_department_wrap">
-            <span>Номер департамента для условия</span>
-            <input id="f_boost_department_id" inputmode="numeric" placeholder="Номер департамента" value="${esc(it.boost_department_id ?? "")}" />
+            <span>Номера департаментов для условия</span>
+            <input id="f_boost_department_id" inputmode="numeric" placeholder="Например: 1,2" value="${esc(boostDepartmentIds.join(","))}" />
           </label>
-          <div id="f_boost_department_hint" class="form-inline-note">Если условие связано с департаментом, укажи его номер вручную.</div>`}
+          <div id="f_boost_department_hint" class="form-inline-note">Если условие связано с департаментами, укажи номера через запятую.</div>`}
           <label id="f_boost_recalc_wrap">
             <span>Режим пересчёта</span>
             <select id="f_boost_recalc_mode">${boostRecalcOptions(it.boost_recalc_mode || it.effective_boost_recalc_mode || 'REPLACE_ALL')}</select>
@@ -925,7 +1020,14 @@ function componentForm({ mode, item }) {
         <div class="form-section__grid">
           <label id="f_min_wrap">
             <span>Минимальная гарантия, ₽</span>
-            <input id="f_minimum_guarantee_minor" inputmode="decimal" placeholder="Например: 40000" value="${esc(moneyInputFromMinor(it.minimum_guarantee_minor))}" />
+            <input id="f_minimum_guarantee_minor" inputmode="decimal" placeholder="Например: 6000" value="${esc(moneyInputFromMinor(it.minimum_guarantee_minor))}" />
+          </label>
+          <label id="f_min_scope_wrap">
+            <span>Период минималки</span>
+            <select id="f_minimum_guarantee_scope">
+              <option value="MONTH" ${minScope === "MONTH" ? "selected" : ""}>За месяц</option>
+              <option value="DAY" ${minScope === "DAY" ? "selected" : ""}>За день</option>
+            </select>
           </label>
           <label id="f_max_wrap">
             <span>Максимум, ₽</span>
@@ -1025,6 +1127,7 @@ function syncComponentSimulator() {
   const sourceType = String(document.getElementById("f_boost_source_type")?.value || "NONE").toUpperCase();
   const recalcMode = String(document.getElementById("f_boost_recalc_mode")?.value || "REPLACE_ALL").toUpperCase();
   const minimumMinor = parseMoneyRubToMinor(document.getElementById("f_minimum_guarantee_minor")?.value || "");
+  const minimumScope = String(document.getElementById("f_minimum_guarantee_scope")?.value || "MONTH").toUpperCase();
   const maximumMinor = parseMoneyRubToMinor(document.getElementById("f_maximum_cap_minor")?.value || "");
   const simTargetWrap = document.getElementById("f_sim_target_wrap");
   const simActualWrap = document.getElementById("f_sim_actual_wrap");
@@ -1073,7 +1176,7 @@ function syncComponentSimulator() {
   const rawBeforeCaps = finalAmount;
   if (minimumMinor != null && finalAmount < minimumMinor) {
     finalAmount = minimumMinor;
-    note += ` Сработала минимальная гарантия ${fmtMoneyMinor(minimumMinor)}.`;
+    note += ` Сработала минимальная гарантия ${fmtMoneyMinor(minimumMinor)} ${minimumGuaranteeScopeLabel(minimumScope)}.`;
   }
   if (maximumMinor != null && finalAmount > maximumMinor) {
     finalAmount = maximumMinor;
@@ -1124,6 +1227,7 @@ function syncComponentFields() {
   const boostKpiMetricWrap = document.getElementById("f_boost_kpi_metric_wrap");
   const boostThresholdWrap = document.getElementById("f_boost_threshold_wrap");
   const minWrap = document.getElementById("f_min_wrap");
+  const minScopeWrap = document.getElementById("f_min_scope_wrap");
   const maxWrap = document.getElementById("f_max_wrap");
   const percentHelp = document.getElementById("f_percent_help");
   const simWrap = document.getElementById("f_sim_wrap");
@@ -1147,7 +1251,7 @@ function syncComponentFields() {
   const kpiSection = document.getElementById('f_kpi_section');
   const boostDetails = document.getElementById('f_boost_details');
 
-  [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostDepartmentWrap, boostDepartmentHint, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint, percentSection, boostSection, limitsSection, simSection, kpiSection, boostDetails].forEach((el) => {
+  [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostDepartmentWrap, boostDepartmentHint, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, minScopeWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint, percentSection, boostSection, limitsSection, simSection, kpiSection, boostDetails].forEach((el) => {
     if (el) el.style.display = "none";
   });
 
@@ -1174,6 +1278,7 @@ function syncComponentFields() {
     if (baseScopeWrap) baseScopeWrap.style.display = "grid";
     if (boostEnabledWrap) boostEnabledWrap.style.display = "flex";
     if (minWrap) minWrap.style.display = "grid";
+    if (minScopeWrap) minScopeWrap.style.display = "grid";
     if (maxWrap) maxWrap.style.display = "grid";
     if (percentHelp) percentHelp.style.display = "";
     if (simWrap) simWrap.style.display = "grid";
@@ -1239,6 +1344,7 @@ function openComponentEditor({ mode, item = null }) {
   document.getElementById("f_boost_recalc_mode")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_department_id")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_boost_department_id")?.addEventListener("change", syncComponentFields);
+  document.getElementById("f_minimum_guarantee_scope")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_base_scope")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_kpi_metric_id")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_boost_kpi_metric_id")?.addEventListener("change", syncComponentFields);
@@ -1255,16 +1361,17 @@ function openComponentEditor({ mode, item = null }) {
     const amountMinorRaw = String(document.getElementById("f_amount_minor")?.value || "").trim();
     const rateMinorRaw = String(document.getElementById("f_rate_minor")?.value || "").trim();
     const percentRaw = String(document.getElementById("f_percent")?.value || "").trim();
-    const departmentRaw = String(document.getElementById("f_department_id")?.value || "").trim();
+    const departmentIds = selectedIdsFromField("f_department_id");
     const baseScope = String(document.getElementById("f_base_scope")?.value || "").trim().toUpperCase();
     const boostEnabled = !!document.getElementById("f_boost_enabled")?.checked;
     const boostPercentRaw = String(document.getElementById("f_boost_percent")?.value || "").trim();
     const boostSourceType = String(document.getElementById("f_boost_source_type")?.value || "NONE").trim().toUpperCase();
     const boostRecalcMode = String(document.getElementById("f_boost_recalc_mode")?.value || "REPLACE_ALL").trim().toUpperCase();
-    const boostDepartmentRaw = String(document.getElementById("f_boost_department_id")?.value || "").trim();
+    const boostDepartmentIds = selectedIdsFromField("f_boost_department_id");
     const boostKpiMetricRaw = String(document.getElementById("f_boost_kpi_metric_id")?.value || "").trim();
     const boostThresholdRaw = String(document.getElementById("f_boost_threshold_value")?.value || "").trim();
     const minGuaranteeRaw = String(document.getElementById("f_minimum_guarantee_minor")?.value || "").trim();
+    const minGuaranteeScope = String(document.getElementById("f_minimum_guarantee_scope")?.value || "MONTH").trim().toUpperCase();
     const maxCapRaw = String(document.getElementById("f_maximum_cap_minor")?.value || "").trim();
     const sortRaw = String(document.getElementById("f_sort_order")?.value || "0").trim();
     const isActive = !!document.getElementById("f_active")?.checked;
@@ -1285,6 +1392,7 @@ function openComponentEditor({ mode, item = null }) {
       rate_minor: null,
       percent_bps: null,
       department_id: null,
+      department_ids: null,
       kpi_metric_id: null,
       threshold_value: null,
       steps_json: null,
@@ -1293,9 +1401,12 @@ function openComponentEditor({ mode, item = null }) {
       boost_percent_bps: null,
       boost_source_type: null,
       boost_recalc_mode: null,
+      boost_department_id: null,
+      boost_department_ids: null,
       boost_kpi_metric_id: null,
       boost_threshold_value: null,
       minimum_guarantee_minor: null,
+      minimum_guarantee_scope: null,
       maximum_cap_minor: null,
       sort_order: Number(sortRaw || 0),
       is_active: isActive,
@@ -1330,11 +1441,12 @@ function openComponentEditor({ mode, item = null }) {
       payload.percent_bps = percentBps;
       payload.base_scope = baseScope || (componentType === "PERCENT_DEPARTMENT_REVENUE" ? "WORKED_DATES" : "FULL_PERIOD");
       if (componentType === "PERCENT_DEPARTMENT_REVENUE") {
-        if (!departmentRaw) {
-          toast("Выбери департамент", "warn");
+        if (!departmentIds.length) {
+          toast("Выбери один или несколько департаментов", "warn");
           return;
         }
-        payload.department_id = Number(departmentRaw);
+        payload.department_ids = departmentIds;
+        payload.department_id = departmentIds[0];
       }
       if (minGuaranteeRaw) {
         payload.minimum_guarantee_minor = parseMoneyRubToMinor(minGuaranteeRaw);
@@ -1342,6 +1454,7 @@ function openComponentEditor({ mode, item = null }) {
           toast("Некорректная минимальная гарантия", "warn");
           return;
         }
+        payload.minimum_guarantee_scope = minGuaranteeScope === "DAY" ? "DAY" : "MONTH";
       }
       if (maxCapRaw) {
         payload.maximum_cap_minor = parseMoneyRubToMinor(maxCapRaw);
@@ -1365,11 +1478,12 @@ function openComponentEditor({ mode, item = null }) {
           return;
         }
         if (isDepartmentBoostSource(boostSourceType)) {
-          if (!boostDepartmentRaw) {
-            toast("Выбери департамент для условия повышения", "warn");
+          if (!boostDepartmentIds.length) {
+            toast("Выбери один или несколько департаментов для условия повышения", "warn");
             return;
           }
-          payload.boost_department_id = Number(boostDepartmentRaw);
+          payload.boost_department_ids = boostDepartmentIds;
+          payload.boost_department_id = boostDepartmentIds[0];
         }
         if (boostSourceType === "KPI_METRIC") {
           if (!boostKpiMetricRaw) {
