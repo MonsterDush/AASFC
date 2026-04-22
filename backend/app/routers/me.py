@@ -116,6 +116,9 @@ def _serialize_billing_access_payload(access: dict) -> dict:
         "paid_until": access.get("paid_until").isoformat() if access.get("paid_until") else None,
         "grace_until": access.get("grace_until").isoformat() if access.get("grace_until") else None,
         "billing_restricted_reason": access.get("billing_restricted_reason"),
+        "billing_kind": access.get("billing_kind"),
+        "is_trial": bool(access.get("is_trial")),
+        "trial_until": access.get("trial_until").isoformat() if access.get("trial_until") else None,
     }
 
 

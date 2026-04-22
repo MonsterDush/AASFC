@@ -649,12 +649,16 @@ const titleEl = document.getElementById("title");
           const paidUntil = billingInfo?.paid_until || perms?.paid_until || null;
           const graceUntil = billingInfo?.grace_until || perms?.grace_until || null;
           const reason = billingInfo?.billing_restricted_reason || perms?.billing_restricted_reason || "";
+          const isTrial = !!(billingInfo?.is_trial || perms?.is_trial);
+          const trialUntil = billingInfo?.trial_until || perms?.trial_until || paidUntil;
           const planLabel = billingInfo?.plan?.label || "Axelio · 2990 ₽ / 30 дней";
           const txs = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions : [];
 
           let bannerHtml = "";
-          if (status === "GRACE") {
-            bannerHtml = `<b>Льготный период</b><div class="muted mt-6">Оплата закончилась ${formatDate(paidUntil)}. Льготный период действует до ${formatDate(graceUntil)}.</div>`;
+          if (isTrial && status === "ACTIVE") {
+            bannerHtml = `<b>Пробный доступ активен</b><div class="muted mt-6">До ${formatDate(trialUntil)} доступны все рабочие разделы. После окончания пробного периода заведение перейдёт в grace до оплаты.</div>`;
+          } else if (status === "GRACE") {
+            bannerHtml = `<b>${isTrial ? "Пробный период закончился" : "Льготный период"}</b><div class="muted mt-6">${isTrial ? "Пробный доступ закончился" : `Оплата закончилась ${formatDate(paidUntil)}`}. Льготный период действует до ${formatDate(graceUntil)}.</div>`;
           } else if (status === "SUSPENDED") {
             bannerHtml = `<b>Доступ ограничен</b><div class="muted mt-6">${reason || "Подписка заведения не активна. Продлите доступ, чтобы снова открыть рабочие разделы."}</div>`;
           }
@@ -680,9 +684,9 @@ const titleEl = document.getElementById("title");
                   <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
                     <div>
                       <b>${planLabel}</b>
-                      <div class="muted mt-6">Статус: ${status === "ACTIVE" ? "Активно" : (status === "GRACE" ? "Grace" : "Доступ ограничен")}</div>
+                      <div class="muted mt-6">Статус: ${isTrial && status === "ACTIVE" ? "Пробный доступ" : (status === "ACTIVE" ? "Активно" : (status === "GRACE" ? "Grace" : "Доступ ограничен"))}</div>
                       <div class="muted mt-6">Платёжный контур: ${billingInfo?.provider_ready === false ? "ещё не настроен" : (billingInfo?.provider_mode === "test" ? "тестовый режим" : "боевой режим")}</div>
-                      <div class="muted mt-6">Оплачено до: ${formatDate(paidUntil)}</div>
+                      ${isTrial ? `<div class="muted mt-6">Пробный доступ до: ${formatDate(trialUntil)}</div>` : `<div class="muted mt-6">Оплачено до: ${formatDate(paidUntil)}</div>`}
                       ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}${billingInfo?.checkout_expires_at ? `<div class="muted mt-6">Незавершённый checkout истекает: ${formatDateTime(billingInfo.checkout_expires_at)}</div>` : ""}
                     </div>
                     <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">

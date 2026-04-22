@@ -22,7 +22,17 @@
 
     <div class="card">
       <div class="muted">
-        Открой нужное заведение.
+        Открой нужное заведение или создай новое и протестируй Axelio 3 дня бесплатно.
+      </div>
+
+      <div class="itemcard mt-12" id="createVenueCard">
+        <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="min-width:0;flex:1 1 280px;">
+            <b>Создать заведение</b>
+            <div class="small" style="margin-top:6px">Первому заведению включим 3 дня полного доступа: сотрудники, смены, отчёты, расходы и настройки. После пробного периода доступ перейдёт в grace до оплаты.</div>
+          </div>
+          <button class="btn primary" id="createVenueBtn" type="button">Создать и попробовать</button>
+        </div>
       </div>
 
       <div id="list" class="list"><div class="skeleton"></div><div class="skeleton"></div></div>
@@ -57,6 +67,7 @@ mountCommonUI("app");
 await mountNav({ activeTab: "none" });
 
 const list = document.getElementById("list");
+const createVenueBtn = document.getElementById("createVenueBtn");
 function esc(s){
   return String(s ?? "")
     .replace(/&/g,"&amp;")
@@ -73,6 +84,7 @@ function formatDateTime(value){
 
 function billingChip(v){
   const status = getBillingStatus(v);
+  if (v?.is_trial && status === "ACTIVE") return '<span class="badge" style="margin-left:8px">trial</span>';
   if (status === "GRACE") return '<span class="badge" style="margin-left:8px">grace</span>';
   if (status === "SUSPENDED") return '<span class="badge" style="margin-left:8px">доступ ограничен</span>';
   return '';
@@ -83,6 +95,11 @@ function billingHint(v){
   const paidUntil = v?.paid_until ? `Оплачено до ${esc(formatDateTime(v.paid_until))}` : 'Срок оплаты не задан';
   const graceUntil = v?.grace_until ? `Льготный период до ${esc(formatDateTime(v.grace_until))}` : '';
   const reason = v?.billing_restricted_reason ? esc(v.billing_restricted_reason) : '';
+
+  if (v?.is_trial && status === "ACTIVE") {
+    const trialUntil = v?.trial_until || v?.paid_until;
+    return `<div class="small" style="margin-top:6px">Пробный доступ активен до ${esc(formatDateTime(trialUntil))}. Можно пользоваться всеми разделами заведения.</div>`;
+  }
 
   if (status === "GRACE") {
     return `<div class="small" style="margin-top:6px">${paidUntil}. ${graceUntil || 'Доступ ограничится после окончания льготного периода.'}</div>`;
@@ -166,7 +183,7 @@ function renderSections(data){
   const active = visible.filter((v) => !v.is_archived);
   const archived = visible.filter((v) => !!v.is_archived);
   if (!active.length && !archived.length) {
-    list.innerHTML = `<div class="muted">Пока нет доступных заведений</div>`;
+    list.innerHTML = `<div class="muted">Пока нет доступных заведений. Создай первое заведение выше или открой демо с лендинга.</div>`;
     return;
   }
   let html = '';
@@ -192,6 +209,32 @@ function renderSections(data){
     };
   });
 }
+
+async function createSelfServiceVenue(){
+  const name = prompt("Название заведения:");
+  if (!name || !name.trim()) return;
+  const initialText = createVenueBtn ? createVenueBtn.textContent : "";
+  try {
+    if (createVenueBtn) {
+      createVenueBtn.disabled = true;
+      createVenueBtn.textContent = "Создаём…";
+    }
+    const out = await api("/venues/self-service", { method: "POST", body: { name: name.trim() } });
+    if (out?.id) setActiveVenueId(out.id);
+    if (out?.trial_granted) toast("Пробный доступ включён на 3 дня", "ok");
+    else toast("Заведение создано. Для работы нужно продлить доступ.", "warn");
+    location.href = out?.next_url || out?.open_target || `/app-venue.html?venue_id=${encodeURIComponent(out?.id || "")}`;
+  } catch (e) {
+    toast("Не удалось создать заведение: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+  } finally {
+    if (createVenueBtn) {
+      createVenueBtn.disabled = false;
+      createVenueBtn.textContent = initialText || "Создать и попробовать";
+    }
+  }
+}
+
+if (createVenueBtn) createVenueBtn.onclick = createSelfServiceVenue;
 
 async function load(){
   list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;

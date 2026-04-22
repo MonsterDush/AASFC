@@ -6,12 +6,22 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.venue_billing_state import VenueBillingState
 from app.models.venue_member import VenueMember
-from .manager import get_or_create_billing_state
+from .manager import TRIAL_PROVIDER, get_or_create_billing_state
 from .state import BILLING_STATUS_ACTIVE, build_billing_snapshot, utcnow
 
 BILLING_ACCESS_FULL = "FULL"
 BILLING_ACCESS_READONLY = "BILLING_READONLY"
 BILLING_ACCESS_DENIED = "DENIED"
+
+
+def _trial_payload(state: VenueBillingState | None, snapshot=None) -> dict:
+    is_trial = str(getattr(state, "provider", "") or "").upper() == TRIAL_PROVIDER
+    paid_until = getattr(snapshot, "paid_until", None) if snapshot is not None else getattr(state, "paid_until", None)
+    return {
+        "billing_kind": "TRIAL" if is_trial else "PAID",
+        "is_trial": bool(is_trial),
+        "trial_until": paid_until if is_trial else None,
+    }
 
 
 def get_billing_snapshot_for_state(state: VenueBillingState | None):
@@ -32,12 +42,16 @@ def get_venue_billing_snapshot(db: Session, *, venue_id: int):
 
 def serialize_billing_snapshot(state: VenueBillingState | None) -> dict:
     snapshot = get_billing_snapshot_for_state(state)
+    trial = _trial_payload(state, snapshot)
     return {
         "billing_status": snapshot.status,
         "paid_until": snapshot.paid_until.isoformat() if snapshot.paid_until else None,
         "grace_until": snapshot.grace_until.isoformat() if snapshot.grace_until else None,
         "billing_restricted_reason": snapshot.restricted_reason,
         "billing_days_left": snapshot.days_left,
+        "billing_kind": trial["billing_kind"],
+        "is_trial": trial["is_trial"],
+        "trial_until": trial["trial_until"].isoformat() if trial["trial_until"] else None,
     }
 
 
@@ -52,6 +66,7 @@ def get_user_billing_access(db: Session, *, venue_id: int, user: User, membershi
             "paid_until": snapshot.paid_until,
             "grace_until": snapshot.grace_until,
             "billing_restricted_reason": None,
+            **_trial_payload(state, snapshot),
             "state": state,
         }
 
@@ -82,5 +97,6 @@ def get_user_billing_access(db: Session, *, venue_id: int, user: User, membershi
         "paid_until": snapshot.paid_until,
         "grace_until": snapshot.grace_until,
         "billing_restricted_reason": reason,
+        **_trial_payload(state, snapshot),
         "state": state,
     }

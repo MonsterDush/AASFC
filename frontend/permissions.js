@@ -74,6 +74,9 @@ export function getBillingState(resp) {
     paidUntil: resp?.paid_until || null,
     graceUntil: resp?.grace_until || null,
     restrictedReason: resp?.billing_restricted_reason || null,
+    billingKind: resp?.billing_kind || null,
+    isTrial: !!resp?.is_trial,
+    trialUntil: resp?.trial_until || null,
   };
 }
 
