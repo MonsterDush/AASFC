@@ -22,30 +22,13 @@
     <div class="card" style="margin-top:12px">
       <div class="section-head" style="align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="section-title"><b>Создать заведение</b></div>
-          <div class="muted" style="margin-top:6px">
-            Первое заведение получит 3 дня полного пробного доступа. Последующие можно создать сразу, но рабочие функции откроются после продления доступа.
-          </div>
+          <div class="section-title"><b>Заведения</b></div>
+          <div class="muted" style="margin-top:6px">Открой нужное заведение или создай новое.</div>
         </div>
-      </div>
-      <div class="row gap-8" style="margin-top:12px;align-items:flex-end;flex-wrap:wrap">
-        <label style="min-width:240px;flex:1 1 260px">
-          <span class="small">Название заведения</span>
-          <input id="newVenueName" type="text" maxlength="200" placeholder="Например, Hookah Place" style="margin-top:8px" />
-        </label>
-        <button id="createVenueBtn" class="btn" type="button">Создать заведение</button>
-      </div>
-      <div id="createVenueHint" class="small" style="margin-top:8px">
-        После создания мы перенаправим тебя: с trial — в быструю настройку, без trial — на страницу заведения и оплаты.
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="muted">
-        Открой нужное заведение.
+        <button id="openCreateVenueModalBtn" class="btn" type="button">Создать заведение</button>
       </div>
 
-      <div id="list" class="list"><div class="skeleton"></div><div class="skeleton"></div></div>
+      <div id="list" class="list" style="margin-top:12px"><div class="skeleton"></div><div class="skeleton"></div></div>
     </div>
   </div>
 
@@ -68,7 +51,7 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountNav, createSelfServiceVenue } from "/app.js";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountNav } from "/app.js";
 import { getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, isOwnerRole, isSetupDone, isSetupPrepareDone } from "/permissions.js?v=20260409-setup5";
 
 applyTelegramTheme();
@@ -77,27 +60,54 @@ mountCommonUI("app");
 await mountNav({ activeTab: "none" });
 
 const list = document.getElementById("list");
-const newVenueName = document.getElementById("newVenueName");
-const createVenueBtn = document.getElementById("createVenueBtn");
-const createVenueHint = document.getElementById("createVenueHint");
+const openCreateVenueModalBtn = document.getElementById("openCreateVenueModalBtn");
+const modal = document.getElementById("modal");
+const modalTitle = modal?.querySelector(".modal__title");
+const modalBody = modal?.querySelector(".modal__body");
+const modalCloseBtn = modal?.querySelector("[data-close]");
+const modalBackdrop = modal?.querySelector(".modal__backdrop");
+
+function openModal(title, bodyHtml){
+  if (!modal || !modalTitle || !modalBody) return;
+  modalTitle.textContent = title || "Данные";
+  modalBody.innerHTML = bodyHtml || "";
+  modal.classList.add("open");
+}
+
+function closeModal(){
+  if (!modal || !modalBody) return;
+  modal.classList.remove("open");
+  modalBody.innerHTML = "";
+}
+
+modalCloseBtn?.addEventListener("click", closeModal);
+modalBackdrop?.addEventListener("click", closeModal);
 
 function setCreateBusy(isBusy){
-  if (!createVenueBtn) return;
-  createVenueBtn.disabled = !!isBusy;
-  createVenueBtn.textContent = isBusy ? "Создаём…" : "Создать заведение";
+  const btn = document.getElementById("modalCreateVenueBtn");
+  const cancelBtn = document.getElementById("modalCancelCreateVenueBtn");
+  const input = document.getElementById("modalNewVenueName");
+  if (btn) {
+    btn.disabled = !!isBusy;
+    btn.textContent = isBusy ? "Создаём…" : "Создать заведение";
+  }
+  if (cancelBtn) cancelBtn.disabled = !!isBusy;
+  if (input) input.disabled = !!isBusy;
 }
 
 async function submitCreateVenue(){
-  const name = String(newVenueName?.value || "").trim();
+  const input = document.getElementById("modalNewVenueName");
+  const hint = document.getElementById("modalCreateVenueHint");
+  const name = String(input?.value || "").trim();
   if (!name) {
     toast("Укажите название заведения", "err");
-    newVenueName?.focus();
+    input?.focus();
     return;
   }
   setCreateBusy(true);
-  if (createVenueHint) createVenueHint.textContent = "Создаём заведение и проверяем доступный trial…";
+  if (hint) hint.textContent = "Создаём заведение и проверяем, доступен ли trial…";
   try {
-    const result = await createSelfServiceVenue({ name });
+    const result = await api("/venues/self-service", { method: "POST", body: { name } });
     if (result?.id) setActiveVenueId(result.id);
     if (result?.trial_granted) {
       toast("Заведение создано. Пробный доступ на 3 дня включён.");
@@ -107,20 +117,43 @@ async function submitCreateVenue(){
     const target = result?.next_url || result?.open_target || (result?.id ? `/app-venue.html?venue_id=${encodeURIComponent(result.id)}` : "/app-venues.html");
     location.href = target;
   } catch (e) {
-    if (createVenueHint) createVenueHint.textContent = "Не получилось создать заведение. Проверь название и попробуй ещё раз.";
+    if (hint) hint.textContent = "Не получилось создать заведение. Проверь название и попробуй ещё раз.";
     toast("Ошибка создания: " + (e?.message || e), "err");
   } finally {
     setCreateBusy(false);
   }
 }
 
-createVenueBtn?.addEventListener("click", submitCreateVenue);
-newVenueName?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
+function openCreateVenueModal(){
+  openModal("Создать заведение", `
+    <form id="createVenueForm">
+      <div class="muted">
+        Первое заведение получит 3 дня полного пробного доступа. Последующие создаются без trial — рабочие функции откроются после продления доступа.
+      </div>
+      <label style="display:block;margin-top:12px">
+        <span class="small">Название заведения</span>
+        <input id="modalNewVenueName" type="text" maxlength="200" placeholder="Например, Hookah Place" autocomplete="off" style="margin-top:8px" />
+      </label>
+      <div id="modalCreateVenueHint" class="small" style="margin-top:8px">
+        После создания мы перенаправим тебя: с trial — в быструю настройку, без trial — на страницу заведения и оплаты.
+      </div>
+      <div class="row gap-8" style="margin-top:14px;justify-content:flex-end;flex-wrap:wrap">
+        <button id="modalCancelCreateVenueBtn" class="btn subtle" type="button">Отмена</button>
+        <button id="modalCreateVenueBtn" class="btn" type="submit">Создать заведение</button>
+      </div>
+    </form>
+  `);
+  const form = document.getElementById("createVenueForm");
+  const input = document.getElementById("modalNewVenueName");
+  document.getElementById("modalCancelCreateVenueBtn")?.addEventListener("click", closeModal);
+  form?.addEventListener("submit", (e) => {
     e.preventDefault();
     submitCreateVenue();
-  }
-});
+  });
+  setTimeout(() => input?.focus(), 0);
+}
+
+openCreateVenueModalBtn?.addEventListener("click", openCreateVenueModal);
 
 function esc(s){
   return String(s ?? "")
