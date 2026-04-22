@@ -19,23 +19,16 @@
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
-
-    <div class="card">
-      <div class="muted">
-        Открой нужное заведение или создай новое и протестируй Axelio 3 дня бесплатно.
-      </div>
-
-      <div class="itemcard mt-12" id="createVenueCard">
-        <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-          <div style="min-width:0;flex:1 1 280px;">
-            <b>Создать заведение</b>
-            <div class="small" style="margin-top:6px">Первому заведению включим 3 дня полного доступа: сотрудники, смены, отчёты, расходы и настройки. После пробного периода доступ перейдёт в grace до оплаты.</div>
-          </div>
-          <button class="btn primary" id="createVenueBtn" type="button">Создать и попробовать</button>
+    <div class="card" style="margin-top:12px">
+      <div class="section-head" style="align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="section-title"><b>Заведения</b></div>
+          <div class="muted" style="margin-top:6px">Открой нужное заведение или создай новое.</div>
         </div>
+        <button id="openCreateVenueModalBtn" class="btn" type="button">Создать заведение</button>
       </div>
 
-      <div id="list" class="list"><div class="skeleton"></div><div class="skeleton"></div></div>
+      <div id="list" class="list" style="margin-top:12px"><div class="skeleton"></div><div class="skeleton"></div></div>
     </div>
   </div>
 
@@ -67,7 +60,101 @@ mountCommonUI("app");
 await mountNav({ activeTab: "none" });
 
 const list = document.getElementById("list");
-const createVenueBtn = document.getElementById("createVenueBtn");
+const openCreateVenueModalBtn = document.getElementById("openCreateVenueModalBtn");
+const modal = document.getElementById("modal");
+const modalTitle = modal?.querySelector(".modal__title");
+const modalBody = modal?.querySelector(".modal__body");
+const modalCloseBtn = modal?.querySelector("[data-close]");
+const modalBackdrop = modal?.querySelector(".modal__backdrop");
+
+function openModal(title, bodyHtml){
+  if (!modal || !modalTitle || !modalBody) return;
+  modalTitle.textContent = title || "Данные";
+  modalBody.innerHTML = bodyHtml || "";
+  modal.classList.add("open");
+}
+
+function closeModal(){
+  if (!modal || !modalBody) return;
+  modal.classList.remove("open");
+  modalBody.innerHTML = "";
+}
+
+modalCloseBtn?.addEventListener("click", closeModal);
+modalBackdrop?.addEventListener("click", closeModal);
+
+function setCreateBusy(isBusy){
+  const btn = document.getElementById("modalCreateVenueBtn");
+  const cancelBtn = document.getElementById("modalCancelCreateVenueBtn");
+  const input = document.getElementById("modalNewVenueName");
+  if (btn) {
+    btn.disabled = !!isBusy;
+    btn.textContent = isBusy ? "Создаём…" : "Создать заведение";
+  }
+  if (cancelBtn) cancelBtn.disabled = !!isBusy;
+  if (input) input.disabled = !!isBusy;
+}
+
+async function submitCreateVenue(){
+  const input = document.getElementById("modalNewVenueName");
+  const hint = document.getElementById("modalCreateVenueHint");
+  const name = String(input?.value || "").trim();
+  if (!name) {
+    toast("Укажите название заведения", "err");
+    input?.focus();
+    return;
+  }
+  setCreateBusy(true);
+  if (hint) hint.textContent = "Создаём заведение и проверяем, доступен ли trial…";
+  try {
+    const result = await api("/venues/self-service", { method: "POST", body: { name } });
+    if (result?.id) setActiveVenueId(result.id);
+    if (result?.trial_granted) {
+      toast("Заведение создано. Пробный доступ на 3 дня включён.");
+    } else {
+      toast("Заведение создано. Для работы нужно продлить доступ.");
+    }
+    const target = result?.next_url || result?.open_target || (result?.id ? `/app-venue.html?venue_id=${encodeURIComponent(result.id)}` : "/app-venues.html");
+    location.href = target;
+  } catch (e) {
+    if (hint) hint.textContent = "Не получилось создать заведение. Проверь название и попробуй ещё раз.";
+    toast("Ошибка создания: " + (e?.message || e), "err");
+  } finally {
+    setCreateBusy(false);
+  }
+}
+
+function openCreateVenueModal(){
+  openModal("Создать заведение", `
+    <form id="createVenueForm">
+      <div class="muted">
+        Первое заведение получит 3 дня полного пробного доступа. Последующие создаются без trial — рабочие функции откроются после продления доступа.
+      </div>
+      <label style="display:block;margin-top:12px">
+        <span class="small">Название заведения</span>
+        <input id="modalNewVenueName" type="text" maxlength="200" placeholder="Например, Hookah Place" autocomplete="off" style="margin-top:8px" />
+      </label>
+      <div id="modalCreateVenueHint" class="small" style="margin-top:8px">
+        После создания мы перенаправим тебя: с trial — в быструю настройку, без trial — на страницу заведения и оплаты.
+      </div>
+      <div class="row gap-8" style="margin-top:14px;justify-content:flex-end;flex-wrap:wrap">
+        <button id="modalCancelCreateVenueBtn" class="btn subtle" type="button">Отмена</button>
+        <button id="modalCreateVenueBtn" class="btn" type="submit">Создать заведение</button>
+      </div>
+    </form>
+  `);
+  const form = document.getElementById("createVenueForm");
+  const input = document.getElementById("modalNewVenueName");
+  document.getElementById("modalCancelCreateVenueBtn")?.addEventListener("click", closeModal);
+  form?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitCreateVenue();
+  });
+  setTimeout(() => input?.focus(), 0);
+}
+
+openCreateVenueModalBtn?.addEventListener("click", openCreateVenueModal);
+
 function esc(s){
   return String(s ?? "")
     .replace(/&/g,"&amp;")
@@ -84,7 +171,8 @@ function formatDateTime(value){
 
 function billingChip(v){
   const status = getBillingStatus(v);
-  if (v?.is_trial && status === "ACTIVE") return '<span class="badge" style="margin-left:8px">trial</span>';
+  const isTrial = !!v?.is_trial || String(v?.billing_kind || "").toUpperCase() === "TRIAL";
+  if (isTrial && status === "ACTIVE") return '<span class="badge" style="margin-left:8px">trial</span>';
   if (status === "GRACE") return '<span class="badge" style="margin-left:8px">grace</span>';
   if (status === "SUSPENDED") return '<span class="badge" style="margin-left:8px">доступ ограничен</span>';
   return '';
@@ -92,15 +180,16 @@ function billingChip(v){
 
 function billingHint(v){
   const status = getBillingStatus(v);
+  const isTrial = !!v?.is_trial || String(v?.billing_kind || "").toUpperCase() === "TRIAL";
+  const trialUntil = v?.trial_until || (isTrial ? v?.paid_until : null);
   const paidUntil = v?.paid_until ? `Оплачено до ${esc(formatDateTime(v.paid_until))}` : 'Срок оплаты не задан';
   const graceUntil = v?.grace_until ? `Льготный период до ${esc(formatDateTime(v.grace_until))}` : '';
   const reason = v?.billing_restricted_reason ? esc(v.billing_restricted_reason) : '';
 
-  if (v?.is_trial && status === "ACTIVE") {
-    const trialUntil = v?.trial_until || v?.paid_until;
-    return `<div class="small" style="margin-top:6px">Пробный доступ активен до ${esc(formatDateTime(trialUntil))}. Можно пользоваться всеми разделами заведения.</div>`;
+  if (isTrial && status === "ACTIVE") {
+    const label = trialUntil ? `Пробный доступ до ${esc(formatDateTime(trialUntil))}` : 'Пробный доступ активен';
+    return `<div class="small" style="margin-top:6px">${label}. После окончания trial заведение перейдёт в grace до оплаты.</div>`;
   }
-
   if (status === "GRACE") {
     return `<div class="small" style="margin-top:6px">${paidUntil}. ${graceUntil || 'Доступ ограничится после окончания льготного периода.'}</div>`;
   }
@@ -183,7 +272,7 @@ function renderSections(data){
   const active = visible.filter((v) => !v.is_archived);
   const archived = visible.filter((v) => !!v.is_archived);
   if (!active.length && !archived.length) {
-    list.innerHTML = `<div class="muted">Пока нет доступных заведений. Создай первое заведение выше или открой демо с лендинга.</div>`;
+    list.innerHTML = `<div class="muted">Пока нет доступных заведений</div>`;
     return;
   }
   let html = '';
@@ -209,32 +298,6 @@ function renderSections(data){
     };
   });
 }
-
-async function createSelfServiceVenue(){
-  const name = prompt("Название заведения:");
-  if (!name || !name.trim()) return;
-  const initialText = createVenueBtn ? createVenueBtn.textContent : "";
-  try {
-    if (createVenueBtn) {
-      createVenueBtn.disabled = true;
-      createVenueBtn.textContent = "Создаём…";
-    }
-    const out = await api("/venues/self-service", { method: "POST", body: { name: name.trim() } });
-    if (out?.id) setActiveVenueId(out.id);
-    if (out?.trial_granted) toast("Пробный доступ включён на 3 дня", "ok");
-    else toast("Заведение создано. Для работы нужно продлить доступ.", "warn");
-    location.href = out?.next_url || out?.open_target || `/app-venue.html?venue_id=${encodeURIComponent(out?.id || "")}`;
-  } catch (e) {
-    toast("Не удалось создать заведение: " + (e?.data?.detail || e?.message || "ошибка"), "err");
-  } finally {
-    if (createVenueBtn) {
-      createVenueBtn.disabled = false;
-      createVenueBtn.textContent = initialText || "Создать и попробовать";
-    }
-  }
-}
-
-if (createVenueBtn) createVenueBtn.onclick = createSelfServiceVenue;
 
 async function load(){
   list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;

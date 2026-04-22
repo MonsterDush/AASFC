@@ -96,7 +96,7 @@ def get_user_billing_access(db: Session, *, venue_id: int, user: User, membershi
         "billing_access_mode": access_mode,
         "paid_until": snapshot.paid_until,
         "grace_until": snapshot.grace_until,
-        "billing_restricted_reason": reason,
         **_trial_payload(state, snapshot),
+        "billing_restricted_reason": reason,
         "state": state,
     }

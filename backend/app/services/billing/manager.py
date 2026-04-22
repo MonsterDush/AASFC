@@ -126,8 +126,8 @@ def get_or_create_billing_state(db: Session, *, venue_id: int, commit: bool = Fa
 def has_user_used_self_service_trial(db: Session, *, user_id: int) -> bool:
     """One free self-service trial per user.
 
-    The check is based on billing transactions, not on current membership, so
-    deleting/leaving a venue does not reset the trial.
+    We rely on billing transactions, so removing a member from a venue
+    does not reset the free trial.
     """
     existing_trial = db.execute(
         select(VenueBillingTransaction.id)
@@ -157,7 +157,10 @@ def user_has_owned_real_venue(db: Session, *, user_id: int) -> bool:
 
 
 def can_grant_self_service_trial(db: Session, *, user_id: int) -> bool:
-    return not has_user_used_self_service_trial(db, user_id=int(user_id)) and not user_has_owned_real_venue(db, user_id=int(user_id))
+    return (
+        not has_user_used_self_service_trial(db, user_id=int(user_id))
+        and not user_has_owned_real_venue(db, user_id=int(user_id))
+    )
 
 
 def grant_self_service_trial(
