@@ -152,9 +152,9 @@ from app.services.setup import build_setup_summary, build_setup_summary_map
 from app.services.billing import (
     BILLING_ACCESS_FULL,
     can_grant_self_service_trial,
-    grant_self_service_trial,
     get_user_billing_access,
     get_venue_billing_snapshot,
+    grant_self_service_trial,
     list_billing_transactions,
     send_super_admin_billing_alert_once,
 )
@@ -217,6 +217,10 @@ def _normalize_code(code: str) -> str:
         )
     return c
 
+class VenueSelfServiceCreateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+
+
 
 # ---------- Schemas ----------
 
@@ -226,10 +230,6 @@ class VenueCreateIn(BaseModel):
     owner_user_id: int | None = None
     owner_tg_username: str | None = None
     owner_phone: str | None = None
-
-
-class VenueSelfServiceCreateIn(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
 
 
 class VenueUpdateIn(BaseModel):
@@ -1696,8 +1696,9 @@ def create_venue_self_service(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    trial_event = None
     if trial_available:
-        trial_state, _, trial_event = grant_self_service_trial(
+        _, _, trial_event = grant_self_service_trial(
             db,
             venue_id=int(venue.id),
             created_by_user_id=int(user.id),
@@ -1726,14 +1727,15 @@ def create_venue_self_service(
     trial_until = billing_access.get("trial_until")
     setup_url = f"/owner-setup.html?venue_id={int(venue.id)}&phase=prepare"
     billing_url = f"/app-venue.html?venue_id={int(venue.id)}"
+    next_url = setup_url if trial_available else billing_url
     return {
         "id": int(venue.id),
         "name": venue.name,
         "my_role": "OWNER",
         "trial_granted": bool(trial_available),
         "trial_until": trial_until.isoformat() if trial_until else None,
-        "next_url": setup_url if trial_available else billing_url,
-        "open_target": setup_url if trial_available else billing_url,
+        "next_url": next_url,
+        "open_target": next_url,
         "billing_status": billing_access.get("billing_status"),
         "billing_access_mode": billing_access.get("billing_access_mode"),
         "paid_until": billing_access.get("paid_until").isoformat() if billing_access.get("paid_until") else None,

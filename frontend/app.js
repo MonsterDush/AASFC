@@ -1942,6 +1942,10 @@ export async function getMyVenues({ timeoutMs = 8000, includeArchived = false } 
   return withTimeout(api(`/me/venues${suffix}`), timeoutMs, "MY_VENUES_TIMEOUT");
 }
 
+export async function createSelfServiceVenue(payload) {
+  return api("/venues/self-service", { method: "POST", body: payload });
+}
+
 export async function getMyVenuePermissions(venueId, { timeoutMs = 8000 } = {}) {
   if (!venueId) return { venue_id: null, role: null, permissions: [] };
   try {
