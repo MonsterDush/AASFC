@@ -151,9 +151,12 @@ from app.services.invites import build_invite_link, create_venue_invite, normali
 from app.services.setup import build_setup_summary, build_setup_summary_map
 from app.services.billing import (
     BILLING_ACCESS_FULL,
+    can_grant_self_service_trial,
+    grant_self_service_trial,
     get_user_billing_access,
     get_venue_billing_snapshot,
     list_billing_transactions,
+    send_super_admin_billing_alert_once,
 )
 from app.settings import settings
 
@@ -223,6 +226,10 @@ class VenueCreateIn(BaseModel):
     owner_user_id: int | None = None
     owner_tg_username: str | None = None
     owner_phone: str | None = None
+
+
+class VenueSelfServiceCreateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
 
 
 class VenueUpdateIn(BaseModel):
@@ -1667,6 +1674,83 @@ def _build_owner_summary_by_venue(db: Session, venue_ids: list[int]) -> dict[int
 
 
 # ---------- Routes ----------
+
+@router.post("/self-service")
+def create_venue_self_service(
+    payload: VenueSelfServiceCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    name = str(payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Укажите название заведения")
+
+    trial_available = can_grant_self_service_trial(db, user_id=int(user.id))
+    try:
+        venue = create_venue(
+            db,
+            name=name,
+            owner_user_id=int(user.id),
+            created_by_user_id=int(user.id),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if trial_available:
+        trial_state, _, trial_event = grant_self_service_trial(
+            db,
+            venue_id=int(venue.id),
+            created_by_user_id=int(user.id),
+        )
+        db.commit()
+        db.refresh(venue)
+        try:
+            username = f"@{user.tg_username}" if getattr(user, "tg_username", None) else f"user_id={int(user.id)}"
+            send_super_admin_billing_alert_once(
+                db,
+                notification_type="self_service_trial_created",
+                event_key=str(trial_event.id),
+                venue_id=int(venue.id),
+                text=(
+                    f"Новое self-service заведение в Axelio: «{venue.name}». "
+                    f"Владелец: {username}. Выдан пробный доступ на 3 дня."
+                ),
+                button_text="Открыть биллинг",
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    setup_summary = build_setup_summary(db, venue_id=int(venue.id), create_missing=False)
+    billing_access = get_user_billing_access(db, venue_id=int(venue.id), user=user, membership_role="OWNER")
+    trial_until = billing_access.get("trial_until")
+    setup_url = f"/owner-setup.html?venue_id={int(venue.id)}&phase=prepare"
+    billing_url = f"/app-venue.html?venue_id={int(venue.id)}"
+    return {
+        "id": int(venue.id),
+        "name": venue.name,
+        "my_role": "OWNER",
+        "trial_granted": bool(trial_available),
+        "trial_until": trial_until.isoformat() if trial_until else None,
+        "next_url": setup_url if trial_available else billing_url,
+        "open_target": setup_url if trial_available else billing_url,
+        "billing_status": billing_access.get("billing_status"),
+        "billing_access_mode": billing_access.get("billing_access_mode"),
+        "paid_until": billing_access.get("paid_until").isoformat() if billing_access.get("paid_until") else None,
+        "grace_until": billing_access.get("grace_until").isoformat() if billing_access.get("grace_until") else None,
+        "billing_kind": billing_access.get("billing_kind"),
+        "is_trial": bool(billing_access.get("is_trial")),
+        "billing_restricted_reason": billing_access.get("billing_restricted_reason"),
+        "setup_status": setup_summary.get("status"),
+        "setup_phase": setup_summary.get("phase"),
+        "setup_progress_total": int(setup_summary.get("progress_total") or 0),
+        "setup_progress_done": int(setup_summary.get("progress_done") or 0),
+        "setup_progress_resolved": int(setup_summary.get("progress_resolved") or 0),
+        "setup_resume_step": setup_summary.get("resume_step"),
+        "setup_prepare_done": bool(setup_summary.get("prepare_done")),
+        "setup_extra_done": bool(setup_summary.get("extra_done")),
+    }
+
 
 @router.post("")
 def create_venue_admin_only(

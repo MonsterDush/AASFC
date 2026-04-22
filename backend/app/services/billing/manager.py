@@ -11,6 +11,8 @@ from app.core.config import settings
 from app.models.venue_billing_event import VenueBillingEvent
 from app.models.venue_billing_state import VenueBillingState
 from app.models.venue_billing_transaction import VenueBillingTransaction
+from app.models.venue import Venue
+from app.models.venue_member import VenueMember
 from .state import (
     BILLING_STATUS_ACTIVE,
     BILLING_STATUS_GRACE,
@@ -27,6 +29,10 @@ DEFAULT_BILLING_CURRENCY = "RUB"
 DEFAULT_BILLING_PROVIDER = "ROBOKASSA"
 DEFAULT_BILLING_DAYS = 30
 DEFAULT_BILLING_GRACE_DAYS = _DEFAULT_GRACE_DAYS
+DEFAULT_TRIAL_DAYS = 3
+TRIAL_PROVIDER = "TRIAL"
+TRIAL_TRANSACTION_SOURCE = "TRIAL"
+TRIAL_TRANSACTION_TYPE = "TRIAL_GRANT"
 DEFAULT_CHECKOUT_TTL_MINUTES = 60
 
 
@@ -115,6 +121,118 @@ def get_or_create_billing_state(db: Session, *, venue_id: int, commit: bool = Fa
     if state is not None:
         return state
     return create_default_billing_state(db, venue_id=int(venue_id), commit=commit)
+
+
+def has_user_used_self_service_trial(db: Session, *, user_id: int) -> bool:
+    """One free self-service trial per user.
+
+    The check is based on billing transactions, not on current membership, so
+    deleting/leaving a venue does not reset the trial.
+    """
+    existing_trial = db.execute(
+        select(VenueBillingTransaction.id)
+        .where(
+            VenueBillingTransaction.created_by_user_id == int(user_id),
+            VenueBillingTransaction.type == TRIAL_TRANSACTION_TYPE,
+            VenueBillingTransaction.status == "SUCCEEDED",
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    return existing_trial is not None
+
+
+def user_has_owned_real_venue(db: Session, *, user_id: int) -> bool:
+    existing_owned_venue = db.execute(
+        select(Venue.id)
+        .join(VenueMember, VenueMember.venue_id == Venue.id)
+        .where(
+            VenueMember.user_id == int(user_id),
+            VenueMember.venue_role == "OWNER",
+            VenueMember.is_active.is_(True),
+            or_(Venue.is_demo.is_(False), Venue.is_demo.is_(None)),
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    return existing_owned_venue is not None
+
+
+def can_grant_self_service_trial(db: Session, *, user_id: int) -> bool:
+    return not has_user_used_self_service_trial(db, user_id=int(user_id)) and not user_has_owned_real_venue(db, user_id=int(user_id))
+
+
+def grant_self_service_trial(
+    db: Session,
+    *,
+    venue_id: int,
+    created_by_user_id: int,
+    days: int = DEFAULT_TRIAL_DAYS,
+) -> tuple[VenueBillingState, VenueBillingTransaction, VenueBillingEvent]:
+    trial_days = max(1, int(days or DEFAULT_TRIAL_DAYS))
+    now = utcnow()
+    state = get_or_create_billing_state(db, venue_id=int(venue_id))
+
+    old_status = str(state.status or BILLING_STATUS_ACTIVE).upper()
+    old_paid_until = state.paid_until
+    old_grace_until = state.grace_until
+
+    period_from = now
+    period_until = now + timedelta(days=trial_days)
+    grace_until = period_until + timedelta(days=DEFAULT_BILLING_GRACE_DAYS)
+
+    state.status = BILLING_STATUS_ACTIVE
+    state.paid_until = period_until
+    state.grace_until = grace_until
+    state.last_payment_at = None
+    state.next_payment_due_at = period_until
+    state.provider = TRIAL_PROVIDER
+    state.updated_at = now
+
+    tx = VenueBillingTransaction(
+        venue_id=int(venue_id),
+        source=TRIAL_TRANSACTION_SOURCE,
+        type=TRIAL_TRANSACTION_TYPE,
+        status="SUCCEEDED",
+        amount_minor=0,
+        days_added=trial_days,
+        period_from=period_from,
+        period_until=period_until,
+        provider_invoice_id=None,
+        provider_payment_id=None,
+        provider_payload_json={
+            "trial": True,
+            "trial_days": trial_days,
+            "grace_days": DEFAULT_BILLING_GRACE_DAYS,
+            "old_paid_until": old_paid_until.isoformat() if old_paid_until else None,
+            "old_grace_until": old_grace_until.isoformat() if old_grace_until else None,
+        },
+        comment="Self-service trial granted",
+        created_by_user_id=int(created_by_user_id),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(tx)
+    db.flush()
+
+    event = VenueBillingEvent(
+        venue_id=int(venue_id),
+        event_type="TRIAL_STARTED",
+        old_status=old_status,
+        new_status=BILLING_STATUS_ACTIVE,
+        meta_json={
+            "trial": True,
+            "days_added": trial_days,
+            "period_from": period_from.isoformat(),
+            "period_until": period_until.isoformat(),
+            "grace_until": grace_until.isoformat(),
+            "transaction_id": int(tx.id),
+        },
+        created_by_user_id=int(created_by_user_id),
+        created_at=now,
+    )
+    db.add(event)
+    db.flush()
+
+    return state, tx, event
 
 
 def list_billing_transactions(db: Session, *, venue_id: int, limit: int = 10) -> list[VenueBillingTransaction]:
