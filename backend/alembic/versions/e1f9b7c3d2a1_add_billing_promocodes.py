@@ -1,7 +1,7 @@
 """add billing promocodes
 
 Revision ID: e1f9b7c3d2a1
-Revises: c66aca853298
+Revises: b8c9d0e1f2a3
 Create Date: 2026-04-23 00:00:00.000000
 """
 
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'e1f9b7c3d2a1'
-down_revision = 'c66aca853298'
+down_revision = 'b8c9d0e1f2a3'
 branch_labels = None
 depends_on = None
 
