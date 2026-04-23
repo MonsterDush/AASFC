@@ -55,6 +55,8 @@ from .venue_billing_event import VenueBillingEvent
 from .venue_setup_state import VenueSetupState
 from .position_permission_template import PositionPermissionTemplate
 from .billing_reconciliation_issue import BillingReconciliationIssue
+from .billing_promo_code import BillingPromoCode
+from .billing_promo_redemption import BillingPromoRedemption
 from .demo_event import DemoEvent
 
 __all__ = [
@@ -116,5 +118,7 @@ __all__ = [
     "VenueSetupState",
     "PositionPermissionTemplate",
     "BillingReconciliationIssue",
+    "BillingPromoCode",
+    "BillingPromoRedemption",
     "DemoEvent",
 ]

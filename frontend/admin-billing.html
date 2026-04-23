@@ -45,6 +45,30 @@
       <div id="healthBlock" class="muted">Загрузка…</div>
     </div>
 
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="section-title"><b>Промокоды</b></div>
+          <div class="muted">Скидки и бесплатные дни. На одно заведение можно применить только один промокод.</div>
+        </div>
+      </div>
+      <div class="toolbar">
+        <input id="promoCodeInput" type="text" placeholder="Код, например START500" />
+        <input id="promoTitleInput" type="text" placeholder="Название / заметка" />
+        <select id="promoKindSelect">
+          <option value="PERCENT">Скидка, %</option>
+          <option value="FIXED_MINOR">Скидка, ₽</option>
+          <option value="FREE_DAYS">Бесплатные дни</option>
+        </select>
+        <input id="promoValueInput" type="number" min="1" step="1" placeholder="Значение" />
+        <input id="promoCommentInput" type="text" placeholder="Комментарий (необязательно)" />
+        <button class="btn primary" id="promoCreateBtn">Создать промокод</button>
+      </div>
+      <div class="small muted" id="promoValueHint">Для скидки в процентах укажи число от 1 до 100.</div>
+      <div id="promoList" class="mt-12 muted">Загрузка…</div>
+    </div>
+
     <div class="card">
       <div class="toolbar">
         <select id="statusFilter">
@@ -59,6 +83,7 @@
           <option value="EXTEND">EXTEND</option>
           <option value="SET_PAID_UNTIL">SET_PAID_UNTIL</option>
           <option value="REFUND">REFUND</option>
+          <option value="PROMO_GRANT">PROMO_GRANT</option>
         </select>
         <input id="search" type="search" placeholder="Поиск по заведению / invoice / комментарию" />
         <label class="row gap-8"><input id="dueSoon" type="checkbox" /> <span>Скоро заканчивается</span></label>
@@ -166,8 +191,8 @@
   function formatDate(value){ if (!value) return "—"; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString("ru-RU"); }
   function formatDateTime(value){ if (!value) return "—"; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString("ru-RU"); }
   function formatMinor(value){ return `${(Number(value || 0) / 100).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`; }
-  function txSourceLabel(value){ const v = String(value || '').toUpperCase(); if (v === 'MANUAL_ADMIN') return 'Ручное действие'; if (v === 'ROBOKASSA') return 'Robokassa'; return v || '—'; }
-  function txTypeLabel(value){ const v = String(value || '').toUpperCase(); return ({ PAYMENT:'Оплата', EXTEND:'Продление', SET_PAID_UNTIL:'Установка paid until', REFUND:'Возврат' }[v]) || v || '—'; }
+  function txSourceLabel(value){ const v = String(value || '').toUpperCase(); if (v === 'MANUAL_ADMIN') return 'Ручное действие'; if (v === 'ROBOKASSA') return 'Robokassa'; if (v === 'PROMOCODE') return 'Промокод'; return v || '—'; }
+  function txTypeLabel(value){ const v = String(value || '').toUpperCase(); return ({ PAYMENT:'Оплата', EXTEND:'Продление', SET_PAID_UNTIL:'Установка paid until', REFUND:'Возврат', PROMO_GRANT:'Промокод' }[v]) || v || '—'; }
   function txStatusLabel(value){ const v = String(value || '').toUpperCase(); return ({ SUCCEEDED:'Успешно', PENDING:'Ожидает', FAILED:'Ошибка', CANCELED:'Отменено' }[v]) || v || '—'; }
   function issueChip(severity){ const s = String(severity || 'info').toLowerCase(); return `<span class="issue-chip ${s}">${esc(s)}</span>`; }
   function issueStatusLabel(value){ const v = String(value || '').toUpperCase(); return ({ OPEN:'Открыта', RESOLVED:'Решена', IGNORED:'Игнорируется' }[v]) || v || '—'; }
@@ -175,6 +200,14 @@
 
   const summaryGrid = document.getElementById('summaryGrid');
   const healthBlock = document.getElementById('healthBlock');
+  const promoCodeInput = document.getElementById('promoCodeInput');
+  const promoTitleInput = document.getElementById('promoTitleInput');
+  const promoKindSelect = document.getElementById('promoKindSelect');
+  const promoValueInput = document.getElementById('promoValueInput');
+  const promoCommentInput = document.getElementById('promoCommentInput');
+  const promoCreateBtn = document.getElementById('promoCreateBtn');
+  const promoValueHint = document.getElementById('promoValueHint');
+  const promoList = document.getElementById('promoList');
   const listEl = document.getElementById('list');
   const operationsBlock = document.getElementById('operationsBlock');
   const reconciliationBlock = document.getElementById('reconciliationBlock');
@@ -197,6 +230,131 @@
   const refundAmountInputEl = document.getElementById('refundAmountInput');
   const refundCommentInputEl = document.getElementById('refundCommentInput');
   const refundSubmitBtn = document.getElementById('refundSubmitBtn');
+
+
+
+  function promoKindLabel(kind){
+    const v = String(kind || '').toUpperCase();
+    return ({ PERCENT:'Скидка %', FIXED_MINOR:'Скидка ₽', FREE_DAYS:'Бесплатные дни' }[v]) || v || '—';
+  }
+
+  function promoValueText(item){
+    const kind = String(item?.kind || '').toUpperCase();
+    if (kind === 'PERCENT') return `${Number(item?.percent_value || 0)}%`;
+    if (kind === 'FIXED_MINOR') return formatMinor(item?.amount_minor || 0);
+    if (kind === 'FREE_DAYS') return `${Number(item?.free_days || 0)} дн.`;
+    return '—';
+  }
+
+  function syncPromoValueUi(){
+    const kind = String(promoKindSelect?.value || 'PERCENT').toUpperCase();
+    if (!promoValueInput || !promoValueHint) return;
+    promoValueInput.value = '';
+    if (kind === 'PERCENT') {
+      promoValueInput.placeholder = 'Например, 15';
+      promoValueHint.textContent = 'Для скидки в процентах укажи число от 1 до 100.';
+    } else if (kind === 'FIXED_MINOR') {
+      promoValueInput.placeholder = 'Например, 500';
+      promoValueHint.textContent = 'Для скидки в рублях укажи сумму в рублях.';
+    } else {
+      promoValueInput.placeholder = 'Например, 7';
+      promoValueHint.textContent = 'Для бесплатного доступа укажи количество дней.';
+    }
+  }
+
+  function renderPromocodes(items){
+    const rows = Array.isArray(items) ? items : [];
+    if (!rows.length) {
+      promoList.innerHTML = '<div class="muted">Промокодов пока нет</div>';
+      return;
+    }
+    promoList.innerHTML = rows.map((item) => `
+      <div class="billing-table-row">
+        <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
+          <div style="min-width:0;flex:1 1 auto">
+            <div class="row gap-8" style="flex-wrap:wrap"><b>${esc(item.code)}</b>${item.is_active ? '<span class="status-chip active">ACTIVE</span>' : '<span class="status-chip suspended">DISABLED</span>'}</div>
+            <div class="small mt-6">${esc(item.title || 'Без названия')}</div>
+            <div class="small mt-6">Тип: ${esc(promoKindLabel(item.kind))} · Значение: ${esc(promoValueText(item))}</div>
+            <div class="small mt-6">Использований: ${Number(item.usage_count || 0)}</div>
+            ${item.comment ? `<div class="small mt-6">Комментарий: ${esc(item.comment)}</div>` : ''}
+          </div>
+          <div class="toolbar" style="justify-content:flex-end">
+            <button class="btn" data-action="editPromo" data-id="${item.id}">Редактировать</button>
+            <button class="btn" data-action="togglePromo" data-id="${item.id}" data-active="${item.is_active ? '1' : '0'}">${item.is_active ? 'Выключить' : 'Включить'}</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function loadPromocodes(){
+    const data = await api('/admin/billing/promocodes');
+    renderPromocodes(data?.items || []);
+  }
+
+  async function createPromocode(){
+    const code = String(promoCodeInput?.value || '').trim();
+    const title = String(promoTitleInput?.value || '').trim();
+    const kind = String(promoKindSelect?.value || 'PERCENT').trim();
+    const rawValue = Number(promoValueInput?.value || 0);
+    const comment = String(promoCommentInput?.value || '').trim();
+    if (!code) return toast('Введи код промокода', 'warn');
+    if (!(rawValue > 0)) return toast('Укажи значение промокода', 'warn');
+    const body = { code, title: title || null, kind, comment: comment || null, is_active: true };
+    if (kind === 'PERCENT') body.percent_value = Math.round(rawValue);
+    else if (kind === 'FIXED_MINOR') body.amount_minor = Math.round(rawValue * 100);
+    else body.free_days = Math.round(rawValue);
+    try {
+      promoCreateBtn.disabled = true;
+      await api('/admin/billing/promocodes', { method:'POST', body });
+      toast('Промокод создан', 'ok');
+      promoCodeInput.value = '';
+      promoTitleInput.value = '';
+      promoValueInput.value = '';
+      promoCommentInput.value = '';
+      await loadPromocodes();
+    } catch (e) {
+      toast(e?.data?.detail || e.message || 'Не удалось создать промокод', 'err');
+    } finally {
+      promoCreateBtn.disabled = false;
+    }
+  }
+
+  async function togglePromocode(promoId, isActive){
+    try {
+      await api(`/admin/billing/promocodes/${encodeURIComponent(promoId)}`, { method:'PATCH', body:{ is_active: !isActive } });
+      toast('Статус промокода обновлён', 'ok');
+      await loadPromocodes();
+    } catch (e) {
+      toast(e?.data?.detail || e.message || 'Не удалось обновить промокод', 'err');
+    }
+  }
+
+  async function editPromocode(promoId){
+    const currentRow = Array.from(promoList.querySelectorAll('[data-action="editPromo"]')).find((el) => String(el.getAttribute('data-id')) === String(promoId))?.closest('.billing-table-row');
+    const currentCode = currentRow?.querySelector('b')?.textContent || '';
+    const code = prompt('Код промокода', currentCode) || '';
+    if (!code.trim()) return;
+    const kind = (prompt('Тип: PERCENT / FIXED_MINOR / FREE_DAYS', 'PERCENT') || '').trim().toUpperCase();
+    const valueRaw = prompt('Значение (проценты / рубли / дни)', '');
+    if (!valueRaw) return;
+    const title = prompt('Название / заметка', '') || '';
+    const comment = prompt('Комментарий', '') || '';
+    const numeric = Number(valueRaw);
+    if (!(numeric > 0)) return toast('Неверное значение промокода', 'warn');
+    const body = { code: code.trim(), kind, title: title || null, comment: comment || null };
+    if (kind === 'PERCENT') body.percent_value = Math.round(numeric);
+    else if (kind === 'FIXED_MINOR') body.amount_minor = Math.round(numeric * 100);
+    else if (kind === 'FREE_DAYS') body.free_days = Math.round(numeric);
+    else return toast('Неизвестный тип промокода', 'warn');
+    try {
+      await api(`/admin/billing/promocodes/${encodeURIComponent(promoId)}`, { method:'PATCH', body });
+      toast('Промокод обновлён', 'ok');
+      await loadPromocodes();
+    } catch (e) {
+      toast(e?.data?.detail || e.message || 'Не удалось обновить промокод', 'err');
+    }
+  }
 
   let currentPage = 1;
   let hasNextPage = false;
@@ -404,7 +562,20 @@
   function exportTransactions(){ const qp = buildCommonQuery(); if (txTypeFilter.value) qp.set('tx_type', txTypeFilter.value); location.href = `/admin/billing/transactions/export?${qp.toString()}`; }
   function exportReconciliation(){ const qp = buildCommonQuery(); qp.set('status', issueStatusFilter?.value || 'OPEN'); location.href = `/admin/billing/reconciliation/export?${qp.toString()}`; }
 
-  async function boot(){ const ok = await ensureLogin({ silent: true }); if (!ok.ok) return; const venuesPromise = (async () => { const qp = buildCommonQuery(); if (statusFilter.value) qp.set('status', statusFilter.value); if (dueSoonEl.checked) qp.set('only_due_soon', 'true'); if (overdueEl.checked) qp.set('only_overdue', 'true'); qp.set('include_archived', 'true'); qp.set('sort_by', sortByEl.value || 'paid_until_asc'); qp.set('page', String(currentPage)); qp.set('page_size', '50'); const data = await api(`/admin/billing/venues?${qp.toString()}`); renderVenues(data?.items || [], data || {}); })(); await Promise.all([loadSummary(), loadHealth(), venuesPromise, loadOperations(), loadReconciliation()]); }
+  async function boot(){ const ok = await ensureLogin({ silent: true }); if (!ok.ok) return; syncPromoValueUi(); const venuesPromise = (async () => { const qp = buildCommonQuery(); if (statusFilter.value) qp.set('status', statusFilter.value); if (dueSoonEl.checked) qp.set('only_due_soon', 'true'); if (overdueEl.checked) qp.set('only_overdue', 'true'); qp.set('include_archived', 'true'); qp.set('sort_by', sortByEl.value || 'paid_until_asc'); qp.set('page', String(currentPage)); qp.set('page_size', '50'); const data = await api(`/admin/billing/venues?${qp.toString()}`); renderVenues(data?.items || [], data || {}); })(); await Promise.all([loadSummary(), loadHealth(), loadPromocodes(), venuesPromise, loadOperations(), loadReconciliation()]); }
+
+
+  promoKindSelect?.addEventListener('change', syncPromoValueUi);
+  promoCreateBtn?.addEventListener('click', createPromocode);
+  promoList?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const promoId = btn.getAttribute('data-id');
+    if (!promoId) return;
+    if (action === 'togglePromo') return togglePromocode(promoId, btn.getAttribute('data-active') === '1');
+    if (action === 'editPromo') return editPromocode(promoId);
+  });
 
   [statusFilter, txTypeFilter, dueSoonEl, overdueEl, sortByEl, issueStatusFilter].forEach((el) => el?.addEventListener('change', () => { currentPage = 1; boot().catch((e) => toast(e.message, 'err')); }));
   searchEl?.addEventListener('input', () => { clearTimeout(searchEl._t); searchEl._t = setTimeout(() => { currentPage = 1; boot().catch((e) => toast(e.message, 'err')); }, 300); });
