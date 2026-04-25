@@ -21,6 +21,9 @@ class Venue(Base):
     demo_reference_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     demo_reference_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Night shifts: when enabled, schedule and reports can be split into DAY/NIGHT slots.
+    night_shifts_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
     # NEW: tips settings (B2+)
     tips_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     tips_split_mode: Mapped[str] = mapped_column(String(24), nullable=False, default="EQUAL")  # EQUAL | WEIGHTED_BY_POSITION (stub)

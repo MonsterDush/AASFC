@@ -119,6 +119,18 @@
 
         <div class="toggle mt-12">
           <div class="toggle__label">
+            <div class="toggle__title">Ночные смены</div>
+            <div class="toggle__desc">Для круглосуточных заведений: график и отчёты будут разделяться на день и ночь.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="nightShiftsEnabled" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="muted small" id="nightShiftsSaveHint" style="margin-top:6px"></div>
+
+        <div class="toggle mt-12">
+          <div class="toggle__label">
             <div class="toggle__title">Учитывать чаевые в отчёте</div>
             <div class="toggle__desc">Если выключено — поле чаевых в отчёте скрыто, суммы игнорируются.</div>
           </div>
@@ -257,7 +269,6 @@
         let billingAccessMode = "FULL";
         let billingReadonly = false;
         let billingInfo = null;
-        let billingPromoPreview = null;
         let demoReadonly = false;
         let currentVenueSummary = null;
 
@@ -402,8 +413,6 @@ const titleEl = document.getElementById("title");
             BILLING_PAID_UNTIL_SET_MANUALLY: "Ручная установка paid until",
             BILLING_STATUS_CHANGED_AUTO: "Автопереход статуса",
             ROBOKASSA_PAYMENT_SUCCEEDED: "Оплата подтверждена",
-            PROMO_PAYMENT_SUCCEEDED: "Оплата по промокоду подтверждена",
-            PROMO_CODE_APPLIED: "Промокод применён",
             ROBOKASSA_PAYMENT_FAILED: "Ошибка оплаты",
             ROBOKASSA_PAYMENT_CANCELED: "Платёж отменён",
             ROBOKASSA_PAYMENT_EXPIRED: "Checkout истёк",
@@ -427,65 +436,15 @@ const titleEl = document.getElementById("title");
           history.replaceState({}, "", url.pathname + url.search + url.hash);
         }
 
-        function syncBillingExtendButtonState() {
-          const extendBtn = document.getElementById("billingExtendBtn");
-          if (!extendBtn) return;
-          const providerReady = billingInfo?.provider_ready !== false;
-          const canBypassPayment = !!(billingPromoPreview && !billingPromoPreview.payment_required);
-          extendBtn.disabled = !providerReady && !canBypassPayment;
-        }
-
-        async function previewBillingPromoCode() {
-          const input = document.getElementById("billingPromoInput");
-          const previewBtn = document.getElementById("billingPromoPreviewBtn");
-          const code = String(input?.value || "").trim();
-          const previewEl = document.getElementById("billingPromoPreview");
-          if (!previewEl) return;
-          if (!code) {
-            billingPromoPreview = null;
-            previewEl.innerHTML = '<span class="muted">Введи промокод, чтобы проверить скидку или бесплатные дни.</span>';
-            syncBillingExtendButtonState();
-            return;
-          }
-          try {
-            if (previewBtn) previewBtn.disabled = true;
-            const data = await api(`/venues/${venueId}/billing/promocode/preview?code=${encodeURIComponent(code)}`);
-            billingPromoPreview = data?.preview || null;
-            const preview = billingPromoPreview;
-            if (!preview) throw new Error("Не удалось получить данные по промокоду");
-            previewEl.innerHTML = `
-              <div><b>${esc(preview.code)}</b> · ${esc(preview.summary || 'Промокод')}</div>
-              <div class="small mt-6">Было: ${formatMinor(preview.price_before_minor || 0)} · скидка: ${formatMinor(preview.discount_minor || 0)} · к оплате: ${formatMinor(preview.amount_after_minor || 0)}</div>
-              <div class="small mt-6">${preview.payment_required ? 'Оплата всё ещё требуется.' : 'Оплата не потребуется — доступ будет продлён сразу.'}</div>
-            `;
-            syncBillingExtendButtonState();
-          } catch (e) {
-            billingPromoPreview = null;
-            previewEl.innerHTML = `<span class="small" style="color:#b42318">${esc(e?.data?.detail || e?.message || 'Не удалось проверить промокод')}</span>`;
-            syncBillingExtendButtonState();
-          } finally {
-            if (previewBtn) previewBtn.disabled = false;
-          }
-        }
-
         async function startBillingCheckout() {
           const extendBtn = document.getElementById("billingExtendBtn");
-          const promoInput = document.getElementById("billingPromoInput");
           const initialText = extendBtn ? extendBtn.textContent : "";
-          const promoCode = String(promoInput?.value || "").trim();
           try {
             if (extendBtn) {
               extendBtn.disabled = true;
-              extendBtn.textContent = "Обрабатываем…";
+              extendBtn.textContent = "Переходим к оплате…";
             }
-            const data = await api(`/venues/${venueId}/billing/checkout`, { method: "POST", body: promoCode ? { promo_code: promoCode } : {} });
-            if (data?.payment_skipped) {
-              toast('Промокод применён. Доступ обновлён.', 'ok');
-              billingInfo = await api(`/venues/${venueId}/billing`);
-              billingPromoPreview = null;
-              renderBillingWidgets();
-              return;
-            }
+            const data = await api(`/venues/${venueId}/billing/checkout`, { method: "POST" });
             const checkoutUrl = String(data?.checkout_url || "").trim();
             if (!checkoutUrl) throw new Error("Не получили ссылку на оплату");
             location.href = checkoutUrl;
@@ -576,14 +535,6 @@ const titleEl = document.getElementById("title");
           const historyBtn = document.getElementById("billingHistoryBtn");
           if (historyBtn) {
             historyBtn.onclick = () => showBillingHistory();
-          }
-          const promoPreviewBtn = document.getElementById("billingPromoPreviewBtn");
-          if (promoPreviewBtn) {
-            promoPreviewBtn.onclick = () => previewBillingPromoCode();
-          }
-          const promoInput = document.getElementById("billingPromoInput");
-          if (promoInput) {
-            promoInput.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); previewBillingPromoCode(); } };
           }
           const subscriptionBtn = document.getElementById("billingSubscriptionBtn");
           if (subscriptionBtn) {
@@ -749,23 +700,14 @@ const titleEl = document.getElementById("title");
                       <div class="muted mt-6">Платёжный контур: ${billingInfo?.provider_ready === false ? "ещё не настроен" : (billingInfo?.provider_mode === "test" ? "тестовый режим" : "боевой режим")}</div>
                       ${isTrial ? `<div class="muted mt-6">Пробный доступ до: ${formatDate(trialUntil)}</div>` : `<div class="muted mt-6">Оплачено до: ${formatDate(paidUntil)}</div>`}
                       ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}${billingInfo?.checkout_expires_at ? `<div class="muted mt-6">Незавершённый checkout истекает: ${formatDateTime(billingInfo.checkout_expires_at)}</div>` : ""}
-                      ${billingInfo?.promo_redemption ? `<div class="muted mt-6">Использованный промокод: ${esc(billingInfo.promo_redemption?.promo_code_value || '—')}</div>` : `<div class="muted mt-6">На это заведение можно применить только один промокод.</div>`}
                     </div>
                     <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
-                      <button class="btn primary" id="billingExtendBtn" ${(billingInfo?.provider_ready === false && !(billingPromoPreview && !billingPromoPreview.payment_required)) ? "disabled" : ""}>Продлить на 30 дней</button>
+                      <button class="btn primary" id="billingExtendBtn" ${billingInfo?.provider_ready === false ? "disabled" : ""}>Продлить на 30 дней</button>
                       <button class="btn" id="billingHistoryBtn">История</button>
                       <a class="btn" id="billingSubscriptionBtn" href="/owner-subscription.html?venue_id=${venueId}">Подписка</a>
                       <a class="btn subtle" href="https://t.me/axelio_support" target="_blank" rel="noopener">Поддержка</a>
                     </div>
                   </div>
-                  <div class="mt-12" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end">
-                    <label style="display:block">
-                      <div class="small mb-6">Промокод</div>
-                      <input id="billingPromoInput" type="text" placeholder="Введите промокод" value="${esc(billingPromoPreview?.code || billingInfo?.pending_promo?.code || '')}" ${billingInfo?.promo_redemption ? 'disabled' : ''} />
-                    </label>
-                    <button class="btn" id="billingPromoPreviewBtn" ${billingInfo?.promo_redemption ? 'disabled' : ''}>Проверить</button>
-                  </div>
-                  <div id="billingPromoPreview" class="muted mt-8">${billingInfo?.promo_redemption ? `Для этого заведения уже использован промокод <b>${esc(billingInfo.promo_redemption?.promo_code_value || '')}</b>.` : (billingPromoPreview ? `<b>${esc(billingPromoPreview.code || '')}</b> · ${esc(billingPromoPreview.summary || '')}<div class="small mt-6">Было: ${formatMinor(billingPromoPreview.price_before_minor || 0)} · скидка: ${formatMinor(billingPromoPreview.discount_minor || 0)} · к оплате: ${formatMinor(billingPromoPreview.amount_after_minor || 0)}</div>` : 'Введи промокод, чтобы проверить скидку или бесплатные дни.')}</div>
                   ${reason ? `<div class="muted mt-12">${reason}</div>` : ""}
                   <div class="muted mt-12">Телефон поддержки: <a class="link" href="tel:+79856006599">+7 985 600-65-99</a></div>
                   ${lastTxHtml}
@@ -774,7 +716,6 @@ const titleEl = document.getElementById("title");
             `;
           }
           bindBillingActions();
-          syncBillingExtendButtonState();
         }
 
         function applyBillingReadonlyUi() {
@@ -819,6 +760,8 @@ const titleEl = document.getElementById("title");
 
         // tips settings UI
         const tipsEnabledEl = document.getElementById("tipsEnabled");
+        const nightShiftsEnabledEl = document.getElementById("nightShiftsEnabled");
+        const nightShiftsSaveHintEl = document.getElementById("nightShiftsSaveHint");
         const tipsModeEl = document.getElementById("tipsMode");
         const tipsModeSoonEl = document.getElementById("tipsModeSoon");
         const tipsConfigRowEl = document.getElementById("tipsConfigRow");
@@ -826,6 +769,7 @@ const titleEl = document.getElementById("title");
         const tipsNoEditEl = document.getElementById("tipsNoEdit");
         const tipsSaveHintEl = document.getElementById("tipsSaveHint");
         let tipsSettings = { tips_enabled: false, tips_split_mode: "EQUAL" };
+        let nightShiftsEnabled = false;
 
 
         const btnRename = document.getElementById("btnRename");
@@ -989,6 +933,10 @@ function syncTipsControls() {
 
   const canEdit = !!canEditVenueSettings;
   if (tipsEnabledEl) tipsEnabledEl.disabled = !canEdit;
+  if (nightShiftsEnabledEl) {
+    nightShiftsEnabledEl.checked = !!nightShiftsEnabled;
+    nightShiftsEnabledEl.disabled = !canEdit;
+  }
 
   // mode select enabled only when tips are enabled AND user can edit
   const lockMode = (!enabled) || (!canEdit);
@@ -1003,9 +951,14 @@ function tipSavedHint(msg) {
   if (!tipsSaveHintEl) return;
   tipsSaveHintEl.textContent = msg || "";
   clearTimeout(tipsSaveHintEl._t);
-  tipsSaveHintEl._t = setTimeout(() => {
-    tipsSaveHintEl.textContent = "";
-  }, 2200);
+  tipsSaveHintEl._t = setTimeout(() => { tipsSaveHintEl.textContent = ""; }, 2200);
+}
+
+function nightShiftsSavedHint(msg) {
+  if (!nightShiftsSaveHintEl) return;
+  nightShiftsSaveHintEl.textContent = msg || "";
+  clearTimeout(nightShiftsSaveHintEl._t);
+  nightShiftsSaveHintEl._t = setTimeout(() => { nightShiftsSaveHintEl.textContent = ""; }, 2200);
 }
 
 async function saveTipsSettings(partial) {
@@ -1017,6 +970,7 @@ async function saveTipsSettings(partial) {
       tips_enabled: !!out?.tips_enabled,
       tips_split_mode: String(out?.tips_split_mode || "EQUAL").toUpperCase(),
     };
+      nightShiftsEnabled = !!out?.night_shifts_enabled;
     syncTipsControls();
     tipSavedHint("Сохранено");
   } catch (e) {
@@ -1028,6 +982,7 @@ async function saveTipsSettings(partial) {
         tips_enabled: !!s?.tips_enabled,
         tips_split_mode: String(s?.tips_split_mode || "EQUAL").toUpperCase(),
       };
+      nightShiftsEnabled = !!s?.night_shifts_enabled;
       syncTipsControls();
     } catch {}
   }
@@ -1047,6 +1002,28 @@ if (tipsModeEl) {
     tipsSettings.tips_split_mode = String(tipsModeEl.value || "EQUAL").toUpperCase();
     syncTipsControls();
     saveTipsSettings({ tips_split_mode: tipsSettings.tips_split_mode });
+  });
+}
+
+if (nightShiftsEnabledEl) {
+  nightShiftsEnabledEl.addEventListener("change", async () => {
+    if (!canEditVenueSettings) return;
+    const nextValue = !!nightShiftsEnabledEl.checked;
+    nightShiftsEnabled = nextValue;
+    syncTipsControls();
+    try {
+      const out = await updateVenueSettings(venueId, { night_shifts_enabled: nextValue });
+      nightShiftsEnabled = !!out?.night_shifts_enabled;
+      syncTipsControls();
+      nightShiftsSavedHint("Сохранено");
+    } catch (e) {
+      toast("Не удалось сохранить настройку ночных смен: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+      try {
+        const srv = await getVenueSettings(venueId);
+        nightShiftsEnabled = !!srv?.night_shifts_enabled;
+        syncTipsControls();
+      } catch {}
+    }
   });
 }
         function applyButtons() {
@@ -1111,6 +1088,7 @@ if (tipsModeEl) {
               tips_enabled: !!s?.tips_enabled,
               tips_split_mode: String(s?.tips_split_mode || "EQUAL").toUpperCase(),
             };
+      nightShiftsEnabled = !!s?.night_shifts_enabled;
           } catch (e) {
             // If cannot load settings, keep defaults but lock controls.
             // (View is still allowed for active members; edit is guarded by VENUE_SETTINGS_EDIT)

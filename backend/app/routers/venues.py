@@ -263,12 +263,14 @@ class InviteDefaultPositionPatchIn(BaseModel):
 
 class VenueSettingsOut(BaseModel):
     tips_enabled: bool = False
+    night_shifts_enabled: bool = False
     tips_split_mode: str = "EQUAL"
     tips_weights: dict | None = None
 
 
 class VenueSettingsPatchIn(BaseModel):
     tips_enabled: bool | None = None
+    night_shifts_enabled: bool | None = None
     tips_split_mode: str | None = None
     tips_weights: dict | None = None
 
@@ -2263,6 +2265,7 @@ def get_venue_settings(
 
     return VenueSettingsOut(
         tips_enabled=bool(getattr(venue, "tips_enabled", False)),
+        night_shifts_enabled=bool(getattr(venue, "night_shifts_enabled", False)),
         tips_split_mode=str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL"),
         tips_weights=getattr(venue, "tips_weights", None),
     )
@@ -2287,6 +2290,9 @@ def patch_venue_settings(
     if payload.tips_enabled is not None:
         venue.tips_enabled = bool(payload.tips_enabled)
 
+    if payload.night_shifts_enabled is not None:
+        venue.night_shifts_enabled = bool(payload.night_shifts_enabled)
+
     if payload.tips_split_mode is not None:
         mode = str(payload.tips_split_mode).strip().upper()
         if mode not in ("EQUAL", "WEIGHTED_BY_POSITION"):
@@ -2301,6 +2307,7 @@ def patch_venue_settings(
     db.refresh(venue)
     return VenueSettingsOut(
         tips_enabled=bool(getattr(venue, "tips_enabled", False)),
+        night_shifts_enabled=bool(getattr(venue, "night_shifts_enabled", False)),
         tips_split_mode=str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL"),
         tips_weights=getattr(venue, "tips_weights", None),
     )

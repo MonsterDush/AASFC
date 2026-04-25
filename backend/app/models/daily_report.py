@@ -11,13 +11,16 @@ from app.core.db import Base
 class DailyReport(Base):
     __tablename__ = "daily_reports"
     __table_args__ = (
-        UniqueConstraint("venue_id", "date", name="uq_daily_reports_venue_date"),
+        UniqueConstraint("venue_id", "date", "shift_slot", name="uq_daily_reports_venue_date_slot"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)
     date: Mapped[object] = mapped_column(Date, nullable=False, index=True)
+
+    # DAY by default; NIGHT is a separate report for the same calendar date.
+    shift_slot: Mapped[str] = mapped_column(String(16), nullable=False, default="DAY", server_default="DAY", index=True)
 
     # legacy numeric fields (kept for backwards compatibility)
     cash: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
