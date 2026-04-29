@@ -1199,7 +1199,8 @@ input[type="checkbox"],input[type="radio"]{
 .finance-stat__value{font-size:24px;font-weight:900;letter-spacing:-0.02em;min-width:0;word-break:break-word}
 .finance-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .expense-list{display:grid;gap:10px}
-.expense-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;padding:14px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,0.02)}
+.expense-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;padding:14px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,0.02);min-width:0;overflow:hidden}
+.expense-row__main{min-width:0}
 .expense-row__title{font-weight:800}
 .expense-row__side{display:grid;justify-items:end;align-content:start;min-width:120px}
 .expense-row__amount{font-size:20px;font-weight:900;white-space:nowrap}
@@ -1734,16 +1735,29 @@ a.btn.primary{color:var(--accentText)}
 }
 
 .badge.as-link {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  max-width:100%;
   border: 1px solid rgba(83, 173, 255, 0.35);
   background: rgba(83, 173, 255, 0.10);
   color: inherit;
   cursor: pointer;
   font: inherit;
   text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.25;
+  padding: 8px 12px;
 }
 
 .badge.as-link:hover {
   background: rgba(83, 173, 255, 0.18);
+}
+
+.file-preview-actions .btn{
+  min-width:0;
 }
 
 .file-preview {
@@ -1767,4 +1781,9 @@ a.btn.primary{color:var(--accentText)}
   height: min(70vh, 720px);
   border: 0;
   background: #fff;
+}
+
+@media (max-width:760px){
+  .expense-row__allocations .badge.as-link{width:100%;justify-content:flex-start;}
+  .file-preview-actions{display:grid;grid-template-columns:1fr;gap:8px;}
 }

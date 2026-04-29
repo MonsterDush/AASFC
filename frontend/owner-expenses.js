@@ -229,6 +229,13 @@ function isPreviewablePdf(contentType = "", fileName = "") {
   return ct === "application/pdf" || /\.pdf$/i.test(name);
 }
 
+async function deleteExpenseAttachment(expenseId, attachmentId) {
+  const venueId = getActiveVenueId();
+  await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(expenseId)}/attachments/${encodeURIComponent(attachmentId)}`, {
+    method: "DELETE",
+  });
+}
+
 async function openExpenseAttachmentPreview(expenseId, attachmentId) {
   const venueId = getActiveVenueId();
   const file = getExpenseAttachment(expenseId, attachmentId) || {};
@@ -248,8 +255,9 @@ async function openExpenseAttachmentPreview(expenseId, attachmentId) {
       previewHtml += `<div class="card subtle mt-12">Предпросмотр для этого формата может быть недоступен в браузере. Файл можно открыть или скачать по внешней ссылке.</div>`;
     }
     previewHtml += `
-      <div class="row gap-8 mt-12" style="flex-wrap:wrap;">
+      <div class="file-preview-actions row gap-8 mt-12" style="flex-wrap:wrap;">
         <button class="btn primary" type="button" id="expenseFileDownloadBtn">Открыть / скачать файл</button>
+        ${access.canEdit ? `<button class="btn danger" type="button" id="expenseFileDeleteBtn">Удалить файл</button>` : ""}
         <button class="btn ghost" type="button" id="expenseFileCloseBtn">Закрыть</button>
       </div>
     `;
@@ -259,6 +267,20 @@ async function openExpenseAttachmentPreview(expenseId, attachmentId) {
       const tg = window.Telegram?.WebApp;
       try { if (tg?.openLink) { tg.openLink(url, { try_instant_view: false }); return; } } catch {}
       window.open(url, "_blank", "noopener");
+    };
+    const deleteBtn = document.getElementById("expenseFileDeleteBtn");
+    if (deleteBtn) deleteBtn.onclick = async () => {
+      if (!confirm("Удалить этот файл?")) return;
+      deleteBtn.disabled = true;
+      try {
+        await deleteExpenseAttachment(expenseId, attachmentId);
+        toast("Файл удалён", "ok");
+        closeModal();
+        await loadExpenses();
+      } catch (err) {
+        deleteBtn.disabled = false;
+        toast(err?.data?.detail || err.message || "Не удалось удалить файл", "err");
+      }
     };
     const closeBtn = document.getElementById("expenseFileCloseBtn");
     if (closeBtn) closeBtn.onclick = () => closeModal();
