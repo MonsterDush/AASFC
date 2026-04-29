@@ -47,6 +47,11 @@
             <div class="page-caption mt-6">Здесь собираются выручка, признанные расходы, эффективность смены, план/факт и предупреждения. Экран должен быстро отвечать на вопрос, всё ли в порядке сегодня.</div>
           </div>
           <div class="screen-hero__actions">
+            <div id="economicsSlotToggle" class="shift-toggle hidden" aria-label="Срез экономики">
+              <button type="button" id="economicsSlotTotal">Итого</button>
+              <button type="button" id="economicsSlotDay">День</button>
+              <button type="button" id="economicsSlotNight">Ночь</button>
+            </div>
             <input id="economicsDatePick" type="date" style="width:auto; min-width:160px;" />
             <button class="btn" id="refreshEconomicsBtn">Обновить</button>
           </div>

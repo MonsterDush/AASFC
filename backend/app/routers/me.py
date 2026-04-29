@@ -38,6 +38,7 @@ from app.services.payroll.period_summary import build_member_period_summary, res
 from app.services.billing.access import BILLING_ACCESS_DENIED, BILLING_ACCESS_FULL, get_user_billing_access, get_venue_billing_snapshot
 from app.services.demo.access import build_demo_banner_payload, build_demo_context_payload
 from app.services.setup import build_setup_summary, build_setup_summary_map
+from app.services.shifts.slots import normalize_shift_slot
 
 
 router = APIRouter(tags=["me"])
@@ -718,6 +719,7 @@ def my_shifts_across_venues(
         select(
             Shift.id.label("shift_id"),
             Shift.date.label("shift_date"),
+            Shift.shift_slot.label("shift_slot"),
             Shift.venue_id.label("venue_id"),
             Venue.name.label("venue_name"),
             Shift.interval_id.label("interval_id"),
@@ -746,18 +748,20 @@ def my_shifts_across_venues(
         return []
 
     # preload daily reports per (venue_id, date) for salary calc
-    keys = {(r.venue_id, r.shift_date) for r in rows}
+    keys = {(r.venue_id, r.shift_date, normalize_shift_slot(r.shift_slot)) for r in rows}
     reports = db.execute(
         select(DailyReport).where(
             DailyReport.venue_id.in_({k[0] for k in keys}),
             DailyReport.date.in_({k[1] for k in keys}),
+            DailyReport.shift_slot.in_({k[2] for k in keys}),
         )
     ).scalars().all()
-    report_by_key = {(r.venue_id, r.date): r for r in reports}
+    report_by_key = {(r.venue_id, r.date, normalize_shift_slot(getattr(r, "shift_slot", None))): r for r in reports}
 
     out = []
     for r in rows:
-        rep = report_by_key.get((r.venue_id, r.shift_date))
+        slot = normalize_shift_slot(r.shift_slot)
+        rep = report_by_key.get((r.venue_id, r.shift_date, slot))
         my_salary = None
         revenue_total = None
         if rep is not None:
@@ -771,6 +775,7 @@ def my_shifts_across_venues(
             {
                 "shift_id": r.shift_id,
                 "date": r.shift_date.isoformat(),
+                "shift_slot": slot,
                 "venue": {"id": r.venue_id, "name": r.venue_name},
                 "interval": {
                     "id": r.interval_id,
@@ -841,6 +846,7 @@ def my_payroll_line(
 def my_salary_day_breakdown(
     venue_id: int = Query(..., gt=0),
     date_value: date = Query(..., alias="date"),
+    shift_slot: str = Query(default="TOTAL", pattern="^(TOTAL|DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -859,6 +865,7 @@ def my_salary_day_breakdown(
         member_user_id=int(user.id),
         venue_id=int(venue_id),
         target_date=date_value,
+        shift_slot=shift_slot,
     )
 
 

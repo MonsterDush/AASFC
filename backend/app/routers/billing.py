@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from fastapi.responses import PlainTextResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,14 +21,18 @@ from app.models.venue_billing_event import VenueBillingEvent
 from app.models.venue_member import VenueMember
 from app.services.billing import (
     apply_checkout_payment_success,
+    apply_free_promo_code,
     build_checkout_url,
+    compute_promo_preview,
     create_checkout_transaction,
+    extract_transaction_promo_payload,
     format_out_sum,
     get_billing_transaction_by_invoice_id,
     get_checkout_expires_at,
     get_or_create_billing_state,
     get_robokassa_config,
     get_user_billing_access,
+    get_venue_promo_redemption,
     is_valid_result_signature,
     is_valid_success_signature,
     list_billing_events,
@@ -35,12 +40,17 @@ from app.services.billing import (
     mark_checkout_transaction_failed,
     parse_amount_minor,
     send_owner_billing_notification_once,
+    serialize_promo_redemption,
     sync_billing_reconciliation_issues,
 )
 from app.services.xlsx_export import build_billing_transactions_xlsx
 
 router = APIRouter(prefix="/venues", tags=["billing"])
 public_router = APIRouter(tags=["billing-public"])
+
+
+class BillingCheckoutIn(BaseModel):
+    promo_code: str | None = Field(default=None, max_length=64)
 
 
 def _require_owner_or_admin_billing_access(db: Session, *, venue_id: int, user: User) -> str:
@@ -89,6 +99,39 @@ def _serialize_billing_event(event) -> dict[str, Any]:
     }
 
 
+def _serialize_pending_promo(tx) -> dict[str, Any] | None:
+    promo = extract_transaction_promo_payload(tx)
+    return promo or None
+
+
+def _checkout_matches_request(tx, *, promo_payload: dict[str, Any] | None, amount_minor: int) -> bool:
+    if tx is None:
+        return False
+    if int(tx.amount_minor or 0) != int(amount_minor or 0):
+        return False
+    existing_promo = _serialize_pending_promo(tx) or {}
+    requested_promo = dict(promo_payload or {})
+    return existing_promo == requested_promo
+
+
+def _serialize_promo_preview(preview) -> dict[str, Any]:
+    return {
+        "promo_id": int(preview.promo_id),
+        "code": preview.code,
+        "title": preview.title,
+        "kind": preview.kind,
+        "percent_value": preview.percent_value,
+        "amount_minor_value": preview.amount_minor_value,
+        "free_days_value": preview.free_days_value,
+        "price_before_minor": int(preview.price_before_minor),
+        "discount_minor": int(preview.discount_minor),
+        "amount_after_minor": int(preview.amount_after_minor),
+        "days_added": int(preview.days_added),
+        "payment_required": bool(preview.payment_required),
+        "summary": preview.summary,
+    }
+
+
 @router.get("/{venue_id}/billing")
 def get_venue_billing(
     venue_id: int,
@@ -107,6 +150,7 @@ def get_venue_billing(
     robo_cfg = get_robokassa_config()
     latest_pending = next((tx for tx in txs if str(tx.status or "").upper() == "PENDING" and str(tx.type or "").upper() == "PAYMENT"), None)
     checkout_expires_at = get_checkout_expires_at(latest_pending)
+    promo_redemption = get_venue_promo_redemption(db, venue_id=int(venue_id))
 
     return {
         "venue_id": int(venue.id),
@@ -133,14 +177,46 @@ def get_venue_billing(
         "is_trial": bool(access.get("is_trial")),
         "trial_until": access.get("trial_until").isoformat() if access.get("trial_until") else None,
         "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
+        "promo_redemption": serialize_promo_redemption(promo_redemption),
+        "can_use_promo_code": promo_redemption is None,
+        "pending_promo": _serialize_pending_promo(latest_pending),
         "transactions": [_serialize_billing_transaction(tx) for tx in txs],
         "events": [_serialize_billing_event(event) for event in events],
+    }
+
+
+@router.get("/{venue_id}/billing/promocode/preview")
+def preview_venue_billing_promocode(
+    venue_id: int,
+    code: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    role = _require_owner_or_admin_billing_access(db, venue_id=venue_id, user=user)
+    venue = db.execute(select(Venue).where(Venue.id == int(venue_id))).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    access = get_user_billing_access(db, venue_id=int(venue_id), user=user, membership_role=role)
+    if str(access.get("billing_access_mode") or "").upper() not in {"FULL", "BILLING_READONLY"}:
+        raise HTTPException(status_code=403, detail=access.get("billing_restricted_reason") or "Billing access denied")
+
+    state = get_or_create_billing_state(db, venue_id=int(venue_id))
+    try:
+        preview = compute_promo_preview(db, venue_id=int(venue_id), code=code, base_price_minor=int(state.price_minor or 0))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "venue_id": int(venue.id),
+        "venue_name": venue.name,
+        "preview": _serialize_promo_preview(preview),
     }
 
 
 @router.post("/{venue_id}/billing/checkout")
 def create_venue_billing_checkout(
     venue_id: int,
+    payload: BillingCheckoutIn | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -153,19 +229,62 @@ def create_venue_billing_checkout(
     if str(access.get("billing_access_mode") or "").upper() not in {"FULL", "BILLING_READONLY"}:
         raise HTTPException(status_code=403, detail=access.get("billing_restricted_reason") or "Billing access denied")
 
+    state = get_or_create_billing_state(db, venue_id=int(venue_id))
+    promo_preview = None
+    promo_payload = None
+    promo_code = str(payload.promo_code or "").strip() if payload is not None and payload.promo_code else ""
+    requested_amount_minor = int(state.price_minor or 0)
+    requested_days_added = 30
+    if promo_code:
+        try:
+            promo_preview = compute_promo_preview(db, venue_id=int(venue_id), code=promo_code, base_price_minor=int(state.price_minor or 0))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        promo_payload = _serialize_promo_preview(promo_preview)
+        requested_amount_minor = int(promo_preview.amount_after_minor)
+        requested_days_added = int(promo_preview.days_added)
+
+    if promo_preview is not None and not promo_preview.payment_required:
+        state, tx, event, redemption = apply_free_promo_code(
+            db,
+            venue_id=int(venue_id),
+            created_by_user_id=int(user.id),
+            state=state,
+            preview=promo_preview,
+        )
+        db.commit()
+        db.refresh(state)
+        db.refresh(tx)
+        db.refresh(event)
+        return {
+            "transaction_id": int(tx.id),
+            "provider": tx.source,
+            "amount_minor": int(tx.amount_minor or 0),
+            "checkout_url": None,
+            "test_mode": False,
+            "checkout_expires_at": None,
+            "payment_skipped": True,
+            "promo_applied": _serialize_promo_preview(promo_preview),
+            "paid_until": state.paid_until.isoformat() if state.paid_until else None,
+            "grace_until": state.grace_until.isoformat() if state.grace_until else None,
+        }
+
     robo_cfg = get_robokassa_config()
     if not robo_cfg.is_enabled:
         raise HTTPException(status_code=503, detail="Robokassa is not configured")
 
-    state = get_or_create_billing_state(db, venue_id=int(venue_id))
+    latest_pending = next((tx for tx in list_billing_transactions(db, venue_id=int(venue_id), limit=20) if str(tx.status or "").upper() == "PENDING" and str(tx.type or "").upper() == "PAYMENT"), None)
+    should_replace_existing = latest_pending is not None and not _checkout_matches_request(latest_pending, promo_payload=promo_payload, amount_minor=requested_amount_minor)
     tx = create_checkout_transaction(
         db,
         venue_id=int(venue_id),
         created_by_user_id=int(user.id),
-        amount_minor=int(state.price_minor or 0),
-        days_added=30,
+        amount_minor=requested_amount_minor,
+        days_added=requested_days_added,
         provider="ROBOKASSA",
         comment="Robokassa checkout created",
+        provider_payload_json={"promo": promo_payload} if promo_payload else None,
+        replace_existing=should_replace_existing,
     )
     out_sum = format_out_sum(int(tx.amount_minor or 0), test_mode=robo_cfg.test_mode)
     extra_params = {
@@ -211,6 +330,7 @@ def create_venue_billing_checkout(
         "checkout_url": checkout_url,
         "test_mode": robo_cfg.test_mode,
         "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
+        "promo_applied": promo_payload,
     }
 
 

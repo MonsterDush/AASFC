@@ -41,3 +41,4 @@ class Expense(Base):
     recurring_rule = relationship("RecurringExpenseRule")
     created_by_user = relationship("User")
     allocations = relationship("ExpenseAllocation", back_populates="expense", cascade="all, delete-orphan")
+    attachments = relationship("ExpenseAttachment", back_populates="expense", cascade="all, delete-orphan")

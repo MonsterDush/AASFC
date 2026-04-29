@@ -24,6 +24,7 @@ from app.models import (
     VenueMember,
 )
 from app.services.payroll.calculator import interval_duration_minutes
+from app.services.shifts.slots import normalize_shift_slot
 
 
 def _payroll_recalculation_logs_table_exists(db: Session) -> bool:
@@ -43,8 +44,20 @@ _COMPONENT_TITLES = {
 }
 
 
+def _normalize_breakdown_shift_slot(value: str | None) -> str:
+    raw = str(value or "TOTAL").strip().upper()
+    if raw in {"DAY", "NIGHT"}:
+        return normalize_shift_slot(raw)
+    return "TOTAL"
+
+
+def _is_slot_specific(value: str | None) -> bool:
+    return _normalize_breakdown_shift_slot(value) in {"DAY", "NIGHT"}
+
+
 @dataclass
 class DayAllocationContext:
+    shift_slot: str
     worked_dates: list[date]
     minutes_by_date: dict[date, int]
     shifts_by_date: dict[date, int]
@@ -218,10 +231,13 @@ def _load_day_allocation_context(
     month_start: date,
     month_end_excl: date,
     worked_dates: list[date],
+    shift_slot: str | None = None,
 ) -> DayAllocationContext:
+    slot = _normalize_breakdown_shift_slot(shift_slot)
     worked_dates = sorted({day for day in worked_dates if isinstance(day, date)})
     if not worked_dates:
         return DayAllocationContext(
+            shift_slot=slot,
             worked_dates=[],
             minutes_by_date={},
             shifts_by_date={},
@@ -229,6 +245,9 @@ def _load_day_allocation_context(
             department_revenue_by_date_minor={},
             kpi_by_date={},
         )
+
+    shift_filters = [Shift.shift_slot == slot] if slot in {"DAY", "NIGHT"} else []
+    report_filters = [DailyReport.shift_slot == slot] if slot in {"DAY", "NIGHT"} else []
 
     shift_rows = db.execute(
         select(
@@ -246,6 +265,7 @@ def _load_day_allocation_context(
             Shift.date < month_end_excl,
             Shift.date.in_(worked_dates),
             ShiftAssignment.member_user_id == int(member_user_id),
+            *shift_filters,
         )
     ).all()
 
@@ -257,14 +277,16 @@ def _load_day_allocation_context(
         shift_ids_by_date[shift_date].add(int(row.shift_id))
 
     report_rows = db.execute(
-        select(DailyReport.date, DailyReport.revenue_total)
+        select(DailyReport.date, func.coalesce(func.sum(DailyReport.revenue_total), 0).label("revenue_total"))
         .where(
             DailyReport.venue_id == int(venue_id),
             DailyReport.status == "CLOSED",
             DailyReport.date >= month_start,
             DailyReport.date < month_end_excl,
             DailyReport.date.in_(worked_dates),
+            *report_filters,
         )
+        .group_by(DailyReport.date)
     ).all()
     revenue_by_date_minor = {row.date: int(row.revenue_total or 0) * 100 for row in report_rows}
 
@@ -277,6 +299,7 @@ def _load_day_allocation_context(
             DailyReport.date >= month_start,
             DailyReport.date < month_end_excl,
             DailyReport.date.in_(worked_dates),
+            *report_filters,
         )
         .group_by(DailyReport.date, DailyReportValue.kind, DailyReportValue.ref_id)
     ).all()
@@ -290,6 +313,7 @@ def _load_day_allocation_context(
             kpi_by_date[int(ref_id)][report_date] = int(value_total or 0)
 
     return DayAllocationContext(
+        shift_slot=slot,
         worked_dates=worked_dates,
         minutes_by_date={day: int(minutes_by_date.get(day, 0)) for day in worked_dates},
         shifts_by_date={day: len(shift_ids_by_date.get(day, set())) for day in worked_dates},
@@ -507,7 +531,9 @@ def build_member_day_breakdown(
     member_user_id: int,
     venue_id: int,
     target_date: date,
+    shift_slot: str | None = None,
 ) -> dict:
+    slot = _normalize_breakdown_shift_slot(shift_slot)
     month_start = _month_start_for_day(target_date)
     month_end_excl = _next_month_start(month_start)
 
@@ -561,15 +587,20 @@ def build_member_day_breakdown(
         month_start=month_start,
         month_end_excl=month_end_excl,
         worked_dates=worked_dates,
+        shift_slot=slot,
     )
 
     items: list[dict] = []
-    for component in (breakdown.get("components") or []):
-        if not isinstance(component, dict):
-            continue
-        item = _component_allocation_for_day(component=component, target_date=target_date, context=context)
-        if item is not None:
-            items.append(item)
+    # Payroll lines are stored at month/date level, not per DAY/NIGHT slot.
+    # Keep TOTAL fully detailed; for a single slot expose slot-specific context/tips
+    # without duplicating a full monthly component into both DAY and NIGHT.
+    if slot == "TOTAL":
+        for component in (breakdown.get("components") or []):
+            if not isinstance(component, dict):
+                continue
+            item = _component_allocation_for_day(component=component, target_date=target_date, context=context)
+            if item is not None:
+                items.append(item)
 
     tip_rows = db.execute(
         select(DailyReportTipAllocation.amount)
@@ -579,6 +610,7 @@ def build_member_day_breakdown(
             DailyReport.status == "CLOSED",
             DailyReport.date == target_date,
             DailyReportTipAllocation.user_id == int(member_user_id),
+            *([DailyReport.shift_slot == slot] if slot in {"DAY", "NIGHT"} else []),
         )
     ).all()
     allocated_tips_minor = sum(int(row.amount or 0) * 100 for row in tip_rows)
@@ -596,16 +628,18 @@ def build_member_day_breakdown(
             }
         )
 
-    adjustment_rows = db.execute(
-        select(Adjustment.type, Adjustment.amount, Adjustment.reason)
-        .where(
-            Adjustment.venue_id == int(venue_id),
-            Adjustment.member_user_id == int(member_user_id),
-            Adjustment.date == target_date,
-            Adjustment.is_active.is_(True),
-        )
-        .order_by(Adjustment.id.asc())
-    ).all()
+    adjustment_rows = []
+    if slot == "TOTAL":
+        adjustment_rows = db.execute(
+            select(Adjustment.type, Adjustment.amount, Adjustment.reason)
+            .where(
+                Adjustment.venue_id == int(venue_id),
+                Adjustment.member_user_id == int(member_user_id),
+                Adjustment.date == target_date,
+                Adjustment.is_active.is_(True),
+            )
+            .order_by(Adjustment.id.asc())
+        ).all()
     for adj_type, amount, reason in adjustment_rows:
         adj_type_str = str(adj_type or "").lower()
         amount_minor = int(amount or 0) * 100
@@ -655,13 +689,16 @@ def build_member_day_breakdown(
     day_shifts = int(context.shifts_by_date.get(target_date, 0))
     day_revenue_minor = int(context.revenue_by_date_minor.get(target_date, 0))
     state = "ready" if items else "empty"
-    if payroll_line is None and (tips_minor or bonuses_minor or penalties_minor):
+    if slot in {"DAY", "NIGHT"}:
+        state = "slot_limited" if items else "slot_empty"
+    elif payroll_line is None and (tips_minor or bonuses_minor or penalties_minor):
         state = "partial"
     elif payroll_line is None and not items:
         state = "no_payroll"
 
     return {
         "state": state,
+        "shift_slot": slot,
         "venue": {
             "id": int(venue.id) if venue is not None else int(venue_id),
             "name": getattr(venue, "name", None) or "",
@@ -685,6 +722,9 @@ def build_member_day_breakdown(
             "hours_total": round(day_minutes / 60.0, 2),
             "shifts_count": day_shifts,
             "revenue_minor": day_revenue_minor,
+            "slot_payroll_detail_available": slot == "TOTAL",
+            "slot_adjustments_available": slot == "TOTAL",
+            "slot_note": ("Детализация оклада/процентов и ручные корректировки доступны в Итого" if slot in {"DAY", "NIGHT"} else None),
             "has_payroll_line": payroll_line is not None,
             "payroll_line_id": int(payroll_line.id) if payroll_line is not None else None,
             "pay_profile_title": breakdown.get("pay_profile_title") if breakdown else None,

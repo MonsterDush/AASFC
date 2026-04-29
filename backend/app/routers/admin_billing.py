@@ -20,13 +20,18 @@ from app.models.venue_billing_transaction import VenueBillingTransaction
 from app.models.venue_member import VenueMember
 from app.services.billing import (
     ISSUE_STATUS_OPEN,
+    PROMO_KIND_FIXED_MINOR,
+    PROMO_KIND_FREE_DAYS,
+    PROMO_KIND_PERCENT,
     create_external_refund_transaction,
+    create_promo_code,
     create_refund_request,
     extend_venue_billing,
     fetch_operation_info,
     get_billing_health_summary,
     get_billing_snapshot_for_state,
     get_or_create_billing_state,
+    get_promo_code_by_id,
     get_refundable_payment_transaction,
     get_reserved_refund_amount_for_payment,
     get_robokassa_refund_config,
@@ -34,10 +39,13 @@ from app.services.billing import (
     list_billing_reconciliation_issues,
     list_billing_transactions,
     list_billing_transactions_global,
+    list_promo_codes_with_usage,
     send_owner_billing_notification_once,
+    serialize_promo_code,
     set_billing_reconciliation_issue_status,
     set_venue_billing_paid_until,
     sync_billing_reconciliation_issues,
+    update_promo_code,
 )
 from app.services.xlsx_export import build_billing_reconciliation_xlsx, build_billing_transactions_xlsx
 
@@ -72,6 +80,28 @@ class BillingExportParams(BaseModel):
 
 class BillingIssueActionIn(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
+
+
+class BillingPromoCodeCreateIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=255)
+    kind: str
+    percent_value: int | None = Field(default=None, ge=1, le=100)
+    amount_minor: int | None = Field(default=None, ge=1)
+    free_days: int | None = Field(default=None, ge=1, le=3650)
+    comment: str | None = Field(default=None, max_length=1000)
+    is_active: bool = True
+
+
+class BillingPromoCodeUpdateIn(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=64)
+    title: str | None = Field(default=None, max_length=255)
+    kind: str | None = None
+    percent_value: int | None = Field(default=None, ge=1, le=100)
+    amount_minor: int | None = Field(default=None, ge=1)
+    free_days: int | None = Field(default=None, ge=1, le=3650)
+    comment: str | None = Field(default=None, max_length=1000)
+    is_active: bool | None = None
 
 
 def _utc_now() -> datetime:
@@ -358,6 +388,94 @@ def get_admin_billing_summary(
             "month_end": month_end.isoformat(),
         },
     }
+
+
+
+
+@router.get("/billing/promocodes")
+def get_admin_billing_promocodes(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    rows = list_promo_codes_with_usage(db)
+    return {
+        "items": [serialize_promo_code(code, usage_count=usage_count) for code, usage_count in rows],
+        "kinds": [PROMO_KIND_PERCENT, PROMO_KIND_FIXED_MINOR, PROMO_KIND_FREE_DAYS],
+    }
+
+
+@router.post("/billing/promocodes")
+def create_admin_billing_promocode(
+    payload: BillingPromoCodeCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    try:
+        promo = create_promo_code(
+            db,
+            code=payload.code,
+            title=payload.title,
+            kind=payload.kind,
+            percent_value=payload.percent_value,
+            amount_minor=payload.amount_minor,
+            free_days=payload.free_days,
+            comment=payload.comment,
+            is_active=payload.is_active,
+            created_by_user_id=user.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    db.refresh(promo)
+    return {"item": serialize_promo_code(promo, usage_count=0)}
+
+
+@router.patch("/billing/promocodes/{promo_id}")
+def update_admin_billing_promocode(
+    promo_id: int,
+    payload: BillingPromoCodeUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    promo = get_promo_code_by_id(db, promo_id=int(promo_id))
+    if promo is None:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+    try:
+        promo = update_promo_code(
+            db,
+            promo=promo,
+            code=payload.code,
+            title=payload.title,
+            kind=payload.kind,
+            percent_value=payload.percent_value,
+            amount_minor=payload.amount_minor,
+            free_days=payload.free_days,
+            comment=payload.comment,
+            is_active=payload.is_active,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    usage_rows = {int(code.id): int(usage_count) for code, usage_count in list_promo_codes_with_usage(db)}
+    db.commit()
+    db.refresh(promo)
+    return {"item": serialize_promo_code(promo, usage_count=int(usage_rows.get(int(promo.id), 0)))}
+
+
+@router.post("/billing/promocodes/{promo_id}/archive")
+def archive_admin_billing_promocode(
+    promo_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+):
+    promo = get_promo_code_by_id(db, promo_id=int(promo_id))
+    if promo is None:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+    promo.is_active = False
+    promo.updated_at = _utc_now()
+    usage_rows = {int(code.id): int(usage_count) for code, usage_count in list_promo_codes_with_usage(db)}
+    db.commit()
+    db.refresh(promo)
+    return {"item": serialize_promo_code(promo, usage_count=int(usage_rows.get(int(promo.id), 0)))}
 
 
 @router.get("/billing/venues")

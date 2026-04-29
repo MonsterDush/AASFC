@@ -13,6 +13,7 @@ from app.models.venue_billing_state import VenueBillingState
 from app.models.venue_billing_transaction import VenueBillingTransaction
 from app.models.venue import Venue
 from app.models.venue_member import VenueMember
+from .promos import finalize_transaction_promo_redemption
 from .state import (
     BILLING_STATUS_ACTIVE,
     BILLING_STATUS_GRACE,
@@ -582,14 +583,31 @@ def create_checkout_transaction(
     days_added: int = DEFAULT_BILLING_DAYS,
     provider: str = DEFAULT_BILLING_PROVIDER,
     comment: str | None = None,
+    provider_payload_json: dict | list | None = None,
+    replace_existing: bool = False,
 ) -> VenueBillingTransaction:
     existing = get_latest_pending_checkout(db, venue_id=int(venue_id))
-    if existing is not None:
+    if existing is not None and not replace_existing:
         return existing
+    if existing is not None and replace_existing:
+        mark_checkout_transaction_failed(
+            db,
+            transaction=existing,
+            status="CANCELED",
+            provider_payload_json={"replaced_at": utcnow().isoformat()},
+            comment="Billing checkout replaced",
+            event_type="BILLING_CHECKOUT_REPLACED",
+        )
 
     now = utcnow()
     state = get_or_create_billing_state(db, venue_id=int(venue_id))
     checkout_expires_at = _pending_checkout_expires_at(created_at=now)
+    base_payload = {
+            "checkout_created_at": now.isoformat(),
+            "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
+        }
+    if isinstance(provider_payload_json, dict):
+        base_payload.update(provider_payload_json)
     tx = VenueBillingTransaction(
         venue_id=int(venue_id),
         source=str(provider or DEFAULT_BILLING_PROVIDER).upper(),
@@ -601,10 +619,7 @@ def create_checkout_transaction(
         period_until=None,
         provider_invoice_id=None,
         provider_payment_id=None,
-        provider_payload_json={
-            "checkout_created_at": now.isoformat(),
-            "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
-        },
+        provider_payload_json=base_payload,
         comment=comment,
         created_by_user_id=created_by_user_id,
         created_at=now,
@@ -694,9 +709,11 @@ def apply_checkout_payment_success(
     tx.provider_payload_json = payload
     tx.updated_at = now
 
+    finalize_transaction_promo_redemption(db, transaction=tx)
+
     event = VenueBillingEvent(
         venue_id=int(tx.venue_id),
-        event_type="ROBOKASSA_PAYMENT_SUCCEEDED",
+        event_type="PROMO_PAYMENT_SUCCEEDED" if str(tx.source or "").upper() == "PROMOCODE" else "ROBOKASSA_PAYMENT_SUCCEEDED",
         old_status=old_status,
         new_status=BILLING_STATUS_ACTIVE,
         meta_json={

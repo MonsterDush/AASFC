@@ -2364,6 +2364,28 @@ function currentRangeContext() {
   };
 }
 
+function getExportShiftSlot() {
+  try {
+    if (typeof selectedShiftSlot !== "undefined") {
+      const direct = String(selectedShiftSlot || "DAY").toUpperCase();
+      if (direct === "NIGHT") return "NIGHT";
+    }
+  } catch {}
+  try {
+    const fromUrl = String(new URLSearchParams(location.search).get("shift_slot") || "").toUpperCase();
+    if (fromUrl === "NIGHT") return "NIGHT";
+  } catch {}
+  try {
+    const stored = String(localStorage.getItem("axelio.staff_shifts.shift_slot") || localStorage.getItem("axelio.shift_slot") || "").toUpperCase();
+    if (stored === "NIGHT") return "NIGHT";
+  } catch {}
+  return "DAY";
+}
+
+function exportShiftSlotLabel(slot = getExportShiftSlot()) {
+  return String(slot || "DAY").toUpperCase() === "NIGHT" ? "НОЧНЫЕ СМЕНЫ" : "ДНЕВНЫЕ СМЕНЫ";
+}
+
 function selectedIntervalTitles() {
   const byId = new Map((Array.isArray(intervals) ? intervals : []).map((it) => [String(it?.id ?? ""), it]));
   return Array.from(selectedIntervalIds)
@@ -2391,6 +2413,7 @@ function buildLocalExportMetadata() {
     filters_text: parts.join(" • "),
     interval_titles: intervalTitles,
     staffing_state: unstaffedOnly ? "unstaffed" : "all",
+    shift_slot: getExportShiftSlot(),
     logo_url: null,
     app_logo_url: "/logo.png",
     deep_link_path: "/staff-shifts.html",
@@ -2418,6 +2441,7 @@ async function getExportMetadata() {
       .sort((a, b) => a - b);
     for (const id of ids) q.append("interval_ids", String(id));
     if (unstaffedOnly) q.set("staffing_state", "unstaffed");
+    q.set("shift_slot", getExportShiftSlot());
     const meta = await api(`/venues/${encodeURIComponent(venueId)}/shifts/export-metadata?${q.toString()}`);
     return { ...fallback, ...(meta || {}) };
   } catch {
@@ -2488,7 +2512,8 @@ function buildExportFilenameBase(meta) {
   const range = currentRangeContext();
   const venuePart = sanitizeFilePart(meta?.venue_name || currentVenueName || "schedule");
   const periodPart = range.view === "week" ? `${range.periodStart}_${range.periodEnd}` : range.periodStart.slice(0, 7);
-  return `schedule_${venuePart}_${periodPart}`;
+  const slotPart = sanitizeFilePart(String(meta?.shift_slot || getExportShiftSlot()).toLowerCase());
+  return `schedule_${venuePart}_${periodPart}_${slotPart}`;
 }
 
 function drawRoundRect(ctx, x, y, w, h, r) {
@@ -2667,7 +2692,18 @@ async function renderScheduleExportCanvas(meta) {
 
     ctx.fillStyle = muted;
     ctx.font = "500 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    drawWrappedText(ctx, filtersText, textX, contentTop + 54, leftMaxW, 24, 3, muted, "left");
+    drawWrappedText(ctx, filtersText, textX, contentTop + 54, leftMaxW, 24, 2, muted, "left");
+
+    const slotLabel = exportShiftSlotLabel(meta?.shift_slot || getExportShiftSlot());
+    const slotBadgeW = Math.min(260, Math.max(198, ctx.measureText(slotLabel).width + 42));
+    fillRoundRect(ctx, textX, contentTop + 116, slotBadgeW, 42, 21, String(meta?.shift_slot || getExportShiftSlot()).toUpperCase() === "NIGHT" ? "rgba(15,23,42,.96)" : accentSoft, accent, 1.5);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = String(meta?.shift_slot || getExportShiftSlot()).toUpperCase() === "NIGHT" ? "#E0F2FE" : accent;
+    ctx.font = "800 17px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText(slotLabel, textX + slotBadgeW / 2, contentTop + 137);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
 
     const pillW = 168;
     const pillH = 34;

@@ -16,6 +16,8 @@ class DailyReportAttachment(Base):
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)
     report_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
 
+    shift_slot: Mapped[str] = mapped_column(String(16), nullable=False, default="DAY", server_default="DAY", index=True)
+
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     storage_path: Mapped[str] = mapped_column(String(500), nullable=False)

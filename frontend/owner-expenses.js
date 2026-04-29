@@ -193,6 +193,115 @@ function renderDraftBanner() {
   hint.textContent = `Черновиков: ${draftCount} · на сумму ${fmtMinor(draftTotalMinor)}. Они не участвуют в прибыли и сводке, пока не подтверждены.`;
 }
 
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value < 1024) return `${value} Б`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1).replace(".0", "")} КБ`;
+  return `${(value / 1024 / 1024).toFixed(1).replace(".0", "")} МБ`;
+}
+
+function buildExpenseAttachmentsHtml(item) {
+  const attachments = Array.isArray(item?.attachments) ? item.attachments : [];
+  if (!attachments.length) return "";
+  const links = attachments.map((file) => {
+    const size = file.file_size ? ` · ${esc(formatBytes(file.file_size))}` : "";
+    return `<button class="badge as-link" type="button" data-expense-file="${esc(item.id)}:${esc(file.id)}">📎 ${esc(file.file_name || "Файл")}${size}</button>`;
+  }).join(" ");
+  return `<div class="muted mt-8">Файлы</div><div class="expense-row__allocations mt-8">${links}</div>`;
+}
+
+function getExpenseAttachment(expenseId, attachmentId) {
+  const expense = (state.expenses || []).find((item) => String(item.id) === String(expenseId));
+  const files = Array.isArray(expense?.attachments) ? expense.attachments : [];
+  return files.find((file) => String(file.id) === String(attachmentId)) || null;
+}
+
+function isPreviewableImage(contentType = "", fileName = "") {
+  const ct = String(contentType || "").toLowerCase();
+  const name = String(fileName || "").toLowerCase();
+  return ct.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|bmp|svg)$/i.test(name);
+}
+
+function isPreviewablePdf(contentType = "", fileName = "") {
+  const ct = String(contentType || "").toLowerCase();
+  const name = String(fileName || "").toLowerCase();
+  return ct === "application/pdf" || /\.pdf$/i.test(name);
+}
+
+async function deleteExpenseAttachment(expenseId, attachmentId) {
+  const venueId = getActiveVenueId();
+  await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(expenseId)}/attachments/${encodeURIComponent(attachmentId)}`, {
+    method: "DELETE",
+  });
+}
+
+async function openExpenseAttachmentPreview(expenseId, attachmentId) {
+  const venueId = getActiveVenueId();
+  const file = getExpenseAttachment(expenseId, attachmentId) || {};
+  try {
+    const data = await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(expenseId)}/attachments/${encodeURIComponent(attachmentId)}/download-link`);
+    const url = data?.preview_link || data?.download_link;
+    if (!url) throw new Error("download link missing");
+    const name = data?.file?.file_name || file.file_name || "Файл";
+    const contentType = data?.file?.content_type || file.content_type || "";
+    const size = data?.file?.file_size || file.file_size || 0;
+    let previewHtml = `<div class="muted">${esc(contentType || "Файл")} ${size ? `· ${esc(formatBytes(size))}` : ""}</div>`;
+    if (isPreviewableImage(contentType, name)) {
+      previewHtml += `<div class="file-preview"><img src="${esc(url)}" alt="${esc(name)}" /></div>`;
+    } else if (isPreviewablePdf(contentType, name)) {
+      previewHtml += `<div class="file-preview"><iframe src="${esc(url)}" title="${esc(name)}"></iframe></div>`;
+    } else {
+      previewHtml += `<div class="card subtle mt-12">Предпросмотр для этого формата может быть недоступен в браузере. Файл можно открыть или скачать по внешней ссылке.</div>`;
+    }
+    previewHtml += `
+      <div class="file-preview-actions row gap-8 mt-12" style="flex-wrap:wrap;">
+        <button class="btn primary" type="button" id="expenseFileDownloadBtn">Открыть / скачать файл</button>
+        ${access.canEdit ? `<button class="btn danger" type="button" id="expenseFileDeleteBtn">Удалить файл</button>` : ""}
+        <button class="btn ghost" type="button" id="expenseFileCloseBtn">Закрыть</button>
+      </div>
+    `;
+    openHtmlModal(name, previewHtml);
+    const downloadBtn = document.getElementById("expenseFileDownloadBtn");
+    if (downloadBtn) downloadBtn.onclick = () => {
+      const tg = window.Telegram?.WebApp;
+      try { if (tg?.openLink) { tg.openLink(url, { try_instant_view: false }); return; } } catch {}
+      window.open(url, "_blank", "noopener");
+    };
+    const deleteBtn = document.getElementById("expenseFileDeleteBtn");
+    if (deleteBtn) deleteBtn.onclick = async () => {
+      if (!confirm("Удалить этот файл?")) return;
+      deleteBtn.disabled = true;
+      try {
+        await deleteExpenseAttachment(expenseId, attachmentId);
+        toast("Файл удалён", "ok");
+        closeModal();
+        await loadExpenses();
+      } catch (err) {
+        deleteBtn.disabled = false;
+        toast(err?.data?.detail || err.message || "Не удалось удалить файл", "err");
+      }
+    };
+    const closeBtn = document.getElementById("expenseFileCloseBtn");
+    if (closeBtn) closeBtn.onclick = () => closeModal();
+  } catch (err) {
+    toast(err?.data?.detail || err.message || "Не удалось открыть файл", "err");
+  }
+}
+
+async function uploadExpenseFiles(expenseId, files) {
+  const selected = Array.from(files || []).filter(Boolean);
+  if (!selected.length) return;
+  const venueId = getActiveVenueId();
+  const fd = new FormData();
+  selected.forEach((file) => fd.append("files", file));
+  await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(expenseId)}/attachments`, {
+    method: "POST",
+    body: fd,
+    timeoutMs: 120000,
+  });
+}
+
 function buildRegularBadges(item) {
   const badges = [];
   if (item?.recurring_rule_id) badges.push('<span class="badge">Регулярный</span>');
@@ -400,6 +509,7 @@ function renderExpenses() {
           <div class="expense-row__allocations mt-8">${recognizedHtml}</div>
           <div class="muted mt-8">Все аллокации</div>
           <div class="expense-row__allocations mt-8">${allocationsHtml || '<span class="muted">Без распределения</span>'}</div>
+          ${buildExpenseAttachmentsHtml(item)}
         </div>
         <div class="expense-row__side">
           <div class="expense-row__amount">${esc(fmtMinor(item.amount_minor))}</div>
@@ -425,6 +535,12 @@ function renderExpenses() {
       } catch (err) {
         toast(err?.data?.detail || err.message || "Не удалось обновить статус", "err");
       }
+    };
+  });
+  list.querySelectorAll("[data-expense-file]").forEach((btn) => {
+    btn.onclick = () => {
+      const [expenseId, attachmentId] = String(btn.getAttribute("data-expense-file") || "").split(":");
+      if (expenseId && attachmentId) openExpenseAttachmentPreview(expenseId, attachmentId);
     };
   });
 }
@@ -465,6 +581,10 @@ function buildExpenseForm(draft = null) {
         </select>
       </label>
       <label>Комментарий<textarea name="comment" rows="4" placeholder="Комментарий">${esc(data.comment)}</textarea></label>
+      <label>Файлы к расходу
+        <input name="expense_files" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.zip,.rar,application/pdf,image/*" />
+      </label>
+      <div class="muted small">Поддерживаются PDF, изображения, документы, таблицы, CSV/TXT и архивы. До 20 МБ на файл.</div>
       <div class="row gap-8 mt-12">
         <button class="btn primary" type="submit">${draft?.id ? "Сохранить" : "Добавить"}</button>
         <button class="btn ghost" type="button" id="expenseFormCancel">Отмена</button>
@@ -520,13 +640,18 @@ function openExpenseForm(expenseId = null, draftValues = null) {
 
     try {
       const venueId = getActiveVenueId();
+      let saved = null;
       if (item) {
-        await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(item.id)}`, { method: "PATCH", body: payload });
-        toast("Расход обновлён", "ok");
+        saved = await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(item.id)}`, { method: "PATCH", body: payload });
       } else {
-        await api(`/venues/${encodeURIComponent(venueId)}/expenses`, { method: "POST", body: payload });
-        toast("Расход добавлен", "ok");
+        saved = await api(`/venues/${encodeURIComponent(venueId)}/expenses`, { method: "POST", body: payload });
       }
+      const targetExpenseId = Number(saved?.id || item?.id || 0);
+      const filesInput = form.querySelector('input[name="expense_files"]');
+      if (targetExpenseId && filesInput?.files?.length) {
+        await uploadExpenseFiles(targetExpenseId, filesInput.files);
+      }
+      toast(item ? "Расход обновлён" : "Расход добавлен", "ok");
       closeModal();
       await loadExpenses();
     } catch (err) {

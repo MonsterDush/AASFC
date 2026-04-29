@@ -118,6 +118,7 @@ from app.models.kpi_metric import KpiMetric
 from app.models.expense_category import ExpenseCategory
 from app.models.supplier import Supplier
 from app.models.expense import Expense
+from app.models.expense_attachment import ExpenseAttachment
 from app.models.expense_allocation import ExpenseAllocation
 from app.models.finance_entry import FinanceEntry
 from app.models.balance_adjustment import BalanceAdjustment
@@ -263,12 +264,14 @@ class InviteDefaultPositionPatchIn(BaseModel):
 
 class VenueSettingsOut(BaseModel):
     tips_enabled: bool = False
+    night_shifts_enabled: bool = False
     tips_split_mode: str = "EQUAL"
     tips_weights: dict | None = None
 
 
 class VenueSettingsPatchIn(BaseModel):
     tips_enabled: bool | None = None
+    night_shifts_enabled: bool | None = None
     tips_split_mode: str | None = None
     tips_weights: dict | None = None
 
@@ -1087,6 +1090,121 @@ def _serialize_expense_allocation(allocation: ExpenseAllocation) -> dict:
     }
 
 
+def _serialize_expense_attachment(attachment: ExpenseAttachment) -> dict:
+    path = f"/venues/{attachment.venue_id}/expenses/{attachment.expense_id}/attachments/{attachment.id}"
+    return {
+        "id": attachment.id,
+        "expense_id": attachment.expense_id,
+        "file_name": attachment.file_name,
+        "content_type": attachment.content_type,
+        "file_size": int(getattr(attachment, "file_size", 0) or 0),
+        "created_at": attachment.created_at.isoformat() if attachment.created_at else None,
+        "url": path,
+        "download_link_url": f"{path}/download-link",
+    }
+
+
+def _expense_attachment_token_payload(attachment: ExpenseAttachment) -> dict:
+    return {
+        "action": "expense_attachment_download",
+        "venue_id": int(attachment.venue_id),
+        "expense_id": int(attachment.expense_id),
+        "attachment_id": int(attachment.id),
+    }
+
+
+def _expense_attachment_signed_url(base_url: str, attachment: ExpenseAttachment) -> str:
+    token = make_signed_token(_expense_attachment_token_payload(attachment))
+    base = str(base_url or "").rstrip("/")
+    path = f"/venues/{attachment.venue_id}/expenses/{attachment.expense_id}/attachments/{attachment.id}"
+    return f"{base}{path}?token={quote(token)}"
+
+
+def _get_expense_attachment_or_404(
+    db: Session,
+    *,
+    venue_id: int,
+    expense_id: int,
+    attachment_id: int,
+) -> ExpenseAttachment:
+    attachment = db.execute(
+        select(ExpenseAttachment).where(
+            ExpenseAttachment.id == int(attachment_id),
+            ExpenseAttachment.venue_id == int(venue_id),
+            ExpenseAttachment.expense_id == int(expense_id),
+            ExpenseAttachment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return attachment
+
+
+def _verify_expense_attachment_token(token: str | None, *, venue_id: int, expense_id: int, attachment_id: int) -> None:
+    if not token:
+        raise HTTPException(status_code=401, detail="Invalid attachment token")
+    try:
+        payload = verify_signed_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid attachment token")
+    if str(payload.get("action") or "") != "expense_attachment_download":
+        raise HTTPException(status_code=401, detail="Invalid attachment token")
+    if int(payload.get("venue_id") or 0) != int(venue_id):
+        raise HTTPException(status_code=401, detail="Invalid attachment token")
+    if int(payload.get("expense_id") or 0) != int(expense_id):
+        raise HTTPException(status_code=401, detail="Invalid attachment token")
+    if int(payload.get("attachment_id") or 0) != int(attachment_id):
+        raise HTTPException(status_code=401, detail="Invalid attachment token")
+
+
+def _expense_attachment_file_response(attachment: ExpenseAttachment) -> FileResponse:
+    if not attachment.storage_path or not os.path.exists(attachment.storage_path):
+        raise HTTPException(status_code=404, detail="File missing")
+    return FileResponse(
+        attachment.storage_path,
+        media_type=attachment.content_type or "application/octet-stream",
+        filename=attachment.file_name,
+    )
+
+
+def _list_active_expense_attachments(db: Session, *, venue_id: int, expense_id: int) -> list[ExpenseAttachment]:
+    return list(
+        db.execute(
+            select(ExpenseAttachment)
+            .where(
+                ExpenseAttachment.venue_id == venue_id,
+                ExpenseAttachment.expense_id == expense_id,
+                ExpenseAttachment.is_active.is_(True),
+            )
+            .order_by(ExpenseAttachment.id.asc())
+        ).scalars().all()
+    )
+
+
+def _get_expense_or_404(db: Session, *, venue_id: int, expense_id: int) -> Expense:
+    obj = db.execute(
+        select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return obj
+
+
+_EXPENSE_ATTACHMENT_ALLOWED_EXTENSIONS = {
+    ".pdf",
+    ".jpg", ".jpeg", ".png", ".webp", ".heic",
+    ".doc", ".docx", ".xls", ".xlsx", ".csv",
+    ".txt", ".rtf",
+    ".zip", ".rar",
+}
+_EXPENSE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024
+
+
+def _safe_upload_filename(filename: str | None) -> str:
+    raw = os.path.basename(str(filename or "file")).strip() or "file"
+    return re.sub(r"[^0-9A-Za-zА-Яа-яЁё._()\- ]+", "_", raw)[:180] or "file"
+
+
 def _serialize_expense(
     expense: Expense,
     category: ExpenseCategory | None = None,
@@ -1098,6 +1216,7 @@ def _serialize_expense(
     sup = supplier or getattr(expense, "supplier", None)
     pm = payment_method or getattr(expense, "payment_method", None)
     allocs = allocations if allocations is not None else list(getattr(expense, "allocations", []) or [])
+    attachments = [a for a in list(getattr(expense, "attachments", []) or []) if getattr(a, "is_active", True)]
     return {
         "id": expense.id,
         "venue_id": expense.venue_id,
@@ -1130,6 +1249,8 @@ def _serialize_expense(
             "title": pm.title,
         } if pm is not None else None,
         "allocations": [_serialize_expense_allocation(a) for a in allocs],
+        "attachments": [_serialize_expense_attachment(a) for a in attachments],
+        "attachments_count": len(attachments),
     }
 
 
@@ -2263,6 +2384,7 @@ def get_venue_settings(
 
     return VenueSettingsOut(
         tips_enabled=bool(getattr(venue, "tips_enabled", False)),
+        night_shifts_enabled=bool(getattr(venue, "night_shifts_enabled", False)),
         tips_split_mode=str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL"),
         tips_weights=getattr(venue, "tips_weights", None),
     )
@@ -2287,6 +2409,9 @@ def patch_venue_settings(
     if payload.tips_enabled is not None:
         venue.tips_enabled = bool(payload.tips_enabled)
 
+    if payload.night_shifts_enabled is not None:
+        venue.night_shifts_enabled = bool(payload.night_shifts_enabled)
+
     if payload.tips_split_mode is not None:
         mode = str(payload.tips_split_mode).strip().upper()
         if mode not in ("EQUAL", "WEIGHTED_BY_POSITION"):
@@ -2301,6 +2426,7 @@ def patch_venue_settings(
     db.refresh(venue)
     return VenueSettingsOut(
         tips_enabled=bool(getattr(venue, "tips_enabled", False)),
+        night_shifts_enabled=bool(getattr(venue, "night_shifts_enabled", False)),
         tips_split_mode=str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL"),
         tips_weights=getattr(venue, "tips_weights", None),
     )
@@ -4967,6 +5093,7 @@ def _load_expenses_for_export(
     category_id: int | None,
     supplier_id: int | None,
     statuses: str | None,
+    base_url: str | None = None,
 ) -> list[dict]:
     stmt = (
         select(Expense, ExpenseCategory, Supplier, PaymentMethod)
@@ -5008,6 +5135,16 @@ def _load_expenses_for_export(
         allocations = list_expense_allocations(db=db, expense_id=expense.id)
         recognized_allocations = [a for a in allocations if recognized_month is not None and a.month == recognized_month]
         payload = _serialize_expense(expense, category, supplier, payment_method, allocations)
+        if base_url:
+            for attachment_payload in payload.get("attachments") or []:
+                try:
+                    attachment_id = int(attachment_payload.get("id") or 0)
+                    attachment_obj = next((a for a in getattr(expense, "attachments", []) if int(getattr(a, "id", 0) or 0) == attachment_id), None)
+                    if attachment_obj is None:
+                        attachment_obj = _get_expense_attachment_or_404(db, venue_id=venue_id, expense_id=int(expense.id), attachment_id=attachment_id)
+                    attachment_payload["download_url"] = _expense_attachment_signed_url(base_url, attachment_obj)
+                except Exception:
+                    pass
         payload["recognized_allocations"] = [_serialize_expense_allocation(a) for a in recognized_allocations]
         payload["recognized_amount_minor_for_month"] = int(sum(int(a.amount_minor or 0) for a in recognized_allocations))
         payload_rows.append(payload)
@@ -5158,6 +5295,7 @@ def get_revenue_export_link(
 @router.get("/{venue_id}/revenue/export")
 def export_revenue(
     venue_id: int,
+    request: Request,
     month: str | None = Query(None, description="YYYY-MM"),
     date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
@@ -5200,6 +5338,7 @@ def export_revenue(
             fmt=fmt,
             db=db,
             user=None,
+            base_url=str(request.base_url).rstrip("/"),
         )
 
     if user is None:
@@ -5218,7 +5357,7 @@ def export_revenue(
 
 
 
-def _build_expenses_export_response(*, venue_id: int, month: str | None, category_id: int | None, supplier_id: int | None, statuses: str | None, db: Session, user: User | None = None):
+def _build_expenses_export_response(*, venue_id: int, month: str | None, category_id: int | None, supplier_id: int | None, statuses: str | None, db: Session, user: User | None = None, base_url: str | None = None):
     if user is not None:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
 
@@ -5232,6 +5371,7 @@ def _build_expenses_export_response(*, venue_id: int, month: str | None, categor
         category_id=category_id,
         supplier_id=supplier_id,
         statuses=statuses,
+        base_url=base_url,
     )
     total_minor = sum(int(item.get("recognized_amount_minor_for_month") or 0) for item in rows)
     xlsx_bytes = build_expenses_xlsx(
@@ -5298,6 +5438,7 @@ def get_expenses_export_link(
 @router.get("/{venue_id}/expenses/export")
 def export_expenses(
     venue_id: int,
+    request: Request,
     month: str | None = Query(None, description="YYYY-MM"),
     category_id: int | None = Query(None),
     supplier_id: int | None = Query(None),
@@ -5325,6 +5466,7 @@ def export_expenses(
             statuses=statuses,
             db=db,
             user=None,
+            base_url=str(request.base_url).rstrip("/"),
         )
 
     if user is None:
@@ -5338,6 +5480,7 @@ def export_expenses(
         statuses=statuses,
         db=db,
         user=user,
+        base_url=str(request.base_url).rstrip("/"),
     )
 
 
@@ -9537,6 +9680,153 @@ def delete_expense(
     db.delete(obj)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/{venue_id}/expenses/{expense_id}/attachments")
+def list_expense_attachments(
+    venue_id: int,
+    expense_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+    _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
+    rows = _list_active_expense_attachments(db, venue_id=venue_id, expense_id=expense_id)
+    return {"items": [_serialize_expense_attachment(a) for a in rows]}
+
+
+@router.get("/{venue_id}/expenses/{expense_id}/attachments/{attachment_id}/download-link")
+def get_expense_attachment_download_link(
+    venue_id: int,
+    expense_id: int,
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+    _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
+    attachment = _get_expense_attachment_or_404(db, venue_id=venue_id, expense_id=expense_id, attachment_id=attachment_id)
+    url = _expense_attachment_signed_url(str(request.base_url).rstrip("/"), attachment)
+    return {
+        "download_link": url,
+        "preview_link": url,
+        "expires_in": int(getattr(settings, 'EXPORT_LINK_TTL_SECONDS', 600) or 600),
+        "file": _serialize_expense_attachment(attachment),
+    }
+
+
+@router.get("/{venue_id}/expenses/{expense_id}/attachments/{attachment_id}")
+def download_expense_attachment(
+    venue_id: int,
+    expense_id: int,
+    attachment_id: int,
+    token: str | None = Query(None),
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+):
+    if token:
+        _verify_expense_attachment_token(token, venue_id=venue_id, expense_id=expense_id, attachment_id=attachment_id)
+    else:
+        if user is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+    _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
+    attachment = _get_expense_attachment_or_404(db, venue_id=venue_id, expense_id=expense_id, attachment_id=attachment_id)
+    return _expense_attachment_file_response(attachment)
+
+
+@router.delete("/{venue_id}/expenses/{expense_id}/attachments/{attachment_id}")
+def delete_expense_attachment(
+    venue_id: int,
+    expense_id: int,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
+    attachment = db.execute(
+        select(ExpenseAttachment).where(
+            ExpenseAttachment.id == attachment_id,
+            ExpenseAttachment.venue_id == venue_id,
+            ExpenseAttachment.expense_id == expense_id,
+            ExpenseAttachment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    attachment.is_active = False
+    db.commit()
+    try:
+        if attachment.storage_path and os.path.exists(attachment.storage_path):
+            os.remove(attachment.storage_path)
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@router.post("/{venue_id}/expenses/{expense_id}/attachments")
+def upload_expense_attachments(
+    venue_id: int,
+    expense_id: int,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "expenses"))
+    os.makedirs(base_dir, exist_ok=True)
+
+    created: list[ExpenseAttachment] = []
+    for upload in files:
+        if upload is None:
+            continue
+        safe_name = _safe_upload_filename(upload.filename)
+        ext = os.path.splitext(safe_name.lower())[1]
+        if ext not in _EXPENSE_ATTACHMENT_ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=415, detail=f"Неподдерживаемый формат файла: {ext or 'без расширения'}")
+
+        uid = uuid.uuid4().hex
+        dst = os.path.join(base_dir, f"{venue_id}_{expense_id}_{uid}_{safe_name}")
+        total = 0
+        try:
+            with open(dst, "wb") as out:
+                while True:
+                    chunk = upload.file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > _EXPENSE_ATTACHMENT_MAX_BYTES:
+                        raise HTTPException(status_code=413, detail="Файл слишком большой: максимум 20 МБ")
+                    out.write(chunk)
+        except HTTPException:
+            try:
+                if os.path.exists(dst):
+                    os.remove(dst)
+            except Exception:
+                pass
+            raise
+
+        obj = ExpenseAttachment(
+            venue_id=venue_id,
+            expense_id=expense_id,
+            file_name=safe_name,
+            content_type=upload.content_type,
+            file_size=total,
+            storage_path=dst,
+            uploaded_by_user_id=user.id,
+            is_active=True,
+            created_at=datetime.utcnow(),
+        )
+        db.add(obj)
+        db.flush()
+        created.append(obj)
+
+    db.commit()
+    return {"ok": True, "items": [_serialize_expense_attachment(a) for a in created]}
 
 
 @router.get("/{venue_id}/balance-adjustments")

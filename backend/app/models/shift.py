@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -13,7 +13,7 @@ class Shift(Base):
 
     __tablename__ = "shifts"
     __table_args__ = (
-        UniqueConstraint("venue_id", "date", "interval_id", name="uq_shifts_venue_date_interval"),
+        UniqueConstraint("venue_id", "date", "interval_id", "shift_slot", name="uq_shifts_venue_date_interval_slot"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -22,6 +22,9 @@ class Shift(Base):
     date: Mapped[object] = mapped_column(Date, nullable=False, index=True)
 
     interval_id: Mapped[int] = mapped_column(ForeignKey("shift_intervals.id"), index=True)
+
+    # DAY by default; NIGHT is allowed only for venues with night_shifts_enabled=true.
+    shift_slot: Mapped[str] = mapped_column(String(16), nullable=False, default="DAY", server_default="DAY", index=True)
 
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)

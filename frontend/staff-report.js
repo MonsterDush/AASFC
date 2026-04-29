@@ -29,12 +29,40 @@ const params = new URLSearchParams(location.search);
 let venueId = params.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);
 
+const LS_REPORT_SHIFT_SLOT = "axelio.reports.shiftSlot";
+function normalizeShiftSlot(value) {
+  const slot = String(value || "DAY").trim().toUpperCase();
+  return slot === "NIGHT" ? "NIGHT" : "DAY";
+}
+function shiftSlotLabel(slot) {
+  return normalizeShiftSlot(slot) === "NIGHT" ? "Ночь" : "День";
+}
+let selectedShiftSlot = normalizeShiftSlot(params.get("shift_slot") || localStorage.getItem(LS_REPORT_SHIFT_SLOT) || "DAY");
+let nightShiftsEnabled = false;
+let venueSettingsCache = null;
+let tipsEnabledForVenueCache = true;
+function reportSlotQuery(prefix = "?") {
+  return `${prefix}shift_slot=${encodeURIComponent(selectedShiftSlot)}`;
+}
+function updateReportSlotUrl() {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (nightShiftsEnabled && selectedShiftSlot === "NIGHT") q.set("shift_slot", "NIGHT");
+    else q.delete("shift_slot");
+    const next = `${location.pathname}${q.toString() ? "?" + q.toString() : ""}${location.hash || ""}`;
+    history.replaceState(null, "", next);
+  } catch {}
+}
+
 const el = {
   monthLabel: document.getElementById("monthLabel"),
   prev: document.getElementById("monthPrev"),
   next: document.getElementById("monthNext"),
   grid: document.getElementById("calGrid"),
   dayPanel: document.getElementById("dayPanel"),
+  reportSlotToggle: document.getElementById("reportSlotToggle"),
+  reportSlotDay: document.getElementById("reportSlotDay"),
+  reportSlotNight: document.getElementById("reportSlotNight"),
 };
 
 // Month summary (DayPanel) removed earlier — keep compatible if exists
@@ -168,7 +196,7 @@ async function deleteCurrentPhoto() {
   if (!a) return;
   if (!confirm("Удалить файл?")) return;
   try {
-    await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(phDayISO)}/attachments/${encodeURIComponent(a.id)}`, { method: "DELETE" });
+    await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(phDayISO)}/attachments/${encodeURIComponent(a.id)}${reportSlotQuery()}`, { method: "DELETE" });
     phItems.splice(phIndex, 1);
     if (!phItems.length) {
       closePhotoModal();
@@ -295,13 +323,55 @@ async function loadPerms() {
   } catch {}
 }
 
+async function loadReportVenueSettings() {
+  if (!venueId) return;
+  try {
+    const settings = await getVenueSettings(venueId);
+    venueSettingsCache = settings || null;
+    nightShiftsEnabled = !!settings?.night_shifts_enabled;
+    tipsEnabledForVenueCache = settings?.tips_enabled !== false;
+  } catch {
+    venueSettingsCache = null;
+    nightShiftsEnabled = false;
+    tipsEnabledForVenueCache = true;
+  }
+  if (!nightShiftsEnabled) selectedShiftSlot = "DAY";
+  try { localStorage.setItem(LS_REPORT_SHIFT_SLOT, selectedShiftSlot); } catch {}
+  renderReportSlotToggle();
+  updateReportSlotUrl();
+}
+
+function renderReportSlotToggle() {
+  const box = el.reportSlotToggle;
+  if (!box) return;
+  const shouldShow = !!nightShiftsEnabled;
+  box.classList.toggle("hidden", !shouldShow);
+  if (!shouldShow) selectedShiftSlot = "DAY";
+  el.reportSlotDay?.classList.toggle("active", selectedShiftSlot === "DAY");
+  el.reportSlotNight?.classList.toggle("active", selectedShiftSlot === "NIGHT");
+}
+
+async function switchReportSlot(slot) {
+  const next = normalizeShiftSlot(slot);
+  if (next === selectedShiftSlot) return;
+  selectedShiftSlot = next;
+  try { localStorage.setItem(LS_REPORT_SHIFT_SLOT, selectedShiftSlot); } catch {}
+  renderReportSlotToggle();
+  updateReportSlotUrl();
+  await loadMonthReports();
+  renderMonth();
+  if (selectedDayISO && modal?.classList.contains("open")) {
+    await openDay(selectedDayISO);
+  }
+}
+
 async function loadMonthReports() {
   reportsByDate = new Map();
   if (!venueId) return;
   if (!canView()) return;
   const m = ym(curMonth);
   try {
-    const list = await api(`/venues/${encodeURIComponent(venueId)}/reports?month=${encodeURIComponent(m)}`);
+    const list = await api(`/venues/${encodeURIComponent(venueId)}/reports?month=${encodeURIComponent(m)}&shift_slot=${encodeURIComponent(selectedShiftSlot)}`);
     (list || []).forEach((r) => {
       if (r?.date) reportsByDate.set(r.date, r);
     });
@@ -324,7 +394,7 @@ function renderNoVenue() {
 function renderMonth() {
   if (!el.grid || !el.monthLabel) return;
 
-  el.monthLabel.textContent = monthTitle(curMonth);
+  el.monthLabel.textContent = nightShiftsEnabled ? `${monthTitle(curMonth)} · ${shiftSlotLabel(selectedShiftSlot)}` : monthTitle(curMonth);
   el.grid.innerHTML = "";
 
   if (!venueId) {
@@ -412,7 +482,7 @@ function renderMonth() {
 // ---- API calls for report ----
 async function fetchReport(dayISO) {
   try {
-    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}`);
+    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}${reportSlotQuery()}`);
   } catch (e) {
     throw e;
   }
@@ -420,7 +490,7 @@ async function fetchReport(dayISO) {
 
 async function fetchAttachments(dayISO) {
   try {
-    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`);
+    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments${reportSlotQuery()}`);
   } catch {
     return { items: [] };
   }
@@ -429,7 +499,7 @@ async function fetchAttachments(dayISO) {
 async function uploadAttachments(dayISO, files) {
   const fd = new FormData();
   for (const f of files) fd.append("files", f);
-  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments`, {
+  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments${reportSlotQuery()}`, {
     method: "POST",
     body: fd,
   });
@@ -437,21 +507,21 @@ async function uploadAttachments(dayISO, files) {
 
 async function fetchAudit(dayISO) {
   try {
-    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/audit`);
+    return await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/audit${reportSlotQuery()}`);
   } catch {
     return [];
   }
 }
 
 async function closeReport(dayISO, comment) {
-  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/close`, {
+  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/close${reportSlotQuery()}`, {
     method: "POST",
     body: { comment: comment ?? null },
   });
 }
 
 async function reopenReport(dayISO) {
-  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/reopen`, {
+  return api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/reopen${reportSlotQuery()}`, {
     method: "POST",
   });
 }
@@ -464,6 +534,7 @@ function buildEmptyReportFromCatalogs(dayISO, catalogs) {
   return {
     id: null,
     date: dayISO,
+    shift_slot: selectedShiftSlot,
     status: "DRAFT",
     closed_at: null,
     closed_by_user_id: null,
@@ -636,9 +707,10 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
 
   const editEnabled = mode === "edit" ? (isDraft ? canEditDraft : canEditClosedNow) : false;
 
-  const subtitle = isDraft
+  const slotText = nightShiftsEnabled ? shiftSlotLabel(selectedShiftSlot) : "";
+  const subtitle = (isDraft
     ? (canMake() ? "Черновик" : "Просмотр")
-    : "Закрыто" + (rep?.closed_at ? ` · ${fmtDtRu(rep.closed_at)}` : "");
+    : "Закрыто" + (rep?.closed_at ? ` · ${fmtDtRu(rep.closed_at)}` : "")) + (slotText ? ` · ${slotText}` : "");
 
   const topMeta = `
     <div class="rep-topmeta">
@@ -837,7 +909,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
     ${section("История изменений", auditHtml, status === "CLOSED" ? "Все изменения закрытого отчёта сохраняются в истории" : "История появится после изменений закрытого отчёта")}
   `;
 
-  return { title: formatDateRuNoG(dayISO), subtitle, body, hasDepartments, editEnabled };
+  return { title: nightShiftsEnabled ? `${formatDateRuNoG(dayISO)} · ${shiftSlotLabel(selectedShiftSlot)}` : formatDateRuNoG(dayISO), subtitle, body, hasDepartments, editEnabled };
 }
 
 function collectPayloadFromDom({ dayISO, hasDepartments, tipsEnabled }) {
@@ -845,6 +917,7 @@ function collectPayloadFromDom({ dayISO, hasDepartments, tipsEnabled }) {
 
   const payload = {
     date: dayISO,
+    shift_slot: selectedShiftSlot,
     cash: 0,
     cashless: 0,
     revenue_total: 0,
@@ -958,7 +1031,7 @@ async function wireAttachmentsHandlers({ dayISO, attItems }) {
       if (!id) return;
       if (!confirm("Удалить файл?")) return;
       try {
-        await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments/${encodeURIComponent(id)}`, { method: "DELETE" });
+        await api(`/venues/${encodeURIComponent(venueId)}/reports/${encodeURIComponent(dayISO)}/attachments/${encodeURIComponent(id)}${reportSlotQuery()}`, { method: "DELETE" });
         toast("Удалено", "ok");
         await openDay(dayISO);
       } catch (e) {
@@ -1019,7 +1092,7 @@ async function wireAttachmentsHandlers({ dayISO, attItems }) {
 
 async function upsertReportFromDom({ dayISO, hasDepartments, tipsEnabled }) {
   const payload = collectPayloadFromDom({ dayISO, hasDepartments, tipsEnabled });
-  return api(`/venues/${encodeURIComponent(venueId)}/reports`, {
+  return api(`/venues/${encodeURIComponent(venueId)}/reports${reportSlotQuery()}`, {
     method: "POST",
     body: payload,
   });
@@ -1052,15 +1125,9 @@ async function openDay(dayISO) {
     catalogs = { payments: [], departments: [], kpis: [] };
   }
 
-  // Load venue settings (tips)
-  let tipsEnabledForVenue = true;
-  try {
-    const s = await withTimeout(getVenueSettings(venueId), 8000, "venue settings");
-    tipsEnabledForVenue = s?.tips_enabled !== false;
-  } catch {
-    // If settings cannot be loaded, default to showing tips field (backend will still ignore when disabled).
-    tipsEnabledForVenue = true;
-  }
+  // Venue settings are loaded once on boot and reused here.
+  // If settings cannot be loaded, default to showing tips field (backend will still ignore when disabled).
+  let tipsEnabledForVenue = tipsEnabledForVenueCache !== false;
 
   // Load report (may not exist)
   let rep = null;
@@ -1216,7 +1283,11 @@ if (el.next) {
   });
 }
 
+el.reportSlotDay?.addEventListener("click", () => switchReportSlot("DAY").catch((e) => toast("Ошибка переключения: " + (e?.message || "неизвестно"), "err")));
+el.reportSlotNight?.addEventListener("click", () => switchReportSlot("NIGHT").catch((e) => toast("Ошибка переключения: " + (e?.message || "неизвестно"), "err")));
+
 await loadPerms();
+await loadReportVenueSettings();
 if (!canView()) {
   toast("Нет доступа к отчётам", "warn");
   const q = venueId ? `?venue_id=${encodeURIComponent(venueId)}` : "";

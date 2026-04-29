@@ -27,7 +27,13 @@
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext">▶</button>
         </div>
-          <div class="muted small">Нажмите на день, чтобы открыть или заполнить отчёт</div>
+          <div class="row ai-center gap-10 row--center" style="flex-wrap:wrap; justify-content:flex-end">
+            <div id="reportSlotToggle" class="shift-toggle hidden" aria-label="Слот отчёта">
+              <button type="button" id="reportSlotDay">День</button>
+              <button type="button" id="reportSlotNight">Ночь</button>
+            </div>
+            <div class="muted small">Нажмите на день, чтобы открыть или заполнить отчёт</div>
+          </div>
         </div>
         <div class="report-legend mt-10">
           <div class="report-legend__item"><span class="report-legend__swatch report-legend__swatch--closed"></span><span>Закрытая смена</span></div>

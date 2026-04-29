@@ -29,6 +29,17 @@ DAY_KIND_TITLES = {
 }
 
 
+def _normalize_economics_shift_slot(value: str | None) -> str:
+    slot = str(value or 'TOTAL').strip().upper()
+    if slot in {'DAY', 'NIGHT'}:
+        return slot
+    return 'TOTAL'
+
+
+def _is_slot_specific(value: str | None) -> bool:
+    return _normalize_economics_shift_slot(value) in {'DAY', 'NIGHT'}
+
+
 def _month_start(target_date: date) -> date:
     return target_date.replace(day=1)
 
@@ -61,18 +72,13 @@ def _day_kind_title(day_kind: str | None) -> str | None:
     return DAY_KIND_TITLES.get(key) if key else None
 
 
-def _get_report_state(*, db: Session, venue_id: int, target_date: date) -> dict:
-    report = db.execute(
-        select(DailyReport).where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.date == target_date,
-        )
-    ).scalar_one_or_none()
+def _serialize_single_report_state(report: DailyReport | None, *, shift_slot: str) -> dict:
     if report is None:
         return {
             'exists': False,
             'report_id': None,
             'status': 'MISSING',
+            'shift_slot': shift_slot,
             'closed_at': None,
             'closed_by_user_id': None,
             'comment': None,
@@ -83,6 +89,7 @@ def _get_report_state(*, db: Session, venue_id: int, target_date: date) -> dict:
         'exists': True,
         'report_id': int(report.id),
         'status': str(report.status or 'DRAFT').upper(),
+        'shift_slot': shift_slot,
         'closed_at': report.closed_at,
         'closed_by_user_id': int(report.closed_by_user_id) if report.closed_by_user_id is not None else None,
         'comment': report.comment,
@@ -91,13 +98,76 @@ def _get_report_state(*, db: Session, venue_id: int, target_date: date) -> dict:
     }
 
 
-def _get_team_snapshot(*, db: Session, venue_id: int, target_date: date) -> dict:
+def _get_report_state(*, db: Session, venue_id: int, target_date: date, shift_slot: str = 'TOTAL') -> dict:
+    slot = _normalize_economics_shift_slot(shift_slot)
+    stmt = select(DailyReport).where(
+        DailyReport.venue_id == int(venue_id),
+        DailyReport.date == target_date,
+    )
+    if slot in {'DAY', 'NIGHT'}:
+        report = db.execute(stmt.where(DailyReport.shift_slot == slot)).scalar_one_or_none()
+        return _serialize_single_report_state(report, shift_slot=slot)
+
+    reports = db.execute(stmt).scalars().all()
+    if not reports:
+        return _serialize_single_report_state(None, shift_slot='TOTAL')
+
+    closed_reports = [r for r in reports if str(r.status or '').upper() == 'CLOSED']
+    if closed_reports:
+        status = 'CLOSED'
+    elif any(str(r.status or '').upper() == 'DRAFT' for r in reports):
+        status = 'DRAFT'
+    else:
+        status = str(reports[0].status or 'DRAFT').upper()
+
+    latest_closed_at = None
+    latest_closed_by = None
+    for report in closed_reports:
+        if report.closed_at is not None and (latest_closed_at is None or report.closed_at > latest_closed_at):
+            latest_closed_at = report.closed_at
+            latest_closed_by = report.closed_by_user_id
+
+    comments = [str(r.comment or '').strip() for r in reports if str(r.comment or '').strip()]
+    revenue_total = sum(int(r.revenue_total or 0) for r in closed_reports)
+    tips_total = sum(int(r.tips_total or 0) for r in closed_reports)
+
+    return {
+        'exists': True,
+        'report_id': None,
+        'status': status,
+        'shift_slot': 'TOTAL',
+        'closed_at': latest_closed_at,
+        'closed_by_user_id': int(latest_closed_by) if latest_closed_by is not None else None,
+        'comment': ' · '.join(comments) if comments else None,
+        'revenue_total_minor': int(revenue_total) * 100,
+        'tips_total_minor': int(tips_total) * 100,
+    }
+
+
+def _shift_scope_filters(shift_slot: str | None) -> list:
+    slot = _normalize_economics_shift_slot(shift_slot)
+    if slot in {'DAY', 'NIGHT'}:
+        return [Shift.shift_slot == slot]
+    return []
+
+
+def _report_scope_filters(shift_slot: str | None) -> list:
+    slot = _normalize_economics_shift_slot(shift_slot)
+    if slot in {'DAY', 'NIGHT'}:
+        return [DailyReport.shift_slot == slot]
+    return []
+
+
+def _get_team_snapshot(*, db: Session, venue_id: int, target_date: date, shift_slot: str = 'TOTAL') -> dict:
+    shift_filters = _shift_scope_filters(shift_slot)
+
     total_shift_count = int(
         db.execute(
             select(func.count(Shift.id)).where(
                 Shift.venue_id == int(venue_id),
                 Shift.date == target_date,
                 Shift.is_active.is_(True),
+                *shift_filters,
             )
         ).scalar()
         or 0
@@ -111,6 +181,7 @@ def _get_team_snapshot(*, db: Session, venue_id: int, target_date: date) -> dict
                 Shift.venue_id == int(venue_id),
                 Shift.date == target_date,
                 Shift.is_active.is_(True),
+                *shift_filters,
             )
         ).scalar()
         or 0
@@ -124,6 +195,7 @@ def _get_team_snapshot(*, db: Session, venue_id: int, target_date: date) -> dict
                 Shift.venue_id == int(venue_id),
                 Shift.date == target_date,
                 Shift.is_active.is_(True),
+                *shift_filters,
             )
         ).scalar()
         or 0
@@ -137,6 +209,7 @@ def _get_team_snapshot(*, db: Session, venue_id: int, target_date: date) -> dict
                 Shift.venue_id == int(venue_id),
                 Shift.date == target_date,
                 Shift.is_active.is_(True),
+                *shift_filters,
             )
         ).scalar()
         or 0
@@ -151,12 +224,13 @@ def _get_team_snapshot(*, db: Session, venue_id: int, target_date: date) -> dict
     }
 
 
-def _get_kpi_breakdown(*, db: Session, venue_id: int, target_date: date) -> list[dict]:
+def _get_kpi_breakdown(*, db: Session, venue_id: int, target_date: date, shift_slot: str = 'TOTAL') -> list[dict]:
     report_ids = db.execute(
         select(DailyReport.id).where(
             DailyReport.venue_id == int(venue_id),
             DailyReport.date == target_date,
             DailyReport.status == 'CLOSED',
+            *_report_scope_filters(shift_slot),
         )
     ).scalars().all()
     if not report_ids:
@@ -589,7 +663,7 @@ def _build_plan_fact(*, summary: dict, metrics: dict, team: dict, plan: dict) ->
     }
 
 
-def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict, rules: dict) -> list[dict]:
+def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict, rules: dict, shift_slot: str = 'TOTAL') -> list[dict]:
     alerts: list[dict] = []
 
     report_status = str(report.get('status') or 'MISSING').upper()
@@ -607,6 +681,14 @@ def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict
             'code': 'DRAFT_EXPENSES',
             'title': 'Есть черновые расходы',
             'detail': f"{int(summary.get('draft_expense_count') or 0)} черновик(ов) на сумму {_format_minor_as_rub_text(summary.get('draft_expense_total_minor'))}.",
+        })
+
+    if _is_slot_specific(shift_slot) and not bool(summary.get('slot_costs_available', True)):
+        alerts.append({
+            'severity': 'INFO',
+            'code': 'SLOT_COSTS_NOT_ALLOCATED',
+            'title': 'Расходы и ФОТ показаны в «Итого»',
+            'detail': 'Текущие расходы, корректировки и ФОТ пока хранятся на уровне даты, поэтому не распределяются между дневной и ночной сменой.',
         })
 
     if int(summary.get('profit_minor') or 0) < 0:
@@ -685,7 +767,7 @@ def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict
     return alerts
 
 
-def _build_rollup(*, db: Session, venue_id: int, target_date: date) -> dict:
+def _build_rollup(*, db: Session, venue_id: int, target_date: date, shift_slot: str = 'TOTAL') -> dict:
     month_start = target_date.replace(day=1)
     cursor = month_start
     days: list[dict] = []
@@ -693,9 +775,9 @@ def _build_rollup(*, db: Session, venue_id: int, target_date: date) -> dict:
     closed_day_count = 0
 
     while cursor <= target_date:
-        summary = get_day_finance_summary(db=db, venue_id=venue_id, target_date=cursor, income_mode='PAYMENTS')
-        team = _get_team_snapshot(db=db, venue_id=venue_id, target_date=cursor)
-        report = _get_report_state(db=db, venue_id=venue_id, target_date=cursor)
+        summary = get_day_finance_summary(db=db, venue_id=venue_id, target_date=cursor, income_mode='PAYMENTS', shift_slot=shift_slot)
+        team = _get_team_snapshot(db=db, venue_id=venue_id, target_date=cursor, shift_slot=shift_slot)
+        report = _get_report_state(db=db, venue_id=venue_id, target_date=cursor, shift_slot=shift_slot)
         if str(report.get('status') or '').upper() == 'CLOSED':
             closed_day_count += 1
         if int(summary.get('revenue_minor') or 0) > 0 or int(summary.get('expense_minor') or 0) > 0 or report.get('exists'):
@@ -778,22 +860,24 @@ def _build_metrics(*, summary: dict, report: dict, team: dict, department_share_
     }
 
 
-def get_day_economics(*, db: Session, venue_id: int, target_date: date) -> dict:
-    summary = get_day_finance_summary(db=db, venue_id=venue_id, target_date=target_date, income_mode='PAYMENTS')
-    report = _get_report_state(db=db, venue_id=venue_id, target_date=target_date)
-    team = _get_team_snapshot(db=db, venue_id=venue_id, target_date=target_date)
-    payment_revenue_breakdown = _group_revenue_breakdown(db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode='PAYMENTS')
-    department_revenue_breakdown = _group_revenue_breakdown(db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode='DEPARTMENTS')
+def get_day_economics(*, db: Session, venue_id: int, target_date: date, shift_slot: str = 'TOTAL') -> dict:
+    slot = _normalize_economics_shift_slot(shift_slot)
+    summary = get_day_finance_summary(db=db, venue_id=venue_id, target_date=target_date, income_mode='PAYMENTS', shift_slot=slot)
+    report = _get_report_state(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
+    team = _get_team_snapshot(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
+    payment_revenue_breakdown = _group_revenue_breakdown(db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode='PAYMENTS', shift_slot=slot)
+    department_revenue_breakdown = _group_revenue_breakdown(db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode='DEPARTMENTS', shift_slot=slot)
     department_share_breakdown = _build_share_breakdown(department_revenue_breakdown)
-    kpi_breakdown = _get_kpi_breakdown(db=db, venue_id=venue_id, target_date=target_date)
+    kpi_breakdown = _get_kpi_breakdown(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
     metrics = _build_metrics(summary=summary, report=report, team=team, department_share_breakdown=department_share_breakdown, kpi_breakdown=kpi_breakdown)
     plan = get_day_economics_plan(db=db, venue_id=venue_id, target_date=target_date)
     rules = get_venue_economics_rules(db=db, venue_id=venue_id)
     plan_fact = _build_plan_fact(summary=summary, metrics=metrics, team=team, plan=plan)
-    alerts = _build_alerts(report=report, summary=summary, metrics=metrics, plan_fact=plan_fact, rules=rules)
-    rollup = _build_rollup(db=db, venue_id=venue_id, target_date=target_date)
+    alerts = _build_alerts(report=report, summary=summary, metrics=metrics, plan_fact=plan_fact, rules=rules, shift_slot=slot)
+    rollup = _build_rollup(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
     return {
         'date': target_date,
+        'shift_slot': slot,
         'report': report,
         'team': team,
         'metrics': metrics,

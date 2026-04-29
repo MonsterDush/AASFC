@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.models.notification_delivery_log import NotificationDeliveryLog
 from app.models.user import User
 from app.services import tg_notify
-from app.services.notification_logs import log_notification_attempt
+from app.services.notification_logs import lock_notification_idempotency_key, log_notification_attempt, notification_delivery_exists, notification_dedupe_scope
 
 
 def _utc_now() -> datetime:
@@ -51,13 +51,8 @@ def list_super_admin_notification_recipients(db: Session) -> list[User]:
 
 
 def _delivery_exists(db: Session, *, idempotency_key: str) -> bool:
-    existing = db.execute(
-        select(NotificationDeliveryLog.id).where(
-            NotificationDeliveryLog.idempotency_key == str(idempotency_key),
-            NotificationDeliveryLog.status == "sent",
-        )
-    ).scalar_one_or_none()
-    return existing is not None
+    return notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent"))
+
 
 
 def send_super_admin_billing_alert_once(
@@ -77,6 +72,7 @@ def send_super_admin_billing_alert_once(
     sent = 0
     open_url = admin_billing_open_url(venue_id=venue_id)
     now = _utc_now()
+    seen_scopes: set[str] = set()
 
     for user in recipients:
         chat_id = getattr(user, "tg_user_id", None)
@@ -84,9 +80,17 @@ def send_super_admin_billing_alert_once(
             continue
         if not getattr(user, "notify_enabled", True):
             continue
-        key = f"billing-admin-alert:{notification_type}:venue:{int(venue_id or 0)}:user:{int(user.id)}:{event_key}"
+
+        dedupe_scope = notification_dedupe_scope(user)
+        if dedupe_scope in seen_scopes:
+            continue
+        seen_scopes.add(dedupe_scope)
+
+        key = f"billing-admin-alert:{notification_type}:venue:{int(venue_id or 0)}:{dedupe_scope}:{event_key}"
+        lock_notification_idempotency_key(db, key)
         if _delivery_exists(db, idempotency_key=key):
             continue
+
         entry = log_notification_attempt(
             db,
             notification_type=f"billing_admin_alert_{notification_type}",
@@ -98,10 +102,14 @@ def send_super_admin_billing_alert_once(
             payload_preview=str(text or "")[:1000],
         )
         db.flush()
+        db.commit()
+
         result = tg_notify.notify_result(chat_id=int(chat_id), text=text, url=open_url, button_text=button_text)
         entry.status = "sent" if result.get("ok") else "failed"
-        entry.sent_at = _utc_now()
+        entry.sent_at = _utc_now() if result.get("ok") else None
         if result.get("error"):
             entry.error_text = str(result.get("error"))[:500]
+        db.add(entry)
+        db.commit()
         sent += 1 if result.get("ok") else 0
     return sent

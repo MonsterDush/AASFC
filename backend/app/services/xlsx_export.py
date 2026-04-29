@@ -53,6 +53,20 @@ def _excel_safe_value(value: Any) -> Any:
     return value
 
 
+def _xlsx_cell_value(value: Any) -> Any:
+    """Return a safe display value for regular cells and hyperlink cells."""
+    if isinstance(value, dict) and (value.get("hyperlink") or value.get("url")):
+        return _excel_safe_value(value.get("text") or value.get("label") or value.get("file_name") or value.get("hyperlink") or value.get("url"))
+    return _excel_safe_value(value)
+
+
+def _xlsx_cell_hyperlink(value: Any) -> str | None:
+    if isinstance(value, dict):
+        url = value.get("hyperlink") or value.get("url")
+        return str(url) if url else None
+    return None
+
+
 def _write_key_values(ws, rows: list[tuple[str, Any]]) -> None:
     for key, value in rows:
         ws.append([_excel_safe_value(key), _excel_safe_value(value)])
@@ -84,7 +98,17 @@ def _write_table(
         cell.alignment = Alignment(vertical="top", wrap_text=True)
 
     for row in rows:
-        ws.append([_excel_safe_value(value) for value in row])
+        ws.append([_xlsx_cell_value(value) for value in row])
+        current_row = ws.max_row
+        for col_idx, raw_value in enumerate(row, start=1):
+            hyperlink = _xlsx_cell_hyperlink(raw_value)
+            if hyperlink:
+                cell = ws.cell(row=current_row, column=col_idx)
+                cell.hyperlink = hyperlink
+                try:
+                    cell.style = "Hyperlink"
+                except Exception:
+                    cell.font = Font(color="0563C1", underline="single")
 
     end_row = ws.max_row
     if end_row >= header_row:
@@ -282,43 +306,62 @@ def build_expenses_xlsx(
 
     docs_ws = wb.create_sheet("Документы")
     _write_title(docs_ws, "Список расходов")
+
+    max_attachments = max((len(item.get("attachments") or []) for item in rows), default=0)
+    attachment_headers = [f"Файл {idx}" for idx in range(1, max_attachments + 1)]
+
+    doc_headers = [
+        "ID",
+        "Дата",
+        "Статус",
+        "Категория",
+        "Поставщик",
+        "Оплачено через",
+        "Полная сумма, ₽",
+        "Признано в месяце, ₽",
+        "Месяцев распределения",
+        "Сгенерировано на месяц",
+        "Recurring rule ID",
+        "Комментарий",
+        "Создано",
+        "Обновлено",
+    ] + attachment_headers
+
+    doc_rows: list[list[Any]] = []
+    for item in rows:
+        attachments = list(item.get("attachments") or [])
+        attachment_cells: list[Any] = []
+        for idx in range(max_attachments):
+            file_item = attachments[idx] if idx < len(attachments) else None
+            if not file_item:
+                attachment_cells.append("")
+                continue
+            url = file_item.get("download_url") or file_item.get("export_url") or file_item.get("url")
+            label = file_item.get("file_name") or file_item.get("name") or f"Файл {idx + 1}"
+            attachment_cells.append({"text": label, "hyperlink": url} if url else label)
+
+        doc_rows.append([
+            item.get("id"),
+            item.get("expense_date"),
+            item.get("status"),
+            (item.get("category") or {}).get("title"),
+            (item.get("supplier") or {}).get("title"),
+            (item.get("payment_method") or {}).get("title"),
+            _minor_to_major(item.get("amount_minor")),
+            _minor_to_major(item.get("recognized_amount_minor_for_month")),
+            item.get("spread_months"),
+            item.get("generated_for_month"),
+            item.get("recurring_rule_id"),
+            item.get("comment"),
+            item.get("created_at"),
+            item.get("updated_at"),
+            *attachment_cells,
+        ])
+
     _write_table(
         docs_ws,
-        [
-            "ID",
-            "Дата",
-            "Статус",
-            "Категория",
-            "Поставщик",
-            "Оплачено через",
-            "Полная сумма, ₽",
-            "Признано в месяце, ₽",
-            "Месяцев распределения",
-            "Сгенерировано на месяц",
-            "Recurring rule ID",
-            "Комментарий",
-            "Создано",
-            "Обновлено",
-        ],
-        [
-            [
-                item.get("id"),
-                item.get("expense_date"),
-                item.get("status"),
-                (item.get("category") or {}).get("title"),
-                (item.get("supplier") or {}).get("title"),
-                (item.get("payment_method") or {}).get("title"),
-                _minor_to_major(item.get("amount_minor")),
-                _minor_to_major(item.get("recognized_amount_minor_for_month")),
-                item.get("spread_months"),
-                item.get("generated_for_month"),
-                item.get("recurring_rule_id"),
-                item.get("comment"),
-                item.get("created_at"),
-                item.get("updated_at"),
-            ]
-            for item in rows
-        ],
+        doc_headers,
+        doc_rows,
         currency_cols={7, 8},
         integer_cols={1, 9, 11},
         date_cols={2, 10},
