@@ -28,7 +28,7 @@ from app.core.tg import normalize_tg_username, send_telegram_message
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
-from app.services.notification_logs import log_notification_attempt
+from app.services.notification_logs import lock_notification_idempotency_key, log_notification_attempt, notification_delivery_exists, notification_dedupe_scope
 from app.services.xlsx_export import (
     build_expenses_xlsx,
     build_monthly_summary_xlsx,
@@ -4740,6 +4740,15 @@ def close_daily_report(
         rep.tips_total = 0
 
     if rep.status == "CLOSED":
+        # The report may already be closed before notification jobs existed or
+        # before DAY/NIGHT split was enabled. Re-enqueue safely: job/delivery
+        # idempotency prevents duplicates, but DAY will no longer be skipped
+        # just because NIGHT was closed later.
+        _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
+        _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
+        _enqueue_soft_alerts_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
+        db.commit()
+        background_tasks.add_task(process_pending_notification_jobs_once, 10)
         return {"ok": True, "status": "CLOSED", "shift_slot": slot}
 
     values = _load_report_values(db, report_id=rep.id)
@@ -6121,12 +6130,8 @@ def _deliver_user_notification(
     url: str | None = None,
     button_text: str | None = None,
 ) -> tuple[bool, bool]:
-    existing_log = db.execute(
-        select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
-        .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
-        .order_by(NotificationDeliveryLog.id.desc())
-    ).first()
-    if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+    lock_notification_idempotency_key(db, idempotency_key)
+    if notification_delivery_exists(db, idempotency_key=idempotency_key):
         return False, False
 
     planned_at = datetime.utcnow().replace(tzinfo=timezone.utc)
@@ -6171,7 +6176,7 @@ def _enqueue_adjustment_assigned_job(db: Session, *, venue_id: int, adjustment_i
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6209,7 +6214,7 @@ def _enqueue_adjustment_dispute_event_job(
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_DISPUTE_EVENT,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6702,7 +6707,7 @@ def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6759,14 +6764,10 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
         chat_id = int(recipient.tg_user_id)
         if chat_id in seen_tg_user_ids:
             continue
-        dedupe_scope = f"tg:{chat_id}"
+        dedupe_scope = notification_dedupe_scope(recipient)
         idempotency_key = f"salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}:{slot}:{dedupe_scope}"
-        existing_log = db.execute(
-            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
-            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
-            .order_by(NotificationDeliveryLog.id.desc())
-        ).first()
-        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+        lock_notification_idempotency_key(db, idempotency_key)
+        if notification_delivery_exists(db, idempotency_key=idempotency_key):
             seen_tg_user_ids.add(chat_id)
             continue
 
@@ -6834,7 +6835,7 @@ def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date, s
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_SOFT_ALERTS,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6902,14 +6903,10 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
 
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
-        dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
+        dedupe_scope = notification_dedupe_scope(recipient)
         idempotency_key = f"soft_alerts:{int(venue_id)}:{target_date.isoformat()}:{slot}:{dedupe_scope}:{alert_signature}"
-        existing_log = db.execute(
-            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
-            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
-            .order_by(NotificationDeliveryLog.id.desc())
-        ).first()
-        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+        lock_notification_idempotency_key(db, idempotency_key)
+        if notification_delivery_exists(db, idempotency_key=idempotency_key):
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
@@ -6970,7 +6967,7 @@ def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_dat
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -7159,14 +7156,10 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
 
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
-        dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
+        dedupe_scope = notification_dedupe_scope(recipient)
         idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{slot}:{dedupe_scope}"
-        existing_log = db.execute(
-            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
-            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
-            .order_by(NotificationDeliveryLog.id.desc())
-        ).first()
-        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+        lock_notification_idempotency_key(db, idempotency_key)
+        if notification_delivery_exists(db, idempotency_key=idempotency_key):
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
