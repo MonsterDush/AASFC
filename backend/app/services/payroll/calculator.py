@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models import DailyReport, DailyReportValue, DayEconomicsMonthPlan, DayEconomicsPlan, DayEconomicsPlanTemplate, Department, DepartmentDayPlan, DepartmentMonthPlan, PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, Shift, ShiftAssignment, ShiftInterval, User
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
+from app.services.shifts.slots import normalize_shift_slot
 
 
 PAY_COMPONENT_TYPES = {
@@ -883,15 +884,34 @@ def _load_closed_report_dates(db: Session, *, venue_id: int, month_start: date, 
     return {row[0] for row in rows if row and row[0] is not None}
 
 
+def _load_closed_report_slots_by_date(db: Session, *, venue_id: int, month_start: date, month_end_excl: date) -> dict[date, set[str]]:
+    rows = db.execute(
+        select(DailyReport.date, DailyReport.shift_slot)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == "CLOSED",
+            DailyReport.date >= month_start,
+            DailyReport.date < month_end_excl,
+        )
+    ).all()
+    out: dict[date, set[str]] = {}
+    for report_date, shift_slot in rows:
+        if report_date is None:
+            continue
+        out.setdefault(report_date, set()).add(normalize_shift_slot(shift_slot))
+    return out
+
+
 
 def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month_end_excl: date, member_user_ids: list[int]) -> dict[int, PayrollMemberMetrics]:
     if not member_user_ids:
         return {}
 
     out: dict[int, PayrollMemberMetrics] = {int(uid): PayrollMemberMetrics() for uid in member_user_ids}
-    closed_dates = _load_closed_report_dates(db, venue_id=venue_id, month_start=month_start, month_end_excl=month_end_excl)
-    if not closed_dates:
+    closed_slots_by_date = _load_closed_report_slots_by_date(db, venue_id=venue_id, month_start=month_start, month_end_excl=month_end_excl)
+    if not closed_slots_by_date:
         return out
+    closed_dates = set(closed_slots_by_date.keys())
 
     rows = db.execute(
         select(
@@ -900,6 +920,7 @@ def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month
             Shift.date.label("shift_date"),
             ShiftInterval.start_time,
             ShiftInterval.end_time,
+            Shift.shift_slot.label("shift_slot"),
         )
         .join(Shift, Shift.id == ShiftAssignment.shift_id)
         .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
@@ -916,6 +937,9 @@ def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month
     shift_sets: dict[int, set[int]] = {int(uid): set() for uid in member_user_ids}
 
     for row in rows:
+        shift_slot = normalize_shift_slot(getattr(row, "shift_slot", None))
+        if shift_slot not in closed_slots_by_date.get(row.shift_date, set()):
+            continue
         member_user_id = int(row.member_user_id)
         metrics = out.setdefault(member_user_id, PayrollMemberMetrics())
         metrics.minutes_total += interval_duration_minutes(row.start_time, row.end_time)

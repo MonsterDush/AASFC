@@ -846,6 +846,7 @@ def my_payroll_line(
 def my_salary_day_breakdown(
     venue_id: int = Query(..., gt=0),
     date_value: date = Query(..., alias="date"),
+    shift_slot: str = Query(default="TOTAL", pattern="^(TOTAL|DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -864,6 +865,7 @@ def my_salary_day_breakdown(
         member_user_id=int(user.id),
         venue_id=int(venue_id),
         target_date=date_value,
+        shift_slot=shift_slot,
     )
 
 

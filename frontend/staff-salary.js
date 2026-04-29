@@ -290,7 +290,18 @@ function openManualTipModal() {
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
+function normalizeSalaryShiftSlot(value) {
+  const raw = String(value || "TOTAL").trim().toUpperCase();
+  return ["TOTAL", "DAY", "NIGHT"].includes(raw) ? raw : "TOTAL";
+}
+function salaryShiftSlotLabel(value) {
+  const slot = normalizeSalaryShiftSlot(value);
+  if (slot === "DAY") return "День";
+  if (slot === "NIGHT") return "Ночь";
+  return "Итого";
+}
 const deepLinkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date") || "")) ? String(params.get("date")) : "";
+const selectedSalaryShiftSlot = normalizeSalaryShiftSlot(params.get("shift_slot") || "TOTAL");
 const shouldAutoOpenDay = String(params.get("open_day") || "") === "1" && !!deepLinkDate;
 let deepLinkAutoOpened = false;
 let curMonth = new Date(`${coerceDemoMonth(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`, { notify: false, context: "staff-salary" })}-01T00:00:00`); curMonth.setDate(1);
@@ -768,9 +779,11 @@ function renderDays() {
 
 
 async function loadDayBreakdown(dateIso) {
-  const key = `${venueId}:${String(dateIso || "").slice(0, 10)}`;
+  const day = String(dateIso || "").slice(0, 10);
+  const slot = selectedSalaryShiftSlot;
+  const key = `${venueId}:${day}:${slot}`;
   if (dayBreakdownCache.has(key)) return dayBreakdownCache.get(key);
-  const req = api(`/me/salary-day-breakdown?venue_id=${encodeURIComponent(venueId)}&date=${encodeURIComponent(String(dateIso || "").slice(0, 10))}`);
+  const req = api(`/me/salary-day-breakdown?venue_id=${encodeURIComponent(venueId)}&date=${encodeURIComponent(day)}&shift_slot=${encodeURIComponent(slot)}`);
   dayBreakdownCache.set(key, req);
   try {
     const data = await req;
@@ -841,7 +854,11 @@ function renderDayBreakdownModal(d, breakdown) {
     ? "Начисление рассчитано"
     : (state === "partial"
       ? "Данные частичные"
-      : (state === "no_payroll" ? "Начисление ещё не рассчитано" : "Начислений не найдено"));
+      : (state === "no_payroll"
+        ? "Начисление ещё не рассчитано"
+        : (state === "slot_limited"
+          ? `Детализация по слоту: ${salaryShiftSlotLabel(breakdown?.shift_slot)}`
+          : (state === "slot_empty" ? `Нет данных по слоту: ${salaryShiftSlotLabel(breakdown?.shift_slot)}` : "Начислений не найдено"))));
   const shiftsCount = Number(context?.shifts_count || d?.shifts?.length || 0);
   const hoursTotal = Number(context?.hours_total || 0);
   const hoursText = Number.isFinite(hoursTotal) ? hoursTotal.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : "0";
@@ -850,6 +867,8 @@ function renderDayBreakdownModal(d, breakdown) {
   const recalcHtml = latest?.trigger_reason
     ? `<div class="muted small mt-10">${esc(recalcReasonLabel(latest.trigger_reason))}${latest?.created_at ? ` · ${esc(new Date(latest.created_at).toLocaleString("ru-RU"))}` : ""}</div>`
     : "";
+  const slotNote = String(context?.slot_note || "").trim();
+  const slotNoteHtml = slotNote ? `<div class="muted small mt-10">${esc(slotNote)}</div>` : "";
 
   return `<div class="itemcard" style="margin-top:12px">
     <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -874,6 +893,7 @@ function renderDayBreakdownModal(d, breakdown) {
     </div>
 
     ${recalcHtml}
+    ${slotNoteHtml}
     ${state === "partial" ? `<div class="muted small mt-10">Часть начислений ещё в пересчёте или появится после payroll.</div>` : ""}
     ${state === "no_payroll" ? `<div class="muted small mt-10">За этот день уже могут быть чаевые или корректировки, но payroll-начисление ещё не собрано.</div>` : ""}
     ${state === "empty" ? `<div class="muted small mt-10">Нет начисления за этот день. Проверь, была ли смена, закрыт ли отчёт и назначен ли профиль оплаты.</div>` : ""}
@@ -1054,9 +1074,10 @@ function openPayrollBreakdown() {
 }
 
 async function openDayModal(d) {
-  const subtitle = monthSummaryItem?.source === "payroll"
+  const slotLabel = selectedSalaryShiftSlot !== "TOTAL" ? ` · ${salaryShiftSlotLabel(selectedSalaryShiftSlot)}` : "";
+  const subtitle = (monthSummaryItem?.source === "payroll"
     ? (d?.includedInPayroll ? "Этот день вошёл в итоговый расчёт" : "Детализация начисления за день")
-    : "Детализация начисления за день";
+    : "Детализация начисления за день") + slotLabel;
   openModal(
     `${formatDateRu(d.date)}`,
     subtitle,

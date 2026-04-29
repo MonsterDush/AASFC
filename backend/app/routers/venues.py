@@ -4493,6 +4493,7 @@ def upsert_daily_report(
 
     db.flush()
     if str(obj.status or "").upper() == "CLOSED":
+        _rebuild_report_tip_allocations(db, report=obj, venue=venue)
         rebuild_revenue_entries_for_report(db=db, report=obj)
         _recalculate_payroll_for_dates(
             db,
@@ -4773,9 +4774,9 @@ def close_daily_report(
         force=True,
         trigger_reason="report_closed",
     )
-    _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date)
-    _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date)
-    _enqueue_soft_alerts_job(db, venue_id=venue_id, target_date=report_date)
+    _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
+    _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
+    _enqueue_soft_alerts_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
 
     db.commit()
     background_tasks.add_task(process_pending_notification_jobs_once, 10)
@@ -6028,15 +6029,35 @@ def _frontend_base_url() -> str:
     return settings.frontend_base_url()
 
 
-def _build_owner_day_economics_link(*, venue_id: int, target_date: date) -> str:
-    return f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}&date={quote(target_date.isoformat())}"
+def _normalize_notification_shift_slot(value: str | None, *, allow_total: bool = False) -> str:
+    raw = str(value or ("TOTAL" if allow_total else "DAY")).strip().upper()
+    if allow_total and raw == "TOTAL":
+        return "TOTAL"
+    return normalize_shift_slot(raw)
 
 
-def _build_staff_salary_day_link(*, venue_id: int, target_date: date) -> str:
+def _shift_slot_title(value: str | None) -> str:
+    slot = _normalize_notification_shift_slot(value, allow_total=True)
+    if slot == "NIGHT":
+        return "Ночь"
+    if slot == "DAY":
+        return "День"
+    return "Итого"
+
+
+def _build_owner_day_economics_link(*, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> str:
+    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
+    suffix = f"&shift_slot={quote(slot)}" if slot != "TOTAL" else ""
+    return f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}&date={quote(target_date.isoformat())}{suffix}"
+
+
+def _build_staff_salary_day_link(*, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> str:
     month_value = target_date.strftime("%Y-%m")
+    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
+    suffix = f"&shift_slot={quote(slot)}" if slot != "TOTAL" else ""
     return (
         f"{_frontend_base_url()}/staff-salary.html?venue_id={int(venue_id)}"
-        f"&month={quote(month_value)}&date={quote(target_date.isoformat())}&open_day=1"
+        f"&month={quote(month_value)}&date={quote(target_date.isoformat())}&open_day=1{suffix}"
     )
 
 
@@ -6425,14 +6446,14 @@ def _select_soft_alerts_for_notification(economics: dict) -> list[dict]:
     return selected
 
 
-def _build_soft_alerts_notification_text(*, venue_name: str, target_date: date, economics: dict, alerts: list[dict], detail_level: str) -> str:
+def _build_soft_alerts_notification_text(*, venue_name: str, target_date: date, economics: dict, alerts: list[dict], detail_level: str, shift_slot: str | None = "TOTAL") -> str:
     level = _notification_detail_level(detail_level)
     summary = economics.get("summary") or {}
     metrics = economics.get("metrics") or {}
     rules = economics.get("rules") or {}
 
     lines: list[str] = [
-        f"⚠️ Мягкие алерты · {_format_ru_date(target_date)}",
+        f"⚠️ Мягкие алерты · {_format_ru_date(target_date)} · {_shift_slot_title(shift_slot)}",
         f"Заведение: {venue_name}",
     ]
     if level in {"standard", "detailed"}:
@@ -6522,7 +6543,7 @@ def _render_breakdown(title: str, items: list[dict], *, limit: int) -> list[str]
     return lines
 
 
-def _build_day_economics_notification_text(*, venue_name: str, target_date: date, economics: dict, detail_level: str) -> str:
+def _build_day_economics_notification_text(*, venue_name: str, target_date: date, economics: dict, detail_level: str, shift_slot: str | None = "TOTAL") -> str:
     level = _notification_detail_level(detail_level)
 
     summary = economics.get("summary") or {}
@@ -6530,7 +6551,7 @@ def _build_day_economics_notification_text(*, venue_name: str, target_date: date
     department_breakdown = economics.get("department_revenue_breakdown") or []
 
     lines: list[str] = [
-        f"📊 Экономика дня · {_format_ru_date(target_date)}",
+        f"📊 Экономика дня · {_format_ru_date(target_date)} · {_shift_slot_title(shift_slot)}",
         f"Заведение: {venue_name}",
         f"Выручка: {_fmt_money_minor(summary.get('revenue_minor'))}",
         f"ФОТ: {_fmt_money_minor(summary.get('payroll_minor'))} ({_fmt_percent_bps(summary.get('payroll_ratio_bps'))})",
@@ -6561,7 +6582,7 @@ def _build_day_economics_notification_text(*, venue_name: str, target_date: date
     return "\n".join(lines)
 
 
-def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, breakdown: dict, detail_level: str) -> str:
+def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, breakdown: dict, detail_level: str, shift_slot: str | None = None) -> str:
     level = _notification_detail_level(detail_level)
 
     summary = breakdown.get("summary") or {}
@@ -6569,8 +6590,9 @@ def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, brea
     items = breakdown.get("items") or []
     state = str(breakdown.get("state") or "ready")
 
+    slot_title = _shift_slot_title(shift_slot or breakdown.get("shift_slot") or "TOTAL")
     lines: list[str] = [
-        f"💸 Начисление за день · {_format_ru_date(target_date)}",
+        f"💸 Начисление за день · {_format_ru_date(target_date)} · {slot_title}",
         f"Заведение: {venue_name}",
         f"Итого начисление: {_fmt_money_minor(summary.get('total_minor'))}",
     ]
@@ -6595,6 +6617,10 @@ def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, brea
         if hours_total not in (None, "") or shifts_count not in (None, ""):
             lines.append(f"Смен: {int(shifts_count or 0)} · Часы: {hours_total or 0}")
 
+    slot_note = str(context.get("slot_note") or "").strip()
+    if slot_note and level in {"standard", "detailed"}:
+        lines.append(slot_note)
+
     if items and level in {"standard", "detailed"}:
         visible = items[:4] if level == "standard" else items[:8]
         lines.append("Из чего сложилось:")
@@ -6614,8 +6640,11 @@ def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, brea
     return "\n".join(lines)
 
 
-def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, target_date: date) -> list[int]:
+def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> list[int]:
     user_ids: set[int] = set()
+    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
+    shift_filters = [Shift.shift_slot == slot] if slot in {"DAY", "NIGHT"} else []
+    report_filters = [DailyReport.shift_slot == slot] if slot in {"DAY", "NIGHT"} else []
 
     assignment_rows = db.execute(
         select(ShiftAssignment.member_user_id)
@@ -6625,21 +6654,24 @@ def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, tar
             Shift.date == target_date,
             Shift.is_active.is_(True),
             ShiftAssignment.member_user_id.is_not(None),
+            *shift_filters,
         )
     ).all()
     for (member_user_id,) in assignment_rows:
         if member_user_id is not None:
             user_ids.add(int(member_user_id))
 
-    adjustment_rows = db.execute(
-        select(Adjustment.member_user_id)
-        .where(
-            Adjustment.venue_id == int(venue_id),
-            Adjustment.date == target_date,
-            Adjustment.is_active.is_(True),
-            Adjustment.member_user_id.is_not(None),
-        )
-    ).all()
+    adjustment_rows = []
+    if slot == "TOTAL":
+        adjustment_rows = db.execute(
+            select(Adjustment.member_user_id)
+            .where(
+                Adjustment.venue_id == int(venue_id),
+                Adjustment.date == target_date,
+                Adjustment.is_active.is_(True),
+                Adjustment.member_user_id.is_not(None),
+            )
+        ).all()
     for (member_user_id,) in adjustment_rows:
         if member_user_id is not None:
             user_ids.add(int(member_user_id))
@@ -6652,6 +6684,7 @@ def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, tar
             DailyReport.status == "CLOSED",
             DailyReport.date == target_date,
             DailyReportTipAllocation.user_id.is_not(None),
+            *report_filters,
         )
     ).all()
     for (user_id,) in tip_rows:
@@ -6661,8 +6694,9 @@ def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, tar
     return sorted(user_ids)
 
 
-def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
-    idempotency_key = f"job:salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}"
+def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> NotificationJob:
+    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
+    idempotency_key = f"job:salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}:{slot}"
     existing = db.execute(
         select(NotificationJob)
         .where(
@@ -6678,7 +6712,7 @@ def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date
     job = NotificationJob(
         job_type=_NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN,
         status=_NOTIFICATION_JOB_STATUS_PENDING,
-        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat()}, ensure_ascii=False),
+        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat(), "shift_slot": slot}, ensure_ascii=False),
         attempts=0,
         max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
         run_after=datetime.utcnow(),
@@ -6689,8 +6723,9 @@ def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date
     return job
 
 
-def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
-    user_ids = _collect_salary_day_notification_user_ids(db, venue_id=venue_id, target_date=target_date)
+def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> None:
+    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
+    user_ids = _collect_salary_day_notification_user_ids(db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
     if not user_ids:
         return
 
@@ -6703,7 +6738,7 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
         return
 
     venue_name = _venue_name(db, venue_id)
-    link = _build_staff_salary_day_link(venue_id=venue_id, target_date=target_date)
+    link = _build_staff_salary_day_link(venue_id=venue_id, target_date=target_date, shift_slot=slot)
     sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
     seen_tg_user_ids: set[int] = set()
 
@@ -6725,7 +6760,7 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
         if chat_id in seen_tg_user_ids:
             continue
         dedupe_scope = f"tg:{chat_id}"
-        idempotency_key = f"salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}"
+        idempotency_key = f"salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}:{slot}:{dedupe_scope}"
         existing_log = db.execute(
             select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
             .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
@@ -6740,6 +6775,7 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
             member_user_id=int(recipient.id),
             venue_id=int(venue_id),
             target_date=target_date,
+            shift_slot=slot,
         )
         items = breakdown.get("items") or []
         total_minor = int((breakdown.get("summary") or {}).get("total_minor") or 0)
@@ -6752,6 +6788,7 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
             target_date=target_date,
             breakdown=breakdown,
             detail_level=detail_level,
+            shift_slot=slot,
         )
 
         pending_log = log_notification_attempt(
@@ -6789,8 +6826,9 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
     db.commit()
 
 
-def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
-    idempotency_key = f"job:soft_alerts:{int(venue_id)}:{target_date.isoformat()}"
+def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> NotificationJob:
+    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
+    idempotency_key = f"job:soft_alerts:{int(venue_id)}:{target_date.isoformat()}:{slot}"
     existing = db.execute(
         select(NotificationJob)
         .where(
@@ -6806,7 +6844,7 @@ def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date) -
     job = NotificationJob(
         job_type=_NOTIFICATION_JOB_TYPE_SOFT_ALERTS,
         status=_NOTIFICATION_JOB_STATUS_PENDING,
-        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat()}, ensure_ascii=False),
+        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat(), "shift_slot": slot}, ensure_ascii=False),
         attempts=0,
         max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
         run_after=datetime.utcnow(),
@@ -6817,7 +6855,8 @@ def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date) -
     return job
 
 
-def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
+def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> None:
+    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
     members = db.execute(
         select(User)
         .join(VenueMember, VenueMember.user_id == User.id)
@@ -6830,7 +6869,7 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
     if not members:
         return
 
-    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
+    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
     alerts = _select_soft_alerts_for_notification(economics)
     if not alerts:
         return
@@ -6855,7 +6894,7 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
         return
 
     venue_name = _venue_name(db, venue_id)
-    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
+    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date, shift_slot=slot)
     sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
     alert_signature = _soft_alert_signature(alerts)
     had_retryable_error = False
@@ -6864,7 +6903,7 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
         dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
-        idempotency_key = f"soft_alerts:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}:{alert_signature}"
+        idempotency_key = f"soft_alerts:{int(venue_id)}:{target_date.isoformat()}:{slot}:{dedupe_scope}:{alert_signature}"
         existing_log = db.execute(
             select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
             .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
@@ -6880,6 +6919,7 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
             economics=economics,
             alerts=alerts,
             detail_level=detail_level,
+            shift_slot=slot,
         )
 
         pending_log = log_notification_attempt(
@@ -6922,8 +6962,9 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
         raise RuntimeError("soft alerts delivery failed with retryable error")
 
 
-def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
-    idempotency_key = f"job:day_economics_summary:{int(venue_id)}:{target_date.isoformat()}"
+def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> NotificationJob:
+    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
+    idempotency_key = f"job:day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{slot}"
     existing = db.execute(
         select(NotificationJob)
         .where(
@@ -6939,7 +6980,7 @@ def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_dat
     job = NotificationJob(
         job_type=_NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY,
         status=_NOTIFICATION_JOB_STATUS_PENDING,
-        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat()}, ensure_ascii=False),
+        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat(), "shift_slot": slot}, ensure_ascii=False),
         attempts=0,
         max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
         run_after=datetime.utcnow(),
@@ -7026,18 +7067,21 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
                         db,
                         venue_id=int(payload.get("venue_id")),
                         target_date=date.fromisoformat(str(payload.get("target_date"))),
+                        shift_slot=str(payload.get("shift_slot") or "TOTAL"),
                     )
                 elif job.job_type == _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN:
                     _send_salary_day_breakdown_notifications(
                         db,
                         venue_id=int(payload.get("venue_id")),
                         target_date=date.fromisoformat(str(payload.get("target_date"))),
+                        shift_slot=str(payload.get("shift_slot") or "TOTAL"),
                     )
                 elif job.job_type == _NOTIFICATION_JOB_TYPE_SOFT_ALERTS:
                     _send_soft_alert_notifications(
                         db,
                         venue_id=int(payload.get("venue_id")),
                         target_date=date.fromisoformat(str(payload.get("target_date"))),
+                        shift_slot=str(payload.get("shift_slot") or "TOTAL"),
                     )
                 elif job.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED:
                     _send_adjustment_assigned_notification(
@@ -7075,7 +7119,8 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
     return processed
 
 
-def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
+def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> None:
+    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
     members = db.execute(
         select(User)
         .join(VenueMember, VenueMember.user_id == User.id)
@@ -7107,15 +7152,15 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
     if not recipients:
         return
 
-    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
+    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
     venue_name = _venue_name(db, venue_id)
-    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
+    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date, shift_slot=slot)
     sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
 
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
         dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
-        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}"
+        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{slot}:{dedupe_scope}"
         existing_log = db.execute(
             select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
             .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
@@ -7130,6 +7175,7 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             target_date=target_date,
             economics=economics,
             detail_level=detail_level,
+            shift_slot=slot,
         )
 
         pending_log = log_notification_attempt(
