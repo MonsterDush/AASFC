@@ -20,8 +20,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 TABLE_NAME = "position_permission_templates"
 UNIQUE_NAME = "uq_position_permission_templates_code"
-CODE_INDEX_NAME = op.f("ix_position_permission_templates_code")
-IS_SYSTEM_INDEX_NAME = op.f("ix_position_permission_templates_is_system")
+CODE_INDEX_NAME = "ix_position_permission_templates_code"
+IS_SYSTEM_INDEX_NAME = "ix_position_permission_templates_is_system"
 
 
 def _column_names(inspector: sa.Inspector, table_name: str) -> set[str]:
