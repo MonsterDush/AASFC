@@ -205,11 +205,66 @@ function buildExpenseAttachmentsHtml(item) {
   const attachments = Array.isArray(item?.attachments) ? item.attachments : [];
   if (!attachments.length) return "";
   const links = attachments.map((file) => {
-    const url = `${API_BASE}${file.url || `/venues/${encodeURIComponent(getActiveVenueId())}/expenses/${encodeURIComponent(item.id)}/attachments/${encodeURIComponent(file.id)}`}`;
     const size = file.file_size ? ` · ${esc(formatBytes(file.file_size))}` : "";
-    return `<a class="badge" href="${esc(url)}" target="_blank" rel="noopener">📎 ${esc(file.file_name || "Файл")}${size}</a>`;
+    return `<button class="badge as-link" type="button" data-expense-file="${esc(item.id)}:${esc(file.id)}">📎 ${esc(file.file_name || "Файл")}${size}</button>`;
   }).join(" ");
   return `<div class="muted mt-8">Файлы</div><div class="expense-row__allocations mt-8">${links}</div>`;
+}
+
+function getExpenseAttachment(expenseId, attachmentId) {
+  const expense = (state.expenses || []).find((item) => String(item.id) === String(expenseId));
+  const files = Array.isArray(expense?.attachments) ? expense.attachments : [];
+  return files.find((file) => String(file.id) === String(attachmentId)) || null;
+}
+
+function isPreviewableImage(contentType = "", fileName = "") {
+  const ct = String(contentType || "").toLowerCase();
+  const name = String(fileName || "").toLowerCase();
+  return ct.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|bmp|svg)$/i.test(name);
+}
+
+function isPreviewablePdf(contentType = "", fileName = "") {
+  const ct = String(contentType || "").toLowerCase();
+  const name = String(fileName || "").toLowerCase();
+  return ct === "application/pdf" || /\.pdf$/i.test(name);
+}
+
+async function openExpenseAttachmentPreview(expenseId, attachmentId) {
+  const venueId = getActiveVenueId();
+  const file = getExpenseAttachment(expenseId, attachmentId) || {};
+  try {
+    const data = await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(expenseId)}/attachments/${encodeURIComponent(attachmentId)}/download-link`);
+    const url = data?.preview_link || data?.download_link;
+    if (!url) throw new Error("download link missing");
+    const name = data?.file?.file_name || file.file_name || "Файл";
+    const contentType = data?.file?.content_type || file.content_type || "";
+    const size = data?.file?.file_size || file.file_size || 0;
+    let previewHtml = `<div class="muted">${esc(contentType || "Файл")} ${size ? `· ${esc(formatBytes(size))}` : ""}</div>`;
+    if (isPreviewableImage(contentType, name)) {
+      previewHtml += `<div class="file-preview"><img src="${esc(url)}" alt="${esc(name)}" /></div>`;
+    } else if (isPreviewablePdf(contentType, name)) {
+      previewHtml += `<div class="file-preview"><iframe src="${esc(url)}" title="${esc(name)}"></iframe></div>`;
+    } else {
+      previewHtml += `<div class="card subtle mt-12">Предпросмотр для этого формата может быть недоступен в браузере. Файл можно открыть или скачать по внешней ссылке.</div>`;
+    }
+    previewHtml += `
+      <div class="row gap-8 mt-12" style="flex-wrap:wrap;">
+        <button class="btn primary" type="button" id="expenseFileDownloadBtn">Открыть / скачать файл</button>
+        <button class="btn ghost" type="button" id="expenseFileCloseBtn">Закрыть</button>
+      </div>
+    `;
+    openHtmlModal(name, previewHtml);
+    const downloadBtn = document.getElementById("expenseFileDownloadBtn");
+    if (downloadBtn) downloadBtn.onclick = () => {
+      const tg = window.Telegram?.WebApp;
+      try { if (tg?.openLink) { tg.openLink(url, { try_instant_view: false }); return; } } catch {}
+      window.open(url, "_blank", "noopener");
+    };
+    const closeBtn = document.getElementById("expenseFileCloseBtn");
+    if (closeBtn) closeBtn.onclick = () => closeModal();
+  } catch (err) {
+    toast(err?.data?.detail || err.message || "Не удалось открыть файл", "err");
+  }
 }
 
 async function uploadExpenseFiles(expenseId, files) {
@@ -458,6 +513,12 @@ function renderExpenses() {
       } catch (err) {
         toast(err?.data?.detail || err.message || "Не удалось обновить статус", "err");
       }
+    };
+  });
+  list.querySelectorAll("[data-expense-file]").forEach((btn) => {
+    btn.onclick = () => {
+      const [expenseId, attachmentId] = String(btn.getAttribute("data-expense-file") || "").split(":");
+      if (expenseId && attachmentId) openExpenseAttachmentPreview(expenseId, attachmentId);
     };
   });
 }
