@@ -11,6 +11,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   getVenuePositions,
+  getVenueSettings,
   isDemoUiMode,
   getStoredDemoUiState,
   getDemoMonthLabel,
@@ -129,6 +130,9 @@ const el = {
   btnExportShare: document.getElementById("btnExportShare"),
   btnExportTelegram: document.getElementById("btnExportTelegram"),
   btnExportDownload: document.getElementById("btnExportDownload"),
+  shiftSlotToggle: document.getElementById("shiftSlotToggle"),
+  slotDay: document.getElementById("slotDay"),
+  slotNight: document.getElementById("slotNight"),
 };
 
 // DayPanel удалён: у нас есть отдельная страница/экран для графика
@@ -153,7 +157,15 @@ const view = {
 const LS_VIEW = "axelio.shifts.view"; // 'month' | 'week'
 const LS_WEEK_START = "axelio.shifts.weekStart"; // YYYY-MM-DD (Monday)
 const LS_FILTERS_PREFIX = "axelio.shifts.filters";
+const LS_SHIFT_SLOT = "axelio.shifts.shiftSlot";
 let calendarView = (params.get("view") || localStorage.getItem(LS_VIEW) || "month");
+function normalizeShiftSlot(value) {
+  const slot = String(value || "DAY").trim().toUpperCase();
+  return slot === "NIGHT" ? "NIGHT" : "DAY";
+}
+let selectedShiftSlot = normalizeShiftSlot(params.get("shift_slot") || localStorage.getItem(LS_SHIFT_SLOT) || "DAY");
+let venueSettings = null;
+let nightShiftsEnabled = false;
 if (calendarView !== "week") calendarView = "month";
 
 let curWeekStart = null; // Date (Monday)
@@ -300,6 +312,7 @@ function venueShiftFiltersQuery() {
     .filter((x) => Number.isInteger(x) && x > 0)
     .sort((a, b) => a - b);
   for (const id of ids) p.append("interval_ids", String(id));
+  p.set("shift_slot", selectedShiftSlot);
   if (unstaffedOnly) p.set("staffing_state", "unstaffed");
   return p;
 }
@@ -584,6 +597,33 @@ function sortShiftsForBadges(list) {
   return arr;
 }
 
+function renderShiftSlotToggle() {
+  const box = el.shiftSlotToggle;
+  if (!box) return;
+  const shouldShow = !!nightShiftsEnabled && calendarScope !== "global";
+  box.classList.toggle("hidden", !shouldShow);
+  box.style.display = shouldShow ? "inline-flex" : "none";
+  if (!shouldShow) {
+    selectedShiftSlot = "DAY";
+    try { localStorage.setItem(LS_SHIFT_SLOT, "DAY"); } catch {}
+  }
+  el.slotDay?.classList.toggle("active", selectedShiftSlot === "DAY");
+  el.slotNight?.classList.toggle("active", selectedShiftSlot === "NIGHT");
+}
+
+function wireShiftSlotToggle() {
+  const setSlot = async (slot) => {
+    const next = normalizeShiftSlot(slot);
+    if (next === selectedShiftSlot) return;
+    selectedShiftSlot = next;
+    try { localStorage.setItem(LS_SHIFT_SLOT, selectedShiftSlot); } catch {}
+    renderShiftSlotToggle();
+    await reloadCurrentView();
+  };
+  if (el.slotDay) el.slotDay.onclick = () => setSlot("DAY");
+  if (el.slotNight) el.slotNight.onclick = () => setSlot("NIGHT");
+}
+
 // --- toggle ---
 function renderModeToggle() {
   if (!mode.box) return;
@@ -629,10 +669,12 @@ function renderModeToggle() {
   }
 
   setActive();
+  renderShiftSlotToggle();
   reloadCurrentView();
 };
 
   setActive();
+  renderShiftSlotToggle();
 
   mode.all && (mode.all.onclick = () => {
     showAllOnCalendar = true;
@@ -676,6 +718,8 @@ function syncUrl() {
       .sort((a, b) => a - b);
     if (ids.length) p.set("intervals", ids.join(","));
     if (unstaffedOnly) p.set("unstaffed", "1");
+    if (nightShiftsEnabled && selectedShiftSlot === "NIGHT") p.set("shift_slot", "NIGHT");
+    else p.delete("shift_slot");
 
     history.replaceState({}, "", `${location.pathname}?${p.toString()}`);
   } catch {}
@@ -693,6 +737,7 @@ function renderViewToggle() {
     calendarView = "month";
     localStorage.setItem(LS_VIEW, "month");
     setActive();
+  renderShiftSlotToggle();
 
     // align month to selectedDate if possible
     if (selectedDate) {
@@ -706,6 +751,7 @@ function renderViewToggle() {
     calendarView = "week";
     localStorage.setItem(LS_VIEW, "week");
     setActive();
+  renderShiftSlotToggle();
 
     const base = selectedDate ? new Date(String(selectedDate) + "T00:00:00") : new Date();
     curWeekStart = startOfWeek(base);
@@ -718,6 +764,7 @@ function renderViewToggle() {
   view.week && (view.week.onclick = goWeek);
 
   setActive();
+  renderShiftSlotToggle();
 }
 
 async function reloadCurrentView() {
@@ -863,6 +910,9 @@ async function loadContext() {
   isMultiVenue = Array.isArray(venuesList) && venuesList.length >= 2;
 
   perms = await getMyVenuePermissions(venueId).catch(() => null);
+  venueSettings = await getVenueSettings(venueId).catch(() => null);
+  nightShiftsEnabled = !!venueSettings?.night_shifts_enabled;
+  if (!nightShiftsEnabled) selectedShiftSlot = "DAY";
 
   myRole = roleUpper(perms) || null;
 
@@ -908,6 +958,7 @@ async function loadContext() {
   }
 
   renderScheduleFilters();
+  renderShiftSlotToggle();
 }
 
 
@@ -2241,7 +2292,7 @@ function openDay(dateStr) {
       try {
         await api(`/venues/${encodeURIComponent(venueId)}/shifts`, {
           method: "POST",
-          body: { date: dateStr, interval_id: Number(intervalId) },
+          body: { date: dateStr, interval_id: Number(intervalId), shift_slot: selectedShiftSlot },
         });
         toast("Смена создана", "ok");
         await reloadCurrentView();
@@ -2377,6 +2428,7 @@ function buildLocalExportMetadata() {
   const parts = [range.view === "month" ? "Месяц" : "Неделя"];
   if (calendarScope === "global") parts.push("Общий режим");
   else parts.push(showAllOnCalendar ? "Все сотрудники" : "Только мои");
+  if (nightShiftsEnabled && calendarScope !== "global") parts.push(selectedShiftSlot === "NIGHT" ? "Ночь" : "День");
   if (intervalTitles.length) parts.push(`Интервалы: ${intervalTitles.join(", ")}`);
   if (unstaffedOnly) parts.push("Только без назначений");
 
@@ -2391,6 +2443,7 @@ function buildLocalExportMetadata() {
     filters_text: parts.join(" • "),
     interval_titles: intervalTitles,
     staffing_state: unstaffedOnly ? "unstaffed" : "all",
+    shift_slot: selectedShiftSlot,
     logo_url: null,
     app_logo_url: "/logo.png",
     deep_link_path: "/staff-shifts.html",
@@ -2418,6 +2471,7 @@ async function getExportMetadata() {
       .sort((a, b) => a - b);
     for (const id of ids) q.append("interval_ids", String(id));
     if (unstaffedOnly) q.set("staffing_state", "unstaffed");
+    q.set("shift_slot", selectedShiftSlot);
     const meta = await api(`/venues/${encodeURIComponent(venueId)}/shifts/export-metadata?${q.toString()}`);
     return { ...fallback, ...(meta || {}) };
   } catch {
@@ -3106,6 +3160,8 @@ el.next.onclick = async () => {
 
 // boot
 await loadContext();
+wireShiftSlotToggle();
+renderShiftSlotToggle();
 renderModeToggle();
 renderViewToggle();
 

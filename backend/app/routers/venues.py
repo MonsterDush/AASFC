@@ -143,6 +143,7 @@ from app.models.day_economics_plan_template import DayEconomicsPlanTemplate
 from app.models.department_month_plan import DepartmentMonthPlan
 from app.models.department_day_plan import DepartmentDayPlan
 from app.models.venue_economics_rule import VenueEconomicsRule
+from app.services.shifts.slots import normalize_shift_slot
 
 from app.auth.venue_permissions import require_venue_permission, has_venue_permission
 
@@ -971,6 +972,7 @@ class ShiftCreateIn(BaseModel):
     date: date
     interval_id: int = Field(..., gt=0)
     is_active: bool = True
+    shift_slot: str = "DAY"
 
 
 class ShiftUpdateIn(BaseModel):
@@ -8098,7 +8100,9 @@ def _build_staff_shifts_deep_link_path(
     period_start: date,
     interval_ids: list[int],
     staffing_state: str,
+    shift_slot: str = "DAY",
 ) -> str:
+    slot = normalize_shift_slot(shift_slot)
     params: list[tuple[str, str]] = [
         ("venue_id", str(int(venue_id))),
         ("view", view),
@@ -8109,6 +8113,8 @@ def _build_staff_shifts_deep_link_path(
         params.append(("month", period_start.strftime("%Y-%m")))
     if interval_ids:
         params.append(("intervals", ",".join(str(int(x)) for x in interval_ids)))
+    if slot == "NIGHT":
+        params.append(("shift_slot", "NIGHT"))
     if staffing_state == "unstaffed":
         params.append(("unstaffed", "1"))
     query = "&".join(f"{quote(key)}={quote(value)}" for key, value in params)
@@ -8123,7 +8129,9 @@ def _build_staff_shifts_share_token(
     period_start: date,
     interval_ids: list[int],
     staffing_state: str,
+    shift_slot: str = "DAY",
 ) -> str:
+    slot = normalize_shift_slot(shift_slot)
     return make_signed_token(
         {
             "action": "staff_shifts_share",
@@ -8132,6 +8140,7 @@ def _build_staff_shifts_share_token(
             "period_start": period_start.isoformat(),
             "interval_ids": [int(item) for item in (interval_ids or []) if int(item) > 0],
             "staffing_state": str(staffing_state or "all"),
+            "shift_slot": slot,
         },
         ttl_seconds=_SCHEDULE_SHARE_TTL_SECONDS,
     )
@@ -8173,6 +8182,7 @@ def open_staff_shifts_share_link(token: str):
         period_start = date.fromisoformat(str(raw_period_start))
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid share token")
+    slot = normalize_shift_slot(payload.get("shift_slot"))
 
     raw_interval_ids = payload.get("interval_ids") or []
     interval_ids = [int(item) for item in raw_interval_ids if int(item) > 0]
@@ -8181,6 +8191,7 @@ def open_staff_shifts_share_link(token: str):
         staffing_state = "all"
 
     deep_link_path = _build_staff_shifts_deep_link_path(
+        shift_slot=slot,
         venue_id=venue_id,
         view=view,
         period_start=period_start,
@@ -8199,12 +8210,14 @@ def get_shifts_export_metadata(
     week_start: date | None = Query(default=None),
     interval_ids: list[int] | None = Query(default=None),
     staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Metadata for client-side schedule export, download and share flows."""
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
 
+    slot = normalize_shift_slot(shift_slot)
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found")
@@ -8244,6 +8257,7 @@ def get_shifts_export_metadata(
         period_start=period_start,
         interval_ids=normalized_interval_ids,
         staffing_state=staffing_state,
+        shift_slot=slot,
     )
     share_title = f"График смен · {venue.name}"
     share_text = f"{venue.name}\n{period_label}\n{filters_text}"
@@ -8251,6 +8265,7 @@ def get_shifts_export_metadata(
         venue_id=venue_id,
         view=view,
         period_start=period_start,
+        shift_slot=slot,
         interval_ids=normalized_interval_ids,
         staffing_state=staffing_state,
     )
@@ -8262,6 +8277,7 @@ def get_shifts_export_metadata(
         "venue_name": venue.name,
         "view": view,
         "period_start": period_start.isoformat(),
+        "shift_slot": slot,
         "period_end": period_end.isoformat(),
         "period_label": period_label,
         "filters_text": filters_text,
@@ -8289,6 +8305,7 @@ def list_shifts(
     date_to: date | None = Query(default=None),
     interval_ids: list[int] | None = Query(default=None),
     staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -8297,8 +8314,9 @@ def list_shifts(
     Accessible to any active member of the venue (or system admin roles).
     """
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    slot = normalize_shift_slot(shift_slot)
 
-    stmt = select(Shift).where(Shift.venue_id == venue_id, Shift.is_active.is_(True))
+    stmt = select(Shift).where(Shift.venue_id == venue_id, Shift.is_active.is_(True), Shift.shift_slot == slot)
 
     if interval_ids:
         normalized_ids = sorted({int(x) for x in interval_ids if int(x) > 0})
@@ -8341,7 +8359,7 @@ def list_shifts(
     report_by_date: dict[date, DailyReport] = {}
     if shift_dates:
         rrows = db.execute(
-            select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date.in_(shift_dates))
+            select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date.in_(shift_dates), DailyReport.shift_slot == slot)
         ).scalars().all()
         report_by_date = {r.date: r for r in rrows}
 
@@ -8418,6 +8436,7 @@ def list_shifts(
     return [
         {
             "id": s.id,
+            "shift_slot": normalize_shift_slot(getattr(s, "shift_slot", None)),
             "date": s.date.isoformat(),
             "interval": interval_payload(s.interval_id),
             "interval_id": s.interval_id,
@@ -8453,6 +8472,13 @@ def create_shift(
 ):
     """Create a shift for a specific date+interval (schedule editor only)."""
     _require_schedule_editor(db, venue_id=venue_id, user=user)
+    slot = normalize_shift_slot(payload.shift_slot)
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    if slot == "NIGHT" and not bool(getattr(venue, "night_shifts_enabled", False)):
+        raise HTTPException(status_code=400, detail="Ночные смены не включены для заведения")
+
 
     interval = db.execute(
         select(ShiftInterval).where(
@@ -8468,6 +8494,7 @@ def create_shift(
         venue_id=venue_id,
         date=payload.date,
         interval_id=payload.interval_id,
+        shift_slot=slot,
         is_active=payload.is_active,
         created_by_user_id=user.id,
     )
@@ -8478,7 +8505,7 @@ def create_shift(
     except Exception:
         db.rollback()
         # likely unique constraint
-        raise HTTPException(status_code=409, detail="Shift already exists for this date and interval")
+        raise HTTPException(status_code=409, detail="Shift already exists for this date, interval and slot")
 
     db.refresh(obj)
     return {"id": obj.id}
@@ -8540,7 +8567,7 @@ def update_shift(
         db.commit()
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Shift already exists for this date and interval")
+        raise HTTPException(status_code=409, detail="Shift already exists for this date, interval and slot")
 
     return {"ok": True}
 
@@ -8610,6 +8637,7 @@ def get_shift(
         "venue_id": obj.venue_id,
         "date": obj.date.isoformat(),
         "is_active": bool(obj.is_active),
+        "shift_slot": normalize_shift_slot(getattr(obj, "shift_slot", None)),
         "interval": {
             "id": interval.id,
             "title": interval.title,
