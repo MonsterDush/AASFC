@@ -585,6 +585,8 @@ class MonthlyFinanceSummaryOut(FinanceSummaryOut):
 class DailyFinanceSummaryOut(FinanceSummaryOut):
     date: date
     income_mode: str
+    shift_slot: str = "TOTAL"
+    slot_costs_available: bool = True
     revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
     point_expenses: list[MonthlyFinanceBreakdownRowOut]
     point_expense_minor: int
@@ -598,6 +600,7 @@ class DayEconomicsReportOut(BaseModel):
     exists: bool
     report_id: int | None = None
     status: str
+    shift_slot: str = "TOTAL"
     closed_at: datetime | None = None
     closed_by_user_id: int | None = None
     comment: str | None = None
@@ -810,6 +813,7 @@ class DayEconomicsRollupOut(BaseModel):
 
 class DayEconomicsOut(BaseModel):
     date: date
+    shift_slot: str = "TOTAL"
     report: DayEconomicsReportOut
     team: DayEconomicsTeamOut
     metrics: DayEconomicsMetricsOut
@@ -10222,6 +10226,7 @@ def get_venue_day_finance_summary(
 def get_venue_day_economics(
     venue_id: int,
     economics_date: date = Query(..., alias="date", description="YYYY-MM-DD"),
+    shift_slot: str = Query(default="TOTAL", pattern="^(TOTAL|DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -10229,7 +10234,10 @@ def get_venue_day_economics(
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     try:
-        return get_day_economics(db=db, venue_id=venue_id, target_date=economics_date)
+        slot = str(shift_slot or "TOTAL").strip().upper()
+        if slot not in {"TOTAL", "DAY", "NIGHT"}:
+            slot = "TOTAL"
+        return get_day_economics(db=db, venue_id=venue_id, target_date=economics_date, shift_slot=slot)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

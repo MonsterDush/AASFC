@@ -52,6 +52,17 @@ def resolve_finance_period(month: str | None, date_from: date | None, date_to: d
     return date(today.year, today.month, 1), date(today.year, today.month, last_day)
 
 
+
+def _normalize_summary_shift_slot(value: str | None) -> str | None:
+    slot = str(value or "TOTAL").strip().upper()
+    if slot in {"DAY", "NIGHT"}:
+        return slot
+    return None
+
+
+def _is_slot_specific(value: str | None) -> bool:
+    return _normalize_summary_shift_slot(value) in {"DAY", "NIGHT"}
+
 def _sum_amount(db: Session, *, venue_id: int, period_start: date, period_end: date, direction: str, kind: str) -> int:
     return int(
         db.execute(
@@ -112,18 +123,24 @@ def _sum_payroll_minor_for_period(db: Session, *, venue_id: int, period_start: d
     return _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='PAYROLL')
 
 
-def _sum_closed_report_revenue_minor(db: Session, *, venue_id: int, period_start: date, period_end: date) -> int:
-    return int(
-        db.execute(
-            select(func.coalesce(func.sum(DailyReport.revenue_total), 0)).where(
-                DailyReport.venue_id == int(venue_id),
-                DailyReport.status == 'CLOSED',
-                DailyReport.date >= period_start,
-                DailyReport.date <= period_end,
-            )
-        ).scalar()
-        or 0
-    ) * 100
+def _sum_closed_report_revenue_minor(
+    db: Session,
+    *,
+    venue_id: int,
+    period_start: date,
+    period_end: date,
+    shift_slot: str | None = None,
+) -> int:
+    stmt = select(func.coalesce(func.sum(DailyReport.revenue_total), 0)).where(
+        DailyReport.venue_id == int(venue_id),
+        DailyReport.status == 'CLOSED',
+        DailyReport.date >= period_start,
+        DailyReport.date <= period_end,
+    )
+    slot = _normalize_summary_shift_slot(shift_slot)
+    if slot is not None:
+        stmt = stmt.where(DailyReport.shift_slot == slot)
+    return int(db.execute(stmt).scalar() or 0) * 100
 
 
 def _backfill_missing_expense_recognition(db: Session, *, venue_id: int) -> int:
@@ -144,24 +161,32 @@ def _backfill_missing_expense_recognition(db: Session, *, venue_id: int) -> int:
     return len(missing)
 
 
-def _closed_reports_subquery(*, venue_id: int, period_start: date, period_end: date):
-    return (
-        select(DailyReport.id)
-        .where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.status == 'CLOSED',
-            DailyReport.date >= period_start,
-            DailyReport.date <= period_end,
-        )
-        .subquery()
+def _closed_reports_subquery(*, venue_id: int, period_start: date, period_end: date, shift_slot: str | None = None):
+    stmt = select(DailyReport.id).where(
+        DailyReport.venue_id == int(venue_id),
+        DailyReport.status == 'CLOSED',
+        DailyReport.date >= period_start,
+        DailyReport.date <= period_end,
     )
+    slot = _normalize_summary_shift_slot(shift_slot)
+    if slot is not None:
+        stmt = stmt.where(DailyReport.shift_slot == slot)
+    return stmt.subquery()
 
 
-def _group_revenue_breakdown(db: Session, *, venue_id: int, period_start: date, period_end: date, income_mode: str) -> list[dict]:
+def _group_revenue_breakdown(
+    db: Session,
+    *,
+    venue_id: int,
+    period_start: date,
+    period_end: date,
+    income_mode: str,
+    shift_slot: str | None = None,
+) -> list[dict]:
     mode = str(income_mode or 'PAYMENTS').upper()
     kind = 'DEPT' if mode == 'DEPARTMENTS' else 'PAYMENT'
     Catalog = Department if mode == 'DEPARTMENTS' else PaymentMethod
-    closed_reports = _closed_reports_subquery(venue_id=venue_id, period_start=period_start, period_end=period_end)
+    closed_reports = _closed_reports_subquery(venue_id=venue_id, period_start=period_start, period_end=period_end, shift_slot=shift_slot)
     rows = db.execute(
         select(DailyReportValue.ref_id, func.coalesce(func.sum(DailyReportValue.value_numeric), 0))
         .where(
@@ -304,6 +329,7 @@ def _sum_closed_report_payment_minor(
     payment_method_ids: list[int] | None = None,
     period_start: date | None = None,
     period_end: date | None = None,
+    shift_slot: str | None = None,
 ) -> int:
     stmt = (
         select(func.coalesce(func.sum(DailyReportValue.value_numeric), 0))
@@ -319,6 +345,9 @@ def _sum_closed_report_payment_minor(
         stmt = stmt.where(DailyReport.date >= period_start)
     if period_end is not None:
         stmt = stmt.where(DailyReport.date <= period_end)
+    slot = _normalize_summary_shift_slot(shift_slot)
+    if slot is not None:
+        stmt = stmt.where(DailyReport.shift_slot == slot)
     if payment_method_id is not None:
         stmt = stmt.where(DailyReportValue.ref_id == int(payment_method_id))
     elif payment_method_ids:
@@ -348,7 +377,14 @@ def _sum_non_revenue_payment_entries(
     return int(db.execute(stmt).scalar() or 0)
 
 
-def _group_payment_method_balances(db: Session, *, venue_id: int, period_start: date, period_end: date) -> list[dict]:
+def _group_payment_method_balances(
+    db: Session,
+    *,
+    venue_id: int,
+    period_start: date,
+    period_end: date,
+    shift_slot: str | None = None,
+) -> list[dict]:
     payment_methods = db.execute(
         select(PaymentMethod.id, PaymentMethod.code, PaymentMethod.title, PaymentMethod.is_active)
         .where(PaymentMethod.venue_id == int(venue_id))
@@ -363,43 +399,51 @@ def _group_payment_method_balances(db: Session, *, venue_id: int, period_start: 
             payment_method_id=payment_method_id,
             period_start=period_start,
             period_end=period_end,
+            shift_slot=shift_slot,
         )
         revenue_cumulative_minor = _sum_closed_report_payment_minor(
             db,
             venue_id=venue_id,
             payment_method_id=payment_method_id,
             period_end=period_end,
+            shift_slot=shift_slot,
         )
-        other_income_minor = _sum_non_revenue_payment_entries(
-            db,
-            venue_id=venue_id,
-            payment_method_id=payment_method_id,
-            direction='INCOME',
-            period_start=period_start,
-            period_end=period_end,
-        )
-        other_income_cumulative_minor = _sum_non_revenue_payment_entries(
-            db,
-            venue_id=venue_id,
-            payment_method_id=payment_method_id,
-            direction='INCOME',
-            period_end=period_end,
-        )
-        outflow_minor = _sum_non_revenue_payment_entries(
-            db,
-            venue_id=venue_id,
-            payment_method_id=payment_method_id,
-            direction='EXPENSE',
-            period_start=period_start,
-            period_end=period_end,
-        )
-        cumulative_outflow_minor = _sum_non_revenue_payment_entries(
-            db,
-            venue_id=venue_id,
-            payment_method_id=payment_method_id,
-            direction='EXPENSE',
-            period_end=period_end,
-        )
+        if _is_slot_specific(shift_slot):
+            other_income_minor = 0
+            other_income_cumulative_minor = 0
+            outflow_minor = 0
+            cumulative_outflow_minor = 0
+        else:
+            other_income_minor = _sum_non_revenue_payment_entries(
+                db,
+                venue_id=venue_id,
+                payment_method_id=payment_method_id,
+                direction='INCOME',
+                period_start=period_start,
+                period_end=period_end,
+            )
+            other_income_cumulative_minor = _sum_non_revenue_payment_entries(
+                db,
+                venue_id=venue_id,
+                payment_method_id=payment_method_id,
+                direction='INCOME',
+                period_end=period_end,
+            )
+            outflow_minor = _sum_non_revenue_payment_entries(
+                db,
+                venue_id=venue_id,
+                payment_method_id=payment_method_id,
+                direction='EXPENSE',
+                period_start=period_start,
+                period_end=period_end,
+            )
+            cumulative_outflow_minor = _sum_non_revenue_payment_entries(
+                db,
+                venue_id=venue_id,
+                payment_method_id=payment_method_id,
+                direction='EXPENSE',
+                period_end=period_end,
+            )
         inflow_minor = revenue_inflow_minor + other_income_minor
         balance_minor = revenue_cumulative_minor + other_income_cumulative_minor - cumulative_outflow_minor
         is_active = bool(row[3])
@@ -517,23 +561,52 @@ def get_monthly_finance_summary(
     }
 
 
-def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, income_mode: str = 'PAYMENTS') -> dict:
+def get_day_finance_summary(
+    *,
+    db: Session,
+    venue_id: int,
+    target_date: date,
+    income_mode: str = 'PAYMENTS',
+    shift_slot: str | None = None,
+) -> dict:
     period_start = target_date
     period_end = target_date
     mode = str(income_mode or 'PAYMENTS').upper()
     if mode not in {'PAYMENTS', 'DEPARTMENTS'}:
         raise ValueError('Bad income_mode, expected PAYMENTS or DEPARTMENTS')
 
-    revenue_minor = _sum_closed_report_revenue_minor(db, venue_id=venue_id, period_start=target_date, period_end=target_date)
-    point_expenses = _group_daily_point_expenses(db, venue_id=venue_id, target_date=target_date)
-    point_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in point_expenses))
-    recurring_expenses = _group_daily_recurring_expenses(db, venue_id=venue_id, target_date=target_date)
-    recurring_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in recurring_expenses))
-    payroll_minor = _sum_payroll_minor_for_period(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
-    adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='ADJUSTMENT')
-    adjustment_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='ADJUSTMENT')
-    refund_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REFUND')
-    refund_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='REFUND')
+    slot = _normalize_summary_shift_slot(shift_slot)
+    slot_specific = slot is not None
+
+    revenue_minor = _sum_closed_report_revenue_minor(
+        db,
+        venue_id=venue_id,
+        period_start=target_date,
+        period_end=target_date,
+        shift_slot=slot,
+    )
+    if slot_specific:
+        # Expenses, adjustments/refunds and the current payroll allocation are day-level facts.
+        # Keep them in TOTAL to avoid assigning the same cost to both DAY and NIGHT.
+        point_expenses = []
+        point_expense_minor = 0
+        recurring_expenses = []
+        recurring_expense_minor = 0
+        payroll_minor = 0
+        adjustment_expense_minor = 0
+        adjustment_income_minor = 0
+        refund_income_minor = 0
+        refund_expense_minor = 0
+    else:
+        point_expenses = _group_daily_point_expenses(db, venue_id=venue_id, target_date=target_date)
+        point_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in point_expenses))
+        recurring_expenses = _group_daily_recurring_expenses(db, venue_id=venue_id, target_date=target_date)
+        recurring_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in recurring_expenses))
+        payroll_minor = _sum_payroll_minor_for_period(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
+        adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='ADJUSTMENT')
+        adjustment_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='ADJUSTMENT')
+        refund_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REFUND')
+        refund_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='REFUND')
     adjustments_minor = adjustment_income_minor - adjustment_expense_minor
     refunds_minor = refund_income_minor - refund_expense_minor
     expense_minor = point_expense_minor + recurring_expense_minor
@@ -544,7 +617,10 @@ def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, in
     payroll_ratio_bps = int((payroll_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
     total_cost_ratio_bps = int((total_cost_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
 
-    draft_stats = _expense_document_stats_for_period(db, venue_id=venue_id, period_start=target_date, period_end=target_date)
+    if slot_specific:
+        draft_stats = {'draft_expense_count': 0, 'draft_expense_total_minor': 0}
+    else:
+        draft_stats = _expense_document_stats_for_period(db, venue_id=venue_id, period_start=target_date, period_end=target_date)
     return {
         'date': target_date,
         'month': target_date.strftime('%Y-%m'),
@@ -564,11 +640,13 @@ def get_day_finance_summary(*, db: Session, venue_id: int, target_date: date, in
         'payroll_ratio_bps': payroll_ratio_bps,
         'total_cost_ratio_bps': total_cost_ratio_bps,
         'income_mode': mode,
-        'revenue_breakdown': _group_revenue_breakdown(db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode=mode),
+        'shift_slot': slot or 'TOTAL',
+        'slot_costs_available': not slot_specific,
+        'revenue_breakdown': _group_revenue_breakdown(db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode=mode, shift_slot=slot),
         'point_expenses': point_expenses,
         'point_expense_minor': point_expense_minor,
         'recurring_expenses': recurring_expenses,
         'recurring_expense_minor': recurring_expense_minor,
-        'payment_method_balances': _group_payment_method_balances(db, venue_id=venue_id, period_start=target_date, period_end=target_date),
+        'payment_method_balances': _group_payment_method_balances(db, venue_id=venue_id, period_start=target_date, period_end=target_date, shift_slot=slot),
         **draft_stats,
     }

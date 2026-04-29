@@ -7,6 +7,7 @@ import {
   setActiveVenueId,
   getMyVenues,
   getMyVenuePermissions,
+  getVenueSettings,
   api,
   toast,
   coerceDemoDate,
@@ -19,6 +20,57 @@ import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 
 const DEMO_OWNER_DAY_ECONOMICS_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_day_economics.dismissed";
+const LS_DAY_ECONOMICS_SHIFT_SLOT = "axelio.dayEconomics.shiftSlot";
+
+function normalizeEconomicsShiftSlot(value) {
+  const slot = String(value || "TOTAL").trim().toUpperCase();
+  if (slot === "DAY" || slot === "NIGHT") return slot;
+  return "TOTAL";
+}
+
+function economicsShiftSlotLabel(slot = state.shiftSlot) {
+  const normalized = normalizeEconomicsShiftSlot(slot);
+  if (normalized === "DAY") return "День";
+  if (normalized === "NIGHT") return "Ночь";
+  return "Итого";
+}
+
+function updateEconomicsSlotUrl() {
+  try {
+    const q = new URLSearchParams(location.search);
+    q.set("date", String(state.date || todayISO()));
+    if (state.nightShiftsEnabled && normalizeEconomicsShiftSlot(state.shiftSlot) !== "TOTAL") {
+      q.set("shift_slot", normalizeEconomicsShiftSlot(state.shiftSlot));
+    } else {
+      q.delete("shift_slot");
+    }
+    const next = `${location.pathname}?${q.toString()}${location.hash || ""}`;
+    history.replaceState(null, "", next);
+  } catch {}
+}
+
+function renderEconomicsSlotToggle() {
+  const box = document.getElementById("economicsSlotToggle");
+  if (!box) return;
+  const shouldShow = !!state.nightShiftsEnabled;
+  box.classList.toggle("hidden", !shouldShow);
+  if (!shouldShow) state.shiftSlot = "TOTAL";
+
+  document.getElementById("economicsSlotTotal")?.classList.toggle("active", state.shiftSlot === "TOTAL");
+  document.getElementById("economicsSlotDay")?.classList.toggle("active", state.shiftSlot === "DAY");
+  document.getElementById("economicsSlotNight")?.classList.toggle("active", state.shiftSlot === "NIGHT");
+}
+
+async function switchEconomicsShiftSlot(slot) {
+  const next = normalizeEconomicsShiftSlot(slot);
+  if (!state.nightShiftsEnabled && next !== "TOTAL") return;
+  if (next === state.shiftSlot) return;
+  state.shiftSlot = next;
+  try { localStorage.setItem(LS_DAY_ECONOMICS_SHIFT_SLOT, state.shiftSlot); } catch {}
+  renderEconomicsSlotToggle();
+  updateEconomicsSlotUrl();
+  await loadEconomics();
+}
 
 function setupDemoDayEconomicsIntro() {
   const intro = document.getElementById("demoOwnerDayEconomicsIntro");
@@ -219,6 +271,8 @@ function dayKindLabel(kind) {
 
 const state = {
   date: todayISO(),
+  shiftSlot: "TOTAL",
+  nightShiftsEnabled: false,
   economics: null,
 };
 
@@ -243,6 +297,20 @@ async function loadAccess() {
     access.canView = false;
     access.canManage = false;
   }
+}
+
+async function loadVenueEconomicsSettings() {
+  const venueId = getActiveVenueId();
+  if (!venueId) return;
+  try {
+    const settings = await getVenueSettings(venueId);
+    state.nightShiftsEnabled = !!settings?.night_shifts_enabled;
+  } catch {
+    state.nightShiftsEnabled = false;
+  }
+  if (!state.nightShiftsEnabled) state.shiftSlot = "TOTAL";
+  renderEconomicsSlotToggle();
+  updateEconomicsSlotUrl();
 }
 
 function renderStatus(econ) {
@@ -381,6 +449,7 @@ function renderEconomics(econ) {
   renderRules(econ);
   renderRollup(econ);
 
+  setText("title", `Экономика дня · ${economicsShiftSlotLabel(econ?.shift_slot || state.shiftSlot)}`);
   setText("economicsRevenue", fmtMoneyMinor(summary.revenue_minor || 0));
   setText("economicsExpenses", fmtMoneyMinor(summary.expense_minor || 0));
   setText("economicsProfit", fmtMoneyMinor(summary.profit_minor || 0));
@@ -393,10 +462,13 @@ function renderEconomics(econ) {
   setText("economicsPointExpenseRatio", fmtPercentBps(metrics.point_expense_ratio_bps));
   setText("economicsRecurringExpenseRatio", fmtPercentBps(metrics.recurring_expense_ratio_bps));
   setText("economicsPayrollRatio", fmtPercentBps(metrics.payroll_ratio_bps));
-  setText("economicsPeriodText", formatDateRu(econ?.date || state.date));
+  setText("economicsPeriodText", `${formatDateRu(econ?.date || state.date)} · ${economicsShiftSlotLabel(econ?.shift_slot || state.shiftSlot)}`);
+  const slotCostsHint = summary.slot_costs_available === false
+    ? " · Расходы и ФОТ по слотам пока не распределяются, смотри «Итого»"
+    : "";
   setText(
     "economicsMetaHint",
-    `Команда: ${team.assigned_user_count || 0} сотрудников в ${team.assigned_shift_count || 0} сменах · Чаевые: ${fmtMoneyMinor(report.tips_total_minor || 0)} · Разовые: ${fmtMoneyMinor(summary.point_expense_minor || 0)} · Регулярные: ${fmtMoneyMinor(summary.recurring_expense_minor || 0)}`
+    `Команда: ${team.assigned_user_count || 0} сотрудников в ${team.assigned_shift_count || 0} сменах · Чаевые: ${fmtMoneyMinor(report.tips_total_minor || 0)} · Разовые: ${fmtMoneyMinor(summary.point_expense_minor || 0)} · Регулярные: ${fmtMoneyMinor(summary.recurring_expense_minor || 0)}${slotCostsHint}`
   );
 
   renderList("economicsPaymentRevenueBreakdown", econ?.payment_revenue_breakdown || [], "Нет закрытого денежного прихода за день");
@@ -420,7 +492,7 @@ async function loadEconomics() {
     return;
   }
   try {
-    const econ = await api(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(state.date)}`);
+    const econ = await api(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(state.date)}&shift_slot=${encodeURIComponent(normalizeEconomicsShiftSlot(state.shiftSlot))}`);
     state.economics = econ;
     renderEconomics(econ);
   } catch (err) {
@@ -444,11 +516,15 @@ async function boot() {
 
   const params = new URLSearchParams(location.search);
   state.date = coerceDemoDate(params.get("date") || todayISO(), { notify: false, context: "owner-day-economics" });
+  state.shiftSlot = normalizeEconomicsShiftSlot(params.get("shift_slot") || localStorage.getItem(LS_DAY_ECONOMICS_SHIFT_SLOT) || "TOTAL");
+  await loadVenueEconomicsSettings();
+
   const datePick = document.getElementById("economicsDatePick");
   if (datePick) {
     datePick.value = state.date;
     datePick.onchange = async (e) => {
       state.date = coerceDemoDate(e.target.value || todayISO(), { context: "owner-day-economics" });
+      updateEconomicsSlotUrl();
       await loadEconomics();
     };
   }
@@ -468,6 +544,10 @@ async function boot() {
   if (openRulesBtn) openRulesBtn.onclick = () => { location.href = buildRulesPageLink(); };
   const openRulesBtnCard = document.getElementById("openEconomicsRulesBtnCard");
   if (openRulesBtnCard) openRulesBtnCard.onclick = () => { location.href = buildRulesPageLink(); };
+  document.getElementById("economicsSlotTotal")?.addEventListener("click", () => { switchEconomicsShiftSlot("TOTAL"); });
+  document.getElementById("economicsSlotDay")?.addEventListener("click", () => { switchEconomicsShiftSlot("DAY"); });
+  document.getElementById("economicsSlotNight")?.addEventListener("click", () => { switchEconomicsShiftSlot("NIGHT"); });
+
   const refreshBtn = document.getElementById("refreshEconomicsBtn");
   if (refreshBtn) refreshBtn.onclick = async () => { await loadEconomics(); };
 
