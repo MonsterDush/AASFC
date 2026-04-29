@@ -28,7 +28,7 @@ from app.core.tg import normalize_tg_username, send_telegram_message
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
-from app.services.notification_logs import lock_notification_idempotency_key, log_notification_attempt, notification_delivery_exists, notification_dedupe_scope
+from app.services.notification_logs import log_notification_attempt
 from app.services.xlsx_export import (
     build_expenses_xlsx,
     build_monthly_summary_xlsx,
@@ -118,6 +118,7 @@ from app.models.kpi_metric import KpiMetric
 from app.models.expense_category import ExpenseCategory
 from app.models.supplier import Supplier
 from app.models.expense import Expense
+from app.models.expense_attachment import ExpenseAttachment
 from app.models.expense_allocation import ExpenseAllocation
 from app.models.finance_entry import FinanceEntry
 from app.models.balance_adjustment import BalanceAdjustment
@@ -143,7 +144,6 @@ from app.models.day_economics_plan_template import DayEconomicsPlanTemplate
 from app.models.department_month_plan import DepartmentMonthPlan
 from app.models.department_day_plan import DepartmentDayPlan
 from app.models.venue_economics_rule import VenueEconomicsRule
-from app.services.shifts.slots import normalize_shift_slot
 
 from app.auth.venue_permissions import require_venue_permission, has_venue_permission
 
@@ -447,7 +447,6 @@ class ReportValueIn(BaseModel):
 
 class DailyReportUpsertIn(BaseModel):
     date: date
-    shift_slot: str | None = None
 
     # legacy fields (kept for backwards compatibility)
     cash: int = Field(0, ge=0)
@@ -466,7 +465,6 @@ class DailyReportUpsertIn(BaseModel):
 
 class DailyReportCloseIn(BaseModel):
     comment: str | None = None
-
 
 
 
@@ -585,8 +583,6 @@ class MonthlyFinanceSummaryOut(FinanceSummaryOut):
 class DailyFinanceSummaryOut(FinanceSummaryOut):
     date: date
     income_mode: str
-    shift_slot: str = "TOTAL"
-    slot_costs_available: bool = True
     revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
     point_expenses: list[MonthlyFinanceBreakdownRowOut]
     point_expense_minor: int
@@ -600,7 +596,6 @@ class DayEconomicsReportOut(BaseModel):
     exists: bool
     report_id: int | None = None
     status: str
-    shift_slot: str = "TOTAL"
     closed_at: datetime | None = None
     closed_by_user_id: int | None = None
     comment: str | None = None
@@ -813,7 +808,6 @@ class DayEconomicsRollupOut(BaseModel):
 
 class DayEconomicsOut(BaseModel):
     date: date
-    shift_slot: str = "TOTAL"
     report: DayEconomicsReportOut
     team: DayEconomicsTeamOut
     metrics: DayEconomicsMetricsOut
@@ -978,7 +972,6 @@ class ShiftCreateIn(BaseModel):
     date: date
     interval_id: int = Field(..., gt=0)
     is_active: bool = True
-    shift_slot: str = "DAY"
 
 
 class ShiftUpdateIn(BaseModel):
@@ -1097,6 +1090,56 @@ def _serialize_expense_allocation(allocation: ExpenseAllocation) -> dict:
     }
 
 
+def _serialize_expense_attachment(attachment: ExpenseAttachment) -> dict:
+    return {
+        "id": attachment.id,
+        "expense_id": attachment.expense_id,
+        "file_name": attachment.file_name,
+        "content_type": attachment.content_type,
+        "file_size": int(getattr(attachment, "file_size", 0) or 0),
+        "created_at": attachment.created_at.isoformat() if attachment.created_at else None,
+        "url": f"/venues/{attachment.venue_id}/expenses/{attachment.expense_id}/attachments/{attachment.id}",
+    }
+
+
+def _list_active_expense_attachments(db: Session, *, venue_id: int, expense_id: int) -> list[ExpenseAttachment]:
+    return list(
+        db.execute(
+            select(ExpenseAttachment)
+            .where(
+                ExpenseAttachment.venue_id == venue_id,
+                ExpenseAttachment.expense_id == expense_id,
+                ExpenseAttachment.is_active.is_(True),
+            )
+            .order_by(ExpenseAttachment.id.asc())
+        ).scalars().all()
+    )
+
+
+def _get_expense_or_404(db: Session, *, venue_id: int, expense_id: int) -> Expense:
+    obj = db.execute(
+        select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return obj
+
+
+_EXPENSE_ATTACHMENT_ALLOWED_EXTENSIONS = {
+    ".pdf",
+    ".jpg", ".jpeg", ".png", ".webp", ".heic",
+    ".doc", ".docx", ".xls", ".xlsx", ".csv",
+    ".txt", ".rtf",
+    ".zip", ".rar",
+}
+_EXPENSE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024
+
+
+def _safe_upload_filename(filename: str | None) -> str:
+    raw = os.path.basename(str(filename or "file")).strip() or "file"
+    return re.sub(r"[^0-9A-Za-zА-Яа-яЁё._()\- ]+", "_", raw)[:180] or "file"
+
+
 def _serialize_expense(
     expense: Expense,
     category: ExpenseCategory | None = None,
@@ -1108,6 +1151,7 @@ def _serialize_expense(
     sup = supplier or getattr(expense, "supplier", None)
     pm = payment_method or getattr(expense, "payment_method", None)
     allocs = allocations if allocations is not None else list(getattr(expense, "allocations", []) or [])
+    attachments = [a for a in list(getattr(expense, "attachments", []) or []) if getattr(a, "is_active", True)]
     return {
         "id": expense.id,
         "venue_id": expense.venue_id,
@@ -1140,6 +1184,8 @@ def _serialize_expense(
             "title": pm.title,
         } if pm is not None else None,
         "allocations": [_serialize_expense_allocation(a) for a in allocs],
+        "attachments": [_serialize_expense_attachment(a) for a in attachments],
+        "attachments_count": len(attachments),
     }
 
 
@@ -4242,25 +4288,6 @@ def _has_venue_permission(db: Session, *, venue_id: int, user: User, permission_
         return False
 
 
-def _resolve_report_shift_slot(query_value: str | None = None, body_value: str | None = None) -> str:
-    # Query param is the public contract; body field is kept only for backwards/extra safety.
-    return normalize_shift_slot(query_value if query_value is not None else body_value)
-
-
-def _report_slot_filter(venue_id: int, report_date: date, shift_slot: str):
-    return (
-        DailyReport.venue_id == venue_id,
-        DailyReport.date == report_date,
-        DailyReport.shift_slot == normalize_shift_slot(shift_slot),
-    )
-
-
-def _load_daily_report_for_slot(db: Session, *, venue_id: int, report_date: date, shift_slot: str) -> DailyReport | None:
-    return db.execute(
-        select(DailyReport).where(*_report_slot_filter(venue_id, report_date, shift_slot))
-    ).scalar_one_or_none()
-
-
 def _load_report_values(db: Session, *, report_id: int) -> list[DailyReportValue]:
     return db.execute(
         select(DailyReportValue).where(DailyReportValue.report_id == report_id)
@@ -4296,7 +4323,6 @@ def _snapshot_report(db: Session, *, report: DailyReport) -> dict:
         "id": report.id,
         "venue_id": int(report.venue_id),
         "date": report.date.isoformat(),
-        "shift_slot": normalize_shift_slot(getattr(report, "shift_slot", None)),
         "status": report.status,
         "cash": int(report.cash or 0),
         "cashless": int(report.cashless or 0),
@@ -4367,7 +4393,6 @@ def _build_dynamic_items(
 def upsert_daily_report(
     venue_id: int,
     payload: DailyReportUpsertIn,
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -4377,14 +4402,13 @@ def upsert_daily_report(
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found")
-    slot = _resolve_report_shift_slot(shift_slot, payload.shift_slot)
-    if slot == "NIGHT" and not bool(getattr(venue, "night_shifts_enabled", False)):
-        raise HTTPException(status_code=400, detail="Ночные смены не включены для заведения")
     tips_enabled = bool(getattr(venue, "tips_enabled", False))
     safe_tips_total = int(payload.tips_total or 0) if tips_enabled else 0
 
 
-    obj = _load_daily_report_for_slot(db, venue_id=venue_id, report_date=payload.date, shift_slot=slot)
+    obj = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == payload.date)
+    ).scalar_one_or_none()
 
     audited_before = None
     is_closed_edit = False
@@ -4393,7 +4417,6 @@ def upsert_daily_report(
         obj = DailyReport(
             venue_id=venue_id,
             date=payload.date,
-            shift_slot=slot,
             cash=payload.cash,
             cashless=payload.cashless,
             revenue_total=payload.revenue_total,
@@ -4493,7 +4516,6 @@ def upsert_daily_report(
 
     db.flush()
     if str(obj.status or "").upper() == "CLOSED":
-        _rebuild_report_tip_allocations(db, report=obj, venue=venue)
         rebuild_revenue_entries_for_report(db=db, report=obj)
         _recalculate_payroll_for_dates(
             db,
@@ -4506,12 +4528,7 @@ def upsert_daily_report(
 
     db.commit()
     db.refresh(obj)
-    return {
-        "id": obj.id,
-        "date": obj.date.isoformat(),
-        "shift_slot": normalize_shift_slot(getattr(obj, "shift_slot", None)),
-        "mode": "updated" if obj.updated_at else "created",
-    }
+    return {"id": obj.id, "date": obj.date.isoformat(), "mode": "updated" if obj.updated_at else "created"}
 
 
 
@@ -4519,14 +4536,11 @@ def upsert_daily_report(
 def list_daily_reports(
     venue_id: int,
     month: str = Query(..., description="YYYY-MM"),
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
-
-    slot = normalize_shift_slot(shift_slot)
 
     try:
         y_s, m_s = month.split("-")
@@ -4539,13 +4553,8 @@ def list_daily_reports(
 
     rows = db.execute(
         select(DailyReport)
-        .where(
-            DailyReport.venue_id == venue_id,
-            DailyReport.date >= start,
-            DailyReport.date < end,
-            DailyReport.shift_slot == slot,
-        )
-        .order_by(DailyReport.date.asc(), DailyReport.id.asc())
+        .where(DailyReport.venue_id == venue_id, DailyReport.date >= start, DailyReport.date < end)
+        .order_by(DailyReport.date.asc())
     ).scalars().all()
 
     show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user)
@@ -4553,7 +4562,6 @@ def list_daily_reports(
         {
             "id": r.id,
             "date": r.date.isoformat(),
-            "shift_slot": normalize_shift_slot(getattr(r, "shift_slot", None)),
             "status": getattr(r, "status", "DRAFT"),
             "closed_at": r.closed_at.isoformat() if getattr(r, "closed_at", None) else None,
             "cash": r.cash if show_numbers else None,
@@ -4569,15 +4577,15 @@ def list_daily_reports(
 def get_daily_report(
     venue_id: int,
     report_date: date,
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
-    slot = normalize_shift_slot(shift_slot)
-    r = _load_daily_report_for_slot(db, venue_id=venue_id, report_date=report_date, shift_slot=slot)
+    r = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+    ).scalar_one_or_none()
     if r is None:
         raise HTTPException(status_code=404, detail="Report not found")
 
@@ -4595,7 +4603,6 @@ def get_daily_report(
     return {
         "id": r.id,
         "date": r.date.isoformat(),
-        "shift_slot": normalize_shift_slot(getattr(r, "shift_slot", None)),
         "status": getattr(r, "status", "DRAFT"),
         "closed_by_user_id": int(r.closed_by_user_id) if getattr(r, "closed_by_user_id", None) else None,
         "closed_at": r.closed_at.isoformat() if getattr(r, "closed_at", None) else None,
@@ -4628,7 +4635,7 @@ def get_daily_report(
     }
 
 
-def _load_assigned_members_for_report_date(db: Session, *, venue_id: int, report_date: date, shift_slot: str = "DAY") -> list[tuple[int, str | None]]:
+def _load_assigned_members_for_report_date(db: Session, *, venue_id: int, report_date: date) -> list[tuple[int, str | None]]:
     rows = db.execute(
         select(ShiftAssignment.member_user_id, VenuePosition.title)
         .join(Shift, Shift.id == ShiftAssignment.shift_id)
@@ -4636,7 +4643,6 @@ def _load_assigned_members_for_report_date(db: Session, *, venue_id: int, report
         .where(
             Shift.venue_id == venue_id,
             Shift.date == report_date,
-            Shift.shift_slot == normalize_shift_slot(shift_slot),
             Shift.is_active.is_(True),
         )
         .order_by(ShiftAssignment.member_user_id.asc(), ShiftAssignment.id.asc())
@@ -4661,12 +4667,7 @@ def _rebuild_report_tip_allocations(
         return []
 
     tips_split_mode = str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL").upper()
-    assigned_members = _load_assigned_members_for_report_date(
-        db,
-        venue_id=int(report.venue_id),
-        report_date=report.date,
-        shift_slot=normalize_shift_slot(getattr(report, "shift_slot", None)),
-    )
+    assigned_members = _load_assigned_members_for_report_date(db, venue_id=int(report.venue_id), report_date=report.date)
     if not assigned_members:
         return []
 
@@ -4699,7 +4700,6 @@ def close_daily_report(
     report_date: date,
     payload: DailyReportCloseIn,
     background_tasks: BackgroundTasks,
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -4713,13 +4713,13 @@ def close_daily_report(
     if not allowed:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    slot = normalize_shift_slot(shift_slot)
-    rep = _load_daily_report_for_slot(db, venue_id=venue_id, report_date=report_date, shift_slot=slot)
+    rep = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+    ).scalar_one_or_none()
     if rep is None:
         rep = DailyReport(
             venue_id=venue_id,
             date=report_date,
-            shift_slot=slot,
             cash=0,
             cashless=0,
             revenue_total=0,
@@ -4733,23 +4733,12 @@ def close_daily_report(
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found")
-    if slot == "NIGHT" and not bool(getattr(venue, "night_shifts_enabled", False)):
-        raise HTTPException(status_code=400, detail="Ночные смены не включены для заведения")
     if not bool(getattr(venue, "tips_enabled", False)):
         # when tips are disabled for venue, ignore any stored tips_total
         rep.tips_total = 0
 
     if rep.status == "CLOSED":
-        # The report may already be closed before notification jobs existed or
-        # before DAY/NIGHT split was enabled. Re-enqueue safely: job/delivery
-        # idempotency prevents duplicates, but DAY will no longer be skipped
-        # just because NIGHT was closed later.
-        _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
-        _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
-        _enqueue_soft_alerts_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
-        db.commit()
-        background_tasks.add_task(process_pending_notification_jobs_once, 10)
-        return {"ok": True, "status": "CLOSED", "shift_slot": slot}
+        return {"ok": True, "status": "CLOSED"}
 
     values = _load_report_values(db, report_id=rep.id)
     dept_cnt = int(db.execute(select(func.count(Department.id)).where(Department.venue_id == venue_id)).scalar() or 0)
@@ -4783,21 +4772,20 @@ def close_daily_report(
         force=True,
         trigger_reason="report_closed",
     )
-    _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
-    _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
-    _enqueue_soft_alerts_job(db, venue_id=venue_id, target_date=report_date, shift_slot=slot)
+    _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date)
+    _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date)
+    _enqueue_soft_alerts_job(db, venue_id=venue_id, target_date=report_date)
 
     db.commit()
     background_tasks.add_task(process_pending_notification_jobs_once, 10)
 
-    return {"ok": True, "status": "CLOSED", "shift_slot": slot, "discrepancy": discrepancy}
+    return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
 
 
 @router.post("/{venue_id}/reports/{report_date}/reopen")
 def reopen_daily_report(
     venue_id: int,
     report_date: date,
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -4809,13 +4797,14 @@ def reopen_daily_report(
     if not allowed:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    slot = normalize_shift_slot(shift_slot)
-    rep = _load_daily_report_for_slot(db, venue_id=venue_id, report_date=report_date, shift_slot=slot)
+    rep = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+    ).scalar_one_or_none()
     if rep is None:
         raise HTTPException(status_code=404, detail="Report not found")
 
     if rep.status != "CLOSED":
-        return {"ok": True, "status": getattr(rep, "status", "DRAFT"), "shift_slot": slot}
+        return {"ok": True, "status": getattr(rep, "status", "DRAFT")}
 
     rep.status = "DRAFT"
     rep.closed_by_user_id = None
@@ -4834,7 +4823,7 @@ def reopen_daily_report(
         trigger_reason="report_reopened",
     )
     db.commit()
-    return {"ok": True, "status": "DRAFT", "shift_slot": slot}
+    return {"ok": True, "status": "DRAFT"}
 
 
 # ---------- Revenue aggregation (Stage 2) ----------
@@ -5660,15 +5649,15 @@ def export_payroll(
 def list_daily_report_audit(
     venue_id: int,
     report_date: date,
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
-    slot = normalize_shift_slot(shift_slot)
-    rep = _load_daily_report_for_slot(db, venue_id=venue_id, report_date=report_date, shift_slot=slot)
+    rep = db.execute(
+        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+    ).scalar_one_or_none()
     if rep is None:
         raise HTTPException(status_code=404, detail="Report not found")
 
@@ -5692,21 +5681,17 @@ def list_daily_report_audit(
 def list_report_attachments(
     venue_id: int,
     report_date: date,
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
-    slot = normalize_shift_slot(shift_slot)
-
     rows = db.execute(
         select(DailyReportAttachment)
         .where(
             DailyReportAttachment.venue_id == venue_id,
             DailyReportAttachment.report_date == report_date,
-            DailyReportAttachment.shift_slot == slot,
             DailyReportAttachment.is_active.is_(True),
         )
         .order_by(DailyReportAttachment.id.asc())
@@ -5718,9 +5703,8 @@ def list_report_attachments(
                 "id": a.id,
                 "file_name": a.file_name,
                 "content_type": a.content_type,
-                "shift_slot": normalize_shift_slot(getattr(a, "shift_slot", None)),
                 # NOTE: frontend should prefix this path with API_BASE.
-                "url": f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}?shift_slot={slot}",
+                "url": f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}",
             }
             for a in rows
         ]
@@ -5732,21 +5716,17 @@ def download_report_attachment(
     venue_id: int,
     report_date: date,
     attachment_id: int,
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
-    slot = normalize_shift_slot(shift_slot)
-
     a = db.execute(
         select(DailyReportAttachment).where(
             DailyReportAttachment.id == attachment_id,
             DailyReportAttachment.venue_id == venue_id,
             DailyReportAttachment.report_date == report_date,
-            DailyReportAttachment.shift_slot == slot,
             DailyReportAttachment.is_active.is_(True),
         )
     ).scalar_one_or_none()
@@ -5764,21 +5744,17 @@ def delete_report_attachment(
     venue_id: int,
     report_date: date,
     attachment_id: int,
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_maker(db, venue_id=venue_id, user=user)
 
-    slot = normalize_shift_slot(shift_slot)
-
     a = db.execute(
         select(DailyReportAttachment).where(
             DailyReportAttachment.id == attachment_id,
             DailyReportAttachment.venue_id == venue_id,
             DailyReportAttachment.report_date == report_date,
-            DailyReportAttachment.shift_slot == slot,
             DailyReportAttachment.is_active.is_(True),
         )
     ).scalar_one_or_none()
@@ -5804,28 +5780,18 @@ def upload_report_attachments(
     venue_id: int,
     report_date: date,
     files: list[UploadFile] = File(...),
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_maker(db, venue_id=venue_id, user=user)
 
-    slot = normalize_shift_slot(shift_slot)
-    if slot == "NIGHT":
-        venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
-        if venue is None:
-            raise HTTPException(status_code=404, detail="Venue not found")
-        if not bool(getattr(venue, "night_shifts_enabled", False)):
-            raise HTTPException(status_code=400, detail="Ночные смены не включены для заведения")
-
     # ensure report exists (or create empty one)
-    rep = _load_daily_report_for_slot(db, venue_id=venue_id, report_date=report_date, shift_slot=slot)
+    rep = db.execute(select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)).scalar_one_or_none()
     if rep is None:
         rep = DailyReport(
             venue_id=venue_id,
             date=report_date,
-            shift_slot=slot,
             cash=0,
             cashless=0,
             revenue_total=0,
@@ -5854,7 +5820,7 @@ def upload_report_attachments(
             raise HTTPException(status_code=415, detail=f"Unsupported content_type: {f.content_type}")
 
         uid = uuid.uuid4().hex
-        dst = os.path.join(base_dir, f"{venue_id}_{report_date.isoformat()}_{slot}_{uid}_{safe_name}")
+        dst = os.path.join(base_dir, f"{venue_id}_{report_date.isoformat()}_{uid}_{safe_name}")
         with open(dst, "wb") as out:
             total = 0
             while True:
@@ -5874,7 +5840,6 @@ def upload_report_attachments(
         obj = DailyReportAttachment(
             venue_id=venue_id,
             report_date=report_date,
-            shift_slot=slot,
             file_name=safe_name,
             content_type=f.content_type,
             storage_path=dst,
@@ -5893,8 +5858,7 @@ def upload_report_attachments(
                 "id": a.id,
                 "file_name": a.file_name,
                 "content_type": a.content_type,
-                "shift_slot": normalize_shift_slot(getattr(a, "shift_slot", None)),
-                "url": f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}?shift_slot={slot}",
+                "url": f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}",
             }
             for a in created
         ],
@@ -6038,35 +6002,15 @@ def _frontend_base_url() -> str:
     return settings.frontend_base_url()
 
 
-def _normalize_notification_shift_slot(value: str | None, *, allow_total: bool = False) -> str:
-    raw = str(value or ("TOTAL" if allow_total else "DAY")).strip().upper()
-    if allow_total and raw == "TOTAL":
-        return "TOTAL"
-    return normalize_shift_slot(raw)
+def _build_owner_day_economics_link(*, venue_id: int, target_date: date) -> str:
+    return f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}&date={quote(target_date.isoformat())}"
 
 
-def _shift_slot_title(value: str | None) -> str:
-    slot = _normalize_notification_shift_slot(value, allow_total=True)
-    if slot == "NIGHT":
-        return "Ночь"
-    if slot == "DAY":
-        return "День"
-    return "Итого"
-
-
-def _build_owner_day_economics_link(*, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> str:
-    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
-    suffix = f"&shift_slot={quote(slot)}" if slot != "TOTAL" else ""
-    return f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}&date={quote(target_date.isoformat())}{suffix}"
-
-
-def _build_staff_salary_day_link(*, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> str:
+def _build_staff_salary_day_link(*, venue_id: int, target_date: date) -> str:
     month_value = target_date.strftime("%Y-%m")
-    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
-    suffix = f"&shift_slot={quote(slot)}" if slot != "TOTAL" else ""
     return (
         f"{_frontend_base_url()}/staff-salary.html?venue_id={int(venue_id)}"
-        f"&month={quote(month_value)}&date={quote(target_date.isoformat())}&open_day=1{suffix}"
+        f"&month={quote(month_value)}&date={quote(target_date.isoformat())}&open_day=1"
     )
 
 
@@ -6130,8 +6074,12 @@ def _deliver_user_notification(
     url: str | None = None,
     button_text: str | None = None,
 ) -> tuple[bool, bool]:
-    lock_notification_idempotency_key(db, idempotency_key)
-    if notification_delivery_exists(db, idempotency_key=idempotency_key):
+    existing_log = db.execute(
+        select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
+        .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
+        .order_by(NotificationDeliveryLog.id.desc())
+    ).first()
+    if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
         return False, False
 
     planned_at = datetime.utcnow().replace(tzinfo=timezone.utc)
@@ -6176,7 +6124,7 @@ def _enqueue_adjustment_assigned_job(db: Session, *, venue_id: int, adjustment_i
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6214,7 +6162,7 @@ def _enqueue_adjustment_dispute_event_job(
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_DISPUTE_EVENT,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6451,14 +6399,14 @@ def _select_soft_alerts_for_notification(economics: dict) -> list[dict]:
     return selected
 
 
-def _build_soft_alerts_notification_text(*, venue_name: str, target_date: date, economics: dict, alerts: list[dict], detail_level: str, shift_slot: str | None = "TOTAL") -> str:
+def _build_soft_alerts_notification_text(*, venue_name: str, target_date: date, economics: dict, alerts: list[dict], detail_level: str) -> str:
     level = _notification_detail_level(detail_level)
     summary = economics.get("summary") or {}
     metrics = economics.get("metrics") or {}
     rules = economics.get("rules") or {}
 
     lines: list[str] = [
-        f"⚠️ Мягкие алерты · {_format_ru_date(target_date)} · {_shift_slot_title(shift_slot)}",
+        f"⚠️ Мягкие алерты · {_format_ru_date(target_date)}",
         f"Заведение: {venue_name}",
     ]
     if level in {"standard", "detailed"}:
@@ -6548,7 +6496,7 @@ def _render_breakdown(title: str, items: list[dict], *, limit: int) -> list[str]
     return lines
 
 
-def _build_day_economics_notification_text(*, venue_name: str, target_date: date, economics: dict, detail_level: str, shift_slot: str | None = "TOTAL") -> str:
+def _build_day_economics_notification_text(*, venue_name: str, target_date: date, economics: dict, detail_level: str) -> str:
     level = _notification_detail_level(detail_level)
 
     summary = economics.get("summary") or {}
@@ -6556,7 +6504,7 @@ def _build_day_economics_notification_text(*, venue_name: str, target_date: date
     department_breakdown = economics.get("department_revenue_breakdown") or []
 
     lines: list[str] = [
-        f"📊 Экономика дня · {_format_ru_date(target_date)} · {_shift_slot_title(shift_slot)}",
+        f"📊 Экономика дня · {_format_ru_date(target_date)}",
         f"Заведение: {venue_name}",
         f"Выручка: {_fmt_money_minor(summary.get('revenue_minor'))}",
         f"ФОТ: {_fmt_money_minor(summary.get('payroll_minor'))} ({_fmt_percent_bps(summary.get('payroll_ratio_bps'))})",
@@ -6587,7 +6535,7 @@ def _build_day_economics_notification_text(*, venue_name: str, target_date: date
     return "\n".join(lines)
 
 
-def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, breakdown: dict, detail_level: str, shift_slot: str | None = None) -> str:
+def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, breakdown: dict, detail_level: str) -> str:
     level = _notification_detail_level(detail_level)
 
     summary = breakdown.get("summary") or {}
@@ -6595,9 +6543,8 @@ def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, brea
     items = breakdown.get("items") or []
     state = str(breakdown.get("state") or "ready")
 
-    slot_title = _shift_slot_title(shift_slot or breakdown.get("shift_slot") or "TOTAL")
     lines: list[str] = [
-        f"💸 Начисление за день · {_format_ru_date(target_date)} · {slot_title}",
+        f"💸 Начисление за день · {_format_ru_date(target_date)}",
         f"Заведение: {venue_name}",
         f"Итого начисление: {_fmt_money_minor(summary.get('total_minor'))}",
     ]
@@ -6622,10 +6569,6 @@ def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, brea
         if hours_total not in (None, "") or shifts_count not in (None, ""):
             lines.append(f"Смен: {int(shifts_count or 0)} · Часы: {hours_total or 0}")
 
-    slot_note = str(context.get("slot_note") or "").strip()
-    if slot_note and level in {"standard", "detailed"}:
-        lines.append(slot_note)
-
     if items and level in {"standard", "detailed"}:
         visible = items[:4] if level == "standard" else items[:8]
         lines.append("Из чего сложилось:")
@@ -6645,11 +6588,8 @@ def _build_salary_day_breakdown_text(*, venue_name: str, target_date: date, brea
     return "\n".join(lines)
 
 
-def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> list[int]:
+def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, target_date: date) -> list[int]:
     user_ids: set[int] = set()
-    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
-    shift_filters = [Shift.shift_slot == slot] if slot in {"DAY", "NIGHT"} else []
-    report_filters = [DailyReport.shift_slot == slot] if slot in {"DAY", "NIGHT"} else []
 
     assignment_rows = db.execute(
         select(ShiftAssignment.member_user_id)
@@ -6659,24 +6599,21 @@ def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, tar
             Shift.date == target_date,
             Shift.is_active.is_(True),
             ShiftAssignment.member_user_id.is_not(None),
-            *shift_filters,
         )
     ).all()
     for (member_user_id,) in assignment_rows:
         if member_user_id is not None:
             user_ids.add(int(member_user_id))
 
-    adjustment_rows = []
-    if slot == "TOTAL":
-        adjustment_rows = db.execute(
-            select(Adjustment.member_user_id)
-            .where(
-                Adjustment.venue_id == int(venue_id),
-                Adjustment.date == target_date,
-                Adjustment.is_active.is_(True),
-                Adjustment.member_user_id.is_not(None),
-            )
-        ).all()
+    adjustment_rows = db.execute(
+        select(Adjustment.member_user_id)
+        .where(
+            Adjustment.venue_id == int(venue_id),
+            Adjustment.date == target_date,
+            Adjustment.is_active.is_(True),
+            Adjustment.member_user_id.is_not(None),
+        )
+    ).all()
     for (member_user_id,) in adjustment_rows:
         if member_user_id is not None:
             user_ids.add(int(member_user_id))
@@ -6689,7 +6626,6 @@ def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, tar
             DailyReport.status == "CLOSED",
             DailyReport.date == target_date,
             DailyReportTipAllocation.user_id.is_not(None),
-            *report_filters,
         )
     ).all()
     for (user_id,) in tip_rows:
@@ -6699,15 +6635,14 @@ def _collect_salary_day_notification_user_ids(db: Session, *, venue_id: int, tar
     return sorted(user_ids)
 
 
-def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> NotificationJob:
-    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
-    idempotency_key = f"job:salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}:{slot}"
+def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
+    idempotency_key = f"job:salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}"
     existing = db.execute(
         select(NotificationJob)
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6717,7 +6652,7 @@ def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date
     job = NotificationJob(
         job_type=_NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN,
         status=_NOTIFICATION_JOB_STATUS_PENDING,
-        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat(), "shift_slot": slot}, ensure_ascii=False),
+        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat()}, ensure_ascii=False),
         attempts=0,
         max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
         run_after=datetime.utcnow(),
@@ -6728,9 +6663,8 @@ def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date
     return job
 
 
-def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> None:
-    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
-    user_ids = _collect_salary_day_notification_user_ids(db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
+def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
+    user_ids = _collect_salary_day_notification_user_ids(db, venue_id=venue_id, target_date=target_date)
     if not user_ids:
         return
 
@@ -6743,7 +6677,7 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
         return
 
     venue_name = _venue_name(db, venue_id)
-    link = _build_staff_salary_day_link(venue_id=venue_id, target_date=target_date, shift_slot=slot)
+    link = _build_staff_salary_day_link(venue_id=venue_id, target_date=target_date)
     sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
     seen_tg_user_ids: set[int] = set()
 
@@ -6764,10 +6698,14 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
         chat_id = int(recipient.tg_user_id)
         if chat_id in seen_tg_user_ids:
             continue
-        dedupe_scope = notification_dedupe_scope(recipient)
-        idempotency_key = f"salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}:{slot}:{dedupe_scope}"
-        lock_notification_idempotency_key(db, idempotency_key)
-        if notification_delivery_exists(db, idempotency_key=idempotency_key):
+        dedupe_scope = f"tg:{chat_id}"
+        idempotency_key = f"salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}"
+        existing_log = db.execute(
+            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
+            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
+            .order_by(NotificationDeliveryLog.id.desc())
+        ).first()
+        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
             seen_tg_user_ids.add(chat_id)
             continue
 
@@ -6776,7 +6714,6 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
             member_user_id=int(recipient.id),
             venue_id=int(venue_id),
             target_date=target_date,
-            shift_slot=slot,
         )
         items = breakdown.get("items") or []
         total_minor = int((breakdown.get("summary") or {}).get("total_minor") or 0)
@@ -6789,7 +6726,6 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
             target_date=target_date,
             breakdown=breakdown,
             detail_level=detail_level,
-            shift_slot=slot,
         )
 
         pending_log = log_notification_attempt(
@@ -6827,15 +6763,14 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
     db.commit()
 
 
-def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> NotificationJob:
-    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
-    idempotency_key = f"job:soft_alerts:{int(venue_id)}:{target_date.isoformat()}:{slot}"
+def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
+    idempotency_key = f"job:soft_alerts:{int(venue_id)}:{target_date.isoformat()}"
     existing = db.execute(
         select(NotificationJob)
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_SOFT_ALERTS,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6845,7 +6780,7 @@ def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date, s
     job = NotificationJob(
         job_type=_NOTIFICATION_JOB_TYPE_SOFT_ALERTS,
         status=_NOTIFICATION_JOB_STATUS_PENDING,
-        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat(), "shift_slot": slot}, ensure_ascii=False),
+        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat()}, ensure_ascii=False),
         attempts=0,
         max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
         run_after=datetime.utcnow(),
@@ -6856,8 +6791,7 @@ def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date, s
     return job
 
 
-def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> None:
-    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
+def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
     members = db.execute(
         select(User)
         .join(VenueMember, VenueMember.user_id == User.id)
@@ -6870,7 +6804,7 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
     if not members:
         return
 
-    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
+    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
     alerts = _select_soft_alerts_for_notification(economics)
     if not alerts:
         return
@@ -6895,7 +6829,7 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
         return
 
     venue_name = _venue_name(db, venue_id)
-    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date, shift_slot=slot)
+    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
     sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
     alert_signature = _soft_alert_signature(alerts)
     had_retryable_error = False
@@ -6903,10 +6837,14 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
 
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
-        dedupe_scope = notification_dedupe_scope(recipient)
-        idempotency_key = f"soft_alerts:{int(venue_id)}:{target_date.isoformat()}:{slot}:{dedupe_scope}:{alert_signature}"
-        lock_notification_idempotency_key(db, idempotency_key)
-        if notification_delivery_exists(db, idempotency_key=idempotency_key):
+        dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
+        idempotency_key = f"soft_alerts:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}:{alert_signature}"
+        existing_log = db.execute(
+            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
+            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
+            .order_by(NotificationDeliveryLog.id.desc())
+        ).first()
+        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
@@ -6916,7 +6854,6 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
             economics=economics,
             alerts=alerts,
             detail_level=detail_level,
-            shift_slot=slot,
         )
 
         pending_log = log_notification_attempt(
@@ -6959,15 +6896,14 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
         raise RuntimeError("soft alerts delivery failed with retryable error")
 
 
-def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> NotificationJob:
-    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
-    idempotency_key = f"job:day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{slot}"
+def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
+    idempotency_key = f"job:day_economics_summary:{int(venue_id)}:{target_date.isoformat()}"
     existing = db.execute(
         select(NotificationJob)
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6977,7 +6913,7 @@ def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_dat
     job = NotificationJob(
         job_type=_NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY,
         status=_NOTIFICATION_JOB_STATUS_PENDING,
-        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat(), "shift_slot": slot}, ensure_ascii=False),
+        payload_json=json.dumps({"venue_id": int(venue_id), "target_date": target_date.isoformat()}, ensure_ascii=False),
         attempts=0,
         max_attempts=max(int(_NOTIFICATION_JOB_MAX_ATTEMPTS), 1),
         run_after=datetime.utcnow(),
@@ -7064,21 +7000,18 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
                         db,
                         venue_id=int(payload.get("venue_id")),
                         target_date=date.fromisoformat(str(payload.get("target_date"))),
-                        shift_slot=str(payload.get("shift_slot") or "TOTAL"),
                     )
                 elif job.job_type == _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN:
                     _send_salary_day_breakdown_notifications(
                         db,
                         venue_id=int(payload.get("venue_id")),
                         target_date=date.fromisoformat(str(payload.get("target_date"))),
-                        shift_slot=str(payload.get("shift_slot") or "TOTAL"),
                     )
                 elif job.job_type == _NOTIFICATION_JOB_TYPE_SOFT_ALERTS:
                     _send_soft_alert_notifications(
                         db,
                         venue_id=int(payload.get("venue_id")),
                         target_date=date.fromisoformat(str(payload.get("target_date"))),
-                        shift_slot=str(payload.get("shift_slot") or "TOTAL"),
                     )
                 elif job.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED:
                     _send_adjustment_assigned_notification(
@@ -7116,8 +7049,7 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
     return processed
 
 
-def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, target_date: date, shift_slot: str | None = "TOTAL") -> None:
-    slot = _normalize_notification_shift_slot(shift_slot, allow_total=True)
+def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, target_date: date) -> None:
     members = db.execute(
         select(User)
         .join(VenueMember, VenueMember.user_id == User.id)
@@ -7149,17 +7081,21 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
     if not recipients:
         return
 
-    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
+    economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
     venue_name = _venue_name(db, venue_id)
-    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date, shift_slot=slot)
+    link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
     sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
 
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
-        dedupe_scope = notification_dedupe_scope(recipient)
-        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{slot}:{dedupe_scope}"
-        lock_notification_idempotency_key(db, idempotency_key)
-        if notification_delivery_exists(db, idempotency_key=idempotency_key):
+        dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
+        idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}"
+        existing_log = db.execute(
+            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
+            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
+            .order_by(NotificationDeliveryLog.id.desc())
+        ).first()
+        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
@@ -7168,7 +7104,6 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             target_date=target_date,
             economics=economics,
             detail_level=detail_level,
-            shift_slot=slot,
         )
 
         pending_log = log_notification_attempt(
@@ -8217,9 +8152,7 @@ def _build_staff_shifts_deep_link_path(
     period_start: date,
     interval_ids: list[int],
     staffing_state: str,
-    shift_slot: str = "DAY",
 ) -> str:
-    slot = normalize_shift_slot(shift_slot)
     params: list[tuple[str, str]] = [
         ("venue_id", str(int(venue_id))),
         ("view", view),
@@ -8230,8 +8163,6 @@ def _build_staff_shifts_deep_link_path(
         params.append(("month", period_start.strftime("%Y-%m")))
     if interval_ids:
         params.append(("intervals", ",".join(str(int(x)) for x in interval_ids)))
-    if slot == "NIGHT":
-        params.append(("shift_slot", "NIGHT"))
     if staffing_state == "unstaffed":
         params.append(("unstaffed", "1"))
     query = "&".join(f"{quote(key)}={quote(value)}" for key, value in params)
@@ -8246,9 +8177,7 @@ def _build_staff_shifts_share_token(
     period_start: date,
     interval_ids: list[int],
     staffing_state: str,
-    shift_slot: str = "DAY",
 ) -> str:
-    slot = normalize_shift_slot(shift_slot)
     return make_signed_token(
         {
             "action": "staff_shifts_share",
@@ -8257,7 +8186,6 @@ def _build_staff_shifts_share_token(
             "period_start": period_start.isoformat(),
             "interval_ids": [int(item) for item in (interval_ids or []) if int(item) > 0],
             "staffing_state": str(staffing_state or "all"),
-            "shift_slot": slot,
         },
         ttl_seconds=_SCHEDULE_SHARE_TTL_SECONDS,
     )
@@ -8299,7 +8227,6 @@ def open_staff_shifts_share_link(token: str):
         period_start = date.fromisoformat(str(raw_period_start))
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid share token")
-    slot = normalize_shift_slot(payload.get("shift_slot"))
 
     raw_interval_ids = payload.get("interval_ids") or []
     interval_ids = [int(item) for item in raw_interval_ids if int(item) > 0]
@@ -8308,7 +8235,6 @@ def open_staff_shifts_share_link(token: str):
         staffing_state = "all"
 
     deep_link_path = _build_staff_shifts_deep_link_path(
-        shift_slot=slot,
         venue_id=venue_id,
         view=view,
         period_start=period_start,
@@ -8327,14 +8253,12 @@ def get_shifts_export_metadata(
     week_start: date | None = Query(default=None),
     interval_ids: list[int] | None = Query(default=None),
     staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Metadata for client-side schedule export, download and share flows."""
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
 
-    slot = normalize_shift_slot(shift_slot)
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found")
@@ -8374,7 +8298,6 @@ def get_shifts_export_metadata(
         period_start=period_start,
         interval_ids=normalized_interval_ids,
         staffing_state=staffing_state,
-        shift_slot=slot,
     )
     share_title = f"График смен · {venue.name}"
     share_text = f"{venue.name}\n{period_label}\n{filters_text}"
@@ -8382,7 +8305,6 @@ def get_shifts_export_metadata(
         venue_id=venue_id,
         view=view,
         period_start=period_start,
-        shift_slot=slot,
         interval_ids=normalized_interval_ids,
         staffing_state=staffing_state,
     )
@@ -8394,7 +8316,6 @@ def get_shifts_export_metadata(
         "venue_name": venue.name,
         "view": view,
         "period_start": period_start.isoformat(),
-        "shift_slot": slot,
         "period_end": period_end.isoformat(),
         "period_label": period_label,
         "filters_text": filters_text,
@@ -8422,7 +8343,6 @@ def list_shifts(
     date_to: date | None = Query(default=None),
     interval_ids: list[int] | None = Query(default=None),
     staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
-    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -8431,9 +8351,8 @@ def list_shifts(
     Accessible to any active member of the venue (or system admin roles).
     """
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    slot = normalize_shift_slot(shift_slot)
 
-    stmt = select(Shift).where(Shift.venue_id == venue_id, Shift.is_active.is_(True), Shift.shift_slot == slot)
+    stmt = select(Shift).where(Shift.venue_id == venue_id, Shift.is_active.is_(True))
 
     if interval_ids:
         normalized_ids = sorted({int(x) for x in interval_ids if int(x) > 0})
@@ -8476,7 +8395,7 @@ def list_shifts(
     report_by_date: dict[date, DailyReport] = {}
     if shift_dates:
         rrows = db.execute(
-            select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date.in_(shift_dates), DailyReport.shift_slot == slot)
+            select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date.in_(shift_dates))
         ).scalars().all()
         report_by_date = {r.date: r for r in rrows}
 
@@ -8553,7 +8472,6 @@ def list_shifts(
     return [
         {
             "id": s.id,
-            "shift_slot": normalize_shift_slot(getattr(s, "shift_slot", None)),
             "date": s.date.isoformat(),
             "interval": interval_payload(s.interval_id),
             "interval_id": s.interval_id,
@@ -8589,13 +8507,6 @@ def create_shift(
 ):
     """Create a shift for a specific date+interval (schedule editor only)."""
     _require_schedule_editor(db, venue_id=venue_id, user=user)
-    slot = normalize_shift_slot(payload.shift_slot)
-    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
-    if venue is None:
-        raise HTTPException(status_code=404, detail="Venue not found")
-    if slot == "NIGHT" and not bool(getattr(venue, "night_shifts_enabled", False)):
-        raise HTTPException(status_code=400, detail="Ночные смены не включены для заведения")
-
 
     interval = db.execute(
         select(ShiftInterval).where(
@@ -8611,7 +8522,6 @@ def create_shift(
         venue_id=venue_id,
         date=payload.date,
         interval_id=payload.interval_id,
-        shift_slot=slot,
         is_active=payload.is_active,
         created_by_user_id=user.id,
     )
@@ -8622,7 +8532,7 @@ def create_shift(
     except Exception:
         db.rollback()
         # likely unique constraint
-        raise HTTPException(status_code=409, detail="Shift already exists for this date, interval and slot")
+        raise HTTPException(status_code=409, detail="Shift already exists for this date and interval")
 
     db.refresh(obj)
     return {"id": obj.id}
@@ -8684,7 +8594,7 @@ def update_shift(
         db.commit()
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Shift already exists for this date, interval and slot")
+        raise HTTPException(status_code=409, detail="Shift already exists for this date and interval")
 
     return {"ok": True}
 
@@ -8754,7 +8664,6 @@ def get_shift(
         "venue_id": obj.venue_id,
         "date": obj.date.isoformat(),
         "is_active": bool(obj.is_active),
-        "shift_slot": normalize_shift_slot(getattr(obj, "shift_slot", None)),
         "interval": {
             "id": interval.id,
             "title": interval.title,
@@ -9691,6 +9600,141 @@ def delete_expense(
     return {"ok": True}
 
 
+@router.get("/{venue_id}/expenses/{expense_id}/attachments")
+def list_expense_attachments(
+    venue_id: int,
+    expense_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+    _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
+    rows = _list_active_expense_attachments(db, venue_id=venue_id, expense_id=expense_id)
+    return {"items": [_serialize_expense_attachment(a) for a in rows]}
+
+
+@router.get("/{venue_id}/expenses/{expense_id}/attachments/{attachment_id}")
+def download_expense_attachment(
+    venue_id: int,
+    expense_id: int,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+    _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
+    attachment = db.execute(
+        select(ExpenseAttachment).where(
+            ExpenseAttachment.id == attachment_id,
+            ExpenseAttachment.venue_id == venue_id,
+            ExpenseAttachment.expense_id == expense_id,
+            ExpenseAttachment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if not attachment.storage_path or not os.path.exists(attachment.storage_path):
+        raise HTTPException(status_code=404, detail="File missing")
+    return FileResponse(
+        attachment.storage_path,
+        media_type=attachment.content_type or "application/octet-stream",
+        filename=attachment.file_name,
+    )
+
+
+@router.delete("/{venue_id}/expenses/{expense_id}/attachments/{attachment_id}")
+def delete_expense_attachment(
+    venue_id: int,
+    expense_id: int,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
+    attachment = db.execute(
+        select(ExpenseAttachment).where(
+            ExpenseAttachment.id == attachment_id,
+            ExpenseAttachment.venue_id == venue_id,
+            ExpenseAttachment.expense_id == expense_id,
+            ExpenseAttachment.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    attachment.is_active = False
+    db.commit()
+    try:
+        if attachment.storage_path and os.path.exists(attachment.storage_path):
+            os.remove(attachment.storage_path)
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@router.post("/{venue_id}/expenses/{expense_id}/attachments")
+def upload_expense_attachments(
+    venue_id: int,
+    expense_id: int,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+    _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "expenses"))
+    os.makedirs(base_dir, exist_ok=True)
+
+    created: list[ExpenseAttachment] = []
+    for upload in files:
+        if upload is None:
+            continue
+        safe_name = _safe_upload_filename(upload.filename)
+        ext = os.path.splitext(safe_name.lower())[1]
+        if ext not in _EXPENSE_ATTACHMENT_ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=415, detail=f"Неподдерживаемый формат файла: {ext or 'без расширения'}")
+
+        uid = uuid.uuid4().hex
+        dst = os.path.join(base_dir, f"{venue_id}_{expense_id}_{uid}_{safe_name}")
+        total = 0
+        try:
+            with open(dst, "wb") as out:
+                while True:
+                    chunk = upload.file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > _EXPENSE_ATTACHMENT_MAX_BYTES:
+                        raise HTTPException(status_code=413, detail="Файл слишком большой: максимум 20 МБ")
+                    out.write(chunk)
+        except HTTPException:
+            try:
+                if os.path.exists(dst):
+                    os.remove(dst)
+            except Exception:
+                pass
+            raise
+
+        obj = ExpenseAttachment(
+            venue_id=venue_id,
+            expense_id=expense_id,
+            file_name=safe_name,
+            content_type=upload.content_type,
+            file_size=total,
+            storage_path=dst,
+            uploaded_by_user_id=user.id,
+            is_active=True,
+            created_at=datetime.utcnow(),
+        )
+        db.add(obj)
+        db.flush()
+        created.append(obj)
+
+    db.commit()
+    return {"ok": True, "items": [_serialize_expense_attachment(a) for a in created]}
+
+
 @router.get("/{venue_id}/balance-adjustments")
 def list_balance_adjustments(
     venue_id: int,
@@ -10265,7 +10309,6 @@ def get_venue_day_finance_summary(
 def get_venue_day_economics(
     venue_id: int,
     economics_date: date = Query(..., alias="date", description="YYYY-MM-DD"),
-    shift_slot: str = Query(default="TOTAL", pattern="^(TOTAL|DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -10273,10 +10316,7 @@ def get_venue_day_economics(
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     try:
-        slot = str(shift_slot or "TOTAL").strip().upper()
-        if slot not in {"TOTAL", "DAY", "NIGHT"}:
-            slot = "TOTAL"
-        return get_day_economics(db=db, venue_id=venue_id, target_date=economics_date, shift_slot=slot)
+        return get_day_economics(db=db, venue_id=venue_id, target_date=economics_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

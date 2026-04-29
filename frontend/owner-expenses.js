@@ -193,6 +193,38 @@ function renderDraftBanner() {
   hint.textContent = `Черновиков: ${draftCount} · на сумму ${fmtMinor(draftTotalMinor)}. Они не участвуют в прибыли и сводке, пока не подтверждены.`;
 }
 
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value < 1024) return `${value} Б`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1).replace(".0", "")} КБ`;
+  return `${(value / 1024 / 1024).toFixed(1).replace(".0", "")} МБ`;
+}
+
+function buildExpenseAttachmentsHtml(item) {
+  const attachments = Array.isArray(item?.attachments) ? item.attachments : [];
+  if (!attachments.length) return "";
+  const links = attachments.map((file) => {
+    const url = `${API_BASE}${file.url || `/venues/${encodeURIComponent(getActiveVenueId())}/expenses/${encodeURIComponent(item.id)}/attachments/${encodeURIComponent(file.id)}`}`;
+    const size = file.file_size ? ` · ${esc(formatBytes(file.file_size))}` : "";
+    return `<a class="badge" href="${esc(url)}" target="_blank" rel="noopener">📎 ${esc(file.file_name || "Файл")}${size}</a>`;
+  }).join(" ");
+  return `<div class="muted mt-8">Файлы</div><div class="expense-row__allocations mt-8">${links}</div>`;
+}
+
+async function uploadExpenseFiles(expenseId, files) {
+  const selected = Array.from(files || []).filter(Boolean);
+  if (!selected.length) return;
+  const venueId = getActiveVenueId();
+  const fd = new FormData();
+  selected.forEach((file) => fd.append("files", file));
+  await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(expenseId)}/attachments`, {
+    method: "POST",
+    body: fd,
+    timeoutMs: 120000,
+  });
+}
+
 function buildRegularBadges(item) {
   const badges = [];
   if (item?.recurring_rule_id) badges.push('<span class="badge">Регулярный</span>');
@@ -400,6 +432,7 @@ function renderExpenses() {
           <div class="expense-row__allocations mt-8">${recognizedHtml}</div>
           <div class="muted mt-8">Все аллокации</div>
           <div class="expense-row__allocations mt-8">${allocationsHtml || '<span class="muted">Без распределения</span>'}</div>
+          ${buildExpenseAttachmentsHtml(item)}
         </div>
         <div class="expense-row__side">
           <div class="expense-row__amount">${esc(fmtMinor(item.amount_minor))}</div>
@@ -465,6 +498,10 @@ function buildExpenseForm(draft = null) {
         </select>
       </label>
       <label>Комментарий<textarea name="comment" rows="4" placeholder="Комментарий">${esc(data.comment)}</textarea></label>
+      <label>Файлы к расходу
+        <input name="expense_files" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.zip,.rar,application/pdf,image/*" />
+      </label>
+      <div class="muted small">Поддерживаются PDF, изображения, документы, таблицы, CSV/TXT и архивы. До 20 МБ на файл.</div>
       <div class="row gap-8 mt-12">
         <button class="btn primary" type="submit">${draft?.id ? "Сохранить" : "Добавить"}</button>
         <button class="btn ghost" type="button" id="expenseFormCancel">Отмена</button>
@@ -520,13 +557,18 @@ function openExpenseForm(expenseId = null, draftValues = null) {
 
     try {
       const venueId = getActiveVenueId();
+      let saved = null;
       if (item) {
-        await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(item.id)}`, { method: "PATCH", body: payload });
-        toast("Расход обновлён", "ok");
+        saved = await api(`/venues/${encodeURIComponent(venueId)}/expenses/${encodeURIComponent(item.id)}`, { method: "PATCH", body: payload });
       } else {
-        await api(`/venues/${encodeURIComponent(venueId)}/expenses`, { method: "POST", body: payload });
-        toast("Расход добавлен", "ok");
+        saved = await api(`/venues/${encodeURIComponent(venueId)}/expenses`, { method: "POST", body: payload });
       }
+      const targetExpenseId = Number(saved?.id || item?.id || 0);
+      const filesInput = form.querySelector('input[name="expense_files"]');
+      if (targetExpenseId && filesInput?.files?.length) {
+        await uploadExpenseFiles(targetExpenseId, filesInput.files);
+      }
+      toast(item ? "Расход обновлён" : "Расход добавлен", "ok");
       closeModal();
       await loadExpenses();
     } catch (err) {

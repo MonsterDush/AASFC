@@ -27,6 +27,7 @@ from .kpi_metric import KpiMetric
 from .expense_category import ExpenseCategory
 from .supplier import Supplier
 from .expense import Expense
+from .expense_attachment import ExpenseAttachment
 from .finance_entry import FinanceEntry
 from .expense_allocation import ExpenseAllocation
 from .balance_adjustment import BalanceAdjustment
@@ -90,6 +91,7 @@ __all__ = [
     "ExpenseCategory",
     "Supplier",
     "Expense",
+    "ExpenseAttachment",
     "FinanceEntry",
     "ExpenseAllocation",
     "BalanceAdjustment",
