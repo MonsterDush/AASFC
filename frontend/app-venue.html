@@ -114,8 +114,8 @@
       </div>
 
 <div class="itemcard mt-12 section-card" id="tipsSettingsCard">
-        <b>Чаевые</b>
-        <div class="muted mt-6">Настройка учёта чаевых в отчёте закрытия смены.</div>
+        <b>Настройки заведения</b>
+        <div class="muted mt-6">Ночные смены и учёт чаевых в отчёте закрытия смены.</div>
 
         <div class="toggle mt-12">
           <div class="toggle__label">
@@ -269,6 +269,8 @@
         let billingAccessMode = "FULL";
         let billingReadonly = false;
         let billingInfo = null;
+        let billingPromoCodeValue = "";
+        let billingPromoPreview = null;
         let demoReadonly = false;
         let currentVenueSummary = null;
 
@@ -424,6 +426,7 @@ const titleEl = document.getElementById("title");
             ROBOKASSA_REFUND_FINISHED: "Возврат выполнен",
             ROBOKASSA_REFUND_CANCELED: "Возврат отменён",
             ROBOKASSA_REFUND_FAILED: "Ошибка возврата",
+            PROMO_CODE_APPLIED: "Промокод применён",
           };
           return map[v] || v || "—";
         }
@@ -436,6 +439,59 @@ const titleEl = document.getElementById("title");
           history.replaceState({}, "", url.pathname + url.search + url.hash);
         }
 
+        function canUseBillingPromo() {
+          if (!billingInfo) return true;
+          if (billingInfo?.promo_redemption) return false;
+          return billingInfo?.can_use_promo_code !== false;
+        }
+
+        function getEnteredBillingPromoCode() {
+          const input = document.getElementById("billingPromoCodeInput");
+          return String(input?.value || billingPromoCodeValue || "").trim();
+        }
+
+        function clearBillingPromoPreviewIfCodeChanged(code) {
+          const currentCode = String(code || "").trim().toUpperCase();
+          const previewCode = String(billingPromoPreview?.code || "").trim().toUpperCase();
+          if (billingPromoPreview && currentCode !== previewCode) billingPromoPreview = null;
+        }
+
+        async function previewBillingPromoCode() {
+          if (!venueId || !canUseBillingPromo()) return;
+          const code = getEnteredBillingPromoCode();
+          billingPromoCodeValue = code;
+          clearBillingPromoPreviewIfCodeChanged(code);
+          if (!code) {
+            billingPromoPreview = null;
+            renderBillingWidgets();
+            toast("Введи промокод", "warn");
+            return;
+          }
+
+          const btn = document.getElementById("billingPromoPreviewBtn");
+          const initialText = btn ? btn.textContent : "";
+          try {
+            if (btn) {
+              btn.disabled = true;
+              btn.textContent = "Проверяем…";
+            }
+            const data = await api(`/venues/${venueId}/billing/promocode/preview?code=${encodeURIComponent(code)}`);
+            billingPromoPreview = data?.preview || null;
+            billingPromoCodeValue = String(billingPromoPreview?.code || code).trim();
+            renderBillingWidgets();
+            toast("Промокод подходит", "ok");
+          } catch (e) {
+            billingPromoPreview = null;
+            renderBillingWidgets();
+            toast("Промокод не применён: " + (e?.data?.detail || e?.message || "ошибка"), "err");
+          } finally {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = initialText || "Проверить";
+            }
+          }
+        }
+
         async function startBillingCheckout() {
           const extendBtn = document.getElementById("billingExtendBtn");
           const initialText = extendBtn ? extendBtn.textContent : "";
@@ -444,7 +500,26 @@ const titleEl = document.getElementById("title");
               extendBtn.disabled = true;
               extendBtn.textContent = "Переходим к оплате…";
             }
-            const data = await api(`/venues/${venueId}/billing/checkout`, { method: "POST" });
+            const promoCode = canUseBillingPromo() ? getEnteredBillingPromoCode() : "";
+            billingPromoCodeValue = promoCode;
+            clearBillingPromoPreviewIfCodeChanged(promoCode);
+            const body = promoCode ? { promo_code: promoCode } : {};
+            const data = await api(`/venues/${venueId}/billing/checkout`, { method: "POST", body });
+
+            if (data?.payment_skipped) {
+              toast("Промокод применён. Доступ продлён.", "ok");
+              billingPromoPreview = null;
+              billingPromoCodeValue = "";
+              try {
+                billingInfo = await api(`/venues/${venueId}/billing`);
+                billingStatus = String(billingInfo?.status || billingStatus || "ACTIVE").toUpperCase();
+                billingAccessMode = String(billingInfo?.billing_access_mode || billingAccessMode || "FULL").toUpperCase();
+                billingReadonly = billingAccessMode !== "FULL" && (isOwner || isAdmin);
+                renderBillingWidgets();
+              } catch {}
+              return;
+            }
+
             const checkoutUrl = String(data?.checkout_url || "").trim();
             if (!checkoutUrl) throw new Error("Не получили ссылку на оплату");
             location.href = checkoutUrl;
@@ -539,6 +614,26 @@ const titleEl = document.getElementById("title");
           const subscriptionBtn = document.getElementById("billingSubscriptionBtn");
           if (subscriptionBtn) {
             subscriptionBtn.href = `/owner-subscription.html?venue_id=${encodeURIComponent(venueId)}`;
+          }
+
+          const promoInput = document.getElementById("billingPromoCodeInput");
+          if (promoInput) {
+            promoInput.oninput = () => {
+              billingPromoCodeValue = String(promoInput.value || "").trim();
+              clearBillingPromoPreviewIfCodeChanged(billingPromoCodeValue);
+              const box = document.getElementById("billingPromoPreviewBox");
+              if (box && !billingPromoPreview) box.innerHTML = "";
+            };
+            promoInput.onkeydown = (event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                previewBillingPromoCode();
+              }
+            };
+          }
+          const promoBtn = document.getElementById("billingPromoPreviewBtn");
+          if (promoBtn) {
+            promoBtn.onclick = () => previewBillingPromoCode();
           }
         }
 
@@ -683,6 +778,29 @@ const titleEl = document.getElementById("title");
             ? `<div class="mt-12"><div class="muted" style="margin-bottom:6px">Последние продления</div>${txs.slice(0, 3).map((tx) => `<div class="row" style="justify-content:space-between;gap:8px;margin-top:6px"><div><b>${formatDate(tx.created_at)}</b><div class="muted small">${tx.source === "MANUAL_ADMIN" ? "Ручное продление" : (tx.source || "Операция")}</div></div><div class="small">${tx.days_added ? `+${tx.days_added} дн.` : ""} ${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}</div></div>`).join("")}</div>`
             : `<div class="muted mt-12">Последние операции появятся здесь после первых оплат, ручных продлений или возвратов.</div>`;
 
+          const promoRedemption = billingInfo?.promo_redemption || null;
+          const pendingPromo = billingInfo?.pending_promo || null;
+          const promoCanBeUsed = canUseBillingPromo();
+          if (!billingPromoCodeValue && pendingPromo?.code && promoCanBeUsed) {
+            billingPromoCodeValue = String(pendingPromo.code || "").trim();
+          }
+          const promoInputValue = esc(billingPromoCodeValue || "").replace(/"/g, "&quot;");
+          const promoPreview = billingPromoPreview;
+          const promoPreviewHtml = promoPreview
+            ? `<div class="itemcard mt-10" id="billingPromoPreviewBox"><b>${esc(promoPreview.summary || "Промокод применим")}</b><div class="muted mt-6">К оплате: ${formatMinor(promoPreview.amount_after_minor)} вместо ${formatMinor(promoPreview.price_before_minor)}${promoPreview.payment_required ? "" : ". Оплата не понадобится — доступ применится сразу."}</div></div>`
+            : `<div id="billingPromoPreviewBox">${pendingPromo?.code ? `<div class="muted small mt-10">Есть незавершённый checkout с промокодом ${esc(pendingPromo.code)}. Он не считается использованием, пока оплата не подтверждена.</div>` : ""}</div>`;
+          const promoHtml = promoCanBeUsed
+            ? `<div class="itemcard mt-12" id="billingPromoCard">
+                <b>Промокод</b>
+                <div class="muted mt-6">Проверка не использует промокод. Незавершённый платёж тоже не скрывает этот блок — промокод считается использованным только после успешной оплаты или бесплатного применения.</div>
+                <div class="row gap-8 mt-10" style="align-items:flex-start;flex-wrap:wrap">
+                  <input id="billingPromoCodeInput" type="text" placeholder="Введите промокод" value="${promoInputValue}" style="min-width:180px;flex:1" autocomplete="off" />
+                  <button class="btn" id="billingPromoPreviewBtn" type="button">Проверить</button>
+                </div>
+                ${promoPreviewHtml}
+              </div>`
+            : `<div class="muted mt-12" id="billingPromoUsedHint">Промокод уже использован для этого заведения${promoRedemption?.promo_code_value ? `: ${esc(promoRedemption.promo_code_value)}` : ""}.</div>`;
+
           if (billingCard) {
             billingCard.innerHTML = `
               <div class="section-card__head">
@@ -709,6 +827,7 @@ const titleEl = document.getElementById("title");
                     </div>
                   </div>
                   ${reason ? `<div class="muted mt-12">${reason}</div>` : ""}
+                  ${promoHtml}
                   <div class="muted mt-12">Телефон поддержки: <a class="link" href="tel:+79856006599">+7 985 600-65-99</a></div>
                   ${lastTxHtml}
                 </div>
