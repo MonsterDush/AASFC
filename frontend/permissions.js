@@ -59,6 +59,17 @@ export function isOwnerRole(venueRoleUpper) {
   return r === "OWNER" || r === "VENUE_OWNER";
 }
 
+
+export function isFinancialValuesHidden(resp) {
+  return !!resp?.financial_values_hidden || resp?.can_view_financial_values === false;
+}
+
+export const FINANCIAL_VALUES_HIDDEN_LABEL = "Скрыто";
+
+export function formatHiddenFinancialValue(resp, fallback = FINANCIAL_VALUES_HIDDEN_LABEL) {
+  return isFinancialValuesHidden(resp) ? fallback : null;
+}
+
 export function getBillingStatus(resp) {
   return String(resp?.billing_status || "ACTIVE").trim().toUpperCase() || "ACTIVE";
 }

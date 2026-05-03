@@ -16,7 +16,9 @@ import {
   trackDemoEvent,
 } from "/app.js";
 
-import { hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
+import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+
+let financialValuesHidden = false;
 
 
 const DEMO_STAFF_SALARY_INTRO_DISMISSED_KEY = "axelio.demo_intro.staff_salary.dismissed";
@@ -72,6 +74,7 @@ let __canReports = false;
 try {
   if (venueId) {
     const pr = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
+    financialValuesHidden = isFinancialValuesHidden(pr);
     const pset = permSetFromResponse(pr);
     const role = roleUpper(pr);
     __canReports = hasReportAccess(pset, role, "");
@@ -359,11 +362,13 @@ function monthTitle(d) {
   return `${m[0].toUpperCase()}${m.slice(1)} ${d.getFullYear()}`;
 }
 function formatMoney(x) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const n = Number(x);
   if (!Number.isFinite(n)) return "0";
   return Math.round(n).toLocaleString("ru-RU");
 }
 function formatMoneyMinor(x) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const n = Number(x || 0) / 100;
   if (!Number.isFinite(n)) return "0,00";
   return n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

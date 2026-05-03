@@ -13,7 +13,9 @@ import {
   trackDemoEvent,
 } from "/app.js";
 
-import { hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
+import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+
+let financialValuesHidden = false;
 
 applyTelegramTheme();
 mountCommonUI("salary");
@@ -27,6 +29,7 @@ if (venueId) setActiveVenueId(venueId);
 let __canReports = false;
 try {
   const pr = await (venueId ? api(`/me/venues/${encodeURIComponent(venueId)}/permissions`) : null);
+  financialValuesHidden = isFinancialValuesHidden(pr);
   const pset = permSetFromResponse(pr);
   const role = roleUpper(pr);
   __canReports = hasReportAccess(pset, role, "");
@@ -74,6 +77,7 @@ function monthTitle(d) {
 }
 
 function fmtMoney(n) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const v = Math.round(Number(n || 0));
   return v.toLocaleString("ru-RU");
 }

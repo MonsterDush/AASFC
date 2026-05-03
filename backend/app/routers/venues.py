@@ -92,6 +92,13 @@ from app.services.payroll.calculator import (
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.payroll.period_summary import resolve_salary_period
 from app.services.tips import build_equal_tip_allocations, build_weighted_by_position_tip_allocations
+from app.services.financial_privacy import (
+    FINANCIAL_VALUES_HIDDEN_MESSAGE,
+    financial_visibility_payload,
+    sanitize_financial_payload_for_user,
+    should_hide_financial_values_for_user,
+)
+
 
 from app.models.user import User
 from app.models.venue import Venue
@@ -168,6 +175,25 @@ def _require_super_admin_or_moderator(user: User) -> None:
     role = str(getattr(user, "system_role", "") or "").upper()
     if role not in {"SUPER_ADMIN", "MODERATOR"}:
         raise HTTPException(status_code=403, detail="SUPER_ADMIN or MODERATOR required")
+
+
+def _can_show_financial_values_for_user(user: User | None) -> bool:
+    return not should_hide_financial_values_for_user(user)
+
+
+def _require_financial_values_export_allowed(user: User | None) -> None:
+    if should_hide_financial_values_for_user(user):
+        raise HTTPException(status_code=403, detail=FINANCIAL_VALUES_HIDDEN_MESSAGE)
+
+
+def _load_user_for_signed_export(db: Session, payload: dict) -> User | None:
+    user_id = payload.get("user_id")
+    if user_id is None:
+        return None
+    try:
+        return db.get(User, int(user_id))
+    except Exception:
+        return None
 log = logging.getLogger("axelio.day_economics_notifications")
 
 _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY = "day_economics_summary"
@@ -402,6 +428,9 @@ class DepartmentPlanItemOut(BaseModel):
 
 
 class DepartmentPlanMonthOut(BaseModel):
+    financial_values_hidden: bool = False
+    can_view_financial_values: bool = True
+    financial_values_hidden_reason: str | None = None
     month: str
     items: list[DepartmentPlanItemOut] = Field(default_factory=list)
     department_count: int = 0
@@ -410,6 +439,9 @@ class DepartmentPlanMonthOut(BaseModel):
 
 
 class DepartmentPlanDayOut(BaseModel):
+    financial_values_hidden: bool = False
+    can_view_financial_values: bool = True
+    financial_values_hidden_reason: str | None = None
     date: str
     items: list[DepartmentPlanItemOut] = Field(default_factory=list)
     department_count: int = 0
@@ -537,6 +569,9 @@ class ExpenseUpdateIn(BaseModel):
 
 
 class FinanceSummaryOut(BaseModel):
+    financial_values_hidden: bool = False
+    can_view_financial_values: bool = True
+    financial_values_hidden_reason: str | None = None
     month: str | None = None
     period_start: date
     period_end: date
@@ -807,6 +842,9 @@ class DayEconomicsRollupOut(BaseModel):
 
 
 class DayEconomicsOut(BaseModel):
+    financial_values_hidden: bool = False
+    can_view_financial_values: bool = True
+    financial_values_hidden_reason: str | None = None
     date: date
     report: DayEconomicsReportOut
     team: DayEconomicsTeamOut
@@ -4278,7 +4316,7 @@ def calculate_payroll(
         raise HTTPException(status_code=400, detail=str(exc))
 
     db.commit()
-    return _load_payroll_payload(db, venue_id=venue_id, month=payload.month)
+    return sanitize_financial_payload_for_user(user, _load_payroll_payload(db, venue_id=venue_id, month=payload.month))
 
 
 @router.get("/{venue_id}/payroll")
@@ -4296,14 +4334,16 @@ def get_payroll(
     try:
         period_start, period_end, period_meta = resolve_salary_period(month=month, date_from=date_from, date_to=date_to)
         if period_meta.get("mode") == "month":
-            return _load_payroll_payload(db, venue_id=venue_id, month=str(period_meta.get("month") or month))
-        return _build_venue_payroll_period_payload(
-            db,
-            venue_id=venue_id,
-            period_start=period_start,
-            period_end=period_end,
-            period_meta=period_meta,
-        )
+            payload = _load_payroll_payload(db, venue_id=venue_id, month=str(period_meta.get("month") or month))
+        else:
+            payload = _build_venue_payroll_period_payload(
+                db,
+                venue_id=venue_id,
+                period_start=period_start,
+                period_end=period_end,
+                period_meta=period_meta,
+            )
+        return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -4622,7 +4662,8 @@ def list_daily_reports(
         .order_by(DailyReport.date.asc())
     ).scalars().all()
 
-    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user)
+    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user) and _can_show_financial_values_for_user(user)
+    hidden_meta = financial_visibility_payload(user)
     return [
         {
             "id": r.id,
@@ -4633,6 +4674,7 @@ def list_daily_reports(
             "cashless": r.cashless if show_numbers else None,
             "revenue_total": r.revenue_total if show_numbers else None,
             "tips_total": r.tips_total if show_numbers else None,
+            **hidden_meta,
         }
         for r in rows
     ]
@@ -4654,7 +4696,8 @@ def get_daily_report(
     if r is None:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user)
+    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user) and _can_show_financial_values_for_user(user)
+    hidden_meta = financial_visibility_payload(user)
     values = _load_report_values(db, report_id=r.id)
 
     dept_cnt = int(db.execute(select(func.count(Department.id)).where(Department.venue_id == venue_id)).scalar() or 0)
@@ -4697,6 +4740,7 @@ def get_daily_report(
             ]
             if show_numbers else None
         ),
+        **hidden_meta,
     }
 
 
@@ -4901,6 +4945,9 @@ class RevenueRowOut(BaseModel):
 
 
 class RevenueSummaryOut(BaseModel):
+    financial_values_hidden: bool = False
+    can_view_financial_values: bool = True
+    financial_values_hidden_reason: str | None = None
     month: str | None = None
     period_start: date
     period_end: date
@@ -5165,12 +5212,13 @@ def get_revenue_summary(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
-    return _compute_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db)
+    summary = _compute_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db)
+    return sanitize_financial_payload_for_user(user, summary)
 
 
 
 
-def _build_revenue_export_response(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, fmt: str, db: Session, user: User | None = None):
+def _build_revenue_export_response(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, fmt: str, db: Session, user: User | None = None, base_url: str | None = None):
     """Build streaming export response.
 
     If user is provided, permissions are checked before export.
@@ -5180,6 +5228,7 @@ def _build_revenue_export_response(*, venue_id: int, month: str | None, date_fro
         _require_active_member_or_admin(db, venue_id=venue_id, user=user)
         _require_report_viewer(db, venue_id=venue_id, user=user)
         _require_revenue_exporter(db, venue_id=venue_id, user=user)
+        _require_financial_values_export_allowed(user)
 
     summary = _compute_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db)
     venue_name = _load_export_venue_name(db, venue_id=venue_id)
@@ -5253,6 +5302,7 @@ def get_revenue_export_link(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     _require_revenue_exporter(db, venue_id=venue_id, user=user)
+    _require_financial_values_export_allowed(user)
 
     mode_norm = (mode or "DEPARTMENTS").upper().strip()
     fmt_norm = (fmt or "xlsx").lower().strip()
@@ -5328,6 +5378,7 @@ def export_revenue(
         date_to = date.fromisoformat(date_to_raw) if date_to_raw else None
         mode = str(payload.get("mode") or mode or "DEPARTMENTS").upper().strip()
         fmt = str(payload.get("fmt") or fmt or "xlsx").lower().strip()
+        _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
 
         return _build_revenue_export_response(
             venue_id=venue_id,
@@ -5360,6 +5411,7 @@ def export_revenue(
 def _build_expenses_export_response(*, venue_id: int, month: str | None, category_id: int | None, supplier_id: int | None, statuses: str | None, db: Session, user: User | None = None, base_url: str | None = None):
     if user is not None:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+        _require_financial_values_export_allowed(user)
 
     period_label = month or datetime.utcnow().strftime("%Y-%m")
     venue_name = _load_export_venue_name(db, venue_id=venue_id)
@@ -5405,6 +5457,7 @@ def get_expenses_export_link(
     user: User = Depends(get_current_user),
 ):
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+    _require_financial_values_export_allowed(user)
     token = make_signed_token({
         "action": "expenses_export",
         "venue_id": int(venue_id),
@@ -5458,6 +5511,7 @@ def export_expenses(
         category_id = int(payload.get("category_id")) if payload.get("category_id") is not None else None
         supplier_id = int(payload.get("supplier_id")) if payload.get("supplier_id") is not None else None
         statuses = payload.get("statuses") or None
+        _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
         return _build_expenses_export_response(
             venue_id=venue_id,
             month=month,
@@ -5497,6 +5551,7 @@ def _build_monthly_summary_export_response(
         _require_active_member_or_admin(db, venue_id=venue_id, user=user)
         _require_revenue_viewer(db, venue_id=venue_id, user=user)
         _require_report_viewer(db, venue_id=venue_id, user=user)
+        _require_financial_values_export_allowed(user)
 
     venue_name = _load_export_venue_name(db, venue_id=venue_id)
     safe_venue = _safe_export_venue_slug(venue_name, venue_id)
@@ -5553,6 +5608,7 @@ def get_monthly_summary_export_link(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
+    _require_financial_values_export_allowed(user)
     token = make_signed_token({
         "action": "monthly_summary_export",
         "venue_id": int(venue_id),
@@ -5600,6 +5656,7 @@ def export_monthly_summary(
         raw_date_to = payload.get("date_to") or None
         date_from = date.fromisoformat(raw_date_from) if raw_date_from else None
         date_to = date.fromisoformat(raw_date_to) if raw_date_to else None
+        _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
         return _build_monthly_summary_export_response(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=None)
 
     if user is None:
@@ -5618,6 +5675,7 @@ def _build_payroll_export_response(
 ):
     if user is not None:
         _require_payroll_view(db, venue_id=venue_id, user=user)
+        _require_financial_values_export_allowed(user)
 
     try:
         period_start, period_end, period_meta = resolve_salary_period(month=month, date_from=date_from, date_to=date_to)
@@ -5668,6 +5726,7 @@ def get_payroll_export_link(
     user: User = Depends(get_current_user),
 ):
     _require_payroll_view(db, venue_id=venue_id, user=user)
+    _require_financial_values_export_allowed(user)
     try:
         resolve_salary_period(month=month, date_from=date_from, date_to=date_to)
     except ValueError as exc:
@@ -5719,6 +5778,7 @@ def export_payroll(
         raw_date_to = payload.get("date_to") or None
         date_from = date.fromisoformat(raw_date_from) if raw_date_from else None
         date_to = date.fromisoformat(raw_date_to) if raw_date_to else None
+        _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
         return _build_payroll_export_response(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=None)
 
     if user is None:
@@ -5747,7 +5807,7 @@ def list_daily_report_audit(
         select(DailyReportAudit).where(DailyReportAudit.report_id == rep.id).order_by(DailyReportAudit.changed_at.desc())
     ).scalars().all()
 
-    return [
+    payload = [
         {
             "id": a.id,
             "changed_at": a.changed_at.isoformat() if a.changed_at else None,
@@ -5757,6 +5817,7 @@ def list_daily_report_audit(
         }
         for a in rows
     ]
+    return sanitize_financial_payload_for_user(user, payload)
 
 
 @router.get("/{venue_id}/reports/{report_date}/attachments")
@@ -9518,7 +9579,7 @@ def list_expenses(
         payload["recognized_allocations"] = [_serialize_expense_allocation(a) for a in recognized_allocations]
         payload["recognized_amount_minor_for_month"] = int(sum(int(a.amount_minor or 0) for a in recognized_allocations))
         result.append(payload)
-    return result
+    return sanitize_financial_payload_for_user(user, result)
 
 
 @router.get("/{venue_id}/expenses/stats")
@@ -9566,11 +9627,11 @@ def get_expense_stats(
     rows = db.execute(stmt.distinct().order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
     status_filter = _parse_expense_statuses_filter(statuses)
     stats = _collect_expense_status_stats(rows=rows, statuses=status_filter)
-    return {
+    return sanitize_financial_payload_for_user(user, {
         'month': recognized_month.isoformat() if recognized_month is not None else None,
         'statuses': status_filter or ['DRAFT', 'CONFIRMED', 'CANCELLED'],
         **stats,
-    }
+    })
 
 
 @router.post("/{venue_id}/expenses")
@@ -9855,7 +9916,8 @@ def list_balance_adjustments(
         stmt = stmt.where(BalanceAdjustment.adjustment_date >= start, BalanceAdjustment.adjustment_date <= end)
 
     rows = db.execute(stmt.order_by(BalanceAdjustment.adjustment_date.desc(), BalanceAdjustment.id.desc())).all()
-    return [_serialize_balance_adjustment(adjustment, payment_method) for adjustment, payment_method in rows]
+    payload = [_serialize_balance_adjustment(adjustment, payment_method) for adjustment, payment_method in rows]
+    return sanitize_financial_payload_for_user(user, payload)
 
 
 @router.post("/{venue_id}/balance-adjustments")
@@ -9987,7 +10049,8 @@ def list_finance_entries(
         stmt = stmt.where(FinanceEntry.source_type == str(source_type).lower())
 
     rows = db.execute(stmt.order_by(FinanceEntry.entry_date.desc(), FinanceEntry.id.desc())).all()
-    return [_serialize_finance_entry(entry, payment_method, department) for entry, payment_method, department in rows]
+    payload = [_serialize_finance_entry(entry, payment_method, department) for entry, payment_method, department in rows]
+    return sanitize_financial_payload_for_user(user, payload)
 
 
 @router.get("/{venue_id}/payment-method-transfers")
@@ -10025,7 +10088,7 @@ def list_payment_method_transfers(
         from_payment_method = type('PM', (), {'id': row[1], 'code': row[2], 'title': row[3]})()
         to_payment_method = type('PM', (), {'id': row[4], 'code': row[5], 'title': row[6]})()
         out.append(_serialize_payment_method_transfer(transfer, from_payment_method, to_payment_method))
-    return out
+    return sanitize_financial_payload_for_user(user, out)
 
 
 @router.post("/{venue_id}/payment-method-transfers")
@@ -10365,7 +10428,7 @@ def get_venue_monthly_finance_summary(
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     try:
-        return get_monthly_finance_summary(
+        payload = get_monthly_finance_summary(
             db=db,
             venue_id=venue_id,
             month=month,
@@ -10373,6 +10436,7 @@ def get_venue_monthly_finance_summary(
             date_to=date_to,
             income_mode=income_mode,
         )
+        return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -10389,12 +10453,13 @@ def get_venue_day_finance_summary(
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     try:
-        return get_day_finance_summary(
+        payload = get_day_finance_summary(
             db=db,
             venue_id=venue_id,
             target_date=summary_date,
             income_mode=income_mode,
         )
+        return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -10410,7 +10475,8 @@ def get_venue_day_economics(
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     try:
-        return get_day_economics(db=db, venue_id=venue_id, target_date=economics_date)
+        payload = get_day_economics(db=db, venue_id=venue_id, target_date=economics_date)
+        return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -10624,7 +10690,8 @@ def get_venue_department_month_plans(
     try:
         payload = list_department_month_plans(db=db, venue_id=venue_id, month_value=month)
         usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
-        return _attach_usage_to_department_plan_payload(payload, usage_map.get(BOOST_SOURCE_DEPARTMENT_MONTH_PLAN))
+        payload = _attach_usage_to_department_plan_payload(payload, usage_map.get(BOOST_SOURCE_DEPARTMENT_MONTH_PLAN))
+        return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -10698,7 +10765,8 @@ def get_venue_department_day_plans(
     try:
         payload = list_department_day_plans(db=db, venue_id=venue_id, target_date=date)
         usage_map = _build_percent_boost_usage_map(db, venue_id=venue_id)
-        return _attach_usage_to_department_plan_payload(payload, usage_map.get(BOOST_SOURCE_DEPARTMENT_DAY_PLAN))
+        payload = _attach_usage_to_department_plan_payload(payload, usage_map.get(BOOST_SOURCE_DEPARTMENT_DAY_PLAN))
+        return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -10816,12 +10884,13 @@ def get_venue_finance_summary(
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     try:
-        return get_finance_summary(
+        payload = get_finance_summary(
             db=db,
             venue_id=venue_id,
             month=month,
             date_from=date_from,
             date_to=date_to,
         )
+        return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

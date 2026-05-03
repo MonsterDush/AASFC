@@ -19,7 +19,9 @@ import {
   mountDemoPageTour,
   trackDemoEvent,
 } from "/app.js";
-import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+
+let financialValuesHidden = false;
 
 const root = document.getElementById("root");
 
@@ -95,6 +97,7 @@ function formatDateRu(iso) {
 }
 
 function fmtMoneyMinor(minor) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const value = Number(minor || 0) / 100;
   try {
     return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " ₽";
@@ -681,6 +684,7 @@ async function boot() {
 
   try {
     state.perms = await getMyVenuePermissions(state.venueId);
+    financialValuesHidden = isFinancialValuesHidden(state.perms);
   } catch {
     state.perms = null;
   }

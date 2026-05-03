@@ -19,7 +19,9 @@ import {
   mountDemoPageTour,
   trackDemoEvent,
 } from "/app.js";
-import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+
+let financialValuesHidden = false;
 
 
 const DEMO_EXPENSES_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_expenses.dismissed";
@@ -86,6 +88,7 @@ function todayISO() {
 }
 
 function fmtMinor(minor) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const rub = Number(minor || 0) / 100;
   try {
     return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
@@ -355,6 +358,7 @@ async function loadAccess() {
   if (!venueId) return access;
   try {
     const permsResp = await getMyVenuePermissions(venueId);
+    financialValuesHidden = isFinancialValuesHidden(permsResp);
     const role = roleUpper(permsResp);
     const pset = permSetFromResponse(permsResp);
     const isOwner = role === "OWNER" || role === "VENUE_OWNER";

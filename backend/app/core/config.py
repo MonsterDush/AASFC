@@ -62,6 +62,8 @@ class Settings(BaseSettings):
 
     # Roles
     SUPER_ADMIN_TG_USER_IDS: str = ""
+    # When false, SUPER_ADMIN keeps access to venue settings/rules, but report-derived financial values are masked.
+    SUPER_ADMIN_CAN_VIEW_FINANCIAL_VALUES: bool = True
 
     # Phone auth / OTP
     DEMO_ENABLED: bool = True

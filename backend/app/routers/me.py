@@ -39,6 +39,7 @@ from app.services.billing.access import BILLING_ACCESS_DENIED, BILLING_ACCESS_FU
 from app.services.demo.access import build_demo_banner_payload, build_demo_context_payload
 from app.services.setup import build_setup_summary, build_setup_summary_map
 from app.services.shifts.slots import normalize_shift_slot
+from app.services.financial_privacy import financial_visibility_payload, sanitize_financial_payload_for_user
 
 
 router = APIRouter(tags=["me"])
@@ -425,6 +426,7 @@ def my_venues(
             "open_target": open_target,
             **_serialize_billing_access_payload(billing_access),
             **_serialize_setup_payload(setup_summary_map.get(venue_id)),
+            **financial_visibility_payload(user),
             **demo_payload,
         })
 
@@ -495,6 +497,7 @@ def my_venue_permissions(
         "paid_until": system_billing_snapshot.paid_until.isoformat() if system_billing_snapshot.paid_until else None,
         "grace_until": system_billing_snapshot.grace_until.isoformat() if system_billing_snapshot.grace_until else None,
         "billing_restricted_reason": None,
+        **financial_visibility_payload(user),
     }
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     venue_inactive = bool(getattr(venue, "is_archived", False))
@@ -561,6 +564,7 @@ def my_venue_permissions(
             "access_denied_reason": "Заведение сейчас не активно" if venue_inactive else None,
             **denied_payload,
             **_serialize_setup_payload(setup_summary),
+            **financial_visibility_payload(user),
             **demo_payload,
         }
 
@@ -577,6 +581,7 @@ def my_venue_permissions(
             "access_denied_reason": "Заведение сейчас не активно",
             **_serialize_billing_access_payload(billing_access),
             **_serialize_setup_payload(setup_summary),
+            **financial_visibility_payload(user),
             **demo_payload,
         }
 
@@ -638,6 +643,7 @@ def my_venue_permissions(
         "access_denied_reason": None,
         **_serialize_billing_access_payload(billing_access),
         **_serialize_setup_payload(setup_summary),
+        **financial_visibility_payload(user),
         **demo_payload,
     }
 
@@ -788,7 +794,7 @@ def my_shifts_across_venues(
             }
         )
 
-    return out
+    return sanitize_financial_payload_for_user(user, out)
 
 
 @router.get("/me/payroll-line")
@@ -838,8 +844,8 @@ def my_payroll_line(
         )
 
     if venue_id is not None:
-        return items[0] if items else None
-    return {"month": month, "items": items}
+        return sanitize_financial_payload_for_user(user, items[0] if items else None)
+    return sanitize_financial_payload_for_user(user, {"month": month, "items": items})
 
 
 @router.get("/me/salary-day-breakdown")
@@ -860,13 +866,14 @@ def my_salary_day_breakdown(
     if vm is None and user.system_role not in ("SUPER_ADMIN", "MODERATOR"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    return build_member_day_breakdown(
+    payload = build_member_day_breakdown(
         db,
         member_user_id=int(user.id),
         venue_id=int(venue_id),
         target_date=date_value,
         shift_slot=shift_slot,
     )
+    return sanitize_financial_payload_for_user(user, payload)
 
 
 @router.post("/me/manual-tips")
@@ -953,5 +960,5 @@ def my_salary_summary(
     }
     if month is not None:
         response["month"] = month
-    return response
+    return sanitize_financial_payload_for_user(user, response)
 
