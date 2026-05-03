@@ -18,9 +18,12 @@ import {
   mountDemoPageTour,
   trackDemoEvent,
 } from "/app.js";
-import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix1";
+import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
+
+let financialValuesHidden = false;
 
 function fmtMoneyMinor(minor) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const kopecks = Number(minor || 0);
   const rub = kopecks / 100;
   try {
@@ -31,6 +34,7 @@ function fmtMoneyMinor(minor) {
 }
 
 function fmtPercentBps(bps) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   if (bps === null || bps === undefined) return "—";
   const pct = Number(bps || 0) / 100;
   try {
@@ -212,6 +216,7 @@ async function loadFinanceAccess() {
   if (!venueId) return financeAccess;
   try {
     const permsResp = await getMyVenuePermissions(venueId);
+    financialValuesHidden = isFinancialValuesHidden(permsResp);
     const role = roleUpper(permsResp);
     const pset = permSetFromResponse(permsResp);
     const isOwner = isOwnerRole(role);

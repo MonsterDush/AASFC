@@ -18,7 +18,7 @@ import {
 } from "/app.js";
 
 
-import { permSetFromResponse, roleUpper, hasPerm as hasP, hasAnyPerm, hasPermPrefix } from "/permissions.js";
+import { permSetFromResponse, roleUpper, hasPerm as hasP, hasAnyPerm, hasPermPrefix, isFinancialValuesHidden } from "/permissions.js";
 applyTelegramTheme();
 mountCommonUI("report");
 
@@ -255,6 +255,10 @@ let pset = new Set();
 let myRole = "";
 let isAdmin = false;
 
+function financialValuesHidden() {
+  return isFinancialValuesHidden(permsResp);
+}
+
 let selectedDayISO = "";
 
 function hasPerm(code) {
@@ -267,7 +271,7 @@ function isOwnerOrAdmin() {
 }
 
 function canMake() {
-  if (isDemoUiMode(permsResp)) return false;
+  if (isDemoUiMode(permsResp) || financialValuesHidden()) return false;
   return isOwnerOrAdmin() || hasAnyPerm(pset, ["SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"]);
 }
 
@@ -281,22 +285,23 @@ function canView() {
 }
 
 function canSeeMoney() {
+  if (financialValuesHidden()) return false;
   return isOwnerOrAdmin() || hasAnyPerm(pset, ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"]);
 }
 
 function canClose() {
-  if (isDemoUiMode(permsResp)) return false;
+  if (isDemoUiMode(permsResp) || financialValuesHidden()) return false;
   return isOwnerOrAdmin() || hasAnyPerm(pset, ["SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT"]);
 }
 
 function canReopen() {
-  if (isDemoUiMode(permsResp)) return false;
+  if (isDemoUiMode(permsResp) || financialValuesHidden()) return false;
   return isOwnerOrAdmin() || hasPerm("SHIFT_REPORT_REOPEN");
 }
 
 function canEditClosed() {
   // Backend requires SHIFT_REPORT_EDIT for CLOSED edits (unless OWNER / admin)
-  if (isDemoUiMode(permsResp)) return false;
+  if (isDemoUiMode(permsResp) || financialValuesHidden()) return false;
   return isOwnerOrAdmin() || hasPerm("SHIFT_REPORT_EDIT");
 }
 
@@ -755,7 +760,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
           data-ref="${esc(it?.id)}"
           value="${esc(v)}"
           ${disabled ? "disabled" : ""}
-          placeholder="${showMoney ? "0" : "нет доступа"}"
+          placeholder="${showMoney ? "0" : (financialValuesHidden() ? "скрыто" : "нет доступа")}"
         />
       </label>
     `;
@@ -775,7 +780,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
       <div class="rep-grid rep-grid--single">
         <label class="rep-field">
           <div class="rep-field__label"><span>Выручка (итого)</span></div>
-          <input id="repRevenueTotal" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.revenue_total ?? 0) : "")}" ${(!editEnabled || !showMoney) ? "disabled" : ""} placeholder="${showMoney ? "0" : "нет доступа"}" />
+          <input id="repRevenueTotal" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.revenue_total ?? 0) : "")}" ${(!editEnabled || !showMoney) ? "disabled" : ""} placeholder="${showMoney ? "0" : (financialValuesHidden() ? "скрыто" : "нет доступа")}" />
         </label>
       </div>
       <div class="muted small" style="margin-top:6px">Департаменты не настроены — вводим общую выручку.</div>
@@ -790,7 +795,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
     <div class="rep-grid rep-grid--single" style="margin-bottom: 8px;">
       <label class="rep-field">
         <div class="rep-field__label"><span>Чаевые (общая сумма)</span></div>
-        <input id="repTips" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.tips_total ?? 0) : "")}" ${tipsDisabled ? "disabled" : ""} placeholder="${showMoney ? "0" : "нет доступа"}" />
+        <input id="repTips" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.tips_total ?? 0) : "")}" ${tipsDisabled ? "disabled" : ""} placeholder="${showMoney ? "0" : (financialValuesHidden() ? "скрыто" : "нет доступа")}" />
       </label>
     </div>
   `;

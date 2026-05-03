@@ -14,7 +14,9 @@ import {
   isDemoUiMode,
   getDemoMonthLabel,
 } from "/app.js";
-import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+
+let financialValuesHidden = false;
 
 
 const DEMO_OWNER_REVENUE_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_revenue.dismissed";
@@ -66,6 +68,7 @@ function esc(s) {
 }
 
 function fmtMoney(n) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const x = Math.round(Number(n || 0));
   try { return new Intl.NumberFormat("ru-RU").format(x) + " ₽"; } catch { return String(x) + " ₽"; }
 }
@@ -282,6 +285,7 @@ async function resolveRevenueAccess() {
 
   try {
     const permsResp = await api(`/me/venues/${encodeURIComponent(venueId)}/permissions`);
+    financialValuesHidden = isFinancialValuesHidden(permsResp);
     const role = roleUpper(permsResp);
     const pset = permSetFromResponse(permsResp);
     const isPrivileged = role === "OWNER" || role === "VENUE_OWNER" || role === "SUPER_ADMIN" || role === "MODERATOR";

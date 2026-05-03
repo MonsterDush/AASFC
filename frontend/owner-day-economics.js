@@ -16,7 +16,9 @@ import {
   isDemoUiMode,
   getDemoMonthLabel,
 } from "/app.js";
-import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
+import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+
+let financialValuesHidden = false;
 
 
 const DEMO_OWNER_DAY_ECONOMICS_INTRO_DISMISSED_KEY = "axelio.demo_intro.owner_day_economics.dismissed";
@@ -95,6 +97,7 @@ function setupDemoDayEconomicsIntro() {
 }
 
 function fmtMoneyMinor(minor) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   if (minor === null || minor === undefined) return "—";
   const kopecks = Number(minor || 0);
   const rub = kopecks / 100;
@@ -106,6 +109,7 @@ function fmtMoneyMinor(minor) {
 }
 
 function fmtPercentBps(bps) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   if (bps === null || bps === undefined) return "—";
   const pct = Number(bps || 0) / 100;
   try {
@@ -286,6 +290,7 @@ async function loadAccess() {
   if (!venueId) return;
   try {
     const resp = await getMyVenuePermissions(venueId);
+    financialValuesHidden = isFinancialValuesHidden(resp);
     const role = roleUpper(resp);
     const isOwner = role === "OWNER" || role === "VENUE_OWNER";
     const pset = permSetFromResponse(resp);
