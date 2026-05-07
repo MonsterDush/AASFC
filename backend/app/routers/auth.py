@@ -518,7 +518,12 @@ def _handle_browser_login_start_message(db: Session, *, chat_id: int, text: str)
     if not raw.startswith("/start"):
         return
 
-    start_arg = raw.split(maxsplit=1)[1].strip() if " " in raw else ""
+    parts = raw.split(maxsplit=1)
+    command = str(parts[0] if parts else '').split('@', 1)[0].strip().lower()
+    if command != '/start':
+        return
+
+    start_arg = parts[1].strip() if len(parts) > 1 else ''
     login_prefix = _browser_login_prefix()
     link_prefix = _browser_link_prefix()
     mode = None

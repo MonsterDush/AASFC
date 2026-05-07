@@ -175,6 +175,17 @@
     let telegramBrowserDeepLink = "";
     let telegramBrowserPollTimer = null;
     let telegramBrowserFinalizing = false;
+    
+    function normalizeRuPhone(value) {
+      const digits = String(value || '').replace(/\D+/g, '');
+      if (!digits) return '';
+      let normalized = digits;
+      if (normalized.length === 10) normalized = '7' + normalized;
+      if (normalized.length === 11 && normalized.startsWith('8')) normalized = '7' + normalized.slice(1);
+      if (!normalized.startsWith('7')) normalized = '7' + normalized.replace(/^7+/, '');
+      return `+${normalized}`;
+    }
+
     let phoneAuthConfig = { call_enabled: true, sms_enabled: true, fallback_after_seconds: 10 };
 
     const isCallEnabled = () => Boolean(phoneAuthConfig?.call_enabled);
@@ -478,8 +489,8 @@
       const callPretty = out?.call_phone_pretty || out?.call_phone || "";
       els.callMeta.textContent = `Позвони со своего номера на ${callPretty || "указанный номер"}. Мы автоматически подтвердим номер после звонка.`;
       if (callPretty) {
-        const raw = String(out?.call_phone || callPretty).replace(/\D+/g, "");
-        els.callNumberBlock.innerHTML = `<a href="tel:${raw}">${callPretty}</a>`;
+        const telPhone = normalizeRuPhone(out?.call_phone || callPretty);
+        els.callNumberBlock.innerHTML = `<a href="tel:${telPhone}">${telPhone || callPretty}</a>`;
         els.callNumberBlock.classList.remove("hidden");
       }
       callPollTimer = setInterval(() => pollCallStatus(out?.phone || phone, callChallengeId), 2500);
