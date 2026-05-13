@@ -565,8 +565,16 @@ def _handle_browser_login_start_message(db: Session, *, chat_id: int, text: str)
         })
     except HTTPException as exc:
         _telegram_api_post("sendMessage", {"chat_id": chat_id, "text": str(exc.detail or "Не удалось найти сессию.")})
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            _telegram_api_post("sendMessage", {
+                "chat_id": chat_id,
+                "text": f"Ошибка авторизации: {e}",
+            })
+        except Exception:
+            pass
 
 
 def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None:
