@@ -58,6 +58,15 @@ from app.services.invites import accept_invites_for_user, accept_phone_invites_f
 from app.services.sms_auth import get_sms_provider
 from app.settings import settings
 
+import socket
+
+old_getaddrinfo = socket.getaddrinfo
+
+def force_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    return old_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+socket.getaddrinfo = force_ipv4_getaddrinfo
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
