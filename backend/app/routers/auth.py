@@ -58,6 +58,15 @@ from app.services.invites import accept_invites_for_user, accept_phone_invites_f
 from app.services.sms_auth import get_sms_provider
 from app.settings import settings
 
+import socket
+
+old_getaddrinfo = socket.getaddrinfo
+
+def force_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    return old_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+socket.getaddrinfo = force_ipv4_getaddrinfo
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -518,7 +527,12 @@ def _handle_browser_login_start_message(db: Session, *, chat_id: int, text: str)
     if not raw.startswith("/start"):
         return
 
-    start_arg = raw.split(maxsplit=1)[1].strip() if " " in raw else ""
+    parts = raw.split(maxsplit=1)
+    command = str(parts[0] if parts else '').split('@', 1)[0].strip().lower()
+    if command != '/start':
+        return
+
+    start_arg = parts[1].strip() if len(parts) > 1 else ''
     login_prefix = _browser_login_prefix()
     link_prefix = _browser_link_prefix()
     mode = None
@@ -560,8 +574,16 @@ def _handle_browser_login_start_message(db: Session, *, chat_id: int, text: str)
         })
     except HTTPException as exc:
         _telegram_api_post("sendMessage", {"chat_id": chat_id, "text": str(exc.detail or "Не удалось найти сессию.")})
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            _telegram_api_post("sendMessage", {
+                "chat_id": chat_id,
+                "text": f"Ошибка авторизации: {e}",
+            })
+        except Exception:
+            pass
 
 
 def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None:
