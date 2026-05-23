@@ -28,7 +28,11 @@ from app.core.tg import normalize_tg_username, send_telegram_message
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify
-from app.services.notification_logs import log_notification_attempt
+from app.services.notification_logs import (
+    log_notification_attempt,
+    lock_notification_idempotency_key,
+    notification_delivery_exists,
+)
 from app.services.xlsx_export import (
     build_expenses_xlsx,
     build_monthly_summary_xlsx,
@@ -6267,7 +6271,7 @@ def _enqueue_adjustment_assigned_job(db: Session, *, venue_id: int, adjustment_i
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6305,7 +6309,7 @@ def _enqueue_adjustment_dispute_event_job(
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_DISPUTE_EVENT,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6785,7 +6789,7 @@ def _enqueue_salary_day_breakdown_job(db: Session, *, venue_id: int, target_date
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6821,8 +6825,9 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
 
     venue_name = _venue_name(db, venue_id)
     link = _build_staff_salary_day_link(venue_id=venue_id, target_date=target_date)
-    sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
     seen_tg_user_ids: set[int] = set()
+    delivered_any = False
+    had_retryable_error = False
 
     for recipient in users:
         if not _should_notify_user(recipient, "salary"):
@@ -6841,15 +6846,12 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
         chat_id = int(recipient.tg_user_id)
         if chat_id in seen_tg_user_ids:
             continue
+        seen_tg_user_ids.add(chat_id)
+
         dedupe_scope = f"tg:{chat_id}"
         idempotency_key = f"salary_day_breakdown:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}"
-        existing_log = db.execute(
-            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
-            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
-            .order_by(NotificationDeliveryLog.id.desc())
-        ).first()
-        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
-            seen_tg_user_ids.add(chat_id)
+        lock_notification_idempotency_key(db, idempotency_key)
+        if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
             continue
 
         breakdown = build_member_day_breakdown(
@@ -6871,6 +6873,7 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
             detail_level=detail_level,
         )
 
+        sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
         pending_log = log_notification_attempt(
             db,
             notification_type="salary_day_breakdown",
@@ -6891,19 +6894,24 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
             button_text="Открыть начисления",
         )
         ok = bool(result.get("ok"))
+        retryable = bool(result.get("retryable"))
+        error_text = str(result.get("error") or "notify() returned False")[:2000] if not ok else None
         try:
             pending_log.status = "sent" if ok else "failed"
             pending_log.sent_at = sent_at if ok else None
-            pending_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
+            pending_log.error_text = error_text
             db.add(pending_log)
             db.commit()
         except Exception:
             db.rollback()
             raise
 
-        seen_tg_user_ids.add(chat_id)
+        delivered_any = delivered_any or ok
+        had_retryable_error = had_retryable_error or (retryable and not ok)
 
     db.commit()
+    if had_retryable_error and not delivered_any:
+        raise RuntimeError("salary day breakdown delivery failed with retryable error")
 
 
 def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
@@ -6913,7 +6921,7 @@ def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date) -
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_SOFT_ALERTS,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -6982,12 +6990,8 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
         chat_id = int(recipient.tg_user_id)
         dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
         idempotency_key = f"soft_alerts:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}:{alert_signature}"
-        existing_log = db.execute(
-            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
-            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
-            .order_by(NotificationDeliveryLog.id.desc())
-        ).first()
-        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+        lock_notification_idempotency_key(db, idempotency_key)
+        if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
@@ -7046,7 +7050,7 @@ def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_dat
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING]),
+            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -7227,18 +7231,15 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
     economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
     venue_name = _venue_name(db, venue_id)
     link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
-    sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
+    delivered_any = False
+    had_retryable_error = False
 
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
         dedupe_scope = f"tg:{chat_id}" if getattr(recipient, "tg_user_id", None) is not None else f"user:{int(recipient.id)}"
         idempotency_key = f"day_economics_summary:{int(venue_id)}:{target_date.isoformat()}:{dedupe_scope}"
-        existing_log = db.execute(
-            select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
-            .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
-            .order_by(NotificationDeliveryLog.id.desc())
-        ).first()
-        if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+        lock_notification_idempotency_key(db, idempotency_key)
+        if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
@@ -7249,6 +7250,7 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             detail_level=detail_level,
         )
 
+        sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
         pending_log = log_notification_attempt(
             db,
             notification_type="day_economics_summary",
@@ -7269,17 +7271,24 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             button_text="Открыть экономику дня",
         )
         ok = bool(result.get("ok"))
+        retryable = bool(result.get("retryable"))
+        error_text = str(result.get("error") or "notify() returned False")[:2000] if not ok else None
         try:
             pending_log.status = "sent" if ok else "failed"
             pending_log.sent_at = sent_at if ok else None
-            pending_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
+            pending_log.error_text = error_text
             db.add(pending_log)
             db.commit()
         except Exception:
             db.rollback()
             raise
 
+        delivered_any = delivered_any or ok
+        had_retryable_error = had_retryable_error or (retryable and not ok)
+
     db.commit()
+    if had_retryable_error and not delivered_any:
+        raise RuntimeError("day economics summary delivery failed with retryable error")
 
 
 @router.post("/{venue_id}/adjustments")
@@ -8621,6 +8630,7 @@ def list_shifts(
             "is_active": bool(s.is_active),
             "assignments": assignments_by_shift.get(s.id, []),
             "report_exists": bool(report_by_date.get(s.date)),
+            "report_closed": bool(report_by_date.get(s.date) and str(getattr(report_by_date.get(s.date), "status", "") or "").upper() == "CLOSED"),
             "revenue_total": (
                 report_by_date.get(s.date).revenue_total
                 if (show_revenue and report_by_date.get(s.date))

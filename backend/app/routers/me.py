@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
@@ -287,6 +287,9 @@ def get_notification_history(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if str(getattr(user, "system_role", "") or "").upper() != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="История уведомлений доступна только SUPER_ADMIN")
+
     stmt = (
         select(NotificationDeliveryLog, Venue.name.label("venue_name"))
         .outerjoin(Venue, Venue.id == NotificationDeliveryLog.venue_id)
@@ -705,22 +708,44 @@ def _load_payroll_summary_by_venue(db: Session, *, user_id: int, month_start: da
 
 @router.get("/me/shifts")
 def my_shifts_across_venues(
-    month: str = Query(..., description="YYYY-MM"),
+    month: str | None = Query(default=None, description="YYYY-MM"),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    venue_id: int | None = Query(default=None, gt=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Return current user's shifts across all active venues (for 'Общий' calendar)."""
+    """Return current user's assigned shifts across venues or within a venue.
 
-    try:
-        y_s, m_s = month.split("-")
-        y = int(y_s)
-        m = int(m_s)
-        start = date(y, m, 1)
-        end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+    Supports both legacy month=YYYY-MM and arbitrary date_from/date_to ranges.
+    Used by staff schedule and staff salary pages; it must not leak shifts where
+    the current user is not assigned.
+    """
 
-    # only shifts where the user is assigned
+    if month:
+        start, end = _parse_month_range(month)
+    elif date_from or date_to:
+        start = date_from or date_to
+        end_inclusive = date_to or date_from
+        if start is None or end_inclusive is None:
+            raise HTTPException(status_code=400, detail="Both date_from and date_to are required")
+        if start > end_inclusive:
+            raise HTTPException(status_code=400, detail="date_from must be before date_to")
+        end = end_inclusive + timedelta(days=1)
+    else:
+        today = date.today()
+        start = date(today.year, today.month, 1)
+        end = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
+
+    where_clauses = [
+        ShiftAssignment.member_user_id == int(user.id),
+        Shift.is_active.is_(True),
+        Shift.date >= start,
+        Shift.date < end,
+    ]
+    if venue_id is not None:
+        where_clauses.append(Shift.venue_id == int(venue_id))
+
     rows = db.execute(
         select(
             Shift.id.label("shift_id"),
@@ -735,25 +760,18 @@ def my_shifts_across_venues(
             VenuePosition.rate.label("rate"),
             VenuePosition.percent.label("percent"),
         )
-        .select_from(ShiftAssignment)  # <-- ВАЖНО: фиксируем левую таблицу
+        .select_from(ShiftAssignment)
         .join(Shift, Shift.id == ShiftAssignment.shift_id)
         .join(Venue, Venue.id == Shift.venue_id)
         .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
         .join(VenuePosition, VenuePosition.id == ShiftAssignment.venue_position_id)
-        .where(
-            ShiftAssignment.member_user_id == user.id,
-            Shift.is_active.is_(True),
-            Shift.date >= start,
-            Shift.date < end,
-        )
+        .where(*where_clauses)
         .order_by(Shift.date.asc(), Shift.id.asc())
     ).all()
-
 
     if not rows:
         return []
 
-    # preload daily reports per (venue_id, date) for salary calc
     keys = {(r.venue_id, r.shift_date, normalize_shift_slot(r.shift_slot)) for r in rows}
     reports = db.execute(
         select(DailyReport).where(
@@ -770,8 +788,10 @@ def my_shifts_across_venues(
         rep = report_by_key.get((r.venue_id, r.shift_date, slot))
         my_salary = None
         revenue_total = None
+        report_closed = False
         if rep is not None:
             revenue_total = rep.revenue_total
+            report_closed = str(getattr(rep, "status", "") or "").upper() == "CLOSED"
             try:
                 my_salary = int(r.rate) + (int(r.percent) / 100.0) * rep.revenue_total
             except Exception:
@@ -780,15 +800,20 @@ def my_shifts_across_venues(
         out.append(
             {
                 "shift_id": r.shift_id,
+                "id": r.shift_id,
                 "date": r.shift_date.isoformat(),
                 "shift_slot": slot,
                 "venue": {"id": r.venue_id, "name": r.venue_name},
+                "venue_id": r.venue_id,
                 "interval": {
                     "id": r.interval_id,
                     "title": r.interval_title,
                     "start_time": r.start_time.strftime("%H:%M"),
                     "end_time": r.end_time.strftime("%H:%M"),
                 },
+                "interval_id": r.interval_id,
+                "report_exists": bool(rep),
+                "report_closed": bool(report_closed),
                 "my_salary": my_salary,
                 "revenue_total": revenue_total,
             }

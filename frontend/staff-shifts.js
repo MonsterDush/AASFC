@@ -4,6 +4,7 @@ import {
   mountCommonUI,
   mountNav,
   toast,
+  confirmModal,
   api,
   getActiveVenueId,
   setActiveVenueId,
@@ -927,19 +928,15 @@ function fmtMoney(n) {
   return v.toLocaleString("ru-RU");
 }
 
+function shiftDonePrefix(item) {
+  return shiftIsClosed(item) ? "✓ " : "";
+}
+
 function formatGlobalLine(item) {
   const venueName = item?.venue?.name || "Заведение";
   const t = shiftStartHHMM(item) || (item?.interval?.start_time ? String(item.interval.start_time).slice(0, 5) : "");
-
-  // Прошедшие: показываем зарплату, а если её нет (ещё нет отчёта) — показываем "Заведение • Время".
-  if (isPastDateISO(item.date)) {
-    const sal = Number(item?.my_salary);
-    if (shouldShowDemoSalaryValue(sal)) return fmtMoney(sal);
-    return t ? `${venueName} • ${t}` : `${venueName}`;
-  }
-
-  // Будущие: "Заведение • Время"
-  return t ? `${venueName} • ${t}` : `${venueName}`;
+  const base = t ? `${venueName} • ${t}` : `${venueName}`;
+  return `${shiftDonePrefix(item)}${base}`;
 }
 
 async function loadMyGlobalShifts(monthStr) {
@@ -1115,9 +1112,8 @@ function renderWeek(ws) {
       const meta = document.createElement("div");
       meta.className = "cal-daymeta";
       const dayList = filterForCalendar(shiftsByDate.get(dateStr) || [], dateStr);
-      const sal = salaryByDate.get(dateStr);
-      if (isPastDay(dateStr) && shouldShowDemoSalaryValue(sal)) meta.textContent = fmtMoney(sal);
-      else if (dayList.length) meta.textContent = `${dayList.length} смен`;
+      const hasClosed = dayList.some((item) => shiftIsClosed(item));
+      if (dayList.length) meta.textContent = hasClosed ? `✓ ${dayList.length} смен` : `${dayList.length} смен`;
       else meta.textContent = "";
 
       top.appendChild(left);
@@ -1168,11 +1164,6 @@ function buildIndex() {
     if (!shiftsByDate.has(date)) shiftsByDate.set(date, []);
     shiftsByDate.get(date).push(s);
 
-    // salaryByDate: суммируем только если my_salary есть (backend выдаёт только при наличии отчёта)
-    const sal = Number(s.my_salary);
-    if (shouldShowDemoSalaryValue(sal)) {
-      salaryByDate.set(date, (salaryByDate.get(date) || 0) + sal);
-    }
   }
 
   for (const [d, arr] of shiftsByDate.entries()) {
@@ -1298,10 +1289,8 @@ function renderDayTimeline(shiftsList) {
 
     const assigns = (calendarScope === 'global') ? null : countAssignments(arr);
     const people = (calendarScope === 'global') ? null : uniqAssignedPeopleCount(arr);
-    const sal = sumMySalary(arr);
-
     let meta = '';
-    if (sal != null && shouldShowDemoSalaryValue(sal)) meta = `${fmtMoney(sal)}`;
+    if (arr.some((item) => shiftIsClosed(item))) meta = '✓ закрыта';
     else if (people != null && people > 0) meta = `${people} чел.`;
     else if (assigns != null && assigns > 0) meta = `${assigns} назнач.`;
 
@@ -1359,14 +1348,14 @@ function renderDayPanel(dateStr) {
   const shiftsCount = list.length;
   const people = (calendarScope === 'global') ? null : uniqAssignedPeopleCount(list);
   const assigns = (calendarScope === 'global') ? null : countAssignments(list);
-  const total = sumMySalary(list);
+  const closedCount = list.filter((item) => shiftIsClosed(item)).length;
 
   const kpis = [
     `<div class="kpi">Смен: <span class="muted">${shiftsCount}</span></div>`,
   ];
   if (people != null) kpis.push(`<div class="kpi">Людей: <span class="muted">${people}</span></div>`);
   if (assigns != null) kpis.push(`<div class="kpi">Назначений: <span class="muted">${assigns}</span></div>`);
-  if (total != null) kpis.push(`<div class="kpi">Итого: <span class="muted">${fmtMoney(total)}</span></div>`);
+  if (closedCount > 0) kpis.push(`<div class="kpi shift-done-badge">✓ закрыто: <span>${closedCount}</span></div>`);
 
   el.dayPanel.innerHTML = `
     <div class="card daypanel-card">
@@ -1426,16 +1415,11 @@ function shiftHasMyAssignment(s, myId) {
 function filterForCalendar(listAll, dateStr) {
   const myId = me?.id ?? null;
 
-  // "Общий" (multi-venue): показываем только смены, куда назначен текущий пользователь
-  // (и прошедшие смены с my_salary, даже если assignments не пришли).
+  // "Общий" (multi-venue): /me/shifts already returns only current user assignments.
   if (calendarScope === "global") {
     const arr = Array.isArray(listAll) ? listAll : [];
     if (!myId) return [];
-    return arr.filter((s) => {
-      const sal = Number(s?.my_salary);
-      if (shouldShowDemoSalaryValue(sal)) return true;
-      return shiftHasMyAssignment(s, myId);
-    });
+    return arr;
   }
 
   const canUseAllMode = canEdit || DEMO_MODE;
@@ -1490,7 +1474,7 @@ function hexToRgbTriplet(hex) {
 
 function makeCalLine(text, shift) {
   const line = document.createElement("div");
-  line.className = "cal-line";
+  line.className = "cal-line" + (shiftIsClosed(shift) ? " cal-line--done" : "");
 
   const span = document.createElement("span");
   span.className = "cal-line__text";
@@ -1513,6 +1497,11 @@ function shiftHasAssignees(shift) {
   const c2 = Number(shift?.assignees_count);
   const c3 = Number(shift?.members_count);
   return (Number.isFinite(c1) && c1 > 0) || (Number.isFinite(c2) && c2 > 0) || (Number.isFinite(c3) && c3 > 0);
+}
+
+function shiftIsClosed(shift) {
+  const status = String(shift?.report_status || shift?.report?.status || "").toUpperCase();
+  return !!shift?.report_closed || status === "CLOSED";
 }
 
 function makeCalDot({ color, filled = false, label = "", title = "" } = {}) {
@@ -1692,19 +1681,9 @@ if (showAllOnCalendar && !isWeek && !forceText && calendarScope !== "global") {
         const venueName = s?.venue?.name || "Заведение";
         const t = shiftStartHHMM(s) || (s?.interval?.start_time ? String(s.interval.start_time).slice(0, 5) : "");
 
-        if (pastDay) {
-          const sal = Number(s?.my_salary);
-          txt = shouldShowDemoSalaryValue(sal) ? fmtMoney(sal) : (t ? `${venueName} • ${t}` : `${venueName}`);
-        } else {
-          txt = t ? `${venueName} • ${t}` : `${venueName}`;
-        }
+        txt = `${shiftDonePrefix(s)}${t ? `${venueName} • ${t}` : `${venueName}`}`;
       } else {
-        if (pastDay) {
-          const sal = Number(s?.my_salary);
-          txt = shouldShowDemoSalaryValue(sal) ? fmtMoney(sal) : shiftStartHHMM(s);
-        } else {
-          txt = shiftStartHHMM(s);
-        }
+        txt = `${shiftDonePrefix(s)}${shiftStartHHMM(s) || ""}`;
       }
 
       if (txt && txt !== "—") {
@@ -1914,9 +1893,10 @@ function renderShiftCard(s, allowEdit) {
     <div class="card shiftcard" data-shiftcard="${shiftId}">
       <div class="shiftcard__head">
         <div class="shiftcard__title">
-          <div class="shiftcard__line1"><span class="intchip" style="background:${intColor}"></span><b>${escapeHtml(title)}</b></div>
+          <div class="shiftcard__line1"><span class="intchip" style="background:${intColor}"></span><b>${escapeHtml(title)}</b>${shiftIsClosed(s) ? `<span class="badge shift-done-badge">✓ закрыта</span>` : ``}</div>
           ${time ? `<div class="shiftcard__meta muted">${escapeHtml(time)}</div>` : ``}
         </div>
+        ${allowEdit ? `<button class="btn danger sm" data-delete-shift="${shiftId}" type="button">Удалить смену</button>` : ``}
       </div>
       ${peopleHtml}
       ${editorHtml ? `<div class="shiftcard__editor">${editorHtml}</div>` : ``}
@@ -2017,6 +1997,26 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
   const shiftId = (shift.id ?? shift.shift_id);
   const card = document.querySelector(`[data-shiftcard="${shiftId}"]`);
   if (!card) return;
+
+  const btnDeleteShift = card.querySelector(`[data-delete-shift="${shiftId}"]`);
+  if (btnDeleteShift) {
+    btnDeleteShift.onclick = async () => {
+      const assignments = shift.assignments || shift.shift_assignments || [];
+      const text = assignments.length
+        ? "В этой смене есть назначенные сотрудники. Удалить смену и пересчитать зарплату?"
+        : "Удалить этот интервал на выбранный день?";
+      const ok = await confirmModal({ title: "Удалить смену?", text, confirmText: "Удалить", danger: true });
+      if (!ok) return;
+      try {
+        await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}`, { method: "DELETE" });
+        toast("Смена удалена", "ok");
+        await reloadCurrentView();
+        openDay(dateStr);
+      } catch (e) {
+        toast(e?.data?.detail || e?.message || "Не удалось удалить смену", "err");
+      }
+    };
+  }
 
   const sel = card.querySelector(`[data-posselect][data-shift="${shiftId}"]`);
   const btnAssign = card.querySelector(`[data-assign][data-shift="${shiftId}"]`);

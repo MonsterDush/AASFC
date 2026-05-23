@@ -24,6 +24,8 @@
     await mountVenueMenu({ containerSelector: "#venueMenuMount" });
     const me = navState?.me || null;
     const isSuperAdmin = String(me?.system_role || "").toUpperCase() === "SUPER_ADMIN";
+    const notifHistoryBtn = document.getElementById("btnNotifHistory");
+    if (notifHistoryBtn && !isSuperAdmin) notifHistoryBtn.remove();
 
     const hint = document.getElementById("langHint");
     const paintLang = () => {

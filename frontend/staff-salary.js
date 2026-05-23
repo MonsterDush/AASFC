@@ -482,7 +482,7 @@ async function loadMonth() {
   if (el.daysList) el.daysList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
 
   try {
-    const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts?${q}`);
+    const out = await api(`/me/shifts?venue_id=${encodeURIComponent(venueId)}&${q}`);
     shifts = Array.isArray(out) ? out : (out?.items || []);
   } catch (e) {
     shifts = [];
