@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.error
 import socket
 from typing import Any
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel, Field
 
 # Outbound-only bot service (Variant B).
@@ -287,17 +287,15 @@ async def _start_scheduler():
 
 
 def _forward_telegram_update_to_backend_background(raw_body: bytes, *, secret_token: str | None = None) -> None:
-    """Forward Telegram webhook to backend without blocking Telegram response.
+    """Forward Telegram webhook update to backend without blocking Telegram response.
 
-    Telegram retries webhooks when we answer 5xx or timeout. Browser auth may send
-    Telegram API calls while backend handles the forwarded update, so waiting here
-    can create a circular wait. Keep the webhook ACK fast and log forwarding
-    failures for diagnostics.
+    Telegram expects a quick 2xx response. The backend may call this bot service
+    again to send/edit messages, so waiting here can create a circular wait.
     """
     try:
         status_code, body = _forward_telegram_update_to_backend(raw_body, secret_token=secret_token)
         if not (200 <= status_code < 300):
-            log.error("telegram webhook proxy failed: status=%s body=%s", status_code, body[:500])
+            log.error("telegram webhook proxy failed: status=%s body=%s", status_code, str(body or "")[:500])
     except Exception:
         log.exception("telegram webhook proxy background task failed")
 
@@ -311,9 +309,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             raise HTTPException(status_code=401, detail="bad telegram secret")
 
     raw_body = await request.body()
-    background_tasks.add_task(
-        _forward_telegram_update_to_backend_background,
-        raw_body,
-        secret_token=(TG_WEBHOOK_SECRET_TOKEN or request.headers.get("X-Telegram-Bot-Api-Secret-Token") or None),
-    )
+    secret_token = TG_WEBHOOK_SECRET_TOKEN or request.headers.get("X-Telegram-Bot-Api-Secret-Token") or None
+    background_tasks.add_task(_forward_telegram_update_to_backend_background, raw_body, secret_token=secret_token)
     return
