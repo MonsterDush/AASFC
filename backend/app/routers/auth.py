@@ -2,13 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import secrets
-import urllib.error
-import urllib.parse
-import urllib.request
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -61,26 +56,7 @@ from app.services.invites import accept_invites_for_user, accept_phone_invites_f
 from app.services.sms_auth import get_sms_provider
 from app.settings import settings
 
-import socket
-import subprocess
-
 _LOG = logging.getLogger("axelio.auth.telegram_browser")
-
-_ORIGINAL_GETADDRINFO = socket.getaddrinfo
-
-def _telegram_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    """Prefer IPv4 only for Telegram API hosts.
-
-Some VPS providers expose broken IPv6 routes. In that case urllib may hang or fail
-with Network is unreachable while curl -4 works. We limit the monkey patch to
-api.telegram.org so the rest of the app keeps normal DNS behaviour.
-    """
-    if str(host or "").lower() == "api.telegram.org" and str(os.getenv("TELEGRAM_FORCE_IPV4", "1")).lower() not in {"0", "false", "no"}:
-        return _ORIGINAL_GETADDRINFO(host, port, socket.AF_INET, type, proto, flags)
-    return _ORIGINAL_GETADDRINFO(host, port, family, type, proto, flags)
-
-if getattr(socket.getaddrinfo, "__name__", "") != "_telegram_ipv4_getaddrinfo":
-    socket.getaddrinfo = _telegram_ipv4_getaddrinfo
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -312,28 +288,18 @@ def _normalize_next_path(value: str | None) -> str | None:
     return raw
 
 
-@lru_cache(maxsize=1)
-def _fetch_telegram_bot_username_from_api() -> str:
-    token = str(settings.TG_BOT_TOKEN or "").strip()
-    if not token:
-        return ""
-    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/getMe", method="GET")
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        body = resp.read().decode("utf-8", errors="ignore")
-    payload = json.loads(body or "{}")
-    if not payload.get("ok"):
-        return ""
-    return str((payload.get("result") or {}).get("username") or "").strip().lstrip("@")
-
-
 def _telegram_browser_bot_username() -> str:
-    explicit = str(settings.TG_BROWSER_LOGIN_BOT_USERNAME or settings.TG_LOGIN_WIDGET_BOT_USERNAME or "").strip().lstrip("@")
-    if explicit:
-        return explicit
-    try:
-        return _fetch_telegram_bot_username_from_api()
-    except Exception:
-        return ""
+    """Return bot username for browser auth without calling Telegram API.
+
+    Browser Telegram auth must not depend on outbound api.telegram.org calls.
+    Set TG_BROWSER_LOGIN_BOT_USERNAME (preferred) or TG_LOGIN_WIDGET_BOT_USERNAME
+    in backend .env.
+    """
+    return str(
+        settings.TG_BROWSER_LOGIN_BOT_USERNAME
+        or settings.TG_LOGIN_WIDGET_BOT_USERNAME
+        or ""
+    ).strip().lstrip("@")
 
 
 def _browser_login_ttl_seconds() -> int:
@@ -383,120 +349,31 @@ def _browser_login_status_payload(session: TelegramBrowserAuthSession) -> Telegr
     )
 
 
-def _telegram_api_post(method: str, payload: dict) -> dict:
-    """Send Telegram API request for browser login.
+# Browser Telegram auth is intentionally inbound-only.
+#
+# Previous versions tried to answer /start with sendMessage and then waited for an
+# inline callback. On this VPS outgoing Telegram API calls are unstable, so the
+# browser flow no longer calls api.telegram.org at all. Opening the deep-link is
+# treated as confirmation: Telegram sends /start <token> to our webhook, backend
+# marks the session COMPLETED, and the browser polling endpoint finalizes login.
 
-    Clean/simple variant: backend sends Telegram messages directly via system curl -4.
-    We intentionally do NOT call bot_service here, because the previous chain
-    backend -> bot_service -> Telegram could deadlock with webhook forwarding.
-    On this VPS curl -4 is the proven stable path to api.telegram.org.
-    """
-    method = str(method or "").strip()
-    if not method:
-        raise RuntimeError("Telegram API method is empty")
-
-    token = str(settings.TG_BOT_TOKEN or "").strip()
-    if not token:
-        raise RuntimeError("TG_BOT_TOKEN is not configured")
-
-    data: dict[str, str] = {}
-    for key, value in (payload or {}).items():
-        if value is None:
-            continue
-        if isinstance(value, bool):
-            data[key] = "true" if value else "false"
-        elif isinstance(value, (dict, list)):
-            data[key] = json.dumps(value, ensure_ascii=False)
-        else:
-            data[key] = str(value)
-
-    body = urllib.parse.urlencode(data).encode("utf-8")
-    api_url = f"https://api.telegram.org/bot{token}/{method}"
-    timeout_seconds = str(max(int(float(os.getenv("TELEGRAM_API_TIMEOUT_SECONDS", "10") or 10)), 3))
-    connect_timeout = str(max(int(float(os.getenv("TELEGRAM_API_CONNECT_TIMEOUT_SECONDS", "5") or 5)), 2))
-
-    cmd = [
-        "curl",
-        "-4",
-        "-sS",
-        "--show-error",
-        "--max-time", timeout_seconds,
-        "--connect-timeout", connect_timeout,
-        "-H", "Content-Type: application/x-www-form-urlencoded",
-        "--data-binary", "@-",
-        api_url,
-    ]
-
-    last_error = ""
-    for attempt in range(3):
-        try:
-            proc = subprocess.run(
-                cmd,
-                input=body,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=int(timeout_seconds) + int(connect_timeout) + 2,
-                check=False,
-            )
-            raw = proc.stdout.decode("utf-8", errors="ignore")
-            err = proc.stderr.decode("utf-8", errors="ignore").strip()
-            if proc.returncode != 0:
-                last_error = err or f"curl exit {proc.returncode}"
-            else:
-                result = json.loads(raw or "{}")
-                if result.get("ok"):
-                    return result
-                last_error = str(result.get("description") or raw[:300] or f"telegram {method} failed")
-        except Exception as e:
-            last_error = str(e)
-
-        if attempt < 2:
-            import time as _time
-            _time.sleep(min(0.5 * (attempt + 1), 1.5))
-
-    raise RuntimeError(last_error or f"telegram {method} failed")
-
-
-def _telegram_answer_callback_query(callback_query_id: str, text: str | None = None, *, show_alert: bool = False) -> bool:
+def _telegram_user_from_update(value: dict | None) -> tuple[int, str | None, str, str]:
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=400, detail="Telegram user payload is missing")
     try:
-        _telegram_api_post("answerCallbackQuery", {
-            "callback_query_id": callback_query_id,
-            "text": text or "",
-            "show_alert": show_alert,
-        })
-        return True
+        tg_user_id = int(value.get("id"))
     except Exception:
-        _LOG.exception("telegram browser answerCallbackQuery failed")
-        return False
-
-
-def _telegram_edit_message(chat_id: int, message_id: int, text: str, *, reply_markup: dict | None = None) -> bool:
-    try:
-        _telegram_api_post("editMessageText", {
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
-            "reply_markup": reply_markup,
-        })
-        return True
-    except Exception:
-        _LOG.exception("telegram browser editMessageText failed")
-        return False
-
-
-def _telegram_send_browser_login_prompt(*, chat_id: int, session_token: str) -> None:
-    _telegram_api_post("sendMessage", {
-        "chat_id": chat_id,
-        "text": (
-            "Подтвердите вход в Axelio в браузере.\n\n"
-            "Если это были не вы, просто проигнорируйте это сообщение."
-        ),
-        "reply_markup": {"inline_keyboard": [[{"text": "Подтвердить вход", "callback_data": f"browser_login:{session_token}"}]]},
-        "disable_web_page_preview": True,
-    })
+        raise HTTPException(status_code=400, detail="Telegram user id is missing")
+    return (
+        tg_user_id,
+        normalize_tg_username(value.get("username")),
+        str(value.get("first_name") or "").strip(),
+        str(value.get("last_name") or "").strip(),
+    )
 
 
 def _complete_browser_login_session(
+
     db: Session,
     *,
     session_token: str,
@@ -588,72 +465,70 @@ def _complete_browser_link_session(
     return session, target_user
 
 
-def _handle_browser_login_start_message(db: Session, *, chat_id: int, text: str) -> None:
+def _handle_browser_login_start_message(db: Session, *, text: str, from_user: dict | None = None) -> None:
+    """Auto-confirm browser login/link from Telegram /start payload.
+
+    No messages are sent back to Telegram. This makes the flow independent from
+    outbound Telegram API availability.
+    """
     raw = str(text or "").strip()
     if not raw.startswith("/start"):
         return
 
     parts = raw.split(maxsplit=1)
-    command = str(parts[0] if parts else '').split('@', 1)[0].strip().lower()
-    if command != '/start':
+    command = str(parts[0] if parts else "").split("@", 1)[0].strip().lower()
+    if command != "/start":
         return
 
-    start_arg = parts[1].strip() if len(parts) > 1 else ''
-    login_prefix = _browser_login_prefix()
-    link_prefix = _browser_link_prefix()
-    mode = None
-    session_token = ""
-    if start_arg.startswith(login_prefix):
-        mode = "login"
-        session_token = start_arg[len(login_prefix):].strip().lower()
-    elif start_arg.startswith(link_prefix):
-        mode = "link"
-        session_token = start_arg[len(link_prefix):].strip().lower()
-    else:
-        _telegram_api_post("sendMessage", {
-            "chat_id": chat_id,
-            "text": "Привет! Для входа или привязки Telegram сначала нажмите соответствующую кнопку в Axelio.",
-        })
+    start_arg = parts[1].strip() if len(parts) > 1 else ""
+    if not start_arg:
         return
 
     try:
-        session = _get_browser_login_session(db, session_token=session_token)
-        if _expire_browser_login_session(session):
-            db.commit()
-            _telegram_api_post("sendMessage", {
-                "chat_id": chat_id,
-                "text": "Ссылка уже истекла. Вернитесь в Axelio и создайте новую.",
-            })
+        tg_user_id, tg_username, first_name, last_name = _telegram_user_from_update(from_user)
+
+        if start_arg.startswith(_browser_login_prefix()):
+            session_token = start_arg[len(_browser_login_prefix()):].strip().lower()
+            _complete_browser_login_session(
+                db,
+                session_token=session_token,
+                tg_user_id=tg_user_id,
+                tg_username=tg_username,
+                first_name=first_name,
+                last_name=last_name,
+            )
             return
-        prompt_text = (
-            "Подтвердите вход в Axelio в браузере.\n\nЕсли это были не вы, просто проигнорируйте это сообщение."
-            if mode == "login" else
-            "Подтвердите привязку Telegram к вашему профилю Axelio.\n\nЕсли это были не вы, просто проигнорируйте это сообщение."
-        )
-        button_text = "Подтвердить вход" if mode == "login" else "Привязать Telegram"
-        callback_data = f"browser_{mode}:{session_token}"
-        _telegram_api_post("sendMessage", {
-            "chat_id": chat_id,
-            "text": prompt_text,
-            "reply_markup": {"inline_keyboard": [[{"text": button_text, "callback_data": callback_data}]]},
-            "disable_web_page_preview": True,
-        })
-    except HTTPException as exc:
-        _telegram_api_post("sendMessage", {"chat_id": chat_id, "text": str(exc.detail or "Не удалось найти сессию.")})
+
+        if start_arg.startswith(_browser_link_prefix()):
+            session_token = start_arg[len(_browser_link_prefix()):].strip().lower()
+            _complete_browser_link_session(
+                db,
+                session_token=session_token,
+                tg_user_id=tg_user_id,
+                tg_username=tg_username,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            return
+
+        # Unknown /start payload: do nothing. The browser flow is driven only by
+        # Axelio-generated browser_login_/browser_link_ tokens.
+        return
+    except HTTPException:
+        db.rollback()
+        _LOG.exception("telegram browser auto-confirm rejected")
     except Exception:
-        _LOG.exception("telegram browser start handler failed")
-        try:
-            _telegram_api_post("sendMessage", {
-                "chat_id": chat_id,
-                "text": "Не удалось подготовить авторизацию. Вернитесь в Axelio и попробуйте обновить ссылку.",
-            })
-        except Exception:
-            _LOG.exception("telegram browser start error notification failed")
+        db.rollback()
+        _LOG.exception("telegram browser auto-confirm failed")
 
 
 def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None:
+    """Backward-compatible no-outbound callback handler.
+
+    Old messages with inline buttons may still exist in Telegram. If clicked, we
+    complete the session but do not call answerCallbackQuery/editMessageText.
+    """
     data = str(callback_query.get("data") or "")
-    mode = None
     if data.startswith("browser_login:"):
         mode = "login"
     elif data.startswith("browser_link:"):
@@ -661,61 +536,33 @@ def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None
     else:
         return
 
-    session_token = data.split(":", 1)[1].strip().lower()
-    query_id = str(callback_query.get("id") or "")
-    message = callback_query.get("message") or {}
-    from_user = callback_query.get("from") or {}
-    chat = message.get("chat") or {}
-    chat_id = chat.get("id")
-    message_id = message.get("message_id")
-
     try:
+        session_token = data.split(":", 1)[1].strip().lower()
+        tg_user_id, tg_username, first_name, last_name = _telegram_user_from_update(callback_query.get("from") or {})
         if mode == "login":
             _complete_browser_login_session(
                 db,
                 session_token=session_token,
-                tg_user_id=int(from_user.get("id")),
-                tg_username=normalize_tg_username(from_user.get("username")),
-                first_name=(from_user.get("first_name") or "").strip(),
-                last_name=(from_user.get("last_name") or "").strip(),
+                tg_user_id=tg_user_id,
+                tg_username=tg_username,
+                first_name=first_name,
+                last_name=last_name,
             )
-            answer_text = "Вход подтверждён"
-            done_text = "Вход подтверждён. Вернитесь в браузер Axelio — страница завершит авторизацию автоматически."
         else:
             _complete_browser_link_session(
                 db,
                 session_token=session_token,
-                tg_user_id=int(from_user.get("id")),
-                tg_username=normalize_tg_username(from_user.get("username")),
-                first_name=(from_user.get("first_name") or "").strip(),
-                last_name=(from_user.get("last_name") or "").strip(),
+                tg_user_id=tg_user_id,
+                tg_username=tg_username,
+                first_name=first_name,
+                last_name=last_name,
             )
-            answer_text = "Telegram привязан"
-            done_text = "Telegram успешно привязан. Вернитесь в Axelio — профиль обновится автоматически."
-
-        _telegram_answer_callback_query(query_id, answer_text)
-        edited = False
-        if chat_id is not None and message_id is not None:
-            edited = _telegram_edit_message(int(chat_id), int(message_id), done_text)
-        if chat_id is not None and not edited:
-            try:
-                _telegram_api_post("sendMessage", {"chat_id": int(chat_id), "text": done_text})
-            except Exception:
-                _LOG.exception("telegram browser callback fallback sendMessage failed")
-    except HTTPException as exc:
-        error_text = str(exc.detail or "Не удалось завершить операцию")
-        _telegram_answer_callback_query(query_id, error_text, show_alert=True)
-        edited = False
-        if chat_id is not None and message_id is not None:
-            edited = _telegram_edit_message(int(chat_id), int(message_id), error_text)
-        if chat_id is not None and not edited:
-            try:
-                _telegram_api_post("sendMessage", {"chat_id": int(chat_id), "text": error_text})
-            except Exception:
-                _LOG.exception("telegram browser callback error fallback sendMessage failed")
+    except HTTPException:
+        db.rollback()
+        _LOG.exception("telegram browser callback auto-confirm rejected")
     except Exception:
-        _LOG.exception("telegram browser callback handler failed")
-        _telegram_answer_callback_query(query_id, "Не удалось завершить операцию", show_alert=True)
+        db.rollback()
+        _LOG.exception("telegram browser callback auto-confirm failed")
 
 
 def _phone_auth_config_payload() -> dict:
@@ -925,11 +772,13 @@ async def telegram_browser_webhook(
 
     message = update.get("message")
     if isinstance(message, dict):
-        chat = message.get("chat") or {}
-        chat_id = chat.get("id")
         text = message.get("text")
-        if chat_id is not None and text:
-            _handle_browser_login_start_message(db, chat_id=int(chat_id), text=str(text))
+        if text:
+            _handle_browser_login_start_message(
+                db,
+                text=str(text),
+                from_user=(message.get("from") or {}),
+            )
         return
 
 

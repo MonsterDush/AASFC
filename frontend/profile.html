@@ -102,7 +102,7 @@
             <button class="btn primary" id="linkTelegramBtn">Привязать Telegram</button>
           </div>
           <div class="stack mt-12 hidden" id="telegramBrowserLinkBlock">
-            <div class="muted" id="telegramBrowserLinkStatus">Нажми кнопку ниже, открой бота и подтверди привязку.</div>
+            <div class="muted" id="telegramBrowserLinkStatus">Нажми кнопку ниже и открой Telegram. После открытия бота вернись в профиль — привязка завершится автоматически.</div>
             <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
               <a class="btn primary" id="telegramBrowserLinkOpenLink" href="#" target="_blank" rel="noopener noreferrer">Открыть Telegram</a>
               <button class="btn sm" id="telegramBrowserLinkCopyBtn" type="button">Скопировать ссылку</button>
@@ -361,7 +361,7 @@
       telegramBrowserLinkDeepLink = "";
       els.telegramBrowserLinkOpenLink?.setAttribute("href", "#");
       els.telegramBrowserLinkMeta.textContent = "";
-      els.telegramBrowserLinkStatus.textContent = "Нажми кнопку ниже, открой бота и подтверди привязку.";
+      els.telegramBrowserLinkStatus.textContent = "Нажми кнопку ниже и открой Telegram. После открытия бота вернись в профиль — привязка завершится автоматически.";
     }
 
     function renderTelegramBrowserLinkState(data) {
@@ -375,7 +375,7 @@
         return;
       }
       const tgUsername = data?.telegram_username ? ` от @${String(data.telegram_username).replace(/^@+/, "")}` : "";
-      els.telegramBrowserLinkStatus.textContent = `Ожидаем подтверждение в Telegram${tgUsername}. После нажатия кнопки в боте профиль обновится автоматически.`;
+      els.telegramBrowserLinkStatus.textContent = `Ожидаем подтверждение в Telegram${tgUsername}. После открытия бота профиль обновится автоматически.`;
     }
 
     async function pollTelegramBrowserLinkSession() {
@@ -414,7 +414,7 @@
       els.telegramBrowserLinkOpenLink.setAttribute("href", telegramBrowserLinkDeepLink);
       const expires = Number(out?.expires_in_seconds || 0);
       const botUsername = String(out?.bot_username || "").replace(/^@+/, "");
-      els.telegramBrowserLinkMeta.textContent = `Бот: @${botUsername}. Ссылка действует ${expires} сек. Если бот открывается впервые, после перехода нажми «Start / Запустить», затем кнопку «Привязать Telegram».`;
+      els.telegramBrowserLinkMeta.textContent = `Бот: @${botUsername}. Ссылка действует ${expires} сек. Если бот открывается впервые, после перехода нажми «Start / Запустить». Затем вернись в профиль.`;
       renderTelegramBrowserLinkState({ status: out?.status || "PENDING" });
       telegramBrowserLinkPollTimer = setInterval(() => { void pollTelegramBrowserLinkSession(); }, Math.max(1500, Number(out?.poll_interval_ms || 2000)));
       await pollTelegramBrowserLinkSession();
@@ -526,13 +526,13 @@
         setVisible(els.linkTelegramBtn, false);
         hideTelegramBrowserLinkBlock();
       } else if (telegramMiniAppAvailable()) {
-        els.telegramState.textContent = "Telegram Mini App доступен. Можно сразу привязать текущий Telegram-аккаунт. Если удобнее, можно подтвердить привязку и через бота.";
+        els.telegramState.textContent = "Telegram Mini App доступен. Можно сразу привязать текущий Telegram-аккаунт. Если удобнее, можно открыть бота по ссылке — привязка завершится автоматически.";
         els.linkTelegramBtn.textContent = "Привязать Telegram";
         els.linkTelegramBtn.disabled = false;
         setVisible(els.linkTelegramBtn, true);
       } else {
-        els.telegramState.textContent = "Telegram к профилю ещё не привязан. Подтверди привязку через бота, как при входе через Telegram.";
-        els.linkTelegramBtn.textContent = "Привязать через бота";
+        els.telegramState.textContent = "Telegram к профилю ещё не привязан. Открой бота по ссылке — привязка завершится автоматически.";
+        els.linkTelegramBtn.textContent = "Открыть Telegram для привязки";
         els.linkTelegramBtn.disabled = false;
         setVisible(els.linkTelegramBtn, true);
       }
