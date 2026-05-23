@@ -62,6 +62,7 @@ from app.services.sms_auth import get_sms_provider
 from app.settings import settings
 
 import socket
+import subprocess
 
 _LOG = logging.getLogger("axelio.auth.telegram_browser")
 
@@ -383,46 +384,16 @@ def _browser_login_status_payload(session: TelegramBrowserAuthSession) -> Telegr
 
 
 def _telegram_api_post(method: str, payload: dict) -> dict:
-    """Call Telegram API for browser-login messages.
+    """Send Telegram API request for browser login.
 
-Preferred path is through bot_service, because notifications already go through
-that service and it centralizes outbound Telegram traffic/retries. If
-BOT_SERVICE_URL is not configured, we fall back to direct Telegram API.
+    Clean/simple variant: backend sends Telegram messages directly via system curl -4.
+    We intentionally do NOT call bot_service here, because the previous chain
+    backend -> bot_service -> Telegram could deadlock with webhook forwarding.
+    On this VPS curl -4 is the proven stable path to api.telegram.org.
     """
     method = str(method or "").strip()
     if not method:
         raise RuntimeError("Telegram API method is empty")
-
-    svc_url = str(os.getenv("BOT_SERVICE_URL") or "").strip().rstrip("/")
-    svc_secret = str(os.getenv("BOT_SERVICE_SECRET") or "").strip()
-    timeout_seconds = max(float(os.getenv("BOT_SERVICE_TIMEOUT_SECONDS", "5") or 5), 1.0)
-    if svc_url:
-        body = json.dumps({"method": method, "payload": payload or {}}, ensure_ascii=False).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        if svc_secret:
-            headers["X-Bot-Secret"] = svc_secret
-        req = urllib.request.Request(
-            f"{svc_url}/internal/telegram/api",
-            data=body,
-            method="POST",
-            headers=headers,
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-                raw = resp.read().decode("utf-8", errors="ignore")
-            result = json.loads(raw or "{}")
-            if not result.get("ok"):
-                raise RuntimeError(str(result.get("error") or result.get("description") or f"telegram {method} failed"))
-            return result.get("result") if isinstance(result.get("result"), dict) else result
-        except urllib.error.HTTPError as e:
-            raw = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
-            if str(os.getenv("TG_BROWSER_LOGIN_DIRECT_FALLBACK", "")).lower() not in {"1", "true", "yes"}:
-                raise RuntimeError(raw or str(e))
-            _LOG.warning("bot_service telegram api failed, using direct fallback: status=%s body=%s", e.code, raw[:300])
-        except Exception as e:
-            if str(os.getenv("TG_BROWSER_LOGIN_DIRECT_FALLBACK", "")).lower() not in {"1", "true", "yes"}:
-                raise
-            _LOG.warning("bot_service telegram api exception, using direct fallback: %s", e)
 
     token = str(settings.TG_BOT_TOKEN or "").strip()
     if not token:
@@ -439,17 +410,51 @@ BOT_SERVICE_URL is not configured, we fall back to direct Telegram API.
         else:
             data[key] = str(value)
 
-    req = urllib.request.Request(
-        f"https://api.telegram.org/bot{token}/{method}",
-        data=urllib.parse.urlencode(data).encode("utf-8"),
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=7) as resp:
-        body = resp.read().decode("utf-8", errors="ignore")
-    result = json.loads(body or "{}")
-    if not result.get("ok"):
-        raise RuntimeError(str(result.get("description") or f"telegram {method} failed"))
-    return result
+    body = urllib.parse.urlencode(data).encode("utf-8")
+    api_url = f"https://api.telegram.org/bot{token}/{method}"
+    timeout_seconds = str(max(int(float(os.getenv("TELEGRAM_API_TIMEOUT_SECONDS", "10") or 10)), 3))
+    connect_timeout = str(max(int(float(os.getenv("TELEGRAM_API_CONNECT_TIMEOUT_SECONDS", "5") or 5)), 2))
+
+    cmd = [
+        "curl",
+        "-4",
+        "-sS",
+        "--show-error",
+        "--max-time", timeout_seconds,
+        "--connect-timeout", connect_timeout,
+        "-H", "Content-Type: application/x-www-form-urlencoded",
+        "--data-binary", "@-",
+        api_url,
+    ]
+
+    last_error = ""
+    for attempt in range(3):
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=body,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=int(timeout_seconds) + int(connect_timeout) + 2,
+                check=False,
+            )
+            raw = proc.stdout.decode("utf-8", errors="ignore")
+            err = proc.stderr.decode("utf-8", errors="ignore").strip()
+            if proc.returncode != 0:
+                last_error = err or f"curl exit {proc.returncode}"
+            else:
+                result = json.loads(raw or "{}")
+                if result.get("ok"):
+                    return result
+                last_error = str(result.get("description") or raw[:300] or f"telegram {method} failed")
+        except Exception as e:
+            last_error = str(e)
+
+        if attempt < 2:
+            import time as _time
+            _time.sleep(min(0.5 * (attempt + 1), 1.5))
+
+    raise RuntimeError(last_error or f"telegram {method} failed")
 
 
 def _telegram_answer_callback_query(callback_query_id: str, text: str | None = None, *, show_alert: bool = False) -> bool:
