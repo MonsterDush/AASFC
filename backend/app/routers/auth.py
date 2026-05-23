@@ -434,20 +434,39 @@ BOT_SERVICE_URL is not configured, we fall back to direct Telegram API.
             continue
         if isinstance(value, (dict, list)):
             data[key] = json.dumps(value, ensure_ascii=False)
+        elif isinstance(value, bool):
+            data[key] = "true" if value else "false"
         else:
             data[key] = str(value)
 
-    req = urllib.request.Request(
-        f"https://api.telegram.org/bot{token}/{method}",
-        data=urllib.parse.urlencode(data).encode("utf-8"),
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=7) as resp:
-        body = resp.read().decode("utf-8", errors="ignore")
-    result = json.loads(body or "{}")
-    if not result.get("ok"):
-        raise RuntimeError(str(result.get("description") or f"telegram {method} failed"))
-    return result
+    encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+    direct_timeout = max(float(os.getenv("TG_BROWSER_LOGIN_API_TIMEOUT_SECONDS", "10") or 10), 1.0)
+    direct_attempts = max(int(os.getenv("TG_BROWSER_LOGIN_API_ATTEMPTS", "3") or 3), 1)
+    last_error: Exception | None = None
+
+    for attempt in range(direct_attempts):
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/{method}",
+            data=encoded_data,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=direct_timeout) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+            result = json.loads(body or "{}")
+            if not result.get("ok"):
+                raise RuntimeError(str(result.get("description") or f"telegram {method} failed"))
+            return result
+        except Exception as e:
+            last_error = e
+            if attempt >= direct_attempts - 1:
+                break
+            _LOG.warning("telegram %s attempt %s/%s failed: %s", method, attempt + 1, direct_attempts, e)
+            time_sleep_seconds = min(0.35 * (attempt + 1), 1.0)
+            import time
+            time.sleep(time_sleep_seconds)
+
+    raise RuntimeError(str(last_error or f"telegram {method} failed"))
 
 
 def _telegram_answer_callback_query(callback_query_id: str, text: str | None = None, *, show_alert: bool = False) -> None:
