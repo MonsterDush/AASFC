@@ -333,8 +333,18 @@ function getPeriodQuery() {
 }
 
 function syncPeriodUi() {
-  if (el.monthControls) el.monthControls.style.display = periodMode === "month" ? "flex" : "none";
-  if (el.rangeControls) el.rangeControls.style.display = isDemoUiMode() ? "none" : (periodMode === "range" ? "flex" : "none");
+  const isRangeMode = periodMode === "range" && !isDemoUiMode();
+
+  if (el.monthControls) {
+    el.monthControls.classList.toggle("hidden", isRangeMode);
+    el.monthControls.style.display = isRangeMode ? "none" : "flex";
+  }
+
+  if (el.rangeControls) {
+    el.rangeControls.classList.toggle("hidden", !isRangeMode);
+    el.rangeControls.style.display = isRangeMode ? "flex" : "none";
+  }
+
   if (el.periodMonthBtn) el.periodMonthBtn.disabled = periodMode === "month";
   if (el.periodRangeBtn) {
     el.periodRangeBtn.disabled = isDemoUiMode() || periodMode === "range";
