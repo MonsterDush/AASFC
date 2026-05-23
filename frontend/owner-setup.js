@@ -754,8 +754,19 @@ async function savePositionPresets(presets) {
   });
 }
 
+function resolvePresetSelection(value) {
+  if (!value) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value || "");
+  const rawId = String(value?.id || "").trim();
+  if (rawId) return rawId;
+  const rawTitle = String(value?.title || "").trim();
+  if (!rawTitle) return "";
+  const match = getPositionPresets().find((item) => item.is_active && String(item.title || "").trim() === rawTitle);
+  return match ? String(match.id || "") : "";
+}
+
 function buildPresetOptionList(selectedId = "") {
-  const current = String(selectedId || "");
+  const current = resolvePresetSelection(selectedId);
   const presets = getPositionPresets().filter((item) => item.is_active);
   return ['<option value="">Без должности</option>']
     .concat(presets.map((item) => `<option value="${esc(item.id)}" ${String(item.id) === current ? "selected" : ""}>${esc(item.title)}${item.pay_profile_title ? ` · ${esc(item.pay_profile_title)}` : ""}</option>`))
@@ -2255,7 +2266,7 @@ function renderInvitesEditor(data, currentStep) {
                   <div class="setup-minirow__meta">${esc(item.channel === 'PHONE' ? (item.phone || 'Телефон') : (item.tg_username || 'Telegram'))} · ${esc(item.default_position?.title || 'Без должности')} · Создано: ${esc(fmtDateTime(item.created_at))}</div>
                 </div>
                 <div class="setup-minirow__actions">
-                  <select class="input" data-invite-preset="${esc(item.id)}" style="max-width:220px">${buildPresetOptionList(item.default_position?.id || '')}</select>
+                  <select class="input" data-invite-preset="${esc(item.id)}" style="max-width:220px">${buildPresetOptionList(item.default_position || '')}</select>
                   <button class="btn sm" type="button" data-apply-invite-preset="${esc(item.id)}">Назначить</button>
                   <button class="btn sm danger" type="button" data-delete-invite="${esc(item.id)}">Отменить</button>
                 </div>

@@ -8,6 +8,8 @@ import time
 import urllib.request
 import urllib.parse
 import urllib.error
+import socket
+from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -23,6 +25,17 @@ BACKEND_INTERNAL_URL = (
     or "http://127.0.0.1:9001"
 ).rstrip("/")
 TG_WEBHOOK_SECRET_TOKEN = os.getenv("TG_WEBHOOK_SECRET_TOKEN", "")
+
+
+_ORIGINAL_GETADDRINFO = socket.getaddrinfo
+
+def _telegram_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if str(host or "").lower() == "api.telegram.org" and str(os.getenv("TELEGRAM_FORCE_IPV4", "1")).lower() not in {"0", "false", "no"}:
+        return _ORIGINAL_GETADDRINFO(host, port, socket.AF_INET, type, proto, flags)
+    return _ORIGINAL_GETADDRINFO(host, port, family, type, proto, flags)
+
+if getattr(socket.getaddrinfo, "__name__", "") != "_telegram_ipv4_getaddrinfo":
+    socket.getaddrinfo = _telegram_ipv4_getaddrinfo
 
 app = FastAPI(title="Axelio Bot Service")
 
@@ -43,6 +56,13 @@ try:
     from . import send_shift_reminders as _ssr  # noqa: WPS433
 except Exception:  # pragma: no cover
     _ssr = None
+
+
+
+
+class TelegramApiIn(BaseModel):
+    method: str = Field(..., min_length=1, max_length=80)
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class NotifyIn(BaseModel):
@@ -67,6 +87,49 @@ def _normalize_telegram_error(status_code: int | None, body_text: str | None) ->
         return retryable, description
     except Exception:
         return retryable, str(body_text).strip()[:300] or None
+
+
+
+
+def _telegram_api_post(token: str, method: str, payload: dict[str, Any]) -> dict:
+    api_url = f"https://api.telegram.org/bot{token}/{method}"
+    data_dict: dict[str, str] = {}
+    for key, value in (payload or {}).items():
+        if value is None:
+            continue
+        if isinstance(value, (dict, list)):
+            data_dict[key] = json.dumps(value, ensure_ascii=False)
+        else:
+            data_dict[key] = str(value)
+
+    data = urllib.parse.urlencode(data_dict).encode("utf-8")
+    req = urllib.request.Request(api_url, data=data, method="POST")
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                js = json.loads(body) if body else {}
+                ok = bool(js.get("ok"))
+                if ok:
+                    return {"ok": True, "retryable": False, "status_code": int(resp.status), "error": None, "result": js}
+                retryable, description = _normalize_telegram_error(resp.status, body)
+                last_error = description or f"telegram {method} failed"
+                if attempt == 2 or not retryable:
+                    return {"ok": False, "retryable": retryable, "status_code": int(resp.status), "error": last_error, "result": js}
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
+            retryable, description = _normalize_telegram_error(e.code, body)
+            last_error = description or str(e)
+            if attempt == 2 or not retryable:
+                return {"ok": False, "retryable": retryable, "status_code": int(e.code), "error": last_error, "result": None}
+        except Exception as e:
+            last_error = str(e)
+            if attempt == 2:
+                return {"ok": False, "retryable": True, "status_code": None, "error": last_error, "result": None}
+        time.sleep(min(0.35 * (attempt + 1), 1.0))
+    return {"ok": False, "retryable": True, "status_code": None, "error": last_error or f"telegram {method} failed", "result": None}
 
 
 def _forward_telegram_update_to_backend(raw_body: bytes, *, secret_token: str | None = None) -> tuple[int, str]:
@@ -159,6 +222,24 @@ def notify(payload: NotifyIn, request: Request):
         button_text=payload.button_text,
         parse_mode=payload.parse_mode,
     )
+    return result
+
+
+
+
+@app.post("/internal/telegram/api")
+def telegram_api_proxy(payload: TelegramApiIn, request: Request):
+    got = request.headers.get("X-Bot-Secret", "")
+    if BOT_SERVICE_SECRET and got != BOT_SERVICE_SECRET:
+        raise HTTPException(status_code=401, detail="bad secret")
+
+    if not TG_BOT_TOKEN:
+        raise HTTPException(status_code=500, detail="TG_BOT_TOKEN is not configured")
+
+    result = _telegram_api_post(TG_BOT_TOKEN, payload.method, payload.payload or {})
+    if not result.get("ok") and not result.get("retryable"):
+        # Preserve a 200 response for normalized caller handling, same style as /notify.
+        return result
     return result
 
 

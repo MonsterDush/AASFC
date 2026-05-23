@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import secrets
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -60,12 +63,23 @@ from app.settings import settings
 
 import socket
 
-old_getaddrinfo = socket.getaddrinfo
+_LOG = logging.getLogger("axelio.auth.telegram_browser")
 
-def force_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    return old_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+_ORIGINAL_GETADDRINFO = socket.getaddrinfo
 
-socket.getaddrinfo = force_ipv4_getaddrinfo
+def _telegram_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    """Prefer IPv4 only for Telegram API hosts.
+
+Some VPS providers expose broken IPv6 routes. In that case urllib may hang or fail
+with Network is unreachable while curl -4 works. We limit the monkey patch to
+api.telegram.org so the rest of the app keeps normal DNS behaviour.
+    """
+    if str(host or "").lower() == "api.telegram.org" and str(os.getenv("TELEGRAM_FORCE_IPV4", "1")).lower() not in {"0", "false", "no"}:
+        return _ORIGINAL_GETADDRINFO(host, port, socket.AF_INET, type, proto, flags)
+    return _ORIGINAL_GETADDRINFO(host, port, family, type, proto, flags)
+
+if getattr(socket.getaddrinfo, "__name__", "") != "_telegram_ipv4_getaddrinfo":
+    socket.getaddrinfo = _telegram_ipv4_getaddrinfo
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -369,12 +383,53 @@ def _browser_login_status_payload(session: TelegramBrowserAuthSession) -> Telegr
 
 
 def _telegram_api_post(method: str, payload: dict) -> dict:
+    """Call Telegram API for browser-login messages.
+
+Preferred path is through bot_service, because notifications already go through
+that service and it centralizes outbound Telegram traffic/retries. If
+BOT_SERVICE_URL is not configured, we fall back to direct Telegram API.
+    """
+    method = str(method or "").strip()
+    if not method:
+        raise RuntimeError("Telegram API method is empty")
+
+    svc_url = str(os.getenv("BOT_SERVICE_URL") or "").strip().rstrip("/")
+    svc_secret = str(os.getenv("BOT_SERVICE_SECRET") or "").strip()
+    timeout_seconds = max(float(os.getenv("BOT_SERVICE_TIMEOUT_SECONDS", "5") or 5), 1.0)
+    if svc_url:
+        body = json.dumps({"method": method, "payload": payload or {}}, ensure_ascii=False).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if svc_secret:
+            headers["X-Bot-Secret"] = svc_secret
+        req = urllib.request.Request(
+            f"{svc_url}/internal/telegram/api",
+            data=body,
+            method="POST",
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+                raw = resp.read().decode("utf-8", errors="ignore")
+            result = json.loads(raw or "{}")
+            if not result.get("ok"):
+                raise RuntimeError(str(result.get("error") or result.get("description") or f"telegram {method} failed"))
+            return result.get("result") if isinstance(result.get("result"), dict) else result
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
+            if str(os.getenv("TG_BROWSER_LOGIN_DIRECT_FALLBACK", "")).lower() not in {"1", "true", "yes"}:
+                raise RuntimeError(raw or str(e))
+            _LOG.warning("bot_service telegram api failed, using direct fallback: status=%s body=%s", e.code, raw[:300])
+        except Exception as e:
+            if str(os.getenv("TG_BROWSER_LOGIN_DIRECT_FALLBACK", "")).lower() not in {"1", "true", "yes"}:
+                raise
+            _LOG.warning("bot_service telegram api exception, using direct fallback: %s", e)
+
     token = str(settings.TG_BOT_TOKEN or "").strip()
     if not token:
         raise RuntimeError("TG_BOT_TOKEN is not configured")
 
     data: dict[str, str] = {}
-    for key, value in payload.items():
+    for key, value in (payload or {}).items():
         if value is None:
             continue
         if isinstance(value, (dict, list)):
@@ -574,16 +629,15 @@ def _handle_browser_login_start_message(db: Session, *, chat_id: int, text: str)
         })
     except HTTPException as exc:
         _telegram_api_post("sendMessage", {"chat_id": chat_id, "text": str(exc.detail or "Не удалось найти сессию.")})
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        _LOG.exception("telegram browser start handler failed")
         try:
             _telegram_api_post("sendMessage", {
                 "chat_id": chat_id,
-                "text": f"Ошибка авторизации: {e}",
+                "text": "Не удалось подготовить авторизацию. Вернитесь в Axelio и попробуйте обновить ссылку.",
             })
         except Exception:
-            pass
+            _LOG.exception("telegram browser start error notification failed")
 
 
 def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None:
@@ -636,6 +690,7 @@ def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None
         if chat_id is not None and message_id is not None:
             _telegram_edit_message(int(chat_id), int(message_id), str(exc.detail or "Не удалось завершить операцию"))
     except Exception:
+        _LOG.exception("telegram browser callback handler failed")
         _telegram_answer_callback_query(query_id, "Не удалось завершить операцию", show_alert=True)
 
 
@@ -1116,9 +1171,9 @@ def change_password(
     )
 
 
-def _build_demo_session_payload(*, venue: Venue, persona: str) -> dict:
+def _build_demo_session_payload(*, venue: Venue, persona: str, session_id: str | None = None) -> dict:
     persona_upper = normalize_demo_persona(persona, default=DEMO_PERSONA_OWNER)
-    claims = build_demo_session_claims(venue=venue, persona=persona_upper, session_id=getattr(demo_ctx, "session_id", None))
+    claims = build_demo_session_claims(venue=venue, persona=persona_upper, session_id=session_id)
     return {
         "ok": True,
         "demo_mode": True,

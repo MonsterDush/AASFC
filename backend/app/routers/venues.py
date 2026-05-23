@@ -109,6 +109,7 @@ from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.models.venue_invite import VenueInvite
 from app.models.venue_position import VenuePosition
+from app.models.venue_setup_state import VenueSetupState
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
 from app.models.shift_comment import ShiftComment
@@ -326,6 +327,23 @@ class PositionUpdateIn(BaseModel):
     is_active: bool | None = None
     # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
+
+
+class PositionPresetOut(BaseModel):
+    id: str
+    title: str
+    rate: int = 0
+    percent: int = 0
+    pay_profile_id: int | None = None
+    pay_profile_title: str | None = None
+    template_id: str | None = None
+    template_title: str | None = None
+    permission_codes: list[str] = []
+    is_active: bool = True
+
+
+class PositionPresetsOut(BaseModel):
+    items: list[PositionPresetOut] = []
 
 
 class PayProfileCreateIn(BaseModel):
@@ -3545,6 +3563,103 @@ def _build_venue_payroll_period_payload(
         "lines_count": len(lines),
         "latest_recalculation": latest_recalculation,
     }
+
+
+
+
+def _normalize_position_preset_item(raw: object, *, idx: int = 0) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    title = str(raw.get("title") or "").strip()
+    if not title:
+        return None
+    raw_id = str(raw.get("id") or "").strip() or f"preset-{idx + 1}"
+    try:
+        rate = max(0, int(raw.get("rate") or 0))
+    except Exception:
+        rate = 0
+    try:
+        percent = max(0, min(100, int(raw.get("percent") or 0)))
+    except Exception:
+        percent = 0
+    pay_profile_id = raw.get("pay_profile_id")
+    try:
+        pay_profile_id = int(pay_profile_id) if pay_profile_id not in (None, "", 0, "0") else None
+    except Exception:
+        pay_profile_id = None
+    return {
+        "id": raw_id,
+        "title": title[:100],
+        "rate": rate,
+        "percent": percent,
+        "pay_profile_id": pay_profile_id,
+        "pay_profile_title": str(raw.get("pay_profile_title") or "").strip() or None,
+        "template_id": str(raw.get("template_id") or "").strip() or None,
+        "template_title": str(raw.get("template_title") or "").strip() or None,
+        "permission_codes": _parse_position_permission_codes(raw.get("permission_codes")),
+        "is_active": raw.get("is_active") is not False,
+    }
+
+
+def _load_position_presets_from_setup(db: Session, *, venue_id: int, include_inactive: bool = False) -> list[dict]:
+    state = db.execute(select(VenueSetupState).where(VenueSetupState.venue_id == int(venue_id))).scalar_one_or_none()
+    meta = getattr(state, "step_meta_json", None) or {}
+    if not isinstance(meta, dict):
+        return []
+    raw_positions = meta.get("positions") or {}
+    if not isinstance(raw_positions, dict):
+        return []
+    raw_presets = raw_positions.get("presets") or []
+    if not isinstance(raw_presets, list):
+        return []
+
+    items: list[dict] = []
+    for idx, raw in enumerate(raw_presets):
+        item = _normalize_position_preset_item(raw, idx=idx)
+        if not item:
+            continue
+        if not include_inactive and not item.get("is_active", True):
+            continue
+        items.append(item)
+
+    profile_ids = sorted({int(x["pay_profile_id"]) for x in items if x.get("pay_profile_id")})
+    if profile_ids:
+        rows = db.execute(
+            select(PayProfile.id, PayProfile.title).where(
+                PayProfile.venue_id == int(venue_id),
+                PayProfile.id.in_(profile_ids),
+            )
+        ).all()
+        titles = {int(r.id): str(r.title or "") for r in rows}
+        for item in items:
+            pid = item.get("pay_profile_id")
+            if pid and titles.get(int(pid)):
+                item["pay_profile_title"] = titles[int(pid)]
+    return items
+
+
+@router.get("/{venue_id}/position-presets", response_model=PositionPresetsOut)
+def list_position_presets(
+    venue_id: int,
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    allowed = _is_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    if not allowed:
+        for code in ("POSITIONS_VIEW", "POSITIONS_ASSIGN", "POSITIONS_MANAGE", "POSITION_PERMISSIONS_MANAGE"):
+            try:
+                require_venue_permission(db, venue_id=venue_id, user=user, permission_code=code)
+                allowed = True
+                break
+            except HTTPException:
+                pass
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return {"items": _load_position_presets_from_setup(db, venue_id=venue_id, include_inactive=include_inactive)}
 
 
 @router.get("/{venue_id}/positions")

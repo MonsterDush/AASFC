@@ -11,6 +11,7 @@ import {
   getMyVenuePermissions,
   getVenueMembers,
   getVenuePositions,
+  getVenuePositionPresets,
   getPayProfiles,
   createVenuePosition,
   updateVenuePosition,
@@ -432,6 +433,7 @@ let state = {
   venueId: "",
   members: [],
   positions: [],
+  positionPresets: [],
   invites: [],
   payProfiles: [],
 };
@@ -567,9 +569,39 @@ function normalizePositions(out) {
   });
 }
 
+function normalizePositionPresets(out) {
+  let items = [];
+  if (!out) items = [];
+  else if (Array.isArray(out)) items = out;
+  else if (Array.isArray(out.items)) items = out.items;
+  else if (Array.isArray(out.presets)) items = out.presets;
+  else if (Array.isArray(out.data)) items = out.data;
+  else items = [];
+
+  return items.map((p, idx) => {
+    const x = { ...(p || {}) };
+    x.id = String(x.id || `preset-${idx + 1}`);
+    x.title = String(x.title || "").trim();
+    x.rate = Math.max(0, Math.round(Number(x.rate || 0) || 0));
+    x.percent = Math.max(0, Math.min(100, Math.round(Number(x.percent || 0) || 0)));
+    x.pay_profile_id = x.pay_profile_id != null && x.pay_profile_id !== "" ? Number(x.pay_profile_id) || null : null;
+    x.pay_profile_title = String(x.pay_profile_title || "").trim();
+    x.permission_codes = parsePermCodes(x.permission_codes);
+    x.is_active = x.is_active !== false;
+    return x;
+  }).filter((x) => x.title);
+}
+
+function positionSources() {
+  return [
+    ...(Array.isArray(state.positionPresets) ? state.positionPresets.filter((x) => x.is_active !== false) : []),
+    ...(Array.isArray(state.positions) ? state.positions.filter((x) => x.is_active !== false) : []),
+  ];
+}
+
 function uniqueTitles() {
   const set = new Set();
-  for (const p of state.positions) {
+  for (const p of positionSources()) {
     const t = String(p.title || "").trim();
     if (t) set.add(t);
   }
@@ -1157,8 +1189,7 @@ function positionPresetFromTemplate(title) {
   const t = String(title || "").trim();
   if (!t) return null;
 
-  const p = state.positions.find((x) => String(x.title || "").trim() === t);
-  const src = p || { title: t };
+  const src = positionSources().find((x) => String(x.title || "").trim() === t) || { title: t };
 
   // Only permission_codes are stored in invite preset (no legacy flags).
   const permission_codes = parsePermCodes(src.permission_codes);
@@ -1167,6 +1198,8 @@ function positionPresetFromTemplate(title) {
     title: t,
     rate: Math.max(0, Math.round(Number(src.rate || 0) || 0)),
     percent: Math.max(0, Math.min(100, Math.round(Number(src.percent || 0) || 0))),
+    pay_profile_id: src.pay_profile_id || null,
+    pay_profile_title: src.pay_profile_title || null,
     permission_codes,
   };
 }
@@ -1277,6 +1310,13 @@ async function load() {
 
   const pos = await getVenuePositions(state.venueId);
   state.positions = normalizePositions(pos);
+
+  try {
+    const presets = await getVenuePositionPresets(state.venueId, { includeInactive: false });
+    state.positionPresets = normalizePositionPresets(presets);
+  } catch {
+    state.positionPresets = [];
+  }
 
   renderPositions();
   renderInvites();
