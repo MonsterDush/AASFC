@@ -51,10 +51,22 @@
     </div>
 
     <div class="card">
-      <div class="row ai-center jc-center gap-10 month-controls">
+      <div class="row jc-center gap-8 wrap" id="periodModeControls">
+        <button class="btn sm" id="periodMonthBtn" type="button">Месяц</button>
+        <button class="btn sm" id="periodRangeBtn" type="button">Период</button>
+      </div>
+
+      <div class="row ai-center jc-center gap-10 month-controls mt-10" id="monthControls">
         <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
         <b id="monthLabel">…</b>
         <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
+      </div>
+
+      <div class="row ai-center jc-center gap-8 wrap mt-10 hidden" id="rangeControls">
+        <input class="input" id="rangeFrom" type="date" style="max-width:170px" />
+        <span class="muted">—</span>
+        <input class="input" id="rangeTo" type="date" style="max-width:170px" />
+        <button class="btn primary sm" id="rangeApply" type="button">Показать</button>
       </div>
 
       <div class="row jc-center gap-8 mt-10" id="salaryScope">

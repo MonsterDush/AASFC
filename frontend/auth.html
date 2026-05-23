@@ -64,14 +64,14 @@
           <div class="password-flow-header">
             <div>
               <b>Вход через Telegram</b>
-              <div class="muted mt-8">Вход подтверждается в боте, а затем автоматически завершается в браузере.</div>
+              <div class="muted mt-8">Вход подтверждается открытием бота по защищённой ссылке. После этого браузер завершит авторизацию автоматически.</div>
             </div>
             <button class="btn sm" id="hideTelegramLoginBtn" type="button">Ко входу</button>
           </div>
 
           <div class="verify-box">
             <div class="stack">
-              <div id="telegramLoginStatus" class="muted">Нажми кнопку ниже, открой бота. Если бот открывается впервые, нажми «Start / Запустить», затем «Подтвердить вход».</div>
+              <div id="telegramLoginStatus" class="muted">Нажми кнопку ниже и открой Telegram. После открытия бота вернись в браузер — вход завершится автоматически.</div>
               <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
                 <a class="btn primary" id="telegramLoginOpenLink" href="#" target="_blank" rel="noopener noreferrer">Открыть Telegram</a>
                 <button class="btn sm" id="telegramLoginCopyBtn" type="button">Скопировать ссылку</button>
@@ -350,7 +350,7 @@
       telegramBrowserDeepLink = "";
       els.telegramLoginOpenLink.setAttribute("href", "#");
       els.telegramLoginMeta.textContent = "";
-      els.telegramLoginStatus.textContent = "Нажми кнопку ниже, открой бота. Если бот открывается впервые, нажми «Start / Запустить», затем «Подтвердить вход».";
+      els.telegramLoginStatus.textContent = "Нажми кнопку ниже и открой Telegram. После открытия бота вернись в браузер — вход завершится автоматически.";
     }
 
     function renderTelegramBrowserState(data) {
@@ -364,7 +364,7 @@
         return;
       }
       const tgUsername = data?.telegram_username ? ` от @${String(data.telegram_username).replace(/^@+/, "")}` : "";
-      els.telegramLoginStatus.textContent = `Ожидаем подтверждение в Telegram${tgUsername}. После нажатия кнопки в боте браузер завершит вход автоматически.`;
+      els.telegramLoginStatus.textContent = `Ожидаем подтверждение в Telegram${tgUsername}. После открытия бота браузер завершит вход автоматически.`;
     }
 
     async function pollTelegramBrowserSession() {
@@ -402,7 +402,7 @@
       els.telegramLoginOpenLink.setAttribute("href", telegramBrowserDeepLink);
       const expires = Number(out?.expires_in_seconds || 0);
       const botUsername = String(out?.bot_username || "").replace(/^@+/, "");
-      els.telegramLoginMeta.textContent = `Бот: @${botUsername}. Ссылка действует ${expires} сек. Если бот открывается впервые, после перехода нажми «Start / Запустить». Затем нажми «Подтвердить вход».`;
+      els.telegramLoginMeta.textContent = `Бот: @${botUsername}. Ссылка действует ${expires} сек. Если бот открывается впервые, после перехода нажми «Start / Запустить». Затем вернись в браузер.`;
       renderTelegramBrowserState({ status: out?.status || "PENDING" });
       telegramBrowserPollTimer = setInterval(() => { void pollTelegramBrowserSession(); }, Math.max(1500, Number(out?.poll_interval_ms || 2000)));
       await pollTelegramBrowserSession();

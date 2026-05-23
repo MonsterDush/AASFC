@@ -1787,3 +1787,10 @@ a.btn.primary{color:var(--accentText)}
   .expense-row__allocations .badge.as-link{width:100%;justify-content:flex-start;}
   .file-preview-actions{display:grid;grid-template-columns:1fr;gap:8px;}
 }
+
+/* Staff schedule: closed shifts are shown by status, not money amount */
+.cal-line--done,
+.shift-done-badge {
+  color: #16a34a;
+  font-weight: 700;
+}

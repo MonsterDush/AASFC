@@ -1976,6 +1976,12 @@ export async function getVenuePositions(venueId) {
   return api(`/venues/${encodeURIComponent(venueId)}/positions`);
 }
 
+export async function getVenuePositionPresets(venueId, { includeInactive = false } = {}) {
+  if (!venueId) throw new Error("NO_VENUE");
+  const qs = includeInactive ? "?include_inactive=true" : "";
+  return api(`/venues/${encodeURIComponent(venueId)}/position-presets${qs}`);
+}
+
 export async function createVenuePosition(venueId, payload) {
   if (!venueId) throw new Error("NO_VENUE");
   return api(`/venues/${encodeURIComponent(venueId)}/positions`, {
