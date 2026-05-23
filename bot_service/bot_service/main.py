@@ -139,29 +139,12 @@ def _forward_telegram_update_to_backend(raw_body: bytes, *, secret_token: str | 
         headers["X-Telegram-Bot-Api-Secret-Token"] = secret_token
     req = urllib.request.Request(target_url, data=raw_body, headers=headers, method="POST")
     try:
-        timeout_seconds = max(float(os.getenv("BACKEND_WEBHOOK_FORWARD_TIMEOUT_SECONDS", "12") or 12), 1.0)
-        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+        with urllib.request.urlopen(req, timeout=8) as resp:
             body = resp.read().decode("utf-8", errors="ignore")
             return int(resp.status), body
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
         return int(e.code), body
-
-
-def _forward_telegram_update_background(raw_body: bytes, *, secret_token: str | None = None) -> None:
-    """Forward Telegram webhook to backend without affecting Telegram webhook ACK.
-
-Telegram retries webhook deliveries when our endpoint returns 5xx or waits too long.
-For browser login this can create duplicate /start handling and intermittent UX.
-So /telegram/webhook responds 204 immediately, and this background task does the
-slow backend forwarding + logging.
-    """
-    try:
-        status_code, body = _forward_telegram_update_to_backend(raw_body, secret_token=secret_token)
-        if not (200 <= status_code < 300):
-            log.error("telegram webhook proxy failed in background: status=%s body=%s", status_code, body[:500])
-    except Exception:
-        log.exception("telegram webhook background proxy failed")
 
 
 def _send_message(
@@ -303,6 +286,22 @@ async def _start_scheduler():
     asyncio.create_task(_loop())
 
 
+def _forward_telegram_update_to_backend_background(raw_body: bytes, *, secret_token: str | None = None) -> None:
+    """Forward Telegram webhook to backend without blocking Telegram response.
+
+    Telegram retries webhooks when we answer 5xx or timeout. Browser auth may send
+    Telegram API calls while backend handles the forwarded update, so waiting here
+    can create a circular wait. Keep the webhook ACK fast and log forwarding
+    failures for diagnostics.
+    """
+    try:
+        status_code, body = _forward_telegram_update_to_backend(raw_body, secret_token=secret_token)
+        if not (200 <= status_code < 300):
+            log.error("telegram webhook proxy failed: status=%s body=%s", status_code, body[:500])
+    except Exception:
+        log.exception("telegram webhook proxy background task failed")
+
+
 @app.post("/telegram/webhook", status_code=204)
 @app.post("/webhook", status_code=204)
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
@@ -313,7 +312,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 
     raw_body = await request.body()
     background_tasks.add_task(
-        _forward_telegram_update_background,
+        _forward_telegram_update_to_backend_background,
         raw_body,
         secret_token=(TG_WEBHOOK_SECRET_TOKEN or request.headers.get("X-Telegram-Bot-Api-Secret-Token") or None),
     )
