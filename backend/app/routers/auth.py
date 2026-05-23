@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import secrets
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -433,38 +432,32 @@ BOT_SERVICE_URL is not configured, we fall back to direct Telegram API.
     for key, value in (payload or {}).items():
         if value is None:
             continue
-        if isinstance(value, (dict, list)):
-            data[key] = json.dumps(value, ensure_ascii=False)
-        elif isinstance(value, bool):
+        if isinstance(value, bool):
             data[key] = "true" if value else "false"
+        elif isinstance(value, (dict, list)):
+            data[key] = json.dumps(value, ensure_ascii=False)
         else:
             data[key] = str(value)
 
-    encoded_data = urllib.parse.urlencode(data).encode("utf-8")
-    api_url = f"https://api.telegram.org/bot{token}/{method}"
-    attempts = max(int(os.getenv("TG_BROWSER_LOGIN_API_ATTEMPTS", "3") or 3), 1)
-    timeout = max(float(os.getenv("TG_BROWSER_LOGIN_API_TIMEOUT_SECONDS", "7") or 7), 1.0)
-    last_error: Exception | None = None
-    last_result: dict | None = None
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/{method}",
+        data=urllib.parse.urlencode(data).encode("utf-8"),
+        method="POST",
+    )
 
-    for attempt in range(attempts):
-        req = urllib.request.Request(api_url, data=encoded_data, method="POST")
+    last_error: Exception | None = None
+    for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=7) as resp:
                 body = resp.read().decode("utf-8", errors="ignore")
             result = json.loads(body or "{}")
-            last_result = result
-            if result.get("ok"):
-                return result
-            last_error = RuntimeError(str(result.get("description") or f"telegram {method} failed"))
+            if not result.get("ok"):
+                raise RuntimeError(str(result.get("description") or f"telegram {method} failed"))
+            return result
         except Exception as e:
             last_error = e
-
-        if attempt < attempts - 1:
-            time.sleep(min(0.35 * (attempt + 1), 1.2))
-
-    if last_result and not last_result.get("ok"):
-        raise RuntimeError(str(last_result.get("description") or f"telegram {method} failed"))
+            if attempt < 2:
+                time.sleep(min(0.5 * (attempt + 1), 1.5))
     raise RuntimeError(str(last_error or f"telegram {method} failed"))
 
 
@@ -491,9 +484,21 @@ def _telegram_edit_message(chat_id: int, message_id: int, text: str, *, reply_ma
         })
         return True
     except Exception:
-        _LOG.exception("telegram browser editMessageText failed chat_id=%s message_id=%s", chat_id, message_id)
+        _LOG.exception("telegram browser editMessageText failed")
         return False
 
+
+def _telegram_send_plain_message(chat_id: int, text: str) -> bool:
+    try:
+        _telegram_api_post("sendMessage", {
+            "chat_id": chat_id,
+            "text": text,
+            "disable_web_page_preview": True,
+        })
+        return True
+    except Exception:
+        _LOG.exception("telegram browser fallback sendMessage failed")
+        return False
 
 def _telegram_send_browser_login_prompt(*, chat_id: int, session_token: str) -> None:
     _telegram_api_post("sendMessage", {
@@ -704,29 +709,23 @@ def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None
             answer_text = "Telegram привязан"
             done_text = "Telegram успешно привязан. Вернитесь в Axelio — профиль обновится автоматически."
 
-        edit_ok = False
-        if chat_id is not None and message_id is not None:
-            edit_ok = _telegram_edit_message(int(chat_id), int(message_id), done_text)
         _telegram_answer_callback_query(query_id, answer_text)
-        if chat_id is not None and not edit_ok:
-            try:
-                _telegram_api_post("sendMessage", {"chat_id": int(chat_id), "text": done_text})
-            except Exception:
-                _LOG.exception("telegram browser fallback sendMessage after callback failed")
+        if chat_id is not None and message_id is not None:
+            edited = _telegram_edit_message(int(chat_id), int(message_id), done_text)
+            if not edited:
+                _telegram_send_plain_message(int(chat_id), done_text)
     except HTTPException as exc:
         error_text = str(exc.detail or "Не удалось завершить операцию")
-        edit_ok = False
-        if chat_id is not None and message_id is not None:
-            edit_ok = _telegram_edit_message(int(chat_id), int(message_id), error_text)
         _telegram_answer_callback_query(query_id, error_text, show_alert=True)
-        if chat_id is not None and not edit_ok:
-            try:
-                _telegram_api_post("sendMessage", {"chat_id": int(chat_id), "text": error_text})
-            except Exception:
-                _LOG.exception("telegram browser fallback error sendMessage after callback failed")
+        if chat_id is not None and message_id is not None:
+            edited = _telegram_edit_message(int(chat_id), int(message_id), error_text)
+            if not edited:
+                _telegram_send_plain_message(int(chat_id), error_text)
     except Exception:
         _LOG.exception("telegram browser callback handler failed")
         _telegram_answer_callback_query(query_id, "Не удалось завершить операцию", show_alert=True)
+        if chat_id is not None:
+            _telegram_send_plain_message(int(chat_id), "Не удалось завершить операцию. Вернитесь в Axelio и обновите ссылку.")
 
 
 def _phone_auth_config_payload() -> dict:
