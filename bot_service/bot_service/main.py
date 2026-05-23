@@ -295,7 +295,8 @@ async def telegram_webhook(request: Request):
             raise HTTPException(status_code=401, detail="bad telegram secret")
 
     raw_body = await request.body()
-    status_code, body = _forward_telegram_update_to_backend(
+    status_code, body = await asyncio.to_thread(
+        _forward_telegram_update_to_backend,
         raw_body,
         secret_token=(TG_WEBHOOK_SECRET_TOKEN or request.headers.get("X-Telegram-Bot-Api-Secret-Token") or None),
     )
