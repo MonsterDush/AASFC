@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import secrets
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -445,21 +444,12 @@ BOT_SERVICE_URL is not configured, we fall back to direct Telegram API.
         data=urllib.parse.urlencode(data).encode("utf-8"),
         method="POST",
     )
-
-    last_error: Exception | None = None
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=7) as resp:
-                body = resp.read().decode("utf-8", errors="ignore")
-            result = json.loads(body or "{}")
-            if not result.get("ok"):
-                raise RuntimeError(str(result.get("description") or f"telegram {method} failed"))
-            return result
-        except Exception as e:
-            last_error = e
-            if attempt < 2:
-                time.sleep(min(0.5 * (attempt + 1), 1.5))
-    raise RuntimeError(str(last_error or f"telegram {method} failed"))
+    with urllib.request.urlopen(req, timeout=7) as resp:
+        body = resp.read().decode("utf-8", errors="ignore")
+    result = json.loads(body or "{}")
+    if not result.get("ok"):
+        raise RuntimeError(str(result.get("description") or f"telegram {method} failed"))
+    return result
 
 
 def _telegram_answer_callback_query(callback_query_id: str, text: str | None = None, *, show_alert: bool = False) -> bool:
@@ -488,18 +478,6 @@ def _telegram_edit_message(chat_id: int, message_id: int, text: str, *, reply_ma
         _LOG.exception("telegram browser editMessageText failed")
         return False
 
-
-def _telegram_send_plain_message(chat_id: int, text: str) -> bool:
-    try:
-        _telegram_api_post("sendMessage", {
-            "chat_id": chat_id,
-            "text": text,
-            "disable_web_page_preview": True,
-        })
-        return True
-    except Exception:
-        _LOG.exception("telegram browser fallback sendMessage failed")
-        return False
 
 def _telegram_send_browser_login_prompt(*, chat_id: int, session_token: str) -> None:
     _telegram_api_post("sendMessage", {
@@ -711,22 +689,28 @@ def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None
             done_text = "Telegram успешно привязан. Вернитесь в Axelio — профиль обновится автоматически."
 
         _telegram_answer_callback_query(query_id, answer_text)
+        edited = False
         if chat_id is not None and message_id is not None:
             edited = _telegram_edit_message(int(chat_id), int(message_id), done_text)
-            if not edited:
-                _telegram_send_plain_message(int(chat_id), done_text)
+        if chat_id is not None and not edited:
+            try:
+                _telegram_api_post("sendMessage", {"chat_id": int(chat_id), "text": done_text})
+            except Exception:
+                _LOG.exception("telegram browser callback fallback sendMessage failed")
     except HTTPException as exc:
         error_text = str(exc.detail or "Не удалось завершить операцию")
         _telegram_answer_callback_query(query_id, error_text, show_alert=True)
+        edited = False
         if chat_id is not None and message_id is not None:
             edited = _telegram_edit_message(int(chat_id), int(message_id), error_text)
-            if not edited:
-                _telegram_send_plain_message(int(chat_id), error_text)
+        if chat_id is not None and not edited:
+            try:
+                _telegram_api_post("sendMessage", {"chat_id": int(chat_id), "text": error_text})
+            except Exception:
+                _LOG.exception("telegram browser callback error fallback sendMessage failed")
     except Exception:
         _LOG.exception("telegram browser callback handler failed")
         _telegram_answer_callback_query(query_id, "Не удалось завершить операцию", show_alert=True)
-        if chat_id is not None:
-            _telegram_send_plain_message(int(chat_id), "Не удалось завершить операцию. Вернитесь в Axelio и обновите ссылку.")
 
 
 def _phone_auth_config_payload() -> dict:

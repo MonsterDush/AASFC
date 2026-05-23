@@ -5,13 +5,13 @@ import json
 import asyncio
 import logging
 import time
-import subprocess
 import urllib.request
 import urllib.parse
 import urllib.error
 import socket
+import subprocess
 from typing import Any
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel, Field
 
 # Outbound-only bot service (Variant B).
@@ -92,7 +92,7 @@ def _normalize_telegram_error(status_code: int | None, body_text: str | None) ->
 
 
 
-def _telegram_form_payload(payload: dict[str, Any]) -> dict[str, str]:
+def _telegram_payload_to_form_bytes(payload: dict[str, Any]) -> bytes:
     data_dict: dict[str, str] = {}
     for key, value in (payload or {}).items():
         if value is None:
@@ -103,108 +103,128 @@ def _telegram_form_payload(payload: dict[str, Any]) -> dict[str, str]:
             data_dict[key] = json.dumps(value, ensure_ascii=False)
         else:
             data_dict[key] = str(value)
-    return data_dict
+    return urllib.parse.urlencode(data_dict).encode("utf-8")
 
 
-def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any], *, timeout_seconds: int = 12) -> dict:
-    """Fallback sender for VPS cases where Python urllib hangs but curl -4 works."""
-    api_url = f"https://api.telegram.org/bot{token}/{method}"
-    data = urllib.parse.urlencode(_telegram_form_payload(payload)).encode("utf-8")
+def _parse_telegram_api_response(method: str, status_code: int | None, body: str, *, curl_returncode: int = 0) -> dict:
     try:
-        proc = subprocess.run(
-            [
-                "curl",
-                "-4",
-                "--http1.1",
-                "--silent",
-                "--show-error",
-                "--fail-with-body",
-                "--connect-timeout",
-                "5",
-                "--max-time",
-                str(max(int(timeout_seconds), 3)),
-                "-X",
-                "POST",
-                api_url,
-                "-H",
-                "Content-Type: application/x-www-form-urlencoded",
-                "--data-binary",
-                data.decode("utf-8"),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=max(int(timeout_seconds) + 3, 6),
-        )
-    except Exception as e:
-        return {"ok": False, "retryable": True, "status_code": None, "error": f"curl exception: {e}", "result": None}
-
-    raw = (proc.stdout or "").strip()
-    err = (proc.stderr or "").strip()
-    if proc.returncode != 0:
-        retryable = proc.returncode in {7, 28, 35, 52, 56}
-        return {
-            "ok": False,
-            "retryable": retryable,
-            "status_code": None,
-            "error": (err or raw or f"curl exit {proc.returncode}")[:500],
-            "result": None,
-        }
-
-    try:
-        js = json.loads(raw or "{}")
+        js = json.loads(body) if body else {}
     except Exception:
-        return {"ok": False, "retryable": True, "status_code": None, "error": f"invalid telegram json: {raw[:300]}", "result": None}
+        js = {}
 
-    if bool(js.get("ok")):
-        return {"ok": True, "retryable": False, "status_code": 200, "error": None, "result": js}
+    ok = bool(js.get("ok"))
+    if ok:
+        return {"ok": True, "retryable": False, "status_code": int(status_code or 200), "error": None, "result": js}
 
-    description = str(js.get("description") or f"telegram {method} failed")
-    return {"ok": False, "retryable": False, "status_code": None, "error": description, "result": js}
+    retryable, description = _normalize_telegram_error(status_code, body)
+    if curl_returncode:
+        retryable = True
+    error = description or js.get("description") or body[:300] or f"telegram {method} failed"
+    return {
+        "ok": False,
+        "retryable": bool(retryable),
+        "status_code": int(status_code or 0) if status_code else None,
+        "error": str(error),
+        "result": js or None,
+    }
 
 
-def _telegram_api_post(token: str, method: str, payload: dict[str, Any]) -> dict:
+def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) -> dict:
+    """Telegram API transport through system curl.
+
+    On the current VPS curl -4 reaches api.telegram.org reliably while Python urllib
+    may hang on the same endpoint. This transport is intentionally available as a
+    production fallback controlled by TELEGRAM_API_TRANSPORT=curl.
+    """
     api_url = f"https://api.telegram.org/bot{token}/{method}"
-    data = urllib.parse.urlencode(_telegram_form_payload(payload)).encode("utf-8")
+    data = _telegram_payload_to_form_bytes(payload)
+    timeout_seconds = max(int(float(os.getenv("TELEGRAM_API_TIMEOUT_SECONDS", "10") or 10)), 3)
+    connect_timeout = max(int(float(os.getenv("TELEGRAM_API_CONNECT_TIMEOUT_SECONDS", "5") or 5)), 2)
+    force_ipv4 = str(os.getenv("TELEGRAM_FORCE_IPV4", "1")).lower() not in {"0", "false", "no"}
+
+    cmd = [
+        "curl",
+        "-sS",
+        "--show-error",
+        "--max-time", str(timeout_seconds),
+        "--connect-timeout", str(connect_timeout),
+        "-H", "Content-Type: application/x-www-form-urlencoded",
+        "--data-binary", "@-",
+        api_url,
+    ]
+    if force_ipv4:
+        cmd.insert(1, "-4")
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=data,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout_seconds + connect_timeout + 2,
+                check=False,
+            )
+            body = proc.stdout.decode("utf-8", errors="ignore")
+            stderr = proc.stderr.decode("utf-8", errors="ignore").strip()
+            result = _parse_telegram_api_response(method, 200 if proc.returncode == 0 else None, body, curl_returncode=proc.returncode)
+            if result.get("ok"):
+                return result
+            last_error = result.get("error") or stderr or f"curl exit {proc.returncode}"
+            if attempt == 2 or not result.get("retryable"):
+                if stderr and not result.get("error"):
+                    result["error"] = stderr[:300]
+                return result
+        except Exception as e:
+            last_error = str(e)
+            if attempt == 2:
+                return {"ok": False, "retryable": True, "status_code": None, "error": last_error, "result": None}
+        time.sleep(min(0.5 * (attempt + 1), 1.5))
+
+    return {"ok": False, "retryable": True, "status_code": None, "error": last_error or f"telegram {method} failed", "result": None}
+
+
+def _telegram_api_post_urllib(token: str, method: str, payload: dict[str, Any]) -> dict:
+    api_url = f"https://api.telegram.org/bot{token}/{method}"
+    data = _telegram_payload_to_form_bytes(payload)
     req = urllib.request.Request(api_url, data=data, method="POST")
 
     last_error = None
-    urllib_attempts = int(os.getenv("TELEGRAM_URLLIB_ATTEMPTS", "1") or "1")
-    urllib_attempts = max(0, min(urllib_attempts, 3))
-    timeout_seconds = float(os.getenv("TELEGRAM_API_TIMEOUT_SECONDS", "6") or "6")
-
-    for attempt in range(urllib_attempts):
+    for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            with urllib.request.urlopen(req, timeout=7) as resp:
                 body = resp.read().decode("utf-8", errors="ignore")
-                js = json.loads(body) if body else {}
-                ok = bool(js.get("ok"))
-                if ok:
-                    return {"ok": True, "retryable": False, "status_code": int(resp.status), "error": None, "result": js}
-                retryable, description = _normalize_telegram_error(resp.status, body)
-                last_error = description or f"telegram {method} failed"
-                if attempt == urllib_attempts - 1 or not retryable:
-                    break
+                result = _parse_telegram_api_response(method, int(resp.status), body)
+                if result.get("ok"):
+                    return result
+                last_error = result.get("error") or f"telegram {method} failed"
+                if attempt == 2 or not result.get("retryable"):
+                    return result
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
-            retryable, description = _normalize_telegram_error(e.code, body)
-            last_error = description or str(e)
-            if attempt == urllib_attempts - 1 or not retryable:
-                return {"ok": False, "retryable": retryable, "status_code": int(e.code), "error": last_error, "result": None}
+            result = _parse_telegram_api_response(method, int(e.code), body)
+            last_error = result.get("error") or str(e)
+            if attempt == 2 or not result.get("retryable"):
+                return result
         except Exception as e:
             last_error = str(e)
-            log.warning("telegram urllib %s failed on attempt %s/%s: %s", method, attempt + 1, urllib_attempts, e)
+            if attempt == 2:
+                return {"ok": False, "retryable": True, "status_code": None, "error": last_error, "result": None}
         time.sleep(min(0.35 * (attempt + 1), 1.0))
-
-    if str(os.getenv("TELEGRAM_CURL_FALLBACK", "1")).lower() not in {"0", "false", "no"}:
-        curl_result = _telegram_api_post_curl(token, method, payload, timeout_seconds=int(os.getenv("TELEGRAM_CURL_TIMEOUT_SECONDS", "12") or 12))
-        if curl_result.get("ok"):
-            return curl_result
-        if last_error:
-            curl_result["error"] = f"{curl_result.get('error')}; urllib_last_error={last_error}"
-        return curl_result
-
     return {"ok": False, "retryable": True, "status_code": None, "error": last_error or f"telegram {method} failed", "result": None}
+
+
+def _telegram_api_post(token: str, method: str, payload: dict[str, Any]) -> dict:
+    transport = str(os.getenv("TELEGRAM_API_TRANSPORT", "curl") or "curl").strip().lower()
+    if transport == "urllib":
+        result = _telegram_api_post_urllib(token, method, payload)
+        if result.get("ok") or str(os.getenv("TELEGRAM_API_CURL_FALLBACK", "1")).lower() in {"0", "false", "no"}:
+            return result
+        log.warning("telegram urllib failed, trying curl fallback: method=%s error=%s", method, result.get("error"))
+        return _telegram_api_post_curl(token, method, payload)
+    return _telegram_api_post_curl(token, method, payload)
+
 
 def _forward_telegram_update_to_backend(raw_body: bytes, *, secret_token: str | None = None) -> tuple[int, str]:
     target_url = f"{BACKEND_INTERNAL_URL}/auth/telegram/browser/webhook"
@@ -230,19 +250,48 @@ def _send_message(
     button_text: str | None = None,
     parse_mode: str | None = None,
 ) -> dict:
-    payload: dict[str, Any] = {
-        "chat_id": chat_id,
+    api_url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data_dict = {
+        "chat_id": str(chat_id),
         "text": text,
-        "disable_web_page_preview": True,
+        "disable_web_page_preview": "true",
     }
     if parse_mode:
-        payload["parse_mode"] = parse_mode
+        data_dict["parse_mode"] = parse_mode
 
     if url:
         bt = button_text or "Открыть в Axelio"
-        payload["reply_markup"] = {"inline_keyboard": [[{"text": bt, "web_app": {"url": url}}]]}
+        reply_markup = {"inline_keyboard": [[{"text": bt, "web_app": {"url": url}}]]}
+        data_dict["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
 
-    return _telegram_api_post(token, "sendMessage", payload)
+    data = urllib.parse.urlencode(data_dict).encode("utf-8")
+    req = urllib.request.Request(api_url, data=data, method="POST")
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                js = json.loads(body) if body else {}
+                ok = bool(js.get("ok"))
+                if ok:
+                    return {"ok": True, "retryable": False, "status_code": int(resp.status), "error": None}
+                retryable, description = _normalize_telegram_error(resp.status, body)
+                last_error = description or "telegram sendMessage failed"
+                if attempt == 2 or not retryable:
+                    return {"ok": False, "retryable": retryable, "status_code": int(resp.status), "error": last_error}
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
+            retryable, description = _normalize_telegram_error(e.code, body)
+            last_error = description or str(e)
+            if attempt == 2 or not retryable:
+                return {"ok": False, "retryable": retryable, "status_code": int(e.code), "error": last_error}
+        except Exception as e:
+            last_error = str(e)
+            if attempt == 2:
+                return {"ok": False, "retryable": True, "status_code": None, "error": last_error}
+        time.sleep(min(0.35 * (attempt + 1), 1.0))
+    return {"ok": False, "retryable": True, "status_code": None, "error": last_error or "telegram sendMessage failed"}
 
 
 @app.get("/health")
@@ -331,23 +380,18 @@ async def _start_scheduler():
     asyncio.create_task(_loop())
 
 
-
-async def _forward_telegram_update_to_backend_background(raw_body: bytes, *, secret_token: str | None = None) -> None:
+def _forward_telegram_update_to_backend_background(raw_body: bytes, *, secret_token: str | None = None) -> None:
     try:
-        status_code, body = await asyncio.to_thread(
-            _forward_telegram_update_to_backend,
-            raw_body,
-            secret_token=secret_token,
-        )
+        status_code, body = _forward_telegram_update_to_backend(raw_body, secret_token=secret_token)
         if not (200 <= int(status_code or 0) < 300):
-            log.error("telegram webhook proxy failed in background: status=%s body=%s", status_code, str(body or "")[:500])
+            log.error("telegram webhook proxy background failed: status=%s body=%s", status_code, str(body or "")[:500])
     except Exception:
         log.exception("telegram webhook proxy background task failed")
 
 
 @app.post("/telegram/webhook", status_code=204)
 @app.post("/webhook", status_code=204)
-async def telegram_webhook(request: Request):
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     if TG_WEBHOOK_SECRET_TOKEN:
         got = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
         if got != TG_WEBHOOK_SECRET_TOKEN:
@@ -356,8 +400,12 @@ async def telegram_webhook(request: Request):
     raw_body = await request.body()
     secret_token = TG_WEBHOOK_SECRET_TOKEN or request.headers.get("X-Telegram-Bot-Api-Secret-Token") or None
 
-    # Telegram must receive 204 quickly. Forwarding to backend is intentionally
-    # asynchronous, because backend may call this bot_service back to send/edit
-    # Telegram messages. Waiting here creates a circular timeout.
-    asyncio.create_task(_forward_telegram_update_to_backend_background(raw_body, secret_token=secret_token))
-    return
+    # Critical: answer Telegram immediately. Backend processing may call this bot
+    # service back to sendMessage/editMessage; waiting here causes a circular
+    # timeout: Telegram -> bot_service -> backend -> bot_service.
+    background_tasks.add_task(
+        _forward_telegram_update_to_backend_background,
+        raw_body,
+        secret_token=secret_token,
+    )
+    return None
