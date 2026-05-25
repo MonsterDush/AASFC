@@ -1,10 +1,12 @@
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Header, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.auth.jwt_tokens import JwtConfig, decode_access_token
 from app.core.config import settings
+from app.core.db import get_db
 from app.services.demo import build_demo_readonly_error_payload, is_demo_session_payload, should_block_demo_request
+from sqlalchemy.orm import Session
 
 
 def _jwt_config() -> JwtConfig:
@@ -72,6 +74,28 @@ app.include_router(billing_public_router)
 app.include_router(admin_billing_router)
 app.include_router(admin_demo_router)
 app.include_router(demo_telemetry_router)
+
+
+
+@app.post("/telegram/webhook", status_code=status.HTTP_204_NO_CONTENT)
+@app.post("/webhook", status_code=status.HTTP_204_NO_CONTENT)
+async def telegram_browser_webhook_legacy_alias(
+    request: Request,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Legacy Telegram webhook aliases for browser auth.
+
+    Older deploy notes used /telegram/webhook, while the current canonical
+    endpoint is /auth/telegram/browser/webhook. Keep both so Telegram browser
+    login works even if the webhook URL was configured by the old runbook.
+    """
+    await auth.process_telegram_browser_webhook_request(
+        request,
+        x_telegram_bot_api_secret_token=x_telegram_bot_api_secret_token,
+        db=db,
+    )
+    return None
 
 @app.get("/health")
 def health():

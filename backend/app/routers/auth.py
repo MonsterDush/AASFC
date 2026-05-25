@@ -754,23 +754,24 @@ def finalize_telegram_browser_auth(
     return _auth_state(db, user=user)
 
 
-@router.post("/telegram/browser/webhook", status_code=status.HTTP_204_NO_CONTENT)
-async def telegram_browser_webhook(
-    request: Request,
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-):
-    secret = str(settings.TG_WEBHOOK_SECRET_TOKEN or "").strip()
-    if secret and str(x_telegram_bot_api_secret_token or "").strip() != secret:
-        raise HTTPException(status_code=401, detail="bad telegram secret")
+def _process_telegram_browser_update(db: Session, *, update: dict) -> None:
+    """Process Telegram webhook update for browser login/link flow.
 
-    update = await request.json()
+    The same handler is reused by the canonical /auth/telegram/browser/webhook
+    endpoint and by legacy webhook aliases declared in app/main.py.
+    """
+    if not isinstance(update, dict):
+        return
+
     callback_query = update.get("callback_query")
     if isinstance(callback_query, dict):
         _handle_browser_login_callback(db, callback_query=callback_query)
         return
 
     message = update.get("message")
+    if not isinstance(message, dict):
+        message = update.get("edited_message") if isinstance(update.get("edited_message"), dict) else None
+
     if isinstance(message, dict):
         text = message.get("text")
         if text:
@@ -780,6 +781,39 @@ async def telegram_browser_webhook(
                 from_user=(message.get("from") or {}),
             )
         return
+
+
+async def process_telegram_browser_webhook_request(
+    request: Request,
+    *,
+    x_telegram_bot_api_secret_token: str | None,
+    db: Session,
+) -> None:
+    secret = str(settings.TG_WEBHOOK_SECRET_TOKEN or "").strip()
+    if secret and str(x_telegram_bot_api_secret_token or "").strip() != secret:
+        raise HTTPException(status_code=401, detail="bad telegram secret")
+
+    try:
+        update = await request.json()
+    except Exception:
+        _LOG.warning("telegram browser webhook received invalid json")
+        return
+
+    _process_telegram_browser_update(db, update=update)
+
+
+@router.post("/telegram/browser/webhook", status_code=status.HTTP_204_NO_CONTENT)
+async def telegram_browser_webhook(
+    request: Request,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    await process_telegram_browser_webhook_request(
+        request,
+        x_telegram_bot_api_secret_token=x_telegram_bot_api_secret_token,
+        db=db,
+    )
+    return None
 
 
 @router.post("/telegram", status_code=status.HTTP_204_NO_CONTENT)
