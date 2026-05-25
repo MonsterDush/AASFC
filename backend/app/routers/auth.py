@@ -5,7 +5,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -39,9 +39,9 @@ from app.auth.phone_auth import (
 )
 from app.auth.telegram_webapp import TelegramInitDataError, verify_init_data
 from app.auth.telegram_widget import TelegramLoginWidgetError, verify_login_widget_data
-from app.core.db import get_db
+from app.core.db import SessionLocal, get_db
 from app.core.tg import normalize_tg_username
-from app.models import TelegramBrowserAuthSession, User, Venue
+from app.models import NotificationDeliveryLog, TelegramBrowserAuthSession, User, Venue
 from app.services.demo.analytics import record_demo_event
 from app.services.demo.access import build_demo_banner_payload, get_demo_session_or_none
 from app.services.demo.session import (
@@ -52,6 +52,7 @@ from app.services.demo.session import (
     get_public_demo_venue,
     normalize_demo_persona,
 )
+from app.services import tg_notify
 from app.services.invites import accept_invites_for_user, accept_phone_invites_for_user
 from app.services.sms_auth import get_sms_provider
 from app.settings import settings
@@ -267,6 +268,107 @@ def _auth_state(db: Session, *, user: User) -> AuthStateOut:
         has_password=has_password(user),
         password_set_at=(user.password_set_at.isoformat() if user.password_set_at else None),
     )
+
+
+_PHONE_LINK_REMINDER_TYPE = "phone_link_reminder"
+_PHONE_LINK_REMINDER_INTERVAL = timedelta(days=3)
+
+
+def _phone_link_profile_url() -> str:
+    return f"{settings.frontend_base_url()}/profile.html"
+
+
+def _phone_link_reminder_text() -> str:
+    return (
+        "Чтобы не потерять доступ к Axelio, рекомендуем привязать номер телефона "
+        "и задать пароль. Так вы сможете входить в аккаунт через браузер, даже если "
+        "Telegram Mini App временно недоступен.\n\n"
+        "Откройте профиль и привяжите телефон в блоке «Способы входа»."
+    )
+
+
+def _send_phone_link_reminder_if_due(user_id: int) -> None:
+    """Send a no-phone reminder after Telegram Mini App login, max once per 3 days."""
+    try:
+        normalized_user_id = int(user_id)
+    except Exception:
+        return
+
+    try:
+        with SessionLocal() as db:
+            user = db.get(User, normalized_user_id)
+            if user is None:
+                return
+            if not getattr(user, "tg_user_id", None):
+                return
+            if getattr(user, "is_demo_user", False):
+                return
+            if getattr(user, "notify_enabled", True) is False:
+                return
+            if get_user_phone(db, user_id=int(user.id)):
+                return
+
+            now = _utcnow()
+            cutoff = now - _PHONE_LINK_REMINDER_INTERVAL
+
+            recent_sent = db.execute(
+                select(NotificationDeliveryLog.id)
+                .where(
+                    NotificationDeliveryLog.notification_type == _PHONE_LINK_REMINDER_TYPE,
+                    NotificationDeliveryLog.user_id == int(user.id),
+                    NotificationDeliveryLog.status == "sent",
+                    NotificationDeliveryLog.sent_at.is_not(None),
+                    NotificationDeliveryLog.sent_at >= cutoff,
+                )
+                .order_by(NotificationDeliveryLog.sent_at.desc(), NotificationDeliveryLog.id.desc())
+                .limit(1)
+            ).first()
+            if recent_sent is not None:
+                return
+
+            recent_pending = db.execute(
+                select(NotificationDeliveryLog.id)
+                .where(
+                    NotificationDeliveryLog.notification_type == _PHONE_LINK_REMINDER_TYPE,
+                    NotificationDeliveryLog.user_id == int(user.id),
+                    NotificationDeliveryLog.status == "pending",
+                    NotificationDeliveryLog.planned_at.is_not(None),
+                    NotificationDeliveryLog.planned_at >= cutoff,
+                )
+                .order_by(NotificationDeliveryLog.planned_at.desc(), NotificationDeliveryLog.id.desc())
+                .limit(1)
+            ).first()
+            if recent_pending is not None:
+                return
+
+            text = _phone_link_reminder_text()
+            delivery_log = NotificationDeliveryLog(
+                notification_type=_PHONE_LINK_REMINDER_TYPE,
+                status="pending",
+                user_id=int(user.id),
+                venue_id=None,
+                planned_at=now,
+                idempotency_key=f"phone_link_reminder:user:{int(user.id)}:{now.date().isoformat()}",
+                payload_preview=text[:2000],
+            )
+            db.add(delivery_log)
+            db.commit()
+            db.refresh(delivery_log)
+
+            result = tg_notify.notify_result(
+                chat_id=int(user.tg_user_id),
+                text=text,
+                url=_phone_link_profile_url(),
+                button_text="Открыть профиль",
+            )
+            ok = bool(result.get("ok"))
+            delivery_log.status = "sent" if ok else "failed"
+            delivery_log.sent_at = now if ok else None
+            delivery_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
+            db.add(delivery_log)
+            db.commit()
+    except Exception:
+        _LOG.exception("phone link reminder failed user_id=%s", user_id)
 
 
 def _utcnow() -> datetime:
@@ -754,24 +856,23 @@ def finalize_telegram_browser_auth(
     return _auth_state(db, user=user)
 
 
-def _process_telegram_browser_update(db: Session, *, update: dict) -> None:
-    """Process Telegram webhook update for browser login/link flow.
+@router.post("/telegram/browser/webhook", status_code=status.HTTP_204_NO_CONTENT)
+async def telegram_browser_webhook(
+    request: Request,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    secret = str(settings.TG_WEBHOOK_SECRET_TOKEN or "").strip()
+    if secret and str(x_telegram_bot_api_secret_token or "").strip() != secret:
+        raise HTTPException(status_code=401, detail="bad telegram secret")
 
-    The same handler is reused by the canonical /auth/telegram/browser/webhook
-    endpoint and by legacy webhook aliases declared in app/main.py.
-    """
-    if not isinstance(update, dict):
-        return
-
+    update = await request.json()
     callback_query = update.get("callback_query")
     if isinstance(callback_query, dict):
         _handle_browser_login_callback(db, callback_query=callback_query)
         return
 
     message = update.get("message")
-    if not isinstance(message, dict):
-        message = update.get("edited_message") if isinstance(update.get("edited_message"), dict) else None
-
     if isinstance(message, dict):
         text = message.get("text")
         if text:
@@ -783,41 +884,8 @@ def _process_telegram_browser_update(db: Session, *, update: dict) -> None:
         return
 
 
-async def process_telegram_browser_webhook_request(
-    request: Request,
-    *,
-    x_telegram_bot_api_secret_token: str | None,
-    db: Session,
-) -> None:
-    secret = str(settings.TG_WEBHOOK_SECRET_TOKEN or "").strip()
-    if secret and str(x_telegram_bot_api_secret_token or "").strip() != secret:
-        raise HTTPException(status_code=401, detail="bad telegram secret")
-
-    try:
-        update = await request.json()
-    except Exception:
-        _LOG.warning("telegram browser webhook received invalid json")
-        return
-
-    _process_telegram_browser_update(db, update=update)
-
-
-@router.post("/telegram/browser/webhook", status_code=status.HTTP_204_NO_CONTENT)
-async def telegram_browser_webhook(
-    request: Request,
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-):
-    await process_telegram_browser_webhook_request(
-        request,
-        x_telegram_bot_api_secret_token=x_telegram_bot_api_secret_token,
-        db=db,
-    )
-    return None
-
-
 @router.post("/telegram", status_code=status.HTTP_204_NO_CONTENT)
-def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Depends(get_db)):
+def auth_telegram(payload: TelegramAuthIn, response: Response, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     try:
         data = verify_init_data(payload.initData, settings.TG_BOT_TOKEN)
     except TelegramInitDataError as e:
@@ -847,6 +915,8 @@ def auth_telegram(payload: TelegramAuthIn, response: Response, db: Session = Dep
     db.refresh(user)
 
     accept_invites_for_user(db, user_id=user.id, tg_username=user.tg_username)
+    if not get_user_phone(db, user_id=int(user.id)):
+        background_tasks.add_task(_send_phone_link_reminder_if_due, int(user.id))
     _write_access_cookie(response, user=user)
     return
 

@@ -575,10 +575,3 @@ journalctl -u axelio-api-dev -n 100 --no-pager
 journalctl -u axelio-bot-dev -n 100 --no-pager
 sudo tail -n 100 /var/log/nginx/error.log
 ```
-
-export TG_BOT_TOKEN="7409810314:AAHJzpbj5Qcea8q0vJWC8wKJ9D4eeevUxdk"
-export WEBHOOK_URL="https://api.axelio.ru/telegram/webhook"
-
-curl -4 -v -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/setWebhook" \
-  -d "url=${WEBHOOK_URL}" \
-  -d "drop_pending_updates=true"
