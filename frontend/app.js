@@ -301,7 +301,8 @@ function isOwnerOnlyDemoPage(pathname) {
     page === "app-venue.html" ||
     page === "invites.html" ||
     page === "positions.html" ||
-    page === "shift-intervals.html"
+    page === "shift-intervals.html" ||
+    page === "shift-schedule-templates.html"
   );
 }
 
