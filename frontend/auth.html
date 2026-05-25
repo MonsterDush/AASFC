@@ -19,6 +19,8 @@
     .password-rules { border:1px solid var(--border); border-radius:12px; padding:10px 12px; background: rgba(255,255,255,0.02); }
     .auth-shell { margin-top:12px; }
     .auth-shell input:not([type="checkbox"]):not([type="radio"]) { margin-top:12px; }
+    .miniapp-open-box { margin-top:12px; border:1px solid var(--border); border-radius:16px; padding:12px; background:rgba(255,255,255,0.02); }
+    .miniapp-open-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
   </style>
 </head>
 <body>
@@ -52,6 +54,14 @@
             <button class="btn primary" id="btnPasswordLogin">Войти</button>
             <button class="btn sm" id="showResetModeBtn" type="button">Забыли пароль?</button>
             <button class="btn sm" id="showSetupModeBtn" type="button">Зарегистрироваться</button>
+          </div>
+        </div>
+
+        <div class="miniapp-open-box" id="telegramMiniAppBox">
+          <b>Открыть Axelio в Telegram</b>
+          <div class="muted mt-8">Если удобнее работать внутри Telegram, открой Mini App напрямую. В браузере вход через Telegram больше не используется.</div>
+          <div class="miniapp-open-actions">
+            <a class="btn" id="openTelegramMiniAppLink" href="https://t.me/axe_dev_lio_bot?startapp=auth" target="_blank" rel="noopener noreferrer">Открыть в Telegram</a>
           </div>
         </div>
 
@@ -160,6 +170,24 @@
     function getSafeNext() {
       if (!next || /\/auth\.html(\?|$)/i.test(next)) return "/";
       return next;
+    }
+
+    function resolveTelegramMiniAppUrl() {
+      const explicit = String(window.APP_CONFIG?.TELEGRAM_MINI_APP_URL || window.__APP_CONFIG__?.TELEGRAM_MINI_APP_URL || "").trim();
+      if (explicit) return explicit;
+      const host = String(location.hostname || "").toLowerCase();
+      const botUsername = (host === "localhost" || host === "127.0.0.1" || host.includes("-dev."))
+        ? "axe_dev_lio_bot"
+        : "axe_dev_lio_bot";
+      const url = new URL(`https://t.me/${botUsername}`);
+      url.searchParams.set("startapp", "auth");
+      return url.toString();
+    }
+
+    function setupTelegramMiniAppLink() {
+      const link = document.getElementById("openTelegramMiniAppLink");
+      if (!link) return;
+      link.href = resolveTelegramMiniAppUrl();
     }
 
     function extractInviteToken(target) {
@@ -459,6 +487,7 @@
       }
     };
 
+    setupTelegramMiniAppLink();
     nextHint.textContent = `После входа тебя вернёт на ${getSafeNext()}.`;
     await loadPhoneAuthConfig();
     setPasswordMode(MODE_SETUP);
