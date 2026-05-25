@@ -70,6 +70,7 @@ function renderShell() {
             <b>Список интервалов</b>
           </div>
           <div class="section-actions">
+            <a class="btn" id="btnTemplates" href="#">Шаблоны графика</a>
             <button class="btn primary" id="btnCreate">+ Добавить</button>
           </div>
         </div>
@@ -183,7 +184,7 @@ function renderList() {
           <b>${esc(item.title)}</b>
           ${item.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
-        <div class="mono muted listrow__meta">${esc(item.start_time)}–${esc(item.end_time)} · Смен: ${Number(item.usage_count || 0)}</div>
+        <div class="mono muted listrow__meta">${esc(item.start_time)}–${esc(item.end_time)} · Смен: ${Number(item.usage_count || 0)} · Шаблонов: ${Number(item.template_usage_count || 0)}</div>
       </div>
       <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;">
         <button class="btn sm" data-edit="${item.id}">Изменить</button>
@@ -341,8 +342,10 @@ await mountNav({ activeTab: "shifts", requireVenue: true });
 
 document.getElementById("backToShifts")?.setAttribute("href", `/staff-shifts.html?venue_id=${encodeURIComponent(state.venueId)}`);
 document.getElementById("backToVenue")?.setAttribute("href", `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`);
+document.getElementById("btnTemplates")?.setAttribute("href", `/shift-schedule-templates.html?venue_id=${encodeURIComponent(state.venueId)}`);
 document.getElementById("btnCreate")?.addEventListener("click", () => openEditor({ mode: "create" }));
 document.getElementById("btnCreate")?.classList.toggle("hidden", !state.canManage);
+document.getElementById("btnTemplates")?.classList.toggle("hidden", !state.canManage);
 document.getElementById("showArchived")?.addEventListener("change", async (e) => {
   state.includeArchived = !!e.target.checked;
   await load();

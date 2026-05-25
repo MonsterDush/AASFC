@@ -96,6 +96,7 @@ from app.services.payroll.calculator import (
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.payroll.period_summary import resolve_salary_period
 from app.services.tips import build_equal_tip_allocations, build_weighted_by_position_tip_allocations
+from app.services.shifts import normalize_shift_slot
 from app.services.financial_privacy import (
     FINANCIAL_VALUES_HIDDEN_MESSAGE,
     financial_visibility_payload,
@@ -114,6 +115,7 @@ from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
 from app.models.shift_comment import ShiftComment
 from app.models.shift_assignment import ShiftAssignment
+from app.models.shift_schedule_template import ShiftScheduleTemplate, ShiftScheduleTemplateItem
 from app.models.daily_report import DailyReport
 from app.models.daily_report_attachment import DailyReportAttachment
 from app.models.daily_report_value import DailyReportValue
@@ -1028,6 +1030,20 @@ def _count_interval_shift_usage(db: Session, *, venue_id: int, interval_id: int)
     )
 
 
+def _count_interval_template_usage(db: Session, *, venue_id: int, interval_id: int) -> int:
+    return int(
+        db.execute(
+            select(func.count(ShiftScheduleTemplateItem.id))
+            .join(ShiftScheduleTemplate, ShiftScheduleTemplate.id == ShiftScheduleTemplateItem.template_id)
+            .where(
+                ShiftScheduleTemplate.venue_id == venue_id,
+                ShiftScheduleTemplateItem.interval_id == interval_id,
+            )
+        ).scalar_one()
+        or 0
+    )
+
+
 class ShiftCreateIn(BaseModel):
     date: date
     interval_id: int = Field(..., gt=0)
@@ -1038,6 +1054,31 @@ class ShiftUpdateIn(BaseModel):
     date: date | Optional[date] = None
     interval_id: int | None = Field(default=None, gt=0)
     is_active: bool | None = None
+
+
+class ShiftScheduleTemplateItemIn(BaseModel):
+    weekday: int = Field(..., ge=0, le=6, description="0=Monday ... 6=Sunday")
+    interval_id: int = Field(..., gt=0)
+    shift_slot: str | None = Field(default="DAY", max_length=16)
+
+
+class ShiftScheduleTemplateCreateIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=1000)
+    is_active: bool = True
+    items: list[ShiftScheduleTemplateItemIn] = Field(default_factory=list)
+
+
+class ShiftScheduleTemplateUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=1000)
+    is_active: bool | None = None
+    items: list[ShiftScheduleTemplateItemIn] | None = None
+
+
+class ShiftScheduleTemplateApplyIn(BaseModel):
+    month: str = Field(..., min_length=7, max_length=7, description="YYYY-MM")
+    mode: str = Field(..., min_length=4, max_length=32)
 
 
 class ShiftAssignmentAddIn(BaseModel):
@@ -2064,6 +2105,7 @@ def _safe_delete_where(db: Session, model, *conditions) -> int:
 def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
     venue_id = int(venue.id)
     shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+    shift_schedule_template_ids = select(ShiftScheduleTemplate.id).where(ShiftScheduleTemplate.venue_id == venue_id)
     report_ids = select(DailyReport.id).where(DailyReport.venue_id == venue_id)
     adjustment_ids = select(Adjustment.id).where(Adjustment.venue_id == venue_id)
     dispute_ids = select(AdjustmentDispute.id).where(AdjustmentDispute.venue_id == venue_id)
@@ -2085,6 +2127,8 @@ def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
     add_count("venue_positions", VenuePosition, select(func.count(VenuePosition.id)).where(VenuePosition.venue_id == venue_id))
 
     add_count("shift_intervals", ShiftInterval, select(func.count(ShiftInterval.id)).where(ShiftInterval.venue_id == venue_id))
+    add_count("shift_schedule_templates", ShiftScheduleTemplate, select(func.count(ShiftScheduleTemplate.id)).where(ShiftScheduleTemplate.venue_id == venue_id))
+    add_count("shift_schedule_template_items", ShiftScheduleTemplateItem, select(func.count(ShiftScheduleTemplateItem.id)).where(ShiftScheduleTemplateItem.template_id.in_(shift_schedule_template_ids)))
     add_count("shifts", Shift, select(func.count(Shift.id)).where(Shift.venue_id == venue_id))
     add_count("shift_assignments", ShiftAssignment, select(func.count(ShiftAssignment.id)).where(ShiftAssignment.shift_id.in_(shift_ids)))
     add_count("shift_comments", ShiftComment, select(func.count(ShiftComment.id)).where(ShiftComment.shift_id.in_(shift_ids)))
@@ -2250,6 +2294,7 @@ def delete_venue(
         raise HTTPException(400, "Archive venue before delete")
 
     shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+    shift_schedule_template_ids = select(ShiftScheduleTemplate.id).where(ShiftScheduleTemplate.venue_id == venue_id)
     report_ids = select(DailyReport.id).where(DailyReport.venue_id == venue_id)
     dispute_ids = select(AdjustmentDispute.id).where(AdjustmentDispute.venue_id == venue_id)
     recurring_rule_ids = select(RecurringExpenseRule.id).where(RecurringExpenseRule.venue_id == venue_id)
@@ -2281,6 +2326,8 @@ def delete_venue(
         deleted["notification_delivery_logs"] = _safe_delete_where(db, NotificationDeliveryLog, NotificationDeliveryLog.venue_id == venue_id)
 
         deleted["shifts"] = _safe_delete_where(db, Shift, Shift.venue_id == venue_id)
+        deleted["shift_schedule_template_items"] = _safe_delete_where(db, ShiftScheduleTemplateItem, ShiftScheduleTemplateItem.template_id.in_(shift_schedule_template_ids))
+        deleted["shift_schedule_templates"] = _safe_delete_where(db, ShiftScheduleTemplate, ShiftScheduleTemplate.venue_id == venue_id)
         deleted["shift_intervals"] = _safe_delete_where(db, ShiftInterval, ShiftInterval.venue_id == venue_id)
 
         deleted["daily_reports"] = _safe_delete_where(db, DailyReport, DailyReport.venue_id == venue_id)
@@ -8203,6 +8250,433 @@ def leave_venue(
     db.commit()
 
     return None
+
+# ---------- Schedule templates: weekly patterns for month generation ----------
+
+_SHIFT_TEMPLATE_APPLY_MODES = {"SKIP_FILLED_DAYS", "ADD_MISSING", "REPLACE_MONTH"}
+_WEEKDAY_TITLES_RU = {
+    0: "Понедельник",
+    1: "Вторник",
+    2: "Среда",
+    3: "Четверг",
+    4: "Пятница",
+    5: "Суббота",
+    6: "Воскресенье",
+}
+
+
+def _normalize_shift_schedule_template_title(title: str) -> str:
+    value = str(title or "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Template title is required")
+    return value
+
+
+def _ensure_shift_schedule_template_title_unique(
+    db: Session,
+    *,
+    venue_id: int,
+    title: str,
+    exclude_template_id: int | None = None,
+) -> None:
+    stmt = select(ShiftScheduleTemplate.id).where(
+        ShiftScheduleTemplate.venue_id == venue_id,
+        func.lower(ShiftScheduleTemplate.title) == title.lower(),
+    )
+    if exclude_template_id is not None:
+        stmt = stmt.where(ShiftScheduleTemplate.id != exclude_template_id)
+    exists_id = db.execute(stmt.limit(1)).scalar_one_or_none()
+    if exists_id is not None:
+        raise HTTPException(status_code=409, detail="Schedule template with this title already exists")
+
+
+def _parse_shift_schedule_template_month(month_value: str) -> tuple[date, date, date]:
+    try:
+        year_text, month_text = str(month_value or "").strip().split("-", 1)
+        year = int(year_text)
+        month = int(month_text)
+        start = date(year, month, 1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
+    if month == 12:
+        end_exclusive = date(year + 1, 1, 1)
+    else:
+        end_exclusive = date(year, month + 1, 1)
+    return start, end_exclusive, end_exclusive - timedelta(days=1)
+
+
+def _get_shift_schedule_template_or_404(db: Session, *, venue_id: int, template_id: int) -> ShiftScheduleTemplate:
+    obj = db.execute(
+        select(ShiftScheduleTemplate).where(
+            ShiftScheduleTemplate.id == int(template_id),
+            ShiftScheduleTemplate.venue_id == int(venue_id),
+        )
+    ).scalar_one_or_none()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Schedule template not found")
+    return obj
+
+
+def _normalize_shift_schedule_template_items(
+    db: Session,
+    *,
+    venue_id: int,
+    raw_items: list[ShiftScheduleTemplateItemIn] | None,
+    require_active_intervals: bool = False,
+) -> list[dict]:
+    items = raw_items or []
+    interval_ids = sorted({int(item.interval_id) for item in items if int(item.interval_id) > 0})
+    intervals_by_id: dict[int, ShiftInterval] = {}
+    if interval_ids:
+        stmt = select(ShiftInterval).where(
+            ShiftInterval.venue_id == venue_id,
+            ShiftInterval.id.in_(interval_ids),
+        )
+        if require_active_intervals:
+            stmt = stmt.where(ShiftInterval.is_active.is_(True))
+        rows = db.execute(stmt).scalars().all()
+        intervals_by_id = {int(r.id): r for r in rows}
+
+    missing_ids = [iid for iid in interval_ids if iid not in intervals_by_id]
+    if missing_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Some shift intervals are not available for this venue: {', '.join(map(str, missing_ids))}",
+        )
+
+    normalized: list[dict] = []
+    seen: set[tuple[int, int, str]] = set()
+    order_by_weekday: dict[int, int] = {}
+    for item in items:
+        weekday = int(item.weekday)
+        if weekday < 0 or weekday > 6:
+            raise HTTPException(status_code=400, detail="weekday must be in range 0..6")
+        interval_id = int(item.interval_id)
+        slot = normalize_shift_slot(item.shift_slot)
+        key = (weekday, interval_id, slot)
+        if key in seen:
+            continue
+        seen.add(key)
+        sort_order = order_by_weekday.get(weekday, 0)
+        order_by_weekday[weekday] = sort_order + 1
+        normalized.append(
+            {
+                "weekday": weekday,
+                "interval_id": interval_id,
+                "shift_slot": slot,
+                "sort_order": sort_order,
+            }
+        )
+    return normalized
+
+
+def _replace_shift_schedule_template_items(
+    db: Session,
+    *,
+    template: ShiftScheduleTemplate,
+    venue_id: int,
+    raw_items: list[ShiftScheduleTemplateItemIn] | None,
+) -> None:
+    normalized = _normalize_shift_schedule_template_items(db, venue_id=venue_id, raw_items=raw_items)
+    db.execute(delete(ShiftScheduleTemplateItem).where(ShiftScheduleTemplateItem.template_id == template.id))
+    db.flush()
+    for item in normalized:
+        db.add(
+            ShiftScheduleTemplateItem(
+                template_id=template.id,
+                weekday=item["weekday"],
+                interval_id=item["interval_id"],
+                shift_slot=item["shift_slot"],
+                sort_order=item["sort_order"],
+            )
+        )
+
+
+def _serialize_shift_schedule_template(template: ShiftScheduleTemplate) -> dict:
+    items = list(getattr(template, "items", []) or [])
+    return {
+        "id": int(template.id),
+        "venue_id": int(template.venue_id),
+        "title": template.title,
+        "description": template.description,
+        "is_active": bool(template.is_active),
+        "created_by_user_id": template.created_by_user_id,
+        "created_at": template.created_at.isoformat() if template.created_at else None,
+        "updated_at": template.updated_at.isoformat() if template.updated_at else None,
+        "items": [
+            {
+                "id": int(item.id),
+                "weekday": int(item.weekday),
+                "weekday_title": _WEEKDAY_TITLES_RU.get(int(item.weekday), str(item.weekday)),
+                "interval_id": int(item.interval_id),
+                "shift_slot": normalize_shift_slot(getattr(item, "shift_slot", None)),
+                "sort_order": int(item.sort_order or 0),
+                "interval": {
+                    "id": int(item.interval.id),
+                    "title": item.interval.title,
+                    "start_time": item.interval.start_time.strftime("%H:%M") if item.interval and item.interval.start_time else None,
+                    "end_time": item.interval.end_time.strftime("%H:%M") if item.interval and item.interval.end_time else None,
+                    "is_active": bool(item.interval.is_active) if item.interval else False,
+                } if getattr(item, "interval", None) is not None else None,
+            }
+            for item in items
+        ],
+    }
+
+
+@router.get("/{venue_id}/shift-schedule-templates")
+def list_shift_schedule_templates(
+    venue_id: int,
+    include_inactive: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+
+    stmt = select(ShiftScheduleTemplate).where(ShiftScheduleTemplate.venue_id == venue_id)
+    if not include_inactive:
+        stmt = stmt.where(ShiftScheduleTemplate.is_active.is_(True))
+    rows = db.execute(stmt.order_by(ShiftScheduleTemplate.title.asc(), ShiftScheduleTemplate.id.asc())).scalars().all()
+    return [_serialize_shift_schedule_template(row) for row in rows]
+
+
+@router.post("/{venue_id}/shift-schedule-templates")
+def create_shift_schedule_template(
+    venue_id: int,
+    payload: ShiftScheduleTemplateCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+
+    title = _normalize_shift_schedule_template_title(payload.title)
+    _ensure_shift_schedule_template_title_unique(db, venue_id=venue_id, title=title)
+
+    obj = ShiftScheduleTemplate(
+        venue_id=venue_id,
+        title=title,
+        description=(payload.description or None),
+        is_active=bool(payload.is_active),
+        created_by_user_id=user.id,
+    )
+    db.add(obj)
+    db.flush()
+    _replace_shift_schedule_template_items(db, template=obj, venue_id=venue_id, raw_items=payload.items)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(obj)
+    return _serialize_shift_schedule_template(obj)
+
+
+@router.get("/{venue_id}/shift-schedule-templates/{template_id}")
+def get_shift_schedule_template(
+    venue_id: int,
+    template_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    obj = _get_shift_schedule_template_or_404(db, venue_id=venue_id, template_id=template_id)
+    return _serialize_shift_schedule_template(obj)
+
+
+@router.patch("/{venue_id}/shift-schedule-templates/{template_id}")
+def update_shift_schedule_template(
+    venue_id: int,
+    template_id: int,
+    payload: ShiftScheduleTemplateUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+    obj = _get_shift_schedule_template_or_404(db, venue_id=venue_id, template_id=template_id)
+
+    if payload.title is not None:
+        title = _normalize_shift_schedule_template_title(payload.title)
+        _ensure_shift_schedule_template_title_unique(db, venue_id=venue_id, title=title, exclude_template_id=template_id)
+        obj.title = title
+    payload_fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    if "description" in payload_fields_set:
+        obj.description = payload.description or None
+    if payload.is_active is not None:
+        obj.is_active = bool(payload.is_active)
+    if payload.items is not None:
+        _replace_shift_schedule_template_items(db, template=obj, venue_id=venue_id, raw_items=payload.items)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(obj)
+    return _serialize_shift_schedule_template(obj)
+
+
+@router.delete("/{venue_id}/shift-schedule-templates/{template_id}")
+def delete_shift_schedule_template(
+    venue_id: int,
+    template_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+    obj = _get_shift_schedule_template_or_404(db, venue_id=venue_id, template_id=template_id)
+    db.delete(obj)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{venue_id}/shift-schedule-templates/{template_id}/apply")
+def apply_shift_schedule_template(
+    venue_id: int,
+    template_id: int,
+    payload: ShiftScheduleTemplateApplyIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_schedule_editor(db, venue_id=venue_id, user=user)
+    template = _get_shift_schedule_template_or_404(db, venue_id=venue_id, template_id=template_id)
+    if not bool(template.is_active):
+        raise HTTPException(status_code=400, detail="Schedule template is archived")
+
+    mode = str(payload.mode or "").strip().upper()
+    if mode not in _SHIFT_TEMPLATE_APPLY_MODES:
+        raise HTTPException(status_code=400, detail="Unknown apply mode")
+
+    month_start, month_end_exclusive, month_end = _parse_shift_schedule_template_month(payload.month)
+    items = list(getattr(template, "items", []) or [])
+    if not items:
+        raise HTTPException(status_code=400, detail="Schedule template has no intervals")
+
+    # Validate that all intervals still belong to this venue and are active before generation.
+    validation_payload = [
+        ShiftScheduleTemplateItemIn(weekday=int(item.weekday), interval_id=int(item.interval_id), shift_slot=item.shift_slot)
+        for item in items
+    ]
+    normalized_items = _normalize_shift_schedule_template_items(
+        db,
+        venue_id=venue_id,
+        raw_items=validation_payload,
+        require_active_intervals=True,
+    )
+    items_by_weekday: dict[int, list[dict]] = {}
+    for item in normalized_items:
+        items_by_weekday.setdefault(int(item["weekday"]), []).append(item)
+
+    existing_month_shifts = db.execute(
+        select(Shift).where(
+            Shift.venue_id == venue_id,
+            Shift.date >= month_start,
+            Shift.date < month_end_exclusive,
+        )
+    ).scalars().all()
+    existing_active_dates = {shift.date for shift in existing_month_shifts if bool(shift.is_active)}
+    existing_by_key = {
+        (shift.date, int(shift.interval_id), normalize_shift_slot(getattr(shift, "shift_slot", None))): shift
+        for shift in existing_month_shifts
+    }
+
+    archived_count = 0
+    if mode == "REPLACE_MONTH":
+        for shift in existing_month_shifts:
+            if bool(shift.is_active):
+                shift.is_active = False
+                archived_count += 1
+
+    created_count = 0
+    restored_count = 0
+    skipped_count = 0
+    skipped_filled_days: set[date] = set()
+    changed_dates: set[date] = set()
+    generated_targets = 0
+
+    current = month_start
+    while current < month_end_exclusive:
+        day_items = items_by_weekday.get(current.weekday(), [])
+        if not day_items:
+            current += timedelta(days=1)
+            continue
+
+        if mode == "SKIP_FILLED_DAYS" and current in existing_active_dates:
+            skipped_count += len(day_items)
+            skipped_filled_days.add(current)
+            current += timedelta(days=1)
+            continue
+
+        for item in day_items:
+            generated_targets += 1
+            interval_id = int(item["interval_id"])
+            slot = normalize_shift_slot(item.get("shift_slot"))
+            key = (current, interval_id, slot)
+            existing = existing_by_key.get(key)
+            if existing is not None:
+                if bool(existing.is_active):
+                    skipped_count += 1
+                    continue
+                existing.is_active = True
+                existing.created_by_user_id = user.id
+                restored_count += 1
+                changed_dates.add(current)
+                continue
+
+            shift = Shift(
+                venue_id=venue_id,
+                date=current,
+                interval_id=interval_id,
+                shift_slot=slot,
+                created_by_user_id=user.id,
+                is_active=True,
+            )
+            db.add(shift)
+            db.flush()
+            existing_by_key[key] = shift
+            created_count += 1
+            changed_dates.add(current)
+
+        current += timedelta(days=1)
+
+    if archived_count > 0:
+        changed_dates.update(shift.date for shift in existing_month_shifts if month_start <= shift.date < month_end_exclusive)
+
+    if changed_dates:
+        _recalculate_payroll_for_dates(
+            db,
+            venue_id=venue_id,
+            target_dates=sorted(changed_dates),
+            calculated_by_user_id=user.id,
+            trigger_reason="shift_schedule_template_apply",
+        )
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Could not generate shifts for this template")
+
+    return {
+        "ok": True,
+        "template_id": int(template.id),
+        "template_title": template.title,
+        "month": payload.month,
+        "period_start": month_start.isoformat(),
+        "period_end": month_end.isoformat(),
+        "mode": mode,
+        "generated_targets": int(generated_targets),
+        "created_count": int(created_count),
+        "restored_count": int(restored_count),
+        "skipped_count": int(skipped_count),
+        "archived_count": int(archived_count),
+        "skipped_filled_days_count": int(len(skipped_filled_days)),
+    }
+
+
 # ---------- Schedule: shift intervals & shifts ----------
 
 @router.get("/{venue_id}/shift-intervals")
@@ -8229,6 +8703,13 @@ def list_shift_intervals(
         .group_by(Shift.interval_id)
     ).all()
     usage_by_interval = {int(interval_id): int(count or 0) for interval_id, count in usage_rows}
+    template_usage_rows = db.execute(
+        select(ShiftScheduleTemplateItem.interval_id, func.count(ShiftScheduleTemplateItem.id))
+        .join(ShiftScheduleTemplate, ShiftScheduleTemplate.id == ShiftScheduleTemplateItem.template_id)
+        .where(ShiftScheduleTemplate.venue_id == venue_id)
+        .group_by(ShiftScheduleTemplateItem.interval_id)
+    ).all()
+    template_usage_by_interval = {int(interval_id): int(count or 0) for interval_id, count in template_usage_rows}
     return [
         {
             "id": r.id,
@@ -8237,7 +8718,8 @@ def list_shift_intervals(
             "end_time": r.end_time.strftime("%H:%M"),
             "is_active": bool(r.is_active),
             "usage_count": usage_by_interval.get(r.id, 0),
-            "can_delete": usage_by_interval.get(r.id, 0) == 0,
+            "template_usage_count": template_usage_by_interval.get(r.id, 0),
+            "can_delete": (usage_by_interval.get(r.id, 0) + template_usage_by_interval.get(r.id, 0)) == 0,
         }
         for r in rows
     ]
@@ -8339,10 +8821,11 @@ def delete_shift_interval(
         raise HTTPException(status_code=404, detail="Shift interval not found")
 
     usage_count = _count_interval_shift_usage(db, venue_id=venue_id, interval_id=interval_id)
-    if usage_count > 0:
+    template_usage_count = _count_interval_template_usage(db, venue_id=venue_id, interval_id=interval_id)
+    if usage_count > 0 or template_usage_count > 0:
         raise HTTPException(
             status_code=409,
-            detail="Shift interval is already used in shifts and cannot be deleted. Archive it instead.",
+            detail="Shift interval is already used in shifts or schedule templates and cannot be deleted. Archive it instead.",
         )
 
     db.delete(obj)

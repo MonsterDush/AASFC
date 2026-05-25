@@ -331,6 +331,13 @@ export function buildStaffDashboardItems(permSet, venueRoleUpper, systemRoleUppe
       href: `/shift-intervals.html${qs}`,
       isExtra: true,
     });
+    items.push({
+      key: "schedule-templates",
+      title: "Шаблоны графика",
+      hint: "Недельные шаблоны и автозаполнение месяца.",
+      href: `/shift-schedule-templates.html${qs}`,
+      isExtra: true,
+    });
   }
 
   if (canViewDepartmentsPage) {
