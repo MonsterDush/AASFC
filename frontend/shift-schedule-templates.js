@@ -149,7 +149,7 @@ function renderShell() {
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
 
-    <div id="modal" class="modal">
+    <div id="modal" class="modal" style="z-index:10050">
       <div class="modal__backdrop"></div>
       <div class="modal__panel">
         <div class="modal__head">
