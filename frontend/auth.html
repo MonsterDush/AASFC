@@ -61,7 +61,7 @@
           <b>Открыть Axelio в Telegram</b>
           <div class="muted mt-8">Если удобнее работать внутри Telegram, открой Mini App напрямую. В браузере вход через Telegram больше не используется.</div>
           <div class="miniapp-open-actions">
-            <a class="btn" id="openTelegramMiniAppLink" href="https://t.me/axe_dev_lio_bot?startapp=auth" target="_blank" rel="noopener noreferrer">Открыть в Telegram</a>
+            <a class="btn" id="openTelegramMiniAppLink" href="#" target="_blank" rel="noopener noreferrer">Открыть в Telegram</a>
           </div>
         </div>
 
@@ -172,22 +172,46 @@
       return next;
     }
 
-    function resolveTelegramMiniAppUrl() {
-      const explicit = String(window.APP_CONFIG?.TELEGRAM_MINI_APP_URL || window.__APP_CONFIG__?.TELEGRAM_MINI_APP_URL || "").trim();
-      if (explicit) return explicit;
-      const host = String(location.hostname || "").toLowerCase();
-      const botUsername = (host === "localhost" || host === "127.0.0.1" || host.includes("-dev."))
-        ? "axe_dev_lio_bot"
-        : "axe_dev_lio_bot";
-      const url = new URL(`https://t.me/${botUsername}`);
+    function buildTelegramMiniAppUrl(botUsername) {
+      const username = String(botUsername || "").trim().replace(/^@+/, "");
+      if (!username) return "";
+      const url = new URL(`https://t.me/${username}`);
       url.searchParams.set("startapp", "auth");
       return url.toString();
     }
 
-    function setupTelegramMiniAppLink() {
+    async function resolveTelegramMiniAppUrl() {
+      const explicit = String(window.APP_CONFIG?.TELEGRAM_MINI_APP_URL || window.__APP_CONFIG__?.TELEGRAM_MINI_APP_URL || "").trim();
+      if (explicit) return explicit;
+
+      try {
+        const config = await api("/auth/telegram/miniapp-link?startapp=auth", { handle401: false, timeoutMs: 4000 });
+        const fromApi = String(config?.mini_app_url || "").trim();
+        if (fromApi) return fromApi;
+        const fromApiUsername = buildTelegramMiniAppUrl(config?.bot_username);
+        if (fromApiUsername) return fromApiUsername;
+      } catch {}
+
+      const explicitBot = String(window.APP_CONFIG?.TELEGRAM_MINI_APP_BOT_USERNAME || window.__APP_CONFIG__?.TELEGRAM_MINI_APP_BOT_USERNAME || "").trim();
+      if (explicitBot) return buildTelegramMiniAppUrl(explicitBot);
+
+      const host = String(location.hostname || "").toLowerCase();
+      const botUsername = (host === "localhost" || host === "127.0.0.1" || host.includes("-dev."))
+        ? "axe_dev_lio_bot"
+        : "";
+      return buildTelegramMiniAppUrl(botUsername);
+    }
+
+    async function setupTelegramMiniAppLink() {
       const link = document.getElementById("openTelegramMiniAppLink");
+      const box = document.getElementById("telegramMiniAppBox");
       if (!link) return;
-      link.href = resolveTelegramMiniAppUrl();
+      const url = await resolveTelegramMiniAppUrl();
+      if (!url) {
+        if (box) box.classList.add("hidden");
+        return;
+      }
+      link.href = url;
     }
 
     function extractInviteToken(target) {
@@ -487,7 +511,7 @@
       }
     };
 
-    setupTelegramMiniAppLink();
+    await setupTelegramMiniAppLink();
     nextHint.textContent = `После входа тебя вернёт на ${getSafeNext()}.`;
     await loadPhoneAuthConfig();
     setPasswordMode(MODE_SETUP);

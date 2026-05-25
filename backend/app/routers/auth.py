@@ -147,6 +147,13 @@ class TelegramBrowserAuthFinalizeIn(BaseModel):
     session_token: str = Field(..., min_length=16, max_length=64)
 
 
+class TelegramMiniAppLinkOut(BaseModel):
+    ok: bool = True
+    enabled: bool = True
+    bot_username: str
+    mini_app_url: str
+
+
 class DemoSwitchPersonaIn(BaseModel):
     persona: str = Field(default=DEMO_PERSONA_OWNER, min_length=3, max_length=32)
     next_path: str | None = Field(default=None, max_length=1024)
@@ -402,6 +409,14 @@ def _telegram_browser_bot_username() -> str:
         or settings.TG_LOGIN_WIDGET_BOT_USERNAME
         or ""
     ).strip().lstrip("@")
+
+
+def _telegram_mini_app_url(*, startapp: str = "auth") -> tuple[str, str]:
+    bot_username = _telegram_browser_bot_username()
+    if not bot_username:
+        raise HTTPException(status_code=503, detail="Telegram Mini App bot is not configured")
+    safe_startapp = "".join(ch for ch in str(startapp or "auth").strip() if ch.isalnum() or ch in {"_", "-"})[:64] or "auth"
+    return bot_username, f"https://t.me/{bot_username}?startapp={safe_startapp}"
 
 
 def _browser_login_ttl_seconds() -> int:
@@ -787,6 +802,15 @@ def _resolve_verification(db: Session, *, phone_e164: str, purpose: str, code: s
         challenge_id=challenge_id,
     )
 
+
+
+@router.get("/telegram/miniapp-link", response_model=TelegramMiniAppLinkOut)
+def telegram_miniapp_link(startapp: str = Query(default="auth", max_length=64)):
+    bot_username, mini_app_url = _telegram_mini_app_url(startapp=startapp)
+    return TelegramMiniAppLinkOut(
+        bot_username=bot_username,
+        mini_app_url=mini_app_url,
+    )
 
 
 @router.post("/telegram/browser/start", response_model=TelegramBrowserAuthStartOut)
