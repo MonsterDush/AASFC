@@ -29,7 +29,12 @@ from app.services.notification_logs import log_notification_attempt
 
 DEFAULT_REMINDER_HOURS = int(os.getenv("REMINDER_HOURS", "18"))
 ALLOWED_REMINDER_HOURS = {1, 2, 6, 12, 18, 24}
-WINDOW_MINUTES = int(os.getenv("REMINDER_WINDOW_MINUTES", "15"))  # window around the exact mark
+WINDOW_MINUTES = int(os.getenv("REMINDER_WINDOW_MINUTES", "15"))  # early window before the exact mark
+# If the timer/job was down or missed the exact reminder moment, still send
+# the reminder while the shift has not started yet. This prevents silent misses
+# when systemd timers are delayed, the server was restarted, or a shift was
+# assigned after the ideal reminder time.
+LATE_GRACE_MINUTES = int(os.getenv("SHIFT_REMINDER_LATE_GRACE_MINUTES", "1440"))
 
 RU_MONTHS_GEN = {
     1: "января", 2: "февраля", 3: "марта", 4: "апреля",
@@ -203,10 +208,18 @@ def main() -> int:
 
             lead_hours = _normalize_lead_hours(getattr(user, "shift_reminder_lead_time_hours", DEFAULT_REMINDER_HOURS))
             start_dt = _shift_start_naive(sh.date, interval.start_time).replace(tzinfo=tz)
-            time_until_start = start_dt - now
-            min_delta = timedelta(hours=lead_hours, minutes=-WINDOW_MINUTES)
-            max_delta = timedelta(hours=lead_hours, minutes=WINDOW_MINUTES)
-            if not (min_delta <= time_until_start <= max_delta):
+            planned_at = start_dt - timedelta(hours=lead_hours)
+
+            # Previous logic required the script to run inside a narrow ±window
+            # around planned_at. In production this is too fragile: any delayed
+            # systemd timer/restart/late assignment skips the reminder forever.
+            # New rule: send once when the reminder is due or slightly early,
+            # and still allow late delivery until the shift starts.
+            if now < planned_at - timedelta(minutes=WINDOW_MINUTES):
+                continue
+            if now >= start_dt:
+                continue
+            if now > planned_at + timedelta(minutes=max(LATE_GRACE_MINUTES, WINDOW_MINUTES)):
                 continue
 
             text = (
@@ -215,7 +228,6 @@ def main() -> int:
                 f"в заведении \"{venue.name}\""
             )
             chat_id = int(FORCE_CHAT_ID) if FORCE_CHAT_ID else int(user.tg_user_id)
-            planned_at = start_dt - timedelta(hours=lead_hours)
             idempotency_key = f"shift_reminder:{sa.id}:{lead_hours}:{sh.date.isoformat()}:{_fmt_time(interval.start_time)}"
 
             if DRY_RUN:
@@ -225,7 +237,8 @@ def main() -> int:
                 )
                 continue
 
-            ok = tg_notify.notify(chat_id=chat_id, text=text)
+            result = tg_notify.notify_result(chat_id=chat_id, text=text)
+            ok = bool(result.get("ok"))
             if ok:
                 sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
                 log_notification_attempt(
@@ -256,7 +269,7 @@ def main() -> int:
                     shift_assignment_id=sa.id,
                     planned_at=planned_at,
                     idempotency_key=idempotency_key,
-                    error_text="notify() returned False",
+                    error_text=str(result.get("error") or "notify() returned False"),
                     payload_preview=text,
                 )
 
