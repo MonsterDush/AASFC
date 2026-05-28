@@ -22,9 +22,14 @@ except Exception:  # pragma: no cover
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
-from app.models import Shift, ShiftInterval, ShiftAssignment, ShiftComment, User, Venue, NotificationDeliveryLog
+from app.models import Shift, ShiftInterval, ShiftAssignment, ShiftComment, User, Venue
 from app.services import tg_notify
-from app.services.notification_logs import log_notification_attempt
+from app.services.notification_logs import (
+    lock_notification_idempotency_key,
+    log_notification_attempt,
+    notification_delivery_exists,
+    notification_dedupe_scope,
+)
 
 
 DEFAULT_REMINDER_HOURS = int(os.getenv("REMINDER_HOURS", "18"))
@@ -55,14 +60,6 @@ def _comment_preview(text: str, limit: int = 220) -> str:
         return value
     return value[: max(limit - 1, 0)].rstrip() + "…"
 
-
-def _already_logged(db, *, idempotency_key: str) -> bool:
-    row = db.execute(
-        select(NotificationDeliveryLog.id)
-        .where(NotificationDeliveryLog.idempotency_key == str(idempotency_key))
-        .limit(1)
-    ).scalar_one_or_none()
-    return row is not None
 
 
 def _send_shift_comment_notifications(db, *, now, tz) -> int:
@@ -113,27 +110,42 @@ def _send_shift_comment_notifications(db, *, now, tz) -> int:
             if not getattr(recipient, "tg_user_id", None) and not FORCE_CHAT_ID:
                 continue
 
-            idempotency_key = f"shift_comment:{int(comment.id)}:user:{int(recipient.id)}"
-            if _already_logged(db, idempotency_key=idempotency_key):
+            chat_id = int(FORCE_CHAT_ID) if FORCE_CHAT_ID else int(recipient.tg_user_id)
+            dedupe_scope = f"force:{chat_id}" if FORCE_CHAT_ID else notification_dedupe_scope(recipient)
+            idempotency_key = f"shift_comment:{int(comment.id)}:{dedupe_scope}"
+            lock_notification_idempotency_key(db, idempotency_key)
+            if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
                 continue
 
-            chat_id = int(FORCE_CHAT_ID) if FORCE_CHAT_ID else int(recipient.tg_user_id)
-            result = tg_notify.notify_result(chat_id=chat_id, text=text)
-            ok = bool(result.get("ok"))
-            log_notification_attempt(
+            if DRY_RUN:
+                print(
+                    f"DRY_RUN comment: chat_id={chat_id} user_id={recipient.id} shift_id={shift.id} "
+                    f"comment_id={comment.id} venue=\"{venue.name}\""
+                )
+                continue
+
+            pending_log = log_notification_attempt(
                 db,
                 notification_type="shift_comment",
-                status="sent" if ok else "failed",
+                status="pending",
                 user_id=int(recipient.id),
                 venue_id=int(venue.id),
                 shift_id=int(shift.id),
                 shift_assignment_id=int(sa.id),
                 planned_at=planned_at,
-                sent_at=datetime.utcnow().replace(tzinfo=timezone.utc) if ok else None,
                 idempotency_key=idempotency_key,
-                error_text=None if ok else str(result.get("error") or "notify() returned False"),
                 payload_preview=text,
             )
+            db.flush()
+            db.commit()
+
+            result = tg_notify.notify_result(chat_id=chat_id, text=text)
+            ok = bool(result.get("ok"))
+            pending_log.status = "sent" if ok else "failed"
+            pending_log.sent_at = datetime.utcnow().replace(tzinfo=timezone.utc) if ok else None
+            pending_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
+            db.add(pending_log)
+            db.commit()
             if ok and not FORCE_CHAT_ID:
                 sent += 1
     return sent
@@ -228,50 +240,54 @@ def main() -> int:
                 f"в заведении \"{venue.name}\""
             )
             chat_id = int(FORCE_CHAT_ID) if FORCE_CHAT_ID else int(user.tg_user_id)
-            idempotency_key = f"shift_reminder:{sa.id}:{lead_hours}:{sh.date.isoformat()}:{_fmt_time(interval.start_time)}"
+            dedupe_scope = f"force:{chat_id}" if FORCE_CHAT_ID else notification_dedupe_scope(user)
+            shift_slot = str(getattr(sh, "shift_slot", None) or "DAY").upper()
+            idempotency_key = (
+                f"shift_reminder:{int(sh.id)}:{dedupe_scope}:{lead_hours}:"
+                f"{sh.date.isoformat()}:{_fmt_time(interval.start_time)}:{shift_slot}"
+            )
+            lock_notification_idempotency_key(db, idempotency_key)
+            if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
+                if not FORCE_CHAT_ID and sa.reminder_sent_at is None:
+                    sa.reminder_sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
+                    db.add(sa)
+                    db.commit()
+                continue
 
             if DRY_RUN:
                 print(
                     f"DRY_RUN match: chat_id={chat_id} user_id={user.id} shift_id={sh.id} "
-                    f"start={start_dt} lead_hours={lead_hours} venue=\"{venue.name}\""
+                    f"start={start_dt} lead_hours={lead_hours} slot={shift_slot} venue=\"{venue.name}\""
                 )
                 continue
 
+            pending_log = log_notification_attempt(
+                db,
+                notification_type="shift_reminder",
+                status="pending",
+                user_id=user.id,
+                venue_id=venue.id,
+                shift_id=sh.id,
+                shift_assignment_id=sa.id,
+                planned_at=planned_at,
+                idempotency_key=idempotency_key,
+                payload_preview=text,
+            )
+            db.flush()
+            db.commit()
+
             result = tg_notify.notify_result(chat_id=chat_id, text=text)
             ok = bool(result.get("ok"))
-            if ok:
-                sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
-                log_notification_attempt(
-                    db,
-                    notification_type="shift_reminder",
-                    status="sent",
-                    user_id=user.id,
-                    venue_id=venue.id,
-                    shift_id=sh.id,
-                    shift_assignment_id=sa.id,
-                    planned_at=planned_at,
-                    sent_at=sent_at,
-                    idempotency_key=idempotency_key,
-                    payload_preview=text,
-                )
-                if not FORCE_CHAT_ID:
-                    sa.reminder_sent_at = sent_at
-                    db.add(sa)
-                    sent += 1
-            else:
-                log_notification_attempt(
-                    db,
-                    notification_type="shift_reminder",
-                    status="failed",
-                    user_id=user.id,
-                    venue_id=venue.id,
-                    shift_id=sh.id,
-                    shift_assignment_id=sa.id,
-                    planned_at=planned_at,
-                    idempotency_key=idempotency_key,
-                    error_text=str(result.get("error") or "notify() returned False"),
-                    payload_preview=text,
-                )
+            sent_at = datetime.utcnow().replace(tzinfo=timezone.utc) if ok else None
+            pending_log.status = "sent" if ok else "failed"
+            pending_log.sent_at = sent_at
+            pending_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
+            db.add(pending_log)
+            if ok and not FORCE_CHAT_ID:
+                sa.reminder_sent_at = sent_at
+                db.add(sa)
+                sent += 1
+            db.commit()
 
         comment_sent = _send_shift_comment_notifications(db, now=now, tz=tz)
         db.commit()

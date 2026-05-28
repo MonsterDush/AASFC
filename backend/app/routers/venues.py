@@ -1048,12 +1048,14 @@ class ShiftCreateIn(BaseModel):
     date: date
     interval_id: int = Field(..., gt=0)
     is_active: bool = True
+    shift_slot: str | None = Field(default="DAY", max_length=16)
 
 
 class ShiftUpdateIn(BaseModel):
     date: date | Optional[date] = None
     interval_id: int | None = Field(default=None, gt=0)
     is_active: bool | None = None
+    shift_slot: str | None = Field(default=None, max_length=16)
 
 
 class ShiftScheduleTemplateItemIn(BaseModel):
@@ -6383,12 +6385,8 @@ def _deliver_user_notification(
     url: str | None = None,
     button_text: str | None = None,
 ) -> tuple[bool, bool]:
-    existing_log = db.execute(
-        select(NotificationDeliveryLog.id, NotificationDeliveryLog.status)
-        .where(NotificationDeliveryLog.idempotency_key == idempotency_key)
-        .order_by(NotificationDeliveryLog.id.desc())
-    ).first()
-    if existing_log is not None and str(existing_log.status or "").lower() in {"pending", "sent"}:
+    lock_notification_idempotency_key(db, idempotency_key)
+    if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
         return False, False
 
     planned_at = datetime.utcnow().replace(tzinfo=timezone.utc)
@@ -6415,7 +6413,7 @@ def _deliver_user_notification(
     retryable = bool(result.get("retryable"))
     try:
         pending_log.status = "sent" if ok else "failed"
-        pending_log.sent_at = planned_at if ok else None
+        pending_log.sent_at = datetime.utcnow().replace(tzinfo=timezone.utc) if ok else None
         pending_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
         db.add(pending_log)
         db.commit()
@@ -8263,6 +8261,51 @@ _WEEKDAY_TITLES_RU = {
     5: "Суббота",
     6: "Воскресенье",
 }
+_WEEKDAY_FROM_RU = {
+    0: "понедельника",
+    1: "вторника",
+    2: "среды",
+    3: "четверга",
+    4: "пятницы",
+    5: "субботы",
+    6: "воскресенья",
+}
+_WEEKDAY_TO_RU = {
+    0: "понедельник",
+    1: "вторник",
+    2: "среду",
+    3: "четверг",
+    4: "пятницу",
+    5: "субботу",
+    6: "воскресенье",
+}
+
+
+def _venue_night_shifts_enabled(db: Session, *, venue_id: int) -> bool:
+    return bool(
+        db.execute(
+            select(Venue.night_shifts_enabled).where(Venue.id == int(venue_id))
+        ).scalar_one_or_none()
+    )
+
+
+def _normalize_shift_slot_for_venue(db: Session, *, venue_id: int, shift_slot: str | None) -> str:
+    slot = normalize_shift_slot(shift_slot)
+    if slot == "NIGHT" and not _venue_night_shifts_enabled(db, venue_id=venue_id):
+        raise HTTPException(status_code=400, detail="Night shifts are disabled for this venue")
+    return slot
+
+
+def _shift_slot_label(slot: str | None) -> str:
+    return "Ночь" if normalize_shift_slot(slot) == "NIGHT" else "День"
+
+
+def _shift_template_weekday_slot_title(weekday: int, slot: str | None) -> str:
+    weekday = int(weekday)
+    if normalize_shift_slot(slot) == "NIGHT":
+        next_weekday = (weekday + 1) % 7
+        return f"Ночь с {_WEEKDAY_FROM_RU.get(weekday, str(weekday))} на {_WEEKDAY_TO_RU.get(next_weekday, str(next_weekday))}"
+    return _WEEKDAY_TITLES_RU.get(weekday, str(weekday))
 
 
 def _normalize_shift_schedule_template_title(title: str) -> str:
@@ -8347,21 +8390,25 @@ def _normalize_shift_schedule_template_items(
             detail=f"Some shift intervals are not available for this venue: {', '.join(map(str, missing_ids))}",
         )
 
+    night_enabled = _venue_night_shifts_enabled(db, venue_id=venue_id)
     normalized: list[dict] = []
     seen: set[tuple[int, int, str]] = set()
-    order_by_weekday: dict[int, int] = {}
+    order_by_weekday: dict[tuple[int, str], int] = {}
     for item in items:
         weekday = int(item.weekday)
         if weekday < 0 or weekday > 6:
             raise HTTPException(status_code=400, detail="weekday must be in range 0..6")
         interval_id = int(item.interval_id)
         slot = normalize_shift_slot(item.shift_slot)
+        if slot == "NIGHT" and not night_enabled:
+            raise HTTPException(status_code=400, detail="Night shifts are disabled for this venue")
         key = (weekday, interval_id, slot)
         if key in seen:
             continue
         seen.add(key)
-        sort_order = order_by_weekday.get(weekday, 0)
-        order_by_weekday[weekday] = sort_order + 1
+        order_key = (weekday, slot)
+        sort_order = order_by_weekday.get(order_key, 0)
+        order_by_weekday[order_key] = sort_order + 1
         normalized.append(
             {
                 "weekday": weekday,
@@ -8411,8 +8458,10 @@ def _serialize_shift_schedule_template(template: ShiftScheduleTemplate) -> dict:
                 "id": int(item.id),
                 "weekday": int(item.weekday),
                 "weekday_title": _WEEKDAY_TITLES_RU.get(int(item.weekday), str(item.weekday)),
+                "weekday_slot_title": _shift_template_weekday_slot_title(int(item.weekday), getattr(item, "shift_slot", None)),
                 "interval_id": int(item.interval_id),
                 "shift_slot": normalize_shift_slot(getattr(item, "shift_slot", None)),
+                "shift_slot_label": _shift_slot_label(getattr(item, "shift_slot", None)),
                 "sort_order": int(item.sort_order or 0),
                 "interval": {
                     "id": int(item.interval.id),
@@ -8884,8 +8933,11 @@ def _build_schedule_export_filters_text(
     view: str,
     interval_titles: list[str],
     staffing_state: str,
+    shift_slot: str | None = None,
 ) -> str:
     parts = [_SCHEDULE_EXPORT_VIEW_LABELS.get(view, "График"), "Все сотрудники"]
+    if shift_slot:
+        parts.append("Ночные смены" if normalize_shift_slot(shift_slot) == "NIGHT" else "Дневные смены")
     if interval_titles:
         parts.append(f"Интервалы: {', '.join(interval_titles)}")
     if staffing_state == "unstaffed":
@@ -8902,6 +8954,7 @@ def _build_staff_shifts_deep_link_path(
     period_start: date,
     interval_ids: list[int],
     staffing_state: str,
+    shift_slot: str | None = None,
 ) -> str:
     params: list[tuple[str, str]] = [
         ("venue_id", str(int(venue_id))),
@@ -8913,6 +8966,8 @@ def _build_staff_shifts_deep_link_path(
         params.append(("month", period_start.strftime("%Y-%m")))
     if interval_ids:
         params.append(("intervals", ",".join(str(int(x)) for x in interval_ids)))
+    if shift_slot:
+        params.append(("shift_slot", normalize_shift_slot(shift_slot)))
     if staffing_state == "unstaffed":
         params.append(("unstaffed", "1"))
     query = "&".join(f"{quote(key)}={quote(value)}" for key, value in params)
@@ -8927,6 +8982,7 @@ def _build_staff_shifts_share_token(
     period_start: date,
     interval_ids: list[int],
     staffing_state: str,
+    shift_slot: str | None = None,
 ) -> str:
     return make_signed_token(
         {
@@ -8936,6 +8992,7 @@ def _build_staff_shifts_share_token(
             "period_start": period_start.isoformat(),
             "interval_ids": [int(item) for item in (interval_ids or []) if int(item) > 0],
             "staffing_state": str(staffing_state or "all"),
+            "shift_slot": normalize_shift_slot(shift_slot) if shift_slot else None,
         },
         ttl_seconds=_SCHEDULE_SHARE_TTL_SECONDS,
     )
@@ -8983,6 +9040,8 @@ def open_staff_shifts_share_link(token: str):
     staffing_state = str(payload.get("staffing_state") or "all").strip().lower()
     if staffing_state not in {"all", "staffed", "unstaffed"}:
         staffing_state = "all"
+    raw_shift_slot = payload.get("shift_slot")
+    shift_slot = normalize_shift_slot(raw_shift_slot) if raw_shift_slot else None
 
     deep_link_path = _build_staff_shifts_deep_link_path(
         venue_id=venue_id,
@@ -8990,6 +9049,7 @@ def open_staff_shifts_share_link(token: str):
         period_start=period_start,
         interval_ids=interval_ids,
         staffing_state=staffing_state,
+        shift_slot=shift_slot,
     )
     return RedirectResponse(url=f"{_frontend_base_url()}{deep_link_path}", status_code=307)
 
@@ -9003,6 +9063,7 @@ def get_shifts_export_metadata(
     week_start: date | None = Query(default=None),
     interval_ids: list[int] | None = Query(default=None),
     staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
+    shift_slot: str | None = Query(default=None, max_length=16),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -9021,6 +9082,8 @@ def get_shifts_export_metadata(
         if not month:
             raise HTTPException(status_code=400, detail="month is required for month export metadata")
         period_start, period_end = _month_period_bounds(month)
+
+    normalized_shift_slot = _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=shift_slot) if shift_slot else None
 
     normalized_interval_ids = sorted({int(item) for item in (interval_ids or []) if int(item) > 0})
     interval_titles: list[str] = []
@@ -9041,6 +9104,7 @@ def get_shifts_export_metadata(
         view=view,
         interval_titles=interval_titles,
         staffing_state=staffing_state,
+        shift_slot=normalized_shift_slot,
     )
     deep_link_path = _build_staff_shifts_deep_link_path(
         venue_id=venue_id,
@@ -9048,6 +9112,7 @@ def get_shifts_export_metadata(
         period_start=period_start,
         interval_ids=normalized_interval_ids,
         staffing_state=staffing_state,
+        shift_slot=normalized_shift_slot,
     )
     share_title = f"График смен · {venue.name}"
     share_text = f"{venue.name}\n{period_label}\n{filters_text}"
@@ -9057,6 +9122,7 @@ def get_shifts_export_metadata(
         period_start=period_start,
         interval_ids=normalized_interval_ids,
         staffing_state=staffing_state,
+        shift_slot=normalized_shift_slot,
     )
     share_path = _build_staff_shifts_share_path(share_token)
     share_url = _build_staff_shifts_share_url(request=request, token=share_token)
@@ -9071,6 +9137,8 @@ def get_shifts_export_metadata(
         "filters_text": filters_text,
         "interval_titles": interval_titles,
         "staffing_state": staffing_state,
+        "shift_slot": normalized_shift_slot,
+        "shift_slot_label": _shift_slot_label(normalized_shift_slot) if normalized_shift_slot else None,
         "logo_url": None,
         "app_logo_url": "/logo.png",
         "deep_link_path": deep_link_path,
@@ -9093,6 +9161,7 @@ def list_shifts(
     date_to: date | None = Query(default=None),
     interval_ids: list[int] | None = Query(default=None),
     staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
+    shift_slot: str | None = Query(default=None, max_length=16),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -9102,7 +9171,11 @@ def list_shifts(
     """
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
 
+    normalized_shift_slot = _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=shift_slot) if shift_slot else None
+
     stmt = select(Shift).where(Shift.venue_id == venue_id, Shift.is_active.is_(True))
+    if normalized_shift_slot is not None:
+        stmt = stmt.where(Shift.shift_slot == normalized_shift_slot)
 
     if interval_ids:
         normalized_ids = sorted({int(x) for x in interval_ids if int(x) > 0})
@@ -9144,9 +9217,10 @@ def list_shifts(
     shift_dates = {s.date for s in shifts}
     report_by_date: dict[date, DailyReport] = {}
     if shift_dates:
-        rrows = db.execute(
-            select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date.in_(shift_dates))
-        ).scalars().all()
+        report_stmt = select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date.in_(shift_dates))
+        if normalized_shift_slot is not None:
+            report_stmt = report_stmt.where(DailyReport.shift_slot == normalized_shift_slot)
+        rrows = db.execute(report_stmt).scalars().all()
         report_by_date = {r.date: r for r in rrows}
 
     show_revenue = _has_revenue_view_access(db, venue_id=venue_id, user=user)
@@ -9225,6 +9299,8 @@ def list_shifts(
             "date": s.date.isoformat(),
             "interval": interval_payload(s.interval_id),
             "interval_id": s.interval_id,
+            "shift_slot": normalize_shift_slot(getattr(s, "shift_slot", None)),
+            "shift_slot_label": _shift_slot_label(getattr(s, "shift_slot", None)),
             "is_active": bool(s.is_active),
             "assignments": assignments_by_shift.get(s.id, []),
             "report_exists": bool(report_by_date.get(s.date)),
@@ -9269,10 +9345,13 @@ def create_shift(
     if interval is None:
         raise HTTPException(status_code=400, detail="Shift interval not found")
 
+    slot = _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=payload.shift_slot)
+
     obj = Shift(
         venue_id=venue_id,
         date=payload.date,
         interval_id=payload.interval_id,
+        shift_slot=slot,
         is_active=payload.is_active,
         created_by_user_id=user.id,
     )
@@ -9283,10 +9362,10 @@ def create_shift(
     except Exception:
         db.rollback()
         # likely unique constraint
-        raise HTTPException(status_code=409, detail="Shift already exists for this date and interval")
+        raise HTTPException(status_code=409, detail="Shift already exists for this date, interval and slot")
 
     db.refresh(obj)
-    return {"id": obj.id}
+    return {"id": obj.id, "shift_slot": normalize_shift_slot(getattr(obj, "shift_slot", None))}
 
 
 @router.patch("/{venue_id}/shifts/{shift_id}")
@@ -9309,6 +9388,7 @@ def update_shift(
     date_changed = payload.date is not None and payload.date != obj.date
     interval_changed = payload.interval_id is not None and payload.interval_id != obj.interval_id
     active_changed = payload.is_active is not None and payload.is_active != obj.is_active
+    slot_changed = payload.shift_slot is not None and normalize_shift_slot(payload.shift_slot) != normalize_shift_slot(getattr(obj, "shift_slot", None))
 
     if payload.date is not None:
         obj.date = payload.date
@@ -9323,18 +9403,20 @@ def update_shift(
         if interval is None:
             raise HTTPException(status_code=400, detail="Shift interval not found")
         obj.interval_id = payload.interval_id
+    if payload.shift_slot is not None:
+        obj.shift_slot = _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=payload.shift_slot)
     if payload.is_active is not None:
         obj.is_active = payload.is_active
 
     try:
         # If shift start time changed - allow reminders to be re-sent.
-        if date_changed or interval_changed:
+        if date_changed or interval_changed or slot_changed:
             db.execute(
                 update(ShiftAssignment)
                 .where(ShiftAssignment.shift_id == shift_id)
                 .values(reminder_sent_at=None)
             )
-        if date_changed or interval_changed or active_changed:
+        if date_changed or interval_changed or slot_changed or active_changed:
             _recalculate_payroll_for_dates(
                 db,
                 venue_id=venue_id,
@@ -9345,9 +9427,9 @@ def update_shift(
         db.commit()
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Shift already exists for this date and interval")
+        raise HTTPException(status_code=409, detail="Shift already exists for this date, interval and slot")
 
-    return {"ok": True}
+    return {"ok": True, "shift_slot": normalize_shift_slot(getattr(obj, "shift_slot", None))}
 
 
 @router.delete("/{venue_id}/shifts/{shift_id}")
@@ -9414,6 +9496,8 @@ def get_shift(
         "id": obj.id,
         "venue_id": obj.venue_id,
         "date": obj.date.isoformat(),
+        "shift_slot": normalize_shift_slot(getattr(obj, "shift_slot", None)),
+        "shift_slot_label": _shift_slot_label(getattr(obj, "shift_slot", None)),
         "is_active": bool(obj.is_active),
         "interval": {
             "id": interval.id,

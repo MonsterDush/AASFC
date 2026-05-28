@@ -9,6 +9,7 @@ import {
   setActiveVenueId,
   getMe,
   getMyVenuePermissions,
+  getVenueSettings,
 } from "/app.js";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
@@ -18,14 +19,39 @@ applyTelegramTheme();
 await ensureLogin({ silent: true });
 
 const DAYS = [
-  { value: 0, title: "Понедельник", short: "Пн" },
-  { value: 1, title: "Вторник", short: "Вт" },
-  { value: 2, title: "Среда", short: "Ср" },
-  { value: 3, title: "Четверг", short: "Чт" },
-  { value: 4, title: "Пятница", short: "Пт" },
-  { value: 5, title: "Суббота", short: "Сб" },
-  { value: 6, title: "Воскресенье", short: "Вс" },
+  { value: 0, title: "Понедельник", short: "Пн", from: "понедельника", to: "вторник", toShort: "Вт" },
+  { value: 1, title: "Вторник", short: "Вт", from: "вторника", to: "среду", toShort: "Ср" },
+  { value: 2, title: "Среда", short: "Ср", from: "среды", to: "четверг", toShort: "Чт" },
+  { value: 3, title: "Четверг", short: "Чт", from: "четверга", to: "пятницу", toShort: "Пт" },
+  { value: 4, title: "Пятница", short: "Пт", from: "пятницы", to: "субботу", toShort: "Сб" },
+  { value: 5, title: "Суббота", short: "Сб", from: "субботы", to: "воскресенье", toShort: "Вс" },
+  { value: 6, title: "Воскресенье", short: "Вс", from: "воскресенья", to: "понедельник", toShort: "Пн" },
 ];
+
+function normalizeShiftSlot(value) {
+  return String(value || "DAY").trim().toUpperCase() === "NIGHT" ? "NIGHT" : "DAY";
+}
+function dayByValue(value) {
+  return DAYS.find((d) => Number(d.value) === Number(value)) || DAYS[0];
+}
+function scheduleSlotTitle(weekday, slot) {
+  const day = dayByValue(weekday);
+  return normalizeShiftSlot(slot) === "NIGHT" ? `Ночь с ${day.from} на ${day.to}` : day.title;
+}
+function scheduleSlotShortTitle(weekday, slot) {
+  const day = dayByValue(weekday);
+  return normalizeShiftSlot(slot) === "NIGHT" ? `Ночь ${day.short}→${day.toShort}` : day.short;
+}
+function editorSlots() {
+  const rows = [];
+  for (const day of DAYS) {
+    rows.push({ weekday: day.value, shift_slot: "DAY", title: day.title, hint: "Дневной слот этого календарного дня" });
+    if (state.nightShiftsEnabled) {
+      rows.push({ weekday: day.value, shift_slot: "NIGHT", title: scheduleSlotTitle(day.value, "NIGHT"), hint: "Ночная смена хранится датой начала ночи" });
+    }
+  }
+  return rows;
+}
 
 const APPLY_MODES = [
   {
@@ -103,6 +129,7 @@ const state = {
   templates: [],
   intervals: [],
   applyTemplate: null,
+  nightShiftsEnabled: false,
 };
 
 function renderShell() {
@@ -119,7 +146,7 @@ function renderShell() {
     </div>
 
     <div class="card">
-      <div class="muted">Настрой дни недели один раз, а затем применяй шаблон к нужному месяцу. Перед генерацией система спросит, что делать с уже созданными сменами.</div>
+      <div class="muted">Настрой дни недели один раз, а затем применяй шаблон к нужному месяцу. Если в заведении включены ночные смены, шаблон отдельно показывает день и ночь вида «Ночь с понедельника на вторник».</div>
 
       <div class="itemcard" style="margin-top:12px">
         <div class="section-head">
@@ -211,11 +238,14 @@ function intervalLabel(interval) {
 }
 
 function templateGroups(template) {
-  const groups = new Map(DAYS.map((d) => [d.value, []]));
+  const groups = new Map();
   for (const item of template?.items || []) {
+    const weekday = Number(item.weekday);
+    const slot = normalizeShiftSlot(item.shift_slot);
+    const key = `${weekday}:${slot}`;
     const interval = item?.interval;
-    if (!groups.has(Number(item.weekday))) groups.set(Number(item.weekday), []);
-    groups.get(Number(item.weekday)).push(interval ? intervalLabel(interval) : `Интервал #${item.interval_id}`);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(interval ? intervalLabel(interval) : `Интервал #${item.interval_id}`);
   }
   return groups;
 }
@@ -223,10 +253,16 @@ function templateGroups(template) {
 function templateSummaryHtml(template) {
   const groups = templateGroups(template);
   const rows = [];
-  for (const d of DAYS) {
-    const values = groups.get(d.value) || [];
+  const ordered = [];
+  for (const day of DAYS) {
+    ordered.push({ weekday: day.value, shift_slot: "DAY" });
+    ordered.push({ weekday: day.value, shift_slot: "NIGHT" });
+  }
+  for (const row of ordered) {
+    const key = `${row.weekday}:${row.shift_slot}`;
+    const values = groups.get(key) || [];
     if (!values.length) continue;
-    rows.push(`<div><b>${esc(d.short)}:</b> ${values.map(esc).join(", ")}</div>`);
+    rows.push(`<div><b>${esc(scheduleSlotShortTitle(row.weekday, row.shift_slot))}:</b> ${values.map(esc).join(", ")}</div>`);
   }
   return rows.length ? rows.join("") : `<div class="muted">В шаблоне пока нет интервалов</div>`;
 }
@@ -345,15 +381,19 @@ function editorHtml({ item }) {
     return { interval, activeBadge };
   });
 
-  const daysHtml = DAYS.map((day) => `
+  const daysHtml = editorSlots().map((slotRow) => `
     <div class="itemcard" style="margin-top:10px">
-      <div class="section-title"><b>${esc(day.title)}</b></div>
+      <div class="section-title">
+        <b>${esc(slotRow.title)}</b>
+        ${slotRow.shift_slot === "NIGHT" ? `<span class="badge">ночь</span>` : ``}
+      </div>
+      <div class="muted small" style="margin-top:4px">${esc(slotRow.hint)}</div>
       <div style="display:grid; gap:8px; margin-top:8px">
         ${intervalRows.length ? intervalRows.map(({ interval, activeBadge }) => {
-          const key = `${day.value}:${Number(interval.id)}:DAY`;
+          const key = `${slotRow.weekday}:${Number(interval.id)}:${slotRow.shift_slot}`;
           return `
             <label class="chk" style="align-items:flex-start">
-              <input type="checkbox" data-template-item="1" data-weekday="${day.value}" data-interval-id="${esc(interval.id)}" ${selected.has(key) ? "checked" : ""} />
+              <input type="checkbox" data-template-item="1" data-weekday="${slotRow.weekday}" data-shift-slot="${slotRow.shift_slot}" data-interval-id="${esc(interval.id)}" ${selected.has(key) ? "checked" : ""} />
               <span class="muted">${esc(intervalLabel(interval))}${activeBadge}</span>
             </label>
           `;
@@ -380,7 +420,7 @@ function editorHtml({ item }) {
       <div class="muted" style="margin-bottom:6px">Описание</div>
       <textarea id="tpl_description" class="input" rows="2" placeholder="Например, будни стандартные, выходные усиленные">${esc(item?.description || "")}</textarea>
     </div>
-    <div class="muted" style="margin-top:12px">Выбери, какие интервалы нужно создавать в каждый день недели. Можно выбрать несколько интервалов на один день.</div>
+    <div class="muted" style="margin-top:12px">Выбери, какие интервалы нужно создавать в каждый слот недели. Ночь «с понедельника на вторник» будет создана датой понедельника и слотом NIGHT.</div>
     <div class="grid grid2" style="margin-top:2px">${daysHtml}</div>
     <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px">
       <button class="btn" id="btnCancelEdit">Отмена</button>
@@ -395,9 +435,11 @@ function collectEditorItems() {
     if (!input.checked) return;
     const weekday = Number(input.getAttribute("data-weekday"));
     const intervalId = Number(input.getAttribute("data-interval-id"));
+    const shiftSlot = normalizeShiftSlot(input.getAttribute("data-shift-slot") || "DAY");
     if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) return;
     if (!Number.isInteger(intervalId) || intervalId <= 0) return;
-    items.push({ weekday, interval_id: intervalId, shift_slot: "DAY" });
+    if (shiftSlot === "NIGHT" && !state.nightShiftsEnabled) return;
+    items.push({ weekday, interval_id: intervalId, shift_slot: shiftSlot });
   });
   return items;
 }
@@ -408,7 +450,7 @@ function openEditor({ mode, item = null }) {
   }
   const isEdit = mode === "edit";
   document.getElementById("editTitle").textContent = isEdit ? "Редактирование шаблона" : "Новый шаблон графика";
-  document.getElementById("editHint").textContent = "Шаблон хранит назначения интервалов на дни недели";
+  document.getElementById("editHint").textContent = state.nightShiftsEnabled ? "Шаблон хранит дневные и ночные интервалы недели" : "Шаблон хранит назначения интервалов на дни недели";
   document.getElementById("editBody").innerHTML = editorHtml({ item });
   document.getElementById("editModal")?.classList.add("open");
 
@@ -470,6 +512,7 @@ function openApplyModal(template) {
       </div>
     </div>
     <div class="muted" id="applyMonthNote" style="margin-top:12px"></div>
+    ${state.nightShiftsEnabled ? `<div class="itemcard" style="margin-top:12px"><b>Важно по ночам</b><div class="muted" style="margin-top:6px">Например, «Ночь с понедельника на вторник» будет создана на календарную дату понедельника в ночном слоте. В графике её видно при переключателе «Ночь».</div></div>` : ``}
     <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px">
       <button class="btn" id="btnCancelApply">Отмена</button>
       <button class="btn primary" id="btnRunApply">Применить к месяцу</button>
@@ -538,6 +581,12 @@ wireModalClose();
 
 state.me = await getMe().catch(() => null);
 state.perms = await getMyVenuePermissions(state.venueId).catch(() => null);
+try {
+  const settings = state.venueId ? await getVenueSettings(state.venueId) : null;
+  state.nightShiftsEnabled = !!settings?.night_shifts_enabled;
+} catch {
+  state.nightShiftsEnabled = false;
+}
 state.canManage = canManageTemplates({ me: state.me, perms: state.perms });
 
 await mountNav({ activeTab: "shifts", requireVenue: true });

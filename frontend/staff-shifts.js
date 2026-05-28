@@ -11,6 +11,7 @@ import {
   getMe,
   getMyVenues,
   getMyVenuePermissions,
+  getVenueSettings,
   getVenuePositions,
   isDemoUiMode,
   getStoredDemoUiState,
@@ -127,6 +128,9 @@ const el = {
   exportStatus: document.getElementById("exportStatus"),
   exportPreviewImage: document.getElementById("exportPreviewImage"),
   exportModalSubtitle: document.getElementById("exportModalSubtitle"),
+  shiftSlotToggle: document.getElementById("shiftSlotToggle"),
+  slotDay: document.getElementById("slotDay"),
+  slotNight: document.getElementById("slotNight"),
   btnExportShare: document.getElementById("btnExportShare"),
   btnExportTelegram: document.getElementById("btnExportTelegram"),
   btnExportDownload: document.getElementById("btnExportDownload"),
@@ -302,6 +306,7 @@ function venueShiftFiltersQuery() {
     .sort((a, b) => a - b);
   for (const id of ids) p.append("interval_ids", String(id));
   if (unstaffedOnly) p.set("staffing_state", "unstaffed");
+  if (nightShiftsEnabled) p.set("shift_slot", selectedShiftSlot);
   return p;
 }
 
@@ -499,6 +504,28 @@ let canViewRevenue = false;
 
 const LS_SHOW_ALL = "axelio.shifts.showAll";
 const LS_SCOPE = "axelio.shifts.scope"; // 'venue' | 'global'
+const LS_SHIFT_SLOT = "axelio.staff_shifts.shift_slot";
+let nightShiftsEnabled = false;
+function normalizeShiftSlot(value) {
+  return String(value || "DAY").trim().toUpperCase() === "NIGHT" ? "NIGHT" : "DAY";
+}
+function shiftSlotLabel(slot = selectedShiftSlot) {
+  return normalizeShiftSlot(slot) === "NIGHT" ? "Ночь" : "День";
+}
+const NIGHT_FROM_RU = ["понедельника", "вторника", "среды", "четверга", "пятницы", "субботы", "воскресенья"];
+const NIGHT_TO_RU = ["вторник", "среду", "четверг", "пятницу", "субботу", "воскресенье", "понедельник"];
+function shiftSlotContextLabel(dateISO, slot = selectedShiftSlot) {
+  if (normalizeShiftSlot(slot) !== "NIGHT") return "День";
+  try {
+    const d = new Date(String(dateISO || "") + "T00:00:00");
+    if (!Number.isNaN(d.getTime())) {
+      const idx = (d.getDay() + 6) % 7;
+      return `Ночь с ${NIGHT_FROM_RU[idx]} на ${NIGHT_TO_RU[idx]}`;
+    }
+  } catch {}
+  return "Ночь";
+}
+let selectedShiftSlot = normalizeShiftSlot(params.get("shift_slot") || localStorage.getItem(LS_SHIFT_SLOT) || localStorage.getItem("axelio.shift_slot") || "DAY");
 let showAllOnCalendar = false;
 let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "venue";
 let isMultiVenue = false;
@@ -630,6 +657,7 @@ function renderModeToggle() {
   }
 
   setActive();
+  renderShiftSlotToggle();
   reloadCurrentView();
 };
 
@@ -677,6 +705,8 @@ function syncUrl() {
       .sort((a, b) => a - b);
     if (ids.length) p.set("intervals", ids.join(","));
     if (unstaffedOnly) p.set("unstaffed", "1");
+    if (nightShiftsEnabled) p.set("shift_slot", selectedShiftSlot);
+    else p.delete("shift_slot");
 
     history.replaceState({}, "", `${location.pathname}?${p.toString()}`);
   } catch {}
@@ -720,6 +750,34 @@ function renderViewToggle() {
 
   setActive();
 }
+
+function renderShiftSlotToggle() {
+  const box = el.shiftSlotToggle;
+  if (!box) return;
+  const shouldShow = !!nightShiftsEnabled && calendarScope !== "global";
+  box.classList.toggle("hidden", !shouldShow);
+  box.style.display = shouldShow ? "inline-flex" : "none";
+  if (!nightShiftsEnabled) selectedShiftSlot = "DAY";
+  el.slotDay?.classList.toggle("active", selectedShiftSlot === "DAY");
+  el.slotNight?.classList.toggle("active", selectedShiftSlot === "NIGHT");
+}
+
+async function switchShiftSlot(slot) {
+  const next = normalizeShiftSlot(slot);
+  if (!nightShiftsEnabled && next === "NIGHT") return;
+  if (next === selectedShiftSlot) return;
+  selectedShiftSlot = next;
+  try {
+    localStorage.setItem(LS_SHIFT_SLOT, selectedShiftSlot);
+    localStorage.setItem("axelio.shift_slot", selectedShiftSlot);
+  } catch {}
+  renderShiftSlotToggle();
+  syncUrl();
+  await reloadCurrentView();
+}
+
+el.slotDay?.addEventListener("click", () => switchShiftSlot("DAY"));
+el.slotNight?.addEventListener("click", () => switchShiftSlot("NIGHT"));
 
 async function reloadCurrentView() {
   return (calendarView === "week") ? loadWeek() : loadMonth();
@@ -865,6 +923,18 @@ async function loadContext() {
 
   perms = await getMyVenuePermissions(venueId).catch(() => null);
 
+  try {
+    const settings = await getVenueSettings(venueId);
+    nightShiftsEnabled = !!settings?.night_shifts_enabled;
+  } catch {
+    nightShiftsEnabled = false;
+  }
+  if (!nightShiftsEnabled) selectedShiftSlot = "DAY";
+  try {
+    localStorage.setItem(LS_SHIFT_SLOT, selectedShiftSlot);
+    localStorage.setItem("axelio.shift_slot", selectedShiftSlot);
+  } catch {}
+
   myRole = roleUpper(perms) || null;
 
   const pset = permSetFromResponse(perms);
@@ -908,6 +978,7 @@ async function loadContext() {
     };
   }
 
+  renderShiftSlotToggle();
   renderScheduleFilters();
 }
 
@@ -993,7 +1064,7 @@ async function loadWeek() {
   const ws = new Date(curWeekStart);
   const we = addDays(ws, 6);
 
-  el.monthLabel.textContent = weekTitle(ws);
+  el.monthLabel.textContent = nightShiftsEnabled ? `${weekTitle(ws)} · ${shiftSlotLabel(selectedShiftSlot)}` : weekTitle(ws);
   el.grid.classList.add("is-week");
 
   const fromISO = ymd(ws);
@@ -1748,7 +1819,7 @@ function renderMonth() {
 
   el.grid.classList.remove("is-week");
 
-  el.monthLabel.textContent = monthTitle(curMonth);
+  el.monthLabel.textContent = nightShiftsEnabled ? `${monthTitle(curMonth)} · ${shiftSlotLabel(selectedShiftSlot)}` : monthTitle(curMonth);
   el.grid.innerHTML = "";
 
   const head = document.createElement("div");
@@ -2096,7 +2167,7 @@ function openDay(dateStr) {
 
   const allowEdit = canEditDay(dateStr);
 
-  const title = formatDateRuNoG(dateStr);
+  const title = nightShiftsEnabled ? `${formatDateRuNoG(dateStr)} · ${shiftSlotContextLabel(dateStr, selectedShiftSlot)}` : formatDateRuNoG(dateStr);
   const subtitle = allowEdit ? "Редактирование" : "Просмотр";
 
   let html = `
@@ -2109,7 +2180,7 @@ function openDay(dateStr) {
   `;
 
   if (!list.length) {
-    html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день смен нет</div></div>`;
+    html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день в режиме «${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}» смен нет</div></div>`;
   } else {
     html += `<div class="stack" style="margin-top:12px">`;
     for (const s of list) html += renderShiftCard(s, allowEdit);
@@ -2120,7 +2191,7 @@ function openDay(dateStr) {
     html += `
       <div class="card" style="margin-top:12px; display:none" id="addShiftCard">
         <b>Новая смена</b>
-        <div class="muted" style="margin-top:6px">Выбери промежуток и создай смену на этот день</div>
+        <div class="muted" style="margin-top:6px">Выбери промежуток и создай смену на этот день${nightShiftsEnabled ? ` · ${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}` : ""}</div>
 
         <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
           <select class="input" id="intervalSelect" style="flex:1; min-width:220px"></select>
@@ -2241,7 +2312,7 @@ function openDay(dateStr) {
       try {
         await api(`/venues/${encodeURIComponent(venueId)}/shifts`, {
           method: "POST",
-          body: { date: dateStr, interval_id: Number(intervalId) },
+          body: { date: dateStr, interval_id: Number(intervalId), shift_slot: selectedShiftSlot },
         });
         toast("Смена создана", "ok");
         await reloadCurrentView();
@@ -3144,6 +3215,7 @@ el.next.onclick = async () => {
 await loadContext();
 renderModeToggle();
 renderViewToggle();
+renderShiftSlotToggle();
 
 // initial load
 if (calendarView === "week") {
