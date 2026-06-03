@@ -20,6 +20,20 @@ import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidde
 
 let financialValuesHidden = false;
 
+const COMPONENT_LABELS = {
+  SALARY_FIXED_MONTH: "Оклад за месяц",
+  SALARY_HOURLY: "Почасовая ставка",
+  SALARY_PER_SHIFT: "Фикс за смену",
+  PERCENT_TOTAL_REVENUE: "% от общей выручки",
+  PERCENT_DEPARTMENT_REVENUE: "% от выручки департамента",
+  KPI_BONUS: "KPI-бонус",
+  MINIMUM_PAYOUT: "Минимальная сумма к выплате",
+  TIP: "Чаевые",
+  BONUS: "Премия",
+  PENALTY: "Штраф",
+  WRITEOFF: "Списание",
+};
+
 
 const DEMO_STAFF_SALARY_INTRO_DISMISSED_KEY = "axelio.demo_intro.staff_salary.dismissed";
 
@@ -962,6 +976,9 @@ function breakdownMetaHtml(c) {
     const threshold = c?.threshold_value ?? "—";
     return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || "показатель")} · факт: ${esc(c.metric_value ?? 0)} · порог: ${esc(threshold)}</div>`;
   }
+  if (type === "MINIMUM_PAYOUT") {
+    return `<div class="muted small mt-4">Доплата до минимума: ${esc(formatMoneyMinor(c.minimum_target_minor ?? c.source_amount_minor ?? 0))}</div>`;
+  }
   if (type === "SALARY_HOURLY") {
     return `<div class="muted small mt-4">Часы: ${esc(c.hours_total ?? 0)}</div>`;
   }
@@ -990,6 +1007,10 @@ function breakdownKvHtml(c) {
     rows.push(`<div class="payroll-breakdown__kv-item"><span class="payroll-breakdown__kv-label">${esc(label)}</span><span class="payroll-breakdown__kv-value">${esc(value)}</span></div>`);
   };
   const type = String(c?.component_type || '').toUpperCase();
+  if (type === 'MINIMUM_PAYOUT') {
+    if (snap.minimum_target_minor != null || c.minimum_target_minor != null || c.source_amount_minor != null) push('Минимум', formatMoneyMinor(snap.minimum_target_minor ?? c.minimum_target_minor ?? c.source_amount_minor));
+    if (snap.amount_before_minimum_minor != null || c.amount_before_minimum_minor != null) push('Было начислено', formatMoneyMinor(snap.amount_before_minimum_minor ?? c.amount_before_minimum_minor));
+  }
   if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
     push('База', formatMoneyMinor(snap.base_amount_minor || c.base_amount_minor || 0));
     if (snap.base_scope_title || c.base_scope_title) push('База расчёта', snap.base_scope_title || c.base_scope_title);
@@ -1028,6 +1049,7 @@ function breakdownExplain(component) {
   if (type === 'SALARY_HOURLY') return 'Компонент посчитан по фактически отработанным часам.';
   if (type === 'SALARY_PER_SHIFT') return 'Компонент посчитан по количеству смен в периоде.';
   if (type === 'SALARY_FIXED_MONTH') return 'Фиксированная часть за период.';
+  if (type === 'MINIMUM_PAYOUT') return component?.minimum_applied ? 'Добавлена доплата до минимальной суммы выплаты.' : 'Минимум уже перекрыт другими компонентами.';
   return 'Компонент профиля начисления.';
 }
 

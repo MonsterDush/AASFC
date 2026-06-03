@@ -32,6 +32,7 @@ from app.services.notification_logs import (
     log_notification_attempt,
     lock_notification_idempotency_key,
     notification_delivery_exists,
+    notification_dedupe_scope,
 )
 from app.services.xlsx_export import (
     build_expenses_xlsx,
@@ -2924,6 +2925,10 @@ def _validate_pay_component_fields(
     if component_type == "SALARY_PER_SHIFT":
         if amount_minor is None:
             raise HTTPException(status_code=400, detail="amount_minor is required for SALARY_PER_SHIFT")
+        return
+    if component_type == "MINIMUM_PAYOUT":
+        if amount_minor is None:
+            raise HTTPException(status_code=400, detail="amount_minor is required for MINIMUM_PAYOUT")
         return
     if component_type == "PERCENT_TOTAL_REVENUE":
         if percent_bps is None:
@@ -6526,7 +6531,7 @@ def _send_adjustment_assigned_notification(db: Session, *, venue_id: int, adjust
         notification_type="adjustment_assigned",
         recipient=recipient,
         venue_id=venue_id,
-        idempotency_key=f"adjustment_assigned:{int(adj.id)}:user:{int(recipient.id)}",
+        idempotency_key=f"adjustment_assigned:{int(adj.id)}:{notification_dedupe_scope(recipient)}",
         text=text,
         url=_build_staff_adjustments_link(venue_id=venue_id, adjustment_id=int(adj.id), tab=adj.type),
         button_text="Открыть",
@@ -6637,7 +6642,7 @@ def _send_adjustment_dispute_event_notifications(
             notification_type="adjustment_dispute_event",
             recipient=recipient,
             venue_id=venue_id,
-            idempotency_key=f"adjustment_dispute_event:{int(comment.id)}:user:{recipient_id}",
+            idempotency_key=f"adjustment_dispute_event:{int(comment.id)}:{notification_dedupe_scope(recipient)}",
             text=text,
             url=link,
             button_text="Открыть спор",

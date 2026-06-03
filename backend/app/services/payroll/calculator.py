@@ -19,6 +19,7 @@ PAY_COMPONENT_TYPES = {
     "PERCENT_TOTAL_REVENUE",
     "PERCENT_DEPARTMENT_REVENUE",
     "KPI_BONUS",
+    "MINIMUM_PAYOUT",
 }
 
 BASE_SCOPE_FULL_PERIOD = "FULL_PERIOD"
@@ -348,8 +349,9 @@ def calculate_component_amount_minor(
     if component_type == "KPI_BONUS":
         return int(calculate_kpi_bonus(component, kpi_metric_value=kpi_metric_value).amount_minor)
 
+    # MINIMUM_PAYOUT is not a direct earning. It is calculated after all
+    # other components as a top-up to the configured monthly minimum.
     return 0
-
 
 
 
@@ -1147,9 +1149,13 @@ def calculate_payroll_for_month(
         components = components_by_profile.get(int(profile.id), [])
         breakdown_items: list[dict] = []
         line_total = 0
+        minimum_payout_components: list[PayComponent] = []
 
         for component in components:
             component_type = str(component.component_type or "").strip().upper()
+            if component_type == "MINIMUM_PAYOUT":
+                minimum_payout_components.append(component)
+                continue
             worked_dates_sorted = sorted(metrics.worked_dates)
             department_base_minor = 0
             component_department_ids = _component_department_ids(component)
@@ -1284,6 +1290,27 @@ def calculate_payroll_for_month(
                 breakdown_item["steps"] = kpi_decision.steps
             breakdown_items.append(breakdown_item)
             line_total += int(amount_minor)
+
+        for component in minimum_payout_components:
+            target_minor = int(component.amount_minor or 0)
+            amount_before_minimum_minor = int(line_total)
+            top_up_minor = max(0, target_minor - amount_before_minimum_minor)
+            breakdown_items.append(
+                {
+                    "component_id": int(component.id),
+                    "component_type": "MINIMUM_PAYOUT",
+                    "title": component.title,
+                    "amount_minor": int(top_up_minor),
+                    "source_amount_minor": int(target_minor),
+                    "minimum_target_minor": int(target_minor),
+                    "amount_before_minimum_minor": int(amount_before_minimum_minor),
+                    "minimum_applied": bool(top_up_minor > 0),
+                    "minutes_total": int(metrics.minutes_total),
+                    "hours_total": round(int(metrics.minutes_total) / 60.0, 2),
+                    "shifts_count": int(metrics.shifts_count),
+                }
+            )
+            line_total += int(top_up_minor)
 
         breakdown_payload = {
             "member_user_id": int(member_user.id),

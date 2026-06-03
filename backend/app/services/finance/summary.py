@@ -78,8 +78,33 @@ def _sum_amount(db: Session, *, venue_id: int, period_start: date, period_end: d
     )
 
 
+def _month_dates(month_start: date) -> list[date]:
+    next_month = date(month_start.year + 1, 1, 1) if month_start.month == 12 else date(month_start.year, month_start.month + 1, 1)
+    days: list[date] = []
+    cursor = month_start
+    while cursor < next_month:
+        days.append(cursor)
+        cursor += timedelta(days=1)
+    return days
+
+
+def _split_amount_for_index(amount_minor: int, parts: int, index: int) -> int:
+    parts = int(parts or 0)
+    index = int(index or 0)
+    if parts <= 0 or index < 0 or index >= parts:
+        return 0
+    total = int(amount_minor or 0)
+    sign = -1 if total < 0 else 1
+    abs_total = abs(total)
+    base = abs_total // parts
+    remainder = abs_total - base * parts
+    return sign * (base + (1 if index < remainder else 0))
+
+
 def _sum_daily_payroll_allocated_minor(db: Session, *, venue_id: int, target_date: date) -> int:
     month_start = target_date.replace(day=1)
+    days_in_month = _month_dates(month_start)
+    month_day_index = (target_date - month_start).days
     rows = db.execute(
         select(PayrollLine.amount_minor, PayrollLine.breakdown_json)
         .join(PayrollRun, PayrollRun.id == PayrollLine.payroll_run_id)
@@ -99,16 +124,35 @@ def _sum_daily_payroll_allocated_minor(db: Session, *, venue_id: int, target_dat
         except Exception:
             continue
         metrics = breakdown.get('metrics') or {}
-        worked_dates = metrics.get('worked_dates') or []
-        if target_date_iso not in worked_dates:
+        worked_dates = [str(day) for day in (metrics.get('worked_dates') or []) if day]
+        worked_dates_sorted = sorted(set(worked_dates))
+        components = [item for item in (breakdown.get('components') or []) if isinstance(item, dict)]
+
+        if components:
+            for component in components:
+                component_amount_minor = int(component.get('amount_minor') or 0)
+                if component_amount_minor <= 0:
+                    continue
+                component_type = str(component.get('component_type') or '').strip().upper()
+                if component_type == 'SALARY_FIXED_MONTH':
+                    total_minor += _split_amount_for_index(component_amount_minor, len(days_in_month), month_day_index)
+                    continue
+                if target_date_iso not in worked_dates_sorted:
+                    continue
+                total_minor += _split_amount_for_index(
+                    component_amount_minor,
+                    len(worked_dates_sorted),
+                    worked_dates_sorted.index(target_date_iso),
+                )
             continue
-        try:
-            worked_dates_count = int(metrics.get('worked_dates_count') or 0)
-        except Exception:
-            worked_dates_count = 0
-        if worked_dates_count <= 0:
-            worked_dates_count = len(worked_dates) or 1
-        total_minor += int(round(int(amount_minor or 0) / worked_dates_count))
+
+        if target_date_iso not in worked_dates_sorted:
+            continue
+        total_minor += _split_amount_for_index(
+            int(amount_minor or 0),
+            len(worked_dates_sorted) or 1,
+            worked_dates_sorted.index(target_date_iso) if target_date_iso in worked_dates_sorted else 0,
+        )
     return int(total_minor)
 
 

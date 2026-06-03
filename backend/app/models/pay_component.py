@@ -12,7 +12,7 @@ class PayComponent(Base):
     __tablename__ = "pay_components"
     __table_args__ = (
         CheckConstraint(
-            "component_type in ('SALARY_FIXED_MONTH','SALARY_HOURLY','SALARY_PER_SHIFT','PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE','KPI_BONUS')",
+            "component_type in ('SALARY_FIXED_MONTH','SALARY_HOURLY','SALARY_PER_SHIFT','PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE','KPI_BONUS','MINIMUM_PAYOUT')",
             name="ck_pay_components_type",
         ),
         CheckConstraint("amount_minor IS NULL OR amount_minor >= 0", name="ck_pay_components_amount_minor_non_negative"),

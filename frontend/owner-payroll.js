@@ -144,6 +144,7 @@ const COMPONENT_LABELS = {
   PERCENT_TOTAL_REVENUE: "% от общей выручки",
   PERCENT_DEPARTMENT_REVENUE: "% от выручки департамента",
   KPI_BONUS: "KPI-бонус",
+  MINIMUM_PAYOUT: "Минимальная сумма к выплате",
   TIP: "Чаевые",
   BONUS: "Премия",
   PENALTY: "Штраф",
@@ -194,6 +195,10 @@ function breakdownComponentMeta(component) {
     if (component?.minimum_applied) parts.push('мин. гарантия');
     if (component?.maximum_applied) parts.push('потолок');
     return parts.join(' · ');
+  }
+  if (type === "MINIMUM_PAYOUT") {
+    const target = component?.minimum_target_minor ?? component?.source_amount_minor;
+    return target != null ? `${label} · до ${fmtMoneyMinor(target)}` : label;
   }
   if (type === "KPI_BONUS") {
     const metricTitle = component?.kpi_metric_title ? ` · ${component.kpi_metric_title}` : "";
@@ -251,6 +256,10 @@ function breakdownKv(component) {
     if (component?.metric_value != null) push('Факт KPI', String(component.metric_value));
     if (component?.threshold_value != null) push('Порог', String(component.threshold_value));
   }
+  if (type === 'MINIMUM_PAYOUT') {
+    if (component?.minimum_target_minor != null || component?.source_amount_minor != null) push('Минимум', fmtMoneyMinor(component.minimum_target_minor ?? component.source_amount_minor));
+    if (component?.amount_before_minimum_minor != null) push('Было начислено', fmtMoneyMinor(component.amount_before_minimum_minor));
+  }
   return rows.length ? `<div class="payroll-breakdown__kv">${rows.join('')}</div>` : '';
 }
 
@@ -276,6 +285,7 @@ function breakdownExplain(component) {
   if (type === 'SALARY_HOURLY') return 'Компонент посчитан по фактически отработанным часам.';
   if (type === 'SALARY_PER_SHIFT') return 'Компонент посчитан по количеству смен в периоде.';
   if (type === 'SALARY_FIXED_MONTH') return 'Фиксированная часть за период.';
+  if (type === 'MINIMUM_PAYOUT') return component?.minimum_applied ? 'Добавлена доплата до минимальной суммы выплаты.' : 'Минимум уже перекрыт другими компонентами.';
   return 'Компонент профиля начисления.';
 }
 
