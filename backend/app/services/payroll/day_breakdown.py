@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, select, inspect
 from sqlalchemy.orm import Session
@@ -41,6 +41,7 @@ _COMPONENT_TITLES = {
     "PERCENT_TOTAL_REVENUE": "% от общей выручки",
     "PERCENT_DEPARTMENT_REVENUE": "% от департамента",
     "KPI_BONUS": "KPI",
+    "MINIMUM_PAYOUT": "Доплата до минимума",
 }
 
 
@@ -58,6 +59,7 @@ def _is_slot_specific(value: str | None) -> bool:
 @dataclass
 class DayAllocationContext:
     shift_slot: str
+    month_dates: list[date]
     worked_dates: list[date]
     minutes_by_date: dict[date, int]
     shifts_by_date: dict[date, int]
@@ -234,10 +236,16 @@ def _load_day_allocation_context(
     shift_slot: str | None = None,
 ) -> DayAllocationContext:
     slot = _normalize_breakdown_shift_slot(shift_slot)
+    month_dates: list[date] = []
+    cursor = month_start
+    while cursor < month_end_excl:
+        month_dates.append(cursor)
+        cursor += timedelta(days=1)
     worked_dates = sorted({day for day in worked_dates if isinstance(day, date)})
     if not worked_dates:
         return DayAllocationContext(
             shift_slot=slot,
+            month_dates=month_dates,
             worked_dates=[],
             minutes_by_date={},
             shifts_by_date={},
@@ -314,6 +322,7 @@ def _load_day_allocation_context(
 
     return DayAllocationContext(
         shift_slot=slot,
+        month_dates=month_dates,
         worked_dates=worked_dates,
         minutes_by_date={day: int(minutes_by_date.get(day, 0)) for day in worked_dates},
         shifts_by_date={day: len(shift_ids_by_date.get(day, set())) for day in worked_dates},
@@ -337,11 +346,37 @@ def _component_allocation_for_day(
 ) -> dict | None:
     component_type = str(component.get("component_type") or "").strip().upper()
     worked_dates = list(context.worked_dates or [])
+    month_dates = list(context.month_dates or [])
+    month_component_amount_minor = int(component.get("amount_minor") or 0)
+
+    if component_type == "SALARY_FIXED_MONTH":
+        if not month_dates or target_date not in month_dates:
+            return None
+        allocation = _allocate_minor_by_keys(month_component_amount_minor, sorted(month_dates), {day: 1 for day in month_dates})
+        amount_minor = int(allocation.get(target_date, 0))
+        if amount_minor == 0:
+            return None
+        title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
+        source_amount_minor = component.get("source_amount_minor", month_component_amount_minor)
+        base_text = f"1 день из {len(month_dates)}"
+        formula_text = f"{_fmt_money_minor(int(source_amount_minor or 0))} / {len(month_dates)} дней месяца"
+        return {
+            "category": "earning",
+            "source": "payroll_component",
+            "component_type": component_type,
+            "title": title,
+            "base_text": base_text,
+            "formula_text": formula_text,
+            "amount_minor": amount_minor,
+            "month_component_amount_minor": month_component_amount_minor,
+            "month_share_ratio": None,
+            "is_estimated": False,
+        }
+
     if not worked_dates or target_date not in worked_dates:
         return None
 
     ordered_dates = sorted(worked_dates)
-    month_component_amount_minor = int(component.get("amount_minor") or 0)
 
     if component_type == "SALARY_HOURLY":
         weights = {day: int(context.minutes_by_date.get(day, 0)) for day in ordered_dates}
@@ -485,6 +520,45 @@ def _component_allocation_for_day(
             "month_share_ratio": None,
             "is_estimated": False,
         }
+    elif component_type == "MINIMUM_PAYOUT":
+        scope = str(
+            component.get("minimum_payout_scope")
+            or component.get("minimum_guarantee_scope")
+            or "MONTH"
+        ).strip().upper()
+        if scope in {"SHIFT", "DAY"}:
+            shift_rows = [row for row in (component.get("shift_rows") or []) if isinstance(row, dict)]
+            if shift_rows:
+                day_rows = [row for row in shift_rows if str(row.get("date") or "") == target_date.isoformat()]
+                amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_rows)
+                if amount_minor == 0:
+                    return None
+                source_amount_minor = component.get("source_amount_minor") or component.get("minimum_target_minor") or month_component_amount_minor
+                applied_count = sum(1 for row in day_rows if row.get("minimum_applied"))
+                base_text = f"{applied_count} смен с доплатой из {len(day_rows)} за сутки"
+                formula_text = f"Доплата до минимума {_fmt_money_minor(int(source_amount_minor or 0))} по каждой смене отдельно"
+                title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
+                return {
+                    "category": "earning",
+                    "source": "payroll_component",
+                    "component_type": component_type,
+                    "title": title,
+                    "base_text": base_text,
+                    "formula_text": formula_text,
+                    "amount_minor": int(amount_minor),
+                    "month_component_amount_minor": month_component_amount_minor,
+                    "month_share_ratio": None,
+                    "is_estimated": False,
+                }
+            weights = {day: int(context.shifts_by_date.get(day, 0)) for day in ordered_dates}
+            base_text = f"{int(context.shifts_by_date.get(target_date, 0))} смен из {sum(weights.values())}"
+            source_amount_minor = component.get("source_amount_minor") or component.get("minimum_target_minor") or month_component_amount_minor
+            formula_text = f"Доплата до минимума {_fmt_money_minor(int(source_amount_minor or 0))} за смену"
+        else:
+            weights = {day: 1 for day in ordered_dates}
+            base_text = f"1 день из {len(ordered_dates)}"
+            target_minor = component.get("minimum_target_minor") or component.get("source_amount_minor") or month_component_amount_minor
+            formula_text = f"Доплата до месячного минимума {_fmt_money_minor(int(target_minor or 0))}"
     elif component_type == "KPI_BONUS":
         metric_id = int(component.get("kpi_metric_id") or 0)
         metric_weights = context.kpi_by_date.get(metric_id, {})

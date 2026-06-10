@@ -54,6 +54,11 @@ from app.services.demo.session import (
 )
 from app.services import tg_notify
 from app.services.invites import accept_invites_for_user, accept_phone_invites_for_user
+from app.services.notification_logs import (
+    lock_notification_idempotency_key,
+    notification_delivery_exists,
+    notification_dedupe_scope,
+)
 from app.services.sms_auth import get_sms_provider
 from app.settings import settings
 
@@ -318,11 +323,14 @@ def _send_phone_link_reminder_if_due(user_id: int) -> None:
             now = _utcnow()
             cutoff = now - _PHONE_LINK_REMINDER_INTERVAL
 
+            dedupe_scope = notification_dedupe_scope(user)
+            key_prefix = f"phone_link_reminder:{dedupe_scope}:"
+
             recent_sent = db.execute(
                 select(NotificationDeliveryLog.id)
                 .where(
                     NotificationDeliveryLog.notification_type == _PHONE_LINK_REMINDER_TYPE,
-                    NotificationDeliveryLog.user_id == int(user.id),
+                    NotificationDeliveryLog.idempotency_key.like(f"{key_prefix}%"),
                     NotificationDeliveryLog.status == "sent",
                     NotificationDeliveryLog.sent_at.is_not(None),
                     NotificationDeliveryLog.sent_at >= cutoff,
@@ -337,7 +345,7 @@ def _send_phone_link_reminder_if_due(user_id: int) -> None:
                 select(NotificationDeliveryLog.id)
                 .where(
                     NotificationDeliveryLog.notification_type == _PHONE_LINK_REMINDER_TYPE,
-                    NotificationDeliveryLog.user_id == int(user.id),
+                    NotificationDeliveryLog.idempotency_key.like(f"{key_prefix}%"),
                     NotificationDeliveryLog.status == "pending",
                     NotificationDeliveryLog.planned_at.is_not(None),
                     NotificationDeliveryLog.planned_at >= cutoff,
@@ -348,6 +356,11 @@ def _send_phone_link_reminder_if_due(user_id: int) -> None:
             if recent_pending is not None:
                 return
 
+            idempotency_key = f"{key_prefix}{now.date().isoformat()}"
+            lock_notification_idempotency_key(db, idempotency_key)
+            if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
+                return
+
             text = _phone_link_reminder_text()
             delivery_log = NotificationDeliveryLog(
                 notification_type=_PHONE_LINK_REMINDER_TYPE,
@@ -355,7 +368,7 @@ def _send_phone_link_reminder_if_due(user_id: int) -> None:
                 user_id=int(user.id),
                 venue_id=None,
                 planned_at=now,
-                idempotency_key=f"phone_link_reminder:user:{int(user.id)}:{now.date().isoformat()}",
+                idempotency_key=idempotency_key,
                 payload_preview=text[:2000],
             )
             db.add(delivery_log)

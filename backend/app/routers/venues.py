@@ -32,6 +32,7 @@ from app.services.notification_logs import (
     log_notification_attempt,
     lock_notification_idempotency_key,
     notification_delivery_exists,
+    notification_dedupe_scope,
 )
 from app.services.xlsx_export import (
     build_expenses_xlsx,
@@ -90,6 +91,7 @@ from app.services.payroll.calculator import (
     BOOST_SOURCE_VENUE_MONTH_PLAN,
     MINIMUM_GUARANTEE_DAY,
     MINIMUM_GUARANTEE_MONTH,
+    MINIMUM_GUARANTEE_SHIFT,
     calculate_payroll_for_month,
     parse_month_start,
 )
@@ -235,6 +237,7 @@ BOOST_RECALC_TITLES = {
 MINIMUM_GUARANTEE_SCOPE_TITLES = {
     MINIMUM_GUARANTEE_MONTH: "за месяц",
     MINIMUM_GUARANTEE_DAY: "за день",
+    MINIMUM_GUARANTEE_SHIFT: "за каждую отработанную смену",
 }
 _SCHEDULE_SHARE_TTL_SECONDS = int(os.getenv("SCHEDULE_SHARE_TTL_SECONDS", "604800"))
 
@@ -2770,6 +2773,8 @@ def _normalize_minimum_guarantee_scope(value: object) -> str:
     raw = str(value or "").strip().upper()
     if raw == MINIMUM_GUARANTEE_DAY:
         return MINIMUM_GUARANTEE_DAY
+    if raw == MINIMUM_GUARANTEE_SHIFT:
+        return MINIMUM_GUARANTEE_SHIFT
     return MINIMUM_GUARANTEE_MONTH
 
 
@@ -2909,7 +2914,10 @@ def _validate_pay_component_fields(
     normalized_department_ids = _normalize_int_ids(department_ids)
     normalized_boost_department_ids = _normalize_int_ids(boost_department_ids)
     raw_minimum_scope = str(minimum_guarantee_scope or "").strip().upper()
-    if minimum_guarantee_scope is not None and raw_minimum_scope not in {MINIMUM_GUARANTEE_MONTH, MINIMUM_GUARANTEE_DAY}:
+    if component_type == "MINIMUM_PAYOUT":
+        if minimum_guarantee_scope is not None and raw_minimum_scope not in {MINIMUM_GUARANTEE_MONTH, MINIMUM_GUARANTEE_SHIFT, MINIMUM_GUARANTEE_DAY}:
+            raise HTTPException(status_code=400, detail="minimum_guarantee_scope must be MONTH or SHIFT for MINIMUM_PAYOUT")
+    elif minimum_guarantee_scope is not None and raw_minimum_scope not in {MINIMUM_GUARANTEE_MONTH, MINIMUM_GUARANTEE_DAY}:
         raise HTTPException(status_code=400, detail="minimum_guarantee_scope must be MONTH or DAY")
     if minimum_guarantee_minor is not None and maximum_cap_minor is not None and minimum_guarantee_minor > maximum_cap_minor:
         raise HTTPException(status_code=400, detail="minimum_guarantee_minor must be <= maximum_cap_minor")
@@ -2924,6 +2932,10 @@ def _validate_pay_component_fields(
     if component_type == "SALARY_PER_SHIFT":
         if amount_minor is None:
             raise HTTPException(status_code=400, detail="amount_minor is required for SALARY_PER_SHIFT")
+        return
+    if component_type == "MINIMUM_PAYOUT":
+        if amount_minor is None:
+            raise HTTPException(status_code=400, detail="amount_minor is required for MINIMUM_PAYOUT")
         return
     if component_type == "PERCENT_TOTAL_REVENUE":
         if percent_bps is None:
@@ -4298,7 +4310,11 @@ def create_pay_component(
         boost_kpi_metric_id=payload.boost_kpi_metric_id,
         boost_threshold_value=payload.boost_threshold_value,
         minimum_guarantee_minor=payload.minimum_guarantee_minor,
-        minimum_guarantee_scope=_normalize_minimum_guarantee_scope(payload.minimum_guarantee_scope) if payload.minimum_guarantee_minor is not None else None,
+        minimum_guarantee_scope=(
+            _normalize_minimum_guarantee_scope(payload.minimum_guarantee_scope)
+            if component_type == "MINIMUM_PAYOUT" or payload.minimum_guarantee_minor is not None
+            else None
+        ),
         maximum_cap_minor=payload.maximum_cap_minor,
         sort_order=payload.sort_order,
         is_active=payload.is_active,
@@ -4400,7 +4416,13 @@ def update_pay_component(
         if payload.minimum_guarantee_minor is None and 'minimum_guarantee_scope' not in fields_set:
             component.minimum_guarantee_scope = None
     if 'minimum_guarantee_scope' in fields_set:
-        component.minimum_guarantee_scope = _normalize_minimum_guarantee_scope(payload.minimum_guarantee_scope) if component.minimum_guarantee_minor is not None else None
+        component.minimum_guarantee_scope = (
+            _normalize_minimum_guarantee_scope(payload.minimum_guarantee_scope)
+            if str(component.component_type or "").strip().upper() == "MINIMUM_PAYOUT" or component.minimum_guarantee_minor is not None
+            else None
+        )
+    elif str(component.component_type or "").strip().upper() == "MINIMUM_PAYOUT" and not component.minimum_guarantee_scope:
+        component.minimum_guarantee_scope = MINIMUM_GUARANTEE_MONTH
     elif component.minimum_guarantee_minor is not None and not component.minimum_guarantee_scope:
         component.minimum_guarantee_scope = MINIMUM_GUARANTEE_MONTH
     if 'maximum_cap_minor' in fields_set:
@@ -6526,7 +6548,7 @@ def _send_adjustment_assigned_notification(db: Session, *, venue_id: int, adjust
         notification_type="adjustment_assigned",
         recipient=recipient,
         venue_id=venue_id,
-        idempotency_key=f"adjustment_assigned:{int(adj.id)}:user:{int(recipient.id)}",
+        idempotency_key=f"adjustment_assigned:{int(adj.id)}:{notification_dedupe_scope(recipient)}",
         text=text,
         url=_build_staff_adjustments_link(venue_id=venue_id, adjustment_id=int(adj.id), tab=adj.type),
         button_text="Открыть",
@@ -6637,7 +6659,7 @@ def _send_adjustment_dispute_event_notifications(
             notification_type="adjustment_dispute_event",
             recipient=recipient,
             venue_id=venue_id,
-            idempotency_key=f"adjustment_dispute_event:{int(comment.id)}:user:{recipient_id}",
+            idempotency_key=f"adjustment_dispute_event:{int(comment.id)}:{notification_dedupe_scope(recipient)}",
             text=text,
             url=link,
             button_text="Открыть спор",

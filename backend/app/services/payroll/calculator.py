@@ -19,6 +19,7 @@ PAY_COMPONENT_TYPES = {
     "PERCENT_TOTAL_REVENUE",
     "PERCENT_DEPARTMENT_REVENUE",
     "KPI_BONUS",
+    "MINIMUM_PAYOUT",
 }
 
 BASE_SCOPE_FULL_PERIOD = "FULL_PERIOD"
@@ -36,6 +37,7 @@ BOOST_RECALC_EXCESS_ONLY = "EXCESS_ONLY"
 
 MINIMUM_GUARANTEE_MONTH = "MONTH"
 MINIMUM_GUARANTEE_DAY = "DAY"
+MINIMUM_GUARANTEE_SHIFT = "SHIFT"
 
 BASE_SCOPE_TITLES = {
     BASE_SCOPE_FULL_PERIOD: "по всему периоду",
@@ -55,11 +57,20 @@ BOOST_RECALC_TITLES = {
 }
 
 
+@dataclass(frozen=True)
+class PayrollWorkedShift:
+    shift_id: int
+    shift_date: date
+    shift_slot: str
+    minutes: int
+
+
 @dataclass
 class PayrollMemberMetrics:
     minutes_total: int = 0
     shifts_count: int = 0
     worked_dates: set[date] = field(default_factory=set)
+    worked_shifts: list[PayrollWorkedShift] = field(default_factory=list)
 
 
 @dataclass
@@ -348,8 +359,9 @@ def calculate_component_amount_minor(
     if component_type == "KPI_BONUS":
         return int(calculate_kpi_bonus(component, kpi_metric_value=kpi_metric_value).amount_minor)
 
+    # MINIMUM_PAYOUT is not a direct earning. It is calculated after all
+    # other components as a top-up to the configured monthly or per-shift minimum.
     return 0
-
 
 
 
@@ -457,6 +469,202 @@ def _minimum_guarantee_scope(component: PayComponent) -> str:
     if raw == MINIMUM_GUARANTEE_DAY:
         return MINIMUM_GUARANTEE_DAY
     return MINIMUM_GUARANTEE_MONTH
+
+
+def _minimum_payout_scope(component: PayComponent) -> str:
+    raw = str(getattr(component, "minimum_guarantee_scope", "") or "").strip().upper()
+    if raw in {MINIMUM_GUARANTEE_SHIFT, MINIMUM_GUARANTEE_DAY}:
+        # DAY existed in the earlier draft of this component. Treat it as a
+        # per-worked-shift minimum so old saved drafts do not become monthly.
+        return MINIMUM_GUARANTEE_SHIFT
+    return MINIMUM_GUARANTEE_MONTH
+
+
+def _minimum_payout_scope_title(scope: str) -> str:
+    return "за каждую отработанную смену" if scope == MINIMUM_GUARANTEE_SHIFT else "за месяц"
+
+
+def _minimum_payout_target_minor(component: PayComponent, metrics: PayrollMemberMetrics) -> int:
+    amount_minor = int(getattr(component, "amount_minor", 0) or 0)
+    scope = _minimum_payout_scope(component)
+    if scope == MINIMUM_GUARANTEE_SHIFT:
+        return int(amount_minor * max(0, int(metrics.shifts_count or 0)))
+    return int(amount_minor)
+
+
+def _ordered_worked_shifts(metrics: PayrollMemberMetrics) -> list[PayrollWorkedShift]:
+    return sorted(
+        list(getattr(metrics, "worked_shifts", []) or []),
+        key=lambda item: (item.shift_date, str(item.shift_slot or ""), int(item.shift_id)),
+    )
+
+
+def _allocate_minor_by_keys(total_minor: int, ordered_keys: list, weights_by_key: dict | None = None) -> dict:
+    keys = list(ordered_keys or [])
+    if not keys:
+        return {}
+
+    sign = -1 if int(total_minor or 0) < 0 else 1
+    abs_total = abs(int(total_minor or 0))
+
+    prepared_weights: dict = {}
+    for key in keys:
+        weight = int((weights_by_key or {}).get(key, 0) or 0)
+        prepared_weights[key] = max(weight, 0)
+
+    weight_total = sum(prepared_weights.values())
+    if weight_total <= 0:
+        prepared_weights = {key: 1 for key in keys}
+        weight_total = len(keys)
+
+    allocated: dict = {}
+    used = 0
+    for key in keys:
+        part = (abs_total * prepared_weights[key]) // weight_total
+        allocated[key] = int(part)
+        used += int(part)
+
+    remainder = abs_total - used
+    for key in keys:
+        if remainder <= 0:
+            break
+        allocated[key] += 1
+        remainder -= 1
+
+    return {key: sign * int(value) for key, value in allocated.items()}
+
+
+def _shift_ids(metrics: PayrollMemberMetrics) -> list[int]:
+    return [int(item.shift_id) for item in _ordered_worked_shifts(metrics)]
+
+
+def _month_dates(month_start: date, month_end_excl: date) -> list[date]:
+    out: list[date] = []
+    cursor = month_start
+    while cursor < month_end_excl:
+        out.append(cursor)
+        cursor += timedelta(days=1)
+    return out
+
+
+def _split_date_amounts_to_shifts(
+    metrics: PayrollMemberMetrics,
+    amounts_by_date: dict[date, int],
+    *,
+    weight_by_minutes: bool = False,
+) -> dict[int, int]:
+    shifts_by_date: dict[date, list[PayrollWorkedShift]] = {}
+    for shift in _ordered_worked_shifts(metrics):
+        shifts_by_date.setdefault(shift.shift_date, []).append(shift)
+
+    out: dict[int, int] = {}
+    for target_date, total_minor in (amounts_by_date or {}).items():
+        shifts = shifts_by_date.get(target_date) or []
+        if not shifts:
+            continue
+        ids = [int(shift.shift_id) for shift in shifts]
+        weights = {
+            int(shift.shift_id): (max(1, int(shift.minutes or 0)) if weight_by_minutes else 1)
+            for shift in shifts
+        }
+        out.update(_allocate_minor_by_keys(int(total_minor or 0), ids, weights))
+    return out
+
+
+def _percent_decision_amounts_by_date(decision: PayrollPercentDecision | None) -> dict[date, int]:
+    out: dict[date, int] = {}
+    if decision is None:
+        return out
+    for row in decision.day_rows or []:
+        if not isinstance(row, dict):
+            continue
+        raw_date = row.get("date")
+        try:
+            target_date = date.fromisoformat(str(raw_date))
+        except Exception:
+            continue
+        out[target_date] = int(out.get(target_date, 0) or 0) + int(row.get("amount_minor") or 0)
+    return out
+
+
+def _component_shift_allocations(
+    *,
+    component: PayComponent,
+    amount_minor: int,
+    metrics: PayrollMemberMetrics,
+    month_start: date,
+    month_end_excl: date,
+    revenue_metrics: PayrollRevenueMetrics,
+    percent_decision: PayrollPercentDecision | None = None,
+) -> dict[int, int]:
+    shifts = _ordered_worked_shifts(metrics)
+    if not shifts:
+        return {}
+    component_type = str(getattr(component, "component_type", "") or "").strip().upper()
+    shift_ids = [int(shift.shift_id) for shift in shifts]
+
+    if component_type == "SALARY_HOURLY":
+        weights = {int(shift.shift_id): max(1, int(shift.minutes or 0)) for shift in shifts}
+        return _allocate_minor_by_keys(int(amount_minor), shift_ids, weights)
+
+    if component_type == "SALARY_PER_SHIFT":
+        weights = {int(shift.shift_id): 1 for shift in shifts}
+        return _allocate_minor_by_keys(int(amount_minor), shift_ids, weights)
+
+    if component_type == "SALARY_FIXED_MONTH":
+        # Месячную ставку в суточной детализации делим по календарным дням месяца,
+        # затем долю конкретных суток делим между сменами этого дня.
+        dates = _month_dates(month_start, month_end_excl)
+        date_amounts = _allocate_minor_by_keys(int(amount_minor), dates, {day: 1 for day in dates})
+        return _split_date_amounts_to_shifts(metrics, date_amounts, weight_by_minutes=False)
+
+    if component_type == "PERCENT_TOTAL_REVENUE":
+        date_amounts = _percent_decision_amounts_by_date(percent_decision)
+        if not date_amounts:
+            worked_dates = sorted({shift.shift_date for shift in shifts})
+            weights = {day: int(revenue_metrics.total_revenue_by_date_minor.get(day, 0) or 0) for day in worked_dates}
+            date_amounts = _allocate_minor_by_keys(int(amount_minor), worked_dates, weights)
+        return _split_date_amounts_to_shifts(metrics, date_amounts, weight_by_minutes=False)
+
+    if component_type == "PERCENT_DEPARTMENT_REVENUE":
+        date_amounts = _percent_decision_amounts_by_date(percent_decision)
+        if not date_amounts:
+            worked_dates = sorted({shift.shift_date for shift in shifts})
+            department_ids = _component_department_ids(component)
+            weights = _sum_department_revenue_by_date_minor(revenue_metrics, department_ids) if department_ids else {}
+            date_weights = {day: int(weights.get(day, 0) or 0) for day in worked_dates}
+            date_amounts = _allocate_minor_by_keys(int(amount_minor), worked_dates, date_weights)
+        return _split_date_amounts_to_shifts(metrics, date_amounts, weight_by_minutes=False)
+
+    return _allocate_minor_by_keys(int(amount_minor), shift_ids, {int(shift.shift_id): 1 for shift in shifts})
+
+
+def _minimum_payout_shift_top_up(
+    *,
+    component: PayComponent,
+    metrics: PayrollMemberMetrics,
+    earnings_by_shift_minor: dict[int, int],
+) -> tuple[int, list[dict]]:
+    minimum_per_shift_minor = int(getattr(component, "amount_minor", 0) or 0)
+    rows: list[dict] = []
+    total_top_up_minor = 0
+    for shift in _ordered_worked_shifts(metrics):
+        before_minor = int(earnings_by_shift_minor.get(int(shift.shift_id), 0) or 0)
+        top_up_minor = max(0, minimum_per_shift_minor - before_minor)
+        rows.append(
+            {
+                "shift_id": int(shift.shift_id),
+                "date": shift.shift_date.isoformat(),
+                "shift_slot": shift.shift_slot,
+                "minutes": int(shift.minutes),
+                "minimum_target_minor": int(minimum_per_shift_minor),
+                "amount_before_minimum_minor": int(before_minor),
+                "amount_minor": int(top_up_minor),
+                "minimum_applied": bool(top_up_minor > 0),
+            }
+        )
+        total_top_up_minor += int(top_up_minor)
+    return int(total_top_up_minor), rows
 
 
 def _apply_daily_minimum_to_rows(day_rows: list[dict], minimum_guarantee_minor: int | None) -> tuple[list[dict], bool]:
@@ -941,10 +1149,22 @@ def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month
         if shift_slot not in closed_slots_by_date.get(row.shift_date, set()):
             continue
         member_user_id = int(row.member_user_id)
+        shift_id = int(row.shift_id)
         metrics = out.setdefault(member_user_id, PayrollMemberMetrics())
-        metrics.minutes_total += interval_duration_minutes(row.start_time, row.end_time)
+        minutes = interval_duration_minutes(row.start_time, row.end_time)
+        metrics.minutes_total += int(minutes)
         metrics.worked_dates.add(row.shift_date)
-        shift_sets.setdefault(member_user_id, set()).add(int(row.shift_id))
+        member_shift_ids = shift_sets.setdefault(member_user_id, set())
+        if shift_id not in member_shift_ids:
+            metrics.worked_shifts.append(
+                PayrollWorkedShift(
+                    shift_id=shift_id,
+                    shift_date=row.shift_date,
+                    shift_slot=shift_slot,
+                    minutes=int(minutes),
+                )
+            )
+        member_shift_ids.add(shift_id)
 
     for member_user_id, shift_ids in shift_sets.items():
         out.setdefault(member_user_id, PayrollMemberMetrics()).shifts_count = len(shift_ids)
@@ -1147,9 +1367,14 @@ def calculate_payroll_for_month(
         components = components_by_profile.get(int(profile.id), [])
         breakdown_items: list[dict] = []
         line_total = 0
+        minimum_payout_components: list[PayComponent] = []
+        earnings_by_shift_minor: dict[int, int] = {shift_id: 0 for shift_id in _shift_ids(metrics)}
 
         for component in components:
             component_type = str(component.component_type or "").strip().upper()
+            if component_type == "MINIMUM_PAYOUT":
+                minimum_payout_components.append(component)
+                continue
             worked_dates_sorted = sorted(metrics.worked_dates)
             department_base_minor = 0
             component_department_ids = _component_department_ids(component)
@@ -1283,7 +1508,60 @@ def calculate_payroll_for_month(
                 breakdown_item["matched_step"] = kpi_decision.matched_step
                 breakdown_item["steps"] = kpi_decision.steps
             breakdown_items.append(breakdown_item)
+            shift_allocations = _component_shift_allocations(
+                component=component,
+                amount_minor=int(amount_minor),
+                metrics=metrics,
+                month_start=month_start,
+                month_end_excl=month_end_excl,
+                revenue_metrics=revenue_metrics,
+                percent_decision=percent_decision,
+            )
+            for shift_id, shift_amount_minor in shift_allocations.items():
+                earnings_by_shift_minor[int(shift_id)] = int(earnings_by_shift_minor.get(int(shift_id), 0) or 0) + int(shift_amount_minor or 0)
             line_total += int(amount_minor)
+
+        for component in minimum_payout_components:
+            source_amount_minor = int(component.amount_minor or 0)
+            minimum_scope = _minimum_payout_scope(component)
+            minimum_target_minor = _minimum_payout_target_minor(component, metrics)
+            amount_before_minimum_minor = int(line_total)
+            shift_rows: list[dict] = []
+            if minimum_scope == MINIMUM_GUARANTEE_SHIFT:
+                top_up_minor, shift_rows = _minimum_payout_shift_top_up(
+                    component=component,
+                    metrics=metrics,
+                    earnings_by_shift_minor=earnings_by_shift_minor,
+                )
+                for row in shift_rows:
+                    shift_id = int(row.get("shift_id") or 0)
+                    if shift_id:
+                        earnings_by_shift_minor[shift_id] = int(earnings_by_shift_minor.get(shift_id, 0) or 0) + int(row.get("amount_minor") or 0)
+            else:
+                top_up_minor = max(0, minimum_target_minor - amount_before_minimum_minor)
+            breakdown_items.append(
+                {
+                    "component_id": int(component.id),
+                    "component_type": "MINIMUM_PAYOUT",
+                    "title": component.title,
+                    "amount_minor": int(top_up_minor),
+                    "source_amount_minor": int(source_amount_minor),
+                    "minimum_target_minor": int(minimum_target_minor),
+                    "minimum_payout_scope": minimum_scope,
+                    "minimum_payout_scope_title": _minimum_payout_scope_title(minimum_scope),
+                    "minimum_guarantee_scope": minimum_scope,
+                    "minimum_guarantee_scope_title": _minimum_payout_scope_title(minimum_scope),
+                    "amount_before_minimum_minor": int(amount_before_minimum_minor),
+                    "aggregate_shift_amount_before_minimum_minor": int(sum(int(row.get("amount_before_minimum_minor") or 0) for row in shift_rows)) if shift_rows else None,
+                    "minimum_applied": bool(top_up_minor > 0),
+                    "minimum_applied_shifts_count": int(sum(1 for row in shift_rows if row.get("minimum_applied"))) if shift_rows else None,
+                    "shift_rows": shift_rows,
+                    "minutes_total": int(metrics.minutes_total),
+                    "hours_total": round(int(metrics.minutes_total) / 60.0, 2),
+                    "shifts_count": int(metrics.shifts_count),
+                }
+            )
+            line_total += int(top_up_minor)
 
         breakdown_payload = {
             "member_user_id": int(member_user.id),

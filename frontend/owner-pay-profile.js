@@ -32,6 +32,7 @@ const COMPONENT_LABELS = {
   PERCENT_TOTAL_REVENUE: "% от общей выручки",
   PERCENT_DEPARTMENT_REVENUE: "% от выручки департамента",
   KPI_BONUS: "KPI-бонус",
+  MINIMUM_PAYOUT: "Минимальная сумма к выплате",
 };
 
 const BASE_SCOPE_LABELS = {
@@ -56,6 +57,7 @@ const BOOST_RECALC_LABELS = {
 const MINIMUM_GUARANTEE_SCOPE_LABELS = {
   MONTH: "за месяц",
   DAY: "за день",
+  SHIFT: "за смену",
 };
 
 function esc(s) {
@@ -178,6 +180,11 @@ function departmentTitleFor(item) {
 function minimumGuaranteeScopeLabel(scope) {
   const value = String(scope || "MONTH").toUpperCase();
   return MINIMUM_GUARANTEE_SCOPE_LABELS[value] || MINIMUM_GUARANTEE_SCOPE_LABELS.MONTH;
+}
+
+function minimumPayoutScopeLabel(scope) {
+  const value = String(scope || "MONTH").toUpperCase();
+  return value === "SHIFT" || value === "DAY" ? "за каждую отработанную смену" : "за месяц";
 }
 
 function selectedIdsFromField(id) {
@@ -641,6 +648,7 @@ function componentSubtitle(item) {
   if (type === "SALARY_FIXED_MONTH") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)}`;
   if (type === "SALARY_HOURLY") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.rate_minor)} / час`;
   if (type === "SALARY_PER_SHIFT") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)} / смена`;
+  if (type === "MINIMUM_PAYOUT") return `${COMPONENT_LABELS[type]} · до ${fmtMoneyMinor(item.amount_minor)} / месяц`;
   if (type === "PERCENT_TOTAL_REVENUE") return `${COMPONENT_LABELS[type]} · ${formatPercentConfig(item)}`;
   if (type === "PERCENT_DEPARTMENT_REVENUE") {
     const depTitle = departmentTitleFor(item);
@@ -838,8 +846,8 @@ function syncComponentSummary() {
   const boostThresholdValue = String(document.getElementById('f_boost_threshold_value')?.value || '').trim();
   let heading = titleRaw || typeTitle;
   const bits = [];
-  if (type === 'SALARY_FIXED_MONTH' || type === 'SALARY_PER_SHIFT') {
-    if (amountMinor != null) bits.push(fmtMoneyMinor(amountMinor));
+  if (type === 'SALARY_FIXED_MONTH' || type === 'SALARY_PER_SHIFT' || type === 'MINIMUM_PAYOUT') {
+    if (amountMinor != null) bits.push(type === 'MINIMUM_PAYOUT' ? `доплата до ${fmtMoneyMinor(amountMinor)} ${minimumPayoutScopeLabel(minimumScope)}` : fmtMoneyMinor(amountMinor));
   } else if (type === 'SALARY_HOURLY') {
     if (rateMinor != null) bits.push(`${fmtMoneyMinor(rateMinor)} / час`);
   } else if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
@@ -898,6 +906,7 @@ function componentForm({ mode, item }) {
               <option value="PERCENT_TOTAL_REVENUE" ${type === "PERCENT_TOTAL_REVENUE" ? "selected" : ""}>% от общей выручки</option>
               <option value="PERCENT_DEPARTMENT_REVENUE" ${type === "PERCENT_DEPARTMENT_REVENUE" ? "selected" : ""}>% от выручки департамента</option>
               <option value="KPI_BONUS" ${type === "KPI_BONUS" ? "selected" : ""}>KPI-бонус</option>
+              <option value="MINIMUM_PAYOUT" ${type === "MINIMUM_PAYOUT" ? "selected" : ""}>Минимальная сумма к выплате</option>
             </select>
           </label>
           <label>
@@ -1027,6 +1036,7 @@ function componentForm({ mode, item }) {
             <select id="f_minimum_guarantee_scope">
               <option value="MONTH" ${minScope === "MONTH" ? "selected" : ""}>За месяц</option>
               <option value="DAY" ${minScope === "DAY" ? "selected" : ""}>За день</option>
+              <option value="SHIFT" ${minScope === "SHIFT" ? "selected" : ""}>За каждую отработанную смену</option>
             </select>
           </label>
           <label id="f_max_wrap">
@@ -1250,6 +1260,18 @@ function syncComponentFields() {
   const simSection = document.getElementById('f_sim_section');
   const kpiSection = document.getElementById('f_kpi_section');
   const boostDetails = document.getElementById('f_boost_details');
+  const minimumScopeSelect = document.getElementById('f_minimum_guarantee_scope');
+  const minimumScopeDayOption = minimumScopeSelect?.querySelector('option[value="DAY"]');
+  const minimumScopeShiftOption = minimumScopeSelect?.querySelector('option[value="SHIFT"]');
+
+  if (minimumScopeDayOption) minimumScopeDayOption.hidden = type === "MINIMUM_PAYOUT";
+  if (minimumScopeShiftOption) minimumScopeShiftOption.hidden = type !== "MINIMUM_PAYOUT";
+  if (minimumScopeSelect && type === "MINIMUM_PAYOUT" && String(minimumScopeSelect.value || "MONTH").toUpperCase() === "DAY") {
+    minimumScopeSelect.value = "SHIFT";
+  }
+  if (minimumScopeSelect && type !== "MINIMUM_PAYOUT" && String(minimumScopeSelect.value || "MONTH").toUpperCase() === "SHIFT") {
+    minimumScopeSelect.value = "MONTH";
+  }
 
   [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostDepartmentWrap, boostDepartmentHint, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, minScopeWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint, percentSection, boostSection, limitsSection, simSection, kpiSection, boostDetails].forEach((el) => {
     if (el) el.style.display = "none";
@@ -1262,9 +1284,17 @@ function syncComponentFields() {
     return syncComponentSimulator();
   }
 
-  if (type === "SALARY_FIXED_MONTH" || type === "SALARY_PER_SHIFT") {
+  if (type === "SALARY_FIXED_MONTH" || type === "SALARY_PER_SHIFT" || type === "MINIMUM_PAYOUT") {
     if (amountWrap) amountWrap.style.display = "grid";
-    if (amountLabel) amountLabel.textContent = type === "SALARY_PER_SHIFT" ? "Сумма, ₽ / смена" : "Сумма, ₽ / месяц";
+    if (type === "MINIMUM_PAYOUT") {
+      if (limitsSection) limitsSection.style.display = "grid";
+      if (minScopeWrap) minScopeWrap.style.display = "grid";
+    }
+    if (amountLabel) {
+      amountLabel.textContent = type === "SALARY_PER_SHIFT"
+        ? "Сумма, ₽ / смена"
+        : (type === "MINIMUM_PAYOUT" ? "Минимум к выплате, ₽" : "Сумма, ₽ / месяц");
+    }
     syncComponentSummary();
     return syncComponentSimulator();
   }
@@ -1422,7 +1452,7 @@ function openComponentEditor({ mode, item = null }) {
         toast("Некорректная почасовая ставка", "warn");
         return;
       }
-    } else if (componentType === "SALARY_FIXED_MONTH" || componentType === "SALARY_PER_SHIFT") {
+    } else if (componentType === "SALARY_FIXED_MONTH" || componentType === "SALARY_PER_SHIFT" || componentType === "MINIMUM_PAYOUT") {
       if (!amountMinorRaw) {
         toast("Укажи сумму в рублях", "warn");
         return;
@@ -1431,6 +1461,9 @@ function openComponentEditor({ mode, item = null }) {
       if (payload.amount_minor === null) {
         toast("Некорректная сумма", "warn");
         return;
+      }
+      if (componentType === "MINIMUM_PAYOUT") {
+        payload.minimum_guarantee_scope = minGuaranteeScope === "SHIFT" || minGuaranteeScope === "DAY" ? "SHIFT" : "MONTH";
       }
     } else if (componentType === "PERCENT_TOTAL_REVENUE" || componentType === "PERCENT_DEPARTMENT_REVENUE") {
       const percentBps = parsePercentInputToBps(percentRaw);

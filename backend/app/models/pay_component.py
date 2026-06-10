@@ -12,7 +12,7 @@ class PayComponent(Base):
     __tablename__ = "pay_components"
     __table_args__ = (
         CheckConstraint(
-            "component_type in ('SALARY_FIXED_MONTH','SALARY_HOURLY','SALARY_PER_SHIFT','PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE','KPI_BONUS')",
+            "component_type in ('SALARY_FIXED_MONTH','SALARY_HOURLY','SALARY_PER_SHIFT','PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE','KPI_BONUS','MINIMUM_PAYOUT')",
             name="ck_pay_components_type",
         ),
         CheckConstraint("amount_minor IS NULL OR amount_minor >= 0", name="ck_pay_components_amount_minor_non_negative"),
@@ -23,7 +23,7 @@ class PayComponent(Base):
         CheckConstraint("boost_threshold_value IS NULL OR boost_threshold_value >= 0", name="ck_pay_components_boost_threshold_value_non_negative"),
         CheckConstraint("minimum_guarantee_minor IS NULL OR minimum_guarantee_minor >= 0", name="ck_pay_components_minimum_guarantee_non_negative"),
         CheckConstraint("maximum_cap_minor IS NULL OR maximum_cap_minor >= 0", name="ck_pay_components_maximum_cap_non_negative"),
-        CheckConstraint("minimum_guarantee_scope IS NULL OR minimum_guarantee_scope in ('MONTH','DAY')", name="ck_pay_components_minimum_guarantee_scope"),
+        CheckConstraint("minimum_guarantee_scope IS NULL OR minimum_guarantee_scope in ('MONTH','DAY','SHIFT')", name="ck_pay_components_minimum_guarantee_scope"),
         CheckConstraint("sort_order >= 0", name="ck_pay_components_sort_order_non_negative"),
     )
 
