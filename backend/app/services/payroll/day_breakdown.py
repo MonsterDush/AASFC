@@ -520,6 +520,45 @@ def _component_allocation_for_day(
             "month_share_ratio": None,
             "is_estimated": False,
         }
+    elif component_type == "MINIMUM_PAYOUT":
+        scope = str(
+            component.get("minimum_payout_scope")
+            or component.get("minimum_guarantee_scope")
+            or "MONTH"
+        ).strip().upper()
+        if scope in {"SHIFT", "DAY"}:
+            shift_rows = [row for row in (component.get("shift_rows") or []) if isinstance(row, dict)]
+            if shift_rows:
+                day_rows = [row for row in shift_rows if str(row.get("date") or "") == target_date.isoformat()]
+                amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_rows)
+                if amount_minor == 0:
+                    return None
+                source_amount_minor = component.get("source_amount_minor") or component.get("minimum_target_minor") or month_component_amount_minor
+                applied_count = sum(1 for row in day_rows if row.get("minimum_applied"))
+                base_text = f"{applied_count} смен с доплатой из {len(day_rows)} за сутки"
+                formula_text = f"Доплата до минимума {_fmt_money_minor(int(source_amount_minor or 0))} по каждой смене отдельно"
+                title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
+                return {
+                    "category": "earning",
+                    "source": "payroll_component",
+                    "component_type": component_type,
+                    "title": title,
+                    "base_text": base_text,
+                    "formula_text": formula_text,
+                    "amount_minor": int(amount_minor),
+                    "month_component_amount_minor": month_component_amount_minor,
+                    "month_share_ratio": None,
+                    "is_estimated": False,
+                }
+            weights = {day: int(context.shifts_by_date.get(day, 0)) for day in ordered_dates}
+            base_text = f"{int(context.shifts_by_date.get(target_date, 0))} смен из {sum(weights.values())}"
+            source_amount_minor = component.get("source_amount_minor") or component.get("minimum_target_minor") or month_component_amount_minor
+            formula_text = f"Доплата до минимума {_fmt_money_minor(int(source_amount_minor or 0))} за смену"
+        else:
+            weights = {day: 1 for day in ordered_dates}
+            base_text = f"1 день из {len(ordered_dates)}"
+            target_minor = component.get("minimum_target_minor") or component.get("source_amount_minor") or month_component_amount_minor
+            formula_text = f"Доплата до месячного минимума {_fmt_money_minor(int(target_minor or 0))}"
     elif component_type == "KPI_BONUS":
         metric_id = int(component.get("kpi_metric_id") or 0)
         metric_weights = context.kpi_by_date.get(metric_id, {})

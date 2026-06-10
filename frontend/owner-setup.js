@@ -393,12 +393,17 @@ function defaultPayComponentTitle(type) {
   return COMPONENT_LABELS[code] || "Компонент";
 }
 
+function minimumPayoutScopeLabel(scope) {
+  const value = String(scope || "MONTH").toUpperCase();
+  return value === "SHIFT" || value === "DAY" ? "за каждую отработанную смену" : "за месяц";
+}
+
 function payComponentValueLabel(item) {
   const type = String(item?.component_type || "").toUpperCase();
   if (type === "SALARY_FIXED_MONTH") return item?.amount_minor != null ? `${fmtMoneyMinor(item.amount_minor)} в месяц` : "Без суммы";
   if (type === "SALARY_HOURLY") return item?.rate_minor != null ? `${fmtMoneyMinor(item.rate_minor)} в час` : "Без ставки";
   if (type === "SALARY_PER_SHIFT") return item?.amount_minor != null ? `${fmtMoneyMinor(item.amount_minor)} за смену` : "Без суммы";
-  if (type === "MINIMUM_PAYOUT") return item?.amount_minor != null ? `Доплата до ${fmtMoneyMinor(item.amount_minor)} в месяц` : "Без минимума";
+  if (type === "MINIMUM_PAYOUT") return item?.amount_minor != null ? `Доплата до ${fmtMoneyMinor(item.amount_minor)} ${minimumPayoutScopeLabel(item?.effective_minimum_guarantee_scope || item?.minimum_guarantee_scope)}` : "Без минимума";
   if (type === "PERCENT_TOTAL_REVENUE") return item?.percent_bps != null ? `${fmtPercentBps(item.percent_bps)} от общей выручки` : "Без процента";
   if (type === "PERCENT_DEPARTMENT_REVENUE") {
     const dep = item?.department_title ? ` · ${item.department_title}` : "";
@@ -439,11 +444,13 @@ function syncInlinePayComponentFields() {
   const percentRow = document.getElementById('inlineComponentPercentRow');
   const depRow = document.getElementById('inlineComponentDepartmentRow');
   const kpiRow = document.getElementById('inlineComponentKpiRow');
+  const minScopeRow = document.getElementById('inlineComponentMinimumScopeRow');
   if (amountRow) amountRow.style.display = ['SALARY_FIXED_MONTH', 'SALARY_PER_SHIFT', 'KPI_BONUS', 'MINIMUM_PAYOUT'].includes(type) ? '' : 'none';
   if (rateRow) rateRow.style.display = type === 'SALARY_HOURLY' ? '' : 'none';
   if (percentRow) percentRow.style.display = ['PERCENT_TOTAL_REVENUE', 'PERCENT_DEPARTMENT_REVENUE'].includes(type) ? '' : 'none';
   if (depRow) depRow.style.display = type === 'PERCENT_DEPARTMENT_REVENUE' ? '' : 'none';
   if (kpiRow) kpiRow.style.display = type === 'KPI_BONUS' ? '' : 'none';
+  if (minScopeRow) minScopeRow.style.display = type === 'MINIMUM_PAYOUT' ? '' : 'none';
 }
 
 async function renameVenue(venueId, name) {
@@ -1641,6 +1648,13 @@ function buildPayProfileComponentEditor(detail, editingComponent = null) {
         <span>Сумма, ₽</span>
         <input class="input" id="inlineComponentAmount" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(editingComponent?.amount_minor))}" />
       </label>
+      <label id="inlineComponentMinimumScopeRow" style="display:${type === 'MINIMUM_PAYOUT' ? '' : 'none'}">
+        <span>Период минимума</span>
+        <select class="input" id="inlineComponentMinimumScope">
+          <option value="MONTH" ${String(editingComponent?.effective_minimum_guarantee_scope || editingComponent?.minimum_guarantee_scope || 'MONTH').toUpperCase() === 'MONTH' ? 'selected' : ''}>За месяц</option>
+          <option value="SHIFT" ${['SHIFT','DAY'].includes(String(editingComponent?.effective_minimum_guarantee_scope || editingComponent?.minimum_guarantee_scope || '').toUpperCase()) ? 'selected' : ''}>За каждую отработанную смену</option>
+        </select>
+      </label>
       <label id="inlineComponentRateRow" style="display:${type === 'SALARY_HOURLY' ? '' : 'none'}">
         <span>Ставка в час, ₽</span>
         <input class="input" id="inlineComponentRate" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(editingComponent?.rate_minor))}" />
@@ -1951,6 +1965,10 @@ async function mountPayProfilesEditor(currentStep) {
         const amount_minor = parseMoneyRubToMinor(document.getElementById('inlineComponentAmount')?.value || '');
         if (amount_minor == null) return toast('Укажи сумму', 'err');
         payload.amount_minor = amount_minor;
+        if (type === 'MINIMUM_PAYOUT') {
+          const scope = String(document.getElementById('inlineComponentMinimumScope')?.value || 'MONTH').toUpperCase();
+          payload.minimum_guarantee_scope = scope === 'SHIFT' ? 'SHIFT' : 'MONTH';
+        }
       }
       if (type === 'SALARY_HOURLY') {
         const rate_minor = parseMoneyRubToMinor(document.getElementById('inlineComponentRate')?.value || '');

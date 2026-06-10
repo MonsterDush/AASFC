@@ -174,7 +174,8 @@ function componentDepartmentLabel(component, prefix = 'department') {
 }
 
 function minimumScopeLabel(snap) {
-  return String(snap?.minimum_guarantee_scope_title || (String(snap?.minimum_guarantee_scope || '').toUpperCase() === 'DAY' ? 'за день' : 'за месяц'));
+  const raw = String(snap?.minimum_payout_scope || snap?.minimum_guarantee_scope || '').toUpperCase();
+  return String(snap?.minimum_payout_scope_title || snap?.minimum_guarantee_scope_title || (raw === 'SHIFT' ? 'за каждую отработанную смену' : (raw === 'DAY' ? 'за день' : 'за месяц')));
 }
 
 function breakdownComponentMeta(component) {
@@ -197,7 +198,9 @@ function breakdownComponentMeta(component) {
     return parts.join(' · ');
   }
   if (type === "MINIMUM_PAYOUT") {
-    const target = component?.minimum_target_minor ?? component?.source_amount_minor;
+    const source = component?.source_amount_minor;
+    const target = component?.minimum_target_minor ?? source;
+    if (source != null) return `${label} · ${fmtMoneyMinor(source)} ${minimumScopeLabel(component)}`;
     return target != null ? `${label} · до ${fmtMoneyMinor(target)}` : label;
   }
   if (type === "KPI_BONUS") {
@@ -226,6 +229,7 @@ function breakdownBadges(component) {
   if (snap?.minimum_applied) badges.push(`<span class="payroll-chip payroll-chip--warn">мин. гарантия</span>`);
   if (snap?.maximum_applied) badges.push(`<span class="payroll-chip payroll-chip--warn">потолок</span>`);
   if (Array.isArray(snap?.day_rows) && snap.day_rows.length) badges.push(`<span class="payroll-chip payroll-chip--muted">по дням</span>`);
+  if (Array.isArray(snap?.shift_rows) && snap.shift_rows.length) badges.push(`<span class="payroll-chip payroll-chip--muted">по сменам</span>`);
   return badges.length ? `<div class="payroll-breakdown__badges">${badges.join('')}</div>` : '';
 }
 
@@ -257,8 +261,10 @@ function breakdownKv(component) {
     if (component?.threshold_value != null) push('Порог', String(component.threshold_value));
   }
   if (type === 'MINIMUM_PAYOUT') {
-    if (component?.minimum_target_minor != null || component?.source_amount_minor != null) push('Минимум', fmtMoneyMinor(component.minimum_target_minor ?? component.source_amount_minor));
+    if (component?.source_amount_minor != null) push('Правило', `${fmtMoneyMinor(component.source_amount_minor)} ${minimumScopeLabel(component)}`);
+    if (component?.minimum_target_minor != null) push('Цель минимума', fmtMoneyMinor(component.minimum_target_minor));
     if (component?.amount_before_minimum_minor != null) push('Было начислено', fmtMoneyMinor(component.amount_before_minimum_minor));
+    if (component?.minimum_applied_shifts_count != null) push('Смен с доплатой', `${component.minimum_applied_shifts_count} из ${component.shifts_count || 0}`);
   }
   return rows.length ? `<div class="payroll-breakdown__kv">${rows.join('')}</div>` : '';
 }
@@ -285,7 +291,12 @@ function breakdownExplain(component) {
   if (type === 'SALARY_HOURLY') return 'Компонент посчитан по фактически отработанным часам.';
   if (type === 'SALARY_PER_SHIFT') return 'Компонент посчитан по количеству смен в периоде.';
   if (type === 'SALARY_FIXED_MONTH') return 'Фиксированная часть за период.';
-  if (type === 'MINIMUM_PAYOUT') return component?.minimum_applied ? 'Добавлена доплата до минимальной суммы выплаты.' : 'Минимум уже перекрыт другими компонентами.';
+  if (type === 'MINIMUM_PAYOUT') {
+    const snap = componentSnapshot(component);
+    const scope = String(snap?.minimum_payout_scope || snap?.minimum_guarantee_scope || '').toUpperCase();
+    if (component?.minimum_applied && scope === 'SHIFT') return 'Добавлена доплата по отдельным сменам, где начисление было ниже минимума.';
+    return component?.minimum_applied ? 'Добавлена доплата до минимальной суммы выплаты.' : 'Минимум уже перекрыт другими компонентами.';
+  }
   return 'Компонент профиля начисления.';
 }
 
@@ -302,6 +313,21 @@ function breakdownDayRows(component) {
     if (row?.boost_applied) meta.push('boost ✓');
     if (row?.minimum_applied) meta.push('мин ✓');
     return `<div class="payroll-breakdown__dayrow"><div class="payroll-breakdown__dayrow-main"><div class="payroll-breakdown__dayrow-date">${esc(formatDateRu(row.date))}</div><div class="payroll-breakdown__dayrow-meta">${esc(meta.join(' · '))}</div></div><div class="payroll-breakdown__dayrow-amount">${esc(fmtMoneyMinor(row.amount_minor || 0))}</div></div>`;
+  }).join('')}</div>`;
+}
+
+function breakdownShiftRows(component) {
+  const snap = componentSnapshot(component);
+  const rows = Array.isArray(snap?.shift_rows) ? snap.shift_rows : [];
+  if (!rows.length) return '';
+  return `<div class="payroll-breakdown__dayrows">${rows.map((row) => {
+    const meta = [];
+    if (row?.minimum_target_minor != null) meta.push(`минимум ${fmtMoneyMinor(row.minimum_target_minor)}`);
+    if (row?.amount_before_minimum_minor != null) meta.push(`было ${fmtMoneyMinor(row.amount_before_minimum_minor)}`);
+    if (row?.minutes != null) meta.push(`${Math.round(Number(row.minutes || 0) / 60 * 100) / 100} ч`);
+    if (row?.shift_slot) meta.push(String(row.shift_slot).toLowerCase());
+    if (row?.minimum_applied) meta.push('доплата ✓');
+    return `<div class="payroll-breakdown__dayrow"><div class="payroll-breakdown__dayrow-main"><div class="payroll-breakdown__dayrow-date">${esc(formatDateRu(row.date))} · смена #${esc(row.shift_id || '')}</div><div class="payroll-breakdown__dayrow-meta">${esc(meta.join(' · '))}</div></div><div class="payroll-breakdown__dayrow-amount">${esc(fmtMoneyMinor(row.amount_minor || 0))}</div></div>`;
   }).join('')}</div>`;
 }
 
@@ -622,6 +648,7 @@ function renderLines() {
                   ${breakdownBadges(c)}
                   ${breakdownKv(c)}
                   ${breakdownDayRows(c)}
+              ${breakdownShiftRows(c)}
                 </div>
               </div>
             `).join("") : `<div class="muted">Нет breakdown</div>`}
