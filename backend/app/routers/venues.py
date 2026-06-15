@@ -24,7 +24,7 @@ from app.auth.deps import get_current_user, get_current_user_optional
 from app.auth.guards import require_super_admin
 from app.core.db import SessionLocal, get_db
 from app.core.config import settings
-from app.core.tg import normalize_tg_username, send_telegram_message
+from app.core.tg import normalize_tg_username
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.core.permissions_registry import PERMISSIONS
 from app.services import tg_notify

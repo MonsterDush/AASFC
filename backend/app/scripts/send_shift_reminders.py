@@ -1,12 +1,12 @@
 """Send 'upcoming shift' reminders via Telegram bot.
 
-Run this script periodically (e.g. every 10 minutes) from the backend environment.
-It will send a reminder before shift start according to each user's personal lead time
-(best-effort) and mark assignments to avoid duplicates.
+This module is executed from app.scripts.process_notification_jobs only.
+Do not run a separate systemd timer for this file, otherwise shift reminders will have
+two schedulers competing for the same delivery window.
 
 Env:
   - DATABASE_URL (or whatever your app uses via app.core.db)
-  - BOT_SERVICE_URL / BOT_SERVICE_SECRET (preferred) OR TG_BOT_TOKEN/TELEGRAM_BOT_TOKEN (fallback)
+  - BOT_SERVICE_URL / BOT_SERVICE_SECRET
 """
 
 from __future__ import annotations
