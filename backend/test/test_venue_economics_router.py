@@ -11,12 +11,23 @@ from fastapi import HTTPException
 
 from app.routers import (
     venue_catalogs,
+    venue_adjustments,
+    venue_core,
     venue_economics,
     venue_expenses,
     venue_finance,
     venue_finance_summary,
     venue_ledger,
+    venue_membership,
+    venue_pay_profiles,
+    venue_payroll,
+    venue_positions,
     venue_recurring_expenses,
+    venue_reports,
+    venue_revenue_exports,
+    venue_schedule_templates,
+    venue_shift_intervals,
+    venue_shifts,
     venues,
 )
 from app.schemas.venue_economics import (
@@ -100,6 +111,37 @@ class VenueEconomicsRouterContractTests(TestCase):
             finance_children,
             {(tuple(methods), path, name) for methods, path, name in _route_manifest(venue_finance.router)},
         )
+
+    def test_remaining_domain_routers_partition_all_native_routes(self):
+        native_routers = [
+            (venue_core.router, 11),
+            (venue_positions.router, 5),
+            (venue_pay_profiles.router, 11),
+            (venue_payroll.router, 3),
+            (venue_reports.router, 10),
+            (venue_revenue_exports.router, 9),
+            (venue_adjustments.router, 9),
+            (venue_membership.router, 5),
+            (venue_schedule_templates.router, 6),
+            (venue_shift_intervals.router, 4),
+            (venue_shifts.router, 11),
+        ]
+        venues_manifest = {
+            (tuple(methods), path, name)
+            for methods, path, name in _route_manifest(venues.router)
+        }
+        native_manifest = set()
+
+        for split_router, expected_count in native_routers:
+            manifest = _route_manifest(split_router)
+            self.assertEqual(len(manifest), expected_count)
+            for methods, path, name in manifest:
+                full_path = path if path.startswith("/venues") else f"/venues{path}"
+                route = (tuple(methods), full_path, name)
+                self.assertIn(route, venues_manifest)
+                native_manifest.add(route)
+
+        self.assertEqual(len(native_manifest), 84)
 
 
 class VenueEconomicsRouterBehaviorTests(TestCase):

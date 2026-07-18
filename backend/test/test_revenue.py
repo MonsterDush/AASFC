@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
-from app.routers import venues
+from app.routers import venue_revenue_exports
 
 
 class _ScalarResult:
@@ -61,8 +61,8 @@ class RevenueTests(TestCase):
         )
         user = SimpleNamespace(id=101, system_role='NONE')
 
-        with patch.object(venues, '_require_active_member_or_admin', return_value=None),              patch.object(venues, '_require_report_viewer', return_value=None),              patch.object(venues, '_require_revenue_viewer', return_value=None):
-            result = venues.get_revenue_summary(
+        with patch.object(venue_revenue_exports, '_require_active_member_or_admin', return_value=None),              patch.object(venue_revenue_exports, '_require_report_viewer', return_value=None),              patch.object(venue_revenue_exports, '_require_revenue_viewer', return_value=None):
+            result = venue_revenue_exports.get_revenue_summary(
                 venue_id=1,
                 month='2026-03',
                 date_from=None,
@@ -101,13 +101,13 @@ class RevenueTests(TestCase):
             'closed_reports': 1,
         }
 
-        with patch.object(venues, '_compute_revenue_summary', return_value=summary), \
-             patch.object(venues, 'build_revenue_xlsx', return_value=b'xlsx-bytes'), \
-             patch.object(venues, '_build_revenue_export_details', return_value=([], [])), \
-             patch.object(venues, '_require_active_member_or_admin', return_value=None), \
-             patch.object(venues, '_require_report_viewer', return_value=None), \
-             patch.object(venues, '_require_revenue_exporter', return_value=None):
-            response = venues.export_revenue(
+        with patch.object(venue_revenue_exports, '_compute_revenue_summary', return_value=summary), \
+             patch.object(venue_revenue_exports, 'build_revenue_xlsx', return_value=b'xlsx-bytes'), \
+             patch.object(venue_revenue_exports, '_build_revenue_export_details', return_value=([], [])), \
+             patch.object(venue_revenue_exports, '_require_active_member_or_admin', return_value=None), \
+             patch.object(venue_revenue_exports, '_require_report_viewer', return_value=None), \
+             patch.object(venue_revenue_exports, '_require_revenue_exporter', return_value=None):
+            response = venue_revenue_exports.export_revenue(
                 venue_id=1,
                 request=SimpleNamespace(base_url='https://example.test/'),
                 month='2026-03',

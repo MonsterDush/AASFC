@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from app.routers.venues import process_pending_notification_jobs_once
+from app.routers.venue_core import process_pending_notification_jobs_once
 from app.scripts.send_shift_reminders import main as send_shift_reminders_once
 
 log = logging.getLogger(__name__)
