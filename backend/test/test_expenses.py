@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
-from app.routers import venues
+from app.routers import venue_expenses
 
 
 class _AllResult:
@@ -55,8 +55,8 @@ class ExpensesTests(TestCase):
             SimpleNamespace(id=2, expense_id=15, venue_id=3, month=date(2026, 3, 1), amount_minor=6345, created_at=datetime.utcnow()),
         ]
 
-        with patch.object(venues, "require_venue_permission", return_value=None), patch.object(venues, "list_expense_allocations", return_value=allocations):
-            result = venues.list_expenses(
+        with patch.object(venue_expenses, "require_venue_permission", return_value=None), patch.object(venue_expenses, "list_expense_allocations", return_value=allocations):
+            result = venue_expenses.list_expenses(
                 venue_id=1,
                 month="2026-03",
                 category_id=None,
@@ -93,7 +93,7 @@ class ExpensesTests(TestCase):
         )
         allocations = [SimpleNamespace(id=1, expense_id=15, venue_id=3, month=date(2026, 3, 1), amount_minor=6172, created_at=None)]
 
-        payload = venues._serialize_expense(expense, category, supplier, None, allocations)
+        payload = venue_expenses._serialize_expense(expense, category, supplier, None, allocations)
 
         self.assertEqual(payload["amount_minor"], 12345)
         self.assertEqual(payload["spread_months"], 2)
