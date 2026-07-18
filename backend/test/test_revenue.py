@@ -103,16 +103,19 @@ class RevenueTests(TestCase):
 
         with patch.object(venues, '_compute_revenue_summary', return_value=summary), \
              patch.object(venues, 'build_revenue_xlsx', return_value=b'xlsx-bytes'), \
+             patch.object(venues, '_build_revenue_export_details', return_value=([], [])), \
              patch.object(venues, '_require_active_member_or_admin', return_value=None), \
              patch.object(venues, '_require_report_viewer', return_value=None), \
              patch.object(venues, '_require_revenue_exporter', return_value=None):
             response = venues.export_revenue(
                 venue_id=1,
+                request=SimpleNamespace(base_url='https://example.test/'),
                 month='2026-03',
                 date_from=None,
                 date_to=None,
                 mode='DEPARTMENTS',
                 fmt='xlsx',
+                token=None,
                 db=db,
                 user=user,
             )

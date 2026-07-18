@@ -118,7 +118,7 @@ class DayEconomicsServiceTests(TestCase):
             'assigned_user_target': 5,
             'notes': 'Пятничный шаблон',
         })()
-        with patch('app.services.finance.day_economics._get_date_override_plan_model', return_value=None), patch('app.services.finance.day_economics._get_weekday_template_model', return_value=template):
+        with patch('app.services.finance.day_economics._get_date_override_plan_model', return_value=None), patch('app.services.finance.day_economics._get_month_plan_model', return_value=None), patch('app.services.finance.day_economics._get_weekday_template_model', return_value=template):
             result = get_day_economics_plan(db=object(), venue_id=7, target_date=date(2026, 3, 13))
         self.assertEqual(result['source'], 'WEEKDAY_TEMPLATE')
         self.assertEqual(result['template_weekday'], 4)

@@ -366,7 +366,12 @@ def build_setup_summary_from_data(*, state: Any = None, counts: dict[str, int] |
         overall_status = SETUP_STATUS_EXTRA_IN_PROGRESS
     elif prepare_done or prepare_completed_at is not None:
         overall_status = SETUP_STATUS_PREPARE_DONE
-    elif resolved_count > 0 or _state_attr(state, "started_at") is not None or current_step_key:
+    elif (
+        resolved_count > 0
+        or any(step["status"] == STEP_STATUS_REQUIRES_ATTENTION for step in steps)
+        or _state_attr(state, "started_at") is not None
+        or current_step_key
+    ):
         overall_status = SETUP_STATUS_IN_PROGRESS
     else:
         overall_status = SETUP_STATUS_NOT_STARTED

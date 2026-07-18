@@ -25,10 +25,12 @@ class PayrollDayBreakdownHelpersTests(TestCase):
         self.assertEqual(out[d1], -3)
         self.assertEqual(out[d2], -2)
 
-    def test_component_allocation_for_fixed_month_uses_worked_dates(self):
+    def test_component_allocation_for_fixed_month_uses_calendar_dates(self):
         d1 = date(2026, 3, 5)
         d2 = date(2026, 3, 7)
         ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[d1, d2],
             worked_dates=[d1, d2],
             minutes_by_date={d1: 300, d2: 300},
             shifts_by_date={d1: 1, d2: 1},
@@ -49,4 +51,4 @@ class PayrollDayBreakdownHelpersTests(TestCase):
         self.assertIsNotNone(item)
         self.assertEqual(item["title"], "Оклад")
         self.assertEqual(item["amount_minor"], 5001)
-        self.assertIn("рабочих дней", item["formula_text"])
+        self.assertIn("дней месяца", item["formula_text"])

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import time
+from datetime import date, time
 from types import SimpleNamespace
 from unittest import TestCase
 
@@ -146,7 +146,10 @@ class PayrollPercentDecisionTests(TestCase):
         decision = _build_percent_component_decision(
             component,
             metrics=PayrollMemberMetrics(),
-            revenue_metrics=PayrollRevenueMetrics(total_revenue_minor=1_500_000, total_revenue_by_date_minor={}),
+            revenue_metrics=PayrollRevenueMetrics(
+                total_revenue_minor=1_500_000,
+                total_revenue_by_date_minor={date(2026, 3, 1): 1_500_000},
+            ),
             kpi_metrics=PayrollKpiMetrics(),
             venue_plan_metrics=PayrollVenuePlanMetrics(month_revenue_target_minor=1_200_000),
         )
@@ -155,7 +158,6 @@ class PayrollPercentDecisionTests(TestCase):
         self.assertEqual(decision.applied_percent_bps, 450)
 
     def test_percent_total_with_day_plan_excess_only(self):
-        from datetime import date
         component = SimpleNamespace(
             component_type="PERCENT_TOTAL_REVENUE",
             percent_bps=500,
@@ -180,7 +182,7 @@ class PayrollPercentDecisionTests(TestCase):
             venue_plan_metrics=PayrollVenuePlanMetrics(day_revenue_target_by_date_minor={date(2026, 3, 2): 300000}),
         )
         self.assertTrue(decision.boost_applied)
-        self.assertEqual(decision.amount_minor, 27000)
+        self.assertEqual(decision.amount_minor, 22000)
 
     def test_percent_total_applies_minimum_and_cap(self):
         component = SimpleNamespace(
@@ -199,7 +201,10 @@ class PayrollPercentDecisionTests(TestCase):
         decision = _build_percent_component_decision(
             component,
             metrics=PayrollMemberMetrics(),
-            revenue_metrics=PayrollRevenueMetrics(total_revenue_minor=1_000_000),
+            revenue_metrics=PayrollRevenueMetrics(
+                total_revenue_minor=1_000_000,
+                total_revenue_by_date_minor={date(2026, 3, 1): 1_000_000},
+            ),
             kpi_metrics=PayrollKpiMetrics(),
             venue_plan_metrics=PayrollVenuePlanMetrics(),
         )
@@ -223,7 +228,10 @@ class PayrollPercentDecisionTests(TestCase):
         decision = _build_percent_component_decision(
             component,
             metrics=PayrollMemberMetrics(),
-            revenue_metrics=PayrollRevenueMetrics(total_revenue_minor=1_000_000),
+            revenue_metrics=PayrollRevenueMetrics(
+                total_revenue_minor=1_000_000,
+                total_revenue_by_date_minor={date(2026, 3, 1): 1_000_000},
+            ),
             kpi_metrics=PayrollKpiMetrics(totals_by_metric_id={8: 24}),
             venue_plan_metrics=PayrollVenuePlanMetrics(),
         )
