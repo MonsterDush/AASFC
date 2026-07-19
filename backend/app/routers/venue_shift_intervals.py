@@ -8,23 +8,29 @@ from app.routers.venue_core import (
     Shift,
     ShiftAssignment,
     ShiftInterval,
-    ShiftIntervalCreateIn,
-    ShiftIntervalUpdateIn,
     ShiftScheduleTemplate,
     ShiftScheduleTemplateItem,
     User,
-    _count_interval_shift_usage,
-    _count_interval_template_usage,
-    _ensure_shift_interval_title_unique,
-    _normalize_shift_interval_title,
     _require_active_member_or_admin,
-    _require_schedule_editor,
     date,
     func,
     get_current_user,
     get_db,
     select,
     update,
+)
+from app.schemas.venue_shifts import (
+    ShiftIntervalCreateIn,
+    ShiftIntervalUpdateIn,
+)
+from app.routers.venue_scheduling_support import (
+    _count_interval_shift_usage,
+    _count_interval_template_usage,
+    _ensure_shift_interval_title_unique,
+    _normalize_shift_interval_title,
+)
+from app.routers.venue_permissions import (
+    _require_schedule_editor,
 )
 
 
@@ -183,4 +189,3 @@ def delete_shift_interval(
     db.delete(obj)
     db.commit()
     return {"ok": True}
-

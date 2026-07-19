@@ -12,22 +12,14 @@ from app.routers.venue_core import (
     Session,
     Shift,
     ShiftAssignment,
-    ShiftAssignmentAddIn,
     ShiftComment,
-    ShiftCreateIn,
     ShiftInterval,
-    ShiftUpdateIn,
     User,
     Venue,
     VenueMember,
     VenuePosition,
-    _SCHEDULE_SHARE_TTL_SECONDS,
-    _frontend_base_url,
     _has_revenue_view_access,
-    _recalculate_payroll_for_dates,
     _require_active_member_or_admin,
-    _require_schedule_editor,
-    _require_shift_comments_allowed,
     calendar,
     date,
     get_current_user,
@@ -40,6 +32,24 @@ from app.routers.venue_core import (
     timedelta,
     update,
     verify_signed_token,
+)
+from app.routers.venue_common import (
+    _SCHEDULE_SHARE_TTL_SECONDS,
+)
+from app.schemas.venue_shifts import (
+    ShiftAssignmentAddIn,
+    ShiftCreateIn,
+    ShiftUpdateIn,
+)
+from app.routers.venue_permissions import (
+    _require_schedule_editor,
+    _require_shift_comments_allowed,
+)
+from app.routers.venue_payroll_support import (
+    _recalculate_payroll_for_dates,
+)
+from app.routers.venue_notification_common import (
+    _frontend_base_url,
 )
 from app.routers.venue_reports import _rebuild_report_tip_allocations
 from app.routers.venue_schedule_templates import _normalize_shift_slot_for_venue, _shift_slot_label
@@ -888,4 +898,3 @@ def add_shift_comment(
             "short_name": user.short_name,
         },
     }
-

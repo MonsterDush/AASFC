@@ -21,7 +21,8 @@ from app.routers import (
     venue_schedule_templates,
     venue_shifts,
 )
-from app.routers.venue_core import InviteCreateIn, PayrollCalculateIn
+from app.schemas.venue_core import InviteCreateIn
+from app.schemas.venue_payroll import PayrollCalculateIn
 
 
 class VenueCatalogRouterTests(TestCase):

@@ -31,7 +31,7 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, wa, redirectToAuth } from '/app.js';
+    import { applyTelegramTheme, ensureLogin, api, toast, wa, redirectToAuth } from '/app.js?v=20260719-split1';
     function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     const params = new URLSearchParams(location.search);
     const token = (params.get('token') || '').trim();

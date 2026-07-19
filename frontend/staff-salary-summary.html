@@ -16,7 +16,7 @@
   </div>
 
   <script type="module">
-import { getActiveVenueId, setActiveVenueId } from "/app.js";
+import { getActiveVenueId, setActiveVenueId } from "/app.js?v=20260719-split1";
 const p = new URLSearchParams(location.search);
 const venueId = p.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);

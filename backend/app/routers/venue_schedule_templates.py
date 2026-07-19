@@ -8,16 +8,10 @@ from app.routers.venue_core import (
     Shift,
     ShiftInterval,
     ShiftScheduleTemplate,
-    ShiftScheduleTemplateApplyIn,
-    ShiftScheduleTemplateCreateIn,
     ShiftScheduleTemplateItem,
-    ShiftScheduleTemplateItemIn,
-    ShiftScheduleTemplateUpdateIn,
     User,
     Venue,
-    _recalculate_payroll_for_dates,
     _require_active_member_or_admin,
-    _require_schedule_editor,
     date,
     delete,
     func,
@@ -26,6 +20,18 @@ from app.routers.venue_core import (
     normalize_shift_slot,
     select,
     timedelta,
+)
+from app.schemas.venue_shifts import (
+    ShiftScheduleTemplateApplyIn,
+    ShiftScheduleTemplateCreateIn,
+    ShiftScheduleTemplateItemIn,
+    ShiftScheduleTemplateUpdateIn,
+)
+from app.routers.venue_permissions import (
+    _require_schedule_editor,
+)
+from app.routers.venue_payroll_support import (
+    _recalculate_payroll_for_dates,
 )
 
 
@@ -508,4 +514,3 @@ def apply_shift_schedule_template(
 
 
 # ---------- Schedule: shift intervals & shifts ----------
-

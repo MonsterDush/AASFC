@@ -3,28 +3,36 @@ from fastapi import APIRouter
 from app.routers.venue_core import (
     Depends,
     HTTPException,
-    PositionCreateIn,
-    PositionPresetsOut,
-    PositionUpdateIn,
     Query,
     Session,
     User,
     VenueMember,
     VenuePosition,
-    _get_member_active_pay_profile_assignment,
     _is_owner_or_super_admin,
-    _is_schedule_editor,
-    _load_position_presets_from_setup,
-    _normalize_permission_codes,
-    _parse_position_permission_codes,
     _require_active_member_or_admin,
-    _sync_member_pay_profile_assignment,
     date,
     get_current_user,
     get_db,
     json,
     require_venue_permission,
     select,
+)
+from app.schemas.venue_payroll import (
+    PositionCreateIn,
+    PositionPresetsOut,
+    PositionUpdateIn,
+)
+from app.routers.venue_permissions import (
+    _is_schedule_editor,
+)
+from app.routers.venue_pay_profile_support import (
+    _get_member_active_pay_profile_assignment,
+    _normalize_permission_codes,
+    _parse_position_permission_codes,
+    _sync_member_pay_profile_assignment,
+)
+from app.routers.venue_position_support import (
+    _load_position_presets_from_setup,
 )
 
 
@@ -350,4 +358,3 @@ def delete_position(
     pos.is_active = False
     db.commit()
     return {"ok": True}
-

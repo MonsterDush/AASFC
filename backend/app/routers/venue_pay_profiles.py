@@ -8,19 +8,31 @@ from app.routers.venue_core import (
     MINIMUM_GUARANTEE_MONTH,
     PAY_COMPONENT_TYPES,
     PayComponent,
-    PayComponentCreateIn,
-    PayComponentUpdateIn,
     PayProfile,
     PayProfileAssignment,
-    PayProfileAssignmentCreateIn,
-    PayProfileAssignmentUpdateIn,
-    PayProfileCreateIn,
-    PayProfileUpdateIn,
     PayrollLine,
     Query,
     Session,
     User,
     VenueMember,
+    _require_active_member_or_admin,
+    datetime,
+    func,
+    get_current_user,
+    get_db,
+    json,
+    sa,
+    select,
+)
+from app.schemas.venue_payroll import (
+    PayComponentCreateIn,
+    PayComponentUpdateIn,
+    PayProfileAssignmentCreateIn,
+    PayProfileAssignmentUpdateIn,
+    PayProfileCreateIn,
+    PayProfileUpdateIn,
+)
+from app.routers.venue_pay_profile_support import (
     _component_boost_department_ids,
     _component_department_ids,
     _dump_int_ids,
@@ -32,20 +44,12 @@ from app.routers.venue_core import (
     _normalize_int_ids,
     _normalize_minimum_guarantee_scope,
     _parse_json_text,
-    _require_active_member_or_admin,
     _require_pay_profiles_manage,
     _require_pay_profiles_view,
     _serialize_pay_component,
     _serialize_pay_profile,
     _serialize_pay_profile_assignment,
     _validate_pay_component_fields,
-    datetime,
-    func,
-    get_current_user,
-    get_db,
-    json,
-    sa,
-    select,
 )
 
 
@@ -505,4 +509,3 @@ def delete_pay_component(
     db.delete(component)
     db.commit()
     return {"ok": True}
-

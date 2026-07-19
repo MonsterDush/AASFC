@@ -11,7 +11,7 @@ import {
   createPaymentMethod,
   updatePaymentMethod,
   applyDemoReadonlyCaps,
-} from "/app.js";
+} from "/app.js?v=20260719-split1";
 
 const root = document.getElementById("root");
 
