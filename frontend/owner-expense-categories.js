@@ -62,9 +62,9 @@ function renderShell() {
         <div class="section-actions">
           <label class="chk"><input type="checkbox" id="showArchived" /><span class="muted">Показывать архив</span></label>
         </div>
-        <div id="list" style="margin-top:10px"><div class="skeleton"></div><div class="skeleton"></div></div>
+        <div id="list" class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
       </div>
-      <div class="row" style="margin-top:12px"><a class="btn subtle inline" id="back" href="#">← К расходам</a></div>
+      <div class="row mt-12"><a class="btn subtle inline" id="back" href="#">← К расходам</a></div>
     </div>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
@@ -79,7 +79,7 @@ function renderShell() {
       <div class="modal__backdrop" data-close></div>
       <div class="modal__panel">
         <div class="modal__head">
-          <div><b class="modal__title" id="editTitle">Категория расхода</b><div class="muted" id="editHint" style="margin-top:4px; font-size:12px"></div></div>
+          <div><b class="modal__title" id="editTitle">Категория расхода</b><div class="muted small mt-4" id="editHint"></div></div>
           <button class="btn" data-close>Закрыть</button>
         </div>
         <div class="modal__body" id="editBody"></div>
@@ -108,13 +108,13 @@ function renderList() {
   el.innerHTML = state.items.map((it) => `
     <div class="listrow">
       <div class="listrow__left">
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+        <div class="text-actions">
           <b>${esc(it.title)}</b>
           ${it.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
         <div class="muted listrow__meta">${it.is_active ? "Доступна при создании расхода" : "Скрыта из списка"}</div>
       </div>
-      <div class="row row--nowrap" style="gap:8px; flex:0 0 auto; ${state.canManage ? "" : "display:none;"}">
+      <div class="row row--nowrap gap-8 flex-none${state.canManage ? "" : " hidden"}">
         <button class="btn sm" data-edit="${it.id}">Изменить</button>
         <button class="btn sm ${it.is_active ? "danger" : ""}" data-archive="${it.id}">${it.is_active ? "В архив" : "Вернуть"}</button>
       </div>
@@ -144,24 +144,24 @@ function renderList() {
 function editorForm(item = null) {
   const it = item || {};
   return `
-    <div class="grid grid2" style="margin-top:10px">
+    <div class="grid grid2 mt-10">
       <div>
-        <div class="muted" style="margin-bottom:6px">Название</div>
+        <div class="muted mb-6">Название</div>
         <input id="f_title" placeholder="Аренда" value="${esc(it.title || "")}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Порядок в списке</div>
+        <div class="muted mb-6">Порядок в списке</div>
         <input id="f_sort" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Отображение</div>
-        <label class="row" style="gap:8px; align-items:center">
+        <div class="muted mb-6">Отображение</div>
+        <label class="row gap-8 ai-center">
           <input type="checkbox" id="f_active" ${(it.is_active ?? true) ? "checked" : ""} />
           <span>Показывать в списке</span>
         </label>
       </div>
     </div>
-    <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px">
+    <div class="row row--end gap-8 mt-12">
       <button class="btn ghost" id="btnCancel">Отмена</button>
       <button class="btn primary" id="btnSave">Сохранить</button>
     </div>

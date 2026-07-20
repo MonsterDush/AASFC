@@ -2,6 +2,7 @@
 **/__pycache__/
 *.pyc
 .env
+.env.e2e
 axelio_pgdata/
 .DS_Store
 .coverage

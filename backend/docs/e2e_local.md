@@ -1,0 +1,47 @@
+# Локальное E2E-окружение
+
+Окружение поднимает отдельную PostgreSQL 16 только на `127.0.0.1:55433`, применяет все Alembic-миграции и создаёт полноценное заведение с OWNER- и STAFF-аккаунтами. Данные PostgreSQL находятся в `tmpfs` контейнера и не пересекаются с dev-базой.
+
+## Первый запуск
+
+```bash
+cp .env.e2e.example .env.e2e
+tools/e2e-local.sh up
+```
+
+Локальный `.env.e2e` игнорируется Git. Перед использованием можно заменить телефоны и пароль; пароль из примера нельзя использовать вне локального e2e-окружения.
+
+После seed доступны:
+
+- OWNER: телефон из `E2E_OWNER_PHONE`, пароль из `E2E_PASSWORD`;
+- STAFF: телефон из `E2E_STAFF_PHONE`, тот же пароль;
+- заведение: `E2E_VENUE_NAME`.
+
+Seed разрешён только при `AXELIO_E2E_ALLOW_SEED=1`, локальном хосте БД и имени базы, содержащем `e2e` или `test`.
+
+## Backend и frontend
+
+Запустите в двух отдельных терминалах:
+
+```bash
+tools/e2e-local.sh backend
+tools/e2e-local.sh frontend
+```
+
+Адреса:
+
+- frontend: `http://127.0.0.1:8765/auth.html`;
+- backend: `http://127.0.0.1:9001`;
+- health check: `http://127.0.0.1:9001/health`.
+
+Cookie для локального backend создаётся без `Secure`, а CORS разрешает только локальный frontend origin.
+
+## Повторный seed и остановка
+
+```bash
+tools/e2e-local.sh reset
+tools/e2e-local.sh status
+tools/e2e-local.sh down
+```
+
+`reset` заново создаёт fixture внутри изолированной базы и инвалидирует существующие пользовательские сессии. `down` удаляет контейнер, поэтому данные из `tmpfs` пропадут; следующий `up` проверит миграции на пустой базе.

@@ -579,191 +579,6 @@ function __pageTourConfigFor(pathname = null) {
 let __demoTourMounted = false;
 let __demoTourPendingOpen = false;
 
-function ensureDemoTourStyles() {
-  if (!isBrowser() || document.getElementById("demoTourRuntimeStyles")) return;
-  const style = document.createElement("style");
-  style.id = "demoTourRuntimeStyles";
-  style.textContent = `
-    .demo-tour-overlay{
-      position:fixed;
-      inset:0;
-      z-index:1400;
-      display:flex;
-      align-items:flex-end;
-      justify-content:center;
-      padding:16px;
-      background:rgba(11,18,32,.16);
-      backdrop-filter:blur(4px);
-      -webkit-backdrop-filter:blur(4px);
-    }
-    .demo-tour-card{
-      width:min(100%, 420px);
-      border-radius:18px;
-      border:1px solid var(--border);
-      background:var(--card);
-      box-shadow:var(--shadow);
-      padding:16px;
-      color:var(--text);
-    }
-    .demo-tour-step{
-      font-size:12px;
-      line-height:1.2;
-      font-weight:800;
-      color:var(--muted);
-      margin-bottom:8px;
-      text-transform:uppercase;
-      letter-spacing:.04em;
-    }
-    .demo-tour-title{
-      font-size:20px;
-      line-height:1.2;
-      font-weight:900;
-      color:var(--text);
-      margin-bottom:8px;
-    }
-    .demo-tour-text{
-      font-size:14px;
-      line-height:1.5;
-      color:var(--text);
-      margin-bottom:16px;
-    }
-    .demo-tour-actions{
-      display:flex;
-      gap:8px;
-      justify-content:flex-end;
-      flex-wrap:wrap;
-    }
-    .demo-tour-btn{
-      appearance:none;
-      border:1px solid var(--border);
-      border-radius:12px;
-      min-height:40px;
-      padding:0 14px;
-      font-size:14px;
-      font-weight:800;
-      line-height:1;
-      cursor:pointer;
-      color:var(--text);
-      background:var(--surface2);
-      transition:transform .15s ease, opacity .15s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
-    }
-    .demo-tour-btn:hover:not(:disabled){
-      transform:translateY(-1px);
-      border-color:var(--accentSoftBorder);
-    }
-    .demo-tour-btn:active{transform:translateY(0)}
-    .demo-tour-btn:disabled{
-      opacity:.45;
-      cursor:default;
-      transform:none;
-    }
-    .demo-tour-btn--ghost{
-      background:var(--surface2);
-      color:var(--text);
-    }
-    .demo-tour-btn--primary{
-      background:var(--accent);
-      color:var(--accentText);
-      border-color:transparent;
-      box-shadow:0 8px 20px var(--accentA18);
-    }
-    .demo-tour-btn--primary:hover:not(:disabled){
-      box-shadow:0 10px 24px var(--accentA22);
-    }
-    .demo-tour-dock{
-      position:fixed;
-      left:12px;
-      right:12px;
-      bottom:calc(82px + env(safe-area-inset-bottom));
-      z-index:1390;
-      display:flex;
-      justify-content:center;
-      pointer-events:none;
-    }
-    .demo-tour-dock__bar{
-      width:min(560px,100%);
-      display:grid;
-      grid-template-columns:repeat(3,minmax(0,1fr));
-      gap:8px;
-      padding:10px 12px;
-      border:1px solid var(--border);
-      border-radius:16px;
-      background:var(--card);
-      box-shadow:var(--shadow);
-      pointer-events:auto;
-    }
-    .demo-tour-dock__btn{
-      appearance:none;
-      border:1px solid var(--border);
-      background:var(--surface2);
-      color:var(--text);
-      border-radius:999px;
-      padding:10px 12px;
-      font-weight:800;
-      font-size:13px;
-      cursor:pointer;
-      min-width:0;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      transition:transform .15s ease, opacity .15s ease, background-color .15s ease, border-color .15s ease;
-    }
-    .demo-tour-dock__btn:hover:not(:disabled){
-      transform:translateY(-1px);
-      border-color:var(--accentSoftBorder);
-    }
-    .demo-tour-dock__btn:active{transform:translateY(0)}
-    .demo-tour-dock__btn[disabled]{
-      opacity:.45;
-      cursor:default;
-      transform:none;
-    }
-    .demo-tour-dock__btn--primary{
-      background:var(--accent);
-      color:var(--accentText);
-      border-color:transparent;
-    }
-    @media (max-width:640px){
-      .demo-tour-overlay{
-        padding:12px;
-        align-items:flex-end;
-      }
-      .demo-tour-card{
-        width:100%;
-        border-radius:16px;
-        padding:14px;
-      }
-      .demo-tour-title{font-size:18px}
-      .demo-tour-text{font-size:13px}
-      .demo-tour-actions{
-        display:grid;
-        grid-template-columns:1fr 1fr 1fr;
-        gap:8px;
-      }
-      .demo-tour-btn{
-        width:100%;
-        padding:0 10px;
-        font-size:13px;
-      }
-      .demo-tour-dock{
-        left:10px;
-        right:10px;
-        bottom:calc(78px + env(safe-area-inset-bottom));
-      }
-      .demo-tour-dock__bar{
-        padding:8px 10px;
-        border-radius:14px;
-      }
-      .demo-tour-dock__btn{
-        padding:10px 8px;
-        font-size:12px;
-      }
-    }
-
-  `;
-  document.head.appendChild(style);
-}
-
 function defaultTourState(persona = "OWNER") {
   return {
     persona: String(persona || "OWNER").toUpperCase(),
@@ -883,7 +698,6 @@ function removeDemoTourDock() {
 
 function renderDemoTourDock(persona = null) {
   if (!isBrowser()) return;
-  ensureDemoTourStyles();
   const pageCfg = __pageTourConfigFor();
   const { state, steps, index } = currentTourStep(persona);
   if (state.completed && !pageCfg) {
@@ -913,7 +727,6 @@ function renderDemoTourDock(persona = null) {
 
 function showDemoTourOverlay(persona = null) {
   if (!isBrowser()) return;
-  ensureDemoTourStyles();
   const currentState = getStoredDemoUiState();
   if (!currentState?.demo_mode) {
     __demoTourPendingOpen = true;

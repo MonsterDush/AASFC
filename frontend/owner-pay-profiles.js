@@ -81,7 +81,7 @@ function renderShell() {
           </label>
         </div>
 
-        <div id="list" style="margin-top:10px">
+        <div id="list" class="mt-10">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
@@ -110,7 +110,7 @@ function renderShell() {
         <div class="modal__head">
           <div>
             <b class="modal__title" id="editTitle">Профиль зарплаты</b>
-            <div class="muted" id="editHint" style="margin-top:4px; font-size:12px"></div>
+            <div class="muted small mt-4" id="editHint"></div>
           </div>
           <button class="btn" data-close>Закрыть</button>
         </div>
@@ -185,7 +185,7 @@ function renderList() {
     const left = document.createElement("div");
     left.className = "listrow__left";
     left.innerHTML = `
-      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+      <div class="text-actions">
         <b>${esc(it.title)}</b>
         ${it.is_active ? "" : `<span class="badge">неактивен</span>`}
       </div>
@@ -194,8 +194,7 @@ function renderList() {
     `;
 
     const right = document.createElement("div");
-    right.className = "row row--nowrap";
-    right.style = "gap:8px; flex:0 0 auto; justify-content:flex-end;";
+    right.className = "row row--nowrap row--end gap-8 flex-none";
 
     const openBtn = document.createElement("a");
     openBtn.className = "btn sm";
@@ -271,7 +270,7 @@ function editorForm({ mode, item }) {
       </label>
     </div>
 
-    <div class="row mt-12" style="justify-content:flex-end; gap:8px">
+    <div class="row row--end gap-8 mt-12">
       <button class="btn" id="btnCancel" type="button">Отмена</button>
       <button class="btn primary" id="btnSave" type="button">Сохранить</button>
     </div>
