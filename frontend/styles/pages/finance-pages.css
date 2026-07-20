@@ -1,0 +1,16 @@
+input.finance-control,
+select.finance-control{width:auto;min-width:160px}
+select.finance-control--wide{min-width:170px}
+.finance-period-segment{min-width:220px}
+.finance-choice-chip{cursor:pointer}
+.finance-generation-row{padding:8px 0;border-bottom:1px solid var(--border)}
+.finance-result-value{text-align:right;white-space:nowrap}
+.finance-state-span-2{grid-column:span 2}
+.revenue-control-panel{flex:1 1 360px;min-width:min(360px,100%)}
+.finance-table-empty{padding:6px 0}
+.finance-table-row{padding:8px 0}
+@media (max-width:560px){
+  input.finance-control,
+  select.finance-control{width:100%;min-width:0}
+  .finance-state-span-2{grid-column:auto}
+}

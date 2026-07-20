@@ -9,6 +9,34 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = PROJECT_ROOT / "frontend"
 
 
+class PageLoaderContractTests(TestCase):
+    def test_all_pages_share_the_fetch_and_dom_aware_loader(self):
+        loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
+        styles = (FRONTEND / "styles.css").read_text(encoding="utf-8")
+        html_pages = sorted(FRONTEND.glob("*.html"))
+
+        self.assertEqual(len(html_pages), 50)
+        for path in html_pages:
+            source = path.read_text(encoding="utf-8")
+            self.assertIn('/page-loader.js?v=20260720-loader1', source, path.name)
+            self.assertIn('/styles.css?v=20260720-unified11', source, path.name)
+
+        self.assertLess(len(loader.splitlines()), 180)
+        self.assertIn("window.fetch = function", loader)
+        self.assertIn("MutationObserver", loader)
+        self.assertIn("HARD_TIMEOUT_MS", loader)
+        self.assertIn("axelio:page-ready", loader)
+        self.assertNotRegex(loader, r"(?:\sstyle\s*=|\.style\b)")
+        for selector in (
+            ".page-loading body>:not(.page-loader)",
+            ".page-loader__panel",
+            ".page-loader__spinner",
+            ".page-loader__title",
+            ".page-loader__hint",
+        ):
+            self.assertIn(f"{selector}{{", styles)
+
+
 class AppFacadeSplitContractTests(TestCase):
     def test_app_facade_keeps_public_exports_modules_and_consumers(self):
         main = (FRONTEND / "app.js").read_text(encoding="utf-8")
@@ -82,11 +110,15 @@ class OwnerSetupSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260719-split1", html)
+        self.assertIn("owner-setup.js?v=20260720-unified10", html)
+        self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
+        self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
+        self.assertIn('<progress class="setup-progressbar"', main)
         for filename, (factory, mount_method) in controllers.items():
             source = (FRONTEND / "owner-setup" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500)
-            self.assertIn(f'/owner-setup/{filename}?v=20260719-split1', main)
+            self.assertIn(f'/owner-setup/{filename}?v=20260720-unified10', main)
+            self.assertNotRegex(source, r"(?:<style\b|\sstyle\s*=|\.style\b)")
             self.assertIn(f"export function {factory}", source)
             self.assertIn(mount_method, source)
 
@@ -109,6 +141,10 @@ class OwnerSetupSplitContractTests(TestCase):
         self.assertLess(pay_profile_factory, shared_profiles)
         self.assertLess(shared_profiles, position_factory)
 
+        recurring = (FRONTEND / "owner-setup" / "recurring-expense-editor.js").read_text(encoding="utf-8")
+        self.assertRegex(recurring, r"const \{[^}]*getPaymentMethods[^}]*\} = context;")
+        self.assertRegex(main, r"const editorContext = \{[\s\S]*?getPaymentMethods,[\s\S]*?\};")
+
 
 class StaffShiftsSplitContractTests(TestCase):
     def test_schedule_export_keeps_live_state_controls_and_route(self):
@@ -121,8 +157,8 @@ class StaffShiftsSplitContractTests(TestCase):
         self.assertLess(len(module.splitlines()), 900)
         self.assertLess(len(calendar.splitlines()), 850)
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
-        self.assertIn("/staff-shifts/calendar-controller.js?v=20260719-calendar1", main)
-        self.assertIn("staff-shifts.js?v=20260719-calendar1", html)
+        self.assertIn("/staff-shifts/calendar-controller.js?v=20260720-unified6", main)
+        self.assertIn("staff-shifts.js?v=20260720-unified6", html)
         self.assertIn("/shifts/export-metadata?", module)
 
         mutable_fields = (
@@ -194,11 +230,11 @@ class OwnerPayProfileSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 450)
-        self.assertIn("owner-pay-profile.js?v=20260719-payprofile1", html)
+        self.assertIn("owner-pay-profile.js?v=20260720-unified7", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
-            self.assertIn(f'/owner-pay-profile/{filename}?v=20260719-payprofile1', main)
+            self.assertIn(f'/owner-pay-profile/{filename}?v=20260720-unified7', main)
             self.assertIn(f"export function {factory}", source)
 
         controller_contracts = {
@@ -240,11 +276,11 @@ class PositionsSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 420)
-        self.assertIn("positions.js?v=20260719-positions1", html)
+        self.assertIn("positions.js?v=20260720-unified6", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "positions" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
-            self.assertIn(f'/positions/{filename}?v=20260719-positions1', main)
+            self.assertIn(f'/positions/{filename}?v=20260720-unified6', main)
             self.assertIn(f"export function {factory}", source)
 
         editor = (FRONTEND / "positions" / "position-editor.js").read_text(encoding="utf-8")

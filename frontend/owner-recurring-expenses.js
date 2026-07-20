@@ -33,6 +33,10 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+function setVisible(element, visible) {
+  element?.classList.toggle("hidden", !visible);
+}
+
 function currentMonth() {
   const d = new Date();
   return coerceDemoMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, { notify: false, context: "owner-recurring-expenses" });
@@ -95,12 +99,12 @@ function renderGenerationResult() {
   if (!card || !hint || !list) return;
   const result = state.generationResult;
   if (!result) {
-    card.style.display = "none";
+    setVisible(card, false);
     hint.textContent = "—";
     list.innerHTML = "";
     return;
   }
-  card.style.display = "";
+  setVisible(card, true);
   const created = Array.isArray(result.created) ? result.created : [];
   const skipped = Array.isArray(result.skipped) ? result.skipped : [];
   hint.textContent = `Месяц ${result.month || state.month} · создано ${result.created_count || created.length} · пропущено ${result.skipped_count || skipped.length}`;
@@ -109,23 +113,23 @@ function renderGenerationResult() {
   if (created.length) {
     parts.push(`<div class="mt-8"><b>Создано</b></div>`);
     parts.push(created.map((item) => `
-      <div class="row" style="justify-content:space-between; gap:12px; align-items:flex-start; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06);">
+      <div class="row row--between gap-12 ai-start finance-generation-row">
         <div>
           <div><b>${esc(item.category?.title || item.comment || `Расход #${item.id}`)}</b></div>
           <div class="muted mt-6">${esc(item.expense_date || "—")} · ${esc(expenseStatusLabel(item.status))}</div>
         </div>
-        <div style="text-align:right; white-space:nowrap;">${esc(fmtMinor(item.amount_minor || 0))}</div>
+        <div class="finance-result-value">${esc(fmtMinor(item.amount_minor || 0))}</div>
       </div>`).join(""));
   }
   if (skipped.length) {
     parts.push(`<div class="mt-12"><b>Пропущено</b></div>`);
     parts.push(skipped.map((item) => `
-      <div class="row" style="justify-content:space-between; gap:12px; align-items:flex-start; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06);">
+      <div class="row row--between gap-12 ai-start finance-generation-row">
         <div>
           <div><b>${esc(item.title || `Правило #${item.rule_id}`)}</b></div>
           <div class="muted mt-6">${esc(item.reason || "skipped")}</div>
         </div>
-        <div class="muted" style="text-align:right; white-space:nowrap;">${item.expense_id ? `expense #${esc(item.expense_id)}` : ""}</div>
+        <div class="muted finance-result-value">${item.expense_id ? `expense #${esc(item.expense_id)}` : ""}</div>
       </div>`).join(""));
   }
   if (!parts.length) parts.push('<div class="muted">Изменений нет.</div>');
@@ -227,7 +231,7 @@ function renderRules() {
       ? (basis.length ? basis.map((x) => esc(x.title)).join(", ") : "Все типы оплат")
       : (item.payment_method?.title ? `Списывать через ${esc(item.payment_method.title)}` : "Тип оплаты не указан");
     const actions = access.canManage ? `
-      <div class="row gap-8 mt-10" style="flex-wrap:wrap; justify-content:flex-end;">
+      <div class="row row--end gap-8 mt-10">
         <button class="btn subtle small" data-generate="${item.id}">Сгенерировать</button>
         <button class="btn small" data-edit="${item.id}">Изменить</button>
         <button class="btn danger small" data-del="${item.id}">Удалить</button>
@@ -235,7 +239,7 @@ function renderRules() {
     return `
       <div class="expense-row">
         <div class="expense-row__main">
-          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="row gap-8">
             <div class="expense-row__title">${esc(item.title || "Без названия")}</div>
             <span class="badge">${esc(modeLabel(mode))}</span>
             ${statusBadge(item.is_active)}
@@ -305,7 +309,7 @@ function buildRuleForm(item = null) {
       </label>
       <label>Комментарий / описание<textarea name="description" rows="4" placeholder="Например: аренда помещения">${esc(item?.description || "")}</textarea></label>
       <div id="basisPaymentMethodsWrap">
-        <div class="muted" style="margin-bottom:6px">База для процента</div>
+        <div class="muted mb-6">База для процента</div>
         <div class="finance-form">${buildBasisPaymentMethodCheckboxes(item?.payment_method_ids || [])}</div>
       </div>
       <div class="row gap-8 mt-12">
@@ -321,9 +325,9 @@ function syncRuleModeVisibility() {
   const amountWrap = document.getElementById("ruleAmountWrap");
   const percentWrap = document.getElementById("rulePercentWrap");
   const basisWrap = document.getElementById("basisPaymentMethodsWrap");
-  if (amountWrap) amountWrap.style.display = mode === "FIXED" ? "" : "none";
-  if (percentWrap) percentWrap.style.display = mode === "PERCENT" ? "" : "none";
-  if (basisWrap) basisWrap.style.display = mode === "PERCENT" ? "" : "none";
+  setVisible(amountWrap, mode === "FIXED");
+  setVisible(percentWrap, mode === "PERCENT");
+  setVisible(basisWrap, mode === "PERCENT");
 }
 
 function openRuleForm(ruleId = null) {
@@ -441,11 +445,11 @@ async function boot() {
   const generateRulesBtn = document.getElementById("generateRulesBtn");
   const openExpensesBtn = document.getElementById("openExpensesBtn");
   const openGeneratedExpensesBtn = document.getElementById("openGeneratedExpensesBtn");
-  if (addRuleBtn) addRuleBtn.style.display = access.canManage ? "" : "none";
+  setVisible(addRuleBtn, access.canManage);
   if (openExpensesBtn) openExpensesBtn.href = buildExpensesMonthLink(state.month);
   if (openGeneratedExpensesBtn) openGeneratedExpensesBtn.href = buildExpensesMonthLink(state.month);
   if (generateRulesBtn) {
-    generateRulesBtn.style.display = access.canManage ? "" : "none";
+    setVisible(generateRulesBtn, access.canManage);
     generateRulesBtn.onclick = () => generateRules();
   }
   if (addRuleBtn) addRuleBtn.onclick = () => openRuleForm();

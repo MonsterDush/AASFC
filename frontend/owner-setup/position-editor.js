@@ -5,13 +5,13 @@ export function createPositionSetupController(context) {
     const groups = Array.isArray(state.permissionsCatalog) && state.permissionsCatalog.length ? state.permissionsCatalog : buildDefaultPermissionsCatalog();
     const selected = new Set(parsePermissionCodes(selectedCodes));
     return groups.map((group) => `
-      <div class="card" style="padding:12px">
+      <div class="card setup-permission-group">
         <div class="perm-group-title">
           <div>
             <b>${esc(group.title)}</b>
-            ${group.hint ? `<div class="muted mt-6" style="font-size:12px">${esc(group.hint)}</div>` : ''}
+            ${group.hint ? `<div class="muted mt-6 setup-permission-hint">${esc(group.hint)}</div>` : ''}
           </div>
-          <div class="row" style="gap:6px; flex:0 0 auto">
+          <div class="setup-permission-actions">
             <button class="btn sm" type="button" data-preset-group="${esc(group.key)}" data-value="1">Все</button>
             <button class="btn sm" type="button" data-preset-group="${esc(group.key)}" data-value="0">Ничего</button>
           </div>
@@ -50,14 +50,14 @@ export function createPositionSetupController(context) {
           <span>Профиль зарплаты</span>
           <select class="input" id="positionPresetPayProfile">${buildPayProfileOptions(preset?.pay_profile_id || '')}</select>
         </label>
-        <label style="grid-column:1 / -1">
+        <label class="setup-formgrid__full">
           <span>Шаблон прав</span>
           <select class="input" id="positionPresetTemplate">${buildPositionTemplateOptions(templateId)}</select>
         </label>
       </div>
-      <div id="positionPresetTemplateSummary" class="itemcard" style="margin-top:12px; padding:10px 12px">${renderPositionTemplateSummary(templateId)}</div>
+      <div id="positionPresetTemplateSummary" class="itemcard setup-position-template-summary">${renderPositionTemplateSummary(templateId)}</div>
       <div class="setup-inline-note">На этом этапе ты создаёшь именно заготовки должностей. Людей на них назначим на следующем шаге через приглашения.</div>
-      <div style="margin-top:12px; display:grid; grid-template-columns:1fr; gap:10px">${renderPermissionChecklist(preset?.permission_codes || [])}</div>
+      <div class="setup-permission-grid">${renderPermissionChecklist(preset?.permission_codes || [])}</div>
     `;
   }
 

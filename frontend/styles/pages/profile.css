@@ -1,0 +1,8 @@
+.auth-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.auth-methods{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.auth-chip{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:4px 10px;font-size:12px}
+.auth-box{border:1px solid var(--border);border-radius:16px;padding:12px}
+.call-number{font-size:18px;font-weight:700;letter-spacing:.02em}
+.call-number a{color:inherit;text-decoration:none}
+.telegram-browser-link{word-break:break-all}
+.password-note{border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.45;background:var(--surfaceTintSoft);color:var(--muted)}

@@ -73,9 +73,9 @@ const sizeLimits = {
 };
 for (const [fileName, limit] of Object.entries(sizeLimits)) {
   assert.ok(moduleSources[fileName].split("\n").length < limit, `${fileName} is too large`);
-  assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=20260719-payprofile1`));
+  assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=20260720-unified7`));
 }
-assert.match(htmlSource, /owner-pay-profile\.js\?v=20260719-payprofile1/);
+assert.match(htmlSource, /owner-pay-profile\.js\?v=20260720-unified7/);
 
 const state = {
   can: { view: true, manage: true },

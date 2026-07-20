@@ -81,7 +81,7 @@ async function setupManageButton() {
     const role = roleUpper(pr);
     const canManage = canManageAdjustments(pset, role, __sysRole);
     if (canManage) {
-      el.btnAddAdj.style.display = "";
+      el.btnAddAdj.classList.remove("hidden");
       el.btnAddAdj.addEventListener("click", () => {
         location.href = `/app-adjustments.html?venue_id=${encodeURIComponent(venueId)}`;
       });
@@ -182,31 +182,29 @@ function renderList(data) {
   for (const [day, list] of groups) {
     const dayCard = document.createElement("div");
     dayCard.id = `day-${day}`;
-    dayCard.className = "itemcard";
-    dayCard.style.marginTop = "10px";
+    dayCard.className = "itemcard mt-10";
 
     const sum = list.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
 
     dayCard.innerHTML = `
-      <div class="row" style="justify-content:space-between; gap:10px; align-items:flex-start">
+      <div class="row row--between gap-10 ai-start">
         <div>
           <b>${esc(day)}</b>
-          <div class="muted" style="margin-top:4px">${esc(list.length)} шт. · сумма ${esc(sum)}</div>
+          <div class="muted mt-4">${esc(list.length)} шт. · сумма ${esc(sum)}</div>
         </div>
       </div>
-      <div style="margin-top:10px" data-items></div>
+      <div class="mt-10" data-items></div>
     `;
 
     const wrap = dayCard.querySelector("[data-items]");
     for (const it of list) {
       const row = document.createElement("div");
-      row.className = "row";
-      row.style = "justify-content:space-between; border-top:1px solid var(--border); padding:10px 0; gap:10px;";
+      row.className = "row row--between gap-10 staff-adjustment-row";
 
       row.innerHTML = `
         <div>
           <b>${esc(typeTitle(it.type))} · ${esc(it.amount)}</b>
-          <div class="muted" style="margin-top:4px">${esc(it.reason || "—")}</div>
+          <div class="muted mt-4">${esc(it.reason || "—")}</div>
         </div>
         <button class="btn" data-open>Открыть</button>
       `;
@@ -221,16 +219,16 @@ function renderList(data) {
 
 function buildItemHtml(it) {
   return `
-    <div class="itemcard" style="margin-top:12px">
+    <div class="itemcard mt-12">
       <b>${esc(typeTitle(it.type))} · ${esc(it.amount)}</b>
-      <div class="muted" style="margin-top:6px">Дата: ${esc(it.date)}</div>
-      <div class="muted" style="margin-top:6px">Причина: ${esc(it.reason || "—")}</div>
-      <div class="muted" style="margin-top:6px">Оспорить</div>
-      <div class="row" style="gap:8px; margin-top:12px">
+      <div class="muted mt-6">Дата: ${esc(it.date)}</div>
+      <div class="muted mt-6">Причина: ${esc(it.reason || "—")}</div>
+      <div class="muted mt-6">Оспорить</div>
+      <div class="row gap-8 mt-12">
         <textarea id="disputeMsg" rows="3" placeholder="Напиши комментарий"></textarea>
         <button class="btn primary" id="btnDispute">Отправить</button>
       </div>
-      <div class="muted" style="margin-top:10px;font-size:12px">
+      <div class="muted small mt-10">
         После отправки владелец/менеджер получит уведомление и сможет отредактировать или удалить запись.
       </div>
     </div>
@@ -262,7 +260,7 @@ function openItem(it) {
 
 async function boot() {
   if (!venueId) {
-    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted" style="margin-top:6px">Выбери заведение и открой раздел ещё раз.</div></div>`;
+    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted mt-6">Выбери заведение и открой раздел ещё раз.</div></div>`;
     return;
   }
 

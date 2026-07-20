@@ -4,24 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified4" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/admin-billing.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Админ · Биллинг</title>
-  <style>
-    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
-    .summary-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-    @media (min-width: 900px) { .summary-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
-    .summary-card { border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; }
-    .summary-card b { display:block; font-size:20px; margin-top:6px; }
-    .billing-table-row { border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; margin-top:10px; }
-    .status-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.14); font-size:12px; }
-    .issue-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.14); font-size:12px; }
-    .issue-chip.critical { font-weight:700; }
-    .issue-chip.warning { font-weight:600; }
-    .section-title { margin:0 0 8px; }
-    input[type="search"], select { min-width: 180px; }
-    .split-grid { display:grid; grid-template-columns:1fr; gap:16px; }
-    @media (min-width: 980px) { .split-grid { grid-template-columns:1fr 1fr; } }
-  </style>
 </head>
 <body>
   <div class="container">
@@ -47,7 +33,7 @@
 
 
     <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div class="row row--between ai-start gap-12">
         <div>
           <div class="section-title"><b>Промокоды</b></div>
           <div class="muted">Скидки и бесплатные дни. На одно заведение можно применить только один промокод.</div>
@@ -99,7 +85,7 @@
       </div>
       <div class="muted" id="count">0</div>
       <div id="list"></div>
-      <div class="row gap-8" style="margin-top:12px;justify-content:flex-end">
+      <div class="row gap-8 mt-12 row--end">
         <button class="btn subtle" id="prevPageBtn">← Назад</button>
         <span class="muted" id="pageInfo">1</span>
         <button class="btn subtle" id="nextPageBtn">Вперёд →</button>
@@ -108,7 +94,7 @@
 
     <div class="split-grid">
       <div class="card">
-        <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+        <div class="row row--between gap-10">
           <div>
             <div class="section-title"><b>Операции</b></div>
             <div class="muted">Единый реестр billing-операций.</div>
@@ -121,7 +107,7 @@
       </div>
 
       <div class="card">
-        <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+        <div class="row row--between gap-10">
           <div>
             <div class="section-title"><b>Проблемы и сверка</b></div>
             <div class="muted">Критичные и предупреждающие billing-кейсы.</div>
@@ -162,15 +148,15 @@
       </div>
       <div class="modal__body">
         <div class="small" id="refundVenueLabel">—</div>
-        <label style="display:block;margin-top:12px">
+        <label class="block mt-12">
           <div class="small mb-6">Сумма возврата, ₽</div>
-          <input id="refundAmountInput" type="number" min="0" step="0.01" inputmode="decimal" placeholder="2990" style="width:100%" />
+          <input class="w-100" id="refundAmountInput" type="number" min="0" step="0.01" inputmode="decimal" placeholder="2990" />
         </label>
-        <label style="display:block;margin-top:12px">
+        <label class="block mt-12">
           <div class="small mb-6">Причина</div>
-          <textarea id="refundCommentInput" rows="4" placeholder="Причина возврата" style="width:100%"></textarea>
+          <textarea class="w-100" id="refundCommentInput" rows="4" placeholder="Причина возврата"></textarea>
         </label>
-        <div class="row gap-8" style="justify-content:flex-end;margin-top:14px">
+        <div class="row gap-8 row--end mt-14">
           <button class="btn subtle" type="button" data-refund-close>Отмена</button>
           <button class="btn primary" type="button" id="refundSubmitBtn">Отправить возврат</button>
         </div>
@@ -270,15 +256,15 @@
     }
     promoList.innerHTML = rows.map((item) => `
       <div class="billing-table-row">
-        <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
-          <div style="min-width:0;flex:1 1 auto">
-            <div class="row gap-8" style="flex-wrap:wrap"><b>${esc(item.code)}</b>${item.is_active ? '<span class="status-chip active">ACTIVE</span>' : '<span class="status-chip suspended">DISABLED</span>'}</div>
+        <div class="row row--between ai-start gap-12">
+          <div class="minw-0 flex-1">
+            <div class="row gap-8"><b>${esc(item.code)}</b>${item.is_active ? '<span class="status-chip active">ACTIVE</span>' : '<span class="status-chip suspended">DISABLED</span>'}</div>
             <div class="small mt-6">${esc(item.title || 'Без названия')}</div>
             <div class="small mt-6">Тип: ${esc(promoKindLabel(item.kind))} · Значение: ${esc(promoValueText(item))}</div>
             <div class="small mt-6">Использований: ${Number(item.usage_count || 0)}</div>
             ${item.comment ? `<div class="small mt-6">Комментарий: ${esc(item.comment)}</div>` : ''}
           </div>
-          <div class="toolbar" style="justify-content:flex-end">
+          <div class="toolbar jc-end">
             <button class="btn" data-action="editPromo" data-id="${item.id}">Редактировать</button>
             <button class="btn" data-action="togglePromo" data-id="${item.id}" data-active="${item.is_active ? '1' : '0'}">${item.is_active ? 'Выключить' : 'Включить'}</button>
           </div>
@@ -381,7 +367,7 @@
     const sev = data?.severity || {};
     const top = Array.isArray(data?.top_issue_codes) ? data.top_issue_codes : [];
     healthBlock.innerHTML = `
-      <div class="row" style="gap:12px;flex-wrap:wrap">
+      <div class="row gap-12">
         <div class="summary-card"><div class="muted">Critical</div><b>${Number(sev.critical || 0)}</b></div>
         <div class="summary-card"><div class="muted">Warning</div><b>${Number(sev.warning || 0)}</b></div>
         <div class="summary-card"><div class="muted">Info</div><b>${Number(sev.info || 0)}</b></div>
@@ -405,15 +391,15 @@
     }
     listEl.innerHTML = rows.map((item) => `
       <div class="billing-table-row">
-        <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
-          <div style="min-width:0;flex:1 1 auto;">
-            <div class="row gap-8" style="flex-wrap:wrap"><a class="btn subtle inline" href="/app-venue.html?venue_id=${item.venue_id}"><b>${esc(item.venue_name)}</b></a>${statusChip(item.status)}</div>
+        <div class="row row--between ai-start gap-12">
+          <div class="minw-0 flex-1">
+            <div class="row gap-8"><a class="btn subtle inline" href="/app-venue.html?venue_id=${item.venue_id}"><b>${esc(item.venue_name)}</b></a>${statusChip(item.status)}</div>
             <div class="small mt-6">Владелец: ${esc(item?.owner?.label || '—')}</div>
             <div class="small mt-6">Оплачено до: ${esc(formatDate(item.paid_until))}</div>
             <div class="small mt-6">Grace до: ${esc(formatDate(item.grace_until))}</div>
             <div class="small mt-6">Последняя оплата: ${esc(formatDate(item.last_payment_at))}</div>
           </div>
-          <div class="toolbar" style="justify-content:flex-end">
+          <div class="toolbar jc-end">
             <button class="btn primary" data-action="extend30" data-id="${item.venue_id}">+30 дней</button>
             <button class="btn" data-action="extendCustom" data-id="${item.venue_id}">Продлить на N</button>
             <button class="btn" data-action="setPaidUntil" data-id="${item.venue_id}">Установить дату</button>
@@ -440,7 +426,7 @@
     if (!rows.length) { operationsBlock.innerHTML = '<div class="muted">Операций пока нет</div>'; return; }
     operationsBlock.innerHTML = rows.slice(0, 20).map((item) => `
       <div class="billing-table-row">
-        <div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start">
+        <div class="row row--between gap-12 ai-start">
           <div>
             <div><b>${esc(item.venue_name || '—')}</b> · ${esc(txTypeLabel(item.type))}</div>
             <div class="small mt-6">${esc(formatDateTime(item.created_at))} · ${esc(txStatusLabel(item.status))}</div>
@@ -458,16 +444,16 @@
     if (!rows.length) { reconciliationBlock.innerHTML = '<div class="muted">Проблем по выбранному фильтру не найдено</div>'; return; }
     reconciliationBlock.innerHTML = rows.slice(0, 20).map((item) => `
       <div class="billing-table-row">
-        <div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start">
+        <div class="row row--between gap-12 ai-start">
           <div>
-            <div class="row gap-8" style="flex-wrap:wrap">${issueChip(item.severity)}<span class="status-chip">${esc(issueStatusLabel(item.status))}</span><b>${esc(item.issue_code || '—')}</b></div>
+            <div class="row gap-8">${issueChip(item.severity)}<span class="status-chip">${esc(issueStatusLabel(item.status))}</span><b>${esc(item.issue_code || '—')}</b></div>
             <div class="small mt-6">${esc(item.venue_name || '—')} · обнаружено ${esc(formatDateTime(item.first_detected_at || item.created_at))}</div>
             <div class="small mt-6">Последний раз: ${esc(formatDateTime(item.last_seen_at || item.created_at))}</div>
             ${item.resolved_at ? `<div class="small mt-6">Закрыто: ${esc(formatDateTime(item.resolved_at))}</div>` : ''}
             <div class="small mt-6">${esc(item.message || '')}</div>
             ${item.resolution_comment ? `<div class="small mt-6">Комментарий: ${esc(item.resolution_comment)}</div>` : ''}
           </div>
-          <div class="toolbar" style="justify-content:flex-end">
+          <div class="toolbar jc-end">
             ${String(item.status || '').toUpperCase() === 'OPEN' ? `<button class="btn subtle" data-issue-action="resolve" data-issue-id="${item.id}">Решено</button><button class="btn subtle" data-issue-action="ignore" data-issue-id="${item.id}">Игнор</button>` : `<button class="btn subtle" data-issue-action="reopen" data-issue-id="${item.id}">Переоткрыть</button>`}
           </div>
         </div>

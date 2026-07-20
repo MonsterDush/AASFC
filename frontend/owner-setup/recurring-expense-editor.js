@@ -1,5 +1,5 @@
 export function createRecurringExpenseSetupController(context) {
-  const { toast, confirmModal, api, state, esc, todayIso, parseMoneyToMinor, minorToMoneyInput, buildSelectOptions, recurringModeLabel, buildBasisPaymentMethodCheckboxes, getStepByKey, getNextStepKey, moveToStep, loadSetup } = context;
+  const { toast, confirmModal, api, getPaymentMethods, state, esc, todayIso, parseMoneyToMinor, minorToMoneyInput, buildSelectOptions, recurringModeLabel, buildBasisPaymentMethodCheckboxes, getStepByKey, getNextStepKey, moveToStep, loadSetup, setVisible } = context;
 
   async function loadInlineRecurringExpenses({ force = false } = {}) {
     const inlineState = state.inline.recurring_expenses;
@@ -79,11 +79,11 @@ export function createRecurringExpenseSetupController(context) {
               <label><span>День месяца</span><input class="input" id="recurringDayOfMonth" type="number" min="1" max="31" value="${esc(editing?.day_of_month || 1)}" /></label>
               <label><span>Размазать на месяцев</span><input class="input" id="recurringSpreadMonths" type="number" min="1" max="120" value="${esc(editing?.spread_months || 1)}" /></label>
               <label><span>Режим</span><select class="input" id="recurringGenerationMode"><option value="FIXED" ${isPercent ? '' : 'selected'}>Фиксированная сумма</option><option value="PERCENT" ${isPercent ? 'selected' : ''}>Процент от оплат</option></select></label>
-              <label id="recurringAmountWrap"><span>Сумма, ₽</span><input class="input" id="recurringAmount" placeholder="150000.00" value="${esc(minorToMoneyInput(editing?.amount_minor))}" /></label>
-              <label id="recurringPercentWrap"><span>Процент, %</span><input class="input" id="recurringPercent" placeholder="2.50" value="${esc(minorToMoneyInput(editing?.percent_bps))}" /></label>
+              <label id="recurringAmountWrap" class="${isPercent ? 'hidden' : ''}"><span>Сумма, ₽</span><input class="input" id="recurringAmount" placeholder="150000.00" value="${esc(minorToMoneyInput(editing?.amount_minor))}" /></label>
+              <label id="recurringPercentWrap" class="${isPercent ? '' : 'hidden'}"><span>Процент, %</span><input class="input" id="recurringPercent" placeholder="2.50" value="${esc(minorToMoneyInput(editing?.percent_bps))}" /></label>
               <label><span>Активность</span><select class="input" id="recurringActive"><option value="1" ${editing?.is_active === false ? '' : 'selected'}>Активно</option><option value="0" ${editing?.is_active === false ? 'selected' : ''}>Неактивно</option></select></label>
               <label class="setup-formgrid__full"><span>Комментарий</span><textarea class="input" id="recurringDescription" rows="3" placeholder="Например, аренда помещения">${esc(editing?.description || '')}</textarea></label>
-              <div class="setup-formgrid__full" id="recurringBasisWrap">
+              <div class="setup-formgrid__full${isPercent ? '' : ' hidden'}" id="recurringBasisWrap">
                 <span>База для процента</span>
                 <div class="finance-form mt-8">${buildBasisPaymentMethodCheckboxes(paymentMethods, editing?.payment_method_ids || [])}</div>
               </div>
@@ -109,9 +109,9 @@ export function createRecurringExpenseSetupController(context) {
     const amountWrap = document.getElementById('recurringAmountWrap');
     const percentWrap = document.getElementById('recurringPercentWrap');
     const basisWrap = document.getElementById('recurringBasisWrap');
-    if (amountWrap) amountWrap.style.display = mode === 'FIXED' ? '' : 'none';
-    if (percentWrap) percentWrap.style.display = mode === 'PERCENT' ? '' : 'none';
-    if (basisWrap) basisWrap.style.display = mode === 'PERCENT' ? '' : 'none';
+    setVisible(amountWrap, mode === 'FIXED');
+    setVisible(percentWrap, mode === 'PERCENT');
+    setVisible(basisWrap, mode === 'PERCENT');
   }
 
   async function mountRecurringExpensesEditor(currentStep) {

@@ -22,7 +22,7 @@ import {
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
 
 import { createStaffShiftExportController } from "/staff-shifts/export-controller.js?v=20260719-split1";
-import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260719-calendar1";
+import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260720-unified6";
 
 window.onerror = function (msg, src, line, col, err) {
   const text = `JS ошибка: ${msg}\n${src || ""}:${line || 0}:${col || 0}`;
@@ -628,19 +628,17 @@ function renderModeToggle() {
   // - сотрудник с 2+ заведениями => добавляется "Общий"
   if (!canUseAllMode && !isMultiVenue) {
     mode.box.classList.add("hidden");
-    mode.box.style.display = "none";
     return;
   }
 
   // В Sprint-2 версии блок мог быть скрыт классом .hidden (display:none!important).
   // Убираем этот класс при показе, иначе переключатель не появится.
   mode.box.classList.remove("hidden");
-  mode.box.style.display = "inline-flex";
 
   // видимость кнопок
-  if (mode.all) mode.all.style.display = canUseAllMode ? "" : "none";
-  if (mode.mine) mode.mine.style.display = "";
-  if (mode.global) mode.global.style.display = isMultiVenue ? "" : "none";
+  mode.all?.classList.toggle("hidden", !canUseAllMode);
+  mode.mine?.classList.remove("hidden");
+  mode.global?.classList.toggle("hidden", !isMultiVenue);
 
   const setActive = () => {
     // editor toggle
@@ -759,7 +757,6 @@ function renderShiftSlotToggle() {
   if (!box) return;
   const shouldShow = !!nightShiftsEnabled && calendarScope !== "global";
   box.classList.toggle("hidden", !shouldShow);
-  box.style.display = shouldShow ? "inline-flex" : "none";
   if (!nightShiftsEnabled) selectedShiftSlot = "DAY";
   el.slotDay?.classList.toggle("active", selectedShiftSlot === "DAY");
   el.slotNight?.classList.toggle("active", selectedShiftSlot === "NIGHT");
@@ -845,12 +842,8 @@ function positionScheduleFilterMenu() {
   const triggerRect = trigger.getBoundingClientRect();
   const menuWidth = Math.min(360, Math.max(280, window.innerWidth - pad * 2));
 
-  menu.style.position = "fixed";
-  menu.style.left = "0px";
-  menu.style.top = "0px";
   menu.style.width = `${menuWidth}px`;
   menu.style.maxWidth = `${Math.max(240, window.innerWidth - pad * 2)}px`;
-  menu.style.transform = "none";
 
   const menuRect = menu.getBoundingClientRect();
   let left = triggerRect.left + (triggerRect.width / 2) - (menuRect.width / 2);
@@ -1193,17 +1186,17 @@ function renderShiftCard(s, allowEdit) {
   const assignments = s.assignments || s.shift_assignments || [];
   let peopleHtml = "";
   if (!assignments.length) {
-    peopleHtml = `<div class="muted" style="margin-top:8px">Пока никто не назначен</div>`;
+    peopleHtml = `<div class="muted mt-8">Пока никто не назначен</div>`;
   } else {
     peopleHtml =
-      `<div class="list" style="margin-top:8px">` +
+      `<div class="list mt-8">` +
       assignments.map((a) => {
         const label = displayPerson(a);
         const uname = (a.tg_username || a.member_username || "").trim();
         const unameTxt = uname ? (uname.startsWith("@") ? uname : "@"+uname) : "";
         return `
           <div class="list__row">
-            <div class="row" style="justify-content:space-between; align-items:center">
+            <div class="row row--between ai-center">
               <div class="list__main">
                 <div><b>${escapeHtml(label)}</b>${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
               </div>
@@ -1218,8 +1211,8 @@ function renderShiftCard(s, allowEdit) {
   let editorHtml = "";
   if (allowEdit) {
     editorHtml = `
-      <div class="row" style="gap:10px; flex-wrap:wrap">
-        <select class="input" data-posselect data-shift="${shiftId}" style="flex:1; min-width:240px"></select>
+      <div class="row">
+        <select class="input shift-assignee-select" data-posselect data-shift="${shiftId}"></select>
         <button class="btn primary" data-assign data-shift="${shiftId}">Назначить</button>
       </div>
     `;
@@ -1242,7 +1235,7 @@ function renderShiftCard(s, allowEdit) {
     : `
       <div class="comments">
         <div class="comments__head"><b>Комментарии</b></div>
-        <div class="muted small" style="margin-top:6px">Комментарии доступны в режимах «Все» или «Только мои».</div>
+        <div class="muted small mt-6">Комментарии доступны в режимах «Все» или «Только мои».</div>
       </div>
     `;
 
@@ -1457,43 +1450,43 @@ function openDay(dateStr) {
   const subtitle = allowEdit ? "Редактирование" : "Просмотр";
 
   let html = `
-    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div class="row row--between ai-start gap-12">
       <div>
-        ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted" style="margin-top:4px">Прошедшие дни может редактировать только владелец</div>` : ``}
+        ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted mt-4">Прошедшие дни может редактировать только владелец</div>` : ``}
       </div>
-      ${allowEdit ? `<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:6px"><button class="btn" id="btnManageIntervals">Интервалы</button><button class="btn primary" id="btnAddShift">+ Добавить смену</button></div>` : ``}
+      ${allowEdit ? `<div class="row gap-8 mt-6"><button class="btn" id="btnManageIntervals">Интервалы</button><button class="btn primary" id="btnAddShift">+ Добавить смену</button></div>` : ``}
     </div>
   `;
 
   if (!list.length) {
-    html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день в режиме «${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}» смен нет</div></div>`;
+    html += `<div class="card mt-12"><div class="muted">На этот день в режиме «${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}» смен нет</div></div>`;
   } else {
-    html += `<div class="stack" style="margin-top:12px">`;
+    html += `<div class="stack mt-12">`;
     for (const s of list) html += renderShiftCard(s, allowEdit);
     html += `</div>`;
   }
 
   if (allowEdit) {
     html += `
-      <div class="card" style="margin-top:12px; display:none" id="addShiftCard">
+      <div class="card mt-12 hidden" id="addShiftCard">
         <b>Новая смена</b>
-        <div class="muted" style="margin-top:6px">Выбери промежуток и создай смену на этот день${nightShiftsEnabled ? ` · ${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}` : ""}</div>
+        <div class="muted mt-6">Выбери промежуток и создай смену на этот день${nightShiftsEnabled ? ` · ${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}` : ""}</div>
 
-        <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
-          <select class="input" id="intervalSelect" style="flex:1; min-width:220px"></select>
+        <div class="row mt-10">
+          <select class="input shift-interval-select" id="intervalSelect"></select>
           <button class="btn primary" id="createShiftBtn">Создать смену</button>
         </div>
 
-        <div id="createIntervalBox" class="card" style="margin-top:10px; display:none; background: var(--surface2)">
+        <div id="createIntervalBox" class="card shift-create-interval mt-10 hidden">
           <b>Новый промежуток</b>
-          <div class="grid2" style="margin-top:10px">
+          <div class="grid grid2 mt-10">
             <input class="input" id="newIntTitle" placeholder="Название (например, Бар)" />
-            <div class="row" style="margin-top:10px">
+            <div class="row mt-10">
               <input class="input" id="newIntStart" placeholder="Начало (HH:MM)" />
               <input class="input" id="newIntEnd" placeholder="Конец (HH:MM)" />
             </div>
           </div>
-          <div class="row" style="margin-top:10px; gap:10px; justify-content:flex-end">
+          <div class="row row--end mt-10">
             <button class="btn" id="cancelCreateInterval">Отмена</button>
             <button class="btn primary" id="createIntervalBtn">Создать промежуток</button>
           </div>
@@ -1522,7 +1515,7 @@ function openDay(dateStr) {
 
   if (btn && card) {
     btn.onclick = () => {
-      card.style.display = card.style.display === "none" ? "block" : "none";
+      card.classList.toggle("hidden");
     };
   }
 
@@ -1549,7 +1542,7 @@ function openDay(dateStr) {
 
     const syncBox = () => {
       const isCreate = sel.value === "__create__";
-      if (box) box.style.display = isCreate ? "block" : "none";
+      box?.classList.toggle("hidden", !isCreate);
       if (createBtn) createBtn.disabled = isCreate;
     };
 

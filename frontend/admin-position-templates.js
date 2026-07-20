@@ -96,7 +96,7 @@ function renderPermissionChecklist(selectedCodes = []) {
       <div class="row">
         <div>
           <b>${esc(group.title)}</b>
-          ${group.hint ? `<div class="muted" style="margin-top:4px; font-size:12px">${esc(group.hint)}</div>` : ''}
+          ${group.hint ? `<div class="muted small mt-4">${esc(group.hint)}</div>` : ''}
         </div>
         <div class="tpl-perm-tools">
           <button class="btn sm" type="button" data-perm-set="${esc(group.key)}" data-value="1">Все</button>
@@ -131,7 +131,7 @@ function renderList() {
             <div class="row">
               <div>
                 <b>${esc(item.title)}</b>
-                <div class="muted" style="margin-top:4px">${esc(item.description || 'Без описания')}</div>
+                <div class="muted mt-4">${esc(item.description || 'Без описания')}</div>
               </div>
               <div class="tpl-tags">
                 ${item.is_system ? '<span class="tpl-tag">system</span>' : ''}
@@ -142,7 +142,7 @@ function renderList() {
             <div class="tpl-tags">${labels.length ? labels.map((label) => `<span class="tpl-tag">${esc(label)}</span>`).join('') : '<span class="muted">Группы не определены</span>'}</div>
             <div class="row">
               <div class="muted">Код: ${esc(item.code || '—')} · Порядок: ${Number(item.sort_order || 0)}</div>
-              <div class="row" style="gap:6px">
+              <div class="row tpl-actions">
                 <button class="btn sm" type="button" data-edit="${esc(item.id)}">Изменить</button>
                 <button class="btn sm ${item.is_active ? 'danger' : ''}" type="button" data-archive="${esc(item.id)}" data-value="${item.is_active ? '0' : '1'}">${item.is_active ? 'В архив' : 'Вернуть'}</button>
               </div>
@@ -162,17 +162,17 @@ function renderEditor() {
       <div class="row">
         <div>
           <b>${isNew ? 'Новый шаблон' : 'Редактирование шаблона'}</b>
-          <div class="muted" style="margin-top:4px">Шаблон применяется копированием прав. После применения владелец может вручную подправить конкретную должность.</div>
+          <div class="muted mt-4">Шаблон применяется копированием прав. После применения владелец может вручную подправить конкретную должность.</div>
         </div>
         ${!isNew ? '<button class="btn subtle" id="btnResetEditor" type="button">Новый</button>' : ''}
       </div>
-      <div class="tpl-field" style="margin-top:12px"><span>Код шаблона</span><input id="tplCode" class="input" placeholder="например shift_manager" value="${esc(item.code || '')}"></div>
-      <div class="tpl-field" style="margin-top:10px"><span>Название шаблона</span><input id="tplTitle" class="input" placeholder="Например, Администратор зала" value="${esc(item.title || '')}"></div>
-      <div class="tpl-field" style="margin-top:10px"><span>Описание</span><textarea id="tplDescription" class="input" rows="3" placeholder="Коротко опиши, для какой роли этот шаблон">${esc(item.description || '')}</textarea></div>
-      <div class="tpl-field" style="margin-top:10px"><span>Порядок сортировки</span><input id="tplSortOrder" class="input" type="number" min="0" step="1" value="${esc(item.sort_order ?? '')}"></div>
-      <label class="checkline" style="margin-top:10px"><input id="tplActive" type="checkbox" ${item.is_active !== false ? 'checked' : ''}><span>Шаблон активен и доступен владельцам</span></label>
-      <div style="margin-top:12px">${renderPermissionChecklist(item.permission_codes || [])}</div>
-      <div class="row" style="gap:8px; margin-top:12px; flex-wrap:wrap"><button class="btn primary" id="btnSaveTemplate" type="button">${isNew ? 'Создать шаблон' : 'Сохранить изменения'}</button></div>
+      <div class="tpl-field mt-12"><span>Код шаблона</span><input id="tplCode" class="input" placeholder="например shift_manager" value="${esc(item.code || '')}"></div>
+      <div class="tpl-field mt-10"><span>Название шаблона</span><input id="tplTitle" class="input" placeholder="Например, Администратор зала" value="${esc(item.title || '')}"></div>
+      <div class="tpl-field mt-10"><span>Описание</span><textarea id="tplDescription" class="input" rows="3" placeholder="Коротко опиши, для какой роли этот шаблон">${esc(item.description || '')}</textarea></div>
+      <div class="tpl-field mt-10"><span>Порядок сортировки</span><input id="tplSortOrder" class="input" type="number" min="0" step="1" value="${esc(item.sort_order ?? '')}"></div>
+      <label class="checkline mt-10"><input id="tplActive" type="checkbox" ${item.is_active !== false ? 'checked' : ''}><span>Шаблон активен и доступен владельцам</span></label>
+      <div class="mt-12">${renderPermissionChecklist(item.permission_codes || [])}</div>
+      <div class="row gap-8 mt-12"><button class="btn primary" id="btnSaveTemplate" type="button">${isNew ? 'Создать шаблон' : 'Сохранить изменения'}</button></div>
     </div>
   `;
 }

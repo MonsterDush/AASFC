@@ -184,7 +184,7 @@ function showPhotoAt(idx) {
     phDownload.href = url;
     phDownload.setAttribute("download", a.file_name || "photo");
   }
-  if (phDelete) phDelete.style.display = canDeleteAttachments() ? "" : "none";
+  phDelete?.classList.toggle("hidden", !canDeleteAttachments());
 }
 
 phPrev?.addEventListener("click", () => showPhotoAt(phIndex - 1));
@@ -389,7 +389,7 @@ function renderNoVenue() {
   el.grid.innerHTML = `
     <div class="itemcard">
       <b>Не выбрано заведение</b>
-      <div class="muted" style="margin-top:6px">
+      <div class="muted mt-6">
         Выбери заведение и открой отчёты ещё раз.
       </div>
     </div>
@@ -411,7 +411,7 @@ function renderMonth() {
     el.grid.innerHTML = `
       <div class="itemcard">
         <b>Нет доступа</b>
-        <div class="muted" style="margin-top:6px">У вас нет прав на просмотр отчётов.</div>
+        <div class="muted mt-6">У вас нет прав на просмотр отчётов.</div>
       </div>
     `;
     return;
@@ -734,7 +734,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
     <div class="rep-sec">
       <div class="rep-sec__head">
         <b>${esc(title)}</b>
-        ${hint ? `<div class="muted small" style="margin-top:4px">${esc(hint)}</div>` : ``}
+        ${hint ? `<div class="muted small mt-4">${esc(hint)}</div>` : ``}
       </div>
       <div class="rep-sec__body">${bodyHtml}</div>
     </div>
@@ -783,7 +783,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
           <input id="repRevenueTotal" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.revenue_total ?? 0) : "")}" ${(!editEnabled || !showMoney) ? "disabled" : ""} placeholder="${showMoney ? "0" : (financialValuesHidden() ? "скрыто" : "нет доступа")}" />
         </label>
       </div>
-      <div class="muted small" style="margin-top:6px">Департаменты не настроены — вводим общую выручку.</div>
+      <div class="muted small mt-6">Департаменты не настроены — вводим общую выручку.</div>
     `;
 
   const kpisHtml = kpis.length
@@ -792,7 +792,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
 
   const tipsDisabled = (!editEnabled) || (!showMoney);
   const tipsHtml = !tipsOn ? `` : `
-    <div class="rep-grid rep-grid--single" style="margin-bottom: 8px;">
+    <div class="rep-grid rep-grid--single mb-8">
       <label class="rep-field">
         <div class="rep-field__label"><span>Чаевые (общая сумма)</span></div>
         <input id="repTips" type="number" min="0" inputmode="numeric" value="${esc(showMoney ? (rep?.tips_total ?? 0) : "")}" ${tipsDisabled ? "disabled" : ""} placeholder="${showMoney ? "0" : (financialValuesHidden() ? "скрыто" : "нет доступа")}" />
@@ -822,28 +822,28 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
       <div class="rep-total rep-total--discr" id="t_discr_box">
         <div class="muted small">Расхождение</div>
         <div class="rep-total__v" id="t_discrepancy">${totals.discrepancy === null ? "—" : esc(fmtRub(totals.discrepancy))}</div>
-        <div class="rep-total__hint muted small" id="t_discr_hint" style="display:none">Для закрытия нужен комментарий</div>
+        <div class="rep-total__hint muted small hidden" id="t_discr_hint">Для закрытия нужен комментарий</div>
       </div>
     </div>
   `;
 
   const commentHtml = `
-    <div style="margin-top:10px">
-      <div class="muted small" style="margin-bottom:6px">Комментарий (обязателен при расхождении)</div>
+    <div class="mt-10">
+      <div class="muted small mb-6">Комментарий (обязателен при расхождении)</div>
       <textarea id="repComment" class="rep-comment" ${commentDisabled ? "disabled" : ""} placeholder="Например: расхождение из-за возврата / перевод между кассами / ...">${esc(comment)}</textarea>
     </div>
   `;
 
   const actionsHtml = (() => {
     if (!showMoney) {
-      return `<div class="muted" style="margin-top:10px">Суммы скрыты из-за прав доступа.</div>`;
+      return `<div class="muted mt-10">Суммы скрыты из-за прав доступа.</div>`;
     }
 
     if (status === "CLOSED") {
       if (!canEditClosedNow) return ``;
       if (!editEnabled) return ``;
       return `
-        <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px; flex-wrap:wrap">
+        <div class="row row--end gap-8 mt-12">
           <button class="btn primary" id="btnSaveClosed" type="button">Сохранить изменения</button>
         </div>
       `;
@@ -853,7 +853,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
     if (!canMake()) return ``;
 
     return `
-      <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px; flex-wrap:wrap">
+      <div class="row row--end gap-8 mt-12">
         <button class="btn" id="btnSaveDraft" type="button">Сохранить черновик</button>
         ${canClose() ? `<button class="btn primary" id="btnCloseShift" type="button">Закрыть смену</button>` : ``}
       </div>
@@ -865,11 +865,11 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
     ? attItems
         .map(
           (a) => `
-          <div class="row" style="justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); align-items:center">
-            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:20%">${esc(a.file_name || "file")}</div>
-            <div class="row" style="gap:8px; justify-content:flex-end; flex-wrap:wrap">
+          <div class="row report-attachment-row">
+            <div class="report-attachment-name">${esc(a.file_name || "file")}</div>
+            <div class="row row--end gap-8">
               <button class="btn" data-ph-open="${esc(a.id)}">Открыть</button>
-              <a class="btn" href="${esc(attachmentHref(a.url))}" download style="text-decoration:none">Скачать</a>
+              <a class="btn" href="${esc(attachmentHref(a.url))}" download>Скачать</a>
               ${canMake() ? `<button class="btn danger" data-att-del="${esc(a.id)}">Удалить</button>` : ``}
             </div>
           </div>
@@ -880,13 +880,13 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
 
   const uploadHtml = canMake()
     ? `
-      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:10px; flex-wrap:wrap">
-        <input id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple style="max-width: 260px" />
+      <div class="row row--end gap-8 mt-10">
+        <input class="report-file-input" id="repFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,image/jpeg,image/png,image/webp,image/heic" multiple />
         <button class="btn" id="btnUpload" type="button">Загрузить</button>
-        <div class="muted" style="width:100%; text-align:right; font-size:12px; margin-top:4px">До 12&nbsp;МБ на файл</div>
+        <div class="muted small report-upload-hint">До 12&nbsp;МБ на файл</div>
       </div>
     `
-    : `<div class="muted" style="margin-top:10px">Нет прав на загрузку файлов</div>`;
+    : `<div class="muted mt-10">Нет прав на загрузку файлов</div>`;
 
   const maps = {
     paymentsTitleById: Object.fromEntries((catalogs?.payments || []).map((x) => [Number(x.id), x.title || `#${x.id}`])),
@@ -908,7 +908,7 @@ function renderReportModal({ dayISO, rep, catalogs, attachments, audit, mode, ti
     ${actionsHtml}
 
     <div class="rep-divider"></div>
-    ${section("Фото/файлы", `<div style="margin-top:6px">${attHtml}</div>${uploadHtml}`, "Можно прикрепить несколько фотографий")}
+    ${section("Фото/файлы", `<div class="mt-6">${attHtml}</div>${uploadHtml}`, "Можно прикрепить несколько фотографий")}
 
     <div class="rep-divider"></div>
     ${section("История изменений", auditHtml, status === "CLOSED" ? "Все изменения закрытого отчёта сохраняются в истории" : "История появится после изменений закрытого отчёта")}
@@ -1000,7 +1000,7 @@ function wireTotalsLive({ hasDepartments }) {
       box.classList.toggle("is-ok", !needComment);
       box.classList.toggle("is-bad", needComment);
     }
-    if (hint) hint.style.display = needComment ? "" : "none";
+    hint?.classList.toggle("hidden", !needComment);
 
     if (ta) {
       const empty = !String(ta.value || "").trim();
@@ -1111,7 +1111,7 @@ async function openDay(dayISO) {
   renderMonth();
 
   // Open modal immediately for instant feedback
-  openModal(formatDateRuNoG(dayISO), "Загрузка…", `<div class="skeleton" style="height:120px"></div>`);
+  openModal(formatDateRuNoG(dayISO), "Загрузка…", `<div class="skeleton report-loading-skeleton"></div>`);
 
   // Load catalogs (active only)
   let catalogs = { payments: [], departments: [], kpis: [] };

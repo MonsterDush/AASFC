@@ -4,18 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified4" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/staff-salary.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Зарплата</title>
-
-  <style>
-    .mini-kpi{padding:10px 12px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(255,255,255,.03)}
-    .mini-kpi.total{grid-column:1/-1}
-    .salary-all-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-    @media(min-width:640px){
-      .salary-all-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
-      .mini-kpi.total{grid-column:auto}
-    }
-  </style>
 </head>
 
 <body>
@@ -63,9 +55,9 @@
       </div>
 
       <div class="row ai-center jc-center gap-8 wrap mt-10 hidden" id="rangeControls">
-        <input class="input" id="rangeFrom" type="date" style="max-width:170px" />
+        <input class="input maxw-170" id="rangeFrom" type="date" />
         <span class="muted">—</span>
-        <input class="input" id="rangeTo" type="date" style="max-width:170px" />
+        <input class="input maxw-170" id="rangeTo" type="date" />
         <button class="btn primary sm" id="rangeApply" type="button">Показать</button>
       </div>
 
@@ -88,8 +80,8 @@
 
           <div class="muted small mt-10" id="salarySourceHint"></div>
 
-          <div class="row row--between ai-center mt-10" id="salaryActionsRow" style="gap:10px; flex-wrap:wrap;">
-            <div class="row gap-8 ai-center" id="payrollBreakdownRow" style="display:none; gap:10px; flex-wrap:wrap;">
+          <div class="row row--between ai-center mt-10" id="salaryActionsRow">
+            <div class="row ai-center hidden" id="payrollBreakdownRow">
               <span class="badge">payroll</span>
               <button class="btn sm" id="openPayrollBreakdownBtn">Разбор начисления</button>
             </div>
@@ -98,7 +90,7 @@
         </div>
 
         <div class="itemcard mt-12">
-          <div class="row row--between" style="gap:10px; flex-wrap:wrap;">
+          <div class="row row--between">
             <b id="daysChartTitle">График по дням</b>
             <div class="muted small" id="daysChartHint">Выбери день для подробностей</div>
           </div>
@@ -108,7 +100,7 @@
         </div>
 
         <div class="itemcard mt-12">
-          <div class="row row--between" style="gap:10px; flex-wrap:wrap;">
+          <div class="row row--between">
             <b id="daysListTitle">По дням</b>
             <div class="muted small" id="daysListHint"></div>
           </div>
@@ -119,7 +111,7 @@
         </div>
       </div>
 
-      <div class="itemcard mt-12" id="allVenuesCard" style="display:none">
+      <div class="itemcard mt-12 hidden" id="allVenuesCard">
         <div class="grid mt-10 salary-all-kpis">
           <div class="mini-kpi">
             <div class="muted small">Начислено</div>
@@ -143,7 +135,7 @@
           </div>
         </div>
 
-        <div class="row jc-between ai-center mt-12" style="flex-wrap:wrap; gap:10px">
+        <div class="row jc-between ai-center mt-12">
           <b>По заведениям</b>
           <span class="muted small" id="allVenuesHint"></span>
         </div>
@@ -164,6 +156,6 @@
     <div class="toast" id="toast"><div class="toast__text"></div></div>
   </div>
 
-  <script type="module" src="/staff-salary.js"></script>
+  <script type="module" src="/staff-salary.js?v=20260720-unified6"></script>
 </body>
 </html>

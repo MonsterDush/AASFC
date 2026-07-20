@@ -62,7 +62,7 @@ function renderComponents() {
     row.className = "listrow";
     row.innerHTML = `
       <div class="listrow__left">
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+        <div class="row gap-8">
           <b>${esc(it.title)}</b>
           ${it.is_active ? "" : `<span class="badge">неактивен</span>`}
         </div>
@@ -70,7 +70,7 @@ function renderComponents() {
         <div class="muted listrow__meta">${esc(componentSubtitle(it))}</div>
         ${String(it?.component_type || "").toUpperCase() === "KPI_BONUS" ? componentStepsPreview(it) : ""}
       </div>
-      <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;" id="componentActions_${it.id}"></div>
+      <div class="row row--nowrap gap-8 flex-none" id="componentActions_${it.id}"></div>
     `;
     const actions = row.querySelector(`#componentActions_${it.id}`);
     if (state.can.manage && actions) {

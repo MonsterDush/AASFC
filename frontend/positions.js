@@ -21,11 +21,11 @@ import {
 } from "/app.js?v=20260719-split1";
 
 import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
-import { createPositionPermissionController } from "/positions/permission-controller.js?v=20260719-positions1";
-import { createPositionDomain } from "/positions/position-domain.js?v=20260719-positions1";
-import { createPositionEditor } from "/positions/position-editor.js?v=20260719-positions1";
-import { createPositionList } from "/positions/position-list.js?v=20260719-positions1";
-import { createPositionInviteController } from "/positions/invite-controller.js?v=20260719-positions1";
+import { createPositionPermissionController } from "/positions/permission-controller.js?v=20260720-unified6";
+import { createPositionDomain } from "/positions/position-domain.js?v=20260720-unified6";
+import { createPositionEditor } from "/positions/position-editor.js?v=20260720-unified6";
+import { createPositionList } from "/positions/position-list.js?v=20260720-unified6";
+import { createPositionInviteController } from "/positions/invite-controller.js?v=20260720-unified6";
 
 const root = document.getElementById("root");
 
@@ -53,30 +53,30 @@ function renderShell() {
 
     <div class="card">
       <div class="muted">Создайте должности, назначьте сотрудников и при необходимости выберите для них профиль зарплаты.</div>
-      <div class="muted small" id="accessHint" style="margin-top:6px"></div>
+      <div class="muted small mt-6" id="accessHint"></div>
 
-      <div class="itemcard" style="margin-top:12px">
-        <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
+      <div class="itemcard mt-12">
+        <div class="row row--between ai-center">
           <b>Список должностей</b>
           <button class="btn primary" id="btnOpenCreate">+ Создать</button>
         </div>
-        <div id="list" style="margin-top:10px">
+        <div class="mt-10" id="list">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
 
 
 
-<div class="itemcard" style="margin-top:12px; display:none" id="invitesCard">
-  <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
+<div class="itemcard mt-12 hidden" id="invitesCard">
+  <div class="row row--between ai-center">
     <b>Приглашённые <span class="badge badge--draft">приглашён</span></b>
   </div>
-  <div class="muted" style="margin-top:6px; font-size:12px">Назначьте должность заранее — применится после принятия приглашения.</div>
-  <div id="invitesList" style="margin-top:10px">
+  <div class="muted small mt-6">Назначьте должность заранее — применится после принятия приглашения.</div>
+  <div class="mt-10" id="invitesList">
     <div class="muted">—</div>
   </div>
 </div>
-      <div class="row" style="margin-top:12px">
+      <div class="row mt-12">
         <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
       </div>
     </div>
@@ -102,7 +102,7 @@ function renderShell() {
         <div class="modal__head">
           <div>
             <b class="modal__title" id="posModalTitle">Должность</b>
-            <div class="muted" id="posModalHint" style="margin-top:4px; font-size:12px"></div>
+            <div class="muted small mt-4" id="posModalHint"></div>
           </div>
           <button class="btn" data-close>Закрыть</button>
         </div>
@@ -121,7 +121,7 @@ function renderShell() {
 
 function applyAccessToShell() {
   const btn = document.getElementById("btnOpenCreate");
-  if (btn) btn.style.display = auth.canManage ? "" : "none";
+  btn?.classList.toggle("hidden", !auth.canManage);
 
   const sub = document.getElementById("subtitle");
   if (sub) {

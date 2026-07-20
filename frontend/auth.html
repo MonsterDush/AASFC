@@ -3,25 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified4" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/auth.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Авторизация</title>
-  <style>
-    .auth-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:12px; }
-    .verify-box { border:1px solid var(--border); border-radius:16px; padding:12px; }
-    .verify-meta { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-line; }
-    .hidden { display:none !important; }
-    .call-number { font-size:20px; font-weight:700; letter-spacing:.02em; }
-    .call-number a { color: inherit; text-decoration: none; }
-    .login-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-    .login-actions .btn { flex: 0 0 auto; }
-    .password-flow-shell { display:flex; flex-direction:column; gap:12px; }
-    .password-flow-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .password-rules { border:1px solid var(--border); border-radius:12px; padding:10px 12px; background: rgba(255,255,255,0.02); }
-    .auth-shell { margin-top:12px; }
-    .auth-shell input:not([type="checkbox"]):not([type="radio"]) { margin-top:12px; }
-    .miniapp-open-box { margin-top:12px; border:1px solid var(--border); border-radius:16px; padding:12px; background:rgba(255,255,255,0.02); }
-    .miniapp-open-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
-  </style>
 </head>
 <body>
   <div class="container auth-shell">
@@ -82,7 +67,7 @@
                 <label class="auth-label" for="verifyPhoneInput">Номер телефона</label>
                 <input id="verifyPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
               </div>
-              <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
+              <div class="row gap-8 mt-4">
                 <button class="btn" id="btnRequestCall">Получить номер для звонка</button>
                 <button class="btn hidden" id="btnRequestSmsFallback">Не получается? Получить SMS</button>
               </div>

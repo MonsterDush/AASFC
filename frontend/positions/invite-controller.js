@@ -16,11 +16,11 @@ function renderInvites() {
 
   const invites = Array.isArray(state.invites) ? state.invites : [];
   if (!invites.length) {
-    card.style.display = "none";
+    card.classList.add("hidden");
     return;
   }
 
-  card.style.display = "";
+  card.classList.remove("hidden");
   list.innerHTML = "";
 
   const titles = uniqueTitles();
@@ -35,8 +35,7 @@ function renderInvites() {
 
   invites.forEach((inv) => {
     const row = document.createElement("div");
-    row.className = "row";
-    row.style = "justify-content:space-between; gap:12px; border-bottom:1px solid var(--border); padding:10px 0; align-items:flex-start; flex-wrap:wrap";
+    row.className = "row position-invite-row";
 
     const uname = (inv?.tg_username || "").trim();
     const presetTitle = inv?.default_position?.title ? String(inv.default_position.title) : "";
@@ -47,16 +46,16 @@ function renderInvites() {
     ].join("");
 
     row.innerHTML = `
-      <div style="min-width:220px">
+      <div class="position-invite-person">
         <div><b>@${esc(uname || "-")}</b> <span class="badge badge--draft">приглашён</span></div>
-        <div class="muted" style="margin-top:4px; font-size:12px">${esc(inv?.venue_role === "OWNER" ? "Владелец" : "Персонал")}</div>
+        <div class="muted small mt-4">${esc(inv?.venue_role === "OWNER" ? "Владелец" : "Персонал")}</div>
       </div>
-      <div style="min-width:240px">
-        <div class="muted" style="margin-bottom:6px">Должность</div>
+      <div class="position-invite-assignment">
+        <div class="muted mb-6">Должность</div>
         <select data-invite-id="${esc(String(inv.id))}" ${(!canAssign || !titles.length) ? "disabled" : ""}>
           ${options}
         </select>
-        ${!canAssign ? `<div class="muted small" style="margin-top:6px">Недостаточно прав для назначения</div>` : ``}
+        ${!canAssign ? `<div class="muted small mt-6">Недостаточно прав для назначения</div>` : ``}
       </div>
     `;
 

@@ -22,11 +22,11 @@ import {
   applyDemoReadonlyCaps,
 } from "/app.js?v=20260719-split1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
-import { createPayComponentSupport } from "/owner-pay-profile/component-support.js?v=20260719-payprofile1";
-import { createPayComponentFormRenderer } from "/owner-pay-profile/component-form.js?v=20260719-payprofile1";
-import { createPayComponentController } from "/owner-pay-profile/component-controller.js?v=20260719-payprofile1";
-import { createPayComponentList } from "/owner-pay-profile/component-list.js?v=20260719-payprofile1";
-import { createPayAssignmentController } from "/owner-pay-profile/assignment-controller.js?v=20260719-payprofile1";
+import { createPayComponentSupport } from "/owner-pay-profile/component-support.js?v=20260720-unified7";
+import { createPayComponentFormRenderer } from "/owner-pay-profile/component-form.js?v=20260720-unified7";
+import { createPayComponentController } from "/owner-pay-profile/component-controller.js?v=20260720-unified7";
+import { createPayComponentList } from "/owner-pay-profile/component-list.js?v=20260720-unified7";
+import { createPayAssignmentController } from "/owner-pay-profile/assignment-controller.js?v=20260720-unified7";
 
 const root = document.getElementById("root");
 
@@ -37,6 +37,10 @@ function esc(s) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function setVisible(element, visible) {
+  element?.classList.toggle("hidden", !visible);
 }
 
 function parseParams() {
@@ -111,7 +115,7 @@ function renderShell() {
         </div>
       </div>
 
-      <div class="row mt-12" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div class="row row--between gap-12 mt-12">
         <a class="btn subtle inline" id="backProfiles" href="#">← К списку профилей</a>
         <a class="btn subtle inline" id="openPayroll" href="#">Открыть начисления →</a>
       </div>
@@ -136,7 +140,7 @@ function renderShell() {
         <div class="modal__head">
           <div>
             <b class="modal__title" id="editTitle">Редактирование</b>
-            <div class="muted" id="editHint" style="margin-top:4px; font-size:12px"></div>
+            <div class="muted small mt-4" id="editHint"></div>
           </div>
           <button class="btn" data-close>Закрыть</button>
         </div>
@@ -192,9 +196,9 @@ function renderHeader() {
   document.getElementById("profileMeta").textContent = `${p?.is_active ? "Активный профиль" : "Профиль выключен"} · Компонентов: ${Number(p?.components?.length || 0)} · Назначений: ${Number(p?.assignments?.length || 0)}`;
   document.getElementById("backProfiles").href = `/owner-pay-profiles.html?venue_id=${encodeURIComponent(state.venueId)}`;
   document.getElementById("openPayroll").href = `/owner-payroll.html?venue_id=${encodeURIComponent(state.venueId)}`;
-  document.getElementById("btnEditProfile").style.display = state.can.manage ? "" : "none";
-  document.getElementById("btnAddComponent").style.display = state.can.manage ? "" : "none";
-  document.getElementById("btnAddAssignment").style.display = state.can.manage ? "" : "none";
+  setVisible(document.getElementById("btnEditProfile"), state.can.manage);
+  setVisible(document.getElementById("btnAddComponent"), state.can.manage);
+  setVisible(document.getElementById("btnAddAssignment"), state.can.manage);
 }
 
 
@@ -258,7 +262,7 @@ function openProfileEditor() {
           <span>Профиль активен</span>
         </label>
       </div>
-      <div class="row mt-12" style="justify-content:flex-end; gap:8px">
+      <div class="row row--end gap-8 mt-12">
         <button class="btn" id="btnCancel" type="button">Отмена</button>
         <button class="btn primary" id="btnSave" type="button">Сохранить</button>
       </div>

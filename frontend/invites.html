@@ -4,15 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified4" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/invites.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Приглашения</title>
-  <style>
-    .invite-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:10px; margin-top:10px; }
-    .invite-card { border-bottom:1px solid var(--border); padding:12px 0; }
-    .mono-wrap { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; word-break: break-all; }
-    .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--border); border-radius:999px; font-size:12px; }
-    .invite-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
-  </style>
 </head>
 <body>
   <div class="container">
@@ -28,11 +23,11 @@
     </div>
 
     <div class="card">
-      <div id="selectorCard" class="itemcard" style="margin-top:12px; display:none;">
+      <div id="selectorCard" class="itemcard mt-12 hidden">
         <b>Выбрать заведение</b>
         <div class="muted mt-6">Сначала выбери заведение, для которого нужно создать приглашение.</div>
         <div class="row mt-10">
-          <select id="venueSelect" style="min-width:260px; max-width:100%"></select>
+          <select class="invite-venue-select invite-venue-select--wide" id="venueSelect"></select>
           <button class="btn primary" id="btnUseVenue">Выбрать</button>
           <a class="btn subtle inline" id="openLink" href="/invites.html">Открыть страницу</a>
         </div>
@@ -54,7 +49,7 @@
             <label class="muted">Ник в Telegram</label>
             <input id="tg" placeholder="@username" />
           </div>
-          <div id="phoneWrap" style="display:none">
+          <div class="hidden" id="phoneWrap">
             <label class="muted">Телефон</label>
             <input id="phone" placeholder="+7 999 123-45-67" />
           </div>
@@ -197,8 +192,8 @@
 
     function syncChannel() {
       const channel = String(inviteChannel.value || "TELEGRAM").toUpperCase();
-      tgWrap.style.display = channel === "TELEGRAM" ? "" : "none";
-      phoneWrap.style.display = channel === "PHONE" ? "" : "none";
+      tgWrap.classList.toggle("hidden", channel !== "TELEGRAM");
+      phoneWrap.classList.toggle("hidden", channel !== "PHONE");
     }
 
     function setVenueMeta() {
@@ -217,7 +212,7 @@
     }
 
     async function loadVenuesForSelector() {
-      selectorCard.style.display = "block";
+      selectorCard.classList.remove("hidden");
       venueSelect.innerHTML = `<option value="">Загружаю заведения…</option>`;
       try {
         const venues = await api("/me/venues");
@@ -270,7 +265,7 @@
         const row = document.createElement("div");
         row.className = "invite-card";
         row.innerHTML = `
-          <div class="row" style="justify-content:space-between; align-items:flex-start; gap:12px;">
+          <div class="row row--between ai-start gap-12">
             <div>
               <div><b>${pendingContact(i)}</b> <span class="chip">${esc(channelLabel(i.channel))}</span> <span class="chip">${esc(roleLabel(i.venue_role))}</span></div>
               <div class="muted mono-wrap mt-6">${i.phone ? esc(i.phone) + ' · ' : ''}${esc(i.created_at || '')}</div>
@@ -293,7 +288,7 @@
         };
         const cancelBtn = row.querySelector('[data-cancel]');
         const canCancelInvite = canManageStaff && (canInviteOwners || String(i.venue_role || '').toUpperCase() !== 'OWNER');
-        if (cancelBtn) cancelBtn.style.display = canCancelInvite ? '' : 'none';
+        cancelBtn?.classList.toggle('hidden', !canCancelInvite);
         if (cancelBtn) cancelBtn.onclick = async () => {
           try {
             await api(`/venues/${venueId}/invites/${i.id}`, { method:'DELETE' });
@@ -319,14 +314,14 @@
         const display = m.display_name || m.short_name || m.full_name || (m.tg_username ? '@' + m.tg_username : 'Участник');
         const canRemoveMember = canManageStaff && (canInviteOwners || String(m.venue_role || '').toUpperCase() !== 'OWNER');
         row.innerHTML = `
-          <div class="row" style="justify-content:space-between; align-items:flex-start; gap:12px;">
+          <div class="row row--between ai-start gap-12">
             <div>
               <div><b>${esc(display)}</b> <span class="chip">${esc(roleLabel(m.venue_role))}</span></div>
               <div class="muted mt-6">${m.tg_username ? "@" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? esc(m.phone) : ""}</div>
               <div class="mt-6">${authChips(m.auth_methods || [])}</div>
             </div>
             <div class="invite-actions">
-              <button class="btn danger" data-remove style="display:${canRemoveMember ? '' : 'none'}">Удалить</button>
+              <button class="btn danger${canRemoveMember ? '' : ' hidden'}" data-remove>Удалить</button>
             </div>
           </div>
         `;

@@ -1,0 +1,13 @@
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.summary-card,.billing-table-row{border:1px solid var(--border);border-radius:14px;padding:12px}
+.summary-card b{display:block;font-size:20px;margin-top:6px}
+.billing-table-row{margin-top:10px}
+.status-chip,.issue-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px}
+.issue-chip.critical{font-weight:700}
+.issue-chip.warning{font-weight:600}
+.section-title{margin:0 0 8px}
+input[type="search"],select{min-width:180px}
+.split-grid{display:grid;grid-template-columns:1fr;gap:16px}
+@media (min-width:900px){.summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (min-width:980px){.split-grid{grid-template-columns:1fr 1fr}}

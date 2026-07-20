@@ -78,7 +78,7 @@ function renderPositionForm({ mode, position }) {
   const permCardsHtml = !canEditPerms
     ? ``
     : `
-      <div style="margin-top:12px; display:grid; grid-template-columns: 1fr; gap:10px">
+      <div class="position-permission-groups">
         <div class="perm-tools">
           <button class="btn sm" type="button" id="btnPermAllOn">Включить все</button>
           <button class="btn sm" type="button" id="btnPermAllOff">Выключить все</button>
@@ -102,13 +102,13 @@ function renderPositionForm({ mode, position }) {
           `).join("");
 
           return `
-            <div class="card" style="padding:12px">
+            <div class="card position-permission-card">
               <div class="perm-group-title">
                 <div>
                   <b>${esc(g.title)}</b>
-                  ${g.hint ? `<div class="muted" style="margin-top:4px; font-size:12px">${esc(g.hint)}</div>` : ``}
+                  ${g.hint ? `<div class="muted small mt-4">${esc(g.hint)}</div>` : ``}
                 </div>
-                <div class="row" style="gap:6px; flex:0 0 auto">
+                <div class="row position-permission-actions">
                   <button class="btn sm" type="button" data-perm-set="${esc(g.key)}" data-value="1">Все</button>
                   <button class="btn sm" type="button" data-perm-set="${esc(g.key)}" data-value="0">Ничего</button>
                 </div>
@@ -124,52 +124,52 @@ function renderPositionForm({ mode, position }) {
   return `
     ${renderTitleDatalist()}
 
-    <div class="grid grid2" style="margin-top:10px">
+    <div class="grid grid2 mt-10">
       <div>
-        <div class="muted" style="margin-bottom:6px">Название должности</div>
+        <div class="muted mb-6">Название должности</div>
         <input id="f_title" placeholder="Например: Бармен" list="posTitleHints" value="${esc(p.title || "")}" ${canEditMain ? "" : "disabled"} />
-        <div class="muted" style="margin-top:6px; font-size:12px">${esc(hint)}</div>
+        <div class="muted small mt-6">${esc(hint)}</div>
       </div>
 
       <div>
-        <div class="muted" style="margin-bottom:6px">Сотрудник</div>
+        <div class="muted mb-6">Сотрудник</div>
         <select id="f_member" ${((mode === "edit") && !canChangeMember) || !auth.canManage ? "disabled" : ""}>${membersOptions}</select>
       </div>
 
       <div>
-        <div class="muted" style="margin-bottom:6px">Профиль зарплаты</div>
+        <div class="muted mb-6">Профиль зарплаты</div>
         <select id="f_pay_profile" ${canEditMain ? "" : "disabled"}>${renderPayProfileOptions(p.pay_profile_id ?? "")}</select>
-        <div class="muted" style="margin-top:6px; font-size:12px">Можно оставить без профиля, а затем назначить его позже.</div>
+        <div class="muted small mt-6">Можно оставить без профиля, а затем назначить его позже.</div>
       </div>
 
       <div>
-        <div class="muted" style="margin-bottom:6px">Начисление</div>
-        <div class="itemcard" style="padding:10px 12px; min-height:44px; display:flex; align-items:center">
+        <div class="muted mb-6">Начисление</div>
+        <div class="itemcard position-pay-summary">
           <span class="muted" id="f_pay_profile_hint">${esc(p.pay_profile_title || "Без назначенного профиля")}</span>
         </div>
       </div>
 
       <div>
-        <div class="muted" style="margin-bottom:6px">Шаблон прав</div>
+        <div class="muted mb-6">Шаблон прав</div>
         <select id="f_perm_template" ${canEditPerms ? "" : "disabled"}>${renderPermissionTemplateSelect(p.template_id || "")}</select>
-        <div class="row" style="gap:8px; margin-top:8px; flex-wrap:wrap">
+        <div class="row gap-8 mt-8">
           ${canEditPerms ? '<button class="btn sm" type="button" id="btnApplyTemplate">Применить шаблон</button>' : ''}
           ${(auth.sysRole === "SUPER_ADMIN") ? '<a class="btn sm subtle inline" href="/admin-position-templates.html">Управлять шаблонами</a>' : ''}
         </div>
       </div>
     </div>
 
-    <div id="f_perm_template_summary_wrap" class="itemcard" style="margin-top:12px; padding:10px 12px">${renderTemplateSummaryBlock(p.template_id || "")}</div>
+    <div id="f_perm_template_summary_wrap" class="itemcard position-template-summary mt-12">${renderTemplateSummaryBlock(p.template_id || "")}</div>
 
     ${permCardsHtml}
 
-    <div class="row" style="gap:8px; margin-top:12px; flex-wrap:wrap">
+    <div class="row gap-8 mt-12">
       ${((mode === "create") ? auth.canManage : (auth.canManage || auth.canManagePerms)) ? `<button class="btn primary" id="btnSavePos">Сохранить</button>` : ``}
       <button class="btn" id="btnCancelPos">Отмена</button>
       ${
         (mode === "edit" && auth.canManage)
-          ? `<button class="btn danger" id="btnDeletePos" style="margin-left:auto">Архивировать</button>`
-          : `<span class="muted" style="margin-left:auto">Можно назначать несколько людей на одну должность</span>`
+          ? `<button class="btn danger position-form-tail" id="btnDeletePos">Архивировать</button>`
+          : `<span class="muted position-form-tail">Можно назначать несколько людей на одну должность</span>`
       }
     </div>
   `;

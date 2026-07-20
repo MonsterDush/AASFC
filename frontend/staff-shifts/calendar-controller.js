@@ -476,11 +476,7 @@ export function createStaffShiftCalendarController(context) {
       const gap = parseFloat(boxStyles.rowGap || boxStyles.gap || "4") || 4;
 
       const probe = document.createElement("div");
-      probe.className = "cal-line";
-      probe.style.visibility = "hidden";
-      probe.style.position = "absolute";
-      probe.style.left = "-9999px";
-      probe.style.top = "-9999px";
+      probe.className = "cal-line cal-line--probe";
       probe.innerHTML = '<span class="cal-line__text">Probe — 11:00</span>';
       document.body.appendChild(probe);
       const lineH = probe.getBoundingClientRect().height || 18;
@@ -523,9 +519,7 @@ export function createStaffShiftCalendarController(context) {
     if (prev) {
       // restore dots in month "All"
       try { rerenderMonthCellBadges(prev, dateISO, { forceText: false, expanded: false }); } catch {}
-      prev.classList.remove("is-expanded");
-      prev.style.gridColumn = "";
-      prev.style.gridRow = "";
+      prev.classList.remove("is-expanded", "cal-cell--expanded-layout");
     }
     expandedDate = null;
   }
@@ -535,8 +529,7 @@ export function createStaffShiftCalendarController(context) {
     collapseExpanded();
     expandedDate = dateISO;
 
-    cell.style.gridColumn = "span 3";
-    cell.style.gridRow = "span 2";
+    cell.classList.add("cal-cell--expanded-layout");
 
     // month "All": show text badges inside expanded cell (instead of dots)
     try { rerenderMonthCellBadges(cell, dateISO, { forceText: true, expanded: true }); } catch {}

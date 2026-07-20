@@ -141,6 +141,10 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+function setVisible(element, visible) {
+  element?.classList.toggle("hidden", !visible);
+}
+
 function openHtmlModal(title, html) {
   const m = document.getElementById("modal");
   if (!m) return;
@@ -188,11 +192,11 @@ function renderDraftBanner() {
   if (link) link.href = buildExpensesLink({ statuses: 'DRAFT' });
   if (!card || !hint) return;
   if (draftCount <= 0) {
-    card.style.display = 'none';
+    setVisible(card, false);
     hint.textContent = '—';
     return;
   }
-  card.style.display = '';
+  setVisible(card, true);
   hint.textContent = `Черновиков: ${draftCount} · на сумму ${fmtMinor(draftTotalMinor)}. Они не участвуют в прибыли и сводке, пока не подтверждены.`;
 }
 
@@ -258,7 +262,7 @@ async function openExpenseAttachmentPreview(expenseId, attachmentId) {
       previewHtml += `<div class="card subtle mt-12">Предпросмотр для этого формата может быть недоступен в браузере. Файл можно открыть или скачать по внешней ссылке.</div>`;
     }
     previewHtml += `
-      <div class="file-preview-actions row gap-8 mt-12" style="flex-wrap:wrap;">
+      <div class="file-preview-actions row gap-8 mt-12">
         <button class="btn primary" type="button" id="expenseFileDownloadBtn">Открыть / скачать файл</button>
         ${access.canEdit ? `<button class="btn danger" type="button" id="expenseFileDeleteBtn">Удалить файл</button>` : ""}
         <button class="btn ghost" type="button" id="expenseFileCloseBtn">Закрыть</button>
@@ -390,13 +394,13 @@ function syncToolbar() {
   const openRecurringExpensesBtn = document.getElementById("openRecurringExpensesBtn");
   const openExpenseCategoriesBtn = document.getElementById("openExpenseCategoriesBtn");
   const openSuppliersBtn = document.getElementById("openSuppliersBtn");
-  if (addExpenseBtn) addExpenseBtn.style.display = access.canEdit ? "" : "none";
-  if (exportExpensesBtn) exportExpensesBtn.style.display = access.canView ? "" : "none";
-  if (addCategoryBtn) addCategoryBtn.style.display = access.canManageCatalogs ? "" : "none";
-  if (addSupplierBtn) addSupplierBtn.style.display = access.canManageCatalogs ? "" : "none";
-  if (openRecurringExpensesBtn) openRecurringExpensesBtn.style.display = access.canView ? "" : "none";
-  if (openExpenseCategoriesBtn) openExpenseCategoriesBtn.style.display = access.canManageCatalogs ? "" : "none";
-  if (openSuppliersBtn) openSuppliersBtn.style.display = access.canManageCatalogs ? "" : "none";
+  setVisible(addExpenseBtn, access.canEdit);
+  setVisible(exportExpensesBtn, access.canView);
+  setVisible(addCategoryBtn, access.canManageCatalogs);
+  setVisible(addSupplierBtn, access.canManageCatalogs);
+  setVisible(openRecurringExpensesBtn, access.canView);
+  setVisible(openExpenseCategoriesBtn, access.canManageCatalogs);
+  setVisible(openSuppliersBtn, access.canManageCatalogs);
 }
 
 async function loadCatalogs() {
@@ -491,7 +495,7 @@ function renderExpenses() {
       : `<span class="muted">В выбранном месяце не признаётся</span>`;
     const status = String(item.status || "DRAFT").toUpperCase();
     const quickActions = access.canEdit ? `
-      <div class="row gap-8 mt-10" style="flex-wrap:wrap; justify-content:flex-end;">
+      <div class="row row--end gap-8 mt-10">
         ${status !== "CONFIRMED" ? `<button class="btn small" data-status="CONFIRMED" data-id="${item.id}">Подтвердить</button>` : ""}
         ${status !== "DRAFT" ? `<button class="btn ghost small" data-status="DRAFT" data-id="${item.id}">В черновик</button>` : ""}
         ${status !== "CANCELLED" ? `<button class="btn ghost small" data-status="CANCELLED" data-id="${item.id}">Отменить</button>` : ""}
@@ -501,7 +505,7 @@ function renderExpenses() {
     return `
       <div class="expense-row">
         <div class="expense-row__main">
-          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="row gap-8">
             <div class="expense-row__title">${esc(item.category?.title || "Без категории")}</div>
             <span class="badge">${esc(statusLabel(status))}</span>
             ${buildRegularBadges(item)}

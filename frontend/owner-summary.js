@@ -112,7 +112,11 @@ function setText(id, value) {
 
 function showBlock(id, visible) {
   const el = document.getElementById(id);
-  if (el) el.style.display = visible ? "" : "none";
+  el?.classList.toggle("hidden", !visible);
+}
+
+function setVisible(element, visible) {
+  element?.classList.toggle("hidden", !visible);
 }
 
 function normalizeRange() {
@@ -139,10 +143,8 @@ function setActiveSeg(containerId, dataKey, value) {
 }
 
 function syncPickers() {
-  const monthPick = document.getElementById("summaryMonthPick");
-  const rangePick = document.getElementById("summaryRangePick");
-  if (monthPick) monthPick.style.display = state.period === "month" ? "" : "none";
-  if (rangePick) rangePick.style.display = state.period === "range" ? "flex" : "none";
+  showBlock("summaryMonthPick", state.period === "month");
+  showBlock("summaryRangePick", state.period === "range");
 }
 
 function buildSummaryQuery() {
@@ -241,7 +243,7 @@ function syncActions() {
   const economicsBtn = document.getElementById("openEconomicsBtn");
 
   if (exportSummaryBtn) {
-    exportSummaryBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
+    setVisible(exportSummaryBtn, financeAccess.canViewRevenue);
     exportSummaryBtn.onclick = async () => {
       try {
         await openExportLink(`/venues/${encodeURIComponent(venueId)}/summary/monthly/export-link?${buildSummaryQuery().toString()}`);
@@ -252,7 +254,7 @@ function syncActions() {
   }
 
   if (revenueBtn) {
-    revenueBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
+    setVisible(revenueBtn, financeAccess.canViewRevenue);
     revenueBtn.onclick = () => {
       const qp = buildSummaryQuery();
       qp.set("venue_id", String(venueId));
@@ -262,7 +264,7 @@ function syncActions() {
   }
 
   if (expensesBtn) {
-    expensesBtn.style.display = financeAccess.canViewExpenses ? "" : "none";
+    setVisible(expensesBtn, financeAccess.canViewExpenses);
     expensesBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
@@ -272,7 +274,7 @@ function syncActions() {
   }
 
   if (payrollBtn) {
-    payrollBtn.style.display = financeAccess.canViewPayroll ? "" : "none";
+    setVisible(payrollBtn, financeAccess.canViewPayroll);
     payrollBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
@@ -282,7 +284,7 @@ function syncActions() {
   }
 
   if (economicsBtn) {
-    economicsBtn.style.display = financeAccess.canViewRevenue ? "" : "none";
+    setVisible(economicsBtn, financeAccess.canViewRevenue);
     economicsBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
@@ -459,8 +461,8 @@ async function boot() {
   });
 
   if (isDemoUiMode()) {
-    document.querySelector(`#summaryPeriodSeg button[data-period="range"]`)?.style?.setProperty("display", "none");
-    document.getElementById("summaryRangePick")?.style?.setProperty("display", "none");
+    setVisible(document.querySelector(`#summaryPeriodSeg button[data-period="range"]`), false);
+    showBlock("summaryRangePick", false);
   }
   setActiveSeg("summaryPeriodSeg", "period", state.period);
   syncPickers();

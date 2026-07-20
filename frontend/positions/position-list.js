@@ -42,15 +42,14 @@ function renderPositions() {
     });
 
     const wrap = document.createElement("div");
-    wrap.className = "itemcard";
-    wrap.style.marginTop = "10px";
+    wrap.className = "itemcard mt-10";
 
     wrap.innerHTML = `
-      <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
+      <div class="row row--between ai-center">
         <b>${esc(title)} <span class="muted">(${arr.length})</span></b>
         ${auth.canManage ? `<button class="btn" data-add-same>+ Добавить сотрудника</button>` : ``}
       </div>
-      <div class="list" style="margin-top:10px" data-rows></div>
+      <div class="list mt-10" data-rows></div>
     `;
 
     // "+ Добавить сотрудника" с предзаполненным title
@@ -72,12 +71,12 @@ function renderPositions() {
       row.innerHTML = `
         <div class="list__main">
           <div><b>${esc(who)}</b></div>
-          <div class="muted" style="margin-top:4px">
+          <div class="muted mt-4">
             Профиль: ${esc(p.pay_profile_title || "не назначен")} ·
             Отчёты: ${posReportsEnabled(p) ? "да" : "нет"} · График: ${posScheduleManage(p) ? "да" : "нет"}
           </div>
         </div>
-        <div class="row" style="gap:8px; flex-wrap:wrap">
+        <div class="row gap-8">
           ${auth.canManage ? `<button class="btn" data-edit>Изменить</button>` : (auth.canManagePerms ? `<button class="btn" data-perms>Права</button>` : ``)}
           ${auth.canManage ? `<button class="btn danger" data-del>Архивировать</button>` : ``}
         </div>

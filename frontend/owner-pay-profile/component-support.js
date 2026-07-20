@@ -349,7 +349,7 @@ function syncComponentConfigHint() {
     parts.push(`<div class="form-note form-note--info">${infos.map((msg) => `<div>${esc(msg)}</div>`).join('')}</div>`);
   }
   box.innerHTML = parts.join('');
-  box.style.display = parts.length ? 'grid' : 'none';
+  box.classList.toggle('hidden', !parts.length);
 }
 
 function normalizeStepsForForm(steps) {

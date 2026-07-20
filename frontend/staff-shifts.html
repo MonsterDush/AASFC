@@ -4,98 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified4" />
-<style>
-  /* ===== Week view (HARD 2 columns inside a day) =====
-     IMPORTANT: JS toggles `is-week` on #calGrid, so selectors must match that element.
-  */
-
-  /* Week layout: desktop 7 columns, mobile vertical list */
-  #calGrid.is-week .cal-body{
-    display:grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap:10px;
-  }
-  @media (max-width: 560px){
-    #calGrid.is-week .cal-body{ grid-template-columns: 1fr; }
-  }
-
-  /* Day cell: grows by content, capped */
-  #calGrid.is-week .cal-cell{
-    height:auto;
-    min-height:64px;
-    max-height:160px;          /* "не больше того что есть сейчас" */
-    padding:10px;
-    display:flex;
-    flex-direction:column;
-    gap:8px;
-    overflow:hidden;
-    min-width:0;
-  }
-  #calGrid.is-week .cal-cell.is-empty{
-    min-height:56px;
-    max-height:56px;
-    padding:10px;
-    opacity:.85;
-  }
-  @media (max-width: 560px){
-    #calGrid.is-week .cal-cell{ max-height:150px; padding:8px; }
-    #calGrid.is-week .cal-cell.is-empty{ min-height:52px; max-height:52px; padding:8px; }
-  }
-
-  /* Week header inside cell */
-  #calGrid.is-week .cal-weektop{
-    display:flex;
-    justify-content:space-between;
-    align-items:flex-start;
-    gap:10px;
-    min-width:0;
-  }
-  #calGrid.is-week .cal-weektop .cal-weekname{
-    font-size:12px;
-    opacity:.8;
-    line-height:1.1;
-  }
-  #calGrid.is-week .cal-weektop .cal-weekdate{
-    font-weight:800;
-    line-height:1.15;
-  }
-  #calGrid.is-week .cal-weektop .cal-daymeta{
-    text-align:right;
-    font-size:12px;
-    opacity:.8;
-    white-space:nowrap;
-  }
-
-  /* Badges: HARD 2 columns + FILL ROWS FIRST */
-  #calGrid.is-week .cal-badges{
-    margin-top:0;
-    display:grid !important;                /* override global flex */
-    grid-auto-flow: row dense;              /* rows first, then next row */
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 8px;
-    row-gap: 6px;
-    overflow:hidden;
-    min-width:0;
-    align-content:start;
-  }
-
-  /* super narrow fallback */
-  @media (max-width: 340px){
-    #calGrid.is-week .cal-badges{ grid-template-columns: 1fr; }
-  }
-
-  /* Make items shrinkable (critical for nowrap) */
-  #calGrid.is-week .cal-badges > *{ min-width:0; }
-  #calGrid.is-week .cal-line{ min-width:0; }
-  #calGrid.is-week .cal-line__text{ min-width:0; }
-
-  /* "+N" hint spans full width */
-  #calGrid.is-week .cal-line--more{ grid-column: 1 / -1; opacity:.75; }
-
-  /* Empty days shouldn't waste space */
-  #calGrid.is-week .cal-cell.is-empty .cal-badges{ display:none !important; }
-</style>
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/staff-shifts.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Смены</title>
 </head>
 <body>
@@ -233,7 +144,7 @@
       </div>
     </div>
 
-  <div id="shiftsRoot"class="hidden"></div>
-  <script type="module" src="/staff-shifts.js?v=20260719-calendar1"></script>
+  <div id="shiftsRoot" class="hidden"></div>
+  <script type="module" src="/staff-shifts.js?v=20260720-unified6"></script>
 </body>
 </html>

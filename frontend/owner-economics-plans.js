@@ -55,7 +55,11 @@ function templateOptionsHtml(selected) {
 
 function customTargetsHtml(selected = []) {
   const set = new Set((Array.isArray(selected) ? selected : []).map((v) => Number(v)));
-  return WEEKDAYS.map(([id, title]) => `<label class="badge" style="cursor:pointer;"><input type="checkbox" name="custom_target_weekday" value="${id}" ${set.has(id) ? 'checked' : ''} /> ${esc(title)}</label>`).join(' ');
+  return WEEKDAYS.map(([id, title]) => `<label class="badge finance-choice-chip"><input type="checkbox" name="custom_target_weekday" value="${id}" ${set.has(id) ? 'checked' : ''} /> ${esc(title)}</label>`).join(' ');
+}
+
+function setVisible(element, visible) {
+  element?.classList.toggle("hidden", !visible);
 }
 
 function setAllPlanToggles(form, prefix, checked) {
@@ -77,7 +81,7 @@ function syncWeekdayCopyTargets() {
   const wrap = document.getElementById('weekdayCopyCustomTargets');
   if (!form || !wrap) return;
   const group = String(form.elements.namedItem('target_group')?.value || 'WORKDAYS').toUpperCase();
-  wrap.style.display = group === 'CUSTOM' ? '' : 'none';
+  setVisible(wrap, group === 'CUSTOM');
 }
 
 function todayISO() {
@@ -251,35 +255,35 @@ function planFormHtml(prefix, title, subtitle, plan = {}, options = {}) {
   const includeDayMeta = Boolean(options.includeDayMeta);
   const dayKind = String(plan?.day_kind || '').toUpperCase();
   return `
-    <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+    <div class="row row--between gap-12 mb-8">
       <div>
         <b>${esc(title)}</b>
         <div class="muted mt-6">${esc(subtitle)}</div>
       </div>
-      <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+      <div class="row gap-8">
         <button class="btn ghost" type="button" data-plan-action="enable-all" data-prefix="${prefix}">Включить всё</button>
         <button class="btn ghost" type="button" data-plan-action="disable-all" data-prefix="${prefix}">Выключить всё</button>
       </div>
     </div>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_revenue" ${enabled.revenue ? "checked" : ""} /> Использовать план выручки</span>
+      <span class="row gap-8"><input type="checkbox" name="${prefix}_enable_revenue" ${enabled.revenue ? "checked" : ""} /> Использовать план выручки</span>
       <input name="${prefix}_revenue_plan" type="text" placeholder="150000.00" value="${esc(toInputMoney(plan?.revenue_plan_minor))}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_profit" ${enabled.profit ? "checked" : ""} /> Использовать план прибыли</span>
+      <span class="row gap-8"><input type="checkbox" name="${prefix}_enable_profit" ${enabled.profit ? "checked" : ""} /> Использовать план прибыли</span>
       <input name="${prefix}_profit_plan" type="text" placeholder="50000.00" value="${esc(toInputMoney(plan?.profit_plan_minor))}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_revenue_per_assigned" ${enabled.revenuePerAssigned ? "checked" : ""} /> Использовать план выручки на сотрудника</span>
+      <span class="row gap-8"><input type="checkbox" name="${prefix}_enable_revenue_per_assigned" ${enabled.revenuePerAssigned ? "checked" : ""} /> Использовать план выручки на сотрудника</span>
       <input name="${prefix}_revenue_per_assigned_plan" type="text" placeholder="30000.00" value="${esc(toInputMoney(plan?.revenue_per_assigned_plan_minor))}" />
     </label>
     <label>
-      <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_assigned_user_target" ${enabled.assignedUsers ? "checked" : ""} /> Использовать цель по сотрудникам</span>
+      <span class="row gap-8"><input type="checkbox" name="${prefix}_enable_assigned_user_target" ${enabled.assignedUsers ? "checked" : ""} /> Использовать цель по сотрудникам</span>
       <input name="${prefix}_assigned_user_target" type="number" min="0" step="1" placeholder="5" value="${plan?.assigned_user_target == null ? "" : esc(String(plan.assigned_user_target))}" />
     </label>
     ${includeDayMeta ? `
       <label>
-        <span class="row" style="gap:8px; align-items:center;"><input type="checkbox" name="${prefix}_enable_day_meta" ${dayKind ? "checked" : ""} /> Отметить как спец-день / праздник</span>
+        <span class="row gap-8"><input type="checkbox" name="${prefix}_enable_day_meta" ${dayKind ? "checked" : ""} /> Отметить как спец-день / праздник</span>
         <select name="${prefix}_day_kind">
           <option value="SPECIAL" ${dayKind === 'SPECIAL' ? 'selected' : ''}>Спец-день</option>
           <option value="HOLIDAY" ${dayKind === 'HOLIDAY' ? 'selected' : ''}>Праздник</option>
@@ -359,7 +363,7 @@ function renderMonthPlan(plan) {
   if (!form) return;
   form.innerHTML = planFormHtml("month", "План на месяц", `Шаблон для ${plan?.template_month_title || state.month}`, plan) + `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить план месяца</button></div>`;
   bindToggleDisable(form, "month");
-  form.style.display = state.access.canManage ? "" : "none";
+  setVisible(form, state.access.canManage);
   form.onsubmit = saveMonthPlan;
 }
 
@@ -367,7 +371,7 @@ function renderDepartmentMonthPlans(payload) {
   const form = document.getElementById('departmentMonthPlansForm');
   if (!form) return;
   form.innerHTML = departmentPlansTableHtml('dept_month', payload, { canManage: state.access.canManage });
-  form.style.display = '';
+  setVisible(form, true);
   form.onsubmit = saveDepartmentMonthPlans;
 }
 
@@ -377,7 +381,7 @@ function renderDepartmentDayPlans(payload) {
   if (badge) badge.textContent = payload?.date || state.date || '—';
   if (!form) return;
   form.innerHTML = departmentPlansTableHtml('dept_day', payload, { canManage: state.access.canManage });
-  form.style.display = '';
+  setVisible(form, true);
   form.onsubmit = saveDepartmentDayPlans;
 }
 
@@ -388,7 +392,7 @@ function renderOverride(plan) {
   if (!form) return;
   form.innerHTML = planFormHtml("override", "План на выбранную дату", `Для ${state.date} можно задать отдельный план.`, plan, { includeDayMeta: true }) + `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить план на дату</button></div>`;
   bindToggleDisable(form, "override");
-  form.style.display = state.access.canManage ? "" : "none";
+  setVisible(form, state.access.canManage);
   form.onsubmit = saveOverride;
 }
 
@@ -397,7 +401,7 @@ function templateCard(template) {
   const formId = `weekdayTemplateForm_${weekday}`;
   return `
     <div class="itemcard mt-8">
-      <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+      <div class="row row--between gap-12">
         <div>
           <b>${esc(template.weekday_title || "День недели")}</b>
           <div class="muted mt-6">Используется, если для даты не задан отдельный план и план на месяц.</div>
@@ -421,7 +425,7 @@ function renderTemplates(list) {
     const form = document.getElementById(`weekdayTemplateForm_${weekday}`);
     if (!form) return;
     bindToggleDisable(form, `weekday_${weekday}`);
-    form.style.display = state.access.canManage ? "" : "none";
+    setVisible(form, state.access.canManage);
     form.addEventListener("submit", (event) => saveTemplate(event, weekday));
     form.querySelectorAll('[data-copy-template]').forEach((btn) => {
       btn.onclick = () => openCopyFromWeekday(weekday);
@@ -434,8 +438,8 @@ function setMode(mode) {
   state.mode = mode === "WEEKDAYS" ? "WEEKDAYS" : "MONTH";
   const monthCard = document.getElementById("monthPlanCard");
   const weekdayCard = document.getElementById("weekdayPlansCard");
-  if (monthCard) monthCard.style.display = state.mode === "MONTH" ? "" : "none";
-  if (weekdayCard) weekdayCard.style.display = state.mode === "WEEKDAYS" ? "" : "none";
+  setVisible(monthCard, state.mode === "MONTH");
+  setVisible(weekdayCard, state.mode === "WEEKDAYS");
   document.querySelectorAll('input[name="planMode"]').forEach((radio) => {
     radio.checked = radio.value === state.mode;
   });

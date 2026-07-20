@@ -35,6 +35,10 @@ function findKpiMetricById(value) {
   return Array.isArray(state.kpiMetrics) ? state.kpiMetrics.find((metric) => Number(metric.id) === id) || null : null;
 }
 
+function setVisible(element, visible) {
+  element?.classList.toggle("hidden", !visible);
+}
+
 function syncComponentSummary() {
   const box = document.getElementById('f_live_summary');
   if (!box) return;
@@ -86,7 +90,7 @@ function syncComponentSummary() {
     <div class="pay-config-summary__title">${esc(heading)}</div>
     <div class="pay-config-summary__meta">${esc(bits.filter(Boolean).join(' · ') || 'Заполни поля — здесь появится краткая схема расчёта.')}</div>
   `;
-  box.style.display = 'grid';
+  setVisible(box, true);
 }
 
 function syncComponentSimulator() {
@@ -95,10 +99,10 @@ function syncComponentSimulator() {
   const result = document.getElementById("f_sim_result");
   if (!wrap || !result) return;
   if (!["PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"].includes(type)) {
-    wrap.style.display = "none";
+    setVisible(wrap, false);
     return;
   }
-  wrap.style.display = "grid";
+  setVisible(wrap, true);
   const baseMinor = parseMoneyRubToMinor(document.getElementById("f_sim_base_rub")?.value || "") || 0;
   const percentBps = parsePercentInputToBps(document.getElementById("f_percent")?.value || "") || 0;
   const boostEnabled = !!document.getElementById("f_boost_enabled")?.checked;
@@ -117,8 +121,8 @@ function syncComponentSimulator() {
   const targetIsMoney = sourceType !== "KPI_METRIC";
   const targetValue = targetIsMoney ? (parseMoneyRubToMinor(targetRaw) || 0) : Number(targetRaw || 0);
   const actualValue = targetIsMoney ? (parseMoneyRubToMinor(actualRaw) || 0) : Number(actualRaw || 0);
-  if (simTargetWrap) simTargetWrap.style.display = boostEnabled && sourceType !== "NONE" ? "grid" : "none";
-  if (simActualWrap) simActualWrap.style.display = boostEnabled && sourceType !== "NONE" ? "grid" : "none";
+  setVisible(simTargetWrap, boostEnabled && sourceType !== "NONE");
+  setVisible(simActualWrap, boostEnabled && sourceType !== "NONE");
   if (simTargetLabel) simTargetLabel.textContent = sourceType === "KPI_METRIC" ? "Цель KPI" : "План / цель";
   if (simActualLabel) simActualLabel.textContent = sourceType === "KPI_METRIC" ? "Факт KPI" : "Факт";
 
@@ -243,21 +247,21 @@ function syncComponentFields() {
   }
 
   [amountWrap, rateWrap, percentWrap, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostDepartmentWrap, boostDepartmentHint, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, minScopeWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsWrap, stepsHint, percentSection, boostSection, limitsSection, simSection, kpiSection, boostDetails].forEach((el) => {
-    if (el) el.style.display = "none";
+    setVisible(el, false);
   });
 
   if (type === "SALARY_HOURLY") {
-    if (rateWrap) rateWrap.style.display = "grid";
+    setVisible(rateWrap, true);
     if (rateLabel) rateLabel.textContent = "Ставка, ₽ / час";
     syncComponentSummary();
     return syncComponentSimulator();
   }
 
   if (type === "SALARY_FIXED_MONTH" || type === "SALARY_PER_SHIFT" || type === "MINIMUM_PAYOUT") {
-    if (amountWrap) amountWrap.style.display = "grid";
+    setVisible(amountWrap, true);
     if (type === "MINIMUM_PAYOUT") {
-      if (limitsSection) limitsSection.style.display = "grid";
-      if (minScopeWrap) minScopeWrap.style.display = "grid";
+      setVisible(limitsSection, true);
+      setVisible(minScopeWrap, true);
     }
     if (amountLabel) {
       amountLabel.textContent = type === "SALARY_PER_SHIFT"
@@ -269,35 +273,21 @@ function syncComponentFields() {
   }
 
   if (type === "PERCENT_TOTAL_REVENUE" || type === "PERCENT_DEPARTMENT_REVENUE") {
-    if (percentSection) percentSection.style.display = "grid";
-    if (boostSection) boostSection.style.display = "grid";
-    if (limitsSection) limitsSection.style.display = "grid";
-    if (simSection) simSection.style.display = "grid";
-    if (percentWrap) percentWrap.style.display = "grid";
-    if (baseScopeWrap) baseScopeWrap.style.display = "grid";
-    if (boostEnabledWrap) boostEnabledWrap.style.display = "flex";
-    if (minWrap) minWrap.style.display = "grid";
-    if (minScopeWrap) minScopeWrap.style.display = "grid";
-    if (maxWrap) maxWrap.style.display = "grid";
-    if (percentHelp) percentHelp.style.display = "";
-    if (simWrap) simWrap.style.display = "grid";
+    [percentSection, boostSection, limitsSection, simSection, percentWrap, baseScopeWrap, boostEnabledWrap, minWrap, minScopeWrap, maxWrap, percentHelp, simWrap].forEach((element) => setVisible(element, true));
     if (type === "PERCENT_DEPARTMENT_REVENUE") {
-      if (departmentWrap) departmentWrap.style.display = "grid";
-      if (departmentHint) departmentHint.style.display = "";
+      setVisible(departmentWrap, true);
+      setVisible(departmentHint, true);
       if (percentLabel) percentLabel.textContent = "Процент от выручки департамента";
     } else if (percentLabel) {
       percentLabel.textContent = "Процент от общей выручки";
     }
     if (boostEnabled) {
-      if (boostDetails) boostDetails.style.display = 'grid';
-      if (boostPercentWrap) boostPercentWrap.style.display = "grid";
-      if (boostSourceWrap) boostSourceWrap.style.display = "grid";
-      if (boostRecalcWrap) boostRecalcWrap.style.display = "grid";
-      if (isDepartmentBoostSource(boostSourceType) && boostDepartmentWrap) boostDepartmentWrap.style.display = "grid";
-      if (isDepartmentBoostSource(boostSourceType) && boostDepartmentHint) boostDepartmentHint.style.display = "";
+      [boostDetails, boostPercentWrap, boostSourceWrap, boostRecalcWrap].forEach((element) => setVisible(element, true));
+      setVisible(boostDepartmentWrap, isDepartmentBoostSource(boostSourceType));
+      setVisible(boostDepartmentHint, isDepartmentBoostSource(boostSourceType));
       if (boostSourceType === "KPI_METRIC") {
-        if (boostKpiMetricWrap) boostKpiMetricWrap.style.display = "grid";
-        if (boostThresholdWrap) boostThresholdWrap.style.display = "grid";
+        setVisible(boostKpiMetricWrap, true);
+        setVisible(boostThresholdWrap, true);
         if (boostThresholdLabel) boostThresholdLabel.textContent = `Цель KPI${selectedBoostMetric ? ` (${String(selectedBoostMetric.unit || 'QTY').toUpperCase()})` : ''}`;
       }
     }
@@ -308,18 +298,11 @@ function syncComponentFields() {
   }
 
   if (type === "KPI_BONUS") {
-    if (kpiSection) kpiSection.style.display = "grid";
-    if (kpiMetricWrap) kpiMetricWrap.style.display = "grid";
-    if (kpiMetricHint) kpiMetricHint.style.display = "";
-    if (thresholdWrap) thresholdWrap.style.display = "grid";
-    if (useStepsWrap) useStepsWrap.style.display = "flex";
-    if (stepsHint) stepsHint.style.display = "";
+    [kpiSection, kpiMetricWrap, kpiMetricHint, thresholdWrap, useStepsWrap, stepsHint].forEach((element) => setVisible(element, true));
     if (thresholdLabel) thresholdLabel.textContent = `Порог KPI${selectedBonusMetric ? ` (${String(selectedBonusMetric.unit || 'QTY').toUpperCase()})` : ''}`;
-    if (useSteps) {
-      if (stepsWrap) stepsWrap.style.display = "block";
-    } else {
-      if (stepsWrap) stepsWrap.style.display = "none";
-      if (amountWrap) amountWrap.style.display = "grid";
+    setVisible(stepsWrap, useSteps);
+    if (!useSteps) {
+      setVisible(amountWrap, true);
       if (amountLabel) amountLabel.textContent = "Бонус, ₽";
     }
   }

@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified4" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/app-venues.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Мои заведения</title>
 </head>
 <body>
@@ -19,16 +21,16 @@
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
-    <div class="card" style="margin-top:12px">
-      <div class="section-head" style="align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div class="card mt-12">
+      <div class="section-head app-venues-head">
         <div>
           <div class="section-title"><b>Заведения</b></div>
-          <div class="muted" style="margin-top:6px">Открой нужное заведение или создай новое.</div>
+          <div class="muted mt-6">Открой нужное заведение или создай новое.</div>
         </div>
         <button id="openCreateVenueModalBtn" class="btn" type="button">Создать заведение</button>
       </div>
 
-      <div id="list" class="list" style="margin-top:12px"><div class="skeleton"></div><div class="skeleton"></div></div>
+      <div id="list" class="list mt-12"><div class="skeleton"></div><div class="skeleton"></div></div>
     </div>
   </div>
 
@@ -130,14 +132,14 @@ function openCreateVenueModal(){
       <div class="muted">
         Первое заведение получит 3 дня полного пробного доступа. Последующие создаются без trial — рабочие функции откроются после продления доступа.
       </div>
-      <label style="display:block;margin-top:12px">
+      <label class="venue-create-field">
         <span class="small">Название заведения</span>
-        <input id="modalNewVenueName" type="text" maxlength="200" placeholder="Например, Hookah Place" autocomplete="off" style="margin-top:8px" />
+        <input class="mt-8" id="modalNewVenueName" type="text" maxlength="200" placeholder="Например, Hookah Place" autocomplete="off" />
       </label>
-      <div id="modalCreateVenueHint" class="small" style="margin-top:8px">
+      <div id="modalCreateVenueHint" class="small mt-8">
         После создания мы перенаправим тебя: с trial — в быструю настройку, без trial — на страницу заведения и оплаты.
       </div>
-      <div class="row gap-8" style="margin-top:14px;justify-content:flex-end;flex-wrap:wrap">
+      <div class="row row--end gap-8 mt-14">
         <button id="modalCancelCreateVenueBtn" class="btn subtle" type="button">Отмена</button>
         <button id="modalCreateVenueBtn" class="btn" type="submit">Создать заведение</button>
       </div>
@@ -172,9 +174,9 @@ function formatDateTime(value){
 function billingChip(v){
   const status = getBillingStatus(v);
   const isTrial = !!v?.is_trial || String(v?.billing_kind || "").toUpperCase() === "TRIAL";
-  if (isTrial && status === "ACTIVE") return '<span class="badge" style="margin-left:8px">trial</span>';
-  if (status === "GRACE") return '<span class="badge" style="margin-left:8px">grace</span>';
-  if (status === "SUSPENDED") return '<span class="badge" style="margin-left:8px">доступ ограничен</span>';
+  if (isTrial && status === "ACTIVE") return '<span class="badge venue-status-chip">trial</span>';
+  if (status === "GRACE") return '<span class="badge venue-status-chip">grace</span>';
+  if (status === "SUSPENDED") return '<span class="badge venue-status-chip">доступ ограничен</span>';
   return '';
 }
 
@@ -188,15 +190,15 @@ function billingHint(v){
 
   if (isTrial && status === "ACTIVE") {
     const label = trialUntil ? `Пробный доступ до ${esc(formatDateTime(trialUntil))}` : 'Пробный доступ активен';
-    return `<div class="small" style="margin-top:6px">${label}. После окончания trial заведение перейдёт в grace до оплаты.</div>`;
+    return `<div class="small mt-6">${label}. После окончания trial заведение перейдёт в grace до оплаты.</div>`;
   }
   if (status === "GRACE") {
-    return `<div class="small" style="margin-top:6px">${paidUntil}. ${graceUntil || 'Доступ ограничится после окончания льготного периода.'}</div>`;
+    return `<div class="small mt-6">${paidUntil}. ${graceUntil || 'Доступ ограничится после окончания льготного периода.'}</div>`;
   }
   if (status === "SUSPENDED") {
-    return `<div class="small" style="margin-top:6px">${graceUntil || paidUntil}. ${reason || 'Функции заведения ограничены до продления.'}</div>`;
+    return `<div class="small mt-6">${graceUntil || paidUntil}. ${reason || 'Функции заведения ограничены до продления.'}</div>`;
   }
-  return `<div class="small" style="margin-top:6px">${paidUntil}</div>`;
+  return `<div class="small mt-6">${paidUntil}</div>`;
 }
 
 function setupHint(v){
@@ -210,9 +212,9 @@ function setupHint(v){
   const done = isSetupDone(v);
   if (done) {
     return {
-      hint: `<div class="small" style="margin-top:6px">Настройка завершена. Заведение полностью готово к работе.</div>`,
+      hint: `<div class="small mt-6">Настройка завершена. Заведение полностью готово к работе.</div>`,
       button: "",
-      statusChip: '<span class="badge" style="margin-left:8px">setup ok</span>',
+      statusChip: '<span class="badge venue-status-chip">setup ok</span>',
     };
   }
   const phase = prepareDone ? "extra" : "prepare";
@@ -230,21 +232,21 @@ function setupHint(v){
       ? `Мастер ещё не запускался. Базовая настройка поможет быстро подготовить заведение к работе.`
       : `Настройка в процессе: ${resolved}/${total || 0}. Базовый запуск ещё не завершён.`);
   return {
-    hint: `<div class="small" style="margin-top:6px">${esc(hintText)}</div>`,
+    hint: `<div class="small mt-6">${esc(hintText)}</div>`,
     button: `<a class="btn inline" href="${url.pathname + url.search}" data-open-setup data-id="${v.id}">${esc(label)}</a>`,
     statusChip: prepareDone
-      ? '<span class="badge" style="margin-left:8px">доп. настройка</span>'
-      : '<span class="badge" style="margin-left:8px">setup</span>',
+      ? '<span class="badge venue-status-chip">доп. настройка</span>'
+      : '<span class="badge venue-status-chip">setup</span>',
   };
 }
 
 function venueCard(v){
   const archived = !!v.is_archived;
-  const chip = archived ? '<span class="badge" style="margin-left:8px">архив</span>' : '';
+  const chip = archived ? '<span class="badge venue-status-chip">архив</span>' : '';
   const billing = billingChip(v);
   const setup = setupHint(v);
   const hint = archived
-    ? '<div class="small" style="margin-top:6px">Заведение сейчас в архиве. Доступно только владельцу.</div>'
+    ? '<div class="small mt-6">Заведение сейчас в архиве. Доступно только владельцу.</div>'
     : `${billingHint(v)}${setup.hint}`;
   const href = v.open_target || `/staff-shifts.html?venue_id=${encodeURIComponent(v.id)}`;
   const accessMode = getBillingAccessMode(v);
@@ -252,13 +254,13 @@ function venueCard(v){
   const buttonLabel = isReadonlyOwner ? 'Открыть оплату' : 'Открыть';
   return `
     <div class="itemcard">
-      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-        <div style="min-width:0;flex:1 1 280px;">
+      <div class="row row--between ai-start">
+        <div class="venue-card-main">
           <b>${esc(v.name)}${chip}${billing}${setup.statusChip}</b>
           <div class="small">${v.my_role ? esc(String(v.my_role).toUpperCase() === "OWNER" ? "Владелец" : "Персонал") : ""}</div>
           ${hint}
         </div>
-        <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
+        <div class="row row--end ai-start gap-8">
           ${setup.button}
           <a class="btn subtle inline" href="${href}" data-open data-id="${v.id}">${buttonLabel}</a>
         </div>
@@ -278,13 +280,13 @@ function renderSections(data){
   let html = '';
   if (active.length) {
     html += `
-      <div class="section-head" style="margin-top:6px"><div class="section-title"><b>Активные заведения</b></div></div>
+      <div class="section-head mt-6"><div class="section-title"><b>Активные заведения</b></div></div>
       <div class="list">${active.map(venueCard).join('')}</div>
     `;
   }
   if (archived.length) {
     html += `
-      <div class="section-head" style="margin-top:14px"><div class="section-title"><b>Архив</b></div><div class="small">Архивные заведения доступны только владельцу.</div></div>
+      <div class="section-head mt-14"><div class="section-title"><b>Архив</b></div><div class="small">Архивные заведения доступны только владельцу.</div></div>
       <div class="list">${archived.map(venueCard).join('')}</div>
     `;
   }

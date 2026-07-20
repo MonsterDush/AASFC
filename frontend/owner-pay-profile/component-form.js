@@ -86,7 +86,7 @@ function componentForm({ mode, item }) {
             <span>Порядок</span>
             <input id="f_sort_order" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
           </label>
-          <label class="chk" style="margin-top:auto;">
+          <label class="chk pay-form-check-bottom">
             <input type="checkbox" id="f_active" ${activeChecked} />
             <span>Компонент активен</span>
           </label>
@@ -171,7 +171,7 @@ function componentForm({ mode, item }) {
             <input id="f_boost_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.boost_threshold_value ?? "")}" />
           </label>
         </div>
-        <div id="f_config_hint" style="display:none;"></div>
+        <div id="f_config_hint" class="hidden"></div>
       </div>
 
       <div class="form-section" id="f_limits_section">
@@ -247,13 +247,13 @@ function componentForm({ mode, item }) {
             <span id="f_threshold_label">Порог KPI</span>
             <input id="f_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.threshold_value ?? "")}" />
           </label>
-          <label id="f_use_steps_wrap" class="chk" style="margin-top:auto;">
+          <label id="f_use_steps_wrap" class="chk pay-form-check-bottom">
             <input type="checkbox" id="f_use_steps" ${Array.isArray(it.steps) && it.steps.length ? "checked" : ""} />
             <span>Использовать ступени бонуса</span>
           </label>
         </div>
         <div id="f_steps_wrap" class="kpi-steps-builder">
-          <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+          <div class="row row--between ai-center gap-8 mb-8">
             <div>
               <b>Ступени бонуса</b>
               <div class="muted mt-4">Будет выбрана максимальная подходящая ступень.</div>
@@ -266,7 +266,7 @@ function componentForm({ mode, item }) {
       </div>
     </div>
 
-    <div class="row mt-12" style="justify-content:flex-end; gap:8px">
+    <div class="row row--end gap-8 mt-12">
       <button class="btn" id="btnCancel" type="button">Отмена</button>
       <button class="btn primary" id="btnSave" type="button">Сохранить</button>
     </div>

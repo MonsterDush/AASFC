@@ -51,6 +51,10 @@ function esc(s) {
     .replace(/'/g, "&#039;");
 }
 
+function setVisible(element, visible) {
+  element?.classList.toggle("hidden", !visible);
+}
+
 function parseVenueId() {
   const params = new URLSearchParams(location.search);
   const id = params.get("venue_id") || "";
@@ -423,14 +427,14 @@ function renderShell() {
 
         <div class="screen-hero__toolbar">
           <div class="screen-hero__period">
-            <div class="seg seg--period" id="periodSeg" style="min-width:220px;">
+            <div class="seg seg--period finance-period-segment" id="periodSeg">
               <button type="button" id="periodMonthBtn">Месяц</button>
               <button type="button" id="periodRangeBtn">Период</button>
             </div>
             <div id="monthControls" class="pickers">
-              <input id="monthPick" type="month" style="width:auto; min-width:160px;" />
+              <input id="monthPick" class="finance-control" type="month" />
             </div>
-            <div id="rangeControls" class="range-pick" style="display:none;">
+            <div id="rangeControls" class="range-pick hidden">
               <input id="rangeFrom" type="date" />
               <input id="rangeTo" type="date" />
               <button class="btn" id="rangeApply">Показать</button>
@@ -466,7 +470,7 @@ function renderShell() {
         <div id="linesList" class="mt-12"><div class="skeleton"></div><div class="skeleton"></div></div>
       </div>
 
-      <div class="row mt-12" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div class="row row--between gap-12 mt-12">
         <a class="btn subtle inline" id="backVenue" href="#">← Назад к заведению</a>
         <a class="btn subtle inline" id="openSummary" href="#">Открыть сводку →</a>
       </div>
@@ -528,20 +532,20 @@ function renderState() {
   if (monthPick) monthPick.value = state.month;
   if (rangeFrom) rangeFrom.value = state.dateFrom;
   if (rangeTo) rangeTo.value = state.dateTo;
-  if (monthControls) monthControls.style.display = state.periodMode === "month" ? "" : "none";
-  if (rangeControls) rangeControls.style.display = isDemoUiMode() ? "none" : (state.periodMode === "range" ? "" : "none");
+  setVisible(monthControls, state.periodMode === "month");
+  setVisible(rangeControls, !isDemoUiMode() && state.periodMode === "range");
   periodMonthBtn?.classList.toggle("active", state.periodMode === "month");
   periodRangeBtn?.classList.toggle("active", state.periodMode === "range");
 
-  if (btnCalculate) btnCalculate.style.display = (state.can.calculate && state.periodMode === "month") ? "" : "none";
-  if (btnExport) btnExport.style.display = state.can.view ? "" : "none";
+  setVisible(btnCalculate, state.can.calculate && state.periodMode === "month");
+  setVisible(btnExport, state.can.view);
   if (backVenue) backVenue.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
   if (openSummary) {
     if (state.periodMode === "month") {
-      openSummary.style.display = "";
+      setVisible(openSummary, true);
       openSummary.href = `/owner-summary.html?venue_id=${encodeURIComponent(state.venueId)}&month=${encodeURIComponent(state.month)}`;
     } else {
-      openSummary.style.display = "none";
+      setVisible(openSummary, false);
     }
   }
   if (openProfilesBtn) openProfilesBtn.href = `/owner-pay-profiles.html?venue_id=${encodeURIComponent(state.venueId)}`;
@@ -624,7 +628,7 @@ function renderLines() {
       : (periodState === "ready" ? '' : '');
     row.innerHTML = `
       <div>
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <div class="row gap-8">
           <b class="expense-row__title">${esc(memberName(line.member))}</b>
           ${line.pay_profile_title ? `<span class="badge">${esc(line.pay_profile_title)}</span>` : ""}
           ${stateBadge}
@@ -709,8 +713,8 @@ async function applyRangeFromControls() {
   state.dateTo = nextTo >= nextFrom ? nextTo : nextFrom;
   renderState();
   if (isDemoUiMode()) {
-    document.getElementById("periodRangeBtn")?.style?.setProperty("display", "none");
-    document.getElementById("rangeControls")?.style?.setProperty("display", "none");
+    setVisible(document.getElementById("periodRangeBtn"), false);
+    setVisible(document.getElementById("rangeControls"), false);
   }
 
   await load();

@@ -1,0 +1,27 @@
+/* JS toggles is-week on #calGrid, so these selectors intentionally target that element. */
+#calGrid.is-week .cal-body{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+#calGrid.is-week .cal-cell{height:auto;min-height:64px;max-height:160px;padding:10px;display:flex;flex-direction:column;gap:8px;overflow:hidden;min-width:0}
+#calGrid.is-week .cal-cell.is-empty{min-height:56px;max-height:56px;padding:10px;opacity:.85}
+#calGrid.is-week .cal-weektop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0}
+#calGrid.is-week .cal-weektop .cal-weekname{font-size:12px;opacity:.8;line-height:1.1}
+#calGrid.is-week .cal-weektop .cal-weekdate{font-weight:800;line-height:1.15}
+#calGrid.is-week .cal-weektop .cal-daymeta{text-align:right;font-size:12px;opacity:.8;white-space:nowrap}
+#calGrid.is-week .cal-badges{margin-top:0;display:grid!important;grid-auto-flow:row dense;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:8px;row-gap:6px;overflow:hidden;min-width:0;align-content:start}
+#calGrid.is-week .cal-badges>*{min-width:0}
+#calGrid.is-week .cal-line,#calGrid.is-week .cal-line__text{min-width:0}
+#calGrid.is-week .cal-line--more{grid-column:1/-1;opacity:.75}
+#calGrid.is-week .cal-cell.is-empty .cal-badges{display:none!important}
+@media (max-width:560px){
+  #calGrid.is-week .cal-body{grid-template-columns:1fr}
+  #calGrid.is-week .cal-cell{max-height:150px;padding:8px}
+  #calGrid.is-week .cal-cell.is-empty{min-height:52px;max-height:52px;padding:8px}
+}
+@media (max-width:340px){#calGrid.is-week .cal-badges{grid-template-columns:1fr}}
+.shift-assignee-select{flex:1 1 auto;min-width:240px}
+.shift-interval-select{flex:1 1 auto;min-width:220px}
+.shift-create-interval{background:var(--surface2)}
+.cal-line--probe{visibility:hidden;position:absolute;left:-9999px;top:-9999px}
+.cal-cell--expanded-layout{grid-column:span 3;grid-row:span 2}
+@media (max-width:560px){
+  .shift-assignee-select,.shift-interval-select{min-width:0;width:100%}
+}

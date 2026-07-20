@@ -45,13 +45,13 @@ import {
 } from "/permissions.js?v=20260409-setup2";
 import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPositionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260409-setup-polish1";
 
-import { createCatalogSetupController } from "/owner-setup/catalog-editor.js?v=20260719-split1";
-import { createPayProfileSetupController } from "/owner-setup/pay-profile-editor.js?v=20260719-split1";
-import { createPositionSetupController } from "/owner-setup/position-editor.js?v=20260719-split1";
-import { createInviteSetupController } from "/owner-setup/invite-editor.js?v=20260719-split1";
-import { createShiftIntervalSetupController } from "/owner-setup/shift-interval-editor.js?v=20260719-split1";
-import { createSupplierSetupController } from "/owner-setup/supplier-editor.js?v=20260719-split1";
-import { createRecurringExpenseSetupController } from "/owner-setup/recurring-expense-editor.js?v=20260719-split1";
+import { createCatalogSetupController } from "/owner-setup/catalog-editor.js?v=20260720-unified10";
+import { createPayProfileSetupController } from "/owner-setup/pay-profile-editor.js?v=20260720-unified10";
+import { createPositionSetupController } from "/owner-setup/position-editor.js?v=20260720-unified10";
+import { createInviteSetupController } from "/owner-setup/invite-editor.js?v=20260720-unified10";
+import { createShiftIntervalSetupController } from "/owner-setup/shift-interval-editor.js?v=20260720-unified10";
+import { createSupplierSetupController } from "/owner-setup/supplier-editor.js?v=20260720-unified10";
+import { createRecurringExpenseSetupController } from "/owner-setup/recurring-expense-editor.js?v=20260720-unified10";
 
 applyTelegramTheme();
 mountCommonUI("venue");
@@ -453,12 +453,16 @@ function syncInlinePayComponentFields() {
   const depRow = document.getElementById('inlineComponentDepartmentRow');
   const kpiRow = document.getElementById('inlineComponentKpiRow');
   const minScopeRow = document.getElementById('inlineComponentMinimumScopeRow');
-  if (amountRow) amountRow.style.display = ['SALARY_FIXED_MONTH', 'SALARY_PER_SHIFT', 'KPI_BONUS', 'MINIMUM_PAYOUT'].includes(type) ? '' : 'none';
-  if (rateRow) rateRow.style.display = type === 'SALARY_HOURLY' ? '' : 'none';
-  if (percentRow) percentRow.style.display = ['PERCENT_TOTAL_REVENUE', 'PERCENT_DEPARTMENT_REVENUE'].includes(type) ? '' : 'none';
-  if (depRow) depRow.style.display = type === 'PERCENT_DEPARTMENT_REVENUE' ? '' : 'none';
-  if (kpiRow) kpiRow.style.display = type === 'KPI_BONUS' ? '' : 'none';
-  if (minScopeRow) minScopeRow.style.display = type === 'MINIMUM_PAYOUT' ? '' : 'none';
+  setVisible(amountRow, ['SALARY_FIXED_MONTH', 'SALARY_PER_SHIFT', 'KPI_BONUS', 'MINIMUM_PAYOUT'].includes(type));
+  setVisible(rateRow, type === 'SALARY_HOURLY');
+  setVisible(percentRow, ['PERCENT_TOTAL_REVENUE', 'PERCENT_DEPARTMENT_REVENUE'].includes(type));
+  setVisible(depRow, type === 'PERCENT_DEPARTMENT_REVENUE');
+  setVisible(kpiRow, type === 'KPI_BONUS');
+  setVisible(minScopeRow, type === 'MINIMUM_PAYOUT');
+}
+
+function setVisible(element, visible) {
+  element?.classList.toggle('hidden', !visible);
 }
 
 async function renameVenue(venueId, name) {
@@ -1073,7 +1077,7 @@ function renderOverview() {
         <span class="setup-chip">Следующий шаг: ${esc(nextTitle)}</span>
       </div>
 
-      <div class="setup-progressbar"><span style="width:${percent}%"></span></div>
+      <progress class="setup-progressbar" value="${percent}" max="100" aria-label="Общий прогресс мастера: ${percent}%">${percent}%</progress>
 
       <div class="setup-summary">
         <div class="setup-kpi">
@@ -1269,6 +1273,7 @@ const editorContext = {
   api,
   getVenueById,
   getVenueMembers,
+  getPaymentMethods,
   patchInviteDefaultPosition,
   getDepartments,
   getKpiMetrics,
@@ -1325,6 +1330,7 @@ const editorContext = {
   buildSelectOptions,
   recurringModeLabel,
   buildBasisPaymentMethodCheckboxes,
+  setVisible,
 };
 const { mountWelcomeEditor, mountCatalogEditor } = createCatalogSetupController(editorContext);
 const { mountPayProfilesEditor, loadInlinePayProfiles } = createPayProfileSetupController(editorContext);

@@ -33,30 +33,30 @@ export function createPayProfileSetupController(context) {
           <span>Название</span>
           <input class="input" id="inlineComponentTitle" placeholder="Например, Ставка за час" value="${esc(editingComponent?.title || defaultPayComponentTitle(type))}" />
         </label>
-        <label id="inlineComponentAmountRow" style="display:${['SALARY_FIXED_MONTH','SALARY_PER_SHIFT','KPI_BONUS','MINIMUM_PAYOUT'].includes(type) ? '' : 'none'}">
+        <label id="inlineComponentAmountRow" class="${['SALARY_FIXED_MONTH','SALARY_PER_SHIFT','KPI_BONUS','MINIMUM_PAYOUT'].includes(type) ? '' : 'hidden'}">
           <span>Сумма, ₽</span>
           <input class="input" id="inlineComponentAmount" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(editingComponent?.amount_minor))}" />
         </label>
-        <label id="inlineComponentMinimumScopeRow" style="display:${type === 'MINIMUM_PAYOUT' ? '' : 'none'}">
+        <label id="inlineComponentMinimumScopeRow" class="${type === 'MINIMUM_PAYOUT' ? '' : 'hidden'}">
           <span>Период минимума</span>
           <select class="input" id="inlineComponentMinimumScope">
             <option value="MONTH" ${String(editingComponent?.effective_minimum_guarantee_scope || editingComponent?.minimum_guarantee_scope || 'MONTH').toUpperCase() === 'MONTH' ? 'selected' : ''}>За месяц</option>
             <option value="SHIFT" ${['SHIFT','DAY'].includes(String(editingComponent?.effective_minimum_guarantee_scope || editingComponent?.minimum_guarantee_scope || '').toUpperCase()) ? 'selected' : ''}>За каждую отработанную смену</option>
           </select>
         </label>
-        <label id="inlineComponentRateRow" style="display:${type === 'SALARY_HOURLY' ? '' : 'none'}">
+        <label id="inlineComponentRateRow" class="${type === 'SALARY_HOURLY' ? '' : 'hidden'}">
           <span>Ставка в час, ₽</span>
           <input class="input" id="inlineComponentRate" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(editingComponent?.rate_minor))}" />
         </label>
-        <label id="inlineComponentPercentRow" style="display:${['PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE'].includes(type) ? '' : 'none'}">
+        <label id="inlineComponentPercentRow" class="${['PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE'].includes(type) ? '' : 'hidden'}">
           <span>Процент</span>
           <input class="input" id="inlineComponentPercent" inputmode="decimal" placeholder="0" value="${esc(percentInputFromBps(editingComponent?.percent_bps))}" />
         </label>
-        <label id="inlineComponentDepartmentRow" style="display:${type === 'PERCENT_DEPARTMENT_REVENUE' ? '' : 'none'}">
+        <label id="inlineComponentDepartmentRow" class="${type === 'PERCENT_DEPARTMENT_REVENUE' ? '' : 'hidden'}">
           <span>Департамент</span>
           <select class="input" id="inlineComponentDepartmentId">${buildSimpleOptions(state.departments || [], editingComponent?.department_id, 'Выбери департамент')}</select>
         </label>
-        <label id="inlineComponentKpiRow" style="display:${type === 'KPI_BONUS' ? '' : 'none'}">
+        <label id="inlineComponentKpiRow" class="${type === 'KPI_BONUS' ? '' : 'hidden'}">
           <span>KPI</span>
           <select class="input" id="inlineComponentKpiMetricId">${buildSimpleOptions(state.kpiMetrics || [], editingComponent?.kpi_metric_id, 'Выбери KPI')}</select>
         </label>
@@ -178,7 +178,7 @@ export function createPayProfileSetupController(context) {
                     <option value="0" ${(editingItem?.is_active === false) ? 'selected' : ''}>Неактивен</option>
                   </select>
                 </label>
-                <label style="grid-column:1 / -1">
+                <label class="setup-formgrid__full">
                   <span>Описание</span>
                   <textarea class="input" id="inlineProfileDescription" rows="4" placeholder="Коротко опиши, для какой роли нужен этот профиль">${esc(editingItem?.description || '')}</textarea>
                 </label>

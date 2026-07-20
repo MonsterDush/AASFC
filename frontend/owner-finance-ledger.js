@@ -50,6 +50,10 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+function setVisible(element, visible) {
+  element?.classList.toggle("hidden", !visible);
+}
+
 function parseMoneyToMinor(value) {
   const raw = String(value || "").trim().replace(/\s+/g, "").replace(/,/g, ".");
   if (!raw) throw new Error("Введите сумму");
@@ -171,7 +175,7 @@ function renderEntries() {
     return `
       <div class="expense-row">
         <div class="expense-row__main">
-          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="row gap-8">
             <div class="expense-row__title">${esc(item.kind || "—")}</div>
             <span class="badge">${esc(directionText)}</span>
             <span class="badge">${esc(scope)}</span>
@@ -198,7 +202,7 @@ function renderTransfers() {
   el.innerHTML = state.transfers.map((item) => {
     const status = String(item.status || "CONFIRMED").toUpperCase();
     const actions = access.canManageTransfers ? `
-      <div class="row gap-8 mt-10" style="justify-content:flex-end; flex-wrap:wrap;">
+      <div class="row row--end gap-8 mt-10">
         ${status !== "CONFIRMED" ? `<button class="btn small" data-transfer-status="CONFIRMED" data-transfer-id="${item.id}">Подтвердить</button>` : ""}
         ${status !== "DRAFT" ? `<button class="btn ghost small" data-transfer-status="DRAFT" data-transfer-id="${item.id}">В черновик</button>` : ""}
         ${status !== "CANCELLED" ? `<button class="btn ghost small" data-transfer-status="CANCELLED" data-transfer-id="${item.id}">Отменить</button>` : ""}
@@ -208,7 +212,7 @@ function renderTransfers() {
     return `
       <div class="expense-row">
         <div class="expense-row__main">
-          <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+          <div class="row gap-8">
             <div class="expense-row__title">${esc(item.from_payment_method?.title || "—")} → ${esc(item.to_payment_method?.title || "—")}</div>
             <span class="badge">${esc(statusLabel(status))}</span>
           </div>
@@ -356,8 +360,9 @@ async function boot() {
   document.getElementById("ledgerMonthPick").onchange = reload;
   document.getElementById("ledgerPaymentMethodPick").onchange = reload;
   document.getElementById("ledgerKindPick").onchange = reload;
-  document.getElementById("addTransferBtn").style.display = access.canManageTransfers ? "" : "none";
-  document.getElementById("addTransferBtn").onclick = () => openTransferForm();
+  const addTransferBtn = document.getElementById("addTransferBtn");
+  setVisible(addTransferBtn, access.canManageTransfers);
+  addTransferBtn.onclick = () => openTransferForm();
   document.querySelectorAll("[data-close], .modal__backdrop").forEach((el) => el.addEventListener("click", closeModal));
 
   await reload();

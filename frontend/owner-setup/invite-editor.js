@@ -1,5 +1,5 @@
 export function createInviteSetupController(context) {
-  const { toast, confirmModal, api, getVenueMembers, patchInviteDefaultPosition, state, esc, fmtDateTime, roleLabel, memberDisplayName, getPositionPresets, buildPresetOptionList, getStepByKey, getNextStepKey, moveToStep, loadSetup } = context;
+  const { toast, confirmModal, api, getVenueMembers, patchInviteDefaultPosition, state, esc, fmtDateTime, roleLabel, memberDisplayName, getPositionPresets, buildPresetOptionList, getStepByKey, getNextStepKey, moveToStep, loadSetup, setVisible } = context;
 
   async function loadInlineInvites({ force = false } = {}) {
     const inlineState = state.inline.invites;
@@ -39,7 +39,7 @@ export function createInviteSetupController(context) {
                     <div class="setup-minirow__meta">${esc(item.channel === 'PHONE' ? (item.phone || 'Телефон') : (item.tg_username || 'Telegram'))} · ${esc(item.default_position?.title || 'Без должности')} · Создано: ${esc(fmtDateTime(item.created_at))}</div>
                   </div>
                   <div class="setup-minirow__actions">
-                    <select class="input" data-invite-preset="${esc(item.id)}" style="max-width:220px">${buildPresetOptionList(item.default_position || '')}</select>
+                    <select class="input setup-invite-preset-select" data-invite-preset="${esc(item.id)}">${buildPresetOptionList(item.default_position || '')}</select>
                     <button class="btn sm" type="button" data-apply-invite-preset="${esc(item.id)}">Назначить</button>
                     <button class="btn sm danger" type="button" data-delete-invite="${esc(item.id)}">Отменить</button>
                   </div>
@@ -70,7 +70,7 @@ export function createInviteSetupController(context) {
                 <span>Ник в Telegram</span>
                 <input class="input" id="inviteTelegram" placeholder="@username" />
               </label>
-              <label id="invitePhoneWrap" style="display:none">
+              <label id="invitePhoneWrap" class="hidden">
                 <span>Телефон</span>
                 <input class="input" id="invitePhone" placeholder="+7 ..." />
               </label>
@@ -108,8 +108,8 @@ export function createInviteSetupController(context) {
       const channel = String(document.getElementById('inviteChannel')?.value || 'TELEGRAM').toUpperCase();
       const tgWrap = document.getElementById('inviteTelegramWrap');
       const phWrap = document.getElementById('invitePhoneWrap');
-      if (tgWrap) tgWrap.style.display = channel === 'TELEGRAM' ? '' : 'none';
-      if (phWrap) phWrap.style.display = channel === 'PHONE' ? '' : 'none';
+      setVisible(tgWrap, channel === 'TELEGRAM');
+      setVisible(phWrap, channel === 'PHONE');
     };
     document.getElementById('inviteChannel')?.addEventListener('change', syncChannel);
     syncChannel();

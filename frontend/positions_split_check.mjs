@@ -75,9 +75,9 @@ const moduleContracts = {
 for (const [fileName, [factoryName, lineLimit]] of Object.entries(moduleContracts)) {
   assert.ok(moduleSources[fileName].split("\n").length < lineLimit, `${fileName} is too large`);
   assert.match(moduleSources[fileName], new RegExp(`export function ${factoryName}\\b`));
-  assert.match(mainSource, new RegExp(`/positions/${fileName.replace(".", "\\.")}\\?v=20260719-positions1`));
+  assert.match(mainSource, new RegExp(`/positions/${fileName.replace(".", "\\.")}\\?v=20260720-unified6`));
 }
-assert.match(htmlSource, /positions\.js\?v=20260719-positions1/);
+assert.match(htmlSource, /positions\.js\?v=20260720-unified6/);
 
 const state = {
   venueId: "7",

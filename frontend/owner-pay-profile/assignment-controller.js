@@ -32,13 +32,13 @@ function renderAssignments() {
     row.className = "listrow";
     row.innerHTML = `
       <div class="listrow__left">
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+        <div class="row gap-8">
           <b>${esc(label)}</b>
           ${it.is_active ? "" : `<span class="badge">неактивно</span>`}
         </div>
         <div class="mono listrow__meta">${esc(range)}</div>
       </div>
-      <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;" id="assignmentActions_${it.id}"></div>
+      <div class="row row--nowrap gap-8 flex-none" id="assignmentActions_${it.id}"></div>
     `;
     const actions = row.querySelector(`#assignmentActions_${it.id}`);
     if (state.can.manage && actions) {
@@ -114,7 +114,7 @@ function assignmentForm({ mode, item }) {
       </label>
     </div>
 
-    <div class="row mt-12" style="justify-content:flex-end; gap:8px">
+    <div class="row row--end gap-8 mt-12">
       <button class="btn" id="btnCancel" type="button">Отмена</button>
       <button class="btn primary" id="btnSave" type="button">Сохранить</button>
     </div>

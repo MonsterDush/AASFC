@@ -20,14 +20,18 @@ const controllers = [
 ];
 
 assert.ok(mainSource.split("\n").length < 1_600, "owner-setup.js must remain an orchestration module");
-assert.match(htmlSource, /owner-setup\.js\?v=20260719-split1/);
+assert.match(htmlSource, /owner-setup\.js\?v=20260720-unified10/);
+assert.doesNotMatch(htmlSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);
+assert.doesNotMatch(mainSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);
+assert.match(mainSource, /<progress class="setup-progressbar"/);
 
 const inertContext = new Proxy({}, { get: () => () => undefined });
 for (const [fileName, factoryName, methodNames] of controllers) {
   const filePath = path.join(frontendDir, "owner-setup", fileName);
   const source = fs.readFileSync(filePath, "utf8");
   assert.ok(source.split("\n").length < 500, `${fileName} is too large`);
-  assert.match(mainSource, new RegExp(`/owner-setup/${fileName.replace(".", "\\.")}\\?v=20260719-split1`));
+  assert.match(mainSource, new RegExp(`/owner-setup/${fileName.replace(".", "\\.")}\\?v=20260720-unified10`));
+  assert.doesNotMatch(source, /(?:<style\b|\sstyle\s*=|\.style\b)/i, `${fileName} regained inline CSS`);
 
   const module = await import(pathToFileURL(filePath));
   assert.equal(typeof module[factoryName], "function", `${factoryName} is not exported`);
@@ -66,5 +70,9 @@ for (const [fileName, routeFragments] of routeOwnership) {
   const source = fs.readFileSync(path.join(frontendDir, "owner-setup", fileName), "utf8");
   for (const fragment of routeFragments) assert.ok(source.includes(fragment), `${fragment} was lost from ${fileName}`);
 }
+
+const recurringSource = fs.readFileSync(path.join(frontendDir, "owner-setup", "recurring-expense-editor.js"), "utf8");
+assert.match(recurringSource, /const \{[^}]*getPaymentMethods[^}]*\} = context;/);
+assert.match(mainSource, /const editorContext = \{[\s\S]*?getPaymentMethods,[\s\S]*?\};/);
 
 console.log(`owner setup split contract: ${controllers.length} controllers, ${stepDispatch.size} dedicated steps`);
