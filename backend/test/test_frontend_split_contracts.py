@@ -114,12 +114,15 @@ class StaffShiftsSplitContractTests(TestCase):
     def test_schedule_export_keeps_live_state_controls_and_route(self):
         main = (FRONTEND / "staff-shifts.js").read_text(encoding="utf-8")
         module = (FRONTEND / "staff-shifts" / "export-controller.js").read_text(encoding="utf-8")
+        calendar = (FRONTEND / "staff-shifts" / "calendar-controller.js").read_text(encoding="utf-8")
         html = (FRONTEND / "staff-shifts.html").read_text(encoding="utf-8")
 
-        self.assertLess(len(main.splitlines()), 2_500)
+        self.assertLess(len(main.splitlines()), 1_800)
         self.assertLess(len(module.splitlines()), 900)
+        self.assertLess(len(calendar.splitlines()), 850)
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
-        self.assertIn("staff-shifts.js?v=20260719-split1", html)
+        self.assertIn("/staff-shifts/calendar-controller.js?v=20260719-calendar1", main)
+        self.assertIn("staff-shifts.js?v=20260719-calendar1", html)
         self.assertIn("/shifts/export-metadata?", module)
 
         mutable_fields = (
@@ -143,3 +146,119 @@ class StaffShiftsSplitContractTests(TestCase):
 
         for control in ("btnExportImage", "btnExportShare", "btnExportTelegram", "btnExportDownload"):
             self.assertIn(f"el.{control}", module)
+
+        calendar_methods = (
+            "renderWeek",
+            "buildIndex",
+            "defaultSelectedDateForMonth",
+            "selectDate",
+            "monthTitle",
+            "formatDateRuNoG",
+            "filterForCalendar",
+            "shiftIsClosed",
+            "renderMonth",
+        )
+        for method in calendar_methods:
+            self.assertIn(method, calendar)
+
+        synchronized_fields = (
+            "selectedDate",
+            "shiftsByDate",
+            "salaryByDate",
+            "calendarScope",
+            "globalShifts",
+            "shifts",
+            "curMonth",
+            "me",
+            "canEdit",
+            "showAllOnCalendar",
+            "nightShiftsEnabled",
+            "selectedShiftSlot",
+        )
+        for field in synchronized_fields:
+            self.assertIn(f"get {field}() {{ return {field}; }}", main)
+            self.assertIn(f"set {field}(value) {{ {field} = value; }}", main)
+            self.assertIn(f"runtime.{field}", calendar)
+
+
+class OwnerPayProfileSplitContractTests(TestCase):
+    def test_profile_page_keeps_component_and_assignment_controllers(self):
+        main = (FRONTEND / "owner-pay-profile.js").read_text(encoding="utf-8")
+        html = (FRONTEND / "owner-pay-profile.html").read_text(encoding="utf-8")
+        modules = {
+            "component-support.js": ("createPayComponentSupport", 550),
+            "component-form.js": ("createPayComponentFormRenderer", 350),
+            "component-controller.js": ("createPayComponentController", 650),
+            "component-list.js": ("createPayComponentList", 180),
+            "assignment-controller.js": ("createPayAssignmentController", 220),
+        }
+
+        self.assertLess(len(main.splitlines()), 450)
+        self.assertIn("owner-pay-profile.js?v=20260719-payprofile1", html)
+        for filename, (factory, line_limit) in modules.items():
+            source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
+            self.assertLess(len(source.splitlines()), line_limit)
+            self.assertIn(f'/owner-pay-profile/{filename}?v=20260719-payprofile1', main)
+            self.assertIn(f"export function {factory}", source)
+
+        controller_contracts = {
+            "component-controller.js": ("openComponentEditor",),
+            "component-list.js": ("renderComponents",),
+            "assignment-controller.js": ("renderAssignments", "openAssignmentEditor"),
+        }
+        for filename, methods in controller_contracts.items():
+            source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
+            for method in methods:
+                self.assertIn(method, source)
+                self.assertIn(method, main)
+
+        api_ownership = {
+            "component-controller.js": ("createPayComponent", "updatePayComponent"),
+            "component-list.js": ("updatePayComponent", "deletePayComponent"),
+            "assignment-controller.js": (
+                "createPayProfileAssignment",
+                "updatePayProfileAssignment",
+                "deletePayProfileAssignment",
+            ),
+        }
+        for filename, api_calls in api_ownership.items():
+            source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
+            for api_call in api_calls:
+                self.assertIn(api_call, source)
+
+
+class PositionsSplitContractTests(TestCase):
+    def test_positions_page_keeps_editor_list_permissions_and_invites(self):
+        main = (FRONTEND / "positions.js").read_text(encoding="utf-8")
+        html = (FRONTEND / "positions.html").read_text(encoding="utf-8")
+        modules = {
+            "permission-controller.js": ("createPositionPermissionController", 320),
+            "position-domain.js": ("createPositionDomain", 240),
+            "position-editor.js": ("createPositionEditor", 520),
+            "position-list.js": ("createPositionList", 180),
+            "invite-controller.js": ("createPositionInviteController", 150),
+        }
+
+        self.assertLess(len(main.splitlines()), 420)
+        self.assertIn("positions.js?v=20260719-positions1", html)
+        for filename, (factory, line_limit) in modules.items():
+            source = (FRONTEND / "positions" / filename).read_text(encoding="utf-8")
+            self.assertLess(len(source.splitlines()), line_limit)
+            self.assertIn(f'/positions/{filename}?v=20260719-positions1', main)
+            self.assertIn(f"export function {factory}", source)
+
+        editor = (FRONTEND / "positions" / "position-editor.js").read_text(encoding="utf-8")
+        position_list = (FRONTEND / "positions" / "position-list.js").read_text(encoding="utf-8")
+        invites = (FRONTEND / "positions" / "invite-controller.js").read_text(encoding="utf-8")
+        permissions = (FRONTEND / "positions" / "permission-controller.js").read_text(encoding="utf-8")
+
+        for api_call in ("createVenuePosition", "updateVenuePosition", "deleteVenuePosition"):
+            self.assertIn(api_call, editor)
+        self.assertIn("deleteVenuePosition", position_list)
+        self.assertIn("patchInviteDefaultPosition", invites)
+        self.assertIn("/me/permissions/catalog", permissions)
+        self.assertIn("/position-permission-templates", permissions)
+
+        self.assertIn("openCreateModal", main)
+        self.assertIn("renderPositions", main)
+        self.assertIn("renderInvites", main)
