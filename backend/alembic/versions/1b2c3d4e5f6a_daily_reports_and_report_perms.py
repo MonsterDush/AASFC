@@ -12,7 +12,9 @@ import sqlalchemy as sa
 revision = "1b2c3d4e5f6a"
 down_revision = "957b0901f9a3"
 branch_labels = None
-depends_on = None
+# This branch alters venue_positions, which is created by the sibling branch.
+# Keep the historical branch point intact while making fresh upgrades deterministic.
+depends_on = "2b7d9c1a8c61"
 
 
 def upgrade():

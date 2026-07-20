@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/staff-report.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Отчёты</title>
 </head>
 <body>
@@ -27,7 +29,7 @@
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext">▶</button>
         </div>
-          <div class="row ai-center gap-10 row--center" style="flex-wrap:wrap; justify-content:flex-end">
+          <div class="row ai-center gap-10 row--end">
             <div id="reportSlotToggle" class="shift-toggle hidden" aria-label="Слот отчёта">
               <button type="button" id="reportSlotDay">День</button>
               <button type="button" id="reportSlotNight">Ночь</button>
@@ -68,7 +70,7 @@
     </div>
   </div>
 
-  <script type="module" src="/staff-report.js"></script>
+  <script type="module" src="/staff-report.js?v=20260720-unified6"></script>
 
   <div class="modal" id="photoModal">
       <div class="modal__backdrop" data-close-ph></div>

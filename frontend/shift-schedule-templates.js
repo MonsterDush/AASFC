@@ -10,7 +10,7 @@ import {
   getMe,
   getMyVenuePermissions,
   getVenueSettings,
-} from "/app.js";
+} from "/app.js?v=20260719-split1";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
 
@@ -148,26 +148,26 @@ function renderShell() {
     <div class="card">
       <div class="muted">Настрой дни недели один раз, а затем применяй шаблон к нужному месяцу. Если в заведении включены ночные смены, шаблон отдельно показывает день и ночь вида «Ночь с понедельника на вторник».</div>
 
-      <div class="itemcard" style="margin-top:12px">
+      <div class="itemcard mt-12">
         <div class="section-head">
           <div class="section-title">
             <b>Сохранённые шаблоны</b>
-            <div class="muted" style="margin-top:4px">Например: «Обычный месяц», «Выходные усиленные», «24/7».</div>
+            <div class="muted mt-4">Например: «Обычный месяц», «Выходные усиленные», «24/7».</div>
           </div>
           <div class="section-actions">
             <button class="btn primary" id="btnCreateTemplate">+ Новый шаблон</button>
           </div>
         </div>
-        <div class="section-actions" style="margin-top:8px">
+        <div class="section-actions">
           <label class="chk">
             <input type="checkbox" id="showArchived" />
             <span class="muted">Показывать архив</span>
           </label>
         </div>
-        <div id="templateList" style="margin-top:10px"><div class="skeleton"></div><div class="skeleton"></div></div>
+        <div class="mt-10" id="templateList"><div class="skeleton"></div><div class="skeleton"></div></div>
       </div>
 
-      <div class="row" style="margin-top:12px; gap:10px; flex-wrap:wrap">
+      <div class="row mt-12">
         <a class="btn subtle inline" id="backToIntervals" href="#">← Интервалы смен</a>
         <a class="btn subtle inline" id="backToShifts" href="#">К графику</a>
         <a class="btn subtle inline" id="backToVenue" href="#">К заведению</a>
@@ -176,7 +176,7 @@ function renderShell() {
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
 
-    <div id="modal" class="modal" style="z-index:10050">
+    <div id="modal" class="modal schedule-template-confirm-modal">
       <div class="modal__backdrop"></div>
       <div class="modal__panel">
         <div class="modal__head">
@@ -189,11 +189,11 @@ function renderShell() {
 
     <div id="editModal" class="modal">
       <div class="modal__backdrop" data-close-edit></div>
-      <div class="modal__panel" style="max-width:900px">
+      <div class="modal__panel schedule-template-modal__panel--editor">
         <div class="modal__head">
           <div>
             <b class="modal__title" id="editTitle">Шаблон</b>
-            <div class="muted" id="editHint" style="margin-top:4px; font-size:12px"></div>
+            <div class="muted small mt-4" id="editHint"></div>
           </div>
           <button class="btn" data-close-edit>Закрыть</button>
         </div>
@@ -203,11 +203,11 @@ function renderShell() {
 
     <div id="applyModal" class="modal">
       <div class="modal__backdrop" data-close-apply></div>
-      <div class="modal__panel" style="max-width:760px">
+      <div class="modal__panel schedule-template-modal__panel--apply">
         <div class="modal__head">
           <div>
             <b class="modal__title" id="applyTitle">Применить шаблон</b>
-            <div class="muted" id="applyHint" style="margin-top:4px; font-size:12px"></div>
+            <div class="muted small mt-4" id="applyHint"></div>
           </div>
           <button class="btn" data-close-apply>Закрыть</button>
         </div>
@@ -284,18 +284,17 @@ function renderTemplates() {
   el.innerHTML = "";
   for (const item of state.templates) {
     const card = document.createElement("div");
-    card.className = "listrow";
-    card.style.alignItems = "flex-start";
+    card.className = "listrow ai-start";
     card.innerHTML = `
       <div class="listrow__left">
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+        <div class="row gap-8">
           <b>${esc(item.title)}</b>
           ${item.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
-        ${item.description ? `<div class="muted" style="margin-top:4px">${esc(item.description)}</div>` : ""}
-        <div class="muted" style="margin-top:8px; display:grid; gap:4px">${templateSummaryHtml(item)}</div>
+        ${item.description ? `<div class="muted mt-4">${esc(item.description)}</div>` : ""}
+        <div class="muted template-summary">${templateSummaryHtml(item)}</div>
       </div>
-      <div class="row row--nowrap" style="gap:8px; flex:0 0 auto; flex-wrap:wrap; justify-content:flex-end">
+      <div class="row gap-8 flex-none row--end">
         <button class="btn sm primary" data-apply="${item.id}" ${item.is_active ? "" : "disabled"}>Применить к месяцу</button>
         <button class="btn sm" data-edit="${item.id}">Изменить</button>
         <button class="btn sm ${item.is_active ? "danger" : ""}" data-archive="${item.id}">${item.is_active ? "В архив" : "Вернуть"}</button>
@@ -382,17 +381,17 @@ function editorHtml({ item }) {
   });
 
   const daysHtml = editorSlots().map((slotRow) => `
-    <div class="itemcard" style="margin-top:10px">
+    <div class="itemcard mt-10">
       <div class="section-title">
         <b>${esc(slotRow.title)}</b>
         ${slotRow.shift_slot === "NIGHT" ? `<span class="badge">ночь</span>` : ``}
       </div>
-      <div class="muted small" style="margin-top:4px">${esc(slotRow.hint)}</div>
-      <div style="display:grid; gap:8px; margin-top:8px">
+      <div class="muted small mt-4">${esc(slotRow.hint)}</div>
+      <div class="template-options">
         ${intervalRows.length ? intervalRows.map(({ interval, activeBadge }) => {
           const key = `${slotRow.weekday}:${Number(interval.id)}:${slotRow.shift_slot}`;
           return `
-            <label class="chk" style="align-items:flex-start">
+            <label class="chk ai-start">
               <input type="checkbox" data-template-item="1" data-weekday="${slotRow.weekday}" data-shift-slot="${slotRow.shift_slot}" data-interval-id="${esc(interval.id)}" ${selected.has(key) ? "checked" : ""} />
               <span class="muted">${esc(intervalLabel(interval))}${activeBadge}</span>
             </label>
@@ -403,26 +402,26 @@ function editorHtml({ item }) {
   `).join("");
 
   return `
-    <div class="grid grid2" style="margin-top:10px">
+    <div class="grid grid2 mt-10">
       <div>
-        <div class="muted" style="margin-bottom:6px">Название</div>
+        <div class="muted mb-6">Название</div>
         <input id="tpl_title" class="input" placeholder="Например, Обычный месяц" value="${esc(item?.title || "")}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Отображение</div>
+        <div class="muted mb-6">Отображение</div>
         <label class="chk">
           <input type="checkbox" id="tpl_active" ${item?.is_active === false ? "" : "checked"} />
           <span class="muted">Шаблон активен</span>
         </label>
       </div>
     </div>
-    <div style="margin-top:10px">
-      <div class="muted" style="margin-bottom:6px">Описание</div>
+    <div class="mt-10">
+      <div class="muted mb-6">Описание</div>
       <textarea id="tpl_description" class="input" rows="2" placeholder="Например, будни стандартные, выходные усиленные">${esc(item?.description || "")}</textarea>
     </div>
-    <div class="muted" style="margin-top:12px">Выбери, какие интервалы нужно создавать в каждый слот недели. Ночь «с понедельника на вторник» будет создана датой понедельника и слотом NIGHT.</div>
-    <div class="grid grid2" style="margin-top:2px">${daysHtml}</div>
-    <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px">
+    <div class="muted mt-12">Выбери, какие интервалы нужно создавать в каждый слот недели. Ночь «с понедельника на вторник» будет создана датой понедельника и слотом NIGHT.</div>
+    <div class="grid grid2 schedule-template-days">${daysHtml}</div>
+    <div class="row row--end gap-8 mt-12">
       <button class="btn" id="btnCancelEdit">Отмена</button>
       <button class="btn primary" id="btnSaveTemplate">Сохранить шаблон</button>
     </div>
@@ -494,26 +493,26 @@ function openApplyModal(template) {
   document.getElementById("applyHint").textContent = "Выбери месяц и поведение для уже созданных смен";
   document.getElementById("applyBody").innerHTML = `
     <div>
-      <div class="muted" style="margin-bottom:6px">Месяц заполнения</div>
+      <div class="muted mb-6">Месяц заполнения</div>
       <input id="apply_month" class="input" type="month" value="${esc(defaultMonth)}" />
     </div>
-    <div class="itemcard" style="margin-top:12px">
+    <div class="itemcard mt-12">
       <div class="section-title"><b>Что делать, если в месяце уже есть смены?</b></div>
-      <div style="display:grid; gap:10px; margin-top:10px">
+      <div class="schedule-template-apply-options">
         ${APPLY_MODES.map((mode, idx) => `
-          <label class="chk" style="align-items:flex-start">
+          <label class="chk ai-start">
             <input type="radio" name="apply_mode" value="${esc(mode.value)}" ${idx === 1 ? "checked" : ""} />
             <span>
               <span class="${mode.danger ? "text-danger" : ""}"><b>${esc(mode.title)}</b></span>
-              <span class="muted" style="display:block; margin-top:3px">${esc(mode.hint)}</span>
+              <span class="muted block schedule-template-option-hint">${esc(mode.hint)}</span>
             </span>
           </label>
         `).join("")}
       </div>
     </div>
-    <div class="muted" id="applyMonthNote" style="margin-top:12px"></div>
-    ${state.nightShiftsEnabled ? `<div class="itemcard" style="margin-top:12px"><b>Важно по ночам</b><div class="muted" style="margin-top:6px">Например, «Ночь с понедельника на вторник» будет создана на календарную дату понедельника в ночном слоте. В графике её видно при переключателе «Ночь».</div></div>` : ``}
-    <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px">
+    <div class="muted mt-12" id="applyMonthNote"></div>
+    ${state.nightShiftsEnabled ? `<div class="itemcard mt-12"><b>Важно по ночам</b><div class="muted mt-6">Например, «Ночь с понедельника на вторник» будет создана на календарную дату понедельника в ночном слоте. В графике её видно при переключателе «Ночь».</div></div>` : ``}
+    <div class="row row--end gap-8 mt-12">
       <button class="btn" id="btnCancelApply">Отмена</button>
       <button class="btn primary" id="btnRunApply">Применить к месяцу</button>
     </div>

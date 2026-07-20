@@ -14,7 +14,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js";
+} from "/app.js?v=20260719-split1";
 
 import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
@@ -145,16 +145,16 @@ function setScopeMode(next) {
   scopeMode = (next === "all") ? "all" : "venue";
   if (el.btnThisVenue) el.btnThisVenue.disabled = (scopeMode === "venue");
   if (el.btnAllVenues) el.btnAllVenues.disabled = (scopeMode === "all");
-  if (allEls.card) allEls.card.style.display = (scopeMode === "all") ? "" : "none";
+  allEls.card?.classList.toggle("hidden", scopeMode !== "all");
   const vs = document.getElementById("venueScopeWrap");
-  if (vs) vs.style.display = (scopeMode === "all") ? "none" : "";
-  if (el.addManualTipBtn) el.addManualTipBtn.style.display = (scopeMode === "all") ? "none" : "";
+  vs?.classList.toggle("hidden", scopeMode === "all");
+  el.addManualTipBtn?.classList.toggle("hidden", scopeMode === "all");
   syncUrl();
 }
 
 try {
   const scope = document.getElementById("salaryScope");
-  if (scope && (!Array.isArray(__venues) || __venues.length < 2)) scope.style.display = "none";
+  if (scope && (!Array.isArray(__venues) || __venues.length < 2)) scope.classList.add("hidden");
 } catch {}
 
 setScopeMode(scopeMode);
@@ -248,26 +248,26 @@ function openManualTipModal() {
   openModal(
     "Добавить чаевые",
     "Сумма попадёт в зарплатную сводку сотрудника",
-    `<div class="itemcard" style="margin-top:12px">
-      <div class="grid" style="gap:10px">
+    `<div class="itemcard mt-12">
+      <div class="grid gap-10">
         <label>
-          <div class="muted small" style="margin-bottom:6px">Заведение</div>
+          <div class="muted small mb-6">Заведение</div>
           <select id="manualTipVenue">${venueOptions}</select>
         </label>
         <label>
-          <div class="muted small" style="margin-bottom:6px">Дата начисления</div>
+          <div class="muted small mb-6">Дата начисления</div>
           <input id="manualTipDate" type="date" value="${esc(defaultTipDate())}" />
         </label>
         <label>
-          <div class="muted small" style="margin-bottom:6px">Сумма</div>
+          <div class="muted small mb-6">Сумма</div>
           <input id="manualTipAmount" type="number" min="1" inputmode="numeric" placeholder="0" />
         </label>
         <label>
-          <div class="muted small" style="margin-bottom:6px">Комментарий</div>
+          <div class="muted small mb-6">Комментарий</div>
           <input id="manualTipNote" type="text" maxlength="500" placeholder="Необязательно" />
         </label>
       </div>
-      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px; flex-wrap:wrap;">
+      <div class="row row--end gap-8 mt-12">
         <button class="btn sm" type="button" id="manualTipCancel">Отмена</button>
         <button class="btn sm" type="button" id="manualTipSave">Сохранить</button>
       </div>
@@ -351,18 +351,16 @@ function syncPeriodUi() {
 
   if (el.monthControls) {
     el.monthControls.classList.toggle("hidden", isRangeMode);
-    el.monthControls.style.display = isRangeMode ? "none" : "flex";
   }
 
   if (el.rangeControls) {
     el.rangeControls.classList.toggle("hidden", !isRangeMode);
-    el.rangeControls.style.display = isRangeMode ? "flex" : "none";
   }
 
   if (el.periodMonthBtn) el.periodMonthBtn.disabled = periodMode === "month";
   if (el.periodRangeBtn) {
     el.periodRangeBtn.disabled = isDemoUiMode() || periodMode === "range";
-    el.periodRangeBtn.style.display = isDemoUiMode() ? "none" : "";
+    el.periodRangeBtn.classList.toggle("hidden", isDemoUiMode());
   }
   if (el.rangeFrom) el.rangeFrom.value = rangeFrom || "";
   if (el.rangeTo) el.rangeTo.value = rangeTo || "";
@@ -634,7 +632,7 @@ async function loadMonthAll() {
     if (state === "empty") {
       return `
         <div class="card">
-          <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap;">
+          <div class="row row--between ai-center gap-8">
             <b>${name}</b>
             <span class="badge">нет данных</span>
           </div>
@@ -643,7 +641,7 @@ async function loadMonthAll() {
     }
     return `
       <div class="card">
-        <div class="row row--between ai-center" style="gap:8px; flex-wrap:wrap;">
+        <div class="row row--between ai-center gap-8">
           <b>${name}</b>
           <span class="badge">${state === "partial" ? "частично" : "готово"}</span>
         </div>
@@ -714,9 +712,9 @@ function renderSummary() {
   }
   if (el.sourceHint) el.sourceHint.textContent = hint;
 
-  if (el.rowWriteoffs) el.rowWriteoffs.style.display = "none";
+  el.rowWriteoffs?.classList.add("hidden");
   if (el.sumWriteoffs) el.sumWriteoffs.textContent = formatMoney(totalWriteoffs);
-  if (el.payrollBreakdownRow) el.payrollBreakdownRow.style.display = (periodMode === "month" && payrollLine?.breakdown) ? "flex" : "none";
+  el.payrollBreakdownRow?.classList.toggle("hidden", !(periodMode === "month" && payrollLine?.breakdown));
   if (el.daysChartHint) {
     el.daysChartHint.textContent = periodMode === "month"
       ? ((monthSummaryItem?.source === "payroll") ? "Подсвечены даты, которые вошли в итоговый расчёт" : "Выбери день для подробностей")
@@ -791,7 +789,7 @@ function renderDays() {
     details.push(`${Math.max(0, d.shifts?.length || 0)} смен(ы)`);
     if (d.adjustmentCount) details.push(`${d.adjustmentCount} коррект.`);
     card.innerHTML = `
-      <div class="row row--between" style="gap:10px; align-items:center;">
+      <div class="row row--between ai-center gap-10">
         <div>
           <b>${esc(dd)}</b>
           <div class="muted small mt-4">${esc(details.join(" · "))}</div>
@@ -852,7 +850,7 @@ function fallbackDayModalHtml(d) {
       : (s.report_exists ? "Есть закрытый отчёт" : "Нет закрытого отчёта");
     return `
       <div class="section">
-        <div class="row row--between" style="gap:12px; align-items:flex-start;">
+        <div class="row row--between ai-start gap-12">
           <div>
             <b>${esc(interval)}</b>
             <div class="muted small">${s.report_exists ? "Отчёт есть" : "Нет отчёта"}</div>
@@ -862,15 +860,15 @@ function fallbackDayModalHtml(d) {
       </div>`;
   }).join("");
 
-  return `<div class="itemcard" style="margin-top:12px">
-    <div class="row" style="justify-content:space-between;align-items:center; gap:12px;">
+  return `<div class="itemcard mt-12">
+    <div class="row row--between ai-center gap-12">
       <div class="muted">Статус дня</div>
       <div class="day-salary ${isPayroll ? (d.includedInPayroll ? "" : "day-salary--muted") : (d.hasReport ? "" : "day-salary--muted")}">${isPayroll ? (d.includedInPayroll ? "Вошло в расчёт" : "Не вошло") : (d.hasReport ? "Закрытый день" : "Без закрытия")}</div>
     </div>
     <div class="muted small mt-8">${isPayroll
       ? "Месячная сумма берётся из итогового расчёта, поэтому здесь показана только справочная детализация по сменам."
       : "Итоговый расчёт за этот месяц ещё не готов, поэтому суммы по дням скрыты и ниже показана только справочная детализация по сменам."}</div>
-    <div style="margin-top:10px">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
+    <div class="mt-10">${shiftsHtml || `<div class="muted">Смен нет</div>`}</div>
   </div>`;
 }
 
@@ -899,8 +897,8 @@ function renderDayBreakdownModal(d, breakdown) {
   const slotNote = String(context?.slot_note || "").trim();
   const slotNoteHtml = slotNote ? `<div class="muted small mt-10">${esc(slotNote)}</div>` : "";
 
-  return `<div class="itemcard" style="margin-top:12px">
-    <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+  return `<div class="itemcard mt-12">
+    <div class="row row--between ai-center gap-12">
       <div>
         <div class="muted small">Статус</div>
         <b>${esc(stateText)}</b>
@@ -908,7 +906,7 @@ function renderDayBreakdownModal(d, breakdown) {
       <div class="day-salary">${esc(formatMoneyMinor(summary?.total_minor || 0))}</div>
     </div>
 
-    <div class="grid mt-12" style="gap:8px">
+    <div class="grid mt-12 gap-8">
       <div class="row row--between"><div class="muted">Основное начисление</div><b>${esc(formatMoneyMinor(summary?.earnings_minor || 0))}</b></div>
       <div class="row row--between"><div class="muted">Чаевые (отдельно)</div><b>${esc(formatMoneyMinor(summary?.tips_minor || 0))}</b></div>
       <div class="row row--between"><div class="muted">Премии</div><b>${esc(formatMoneyMinor(summary?.bonuses_minor || 0))}</b></div>
@@ -1122,8 +1120,8 @@ function openPayrollBreakdown() {
   openModal(
     `Начисление за ${ym(curMonth)}`,
     breakdown.pay_profile_title ? `Профиль: ${breakdown.pay_profile_title}` : "",
-    `<div class="itemcard" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    `<div class="itemcard mt-12">
+      <div class="row row--between ai-center gap-12">
         <div class="muted">Итого начислено</div>
         <div class="day-salary">${esc(formatMoneyMinor(payrollLine.amount_minor || 0))}</div>
       </div>
@@ -1144,7 +1142,7 @@ async function openDayModal(d) {
   openModal(
     `${formatDateRu(d.date)}`,
     subtitle,
-    `<div class="itemcard" style="margin-top:12px"><div class="muted">Загружаем детализацию начисления…</div></div>`
+    `<div class="itemcard mt-12"><div class="muted">Загружаем детализацию начисления…</div></div>`
   );
 
   try {

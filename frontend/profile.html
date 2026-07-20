@@ -4,28 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/profile.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Профиль</title>
-  <style>
-    .auth-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:12px; }
-    .auth-methods { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
-    .auth-chip { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:4px 10px; font-size:12px; }
-    .auth-box { border:1px solid var(--border); border-radius:16px; padding:12px; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .hidden { display:none !important; }
-    .call-number { font-size:18px; font-weight:700; letter-spacing:.02em; }
-    .call-number a { color: inherit; text-decoration:none; }
-    .telegram-browser-link { word-break: break-all; }
-    .password-note {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px 12px;
-      font-size: 13px;
-      line-height: 1.45;
-      background: color-mix(in srgb, var(--card) 82%, transparent);
-      color: var(--muted);
-    }
-  </style>
 </head>
 <body>
   <div class="container">
@@ -70,13 +52,13 @@
         <div class="auth-box">
           <b>Телефон</b>
           <div class="muted mt-8" id="phoneState">Загрузка…</div>
-          <div class="row mt-12" id="phoneActions" style="gap:8px; flex-wrap:wrap;">
+          <div class="row gap-8 mt-12" id="phoneActions">
             <button class="btn primary" id="startLinkPhoneBtn">Привязать телефон</button>
             <button class="btn" id="changePhoneBtn">Изменить номер</button>
           </div>
           <div class="stack mt-12 hidden" id="phoneFormBlock">
             <input class="input" id="linkPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
-            <div class="row" style="gap:8px; flex-wrap:wrap;">
+            <div class="row gap-8">
               <button class="btn" id="requestLinkCallBtn">Получить номер для звонка</button>
               <button class="btn hidden" id="requestLinkCodeBtn">Не получается? Получить SMS</button>
             </div>
@@ -88,7 +70,7 @@
             <div class="password-note">Пароль обязателен для входа по номеру телефона. Минимум 8 символов, лучше использовать буквы и цифры.</div>
             <input class="input" id="linkPhonePasswordInput" type="password" placeholder="Придумайте пароль" autocomplete="new-password" />
             <input class="input" id="linkPhonePasswordConfirmInput" type="password" placeholder="Повторите пароль" autocomplete="new-password" />
-            <div class="row" style="gap:8px; flex-wrap:wrap;">
+            <div class="row gap-8">
               <button class="btn primary" id="verifyLinkCodeBtn">Привязать телефон</button>
               <button class="btn subtle" type="button" id="cancelPhoneFormBtn">Закрыть</button>
             </div>
@@ -98,12 +80,12 @@
         <div class="auth-box">
           <b>Telegram</b>
           <div class="muted mt-8" id="telegramState">Загрузка…</div>
-          <div class="row mt-12" style="gap:8px; flex-wrap:wrap;">
+          <div class="row gap-8 mt-12">
             <button class="btn primary" id="linkTelegramBtn">Привязать Telegram</button>
           </div>
           <div class="stack mt-12 hidden" id="telegramBrowserLinkBlock">
             <div class="muted" id="telegramBrowserLinkStatus">Нажми кнопку ниже и открой Telegram. После открытия бота вернись в профиль — привязка завершится автоматически.</div>
-            <div class="row mt-4" style="gap:8px; flex-wrap:wrap;">
+            <div class="row gap-8 mt-4">
               <a class="btn primary" id="telegramBrowserLinkOpenLink" href="#" target="_blank" rel="noopener noreferrer">Открыть Telegram</a>
               <button class="btn sm" id="telegramBrowserLinkCopyBtn" type="button">Скопировать ссылку</button>
               <button class="btn sm" id="telegramBrowserLinkRestartBtn" type="button">Обновить ссылку</button>
@@ -116,7 +98,7 @@
         <div class="auth-box">
           <b>Пароль</b>
           <div class="muted mt-8" id="passwordState">Загрузка…</div>
-          <div class="row mt-12" id="passwordActions" style="gap:8px; flex-wrap:wrap;">
+          <div class="row gap-8 mt-12" id="passwordActions">
             <button class="btn primary hidden" id="openChangePasswordBtn">Изменить пароль</button>
             <button class="btn hidden" id="openPasswordResetBtn">Установить пароль</button>
           </div>
@@ -128,7 +110,7 @@
             <input class="input mt-8" id="currentPasswordInput" type="password" placeholder="Текущий пароль" autocomplete="current-password" />
             <input class="input mt-8" id="changePasswordInput" type="password" placeholder="Новый пароль" autocomplete="new-password" />
             <input class="input mt-8" id="changePasswordConfirmInput" type="password" placeholder="Повторите пароль" autocomplete="new-password" />
-            <div class="row mt-12" style="gap:8px; flex-wrap:wrap;">
+            <div class="row gap-8 mt-12">
               <button class="btn primary" id="changePasswordBtn">Изменить пароль</button>
               <button class="btn subtle" type="button" id="cancelChangePasswordBtn">Закрыть</button>
             </div>
@@ -137,7 +119,7 @@
           <div class="stack mt-12 hidden" id="passwordResetSection">
             <div class="muted" id="passwordResetTitle">Установить пароль по подтверждению номера</div>
             <div class="muted mt-6" id="passwordResetPhoneHint">Номер загрузится из профиля после привязки телефона.</div>
-            <div class="row mt-8" style="gap:8px; flex-wrap:wrap;">
+            <div class="row gap-8 mt-8">
               <button class="btn" id="requestPasswordResetCallBtn">Получить номер для звонка</button>
               <button class="btn hidden" id="requestPasswordResetBtn">Не получается? Получить SMS</button>
             </div>
@@ -149,7 +131,7 @@
             <div class="password-note mt-8">Пароль обязателен. Минимум 8 символов, лучше использовать буквы и цифры.</div>
             <input class="input mt-8" id="passwordResetNewInput" type="password" placeholder="Новый пароль" autocomplete="new-password" />
             <input class="input mt-8" id="passwordResetConfirmInput" type="password" placeholder="Повторите пароль" autocomplete="new-password" />
-            <div class="row mt-12" style="gap:8px; flex-wrap:wrap;">
+            <div class="row gap-8 mt-12">
               <button class="btn primary" id="confirmPasswordResetBtn">Сохранить новый пароль</button>
               <button class="btn subtle" type="button" id="cancelPasswordResetBtn">Закрыть</button>
             </div>
@@ -192,7 +174,7 @@
       getStoredDemoUiState,
       isDemoReadonlyUi,
       getDemoMonthLabel,
-    } from "/app.js";
+    } from "/app.js?v=20260719-split1";
 
     applyTelegramTheme();
     mountLogo();

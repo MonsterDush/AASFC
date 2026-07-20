@@ -4,45 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/admin-demo.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Админ · DEMO</title>
-  <style>
-    .demo-admin-grid{display:grid;grid-template-columns:1fr;gap:14px}
-    @media (min-width:960px){.demo-admin-grid{grid-template-columns:1.1fr .9fr}}
-    .demo-admin-topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-    .demo-admin-cardhead{display:flex;justify-content:space-between;align-items:center;gap:10px}
-    .demo-admin-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-    @media (min-width:900px){.demo-admin-kpis{grid-template-columns:repeat(4,minmax(0,1fr));}}
-    .demo-admin-kpi{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:12px;min-width:0}
-    .demo-admin-kpi b{display:block;font-size:18px;margin-top:6px;word-break:break-word}
-    .demo-admin-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-    .demo-admin-form .field{display:flex;flex-direction:column;gap:6px;min-width:0}
-    .demo-admin-form .field input,.demo-admin-form .field select{width:100%;min-width:0}
-    .demo-admin-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .demo-admin-actions .btn,.demo-admin-preview .btn{min-width:0}
-    .demo-admin-pre{white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.45;border:1px solid rgba(0,0,0,.08);border-radius:14px;padding:12px;background:rgba(0,0,0,.02);overflow:auto}
-    @media (max-width:680px){.demo-admin-form{grid-template-columns:1fr}}
-    .demo-admin-preview{display:flex;flex-wrap:wrap;gap:8px}
-    .demo-admin-checklist{display:grid;gap:8px}
-    .demo-admin-check{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid rgba(0,0,0,.08);border-radius:12px;background:rgba(0,0,0,.02)}
-    .demo-admin-check b{display:block}
-    .demo-admin-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
-    @media (min-width:900px){.demo-admin-stats{grid-template-columns:repeat(3,minmax(0,1fr));}}
-    .demo-admin-list{display:grid;gap:8px;margin-top:12px}
-    .demo-admin-item{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(0,0,0,.08);border-radius:12px;background:rgba(0,0,0,.02)}
-    .demo-admin-item small{display:block;color:var(--muted);font-size:12px;word-break:break-word}
-    .demo-admin-item b{word-break:break-word}
-    .demo-admin-split{display:grid;grid-template-columns:1fr;gap:14px}
-    @media (min-width:900px){.demo-admin-split{grid-template-columns:1fr 1fr;}}
-    @media (max-width:760px){
-      .demo-admin-topbar,.demo-admin-cardhead,.demo-admin-item,.demo-admin-check{flex-direction:column;align-items:stretch}
-      .demo-admin-kpis,.demo-admin-stats{grid-template-columns:1fr 1fr}
-      .demo-admin-actions .btn,.demo-admin-preview .btn{flex:1 1 100%}
-    }
-    @media (max-width:420px){
-      .demo-admin-kpis,.demo-admin-stats{grid-template-columns:1fr}
-    }
-  </style>
 </head>
 <body>
   <div class="container">
@@ -63,7 +28,7 @@
 
     <div class="demo-admin-grid">
       <div class="card">
-        <div class="row demo-admin-cardhead" style="justify-content:space-between;align-items:center;gap:10px">
+        <div class="row demo-admin-cardhead">
           <div>
             <div class="section-title"><b>Настройки DEMO</b></div>
             <div class="muted">Можно переключить публичное демо-заведение, выгрузить или восстановить fixture.</div>
@@ -94,7 +59,7 @@
       </div>
 
       <div class="card">
-        <div class="row demo-admin-cardhead" style="justify-content:space-between;align-items:center;gap:10px">
+        <div class="row demo-admin-cardhead">
           <div class="section-title"><b>Аналитика DEMO</b></div>
           <a class="btn subtle" href="/admin-demo-analytics.html">Подробная аналитика</a>
         </div>
@@ -152,7 +117,7 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour, cacheSystemRole } from "/app.js";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour, cacheSystemRole } from "/app.js?v=20260719-split1";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");

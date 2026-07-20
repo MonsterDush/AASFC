@@ -13,7 +13,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js";
+} from "/app.js?v=20260719-split1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
 let financialValuesHidden = false;
@@ -67,6 +67,10 @@ function esc(s) {
     .replace(/'/g, "&#039;");
 }
 
+function setVisible(element, visible) {
+  element?.classList.toggle("hidden", !visible);
+}
+
 function fmtMoney(n) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const x = Math.round(Number(n || 0));
@@ -112,9 +116,9 @@ function syncPickers() {
   const dayPick = $("dayPick");
   const rangePick = $("rangePick");
 
-  if (monthPick) monthPick.style.display = state.period === "month" ? "" : "none";
-  if (dayPick) dayPick.style.display = (state.period === "day" || state.period === "week") ? "" : "none";
-  if (rangePick) rangePick.style.display = state.period === "range" ? "flex" : "none";
+  setVisible(monthPick, state.period === "month");
+  setVisible(dayPick, state.period === "day" || state.period === "week");
+  setVisible(rangePick, state.period === "range");
 }
 
 function periodLabel() {
@@ -186,8 +190,7 @@ async function load() {
   const rows = Array.isArray(data?.rows) ? data.rows : [];
   if (!rows.length) {
     const empty = document.createElement("div");
-    empty.className = "muted";
-    empty.style.padding = "6px 0";
+    empty.className = "muted finance-table-empty";
     empty.textContent = "Нет данных за выбранный период";
     rowsEl.appendChild(empty);
     return;
@@ -195,9 +198,7 @@ async function load() {
 
   for (const r of rows) {
     const el = document.createElement("div");
-    el.className = "row";
-    el.style.justifyContent = "space-between";
-    el.style.padding = "8px 0";
+    el.className = "row row--between finance-table-row";
     const title = r?.title || r?.name || r?.code || "—";
     el.innerHTML = `<div>${esc(title)}</div><div class="mono">${esc(fmtMoney(r?.amount || 0))}</div>`;
     rowsEl.appendChild(el);
@@ -298,7 +299,7 @@ async function resolveRevenueAccess() {
   }
 
   const exportBtn = $("exportBtn");
-  if (exportBtn) exportBtn.style.display = state.canExport ? "" : "none";
+  setVisible(exportBtn, state.canExport);
 
   if (!state.canView) {
     toast("Нет доступа к выручке", "err");

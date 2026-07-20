@@ -1,0 +1,8 @@
+.invite-grid,.invite-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.invite-grid{margin-top:10px}
+.invite-card{border-bottom:1px solid var(--border);padding:12px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;font-size:12px}
+.mono-wrap{font-family:var(--mono);word-break:break-all}
+.invite-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.invite-venue-select{min-width:0;flex:1 1 220px;max-width:100%}
+.invite-venue-select--wide{min-width:260px}

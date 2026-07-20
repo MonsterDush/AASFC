@@ -1,0 +1,13 @@
+.position-permission-groups{display:grid;grid-template-columns:1fr;gap:10px;margin-top:12px}
+.position-permission-card{padding:12px}
+.position-permission-actions{gap:6px;flex:0 0 auto}
+.position-pay-summary,.position-template-summary{padding:10px 12px}
+.position-pay-summary{min-height:44px;display:flex;align-items:center}
+.position-form-tail{margin-left:auto}
+.position-invite-row{justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding:10px 0;align-items:flex-start}
+.position-invite-person{min-width:220px}
+.position-invite-assignment{min-width:240px}
+@media (max-width:560px){
+  .position-form-tail{margin-left:0;width:100%}
+  .position-invite-person,.position-invite-assignment{min-width:0;width:100%}
+}

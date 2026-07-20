@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260720-unified9" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Финансовые движения</title>
 </head>
 <body>
@@ -40,17 +42,17 @@
     </div>
 
     <div class="card finance-toolbar">
-      <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div class="row row--between gap-12">
         <div>
           <b>Журнал финансовых движений</b>
           <div class="muted mt-6">Выручка, расходы, корректировки и переводы между оплатами</div>
         </div>
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-          <input id="ledgerMonthPick" type="month" style="width:auto; min-width:160px;" />
-          <select id="ledgerPaymentMethodPick" style="width:auto; min-width:170px;">
+        <div class="row gap-8">
+          <input class="finance-control" id="ledgerMonthPick" type="month" />
+          <select class="finance-control finance-control--wide" id="ledgerPaymentMethodPick">
             <option value="">Все оплаты</option>
           </select>
-          <select id="ledgerKindPick" style="width:auto; min-width:170px;">
+          <select class="finance-control finance-control--wide" id="ledgerKindPick">
             <option value="">Все типы</option>
             <option value="REVENUE">Выручка</option>
             <option value="EXPENSE">Расходы</option>
@@ -60,7 +62,7 @@
             <option value="ADJUSTMENT">Корректировки</option>
             <option value="REFUND">Возвраты</option>
           </select>
-          <button class="btn" id="addTransferBtn" style="display:none;">Перевод</button>
+          <button class="btn hidden" id="addTransferBtn">Перевод</button>
         </div>
       </div>
 
@@ -80,7 +82,7 @@
       </div>
 
       <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+        <div class="row row--between gap-12">
           <div>
             <b>Ledger entries</b>
             <div class="muted mt-6" id="ledgerHint">—</div>
@@ -90,7 +92,7 @@
       </div>
 
       <div class="itemcard mt-12">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+        <div class="row row--between gap-12">
           <div>
             <b>Переводы между оплатами</b>
             <div class="muted mt-6" id="transferHint">—</div>
@@ -119,6 +121,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-finance-ledger.js"></script>
+  <script type="module" src="/owner-finance-ledger.js?v=20260720-unified9"></script>
 </body>
 </html>

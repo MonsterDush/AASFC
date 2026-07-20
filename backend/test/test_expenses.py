@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
-from app.routers import venues
+from app.routers import venue_expenses
 
 
 class _AllResult:
@@ -35,8 +35,11 @@ class ExpensesTests(TestCase):
             venue_id=3,
             category_id=7,
             supplier_id=None,
+            payment_method_id=None,
+            recurring_rule_id=None,
             amount_minor=12345,
             expense_date=date(2026, 2, 10),
+            generated_for_month=None,
             spread_months=2,
             status="CONFIRMED",
             comment="Тест",
@@ -45,26 +48,27 @@ class ExpensesTests(TestCase):
             updated_at=None,
         )
         category = SimpleNamespace(id=7, code="rent", title="Аренда")
-        db = _FakeSession(responses=[_AllResult([(expense, category, None)])])
+        db = _FakeSession(responses=[_AllResult([(expense, category, None, None)])])
         user = SimpleNamespace(id=101, system_role="NONE")
         allocations = [
             SimpleNamespace(id=1, expense_id=15, venue_id=3, month=date(2026, 2, 1), amount_minor=6000, created_at=datetime.utcnow()),
             SimpleNamespace(id=2, expense_id=15, venue_id=3, month=date(2026, 3, 1), amount_minor=6345, created_at=datetime.utcnow()),
         ]
 
-        with patch.object(venues, "require_venue_permission", return_value=None), patch.object(venues, "list_expense_allocations", return_value=allocations):
-            result = venues.list_expenses(
+        with patch.object(venue_expenses, "require_venue_permission", return_value=None), patch.object(venue_expenses, "list_expense_allocations", return_value=allocations):
+            result = venue_expenses.list_expenses(
                 venue_id=1,
                 month="2026-03",
                 category_id=None,
                 supplier_id=None,
+                statuses=None,
                 db=db,
                 user=user,
             )
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["recognized_amount_minor_for_month"], 6345)
-        self.assertEqual(result[0]["recognized_month"], "2026-03-01")
+        self.assertEqual(result[0]["recognized_allocations"][0]["month"], "2026-03-01")
         self.assertEqual(result[0]["status"], "CONFIRMED")
 
     def test_serialize_expense_returns_minor_units_and_nested_refs(self):
@@ -75,8 +79,11 @@ class ExpensesTests(TestCase):
             venue_id=3,
             category_id=7,
             supplier_id=9,
+            payment_method_id=None,
+            recurring_rule_id=None,
             amount_minor=12345,
             expense_date=date(2026, 3, 10),
+            generated_for_month=None,
             spread_months=2,
             status="DRAFT",
             comment="Тест",
@@ -86,11 +93,11 @@ class ExpensesTests(TestCase):
         )
         allocations = [SimpleNamespace(id=1, expense_id=15, venue_id=3, month=date(2026, 3, 1), amount_minor=6172, created_at=None)]
 
-        payload = venues._serialize_expense(expense, category, supplier, allocations, recognized_month=date(2026, 3, 1))
+        payload = venue_expenses._serialize_expense(expense, category, supplier, None, allocations)
 
         self.assertEqual(payload["amount_minor"], 12345)
         self.assertEqual(payload["spread_months"], 2)
         self.assertEqual(payload["status"], "DRAFT")
-        self.assertEqual(payload["recognized_amount_minor_for_month"], 6172)
+        self.assertEqual(payload["allocations"][0]["amount_minor"], 6172)
         self.assertEqual(payload["category"]["code"], "rent")
         self.assertEqual(payload["supplier"]["title"], "ООО Поставщик")

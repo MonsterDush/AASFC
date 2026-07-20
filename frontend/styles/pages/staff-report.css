@@ -1,0 +1,10 @@
+.report-attachment-row{justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.report-attachment-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:20%}
+.report-file-input{max-width:260px}
+.report-upload-hint{width:100%;text-align:right;margin-top:4px}
+.report-loading-skeleton{height:120px}
+@media (max-width:560px){
+  .report-attachment-row{align-items:flex-start}
+  .report-attachment-name{max-width:100%;width:100%}
+  .report-file-input{max-width:100%;width:100%}
+}

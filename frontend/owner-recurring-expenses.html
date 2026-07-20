@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260720-unified9" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Регулярные расходы</title>
 </head>
 <body>
@@ -36,7 +38,7 @@
 
         <div class="screen-hero__toolbar">
           <div class="screen-hero__period">
-            <input id="rulesMonthPick" type="month" style="width:auto; min-width:160px;" />
+            <input class="finance-control" id="rulesMonthPick" type="month" />
           </div>
           <div class="itemcard hero-summary-card">
             <div class="hero-summary-card__eyebrow">Месяц генерации</div>
@@ -64,7 +66,7 @@
         </div>
       </details>
 
-      <div class="itemcard mt-12" id="generationResultCard" style="display:none;">
+      <div class="itemcard mt-12 hidden" id="generationResultCard">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Результат последней генерации</b>
@@ -101,6 +103,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-recurring-expenses.js"></script>
+  <script type="module" src="/owner-recurring-expenses.js?v=20260720-unified9"></script>
 </body>
 </html>

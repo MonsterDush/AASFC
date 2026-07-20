@@ -1,0 +1,7 @@
+.mini-kpi{padding:10px 12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
+.mini-kpi.total{grid-column:1/-1}
+.salary-all-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (min-width:640px){
+  .salary-all-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .mini-kpi.total{grid-column:auto}
+}

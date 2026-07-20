@@ -1,0 +1,5 @@
+.meta-grid{display:grid;grid-template-columns:1fr;gap:12px}
+.info-card,.history-row{border:1px solid var(--border);border-radius:14px;padding:12px}
+.history-row{margin-top:10px}
+.status-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px}
+@media (min-width:860px){.meta-grid{grid-template-columns:1fr 1fr}}

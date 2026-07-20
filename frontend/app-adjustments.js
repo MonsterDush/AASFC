@@ -12,7 +12,7 @@ import {
   isDemoReadonlyUi,
   getDemoMonthLabel,
   coerceDemoMonth,
-} from "/app.js";
+} from "/app.js?v=20260719-split1";
 
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm } from "/permissions.js";
@@ -176,19 +176,18 @@ function renderList(data) {
     el.list.innerHTML = `
       <div class="itemcard">
         <b>Нет доступа</b>
-        <div class="muted" style="margin-top:6px">Нужны права на управление штрафами/списаниями/премиями.</div>
+        <div class="muted mt-6">Нужны права на управление штрафами/списаниями/премиями.</div>
       </div>
     `;
-    el.btnCreate.style.display = "none";
+    el.btnCreate.classList.add("hidden");
     return;
   }
 
-  el.btnCreate.style.display = demoReadonly ? "none" : "";
+  el.btnCreate.classList.toggle("hidden", demoReadonly);
   if (demoReadonly && !document.getElementById("demoAdjustmentsNote")) {
     const note = document.createElement("div");
     note.id = "demoAdjustmentsNote";
-    note.className = "muted";
-    note.style.marginBottom = "10px";
+    note.className = "muted mb-10";
     note.textContent = `Пробный режим: изменения по штрафам, списаниям и премиям отключены. Подготовлены данные за ${getDemoMonthLabel(demoState)}.`;
     el.list.parentElement?.insertBefore(note, el.list);
   }
@@ -202,16 +201,15 @@ function renderList(data) {
   el.list.innerHTML = "";
   for (const it of items) {
     const row = document.createElement("div");
-    row.className = "row";
-    row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0; gap:10px;";
+    row.className = "row adjustment-row";
 
     const who = it.member ? personLabel(it.member) : "(заведение)";
 
     row.innerHTML = `
       <div>
         <b>${esc(typeTitle(it.type))} · ${esc(it.amount)}</b>
-        <div class="muted" style="margin-top:4px">${esc(it.date)} · ${esc(who)}</div>
-        <div class="muted" style="margin-top:4px">${esc(it.reason || "—")}</div>
+        <div class="muted mt-4">${esc(it.date)} · ${esc(who)}</div>
+        <div class="muted mt-4">${esc(it.reason || "—")}</div>
       </div>
       <button class="btn" data-edit data-id="${esc(it.id)}">${demoReadonly ? "Просмотр" : "Открыть"}</button>
     `;
@@ -227,22 +225,6 @@ function renderList(data) {
       ].join("");
 
       const html = `
-        <style>
-          /* Admin adjustments modal: make the form readable on narrow screens */
-          .adj-modal .adj-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-          .adj-modal label{display:block}
-          .adj-modal select,.adj-modal input,.adj-modal textarea{width:100%}
-          .adj-modal .adj-help{font-size:12px;margin-top:4px}
-          .adj-modal .adj-actions{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px}
-          .adj-modal .adj-actions-right{display:flex;gap:8px;flex-wrap:wrap}
-          .adj-modal .adj-card{margin-top:12px}
-          .adj-modal .dispute-top{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
-          .adj-modal .dispute-list .card{padding:10px}
-          @media (max-width:520px){
-            .adj-modal .adj-grid{grid-template-columns:1fr}
-          }
-        </style>
-
         <div class="adj-modal">
         <div class="itemcard adj-card">
           <div class="adj-grid">
@@ -265,7 +247,7 @@ function renderList(data) {
             </label>
           </div>
 
-          <label style="display:block;margin-top:10px">Причина
+          <label class="adj-reason">Причина
             <textarea id="edReason" rows="3" placeholder="Причина"></textarea>
           </label>
 
@@ -282,16 +264,16 @@ function renderList(data) {
           <div class="dispute-top">
             <div>
               <b>Спор</b>
-              <div class="muted" style="margin-top:4px" id="disputeStatus">Загрузка…</div>
+              <div class="muted mt-4" id="disputeStatus">Загрузка…</div>
             </div>
             <button class="btn" id="btnDisputeToggle">…</button>
           </div>
 
-          <div id="disputeComments" class="dispute-list" style="margin-top:10px"></div>
+          <div id="disputeComments" class="dispute-list mt-10"></div>
 
-          <div style="margin-top:10px">
-            <textarea id="disputeReply" rows="3" placeholder="Ответить…" style="width:100%"></textarea>
-            <div class="row" style="justify-content:flex-end; gap:8px; margin-top:8px">
+          <div class="mt-10">
+            <textarea class="w-100" id="disputeReply" rows="3" placeholder="Ответить…"></textarea>
+            <div class="row row--end gap-8 mt-8">
               <button class="btn primary" id="btnDisputeSend">Отправить</button>
             </div>
           </div>
@@ -307,7 +289,7 @@ async function renderDisputeUI(venueId, adj) {
   const params = new URLSearchParams(location.search);
   const force = (params.get("tab") || "") === "disputes";
   if (!force && !hasManageAccess() && !hasResolveAccess()) {
-    box.style.display = "none";
+    box.classList.add("hidden");
     return;
   }
 
@@ -335,7 +317,7 @@ async function renderDisputeUI(venueId, adj) {
     if (listEl) {
       const items = Array.isArray(data.comments) ? data.comments : [];
       listEl.innerHTML = items.length
-        ? items.map(c => `<div class="card" style="padding:10px"><div class="muted" style="font-size:12px">${(c.created_at||"").slice(0,19).replace("T"," ")}</div><div style="margin-top:6px;white-space:pre-wrap">${escapeHtml(c.message||"")}</div></div>`).join("")
+        ? items.map(c => `<div class="card dispute-comment"><div class="muted small">${(c.created_at||"").slice(0,19).replace("T"," ")}</div><div class="dispute-comment__message">${escapeHtml(c.message||"")}</div></div>`).join("")
         : `<div class="muted">Комментариев пока нет</div>`;
     }
   }
@@ -419,8 +401,8 @@ openModal("Карточка", "Редактирование", html);
         [edType, edDate, edMember, edAmount, edReason].forEach((input) => { if (input) input.disabled = true; });
         const saveBtn = document.getElementById("btnAdjSave");
         const delBtn = document.getElementById("btnAdjDelete");
-        if (saveBtn) saveBtn.style.display = "none";
-        if (delBtn) delBtn.style.display = "none";
+        saveBtn?.classList.add("hidden");
+        delBtn?.classList.add("hidden");
       }
 
       document.getElementById("btnAdjSave")?.addEventListener("click", async () => {
@@ -513,10 +495,10 @@ function buildCreateForm(members) {
   const opts = members.map(m => `<option value="${esc(m.user_id)}">@${esc(m.tg_username || "-")}${m.full_name ? ` (${esc(m.full_name)})` : ""}</option>`).join("");
 
   return `
-    <div class="itemcard" style="margin-top:12px;">
-      <div class="row" style="gap:10px;flex-wrap:wrap">
-        <label style="min-width:220px;display:block">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Тип</div>
+    <div class="itemcard mt-12">
+      <div class="row adjustment-create-grid">
+        <label class="adjustment-field adjustment-field--member">
+          <div class="muted small mb-4">Тип</div>
           <select id="adjType">
             <option value="penalty">Штраф</option>
             <option value="writeoff">Списание</option>
@@ -524,32 +506,32 @@ function buildCreateForm(members) {
           </select>
         </label>
 
-        <label style="min-width:220px;display:block" id="memberWrap">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Сотрудник</div>
+        <label class="adjustment-field adjustment-field--member" id="memberWrap">
+          <div class="muted small mb-4">Сотрудник</div>
           <select id="adjMember">
             <option value="">(не выбран)</option>
             ${opts}
           </select>
-          <div class="muted" style="font-size:12px;margin-top:6px" id="memberHint">Для штрафа/премии сотрудник обязателен. Для списания можно оставить пустым (списание по заведению).</div>
+          <div class="muted small mt-6" id="memberHint">Для штрафа/премии сотрудник обязателен. Для списания можно оставить пустым (списание по заведению).</div>
         </label>
 
-        <label style="min-width:180px;display:block">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Дата</div>
+        <label class="adjustment-field adjustment-field--date">
+          <div class="muted small mb-4">Дата</div>
           <input id="adjDate" type="date" />
         </label>
 
-        <label style="min-width:160px;display:block">
-          <div class="muted" style="font-size:12px;margin-bottom:4px">Сумма</div>
+        <label class="adjustment-field adjustment-field--amount">
+          <div class="muted small mb-4">Сумма</div>
           <input id="adjAmount" type="number" min="0" placeholder="0" />
         </label>
       </div>
 
-      <div style="margin-top:10px">
-        <div class="muted" style="font-size:12px;margin-bottom:4px">Причина</div>
+      <div class="mt-10">
+        <div class="muted small mb-4">Причина</div>
         <textarea id="adjReason" rows="3" placeholder="Опиши причину"></textarea>
       </div>
 
-      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px">
+      <div class="row row--end gap-8 mt-12">
         <button class="btn primary" id="btnCreateAdj">Создать</button>
       </div>
     </div>
@@ -629,7 +611,7 @@ async function openCreate() {
 
 async function boot() {
   if (!venueId) {
-    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted" style="margin-top:6px">Выбери заведение и открой раздел ещё раз.</div></div>`;
+    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted mt-6">Выбери заведение и открой раздел ещё раз.</div></div>`;
     return;
   }
 

@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Заведение</title>
 </head>
 <body>
@@ -127,7 +129,7 @@
             <span class="slider"></span>
           </label>
         </div>
-        <div class="muted small" id="nightShiftsSaveHint" style="margin-top:6px"></div>
+        <div class="muted small mt-6" id="nightShiftsSaveHint"></div>
 
         <div class="toggle mt-12">
           <div class="toggle__label">
@@ -141,17 +143,17 @@
         </div>
 
         <div class="mt-12">
-          <div class="muted" style="margin-bottom:6px">Режим распределения</div>
+          <div class="muted mb-6">Режим распределения</div>
           <select id="tipsMode">
             <option value="EQUAL">Поровну</option>
             <option value="WEIGHTED_BY_POSITION">По должностям</option>
           </select>
-          <div class="muted small" id="tipsModeSoon" style="margin-top:6px; display:none">Процент задаётся на каждого назначенного сотрудника этой должности. Остаток делится поровну между остальными назначенными на смену.</div>
-          <div class="row gap-8 mt-10" id="tipsConfigRow" style="display:none">
+          <div class="muted small mt-6 hidden" id="tipsModeSoon">Процент задаётся на каждого назначенного сотрудника этой должности. Остаток делится поровну между остальными назначенными на смену.</div>
+          <div class="row gap-8 mt-10 hidden" id="tipsConfigRow">
             <a class="btn sm" id="openTipsDistribution" href="#">Настроить распределение</a>
           </div>
-          <div class="muted small" id="tipsNoEdit" style="margin-top:6px; display:none">Нет прав на изменение настроек.</div>
-          <div class="muted small" id="tipsSaveHint" style="margin-top:6px"></div>
+          <div class="muted small mt-6 hidden" id="tipsNoEdit">Нет прав на изменение настроек.</div>
+          <div class="muted small mt-6" id="tipsSaveHint"></div>
         </div>
       </div>
 
@@ -188,7 +190,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20260719-split1";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSetupDone, isSetupPrepareDone, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260409-setup5";
 
     applyTelegramTheme();
@@ -234,6 +236,14 @@
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;");
+        }
+
+        function setVisible(element, visible) {
+          element?.classList.toggle("hidden", !visible);
+        }
+
+        function isVisible(element) {
+          return !!element && !element.classList.contains("hidden");
         }
 
         
@@ -719,14 +729,14 @@ const titleEl = document.getElementById("title");
             ? "Эти шаги не блокируют запуск, но помогают быстрее завести расходы и регулярные правила без ручной доводки."
             : "После завершения базового этапа сверху здесь же появится предложение добить дополнительную настройку.";
           setupTopNotice.innerHTML = `
-            <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-              <div style="min-width:0;flex:1 1 340px;">
+            <div class="row venue-widget-row">
+              <div class="venue-widget-copy">
                 <b>${esc(title)}</b>
                 <div class="muted mt-6">${esc(subtitle)}</div>
                 <div class="muted mt-6">${esc(progressText)}</div>
                 <div class="muted mt-6">${esc(extraHint)}</div>
               </div>
-              <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
+              <div class="row venue-widget-actions gap-8">
                 <button class="btn" id="btnOpenSetupNotice" type="button">${esc(actionLabel)}</button>
                 <button class="btn subtle" id="btnSkipSetupNotice" type="button">Пропустить настройку</button>
               </div>
@@ -747,10 +757,10 @@ const titleEl = document.getElementById("title");
         function renderBillingWidgets() {
           if (!(isOwner || isAdmin)) {
             if (billingTopNotice) billingTopNotice.classList.add("hidden");
-            if (billingCard) billingCard.style.display = "none";
+            setVisible(billingCard, false);
             return;
           }
-          if (billingCard) billingCard.style.display = "";
+          setVisible(billingCard, true);
           const status = String(billingInfo?.status || billingStatus || getBillingStatus(perms) || "ACTIVE").toUpperCase();
           const accessMode = String(billingInfo?.billing_access_mode || billingAccessMode || getBillingAccessMode(perms) || "FULL").toUpperCase();
           const paidUntil = billingInfo?.paid_until || perms?.paid_until || null;
@@ -775,7 +785,7 @@ const titleEl = document.getElementById("title");
           }
 
           const lastTxHtml = txs.length
-            ? `<div class="mt-12"><div class="muted" style="margin-bottom:6px">Последние продления</div>${txs.slice(0, 3).map((tx) => `<div class="row" style="justify-content:space-between;gap:8px;margin-top:6px"><div><b>${formatDate(tx.created_at)}</b><div class="muted small">${tx.source === "MANUAL_ADMIN" ? "Ручное продление" : (tx.source || "Операция")}</div></div><div class="small">${tx.days_added ? `+${tx.days_added} дн.` : ""} ${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}</div></div>`).join("")}</div>`
+            ? `<div class="mt-12"><div class="muted mb-6">Последние продления</div>${txs.slice(0, 3).map((tx) => `<div class="row billing-history-row"><div><b>${formatDate(tx.created_at)}</b><div class="muted small">${tx.source === "MANUAL_ADMIN" ? "Ручное продление" : (tx.source || "Операция")}</div></div><div class="small">${tx.days_added ? `+${tx.days_added} дн.` : ""} ${tx.amount_minor ? formatMinor(tx.amount_minor) : ""}</div></div>`).join("")}</div>`
             : `<div class="muted mt-12">Последние операции появятся здесь после первых оплат, ручных продлений или возвратов.</div>`;
 
           const promoRedemption = billingInfo?.promo_redemption || null;
@@ -793,8 +803,8 @@ const titleEl = document.getElementById("title");
             ? `<div class="itemcard mt-12" id="billingPromoCard">
                 <b>Промокод</b>
                 <div class="muted mt-6">Проверка не использует промокод. Незавершённый платёж тоже не скрывает этот блок — промокод считается использованным только после успешной оплаты или бесплатного применения.</div>
-                <div class="row gap-8 mt-10" style="align-items:flex-start;flex-wrap:wrap">
-                  <input id="billingPromoCodeInput" type="text" placeholder="Введите промокод" value="${promoInputValue}" style="min-width:180px;flex:1" autocomplete="off" />
+                <div class="row billing-promo-row gap-8 mt-10">
+                  <input class="billing-promo-input" id="billingPromoCodeInput" type="text" placeholder="Введите промокод" value="${promoInputValue}" autocomplete="off" />
                   <button class="btn" id="billingPromoPreviewBtn" type="button">Проверить</button>
                 </div>
                 ${promoPreviewHtml}
@@ -811,7 +821,7 @@ const titleEl = document.getElementById("title");
               </div>
               <div class="list mt-12">
                 <div class="itemcard">
-                  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
+                  <div class="row venue-widget-row">
                     <div>
                       <b>${planLabel}</b>
                       <div class="muted mt-6">Статус: ${isTrial && status === "ACTIVE" ? "Пробный доступ" : (status === "ACTIVE" ? "Активно" : (status === "GRACE" ? "Grace" : "Доступ ограничен"))}</div>
@@ -819,7 +829,7 @@ const titleEl = document.getElementById("title");
                       ${isTrial ? `<div class="muted mt-6">Пробный доступ до: ${formatDate(trialUntil)}</div>` : `<div class="muted mt-6">Оплачено до: ${formatDate(paidUntil)}</div>`}
                       ${graceUntil ? `<div class="muted mt-6">Льготный период до: ${formatDate(graceUntil)}</div>` : ""}${billingInfo?.checkout_expires_at ? `<div class="muted mt-6">Незавершённый checkout истекает: ${formatDateTime(billingInfo.checkout_expires_at)}</div>` : ""}
                     </div>
-                    <div class="row gap-8" style="align-items:flex-start;flex-wrap:wrap;justify-content:flex-end">
+                    <div class="row venue-widget-actions gap-8">
                       <button class="btn primary" id="billingExtendBtn" ${billingInfo?.provider_ready === false ? "disabled" : ""}>Продлить на 30 дней</button>
                       <button class="btn" id="billingHistoryBtn">История</button>
                       <a class="btn" id="billingSubscriptionBtn" href="/owner-subscription.html?venue_id=${venueId}">Подписка</a>
@@ -859,18 +869,8 @@ const titleEl = document.getElementById("title");
           canViewPayProfiles = false;
           canViewPayroll = false;
 
-          if (sectionsCard) sectionsCard.style.display = "none";
-          if (financeCard) financeCard.style.display = "none";
-          if (referencesCard) referencesCard.style.display = "none";
-          if (tipsCard) tipsCard.style.display = "none";
-          if (membersCard) membersCard.style.display = "none";
-
-          if (btnRename) btnRename.style.display = "none";
-          if (btnArchive) btnArchive.style.display = "none";
-          if (btnUnarchive) btnUnarchive.style.display = "none";
-          if (btnLeave) btnLeave.style.display = "none";
-          if (btnDelete) btnDelete.style.display = "none";
-          if (openSetup) openSetup.style.display = "none";
+          [sectionsCard, financeCard, referencesCard, tipsCard, membersCard].forEach((element) => setVisible(element, false));
+          [btnRename, btnArchive, btnUnarchive, btnLeave, btnDelete, openSetup].forEach((element) => setVisible(element, false));
           if (setupTopNotice) setupTopNotice.classList.add("hidden");
 
           metaHint.textContent = "Доступ к рабочим разделам временно ограничен. Можно только просмотреть статус заведения и продлить доступ.";
@@ -919,11 +919,11 @@ const titleEl = document.getElementById("title");
         const canAdminVenue = (isOwner || isAdmin) && !demoReadonly;
         const canArchiveVenue = !!isAdmin && !demoReadonly;
         const canDeleteVenue = !!isAdmin && !demoReadonly;
-        if (btnRename) btnRename.style.display = canAdminVenue ? "" : "none";
-        if (openSetup) openSetup.style.display = canAdminVenue ? "" : "none";
-        if (btnArchive) btnArchive.style.display = canArchiveVenue ? "" : "none";
-        if (btnUnarchive) btnUnarchive.style.display = canArchiveVenue ? "" : "none";
-        if (btnDelete) btnDelete.style.display = canDeleteVenue ? "" : "none";
+        setVisible(btnRename, canAdminVenue);
+        setVisible(openSetup, canAdminVenue);
+        setVisible(btnArchive, canArchiveVenue);
+        setVisible(btnUnarchive, canArchiveVenue);
+        setVisible(btnDelete, canDeleteVenue);
 
 
         let last = { is_archived: false, name: "" };
@@ -961,34 +961,34 @@ openAdjustments.href = canManageAdjustments
           if (openIntervals) openIntervals.href = `/shift-intervals.html?venue_id=${encodeURIComponent(venueId)}`;
 
           // hide/show by permissions
-          if (openInvites) openInvites.style.display = canManageStaff ? "" : "none";
-          if (openPositions) openPositions.style.display = (isOwner || isAdmin || hasPerm(pset, "POSITIONS_VIEW") || hasPerm(pset, "POSITIONS_MANAGE") || hasPerm(pset, "POSITIONS_ASSIGN") || hasPerm(pset, "POSITION_PERMISSIONS_MANAGE")) ? "" : "none";
+          setVisible(openInvites, canManageStaff);
+          setVisible(openPositions, isOwner || isAdmin || hasPerm(pset, "POSITIONS_VIEW") || hasPerm(pset, "POSITIONS_MANAGE") || hasPerm(pset, "POSITIONS_ASSIGN") || hasPerm(pset, "POSITION_PERMISSIONS_MANAGE"));
 
-          if (openReports) openReports.style.display = canViewReports ? "" : "none";
+          setVisible(openReports, canViewReports);
 
-          if (openDepartments) openDepartments.style.display = canViewDepartments ? "" : "none";
-          if (openPaymentMethods) openPaymentMethods.style.display = canViewPaymentMethods ? "" : "none";
-          if (openKpi) openKpi.style.display = canViewKpi ? "" : "none";
-          if (openIntervals) openIntervals.style.display = canManageIntervals ? "" : "none";
+          setVisible(openDepartments, canViewDepartments);
+          setVisible(openPaymentMethods, canViewPaymentMethods);
+          setVisible(openKpi, canViewKpi);
+          setVisible(openIntervals, canManageIntervals);
 
-          if (openAdjustments) openAdjustments.style.display = canViewAdjustments ? "" : "none";
-          if (openSummary) openSummary.style.display = (canViewRevenue || canViewExpenses) ? "" : "none";
-          if (openPayProfiles) openPayProfiles.style.display = canViewPayProfiles ? "" : "none";
-          if (openPayroll) openPayroll.style.display = canViewPayroll ? "" : "none";
-          if (openDayEconomics) openDayEconomics.style.display = (canViewRevenue || canViewExpenses) ? "" : "none";
-          if (openExpenses) openExpenses.style.display = canViewExpenses ? "" : "none";
+          setVisible(openAdjustments, canViewAdjustments);
+          setVisible(openSummary, canViewRevenue || canViewExpenses);
+          setVisible(openPayProfiles, canViewPayProfiles);
+          setVisible(openPayroll, canViewPayroll);
+          setVisible(openDayEconomics, canViewRevenue || canViewExpenses);
+          setVisible(openExpenses, canViewExpenses);
 
           if (financeCard) {
-            const showFinance = (openAdjustments?.style.display !== "none") || (openSummary?.style.display !== "none") || (openPayProfiles?.style.display !== "none") || (openPayroll?.style.display !== "none") || (openDayEconomics?.style.display !== "none") || (openExpenses?.style.display !== "none") || (openEconomicsPlans?.style.display !== "none") || (openEconomicsRules?.style.display !== "none");
-            financeCard.style.display = showFinance ? "" : "none";
+            const showFinance = [openAdjustments, openSummary, openPayProfiles, openPayroll, openDayEconomics, openExpenses, openEconomicsPlans, openEconomicsRules].some(isVisible);
+            setVisible(financeCard, showFinance);
           }
 
           if (referencesCard) {
-            const showReferences = (openDepartments?.style.display !== "none") || (openPaymentMethods?.style.display !== "none") || (openKpi?.style.display !== "none") || (openIntervals?.style.display !== "none");
-            referencesCard.style.display = showReferences ? "" : "none";
+            const showReferences = [openDepartments, openPaymentMethods, openKpi, openIntervals].some(isVisible);
+            setVisible(referencesCard, showReferences);
           }
 
-          if (tipsCard) tipsCard.style.display = canEditVenueSettings ? "" : "none";
+          setVisible(tipsCard, canEditVenueSettings);
           metaEl.textContent = last.is_archived ? "В архиве" : "Активно";
           metaHint.textContent = demoReadonly
             ? "Пробный режим: здесь можно изучить структуру заведения и разделы без внесения изменений."
@@ -1006,8 +1006,7 @@ openAdjustments.href = canManageAdjustments
           }
           items.forEach(m => {
             const row = document.createElement("div");
-            row.className = "row";
-            row.style = "justify-content:space-between; border-bottom:1px solid var(--border); padding:10px 0;";
+            row.className = "row venue-member-row";
             row.innerHTML = `
               <div>
                   <b>${esc(m.short_name || m.display_name || m.full_name || (m.tg_username ? "@" + String(m.tg_username).replace(/^@+/, "") : "Участник"))}</b> <span class="muted">${esc(m.venue_role === "OWNER" ? "Владелец" : "Персонал")}</span><br/>
@@ -1018,7 +1017,7 @@ openAdjustments.href = canManageAdjustments
 
             const rmBtn = row.querySelector("[data-remove]");
             const canRemoveMember = canManageStaff && String(m.venue_role || "").toUpperCase() !== "OWNER";
-            if (rmBtn) rmBtn.style.display = canRemoveMember ? "" : "none";
+            setVisible(rmBtn, canRemoveMember);
             if (rmBtn) rmBtn.onclick = async () => {
               const ok = await confirmModal({
                 title: "Удалить участника?",
@@ -1061,9 +1060,9 @@ function syncTipsControls() {
   const lockMode = (!enabled) || (!canEdit);
   if (tipsModeEl) tipsModeEl.disabled = lockMode;
 
-  if (tipsModeSoonEl) tipsModeSoonEl.style.display = (mode === "WEIGHTED_BY_POSITION") ? "" : "none";
-  if (tipsConfigRowEl) tipsConfigRowEl.style.display = (enabled && mode === "WEIGHTED_BY_POSITION" && canEdit) ? "" : "none";
-  if (tipsNoEditEl) tipsNoEditEl.style.display = canEdit ? "none" : "";
+  setVisible(tipsModeSoonEl, mode === "WEIGHTED_BY_POSITION");
+  setVisible(tipsConfigRowEl, enabled && mode === "WEIGHTED_BY_POSITION" && canEdit);
+  setVisible(tipsNoEditEl, !canEdit);
 }
 
 function tipSavedHint(msg) {
@@ -1147,15 +1146,15 @@ if (nightShiftsEnabledEl) {
 }
         function applyButtons() {
           // Удаление разрешено только для архивного заведения
-          btnDelete.style.display = last.is_archived ? "" : "none";
-          btnArchive.style.display = last.is_archived ? "none" : "";
-          btnUnarchive.style.display = last.is_archived ? "" : "none";
+          setVisible(btnDelete, last.is_archived);
+          setVisible(btnArchive, !last.is_archived);
+          setVisible(btnUnarchive, last.is_archived);
         }
 
         async function load() {
           if (!venueId) return;
 
-          if (!billingReadonly && membersCard?.style.display !== "none") {
+          if (!billingReadonly && isVisible(membersCard)) {
             membersEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
             try {
               const data = await api(`/venues/${venueId}/members`);

@@ -4,15 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/owner-subscription.css?v=20260720-unified7" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Подписка</title>
-  <style>
-    .meta-grid { display:grid; grid-template-columns:1fr; gap:12px; }
-    @media (min-width: 860px) { .meta-grid { grid-template-columns:1fr 1fr; } }
-    .info-card { border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; }
-    .history-row { border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; margin-top:10px; }
-    .status-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.14); font-size:12px; }
-  </style>
 </head>
 <body>
   <div class="container">
@@ -28,12 +23,12 @@
     </div>
 
     <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="row row--between gap-10">
         <div>
           <div><b id="planLabel">Тариф</b></div>
           <div class="muted mt-6" id="statusLine">—</div>
         </div>
-        <div class="row gap-8" style="flex-wrap:wrap">
+        <div class="row gap-8">
           <button class="btn primary" id="extendBtn">Продлить на 30 дней</button>
           <button class="btn" id="exportBtn">Экспорт XLSX</button>
           <a class="btn subtle" id="backBtn" href="/app-venues.html">Назад</a>
@@ -57,7 +52,7 @@
     </div>
 
     <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+      <div class="row row--between gap-10">
         <div>
           <b>История операций</b>
           <div class="muted">Оплаты, продления, возвраты и события статуса.</div>
@@ -70,7 +65,7 @@
   <div id="toast" class="toast"><div class="toast__text"></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, downloadFile } from '/app.js';
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, downloadFile } from '/app.js?v=20260719-split1';
   import { getBillingAccessMode, getBillingStatus, isOwnerRole, isSysAdminRole, roleUpper } from '/permissions.js?v=20260331-billing2';
 
   applyTelegramTheme();

@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260720-unified9" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Расходы</title>
 </head>
 <body>
@@ -55,7 +57,7 @@
 
         <div class="screen-hero__toolbar">
           <div class="screen-hero__period">
-            <input id="expensesMonthPick" type="month" style="width:auto; min-width:160px;" />
+            <input class="finance-control" id="expensesMonthPick" type="month" />
           </div>
           <div class="expense-hero-total itemcard">
             <div class="expense-hero-total__label">Признано в выбранном месяце</div>
@@ -84,8 +86,8 @@
             </select>
           </div>
 
-          <div class="itemcard" id="draftExpensesCard" style="display:none;">
-            <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+          <div class="itemcard hidden" id="draftExpensesCard">
+            <div class="row row--between gap-12">
               <div>
                 <b>Есть расходы в черновике</b>
                 <div class="muted mt-6" id="draftExpensesHint">—</div>
@@ -121,7 +123,7 @@
           <div class="finance-stat__label">Записей</div>
           <div class="finance-stat__value" id="expensesCount">—</div>
         </div>
-        <div class="itemcard state-card" style="grid-column:span 2;">
+        <div class="itemcard state-card finance-state-span-2">
           <div class="state-card__label">Состояние списка</div>
           <div class="state-card__value" id="expensesState">—</div>
         </div>
@@ -155,6 +157,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-expenses.js"></script>
+  <script type="module" src="/owner-expenses.js?v=20260720-unified9"></script>
 </body>
 </html>

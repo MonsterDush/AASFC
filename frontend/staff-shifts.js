@@ -17,9 +17,12 @@ import {
   getStoredDemoUiState,
   getDemoMonthLabel,
   mountDemoPageTour,
-} from "/app.js";
+} from "/app.js?v=20260719-split1";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
+
+import { createStaffShiftExportController } from "/staff-shifts/export-controller.js?v=20260719-split1";
+import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260720-unified6";
 
 window.onerror = function (msg, src, line, col, err) {
   const text = `JS ошибка: ${msg}\n${src || ""}:${line || 0}:${col || 0}`;
@@ -625,19 +628,17 @@ function renderModeToggle() {
   // - сотрудник с 2+ заведениями => добавляется "Общий"
   if (!canUseAllMode && !isMultiVenue) {
     mode.box.classList.add("hidden");
-    mode.box.style.display = "none";
     return;
   }
 
   // В Sprint-2 версии блок мог быть скрыт классом .hidden (display:none!important).
   // Убираем этот класс при показе, иначе переключатель не появится.
   mode.box.classList.remove("hidden");
-  mode.box.style.display = "inline-flex";
 
   // видимость кнопок
-  if (mode.all) mode.all.style.display = canUseAllMode ? "" : "none";
-  if (mode.mine) mode.mine.style.display = "";
-  if (mode.global) mode.global.style.display = isMultiVenue ? "" : "none";
+  mode.all?.classList.toggle("hidden", !canUseAllMode);
+  mode.mine?.classList.remove("hidden");
+  mode.global?.classList.toggle("hidden", !isMultiVenue);
 
   const setActive = () => {
     // editor toggle
@@ -756,7 +757,6 @@ function renderShiftSlotToggle() {
   if (!box) return;
   const shouldShow = !!nightShiftsEnabled && calendarScope !== "global";
   box.classList.toggle("hidden", !shouldShow);
-  box.style.display = shouldShow ? "inline-flex" : "none";
   if (!nightShiftsEnabled) selectedShiftSlot = "DAY";
   el.slotDay?.classList.toggle("active", selectedShiftSlot === "DAY");
   el.slotNight?.classList.toggle("active", selectedShiftSlot === "NIGHT");
@@ -842,12 +842,8 @@ function positionScheduleFilterMenu() {
   const triggerRect = trigger.getBoundingClientRect();
   const menuWidth = Math.min(360, Math.max(280, window.innerWidth - pad * 2));
 
-  menu.style.position = "fixed";
-  menu.style.left = "0px";
-  menu.style.top = "0px";
   menu.style.width = `${menuWidth}px`;
   menu.style.maxWidth = `${Math.max(240, window.innerWidth - pad * 2)}px`;
-  menu.style.transform = "none";
 
   const menuRect = menu.getBoundingClientRect();
   let left = triggerRect.left + (triggerRect.width / 2) - (menuRect.width / 2);
@@ -1127,776 +1123,59 @@ async function loadWeek() {
   try { localStorage.setItem(LS_WEEK_START, fromISO); } catch {}
 }
 
-function updateBadgesCols(box) {
-  // v6: hard 2 columns are controlled by CSS (#calGrid.is-week .cal-badges)
-  // leaving this as no-op to avoid accidental 1-col overrides.
-  return;
-}
-
-let _colsRaf = 0;
-function scheduleColsUpdate() {
-  if (_colsRaf) cancelAnimationFrame(_colsRaf);
-  _colsRaf = requestAnimationFrame(() => {
-    _colsRaf = 0;
-    document.querySelectorAll(".cal.is-week .cal-badges").forEach(updateBadgesCols);
-  });
-}
-window.addEventListener("resize", scheduleColsUpdate);
-window.addEventListener("orientationchange", scheduleColsUpdate);
-
-function renderWeek(ws) {
-  try {
-    // No month "expand" mechanics in week view
-    collapseExpanded();
-
-    wireGlobalCollapse();
-    el.grid.innerHTML = "";
-
-    const body = document.createElement("div");
-    body.className = "cal-body";
-
-    const todayStr = ymd(new Date());
-
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(ws, i);
-      const dateStr = ymd(d);
-
-      const cell = document.createElement("button");
-      cell.type = "button";
-      cell.className =
-        "cal-cell" +
-        (dateStr === todayStr ? " cal-cell--today" : "") +
-        (dateStr === selectedDate ? " cal-cell--selected" : "");
-      cell.setAttribute("data-date", dateStr);
-
-      // Ideal header: weekday + date + meta
-      const top = document.createElement("div");
-      top.className = "cal-weektop";
-
-      const left = document.createElement("div");
-      left.className = "minw-0";
-      left.innerHTML = `
-        <div class="cal-weekname">${escapeHtml(WEEKDAYS[i])}</div>
-        <div class="cal-weekdate">${pad2(d.getDate())}.${pad2(d.getMonth()+1)}</div>
-      `;
-
-      const meta = document.createElement("div");
-      meta.className = "cal-daymeta";
-      const dayList = filterForCalendar(shiftsByDate.get(dateStr) || [], dateStr);
-      const hasClosed = dayList.some((item) => shiftIsClosed(item));
-      if (dayList.length) meta.textContent = hasClosed ? `✓ ${dayList.length} смен` : `${dayList.length} смен`;
-      else meta.textContent = "";
-
-      top.appendChild(left);
-      top.appendChild(meta);
-
-      cell.appendChild(top);
-
-      const box = document.createElement("div");
-      box.className = "cal-badges";
-      const _r = renderCellBadges(dateStr, box, { isWeek: true });
-      cell.classList.toggle('is-empty', !!(_r && _r.isEmpty));
-      cell.appendChild(box);
-
-      // Week is already readable: click opens day immediately
-      cell.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        selectDate(dateStr, { noExpand: true });
-        openDay(dateStr);
-      });
-
-      body.appendChild(cell);
-    }
-
-    el.grid.appendChild(body);
-    scheduleColsUpdate();
-  }
-  catch (e) {
-    console.error(e);
-    toast("Ошибка в renderWeek: " + (e?.message || e), "err");
-    throw e;
-  }
-}
-
-
-function buildIndex() {
-  shiftsByDate = new Map();
-  salaryByDate = new Map();
-
-  const list = (calendarScope === "global") ? globalShifts : shifts;
-
-  const sorted = sortShiftsForBadges(list);
-
-    for (const s of sorted) {
-    const date = s.date || s.shift_date || s.day;
-    if (!date) continue;
-
-    if (!shiftsByDate.has(date)) shiftsByDate.set(date, []);
-    shiftsByDate.get(date).push(s);
-
-  }
-
-  for (const [d, arr] of shiftsByDate.entries()) {
-    arr.sort((a, b) => {
-      const at = (a.interval?.start_time || a.shift_interval?.start_time || a.start_time || "");
-      const bt = (b.interval?.start_time || b.shift_interval?.start_time || b.start_time || "");
-      return String(at).localeCompare(String(bt));
-    });
-  }
-}
-
-function defaultSelectedDateForMonth() {
-  const monthPrefix = ym(curMonth);
-  const today = ymd(new Date());
-  if (String(today).startsWith(monthPrefix)) return today;
-
-  // first day with shifts in this month
-  const keys = Array.from(shiftsByDate.keys()).filter(k => String(k).startsWith(monthPrefix)).sort();
-  if (keys.length) return keys[0];
-
-  return `${monthPrefix}-01`;
-}
-
-function selectDate(dateStr, { noExpand = false } = {}) {
-  if (!dateStr) return;
-  selectedDate = dateStr;
-
-  // update selected style
-  document.querySelectorAll('.cal-cell--selected').forEach(x => x.classList.remove('cal-cell--selected'));
-  const esc = (window.CSS && CSS.escape) ? CSS.escape(String(dateStr)) : String(dateStr).replace(/"/g, "\"");
-  const cell = document.querySelector(`.cal-cell[data-date="${esc}"]`);
-  if (cell) cell.classList.add('cal-cell--selected');
-
-
-  // optionally expand the cell on desktop for readability
-  if (!noExpand && cell) {
-    if (expandedDate !== dateStr) expandCell(cell, dateStr);
-  }
-}
-
-function uniqAssignedPeopleCount(shiftsList) {
-  const set = new Set();
-  for (const s of (shiftsList || [])) {
-    const assigns = (s.assignments || s.shift_assignments || []);
-    for (const a of assigns) {
-      const id = a.member_user_id ?? a.user_id ?? a.id;
-      if (id != null) set.add(String(id));
-    }
-  }
-  return set.size;
-}
-
-function countAssignments(shiftsList) {
-  let n = 0;
-  for (const s of (shiftsList || [])) {
-    const assigns = (s.assignments || s.shift_assignments || []);
-    n += (assigns?.length || 0);
-  }
-  return n;
-}
-
-function sumMySalary(shiftsList) {
-  let total = 0;
-  let has = false;
-  for (const s of (shiftsList || [])) {
-    const sal = Number(s?.my_salary);
-    if (shouldShowDemoSalaryValue(sal)) { total += sal; has = true; }
-  }
-  return has ? total : null;
-}
-
-function hhmmToMin(hhmm) {
-  const s = toHHMM(hhmm);
-  if (!/^\d{2}:\d{2}$/.test(s)) return null;
-  const h = Number(s.slice(0,2));
-  const m = Number(s.slice(3,5));
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  return h*60 + m;
-}
-
-function timelineRowLabel(s) {
-  // In "global" scope: Venue • HH:MM
-  if (calendarScope === 'global') {
-    const venueName = s?.venue?.name || 'Заведение';
-    const t = shiftStartHHMM(s);
-    return t ? `${venueName} • ${t}` : venueName;
-  }
-  // In venue scope: HH:MM
-  return shiftStartHHMM(s);
-}
-
-function renderDayTimeline(shiftsList) {
-  if (!shiftsList || !shiftsList.length) return '';
-
-  // group by interval (and by venue in global scope)
-  const groups = new Map();
-  for (const s of shiftsList) {
-    const intervalId = shiftIntervalId(s);
-    const venueKey = (calendarScope === 'global') ? String(s?.venue_id ?? s?.venue?.id ?? 'v') : 'v';
-    const key = `${venueKey}:${intervalId}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(s);
-  }
-
-  const items = [];
-  for (const arr of groups.values()) {
-    const s0 = arr[0] || {};
-    const i = s0.interval || s0.shift_interval || {};
-    const st = toHHMM(i.start_time || s0.start_time || '');
-    const et = toHHMM(i.end_time || s0.end_time || '');
-    const stMin = hhmmToMin(st);
-    const etMin = hhmmToMin(et);
-
-    const c = colorForInterval(shiftIntervalId(s0));
-    const rgb = hexToRgbTriplet(c);
-
-    let leftPct = 0;
-    let widthPct = 100;
-    if (stMin != null && etMin != null && etMin >= stMin) {
-      leftPct = (stMin / 1440) * 100;
-      widthPct = Math.max(2, ((etMin - stMin) / 1440) * 100);
-    }
-
-    const assigns = (calendarScope === 'global') ? null : countAssignments(arr);
-    const people = (calendarScope === 'global') ? null : uniqAssignedPeopleCount(arr);
-    let meta = '';
-    if (arr.some((item) => shiftIsClosed(item))) meta = '✓ закрыта';
-    else if (people != null && people > 0) meta = `${people} чел.`;
-    else if (assigns != null && assigns > 0) meta = `${assigns} назнач.`;
-
-    const label = (st && et) ? `${st}–${et}` : (st || timelineRowLabel(s0) || '');
-
-    items.push({ stMin: stMin ?? 9999, leftPct, widthPct, rgb, label, meta });
-  }
-
-  items.sort((a, b) => a.stMin - b.stMin);
-
-  const rows = items.map(it => `
-    <div class="timeline__row">
-      <div class="timeline__time">${escapeHtml(it.label)}</div>
-      <div class="timeline__track">
-        <div class="timeline__seg" style="--left:${it.leftPct}%;--w:${it.widthPct}%;--line-rgb:${it.rgb}"></div>
-      </div>
-      <div class="timeline__meta">${escapeHtml(it.meta || '')}</div>
-    </div>
-  `).join('');
-
-  return `
-    <div class="timeline">
-      <div class="timeline__axis">
-        <div>00</div><div>06</div><div>12</div><div>18</div><div>24</div>
-      </div>
-      <div class="timeline__rows">${rows}</div>
-    </div>
-  `;
-}
-
-function renderDayPanel(dateStr) {
-  if (!el.dayPanel) return;
-
-  const listAll = shiftsByDate.get(dateStr) || [];
-  const list = filterForCalendar(listAll, dateStr);
-  const allowEdit = canEditDay(dateStr);
-
-  const scopeLabel = (calendarScope === 'global') ? 'Общий' : (showAllOnCalendar ? 'Все' : 'Мои');
-
-  if (!list.length) {
-    el.dayPanel.innerHTML = `
-      <div class="card daypanel-card">
-        <div class="daypanel__head">
-          <div class="daypanel__title">
-            <b>${escapeHtml(formatDateRuNoG(dateStr))}</b>
-            <div class="muted">Режим: ${escapeHtml(scopeLabel)}</div>
-          </div>
-        </div>
-        <div class="daypanel__empty muted">На этот день нет смен в выбранном режиме.</div>
-      </div>
-    `;
-    return;
-  }
-
-  const shiftsCount = list.length;
-  const people = (calendarScope === 'global') ? null : uniqAssignedPeopleCount(list);
-  const assigns = (calendarScope === 'global') ? null : countAssignments(list);
-  const closedCount = list.filter((item) => shiftIsClosed(item)).length;
-
-  const kpis = [
-    `<div class="kpi">Смен: <span class="muted">${shiftsCount}</span></div>`,
-  ];
-  if (people != null) kpis.push(`<div class="kpi">Людей: <span class="muted">${people}</span></div>`);
-  if (assigns != null) kpis.push(`<div class="kpi">Назначений: <span class="muted">${assigns}</span></div>`);
-  if (closedCount > 0) kpis.push(`<div class="kpi shift-done-badge">✓ закрыто: <span>${closedCount}</span></div>`);
-
-  el.dayPanel.innerHTML = `
-    <div class="card daypanel-card">
-      <div class="daypanel__head">
-        <div class="daypanel__title">
-          <b>${escapeHtml(formatDateRuNoG(dateStr))}</b>
-          <div class="muted">Режим: ${escapeHtml(scopeLabel)}</div>
-        </div>
-        <div class="daypanel__actions">
-          <button class="btn" id="btnDayOpen">Открыть</button>
-          ${allowEdit ? `<button class="btn primary" id="btnDayEdit">Редактировать</button>` : ``}
-        </div>
-      </div>
-      <div class="kpirow">${kpis.join('')}</div>
-      ${renderDayTimeline(list)}
-      <div class="daypanel__hint muted">Клик по дню в календаре обновляет график. Повторный клик открывает детали.</div>
-    </div>
-  `;
-
-  document.getElementById('btnDayOpen')?.addEventListener('click', () => openDay(dateStr));
-  document.getElementById('btnDayEdit')?.addEventListener('click', () => openDay(dateStr));
-}
-
-function monthTitle(d) {
-  const dt = new Date(d);
-  const month = dt.toLocaleString("ru-RU", { month: "long" });
-  const year = dt.getFullYear();
-  const s = `${month} ${year}`;
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function formatDateRuNoG(iso) {
-  const x = String(iso);
-  const dt = new Date(x.length === 10 ? x + "T00:00:00" : x);
-  const dd = String(dt.getDate()).padStart(2, "0");
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const yyyy = dt.getFullYear();
-  return `${dd}.${mm}.${yyyy}`;
-}
-
-function shiftHasMyAssignment(s, myId) {
-  if (!myId) return false;
-
-  const directUid = s?.member_user_id ?? s?.user_id ?? s?.user?.id;
-  if (directUid !== undefined && directUid !== null && String(directUid) === String(myId)) return true;
-
-  const assigns = (s?.assignments || s?.shift_assignments || []);
-  if (!Array.isArray(assigns) || !assigns.length) return false;
-
-  for (const a of assigns) {
-    const uid = a?.member_user_id ?? a?.user_id ?? a?.user?.id;
-    if (uid !== undefined && uid !== null && String(uid) === String(myId)) return true;
-  }
-  return false;
-}
-
-function filterForCalendar(listAll, dateStr) {
-  const myId = me?.id ?? null;
-
-  // "Общий" (multi-venue): /me/shifts already returns only current user assignments.
-  if (calendarScope === "global") {
-    const arr = Array.isArray(listAll) ? listAll : [];
-    if (!myId) return [];
-    return arr;
-  }
-
-  const canUseAllMode = canEdit || DEMO_MODE;
-
-  // В DEMO/режиме редактора переключатель «Все» должен реально показывать все интервалы дня,
-  // а не только назначения текущего пользователя.
-  if (canUseAllMode && calendarScope === "venue" && showAllOnCalendar) {
-    return Array.isArray(listAll) ? listAll : [];
-  }
-
-  // staff w/o edit -> only mine
-  if (!canEdit && myId) {
-    return (Array.isArray(listAll) ? listAll : [])
-      .map((s) => {
-        const assigns = (s.assignments || s.shift_assignments || []).filter((a) => (a.member_user_id ?? a.user_id) === myId);
-        if (!assigns.length) return null;
-        return { ...s, assignments: assigns };
-      })
-      .filter(Boolean);
-  }
-
-  // editor toggle -> mine
-  if (canEdit && !showAllOnCalendar && myId) {
-    return (Array.isArray(listAll) ? listAll : [])
-      .map((s) => {
-        const assigns = (s.assignments || s.shift_assignments || []).filter((a) => (a.member_user_id ?? a.user_id) === myId);
-        if (!assigns.length) return null;
-        return { ...s, assignments: assigns };
-      })
-      .filter(Boolean);
-  }
-
-  return Array.isArray(listAll) ? listAll : [];
-}
-
-// Формат строки для ALL-режима: "Имя/логин — HH:MM"
-function formatAllModeLine(shift, assignment) {
-  const who = assignment ? displayPerson(assignment) : pickShortName(shift);
-  const t = shiftStartHHMM(shift);
-  return t ? `${who} — ${t}` : `${who}`;
-}
-
-
-function hexToRgbTriplet(hex) {
-  const h = String(hex || "").replace("#", "");
-  if (h.length !== 6) return "0 0 0";
-  const r = parseInt(h.slice(0,2), 16);
-  const g = parseInt(h.slice(2,4), 16);
-  const b = parseInt(h.slice(4,6), 16);
-  return `${r} ${g} ${b}`;
-}
-
-function makeCalLine(text, shift) {
-  const line = document.createElement("div");
-  line.className = "cal-line" + (shiftIsClosed(shift) ? " cal-line--done" : "");
-
-  const span = document.createElement("span");
-  span.className = "cal-line__text";
-  span.textContent = text;
-  line.appendChild(span);
-
-  // Tooltip on desktop (helps when ellipsis kicks in)
-  try { line.title = text; } catch {}
-
-  // colorize by interval
-  const c = colorForInterval(shiftIntervalId(shift));
-  line.dataset.icolor = "1";
-  line.style.setProperty("--line-rgb", hexToRgbTriplet(c));
-  return line;
-}
-function shiftHasAssignees(shift) {
-  const assigns = shift?.assignments || shift?.shift_assignments || [];
-  if (Array.isArray(assigns) && assigns.length) return true;
-  const c1 = Number(shift?.assigned_count);
-  const c2 = Number(shift?.assignees_count);
-  const c3 = Number(shift?.members_count);
-  return (Number.isFinite(c1) && c1 > 0) || (Number.isFinite(c2) && c2 > 0) || (Number.isFinite(c3) && c3 > 0);
-}
-
-function shiftIsClosed(shift) {
-  const status = String(shift?.report_status || shift?.report?.status || "").toUpperCase();
-  return !!shift?.report_closed || status === "CLOSED";
-}
-
-function makeCalDot({ color, filled = false, label = "", title = "" } = {}) {
-  const dot = document.createElement("div");
-  dot.className = "cal-dot" + (filled ? " is-filled" : "");
-  dot.style.setProperty("--dot", color || "var(--muted)");
-  if (label) {
-    dot.classList.add("is-more");
-    dot.textContent = label;
-  }
-  if (title) {
-    try { dot.title = title; } catch {}
-    dot.setAttribute("aria-label", title);
-  }
-  return dot;
-}
-
-
-// dotrow removed: calendar uses only text labels (cal-line)
-
-function calcExpandedAllMonthMaxLines(box) {
-  try {
-    const cell = box?.closest?.(".cal-cell");
-    if (!cell) return 10;
-
-    const boxStyles = window.getComputedStyle(box);
-    const gap = parseFloat(boxStyles.rowGap || boxStyles.gap || "4") || 4;
-
-    const probe = document.createElement("div");
-    probe.className = "cal-line";
-    probe.style.visibility = "hidden";
-    probe.style.position = "absolute";
-    probe.style.left = "-9999px";
-    probe.style.top = "-9999px";
-    probe.innerHTML = '<span class="cal-line__text">Probe — 11:00</span>';
-    document.body.appendChild(probe);
-    const lineH = probe.getBoundingClientRect().height || 18;
-    probe.remove();
-
-    const topH = cell.querySelector?.(".cal-daynum")?.getBoundingClientRect()?.height || 18;
-    const cellH = cell.getBoundingClientRect().height || 0;
-
-    const cs = window.getComputedStyle(cell);
-    const padT = parseFloat(cs.paddingTop || "0") || 0;
-    const padB = parseFloat(cs.paddingBottom || "0") || 0;
-
-    const available = Math.max(0, cellH - topH - padT - padB - 10);
-    const per = lineH + gap;
-    const n = per > 0 ? Math.floor((available + gap) / per) : 10;
-
-    return Math.max(6, Math.min(16, n));
-  } catch {
-    return 10;
-  }
-}
-
-function rerenderMonthCellBadges(cell, dateISO, { forceText = false, expanded = false } = {}) {
-  try { if (el?.grid?.classList?.contains("is-week")) return; } catch {}
-  const box = cell?.querySelector?.(".cal-badges");
-  if (!box) return;
-
-  box.innerHTML = "";
-  box.classList.remove("cal-badges--dots");
-  renderCellBadges(dateISO, box, { isWeek: false, forceText, expanded });
-}
-
-let expandedDate = null;
-let expandWired = false;
-
-function collapseExpanded() {
-  if (!expandedDate) return;
-  const dateISO = expandedDate;
-  const prev = document.querySelector(`.cal-cell[data-date="${expandedDate}"]`);
-  if (prev) {
-    // restore dots in month "All"
-    try { rerenderMonthCellBadges(prev, dateISO, { forceText: false, expanded: false }); } catch {}
-    prev.classList.remove("is-expanded");
-    prev.style.gridColumn = "";
-    prev.style.gridRow = "";
-  }
-  expandedDate = null;
-}
-
-
-function expandCell(cell, dateISO) {
-  collapseExpanded();
-  expandedDate = dateISO;
-
-  cell.style.gridColumn = "span 3";
-  cell.style.gridRow = "span 2";
-
-  // month "All": show text badges inside expanded cell (instead of dots)
-  try { rerenderMonthCellBadges(cell, dateISO, { forceText: true, expanded: true }); } catch {}
-
-  requestAnimationFrame(() => {
-    cell.classList.add("is-expanded");
-    // re-render after layout settles to compute max lines
-    requestAnimationFrame(() => {
-      try { rerenderMonthCellBadges(cell, dateISO, { forceText: true, expanded: true }); } catch {}
-    });
-  });
-}
-
-
-function wireGlobalCollapse() {
-  if (expandWired) return;
-  expandWired = true;
-
-  document.addEventListener("click", (e) => {
-    const inCell = e.target.closest?.(".cal-cell");
-    const inModal = e.target.closest?.(".modal__panel");
-    if (!inCell && !inModal) collapseExpanded();
-  });
-}
-
-function renderCellBadges(dateStr, box, { isWeek = false, forceText = false, expanded = false } = {}) {
-  const listAll = shiftsByDate.get(dateStr) || [];
-  const list = filterForCalendar(listAll, dateStr);
-  const pastDay = isPastDay(dateStr);
-
-  // limits per view
-  const maxMine = isWeek ? 10 : 3;
-  const maxAll = isWeek ? 12 : 2;
-// MONTH + ALL: show interval dots (no text), 4 max
-if (showAllOnCalendar && !isWeek && !forceText && calendarScope !== "global") {
-  box.classList.add("cal-badges--dots");
-
-  const sorted = sortShiftsForBadges(list);
-
-  // unique by interval, preserve time order
-  const byInterval = new Map(); // intervalId -> {shift, assigned}
-  for (const s of sorted) {
-    const iidRaw = shiftIntervalId(s);
-    const iid = (iidRaw === undefined || iidRaw === null) ? "" : String(iidRaw);
-    if (!iid) continue;
-
-    const assigned = shiftHasAssignees(s);
-    if (!byInterval.has(iid)) byInterval.set(iid, { shift: s, assigned });
-    else byInterval.get(iid).assigned = byInterval.get(iid).assigned || assigned;
-  }
-
-  const arr = Array.from(byInterval.values());
-  const total = arr.length;
-
-  const maxDots = 4;
-
-  if (total <= maxDots) {
-    for (const it of arr) {
-      const color = colorForInterval(shiftIntervalId(it.shift));
-      box.appendChild(makeCalDot({ color, filled: !!it.assigned }));
-    }
-    return;
-  }
-
-  // show first 3, 4th = "+N"/"…"
-  for (let i = 0; i < 3; i++) {
-    const it = arr[i];
-    const color = colorForInterval(shiftIntervalId(it.shift));
-    box.appendChild(makeCalDot({ color, filled: !!it.assigned }));
-  }
-
-  const more = total - 3;
-  const label = (more <= 9) ? `+${more}` : "…";
-  box.appendChild(makeCalDot({ color: "var(--muted)", filled: false, label, title: `+${more}` }));
-  return;
-}
-
-
-  if (!showAllOnCalendar) {
-    let shown = 0;
-    const sorted = sortShiftsForBadges(list);
-
-    for (const s of sorted) {
-      let txt = "";
-
-      if (calendarScope === "global") {
-        const venueName = s?.venue?.name || "Заведение";
-        const t = shiftStartHHMM(s) || (s?.interval?.start_time ? String(s.interval.start_time).slice(0, 5) : "");
-
-        txt = `${shiftDonePrefix(s)}${t ? `${venueName} • ${t}` : `${venueName}`}`;
-      } else {
-        txt = `${shiftDonePrefix(s)}${shiftStartHHMM(s) || ""}`;
-      }
-
-      if (txt && txt !== "—") {
-        box.appendChild(makeCalLine(txt, s));
-        shown++;
-      }
-      if (shown >= maxMine) break;
-    }
-
-    if (shown > 0 && list.length > shown) {
-      const more = document.createElement("div");
-      more.className = "cal-line muted cal-line--more";
-      more.textContent = `+${list.length - shown}`;
-      box.appendChild(more);
-    }
-    return;
-  }
-
-  // ALL mode
-  const lines = [];
-
-  const sorted2 = sortShiftsForBadges(list);
-
-  for (const s of sorted2) {
-    if (calendarScope === "global") {
-      lines.push({ text: formatGlobalLine(s), shift: s });
-      if (lines.length >= maxAll) break;
-      continue;
-    }
-
-    const assigns = (s.assignments || s.shift_assignments || []);
-    if (assigns.length) {
-      for (const a of assigns) {
-        lines.push({ text: formatAllModeLine(s, a), shift: s });
-        if (lines.length >= maxAll) break;
-      }
-    } else {
-      lines.push({ text: formatAllModeLine(s, null), shift: s });
-    }
-
-    if (lines.length >= maxAll) break;
-  }
-
-  for (const item of lines) box.appendChild(makeCalLine(item.text, item.shift));
-
-  const totalLines = list.reduce((acc, s) => {
-    const assigns = (s.assignments || s.shift_assignments || []);
-    return acc + Math.max(1, assigns.length);
-  }, 0);
-
-  if (lines.length > 0 && totalLines > maxAll) {
-    const more = document.createElement("div");
-    more.className = "cal-line muted cal-line--more";
-    more.textContent = `+${totalLines - maxAll}`;
-    box.appendChild(more);
-  }
-}
-
-function renderMonth() {
-  try {
-  wireGlobalCollapse();
-
-  el.grid.classList.remove("is-week");
-
-  el.monthLabel.textContent = nightShiftsEnabled ? `${monthTitle(curMonth)} · ${shiftSlotLabel(selectedShiftSlot)}` : monthTitle(curMonth);
-  el.grid.innerHTML = "";
-
-  const head = document.createElement("div");
-  head.className = "cal-head";
-  for (const wd of WEEKDAYS) {
-    const c = document.createElement("div");
-    c.className = "cal-hcell";
-    c.textContent = wd;
-    head.appendChild(c);
-  }
-  el.grid.appendChild(head);
-
-  const body = document.createElement("div");
-  body.className = "cal-body";
-
-  const first = new Date(curMonth);
-  const jsDow = first.getDay();
-  const mondayBased = (jsDow + 6) % 7;
-  const start = new Date(first);
-  start.setDate(first.getDate() - mondayBased);
-
-  const todayStr = ymd(new Date());
-
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const inMonth = d.getMonth() === curMonth.getMonth();
-    const dateStr = ymd(d);
-
-    const cell = document.createElement("button");
-    cell.type = "button";
-    cell.className =
-      "cal-cell" +
-      (inMonth ? "" : " cal-cell--out") +
-      (dateStr === todayStr ? " cal-cell--today" : "") +
-      (dateStr === selectedDate ? " cal-cell--selected" : "");
-    cell.setAttribute("data-date", dateStr);
-
-    const top = document.createElement("div");
-    top.className = "cal-daynum";
-    top.textContent = String(d.getDate());
-    cell.appendChild(top);
-
-    const box = document.createElement("div");
-    box.className = "cal-badges";
-
-    renderCellBadges(dateStr, box, { isWeek: false });
-
-    cell.appendChild(box);
-
-    // 1-й клик: expand, 2-й клик: modal
-    cell.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      selectDate(dateStr, { noExpand: true });
-
-      if (expandedDate !== dateStr) {
-        expandCell(cell, dateStr);
-        return;
-      }
-
-      collapseExpanded();
-      openDay(dateStr);
-    });
-
-    body.appendChild(cell);
-  }
-
-  el.grid.appendChild(body);
-} catch (e) {
-    console.error(e);
-    toast("Ошибка в renderMonth: " + (e?.message || e), "err");
-    throw e;
-  }
-}
-
+const staffShiftCalendarRuntime = {
+  get selectedDate() { return selectedDate; },
+  set selectedDate(value) { selectedDate = value; },
+  get shiftsByDate() { return shiftsByDate; },
+  set shiftsByDate(value) { shiftsByDate = value; },
+  get salaryByDate() { return salaryByDate; },
+  set salaryByDate(value) { salaryByDate = value; },
+  get calendarScope() { return calendarScope; },
+  set calendarScope(value) { calendarScope = value; },
+  get globalShifts() { return globalShifts; },
+  set globalShifts(value) { globalShifts = value; },
+  get shifts() { return shifts; },
+  set shifts(value) { shifts = value; },
+  get curMonth() { return curMonth; },
+  set curMonth(value) { curMonth = value; },
+  get me() { return me; },
+  set me(value) { me = value; },
+  get canEdit() { return canEdit; },
+  set canEdit(value) { canEdit = value; },
+  get showAllOnCalendar() { return showAllOnCalendar; },
+  set showAllOnCalendar(value) { showAllOnCalendar = value; },
+  get nightShiftsEnabled() { return nightShiftsEnabled; },
+  set nightShiftsEnabled(value) { nightShiftsEnabled = value; },
+  get selectedShiftSlot() { return selectedShiftSlot; },
+  set selectedShiftSlot(value) { selectedShiftSlot = value; },
+};
+const staffShiftCalendar = createStaffShiftCalendarController({
+  runtime: staffShiftCalendarRuntime,
+  toast,
+  DEMO_MODE,
+  shouldShowDemoSalaryValue,
+  el,
+  toHHMM,
+  pad2,
+  ym,
+  ymd,
+  addDays,
+  WEEKDAYS,
+  isPastDay,
+  colorForInterval,
+  escapeHtml,
+  pickShortName,
+  displayPerson,
+  shiftSlotLabel,
+  shiftIntervalId,
+  shiftStartHHMM,
+  sortShiftsForBadges,
+  shiftDonePrefix,
+  formatGlobalLine,
+  canEditDay,
+  openDay,
+});
+const { renderWeek, buildIndex, defaultSelectedDateForMonth, selectDate, monthTitle, formatDateRuNoG, filterForCalendar, shiftIsClosed, renderMonth } = staffShiftCalendar;
 function renderShiftCard(s, allowEdit) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
@@ -1907,17 +1186,17 @@ function renderShiftCard(s, allowEdit) {
   const assignments = s.assignments || s.shift_assignments || [];
   let peopleHtml = "";
   if (!assignments.length) {
-    peopleHtml = `<div class="muted" style="margin-top:8px">Пока никто не назначен</div>`;
+    peopleHtml = `<div class="muted mt-8">Пока никто не назначен</div>`;
   } else {
     peopleHtml =
-      `<div class="list" style="margin-top:8px">` +
+      `<div class="list mt-8">` +
       assignments.map((a) => {
         const label = displayPerson(a);
         const uname = (a.tg_username || a.member_username || "").trim();
         const unameTxt = uname ? (uname.startsWith("@") ? uname : "@"+uname) : "";
         return `
           <div class="list__row">
-            <div class="row" style="justify-content:space-between; align-items:center">
+            <div class="row row--between ai-center">
               <div class="list__main">
                 <div><b>${escapeHtml(label)}</b>${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
               </div>
@@ -1932,8 +1211,8 @@ function renderShiftCard(s, allowEdit) {
   let editorHtml = "";
   if (allowEdit) {
     editorHtml = `
-      <div class="row" style="gap:10px; flex-wrap:wrap">
-        <select class="input" data-posselect data-shift="${shiftId}" style="flex:1; min-width:240px"></select>
+      <div class="row">
+        <select class="input shift-assignee-select" data-posselect data-shift="${shiftId}"></select>
         <button class="btn primary" data-assign data-shift="${shiftId}">Назначить</button>
       </div>
     `;
@@ -1956,7 +1235,7 @@ function renderShiftCard(s, allowEdit) {
     : `
       <div class="comments">
         <div class="comments__head"><b>Комментарии</b></div>
-        <div class="muted small" style="margin-top:6px">Комментарии доступны в режимах «Все» или «Только мои».</div>
+        <div class="muted small mt-6">Комментарии доступны в режимах «Все» или «Только мои».</div>
       </div>
     `;
 
@@ -2171,43 +1450,43 @@ function openDay(dateStr) {
   const subtitle = allowEdit ? "Редактирование" : "Просмотр";
 
   let html = `
-    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div class="row row--between ai-start gap-12">
       <div>
-        ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted" style="margin-top:4px">Прошедшие дни может редактировать только владелец</div>` : ``}
+        ${(!allowEdit && canEdit && isPastDay(dateStr)) ? `<div class="muted mt-4">Прошедшие дни может редактировать только владелец</div>` : ``}
       </div>
-      ${allowEdit ? `<div class="row" style="gap:8px; flex-wrap:wrap; margin-top:6px"><button class="btn" id="btnManageIntervals">Интервалы</button><button class="btn primary" id="btnAddShift">+ Добавить смену</button></div>` : ``}
+      ${allowEdit ? `<div class="row gap-8 mt-6"><button class="btn" id="btnManageIntervals">Интервалы</button><button class="btn primary" id="btnAddShift">+ Добавить смену</button></div>` : ``}
     </div>
   `;
 
   if (!list.length) {
-    html += `<div class="card" style="margin-top:12px"><div class="muted">На этот день в режиме «${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}» смен нет</div></div>`;
+    html += `<div class="card mt-12"><div class="muted">На этот день в режиме «${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}» смен нет</div></div>`;
   } else {
-    html += `<div class="stack" style="margin-top:12px">`;
+    html += `<div class="stack mt-12">`;
     for (const s of list) html += renderShiftCard(s, allowEdit);
     html += `</div>`;
   }
 
   if (allowEdit) {
     html += `
-      <div class="card" style="margin-top:12px; display:none" id="addShiftCard">
+      <div class="card mt-12 hidden" id="addShiftCard">
         <b>Новая смена</b>
-        <div class="muted" style="margin-top:6px">Выбери промежуток и создай смену на этот день${nightShiftsEnabled ? ` · ${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}` : ""}</div>
+        <div class="muted mt-6">Выбери промежуток и создай смену на этот день${nightShiftsEnabled ? ` · ${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}` : ""}</div>
 
-        <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
-          <select class="input" id="intervalSelect" style="flex:1; min-width:220px"></select>
+        <div class="row mt-10">
+          <select class="input shift-interval-select" id="intervalSelect"></select>
           <button class="btn primary" id="createShiftBtn">Создать смену</button>
         </div>
 
-        <div id="createIntervalBox" class="card" style="margin-top:10px; display:none; background: var(--surface2)">
+        <div id="createIntervalBox" class="card shift-create-interval mt-10 hidden">
           <b>Новый промежуток</b>
-          <div class="grid2" style="margin-top:10px">
+          <div class="grid grid2 mt-10">
             <input class="input" id="newIntTitle" placeholder="Название (например, Бар)" />
-            <div class="row" style="margin-top:10px">
+            <div class="row mt-10">
               <input class="input" id="newIntStart" placeholder="Начало (HH:MM)" />
               <input class="input" id="newIntEnd" placeholder="Конец (HH:MM)" />
             </div>
           </div>
-          <div class="row" style="margin-top:10px; gap:10px; justify-content:flex-end">
+          <div class="row row--end mt-10">
             <button class="btn" id="cancelCreateInterval">Отмена</button>
             <button class="btn primary" id="createIntervalBtn">Создать промежуток</button>
           </div>
@@ -2236,7 +1515,7 @@ function openDay(dateStr) {
 
   if (btn && card) {
     btn.onclick = () => {
-      card.style.display = card.style.display === "none" ? "block" : "none";
+      card.classList.toggle("hidden");
     };
   }
 
@@ -2263,7 +1542,7 @@ function openDay(dateStr) {
 
     const syncBox = () => {
       const isCreate = sel.value === "__create__";
-      if (box) box.style.display = isCreate ? "block" : "none";
+      box?.classList.toggle("hidden", !isCreate);
       if (createBtn) createBtn.disabled = isCreate;
     };
 
@@ -2334,858 +1613,44 @@ function openDay(dateStr) {
 
 
 
-const exportState = {
-  canvas: null,
-  meta: null,
-  pngBlob: null,
-  previewUrl: "",
-  filenameBase: "schedule",
+const staffShiftExportRuntime = {
+  get me() { return me; },
+  get calendarView() { return calendarView; },
+  get curWeekStart() { return curWeekStart; },
+  get curMonth() { return curMonth; },
+  get selectedShiftSlot() { return selectedShiftSlot; },
+  get intervals() { return intervals; },
+  get selectedIntervalIds() { return selectedIntervalIds; },
+  get calendarScope() { return calendarScope; },
+  get showAllOnCalendar() { return showAllOnCalendar; },
+  get unstaffedOnly() { return unstaffedOnly; },
+  get currentVenueName() { return currentVenueName; },
+  get venueId() { return venueId; },
+  get shiftsByDate() { return shiftsByDate; },
 };
-
-function releaseExportPreviewUrl() {
-  if (exportState.previewUrl) {
-    try { URL.revokeObjectURL(exportState.previewUrl); } catch {}
-    exportState.previewUrl = "";
-  }
-}
-
-function resetExportState() {
-  releaseExportPreviewUrl();
-  exportState.canvas = null;
-  exportState.meta = null;
-  exportState.pngBlob = null;
-  exportState.filenameBase = "schedule";
-}
-
-function closeExportModal() {
-  el.exportModal?.classList.remove("open");
-  releaseExportPreviewUrl();
-  if (el.exportPreviewImage) {
-    el.exportPreviewImage.src = "";
-    el.exportPreviewImage.classList.add("hidden");
-  }
-}
-
-el.exportModal?.querySelectorAll("[data-close-export]")?.forEach((btn) => btn.addEventListener("click", closeExportModal));
-el.exportModal?.querySelector(".modal__backdrop")?.addEventListener("click", closeExportModal);
-
-function setExportButtonsDisabled(disabled) {
-  [
-    el.btnExportShare,
-    el.btnExportTelegram,
-    el.btnExportDownload,
-  ].forEach((btn) => {
-    if (btn) btn.disabled = !!disabled;
-  });
-}
-
-function setExportStatus(text, { error = false } = {}) {
-  if (!el.exportStatus) return;
-  el.exportStatus.textContent = text || "";
-  el.exportStatus.classList.toggle("err", !!error);
-}
-
-function currentUserLabel() {
-  const full = (me?.full_name || "").trim();
-  const fi = fioInitials(full);
-  if (fi) return fi;
-  const short = (me?.short_name || "").trim();
-  if (short) return short;
-  const username = (me?.tg_username || "").trim();
-  if (username) return username.startsWith("@") ? username : `@${username}`;
-  return "Я";
-}
-
-function currentRangeContext() {
-  if (calendarView === "week") {
-    const start = curWeekStart ? startOfWeek(curWeekStart) : startOfWeek(new Date());
-    const end = addDays(start, 6);
-    const dates = [];
-    for (let i = 0; i < 7; i++) dates.push(ymd(addDays(start, i)));
-    return {
-      view: "week",
-      periodStart: ymd(start),
-      periodEnd: ymd(end),
-      periodLabel: weekTitle(start),
-      periodDates: dates,
-      gridDates: dates,
-    };
-  }
-
-  const first = new Date(curMonth);
-  first.setDate(1);
-  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
-  const start = new Date(first);
-  start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
-  const gridDates = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    gridDates.push(ymd(d));
-  }
-  const periodDates = [];
-  for (let d = new Date(first); d <= last; d = addDays(d, 1)) periodDates.push(ymd(d));
-  return {
-    view: "month",
-    periodStart: ymd(first),
-    periodEnd: ymd(last),
-    periodLabel: monthTitle(first),
-    periodDates,
-    gridDates,
-  };
-}
-
-function getExportShiftSlot() {
-  try {
-    if (typeof selectedShiftSlot !== "undefined") {
-      const direct = String(selectedShiftSlot || "DAY").toUpperCase();
-      if (direct === "NIGHT") return "NIGHT";
-    }
-  } catch {}
-  try {
-    const fromUrl = String(new URLSearchParams(location.search).get("shift_slot") || "").toUpperCase();
-    if (fromUrl === "NIGHT") return "NIGHT";
-  } catch {}
-  try {
-    const stored = String(localStorage.getItem("axelio.staff_shifts.shift_slot") || localStorage.getItem("axelio.shift_slot") || "").toUpperCase();
-    if (stored === "NIGHT") return "NIGHT";
-  } catch {}
-  return "DAY";
-}
-
-function exportShiftSlotLabel(slot = getExportShiftSlot()) {
-  return String(slot || "DAY").toUpperCase() === "NIGHT" ? "НОЧНЫЕ СМЕНЫ" : "ДНЕВНЫЕ СМЕНЫ";
-}
-
-function selectedIntervalTitles() {
-  const byId = new Map((Array.isArray(intervals) ? intervals : []).map((it) => [String(it?.id ?? ""), it]));
-  return Array.from(selectedIntervalIds)
-    .map((id) => byId.get(String(id))?.title)
-    .filter(Boolean);
-}
-
-function buildLocalExportMetadata() {
-  const range = currentRangeContext();
-  const intervalTitles = selectedIntervalTitles();
-  const parts = [range.view === "month" ? "Месяц" : "Неделя"];
-  if (calendarScope === "global") parts.push("Общий режим");
-  else parts.push(showAllOnCalendar ? "Все сотрудники" : "Только мои");
-  if (intervalTitles.length) parts.push(`Интервалы: ${intervalTitles.join(", ")}`);
-  if (unstaffedOnly) parts.push("Только без назначений");
-
-  const venueLabel = calendarScope === "global" ? "Мой график" : (currentVenueName || "Заведение");
-  return {
-    venue_id: Number(venueId || 0) || 0,
-    venue_name: venueLabel,
-    view: range.view,
-    period_start: range.periodStart,
-    period_end: range.periodEnd,
-    period_label: range.periodLabel,
-    filters_text: parts.join(" • "),
-    interval_titles: intervalTitles,
-    staffing_state: unstaffedOnly ? "unstaffed" : "all",
-    shift_slot: getExportShiftSlot(),
-    logo_url: null,
-    app_logo_url: "/logo.png",
-    deep_link_path: "/staff-shifts.html",
-    share_title: `График смен · ${venueLabel}`,
-    share_text: `${venueLabel}\n${range.periodLabel}\n${parts.join(" • ")}`,
-  };
-}
-
-async function getExportMetadata() {
-  const fallback = buildLocalExportMetadata();
-  if (!venueId || calendarScope === "global") return fallback;
-
-  try {
-    const range = currentRangeContext();
-    const q = new URLSearchParams();
-    q.set("view", range.view);
-    if (range.view === "week") q.set("week_start", range.periodStart);
-    else {
-      const dt = new Date(`${range.periodStart}T00:00:00`);
-      q.set("month", `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}`);
-    }
-    const ids = Array.from(selectedIntervalIds)
-      .map((x) => Number(x))
-      .filter((x) => Number.isInteger(x) && x > 0)
-      .sort((a, b) => a - b);
-    for (const id of ids) q.append("interval_ids", String(id));
-    if (unstaffedOnly) q.set("staffing_state", "unstaffed");
-    q.set("shift_slot", getExportShiftSlot());
-    const meta = await api(`/venues/${encodeURIComponent(venueId)}/shifts/export-metadata?${q.toString()}`);
-    return { ...fallback, ...(meta || {}) };
-  } catch {
-    return fallback;
-  }
-}
-
-function visibleShiftsForDate(dateStr) {
-  return filterForCalendar(shiftsByDate.get(dateStr) || [], dateStr);
-}
-
-function countVisibleStats(dateList) {
-  let total = 0;
-  let staffed = 0;
-  let unstaffed = 0;
-  for (const dateStr of dateList || []) {
-    for (const shift of visibleShiftsForDate(dateStr)) {
-      total += 1;
-      if (hasAssignments(shift)) staffed += 1;
-      else unstaffed += 1;
-    }
-  }
-  return { total, staffed, unstaffed };
-}
-
-function buildExportLinesForDate(dateStr) {
-  const list = sortShiftsForBadges(visibleShiftsForDate(dateStr));
-  const lines = [];
-  const meLabel = currentUserLabel();
-
-  for (const shift of list) {
-    const color = colorForInterval(shiftIntervalId(shift));
-    const intervalTitle = shiftIntervalTitle(shift);
-    const startLabel = shiftStartHHMM(shift) || "—";
-
-    if (calendarScope === "global") {
-      const venueLabel = shift?.venue?.name || currentVenueName || "Заведение";
-      lines.push({ color, text: `${venueLabel} — ${startLabel}` });
-      continue;
-    }
-
-    if (showAllOnCalendar) {
-      const assigns = Array.isArray(shift?.assignments) && shift.assignments.length ? shift.assignments : [null];
-      for (const assignment of assigns) {
-        const person = assignment ? displayPerson(assignment) : "Без назначения";
-        lines.push({ color, text: `${intervalTitle} — ${startLabel} — ${person}` });
-      }
-      continue;
-    }
-
-    const myAssignment = Array.isArray(shift?.assignments) && shift.assignments.length ? shift.assignments[0] : null;
-    const person = myAssignment ? displayPerson(myAssignment) : meLabel;
-    lines.push({ color, text: `${intervalTitle} — ${startLabel} — ${person}` });
-  }
-
-  return lines;
-}
-
-function sanitizeFilePart(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9а-яё_-]+/gi, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "") || "schedule";
-}
-
-function buildExportFilenameBase(meta) {
-  const range = currentRangeContext();
-  const venuePart = sanitizeFilePart(meta?.venue_name || currentVenueName || "schedule");
-  const periodPart = range.view === "week" ? `${range.periodStart}_${range.periodEnd}` : range.periodStart.slice(0, 7);
-  const slotPart = sanitizeFilePart(String(meta?.shift_slot || getExportShiftSlot()).toLowerCase());
-  return `schedule_${venuePart}_${periodPart}_${slotPart}`;
-}
-
-function drawRoundRect(ctx, x, y, w, h, r) {
-  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + w, y, x + w, y + h, radius);
-  ctx.arcTo(x + w, y + h, x, y + h, radius);
-  ctx.arcTo(x, y + h, x, y, radius);
-  ctx.arcTo(x, y, x + w, y, radius);
-  ctx.closePath();
-}
-
-function fillRoundRect(ctx, x, y, w, h, r, fillStyle, strokeStyle = "", lineWidth = 1) {
-  drawRoundRect(ctx, x, y, w, h, r);
-  if (fillStyle) {
-    ctx.fillStyle = fillStyle;
-    ctx.fill();
-  }
-  if (strokeStyle) {
-    ctx.strokeStyle = strokeStyle;
-    ctx.lineWidth = lineWidth;
-    ctx.stroke();
-  }
-}
-
-function truncateCanvasText(ctx, text, maxWidth) {
-  const value = String(text || "");
-  if (!value) return "";
-  if (ctx.measureText(value).width <= maxWidth) return value;
-  let result = value;
-  while (result.length > 1 && ctx.measureText(`${result}…`).width > maxWidth) result = result.slice(0, -1);
-  return `${result}…`;
-}
-
-function drawBadge(ctx, text, x, y, { fill = "#EEF2FF", color = "#334155" } = {}) {
-  ctx.save();
-  ctx.font = "600 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-  const padX = 16;
-  const width = ctx.measureText(text).width + padX * 2;
-  fillRoundRect(ctx, x, y, width, 38, 19, fill, "");
-  ctx.fillStyle = color;
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, x + padX, y + 19);
-  ctx.restore();
-  return width;
-}
-
-function wrapCanvasText(ctx, text, maxWidth, maxLines = 2) {
-  const value = String(text || "").trim();
-  if (!value) return [];
-  const words = value.split(/\s+/).filter(Boolean);
-  const lines = [];
-  let current = "";
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (ctx.measureText(candidate).width <= maxWidth || !current) current = candidate;
-    else {
-      lines.push(current);
-      current = word;
-    }
-  }
-  if (current) lines.push(current);
-  const visible = lines.slice(0, Math.max(1, maxLines));
-  if (lines.length > visible.length) visible[visible.length - 1] = truncateCanvasText(ctx, `${visible[visible.length - 1]} …`, maxWidth);
-  return visible;
-}
-
-function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 2, color = "#475569", align = "left") {
-  const lines = wrapCanvasText(ctx, text, maxWidth, maxLines);
-  if (!lines.length) return y;
-  ctx.fillStyle = color;
-  const prevAlign = ctx.textAlign;
-  ctx.textAlign = align;
-  const drawX = align === "right" ? x + maxWidth : x;
-  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], drawX, y + i * lineHeight);
-  ctx.textAlign = prevAlign;
-  return y + lines.length * lineHeight;
-}
-
-function getCssVar(name, fallback) {
-  try {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    return value || fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function getExportPalette() {
-  return {
-    bg: getCssVar("--bg", "#F3F5F9"),
-    card: getCssVar("--card", "#FFFFFF"),
-    border: getCssVar("--border", "#D9E0EA"),
-    text: getCssVar("--text", "#0F172A"),
-    muted: getCssVar("--muted", "#64748B"),
-    subtle: getCssVar("--surface2", "#E8EDF5"),
-    accent: getCssVar("--accent", "#6366F1"),
-    accentSoft: getCssVar("--accentSoftBg", "rgba(99,102,241,.12)"),
-    shadow: getCssVar("--shadow", "0 10px 24px rgba(11,18,32,.10)"),
-  };
-}
-
-function loadImage(src) {
-  return new Promise((resolve) => {
-    if (!src) return resolve(null);
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
-
-async function loadExportLogo(meta) {
-  const preferred = meta?.app_logo_url || "/logo.png";
-  const sameOriginUrl = preferred.startsWith("http") ? preferred : new URL(preferred, window.location.origin).toString();
-  return loadImage(sameOriginUrl);
-}
-
-
-async function renderScheduleExportCanvas(meta) {
-  const range = currentRangeContext();
-  const isWeek = range.view === "week";
-  const padding = isWeek ? 42 : 40;
-  const gridGap = isWeek ? 16 : 12;
-  const palette = getExportPalette();
-  const bg = palette.bg;
-  const card = palette.card;
-  const border = palette.border;
-  const text = palette.text;
-  const muted = palette.muted;
-  const subtle = palette.subtle;
-  const accent = palette.accent;
-  const accentSoft = palette.accentSoft;
-  const todayIso = ymd(new Date());
-  const logo = await loadExportLogo(meta);
-
-  function fillCircle(ctx, cx, cy, r, fillStyle, strokeStyle = "", lineWidth = 1) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.fillStyle = fillStyle;
-    ctx.fill();
-    if (strokeStyle) {
-      ctx.strokeStyle = strokeStyle;
-      ctx.lineWidth = lineWidth;
-      ctx.stroke();
-    }
-  }
-
-  function drawHeader(ctx, width, headerY, headerH) {
-    fillRoundRect(ctx, padding, headerY, width - padding * 2, headerH, 28, card, border, 1);
-
-    const leftX = padding + 28;
-    let textX = leftX;
-    const contentTop = headerY + 28;
-    if (logo) {
-      const size = 64;
-      ctx.drawImage(logo, leftX, contentTop + 6, size, size);
-      textX = leftX + size + 18;
-    }
-
-    const rightBlockW = Math.min(430, Math.max(300, width * 0.30));
-    const rightX = width - padding - 28 - rightBlockW;
-    const leftMaxW = Math.max(280, rightX - textX - 24);
-    const periodLabel = meta?.period_label || range.periodLabel;
-    const filtersText = meta?.filters_text || buildLocalExportMetadata().filters_text;
-    const venueLabel = meta?.venue_name || currentVenueName || "График смен";
-
-    ctx.textBaseline = "top";
-    ctx.textAlign = "left";
-    ctx.fillStyle = text;
-    ctx.font = "700 34px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(venueLabel, textX, contentTop + 2);
-
-    ctx.fillStyle = muted;
-    ctx.font = "500 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    drawWrappedText(ctx, filtersText, textX, contentTop + 54, leftMaxW, 24, 2, muted, "left");
-
-    const slotLabel = exportShiftSlotLabel(meta?.shift_slot || getExportShiftSlot());
-    const slotBadgeW = Math.min(260, Math.max(198, ctx.measureText(slotLabel).width + 42));
-    fillRoundRect(ctx, textX, contentTop + 116, slotBadgeW, 42, 21, String(meta?.shift_slot || getExportShiftSlot()).toUpperCase() === "NIGHT" ? "rgba(15,23,42,.96)" : accentSoft, accent, 1.5);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = String(meta?.shift_slot || getExportShiftSlot()).toUpperCase() === "NIGHT" ? "#E0F2FE" : accent;
-    ctx.font = "800 17px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(slotLabel, textX + slotBadgeW / 2, contentTop + 137);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-
-    const pillW = 168;
-    const pillH = 34;
-    fillRoundRect(ctx, rightX + rightBlockW - pillW, headerY + 24, pillW, pillH, 17, accentSoft, "");
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = accent;
-    ctx.font = "700 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(range.view === "week" ? "НЕДЕЛЯ" : "МЕСЯЦ", rightX + rightBlockW - pillW / 2, headerY + 24 + pillH / 2 + 1);
-
-    ctx.textAlign = "right";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = text;
-    ctx.font = isWeek
-      ? "800 48px system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-      : "800 52px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    const periodLines = wrapCanvasText(ctx, periodLabel, rightBlockW, 2);
-    const periodLineHeight = isWeek ? 50 : 54;
-    const periodBlockH = Math.max(1, periodLines.length) * periodLineHeight;
-    const centeredPeriodTop = headerY + Math.round((headerH - periodBlockH) / 2) + 8;
-    const periodTop = Math.max(centeredPeriodTop, headerY + 102);
-    for (let i = 0; i < periodLines.length; i++) {
-      ctx.fillText(periodLines[i], width - padding - 28, periodTop + i * periodLineHeight);
-    }
-
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
-  }
-
-  function drawStatsRow(ctx, width, statsY, statItems, columns, statsH, gap) {
-    const statW = (width - padding * 2 - gap * (columns - 1)) / columns;
-    for (let i = 0; i < statItems.length; i++) {
-      const row = Math.floor(i / columns);
-      const col = i % columns;
-      const x = padding + col * (statW + gap);
-      const y = statsY + row * (statsH + gap);
-      fillRoundRect(ctx, x, y, statW, statsH, 22, card, border, 1);
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      ctx.fillStyle = muted;
-      ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-      ctx.fillText(statItems[i].title, x + 20, y + 18);
-      ctx.fillStyle = text;
-      ctx.font = "700 28px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-      ctx.fillText(statItems[i].value, x + 20, y + 42);
-    }
-  }
-
-  if (isWeek) {
-    const width = 1120;
-    const headerCardH = 196;
-    const statsY = 248;
-    const statGap = 14;
-    const statsCols = 2;
-    const statsH = 82;
-    const statsRows = 2;
-    const daysTop = statsY + statsRows * statsH + statGap + 28;
-    const stats = countVisibleStats(range.periodDates);
-    const scopeLabel = calendarScope === "global" ? "Общий" : (showAllOnCalendar ? "Все" : "Мои");
-    const statItems = [
-      { title: "Всего смен", value: String(stats.total) },
-      { title: "Укомплектовано", value: String(stats.staffed) },
-      { title: "Неукомплектовано", value: String(stats.unstaffed) },
-      { title: "Режим", value: scopeLabel },
-    ];
-
-    const lineCols = 2;
-    const lineGapX = 26;
-    const lineGapY = 22;
-    const dayCards = range.gridDates.map((dateStr, index) => {
-      const dayDate = new Date(`${dateStr}T00:00:00`);
-      const lines = buildExportLinesForDate(dateStr);
-      const visibleCount = Math.max(1, Math.min(lines.length, 10));
-      const rowsCount = Math.max(1, Math.ceil(visibleCount / lineCols));
-      const extraH = lines.length > visibleCount ? 26 : 0;
-      const cardH = Math.max(132, 86 + rowsCount * lineGapY + extraH);
-      return { dateStr, index, dayDate, lines, visibleCount, rowsCount, cardH };
-    });
-
-    const daysHeight = dayCards.reduce((sum, item, idx) => sum + item.cardH + (idx ? gridGap : 0), 0);
-    const footerH = 42;
-    const height = daysTop + daysHeight + footerH;
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas not supported");
-
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, width, height);
-
-    drawHeader(ctx, width, 32, headerCardH);
-    drawStatsRow(ctx, width, statsY, statItems, statsCols, statsH, statGap);
-
-    let y = daysTop;
-    for (const item of dayCards) {
-      const x = padding;
-      const dayDate = item.dayDate;
-      const dateLabel = `${WEEKDAYS[item.index]} · ${pad2(dayDate.getDate())}.${pad2(dayDate.getMonth() + 1)}`;
-      const dayW = width - padding * 2;
-      fillRoundRect(ctx, x, y, dayW, item.cardH, 22, card, item.dateStr === todayIso ? accent : border, item.dateStr === todayIso ? 2 : 1);
-
-      ctx.fillStyle = text;
-      ctx.textBaseline = "top";
-      ctx.font = "700 24px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-      ctx.fillText(dateLabel, x + 20, y + 18);
-
-      const countLabel = item.lines.length ? `${item.lines.length} смен` : "Нет смен";
-      ctx.fillStyle = muted;
-      ctx.font = "600 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-      const countWidth = ctx.measureText(countLabel).width;
-      ctx.fillText(countLabel, x + dayW - 20 - countWidth, y + 22);
-
-      if (!item.lines.length) {
-        ctx.fillStyle = muted;
-        ctx.font = "500 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-        ctx.fillText("Нет смен", x + 20, y + 66);
-      } else {
-        const colInnerPad = 20;
-        const lineTop = y + 60;
-        const colW = (dayW - colInnerPad * 2 - lineGapX) / lineCols;
-        const textMaxW = colW - 20;
-        const visible = item.lines.slice(0, item.visibleCount);
-        ctx.font = "500 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-        for (let i = 0; i < visible.length; i++) {
-          const row = Math.floor(i / lineCols);
-          const col = i % lineCols;
-          const line = visible[i];
-          const lineX = x + colInnerPad + col * (colW + lineGapX);
-          const lineY = lineTop + row * lineGapY;
-          fillCircle(ctx, lineX + 5, lineY + 9, 4.5, line.color || accent, card, 1.5);
-          ctx.fillStyle = text;
-          ctx.fillText(truncateCanvasText(ctx, line.text, textMaxW), lineX + 16, lineY);
-        }
-        if (item.lines.length > visible.length) {
-          ctx.fillStyle = muted;
-          ctx.font = "600 17px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-          ctx.fillText(`+${item.lines.length - visible.length} ещё`, x + 20, lineTop + item.rowsCount * lineGapY + 4);
-        }
-      }
-
-      y += item.cardH + gridGap;
-    }
-
-    ctx.fillStyle = muted;
-    ctx.font = "500 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText("Экспортировано из Axelio", padding, height - 22);
-    return canvas;
-  }
-
-  const width = 1820;
-  const cols = 7;
-  const rows = 6;
-  const headerCardH = 196;
-  const statsY = 248;
-  const statsH = 86;
-  const gridTop = 380;
-  const footerH = 46;
-  const cellW = (width - padding * 2 - gridGap * (cols - 1)) / cols;
-  const cellH = 160;
-  const height = gridTop + rows * cellH + (rows - 1) * gridGap + footerH;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas not supported");
-
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, width, height);
-
-  drawHeader(ctx, width, 32, headerCardH);
-
-  const stats = countVisibleStats(range.periodDates);
-  const scopeLabel = calendarScope === "global" ? "Общий" : (showAllOnCalendar ? "Все" : "Мои");
-  const statItems = [
-    { title: "Всего смен", value: String(stats.total) },
-    { title: "Укомплектовано", value: String(stats.staffed) },
-    { title: "Неукомплектовано", value: String(stats.unstaffed) },
-    { title: "Режим", value: scopeLabel },
-  ];
-  drawStatsRow(ctx, width, statsY, statItems, 4, statsH, 12);
-
-  const weekdayY = gridTop - 34;
-  for (let i = 0; i < 7; i++) {
-    const colX = padding + i * (cellW + gridGap);
-    ctx.fillStyle = muted;
-    ctx.font = "700 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(WEEKDAYS[i], colX + 4, weekdayY);
-  }
-
-  const monthKey = ym(curMonth);
-  for (let index = 0; index < range.gridDates.length; index++) {
-    const dateStr = range.gridDates[index];
-    const row = Math.floor(index / 7);
-    const col = index % 7;
-    const x = padding + col * (cellW + gridGap);
-    const y = gridTop + row * (cellH + gridGap);
-    const inMonth = dateStr.startsWith(monthKey);
-    const isToday = dateStr === todayIso;
-    fillRoundRect(ctx, x, y, cellW, cellH, 18, inMonth ? card : subtle, isToday ? accent : border, isToday ? 2 : 1);
-
-    const dayDate = new Date(`${dateStr}T00:00:00`);
-    ctx.fillStyle = text;
-    ctx.font = "700 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(`${dayDate.getDate()}`, x + 16, y + 14);
-
-    const lines = buildExportLinesForDate(dateStr);
-    const visible = lines.slice(0, 4);
-    const lineYStart = y + 48;
-    const lineH = 22;
-    ctx.font = "600 15px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-    for (let i = 0; i < visible.length; i++) {
-      const line = visible[i];
-      const lineY = lineYStart + i * lineH;
-      fillCircle(ctx, x + 20, lineY + 10, 4, line.color || accent, card, 1);
-      ctx.fillStyle = text;
-      const maxTextWidth = cellW - 50;
-      ctx.fillText(truncateCanvasText(ctx, line.text, maxTextWidth), x + 30, lineY);
-    }
-
-    if (lines.length > visible.length) {
-      ctx.fillStyle = muted;
-      ctx.font = "600 15px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-      ctx.fillText(`+${lines.length - visible.length} ещё`, x + 16, lineYStart + visible.length * lineH + 2);
-    }
-
-    if (!lines.length) {
-      ctx.fillStyle = muted;
-      ctx.font = "500 15px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-      ctx.fillText("Нет смен", x + 16, lineYStart);
-    }
-  }
-
-  ctx.fillStyle = muted;
-  ctx.font = "500 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-  ctx.fillText("Экспортировано из Axelio", padding, height - 24);
-  return canvas;
-}
-
-function dataUrlToBlob(dataUrl) {
-  const parts = String(dataUrl || "").split(",");
-  const mimeMatch = /^data:(.*?);base64$/.exec(parts[0] || "");
-  const mime = mimeMatch?.[1] || "application/octet-stream";
-  const binary = atob(parts[1] || "");
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-}
-
-async function canvasToBlob(canvas, type, quality = 0.95) {
-  return await new Promise((resolve) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else resolve(dataUrlToBlob(canvas.toDataURL(type, quality)));
-    }, type, quality);
-  });
-}
-
-
-async function ensureExportArtifact() {
-  if (exportState.canvas && exportState.pngBlob && exportState.meta) return exportState;
-  const meta = await getExportMetadata();
-  const canvas = await renderScheduleExportCanvas(meta);
-  const pngBlob = await canvasToBlob(canvas, "image/png", 0.95);
-  exportState.canvas = canvas;
-  exportState.meta = meta;
-  exportState.pngBlob = pngBlob;
-  exportState.filenameBase = buildExportFilenameBase(meta);
-  return exportState;
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  try {
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } finally {
-    setTimeout(() => {
-      try { URL.revokeObjectURL(url); } catch {}
-    }, 1000);
-  }
-}
-
-function canShareFile(file) {
-  try {
-    return !!(navigator.canShare && navigator.canShare({ files: [file] }));
-  } catch {
-    return false;
-  }
-}
-
-function canWriteImageToClipboard() {
-  return !!(navigator.clipboard && window.ClipboardItem);
-}
-
-async function copyImageBlobToClipboard(blob) {
-  if (!canWriteImageToClipboard()) throw new Error("Буфер обмена недоступен");
-  const item = new ClipboardItem({ [blob.type || "image/png"]: blob });
-  await navigator.clipboard.write([item]);
-}
-
-async function shareExportImage() {
-  const art = await ensureExportArtifact();
-  const file = new File([art.pngBlob], `${art.filenameBase}.png`, { type: "image/png" });
-
-  if (canShareFile(file) && navigator.share) {
-    await navigator.share({ files: [file] });
-    return "native-file";
-  }
-
-  if (canWriteImageToClipboard()) {
-    await copyImageBlobToClipboard(art.pngBlob);
-    toast("Картинка скопирована в буфер обмена", "ok");
-    return "clipboard";
-  }
-
-  downloadBlob(art.pngBlob, `${art.filenameBase}.png`);
-  toast("Браузер не умеет передавать картинку напрямую — скачал PNG", "warn");
-  return "download";
-}
-
-async function openTelegramShare() {
-  const art = await ensureExportArtifact();
-  const file = new File([art.pngBlob], `${art.filenameBase}.png`, { type: "image/png" });
-
-  if (canShareFile(file) && navigator.share) {
-    await navigator.share({ files: [file] });
-    return "native-file";
-  }
-
-  if (canWriteImageToClipboard()) {
-    await copyImageBlobToClipboard(art.pngBlob);
-    toast("Картинка скопирована — вставь её в Telegram", "ok");
-    return "clipboard";
-  }
-
-  downloadBlob(art.pngBlob, `${art.filenameBase}.png`);
-  toast("Этот браузер не умеет отправлять картинку напрямую в Telegram — скачал PNG", "warn");
-  return "download";
-}
-
-async function refreshExportPreview() {
-  setExportButtonsDisabled(true);
-  setExportStatus("Готовим изображение…");
-  if (el.exportPreviewImage) {
-    el.exportPreviewImage.src = "";
-    el.exportPreviewImage.classList.add("hidden");
-  }
-
-  try {
-    resetExportState();
-    const art = await ensureExportArtifact();
-    releaseExportPreviewUrl();
-    exportState.previewUrl = URL.createObjectURL(art.pngBlob);
-    if (el.exportPreviewImage) {
-      el.exportPreviewImage.src = exportState.previewUrl;
-      el.exportPreviewImage.classList.remove("hidden");
-    }
-    if (el.exportModalSubtitle) el.exportModalSubtitle.textContent = `${art.meta?.period_label || ""} · ${art.meta?.filters_text || ""}`;
-    setExportStatus("");
-    setExportButtonsDisabled(false);
-  } catch (e) {
-    setExportStatus(e?.message || "Не удалось подготовить экспорт", { error: true });
-    toast(e?.message || "Не удалось подготовить экспорт", "err");
-  }
-}
-
-async function openExportModal() {
-  el.exportModal?.classList.add("open");
-  await refreshExportPreview();
-}
-
-async function downloadExportImage() {
-  const art = await ensureExportArtifact();
-  downloadBlob(art.pngBlob, `${art.filenameBase}.png`);
-}
-
-el.btnExportImage?.addEventListener("click", () => {
-  openExportModal();
+createStaffShiftExportController({
+  runtime: staffShiftExportRuntime,
+  api,
+  toast,
+  el,
+  pad2,
+  ym,
+  ymd,
+  addDays,
+  startOfWeek,
+  weekTitle,
+  WEEKDAYS,
+  colorForInterval,
+  fioInitials,
+  displayPerson,
+  shiftIntervalTitle,
+  shiftIntervalId,
+  shiftStartHHMM,
+  sortShiftsForBadges,
+  hasAssignments,
+  monthTitle,
+  filterForCalendar,
 });
-
-el.btnExportShare?.addEventListener("click", async () => {
-  try {
-    await shareExportImage();
-  } catch (e) {
-    toast(e?.message || "Не удалось поделиться", "err");
-  }
-});
-
-el.btnExportTelegram?.addEventListener("click", async () => {
-  try {
-    await openTelegramShare();
-  } catch (e) {
-    toast(e?.message || "Не удалось подготовить картинку для Telegram", "err");
-  }
-});
-
-el.btnExportDownload?.addEventListener("click", async () => {
-  try {
-    await downloadExportImage();
-  } catch (e) {
-    toast(e?.message || "Не удалось скачать PNG", "err");
-  }
-});
-
-
 // navigation (month/week)
 el.prev.onclick = async () => {
   if (calendarView === "week") {

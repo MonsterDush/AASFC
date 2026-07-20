@@ -18,10 +18,14 @@ import {
   deleteVenuePosition,
   patchInviteDefaultPosition,
   isDemoUiMode,
-} from "/app.js";
+} from "/app.js?v=20260719-split1";
 
 import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
-import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPermissionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260409-setup-polish1";
+import { createPositionPermissionController } from "/positions/permission-controller.js?v=20260720-unified6";
+import { createPositionDomain } from "/positions/position-domain.js?v=20260720-unified6";
+import { createPositionEditor } from "/positions/position-editor.js?v=20260720-unified6";
+import { createPositionList } from "/positions/position-list.js?v=20260720-unified6";
+import { createPositionInviteController } from "/positions/invite-controller.js?v=20260720-unified6";
 
 const root = document.getElementById("root");
 
@@ -33,278 +37,6 @@ function esc(s) {
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
-
-function money(n) {
-  if (n === null || n === undefined || n === "") return "—";
-  const x = Number(String(n).replace(",", "."));
-  if (!Number.isFinite(x)) return String(n);
-  return x.toLocaleString("ru-RU");
-}
-
-function fioInitials(fullName) {
-  const s = String(fullName || "").trim();
-  if (!s) return "";
-  const p = s.split(/\s+/).filter(Boolean);
-  if (p.length === 1) return p[0];
-  const surname = p[0];
-  const initials = p.slice(1).map(x => (x[0] ? x[0].toUpperCase() + "." : "")).join("");
-  return `${surname} ${initials}`.trim();
-}
-
-function memberNiceName(m) {
-  const shortName = (m?.short_name || "").trim();
-  if (shortName) return shortName;
-  const fi = fioInitials(m?.full_name);
-  if (fi) return fi;
-  const u = (m?.tg_username || "").trim();
-  if (u) return u.startsWith("@") ? u : `@${u}`;
-  return m?.user_id ? "Сотрудник" : "—";
-}
-
-function memberLabel(m) {
-  const name = memberNiceName(m);
-  const u = (m?.tg_username || "").trim();
-  const uTxt = u ? (u.startsWith("@") ? u : `@${u}`) : "";
-  const role = (m?.venue_role || "").toUpperCase();
-  return `${name}${uTxt && !name.includes("@") ? ` · ${uTxt}` : ""}${role ? ` · ${role}` : ""}`;
-}
-
-function buildDefaultPermissionsCatalog() {
-  return [
-    {
-      key: "reports",
-      title: "Отчёты и финансы",
-      hint: "Отчёты за день, закрытие смены и выручка",
-      items: [
-        { code: "REPORTS_VIEW_DAILY", title: "Отчёты за день" },
-        { code: "REPORTS_VIEW_MONTHLY", title: "Отчёты за месяц" },
-        { code: "REPORTS_VIEW_PNL", title: "P&L" },
-        { code: "SHIFT_REPORT_VIEW", title: "Закрытие смены: просмотр" },
-        { code: "SHIFT_REPORT_CLOSE", title: "Закрытие смены: закрыть" },
-        { code: "SHIFT_REPORT_EDIT", title: "Закрытие смены: правка закрытых" },
-        { code: "SHIFT_REPORT_REOPEN", title: "Закрытие смены: переоткрыть" },
-        { code: "REVENUE_VIEW", title: "Выручка: просмотр" },
-        { code: "REVENUE_EXPORT", title: "Выручка: экспорт" },
-      ],
-    },
-    {
-      key: "adjustments",
-      title: "Штрафы и споры",
-      hint: "Штрафы, списания, премии и споры",
-      items: [
-        { code: "ADJUSTMENTS_VIEW", title: "Просмотр штрафов/премий/списаний" },
-        { code: "ADJUSTMENTS_MANAGE", title: "Управление штрафами/премиями/списаниями" },
-        { code: "DISPUTES_RESOLVE", title: "Разбор оспариваний" },
-      ],
-    },
-    {
-      key: "expenses",
-      title: "Расходы",
-      hint: "Просмотр и добавление расходов",
-      items: [
-        { code: "EXPENSE_VIEW", title: "Просмотр расходов" },
-        { code: "EXPENSE_ADD", title: "Добавление расходов" },
-        { code: "EXPENSE_CATEGORIES_MANAGE", title: "Статьи расходов" },
-      ],
-    },
-    {
-      key: "shifts",
-      title: "Смены",
-      hint: "Просмотр графика и управление сменами",
-      items: [
-        { code: "SHIFTS_VIEW", title: "Просмотр смен" },
-        { code: "SHIFTS_MANAGE", title: "Управление сменами" },
-      ],
-    },
-    {
-      key: "staff",
-      title: "Сотрудники",
-      hint: "Просмотр и управление командой",
-      items: [
-        { code: "STAFF_VIEW", title: "Просмотр сотрудников" },
-        { code: "STAFF_MANAGE", title: "Управление сотрудниками" },
-      ],
-    },
-    {
-      key: "positions",
-      title: "Должности",
-      hint: "Должности, назначения и права",
-      items: [
-        { code: "POSITIONS_VIEW", title: "Просмотр должностей" },
-        { code: "POSITIONS_MANAGE", title: "Управление должностями" },
-        { code: "POSITION_PERMISSIONS_MANAGE", title: "Права должностей" },
-        { code: "POSITIONS_ASSIGN", title: "Назначение должностей" },
-      ],
-    },
-    {
-      key: "venue",
-      title: "Заведение",
-      hint: "Доступ к карточке заведения и настройкам",
-      items: [
-        { code: "VENUE_VIEW", title: "Открывать заведение" },
-        { code: "VENUE_SETTINGS_EDIT", title: "Настройки заведения" },
-      ],
-    },
-    {
-      key: "catalogs",
-      title: "Справочники",
-      hint: "Департаменты, способы оплаты и KPI",
-      items: [
-        { code: "DEPARTMENTS_VIEW", title: "Департаменты: просмотр" },
-        { code: "DEPARTMENTS_CREATE", title: "Департаменты: создание" },
-        { code: "DEPARTMENTS_EDIT", title: "Департаменты: редактирование" },
-        { code: "DEPARTMENTS_ARCHIVE", title: "Департаменты: архив" },
-        { code: "PAYMENT_METHODS_VIEW", title: "Оплаты: просмотр" },
-        { code: "PAYMENT_METHODS_CREATE", title: "Оплаты: создание" },
-        { code: "PAYMENT_METHODS_EDIT", title: "Оплаты: редактирование" },
-        { code: "PAYMENT_METHODS_ARCHIVE", title: "Оплаты: архив" },
-        { code: "KPI_METRICS_VIEW", title: "KPI: просмотр" },
-        { code: "KPI_METRICS_CREATE", title: "KPI: создание" },
-        { code: "KPI_METRICS_EDIT", title: "KPI: редактирование" },
-        { code: "KPI_METRICS_ARCHIVE", title: "KPI: архив" },
-      ],
-    },
-  ];
-}
-
-const PERM_GROUP_META = {
-  Reports: {
-    key: "reports",
-    title: "Отчёты и финансы",
-    hint: "Отчёты за день, закрытие смены и выручка",
-  },
-  Adjustments: {
-    key: "adjustments",
-    title: "Штрафы и споры",
-    hint: "Штрафы, списания, премии и споры",
-  },
-  Expenses: {
-    key: "expenses",
-    title: "Расходы",
-    hint: "Просмотр и добавление расходов",
-  },
-  Shifts: {
-    key: "shifts",
-    title: "Смены",
-    hint: "Просмотр графика и управление сменами",
-  },
-  Staff: {
-    key: "staff",
-    title: "Сотрудники",
-    hint: "Просмотр и управление командой",
-  },
-  Positions: {
-    key: "positions",
-    title: "Должности",
-    hint: "Должности, назначения и права",
-  },
-  Venue: {
-    key: "venue",
-    title: "Заведение",
-    hint: "Доступ к карточке заведения и настройкам",
-  },
-  Catalogs: {
-    key: "catalogs",
-    title: "Справочники",
-    hint: "Департаменты, способы оплаты и KPI",
-  },
-};
-
-function normalizePermissionCatalog(items = []) {
-  const groups = [];
-  const byKey = new Map();
-
-  for (const raw of Array.isArray(items) ? items : []) {
-    const code = String(raw?.code || "").trim().toUpperCase();
-    if (!code) continue;
-    const sourceGroup = String(raw?.group || "Other").trim() || "Other";
-    const meta = PERM_GROUP_META[sourceGroup] || {
-      key: sourceGroup.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "other",
-      title: sourceGroup,
-      hint: "",
-    };
-
-    let group = byKey.get(meta.key);
-    if (!group) {
-      group = { key: meta.key, title: meta.title, hint: meta.hint, items: [] };
-      byKey.set(meta.key, group);
-      groups.push(group);
-    }
-
-    group.items.push({
-      code,
-      title: String(raw?.title || raw?.description || code).trim(),
-      description: String(raw?.description || "").trim(),
-    });
-  }
-
-  groups.forEach((g) => {
-    g.items.sort((a, b) => a.title.localeCompare(b.title, "ru"));
-  });
-
-  return groups.length ? groups : buildDefaultPermissionsCatalog();
-}
-
-async function ensurePermissionsCatalog() {
-  if (Array.isArray(state.permissionsCatalog) && state.permissionsCatalog.length) return state.permissionsCatalog;
-  try {
-    const resp = await api('/me/permissions/catalog');
-    state.permissionsCatalog = normalizePermissionCatalog(resp?.items || []);
-  } catch {
-    state.permissionsCatalog = buildDefaultPermissionsCatalog();
-  }
-  return state.permissionsCatalog;
-}
-
-async function ensurePermissionTemplates() {
-  if (Array.isArray(state.permissionTemplates)) return state.permissionTemplates;
-  try {
-    const resp = await api('/position-permission-templates');
-    state.permissionTemplates = normalizePermissionTemplates(resp?.items || []);
-  } catch {
-    state.permissionTemplates = normalizePermissionTemplates([]);
-  }
-  return state.permissionTemplates;
-}
-
-function getPermissionTemplateById(templateId) {
-  return getSharedPermissionTemplateById(state.permissionTemplates, templateId);
-}
-
-function renderPermissionTemplateSelect(selectedId = "") {
-  return buildPermissionTemplateOptions(state.permissionTemplates, {
-    selectedId,
-    emptyLabel: "— выбрать шаблон прав —",
-    includeSystemBadge: true,
-  });
-}
-
-function renderTemplateSummaryBlock(templateId = "") {
-  return renderPermissionTemplateSummaryById(state.permissionTemplates, templateId, {
-    emptyText: "Шаблон не выбран. Можно включить права вручную ниже.",
-    noDescriptionText: "Шаблон без описания",
-    wrapId: "f_perm_template_summary",
-  });
-}
-
-function applyPermissionTemplateToModal(templateId) {
-  return applyPermissionTemplateToCheckboxHost({
-    templates: state.permissionTemplates,
-    templateId,
-    checkboxSelector: 'input[data-perm-code]',
-    checkboxAttr: 'data-perm-code',
-    summaryHost: document.getElementById('f_perm_template_summary_wrap'),
-    titleInput: document.getElementById('f_title'),
-    fillTitleWhenEmpty: true,
-    summaryOptions: {
-      emptyText: "Шаблон не выбран. Можно включить права вручную ниже.",
-      noDescriptionText: "Шаблон без описания",
-      wrapId: "f_perm_template_summary",
-    },
-  });
-}
-
-/* ---------- Page shell ---------- */
 
 function renderShell() {
   root.innerHTML = `
@@ -321,30 +53,30 @@ function renderShell() {
 
     <div class="card">
       <div class="muted">Создайте должности, назначьте сотрудников и при необходимости выберите для них профиль зарплаты.</div>
-      <div class="muted small" id="accessHint" style="margin-top:6px"></div>
+      <div class="muted small mt-6" id="accessHint"></div>
 
-      <div class="itemcard" style="margin-top:12px">
-        <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
+      <div class="itemcard mt-12">
+        <div class="row row--between ai-center">
           <b>Список должностей</b>
           <button class="btn primary" id="btnOpenCreate">+ Создать</button>
         </div>
-        <div id="list" style="margin-top:10px">
+        <div class="mt-10" id="list">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
 
 
 
-<div class="itemcard" style="margin-top:12px; display:none" id="invitesCard">
-  <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
+<div class="itemcard mt-12 hidden" id="invitesCard">
+  <div class="row row--between ai-center">
     <b>Приглашённые <span class="badge badge--draft">приглашён</span></b>
   </div>
-  <div class="muted" style="margin-top:6px; font-size:12px">Назначьте должность заранее — применится после принятия приглашения.</div>
-  <div id="invitesList" style="margin-top:10px">
+  <div class="muted small mt-6">Назначьте должность заранее — применится после принятия приглашения.</div>
+  <div class="mt-10" id="invitesList">
     <div class="muted">—</div>
   </div>
 </div>
-      <div class="row" style="margin-top:12px">
+      <div class="row mt-12">
         <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
       </div>
     </div>
@@ -370,7 +102,7 @@ function renderShell() {
         <div class="modal__head">
           <div>
             <b class="modal__title" id="posModalTitle">Должность</b>
-            <div class="muted" id="posModalHint" style="margin-top:4px; font-size:12px"></div>
+            <div class="muted small mt-4" id="posModalHint"></div>
           </div>
           <button class="btn" data-close>Закрыть</button>
         </div>
@@ -389,7 +121,7 @@ function renderShell() {
 
 function applyAccessToShell() {
   const btn = document.getElementById("btnOpenCreate");
-  if (btn) btn.style.display = auth.canManage ? "" : "none";
+  btn?.classList.toggle("hidden", !auth.canManage);
 
   const sub = document.getElementById("subtitle");
   if (sub) {
@@ -449,10 +181,6 @@ let auth = {
   canManagePerms: false,
 };
 
-function hasPerm(code) {
-  return Array.isArray(auth.permissions) && auth.permissions.includes(code);
-}
-
 function computeAuth(perms) {
   const role = roleUpper(perms);
   const sysRole = String(perms?.system_role || "").toUpperCase();
@@ -490,806 +218,47 @@ function parseVenueId() {
   return venueId;
 }
 
-function parsePermCodes(v) {
-  if (Array.isArray(v)) {
-    return v.map((x) => String(x || "").trim()).filter(Boolean);
-  }
-  if (typeof v === "string") {
-    const s = v.trim();
-    if (!s) return [];
-    // JSON array string
-    try {
-      const j = JSON.parse(s);
-      if (Array.isArray(j)) return j.map((x) => String(x || "").trim()).filter(Boolean);
-    } catch {}
-    // fallback: comma/space separated, also handles "['A','B']"
-    const cleaned = s.replace(/[\[\]\"']/g, "");
-    return cleaned.split(/[,;\s]+/).map((x) => String(x || "").trim()).filter(Boolean);
-  }
-  return [];
-}
 
-
-// Permission codes are the single source of truth for position access.
-function posPermSet(p) {
-  const raw = (p && p.permission_codes) ?? [];
-  const arr = Array.isArray(raw) ? raw : parsePermCodes(raw);
-  const set = new Set();
-  for (const x of arr || []) {
-    const s = String(x || "").trim().toUpperCase();
-    if (s) set.add(s);
-  }
-  return set;
-}
-
-function posHasPerm(p, code) {
-  if (!code) return false;
-  return posPermSet(p).has(String(code).trim().toUpperCase());
-}
-
-function posHasAnyPerm(p, codes) {
-  const s = posPermSet(p);
-  return Array.isArray(codes) && codes.some((c) => s.has(String(c).trim().toUpperCase()));
-}
-
-function posReportsEnabled(p) {
-  // Any report-related permission means "Отчёты: да"
-  return posHasAnyPerm(p, [
-    "SHIFT_REPORT_VIEW",
-    "SHIFT_REPORT_CLOSE",
-    "SHIFT_REPORT_EDIT",
-    "SHIFT_REPORT_REOPEN",
-    "REPORTS_VIEW_DAILY",
-    "REPORTS_VIEW_MONTHLY",
-    "REPORTS_VIEW_PNL",
-  ]);
-}
-
-function posScheduleManage(p) {
-  return posHasPerm(p, "SHIFTS_MANAGE");
-}
-
-
-function normalizePositions(out) {
-  let items = [];
-  if (!out) items = [];
-  else if (Array.isArray(out)) items = out;
-  else if (Array.isArray(out.items)) items = out.items;
-  else if (Array.isArray(out.positions)) items = out.positions;
-  else if (Array.isArray(out.data)) items = out.data;
-  else items = [];
-
-  return items.map((p) => {
-    const x = { ...(p || {}) };
-    if (x.pay_profile_id != null && x.pay_profile_id !== "") x.pay_profile_id = Number(x.pay_profile_id) || null;
-    const pc = parsePermCodes(x.permission_codes);
-    if (pc.length) x.permission_codes = pc;
-    else if (typeof x.permission_codes === "string") x.permission_codes = [];
-    return x;
-  });
-}
-
-function normalizePositionPresets(out) {
-  let items = [];
-  if (!out) items = [];
-  else if (Array.isArray(out)) items = out;
-  else if (Array.isArray(out.items)) items = out.items;
-  else if (Array.isArray(out.presets)) items = out.presets;
-  else if (Array.isArray(out.data)) items = out.data;
-  else items = [];
-
-  return items.map((p, idx) => {
-    const x = { ...(p || {}) };
-    x.id = String(x.id || `preset-${idx + 1}`);
-    x.title = String(x.title || "").trim();
-    x.rate = Math.max(0, Math.round(Number(x.rate || 0) || 0));
-    x.percent = Math.max(0, Math.min(100, Math.round(Number(x.percent || 0) || 0)));
-    x.pay_profile_id = x.pay_profile_id != null && x.pay_profile_id !== "" ? Number(x.pay_profile_id) || null : null;
-    x.pay_profile_title = String(x.pay_profile_title || "").trim();
-    x.permission_codes = parsePermCodes(x.permission_codes);
-    x.is_active = x.is_active !== false;
-    return x;
-  }).filter((x) => x.title);
-}
-
-function positionSources() {
-  return [
-    ...(Array.isArray(state.positionPresets) ? state.positionPresets.filter((x) => x.is_active !== false) : []),
-    ...(Array.isArray(state.positions) ? state.positions.filter((x) => x.is_active !== false) : []),
-  ];
-}
-
-function uniqueTitles() {
-  const set = new Set();
-  for (const p of positionSources()) {
-    const t = String(p.title || "").trim();
-    if (t) set.add(t);
-  }
-  return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"));
-}
-
-
-function renderPayProfileOptions(selectedId = null) {
-  const current = selectedId == null || selectedId === "" ? "" : String(selectedId);
-  const options = ['<option value="">— без профиля начисления —</option>'];
-  for (const profile of state.payProfiles || []) {
-    if (profile?.is_active === false) continue;
-    const id = String(profile?.id || "");
-    if (!id) continue;
-    const count = Number(profile?.components_count || 0);
-    const suffix = count > 0 ? ` · компонентов: ${count}` : "";
-    options.push(`<option value="${esc(id)}" ${id === current ? "selected" : ""}>${esc(profile.title || `Профиль #${id}`)}${esc(suffix)}</option>`);
-  }
-  return options.join("");
-}
-
-function renderTitleDatalist() {
-  const titles = uniqueTitles();
-  return `
-    <datalist id="posTitleHints">
-      ${titles.map(t => `<option value="${esc(t)}"></option>`).join("")}
-    </datalist>
-  `;
-}
-
-function renderPositionForm({ mode, position }) {
-  const p = position || {};
-  const titles = uniqueTitles();
-
-  const permsOnly = mode === "perms";
-  const canEditMain = auth.canManage && !permsOnly;
-  const canEditPerms = auth.canManagePerms;
-  const canChangeMember = auth.canAssign && mode === "edit";
-
-  const membersOptions = state.members
-    .map((m) => `<option value="${esc(String(m.user_id))}">${esc(memberLabel(m))}</option>`)
-    .join("");
-
-  const hint = titles.length
-    ? "Начни вводить — будут подсказки (например: Бармен, Официант…)"
-    : "Подсказок пока нет — создай первую должность";
-
-  const curPerms = (() => {
-    const arr = Array.isArray(p.permission_codes) ? p.permission_codes : [];
-    return arr.map((x) => String(x || "").trim()).filter(Boolean);
-  })();
-
-  const isChecked = (code) => curPerms.includes(code);
-
-  const PERM_GROUPS = Array.isArray(state.permissionsCatalog) && state.permissionsCatalog.length
-    ? state.permissionsCatalog
-    : buildDefaultPermissionsCatalog();
-
-  const permCardsHtml = !canEditPerms
-    ? ``
-    : `
-      <div style="margin-top:12px; display:grid; grid-template-columns: 1fr; gap:10px">
-        <div class="perm-tools">
-          <button class="btn sm" type="button" id="btnPermAllOn">Включить все</button>
-          <button class="btn sm" type="button" id="btnPermAllOff">Выключить все</button>
-        </div>
-
-        ${PERM_GROUPS.map((g) => {
-          const rows = (g.items || []).map((it) => `
-            <div class="perm-row">
-              <div class="perm-text">
-                <div class="perm-title">${esc(it.title)}</div>
-                <div class="perm-desc">${esc(it.description || "")}</div>
-              </div>
-              <label class="switch">
-                <input type="checkbox"
-                  data-perm-code="${esc(it.code)}"
-                  data-perm-group="${esc(g.key)}"
-                  ${isChecked(it.code) ? "checked" : ""} />
-                <span class="slider"></span>
-              </label>
-            </div>
-          `).join("");
-
-          return `
-            <div class="card" style="padding:12px">
-              <div class="perm-group-title">
-                <div>
-                  <b>${esc(g.title)}</b>
-                  ${g.hint ? `<div class="muted" style="margin-top:4px; font-size:12px">${esc(g.hint)}</div>` : ``}
-                </div>
-                <div class="row" style="gap:6px; flex:0 0 auto">
-                  <button class="btn sm" type="button" data-perm-set="${esc(g.key)}" data-value="1">Все</button>
-                  <button class="btn sm" type="button" data-perm-set="${esc(g.key)}" data-value="0">Ничего</button>
-                </div>
-              </div>
-              ${rows}
-              ${g.extraHtml || ``}
-            </div>
-          `;
-        }).join("")}
-      </div>
-    `;
-
-  return `
-    ${renderTitleDatalist()}
-
-    <div class="grid grid2" style="margin-top:10px">
-      <div>
-        <div class="muted" style="margin-bottom:6px">Название должности</div>
-        <input id="f_title" placeholder="Например: Бармен" list="posTitleHints" value="${esc(p.title || "")}" ${canEditMain ? "" : "disabled"} />
-        <div class="muted" style="margin-top:6px; font-size:12px">${esc(hint)}</div>
-      </div>
-
-      <div>
-        <div class="muted" style="margin-bottom:6px">Сотрудник</div>
-        <select id="f_member" ${((mode === "edit") && !canChangeMember) || !auth.canManage ? "disabled" : ""}>${membersOptions}</select>
-      </div>
-
-      <div>
-        <div class="muted" style="margin-bottom:6px">Профиль зарплаты</div>
-        <select id="f_pay_profile" ${canEditMain ? "" : "disabled"}>${renderPayProfileOptions(p.pay_profile_id ?? "")}</select>
-        <div class="muted" style="margin-top:6px; font-size:12px">Можно оставить без профиля, а затем назначить его позже.</div>
-      </div>
-
-      <div>
-        <div class="muted" style="margin-bottom:6px">Начисление</div>
-        <div class="itemcard" style="padding:10px 12px; min-height:44px; display:flex; align-items:center">
-          <span class="muted" id="f_pay_profile_hint">${esc(p.pay_profile_title || "Без назначенного профиля")}</span>
-        </div>
-      </div>
-
-      <div>
-        <div class="muted" style="margin-bottom:6px">Шаблон прав</div>
-        <select id="f_perm_template" ${canEditPerms ? "" : "disabled"}>${renderPermissionTemplateSelect(p.template_id || "")}</select>
-        <div class="row" style="gap:8px; margin-top:8px; flex-wrap:wrap">
-          ${canEditPerms ? '<button class="btn sm" type="button" id="btnApplyTemplate">Применить шаблон</button>' : ''}
-          ${(auth.sysRole === "SUPER_ADMIN") ? '<a class="btn sm subtle inline" href="/admin-position-templates.html">Управлять шаблонами</a>' : ''}
-        </div>
-      </div>
-    </div>
-
-    <div id="f_perm_template_summary_wrap" class="itemcard" style="margin-top:12px; padding:10px 12px">${renderTemplateSummaryBlock(p.template_id || "")}</div>
-
-    ${permCardsHtml}
-
-    <div class="row" style="gap:8px; margin-top:12px; flex-wrap:wrap">
-      ${((mode === "create") ? auth.canManage : (auth.canManage || auth.canManagePerms)) ? `<button class="btn primary" id="btnSavePos">Сохранить</button>` : ``}
-      <button class="btn" id="btnCancelPos">Отмена</button>
-      ${
-        (mode === "edit" && auth.canManage)
-          ? `<button class="btn danger" id="btnDeletePos" style="margin-left:auto">Архивировать</button>`
-          : `<span class="muted" style="margin-left:auto">Можно назначать несколько людей на одну должность</span>`
-      }
-    </div>
-  `;
-}
-
-
-function collectPayload(base = {}) {
-  const titleEl = document.getElementById("f_title");
-  const memberEl = document.getElementById("f_member");
-  const payProfileEl = document.getElementById("f_pay_profile");
-
-  const title = (titleEl && !titleEl.disabled) ? (titleEl.value || "").trim() : String(base.title || "").trim();
-  const member_user_id = (memberEl && !memberEl.disabled) ? Number(memberEl.value) : Number(base.member_user_id);
-  const pay_profile_id = (payProfileEl && !payProfileEl.disabled) ? (payProfileEl.value ? Number(payProfileEl.value) : null) : (base.pay_profile_id ? Number(base.pay_profile_id) : null);
-
-  if (!title) throw new Error("Укажите название должности");
-  if (!Number.isFinite(member_user_id) || member_user_id <= 0) throw new Error("Выберите сотрудника");
-  if (pay_profile_id !== null && (!Number.isFinite(pay_profile_id) || pay_profile_id <= 0)) throw new Error("Выберите корректный профиль зарплаты");
-
-  // New permissions list (permission codes)
-  const modal = document.getElementById("posModal");
-  const hasPermInputs = !!(modal && modal.querySelector('input[data-perm-code]'));
-
-  const permCodes = (() => {
-    if (hasPermInputs) {
-      return Array.from(modal.querySelectorAll('input[data-perm-code]:checked'))
-        .map((x) => String(x.getAttribute("data-perm-code") || "").trim())
-        .filter(Boolean);
-    }
-    // no perm UI in this modal -> keep existing codes from base (do NOT clear by accident)
-    if (base && Object.prototype.hasOwnProperty.call(base, "permission_codes")) return parsePermCodes(base.permission_codes);
-    return [];
-  })();
-  return {
-    title,
-    member_user_id,
-    rate: 0,
-    percent: 0,
-    pay_profile_id,
-    // keep active by default for create; on update backend accepts bool|None
-    is_active: (base.is_active === false) ? false : true,
-    // permission codes (source of truth)
-    _perm_codes: permCodes,
-  };
-}
-
-
-function setupPermUX() {
-  const modal = document.getElementById("posModal");
-  if (!modal) return;
-
-  const boxes = (group) => {
-    const sel = group ? `input[data-perm-code][data-perm-group="${group}"]` : "input[data-perm-code]";
-    return Array.from(modal.querySelectorAll(sel));
-  };
-  const setMany = (arr, val) => {
-    arr.forEach((b) => (b.checked = !!val));
-  };
-
-  function ensure(code, on) {
-    const el = modal.querySelector(`input[data-perm-code="${code}"]`);
-    if (el && on) el.checked = true;
-    if (el && !on) el.checked = false;
-  }
-
-  function isOn(code) {
-    const el = modal.querySelector(`input[data-perm-code="${code}"]`);
-    return !!el?.checked;
-  }
-
-  function syncDeps() {
-    // manage -> view patterns
-    if (isOn("SHIFTS_MANAGE")) ensure("SHIFTS_VIEW", true);
-    if (isOn("ADJUSTMENTS_MANAGE") || isOn("DISPUTES_RESOLVE")) ensure("ADJUSTMENTS_VIEW", true);
-    if (isOn("STAFF_MANAGE")) ensure("STAFF_VIEW", true);
-    if (isOn("POSITIONS_MANAGE") || isOn("POSITION_PERMISSIONS_MANAGE") || isOn("POSITIONS_ASSIGN")) ensure("POSITIONS_VIEW", true);
-
-    if (isOn("EXPENSE_ADD") || isOn("EXPENSE_CATEGORIES_MANAGE")) ensure("EXPENSE_VIEW", true);
-
-    // catalogs create/edit/archive -> view
-    const cat = [
-      ["DEPARTMENTS_CREATE", "DEPARTMENTS_VIEW"],
-      ["DEPARTMENTS_EDIT", "DEPARTMENTS_VIEW"],
-      ["DEPARTMENTS_ARCHIVE", "DEPARTMENTS_VIEW"],
-      ["PAYMENT_METHODS_CREATE", "PAYMENT_METHODS_VIEW"],
-      ["PAYMENT_METHODS_EDIT", "PAYMENT_METHODS_VIEW"],
-      ["PAYMENT_METHODS_ARCHIVE", "PAYMENT_METHODS_VIEW"],
-      ["KPI_METRICS_CREATE", "KPI_METRICS_VIEW"],
-      ["KPI_METRICS_EDIT", "KPI_METRICS_VIEW"],
-      ["KPI_METRICS_ARCHIVE", "KPI_METRICS_VIEW"],
-    ];
-    cat.forEach(([a, v]) => { if (isOn(a)) ensure(v, true); });
-
-    // shift report close/edit/reopen -> view
-    if (isOn("SHIFT_REPORT_CLOSE") || isOn("SHIFT_REPORT_EDIT") || isOn("SHIFT_REPORT_REOPEN")) ensure("SHIFT_REPORT_VIEW", true);
-  }
-
-  // global on/off
-  document.getElementById("btnPermAllOn")?.addEventListener("click", () => {
-    setMany(boxes(), true);
-syncDeps();
-  });
-  document.getElementById("btnPermAllOff")?.addEventListener("click", () => {
-    setMany(boxes(), false);
+const positionDomain = createPositionDomain({ state });
+const positionPermissions = createPositionPermissionController({ state, api });
+const positionEditor = createPositionEditor({
+  state,
+  auth,
+  esc,
+  domain: positionDomain,
+  permissions: positionPermissions,
+  openPosModal,
+  closePosModal,
+  toast,
+  confirmModal,
+  createVenuePosition,
+  updateVenuePosition,
+  deleteVenuePosition,
+  load,
 });
+const { openCreateModal } = positionEditor;
+const { renderPositions } = createPositionList({
+  state,
+  auth,
+  esc,
+  domain: positionDomain,
+  editor: positionEditor,
+  toast,
+  confirmModal,
+  deleteVenuePosition,
+  load,
+});
+const { renderInvites } = createPositionInviteController({
+  state,
+  auth,
+  esc,
+  domain: positionDomain,
+  toast,
+  patchInviteDefaultPosition,
+});
+const { normalizePositions, normalizePositionPresets } = positionDomain;
+const { ensurePermissionTemplates } = positionPermissions;
 
-  // group on/off
-  modal.querySelectorAll("[data-perm-set]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const g = btn.getAttribute("data-perm-set");
-      const v = btn.getAttribute("data-value") === "1";
-      setMany(boxes(g), v);
-if (v) syncDeps();
-    });
-  });
-
-  // deps on any change
-  modal.querySelectorAll('input[data-perm-code]').forEach((el) => {
-    el?.addEventListener("change", () => syncDeps());
-  });
-
-  // initial deps
-  syncDeps();
-}
-
-
-async function callPositionApiWithPerms({ kind, positionId, payload, permCodes }) {
-  const basePayload = { ...payload };
-  // do not leak helper field
-  delete basePayload._perm_codes;
-
-  const canSendPerms = Array.isArray(permCodes);
-
-  const callCreate = (p) => createVenuePosition(state.venueId, p);
-  const callUpdate = (p) => updateVenuePosition(state.venueId, positionId, p);
-
-  const fn = kind === "create" ? callCreate : callUpdate;
-
-  // This page is code-only: permissions are stored only as permission_codes.
-  if (!canSendPerms) return fn(basePayload);
-
-  try {
-    return await fn({ ...basePayload, permission_codes: permCodes });
-  } catch (e) {
-    // Do not fall back to removed boolean permission flags here.
-    if (e?.status === 422) {
-      toast("Сервер не поддерживает permission_codes для должностей. Обнови бэкенд.", "err");
-    }
-    throw e;
-  }
-}
-
-
-
-/* ---------- Modal actions ---------- */
-
-async function openCreateModal() {
-  if (!auth.canManage) {
-    toast("Нет прав на создание должностей", "err");
-    return;
-  }
-  await Promise.all([ensurePermissionsCatalog(), ensurePermissionTemplates()]);
-
-  openPosModal({
-    title: "Создать должность",
-    hint: "Одна должность может быть у нескольких сотрудников (например «Бармен»).",
-    bodyHtml: renderPositionForm({ mode: "create" }),
-  });
-
-  // дефолтный выбор сотрудника
-  const sel = document.getElementById("f_member");
-  if (sel && sel.options.length) sel.value = sel.options[0].value;
-  setupPermUX();
-
-  const payProfileSelectCreate = document.getElementById("f_pay_profile");
-  const payProfileHintCreate = document.getElementById("f_pay_profile_hint");
-  const syncPayProfileHintCreate = () => {
-    if (!payProfileHintCreate) return;
-    const selected = (state.payProfiles || []).find((it) => String(it?.id || "") === String(payProfileSelectCreate?.value || ""));
-    payProfileHintCreate.textContent = selected ? String(selected.title || "") : "Без назначенного профиля";
-  };
-  payProfileSelectCreate?.addEventListener("change", syncPayProfileHintCreate);
-  syncPayProfileHintCreate();
-
-  const permTemplateSelectCreate = document.getElementById("f_perm_template");
-  permTemplateSelectCreate?.addEventListener("change", () => { const wrap = document.getElementById("f_perm_template_summary_wrap"); if (wrap) wrap.innerHTML = renderTemplateSummaryBlock(permTemplateSelectCreate.value); });
-  document.getElementById("btnApplyTemplate")?.addEventListener("click", () => { const templateId = String(document.getElementById("f_perm_template")?.value || "").trim(); if (!templateId) return toast("Выбери шаблон прав", "warn"); if (!applyPermissionTemplateToModal(templateId)) return toast("Шаблон не найден", "err"); toast("Шаблон применён", "ok"); });
-
-  document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
-
-  document.getElementById("btnSavePos")?.addEventListener("click", async () => {
-    let payload;
-    try {
-      payload = collectPayload({});
-    } catch (e) {
-      toast(e?.message || "Ошибка формы", "warn");
-      return;
-    }
-
-    try {
-      await callPositionApiWithPerms({ kind: "create", payload, permCodes: auth.canManagePerms ? payload._perm_codes : null });
-      toast("Должность создана", "ok");
-      closePosModal();
-      await load();
-    } catch (e) {
-      toast("Ошибка сохранения: " + (e?.message || e), "err");
-    }
-  });
-}
-
-async function openEditModal(p, modeOverride = null) {
-  const mode = modeOverride || (auth.canManage ? "edit" : (auth.canManagePerms ? "perms" : "view"));
-  if (mode === "view") {
-    toast("Нет прав на изменение должности", "err");
-    return;
-  }
-  await Promise.all([ensurePermissionsCatalog(), ensurePermissionTemplates()]);
-
-  openPosModal({
-    title: "Изменить должность",
-    hint: "Меняй должность/условия для выбранного сотрудника.",
-    bodyHtml: renderPositionForm({ mode, position: p }),
-  });
-
-  const sel = document.getElementById("f_member");
-  if (sel) sel.value = String(p.member_user_id ?? "");
-  setupPermUX();
-
-  const payProfileSelectCreate = document.getElementById("f_pay_profile");
-  const payProfileHintCreate = document.getElementById("f_pay_profile_hint");
-  const syncPayProfileHintCreate = () => {
-    if (!payProfileHintCreate) return;
-    const selected = (state.payProfiles || []).find((it) => String(it?.id || "") === String(payProfileSelectCreate?.value || ""));
-    payProfileHintCreate.textContent = selected ? String(selected.title || "") : "Без назначенного профиля";
-  };
-  payProfileSelectCreate?.addEventListener("change", syncPayProfileHintCreate);
-  syncPayProfileHintCreate();
-
-  const permTemplateSelectEdit = document.getElementById("f_perm_template");
-  permTemplateSelectEdit?.addEventListener("change", () => { const wrap = document.getElementById("f_perm_template_summary_wrap"); if (wrap) wrap.innerHTML = renderTemplateSummaryBlock(permTemplateSelectEdit.value); });
-  document.getElementById("btnApplyTemplate")?.addEventListener("click", () => { const templateId = String(document.getElementById("f_perm_template")?.value || "").trim(); if (!templateId) return toast("Выбери шаблон прав", "warn"); if (!applyPermissionTemplateToModal(templateId)) return toast("Шаблон не найден", "err"); toast("Шаблон применён", "ok"); });
-
-  document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
-
-  document.getElementById("btnSavePos")?.addEventListener("click", async () => {
-    let payload;
-    try {
-      payload = collectPayload(p);
-    } catch (e) {
-      toast(e?.message || "Ошибка формы", "warn");
-      return;
-    }
-
-    try {
-      await callPositionApiWithPerms({ kind: "update", positionId: p.id, payload, permCodes: auth.canManagePerms ? payload._perm_codes : null });
-      toast("Изменения сохранены", "ok");
-      closePosModal();
-      await load();
-    } catch (e) {
-      toast("Ошибка сохранения: " + (e?.message || e), "err");
-    }
-  });
-
-  document.getElementById("btnDeletePos")?.addEventListener("click", async () => {
-    const ok = await confirmModal({
-      title: "Архивировать должность?",
-      text: `Удалить должность «${p.title || ""}» для сотрудника?`,
-      confirmText: "В архив",
-      danger: true,
-    });
-    if (!ok) return;
-
-    try {
-      await deleteVenuePosition(state.venueId, p.id);
-      toast("Должность архивирована", "ok");
-      closePosModal();
-      await load();
-    } catch (e) {
-      toast("Ошибка удаления: " + (e?.message || e), "err");
-    }
-  });
-}
-
-/* ---------- Render list grouped by title ---------- */
-
-function renderPositions() {
-  const list = document.getElementById("list");
-  list.innerHTML = "";
-
-  if (!state.positions.length) {
-    list.innerHTML = `<div class="muted">Должностей пока нет</div>`;
-    return;
-  }
-
-  const memberById = new Map(state.members.map((m) => [String(m.user_id), m]));
-
-  // group by title
-  const groups = new Map();
-  for (const p of state.positions) {
-    const t = String(p.title || "Без названия").trim() || "Без названия";
-    if (!groups.has(t)) groups.set(t, []);
-    groups.get(t).push(p);
-  }
-
-  const titles = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b, "ru"));
-
-  for (const title of titles) {
-    const arr = groups.get(title).slice().sort((a, b) => {
-      const aa = String(memberById.get(String(a.member_user_id))?.tg_username || "");
-      const bb = String(memberById.get(String(b.member_user_id))?.tg_username || "");
-      return aa.localeCompare(bb);
-    });
-
-    const wrap = document.createElement("div");
-    wrap.className = "itemcard";
-    wrap.style.marginTop = "10px";
-
-    wrap.innerHTML = `
-      <div class="row" style="justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap">
-        <b>${esc(title)} <span class="muted">(${arr.length})</span></b>
-        ${auth.canManage ? `<button class="btn" data-add-same>+ Добавить сотрудника</button>` : ``}
-      </div>
-      <div class="list" style="margin-top:10px" data-rows></div>
-    `;
-
-    // "+ Добавить сотрудника" с предзаполненным title
-    const addSameBtn = wrap.querySelector("[data-add-same]");
-    if (addSameBtn) addSameBtn.onclick = async () => {
-      await Promise.all([ensurePermissionsCatalog(), ensurePermissionTemplates()]);
-      if (!auth.canManage) { toast("Нет прав на создание должностей", "err"); return; }
-      openPosModal({
-        title: "Создать должность",
-        hint: "Добавляем ещё одного сотрудника на эту должность.",
-        bodyHtml: renderPositionForm({ mode: "create", position: { title } }),
-      });
-      // проставим title
-      const t = document.getElementById("f_title");
-      if (t) t.value = title;
-
-      const sel = document.getElementById("f_member");
-      if (sel && sel.options.length) sel.value = sel.options[0].value;
-  setupPermUX();
-
-      const payProfileSelectCreate = document.getElementById("f_pay_profile");
-      const payProfileHintCreate = document.getElementById("f_pay_profile_hint");
-      const syncPayProfileHintCreate = () => {
-        if (!payProfileHintCreate) return;
-        const selected = (state.payProfiles || []).find((it) => String(it?.id || "") === String(payProfileSelectCreate?.value || ""));
-        payProfileHintCreate.textContent = selected ? String(selected.title || "") : "Без назначенного профиля";
-      };
-      payProfileSelectCreate?.addEventListener("change", syncPayProfileHintCreate);
-      syncPayProfileHintCreate();
-
-      const permTemplateSelectCreate = document.getElementById("f_perm_template");
-      permTemplateSelectCreate?.addEventListener("change", () => { const wrap = document.getElementById("f_perm_template_summary_wrap"); if (wrap) wrap.innerHTML = renderTemplateSummaryBlock(permTemplateSelectCreate.value); });
-      document.getElementById("btnApplyTemplate")?.addEventListener("click", () => { const templateId = String(document.getElementById("f_perm_template")?.value || "").trim(); if (!templateId) return toast("Выбери шаблон прав", "warn"); if (!applyPermissionTemplateToModal(templateId)) return toast("Шаблон не найден", "err"); toast("Шаблон применён", "ok"); });
-
-      document.getElementById("btnCancelPos")?.addEventListener("click", closePosModal);
-      document.getElementById("btnSavePos")?.addEventListener("click", async () => {
-        let payload;
-        try { payload = collectPayload(); } catch (e) { toast(e?.message || "Ошибка формы", "warn"); return; }
-        try {
-          await callPositionApiWithPerms({ kind: "create", payload, permCodes: auth.canManagePerms ? payload._perm_codes : null });
-          toast("Должность создана", "ok");
-          closePosModal();
-          await load();
-        } catch (e) {
-          toast("Ошибка сохранения: " + (e?.message || e), "err");
-        }
-      });
-    };
-
-    const rows = wrap.querySelector("[data-rows]");
-
-    for (const p of arr) {
-      const m = memberById.get(String(p.member_user_id || ""));
-      const who = m ? memberLabel(m) : (p.member_user_id ? "Сотрудник" : "—");
-
-      const row = document.createElement("div");
-      row.className = "list__row";
-
-      row.innerHTML = `
-        <div class="list__main">
-          <div><b>${esc(who)}</b></div>
-          <div class="muted" style="margin-top:4px">
-            Профиль: ${esc(p.pay_profile_title || "не назначен")} ·
-            Отчёты: ${posReportsEnabled(p) ? "да" : "нет"} · График: ${posScheduleManage(p) ? "да" : "нет"}
-          </div>
-        </div>
-        <div class="row" style="gap:8px; flex-wrap:wrap">
-          ${auth.canManage ? `<button class="btn" data-edit>Изменить</button>` : (auth.canManagePerms ? `<button class="btn" data-perms>Права</button>` : ``)}
-          ${auth.canManage ? `<button class="btn danger" data-del>Архивировать</button>` : ``}
-        </div>
-      `;
-
-      const btnEdit = row.querySelector("[data-edit]");
-      if (btnEdit) btnEdit.onclick = async () => { await openEditModal(p, "edit"); };
-
-      const btnPerms = row.querySelector("[data-perms]");
-      if (btnPerms) btnPerms.onclick = async () => { await openEditModal(p, "perms"); };
-
-      const btnDel = row.querySelector("[data-del]");
-      if (btnDel) btnDel.onclick = async () => {
-        const ok = await confirmModal({
-          title: "Архивировать должность?",
-          text: `Удалить должность «${title}» для сотрудника?`,
-          confirmText: "В архив",
-          danger: true,
-        });
-        if (!ok) return;
-
-        try {
-          await deleteVenuePosition(state.venueId, p.id);
-          toast("Должность архивирована", "ok");
-          await load();
-        } catch (e) {
-          toast("Ошибка удаления: " + (e?.message || e), "err");
-        }
-      };
-
-      rows.appendChild(row);
-    }
-
-
-    list.appendChild(wrap);
-  }
-}
-
-/* ---------- Pending invites (position preset) ---------- */
-
-function positionPresetFromTemplate(title) {
-  const t = String(title || "").trim();
-  if (!t) return null;
-
-  const src = positionSources().find((x) => String(x.title || "").trim() === t) || { title: t };
-
-  // Only permission_codes are stored in invite preset (no legacy flags).
-  const permission_codes = parsePermCodes(src.permission_codes);
-
-  return {
-    title: t,
-    rate: Math.max(0, Math.round(Number(src.rate || 0) || 0)),
-    percent: Math.max(0, Math.min(100, Math.round(Number(src.percent || 0) || 0))),
-    pay_profile_id: src.pay_profile_id || null,
-    pay_profile_title: src.pay_profile_title || null,
-    permission_codes,
-  };
-}
-
-
-function renderInvites() {
-  const card = document.getElementById("invitesCard");
-  const list = document.getElementById("invitesList");
-  if (!card || !list) return;
-
-  const invites = Array.isArray(state.invites) ? state.invites : [];
-  if (!invites.length) {
-    card.style.display = "none";
-    return;
-  }
-
-  card.style.display = "";
-  list.innerHTML = "";
-
-  const titles = uniqueTitles();
-  const canAssign = auth.canAssign;
-
-  if (!titles.length) {
-    const hint = document.createElement("div");
-    hint.className = "muted";
-    hint.textContent = "Сначала создайте хотя бы одну должность — тогда можно будет назначать её приглашённым.";
-    list.appendChild(hint);
-  }
-
-  invites.forEach((inv) => {
-    const row = document.createElement("div");
-    row.className = "row";
-    row.style = "justify-content:space-between; gap:12px; border-bottom:1px solid var(--border); padding:10px 0; align-items:flex-start; flex-wrap:wrap";
-
-    const uname = (inv?.tg_username || "").trim();
-    const presetTitle = inv?.default_position?.title ? String(inv.default_position.title) : "";
-
-    const options = [
-      `<option value="">— не назначено —</option>`,
-      ...titles.map((t) => `<option value="${esc(t)}" ${t === presetTitle ? "selected" : ""}>${esc(t)}</option>`),
-    ].join("");
-
-    row.innerHTML = `
-      <div style="min-width:220px">
-        <div><b>@${esc(uname || "-")}</b> <span class="badge badge--draft">приглашён</span></div>
-        <div class="muted" style="margin-top:4px; font-size:12px">${esc(inv?.venue_role === "OWNER" ? "Владелец" : "Персонал")}</div>
-      </div>
-      <div style="min-width:240px">
-        <div class="muted" style="margin-bottom:6px">Должность</div>
-        <select data-invite-id="${esc(String(inv.id))}" ${(!canAssign || !titles.length) ? "disabled" : ""}>
-          ${options}
-        </select>
-        ${!canAssign ? `<div class="muted small" style="margin-top:6px">Недостаточно прав для назначения</div>` : ``}
-      </div>
-    `;
-
-    list.appendChild(row);
-  });
-
-  // handlers
-  list.querySelectorAll("select[data-invite-id]").forEach((sel) => {
-    sel.addEventListener("change", async () => {
-      const inviteId = Number(sel.getAttribute("data-invite-id"));
-      if (!inviteId) return;
-      if (!auth.canAssign) return;
-
-      const v = String(sel.value || "");
-      const preset = v ? positionPresetFromTemplate(v) : null;
-
-      try {
-        await patchInviteDefaultPosition(state.venueId, inviteId, preset);
-        toast("Сохранено", "ok");
-
-        // update local state
-        for (const it of state.invites) {
-          if (Number(it.id) === inviteId) {
-            it.default_position = preset;
-            break;
-          }
-        }
-
-        renderInvites();
-      } catch (e) {
-        toast("Не удалось назначить должность: " + (e?.data?.detail || e?.message || "ошибка"), "err");
-      }
-    });
-  });
-}
-
-/* ---------- Load ---------- */
 
 async function load() {
   const m = await getVenueMembers(state.venueId);
@@ -1362,7 +331,7 @@ async function main() {
 
   document.getElementById("back").href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
   const btnCreate = document.getElementById("btnOpenCreate");
-  if (btnCreate) btnCreate.onclick = openCreateModal;
+  if (btnCreate) btnCreate.onclick = () => openCreateModal();
 
   try { await ensurePermissionTemplates(); } catch {}
 

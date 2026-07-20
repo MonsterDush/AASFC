@@ -1,0 +1,15 @@
+.auth-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.verify-box{border:1px solid var(--border);border-radius:16px;padding:12px}
+.verify-meta{font-family:var(--mono);white-space:pre-line}
+.call-number{font-size:20px;font-weight:700;letter-spacing:.02em}
+.call-number a{color:inherit;text-decoration:none}
+.login-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.login-actions .btn{flex:0 0 auto}
+.password-flow-shell{display:flex;flex-direction:column;gap:12px}
+.password-flow-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.password-rules,.miniapp-open-box{border:1px solid var(--border);border-radius:16px;padding:12px;background:var(--surfaceTintSoft)}
+.password-rules{border-radius:12px;padding:10px 12px}
+.auth-shell{margin-top:12px}
+.auth-shell input:not([type="checkbox"]):not([type="radio"]){margin-top:12px}
+.miniapp-open-box{margin-top:12px}
+.miniapp-open-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}

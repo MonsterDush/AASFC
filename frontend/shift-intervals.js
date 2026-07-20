@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
   getMe,
   getMyVenuePermissions,
-} from "/app.js";
+} from "/app.js?v=20260719-split1";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
 
@@ -64,7 +64,7 @@ function renderShell() {
     <div class="card">
       <div class="muted">Интервалы используются в графике и при создании смен. Если интервал уже участвовал в сменах, его можно архивировать, но нельзя удалить.</div>
 
-      <div class="itemcard" style="margin-top:12px">
+      <div class="itemcard mt-12">
         <div class="section-head">
           <div class="section-title">
             <b>Список интервалов</b>
@@ -80,10 +80,10 @@ function renderShell() {
             <span class="muted">Показывать архив</span>
           </label>
         </div>
-        <div id="list" style="margin-top:10px"><div class="skeleton"></div><div class="skeleton"></div></div>
+        <div id="list" class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
       </div>
 
-      <div class="row" style="margin-top:12px; gap:10px; flex-wrap:wrap">
+      <div class="row gap-10 mt-12">
         <a class="btn subtle inline" id="backToShifts" href="#">← Назад к графику</a>
         <a class="btn subtle inline" id="backToVenue" href="#">К заведению</a>
       </div>
@@ -108,7 +108,7 @@ function renderShell() {
         <div class="modal__head">
           <div>
             <b class="modal__title" id="editTitle">Интервал</b>
-            <div class="muted" id="editHint" style="margin-top:4px; font-size:12px"></div>
+            <div class="muted small mt-4" id="editHint"></div>
           </div>
           <button class="btn" data-close>Закрыть</button>
         </div>
@@ -180,13 +180,13 @@ function renderList() {
     row.className = "listrow";
     row.innerHTML = `
       <div class="listrow__left">
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+        <div class="row gap-8">
           <b>${esc(item.title)}</b>
           ${item.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
         <div class="mono muted listrow__meta">${esc(item.start_time)}–${esc(item.end_time)} · Смен: ${Number(item.usage_count || 0)} · Шаблонов: ${Number(item.template_usage_count || 0)}</div>
       </div>
-      <div class="row row--nowrap" style="gap:8px; flex:0 0 auto;">
+      <div class="row row--nowrap gap-8 flex-none">
         <button class="btn sm" data-edit="${item.id}">Изменить</button>
         <button class="btn sm ${item.is_active ? "danger" : ""}" data-archive="${item.id}">${item.is_active ? "В архив" : "Вернуть"}</button>
         ${item.can_delete ? `<button class="btn sm danger" data-delete="${item.id}">Удалить</button>` : ""}
@@ -255,29 +255,29 @@ function editorForm({ mode, item }) {
   const it = item || {};
   const isEdit = mode === "edit";
   return `
-    <div class="grid grid2" style="margin-top:10px">
+    <div class="grid grid2 mt-10">
       <div>
-        <div class="muted" style="margin-bottom:6px">Название</div>
+        <div class="muted mb-6">Название</div>
         <input id="f_title" class="input" placeholder="Например, Утро" value="${esc(it.title || "")}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Отображение</div>
+        <div class="muted mb-6">Отображение</div>
         <label class="chk">
           <input type="checkbox" id="f_active" ${it.is_active === false ? "" : "checked"} />
           <span class="muted">Показывать в списке</span>
         </label>
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Начало</div>
+        <div class="muted mb-6">Начало</div>
         <input id="f_start" class="input" type="time" value="${esc(it.start_time || "")}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Конец</div>
+        <div class="muted mb-6">Конец</div>
         <input id="f_end" class="input" type="time" value="${esc(it.end_time || "")}" />
       </div>
     </div>
 
-    <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px">
+    <div class="row row--end gap-8 mt-12">
       <button class="btn" id="btnCancelEdit">Отмена</button>
       <button class="btn primary" id="btnSaveEdit">${isEdit ? "Сохранить" : "Создать"}</button>
     </div>

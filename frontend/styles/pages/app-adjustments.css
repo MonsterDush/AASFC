@@ -1,0 +1,21 @@
+.adjustment-row{justify-content:space-between;border-bottom:1px solid var(--border);padding:10px 0}
+.adj-modal .adj-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.adj-modal label{display:block}
+.adj-modal select,.adj-modal input,.adj-modal textarea{width:100%}
+.adj-modal .adj-help{font-size:12px;margin-top:4px}
+.adj-modal .adj-actions{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px}
+.adj-modal .adj-actions-right{display:flex;gap:8px;flex-wrap:wrap}
+.adj-modal .adj-card{margin-top:12px}
+.adj-modal .adj-reason{margin-top:10px}
+.adj-modal .dispute-top{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.adj-modal .dispute-list .card{padding:10px}
+.dispute-comment__message{margin-top:6px;white-space:pre-wrap}
+.adjustment-create-grid{align-items:flex-start}
+.adjustment-field{display:block}
+.adjustment-field--member{min-width:220px;flex:1 1 220px}
+.adjustment-field--date{min-width:180px;flex:1 1 180px}
+.adjustment-field--amount{min-width:160px;flex:1 1 160px}
+@media (max-width:520px){
+  .adj-modal .adj-grid{grid-template-columns:1fr}
+  .adjustment-field{min-width:0;flex-basis:100%}
+}

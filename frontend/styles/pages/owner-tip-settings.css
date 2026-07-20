@@ -1,0 +1,4 @@
+.tip-settings-grid{display:grid;gap:10px}
+.tip-settings-row{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:10px;align-items:end}
+.tip-settings-row .btn{white-space:nowrap}
+@media (max-width:640px){.tip-settings-row{grid-template-columns:1fr}}

@@ -1,0 +1,7 @@
+.app-venues-head{align-items:flex-start;gap:12px;flex-wrap:wrap}
+.venue-create-field{display:block;margin-top:12px}
+.venue-status-chip{margin-left:8px}
+.venue-card-main{min-width:0;flex:1 1 280px}
+@media (max-width:560px){
+  .venue-card-main{flex-basis:100%}
+}

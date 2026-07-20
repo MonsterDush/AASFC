@@ -39,7 +39,11 @@ class FinanceRevenueServiceTests(TestCase):
         def fake_sum(db, *, venue_id, period_start, period_end, direction, kind):
             return amounts[(direction, kind)]
 
-        with patch("app.services.finance.summary._sum_amount", side_effect=fake_sum):
+        with patch("app.services.finance.summary._backfill_missing_expense_recognition", return_value=0), \
+             patch("app.services.finance.summary._sum_amount", side_effect=fake_sum), \
+             patch("app.services.finance.summary._sum_expense_recognition_minor", return_value=120000), \
+             patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=80000), \
+             patch("app.services.finance.summary._expense_document_stats_for_period", return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0}):
             summary = get_finance_summary(db=object(), venue_id=5, month="2026-03")
 
         self.assertEqual(summary["revenue_minor"], 500000)
@@ -104,10 +108,12 @@ class FinanceRevenueServiceTests(TestCase):
     def test_get_day_finance_summary_includes_point_and_recurring(self):
         with patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=100000), \
              patch("app.services.finance.summary._group_daily_point_expenses", return_value=[{"title": "Закупка", "code": "supply", "subtitle": "Разовые расходы дня", "amount_minor": 15000}]), \
-             patch("app.services.finance.summary.get_daily_recurring_expense_summary", return_value={"rows": [{"title": "Эквайринг", "code": "fee", "subtitle": "Комиссия", "amount_minor": 2500}], "total_minor": 2500}), \
+             patch("app.services.finance.summary._group_daily_recurring_expenses", return_value=[{"title": "Эквайринг", "code": "fee", "subtitle": "Комиссия", "amount_minor": 2500}]), \
+             patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=0), \
              patch("app.services.finance.summary._sum_amount", return_value=0), \
              patch("app.services.finance.summary._group_revenue_breakdown", return_value=[]), \
-             patch("app.services.finance.summary._group_payment_method_balances", return_value=[]):
+             patch("app.services.finance.summary._group_payment_method_balances", return_value=[]), \
+             patch("app.services.finance.summary._expense_document_stats_for_period", return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0}):
             summary = get_day_finance_summary(db=object(), venue_id=5, target_date=date(2026, 3, 12), income_mode="PAYMENTS")
 
         self.assertEqual(summary["expense_minor"], 17500)

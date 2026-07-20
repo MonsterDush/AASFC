@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260720-unified9" />
+  <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Выручка</title>
 </head>
 <body>
@@ -53,7 +55,7 @@
         </div>
 
         <div class="screen-hero__toolbar">
-          <div class="section-card" style="flex:1 1 360px; min-width:min(360px,100%);">
+          <div class="section-card revenue-control-panel">
             <div class="revenue-toolbar__section">
               <div class="revenue-toolbar__label">Период</div>
               <div class="seg seg--period" id="periodSeg">
@@ -74,8 +76,8 @@
 
             <div class="pickers pickers--revenue">
               <input id="monthPick" type="month" />
-              <input id="dayPick" type="date" style="display:none" />
-              <div id="rangePick" class="range-pick" style="display:none">
+              <input class="hidden" id="dayPick" type="date" />
+              <div id="rangePick" class="range-pick hidden">
                 <input id="fromPick" type="date" />
                 <span class="muted">—</span>
                 <input id="toPick" type="date" />
@@ -122,7 +124,7 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-turnover.js"></script>
+  <script type="module" src="/owner-turnover.js?v=20260720-unified9"></script>
   <!-- Canonical revenue page -->
 </body>
 </html>

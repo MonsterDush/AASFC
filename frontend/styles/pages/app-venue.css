@@ -1,0 +1,11 @@
+.venue-widget-row{justify-content:space-between;align-items:flex-start;gap:12px}
+.venue-widget-copy{min-width:0;flex:1 1 340px}
+.venue-widget-actions,.billing-promo-row{align-items:flex-start;flex-wrap:wrap}
+.venue-widget-actions{justify-content:flex-end}
+.billing-history-row{justify-content:space-between;gap:8px;margin-top:6px}
+.billing-promo-input{min-width:180px;flex:1 1 auto}
+.venue-member-row{justify-content:space-between;border-bottom:1px solid var(--border);padding:10px 0}
+@media (max-width:560px){
+  .venue-widget-copy{flex-basis:100%}
+  .billing-promo-input{min-width:0;width:100%}
+}

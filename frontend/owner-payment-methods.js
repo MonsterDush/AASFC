@@ -11,7 +11,7 @@ import {
   createPaymentMethod,
   updatePaymentMethod,
   applyDemoReadonlyCaps,
-} from "/app.js";
+} from "/app.js?v=20260719-split1";
 
 const root = document.getElementById("root");
 
@@ -85,7 +85,7 @@ function renderShell() {
     <div class="card">
       <div class="muted">Настрой способы оплат, которые будут в отчёте закрытия смены. По умолчанию создаются: Наличные, Безналичные, СБП, Прочее.</div>
 
-      <div class="itemcard" style="margin-top:12px">
+      <div class="itemcard mt-12">
         <div class="section-head">
           <div class="section-title">
             <b>Список способов оплат</b>
@@ -102,12 +102,12 @@ function renderShell() {
           </label>
         </div>
 
-        <div id="list" style="margin-top:10px">
+        <div id="list" class="mt-10">
           <div class="skeleton"></div><div class="skeleton"></div>
         </div>
       </div>
 
-      <div class="row" style="margin-top:12px">
+      <div class="row mt-12">
         <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
       </div>
     </div>
@@ -131,7 +131,7 @@ function renderShell() {
         <div class="modal__head">
           <div>
             <b class="modal__title" id="editTitle">Способ оплаты</b>
-            <div class="muted" id="editHint" style="margin-top:4px; font-size:12px"></div>
+            <div class="muted small mt-4" id="editHint"></div>
           </div>
           <button class="btn" data-close>Закрыть</button>
         </div>
@@ -208,7 +208,7 @@ function renderList() {
     const left = document.createElement("div");
     left.className = "listrow__left";
     left.innerHTML = `
-      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+      <div class="text-actions">
         <b>${esc(it.title)}</b>
         ${it.is_active ? "" : `<span class=\"badge\">архив</span>`}
       </div>
@@ -216,8 +216,7 @@ function renderList() {
     `;
 
     const right = document.createElement("div");
-    right.className = "row row--nowrap";
-    right.style = "gap:8px; flex:0 0 auto;";
+    right.className = "row row--nowrap gap-8 flex-none";
 
     if (state.can.edit) {
       const btnEdit = document.createElement("button");
@@ -262,25 +261,25 @@ function editorForm({ mode, item }) {
   const activeChecked = (isEdit ? !!it.is_active : true) ? "checked" : "";
 
   return `
-    <div class="grid grid2" style="margin-top:10px">
+    <div class="grid grid2 mt-10">
       <div>
-        <div class="muted" style="margin-bottom:6px">Название</div>
+        <div class="muted mb-6">Название</div>
         <input id="f_title" placeholder="Наличные" value="${esc(it.title || "")}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Порядок в списке</div>
+        <div class="muted mb-6">Порядок в списке</div>
         <input id="f_sort" inputmode="numeric" placeholder="0" value="${esc(it.sort_order ?? 0)}" />
       </div>
       <div>
-        <div class="muted" style="margin-bottom:6px">Отображение</div>
-        <label class="row" style="gap:8px; align-items:center">
+        <div class="muted mb-6">Отображение</div>
+        <label class="row gap-8 ai-center">
           <input type="checkbox" id="f_active" ${activeChecked} />
           <span>Показывать в списке</span>
         </label>
       </div>
     </div>
 
-    <div class="row" style="margin-top:12px; justify-content:flex-end; gap:8px">
+    <div class="row row--end gap-8 mt-12">
       <button class="btn" id="btnCancel" type="button">Отмена</button>
       <button class="btn primary" id="btnSave" type="button">Сохранить</button>
     </div>
