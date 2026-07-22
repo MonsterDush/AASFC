@@ -26,6 +26,14 @@
   --radius-md:16px;
   --radius-lg:22px;
 
+  /* shared layout and responsive component geometry */
+  --content-max:980px;
+  --page-gutter:14px;
+  --page-gutter-compact:10px;
+  --control-height:44px;
+  --bottom-nav-space:84px;
+  --modal-gutter:14px;
+
   --shadow-sm:0 6px 16px rgba(11,18,32,.10);
   --shadow-md:0 10px 24px rgba(11,18,32,.10);
 

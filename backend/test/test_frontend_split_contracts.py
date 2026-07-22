@@ -13,7 +13,7 @@ class PageLoaderContractTests(TestCase):
     def test_all_pages_share_the_fetch_and_dom_aware_loader(self):
         loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
         styles_manifest = (FRONTEND / "styles.css").read_text(encoding="utf-8")
-        style_cache_key = "20260722-split1"
+        style_cache_key = "20260723-polish1"
         core_style_files = (
             "tokens.css",
             "base-layout.css",
@@ -68,6 +68,48 @@ class PageLoaderContractTests(TestCase):
             ".page-loader__hint",
         ):
             self.assertIn(f"{selector}{{", styles)
+
+        for responsive_contract in (
+            "min-height:100dvh",
+            "overflow-x:clip",
+            "min-height:var(--control-height)",
+            ".skeleton--card{height:116px}",
+            "max-height:calc(100dvh - 8px)",
+            "animation-duration:.01ms !important",
+        ):
+            self.assertIn(responsive_contract, styles)
+
+
+class PrimaryPageUiPolishContractTests(TestCase):
+    def test_primary_pages_keep_shared_visual_states_and_page_styles(self):
+        contracts = {
+            "app-venues.html": (
+                "styles/pages/app-venues.css",
+                ("venue-card__layout", "venue-card__actions", "venue-list-state"),
+            ),
+            "app-dashboard.html": (
+                "styles/pages/app-dashboard.css",
+                ("dashboard-section-card", "dashboard-state", "dashboard-sections-grid--state"),
+            ),
+            "app-venue.html": (
+                "styles/pages/app-venue.css",
+                ("venue-notice--setup", "venue-billing-card", "venue-member-row__main"),
+            ),
+            "owner-summary.html": (
+                "styles/pages/finance-pages.css",
+                ("summary-metric--profit", "summary-state", "finance-stat__value is-loading"),
+            ),
+        }
+
+        for html_name, (style_path, required) in contracts.items():
+            html = (FRONTEND / html_name).read_text(encoding="utf-8")
+            styles = (FRONTEND / style_path).read_text(encoding="utf-8")
+            self.assertIn(f'/{style_path}?v=20260723-polish2', html, html_name)
+            for contract in required:
+                self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
+
+        summary_js = (FRONTEND / "owner-summary.js").read_text(encoding="utf-8")
+        self.assertIn('classList.remove("is-loading")', summary_js)
 
 
 class AppFacadeSplitContractTests(TestCase):

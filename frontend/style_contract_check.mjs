@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const stylesPath = path.join(frontendDir, "styles.css");
-const globalStyleCacheKey = "20260722-split1";
+const globalStyleCacheKey = "20260723-polish1";
 const coreStyleFiles = [
   "tokens.css",
   "base-layout.css",
@@ -48,6 +48,7 @@ const extractedPageStyles = new Map([
   ["admin-invites.html", "styles/pages/invites.css"],
   ["admin-position-templates.html", "styles/pages/admin-position-templates.css"],
   ["app-adjustments.html", "styles/pages/app-adjustments.css"],
+  ["app-dashboard.html", "styles/pages/app-dashboard.css"],
   ["app-venue.html", "styles/pages/app-venue.css"],
   ["app-venues.html", "styles/pages/app-venues.css"],
   ["auth.html", "styles/pages/auth.css"],
@@ -73,20 +74,24 @@ const extractedPageStyles = new Map([
   ["staff-shifts.html", "styles/pages/staff-shifts.css"],
 ]);
 const pageStyleCacheKeyOverrides = new Map([
+  ["app-dashboard.html", "20260723-polish2"],
+  ["app-venue.html", "20260723-polish2"],
+  ["app-venues.html", "20260723-polish2"],
   ["admin-demo-analytics.html", "20260722-dynamic1"],
   ["admin-position-templates.html", "20260720-unified8"],
-  ["owner-economics-plans.html", "20260720-unified9"],
-  ["owner-expenses.html", "20260720-unified9"],
-  ["owner-finance-ledger.html", "20260720-unified9"],
-  ["owner-payroll.html", "20260720-unified9"],
-  ["owner-recurring-expenses.html", "20260720-unified9"],
+  ["owner-economics-plans.html", "20260723-polish2"],
+  ["owner-expenses.html", "20260723-polish2"],
+  ["owner-finance-ledger.html", "20260723-polish2"],
+  ["owner-payroll.html", "20260723-polish2"],
+  ["owner-recurring-expenses.html", "20260723-polish2"],
   ["owner-setup.html", "20260720-unified10"],
-  ["owner-summary.html", "20260720-unified9"],
-  ["owner-turnover.html", "20260720-unified9"],
+  ["owner-summary.html", "20260723-polish2"],
+  ["owner-turnover.html", "20260723-polish2"],
   ["staff-adjustments.html", "20260720-unified8"],
 ]);
 const inlineFreePages = [
   "admin-position-templates.html",
+  "app-dashboard.html",
   "app-venue.html",
   "app-venues.html",
   "owner-economics-plans.html",
@@ -107,7 +112,7 @@ const inlineFreeEntrypoints = new Map([
   ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20260720-unified9"],
   ["owner-payroll.html", "/owner-payroll.js?v=20260720-unified9"],
   ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260720-unified9"],
-  ["owner-setup.html", "/owner-setup.js?v=20260722-dynamic1"],
+  ["owner-setup.html", "/owner-setup.js?v=20260723-functional1"],
   ["owner-summary.html", "/owner-summary.js?v=20260720-unified9"],
   ["owner-turnover.html", "/owner-turnover.js?v=20260720-unified9"],
   ["shift-intervals.html", "/shift-intervals.js?v=20260720-unified8"],
@@ -248,7 +253,7 @@ for (const pageStylePath of new Set(extractedPageStyles.values())) {
     `${pageStylePath} has unbalanced braces`,
   );
 }
-assert.ok(stylesSource.split("\n").length < 1_850, "global style modules unexpectedly grew");
+assert.ok(stylesSource.split("\n").length < 2_000, "global style modules unexpectedly grew");
 assert.ok(stylesManifestSource.split("\n").length < 30, "styles.css manifest unexpectedly grew");
 assert.ok(appSource.split("\n").length < 1_600, "app.js regained runtime style payloads");
 assert.ok(pageLoaderSource.split("\n").length < 180, "page-loader.js unexpectedly grew");
@@ -359,6 +364,24 @@ assert.doesNotMatch(adminVenuesSource, /<style\b/i);
 const ownerSetupSource = fs.readFileSync(path.join(frontendDir, "owner-setup.html"), "utf8");
 assert.doesNotMatch(ownerSetupSource, /var\(--line\b/, "owner setup must use the shared border token");
 
+for (const [htmlFileName, pageStylePath, contracts] of [
+  ["app-venues.html", "styles/pages/app-venues.css", ["venue-card__layout", "venue-card__actions", "venue-list-state"]],
+  ["app-dashboard.html", "styles/pages/app-dashboard.css", ["dashboard-section-card", "dashboard-state", "dashboard-sections-grid--state"]],
+  ["app-venue.html", "styles/pages/app-venue.css", ["venue-notice--setup", "venue-billing-card", "venue-member-row__main"]],
+  ["owner-summary.html", "styles/pages/finance-pages.css", ["summary-metric--profit", "summary-state", "finance-stat__value is-loading"]],
+]) {
+  const htmlSource = fs.readFileSync(path.join(frontendDir, htmlFileName), "utf8");
+  const pageStyleSource = fs.readFileSync(path.join(frontendDir, pageStylePath), "utf8");
+  for (const contract of contracts) {
+    assert.ok(
+      htmlSource.includes(contract) || pageStyleSource.includes(contract),
+      `${htmlFileName} lost UI polish contract ${contract}`,
+    );
+  }
+}
+const ownerSummarySource = fs.readFileSync(path.join(frontendDir, "owner-summary.js"), "utf8");
+assert.ok(ownerSummarySource.includes('classList.remove("is-loading")'), "owner summary must settle metric skeletons");
+
 for (const [htmlFileName, pageStylePath] of extractedPageStyles) {
   const htmlSource = fs.readFileSync(path.join(frontendDir, htmlFileName), "utf8");
   assert.doesNotMatch(htmlSource, /<style\b/i, `${htmlFileName} must not contain embedded CSS`);
@@ -453,6 +476,12 @@ for (const fileName of unifiedCatalogFiles) {
 }
 
 for (const token of [
+  "--content-max",
+  "--page-gutter",
+  "--page-gutter-compact",
+  "--control-height",
+  "--bottom-nav-space",
+  "--modal-gutter",
   "--statusWarningBg",
   "--statusWarningBorder",
   "--statusErrorBg",
@@ -464,6 +493,20 @@ for (const token of [
   "--surfaceTintStrong",
 ]) {
   assert.ok(stylesSource.includes(`${token}:`), `${token} is missing`);
+}
+
+for (const responsiveContract of [
+  "min-height:100dvh",
+  "overflow-x:clip",
+  "padding-right:max(var(--page-gutter),env(safe-area-inset-right))",
+  "min-height:var(--control-height)",
+  ".skeleton--card{height:116px}",
+  ".section-head{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch}",
+  ".screen-hero__head,.section-card__head{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch}",
+  "max-height:calc(100dvh - 8px)",
+  "animation-duration:.01ms !important",
+]) {
+  assert.ok(stylesSource.includes(responsiveContract), `responsive foundation lost ${responsiveContract}`);
 }
 
 for (const selector of [

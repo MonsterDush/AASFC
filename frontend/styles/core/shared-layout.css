@@ -4,8 +4,10 @@
 .back-actions{display:flex;gap:8px;flex-wrap:wrap}
 
 .screen-hero{display:grid;gap:12px}
-.screen-hero__head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
-.screen-hero__toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.screen-hero__head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;min-width:0}
+.screen-hero__head > *{min-width:0}
+.screen-hero__toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
+.screen-hero__toolbar > *{min-width:0}
 .screen-hero__period{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
 .screen-hero__actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .screen-hero__actions .economics-date-picker{width:auto;min-width:160px}
@@ -64,7 +66,8 @@
 
 
 .section-card{display:grid;gap:12px;align-content:flex-start;}
-.section-card__head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.section-card__head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;min-width:0}
+.section-card__head > *{min-width:0}
 .section-card__title{display:grid;gap:6px}
 .section-card__actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
@@ -110,5 +113,13 @@
   .hero-summary-card__value{font-size:24px}
 }
 
+@media (max-width:560px){
+  .screen-hero__head,.section-card__head{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch}
+  .screen-hero__toolbar{align-items:stretch}
+  :is(.screen-hero__actions,.section-card__actions,.btn-row,.back-actions,.catalog-actions,.inline-actions,.text-actions,.row-link-actions){width:100%}
+  :is(.screen-hero__actions,.section-card__actions,.btn-row,.back-actions,.catalog-actions,.inline-actions,.text-actions,.row-link-actions) > .btn{flex:1 1 140px}
+  .state__actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr))}
+  .state__actions .btn{width:100%}
+}
 
 
