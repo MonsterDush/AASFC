@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260722-split1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Админ · Заведения</title>
 
@@ -53,9 +53,9 @@
           <option value="legacy_multi">Несколько ников в Telegram</option>
         </select>
         <input id="ownerTg" type="text" placeholder="@username" />
-        <input id="ownerPhone" type="text" placeholder="+7 999 123-45-67" style="display:none" />
-        <input id="ownerUserId" type="text" placeholder="Номер пользователя владельца" style="display:none" />
-        <input id="owners" type="text" placeholder="Ники владельцев: ivan, petr" style="display:none" />
+        <input class="hidden" id="ownerPhone" type="text" placeholder="+7 999 123-45-67" />
+        <input class="hidden" id="ownerUserId" type="text" placeholder="Номер пользователя владельца" />
+        <input class="hidden" id="owners" type="text" placeholder="Ники владельцев: ivan, petr" />
         <button id="btnCreate" class="btn primary">Создать</button>
       </div>
       <div id="createResult" class="muted"></div>
@@ -103,7 +103,7 @@
     confirmModal,
     openModal,
     mountNav
-  } from "/app.js?v=20260719-split1";
+  } from "/app.js?v=20260722-dynamic1";
 
   // без replaceAll (Telegram WebView)
   function esc(s){
@@ -259,10 +259,10 @@
 
   function syncOwnerMode() {
     const mode = document.getElementById("ownerMode").value;
-    document.getElementById("ownerTg").style.display = mode === "tg" ? "" : "none";
-    document.getElementById("ownerPhone").style.display = mode === "phone" ? "" : "none";
-    document.getElementById("ownerUserId").style.display = mode === "user_id" ? "" : "none";
-    document.getElementById("owners").style.display = mode === "legacy_multi" ? "" : "none";
+    document.getElementById("ownerTg").classList.toggle("hidden", mode !== "tg");
+    document.getElementById("ownerPhone").classList.toggle("hidden", mode !== "phone");
+    document.getElementById("ownerUserId").classList.toggle("hidden", mode !== "user_id");
+    document.getElementById("owners").classList.toggle("hidden", mode !== "legacy_multi");
   }
 
   async function createVenue() {
@@ -534,7 +534,7 @@
 
     // важно: ждём логин, чтобы не было "иногда Load Failed" из-за гонки cookie
     const r = await ensureLogin({ silent: true });
-    bannerEl.style.display = r.ok ? "none" : "";
+    bannerEl.classList.toggle("hidden", r.ok);
     if (!r.ok) {
       setStatus("Нет авторизации");
       return;

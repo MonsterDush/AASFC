@@ -20,13 +20,13 @@ import {
   updatePayComponent,
   deletePayComponent,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 import { createPayComponentSupport } from "/owner-pay-profile/component-support.js?v=20260720-unified7";
 import { createPayComponentFormRenderer } from "/owner-pay-profile/component-form.js?v=20260720-unified7";
 import { createPayComponentController } from "/owner-pay-profile/component-controller.js?v=20260720-unified7";
 import { createPayComponentList } from "/owner-pay-profile/component-list.js?v=20260720-unified7";
-import { createPayAssignmentController } from "/owner-pay-profile/assignment-controller.js?v=20260720-unified7";
+import { createPayAssignmentController } from "/owner-pay-profile/assignment-controller.js?v=20260723-functional1";
 
 const root = document.getElementById("root");
 
@@ -53,7 +53,12 @@ function parseParams() {
 
 function memberName(member) {
   if (!member) return "—";
-  return member.display_name || member.short_name || member.full_name || (member.tg_username ? `@${member.tg_username}` : "—");
+  return member.display_name
+    || member.short_name
+    || member.full_name
+    || (member.tg_username ? `@${member.tg_username}` : "")
+    || member.phone
+    || (member.user_id ? `user #${member.user_id}` : "—");
 }
 
 let state = {

@@ -17,7 +17,7 @@ import {
   getStoredDemoUiState,
   getDemoMonthLabel,
   mountDemoPageTour,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
 
@@ -210,7 +210,7 @@ function openLegendModal() {
     const c = colorForInterval(i.id);
     return `
       <div class="legend__row">
-        <div class="legend__swatch" style="background:${escapeHtml(c)}"></div>
+        <div class="legend__swatch" style="--interval-color:${escapeHtml(c)}"></div>
         <div class="legend__text">
           <div class="legend__title">${escapeHtml(title)}</div>
           <div class="legend__sub">${escapeHtml(sub)}</div>
@@ -842,8 +842,8 @@ function positionScheduleFilterMenu() {
   const triggerRect = trigger.getBoundingClientRect();
   const menuWidth = Math.min(360, Math.max(280, window.innerWidth - pad * 2));
 
-  menu.style.width = `${menuWidth}px`;
-  menu.style.maxWidth = `${Math.max(240, window.innerWidth - pad * 2)}px`;
+  menu.style.setProperty("--filter-menu-width", `${menuWidth}px`);
+  menu.style.setProperty("--filter-menu-max-width", `${Math.max(240, window.innerWidth - pad * 2)}px`);
 
   const menuRect = menu.getBoundingClientRect();
   let left = triggerRect.left + (triggerRect.width / 2) - (menuRect.width / 2);
@@ -855,8 +855,8 @@ function positionScheduleFilterMenu() {
   if (!fitsBelow && fitsAbove) top = triggerRect.top - 8 - menuRect.height;
   else if (!fitsBelow) top = Math.max(pad, window.innerHeight - pad - menuRect.height);
 
-  menu.style.left = `${Math.round(left)}px`;
-  menu.style.top = `${Math.round(top)}px`;
+  menu.style.setProperty("--filter-menu-left", `${Math.round(left)}px`);
+  menu.style.setProperty("--filter-menu-top", `${Math.round(top)}px`);
 }
 
 function setScheduleFilterMenuOpen(open) {
@@ -1243,7 +1243,7 @@ function renderShiftCard(s, allowEdit) {
     <div class="card shiftcard" data-shiftcard="${shiftId}">
       <div class="shiftcard__head">
         <div class="shiftcard__title">
-          <div class="shiftcard__line1"><span class="intchip" style="background:${intColor}"></span><b>${escapeHtml(title)}</b>${shiftIsClosed(s) ? `<span class="badge shift-done-badge">✓ закрыта</span>` : ``}</div>
+          <div class="shiftcard__line1"><span class="intchip" style="--interval-color:${escapeHtml(intColor)}"></span><b>${escapeHtml(title)}</b>${shiftIsClosed(s) ? `<span class="badge shift-done-badge">✓ закрыта</span>` : ``}</div>
           ${time ? `<div class="shiftcard__meta muted">${escapeHtml(time)}</div>` : ``}
         </div>
         ${allowEdit ? `<button class="btn danger sm" data-delete-shift="${shiftId}" type="button">Удалить смену</button>` : ``}

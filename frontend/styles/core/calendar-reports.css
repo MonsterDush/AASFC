@@ -1,0 +1,160 @@
+/* ------------------------------------------------------------
+   Legend (interval colors)
+------------------------------------------------------------ */
+.legend{display:flex;flex-direction:column;gap:10px;margin-top:10px;}
+.legend__row{display:flex;align-items:center;gap:10px;min-width:0;padding:10px;border:1px solid var(--border);border-radius:14px;background:var(--card)}
+.legend__swatch{width:14px;height:14px;border-radius:999px;flex:0 0 14px;box-shadow:0 0 0 2px rgba(0,0,0,0.02);background:var(--interval-color,var(--muted))}
+.legend__text{min-width:0}
+.legend__title{font-weight:900}
+.legend__sub{margin-top:2px;color:var(--textSoft);font-size:var(--fs-2);line-height:var(--lh-3)}
+
+/* ------------------------------------------------------------
+   Simple bar chart (salary/month)
+------------------------------------------------------------ */
+.chart{margin-top:10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);padding:10px;overflow:auto}
+.chart__bars{display:flex;align-items:flex-end;gap:8px;min-height:110px}
+.bar{appearance:none;border:0;background:transparent;padding:0;cursor:pointer;flex:0 0 10px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.bar__track{width:10px;height:96px;border-radius:999px;background:var(--accentA10);border:1px solid var(--border);display:flex;align-items:flex-end;overflow:hidden}
+.bar__fill{width:100%;height:var(--h,0%);background:var(--barColor,var(--accent));border-radius:999px}
+.bar__label{font-size:10px;color:var(--muted);line-height:1}
+.bar:focus{outline:none}
+.bar:focus .bar__track{box-shadow:var(--focusRing)}
+
+.month-controls{
+  font-size: 25px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  flex:1 1 auto;
+  justify-content:center;
+}
+
+/* Salary day rows */
+.dayrow__right{display:flex;align-items:center;gap:10px}
+.day-salary--muted{opacity:.45}
+.section{border-bottom:1px solid var(--border);padding:10px 0}
+.section:last-child{border-bottom:0}
+
+/* Photo viewer */
+.photoStage{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#000}
+.photoStage__img{display:block;width:100%;height:auto;max-height:70vh;object-fit:contain;margin:0 auto}
+
+/* width utilities */
+.minw-240{min-width:240px}
+.minw-380{min-width:380px}
+.maxw-45{max-width:45px !important}
+
+
+/* ===== Month calendar: ALL mode dots ===== */
+#calGrid:not(.is-week) .cal-cell{ padding-right:6px; }
+
+#calGrid:not(.is-week) .cal-badges.cal-badges--dots{
+  flex-direction:row;
+  flex-wrap:wrap;           /* allow 2nd row */
+  gap:3px;
+  row-gap:3px;
+  margin-top:6px;
+  align-items:center;
+  align-content:flex-start;
+  padding-right:2px;
+  max-width:100%;
+}
+
+#calGrid:not(.is-week) .cal-dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  box-sizing:border-box;
+  border:2px solid var(--dot, var(--muted));
+  background:transparent;
+  flex:0 0 auto;
+  display:block;
+}
+
+#calGrid:not(.is-week) .cal-dot.is-filled{
+  background:var(--dot, var(--muted));
+}
+
+#calGrid:not(.is-week) .cal-dot.is-more{
+  border-color: var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:6.5px;
+  font-weight:900;
+  letter-spacing:-0.2px;
+}
+
+
+/* ===== PATCH: week header readability + month dots wrap v3 ===== */
+/* Week header: consistent readable color across Telegram themes */
+#calGrid.is-week .cal-weektop .cal-weekname,
+#calGrid.is-week .cal-weektop .cal-weekdate,
+#calGrid.is-week .cal-weektop .cal-daymeta{
+  color: var(--text);
+}
+#calGrid.is-week .cal-weektop .cal-weekname{ opacity:.72; }
+#calGrid.is-week .cal-weektop .cal-daymeta{ opacity:.72; }
+
+/* Dots: allow second row */
+#calGrid:not(.is-week) .cal-badges.cal-badges--dots{
+  flex-wrap:wrap;
+  row-gap:3px;
+}
+
+/* ===== Shift report (B2): dynamic close form ===== */
+.badge--draft{border-color:rgba(255,204,0,.42);background:rgba(255,204,0,.16)}
+.badge--closed{border-color:rgba(52,199,89,.34);background:rgba(52,199,89,.12)}
+
+.cal-cell--draft{background:rgba(255,204,0,.12);border-color:rgba(255,204,0,.24);box-shadow:0 0 0 1px rgba(255,204,0,.14) inset}
+.cal-cell--closed{background:rgba(52,199,89,.12);border-color:rgba(52,199,89,.24);box-shadow:0 0 0 1px rgba(52,199,89,.18) inset}
+.cal-cell--report-overdue{background:rgba(255,59,48,.11);border-color:rgba(255,59,48,.22);box-shadow:0 0 0 1px rgba(255,59,48,.14) inset}
+
+.rep-topmeta{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.rep-topmeta__left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rep-topmeta__right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.rep-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;line-height:1;padding:5px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);font-weight:900;letter-spacing:.06em}
+.rep-badge--draft{opacity:.85}
+.rep-badge--closed{border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
+
+.rep-sec{border:1px solid var(--border);background:var(--surface2);border-radius:16px;padding:12px;margin-top:12px}
+.rep-sec__head{margin-bottom:10px}
+.rep-sec__body{min-width:0}
+
+.rep-grid{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px}
+.rep-grid--single{grid-template-columns:1fr}
+@media (max-width: 520px){
+  .rep-grid{grid-template-columns:1fr}
+}
+
+.rep-field{display:block;min-width:0}
+.rep-field__label{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;font-size:12px;color:var(--muted)}
+.rep-field input{width:100%}
+
+.rep-totals{display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:10px}
+@media (max-width: 520px){
+  .rep-totals{grid-template-columns:1fr}
+}
+.rep-total{border:1px solid var(--border);background:var(--card);border-radius:14px;padding:10px;min-width:0}
+.rep-total__v{font-weight:950;font-size:16px;margin-top:4px}
+.rep-total--discr.is-bad{border-color:var(--dangerBorder);background:rgba(220,60,60,.06)}
+.rep-total--discr.is-ok{opacity:.92}
+
+.rep-comment{width:100%;min-height:92px;resize:none}
+.rep-comment.is-required{border-color:var(--dangerBorder)!important;box-shadow:0 0 0 2px rgba(220,60,60,.12) inset}
+
+.rep-divider{height:1px;background:var(--border);margin:14px 0}
+
+.audit-item{border:1px solid var(--border);background:var(--card);border-radius:14px;padding:8px 10px;margin-top:10px}
+.audit-item summary{cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:center;list-style:none}
+.audit-item summary::-webkit-details-marker{display:none}
+.audit-when{font-weight:900}
+.audit-body{margin-top:10px}
+.audit-list{margin:0;padding-left:18px}
+.audit-list li{margin:4px 0}
+
+

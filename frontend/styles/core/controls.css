@@ -1,0 +1,112 @@
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;text-decoration:none;border:1px solid var(--border);cursor:pointer;padding:11px 12px;border-radius:12px;background:var(--surface2);color:var(--text);font-weight:800;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease,opacity .16s ease}
+.btn:hover{border-color:var(--accentSoftBorder);box-shadow:0 0 0 1px var(--accentA12) inset}
+.btn.primary{background:var(--accent);color:var(--accentText);border-color:transparent;box-shadow:0 10px 24px var(--accentA18)}
+.btn.danger{background:var(--dangerBg);border-color:var(--dangerBorder);color:var(--dangerText)}
+.btn.ghost{background:transparent;border-color:var(--border);box-shadow:none}
+.btn.subtle{background:transparent;border-color:var(--accentSoftBorder);color:var(--text);box-shadow:none}
+.btn.subtle:hover,.btn.ghost:hover{background:var(--accentSoftBg)}
+.btn.inline,.btn-inline{min-height:38px;padding:8px 12px;border-radius:999px;font-size:13px}
+.btn.linklike{padding:8px 12px;border-radius:999px;font-size:13px}
+.btn.block{width:100%}
+.btn.small{min-height:36px;padding:8px 10px;font-size:13px}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn:active{transform:translateY(1px)}
+.btn.sm{padding:8px 10px;font-size:12px}
+a.btn{color:var(--text);text-decoration:none}
+a.btn.primary{color:var(--accentText)}
+
+a.link{color:var(--accent);text-decoration:none;font-weight:800}
+
+input:not([type="checkbox"]):not([type="radio"]),select,textarea{
+  width:100%;
+  max-width:100%;
+  padding:11px 12px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0)), var(--inputBg);
+  color:var(--text);
+  font-size:16px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  transition:border-color .16s ease, box-shadow .16s ease, background .16s ease, transform .16s ease;
+}
+input[type="text"],input[type="search"],input[type="number"],input[type="date"],input[type="month"],input[type="tel"],input[type="password"],input[type="email"]{min-width:min(220px,100%)}
+select{
+  min-width:min(180px,100%);
+  appearance:none;
+  -webkit-appearance:none;
+  padding-right:40px;
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0)),
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    0 0,
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size:
+    auto,
+    6px 6px,
+    6px 6px;
+  background-repeat:no-repeat;
+}
+select[multiple]{padding-right:12px;background-image:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0));background-position:0 0;background-size:auto;background-repeat:no-repeat;}
+select option{color:#0B1220}
+textarea{
+  min-height:96px;
+  resize:none;
+  outline:none;
+}
+label > input:not([type="checkbox"]):not([type="radio"]),
+label > select,
+label > textarea{
+  margin-top:6px;
+}
+input:not([type="checkbox"]):not([type="radio"]):hover,
+select:hover,
+textarea:hover{
+  border-color:var(--accentSoftBorder);
+}
+input:not([type="checkbox"]):not([type="radio"]):focus,select:focus,textarea:focus{
+  outline:none;
+  border-color:var(--accentA45);
+  box-shadow:var(--focusRing), inset 0 1px 0 rgba(255,255,255,.05);
+}
+input:not([type="checkbox"]):not([type="radio"])::placeholder,
+textarea::placeholder{
+  color:var(--muted);
+  opacity:.88;
+}
+
+@media (max-width:420px){
+  input:not([type="checkbox"]):not([type="radio"]),select{min-width:0;width:100%}
+}
+
+
+/* checkbox inputs */
+input[type="checkbox"],input[type="radio"]{
+  -webkit-appearance:auto;
+  appearance:auto;
+  padding:0;
+  border:none;
+  background:transparent;
+  min-width:0;
+  width:18px;
+  min-height:18px;
+  height:18px;
+  margin:0;
+  flex:0 0 18px;
+  accent-color:var(--accent);
+}
+
+.chk,
+.checkline{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none;vertical-align:middle;max-width:100%}
+.chk .muted,
+.checkline .muted{margin:0}
+.chk input,
+.checkline input{flex:0 0 18px}
+.checkline{font-weight:600;color:var(--text)}
+.checkline--block{display:flex;width:100%}
+.checkline__text{min-width:0}
+.badge input[type="checkbox"]{margin-right:6px}
+

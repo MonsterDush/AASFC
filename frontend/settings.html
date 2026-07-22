@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260722-split1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Настройки</title>
 </head>
@@ -167,7 +167,7 @@
       getStoredDemoUiState,
       isDemoReadonlyUi,
       getDemoMonthLabel,
-    } from "/app.js?v=20260719-split1";
+    } from "/app.js?v=20260722-dynamic1";
 
     applyTelegramTheme();
     mountCommonUI("settings");
@@ -547,7 +547,7 @@
         const error = item?.error_text ? `<div class="notif-history-error mt-8">${esc(item.error_text)}</div>` : "";
         return `
           <div class="itemcard mt-8 notif-history-card">
-            <div class="row gap-8 wrap" style="justify-content:space-between; align-items:flex-start;">
+            <div class="row row--between gap-8 wrap ai-start">
               <div>
                 <b>${esc(typeLabel(item?.notification_type))}</b>
                 <div class="muted small mt-6">${esc(timeLabel)}</div>

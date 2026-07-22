@@ -11,7 +11,7 @@ import {
   createKpiMetric,
   updateKpiMetric,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 
 const root = document.getElementById("root");
 
@@ -411,7 +411,7 @@ async function load() {
 
   const btnCreate = document.getElementById("btnCreate");
   if (btnCreate) {
-    btnCreate.style.display = state.can.create ? "" : "none";
+    btnCreate.classList.toggle("hidden", !state.can.create);
     btnCreate.onclick = () => openEditor({ mode: "create" });
   }
 

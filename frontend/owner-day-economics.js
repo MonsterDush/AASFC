@@ -15,7 +15,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
 let financialValuesHidden = false;
@@ -173,12 +173,12 @@ function renderList(id, rows, emptyText, valueFormatter = null) {
       : (row.amount_minor !== undefined ? fmtMoneyMinor(row.amount_minor || 0) : String(row.value_numeric ?? "—"));
     const subtitle = row.subtitle || row.code || row.unit || "";
     return `
-      <div class="row" style="justify-content:space-between; gap:12px; align-items:flex-start; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.06);">
+      <div class="row row--between gap-12 ai-start summary-list-row">
         <div>
           <div><b>${esc(row.title || "—")}</b></div>
           ${subtitle ? `<div class="muted mt-6">${esc(subtitle)}</div>` : ""}
         </div>
-        <div style="text-align:right; white-space:nowrap;">${esc(value)}</div>
+        <div class="summary-list-value">${esc(value)}</div>
       </div>
     `;
   }).join("");
@@ -345,10 +345,10 @@ function renderStatus(econ) {
   const hint = document.getElementById("economicsDraftHint");
   if (card && hint) {
     if (draftCount > 0) {
-      card.style.display = "";
+      card.classList.remove("hidden");
       hint.textContent = `${draftCount} неподтверждённых расходов на сумму ${fmtMoneyMinor(draftTotal)}. Они не участвуют в прибыли дня, пока не подтверждены.`;
     } else {
-      card.style.display = "none";
+      card.classList.add("hidden");
       hint.textContent = "—";
     }
   }
@@ -366,7 +366,7 @@ function renderAlerts(alerts) {
     const label = sev === "CRITICAL" ? "Критично" : sev === "WARN" ? "Внимание" : "Инфо";
     return `
       <div class="itemcard mt-8">
-        <div class="row" style="justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+        <div class="row row--between gap-12 ai-center wrap">
           <div>
             <b>${esc(a.title || a.code || "Сигнал")}</b>
             <div class="muted mt-6">${esc(a.detail || "")}</div>
@@ -535,7 +535,7 @@ async function boot() {
   }
 
   const manageBlock = document.getElementById("economicsManageBlock");
-  if (manageBlock) manageBlock.style.display = access.canManage ? "" : "none";
+  manageBlock?.classList.toggle("hidden", !access.canManage);
 
   const openSummaryBtn = document.getElementById("openSummaryBtn");
   if (openSummaryBtn) openSummaryBtn.onclick = () => { location.href = buildSummaryLink(); };

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260722-split1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Экономика дня</title>
 </head>
@@ -53,7 +53,7 @@
               <button type="button" id="economicsSlotDay">День</button>
               <button type="button" id="economicsSlotNight">Ночь</button>
             </div>
-            <input id="economicsDatePick" type="date" style="width:auto; min-width:160px;" />
+            <input class="economics-date-picker" id="economicsDatePick" type="date" />
             <button class="btn" id="refreshEconomicsBtn">Обновить</button>
           </div>
         </div>
@@ -82,7 +82,7 @@
         </div>
       </div>
 
-      <div class="itemcard mt-12" id="economicsDraftCard" style="display:none;">
+      <div class="itemcard mt-12 hidden" id="economicsDraftCard">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Есть черновые расходы</b>
@@ -161,7 +161,7 @@
         </div>
       </div>
 
-      <div class="itemcard mt-12" id="economicsManageBlock" style="display:none;">
+      <div class="itemcard mt-12 hidden" id="economicsManageBlock">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Управление планом и нормативами</b>
@@ -179,6 +179,6 @@
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
-  <script type="module" src="/owner-day-economics.js"></script>
+  <script type="module" src="/owner-day-economics.js?v=20260722-dynamic1"></script>
 </body>
 </html>

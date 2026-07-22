@@ -12,7 +12,7 @@ import {
   isDemoReadonlyUi,
   getDemoMonthLabel,
   coerceDemoMonth,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm } from "/permissions.js";

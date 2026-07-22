@@ -212,11 +212,13 @@ def update_promo_code(
     if existing is not None and int(existing.id) != int(promo.id):
         raise ValueError("Промокод с таким кодом уже существует")
 
+    target_kind = kind or promo.kind
+    same_kind = target_kind == promo.kind
     kind_norm, percent_norm, amount_norm, days_norm = validate_promo_payload(
-        kind=kind or promo.kind,
-        percent_value=percent_value if kind is not None or promo.kind == PROMO_KIND_PERCENT else promo.percent_value,
-        amount_minor=amount_minor if kind is not None or promo.kind == PROMO_KIND_FIXED_MINOR else promo.amount_minor,
-        free_days=free_days if kind is not None or promo.kind == PROMO_KIND_FREE_DAYS else promo.free_days,
+        kind=target_kind,
+        percent_value=percent_value if percent_value is not None else (promo.percent_value if same_kind else None),
+        amount_minor=amount_minor if amount_minor is not None else (promo.amount_minor if same_kind else None),
+        free_days=free_days if free_days is not None else (promo.free_days if same_kind else None),
     )
     promo.code = code_norm
     promo.title = promo.title if title is None else (str(title).strip() or None)

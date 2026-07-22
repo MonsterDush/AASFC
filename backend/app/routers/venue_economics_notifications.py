@@ -18,6 +18,7 @@ from app.services.notification_logs import (
     notification_dedupe_scope,
 )
 from app.services.payroll.day_breakdown import build_member_day_breakdown
+from app.services.finance.day_economics import get_day_economics
 from app.routers.venue_access import (
     _has_revenue_view_access,
     _is_active_member_or_admin,
@@ -65,6 +66,7 @@ from app.routers.venue_adjustment_notifications import (
     _send_adjustment_dispute_event_notifications,
 )
 from app.routers.venue_notification_common import (
+    NotificationDeliveryError,
     _build_owner_day_economics_link,
     _build_staff_salary_day_link,
     _should_notify_user,
@@ -407,7 +409,7 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
     venue_name = _venue_name(db, venue_id)
     link = _build_staff_salary_day_link(venue_id=venue_id, target_date=target_date)
     seen_tg_user_ids: set[int] = set()
-    delivered_any = False
+    had_delivery_failure = False
     had_retryable_error = False
 
     for recipient in users:
@@ -487,12 +489,15 @@ def _send_salary_day_breakdown_notifications(db: Session, *, venue_id: int, targ
             db.rollback()
             raise
 
-        delivered_any = delivered_any or ok
+        had_delivery_failure = had_delivery_failure or not ok
         had_retryable_error = had_retryable_error or (retryable and not ok)
 
     db.commit()
-    if had_retryable_error and not delivered_any:
-        raise RuntimeError("salary day breakdown delivery failed with retryable error")
+    if had_delivery_failure:
+        raise NotificationDeliveryError(
+            "salary day breakdown delivery failed",
+            retryable=had_retryable_error,
+        )
 
 
 def _enqueue_soft_alerts_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
@@ -564,8 +569,8 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
     link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
     sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
     alert_signature = _soft_alert_signature(alerts)
+    had_delivery_failure = False
     had_retryable_error = False
-    delivered_any = False
 
     for recipient in recipients:
         chat_id = int(recipient.tg_user_id)
@@ -616,12 +621,15 @@ def _send_soft_alert_notifications(db: Session, *, venue_id: int, target_date: d
             db.rollback()
             raise
 
-        delivered_any = delivered_any or ok
+        had_delivery_failure = had_delivery_failure or not ok
         had_retryable_error = had_retryable_error or (retryable and not ok)
 
     db.commit()
-    if had_retryable_error and not delivered_any:
-        raise RuntimeError("soft alerts delivery failed with retryable error")
+    if had_delivery_failure:
+        raise NotificationDeliveryError(
+            "soft alerts delivery failed",
+            retryable=had_retryable_error,
+        )
 
 
 def _enqueue_day_economics_summary_job(db: Session, *, venue_id: int, target_date: date) -> NotificationJob:
@@ -685,9 +693,20 @@ def _claim_notification_job(db: Session) -> NotificationJob | None:
     return job
 
 
-def _complete_notification_job(db: Session, job: NotificationJob, *, status: str, last_error: str | None = None) -> None:
+def _complete_notification_job(
+    db: Session,
+    job: NotificationJob,
+    *,
+    status: str,
+    last_error: str | None = None,
+    retryable: bool = True,
+) -> None:
     now = datetime.utcnow()
-    if status == _NOTIFICATION_JOB_STATUS_FAILED and int(job.attempts or 0) < int(job.max_attempts or _NOTIFICATION_JOB_MAX_ATTEMPTS):
+    if (
+        status == _NOTIFICATION_JOB_STATUS_FAILED
+        and retryable
+        and int(job.attempts or 0) < int(job.max_attempts or _NOTIFICATION_JOB_MAX_ATTEMPTS)
+    ):
         job.status = _NOTIFICATION_JOB_STATUS_PENDING
         job.run_after = now + timedelta(minutes=max(int(_NOTIFICATION_JOB_RETRY_MINUTES), 1))
         job.locked_at = None
@@ -769,6 +788,7 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
                             retry_job,
                             status=_NOTIFICATION_JOB_STATUS_FAILED,
                             last_error=str(exc)[:2000],
+                            retryable=bool(getattr(exc, "retryable", True)),
                         )
                         retry_db.commit()
                 log.exception("notification job failed id=%s type=%s: %s", job_id, getattr(job, "job_type", None), exc)
@@ -812,7 +832,7 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
     economics = get_day_economics(db=db, venue_id=venue_id, target_date=target_date)
     venue_name = _venue_name(db, venue_id)
     link = _build_owner_day_economics_link(venue_id=venue_id, target_date=target_date)
-    delivered_any = False
+    had_delivery_failure = False
     had_retryable_error = False
 
     for recipient in recipients:
@@ -864,9 +884,12 @@ def _send_day_economics_summary_notifications(db: Session, *, venue_id: int, tar
             db.rollback()
             raise
 
-        delivered_any = delivered_any or ok
+        had_delivery_failure = had_delivery_failure or not ok
         had_retryable_error = had_retryable_error or (retryable and not ok)
 
     db.commit()
-    if had_retryable_error and not delivered_any:
-        raise RuntimeError("day economics summary delivery failed with retryable error")
+    if had_delivery_failure:
+        raise NotificationDeliveryError(
+            "day economics summary delivery failed",
+            retryable=had_retryable_error,
+        )

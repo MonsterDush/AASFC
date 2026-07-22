@@ -34,7 +34,7 @@ assert.ok(moduleSource.split("\n").length < 900, "schedule export controller is 
 assert.ok(calendarModuleSource.split("\n").length < 850, "calendar controller is too large");
 assert.match(mainSource, /\/staff-shifts\/export-controller\.js\?v=20260719-split1/);
 assert.match(mainSource, /\/staff-shifts\/calendar-controller\.js\?v=20260720-unified6/);
-assert.match(htmlSource, /staff-shifts\.js\?v=20260720-unified6/);
+assert.match(htmlSource, /staff-shifts\.js\?v=20260722-dynamic1/);
 
 const module = await import(pathToFileURL(modulePath));
 assert.equal(typeof module.createStaffShiftExportController, "function");

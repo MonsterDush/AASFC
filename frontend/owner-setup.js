@@ -29,7 +29,7 @@ import {
   updatePayComponent,
   deletePayComponent,
   patchInviteDefaultPosition,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 
 import {
   roleUpper,
@@ -43,7 +43,7 @@ import {
   isSetupDone,
   isSetupPrepareDone,
 } from "/permissions.js?v=20260409-setup2";
-import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPositionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260409-setup-polish1";
+import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPositionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260722-dynamic1";
 
 import { createCatalogSetupController } from "/owner-setup/catalog-editor.js?v=20260720-unified10";
 import { createPayProfileSetupController } from "/owner-setup/pay-profile-editor.js?v=20260720-unified10";
@@ -1042,8 +1042,6 @@ function getPhaseResumeStep(phase) {
     .map((step) => ({ step, ui: getStepUiInfo(step) }));
   const actionable = visible.find(({ step, ui }) => !ui.locked && !step.completed && !step.skipped)
     || visible.find(({ step, ui }) => !ui.locked && (step.requires_attention || step.status === "REQUIRES_ATTENTION"))
-    || visible.find(({ ui }) => !ui.locked)
-    || visible[0]
     || null;
   return actionable?.step || null;
 }
@@ -1058,7 +1056,9 @@ function renderOverview() {
   const extraTotal = Number(state.setup?.extra_total || 0);
   const percent = progress.total > 0 ? Math.round((progress.resolved / progress.total) * 100) : 0;
   const resumeStep = getPhaseResumeStep(state.selectedPhase || getSetupPhase(state.setup));
-  const nextTitle = resumeStep?.title || "Готово";
+  const resumeChip = resumeStep
+    ? `Следующий шаг: ${esc(resumeStep.title)}`
+    : (isSetupDone(state.setup) ? "Настройка завершена" : "Все шаги раздела завершены");
   const prepareDone = isSetupPrepareDone(state.setup);
   const extraDisabled = !prepareDone;
 
@@ -1074,7 +1074,7 @@ function renderOverview() {
       <div class="setup-inline-list">
         <span class="setup-chip">Готово: ${progress.done} из ${progress.total}</span>
         <span class="setup-chip">Решено: ${progress.resolved} из ${progress.total}</span>
-        <span class="setup-chip">Следующий шаг: ${esc(nextTitle)}</span>
+        <span class="setup-chip">${resumeChip}</span>
       </div>
 
       <progress class="setup-progressbar" value="${percent}" max="100" aria-label="Общий прогресс мастера: ${percent}%">${percent}%</progress>

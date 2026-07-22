@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260722-split1" />
   <link rel="stylesheet" href="/styles/pages/admin-position-templates.css?v=20260720-unified8" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Админ · Шаблоны прав</title>
@@ -30,6 +30,18 @@
     </div>
 
     <div id="root" class="tpl-grid"></div>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <div id="modal" class="modal">
+    <div class="modal__backdrop"></div>
+    <div class="modal__panel">
+      <div class="modal__head">
+        <div class="modal__title">Подтверждение</div>
+        <button class="btn" type="button" data-close>Закрыть</button>
+      </div>
+      <div class="modal__body"></div>
+    </div>
   </div>
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>

@@ -7,6 +7,20 @@ import { fileURLToPath } from "node:url";
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const stylesPath = path.join(frontendDir, "styles.css");
+const globalStyleCacheKey = "20260722-split1";
+const coreStyleFiles = [
+  "tokens.css",
+  "base-layout.css",
+  "controls.css",
+  "cards-lists.css",
+  "calendar-core.css",
+  "utilities.css",
+  "calendar-reports.css",
+  "finance-components.css",
+  "shared-layout.css",
+  "overlays-documents.css",
+];
+const coreStylesDir = path.join(frontendDir, "styles", "core");
 const appPath = path.join(frontendDir, "app.js");
 const pageLoaderPath = path.join(frontendDir, "page-loader.js");
 const htmlPageFiles = fs.readdirSync(frontendDir)
@@ -59,6 +73,7 @@ const extractedPageStyles = new Map([
   ["staff-shifts.html", "styles/pages/staff-shifts.css"],
 ]);
 const pageStyleCacheKeyOverrides = new Map([
+  ["admin-demo-analytics.html", "20260722-dynamic1"],
   ["admin-position-templates.html", "20260720-unified8"],
   ["owner-economics-plans.html", "20260720-unified9"],
   ["owner-expenses.html", "20260720-unified9"],
@@ -70,7 +85,6 @@ const pageStyleCacheKeyOverrides = new Map([
   ["owner-turnover.html", "20260720-unified9"],
   ["staff-adjustments.html", "20260720-unified8"],
 ]);
-const dynamicInlineStyleFiles = new Set(["admin-demo-analytics.html"]);
 const inlineFreePages = [
   "admin-position-templates.html",
   "app-venue.html",
@@ -93,7 +107,7 @@ const inlineFreeEntrypoints = new Map([
   ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20260720-unified9"],
   ["owner-payroll.html", "/owner-payroll.js?v=20260720-unified9"],
   ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260720-unified9"],
-  ["owner-setup.html", "/owner-setup.js?v=20260720-unified10"],
+  ["owner-setup.html", "/owner-setup.js?v=20260722-dynamic1"],
   ["owner-summary.html", "/owner-summary.js?v=20260720-unified9"],
   ["owner-turnover.html", "/owner-turnover.js?v=20260720-unified9"],
   ["shift-intervals.html", "/shift-intervals.js?v=20260720-unified8"],
@@ -134,7 +148,32 @@ const inlineFreeModules = [
   "staff-adjustments.js",
   "staff-report.js",
 ];
-const stylesSource = fs.readFileSync(stylesPath, "utf8");
+const allowedInlineStyleAttributes = new Map([
+  ["admin-demo-analytics.html", [' style="--fill-width:${fillPercent(row?.[valueKey], max)}%"']],
+  ["staff-salary.js", [' style="--h:${h}%;--barColor:${barColor}"']],
+  ["staff-shifts.js", [
+    ' style="--interval-color:${escapeHtml(c)}"',
+    ' style="--interval-color:${escapeHtml(intColor)}"',
+  ]],
+  ["staff-shifts/calendar-controller.js", [
+    ' style="--left:${it.leftPct}%;--w:${it.widthPct}%;--line-rgb:${it.rgb}"',
+  ]],
+]);
+const allowedStyleSetProperties = new Map([
+  ["staff-shifts.js", [
+    "--filter-menu-width",
+    "--filter-menu-max-width",
+    "--filter-menu-left",
+    "--filter-menu-top",
+  ]],
+  ["staff-shifts/calendar-controller.js", ["--line-rgb", "--dot"]],
+]);
+const stylesManifestSource = fs.readFileSync(stylesPath, "utf8");
+const coreStyleSources = new Map(coreStyleFiles.map((fileName) => [
+  fileName,
+  fs.readFileSync(path.join(coreStylesDir, fileName), "utf8"),
+]));
+const stylesSource = Array.from(coreStyleSources.values()).join("");
 const appSource = fs.readFileSync(appPath, "utf8");
 const pageLoaderSource = fs.readFileSync(pageLoaderPath, "utf8");
 
@@ -170,11 +209,37 @@ function sourceFiles(directory) {
   });
 }
 
-assert.equal(
-  Array.from(stylesSource).filter((char) => char === "{").length,
-  Array.from(stylesSource).filter((char) => char === "}").length,
-  "styles.css has unbalanced braces",
+const manifestImports = Array.from(
+  stylesManifestSource.matchAll(/@import url\("([^"]+)"\);/g),
+  (match) => match[1],
 );
+assert.deepEqual(
+  fs.readdirSync(coreStylesDir).filter((fileName) => fileName.endsWith(".css")).sort(),
+  [...coreStyleFiles].sort(),
+  "styles/core contains an unregistered module",
+);
+assert.deepEqual(
+  manifestImports,
+  coreStyleFiles.map((fileName) => `/styles/core/${fileName}?v=${globalStyleCacheKey}`),
+  "styles.css core import order or cache key changed",
+);
+assert.equal(
+  stylesManifestSource
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/@import url\("[^"]+"\);/g, "")
+    .trim(),
+  "",
+  "styles.css must remain an import-only manifest",
+);
+for (const [fileName, source] of coreStyleSources) {
+  assert.equal(
+    Array.from(source).filter((char) => char === "{").length,
+    Array.from(source).filter((char) => char === "}").length,
+    `styles/core/${fileName} has unbalanced braces`,
+  );
+  assert.ok(source.split("\n").length < 500, `styles/core/${fileName} unexpectedly grew`);
+  assert.doesNotMatch(source, /@import\b/, `styles/core/${fileName} must not import another module`);
+}
 for (const pageStylePath of new Set(extractedPageStyles.values())) {
   const source = fs.readFileSync(path.join(frontendDir, pageStylePath), "utf8");
   assert.equal(
@@ -183,7 +248,8 @@ for (const pageStylePath of new Set(extractedPageStyles.values())) {
     `${pageStylePath} has unbalanced braces`,
   );
 }
-assert.ok(stylesSource.split("\n").length < 1_850, "styles.css unexpectedly grew");
+assert.ok(stylesSource.split("\n").length < 1_850, "global style modules unexpectedly grew");
+assert.ok(stylesManifestSource.split("\n").length < 30, "styles.css manifest unexpectedly grew");
 assert.ok(appSource.split("\n").length < 1_600, "app.js regained runtime style payloads");
 assert.ok(pageLoaderSource.split("\n").length < 180, "page-loader.js unexpectedly grew");
 
@@ -195,7 +261,7 @@ for (const fileName of htmlPageFiles) {
     `${fileName} page loader cache key is stale`,
   );
   assert.ok(
-    source.includes('href="/styles.css?v=20260720-unified11"'),
+    source.includes(`href="/styles.css?v=${globalStyleCacheKey}"`),
     `${fileName} global stylesheet cache key is stale`,
   );
 }
@@ -251,12 +317,16 @@ for (const selector of [
   ".mb-4",
   ".mb-6",
   ".gap-8",
+  ".gap-6",
   ".gap-10",
   ".gap-12",
   ".ai-start",
   ".row--between",
   ".row--end",
   ".payroll-breakdown",
+  ".summary-list-row",
+  ".summary-list-value",
+  ".screen-hero__actions .economics-date-picker",
 ]) {
   assert.equal(countTopLevelRule(stylesSource, selector), 1, `${selector} must have one canonical rule`);
 }
@@ -296,15 +366,11 @@ for (const [htmlFileName, pageStylePath] of extractedPageStyles) {
     htmlSource.matchAll(/\sstyle\s*=\s*["'][^"']*["']/gi),
     (match) => match[0],
   );
-  if (dynamicInlineStyleFiles.has(htmlFileName)) {
-    assert.deepEqual(
-      inlineAttributes,
-      [' style="width:${fillPercent(row?.[valueKey], max)}%"'],
-      `${htmlFileName} may only keep its runtime bar width`,
-    );
-  } else {
-    assert.deepEqual(inlineAttributes, [], `${htmlFileName} must not contain inline CSS`);
-  }
+  assert.deepEqual(
+    inlineAttributes,
+    allowedInlineStyleAttributes.get(htmlFileName) || [],
+    `${htmlFileName} contains an unapproved inline style`,
+  );
   const pageStyleCacheKey = pageStyleCacheKeyOverrides.get(htmlFileName) || "20260720-unified7";
   assert.ok(
     htmlSource.includes(`href="/${pageStylePath}?v=${pageStyleCacheKey}"`),
@@ -330,7 +396,7 @@ for (const fileName of inlineFreeModules) {
 const staffSalarySource = fs.readFileSync(path.join(frontendDir, "staff-salary.js"), "utf8");
 assert.deepEqual(
   Array.from(staffSalarySource.matchAll(/\sstyle\s*=\s*["'][^"']*["']/gi), (match) => match[0]),
-  [' style="--h:${h}%;--barColor:${barColor}"'],
+  allowedInlineStyleAttributes.get("staff-salary.js"),
   "staff-salary.js may only keep runtime chart variables",
 );
 assert.doesNotMatch(staffSalarySource, /\.style\b/, "staff-salary.js must use classes for visibility and layout");
@@ -338,33 +404,50 @@ assert.doesNotMatch(staffSalarySource, /\.style\b/, "staff-salary.js must use cl
 const staffShiftsSource = fs.readFileSync(path.join(frontendDir, "staff-shifts.js"), "utf8");
 assert.deepEqual(
   Array.from(staffShiftsSource.matchAll(/\sstyle\s*=\s*["'][^"']*["']/gi), (match) => match[0]),
-  [' style="background:${escapeHtml(c)}"', ' style="background:${intColor}"'],
+  allowedInlineStyleAttributes.get("staff-shifts.js"),
   "staff-shifts.js may only keep runtime interval colors",
 );
 assert.deepEqual(
-  Array.from(staffShiftsSource.matchAll(/\.style\.([A-Za-z]+)/g), (match) => match[1]),
-  ["width", "maxWidth", "left", "top"],
-  "staff-shifts.js may only keep runtime filter-menu geometry",
+  Array.from(staffShiftsSource.matchAll(/\.style\.setProperty\(\s*["']([^"']+)/g), (match) => match[1]),
+  allowedStyleSetProperties.get("staff-shifts.js"),
+  "staff-shifts.js may only set approved filter-menu variables",
 );
 
 const staffCalendarSource = fs.readFileSync(path.join(frontendDir, "staff-shifts/calendar-controller.js"), "utf8");
 assert.deepEqual(
   Array.from(staffCalendarSource.matchAll(/\sstyle\s*=\s*["'][^"']*["']/gi), (match) => match[0]),
-  [' style="--left:${it.leftPct}%;--w:${it.widthPct}%;--line-rgb:${it.rgb}"'],
+  allowedInlineStyleAttributes.get("staff-shifts/calendar-controller.js"),
   "calendar-controller.js may only keep runtime timeline geometry and color",
 );
 assert.deepEqual(
-  Array.from(staffCalendarSource.matchAll(/\.style\.([A-Za-z]+)/g), (match) => match[1]),
-  ["setProperty", "setProperty"],
+  Array.from(staffCalendarSource.matchAll(/\.style\.setProperty\(\s*["']([^"']+)/g), (match) => match[1]),
+  allowedStyleSetProperties.get("staff-shifts/calendar-controller.js"),
   "calendar-controller.js may only set runtime CSS variables",
 );
+
+for (const runtimeCssContract of [
+  "background:var(--interval-color,var(--muted))",
+  "top:var(--filter-menu-top,0)",
+  "left:var(--filter-menu-left,0)",
+  "width:var(--filter-menu-width",
+  "max-width:var(--filter-menu-max-width",
+  "left:var(--left)",
+  "width:var(--w)",
+  "height:var(--h,0%)",
+  "background:var(--barColor,var(--accent))",
+  "border:2px solid var(--dot, var(--muted))",
+]) {
+  assert.ok(stylesSource.includes(runtimeCssContract), `styles.css lost ${runtimeCssContract}`);
+}
+const analyticsStyles = fs.readFileSync(path.join(frontendDir, "styles/pages/admin-demo-analytics.css"), "utf8");
+assert.ok(analyticsStyles.includes("width:var(--fill-width,0)"), "analytics bars lost their runtime width variable");
 
 for (const fileName of unifiedCatalogFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.doesNotMatch(source, /(?:\sstyle\s*=|\.style\s*=)/, `${fileName} regained inline layout styles`);
   const htmlSource = fs.readFileSync(path.join(frontendDir, fileName.replace(/\.js$/, ".html")), "utf8");
   assert.ok(
-    htmlSource.includes(`src="/${fileName}?v=20260720-unified4"`),
+    htmlSource.includes(`src="/${fileName}?v=20260722-dynamic1"`),
     `${fileName} cache key is stale`,
   );
 }
@@ -403,7 +486,37 @@ const cssHrefVariants = new Set();
 
 for (const filePath of sourceFiles(frontendDir)) {
   const source = fs.readFileSync(filePath, "utf8");
-  inlineStyleCount += Array.from(source.matchAll(/style\s*=\s*["'][^"']*["']/gi)).length;
+  const relativePath = path.relative(frontendDir, filePath).split(path.sep).join("/");
+  const inlineStyleAttributes = Array.from(
+    source.matchAll(/\sstyle\s*=\s*["'][^"']*["']/gi),
+    (match) => match[0],
+  );
+  inlineStyleCount += inlineStyleAttributes.length;
+  assert.deepEqual(
+    inlineStyleAttributes,
+    allowedInlineStyleAttributes.get(relativePath) || [],
+    `${relativePath} contains an unapproved inline style`,
+  );
+
+  const setProperties = Array.from(
+    source.matchAll(/\.style\.setProperty\(\s*["']([^"']+)/g),
+    (match) => match[1],
+  );
+  assert.deepEqual(
+    setProperties,
+    allowedStyleSetProperties.get(relativePath) || [],
+    `${relativePath} sets an unapproved runtime style property`,
+  );
+  const directStyleProperties = Array.from(
+    source.matchAll(/\.style\.([A-Za-z_$][\w$]*)/g),
+    (match) => match[1],
+  ).filter((property) => property !== "setProperty");
+  assert.deepEqual(directStyleProperties, [], `${relativePath} must use classes or approved CSS variables`);
+  assert.doesNotMatch(
+    source,
+    /(?:\.style\s*\[|\.cssText\b|setAttribute\(\s*["']style["'])/,
+    `${relativePath} bypasses the runtime style allowlist`,
+  );
 
   if (filePath.endsWith(".html")) {
     for (const match of source.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
@@ -416,13 +529,15 @@ for (const filePath of sourceFiles(frontendDir)) {
   }
 }
 
-assert.ok(inlineStyleCount <= 23, `inline style budget exceeded: ${inlineStyleCount}`);
+const approvedInlineStyleCount = Array.from(allowedInlineStyleAttributes.values())
+  .reduce((total, attributes) => total + attributes.length, 0);
+assert.equal(inlineStyleCount, approvedInlineStyleCount, "dynamic inline style count changed");
 assert.equal(embeddedStyleBlockCount, 0, "embedded style blocks are forbidden");
 assert.equal(embeddedStyleLineCount, 0, "embedded style lines are forbidden");
-assert.deepEqual([...cssHrefVariants], ["/styles.css?v=20260720-unified11"]);
+assert.deepEqual([...cssHrefVariants], [`/styles.css?v=${globalStyleCacheKey}`]);
 
 console.log(
-  `style contract: ${stylesSource.split("\n").length - 1} CSS lines, `
+  `style contract: ${stylesSource.split("\n").length - 1} CSS lines in ${coreStyleFiles.length} modules, `
   + `${inlineStyleCount} inline styles, ${embeddedStyleBlockCount} embedded blocks / `
   + `${embeddedStyleLineCount} lines, ${cssHrefVariants.size} cache variant`,
 );

@@ -64,7 +64,8 @@ def _comment_preview(text: str, limit: int = 220) -> str:
 
 def _send_shift_comment_notifications(db, *, now, tz) -> int:
     window_minutes = max(WINDOW_MINUTES * 2, 20)
-    since_utc = datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(minutes=window_minutes)
+    now_utc = now.astimezone(timezone.utc)
+    since_utc = now_utc - timedelta(minutes=window_minutes)
 
     rows = db.execute(
         select(ShiftComment, Shift, ShiftInterval, Venue, User)
@@ -74,6 +75,7 @@ def _send_shift_comment_notifications(db, *, now, tz) -> int:
         .join(User, User.id == ShiftComment.author_user_id)
         .where(Shift.is_active.is_(True))
         .where(ShiftComment.created_at >= since_utc)
+        .where(ShiftComment.created_at <= now_utc)
         .order_by(ShiftComment.created_at.asc(), ShiftComment.id.asc())
     ).all()
 

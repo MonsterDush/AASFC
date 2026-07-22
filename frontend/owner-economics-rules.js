@@ -9,7 +9,7 @@ import {
   getMyVenuePermissions,
   api,
   toast,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 import { roleUpper } from "/permissions.js";
 
 const state = { access: { canManage: false } };
@@ -199,7 +199,7 @@ function renderRules(rules = {}) {
   const form = document.getElementById("economicsRulesFormPage");
   if (!form) return;
   form.innerHTML = buildRulesForm(rules);
-  form.style.display = state.access.canManage ? "" : "none";
+  form.classList.toggle("hidden", !state.access.canManage);
   form.addEventListener("submit", saveRules);
   bindToggle(form, "enable_max_expense_ratio", "max_expense_ratio_pct");
   bindToggle(form, "enable_max_payroll_ratio", "max_payroll_ratio_pct");
@@ -263,7 +263,7 @@ async function boot() {
   if (openPlans) openPlans.onclick = () => { location.href = buildPlansLink(); };
 
   const manageCard = document.getElementById("rulesManageCard");
-  if (manageCard) manageCard.style.display = state.access.canManage ? "" : "none";
+  manageCard?.classList.toggle("hidden", !state.access.canManage);
 
   await loadRules();
 }

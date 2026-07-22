@@ -13,29 +13,43 @@ export function createPositionList({
 const { memberLabel, posReportsEnabled, posScheduleManage } = domain;
 const { openCreateModal, openEditModal } = editor;
 
+function buildPositionGroups() {
+  const groups = new Map();
+  const ensureGroup = (rawTitle) => {
+    const title = String(rawTitle || "Без названия").trim() || "Без названия";
+    if (!groups.has(title)) groups.set(title, { title, positions: [], preset: null });
+    return groups.get(title);
+  };
+
+  for (const preset of state.positionPresets || []) {
+    if (preset?.is_active === false) continue;
+    const group = ensureGroup(preset?.title);
+    if (!group.preset) group.preset = preset;
+  }
+
+  for (const position of state.positions || []) {
+    if (position?.is_active === false) continue;
+    ensureGroup(position?.title).positions.push(position);
+  }
+
+  return Array.from(groups.values()).sort((a, b) => a.title.localeCompare(b.title, "ru"));
+}
+
 function renderPositions() {
   const list = document.getElementById("list");
   list.innerHTML = "";
 
-  if (!state.positions.length) {
+  const groups = buildPositionGroups();
+  if (!groups.length) {
     list.innerHTML = `<div class="muted">Должностей пока нет</div>`;
     return;
   }
 
   const memberById = new Map(state.members.map((m) => [String(m.user_id), m]));
 
-  // group by title
-  const groups = new Map();
-  for (const p of state.positions) {
-    const t = String(p.title || "Без названия").trim() || "Без названия";
-    if (!groups.has(t)) groups.set(t, []);
-    groups.get(t).push(p);
-  }
-
-  const titles = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b, "ru"));
-
-  for (const title of titles) {
-    const arr = groups.get(title).slice().sort((a, b) => {
+  for (const group of groups) {
+    const { title, preset } = group;
+    const arr = group.positions.slice().sort((a, b) => {
       const aa = String(memberById.get(String(a.member_user_id))?.tg_username || "");
       const bb = String(memberById.get(String(b.member_user_id))?.tg_username || "");
       return aa.localeCompare(bb);
@@ -57,9 +71,24 @@ function renderPositions() {
     if (addSameBtn) addSameBtn.onclick = () => openCreateModal({
       title,
       hint: "Добавляем ещё одного сотрудника на эту должность.",
+      position: preset || arr[0] || { title },
     });
 
     const rows = wrap.querySelector("[data-rows]");
+
+    if (!arr.length && preset) {
+      rows.innerHTML = `
+        <div class="list__row">
+          <div class="list__main">
+            <div><b>Сотрудники ещё не назначены</b></div>
+            <div class="muted mt-4">
+              Профиль: ${esc(preset.pay_profile_title || "не назначен")} ·
+              Отчёты: ${posReportsEnabled(preset) ? "да" : "нет"} · График: ${posScheduleManage(preset) ? "да" : "нет"}
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
     for (const p of arr) {
       const m = memberById.get(String(p.member_user_id || ""));
@@ -115,5 +144,5 @@ function renderPositions() {
   }
 }
 
-return { renderPositions };
+return { buildPositionGroups, renderPositions };
 }

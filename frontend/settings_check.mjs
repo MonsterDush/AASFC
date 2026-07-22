@@ -15,7 +15,7 @@
       setActiveVenueId,
       wa,
       toast,
-    } from "/app.js?v=20260719-split1";
+    } from "/app.js?v=20260722-dynamic1";
 
     applyTelegramTheme();
     mountCommonUI("settings");
@@ -367,7 +367,7 @@
         const error = item?.error_text ? `<div class="notif-history-error mt-8">${esc(item.error_text)}</div>` : "";
         return `
           <div class="itemcard mt-8 notif-history-card">
-            <div class="row gap-8 wrap" style="justify-content:space-between; align-items:flex-start;">
+            <div class="row row--between gap-8 wrap ai-start">
               <div>
                 <b>${esc(typeLabel(item?.notification_type))}</b>
                 <div class="muted small mt-6">${esc(timeLabel)}</div>
@@ -450,4 +450,3 @@
         }
       }
     });
-  

@@ -60,6 +60,13 @@ from app.routers.venue_common import (
 )
 from app.routers.venue_permissions import _has_adjustments_manage_access
 
+
+class NotificationDeliveryError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool):
+        super().__init__(message)
+        self.retryable = bool(retryable)
+
+
 _ADJ_TYPE_LABELS = {
     "ru": {"penalty": "Штраф", "writeoff": "Списание", "bonus": "Премия", "tip": "Чаевые"},
     "en": {"penalty": "Penalty", "writeoff": "Write-off", "bonus": "Bonus", "tip": "Tips"},
@@ -179,7 +186,7 @@ def _deliver_user_notification(
 ) -> tuple[bool, bool]:
     lock_notification_idempotency_key(db, idempotency_key)
     if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
-        return False, False
+        return True, False
 
     planned_at = datetime.utcnow().replace(tzinfo=timezone.utc)
     pending_log = log_notification_attempt(

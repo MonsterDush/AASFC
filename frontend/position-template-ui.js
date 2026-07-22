@@ -40,7 +40,7 @@ export function renderPermissionTemplateSummary(template, { emptyText = "Шаб�
   return `
     <div${wrapId ? ` id="${esc(wrapId)}"` : ""}>
       <div class="muted">${esc(template.description || noDescriptionText)}</div>
-      <div class="row" style="gap:6px; flex-wrap:wrap; margin-top:6px">${labels.length ? labels.map((label) => `<span class="badge">${esc(label)}</span>`).join("") : `<span class="muted">Прав: ${Number(template?.permission_summary?.permission_count || (template.permission_codes || []).length || 0)}</span>`}</div>
+      <div class="row gap-6 wrap mt-6">${labels.length ? labels.map((label) => `<span class="badge">${esc(label)}</span>`).join("") : `<span class="muted">Прав: ${Number(template?.permission_summary?.permission_count || (template.permission_codes || []).length || 0)}</span>`}</div>
     </div>
   `;
 }

@@ -11,7 +11,7 @@ import {
   coerceDemoMonth,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 
 import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
@@ -128,7 +128,7 @@ function renderVenueCard(it) {
   card.className = "venue-card";
   card.innerHTML = `
     <div class="venue-top">
-      <div style="min-width:0">
+      <div class="minw-0">
         <div class="venue-name">${esc(name)}</div>
       </div>
       <div class="venue-net">
@@ -205,4 +205,3 @@ el.monthPicker && (el.monthPicker.onchange = () => {
 el.reload.onclick = () => load();
 
 await load();
-

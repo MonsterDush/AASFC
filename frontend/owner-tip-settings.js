@@ -9,7 +9,7 @@ import {
   getVenueSettings,
   updateVenueSettings,
   setActiveVenueId,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 
 applyTelegramTheme();
 mountCommonUI("venue");
@@ -80,11 +80,11 @@ function render() {
   el.list.innerHTML = rows.map((row, idx) => `
     <div class="itemcard tip-settings-row">
       <label>
-        <div class="muted small" style="margin-bottom:6px">Должность</div>
+        <div class="muted small mb-6">Должность</div>
         <select data-role-title="${idx}">${buildTitleOptions(row.title)}</select>
       </label>
       <label>
-        <div class="muted small" style="margin-bottom:6px">% на человека</div>
+        <div class="muted small mb-6">% на человека</div>
         <input type="number" min="0" max="100" inputmode="numeric" data-role-percent="${idx}" value="${esc(row.percent)}" />
       </label>
       <button class="btn danger" data-role-remove="${idx}">Удалить</button>

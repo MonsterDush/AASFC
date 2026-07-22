@@ -12,6 +12,12 @@ export function createPayAssignmentController({
   deletePayProfileAssignment,
   load,
 }) {
+function resolveAssignmentMember(item) {
+  const memberUserId = String(item?.member_user_id || item?.member?.user_id || "");
+  const venueMember = (state.members || []).find((member) => String(member?.user_id || "") === memberUserId);
+  return { ...(item?.member || {}), ...(venueMember || {}) };
+}
+
 function renderAssignments() {
   const el = document.getElementById("assignmentsList");
   if (!el) return;
@@ -26,7 +32,7 @@ function renderAssignments() {
   }
   el.innerHTML = "";
   items.forEach((it) => {
-    const label = memberName(it.member);
+    const label = memberName(resolveAssignmentMember(it));
     const range = `${it.start_date || "без даты начала"} → ${it.end_date || "без даты окончания"}`;
     const row = document.createElement("div");
     row.className = "listrow";
@@ -83,7 +89,7 @@ function assignmentForm({ mode, item }) {
       ${mode === "edit" ? `
         <label>
           <span>Сотрудник</span>
-          <input value="${esc(memberName(it.member))}" disabled />
+          <input value="${esc(memberName(resolveAssignmentMember(it)))}" disabled />
         </label>
       ` : hasMembers ? `
         <label>
@@ -166,5 +172,5 @@ function openAssignmentEditor({ mode, item = null }) {
   });
 }
 
-return { renderAssignments, openAssignmentEditor };
+return { resolveAssignmentMember, renderAssignments, openAssignmentEditor };
 }

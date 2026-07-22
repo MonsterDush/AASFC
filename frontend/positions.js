@@ -18,13 +18,13 @@ import {
   deleteVenuePosition,
   patchInviteDefaultPosition,
   isDemoUiMode,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 
 import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
-import { createPositionPermissionController } from "/positions/permission-controller.js?v=20260720-unified6";
+import { createPositionPermissionController } from "/positions/permission-controller.js?v=20260722-dynamic1";
 import { createPositionDomain } from "/positions/position-domain.js?v=20260720-unified6";
-import { createPositionEditor } from "/positions/position-editor.js?v=20260720-unified6";
-import { createPositionList } from "/positions/position-list.js?v=20260720-unified6";
+import { createPositionEditor } from "/positions/position-editor.js?v=20260723-functional1";
+import { createPositionList } from "/positions/position-list.js?v=20260723-functional1";
 import { createPositionInviteController } from "/positions/invite-controller.js?v=20260720-unified6";
 
 const root = document.getElementById("root");

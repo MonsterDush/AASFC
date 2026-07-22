@@ -10,7 +10,7 @@ import {
   getMyVenuePermissions,
   api,
   isDemoUiMode,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 const root = document.getElementById("root");
@@ -216,7 +216,7 @@ async function boot() {
   document.getElementById("showArchived").checked = state.includeArchived;
   document.getElementById("showArchived").onchange = async (e) => { state.includeArchived = !!e.target.checked; await load(); };
   document.getElementById("btnCreate").onclick = () => openEditor();
-  document.getElementById("btnCreate").style.display = state.canManage ? "" : "none";
+  document.getElementById("btnCreate").classList.toggle("hidden", !state.canManage);
   document.getElementById("back").href = `/owner-expenses.html?venue_id=${encodeURIComponent(state.venueId)}`;
 
   try {

@@ -61,6 +61,7 @@ from app.routers.venue_common import (
 from app.routers.venue_permissions import _has_adjustments_manage_access
 
 from app.routers.venue_notification_common import (
+    NotificationDeliveryError,
     _adj_type_label,
     _build_owner_adjustments_link,
     _build_staff_adjustments_link,
@@ -179,8 +180,11 @@ def _send_adjustment_assigned_notification(db: Session, *, venue_id: int, adjust
         url=_build_staff_adjustments_link(venue_id=venue_id, adjustment_id=int(adj.id), tab=adj.type),
         button_text="Открыть",
     )
-    if retryable_error and not ok:
-        raise RuntimeError("adjustment assigned delivery failed with retryable error")
+    if not ok:
+        raise NotificationDeliveryError(
+            "adjustment assigned delivery failed",
+            retryable=retryable_error,
+        )
 
 
 def _send_adjustment_dispute_event_notifications(
@@ -251,8 +255,8 @@ def _send_adjustment_dispute_event_notifications(
 
     seen_recipient_ids: set[int] = set()
     seen_tg_user_ids: set[int] = set()
+    had_delivery_failure = False
     had_retryable_error = False
-    delivered_any = False
 
     for recipient in recipients:
         if recipient is None or int(recipient.id) == int(author.id):
@@ -290,10 +294,13 @@ def _send_adjustment_dispute_event_notifications(
             url=link,
             button_text="Открыть спор",
         )
-        delivered_any = delivered_any or ok
+        had_delivery_failure = had_delivery_failure or not ok
         had_retryable_error = had_retryable_error or retryable_error
         seen_recipient_ids.add(recipient_id)
         seen_tg_user_ids.add(chat_id)
 
-    if had_retryable_error and not delivered_any:
-        raise RuntimeError("adjustment dispute delivery failed with retryable error")
+    if had_delivery_failure:
+        raise NotificationDeliveryError(
+            "adjustment dispute delivery failed",
+            retryable=had_retryable_error,
+        )

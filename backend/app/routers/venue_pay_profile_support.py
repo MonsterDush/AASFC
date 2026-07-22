@@ -57,6 +57,7 @@ from app.routers.venue_common import (
     BOOST_SOURCE_TITLES,
     MINIMUM_GUARANTEE_SCOPE_TITLES,
 )
+from app.routers.venue_membership_support import _build_user_auth_snapshot_map, _display_name
 
 def _parse_position_permission_codes(raw: str | None) -> list[str]:
     return parse_permission_codes(raw)
@@ -500,15 +501,29 @@ def _validate_pay_component_fields(
             raise HTTPException(status_code=400, detail="amount_minor is required for KPI_BONUS without steps_json")
         return
 
-def _serialize_pay_profile_assignment(assignment: PayProfileAssignment, member: User | None = None) -> dict:
+def _serialize_pay_profile_assignment(
+    assignment: PayProfileAssignment,
+    member: User | None = None,
+    *,
+    auth_snapshot: dict | None = None,
+) -> dict:
     member_obj = None
     if member is not None:
+        phone = str((auth_snapshot or {}).get("phone") or "").strip() or None
         member_obj = {
             "user_id": int(member.id),
             "tg_user_id": member.tg_user_id,
             "tg_username": member.tg_username,
             "full_name": member.full_name,
             "short_name": member.short_name,
+            "phone": phone,
+            "display_name": _display_name(
+                short_name=member.short_name,
+                full_name=member.full_name,
+                tg_username=member.tg_username,
+                phone=phone,
+                user_id=int(member.id),
+            ),
         }
     return {
         "id": int(assignment.id),
@@ -558,10 +573,15 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
         )
         .order_by(PayProfileAssignment.is_active.desc(), PayProfileAssignment.start_date.desc(), PayProfileAssignment.id.desc())
     ).all()
+    member_auth_map = _build_user_auth_snapshot_map(db, [int(member.id) for _assignment, member in assignment_rows])
     payload = _serialize_pay_profile(profile)
     payload["components"] = [_serialize_pay_component(component) for component in components]
     payload["assignments"] = [
-        _serialize_pay_profile_assignment(assignment, member=member)
+        _serialize_pay_profile_assignment(
+            assignment,
+            member=member,
+            auth_snapshot=member_auth_map.get(int(member.id)),
+        )
         for assignment, member in assignment_rows
     ]
     return payload

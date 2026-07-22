@@ -13,7 +13,7 @@ import {
   updatePayProfile,
   deletePayProfile,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260722-dynamic1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 const root = document.getElementById("root");
@@ -163,7 +163,7 @@ function renderList() {
   const chk = document.getElementById("showInactive");
   const back = document.getElementById("back");
 
-  if (btnCreate) btnCreate.style.display = state.can.manage ? "" : "none";
+  btnCreate?.classList.toggle("hidden", !state.can.manage);
   if (chk) chk.checked = !!state.includeInactive;
   if (back) back.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
 

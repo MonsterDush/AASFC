@@ -353,7 +353,7 @@ async function callPositionApiWithPerms({ kind, positionId, payload, permCodes }
 
 /* ---------- Modal actions ---------- */
 
-async function openCreateModal({ title = "", hint = "" } = {}) {
+async function openCreateModal({ title = "", hint = "", position = null } = {}) {
   if (!auth.canManage) {
     toast("Нет прав на создание должностей", "err");
     return;
@@ -363,7 +363,10 @@ async function openCreateModal({ title = "", hint = "" } = {}) {
   openPosModal({
     title: "Создать должность",
     hint: hint || "Одна должность может быть у нескольких сотрудников (например «Бармен»).",
-    bodyHtml: renderPositionForm({ mode: "create", position: title ? { title } : null }),
+    bodyHtml: renderPositionForm({
+      mode: "create",
+      position: position ? { ...position, title: title || position.title } : (title ? { title } : null),
+    }),
   });
 
   // дефолтный выбор сотрудника

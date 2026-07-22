@@ -12,14 +12,47 @@ FRONTEND = PROJECT_ROOT / "frontend"
 class PageLoaderContractTests(TestCase):
     def test_all_pages_share_the_fetch_and_dom_aware_loader(self):
         loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
-        styles = (FRONTEND / "styles.css").read_text(encoding="utf-8")
+        styles_manifest = (FRONTEND / "styles.css").read_text(encoding="utf-8")
+        style_cache_key = "20260722-split1"
+        core_style_files = (
+            "tokens.css",
+            "base-layout.css",
+            "controls.css",
+            "cards-lists.css",
+            "calendar-core.css",
+            "utilities.css",
+            "calendar-reports.css",
+            "finance-components.css",
+            "shared-layout.css",
+            "overlays-documents.css",
+        )
+        styles = "".join(
+            (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
+            for file_name in core_style_files
+        )
         html_pages = sorted(FRONTEND.glob("*.html"))
+
+        self.assertEqual(
+            sorted(path.name for path in (FRONTEND / "styles" / "core").glob("*.css")),
+            sorted(core_style_files),
+        )
+        expected_imports = [
+            f'@import url("/styles/core/{file_name}?v={style_cache_key}");'
+            for file_name in core_style_files
+        ]
+        self.assertEqual(
+            re.findall(r'@import url\("[^"]+"\);', styles_manifest),
+            expected_imports,
+        )
+        for file_name in core_style_files:
+            source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
+            self.assertLess(len(source.splitlines()), 500, file_name)
 
         self.assertEqual(len(html_pages), 50)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn('/page-loader.js?v=20260720-loader1', source, path.name)
-            self.assertIn('/styles.css?v=20260720-unified11', source, path.name)
+            self.assertIn(f'/styles.css?v={style_cache_key}', source, path.name)
 
         self.assertLess(len(loader.splitlines()), 180)
         self.assertIn("window.fetch = function", loader)
@@ -77,7 +110,7 @@ class AppFacadeSplitContractTests(TestCase):
             self.assertIn(f"export function {factory}", source)
 
         consumer_pattern = re.compile(
-            r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260719-split1[\"']"
+            r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260722-dynamic1[\"']"
         )
         consumer_count = 0
         for path in FRONTEND.rglob("*"):
@@ -95,6 +128,34 @@ class AppFacadeSplitContractTests(TestCase):
         self.assertEqual(consumer_count, 51)
 
 
+class FunctionalFrontendRegressionContractTests(TestCase):
+    def test_get_requests_do_not_force_cors_preflight_headers(self):
+        source = (FRONTEND / "app.js").read_text(encoding="utf-8")
+        api_source = source[
+            source.index("export async function api"):
+            source.index("function parseDownloadFilename")
+        ]
+
+        self.assertIn('const method = String(opts.method || "GET").toUpperCase();', api_source)
+        self.assertIn("const shouldSetJsonContentType = !isForm && hasBody", api_source)
+        self.assertNotIn('"Cache-Control": "no-cache"', api_source)
+        self.assertNotIn('Pragma: "no-cache"', api_source)
+
+    def test_venue_member_card_uses_member_safe_endpoint(self):
+        source = (FRONTEND / "app-venue.html").read_text(encoding="utf-8")
+
+        self.assertIn("api(`/me/venues/${venueId}/members`)", source)
+        self.assertNotIn("api(`/venues/${venueId}/members`)", source)
+
+    def test_admin_position_templates_has_shared_feedback_dom(self):
+        source = (FRONTEND / "admin-position-templates.html").read_text(encoding="utf-8")
+
+        self.assertIn('id="toast"', source)
+        self.assertIn('id="modal"', source)
+        self.assertIn('class="modal__title"', source)
+        self.assertIn('class="modal__body"', source)
+
+
 class OwnerSetupSplitContractTests(TestCase):
     def test_owner_setup_keeps_all_editor_modules_and_step_dispatch(self):
         main = (FRONTEND / "owner-setup.js").read_text(encoding="utf-8")
@@ -110,10 +171,17 @@ class OwnerSetupSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260720-unified10", html)
+        self.assertIn("owner-setup.js?v=20260723-functional1", html)
+        self.assertIn("position-template-ui.js?v=20260722-dynamic1", main)
         self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertIn('<progress class="setup-progressbar"', main)
+        self.assertIn('isSetupDone(state.setup) ? "Настройка завершена"', main)
+        resume_helper = main[
+            main.index("function getPhaseResumeStep"):
+            main.index("function renderOverview")
+        ]
+        self.assertNotIn('visible.find(({ ui }) => !ui.locked)', resume_helper)
         for filename, (factory, mount_method) in controllers.items():
             source = (FRONTEND / "owner-setup" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500)
@@ -158,7 +226,7 @@ class StaffShiftsSplitContractTests(TestCase):
         self.assertLess(len(calendar.splitlines()), 850)
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
         self.assertIn("/staff-shifts/calendar-controller.js?v=20260720-unified6", main)
-        self.assertIn("staff-shifts.js?v=20260720-unified6", html)
+        self.assertIn("staff-shifts.js?v=20260722-dynamic1", html)
         self.assertIn("/shifts/export-metadata?", module)
 
         mutable_fields = (
@@ -230,11 +298,12 @@ class OwnerPayProfileSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 450)
-        self.assertIn("owner-pay-profile.js?v=20260720-unified7", html)
+        self.assertIn("owner-pay-profile.js?v=20260723-functional1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
-            self.assertIn(f'/owner-pay-profile/{filename}?v=20260720-unified7', main)
+            cache_key = "20260723-functional1" if filename == "assignment-controller.js" else "20260720-unified7"
+            self.assertIn(f'/owner-pay-profile/{filename}?v={cache_key}', main)
             self.assertIn(f"export function {factory}", source)
 
         controller_contracts = {
@@ -276,17 +345,25 @@ class PositionsSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 420)
-        self.assertIn("positions.js?v=20260720-unified6", html)
+        self.assertIn("positions.js?v=20260723-functional1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "positions" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
-            self.assertIn(f'/positions/{filename}?v=20260720-unified6', main)
+            cache_key = (
+                "20260722-dynamic1"
+                if filename == "permission-controller.js"
+                else "20260723-functional1"
+                if filename in {"position-editor.js", "position-list.js"}
+                else "20260720-unified6"
+            )
+            self.assertIn(f'/positions/{filename}?v={cache_key}', main)
             self.assertIn(f"export function {factory}", source)
 
         editor = (FRONTEND / "positions" / "position-editor.js").read_text(encoding="utf-8")
         position_list = (FRONTEND / "positions" / "position-list.js").read_text(encoding="utf-8")
         invites = (FRONTEND / "positions" / "invite-controller.js").read_text(encoding="utf-8")
         permissions = (FRONTEND / "positions" / "permission-controller.js").read_text(encoding="utf-8")
+        self.assertIn("position-template-ui.js?v=20260722-dynamic1", permissions)
 
         for api_call in ("createVenuePosition", "updateVenuePosition", "deleteVenuePosition"):
             self.assertIn(api_call, editor)

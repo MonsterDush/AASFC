@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260722-split1" />
   <link rel="stylesheet" href="/styles/pages/invites.css?v=20260720-unified7" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Приглашения</title>
@@ -112,7 +112,7 @@
       getMe,
       getStoredDemoUiState,
       isDemoReadonlyUi
-    } from "/app.js?v=20260719-split1";
+    } from "/app.js?v=20260722-dynamic1";
     import { isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix2";
 
     function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -175,10 +175,10 @@
 
     function applyInviteAccess() {
       if (!btnInvite || !roleSelect) return;
-      btnInvite.style.display = canManageStaff ? "" : "none";
+      btnInvite.classList.toggle("hidden", !canManageStaff);
       btnInvite.disabled = !canManageStaff;
       const ownerOption = roleSelect.querySelector('option[value="OWNER"]');
-      if (ownerOption) ownerOption.style.display = canInviteOwners ? "" : "none";
+      if (ownerOption) ownerOption.hidden = !canInviteOwners;
       if (!canInviteOwners && String(roleSelect.value || "STAFF").toUpperCase() === "OWNER") {
         roleSelect.value = "STAFF";
       }
@@ -187,7 +187,7 @@
       if (inviteResultEl) {
         inviteResultEl.textContent = canManageStaff ? "" : "Нет прав на управление участниками.";
       }
-      if (inviteCard) inviteCard.style.display = canManageStaff ? "" : "none";
+      inviteCard?.classList.toggle("hidden", !canManageStaff);
     }
 
     function syncChannel() {
