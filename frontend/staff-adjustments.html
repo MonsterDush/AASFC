@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260723-polish1" />
-  <link rel="stylesheet" href="/styles/pages/staff-adjustments.css?v=20260720-unified8" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/staff-adjustments.css?v=20260726-polish6" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Штрафы и премии</title>
 </head>
-<body>
-  <div class="container">
+<body class="staff-adjustments-page">
+  <div class="container staff-adjustments-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -22,29 +22,36 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card mt-12">
-      <div class="row row--between">
-        <div class="row ai-center gap-10">
+    <main class="staff-adjustments-content">
+    <section class="card section-card staff-adjustments-card">
+      <div class="staff-adjustments-toolbar">
+        <div class="staff-adjustments-month">
           <button class="btn" id="monthPrev">◀</button>
           <b id="monthLabel">…</b>
           <button class="btn" id="monthNext">▶</button>
         </div>
-        <button class="btn hidden" id="btnAddAdj">+ Добавить</button>
-        <div class="row ai-center gap-10">
+        <div class="staff-adjustments-actions">
+          <button class="btn primary hidden" id="btnAddAdj">+ Добавить</button>
+          <label class="staff-adjustments-filter">
+            <span class="muted small">Показать</span>
           <select id="typeSel">
             <option value="">Все</option>
             <option value="penalty">Штрафы</option>
             <option value="writeoff">Списания</option>
             <option value="bonus">Премии</option>
           </select>
+          </label>
         </div>
       </div>
 
-      <div id="list" class="mt-10">
-        <div class="skeleton"></div>
-        <div class="skeleton"></div>
+      <div id="list" class="staff-adjustments-list" aria-live="polite">
+        <div class="staff-adjustments-loading">
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+        </div>
       </div>
-    </div>
+    </section>
+    </main>
 
     <div class="nav">
       <div class="wrap">
@@ -68,7 +75,6 @@
     </div>
   </div>
 
-  
-  <script type="module" src="/staff-adjustments.js?v=20260720-unified8"></script>
+  <script type="module" src="/staff-adjustments.js?v=20260726-navmore1"></script>
 </body>
 </html>

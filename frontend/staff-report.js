@@ -15,7 +15,7 @@ import {
   getVenueSettings,
   coerceDemoMonth,
   isDemoUiMode,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 
 
 import { permSetFromResponse, roleUpper, hasPerm as hasP, hasAnyPerm, hasPermPrefix, isFinancialValuesHidden } from "/permissions.js";
@@ -363,6 +363,7 @@ async function switchReportSlot(slot) {
   try { localStorage.setItem(LS_REPORT_SHIFT_SLOT, selectedShiftSlot); } catch {}
   renderReportSlotToggle();
   updateReportSlotUrl();
+  renderCalendarLoading();
   await loadMonthReports();
   renderMonth();
   if (selectedDayISO && modal?.classList.contains("open")) {
@@ -387,13 +388,20 @@ async function loadMonthReports() {
 
 function renderNoVenue() {
   el.grid.innerHTML = `
-    <div class="itemcard">
+    <div class="staff-report-state">
       <b>Не выбрано заведение</b>
-      <div class="muted mt-6">
-        Выбери заведение и открой отчёты ещё раз.
-      </div>
+      <span>Выбери заведение и открой отчёты ещё раз.</span>
     </div>
   `;
+}
+
+function renderCalendarLoading() {
+  if (el.monthLabel) {
+    el.monthLabel.textContent = nightShiftsEnabled ? `${monthTitle(curMonth)} · ${shiftSlotLabel(selectedShiftSlot)}` : monthTitle(curMonth);
+  }
+  if (el.grid) {
+    el.grid.innerHTML = `<div class="report-loading-skeleton skeleton"></div>`;
+  }
 }
 
 function renderMonth() {
@@ -409,9 +417,9 @@ function renderMonth() {
 
   if (!canView()) {
     el.grid.innerHTML = `
-      <div class="itemcard">
+      <div class="staff-report-state">
         <b>Нет доступа</b>
-        <div class="muted mt-6">У вас нет прав на просмотр отчётов.</div>
+        <span>У вас нет прав на просмотр отчётов.</span>
       </div>
     `;
     return;
@@ -1275,6 +1283,7 @@ if (el.prev) {
   el.prev.addEventListener("click", async () => {
     curMonth.setMonth(curMonth.getMonth() - 1);
     curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-report" })}-01T00:00:00`);
+    renderCalendarLoading();
     await loadMonthReports();
     renderMonth();
   });
@@ -1283,6 +1292,7 @@ if (el.next) {
   el.next.addEventListener("click", async () => {
     curMonth.setMonth(curMonth.getMonth() + 1);
     curMonth = new Date(`${coerceDemoMonth(ym(curMonth), { context: "staff-report" })}-01T00:00:00`);
+    renderCalendarLoading();
     await loadMonthReports();
     renderMonth();
   });

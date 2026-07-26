@@ -28,16 +28,20 @@ function renderInvites() {
 
   if (!titles.length) {
     const hint = document.createElement("div");
-    hint.className = "muted";
+    hint.className = "position-state";
     hint.textContent = "Сначала создайте хотя бы одну должность — тогда можно будет назначать её приглашённым.";
     list.appendChild(hint);
   }
 
   invites.forEach((inv) => {
     const row = document.createElement("div");
-    row.className = "row position-invite-row";
+    row.className = "position-invite-row";
 
-    const uname = (inv?.tg_username || "").trim();
+    const channel = String(inv?.channel || inv?.invite_channel || "TELEGRAM").toUpperCase();
+    const uname = (inv?.tg_username || "").trim().replace(/^@+/, "");
+    const contact = channel === "PHONE"
+      ? String(inv?.contact_label || inv?.phone || "Телефон")
+      : `@${uname || "—"}`;
     const presetTitle = inv?.default_position?.title ? String(inv.default_position.title) : "";
 
     const options = [
@@ -47,7 +51,7 @@ function renderInvites() {
 
     row.innerHTML = `
       <div class="position-invite-person">
-        <div><b>@${esc(uname || "-")}</b> <span class="badge badge--draft">приглашён</span></div>
+        <div><b>${esc(contact)}</b> <span class="badge badge--draft">приглашён</span></div>
         <div class="muted small mt-4">${esc(inv?.venue_role === "OWNER" ? "Владелец" : "Персонал")}</div>
       </div>
       <div class="position-invite-assignment">

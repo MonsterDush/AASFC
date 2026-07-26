@@ -20,7 +20,7 @@ import {
   updatePayComponent,
   deletePayComponent,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 import { createPayComponentSupport } from "/owner-pay-profile/component-support.js?v=20260720-unified7";
 import { createPayComponentFormRenderer } from "/owner-pay-profile/component-form.js?v=20260720-unified7";
@@ -75,7 +75,7 @@ let state = {
 
 function renderShell() {
   root.innerHTML = `
-    <div class="topbar">
+    <div class="topbar pay-profile-topbar">
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
@@ -86,8 +86,9 @@ function renderShell() {
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div class="itemcard">
+    <main class="pay-profile-content">
+    <section class="card pay-profile-hero">
+      <div class="pay-profile-detail-head">
         <div class="section-head">
           <div class="section-title">
             <b id="profileTitle">—</b>
@@ -97,34 +98,35 @@ function renderShell() {
             <button class="btn" id="btnEditProfile">Редактировать</button>
           </div>
         </div>
-        <div class="muted mt-8" id="profileMeta">—</div>
+        <div class="muted pay-profile-meta" id="profileMeta">—</div>
       </div>
 
-      <div class="grid grid2 mt-12">
-        <div class="itemcard">
+      <div class="pay-profile-detail-grid">
+        <section class="pay-profile-section">
           <div class="section-head">
             <div class="section-title"><b>Компоненты</b></div>
             <div class="section-actions"><button class="btn primary" id="btnAddComponent">+ Добавить</button></div>
           </div>
-          <div class="muted mt-6">Доступны: оклад, почасовая ставка, фикс за смену, проценты по выручке и KPI-бонусы по закрытым отчётам.</div>
-          <div id="componentsList" class="mt-12"><div class="skeleton"></div></div>
-        </div>
+          <div class="muted pay-profile-section__intro">Доступны: оклад, почасовая ставка, фикс за смену, проценты по выручке и KPI-бонусы по закрытым отчётам.</div>
+          <div id="componentsList" class="pay-profile-section-list"><div class="pay-profile-loading"><div class="skeleton"></div></div></div>
+        </section>
 
-        <div class="itemcard">
+        <section class="pay-profile-section">
           <div class="section-head">
             <div class="section-title"><b>Назначения</b></div>
             <div class="section-actions"><button class="btn primary" id="btnAddAssignment">+ Назначить</button></div>
           </div>
-          <div class="muted mt-6">Назначения определяют, какой профиль действует у сотрудника в выбранный период.</div>
-          <div id="assignmentsList" class="mt-12"><div class="skeleton"></div></div>
-        </div>
+          <div class="muted pay-profile-section__intro">Назначения определяют, какой профиль действует у сотрудника в выбранный период.</div>
+          <div id="assignmentsList" class="pay-profile-section-list"><div class="pay-profile-loading"><div class="skeleton"></div></div></div>
+        </section>
       </div>
 
-      <div class="row row--between gap-12 mt-12">
+      <div class="pay-profile-links">
         <a class="btn subtle inline" id="backProfiles" href="#">← К списку профилей</a>
         <a class="btn subtle inline" id="openPayroll" href="#">Открыть начисления →</a>
       </div>
-    </div>
+    </section>
+    </main>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
 
@@ -267,7 +269,7 @@ function openProfileEditor() {
           <span>Профиль активен</span>
         </label>
       </div>
-      <div class="row row--end gap-8 mt-12">
+      <div class="pay-profile-modal-actions">
         <button class="btn" id="btnCancel" type="button">Отмена</button>
         <button class="btn primary" id="btnSave" type="button">Сохранить</button>
       </div>
@@ -300,13 +302,13 @@ function openProfileEditor() {
 async function load() {
   const componentsList = document.getElementById("componentsList");
   const assignmentsList = document.getElementById("assignmentsList");
-  if (componentsList) componentsList.innerHTML = `<div class="skeleton"></div>`;
-  if (assignmentsList) assignmentsList.innerHTML = `<div class="skeleton"></div>`;
+  if (componentsList) componentsList.innerHTML = `<div class="pay-profile-loading"><div class="skeleton"></div></div>`;
+  if (assignmentsList) assignmentsList.innerHTML = `<div class="pay-profile-loading"><div class="skeleton"></div></div>`;
 
   try {
     state.profile = await getPayProfile(state.venueId, state.profileId);
   } catch (e) {
-    root.innerHTML = `<div class="card"><div class="muted">Ошибка загрузки профиля: ${esc(e?.data?.detail || e?.message || "не удалось загрузить")}</div></div>`;
+    root.innerHTML = `<div class="pay-profile-state pay-profile-state--error"><b>Не удалось загрузить профиль</b><span>${esc(e?.data?.detail || e?.message || "Проверь подключение и повтори попытку.")}</span></div>`;
     return;
   }
 
@@ -326,7 +328,7 @@ async function boot() {
   state.profileId = params.profileId;
 
   if (!state.venueId || !state.profileId) {
-    root.innerHTML = `<div class="card"><div class="muted">Не найден venue_id или profile_id</div></div>`;
+    root.innerHTML = `<div class="pay-profile-state"><b>Профиль не выбран</b><span>Открой профиль оплаты из списка нужного заведения.</span></div>`;
     return;
   }
 
@@ -345,6 +347,14 @@ async function boot() {
   }
 
   state.can = applyDemoReadonlyCaps(computeCaps(state.perms, state.me), { source: state.perms });
+
+  if (!state.can.view) {
+    const content = root.querySelector(".pay-profile-content");
+    if (content) {
+      content.innerHTML = `<div class="pay-profile-state pay-profile-state--denied"><b>Нет доступа</b><span>Для просмотра профиля оплаты нужны соответствующие права.</span></div>`;
+    }
+    return;
+  }
 
   try {
     const membersResp = await getVenueMembers(state.venueId);

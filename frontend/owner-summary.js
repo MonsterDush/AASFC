@@ -17,7 +17,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 
 let financialValuesHidden = false;

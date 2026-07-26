@@ -6,7 +6,7 @@ import {
   toast,
   confirmModal,
   api,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 
 applyTelegramTheme();
 mountCommonUI("admin-position-templates");
@@ -121,15 +121,15 @@ function renderPermissionChecklist(selectedCodes = []) {
 
 function renderList() {
   const visible = state.showInactive ? state.items : state.items.filter((item) => item.is_active);
-  if (!visible.length) return `<div class="card tpl-empty">Шаблонов пока нет. Можно создать свой или одним кликом добавить базовые пресеты.</div>`;
+  if (!visible.length) return `<div class="tpl-state tpl-state--empty">Шаблонов пока нет. Можно создать свой или одним кликом добавить базовые пресеты.</div>`;
   return `
     <div class="tpl-list">
       ${visible.map((item) => {
         const labels = Array.isArray(item?.permission_summary?.summary_labels) ? item.permission_summary.summary_labels : [];
         return `
-          <div class="tpl-item">
-            <div class="row">
-              <div>
+          <article class="tpl-item">
+            <div class="row tpl-item__head">
+              <div class="tpl-item__main">
                 <b>${esc(item.title)}</b>
                 <div class="muted mt-4">${esc(item.description || 'Без описания')}</div>
               </div>
@@ -140,14 +140,14 @@ function renderList() {
               </div>
             </div>
             <div class="tpl-tags">${labels.length ? labels.map((label) => `<span class="tpl-tag">${esc(label)}</span>`).join('') : '<span class="muted">Группы не определены</span>'}</div>
-            <div class="row">
+            <div class="row tpl-item__footer">
               <div class="muted">Код: ${esc(item.code || '—')} · Порядок: ${Number(item.sort_order || 0)}</div>
               <div class="row tpl-actions">
                 <button class="btn sm" type="button" data-edit="${esc(item.id)}">Изменить</button>
                 <button class="btn sm ${item.is_active ? 'danger' : ''}" type="button" data-archive="${esc(item.id)}" data-value="${item.is_active ? '0' : '1'}">${item.is_active ? 'В архив' : 'Вернуть'}</button>
               </div>
             </div>
-          </div>
+          </article>
         `;
       }).join('')}
     </div>
@@ -158,8 +158,8 @@ function renderEditor() {
   const item = selectedTemplate() || emptyDraft();
   const isNew = !item.id;
   return `
-    <div class="card tpl-sticky">
-      <div class="row">
+    <section class="card tpl-sticky">
+      <div class="row tpl-editor-head">
         <div>
           <b>${isNew ? 'Новый шаблон' : 'Редактирование шаблона'}</b>
           <div class="muted mt-4">Шаблон применяется копированием прав. После применения владелец может вручную подправить конкретную должность.</div>
@@ -172,8 +172,8 @@ function renderEditor() {
       <div class="tpl-field mt-10"><span>Порядок сортировки</span><input id="tplSortOrder" class="input" type="number" min="0" step="1" value="${esc(item.sort_order ?? '')}"></div>
       <label class="checkline mt-10"><input id="tplActive" type="checkbox" ${item.is_active !== false ? 'checked' : ''}><span>Шаблон активен и доступен владельцам</span></label>
       <div class="mt-12">${renderPermissionChecklist(item.permission_codes || [])}</div>
-      <div class="row gap-8 mt-12"><button class="btn primary" id="btnSaveTemplate" type="button">${isNew ? 'Создать шаблон' : 'Сохранить изменения'}</button></div>
-    </div>
+      <div class="row gap-8 mt-12 tpl-savebar"><button class="btn primary" id="btnSaveTemplate" type="button">${isNew ? 'Создать шаблон' : 'Сохранить изменения'}</button></div>
+    </section>
   `;
 }
 
@@ -184,7 +184,7 @@ function collectPermissionCodes() {
 }
 
 function render() {
-  root.innerHTML = `<div>${renderList()}</div><div>${renderEditor()}</div>`;
+  root.innerHTML = `<div class="tpl-list-column">${renderList()}</div><div class="tpl-editor-column">${renderEditor()}</div>`;
   wire();
 }
 

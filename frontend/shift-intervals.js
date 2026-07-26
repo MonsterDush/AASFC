@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
   getMe,
   getMyVenuePermissions,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
 
@@ -61,33 +61,37 @@ function renderShell() {
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div class="muted">Интервалы используются в графике и при создании смен. Если интервал уже участвовал в сменах, его можно архивировать, но нельзя удалить.</div>
+    <main class="shift-tool-content">
+      <section class="card shift-tool-hero">
+        <div class="shift-tool-hero__copy">Интервалы используются в графике и при создании смен. Если интервал уже участвовал в сменах, его можно архивировать, но нельзя удалить.</div>
+      </section>
 
-      <div class="itemcard mt-12">
+      <section class="card shift-tool-list-card">
         <div class="section-head">
           <div class="section-title">
             <b>Список интервалов</b>
           </div>
-          <div class="section-actions">
+          <div class="section-actions shift-tool-primary-actions">
             <a class="btn" id="btnTemplates" href="#">Шаблоны графика</a>
             <button class="btn primary" id="btnCreate">+ Добавить</button>
           </div>
         </div>
-        <div class="section-actions">
+        <div class="section-actions shift-tool-list-options">
           <label class="chk">
             <input type="checkbox" id="showArchived" />
             <span class="muted">Показывать архив</span>
           </label>
         </div>
-        <div id="list" class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
-      </div>
+        <div id="list" class="shift-tool-list mt-10">
+          <div class="shift-tool-state shift-tool-state--loading">Загрузка интервалов…</div>
+        </div>
+      </section>
 
-      <div class="row gap-10 mt-12">
+      <nav class="row shift-tool-links">
         <a class="btn subtle inline" id="backToShifts" href="#">← Назад к графику</a>
         <a class="btn subtle inline" id="backToVenue" href="#">К заведению</a>
-      </div>
-    </div>
+      </nav>
+    </main>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
 
@@ -165,28 +169,28 @@ function renderList() {
   if (!el) return;
 
   if (!state.canManage) {
-    el.innerHTML = `<div class="muted">Нет доступа к управлению интервалами</div>`;
+    el.innerHTML = `<div class="shift-tool-state shift-tool-state--denied">Нет доступа к управлению интервалами</div>`;
     return;
   }
 
   if (!state.items.length) {
-    el.innerHTML = `<div class="muted">Пока нет интервалов</div>`;
+    el.innerHTML = `<div class="shift-tool-state shift-tool-state--empty">Пока нет интервалов</div>`;
     return;
   }
 
   el.innerHTML = "";
   for (const item of sortIntervals(state.items)) {
     const row = document.createElement("div");
-    row.className = "listrow";
+    row.className = "shift-tool-row shift-interval-row";
     row.innerHTML = `
-      <div class="listrow__left">
+      <div class="shift-tool-row__main">
         <div class="row gap-8">
           <b>${esc(item.title)}</b>
           ${item.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
         <div class="mono muted listrow__meta">${esc(item.start_time)}–${esc(item.end_time)} · Смен: ${Number(item.usage_count || 0)} · Шаблонов: ${Number(item.template_usage_count || 0)}</div>
       </div>
-      <div class="row row--nowrap gap-8 flex-none">
+      <div class="row row--nowrap gap-8 shift-tool-row__actions">
         <button class="btn sm" data-edit="${item.id}">Изменить</button>
         <button class="btn sm ${item.is_active ? "danger" : ""}" data-archive="${item.id}">${item.is_active ? "В архив" : "Вернуть"}</button>
         ${item.can_delete ? `<button class="btn sm danger" data-delete="${item.id}">Удалить</button>` : ""}
@@ -255,7 +259,7 @@ function editorForm({ mode, item }) {
   const it = item || {};
   const isEdit = mode === "edit";
   return `
-    <div class="grid grid2 mt-10">
+    <div class="grid grid2 mt-10 shift-tool-form">
       <div>
         <div class="muted mb-6">Название</div>
         <input id="f_title" class="input" placeholder="Например, Утро" value="${esc(it.title || "")}" />
@@ -277,7 +281,7 @@ function editorForm({ mode, item }) {
       </div>
     </div>
 
-    <div class="row row--end gap-8 mt-12">
+    <div class="row row--end gap-8 mt-12 shift-tool-modal-actions">
       <button class="btn" id="btnCancelEdit">Отмена</button>
       <button class="btn primary" id="btnSaveEdit">${isEdit ? "Сохранить" : "Создать"}</button>
     </div>

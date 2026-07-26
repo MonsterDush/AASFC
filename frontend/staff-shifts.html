@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260723-polish1" />
-  <link rel="stylesheet" href="/styles/pages/staff-shifts.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/staff-shifts.css?v=20260726-polish8" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Смены</title>
 </head>
-<body>
-  <div class="container">
+<body class="staff-shifts-page">
+  <div class="container staff-shifts-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -22,7 +22,8 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card demo-flow-card hidden" id="demoStaffIntro">
+    <main class="staff-shifts-content">
+    <section class="card demo-flow-card staff-shifts-demo hidden" id="demoStaffIntro">
       <div class="demo-flow-card__head">
         <div>
           <b>Что посмотреть в DEMO персонала</b>
@@ -37,10 +38,10 @@
       <div class="demo-flow-card__actions mt-12">
         <button class="btn" id="demoOpenStaffSalary" type="button">Открыть начисления</button>
       </div>
-    </div>
+    </section>
 
-    <div class="card">
-      <div class="row row--between">
+    <section class="card staff-shifts-calendar-card">
+      <div class="row row--between staff-shifts-toolbar">
         <div class="row ai-center gap-10 month-controls">
           <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
@@ -79,8 +80,15 @@
       </div>
 
 
-      <div id="calGrid" class="cal mt-10"></div>
-    </div>
+      <div id="calGrid" class="cal mt-10" aria-live="polite">
+        <div class="shifts-calendar-loading">
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+        </div>
+      </div>
+    </section>
+    </main>
     <div class="nav">
       <div class="wrap">
         <div id="nav"></div>
@@ -145,6 +153,6 @@
     </div>
 
   <div id="shiftsRoot" class="hidden"></div>
-  <script type="module" src="/staff-shifts.js?v=20260722-dynamic1"></script>
+  <script type="module" src="/staff-shifts.js?v=20260726-navmore1"></script>
 </body>
 </html>

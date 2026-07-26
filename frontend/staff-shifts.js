@@ -17,7 +17,7 @@ import {
   getStoredDemoUiState,
   getDemoMonthLabel,
   mountDemoPageTour,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
 

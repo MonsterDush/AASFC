@@ -10,7 +10,7 @@ import {
   getMe,
   getMyVenuePermissions,
   getVenueSettings,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
 
@@ -145,34 +145,38 @@ function renderShell() {
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div class="muted">Настрой дни недели один раз, а затем применяй шаблон к нужному месяцу. Если в заведении включены ночные смены, шаблон отдельно показывает день и ночь вида «Ночь с понедельника на вторник».</div>
+    <main class="shift-tool-content">
+      <section class="card shift-tool-hero">
+        <div class="shift-tool-hero__copy">Настрой дни недели один раз, а затем применяй шаблон к нужному месяцу. Если в заведении включены ночные смены, шаблон отдельно показывает день и ночь вида «Ночь с понедельника на вторник».</div>
+      </section>
 
-      <div class="itemcard mt-12">
+      <section class="card shift-tool-list-card">
         <div class="section-head">
           <div class="section-title">
             <b>Сохранённые шаблоны</b>
             <div class="muted mt-4">Например: «Обычный месяц», «Выходные усиленные», «24/7».</div>
           </div>
-          <div class="section-actions">
+          <div class="section-actions shift-tool-primary-actions">
             <button class="btn primary" id="btnCreateTemplate">+ Новый шаблон</button>
           </div>
         </div>
-        <div class="section-actions">
+        <div class="section-actions shift-tool-list-options">
           <label class="chk">
             <input type="checkbox" id="showArchived" />
             <span class="muted">Показывать архив</span>
           </label>
         </div>
-        <div class="mt-10" id="templateList"><div class="skeleton"></div><div class="skeleton"></div></div>
-      </div>
+        <div class="shift-tool-list mt-10" id="templateList">
+          <div class="shift-tool-state shift-tool-state--loading">Загрузка шаблонов…</div>
+        </div>
+      </section>
 
-      <div class="row mt-12">
+      <nav class="row shift-tool-links">
         <a class="btn subtle inline" id="backToIntervals" href="#">← Интервалы смен</a>
         <a class="btn subtle inline" id="backToShifts" href="#">К графику</a>
         <a class="btn subtle inline" id="backToVenue" href="#">К заведению</a>
-      </div>
-    </div>
+      </nav>
+    </main>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
 
@@ -272,21 +276,21 @@ function renderTemplates() {
   if (!el) return;
 
   if (!state.canManage) {
-    el.innerHTML = `<div class="muted">Нет доступа к управлению шаблонами графика</div>`;
+    el.innerHTML = `<div class="shift-tool-state shift-tool-state--denied">Нет доступа к управлению шаблонами графика</div>`;
     return;
   }
 
   if (!state.templates.length) {
-    el.innerHTML = `<div class="muted">Шаблонов пока нет. Создай первый недельный шаблон и примени его к месяцу.</div>`;
+    el.innerHTML = `<div class="shift-tool-state shift-tool-state--empty">Шаблонов пока нет. Создай первый недельный шаблон и примени его к месяцу.</div>`;
     return;
   }
 
   el.innerHTML = "";
   for (const item of state.templates) {
     const card = document.createElement("div");
-    card.className = "listrow ai-start";
+    card.className = "shift-tool-row shift-template-card";
     card.innerHTML = `
-      <div class="listrow__left">
+      <div class="shift-tool-row__main">
         <div class="row gap-8">
           <b>${esc(item.title)}</b>
           ${item.is_active ? "" : `<span class="badge">архив</span>`}
@@ -294,7 +298,7 @@ function renderTemplates() {
         ${item.description ? `<div class="muted mt-4">${esc(item.description)}</div>` : ""}
         <div class="muted template-summary">${templateSummaryHtml(item)}</div>
       </div>
-      <div class="row gap-8 flex-none row--end">
+      <div class="row gap-8 shift-tool-row__actions">
         <button class="btn sm primary" data-apply="${item.id}" ${item.is_active ? "" : "disabled"}>Применить к месяцу</button>
         <button class="btn sm" data-edit="${item.id}">Изменить</button>
         <button class="btn sm ${item.is_active ? "danger" : ""}" data-archive="${item.id}">${item.is_active ? "В архив" : "Вернуть"}</button>
@@ -402,7 +406,7 @@ function editorHtml({ item }) {
   `).join("");
 
   return `
-    <div class="grid grid2 mt-10">
+    <div class="grid grid2 mt-10 shift-tool-form">
       <div>
         <div class="muted mb-6">Название</div>
         <input id="tpl_title" class="input" placeholder="Например, Обычный месяц" value="${esc(item?.title || "")}" />
@@ -421,7 +425,7 @@ function editorHtml({ item }) {
     </div>
     <div class="muted mt-12">Выбери, какие интервалы нужно создавать в каждый слот недели. Ночь «с понедельника на вторник» будет создана датой понедельника и слотом NIGHT.</div>
     <div class="grid grid2 schedule-template-days">${daysHtml}</div>
-    <div class="row row--end gap-8 mt-12">
+    <div class="row row--end gap-8 mt-12 shift-tool-modal-actions">
       <button class="btn" id="btnCancelEdit">Отмена</button>
       <button class="btn primary" id="btnSaveTemplate">Сохранить шаблон</button>
     </div>
@@ -496,7 +500,7 @@ function openApplyModal(template) {
       <div class="muted mb-6">Месяц заполнения</div>
       <input id="apply_month" class="input" type="month" value="${esc(defaultMonth)}" />
     </div>
-    <div class="itemcard mt-12">
+    <div class="itemcard mt-12 shift-tool-option-card">
       <div class="section-title"><b>Что делать, если в месяце уже есть смены?</b></div>
       <div class="schedule-template-apply-options">
         ${APPLY_MODES.map((mode, idx) => `
@@ -512,7 +516,7 @@ function openApplyModal(template) {
     </div>
     <div class="muted mt-12" id="applyMonthNote"></div>
     ${state.nightShiftsEnabled ? `<div class="itemcard mt-12"><b>Важно по ночам</b><div class="muted mt-6">Например, «Ночь с понедельника на вторник» будет создана на календарную дату понедельника в ночном слоте. В графике её видно при переключателе «Ночь».</div></div>` : ``}
-    <div class="row row--end gap-8 mt-12">
+    <div class="row row--end gap-8 mt-12 shift-tool-modal-actions">
       <button class="btn" id="btnCancelApply">Отмена</button>
       <button class="btn primary" id="btnRunApply">Применить к месяцу</button>
     </div>

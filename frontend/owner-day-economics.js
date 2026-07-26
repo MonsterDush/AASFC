@@ -15,7 +15,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
 let financialValuesHidden = false;
@@ -160,11 +160,31 @@ function setText(id, value) {
   if (el) el.textContent = value;
 }
 
+function setEconomicsLoading(isLoading) {
+  document.body.classList.toggle("is-loading", !!isLoading);
+  document.getElementById("economicsContent")?.setAttribute("aria-busy", isLoading ? "true" : "false");
+}
+
+function showEconomicsPageState(kind, title, detail, { hideContent = false } = {}) {
+  const stateEl = document.getElementById("economicsPageState");
+  const content = document.getElementById("economicsContent");
+  if (stateEl) {
+    stateEl.className = `finance-page-state finance-page-state--${kind}`;
+    stateEl.innerHTML = `<b>${esc(title)}</b><span>${esc(detail)}</span>`;
+  }
+  content?.classList.toggle("hidden", hideContent);
+}
+
+function hideEconomicsPageState() {
+  document.getElementById("economicsPageState")?.classList.add("hidden");
+  document.getElementById("economicsContent")?.classList.remove("hidden");
+}
+
 function renderList(id, rows, emptyText, valueFormatter = null) {
   const el = document.getElementById(id);
   if (!el) return;
   if (!Array.isArray(rows) || !rows.length) {
-    el.innerHTML = `<div class="muted">${esc(emptyText)}</div>`;
+    el.innerHTML = `<div class="economics-state">${esc(emptyText)}</div>`;
     return;
   }
   el.innerHTML = rows.map((row) => {
@@ -358,14 +378,14 @@ function renderAlerts(alerts) {
   const el = document.getElementById("economicsAlerts");
   if (!el) return;
   if (!Array.isArray(alerts) || !alerts.length) {
-    el.innerHTML = `<div class="muted">Проблемных сигналов по дню нет.</div>`;
+    el.innerHTML = `<div class="economics-state">Проблемных сигналов по дню нет.</div>`;
     return;
   }
   el.innerHTML = alerts.map((a) => {
     const sev = String(a.severity || "INFO").toUpperCase();
     const label = sev === "CRITICAL" ? "Критично" : sev === "WARN" ? "Внимание" : "Инфо";
     return `
-      <div class="itemcard mt-8">
+      <div class="itemcard economics-alert">
         <div class="row row--between gap-12 ai-center wrap">
           <div>
             <b>${esc(a.title || a.code || "Сигнал")}</b>
@@ -493,17 +513,33 @@ async function loadEconomics() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
   if (!access.canView) {
-    toast("Нет прав на экономику дня", "err");
+    setEconomicsLoading(false);
+    showEconomicsPageState(
+      "denied",
+      "Нет доступа к экономике дня",
+      "Обратитесь к владельцу заведения, чтобы получить право просмотра финансовых данных.",
+      { hideContent: true },
+    );
     return;
   }
+  setEconomicsLoading(true);
+  hideEconomicsPageState();
   try {
     const econ = await api(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(state.date)}&shift_slot=${encodeURIComponent(normalizeEconomicsShiftSlot(state.shiftSlot))}`);
     state.economics = econ;
     renderEconomics(econ);
+    hideEconomicsPageState();
   } catch (err) {
     toast(err?.data?.detail || err.message || "Не удалось загрузить экономику дня", "err");
     setText("economicsStatusTitle", "Не удалось загрузить данные дня");
     setText("economicsStatusHint", err?.data?.detail || err.message || "Ошибка запроса");
+    showEconomicsPageState(
+      "error",
+      "Не удалось обновить экономику дня",
+      err?.data?.detail || err.message || "Повторите попытку позже.",
+    );
+  } finally {
+    setEconomicsLoading(false);
   }
 }
 
@@ -517,6 +553,16 @@ async function boot() {
   if (!getActiveVenueId() && Array.isArray(venues) && venues.length) setActiveVenueId(venues[0].id);
   await mountNav({ activeTab: "summary" });
   await loadAccess();
+  if (!access.canView) {
+    setEconomicsLoading(false);
+    showEconomicsPageState(
+      "denied",
+      "Нет доступа к экономике дня",
+      "Обратитесь к владельцу заведения, чтобы получить право просмотра финансовых данных.",
+      { hideContent: true },
+    );
+    return;
+  }
   setupDemoDayEconomicsIntro();
 
   const params = new URLSearchParams(location.search);

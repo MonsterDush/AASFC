@@ -76,7 +76,7 @@ for (const [fileName, limit] of Object.entries(sizeLimits)) {
   const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260720-unified7";
   assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /owner-pay-profile\.js\?v=20260723-functional1/);
+assert.match(htmlSource, /owner-pay-profile\.js\?v=20260726-navmore1/);
 
 const state = {
   can: { view: true, manage: true },

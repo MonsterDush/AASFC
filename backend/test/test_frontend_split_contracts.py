@@ -13,7 +13,7 @@ class PageLoaderContractTests(TestCase):
     def test_all_pages_share_the_fetch_and_dom_aware_loader(self):
         loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
         styles_manifest = (FRONTEND / "styles.css").read_text(encoding="utf-8")
-        style_cache_key = "20260723-polish1"
+        style_cache_key = "20260726-navmore1"
         core_style_files = (
             "tokens.css",
             "base-layout.css",
@@ -112,6 +112,229 @@ class PrimaryPageUiPolishContractTests(TestCase):
         self.assertIn('classList.remove("is-loading")', summary_js)
 
 
+class WorkflowPageUiPolishContractTests(TestCase):
+    def test_setup_positions_and_invites_keep_responsive_visual_states(self):
+        contracts = {
+            "owner-setup.html": (
+                "styles/pages/owner-setup.css",
+                "20260725-polish3",
+                ("setup-step__index", "setup-loading", "setup-detail-card"),
+            ),
+            "positions.html": (
+                "styles/pages/positions.css",
+                "20260725-polish3",
+                ("positions-hero", "position-state", "position-member-row__actions"),
+            ),
+            "invites.html": (
+                "styles/pages/invites.css",
+                "20260725-polish4",
+                ("invite-create-card", "invite-count", "invite-card__layout"),
+            ),
+            "invite-accept.html": (
+                "styles/pages/invites.css",
+                "20260725-polish4",
+                ("invite-accept-card", "invite-meta-item", "invite-accept-actions"),
+            ),
+        }
+
+        for html_name, (style_path, cache_key, required) in contracts.items():
+            html = (FRONTEND / html_name).read_text(encoding="utf-8")
+            styles = (FRONTEND / style_path).read_text(encoding="utf-8")
+            self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
+            for contract in required:
+                self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
+
+    def test_settings_profile_and_owner_preferences_keep_responsive_visual_states(self):
+        contracts = {
+            "settings.html": (
+                "styles/pages/settings.css",
+                ("settings-content", "settings-document-link__layout", "settings-actions"),
+            ),
+            "profile.html": (
+                "styles/pages/profile.css",
+                ("profile-form", "auth-box__index", "profile-actions"),
+            ),
+            "owner-subscription.html": (
+                "styles/pages/owner-subscription.css",
+                ("subscription-status", "subscription-history-row__head", "subscription-state"),
+            ),
+            "owner-tip-settings.html": (
+                "styles/pages/owner-tip-settings.css",
+                ("tip-settings-loading", "tip-settings-state", "tip-settings-savebar"),
+            ),
+        }
+
+        for html_name, (style_path, required) in contracts.items():
+            html = (FRONTEND / html_name).read_text(encoding="utf-8")
+            styles = (FRONTEND / style_path).read_text(encoding="utf-8")
+            self.assertIn(f'/{style_path}?v=20260725-polish5', html, html_name)
+            for contract in required:
+                self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
+
+        tip_settings_html = (FRONTEND / "owner-tip-settings.html").read_text(encoding="utf-8")
+        tip_settings_js = (FRONTEND / "owner-tip-settings.js").read_text(encoding="utf-8")
+        self.assertIn('/owner-tip-settings.js?v=20260726-navmore1', tip_settings_html)
+        self.assertIn("Promise.allSettled", tip_settings_js)
+        self.assertIn('el.save.disabled = true', tip_settings_js)
+
+    def test_staff_finance_pages_keep_responsive_visual_states_and_routes(self):
+        contracts = {
+            "staff-finance.html": (
+                "styles/pages/staff-finance.css",
+                ("staff-finance-hero", "staff-finance-action-card", "staff-finance-actions"),
+            ),
+            "staff-salary.html": (
+                "styles/pages/staff-salary.css",
+                ("salary-toolbar-card", "salary-summary-metrics", "salary-state"),
+            ),
+            "staff-adjustments.html": (
+                "styles/pages/staff-adjustments.css",
+                ("staff-adjustments-toolbar", "staff-adjustment-day", "staff-adjustments-state"),
+            ),
+            "staff-report.html": (
+                "styles/pages/staff-report.css",
+                ("staff-report-toolbar", "staff-report-calendar", "staff-report-state"),
+            ),
+        }
+
+        for html_name, (style_path, required) in contracts.items():
+            html = (FRONTEND / html_name).read_text(encoding="utf-8")
+            styles = (FRONTEND / style_path).read_text(encoding="utf-8")
+            self.assertIn(f'/{style_path}?v=20260726-polish6', html, html_name)
+            for contract in required:
+                self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
+
+        entrypoints = {
+            "staff-salary.html": "/staff-salary.js?v=20260726-navmore1",
+            "staff-adjustments.html": "/staff-adjustments.js?v=20260726-navmore1",
+            "staff-report.html": "/staff-report.js?v=20260726-navmore1",
+        }
+        for html_name, entrypoint in entrypoints.items():
+            html = (FRONTEND / html_name).read_text(encoding="utf-8")
+            self.assertIn(entrypoint, html)
+
+        salary_summary = (FRONTEND / "staff-salary-summary.html").read_text(encoding="utf-8")
+        self.assertIn("redirectToUnifiedSalary", salary_summary)
+        self.assertIn("location.replace(`/staff-salary.html?", salary_summary)
+
+    def test_auth_adjustments_and_pay_profiles_keep_responsive_visual_states(self):
+        contracts = {
+            "auth.html": (
+                "styles/pages/auth.css",
+                ("auth-card", "auth-eyebrow", "auth-next-hint"),
+            ),
+            "app-adjustments.html": (
+                "styles/pages/app-adjustments.css",
+                ("app-adjustments-toolbar", "app-adjustments-loading", "app-adjustments-state"),
+            ),
+            "owner-pay-profiles.html": (
+                "styles/pages/owner-pay-profile.css",
+                ("pay-profile-bootstrap", "pay-profile-row__actions", "pay-profile-state"),
+            ),
+            "owner-pay-profile.html": (
+                "styles/pages/owner-pay-profile.css",
+                ("pay-profile-bootstrap", "pay-profile-detail-grid", "pay-profile-modal-actions"),
+            ),
+        }
+
+        for html_name, (style_path, required) in contracts.items():
+            html = (FRONTEND / html_name).read_text(encoding="utf-8")
+            styles = (FRONTEND / style_path).read_text(encoding="utf-8")
+            self.assertIn(f'/{style_path}?v=20260726-polish9', html, html_name)
+            for contract in required:
+                self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
+
+        entrypoints = {
+            "app-adjustments.html": "/app-adjustments.js?v=20260726-navmore1",
+            "owner-pay-profiles.html": "/owner-pay-profiles.js?v=20260726-navmore1",
+            "owner-pay-profile.html": "/owner-pay-profile.js?v=20260726-navmore1",
+        }
+        for html_name, entrypoint in entrypoints.items():
+            html = (FRONTEND / html_name).read_text(encoding="utf-8")
+            self.assertIn(entrypoint, html)
+
+        adjustments_js = (FRONTEND / "app-adjustments.js").read_text(encoding="utf-8")
+        pay_profiles_js = (FRONTEND / "owner-pay-profiles.js").read_text(encoding="utf-8")
+        pay_profile_js = (FRONTEND / "owner-pay-profile.js").read_text(encoding="utf-8")
+        self.assertIn("async function refreshList()", adjustments_js)
+        self.assertIn("await refreshList()", adjustments_js)
+        self.assertIn("if (!hasManageAccess())", adjustments_js)
+        self.assertIn("if (!state.can.view)", pay_profiles_js)
+        self.assertIn("if (!state.can.view)", pay_profile_js)
+
+    def test_owner_catalog_pages_share_responsive_states_and_permission_first_loading(self):
+        pages = {
+            "owner-departments": "if (!state.can.view)",
+            "owner-expense-categories": "if (!state.canView)",
+            "owner-kpi": "if (!state.can.view)",
+            "owner-payment-methods": "if (!state.can.view)",
+            "owner-suppliers": "if (!state.canView)",
+        }
+        styles = (FRONTEND / "styles/pages/owner-catalogs.css").read_text(encoding="utf-8")
+
+        for page_name, permission_guard in pages.items():
+            html = (FRONTEND / f"{page_name}.html").read_text(encoding="utf-8")
+            script = (FRONTEND / f"{page_name}.js").read_text(encoding="utf-8")
+            self.assertIn("/styles/pages/owner-catalogs.css?v=20260726-polish10", html, page_name)
+            self.assertIn(f"/{page_name}.js?v=20260726-navmore1", html, page_name)
+            self.assertIn("catalog-bootstrap", html, page_name)
+            self.assertIn("catalog-loading", script, page_name)
+            self.assertIn("catalog-state--denied", script, page_name)
+            self.assertIn("catalog-state--error", script, page_name)
+            load_source = script.split("async function load()", 1)[1]
+            self.assertIn(permission_guard, load_source, page_name)
+
+        for contract in (
+            "catalog-hero",
+            "catalog-filter",
+            "catalog-row__actions",
+            "catalog-modal-actions",
+            "@media (max-width:620px)",
+        ):
+            self.assertIn(contract, styles)
+
+    def test_owner_economics_pages_keep_details_loading_and_permission_first_access(self):
+        day_html = (FRONTEND / "owner-day-economics.html").read_text(encoding="utf-8")
+        day_script = (FRONTEND / "owner-day-economics.js").read_text(encoding="utf-8")
+        rules_html = (FRONTEND / "owner-economics-rules.html").read_text(encoding="utf-8")
+        rules_script = (FRONTEND / "owner-economics-rules.js").read_text(encoding="utf-8")
+        styles = (FRONTEND / "styles/pages/owner-economics.css").read_text(encoding="utf-8")
+
+        for html, page_name in (
+            (day_html, "owner-day-economics"),
+            (rules_html, "owner-economics-rules"),
+        ):
+            self.assertIn("/styles/pages/owner-economics.css?v=20260726-polish11", html, page_name)
+            self.assertIn(f"/{page_name}.js?v=20260726-navmore1", html, page_name)
+            self.assertIn('class="finance-page-state hidden"', html, page_name)
+
+        for detail_id in (
+            "economicsPaymentRevenueBreakdown",
+            "economicsDepartmentRevenueBreakdown",
+            "economicsPointExpenses",
+            "economicsRecurringExpenses",
+            "economicsPaymentBalances",
+            "economicsKpiBreakdown",
+            "economicsRulesHint",
+        ):
+            self.assertIn(f'id="{detail_id}"', day_html)
+            self.assertIn(f'"{detail_id}"', day_script)
+
+        day_load = day_script.split("async function loadEconomics()", 1)[1]
+        self.assertLess(day_load.index("if (!access.canView)"), day_load.index("await api("))
+        self.assertIn("setEconomicsLoading(false)", day_load)
+        self.assertIn("finance-page-state--denied", styles)
+
+        rules_load = rules_script.split("async function loadRules()", 1)[1]
+        self.assertLess(rules_load.index("if (!state.access.canManage)"), rules_load.index("await api("))
+        self.assertIn("economics-rules-loading", rules_html)
+        self.assertIn("economics-rules-presets", styles)
+
+        revenue_alias = (FRONTEND / "owner-revenue.html").read_text(encoding="utf-8")
+        self.assertIn("window.location.search + window.location.hash", revenue_alias)
+        self.assertIn("window.location.replace(target)", revenue_alias)
+
+
 class AppFacadeSplitContractTests(TestCase):
     def test_app_facade_keeps_public_exports_modules_and_consumers(self):
         main = (FRONTEND / "app.js").read_text(encoding="utf-8")
@@ -148,11 +371,12 @@ class AppFacadeSplitContractTests(TestCase):
         for filename, factory in modules.items():
             source = (FRONTEND / "app" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500)
-            self.assertIn(f'/app/{filename}?v=20260719-split1', main)
+            cache_key = "20260726-navmore1" if filename == "navigation.js" else "20260719-split1"
+            self.assertIn(f"/app/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
         consumer_pattern = re.compile(
-            r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260722-dynamic1[\"']"
+            r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260726-navmore1[\"']"
         )
         consumer_count = 0
         for path in FRONTEND.rglob("*"):
@@ -171,6 +395,30 @@ class AppFacadeSplitContractTests(TestCase):
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):
+    def test_mobile_bottom_nav_collapses_secondary_links_into_accessible_more_menu(self):
+        navigation = (FRONTEND / "app" / "navigation.js").read_text(encoding="utf-8")
+        styles = (FRONTEND / "styles" / "core" / "cards-lists.css").read_text(encoding="utf-8")
+        app = (FRONTEND / "app.js").read_text(encoding="utf-8")
+
+        for token in (
+            "const mobilePrimaryLinkCount = 3",
+            "const overflowLinks = links.slice(mobilePrimaryLinkCount)",
+            'button.textContent = t("more")',
+            'button.setAttribute("aria-haspopup", "menu")',
+            'button.setAttribute("aria-expanded", "false")',
+            'if (event.key === "Escape" && !menu.hidden)',
+        ):
+            self.assertIn(token, navigation)
+
+        self.assertIn('more: "Ещё"', app)
+        self.assertIn('more: "More"', app)
+        self.assertIn(".nav .wrap #nav > .nav-overflow-link{display:none}", styles)
+        self.assertIn(".nav-more__menu[hidden]{display:none}", styles)
+        self.assertIn(".nav-more__menu{", styles)
+        self.assertIn("width:min(220px,calc(100vw - 24px))", styles)
+        self.assertIn("min-height:38px", styles)
+        self.assertIn("font-size:13px", styles)
+
     def test_get_requests_do_not_force_cors_preflight_headers(self):
         source = (FRONTEND / "app.js").read_text(encoding="utf-8")
         api_source = source[
@@ -197,6 +445,40 @@ class FunctionalFrontendRegressionContractTests(TestCase):
         self.assertIn('class="modal__title"', source)
         self.assertIn('class="modal__body"', source)
 
+    def test_admin_pages_keep_stable_loading_and_responsive_layout_contracts(self):
+        contracts = {
+            "admin-billing.html": ("billing-state--loading", "billing-filters"),
+            "admin-venues.html": ("admin-venues-skeleton", "admin-venue-card__actions"),
+            "admin-demo.html": ("demo-admin-kpi--loading", "demo-admin-section--wide"),
+            "admin-demo-analytics.html": ("demo-analytics-state--loading", "demo-analytics-filter-card"),
+            "admin-position-templates.html": ("tpl-state--loading", "tpl-toolbar-card"),
+        }
+
+        for filename, required_classes in contracts.items():
+            source = (FRONTEND / filename).read_text(encoding="utf-8")
+            for class_name in required_classes:
+                self.assertIn(class_name, source, f"{filename} lost {class_name}")
+
+    def test_shift_planning_pages_keep_stable_loading_and_responsive_layout_contracts(self):
+        html_contracts = {
+            "staff-shifts.html": ("staff-shifts-toolbar", "shifts-calendar-loading"),
+            "shift-intervals.html": ("shift-tool-state--loading", "shift-tools.css?v=20260726-polish8"),
+            "shift-schedule-templates.html": ("shift-tool-state--loading", "shift-tools.css?v=20260726-polish8"),
+        }
+        module_contracts = {
+            "shift-intervals.js": ("shift-interval-row", "shift-tool-state--empty"),
+            "shift-schedule-templates.js": ("shift-template-card", "shift-tool-modal-actions"),
+        }
+
+        for filename, required_tokens in html_contracts.items():
+            source = (FRONTEND / filename).read_text(encoding="utf-8")
+            for token in required_tokens:
+                self.assertIn(token, source, f"{filename} lost {token}")
+        for filename, required_tokens in module_contracts.items():
+            source = (FRONTEND / filename).read_text(encoding="utf-8")
+            for token in required_tokens:
+                self.assertIn(token, source, f"{filename} lost {token}")
+
 
 class OwnerSetupSplitContractTests(TestCase):
     def test_owner_setup_keeps_all_editor_modules_and_step_dispatch(self):
@@ -213,8 +495,8 @@ class OwnerSetupSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260723-functional1", html)
-        self.assertIn("position-template-ui.js?v=20260722-dynamic1", main)
+        self.assertIn("owner-setup.js?v=20260726-navmore1", html)
+        self.assertIn("position-template-ui.js?v=20260726-navmore1", main)
         self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertIn('<progress class="setup-progressbar"', main)
@@ -268,7 +550,7 @@ class StaffShiftsSplitContractTests(TestCase):
         self.assertLess(len(calendar.splitlines()), 850)
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
         self.assertIn("/staff-shifts/calendar-controller.js?v=20260720-unified6", main)
-        self.assertIn("staff-shifts.js?v=20260722-dynamic1", html)
+        self.assertIn("staff-shifts.js?v=20260726-navmore1", html)
         self.assertIn("/shifts/export-metadata?", module)
 
         mutable_fields = (
@@ -340,7 +622,7 @@ class OwnerPayProfileSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 450)
-        self.assertIn("owner-pay-profile.js?v=20260723-functional1", html)
+        self.assertIn("owner-pay-profile.js?v=20260726-navmore1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
@@ -387,15 +669,19 @@ class PositionsSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 420)
-        self.assertIn("positions.js?v=20260723-functional1", html)
+        self.assertIn("positions.js?v=20260726-navmore1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "positions" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
             cache_key = (
-                "20260722-dynamic1"
+                "20260726-navmore1"
                 if filename == "permission-controller.js"
+                else "20260725-polish4"
+                if filename == "invite-controller.js"
+                else "20260725-polish3"
+                if filename == "position-list.js"
                 else "20260723-functional1"
-                if filename in {"position-editor.js", "position-list.js"}
+                if filename == "position-editor.js"
                 else "20260720-unified6"
             )
             self.assertIn(f'/positions/{filename}?v={cache_key}', main)
@@ -405,12 +691,13 @@ class PositionsSplitContractTests(TestCase):
         position_list = (FRONTEND / "positions" / "position-list.js").read_text(encoding="utf-8")
         invites = (FRONTEND / "positions" / "invite-controller.js").read_text(encoding="utf-8")
         permissions = (FRONTEND / "positions" / "permission-controller.js").read_text(encoding="utf-8")
-        self.assertIn("position-template-ui.js?v=20260722-dynamic1", permissions)
+        self.assertIn("position-template-ui.js?v=20260726-navmore1", permissions)
 
         for api_call in ("createVenuePosition", "updateVenuePosition", "deleteVenuePosition"):
             self.assertIn(api_call, editor)
         self.assertIn("deleteVenuePosition", position_list)
         self.assertIn("patchInviteDefaultPosition", invites)
+        self.assertRegex(invites, r"contact_label\s*\|\|\s*inv\?\.phone")
         self.assertIn("/me/permissions/catalog", permissions)
         self.assertIn("/position-permission-templates", permissions)
 

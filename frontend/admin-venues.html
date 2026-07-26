@@ -4,14 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260723-polish1" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/admin-venues.css?v=20260726-polish7" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Админ · Заведения</title>
 
 </head>
 
 <body class="admin-venues-page">
-  <div class="container">
+  <div class="container admin-venues-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -23,20 +24,23 @@
       <div class="userpill" data-userpill>—</div>
     </div>
 
-    <div class="toolbar">
-      <button id="btnActive" class="btn subtle">Активные</button>
-      <button id="btnArchived" class="btn subtle">Архив</button>
-      <span id="status" class="muted"></span>
-    </div>
+    <main class="admin-venues-content">
+      <section class="card admin-venues-toolbar-card">
+        <div class="toolbar">
+          <button id="btnActive" class="btn subtle">Активные</button>
+          <button id="btnArchived" class="btn subtle">Архив</button>
+          <span id="status" class="muted admin-venues-status" aria-live="polite"></span>
+        </div>
+      </section>
 
-    <div id="banner" class="card hidden">
+    <section id="banner" class="card admin-venues-banner hidden">
       <b>Не удалось авторизоваться</b>
       <div class="muted mt-6">
         Пожалуйста, открой Mini App через Telegram и попробуй ещё раз.
       </div>
-    </div>
+    </section>
 
-    <div class="card">
+    <section class="card admin-venues-create-card">
       <div class="row">
         <div>
           <div><b>Создать заведение</b></div>
@@ -44,7 +48,7 @@
         </div>
       </div>
 
-      <div class="toolbar">
+      <div class="toolbar admin-venues-create-form">
         <input id="vName" type="text" placeholder="Название заведения" />
         <select id="ownerMode">
           <option value="tg">Ник в Telegram</option>
@@ -58,15 +62,18 @@
         <input class="hidden" id="owners" type="text" placeholder="Ники владельцев: ivan, petr" />
         <button id="btnCreate" class="btn primary">Создать</button>
       </div>
-      <div id="createResult" class="muted"></div>
-    </div>
+      <div id="createResult" class="muted admin-venues-create-result" aria-live="polite"></div>
+    </section>
 
-    <div class="toolbar">
-      <input id="search" type="search" placeholder="По названию или номеру" />
-      <span class="muted" id="count">0</span>
-    </div>
+      <section class="card admin-venues-list-card">
+        <div class="toolbar admin-venues-search">
+          <input id="search" type="search" placeholder="По названию или номеру" />
+          <span class="muted admin-venues-count" id="count">0</span>
+        </div>
 
-    <div id="list"></div>
+        <div id="list" class="admin-venues-list"></div>
+      </section>
+    </main>
   </div>
 
   <!-- Toast -->
@@ -103,7 +110,7 @@
     confirmModal,
     openModal,
     mountNav
-  } from "/app.js?v=20260722-dynamic1";
+  } from "/app.js?v=20260726-navmore1";
 
   // без replaceAll (Telegram WebView)
   function esc(s){
@@ -137,9 +144,9 @@
 
   function renderSkeleton() {
     listEl.innerHTML = `
-      <div class="skeleton"></div>
-      <div class="skeleton"></div>
-      <div class="skeleton"></div>
+      <div class="skeleton admin-venues-skeleton"></div>
+      <div class="skeleton admin-venues-skeleton"></div>
+      <div class="skeleton admin-venues-skeleton"></div>
     `;
   }
 
@@ -187,7 +194,7 @@
     countEl.textContent = String(items.length);
 
     if (!items.length) {
-      listEl.innerHTML = `<div class="muted">Заведений нет</div>`;
+      listEl.innerHTML = `<div class="admin-venues-state admin-venues-state--empty">Заведений нет</div>`;
       return;
     }
 
@@ -205,9 +212,9 @@
         : `<button class="btn danger" disabled title="Удаление доступно только для архивных заведений">Удалить</button>`;
 
       return `
-        <div class="card">
-          <div class="row">
-            <div>
+        <article class="admin-venue-card">
+          <div class="row admin-venue-card__layout">
+            <div class="admin-venue-card__main">
               <div>
                 <a class="btn subtle inline" href="/app-venue.html?venue_id=${v.id}">
                     <b>${name}</b>
@@ -217,7 +224,7 @@
               <div class="muted">${v.archived_at ? "В архиве с " + esc(v.archived_at) : "Открыть карточку заведения"}</div>
               ${ownerStatusHtml(v.owner_status)}
             </div>
-            <div class="toolbar">
+            <div class="toolbar admin-venue-card__actions">
               <button class="btn" data-action="rename" data-id="${id}">Переименовать</button>
               <button class="btn" data-action="toggleArchive" data-id="${id}" data-arch="${isArchived ? "1":"0"}">
                 ${isArchived ? "Вернуть из архива" : "В архив"}
@@ -226,7 +233,7 @@
               ${deleteBtn}
             </div>
           </div>
-        </div>
+        </article>
       `;
     }).join("");
   }
@@ -247,7 +254,7 @@
       setLastJson({ load: "FAILED", message: e?.message, status: e?.status, data: e?.data, url: e?.url });
       setStatus("Ошибка загрузки");
       listEl.innerHTML = `
-        <div class="card">
+        <div class="admin-venues-state admin-venues-state--error">
           <b>Не удалось загрузить заведения</b>
           <pre>${esc(e?.message || "Неизвестная ошибка")}</pre>
           <div class="muted">Попробуй обновить страницу или проверить доступ.</div>

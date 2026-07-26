@@ -35,13 +35,28 @@ function buildPositionGroups() {
   return Array.from(groups.values()).sort((a, b) => a.title.localeCompare(b.title, "ru"));
 }
 
+function employeeCountLabel(count) {
+  const value = Math.max(0, Number(count) || 0);
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  const word = mod10 === 1 && mod100 !== 11
+    ? "сотрудник"
+    : (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? "сотрудника" : "сотрудников");
+  return `${value} ${word}`;
+}
+
 function renderPositions() {
   const list = document.getElementById("list");
   list.innerHTML = "";
 
   const groups = buildPositionGroups();
   if (!groups.length) {
-    list.innerHTML = `<div class="muted">Должностей пока нет</div>`;
+    list.innerHTML = `
+      <div class="position-state">
+        <b>Должностей пока нет</b>
+        <span>Создайте первую должность, чтобы назначать сотрудников, профиль начислений и права.</span>
+      </div>
+    `;
     return;
   }
 
@@ -56,14 +71,17 @@ function renderPositions() {
     });
 
     const wrap = document.createElement("div");
-    wrap.className = "itemcard mt-10";
+    wrap.className = "itemcard position-group";
 
     wrap.innerHTML = `
-      <div class="row row--between ai-center">
-        <b>${esc(title)} <span class="muted">(${arr.length})</span></b>
+      <div class="position-group__head">
+        <div class="position-group__title">
+          <b>${esc(title)}</b>
+          <span class="position-count">${employeeCountLabel(arr.length)}</span>
+        </div>
         ${auth.canManage ? `<button class="btn" data-add-same>+ Добавить сотрудника</button>` : ``}
       </div>
-      <div class="list mt-10" data-rows></div>
+      <div class="position-member-list" data-rows></div>
     `;
 
     // "+ Добавить сотрудника" с предзаполненным title
@@ -78,12 +96,13 @@ function renderPositions() {
 
     if (!arr.length && preset) {
       rows.innerHTML = `
-        <div class="list__row">
-          <div class="list__main">
+        <div class="position-member-row position-member-row--empty">
+          <div class="position-member-row__main">
             <div><b>Сотрудники ещё не назначены</b></div>
-            <div class="muted mt-4">
-              Профиль: ${esc(preset.pay_profile_title || "не назначен")} ·
-              Отчёты: ${posReportsEnabled(preset) ? "да" : "нет"} · График: ${posScheduleManage(preset) ? "да" : "нет"}
+            <div class="position-meta-chips">
+              <span class="position-meta-chip">Профиль: ${esc(preset.pay_profile_title || "не назначен")}</span>
+              <span class="position-meta-chip">Отчёты: ${posReportsEnabled(preset) ? "да" : "нет"}</span>
+              <span class="position-meta-chip">График: ${posScheduleManage(preset) ? "да" : "нет"}</span>
             </div>
           </div>
         </div>
@@ -95,17 +114,18 @@ function renderPositions() {
       const who = m ? memberLabel(m) : (p.member_user_id ? "Сотрудник" : "—");
 
       const row = document.createElement("div");
-      row.className = "list__row";
+      row.className = "position-member-row";
 
       row.innerHTML = `
-        <div class="list__main">
+        <div class="position-member-row__main">
           <div><b>${esc(who)}</b></div>
-          <div class="muted mt-4">
-            Профиль: ${esc(p.pay_profile_title || "не назначен")} ·
-            Отчёты: ${posReportsEnabled(p) ? "да" : "нет"} · График: ${posScheduleManage(p) ? "да" : "нет"}
+          <div class="position-meta-chips">
+            <span class="position-meta-chip">Профиль: ${esc(p.pay_profile_title || "не назначен")}</span>
+            <span class="position-meta-chip">Отчёты: ${posReportsEnabled(p) ? "да" : "нет"}</span>
+            <span class="position-meta-chip">График: ${posScheduleManage(p) ? "да" : "нет"}</span>
           </div>
         </div>
-        <div class="row gap-8">
+        <div class="position-member-row__actions">
           ${auth.canManage ? `<button class="btn" data-edit>Изменить</button>` : (auth.canManagePerms ? `<button class="btn" data-perms>Права</button>` : ``)}
           ${auth.canManage ? `<button class="btn danger" data-del>Архивировать</button>` : ``}
         </div>

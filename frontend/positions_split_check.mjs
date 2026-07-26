@@ -76,12 +76,14 @@ for (const [fileName, [factoryName, lineLimit]] of Object.entries(moduleContract
   assert.ok(moduleSources[fileName].split("\n").length < lineLimit, `${fileName} is too large`);
   assert.match(moduleSources[fileName], new RegExp(`export function ${factoryName}\\b`));
   const cacheKey = fileName === "permission-controller.js"
-    ? "20260722-dynamic1"
-    : (["position-editor.js", "position-list.js"].includes(fileName) ? "20260723-functional1" : "20260720-unified6");
+    ? "20260726-navmore1"
+    : (["position-list.js", "invite-controller.js"].includes(fileName)
+      ? (fileName === "invite-controller.js" ? "20260725-polish4" : "20260725-polish3")
+      : (fileName === "position-editor.js" ? "20260723-functional1" : "20260720-unified6"));
   assert.match(mainSource, new RegExp(`/positions/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /positions\.js\?v=20260723-functional1/);
-assert.match(moduleSources["permission-controller.js"], /position-template-ui\.js\?v=20260722-dynamic1/);
+assert.match(htmlSource, /positions\.js\?v=20260726-navmore1/);
+assert.match(moduleSources["permission-controller.js"], /position-template-ui\.js\?v=20260726-navmore1/);
 
 const state = {
   venueId: "7",
@@ -221,5 +223,6 @@ const invites = inviteModule.createPositionInviteController({
   patchInviteDefaultPosition: asyncNoop,
 });
 assert.equal(typeof invites.renderInvites, "function");
+assert.match(moduleSources["invite-controller.js"], /contact_label\s*\|\|\s*inv\?\.phone/);
 
 console.log(`positions split contract: ${moduleFiles.length} modules, ${apiCallManifest.length} API calls, ${uniqueDomBindings.length} DOM controls`);

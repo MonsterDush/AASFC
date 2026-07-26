@@ -14,7 +14,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 
 import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
@@ -495,13 +495,14 @@ function buildDaysFromShifts() {
 async function loadMonth() {
   syncPeriodUi();
   if (!venueId) {
-    if (el.daysList) el.daysList.innerHTML = `<div class="muted">Нет активного заведения</div>`;
-    if (el.monthChart) el.monthChart.innerHTML = `<div class="muted">Нет активного заведения</div>`;
+    const emptyState = `<div class="salary-state"><b>Нет активного заведения</b><span>Выбери заведение и открой раздел ещё раз.</span></div>`;
+    if (el.daysList) el.daysList.innerHTML = emptyState;
+    if (el.monthChart) el.monthChart.innerHTML = emptyState;
     return;
   }
 
   const q = periodQueryString();
-  if (el.daysList) el.daysList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+  if (el.daysList) el.daysList.innerHTML = `<div class="salary-loading"><div class="skeleton"></div><div class="skeleton"></div></div>`;
 
   try {
     const out = await api(`/me/shifts?venue_id=${encodeURIComponent(venueId)}&${q}`);
@@ -560,7 +561,7 @@ async function loadMonthAll() {
 
   const q = periodQueryString();
   syncPeriodUi();
-  allEls.list.innerHTML = `<div class="card"><div class="skeleton"></div></div><div class="card"><div class="skeleton"></div></div>`;
+  allEls.list.innerHTML = `<div class="card salary-venue-card"><div class="skeleton"></div></div><div class="card salary-venue-card"><div class="skeleton"></div></div>`;
 
   let totals = null;
   let items = null;
@@ -609,7 +610,7 @@ async function loadMonthAll() {
       : "Данные собраны по выбранному периоду";
   }
   if (!safeItems.length) {
-    allEls.list.innerHTML = `<div class="muted">Нет заведений для отображения</div>`;
+    allEls.list.innerHTML = `<div class="salary-state"><b>Нет заведений</b><span>Для выбранного периода нечего отображать.</span></div>`;
     return;
   }
 
@@ -631,19 +632,19 @@ async function loadMonthAll() {
     const latest = v?.latest_recalculation?.trigger_reason ? `<div class="muted small mt-8">${esc(recalcReasonLabel(v.latest_recalculation.trigger_reason))}</div>` : "";
     if (state === "empty") {
       return `
-        <div class="card">
-          <div class="row row--between ai-center gap-8">
+        <div class="card salary-venue-card">
+          <div class="salary-venue-card__head">
             <b>${name}</b>
-            <span class="badge">нет данных</span>
+            <span class="salary-status">нет данных</span>
           </div>
           <div class="muted mt-10">За выбранный период начислений нет.</div>
         </div>`;
     }
     return `
-      <div class="card">
-        <div class="row row--between ai-center gap-8">
+      <div class="card salary-venue-card">
+        <div class="salary-venue-card__head">
           <b>${name}</b>
-          <span class="badge">${state === "partial" ? "частично" : "готово"}</span>
+          <span class="salary-status salary-status--${state === "partial" ? "partial" : "ready"}">${state === "partial" ? "частично" : "готово"}</span>
         </div>
         <div class="grid mt-10 salary-all-kpis">
           <div class="mini-kpi"><div class="muted small">Начислено</div><b>${formatMoney(earned)}</b></div>
@@ -726,7 +727,7 @@ function renderSummary() {
 function renderMonthChart() {
   if (!el.monthChart) return;
   if (!days.length) {
-    el.monthChart.innerHTML = `<div class="muted">${periodMode === "month" ? "Нет данных за этот месяц" : "Нет данных за этот диапазон"}</div>`;
+    el.monthChart.innerHTML = `<div class="salary-state salary-state--compact"><b>Данных пока нет</b><span>${periodMode === "month" ? "За этот месяц начисления ещё не появились." : "За выбранный диапазон начисления ещё не появились."}</span></div>`;
     return;
   }
 
@@ -763,14 +764,14 @@ function renderDays() {
   if (!el.daysList) return;
   el.daysList.innerHTML = "";
   if (!days.length) {
-    el.daysList.innerHTML = `<div class="muted">${periodMode === "month" ? "Нет данных за этот месяц" : "Нет данных за этот диапазон"}</div>`;
+    el.daysList.innerHTML = `<div class="salary-state salary-state--compact"><b>Детализация пуста</b><span>${periodMode === "month" ? "За этот месяц нет дней с начислениями." : "В выбранном диапазоне нет дней с начислениями."}</span></div>`;
     return;
   }
 
   const isPayroll = monthSummaryItem?.source === "payroll";
   for (const d of days) {
     const card = document.createElement("div");
-    card.className = "list__row";
+    card.className = "list__row salary-day-row";
     const dd = formatDateRu(d.date);
     let rightText = "—";
     if (isPayroll) {
@@ -789,8 +790,8 @@ function renderDays() {
     details.push(`${Math.max(0, d.shifts?.length || 0)} смен(ы)`);
     if (d.adjustmentCount) details.push(`${d.adjustmentCount} коррект.`);
     card.innerHTML = `
-      <div class="row row--between ai-center gap-10">
-        <div>
+      <div class="salary-day-row__layout">
+        <div class="salary-day-row__main">
           <b>${esc(dd)}</b>
           <div class="muted small mt-4">${esc(details.join(" · "))}</div>
         </div>

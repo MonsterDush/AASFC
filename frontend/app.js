@@ -2,7 +2,7 @@ import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm,
 
 import { createAuthActions } from "/app/auth-actions.js?v=20260719-split1";
 import { createVenueApi } from "/app/venue-api.js?v=20260719-split1";
-import { createNavigation } from "/app/navigation.js?v=20260719-split1";
+import { createNavigation } from "/app/navigation.js?v=20260726-navmore1";
 
 function normalizeBaseUrl(value) {
   const raw = String(value || "").trim();
@@ -939,6 +939,7 @@ const DICT = {
     manage_venues: "Управление заведениями",
     leave_venue: "Выйти из заведения",
     settings: "Настройки",
+    more: "Ещё",
     adjustments: "Штрафы",
     shifts: "График",
     salary: "Зарплаты",
@@ -956,6 +957,7 @@ const DICT = {
     manage_venues: "Manage venues",
     leave_venue: "Leave venue",
     settings: "Settings",
+    more: "More",
     adjustments: "Adjustments",
     shifts: "Schedule",
     salary: "Salary",

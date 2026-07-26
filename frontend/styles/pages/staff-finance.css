@@ -1,0 +1,16 @@
+.staff-finance-page .staff-finance-shell{display:grid;gap:14px}
+.staff-finance-content{display:grid;gap:14px}
+.staff-finance-hero{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 74%)}
+.staff-finance-hero .screen-hero__head b{font-size:22px;line-height:1.25}
+.staff-finance-eyebrow{margin-bottom:5px;color:var(--muted);font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.staff-finance-action-card{display:grid;align-content:space-between;min-height:180px;background:var(--card)}
+.staff-finance-action-card__index{display:inline-flex;width:30px;height:30px;align-items:center;justify-content:center;border:1px solid var(--accentSoftBorder);border-radius:10px;background:var(--accentSoftBg);color:var(--accent);font-size:10px;font-weight:900}
+.staff-finance-actions{margin-top:auto}
+.staff-finance-actions .btn{flex:1 1 150px}
+
+@media (max-width:560px){
+  .staff-finance-hero .screen-hero__head b{font-size:20px}
+  .staff-finance-action-card{min-height:0}
+  .staff-finance-actions{display:grid;grid-template-columns:1fr}
+  .staff-finance-actions .btn{width:100%}
+}

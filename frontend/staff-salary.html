@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260723-polish1" />
-  <link rel="stylesheet" href="/styles/pages/staff-salary.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/staff-salary.css?v=20260726-polish6" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Зарплата</title>
 </head>
 
-<body>
-  <div class="container">
+<body class="staff-salary-page">
+  <div class="container staff-salary-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -23,8 +23,8 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-
-    <div class="card demo-flow-card hidden" id="demoStaffSalaryIntro">
+    <main class="staff-salary-content">
+    <div class="card section-card demo-flow-card hidden" id="demoStaffSalaryIntro">
       <div class="demo-flow-card__head">
         <div>
           <b>Что посмотреть в DEMO персонала</b>
@@ -42,77 +42,97 @@
       </div>
     </div>
 
-    <div class="card">
-      <div class="row jc-center gap-8 wrap" id="periodModeControls">
+    <section class="card section-card salary-toolbar-card">
+      <div class="salary-period-modes" id="periodModeControls">
         <button class="btn sm" id="periodMonthBtn" type="button">Месяц</button>
         <button class="btn sm" id="periodRangeBtn" type="button">Период</button>
       </div>
 
-      <div class="row ai-center jc-center gap-10 month-controls mt-10" id="monthControls">
+      <div class="salary-month-controls month-controls" id="monthControls">
         <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
         <b id="monthLabel">…</b>
         <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
       </div>
 
-      <div class="row ai-center jc-center gap-8 wrap mt-10 hidden" id="rangeControls">
+      <div class="salary-range-controls hidden" id="rangeControls">
         <input class="input maxw-170" id="rangeFrom" type="date" />
         <span class="muted">—</span>
         <input class="input maxw-170" id="rangeTo" type="date" />
         <button class="btn primary sm" id="rangeApply" type="button">Показать</button>
       </div>
 
-      <div class="row jc-center gap-8 mt-10" id="salaryScope">
+      <div class="salary-scope-switch" id="salaryScope">
         <button class="btn sm" id="btnThisVenue" data-scope="venue">Это заведение</button>
         <button class="btn sm" id="btnAllVenues" data-scope="all">Все заведения</button>
       </div>
+    </section>
 
-      <div id="venueScopeWrap">
-        <div class="itemcard mt-12">
-          <div class="row row--between"><div class="muted">Начислено</div><b id="sumSalary">0</b></div>
-          <div class="row row--between"><div class="muted">Чаевые</div><b id="sumTips">0</b></div>
-          <div class="row row--between"><div class="muted">Премии</div><b id="sumBonuses">0</b></div>
-          <div class="row row--between"><div class="muted">Штрафы</div><b id="sumPenalties">0</b></div>
-          <div class="row row--between hidden" id="rowWriteoffs"><div class="muted">Списания</div><b id="sumWriteoffs">0</b></div>
-
-          <div class="row divider-top mt-8 pt-10 row--between">
+      <div class="salary-sections" id="venueScopeWrap">
+        <section class="card section-card salary-summary-card">
+          <div class="section-card__head">
+            <div>
+              <div class="section-card__eyebrow">Сводка</div>
+              <b>Начисление за период</b>
+            </div>
+          </div>
+          <div class="salary-summary-metrics">
+            <div class="salary-summary-row"><div class="muted">Начислено</div><b id="sumSalary">0</b></div>
+            <div class="salary-summary-row"><div class="muted">Чаевые</div><b id="sumTips">0</b></div>
+            <div class="salary-summary-row"><div class="muted">Премии</div><b id="sumBonuses">0</b></div>
+            <div class="salary-summary-row"><div class="muted">Штрафы</div><b id="sumPenalties">0</b></div>
+            <div class="salary-summary-row hidden" id="rowWriteoffs"><div class="muted">Списания</div><b id="sumWriteoffs">0</b></div>
+            <div class="salary-summary-row salary-summary-row--total">
             <div class="muted">Итого начисление</div><b id="sumTotal">0</b>
+            </div>
           </div>
 
-          <div class="muted small mt-10" id="salarySourceHint"></div>
+          <div class="muted small salary-source-hint" id="salarySourceHint"></div>
 
-          <div class="row row--between ai-center mt-10" id="salaryActionsRow">
-            <div class="row ai-center hidden" id="payrollBreakdownRow">
+          <div class="salary-summary-actions" id="salaryActionsRow">
+            <div class="salary-payroll-action hidden" id="payrollBreakdownRow">
               <span class="badge">payroll</span>
               <button class="btn sm" id="openPayrollBreakdownBtn">Разбор начисления</button>
             </div>
             <button class="btn sm" id="addManualTipBtn">Добавить чаевые</button>
           </div>
-        </div>
+        </section>
 
-        <div class="itemcard mt-12">
-          <div class="row row--between">
-            <b id="daysChartTitle">График по дням</b>
+        <section class="card section-card salary-chart-card">
+          <div class="section-card__head">
+            <div>
+              <div class="section-card__eyebrow">Динамика</div>
+              <b id="daysChartTitle">График по дням</b>
+            </div>
             <div class="muted small" id="daysChartHint">Выбери день для подробностей</div>
           </div>
           <div id="monthChart" class="chart">
             <div class="skeleton"></div>
           </div>
-        </div>
+        </section>
 
-        <div class="itemcard mt-12">
-          <div class="row row--between">
-            <b id="daysListTitle">По дням</b>
+        <section class="card section-card salary-days-card">
+          <div class="section-card__head">
+            <div>
+              <div class="section-card__eyebrow">Детализация</div>
+              <b id="daysListTitle">По дням</b>
+            </div>
             <div class="muted small" id="daysListHint"></div>
           </div>
-          <div id="daysList" class="mt-10">
+          <div id="daysList" class="salary-days-list">
             <div class="skeleton"></div>
             <div class="skeleton"></div>
           </div>
-        </div>
+        </section>
       </div>
 
-      <div class="itemcard mt-12 hidden" id="allVenuesCard">
-        <div class="grid mt-10 salary-all-kpis">
+      <section class="card section-card salary-all-card hidden" id="allVenuesCard">
+        <div class="section-card__head">
+          <div>
+            <div class="section-card__eyebrow">Все заведения</div>
+            <b>Общий итог</b>
+          </div>
+        </div>
+        <div class="grid salary-all-kpis">
           <div class="mini-kpi">
             <div class="muted small">Начислено</div>
             <b id="allEarned">0</b>
@@ -135,17 +155,17 @@
           </div>
         </div>
 
-        <div class="row jc-between ai-center mt-12">
-          <b>По заведениям</b>
+        <div class="section-card__head salary-venues-head">
+          <div><b>По заведениям</b></div>
           <span class="muted small" id="allVenuesHint"></span>
         </div>
 
-        <div class="grid mt-10" id="allVenuesList">
-          <div class="card"><div class="skeleton"></div></div>
-          <div class="card"><div class="skeleton"></div></div>
+        <div class="salary-venue-list" id="allVenuesList">
+          <div class="card salary-venue-card"><div class="skeleton"></div></div>
+          <div class="card salary-venue-card"><div class="skeleton"></div></div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
 
     <div class="nav">
       <div class="wrap">
@@ -156,6 +176,6 @@
     <div class="toast" id="toast"><div class="toast__text"></div></div>
   </div>
 
-  <script type="module" src="/staff-salary.js?v=20260720-unified6"></script>
+  <script type="module" src="/staff-salary.js?v=20260726-navmore1"></script>
 </body>
 </html>

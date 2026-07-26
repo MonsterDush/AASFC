@@ -1,5 +1,13 @@
-.auth-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
-.verify-box{border:1px solid var(--border);border-radius:16px;padding:12px}
+.auth-page .auth-shell{display:grid;gap:14px;padding-bottom:28px}
+.auth-topbar{margin-bottom:0}
+.auth-grid{display:grid;grid-template-columns:minmax(0,680px);justify-content:center;min-width:0}
+.auth-card{display:grid;gap:16px;min-width:0;padding:clamp(18px,4vw,30px);border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 48%)}
+.auth-intro{display:grid;gap:8px;padding-bottom:2px}
+.auth-eyebrow{width:max-content;max-width:100%;padding:5px 9px;border:1px solid var(--accentSoftBorder);border-radius:999px;background:var(--accentSoftBg);color:var(--accent);font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
+.auth-title{font-size:clamp(22px,4vw,30px);line-height:1.15}
+.auth-login-panel{margin-top:0}
+.auth-label{display:block;font-size:13px;font-weight:800;color:var(--muted)}
+.verify-box{border:1px solid var(--border);border-radius:16px;padding:14px;background:var(--surfaceTintSoft)}
 .verify-meta{font-family:var(--mono);white-space:pre-line}
 .call-number{font-size:20px;font-weight:700;letter-spacing:.02em}
 .call-number a{color:inherit;text-decoration:none}
@@ -9,7 +17,20 @@
 .password-flow-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .password-rules,.miniapp-open-box{border:1px solid var(--border);border-radius:16px;padding:12px;background:var(--surfaceTintSoft)}
 .password-rules{border-radius:12px;padding:10px 12px}
-.auth-shell{margin-top:12px}
-.auth-shell input:not([type="checkbox"]):not([type="radio"]){margin-top:12px}
-.miniapp-open-box{margin-top:12px}
+.auth-shell input:not([type="checkbox"]):not([type="radio"]){margin-top:6px}
+.auth-secondary-panel{margin-top:0}
 .miniapp-open-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.auth-next-hint{padding-top:2px;font-size:12px;line-height:1.45}
+.auth-divider{height:1px;background:var(--border)}
+
+@media (max-width:560px){
+  .auth-page .auth-shell{padding-inline:10px}
+  .auth-card{padding:16px}
+  .login-actions{display:grid;grid-template-columns:1fr}
+  .login-actions .btn,
+  .miniapp-open-actions .btn{width:100%}
+  .password-flow-header{display:grid;grid-template-columns:1fr}
+  .password-flow-header .btn{width:100%}
+  .verify-box .row{display:grid;grid-template-columns:1fr}
+  .verify-box .row .btn{width:100%}
+}

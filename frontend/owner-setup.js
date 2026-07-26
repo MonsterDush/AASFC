@@ -29,7 +29,7 @@ import {
   updatePayComponent,
   deletePayComponent,
   patchInviteDefaultPosition,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 
 import {
   roleUpper,
@@ -43,7 +43,7 @@ import {
   isSetupDone,
   isSetupPrepareDone,
 } from "/permissions.js?v=20260409-setup2";
-import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPositionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260722-dynamic1";
+import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPositionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260726-navmore1";
 
 import { createCatalogSetupController } from "/owner-setup/catalog-editor.js?v=20260720-unified10";
 import { createPayProfileSetupController } from "/owner-setup/pay-profile-editor.js?v=20260720-unified10";
@@ -951,7 +951,7 @@ function moveToOverview() {
 
 function renderAccessError(message) {
   root.innerHTML = `
-    <div class="itemcard section-card">
+    <div class="itemcard section-card setup-card setup-state-card">
       <b>Быстрая настройка недоступна</b>
       <div class="muted mt-8">${esc(message || "Открыть мастер настройки можно только владельцу заведения с полным доступом.")}</div>
       <div class="setup-actionbar">
@@ -966,16 +966,18 @@ function renderAccessError(message) {
 
 function renderLoading() {
   root.innerHTML = `
-    <div class="skeleton"></div>
-    <div class="skeleton"></div>
-    <div class="skeleton"></div>
+    <div class="itemcard section-card setup-loading" aria-label="Загрузка мастера настройки">
+      <div class="skeleton skeleton--text"></div>
+      <div class="skeleton skeleton--card"></div>
+      <div class="skeleton skeleton--control"></div>
+    </div>
   `;
 }
 
 function renderStartScreen() {
   const venueName = state.venue?.name || `Заведение #${state.venueId}`;
   root.innerHTML = `
-    <div class="itemcard section-card">
+    <div class="itemcard section-card setup-card setup-start-card">
       <div class="section-card__head">
         <div class="section-card__title">
           <b>Подготовим ${esc(venueName)}</b>
@@ -1063,7 +1065,7 @@ function renderOverview() {
   const extraDisabled = !prepareDone;
 
   root.innerHTML = `
-    <div class="itemcard section-card">
+    <div class="itemcard section-card setup-card setup-overview-card">
       <div class="section-card__head">
         <div class="section-card__title">
           <b>${esc(venueName)}</b>
@@ -1131,7 +1133,7 @@ function renderPhaseScreen() {
   const isExtra = state.selectedPhase === "EXTRA";
 
   root.innerHTML = `
-    <div class="itemcard section-card">
+    <div class="itemcard section-card setup-card setup-phase-card">
       <div class="section-card__head">
         <div class="section-card__title">
           <b>${esc(phaseTitle())}</b>
@@ -1140,12 +1142,13 @@ function renderPhaseScreen() {
       </div>
 
       <div class="setup-steps">
-        ${visibleSteps.map((step) => {
+        ${visibleSteps.map((step, index) => {
           const ui = getStepUiInfo(step);
           const statusLabel = STATUS_LABELS[ui.uiStatus] || STATUS_LABELS[String(step.status || "AVAILABLE").toUpperCase()] || step.status;
           const countText = getStepSummaryText(step, ui);
           return `
             <button class="setup-step ${String(step.key) === String(state.selectedStepKey || "") ? "is-active" : ""}" type="button" data-step-key="${esc(step.key)}" ${ui.locked ? "disabled" : ""}>
+              <span class="setup-step__index" aria-hidden="true">${index + 1}</span>
               <div class="setup-step__top">
                 <div>
                   <div class="setup-step__title">${esc(step.title)}</div>
@@ -1209,7 +1212,7 @@ function renderStepDetail() {
   const nextStep = getAdjacentUnlockedStep(visibleSteps, currentStep.key, 1);
 
   root.innerHTML = `
-    <div class="itemcard section-card">
+    <div class="itemcard section-card setup-card setup-detail-card">
       <div class="setup-detail__head">
         <div>
           <b>${esc(meta.title || currentStep.title)}</b>

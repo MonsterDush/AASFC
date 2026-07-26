@@ -102,17 +102,92 @@ export function createNavigation(context) {
 
   function renderNavLinks({ container, links, activeTab }) {
     if (!container) return;
+    if (typeof container.__axelioNavCleanup === "function") {
+      container.__axelioNavCleanup();
+    }
     container.innerHTML = "";
 
-    links.forEach((l) => {
+    const mobilePrimaryLinkCount = 3;
+    const appendLink = (parent, link, { menu = false, overflow = false } = {}) => {
       const a = document.createElement("a");
-      a.href = l.href;
-      a.textContent = l.title;
-      if (l.className) a.className = l.className;
-      a.setAttribute("data-tab", l.tab);
-      if (l.tab === activeTab) a.classList.add("active");
-      container.appendChild(a);
+      a.href = link.href;
+      a.textContent = menu && link.tab === "settings" ? t("settings") : link.title;
+      if (link.className && !menu) a.className = link.className;
+      if (menu) a.classList.add("nav-more__link");
+      if (overflow && !menu) a.classList.add("nav-overflow-link");
+      a.setAttribute("data-tab", link.tab);
+      if (link.tab === activeTab) {
+        a.classList.add("active");
+        a.setAttribute("aria-current", "page");
+      }
+      parent.appendChild(a);
+      return a;
+    };
+
+    links.forEach((link, index) => {
+      appendLink(container, link, { overflow: index >= mobilePrimaryLinkCount });
     });
+
+    const overflowLinks = links.slice(mobilePrimaryLinkCount);
+    if (!overflowLinks.length) return;
+
+    const moreWrap = document.createElement("div");
+    moreWrap.className = "nav-more";
+
+    const menuId = `${container.id || "nav"}-more-menu`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "nav-more__button";
+    button.textContent = t("more");
+    button.setAttribute("aria-haspopup", "menu");
+    button.setAttribute("aria-controls", menuId);
+    button.setAttribute("aria-expanded", "false");
+    if (overflowLinks.some((link) => link.tab === activeTab)) {
+      button.classList.add("active");
+    }
+
+    const menu = document.createElement("div");
+    menu.id = menuId;
+    menu.className = "nav-more__menu";
+    menu.setAttribute("role", "menu");
+    menu.hidden = true;
+    overflowLinks.forEach((link) => {
+      const menuLink = appendLink(menu, link, { menu: true });
+      menuLink.setAttribute("role", "menuitem");
+    });
+
+    const closeMenu = ({ restoreFocus = false } = {}) => {
+      menu.hidden = true;
+      button.setAttribute("aria-expanded", "false");
+      if (restoreFocus) button.focus();
+    };
+    const onDocumentClick = (event) => {
+      if (!moreWrap.contains(event.target)) closeMenu();
+    };
+    const onDocumentKeydown = (event) => {
+      if (event.key === "Escape" && !menu.hidden) {
+        closeMenu({ restoreFocus: true });
+      }
+    };
+
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const shouldOpen = menu.hidden;
+      menu.hidden = !shouldOpen;
+      button.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+    });
+    menu.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    document.addEventListener("click", onDocumentClick);
+    document.addEventListener("keydown", onDocumentKeydown);
+    container.__axelioNavCleanup = () => {
+      document.removeEventListener("click", onDocumentClick);
+      document.removeEventListener("keydown", onDocumentKeydown);
+    };
+
+    moreWrap.append(button, menu);
+    container.appendChild(moreWrap);
   }
 
   /**

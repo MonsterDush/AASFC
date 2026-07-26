@@ -9,7 +9,7 @@ import {
   getVenueSettings,
   updateVenueSettings,
   setActiveVenueId,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 
 applyTelegramTheme();
 mountCommonUI("venue");
@@ -42,6 +42,13 @@ function normalizeTitle(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function loadErrorMessage(error) {
+  const detail = String(error?.data?.detail || error?.message || "").trim();
+  if (/forbidden/i.test(detail)) return "Нет доступа к настройкам этого заведения.";
+  if (/not found/i.test(detail)) return "Заведение или его настройки не найдены.";
+  return detail || "Повтори попытку позже: текущие настройки не были получены.";
+}
+
 function parseRows(weights) {
   const rows = Array.isArray(weights?.rows)
     ? weights.rows
@@ -60,6 +67,7 @@ function parseRows(weights) {
 
 let availableTitles = [];
 let rows = [];
+let listError = "";
 
 function buildTitleOptions(current = "") {
   const options = [...availableTitles];
@@ -69,25 +77,29 @@ function buildTitleOptions(current = "") {
 
 function render() {
   if (!el.list) return;
+  if (listError) {
+    el.list.innerHTML = `<div class="tip-settings-state tip-settings-state--error"><b>Не удалось загрузить правила</b><span>${esc(listError)}</span></div>`;
+    return;
+  }
   if (!availableTitles.length && !rows.length) {
-    el.list.innerHTML = `<div class="muted">Нет должностей для настройки. Сначала создай или назначь должности в заведении.</div>`;
+    el.list.innerHTML = `<div class="tip-settings-state"><b>Нет должностей для настройки</b><span>Сначала создай или назначь должности в заведении.</span></div>`;
     return;
   }
   if (!rows.length) {
-    el.list.innerHTML = `<div class="muted">Правил пока нет. Сейчас чаевые будут делиться поровну, пока ты не добавишь хотя бы одно правило.</div>`;
+    el.list.innerHTML = `<div class="tip-settings-state"><b>Правил пока нет</b><span>Сейчас чаевые будут делиться поровну, пока ты не добавишь хотя бы одно правило.</span></div>`;
     return;
   }
   el.list.innerHTML = rows.map((row, idx) => `
     <div class="itemcard tip-settings-row">
-      <label>
-        <div class="muted small mb-6">Должность</div>
+      <label class="tip-settings-row__field">
+        <span>Должность</span>
         <select data-role-title="${idx}">${buildTitleOptions(row.title)}</select>
       </label>
-      <label>
-        <div class="muted small mb-6">% на человека</div>
+      <label class="tip-settings-row__field">
+        <span>% на человека</span>
         <input type="number" min="0" max="100" inputmode="numeric" data-role-percent="${idx}" value="${esc(row.percent)}" />
       </label>
-      <button class="btn danger" data-role-remove="${idx}">Удалить</button>
+      <button class="btn danger tip-settings-row__remove" data-role-remove="${idx}">Удалить</button>
     </div>
   `).join("");
 
@@ -137,20 +149,35 @@ function validateRows() {
 
 async function load() {
   if (!venueId) {
+    listError = "Сначала выбери заведение.";
+    el.add.disabled = true;
+    el.save.disabled = true;
+    render();
     toast("Сначала выбери заведение", "err");
     return;
   }
   if (el.back) el.back.href = `/app-venue.html?venue_id=${encodeURIComponent(venueId)}`;
 
-  const [venue, settings, positions] = await Promise.all([
-    getVenueById(venueId).catch(() => null),
-    getVenueSettings(venueId).catch(() => null),
-    api(`/venues/${encodeURIComponent(venueId)}/positions`).catch(() => []),
+  const [venueResult, settingsResult, positionsResult] = await Promise.allSettled([
+    getVenueById(venueId),
+    getVenueSettings(venueId),
+    api(`/venues/${encodeURIComponent(venueId)}/positions`),
   ]);
+  const venue = venueResult.status === "fulfilled" ? venueResult.value : null;
+  const settings = settingsResult.status === "fulfilled" ? settingsResult.value : null;
+  const positions = positionsResult.status === "fulfilled" ? positionsResult.value : [];
 
   const venueName = venue?.name || `Заведение ${venueId}`;
   if (el.title) el.title.textContent = `Чаевые · ${venueName}`;
   if (el.venueTitle) el.venueTitle.textContent = venueName;
+
+  if (settingsResult.status === "rejected") {
+    listError = loadErrorMessage(settingsResult.reason);
+    el.add.disabled = true;
+    el.save.disabled = true;
+    render();
+    return;
+  }
 
   const titles = Array.isArray(positions)
     ? positions.map((item) => String(item?.title || "").trim()).filter(Boolean)
@@ -163,7 +190,14 @@ async function load() {
   }
   availableTitles = Array.from(dedup.values()).sort((a, b) => a.localeCompare(b, "ru"));
   rows = parseRows(settings?.tips_weights);
+  listError = "";
+  el.add.disabled = !availableTitles.length;
+  el.save.disabled = false;
   render();
+
+  if (positionsResult.status === "rejected" && el.saveHint) {
+    el.saveHint.textContent = "Список должностей не обновился; доступны только ранее сохранённые правила.";
+  }
 
   const mode = String(settings?.tips_split_mode || "EQUAL").toUpperCase();
   if (mode !== "WEIGHTED_BY_POSITION" && el.pageHint) {

@@ -1,0 +1,36 @@
+.admin-venues-shell,.admin-venues-content{display:grid;gap:14px}
+.admin-venues-toolbar-card,.admin-venues-create-card,.admin-venues-list-card{margin:0}
+.admin-venues-toolbar-card{padding-block:10px;background:linear-gradient(145deg,var(--surfaceTintSoft),var(--card))}
+.admin-venues-toolbar-card .toolbar{margin:0}
+.admin-venues-status{margin-left:auto}
+.admin-venues-banner{margin:0;border-color:var(--statusErrorBorder);background:var(--statusErrorBg)}
+.admin-venues-create-form>*{flex:1 1 190px}
+.admin-venues-create-form .btn{flex:0 0 auto}
+.admin-venues-create-result:empty{display:none}
+.admin-venues-create-result{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--surfaceTintSoft)}
+.admin-venues-search{margin-top:0}
+.admin-venues-search input{flex:1 1 320px;min-width:0}
+.admin-venues-count{margin-left:auto;padding:5px 10px;border:1px solid var(--border);border-radius:999px}
+.admin-venues-list{display:grid;gap:10px}
+.admin-venue-card{padding:14px;border:1px solid var(--border);border-radius:16px;background:var(--surfaceTintSoft)}
+.admin-venue-card__layout{align-items:flex-start}
+.admin-venue-card__main{min-width:0;flex:1 1 auto}
+.admin-venue-card__actions{justify-content:flex-end;margin:0;max-width:560px}
+.admin-venue-card__actions .btn{min-width:0}
+.admin-venues-state{min-height:96px;display:grid;place-items:center;padding:18px;border:1px dashed var(--border);border-radius:14px;color:var(--muted);text-align:center;background:var(--surfaceTintSoft)}
+.admin-venues-state--error{place-items:start;gap:8px;text-align:left;border-color:var(--statusErrorBorder);background:var(--statusErrorBg);color:var(--text)}
+.admin-venues-state--error pre{max-width:100%;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.admin-venues-skeleton{min-height:104px;border-radius:16px}
+@media (max-width:820px){
+  .admin-venue-card__layout{flex-direction:column;align-items:stretch}
+  .admin-venue-card__actions{max-width:none;justify-content:stretch}
+  .admin-venue-card__actions .btn{flex:1 1 calc(50% - 8px)}
+  .admin-venues-create-form>*{flex-basis:100%;min-width:0}
+  .admin-venues-create-form .btn{flex:1 1 100%}
+}
+@media (max-width:480px){
+  .admin-venues-toolbar-card .toolbar{align-items:stretch}
+  .admin-venues-toolbar-card .btn{flex:1 1 calc(50% - 8px)}
+  .admin-venues-status{width:100%;margin-left:0}
+  .admin-venue-card__actions .btn{flex-basis:100%}
+}

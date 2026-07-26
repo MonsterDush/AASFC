@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260723-polish1" />
-  <link rel="stylesheet" href="/styles/pages/admin-position-templates.css?v=20260720-unified8" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/admin-position-templates.css?v=20260726-polish7" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Админ · Шаблоны прав</title>
 </head>
-<body>
-  <div class="container">
+<body class="admin-position-templates-page">
+  <div class="container tpl-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -22,14 +22,20 @@
       <div class="userpill" data-userpill>—</div>
     </div>
 
-    <div class="tpl-toolbar">
-      <button id="btnSeedDefaults" class="btn">Добавить базовые шаблоны</button>
-      <button id="btnNew" class="btn primary">Новый шаблон</button>
-      <button id="btnShowInactive" class="btn subtle">Скрыть архив</button>
-      <span id="status" class="muted"></span>
-    </div>
+    <main class="tpl-content">
+      <section class="card tpl-toolbar-card">
+        <div class="tpl-toolbar">
+          <button id="btnSeedDefaults" class="btn">Добавить базовые шаблоны</button>
+          <button id="btnNew" class="btn primary">Новый шаблон</button>
+          <button id="btnShowInactive" class="btn subtle">Скрыть архив</button>
+          <span id="status" class="muted tpl-status" aria-live="polite"></span>
+        </div>
+      </section>
 
-    <div id="root" class="tpl-grid"></div>
+      <div id="root" class="tpl-grid">
+        <div class="tpl-state tpl-state--loading">Загрузка шаблонов…</div>
+      </div>
+    </main>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
@@ -45,6 +51,6 @@
   </div>
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/admin-position-templates.js?v=20260720-unified8"></script>
+  <script type="module" src="/admin-position-templates.js?v=20260726-navmore1"></script>
 </body>
 </html>

@@ -1,4 +1,26 @@
-.adjustment-row{justify-content:space-between;border-bottom:1px solid var(--border);padding:10px 0}
+.app-adjustments-page .app-adjustments-shell,
+.app-adjustments-content{display:grid;gap:14px}
+.app-adjustments-card{min-width:0;border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 78%)}
+.app-adjustments-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;align-items:end;gap:12px}
+.app-adjustments-month{display:grid;grid-template-columns:auto minmax(150px,230px) auto;align-items:center;gap:10px;text-align:center}
+.app-adjustments-actions{display:flex;align-items:flex-end;justify-content:flex-end;gap:8px}
+.app-adjustments-filter{display:grid;gap:5px;min-width:170px}
+.app-adjustments-list{display:grid;gap:10px;margin-top:16px}
+.app-adjustments-loading{display:grid;gap:8px}
+.app-adjustments-state{display:grid;gap:5px;padding:18px;border:1px dashed var(--border);border-radius:16px;background:var(--surfaceTintSoft);color:var(--muted);line-height:1.45}
+.app-adjustments-state b{color:var(--text)}
+.app-adjustments-note{padding:10px 12px;border-left:3px solid var(--accentSoftBorder);border-radius:0 12px 12px 0;background:var(--card);color:var(--muted);font-size:13px;line-height:1.45}
+.app-adjustment-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:13px 14px;background:var(--card)}
+.app-adjustment-row__main{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:10px;min-width:0}
+.app-adjustment-row__copy{display:grid;gap:4px;min-width:0}
+.app-adjustment-row__head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.app-adjustment-type{display:inline-flex;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft);font-size:11px;font-weight:900;white-space:nowrap}
+.app-adjustment-type--bonus{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBg);color:var(--statusSuccessText)}
+.app-adjustment-type--penalty,
+.app-adjustment-type--writeoff{border-color:var(--dangerBorder);background:var(--dangerBg);color:var(--dangerText)}
+.app-adjustment-amount{font-size:16px;font-variant-numeric:tabular-nums}
+.app-adjustment-amount--positive{color:var(--statusSuccessText)}
+.app-adjustment-amount--negative{color:var(--dangerText)}
 .adj-modal .adj-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .adj-modal label{display:block}
 .adj-modal select,.adj-modal input,.adj-modal textarea{width:100%}
@@ -15,7 +37,29 @@
 .adjustment-field--member{min-width:220px;flex:1 1 220px}
 .adjustment-field--date{min-width:180px;flex:1 1 180px}
 .adjustment-field--amount{min-width:160px;flex:1 1 160px}
+.app-adjustment-create{display:grid;gap:10px}
+.app-adjustment-form-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+
+@media (max-width:680px){
+  .app-adjustments-toolbar{grid-template-columns:1fr}
+  .app-adjustments-month{grid-template-columns:auto minmax(0,1fr) auto}
+  .app-adjustments-actions{display:grid;grid-template-columns:minmax(0,1fr) auto}
+  .app-adjustments-filter{min-width:0}
+}
+
 @media (max-width:520px){
+  .app-adjustments-actions{grid-template-columns:1fr}
+  .app-adjustments-actions .btn,
+  .app-adjustments-filter,
+  .app-adjustments-filter select{width:100%}
+  .app-adjustment-row{grid-template-columns:1fr}
+  .app-adjustment-row>.btn{width:100%}
+  .app-adjustment-row__main{grid-template-columns:1fr}
   .adj-modal .adj-grid{grid-template-columns:1fr}
   .adjustment-field{min-width:0;flex-basis:100%}
+  .adj-modal .adj-actions,
+  .adj-modal .adj-actions-right,
+  .app-adjustment-form-actions{display:grid;grid-template-columns:1fr}
+  .adj-modal .adj-actions .btn,
+  .app-adjustment-form-actions .btn{width:100%}
 }

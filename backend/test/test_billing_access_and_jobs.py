@@ -5,6 +5,9 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
+from app.routers import me
 import app.services.billing.access as access
 import app.services.billing.manager as manager
 from app.models.venue_billing_transaction import VenueBillingTransaction
@@ -36,6 +39,21 @@ class _FakeSession:
 
 
 class BillingAccessTests(TestCase):
+    def test_permissions_reject_missing_venue_before_creating_billing_state(self):
+        fake_db = _FakeSession(member_role=None)
+        user = SimpleNamespace(id=10, system_role="NONE")
+
+        with patch.object(me, "get_venue_billing_snapshot") as get_snapshot, \
+             patch.object(me, "build_setup_summary") as build_summary:
+            with self.assertRaises(HTTPException) as raised:
+                me.my_venue_permissions(venue_id=999_999, db=fake_db, user=user)
+
+        self.assertEqual(raised.exception.status_code, 404)
+        self.assertEqual(raised.exception.detail, "Venue not found")
+        get_snapshot.assert_not_called()
+        build_summary.assert_not_called()
+        self.assertEqual(fake_db.added, [])
+
     def test_owner_gets_readonly_on_grace(self):
         fake_db = _FakeSession(member_role="OWNER")
         user = SimpleNamespace(id=10, system_role="NONE")

@@ -11,7 +11,7 @@ import {
   createKpiMetric,
   updateKpiMetric,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260722-dynamic1";
+} from "/app.js?v=20260726-navmore1";
 
 const root = document.getElementById("root");
 
@@ -71,7 +71,7 @@ function ensureUniqueCode(baseCode, items = [], currentId = null) {
 
 function renderShell() {
   root.innerHTML = `
-    <div class="topbar">
+    <div class="topbar catalog-topbar">
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
@@ -82,10 +82,10 @@ function renderShell() {
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div class="muted">Создайте KPI-метрики (например: Фруктовые чаши, Лимонады, Допродажи). Они появятся в отчёте закрытия смены.</div>
+    <div class="card catalog-hero">
+      <div class="muted catalog-intro">Создайте KPI-метрики (например: Фруктовые чаши, Лимонады, Допродажи). Они появятся в отчёте закрытия смены.</div>
 
-      <div class="itemcard mt-12">
+      <div class="itemcard catalog-list-card">
         <div class="section-head">
           <div class="section-title">
             <b>Список KPI</b>
@@ -94,19 +94,19 @@ function renderShell() {
               <button class="btn primary" id="btnCreate">+ Добавить</button>
             </div>
         </div>
-        <div class="section-actions">
+        <div class="section-actions catalog-filter" id="catalogFilter">
           <label class="chk">
             <input type="checkbox" id="showArchived" />
             <span class="muted">Показывать архив</span>
           </label>
         </div>
 
-        <div id="list" class="mt-10">
-          <div class="skeleton"></div><div class="skeleton"></div>
+        <div id="list" class="catalog-list" aria-live="polite">
+          <div class="catalog-loading" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div></div>
         </div>
       </div>
 
-      <div class="row mt-12">
+      <div class="catalog-footer">
         <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
       </div>
     </div>
@@ -196,6 +196,7 @@ let state = {
   venueId: "",
   perms: null,
   items: [],
+  loadError: "",
   includeArchived: false,
   can: { view: false, create: false, edit: false, archive: false },
 };
@@ -215,34 +216,40 @@ function renderList() {
   if (!el) return;
 
   if (!state.can.view) {
-    el.innerHTML = `<div class="muted">Нет доступа</div>`;
+    el.innerHTML = `<div class="catalog-state catalog-state--denied"><b>Нет доступа к KPI</b><span>Обратитесь к владельцу заведения, чтобы получить право просмотра.</span></div>`;
+    return;
+  }
+
+  if (state.loadError) {
+    el.innerHTML = `<div class="catalog-state catalog-state--error"><b>Не удалось загрузить KPI</b><span>${esc(state.loadError)}</span></div>`;
     return;
   }
 
   if (!state.items.length) {
-    el.innerHTML = `<div class="muted">Пока пусто</div>`;
+    el.innerHTML = `<div class="catalog-state catalog-state--empty"><b>KPI пока нет</b><span>Добавьте первую метрику для отчёта закрытия смены и начислений.</span></div>`;
     return;
   }
 
   el.innerHTML = "";
   for (const it of state.items) {
     const row = document.createElement("div");
-    row.className = "listrow";
+    row.className = "catalog-row";
 
     const left = document.createElement("div");
+    left.className = "catalog-row__copy";
     const unit = String(it.unit || "QTY").toUpperCase();
     left.innerHTML = `
-      <div class="text-actions">
+      <div class="catalog-row__title">
         <b>${esc(it.title)}</b>
         ${it.is_active ? "" : `<span class="badge">архив</span>`}
         ${Number(it.usage_component_count || 0) > 0 ? `<span class="badge">в начислениях: ${esc(it.usage_component_count)}</span>` : ``}
       </div>
-      <div class="muted listrow__meta">Единица измерения: ${esc(UNIT_LABEL[unit] || unit)}</div>
-      <div class="muted mt-6">${esc(usageSummary(it))}</div>
+      <div class="muted catalog-row__meta">Единица измерения: ${esc(UNIT_LABEL[unit] || unit)}</div>
+      <div class="muted catalog-row__meta">${esc(usageSummary(it))}</div>
     `;
 
     const right = document.createElement("div");
-    right.className = "row row--nowrap gap-8 flex-none";
+    right.className = "catalog-row__actions";
 
     if (state.can.edit) {
       const btnEdit = document.createElement("button");
@@ -288,7 +295,7 @@ function editorForm({ mode, item }) {
   const unit = String(it.unit || "QTY").toUpperCase();
 
   return `
-    <div class="grid grid2 mt-10">
+    <div class="grid grid2 catalog-form">
       <div>
         <div class="muted mb-6">Название</div>
         <input id="f_title" placeholder="Фруктовые чаши" value="${esc(it.title || "")}" />
@@ -310,7 +317,7 @@ function editorForm({ mode, item }) {
       </div>
     </div>
 
-    <div class="row row--end gap-8 mt-12">
+    <div class="catalog-modal-actions">
       <button class="btn" id="btnCancel" type="button">Отмена</button>
       <button class="btn primary" id="btnSave" type="button">Сохранить</button>
     </div>
@@ -366,10 +373,11 @@ function openEditor({ mode, item }) {
 
 async function load() {
   const listEl = document.getElementById("list");
-  if (listEl) listEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+  if (listEl) listEl.innerHTML = `<div class="catalog-loading" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div></div>`;
 
   if (!state.can.view) {
     state.items = [];
+    state.loadError = "";
     renderList();
     return;
   }
@@ -377,8 +385,10 @@ async function load() {
   try {
     const items = await getKpiMetrics(state.venueId, { includeArchived: state.includeArchived });
     state.items = Array.isArray(items) ? items : [];
+    state.loadError = "";
   } catch (e) {
     state.items = [];
+    state.loadError = e?.message || "Повторите попытку позже.";
     toast("Ошибка загрузки: " + e.message, "err");
   }
 
@@ -408,6 +418,7 @@ async function load() {
     state.perms = null;
   }
   state.can = applyDemoReadonlyCaps(computeCaps(state.perms), { source: state.perms });
+  document.getElementById("catalogFilter")?.classList.toggle("hidden", !state.can.view);
 
   const btnCreate = document.getElementById("btnCreate");
   if (btnCreate) {
