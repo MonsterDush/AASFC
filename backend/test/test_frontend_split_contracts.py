@@ -262,6 +262,33 @@ class WorkflowPageUiPolishContractTests(TestCase):
         self.assertIn("if (!state.can.view)", pay_profiles_js)
         self.assertIn("if (!state.can.view)", pay_profile_js)
 
+    def test_owner_payroll_keeps_finance_visual_hierarchy_and_states(self):
+        html = (FRONTEND / "owner-payroll.html").read_text(encoding="utf-8")
+        script = (FRONTEND / "owner-payroll.js").read_text(encoding="utf-8")
+        styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
+
+        self.assertIn("/styles/pages/owner-payroll.css?v=20260726-polish12", html)
+        self.assertIn("/owner-payroll.js?v=20260726-payrollpolish1", html)
+        self.assertIn('class="owner-payroll-page"', html)
+        self.assertIn("payroll-bootstrap", html)
+        for contract in (
+            "payroll-period-grid",
+            "payroll-metric--total",
+            "payroll-person__metrics",
+            "payroll-state--error",
+            "@media (max-width:560px)",
+        ):
+            self.assertIn(contract, styles)
+        for contract in (
+            'id="averageAmount"',
+            'row.className = "payroll-person"',
+            "payroll-state--denied",
+            "payroll-state--empty",
+            "payroll-state--error",
+            'setAttribute("aria-busy", "false")',
+        ):
+            self.assertIn(contract, script)
+
     def test_owner_catalog_pages_share_responsive_states_and_permission_first_loading(self):
         pages = {
             "owner-departments": "if (!state.can.view)",
