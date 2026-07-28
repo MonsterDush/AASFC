@@ -1,6 +1,9 @@
+import re
+
 from fastapi import APIRouter
 
 from app.routers.venue_core import (
+    BackgroundTasks,
     BaseModel,
     DailyReport,
     Depends,
@@ -33,6 +36,7 @@ from app.routers.venue_core import (
     update,
     verify_signed_token,
 )
+from app.models.shift_comment_mention import ShiftCommentMention
 from app.routers.venue_common import (
     _SCHEDULE_SHARE_TTL_SECONDS,
 )
@@ -51,6 +55,8 @@ from app.routers.venue_payroll_support import (
 from app.routers.venue_notification_common import (
     _frontend_base_url,
 )
+from app.routers.venue_shift_notifications import _enqueue_shift_comment_job
+from app.routers.venue_economics_notifications import process_pending_notification_jobs_once
 from app.routers.venue_reports import _rebuild_report_tip_allocations
 from app.routers.venue_schedule_templates import _normalize_shift_slot_for_venue, _shift_slot_label
 
@@ -822,8 +828,153 @@ def remove_shift_assignment(
 
 
 
+_MAX_SHIFT_COMMENT_MENTIONS = 20
+
+
 class ShiftCommentIn(BaseModel):
     text: str = Field(..., min_length=1, max_length=2000)
+    mentioned_user_ids: list[int] = Field(default_factory=list, max_length=_MAX_SHIFT_COMMENT_MENTIONS)
+    reply_to_comment_id: int | None = Field(default=None, gt=0)
+
+
+def _shift_comment_user_display_name(user: User) -> str:
+    value = user.short_name or user.full_name or (f"@{user.tg_username}" if user.tg_username else None)
+    return str(value or f"Сотрудник #{int(user.id)}").strip()
+
+
+def _shift_comment_user_brief(user: User) -> dict:
+    return {
+        "id": int(user.id),
+        "tg_username": user.tg_username,
+        "full_name": user.full_name,
+        "short_name": user.short_name,
+        "display_name": _shift_comment_user_display_name(user),
+    }
+
+
+def _normalize_shift_comment_mention_ids(values: list[int] | None) -> list[int]:
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for raw in values or []:
+        value = int(raw)
+        if value <= 0 or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    if len(normalized) > _MAX_SHIFT_COMMENT_MENTIONS:
+        raise HTTPException(status_code=400, detail=f"Можно упомянуть не более {_MAX_SHIFT_COMMENT_MENTIONS} сотрудников")
+    return normalized
+
+
+def _shift_comment_has_mention_token(text: str, user: User) -> bool:
+    labels = [
+        _shift_comment_user_display_name(user),
+        str(user.tg_username or "").lstrip("@").strip(),
+    ]
+    for label in labels:
+        if not label:
+            continue
+        token = f"@{label.lstrip('@')}"
+        if re.search(rf"(?<![\w@]){re.escape(token)}(?!\w)", str(text or ""), flags=re.IGNORECASE):
+            return True
+    return False
+
+
+def _load_shift_comment_mentionable_members(
+    db: Session,
+    *,
+    venue_id: int,
+    exclude_user_id: int | None = None,
+) -> list[tuple[User, str, str | None]]:
+    stmt = (
+        select(User, VenueMember.venue_role, VenuePosition.title)
+        .join(
+            VenueMember,
+            (VenueMember.user_id == User.id)
+            & (VenueMember.venue_id == int(venue_id))
+            & VenueMember.is_active.is_(True),
+        )
+        .outerjoin(
+            VenuePosition,
+            (VenuePosition.member_user_id == User.id)
+            & (VenuePosition.venue_id == int(venue_id))
+            & VenuePosition.is_active.is_(True),
+        )
+        .order_by(
+            sa.func.coalesce(User.short_name, User.full_name, User.tg_username, sa.cast(User.id, sa.String)).asc(),
+            User.id.asc(),
+        )
+    )
+    if exclude_user_id is not None:
+        stmt = stmt.where(User.id != int(exclude_user_id))
+    return list(db.execute(stmt).all())
+
+
+def _serialize_shift_comment(
+    comment: ShiftComment,
+    author: User,
+    *,
+    mention_users: list[User] | None = None,
+    parent: tuple[ShiftComment, User] | None = None,
+) -> dict:
+    reply_to = None
+    if parent is not None:
+        parent_comment, parent_author = parent
+        reply_to = {
+            "id": int(parent_comment.id),
+            "text": parent_comment.text,
+            "author": _shift_comment_user_brief(parent_author),
+        }
+    return {
+        "id": int(comment.id),
+        "shift_id": int(comment.shift_id),
+        "text": comment.text,
+        "created_at": comment.created_at.isoformat(),
+        "author": _shift_comment_user_brief(author),
+        "mentions": [
+            {
+                "user_id": int(mentioned_user.id),
+                "display_name": _shift_comment_user_display_name(mentioned_user),
+            }
+            for mentioned_user in (mention_users or [])
+        ],
+        "reply_to": reply_to,
+    }
+
+
+@router.get("/{venue_id}/shifts/{shift_id}/mentionable-members")
+def list_shift_comment_mentionable_members(
+    venue_id: int,
+    shift_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_shift_comments_allowed(db, venue_id=venue_id, shift_id=shift_id, user=user)
+    shift = db.execute(
+        select(Shift).where(
+            Shift.id == shift_id,
+            Shift.venue_id == venue_id,
+            Shift.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if shift is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    rows = _load_shift_comment_mentionable_members(
+        db,
+        venue_id=venue_id,
+        exclude_user_id=int(user.id),
+    )
+    return [
+        {
+            "user_id": int(member.id),
+            "display_name": _shift_comment_user_display_name(member),
+            "tg_username": member.tg_username,
+            "position_title": position_title,
+            "venue_role": venue_role,
+        }
+        for member, venue_role, position_title in rows
+    ]
 
 
 @router.get("/{venue_id}/shifts/{shift_id}/comments")
@@ -846,20 +997,28 @@ def list_shift_comments(
         .order_by(ShiftComment.created_at.asc(), ShiftComment.id.asc())
     ).all()
 
+    comment_rows = list(rows)
+    comment_ids = [int(comment.id) for comment, _ in comment_rows]
+    mentions_by_comment: dict[int, list[User]] = {}
+    if comment_ids:
+        mention_rows = db.execute(
+            select(ShiftCommentMention, User)
+            .join(User, User.id == ShiftCommentMention.mentioned_user_id)
+            .where(ShiftCommentMention.comment_id.in_(comment_ids))
+            .order_by(ShiftCommentMention.comment_id.asc(), ShiftCommentMention.id.asc())
+        ).all()
+        for mention, mentioned_user in mention_rows:
+            mentions_by_comment.setdefault(int(mention.comment_id), []).append(mentioned_user)
+
+    rows_by_id = {int(comment.id): (comment, author) for comment, author in comment_rows}
     return [
-        {
-            "id": c.id,
-            "shift_id": c.shift_id,
-            "text": c.text,
-            "created_at": c.created_at.isoformat(),
-            "author": {
-                "id": u.id,
-                "tg_username": u.tg_username,
-                "full_name": u.full_name,
-                "short_name": u.short_name,
-            },
-        }
-        for (c, u) in rows
+        _serialize_shift_comment(
+            comment,
+            author,
+            mention_users=mentions_by_comment.get(int(comment.id), []),
+            parent=rows_by_id.get(int(comment.parent_comment_id)) if comment.parent_comment_id is not None else None,
+        )
+        for comment, author in comment_rows
     ]
 
 
@@ -868,6 +1027,7 @@ def add_shift_comment(
     venue_id: int,
     shift_id: int,
     payload: ShiftCommentIn,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -881,20 +1041,61 @@ def add_shift_comment(
     if not text:
         raise HTTPException(status_code=400, detail="Empty comment")
 
-    c = ShiftComment(shift_id=shift_id, author_user_id=user.id, text=text)
+    parent: tuple[ShiftComment, User] | None = None
+    if payload.reply_to_comment_id is not None:
+        parent = db.execute(
+            select(ShiftComment, User)
+            .join(User, User.id == ShiftComment.author_user_id)
+            .where(
+                ShiftComment.id == int(payload.reply_to_comment_id),
+                ShiftComment.shift_id == int(shift_id),
+            )
+        ).first()
+        if parent is None:
+            raise HTTPException(status_code=400, detail="Комментарий для ответа не найден в этой смене")
+
+    mention_ids = _normalize_shift_comment_mention_ids(payload.mentioned_user_ids)
+    mentionable_rows = _load_shift_comment_mentionable_members(
+        db,
+        venue_id=venue_id,
+        exclude_user_id=int(user.id),
+    )
+    mentionable_users = {int(member.id): member for member, _, _ in mentionable_rows}
+    invalid_ids = [mentioned_user_id for mentioned_user_id in mention_ids if mentioned_user_id not in mentionable_users]
+    if invalid_ids:
+        raise HTTPException(status_code=400, detail="Некоторые упомянутые сотрудники не входят в это заведение")
+    missing_tokens = [
+        mentioned_user_id
+        for mentioned_user_id in mention_ids
+        if not _shift_comment_has_mention_token(text, mentionable_users[mentioned_user_id])
+    ]
+    if missing_tokens:
+        raise HTTPException(status_code=400, detail="Упоминание удалено из текста; выберите сотрудника через подсказку ещё раз")
+
+    c = ShiftComment(
+        shift_id=shift_id,
+        author_user_id=user.id,
+        parent_comment_id=int(payload.reply_to_comment_id) if payload.reply_to_comment_id is not None else None,
+        text=text,
+    )
     db.add(c)
+    db.flush()
+    mention_users = [mentionable_users[mentioned_user_id] for mentioned_user_id in mention_ids]
+    for mentioned_user in mention_users:
+        db.add(
+            ShiftCommentMention(
+                comment_id=int(c.id),
+                mentioned_user_id=int(mentioned_user.id),
+            )
+        )
+    _enqueue_shift_comment_job(db, venue_id=venue_id, comment_id=int(c.id))
     db.commit()
     db.refresh(c)
+    background_tasks.add_task(process_pending_notification_jobs_once, 10)
 
-    return {
-        "id": c.id,
-        "shift_id": c.shift_id,
-        "text": c.text,
-        "created_at": c.created_at.isoformat(),
-        "author": {
-            "id": user.id,
-            "tg_username": user.tg_username,
-            "full_name": user.full_name,
-            "short_name": user.short_name,
-        },
-    }
+    return _serialize_shift_comment(
+        c,
+        user,
+        mention_users=mention_users,
+        parent=parent,
+    )

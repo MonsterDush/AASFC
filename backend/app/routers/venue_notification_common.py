@@ -88,7 +88,7 @@ def _venue_name(db: Session, venue_id: int) -> str:
 def _should_notify_user(u: User, kind: str) -> bool:
     """Best-effort per-user notification gate.
 
-    kind: 'adjustments' | 'shifts' | 'day_economics' | 'salary' | 'soft_alerts'
+    kind: 'adjustments' | 'shifts' | 'shift_comments' | 'day_economics' | 'salary' | 'soft_alerts'
     """
     if not u:
         return False
@@ -98,6 +98,8 @@ def _should_notify_user(u: User, kind: str) -> bool:
         return bool(getattr(u, "notify_adjustments", True))
     if kind == "shifts":
         return bool(getattr(u, "notify_shifts", True))
+    if kind == "shift_comments":
+        return bool(getattr(u, "notify_shift_comments", True))
     if kind == "day_economics":
         return bool(getattr(u, "notify_day_economics", True))
     if kind == "salary":
@@ -183,6 +185,8 @@ def _deliver_user_notification(
     text: str,
     url: str | None = None,
     button_text: str | None = None,
+    shift_id: int | None = None,
+    shift_assignment_id: int | None = None,
 ) -> tuple[bool, bool]:
     lock_notification_idempotency_key(db, idempotency_key)
     if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
@@ -195,6 +199,8 @@ def _deliver_user_notification(
         status="pending",
         user_id=int(recipient.id),
         venue_id=int(venue_id),
+        shift_id=int(shift_id) if shift_id is not None else None,
+        shift_assignment_id=int(shift_assignment_id) if shift_assignment_id is not None else None,
         planned_at=planned_at,
         idempotency_key=idempotency_key,
         payload_preview=text[:2000],

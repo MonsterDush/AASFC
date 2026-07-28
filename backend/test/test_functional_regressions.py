@@ -134,6 +134,7 @@ class TelegramNotificationRegressionTests(TestCase):
             notify_enabled=True,
             notify_adjustments=True,
             notify_shifts=True,
+            notify_shift_comments=True,
             notify_day_economics=True,
             notify_salary=True,
             notify_soft_alerts=True,
@@ -141,6 +142,7 @@ class TelegramNotificationRegressionTests(TestCase):
         categories = {
             "adjustments": "notify_adjustments",
             "shifts": "notify_shifts",
+            "shift_comments": "notify_shift_comments",
             "day_economics": "notify_day_economics",
             "salary": "notify_salary",
             "soft_alerts": "notify_soft_alerts",

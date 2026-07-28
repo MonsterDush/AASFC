@@ -42,27 +42,44 @@ class NotificationTriggerMatrixContractTests(TestCase):
             "soft_alerts",
             "adjustment_assigned",
             "adjustment_dispute_event",
+            "shift_comment",
         )
 
         for job_type in expected_job_types:
             self.assertIn(f'= "{job_type}"', constants)
-            delivery_source = adjustment_worker if job_type.startswith("adjustment_") else worker
+            delivery_source = (
+                adjustment_worker
+                if job_type.startswith("adjustment_")
+                else (_source("routers/venue_shift_notifications.py") if job_type == "shift_comment" else worker)
+            )
             self.assertIn(f'notification_type="{job_type}"', delivery_source)
         self.assertIn("from app.services.finance.day_economics import get_day_economics", worker)
 
-    def test_shift_worker_covers_due_reminders_comments_and_deduplication(self):
+    def test_shift_worker_covers_due_reminders_and_deduplication(self):
         source = _source("scripts/send_shift_reminders.py")
 
         self.assertIn('notification_type="shift_reminder"', source)
-        self.assertIn('notification_type="shift_comment"', source)
         self.assertIn("if now < planned_at - timedelta(minutes=WINDOW_MINUTES):", source)
         self.assertIn("if now >= start_dt:", source)
-        self.assertIn("ShiftComment.created_at <= now_utc", source)
         self.assertIn("notification_delivery_exists", source)
         self.assertIn("sa.reminder_sent_at = sent_at", source)
 
         demo_bootstrap = _source("services/demo/bootstrap.py")
         self.assertIn("created_at=datetime.combine(day, time(hour=9), tzinfo=timezone.utc)", demo_bootstrap)
+
+    def test_shift_comments_enqueue_durable_mentions_and_reply_notifications(self):
+        routes = _source("routers/venue_shifts.py")
+        delivery = _source("routers/venue_shift_notifications.py")
+        worker = _source("routers/venue_economics_notifications.py")
+
+        self.assertIn("_enqueue_shift_comment_job(db, venue_id=venue_id, comment_id=int(c.id))", routes)
+        self.assertIn("background_tasks.add_task(process_pending_notification_jobs_once, 10)", routes)
+        self.assertIn("ShiftCommentMention", routes)
+        self.assertIn("reply_to_comment_id", routes)
+        self.assertIn('"mention"', delivery)
+        self.assertIn('"reply"', delivery)
+        self.assertIn('notification_type="shift_comment"', delivery)
+        self.assertIn("_send_shift_comment_notifications(", worker)
 
     def test_billing_worker_covers_every_scheduled_owner_and_admin_scenario(self):
         source = _source("scripts/process_billing_jobs.py")

@@ -13,6 +13,7 @@ from .shift_interval import ShiftInterval
 from .shift import Shift
 from .shift_assignment import ShiftAssignment
 from .shift_comment import ShiftComment
+from .shift_comment_mention import ShiftCommentMention
 from .shift_schedule_template import ShiftScheduleTemplate, ShiftScheduleTemplateItem
 from .daily_report import DailyReport
 from .daily_report_attachment import DailyReportAttachment
@@ -78,6 +79,7 @@ __all__ = [
     "Shift",
     "ShiftAssignment",
     "ShiftComment",
+    "ShiftCommentMention",
     "ShiftScheduleTemplate",
     "ShiftScheduleTemplateItem",
     "DailyReport",

@@ -11,10 +11,12 @@ class NotificationSettingsTests(TestCase):
         payload = NotificationSettingsIn(
             notify_enabled=True,
             notify_shifts=True,
+            notify_shift_comments=True,
             shift_reminder_lead_time_hours=6,
             notification_detail_level="detailed",
         )
         self.assertEqual(payload.shift_reminder_lead_time_hours, 6)
+        self.assertTrue(payload.notify_shift_comments)
         self.assertEqual(payload.notification_detail_level, "detailed")
 
     def test_notification_settings_rejects_unknown_lead_time(self):

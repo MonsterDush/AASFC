@@ -8,12 +8,14 @@ const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const mainPath = path.join(frontendDir, "staff-shifts.js");
 const modulePath = path.join(frontendDir, "staff-shifts", "export-controller.js");
 const calendarModulePath = path.join(frontendDir, "staff-shifts", "calendar-controller.js");
+const commentModulePath = path.join(frontendDir, "staff-shifts", "comment-controller.js");
 const htmlPath = path.join(frontendDir, "staff-shifts.html");
 const mainSource = fs.readFileSync(mainPath, "utf8");
 const moduleSource = fs.readFileSync(modulePath, "utf8");
 const calendarModuleSource = fs.readFileSync(calendarModulePath, "utf8");
+const commentModuleSource = fs.readFileSync(commentModulePath, "utf8");
 const htmlSource = fs.readFileSync(htmlPath, "utf8");
-const combinedSource = [mainSource, calendarModuleSource, moduleSource].join("\n");
+const combinedSource = [mainSource, calendarModuleSource, commentModuleSource, moduleSource].join("\n");
 
 const apiCallManifest = Array.from(
   combinedSource.matchAll(/\b(?:api|startupApi)\(\s*(`[^`]+`|"[^"]+"|'[^']+')/g),
@@ -24,17 +26,19 @@ const domBindingManifest = Array.from(
   (match) => match[1],
 ).sort();
 const manifestHash = (values) => crypto.createHash("sha256").update(JSON.stringify(values)).digest("hex");
-assert.equal(apiCallManifest.length, 14);
-assert.equal(manifestHash(apiCallManifest), "8661950b26b516eaac23a617404e792adb96ae03dbae35de9d1078afe3c3f869");
+assert.equal(apiCallManifest.length, 15);
+assert.equal(manifestHash(apiCallManifest), "25a6a8631385793c4669f9385d2bd74376942596d84d8f5349ac5dfd41e2e5ee");
 assert.equal(domBindingManifest.length, 55);
 assert.equal(manifestHash(domBindingManifest), "ac35bc61a168dd228accbecf9a0424425cb15abe9a88eeecfb44671f68ab101a");
 
 assert.ok(mainSource.split("\n").length < 1_800, "staff-shifts.js should remain an orchestration module");
 assert.ok(moduleSource.split("\n").length < 900, "schedule export controller is too large");
 assert.ok(calendarModuleSource.split("\n").length < 850, "calendar controller is too large");
+assert.ok(commentModuleSource.split("\n").length < 700, "comment controller is too large");
 assert.match(mainSource, /\/staff-shifts\/export-controller\.js\?v=20260719-split1/);
 assert.match(mainSource, /\/staff-shifts\/calendar-controller\.js\?v=20260720-unified6/);
-assert.match(htmlSource, /staff-shifts\.js\?v=20260726-navmore1/);
+assert.match(mainSource, /\/staff-shifts\/comment-controller\.js\?v=20260728-comments1/);
+assert.match(htmlSource, /staff-shifts\.js\?v=20260728-comments1/);
 
 const module = await import(pathToFileURL(modulePath));
 assert.equal(typeof module.createStaffShiftExportController, "function");
@@ -48,6 +52,24 @@ const context = new Proxy({}, {
 const controller = module.createStaffShiftExportController(context);
 for (const methodName of ["openExportModal", "refreshExportPreview", "downloadExportImage"]) {
   assert.equal(typeof controller[methodName], "function", `${methodName} is not exposed`);
+}
+
+const commentModule = await import(pathToFileURL(commentModulePath));
+assert.equal(typeof commentModule.createStaffShiftCommentController, "function");
+assert.deepEqual(
+  commentModule.findMentionQuery({ value: "Ответ @Ан", selectionStart: 9 }),
+  { start: 6, end: 9, query: "Ан" },
+);
+assert.equal(commentModule.mentionTokenForMember({ display_name: "@Анна" }), "@Анна");
+assert.equal(commentModule.containsMentionToken("Ответ для @Анна, готово", "@Анна"), true);
+assert.equal(commentModule.containsMentionToken("Это @Анна2", "@Анна"), false);
+const commentController = commentModule.createStaffShiftCommentController({
+  runtime: { venueId: 5 },
+  api: noop,
+  toast: noop,
+});
+for (const methodName of ["renderCommentsSection", "wireShiftComments"]) {
+  assert.equal(typeof commentController[methodName], "function", `${methodName} is not exposed`);
 }
 
 globalThis.window = { addEventListener: () => undefined };

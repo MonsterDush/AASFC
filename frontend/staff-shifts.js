@@ -23,6 +23,7 @@ import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } fr
 
 import { createStaffShiftExportController } from "/staff-shifts/export-controller.js?v=20260719-split1";
 import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260720-unified6";
+import { createStaffShiftCommentController } from "/staff-shifts/comment-controller.js?v=20260728-comments1";
 
 window.onerror = function (msg, src, line, col, err) {
   const text = `JS ошибка: ${msg}\n${src || ""}:${line || 0}:${col || 0}`;
@@ -63,6 +64,9 @@ mountCommonUI("shifts");
 await ensureLogin({ silent: true });
 
 const params = new URLSearchParams(location.search);
+const deepLinkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date") || "")) ? String(params.get("date")) : "";
+const deepLinkShiftId = Number(params.get("open_shift") || 0) || null;
+const deepLinkCommentId = Number(params.get("comment") || 0) || null;
 const DEMO_STAFF_INTRO_DISMISSED_KEY = "axelio.demo_intro.staff_shifts.dismissed";
 const DEMO_MODE = isDemoUiMode(getStoredDemoUiState());
 
@@ -534,8 +538,12 @@ let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "ve
 let isMultiVenue = false;
 
 let curMonth = new Date();
-let selectedDate = null;
+let selectedDate = deepLinkDate || null;
 curMonth.setDate(1);
+if (deepLinkDate) {
+  const requestedDate = new Date(`${deepLinkDate}T00:00:00`);
+  if (!Number.isNaN(requestedDate.getTime())) curMonth = new Date(requestedDate.getFullYear(), requestedDate.getMonth(), 1);
+}
 const __demoState = getStoredDemoUiState();
 if (isDemoUiMode(__demoState) && !params.get("month")) {
   const demoYear = Number(__demoState?.demo_reference_year || 0);
@@ -1176,6 +1184,17 @@ const staffShiftCalendar = createStaffShiftCalendarController({
   openDay,
 });
 const { renderWeek, buildIndex, defaultSelectedDateForMonth, selectDate, monthTitle, formatDateRuNoG, filterForCalendar, shiftIsClosed, renderMonth } = staffShiftCalendar;
+const staffShiftCommentRuntime = {
+  get venueId() { return venueId; },
+  get deepLinkShiftId() { return deepLinkShiftId; },
+  get deepLinkCommentId() { return deepLinkCommentId; },
+};
+const staffShiftComments = createStaffShiftCommentController({
+  runtime: staffShiftCommentRuntime,
+  api,
+  toast,
+});
+
 function renderShiftCard(s, allowEdit) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
@@ -1218,26 +1237,7 @@ function renderShiftCard(s, allowEdit) {
     `;
   }
 
-  const commentsHtml = canComment
-    ? `
-      <div class="comments">
-        <div class="comments__head">
-          <b>Комментарии</b>
-          <span class="muted small" data-comments-status="${shiftId}"></span>
-        </div>
-        <div data-comments-list="${shiftId}" class="commentlist"><div class="muted small">Загрузка…</div></div>
-        <div class="commentform">
-          <textarea class="commentform__input" data-comments-input="${shiftId}" placeholder="Написать комментарий…"></textarea>
-          <button class="btn commentform__send" data-comments-send="${shiftId}">Отправить</button>
-        </div>
-      </div>
-    `
-    : `
-      <div class="comments">
-        <div class="comments__head"><b>Комментарии</b></div>
-        <div class="muted small mt-6">Комментарии доступны в режимах «Все» или «Только мои».</div>
-      </div>
-    `;
+  const commentsHtml = staffShiftComments.renderCommentsSection(shiftId, canComment);
 
   return `
     <div class="card shiftcard" data-shiftcard="${shiftId}">
@@ -1255,91 +1255,6 @@ function renderShiftCard(s, allowEdit) {
   `;
 }
 
-
-async function loadShiftComments(shiftId) {
-  const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/comments`).catch(() => []);
-  return Array.isArray(out) ? out : [];
-}
-
-function formatCommentAuthor(u) {
-  if (!u) return "—";
-  return u.short_name || u.full_name || (u.tg_username ? "@" + u.tg_username : "Сотрудник");
-}
-
-function renderCommentsInto(shiftId, comments) {
-  const box = document.querySelector(`[data-comments-list="${shiftId}"]`);
-  if (!box) return;
-  if (!comments || !comments.length) {
-    box.innerHTML = '<div class="muted small">Нет комментариев</div>';
-    return;
-  }
-  box.innerHTML = "";
-  for (const c of comments) {
-    const who = formatCommentAuthor(c.author);
-    const dt = c.created_at ? new Date(c.created_at) : null;
-    const when = dt ? dt.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
-
-    const item = document.createElement("div");
-    item.className = "comment";
-    item.innerHTML = `
-      <div class="comment__head">
-        <div class="comment__author">${escapeHtml(who)}</div>
-        ${when ? `<div class="comment__when">${escapeHtml(when)}</div>` : `<div class="comment__when"></div>`}
-      </div>
-      <div class="comment__text">${escapeHtml(c.text || "")}</div>
-    `;
-    box.appendChild(item);
-  }
-}
-
-async function wireShiftComments(shiftId) {
-  const btn = document.querySelector(`[data-comments-send="${shiftId}"]`);
-  const inp = document.querySelector(`[data-comments-input="${shiftId}"]`);
-  if (!btn || !inp) return;
-
-  const syncBtn = () => {
-    const hasText = String(inp.value || "").trim().length > 0;
-    if (!btn.dataset.sending) btn.disabled = !hasText;
-  };
-
-  inp.addEventListener("input", syncBtn);
-  inp.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      btn.click();
-    }
-  });
-
-  const refresh = async () => {
-    const comments = await loadShiftComments(shiftId);
-    renderCommentsInto(shiftId, comments);
-  };
-
-  // initial load
-  refresh();
-
-  syncBtn();
-
-  btn.onclick = async () => {
-    const text = String(inp.value || "").trim();
-    if (!text) return;
-    btn.dataset.sending = "1";
-    btn.disabled = true;
-    try {
-      await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/comments`, {
-        method: "POST",
-        body: { text },
-      });
-      inp.value = "";
-      await refresh();
-    } catch (e) {
-      toast(e?.message || "Не удалось отправить комментарий", "err");
-    } finally {
-      delete btn.dataset.sending;
-      syncBtn();
-    }
-  };
-}
 
 function wireShiftEditor(dateStr, shift, allowEdit) {
   if (!allowEdit) return;
@@ -1606,7 +1521,7 @@ function openDay(dateStr) {
   // wire cards (comments must work even on past days; comments disabled in global mode)
   for (const s of list) {
     wireShiftEditor(dateStr, s, allowEdit);
-    if (calendarScope !== "global") wireShiftComments((s.id ?? s.shift_id));
+    if (calendarScope !== "global") staffShiftComments.wireShiftComments((s.id ?? s.shift_id));
   }
 
 }
@@ -1688,6 +1603,10 @@ if (calendarView === "week") {
   await loadWeek();
 } else {
   await loadMonth();
+}
+if (deepLinkDate && deepLinkShiftId && (shiftsByDate.get(deepLinkDate) || []).some((shift) => Number(shift?.id ?? shift?.shift_id) === deepLinkShiftId)) {
+  selectDate(deepLinkDate, { noExpand: true });
+  openDay(deepLinkDate);
 }
 
 try { renderDemoStaffIntro(); } catch {}

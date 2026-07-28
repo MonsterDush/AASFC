@@ -570,15 +570,21 @@ class StaffShiftsSplitContractTests(TestCase):
         main = (FRONTEND / "staff-shifts.js").read_text(encoding="utf-8")
         module = (FRONTEND / "staff-shifts" / "export-controller.js").read_text(encoding="utf-8")
         calendar = (FRONTEND / "staff-shifts" / "calendar-controller.js").read_text(encoding="utf-8")
+        comments = (FRONTEND / "staff-shifts" / "comment-controller.js").read_text(encoding="utf-8")
         html = (FRONTEND / "staff-shifts.html").read_text(encoding="utf-8")
 
         self.assertLess(len(main.splitlines()), 1_800)
         self.assertLess(len(module.splitlines()), 900)
         self.assertLess(len(calendar.splitlines()), 850)
+        self.assertLess(len(comments.splitlines()), 700)
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
         self.assertIn("/staff-shifts/calendar-controller.js?v=20260720-unified6", main)
-        self.assertIn("staff-shifts.js?v=20260726-navmore1", html)
+        self.assertIn("/staff-shifts/comment-controller.js?v=20260728-comments1", main)
+        self.assertIn("staff-shifts.js?v=20260728-comments1", html)
         self.assertIn("/shifts/export-metadata?", module)
+        self.assertIn("/mentionable-members", comments)
+        self.assertIn("reply_to_comment_id", comments)
+        self.assertIn("mentioned_user_ids", comments)
 
         mutable_fields = (
             "me",

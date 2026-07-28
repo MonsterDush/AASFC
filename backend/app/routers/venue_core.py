@@ -101,6 +101,7 @@ from app.models.venue_setup_state import VenueSetupState
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
 from app.models.shift_comment import ShiftComment
+from app.models.shift_comment_mention import ShiftCommentMention
 from app.models.shift_assignment import ShiftAssignment
 from app.models.shift_schedule_template import ShiftScheduleTemplate, ShiftScheduleTemplateItem
 from app.models.daily_report import DailyReport
@@ -388,6 +389,7 @@ def _safe_delete_where(db: Session, model, *conditions) -> int:
 def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
     venue_id = int(venue.id)
     shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+    shift_comment_ids = select(ShiftComment.id).where(ShiftComment.shift_id.in_(shift_ids))
     shift_schedule_template_ids = select(ShiftScheduleTemplate.id).where(ShiftScheduleTemplate.venue_id == venue_id)
     report_ids = select(DailyReport.id).where(DailyReport.venue_id == venue_id)
     adjustment_ids = select(Adjustment.id).where(Adjustment.venue_id == venue_id)
@@ -414,6 +416,7 @@ def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
     add_count("shift_schedule_template_items", ShiftScheduleTemplateItem, select(func.count(ShiftScheduleTemplateItem.id)).where(ShiftScheduleTemplateItem.template_id.in_(shift_schedule_template_ids)))
     add_count("shifts", Shift, select(func.count(Shift.id)).where(Shift.venue_id == venue_id))
     add_count("shift_assignments", ShiftAssignment, select(func.count(ShiftAssignment.id)).where(ShiftAssignment.shift_id.in_(shift_ids)))
+    add_count("shift_comment_mentions", ShiftCommentMention, select(func.count(ShiftCommentMention.id)).where(ShiftCommentMention.comment_id.in_(shift_comment_ids)))
     add_count("shift_comments", ShiftComment, select(func.count(ShiftComment.id)).where(ShiftComment.shift_id.in_(shift_ids)))
 
     add_count("daily_reports", DailyReport, select(func.count(DailyReport.id)).where(DailyReport.venue_id == venue_id))
@@ -577,6 +580,7 @@ def delete_venue(
         raise HTTPException(400, "Archive venue before delete")
 
     shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+    shift_comment_ids = select(ShiftComment.id).where(ShiftComment.shift_id.in_(shift_ids))
     shift_schedule_template_ids = select(ShiftScheduleTemplate.id).where(ShiftScheduleTemplate.venue_id == venue_id)
     report_ids = select(DailyReport.id).where(DailyReport.venue_id == venue_id)
     dispute_ids = select(AdjustmentDispute.id).where(AdjustmentDispute.venue_id == venue_id)
@@ -586,6 +590,7 @@ def delete_venue(
     deleted: dict[str, int] = {}
 
     try:
+        deleted["shift_comment_mentions"] = _safe_delete_where(db, ShiftCommentMention, ShiftCommentMention.comment_id.in_(shift_comment_ids))
         deleted["shift_comments"] = _safe_delete_where(db, ShiftComment, ShiftComment.shift_id.in_(shift_ids))
         deleted["shift_assignments"] = _safe_delete_where(db, ShiftAssignment, ShiftAssignment.shift_id.in_(shift_ids))
 
