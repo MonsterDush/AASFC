@@ -79,6 +79,8 @@ class PayComponentCreateIn(BaseModel):
     kpi_metric_id: int | None = Field(default=None, gt=0)
     threshold_value: int | None = Field(default=None, ge=0)
     steps_json: dict | list | None = None
+    kpi_calculation_mode: str = Field(default="FIXED", min_length=1, max_length=16)
+    salary_accrual_day: int | None = Field(default=None, ge=1, le=31)
     base_scope: str | None = Field(default=None, min_length=1, max_length=24)
     boost_enabled: bool = False
     boost_percent_bps: int | None = Field(default=None, ge=0)
@@ -106,6 +108,8 @@ class PayComponentUpdateIn(BaseModel):
     kpi_metric_id: int | None = Field(default=None, gt=0)
     threshold_value: int | None = Field(default=None, ge=0)
     steps_json: dict | list | None = None
+    kpi_calculation_mode: str | None = Field(default=None, min_length=1, max_length=16)
+    salary_accrual_day: int | None = Field(default=None, ge=1, le=31)
     base_scope: str | None = Field(default=None, min_length=1, max_length=24)
     boost_enabled: bool | None = None
     boost_percent_bps: int | None = Field(default=None, ge=0)

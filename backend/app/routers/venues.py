@@ -15,6 +15,7 @@ from app.routers.venue_revenue_exports import router as revenue_exports_router
 from app.routers.venue_schedule_templates import router as schedule_templates_router
 from app.routers.venue_shift_intervals import router as shift_intervals_router
 from app.routers.venue_shifts import router as shifts_router
+from app.routers.venue_shift_swaps import router as shift_swaps_router
 
 
 router = APIRouter()
@@ -29,6 +30,7 @@ router.include_router(membership_router, prefix="/venues", tags=["venues"])
 router.include_router(schedule_templates_router, prefix="/venues", tags=["venues"])
 router.include_router(shift_intervals_router, prefix="/venues", tags=["venues"])
 router.include_router(shifts_router, prefix="/venues", tags=["venues"])
+router.include_router(shift_swaps_router, prefix="/venues", tags=["venues"])
 router.include_router(catalogs_router, prefix="/venues", tags=["venues"])
 router.include_router(finance_router, prefix="/venues", tags=["venues"])
 router.include_router(economics_router, prefix="/venues", tags=["venues"])

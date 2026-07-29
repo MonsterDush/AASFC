@@ -294,10 +294,12 @@ def create_pay_component(
         dep = db.execute(select(Department.id).where(Department.id == payload.department_id, Department.venue_id == venue_id)).scalar_one_or_none()
         if dep is None:
             raise HTTPException(status_code=400, detail="Department not found in venue")
+    kpi_metric_unit = None
     if payload.kpi_metric_id is not None:
-        kpi = db.execute(select(KpiMetric.id).where(KpiMetric.id == payload.kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
+        kpi = db.execute(select(KpiMetric).where(KpiMetric.id == payload.kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
         if kpi is None:
             raise HTTPException(status_code=400, detail="KPI metric not found in venue")
+        kpi_metric_unit = kpi.unit
     if payload.boost_department_id is not None:
         dep = db.execute(select(Department.id).where(Department.id == payload.boost_department_id, Department.venue_id == venue_id)).scalar_one_or_none()
         if dep is None:
@@ -320,6 +322,9 @@ def create_pay_component(
         kpi_metric_id=payload.kpi_metric_id,
         threshold_value=payload.threshold_value,
         steps_json=payload.steps_json,
+        kpi_calculation_mode=payload.kpi_calculation_mode,
+        kpi_metric_unit=kpi_metric_unit,
+        salary_accrual_day=payload.salary_accrual_day,
         base_scope=payload.base_scope,
         boost_enabled=payload.boost_enabled,
         boost_percent_bps=payload.boost_percent_bps,
@@ -347,6 +352,8 @@ def create_pay_component(
         kpi_metric_id=payload.kpi_metric_id,
         threshold_value=payload.threshold_value,
         steps_json=json.dumps(payload.steps_json, ensure_ascii=False) if payload.steps_json is not None else None,
+        kpi_calculation_mode=(payload.kpi_calculation_mode or "FIXED").strip().upper(),
+        salary_accrual_day=payload.salary_accrual_day,
         base_scope=(payload.base_scope or '').strip().upper() or None,
         boost_enabled=bool(payload.boost_enabled),
         boost_percent_bps=payload.boost_percent_bps,
@@ -398,6 +405,10 @@ def update_pay_component(
         component.rate_minor = payload.rate_minor
     if 'percent_bps' in fields_set:
         component.percent_bps = payload.percent_bps
+    if 'kpi_calculation_mode' in fields_set and payload.kpi_calculation_mode is not None:
+        component.kpi_calculation_mode = payload.kpi_calculation_mode.strip().upper()
+    if 'salary_accrual_day' in fields_set:
+        component.salary_accrual_day = payload.salary_accrual_day
     if 'department_id' in fields_set:
         if payload.department_id is None:
             component.department_id = None
@@ -478,6 +489,16 @@ def update_pay_component(
         component.sort_order = payload.sort_order
     if 'is_active' in fields_set and payload.is_active is not None:
         component.is_active = payload.is_active
+    kpi_metric_unit = None
+    if component.kpi_metric_id is not None:
+        kpi_metric = db.execute(
+            select(KpiMetric).where(
+                KpiMetric.id == int(component.kpi_metric_id),
+                KpiMetric.venue_id == int(venue_id),
+            )
+        ).scalar_one_or_none()
+        if kpi_metric is not None:
+            kpi_metric_unit = kpi_metric.unit
     _validate_pay_component_fields(
         component_type=component.component_type,
         amount_minor=component.amount_minor,
@@ -488,6 +509,9 @@ def update_pay_component(
         kpi_metric_id=component.kpi_metric_id,
         threshold_value=component.threshold_value,
         steps_json=_parse_json_text(component.steps_json),
+        kpi_calculation_mode=component.kpi_calculation_mode,
+        kpi_metric_unit=kpi_metric_unit,
+        salary_accrual_day=component.salary_accrual_day,
         base_scope=component.base_scope,
         boost_enabled=bool(component.boost_enabled),
         boost_percent_bps=component.boost_percent_bps,

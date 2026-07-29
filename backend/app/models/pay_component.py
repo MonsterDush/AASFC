@@ -19,6 +19,14 @@ class PayComponent(Base):
         CheckConstraint("rate_minor IS NULL OR rate_minor >= 0", name="ck_pay_components_rate_minor_non_negative"),
         CheckConstraint("percent_bps IS NULL OR percent_bps >= 0", name="ck_pay_components_percent_bps_non_negative"),
         CheckConstraint("threshold_value IS NULL OR threshold_value >= 0", name="ck_pay_components_threshold_value_non_negative"),
+        CheckConstraint(
+            "kpi_calculation_mode in ('FIXED','PERCENT')",
+            name="ck_pay_components_kpi_calculation_mode",
+        ),
+        CheckConstraint(
+            "salary_accrual_day IS NULL OR (salary_accrual_day >= 1 AND salary_accrual_day <= 31)",
+            name="ck_pay_components_salary_accrual_day",
+        ),
         CheckConstraint("boost_percent_bps IS NULL OR boost_percent_bps >= 0", name="ck_pay_components_boost_percent_bps_non_negative"),
         CheckConstraint("boost_threshold_value IS NULL OR boost_threshold_value >= 0", name="ck_pay_components_boost_threshold_value_non_negative"),
         CheckConstraint("minimum_guarantee_minor IS NULL OR minimum_guarantee_minor >= 0", name="ck_pay_components_minimum_guarantee_non_negative"),
@@ -44,6 +52,8 @@ class PayComponent(Base):
     kpi_metric_id: Mapped[int | None] = mapped_column(ForeignKey("kpi_metrics.id"), nullable=True)
     threshold_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
     steps_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kpi_calculation_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="FIXED")
+    salary_accrual_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     base_scope: Mapped[str | None] = mapped_column(String(24), nullable=True)
     boost_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

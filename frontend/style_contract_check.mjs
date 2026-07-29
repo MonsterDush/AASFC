@@ -11,7 +11,7 @@ import {
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const stylesPath = path.join(frontendDir, "styles.css");
-const globalStyleCacheKey = "20260726-navmore1";
+const globalStyleCacheKey = "20260729-payroll1";
 const coreStyleFiles = [
   "tokens.css",
   "base-layout.css",
@@ -131,7 +131,7 @@ const pageStyleCacheKeyOverrides = new Map([
   ["staff-finance.html", "20260726-polish6"],
   ["staff-report.html", "20260728-responsive1"],
   ["staff-salary.html", "20260726-polish6"],
-  ["staff-shifts.html", "20260729-desktop3"],
+  ["staff-shifts.html", "20260729-swaps1"],
 ]);
 const inlineFreePages = [
   "admin-position-templates.html",
@@ -172,12 +172,12 @@ const inlineFreeEntrypoints = new Map([
   ["owner-expenses.html", "/owner-expenses.js?v=20260729-slotecon1"],
   ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20260726-navmore1"],
   ["owner-kpi.html", "/owner-kpi.js?v=20260726-navmore1"],
-  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260726-navmore1"],
+  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260729-payroll1"],
   ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20260726-navmore1"],
-  ["owner-payroll.html", "/owner-payroll.js?v=20260726-payrollpolish1"],
+  ["owner-payroll.html", "/owner-payroll.js?v=20260729-payroll1"],
   ["owner-payment-methods.html", "/owner-payment-methods.js?v=20260726-navmore1"],
   ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260726-navmore1"],
-  ["owner-setup.html", "/owner-setup.js?v=20260729-slotecon1"],
+  ["owner-setup.html", "/owner-setup.js?v=20260729-payroll1"],
   ["owner-summary.html", "/owner-summary.js?v=20260726-navmore1"],
   ["owner-suppliers.html", "/owner-suppliers.js?v=20260726-navmore1"],
   ["owner-turnover.html", "/owner-turnover.js?v=20260726-navmore1"],

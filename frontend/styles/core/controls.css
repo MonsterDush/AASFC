@@ -106,13 +106,17 @@ input[type="checkbox"],input[type="radio"]{
 }
 
 .chk,
-.checkline{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none;vertical-align:middle;max-width:100%}
+.checkline{display:inline-grid;grid-template-columns:18px minmax(0,auto);align-items:start;gap:10px;cursor:pointer;user-select:none;vertical-align:middle;max-width:100%}
 .chk .muted,
 .checkline .muted{margin:0}
-.chk input,
-.checkline input{flex:0 0 18px}
+.chk > input[type="checkbox"],
+.chk > input[type="radio"],
+.checkline > input[type="checkbox"],
+.checkline > input[type="radio"]{width:18px;min-width:18px;max-width:18px;align-self:start;margin-top:1px}
+.chk > :not(input),
+.checkline > :not(input){min-width:0;overflow-wrap:anywhere}
 .checkline{font-weight:600;color:var(--text)}
-.checkline--block{display:flex;width:100%}
+.checkline--block{display:grid;width:100%}
 .checkline__text{min-width:0}
 .badge input[type="checkbox"]{margin-right:6px}
 

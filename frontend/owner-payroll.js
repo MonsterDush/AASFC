@@ -212,7 +212,13 @@ function breakdownComponentMeta(component) {
     const metricValue = component?.metric_value != null ? ` · факт ${component.metric_value}` : "";
     const thresholdValue = component?.threshold_value != null ? ` · порог ${component.threshold_value}` : "";
     const matchedStep = component?.matched_step?.threshold_value != null ? ` · ступень ${component.matchedStep?.threshold_value}` : "";
+    if (String(component?.kpi_calculation_mode || "FIXED").toUpperCase() === "PERCENT") {
+      return `${label}${metricTitle}${metricValue} · ${fmtPercentBps(component?.percent_bps || 0)} от KPI${thresholdValue} · по закрытым сменам`;
+    }
     return `${label}${metricTitle}${metricValue}${thresholdValue}${matchedStep}`;
+  }
+  if (type === "SALARY_FIXED_MONTH" && component?.salary_accrual_day) {
+    return `${label} · начисление ${component.salary_accrual_day}-го числа`;
   }
   return label;
 }

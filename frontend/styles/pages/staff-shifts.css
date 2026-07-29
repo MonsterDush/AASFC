@@ -180,6 +180,69 @@
 .shift-assignee-select{flex:1 1 auto;min-width:240px}
 .shift-interval-select{flex:1 1 auto;min-width:220px}
 .shift-create-interval{background:var(--surface2)}
+.shift-exchange{
+  display:grid;
+  gap:10px;
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid var(--border);
+}
+.shift-exchange__section{
+  display:grid;
+  gap:10px;
+  min-width:0;
+  padding:12px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:var(--surfaceTintSoft);
+}
+.shift-exchange__heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+}
+.shift-exchange__heading>div{min-width:0}
+.shift-availability-toggle{display:flex;flex-wrap:wrap;gap:7px}
+.shift-availability-toggle .btn.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accentA18)}
+.shift-availability-toggle .btn.success.active{color:var(--ok)}
+.shift-availability-toggle .btn.danger.active{color:var(--danger)}
+.shift-availability-list{display:flex;flex-wrap:wrap;gap:7px}
+.shift-availability-person{
+  display:inline-flex;
+  align-items:center;
+  min-width:0;
+  padding:6px 9px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  font-size:12px;
+  font-weight:750;
+}
+.shift-availability-person.is-available{border-color:color-mix(in srgb,var(--ok) 46%,var(--border));color:var(--ok)}
+.shift-availability-person.is-unavailable{border-color:color-mix(in srgb,var(--danger) 46%,var(--border));color:var(--danger)}
+.shift-swap-compose,.shift-swap-manager__list{display:grid;gap:10px;min-width:0}
+.shift-swap-compose{
+  padding-top:10px;
+  border-top:1px solid var(--border);
+}
+.shift-swap-field{display:grid;gap:6px;min-width:0}
+.shift-swap-field>span{color:var(--muted);font-size:12px;font-weight:750}
+.shift-swap-field :is(.input,select,textarea){width:100%;min-width:0}
+.shift-swap-compose__actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.shift-swap-request{
+  display:grid;
+  gap:10px;
+  min-width:0;
+  padding:11px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--card);
+}
+.shift-swap-request.is-open{border-color:var(--accentSoftBorder)}
+.shift-swap-request__comment{overflow-wrap:anywhere;color:var(--muted);font-size:13px}
+.shift-swap-history{padding:0 2px}
+.shift-assignee-select option.is-unavailable{color:var(--danger)}
 .cal-line--probe{visibility:hidden;position:absolute;left:-9999px;top:-9999px}
 .cal-cell--expanded-layout{grid-column:span 3;grid-row:span 2}
 
@@ -302,7 +365,19 @@
 .staff-shifts-page .comment-mentions__empty{padding:10px;color:var(--muted);font-size:12px}
 @media (max-width:560px){
   .shift-assignee-select,.shift-interval-select{min-width:0;width:100%}
+  .shift-exchange__section{padding:10px}
+  .shift-exchange__heading{display:grid;grid-template-columns:minmax(0,1fr) auto}
+  .shift-exchange__heading>.btn{align-self:start}
+  .shift-availability-toggle{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .shift-availability-toggle .btn{min-width:0;padding-inline:6px}
+  .shift-swap-compose__actions{display:grid;grid-template-columns:1fr 1fr}
+  .shift-swap-compose__actions .btn{width:100%;min-width:0}
   .staff-shifts-page .commentform__row{flex-wrap:wrap}
   .staff-shifts-page .commentform__composer{flex-basis:100%;min-width:0}
   .staff-shifts-page .commentform__send{width:100%}
+}
+@media (max-width:360px){
+  .shift-exchange__heading{grid-template-columns:1fr}
+  .shift-exchange__heading>.btn{width:100%}
+  .shift-availability-toggle{grid-template-columns:1fr}
 }

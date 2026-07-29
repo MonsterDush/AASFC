@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 
 from fastapi import APIRouter
 
@@ -38,6 +39,7 @@ from app.routers.venue_core import (
     verify_signed_token,
 )
 from app.models.shift_comment_mention import ShiftCommentMention
+from app.models.shift_swap_request import ShiftSwapRequest
 from app.routers.venue_common import (
     _SCHEDULE_SHARE_TTL_SECONDS,
 )
@@ -691,6 +693,20 @@ def delete_shift(
     shift_date = obj.date
     shift_slot = normalize_shift_slot(getattr(obj, "shift_slot", None))
     obj.is_active = False
+    db.execute(
+        update(ShiftSwapRequest)
+        .where(
+            ShiftSwapRequest.shift_id == int(shift_id),
+            ShiftSwapRequest.status == "OPEN",
+        )
+        .values(
+            status="CANCELLED",
+            manager_comment="Смена удалена из графика",
+            decided_by_user_id=int(user.id),
+            decided_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+    )
     _rebuild_closed_report_tip_allocations_for_keys(
         db,
         venue_id=venue_id,
@@ -870,6 +886,20 @@ def remove_shift_assignment(
     shift_row = db.execute(
         select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)
     ).scalar_one_or_none()
+    db.execute(
+        update(ShiftSwapRequest)
+        .where(
+            ShiftSwapRequest.assignment_id == int(a.id),
+            ShiftSwapRequest.status == "OPEN",
+        )
+        .values(
+            status="CANCELLED",
+            manager_comment="Назначение удалено управляющим",
+            decided_by_user_id=int(user.id),
+            decided_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+    )
     db.delete(a)
     if shift_row is not None:
         shift_date = shift_row.date

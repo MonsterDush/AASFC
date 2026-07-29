@@ -22,6 +22,8 @@ from app.services.payroll.calculator import (
     MINIMUM_GUARANTEE_DAY,
     MINIMUM_GUARANTEE_MONTH,
     MINIMUM_GUARANTEE_SHIFT,
+    KPI_CALCULATION_FIXED,
+    KPI_CALCULATION_PERCENT,
     calculate_payroll_for_month,
     parse_month_start,
 )
@@ -366,6 +368,8 @@ def _serialize_pay_component(component: PayComponent) -> dict:
         "kpi_metric_title": kpi_metric.title if kpi_metric is not None else None,
         "threshold_value": component.threshold_value,
         "steps": _parse_json_text(component.steps_json),
+        "kpi_calculation_mode": str(component.kpi_calculation_mode or KPI_CALCULATION_FIXED).upper(),
+        "salary_accrual_day": component.salary_accrual_day,
         "base_scope": component.base_scope,
         "effective_base_scope": effective_base_scope,
         "effective_base_scope_title": BASE_SCOPE_TITLES.get(effective_base_scope, effective_base_scope),
@@ -406,6 +410,9 @@ def _validate_pay_component_fields(
     kpi_metric_id: int | None = None,
     threshold_value: int | None = None,
     steps_json: dict | list | None = None,
+    kpi_calculation_mode: str | None = None,
+    kpi_metric_unit: str | None = None,
+    salary_accrual_day: int | None = None,
     base_scope: str | None = None,
     boost_enabled: bool = False,
     boost_percent_bps: int | None = None,
@@ -421,6 +428,7 @@ def _validate_pay_component_fields(
 ) -> None:
     component_type = str(component_type or "").strip().upper()
     normalized_base_scope = str(base_scope or "").strip().upper() if base_scope is not None else None
+    normalized_kpi_calculation_mode = str(kpi_calculation_mode or KPI_CALCULATION_FIXED).strip().upper()
     normalized_boost_source_type = str(boost_source_type or "").strip().upper() if boost_source_type is not None else BOOST_SOURCE_NONE
     normalized_boost_recalc_mode = str(boost_recalc_mode or "").strip().upper() if boost_recalc_mode is not None else BOOST_RECALC_REPLACE_ALL
     is_percent_component = component_type in {"PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"}
@@ -437,7 +445,11 @@ def _validate_pay_component_fields(
     if component_type == "SALARY_FIXED_MONTH":
         if amount_minor is None:
             raise HTTPException(status_code=400, detail="amount_minor is required for SALARY_FIXED_MONTH")
+        if salary_accrual_day is not None and not 1 <= int(salary_accrual_day) <= 31:
+            raise HTTPException(status_code=400, detail="salary_accrual_day must be between 1 and 31")
         return
+    if salary_accrual_day is not None:
+        raise HTTPException(status_code=400, detail="salary_accrual_day is supported only for SALARY_FIXED_MONTH")
     if component_type == "SALARY_HOURLY":
         if rate_minor is None:
             raise HTTPException(status_code=400, detail="rate_minor is required for SALARY_HOURLY")
@@ -489,6 +501,16 @@ def _validate_pay_component_fields(
     if component_type == "KPI_BONUS":
         if kpi_metric_id is None:
             raise HTTPException(status_code=400, detail="kpi_metric_id is required for KPI_BONUS")
+        if normalized_kpi_calculation_mode not in {KPI_CALCULATION_FIXED, KPI_CALCULATION_PERCENT}:
+            raise HTTPException(status_code=400, detail="kpi_calculation_mode must be FIXED or PERCENT")
+        if normalized_kpi_calculation_mode == KPI_CALCULATION_PERCENT:
+            if str(kpi_metric_unit or "").strip().upper() != "RUB":
+                raise HTTPException(status_code=400, detail="PERCENT KPI bonus requires a KPI metric with RUB unit")
+            if percent_bps is None:
+                raise HTTPException(status_code=400, detail="percent_bps is required for percentage KPI_BONUS")
+            if steps_json:
+                raise HTTPException(status_code=400, detail="steps_json is not supported for percentage KPI_BONUS")
+            return
         has_steps = False
         if isinstance(steps_json, list):
             has_steps = len(steps_json) > 0

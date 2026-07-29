@@ -23,6 +23,14 @@ export function createPayProfileSetupController(context) {
 
   function buildPayProfileComponentEditor(detail, editingComponent = null) {
     const type = String(editingComponent?.component_type || 'SALARY_FIXED_MONTH').toUpperCase();
+    const kpiMode = String(editingComponent?.kpi_calculation_mode || 'FIXED').toUpperCase();
+    const salaryAccrualDay = Number(editingComponent?.salary_accrual_day || 0);
+    const salaryDayOptions = Array.from({ length: 31 }, (_, index) => index + 1)
+      .map((day) => `<option value="${day}" ${salaryAccrualDay === day ? 'selected' : ''}>${day}-е число</option>`)
+      .join('');
+    const kpiOptions = [`<option value="">Выбери KPI</option>`]
+      .concat((state.kpiMetrics || []).filter((metric) => metric?.is_active !== false).map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(editingComponent?.kpi_metric_id) ? 'selected' : ''}>${esc(metric.title || `#${metric.id}`)} · ${esc(String(metric.unit || 'QTY').toUpperCase())}</option>`))
+      .join('');
     return `
       <div class="setup-formgrid mt-12">
         <label>
@@ -33,7 +41,7 @@ export function createPayProfileSetupController(context) {
           <span>Название</span>
           <input class="input" id="inlineComponentTitle" placeholder="Например, Ставка за час" value="${esc(editingComponent?.title || defaultPayComponentTitle(type))}" />
         </label>
-        <label id="inlineComponentAmountRow" class="${['SALARY_FIXED_MONTH','SALARY_PER_SHIFT','KPI_BONUS','MINIMUM_PAYOUT'].includes(type) ? '' : 'hidden'}">
+        <label id="inlineComponentAmountRow" class="${['SALARY_FIXED_MONTH','SALARY_PER_SHIFT','MINIMUM_PAYOUT'].includes(type) || (type === 'KPI_BONUS' && kpiMode === 'FIXED') ? '' : 'hidden'}">
           <span>Сумма, ₽</span>
           <input class="input" id="inlineComponentAmount" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(editingComponent?.amount_minor))}" />
         </label>
@@ -48,7 +56,7 @@ export function createPayProfileSetupController(context) {
           <span>Ставка в час, ₽</span>
           <input class="input" id="inlineComponentRate" inputmode="decimal" placeholder="0" value="${esc(moneyInputFromMinor(editingComponent?.rate_minor))}" />
         </label>
-        <label id="inlineComponentPercentRow" class="${['PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE'].includes(type) ? '' : 'hidden'}">
+        <label id="inlineComponentPercentRow" class="${['PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE'].includes(type) || (type === 'KPI_BONUS' && kpiMode === 'PERCENT') ? '' : 'hidden'}">
           <span>Процент</span>
           <input class="input" id="inlineComponentPercent" inputmode="decimal" placeholder="0" value="${esc(percentInputFromBps(editingComponent?.percent_bps))}" />
         </label>
@@ -58,7 +66,21 @@ export function createPayProfileSetupController(context) {
         </label>
         <label id="inlineComponentKpiRow" class="${type === 'KPI_BONUS' ? '' : 'hidden'}">
           <span>KPI</span>
-          <select class="input" id="inlineComponentKpiMetricId">${buildSimpleOptions(state.kpiMetrics || [], editingComponent?.kpi_metric_id, 'Выбери KPI')}</select>
+          <select class="input" id="inlineComponentKpiMetricId">${kpiOptions}</select>
+        </label>
+        <label id="inlineComponentKpiCalculationModeRow" class="${type === 'KPI_BONUS' ? '' : 'hidden'}">
+          <span>Способ расчёта KPI</span>
+          <select class="input" id="inlineComponentKpiCalculationMode">
+            <option value="FIXED" ${kpiMode === 'FIXED' ? 'selected' : ''}>Фиксированная сумма</option>
+            <option value="PERCENT" ${kpiMode === 'PERCENT' ? 'selected' : ''}>Процент от значения KPI</option>
+          </select>
+        </label>
+        <label id="inlineComponentSalaryAccrualDayRow" class="${type === 'SALARY_FIXED_MONTH' ? '' : 'hidden'}">
+          <span>День начисления оклада</span>
+          <select class="input" id="inlineComponentSalaryAccrualDay">
+            <option value="">Не указан</option>
+            ${salaryDayOptions}
+          </select>
         </label>
         <label>
           <span>Активность</span>
@@ -310,6 +332,7 @@ export function createPayProfileSetupController(context) {
       if (titleEl && !String(titleEl.value || '').trim()) titleEl.value = defaultPayComponentTitle(document.getElementById('inlineComponentType')?.value || '');
       syncInlinePayComponentFields();
     });
+    document.getElementById('inlineComponentKpiCalculationMode')?.addEventListener('change', syncInlinePayComponentFields);
     syncInlinePayComponentFields();
 
     document.getElementById('btnInlineCancelComponentEdit')?.addEventListener('click', async () => {
@@ -348,12 +371,22 @@ export function createPayProfileSetupController(context) {
       const type = String(document.getElementById('inlineComponentType')?.value || 'SALARY_FIXED_MONTH').toUpperCase();
       const title = String(document.getElementById('inlineComponentTitle')?.value || '').trim() || defaultPayComponentTitle(type);
       const is_active = String(document.getElementById('inlineComponentActive')?.value || '1') === '1';
-      const payload = { component_type: type, title, is_active };
+      const payload = {
+        component_type: type,
+        title,
+        is_active,
+        kpi_calculation_mode: 'FIXED',
+        salary_accrual_day: null,
+      };
       try {
-        if (type === 'SALARY_FIXED_MONTH' || type === 'SALARY_PER_SHIFT' || type === 'KPI_BONUS' || type === 'MINIMUM_PAYOUT') {
+        if (type === 'SALARY_FIXED_MONTH' || type === 'SALARY_PER_SHIFT' || type === 'MINIMUM_PAYOUT') {
           const amount_minor = parseMoneyRubToMinor(document.getElementById('inlineComponentAmount')?.value || '');
           if (amount_minor == null) return toast('Укажи сумму', 'err');
           payload.amount_minor = amount_minor;
+          if (type === 'SALARY_FIXED_MONTH') {
+            const salaryAccrualDay = Number(document.getElementById('inlineComponentSalaryAccrualDay')?.value || 0);
+            payload.salary_accrual_day = salaryAccrualDay || null;
+          }
           if (type === 'MINIMUM_PAYOUT') {
             const scope = String(document.getElementById('inlineComponentMinimumScope')?.value || 'MONTH').toUpperCase();
             payload.minimum_guarantee_scope = scope === 'SHIFT' ? 'SHIFT' : 'MONTH';
@@ -378,6 +411,22 @@ export function createPayProfileSetupController(context) {
           const kpiMetricId = Number(document.getElementById('inlineComponentKpiMetricId')?.value || 0);
           if (!kpiMetricId) return toast('Выбери KPI', 'err');
           payload.kpi_metric_id = kpiMetricId;
+          const kpiMode = String(document.getElementById('inlineComponentKpiCalculationMode')?.value || 'FIXED').toUpperCase();
+          payload.kpi_calculation_mode = kpiMode === 'PERCENT' ? 'PERCENT' : 'FIXED';
+          if (payload.kpi_calculation_mode === 'PERCENT') {
+            const metric = (state.kpiMetrics || []).find((item) => Number(item?.id) === kpiMetricId);
+            if (metric && String(metric.unit || '').toUpperCase() !== 'RUB') return toast('Процент можно считать только от KPI в рублях', 'err');
+            const percent_bps = parsePercentInputToBps(document.getElementById('inlineComponentPercent')?.value || '');
+            if (percent_bps == null) return toast('Укажи процент от KPI', 'err');
+            payload.percent_bps = percent_bps;
+            payload.amount_minor = null;
+            payload.steps_json = null;
+          } else {
+            const amount_minor = parseMoneyRubToMinor(document.getElementById('inlineComponentAmount')?.value || '');
+            if (amount_minor == null) return toast('Укажи сумму бонуса', 'err');
+            payload.amount_minor = amount_minor;
+            payload.percent_bps = null;
+          }
         }
         if (inlineState.componentEditor?.id) await updatePayComponent(state.venueId, inlineState.componentEditor.id, payload);
         else await createPayComponent(state.venueId, profileId, payload);

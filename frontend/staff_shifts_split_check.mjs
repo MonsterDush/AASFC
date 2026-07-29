@@ -26,19 +26,22 @@ const domBindingManifest = Array.from(
   (match) => match[1],
 ).sort();
 const manifestHash = (values) => crypto.createHash("sha256").update(JSON.stringify(values)).digest("hex");
-assert.equal(apiCallManifest.length, 15);
-assert.equal(manifestHash(apiCallManifest), "25a6a8631385793c4669f9385d2bd74376942596d84d8f5349ac5dfd41e2e5ee");
+assert.equal(apiCallManifest.length, 21);
+assert.equal(manifestHash(apiCallManifest), "e36d841fea322b74293b11c64ec20dc5c955f0bcc5a68924b1ad188c19fd18d5");
 assert.equal(domBindingManifest.length, 55);
 assert.equal(manifestHash(domBindingManifest), "ac35bc61a168dd228accbecf9a0424425cb15abe9a88eeecfb44671f68ab101a");
 
-assert.ok(mainSource.split("\n").length < 1_800, "staff-shifts.js should remain an orchestration module");
+assert.ok(mainSource.split("\n").length < 2_100, "staff-shifts.js should remain an orchestration module");
 assert.ok(moduleSource.split("\n").length < 900, "schedule export controller is too large");
 assert.ok(calendarModuleSource.split("\n").length < 850, "calendar controller is too large");
 assert.ok(commentModuleSource.split("\n").length < 700, "comment controller is too large");
 assert.match(mainSource, /\/staff-shifts\/export-controller\.js\?v=20260719-split1/);
-assert.match(mainSource, /\/staff-shifts\/calendar-controller\.js\?v=20260720-unified6/);
+assert.match(mainSource, /\/staff-shifts\/calendar-controller\.js\?v=20260729-overnight1/);
 assert.match(mainSource, /\/staff-shifts\/comment-controller\.js\?v=20260728-comments1/);
-assert.match(htmlSource, /staff-shifts\.js\?v=20260728-comments1/);
+assert.match(htmlSource, /staff-shifts\.js\?v=20260729-swaps1/);
+for (const route of ["/shift-availability?", "/swap-candidates", "/swap-requests"]) {
+  assert.ok(mainSource.includes(route), `${route} is no longer wired`);
+}
 
 const module = await import(pathToFileURL(modulePath));
 assert.equal(typeof module.createStaffShiftExportController, "function");

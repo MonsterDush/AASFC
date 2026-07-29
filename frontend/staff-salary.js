@@ -974,6 +974,10 @@ function breakdownMetaHtml(c) {
   }
   if (type === "KPI_BONUS") {
     const threshold = c?.threshold_value ?? "—";
+    if (String(c?.kpi_calculation_mode || "FIXED").toUpperCase() === "PERCENT") {
+      const percent = (Number(c?.percent_bps || 0) / 100).toFixed(2);
+      return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || "показатель")} · факт по вашим закрытым сменам: ${esc(c.metric_value ?? 0)} ₽ · ${esc(percent)}%</div>`;
+    }
     return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || "показатель")} · факт: ${esc(c.metric_value ?? 0)} · порог: ${esc(threshold)}</div>`;
   }
   if (type === "MINIMUM_PAYOUT") {
@@ -985,6 +989,9 @@ function breakdownMetaHtml(c) {
   }
   if (type === "SALARY_PER_SHIFT") {
     return `<div class="muted small mt-4">Смен: ${esc(c.shifts_count ?? 0)}</div>`;
+  }
+  if (type === "SALARY_FIXED_MONTH" && c?.salary_accrual_day) {
+    return `<div class="muted small mt-4">Оклад распределяется по месяцу · начисление ${esc(c.salary_accrual_day)}-го числа</div>`;
   }
   return `<div class="muted small mt-4">Компонент профиля</div>`;
 }

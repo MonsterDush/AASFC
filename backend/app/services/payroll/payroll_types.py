@@ -33,6 +33,9 @@ MINIMUM_GUARANTEE_MONTH = "MONTH"
 MINIMUM_GUARANTEE_DAY = "DAY"
 MINIMUM_GUARANTEE_SHIFT = "SHIFT"
 
+KPI_CALCULATION_FIXED = "FIXED"
+KPI_CALCULATION_PERCENT = "PERCENT"
+
 BASE_SCOPE_TITLES = {
     BASE_SCOPE_FULL_PERIOD: "по всему периоду",
     BASE_SCOPE_WORKED_DATES: "по отработанным дням",
@@ -78,6 +81,7 @@ class PayrollRevenueMetrics:
 @dataclass
 class PayrollKpiMetrics:
     totals_by_metric_id: dict[int, int] = field(default_factory=dict)
+    values_by_metric_date_slot: dict[int, dict[tuple[date, str], int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -93,6 +97,9 @@ class PayrollKpiBonusDecision:
     threshold_value: int | None = None
     matched_step: dict | None = None
     steps: list[dict] = field(default_factory=list)
+    calculation_mode: str = KPI_CALCULATION_FIXED
+    percent_bps: int | None = None
+    base_amount_minor: int | None = None
 
 
 @dataclass

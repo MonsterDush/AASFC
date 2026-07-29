@@ -26,6 +26,7 @@ from .component_calculations import (
     _normalize_int_ids,
     _ordered_worked_shifts,
     _parse_steps_json,
+    _kpi_calculation_mode,
     _percent_decision_amounts_by_date,
     _round_percent_amount,
     _rub_to_minor,
@@ -53,6 +54,7 @@ from .metric_loaders import (
     _load_venue_plan_metrics,
     _pick_latest_assignments,
     _sum_department_revenue_for_worked_dates,
+    _sum_kpi_for_worked_shifts,
 )
 from .payroll_types import (
     BASE_SCOPE_FULL_PERIOD,
@@ -71,6 +73,8 @@ from .payroll_types import (
     MINIMUM_GUARANTEE_DAY,
     MINIMUM_GUARANTEE_MONTH,
     MINIMUM_GUARANTEE_SHIFT,
+    KPI_CALCULATION_FIXED,
+    KPI_CALCULATION_PERCENT,
     PAY_COMPONENT_TYPES,
     PayrollCalculationResult,
     PayrollKpiBonusDecision,
@@ -192,7 +196,14 @@ def calculate_payroll_for_month(
                     )
             kpi_metric_value = 0
             if component.kpi_metric_id is not None:
-                kpi_metric_value = int(kpi_metrics.totals_by_metric_id.get(int(component.kpi_metric_id), 0))
+                if component_type == "KPI_BONUS" and _kpi_calculation_mode(component) == KPI_CALCULATION_PERCENT:
+                    kpi_metric_value = _sum_kpi_for_worked_shifts(
+                        kpi_metrics,
+                        metric_id=int(component.kpi_metric_id),
+                        metrics=metrics,
+                    )
+                else:
+                    kpi_metric_value = int(kpi_metrics.totals_by_metric_id.get(int(component.kpi_metric_id), 0))
 
             percent_decision: PayrollPercentDecision | None = None
             if component_type in {"PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"}:
@@ -225,6 +236,12 @@ def calculate_payroll_for_month(
                 "source_rate_minor": int(component.rate_minor or 0) if component.rate_minor is not None else None,
                 "source_percent_bps": int(component.percent_bps or 0) if component.percent_bps is not None else None,
             }
+            if component_type == "SALARY_FIXED_MONTH":
+                breakdown_item["salary_accrual_day"] = (
+                    int(component.salary_accrual_day)
+                    if getattr(component, "salary_accrual_day", None) is not None
+                    else None
+                )
             if component_type == "PERCENT_TOTAL_REVENUE" and percent_decision is not None:
                 breakdown_item["percent_bps"] = int(percent_decision.applied_percent_bps)
                 breakdown_item["regular_percent_bps"] = int(percent_decision.regular_percent_bps)
@@ -309,6 +326,11 @@ def calculate_payroll_for_month(
                 breakdown_item["threshold_value"] = kpi_decision.threshold_value
                 breakdown_item["matched_step"] = kpi_decision.matched_step
                 breakdown_item["steps"] = kpi_decision.steps
+                breakdown_item["kpi_calculation_mode"] = kpi_decision.calculation_mode
+                breakdown_item["percent_bps"] = kpi_decision.percent_bps
+                breakdown_item["base_amount_minor"] = kpi_decision.base_amount_minor
+                if kpi_decision.calculation_mode == KPI_CALCULATION_PERCENT:
+                    breakdown_item["scope_title"] = "по закрытым сменам сотрудника"
             breakdown_items.append(breakdown_item)
             shift_allocations = _component_shift_allocations(
                 component=component,
@@ -318,6 +340,7 @@ def calculate_payroll_for_month(
                 month_end_excl=month_end_excl,
                 revenue_metrics=revenue_metrics,
                 percent_decision=percent_decision,
+                kpi_values_by_metric_date_slot=kpi_metrics.values_by_metric_date_slot,
             )
             for shift_id, shift_amount_minor in shift_allocations.items():
                 earnings_by_shift_minor[int(shift_id)] = int(earnings_by_shift_minor.get(int(shift_id), 0) or 0) + int(shift_amount_minor or 0)
