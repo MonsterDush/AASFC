@@ -59,6 +59,24 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn('"uq_shift_swap_requests_open_assignment"', source)
         self.assertIn('ondelete="SET NULL"', source)
 
+    def test_kpi_percentage_and_salary_accrual_extend_current_head(self):
+        config = Config(str(BACKEND_DIR / "alembic.ini"))
+        config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+        scripts = ScriptDirectory.from_config(config)
+
+        revision = scripts.get_revision("8b4d1e7a9c20")
+
+        self.assertIsNotNone(revision)
+        self.assertEqual(revision.down_revision, "7d0f2b6c8e33")
+        source = (
+            BACKEND_DIR
+            / "alembic"
+            / "versions"
+            / "8b4d1e7a9c20_extend_kpi_bonus_and_salary_accrual.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"kpi_calculation_mode"', source)
+        self.assertIn('"salary_accrual_day"', source)
+
 
 if __name__ == "__main__":
     unittest.main()

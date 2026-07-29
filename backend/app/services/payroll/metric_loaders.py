@@ -362,7 +362,47 @@ def _load_kpi_metrics(db: Session, *, venue_id: int, month_start: date, month_en
     totals_by_metric_id: dict[int, int] = {}
     for row in rows:
         totals_by_metric_id[int(row.ref_id)] = int(row.value_total or 0)
-    return PayrollKpiMetrics(totals_by_metric_id=totals_by_metric_id)
+
+    slot_rows = db.execute(
+        select(
+            DailyReportValue.ref_id,
+            DailyReport.date,
+            DailyReport.shift_slot,
+            func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("value_total"),
+        )
+        .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+        .where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.status == "CLOSED",
+            DailyReport.date >= month_start,
+            DailyReport.date < month_end_excl,
+            DailyReportValue.kind == "KPI",
+        )
+        .group_by(DailyReportValue.ref_id, DailyReport.date, DailyReport.shift_slot)
+    ).all()
+    values_by_metric_date_slot: dict[int, dict[tuple[date, str], int]] = {}
+    for row in slot_rows:
+        metric_values = values_by_metric_date_slot.setdefault(int(row.ref_id), {})
+        report_key = (row.date, normalize_shift_slot(row.shift_slot))
+        metric_values[report_key] = int(row.value_total or 0)
+    return PayrollKpiMetrics(
+        totals_by_metric_id=totals_by_metric_id,
+        values_by_metric_date_slot=values_by_metric_date_slot,
+    )
+
+
+def _sum_kpi_for_worked_shifts(
+    kpi_metrics: PayrollKpiMetrics,
+    *,
+    metric_id: int,
+    metrics: PayrollMemberMetrics,
+) -> int:
+    values = kpi_metrics.values_by_metric_date_slot.get(int(metric_id), {})
+    report_keys = {
+        (shift.shift_date, normalize_shift_slot(shift.shift_slot))
+        for shift in metrics.worked_shifts
+    }
+    return int(sum(int(values.get(key, 0) or 0) for key in report_keys))
 
 
 def _sum_department_revenue_for_worked_dates(

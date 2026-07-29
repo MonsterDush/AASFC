@@ -46,7 +46,7 @@ import {
 import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPositionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260726-navmore1";
 
 import { createCatalogSetupController } from "/owner-setup/catalog-editor.js?v=20260720-unified10";
-import { createPayProfileSetupController } from "/owner-setup/pay-profile-editor.js?v=20260720-unified10";
+import { createPayProfileSetupController } from "/owner-setup/pay-profile-editor.js?v=20260729-payroll1";
 import { createPositionSetupController } from "/owner-setup/position-editor.js?v=20260720-unified10";
 import { createInviteSetupController } from "/owner-setup/invite-editor.js?v=20260720-unified10";
 import { createShiftIntervalSetupController } from "/owner-setup/shift-interval-editor.js?v=20260729-overnight1";
@@ -408,7 +408,10 @@ function minimumPayoutScopeLabel(scope) {
 
 function payComponentValueLabel(item) {
   const type = String(item?.component_type || "").toUpperCase();
-  if (type === "SALARY_FIXED_MONTH") return item?.amount_minor != null ? `${fmtMoneyMinor(item.amount_minor)} в месяц` : "Без суммы";
+  if (type === "SALARY_FIXED_MONTH") {
+    const accrual = item?.salary_accrual_day ? ` · начисление ${item.salary_accrual_day}-го числа` : "";
+    return item?.amount_minor != null ? `${fmtMoneyMinor(item.amount_minor)} в месяц${accrual}` : "Без суммы";
+  }
   if (type === "SALARY_HOURLY") return item?.rate_minor != null ? `${fmtMoneyMinor(item.rate_minor)} в час` : "Без ставки";
   if (type === "SALARY_PER_SHIFT") return item?.amount_minor != null ? `${fmtMoneyMinor(item.amount_minor)} за смену` : "Без суммы";
   if (type === "MINIMUM_PAYOUT") return item?.amount_minor != null ? `Доплата до ${fmtMoneyMinor(item.amount_minor)} ${minimumPayoutScopeLabel(item?.effective_minimum_guarantee_scope || item?.minimum_guarantee_scope)}` : "Без минимума";
@@ -419,6 +422,9 @@ function payComponentValueLabel(item) {
   }
   if (type === "KPI_BONUS") {
     const kpi = item?.kpi_metric_title ? ` · ${item.kpi_metric_title}` : "";
+    if (String(item?.kpi_calculation_mode || "FIXED").toUpperCase() === "PERCENT") {
+      return `KPI${kpi} · ${fmtPercentBps(item?.percent_bps || 0)} от значения · по закрытым сменам`;
+    }
     const amount = item?.amount_minor != null ? ` · ${fmtMoneyMinor(item.amount_minor)}` : "";
     return `Бонус по KPI${kpi}${amount}`;
   }
@@ -447,17 +453,22 @@ function buildSimpleOptions(items = [], selected = "", placeholder = "Не вы�
 
 function syncInlinePayComponentFields() {
   const type = String(document.getElementById('inlineComponentType')?.value || 'SALARY_FIXED_MONTH').toUpperCase();
+  const kpiMode = String(document.getElementById('inlineComponentKpiCalculationMode')?.value || 'FIXED').toUpperCase();
   const amountRow = document.getElementById('inlineComponentAmountRow');
   const rateRow = document.getElementById('inlineComponentRateRow');
   const percentRow = document.getElementById('inlineComponentPercentRow');
   const depRow = document.getElementById('inlineComponentDepartmentRow');
   const kpiRow = document.getElementById('inlineComponentKpiRow');
   const minScopeRow = document.getElementById('inlineComponentMinimumScopeRow');
-  setVisible(amountRow, ['SALARY_FIXED_MONTH', 'SALARY_PER_SHIFT', 'KPI_BONUS', 'MINIMUM_PAYOUT'].includes(type));
+  const salaryAccrualDayRow = document.getElementById('inlineComponentSalaryAccrualDayRow');
+  const kpiModeRow = document.getElementById('inlineComponentKpiCalculationModeRow');
+  setVisible(amountRow, ['SALARY_FIXED_MONTH', 'SALARY_PER_SHIFT', 'MINIMUM_PAYOUT'].includes(type) || (type === 'KPI_BONUS' && kpiMode === 'FIXED'));
   setVisible(rateRow, type === 'SALARY_HOURLY');
-  setVisible(percentRow, ['PERCENT_TOTAL_REVENUE', 'PERCENT_DEPARTMENT_REVENUE'].includes(type));
+  setVisible(percentRow, ['PERCENT_TOTAL_REVENUE', 'PERCENT_DEPARTMENT_REVENUE'].includes(type) || (type === 'KPI_BONUS' && kpiMode === 'PERCENT'));
   setVisible(depRow, type === 'PERCENT_DEPARTMENT_REVENUE');
   setVisible(kpiRow, type === 'KPI_BONUS');
+  setVisible(kpiModeRow, type === 'KPI_BONUS');
+  setVisible(salaryAccrualDayRow, type === 'SALARY_FIXED_MONTH');
   setVisible(minScopeRow, type === 'MINIMUM_PAYOUT');
 }
 

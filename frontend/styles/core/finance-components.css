@@ -94,7 +94,7 @@
 .finance-form{display:grid;gap:10px}
 .finance-form label:not(.chk):not(.checkline):not(.row){display:grid;gap:6px;font-size:13px;color:var(--muted);font-weight:700}
 .finance-form label.chk,
-.finance-form label.checkline,
+.finance-form label.checkline{display:inline-grid;grid-template-columns:18px minmax(0,auto);align-items:start;gap:10px;max-width:100%}
 .finance-form label.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:100%}
 .finance-form > label.chk,
 .finance-form > label.checkline,
@@ -102,6 +102,12 @@
 .finance-form > .chk,
 .finance-form > .checkline{justify-self:start;width:auto}
 .finance-form label.chk{font-size:13px;color:var(--text);font-weight:700}
+.finance-form label.chk > input[type="checkbox"],
+.finance-form label.chk > input[type="radio"],
+.finance-form label.checkline > input[type="checkbox"],
+.finance-form label.checkline > input[type="radio"]{width:18px;min-width:18px;max-width:18px}
+.finance-form label.chk > span,
+.finance-form label.checkline > span{min-width:0;overflow-wrap:anywhere}
 .finance-form label.row{font-size:13px;color:var(--muted);font-weight:700}
 .finance-form input,.finance-form select,.finance-form textarea{width:100%}
 .form-section{display:grid;gap:10px;padding:14px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.03)}
@@ -289,4 +295,3 @@
   .dept-plan-table__head{display:none;}
   .dept-plan-table__row{grid-template-columns:1fr;}
 }
-

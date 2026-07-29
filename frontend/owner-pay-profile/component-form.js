@@ -39,9 +39,14 @@ function componentForm({ mode, item }) {
   const boostDepartmentOptions = departmentsOptionsMarkup(boostDepartmentIds);
   const minScope = String(it.effective_minimum_guarantee_scope || it.minimum_guarantee_scope || "MONTH").toUpperCase();
   const hasKpiMetrics = Array.isArray(state.kpiMetrics) && state.kpiMetrics.length > 0;
-  const kpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.kpi_metric_id) ? "selected" : ""}>${esc(kpiMetricOptionLabel(metric))}</option>`).join("");
+  const kpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" data-unit="${esc(String(metric?.unit || "QTY").toUpperCase())}" ${Number(metric.id) === Number(it.kpi_metric_id) ? "selected" : ""}>${esc(kpiMetricOptionLabel(metric))}</option>`).join("");
   const boostKpiOptions = state.kpiMetrics.map((metric) => `<option value="${esc(metric.id)}" ${Number(metric.id) === Number(it.boost_kpi_metric_id) ? "selected" : ""}>${esc(kpiMetricOptionLabel(metric))}</option>`).join("");
   const boostEnabled = it?.boost_enabled ? "checked" : "";
+  const kpiCalculationMode = String(it.kpi_calculation_mode || "FIXED").toUpperCase();
+  const salaryAccrualDay = Number(it.salary_accrual_day || 0);
+  const salaryAccrualDayOptions = Array.from({ length: 31 }, (_, index) => index + 1)
+    .map((day) => `<option value="${day}" ${salaryAccrualDay === day ? "selected" : ""}>${day}-е число</option>`)
+    .join("");
   return `
     <div class="finance-form mt-8">
       <div class="form-section">
@@ -79,6 +84,13 @@ function componentForm({ mode, item }) {
           <label id="f_percent_wrap">
             <span id="f_percent_label">Процент</span>
             <input id="f_percent" inputmode="decimal" placeholder="Например, 5" value="${esc(percentInputFromBps(it.percent_bps))}" />
+          </label>
+          <label id="f_salary_accrual_day_wrap">
+            <span>День начисления оклада</span>
+            <select id="f_salary_accrual_day">
+              <option value="">Не указан</option>
+              ${salaryAccrualDayOptions}
+            </select>
           </label>
         </div>
         <div class="form-section__grid">
@@ -243,6 +255,13 @@ function componentForm({ mode, item }) {
             <input id="f_kpi_metric_id" inputmode="numeric" placeholder="Номер KPI" value="${esc(it.kpi_metric_id ?? "")}" />
           </label>
           <div id="f_kpi_metric_hint" class="form-inline-note">Список KPI не загрузился. Укажи номер вручную.</div>`}
+          <label id="f_kpi_calculation_mode_wrap">
+            <span>Способ расчёта</span>
+            <select id="f_kpi_calculation_mode">
+              <option value="FIXED" ${kpiCalculationMode === "FIXED" ? "selected" : ""}>Фиксированная сумма / ступени</option>
+              <option value="PERCENT" ${kpiCalculationMode === "PERCENT" ? "selected" : ""}>Процент от значения KPI</option>
+            </select>
+          </label>
           <label id="f_threshold_wrap">
             <span id="f_threshold_label">Порог KPI</span>
             <input id="f_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.threshold_value ?? "")}" />
@@ -262,7 +281,7 @@ function componentForm({ mode, item }) {
           </div>
           <div id="f_steps_rows">${stepsRowsMarkup(it.steps)}</div>
         </div>
-        <div id="f_steps_hint" class="form-inline-note">Ступени можно не использовать: тогда сработает обычный порог и фиксированный бонус.</div>
+        <div id="f_steps_hint" class="form-inline-note">В фиксированном режиме можно использовать обычный порог или ступени. Процентный режим доступен для KPI в рублях и считается по закрытым сменам сотрудника.</div>
       </div>
     </div>
 

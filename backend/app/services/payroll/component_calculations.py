@@ -9,6 +9,8 @@ from .payroll_types import (
     MINIMUM_GUARANTEE_DAY,
     MINIMUM_GUARANTEE_MONTH,
     MINIMUM_GUARANTEE_SHIFT,
+    KPI_CALCULATION_FIXED,
+    KPI_CALCULATION_PERCENT,
     PAY_COMPONENT_TYPES,
     PayrollKpiBonusDecision,
     PayrollMemberMetrics,
@@ -17,6 +19,11 @@ from .payroll_types import (
     PayrollVenuePlanMetrics,
     PayrollWorkedShift,
 )
+
+
+def _kpi_calculation_mode(component: PayComponent) -> str:
+    raw = str(getattr(component, "kpi_calculation_mode", "") or "").strip().upper()
+    return KPI_CALCULATION_PERCENT if raw == KPI_CALCULATION_PERCENT else KPI_CALCULATION_FIXED
 
 
 def parse_month_start(month: str) -> date:
@@ -120,10 +127,28 @@ def calculate_kpi_bonus(
     kpi_metric_value: int = 0,
 ) -> PayrollKpiBonusDecision:
     metric_value = int(kpi_metric_value or 0)
-    steps = _parse_steps_json(getattr(component, "steps_json", None))
     threshold_value = getattr(component, "threshold_value", None)
     threshold_value = int(threshold_value) if threshold_value is not None else None
+    calculation_mode = _kpi_calculation_mode(component)
 
+    if calculation_mode == KPI_CALCULATION_PERCENT:
+        percent_bps = int(getattr(component, "percent_bps", 0) or 0)
+        base_amount_minor = max(0, metric_value) * 100
+        amount_minor = 0
+        if threshold_value is None or metric_value >= threshold_value:
+            amount_minor = _round_percent_amount(base_amount_minor, percent_bps)
+        return PayrollKpiBonusDecision(
+            amount_minor=int(amount_minor),
+            metric_value=metric_value,
+            threshold_value=threshold_value,
+            matched_step=None,
+            steps=[],
+            calculation_mode=calculation_mode,
+            percent_bps=percent_bps,
+            base_amount_minor=base_amount_minor,
+        )
+
+    steps = _parse_steps_json(getattr(component, "steps_json", None))
     if steps:
         matched_step = None
         for step in steps:
@@ -137,6 +162,7 @@ def calculate_kpi_bonus(
             threshold_value=threshold_value,
             matched_step=matched_step,
             steps=steps,
+            calculation_mode=calculation_mode,
         )
 
     amount_minor = int(getattr(component, "amount_minor", 0) or 0)
@@ -147,6 +173,7 @@ def calculate_kpi_bonus(
             threshold_value=threshold_value,
             matched_step=None,
             steps=[],
+            calculation_mode=calculation_mode,
         )
     return PayrollKpiBonusDecision(
         amount_minor=0,
@@ -154,6 +181,7 @@ def calculate_kpi_bonus(
         threshold_value=threshold_value,
         matched_step=None,
         steps=[],
+        calculation_mode=calculation_mode,
     )
 
 
@@ -429,6 +457,7 @@ def _component_shift_allocations(
     month_end_excl: date,
     revenue_metrics: PayrollRevenueMetrics,
     percent_decision: PayrollPercentDecision | None = None,
+    kpi_values_by_metric_date_slot: dict[int, dict[tuple[date, str], int]] | None = None,
 ) -> dict[int, int]:
     shifts = _ordered_worked_shifts(metrics)
     if not shifts:
@@ -468,6 +497,30 @@ def _component_shift_allocations(
             date_weights = {day: int(weights.get(day, 0) or 0) for day in worked_dates}
             date_amounts = _allocate_minor_by_keys(int(amount_minor), worked_dates, date_weights)
         return _split_date_amounts_to_shifts(metrics, date_amounts, weight_by_minutes=False)
+
+    if component_type == "KPI_BONUS" and _kpi_calculation_mode(component) == KPI_CALCULATION_PERCENT:
+        metric_id = int(getattr(component, "kpi_metric_id", 0) or 0)
+        metric_values = (kpi_values_by_metric_date_slot or {}).get(metric_id, {})
+        shifts_by_report: dict[tuple[date, str], list[int]] = {}
+        for shift in shifts:
+            report_key = (shift.shift_date, str(shift.shift_slot or "DAY").strip().upper())
+            shifts_by_report.setdefault(report_key, []).append(int(shift.shift_id))
+        report_keys = sorted(shifts_by_report)
+        report_amounts = _allocate_minor_by_keys(
+            int(amount_minor),
+            report_keys,
+            {key: int(metric_values.get(key, 0) or 0) for key in report_keys},
+        )
+        allocations: dict[int, int] = {}
+        for report_key in report_keys:
+            report_shift_ids = sorted(set(shifts_by_report.get(report_key, [])))
+            split = _allocate_minor_by_keys(
+                int(report_amounts.get(report_key, 0) or 0),
+                report_shift_ids,
+                {shift_id: 1 for shift_id in report_shift_ids},
+            )
+            allocations.update(split)
+        return allocations
 
     return _allocate_minor_by_keys(int(amount_minor), shift_ids, {int(shift.shift_id): 1 for shift in shifts})
 

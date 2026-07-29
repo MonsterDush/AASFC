@@ -360,6 +360,9 @@ def _component_allocation_for_day(
         source_amount_minor = component.get("source_amount_minor", month_component_amount_minor)
         base_text = f"1 день из {len(month_dates)}"
         formula_text = f"{_fmt_money_minor(int(source_amount_minor or 0))} / {len(month_dates)} дней месяца"
+        salary_accrual_day = component.get("salary_accrual_day")
+        if salary_accrual_day is not None:
+            formula_text += f" · начисление {int(salary_accrual_day)}-го числа"
         return {
             "category": "earning",
             "source": "payroll_component",
@@ -565,8 +568,12 @@ def _component_allocation_for_day(
         weights = {day: int(metric_weights.get(day, 0)) for day in ordered_dates}
         metric_title = str(component.get("kpi_metric_title") or "KPI").strip()
         base_text = f"{int(metric_weights.get(target_date, 0) or 0)} из {sum(weights.values())}"
+        calculation_mode = str(component.get("kpi_calculation_mode") or "FIXED").strip().upper()
         matched_step = component.get("matched_step") or {}
-        if matched_step:
+        if calculation_mode == "PERCENT":
+            percent_bps = int(component.get("percent_bps") or component.get("source_percent_bps") or 0)
+            formula_text = f"{percent_bps / 100:.2f}% от {metric_title} по закрытым сменам сотрудника"
+        elif matched_step:
             formula_text = f"{metric_title}: сработала ступень ≥ {int(matched_step.get('threshold_value') or 0)}"
         else:
             threshold_value = component.get("threshold_value")

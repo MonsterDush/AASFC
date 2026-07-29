@@ -26,7 +26,10 @@ function componentStepsPreview(item) {
 
 function componentSubtitle(item) {
   const type = String(item?.component_type || "").toUpperCase();
-  if (type === "SALARY_FIXED_MONTH") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)}`;
+  if (type === "SALARY_FIXED_MONTH") {
+    const accrualDay = item.salary_accrual_day ? ` · начисление ${item.salary_accrual_day}-го числа` : "";
+    return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)}${accrualDay}`;
+  }
   if (type === "SALARY_HOURLY") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.rate_minor)} / час`;
   if (type === "SALARY_PER_SHIFT") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)} / смена`;
   if (type === "MINIMUM_PAYOUT") return `${COMPONENT_LABELS[type]} · до ${fmtMoneyMinor(item.amount_minor)} / месяц`;
@@ -38,6 +41,9 @@ function componentSubtitle(item) {
   if (type === "KPI_BONUS") {
     const metricTitle = kpiMetricTitleFor(item);
     const threshold = item.threshold_value != null ? ` · порог ${item.threshold_value}` : "";
+    if (String(item.kpi_calculation_mode || "FIXED").toUpperCase() === "PERCENT") {
+      return `${COMPONENT_LABELS[type]}${metricTitle ? ` · ${metricTitle}` : ""} · ${support.fmtPercentBps(item.percent_bps)} от KPI${threshold} · по закрытым сменам сотрудника`;
+    }
     const stepsCount = Array.isArray(item.steps) && item.steps.length ? ` · ступеней: ${item.steps.length}` : "";
     return `${COMPONENT_LABELS[type]}${metricTitle ? ` · ${metricTitle}` : ""}${threshold}${stepsCount}${item.amount_minor != null ? ` · ${fmtMoneyMinor(item.amount_minor)}` : ""}`;
   }
