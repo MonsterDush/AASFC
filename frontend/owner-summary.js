@@ -19,6 +19,7 @@ import {
   trackDemoEvent,
 } from "/app.js?v=20260726-navmore1";
 import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
+import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260729-compare1";
 
 let financialValuesHidden = false;
 
@@ -62,8 +63,12 @@ function currentMonth() {
 let state = {
   period: "month",
   month: currentMonth(),
+  day: todayISO(),
   from: todayISO(),
   to: todayISO(),
+  compareMode: "auto",
+  compareFrom: "",
+  compareTo: "",
 };
 
 
@@ -147,6 +152,19 @@ function normalizeRange() {
   }
 }
 
+function normalizeCompareRange() {
+  const normalized = normalizeIsoRange(state.compareFrom, state.compareTo);
+  if (normalized) {
+    state.compareFrom = normalized.from;
+    state.compareTo = normalized.to;
+    return normalized;
+  }
+  const automatic = resolveAutoComparison(state);
+  state.compareFrom = automatic?.from || state.day || todayISO();
+  state.compareTo = automatic?.to || state.compareFrom;
+  return { from: state.compareFrom, to: state.compareTo };
+}
+
 function setActiveSeg(containerId, dataKey, value) {
   document.querySelectorAll(`#${containerId} button`).forEach((btn) => {
     if (btn.dataset[dataKey] === value) btn.classList.add("active");
@@ -156,7 +174,35 @@ function setActiveSeg(containerId, dataKey, value) {
 
 function syncPickers() {
   showBlock("summaryMonthPick", state.period === "month");
+  showBlock("summaryDayPick", state.period === "day");
   showBlock("summaryRangePick", state.period === "range");
+}
+
+function currentComparison() {
+  if (state.compareMode === "custom") {
+    const range = normalizeCompareRange();
+    return { ...range, caption: "к выбранному периоду" };
+  }
+  return resolveAutoComparison(state);
+}
+
+function syncComparisonControls() {
+  const custom = state.compareMode === "custom";
+  showBlock("summaryCompareRangePick", custom);
+  setActiveSeg("summaryCompareSeg", "compare", state.compareMode);
+  const comparison = currentComparison();
+  const fromPick = document.getElementById("summaryCompareFromPick");
+  const toPick = document.getElementById("summaryCompareToPick");
+  if (custom && fromPick) fromPick.value = comparison?.from || "";
+  if (custom && toPick) toPick.value = comparison?.to || "";
+  setText(
+    "summaryComparePeriodText",
+    comparison?.from && comparison?.to ? `${comparison.from} — ${comparison.to}` : "Период не определён",
+  );
+  setText(
+    "summaryCompareHint",
+    comparison?.caption || "Автоматический период сравнения зависит от выбранного режима.",
+  );
 }
 
 function buildSummaryQuery() {
@@ -164,6 +210,11 @@ function buildSummaryQuery() {
   qp.set("period", state.period);
   if (state.period === "month") {
     qp.set("month", state.month || currentMonth());
+  } else if (state.period === "day") {
+    const day = state.day || todayISO();
+    qp.set("day", day);
+    qp.set("date_from", day);
+    qp.set("date_to", day);
   } else {
     normalizeRange();
     qp.set("date_from", state.from || todayISO());
@@ -172,8 +223,23 @@ function buildSummaryQuery() {
   return qp;
 }
 
+function buildComparisonQuery() {
+  const comparison = currentComparison();
+  const qp = new URLSearchParams();
+  qp.set("period", "range");
+  qp.set("date_from", comparison?.from || todayISO());
+  qp.set("date_to", comparison?.to || comparison?.from || todayISO());
+  return qp;
+}
+
 function syncUrl() {
   const qp = buildSummaryQuery();
+  qp.set("compare_mode", state.compareMode);
+  if (state.compareMode === "custom") {
+    const comparison = currentComparison();
+    if (comparison?.from) qp.set("compare_from", comparison.from);
+    if (comparison?.to) qp.set("compare_to", comparison.to);
+  }
   const venueId = getActiveVenueId();
   if (venueId) qp.set("venue_id", String(venueId));
   history.replaceState(null, "", `${location.pathname}?${qp.toString()}`);
@@ -181,8 +247,93 @@ function syncUrl() {
 
 function statePeriodText() {
   if (state.period === "month") return state.month || currentMonth();
+  if (state.period === "day") return state.day || todayISO();
   normalizeRange();
   return `${state.from} — ${state.to}`;
+}
+
+function fmtSignedMoneyMinor(value) {
+  const amount = Number(value || 0);
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  return `${sign}${fmtMoneyMinor(Math.abs(amount))}`;
+}
+
+function fmtSignedNumber(value, digits = 1) {
+  const number = Number(value || 0);
+  const sign = number > 0 ? "+" : number < 0 ? "−" : "";
+  return `${sign}${Math.abs(number).toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+function renderMetricDelta(id, currentValue, previousValue, { type = "money", caption = "", goodWhen = "neutral" } = {}) {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.classList.remove("is-up", "is-down", "is-neutral");
+  if (financialValuesHidden || currentValue === null || currentValue === undefined || previousValue === null || previousValue === undefined) {
+    element.textContent = "—";
+    element.classList.add("is-neutral");
+    return;
+  }
+
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  const delta = current - previous;
+  const positiveResult = (goodWhen === "up" && delta > 0) || (goodWhen === "down" && delta < 0);
+  const negativeResult = (goodWhen === "up" && delta < 0) || (goodWhen === "down" && delta > 0);
+  element.classList.add(positiveResult ? "is-up" : negativeResult ? "is-down" : "is-neutral");
+
+  if (type === "bps") {
+    element.textContent = `${fmtSignedNumber(delta / 100, 2)} п.п. ${caption}`.trim();
+    return;
+  }
+  if (previous === 0) {
+    element.textContent = current === 0 ? `Без изменений ${caption}`.trim() : `Нет базы · ${fmtSignedMoneyMinor(delta)} ${caption}`.trim();
+    return;
+  }
+  const percent = (delta / Math.abs(previous)) * 100;
+  element.textContent = `${fmtSignedNumber(percent, 1)}% · ${fmtSignedMoneyMinor(delta)} ${caption}`.trim();
+}
+
+function renderComparison(summary, comparisonSummary) {
+  const caption = currentComparison()?.caption || "";
+  const currentExpense = summary?.expense_without_payroll_minor ?? summary?.expense_minor;
+  const previousExpense = comparisonSummary?.expense_without_payroll_minor ?? comparisonSummary?.expense_minor;
+  const currentTotalCost = summary?.total_cost_minor ?? (Number(summary?.expense_minor || 0) + Number(summary?.payroll_minor || 0));
+  const previousTotalCost = comparisonSummary?.total_cost_minor ?? (Number(comparisonSummary?.expense_minor || 0) + Number(comparisonSummary?.payroll_minor || 0));
+  [
+    ["summaryRevenueDelta", summary?.revenue_minor, comparisonSummary?.revenue_minor, "money", "up"],
+    ["summaryProfitDelta", summary?.profit_minor, comparisonSummary?.profit_minor, "money", "up"],
+    ["summaryMarginDelta", summary?.margin_bps, comparisonSummary?.margin_bps, "bps", "up"],
+    ["summaryExpensesDelta", currentExpense, previousExpense, "money", "down"],
+    ["summaryPayrollDelta", summary?.payroll_minor, comparisonSummary?.payroll_minor, "money", "down"],
+    ["summaryTotalCostDelta", currentTotalCost, previousTotalCost, "money", "down"],
+    ["summaryAdjustmentsDelta", summary?.adjustments_minor, comparisonSummary?.adjustments_minor, "money", "neutral"],
+    ["summaryRefundsDelta", summary?.refunds_minor, comparisonSummary?.refunds_minor, "money", "neutral"],
+    ["summaryExpenseRatioDelta", summary?.expense_ratio_bps, comparisonSummary?.expense_ratio_bps, "bps", "down"],
+    ["summaryPayrollRatioDelta", summary?.payroll_ratio_bps, comparisonSummary?.payroll_ratio_bps, "bps", "down"],
+    ["summaryTotalCostRatioDelta", summary?.total_cost_ratio_bps, comparisonSummary?.total_cost_ratio_bps, "bps", "down"],
+  ].forEach(([id, current, previous, type, goodWhen]) => renderMetricDelta(id, current, previous, { type, caption, goodWhen }));
+}
+
+function resetComparisonDeltas(text = "—") {
+  [
+    "summaryRevenueDelta",
+    "summaryProfitDelta",
+    "summaryMarginDelta",
+    "summaryExpensesDelta",
+    "summaryPayrollDelta",
+    "summaryTotalCostDelta",
+    "summaryAdjustmentsDelta",
+    "summaryRefundsDelta",
+    "summaryExpenseRatioDelta",
+    "summaryPayrollRatioDelta",
+    "summaryTotalCostRatioDelta",
+  ].forEach((id) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.textContent = text;
+    element.classList.remove("is-up", "is-down");
+    element.classList.add("is-neutral");
+  });
 }
 
 function withTimeout(promise, ms, label = "REQUEST_TIMEOUT") {
@@ -202,6 +353,20 @@ function withTimeout(promise, ms, label = "REQUEST_TIMEOUT") {
 
 async function startupApi(path, timeoutMs = 10000, label = "STARTUP_TIMEOUT") {
   return withTimeout(api(path), timeoutMs, label);
+}
+
+async function loadFinanceSummaryForQuery(venueId, query, timeoutLabel) {
+  const qs = query.toString();
+  try {
+    return await startupApi(`/venues/${encodeURIComponent(venueId)}/finance/summary?${qs}`, 10000, timeoutLabel);
+  } catch {
+    const summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/summary/monthly?${qs}&income_mode=PAYMENTS`, 10000, timeoutLabel);
+    return {
+      ...summary,
+      expense_without_payroll_minor: summary?.expense_without_payroll_minor ?? summary?.expense_minor,
+      total_cost_minor: summary?.total_cost_minor ?? (Number(summary?.expense_minor || 0) + Number(summary?.payroll_minor || 0)),
+    };
+  }
 }
 
 async function openExportLink(path) {
@@ -280,7 +445,10 @@ function syncActions() {
     expensesBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
-      qp.set("month", state.month || currentMonth());
+      const selectedMonth = state.period === "month"
+        ? state.month
+        : (state.period === "day" ? state.day : state.to || state.from || todayISO()).slice(0, 7);
+      qp.set("month", selectedMonth || currentMonth());
       location.href = `/owner-expenses.html?${qp.toString()}`;
     };
   }
@@ -290,7 +458,10 @@ function syncActions() {
     payrollBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
-      qp.set("month", state.month || currentMonth());
+      const selectedMonth = state.period === "month"
+        ? state.month
+        : (state.period === "day" ? state.day : state.to || state.from || todayISO()).slice(0, 7);
+      qp.set("month", selectedMonth || currentMonth());
       location.href = `/owner-payroll.html?${qp.toString()}`;
     };
   }
@@ -300,7 +471,12 @@ function syncActions() {
     economicsBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
-      qp.set("date", state.period === "month" ? `${state.month || currentMonth()}-01` : (state.to || state.from || todayISO()));
+      const selectedDate = state.period === "month"
+        ? `${state.month || currentMonth()}-01`
+        : state.period === "day"
+          ? state.day || todayISO()
+          : state.to || state.from || todayISO();
+      qp.set("date", selectedDate);
       location.href = `/owner-day-economics.html?${qp.toString()}`;
     };
   }
@@ -316,6 +492,7 @@ async function loadSummary() {
 
   normalizeRange();
   syncPickers();
+  syncComparisonControls();
   syncUrl();
   await loadFinanceAccess();
   renderDemoOwnerIntro();
@@ -354,18 +531,12 @@ async function loadSummary() {
   }
 
   try {
-    let summary;
-    const qs = buildSummaryQuery().toString();
-    try {
-      summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/finance/summary?${qs}`, 10000, "OWNER_SUMMARY_TIMEOUT");
-    } catch {
-      summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/summary/monthly?${qs}&income_mode=PAYMENTS`, 10000, "OWNER_SUMMARY_TIMEOUT");
-      summary = {
-        ...summary,
-        expense_without_payroll_minor: summary?.expense_without_payroll_minor ?? summary?.expense_minor,
-        total_cost_minor: summary?.total_cost_minor ?? ((Number(summary?.expense_minor || 0)) + (Number(summary?.payroll_minor || 0))),
-      };
-    }
+    const primaryPromise = loadFinanceSummaryForQuery(venueId, buildSummaryQuery(), "OWNER_SUMMARY_TIMEOUT");
+    const comparisonPromise = loadFinanceSummaryForQuery(venueId, buildComparisonQuery(), "OWNER_SUMMARY_COMPARISON_TIMEOUT");
+    const [summary, comparisonResult] = await Promise.all([
+      primaryPromise,
+      comparisonPromise.then((value) => ({ value })).catch((error) => ({ error })),
+    ]);
     setText("summaryRevenue", fmtMoneyMinor(summary?.revenue_minor));
     setText("summaryExpenses", fmtMoneyMinor(summary?.expense_without_payroll_minor ?? summary?.expense_minor));
     setText("summaryPayroll", fmtMoneyMinor(summary?.payroll_minor));
@@ -379,6 +550,12 @@ async function loadSummary() {
     setText("summaryTotalCostRatio", fmtPercentBps(summary?.total_cost_ratio_bps));
     setText("summaryPeriodText", summary?.period_start && summary?.period_end ? `${summary.period_start} — ${summary.period_end}` : statePeriodText());
     setText("summaryHint", `Главный экран оставляет только ключевые метрики. Детальные разделы ниже открываются отдельно.`);
+    if (comparisonResult.value) {
+      renderComparison(summary, comparisonResult.value);
+    } else {
+      resetComparisonDeltas("Сравнение недоступно");
+      setText("summaryCompareHint", comparisonResult.error?.data?.detail || comparisonResult.error?.message || "Не удалось загрузить период сравнения");
+    }
     setSummaryState();
   } catch (e) {
     setText("summaryRevenue", "—");
@@ -393,6 +570,7 @@ async function loadSummary() {
     setText("summaryPayrollRatio", "—");
     setText("summaryTotalCostRatio", "—");
     setText("summaryHint", e?.data?.detail || e.message || "Ошибка загрузки");
+    resetComparisonDeltas();
     setSummaryState("Не удалось загрузить финансовую сводку", e?.data?.detail || e.message || "Попробуйте повторить загрузку позже.");
     ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis"].forEach((id) => showBlock(id, false));
     toast("Не удалось загрузить финансовую сводку", "err");
@@ -420,14 +598,20 @@ async function boot() {
   } catch {}
 
   state.period = params.get("period") || (params.get("date_from") && params.get("date_to") ? "range" : "month");
+  if (!["month", "day", "range"].includes(state.period)) state.period = "month";
   state.month = coerceDemoMonth((params.get("month") || currentMonth()).slice(0, 7), { notify: false, context: "owner-summary" });
+  state.day = params.get("day") || params.get("date_from") || todayISO();
   const demoRange = coerceDemoRange(params.get("date_from") || todayISO(), params.get("date_to") || (params.get("date_from") || todayISO()), { notify: false, context: "owner-summary" });
   state.from = demoRange.from || params.get("date_from") || todayISO();
   state.to = demoRange.to || params.get("date_to") || state.from;
+  state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareFrom = params.get("compare_from") || "";
+  state.compareTo = params.get("compare_to") || "";
   if (isDemoUiMode()) state.period = "month";
   normalizeRange();
 
   const monthPick = document.getElementById("summaryMonthPick");
+  const dayPick = document.getElementById("summaryDayPick");
   const fromPick = document.getElementById("summaryFromPick");
   const toPick = document.getElementById("summaryToPick");
   const rangeApplyBtn = document.getElementById("summaryRangeApplyBtn");
@@ -438,6 +622,15 @@ async function boot() {
       state.month = coerceDemoMonth((e.target.value || currentMonth()).slice(0, 7), { context: "owner-summary" });
       state.period = "month";
       setActiveSeg("summaryPeriodSeg", "period", "month");
+      loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
+    };
+  }
+  if (dayPick) {
+    dayPick.value = state.day;
+    dayPick.onchange = (e) => {
+      state.day = e.target.value || todayISO();
+      state.period = "day";
+      setActiveSeg("summaryPeriodSeg", "period", "day");
       loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
     };
   }
@@ -472,23 +665,62 @@ async function boot() {
   document.querySelectorAll(`#summaryPeriodSeg button`).forEach((btn) => {
     btn.onclick = () => {
       const nextPeriod = btn.dataset.period || "month";
-      state.period = (isDemoUiMode() && nextPeriod === "range") ? "month" : nextPeriod;
+      state.period = (isDemoUiMode() && nextPeriod !== "month") ? "month" : nextPeriod;
       setActiveSeg("summaryPeriodSeg", "period", nextPeriod);
-      if (nextPeriod === "month") {
+      if (nextPeriod === "month" || nextPeriod === "day") {
         loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
       } else {
         syncPickers();
+        syncComparisonControls();
         syncUrl();
       }
     };
   });
 
+  document.querySelectorAll(`#summaryCompareSeg button`).forEach((btn) => {
+    btn.onclick = () => {
+      const nextMode = btn.dataset.compare === "custom" ? "custom" : "auto";
+      if (nextMode === "custom" && state.compareMode !== "custom") {
+        const automatic = resolveAutoComparison(state);
+        state.compareFrom = automatic?.from || state.day || todayISO();
+        state.compareTo = automatic?.to || state.compareFrom;
+      }
+      state.compareMode = nextMode;
+      syncComparisonControls();
+      if (nextMode === "auto") {
+        loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
+      } else {
+        syncUrl();
+      }
+    };
+  });
+
+  const compareFromPick = document.getElementById("summaryCompareFromPick");
+  const compareToPick = document.getElementById("summaryCompareToPick");
+  if (compareFromPick) {
+    compareFromPick.onchange = (event) => {
+      state.compareFrom = event.target.value || state.compareFrom;
+    };
+  }
+  if (compareToPick) {
+    compareToPick.onchange = (event) => {
+      state.compareTo = event.target.value || state.compareTo;
+    };
+  }
+  document.getElementById("summaryCompareApplyBtn")?.addEventListener("click", () => {
+    normalizeCompareRange();
+    loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
+  });
+
   if (isDemoUiMode()) {
+    setVisible(document.querySelector(`#summaryPeriodSeg button[data-period="day"]`), false);
     setVisible(document.querySelector(`#summaryPeriodSeg button[data-period="range"]`), false);
+    showBlock("summaryDayPick", false);
     showBlock("summaryRangePick", false);
   }
   setActiveSeg("summaryPeriodSeg", "period", state.period);
   syncPickers();
+  syncComparisonControls();
   await loadSummary();
 }
 

@@ -47,7 +47,7 @@ from app.services.payroll.calculator import (
 )
 
 
-EXPECTED_VENUES_ROUTE_MANIFEST_SHA256 = "0f04cd15803531b33195f27feaf618c229b4686880d4dbd75d87df397e473932"
+EXPECTED_VENUES_ROUTE_MANIFEST_SHA256 = "1f65fbb527054b090619a35a17c5d4b47be11dcc41d69c79bfbdcf41d8e052f0"
 
 
 def _route_manifest(router) -> list[tuple[list[str], str, str]]:
@@ -64,7 +64,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
 
-        self.assertEqual(len(manifest), 156)
+        self.assertEqual(len(manifest), 157)
         self.assertEqual(digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
 
     def test_extracted_router_owns_all_twenty_economics_routes(self):
@@ -81,11 +81,11 @@ class VenueEconomicsRouterContractTests(TestCase):
     def test_all_split_router_routes_are_registered_in_venues(self):
         expected_counts = [
             (venue_catalogs.router, 15),
-            (venue_expenses.router, 10),
+            (venue_expenses.router, 11),
             (venue_ledger.router, 9),
             (venue_recurring_expenses.router, 5),
             (venue_finance_summary.router, 3),
-            (venue_finance.router, 27),
+            (venue_finance.router, 28),
         ]
         venues_manifest = {
             (tuple(methods), path, name)

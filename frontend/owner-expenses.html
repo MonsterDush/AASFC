@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260729-compare2" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Расходы</title>
 </head>
@@ -62,8 +62,31 @@
           <div class="expense-hero-total itemcard">
             <div class="expense-hero-total__label">Признано в выбранном месяце</div>
             <div class="expense-hero-total__value" id="expensesTotalMinor">—</div>
+            <div class="finance-metric-delta is-neutral" id="expensesTotalDelta">—</div>
             <div class="muted">ФОТ учитывается отдельно в сводке и не дублируется здесь.</div>
           </div>
+        </div>
+
+        <div class="itemcard finance-comparison-card">
+          <div class="finance-comparison-card__head">
+            <div>
+              <div class="finance-period-card__label">Сравнение признанных расходов</div>
+              <div class="finance-period-card__value" id="expensesComparePeriodText">—</div>
+            </div>
+            <div class="seg" id="expensesCompareSeg">
+              <button type="button" data-compare="auto" class="active">Авто</button>
+              <button type="button" data-compare="custom">Другой период</button>
+            </div>
+          </div>
+          <div class="finance-comparison-card__controls hidden" id="expensesCompareRange">
+            <div class="range-pick">
+              <input id="expensesCompareFrom" type="date" aria-label="Начало периода сравнения" />
+              <span class="muted">—</span>
+              <input id="expensesCompareTo" type="date" aria-label="Конец периода сравнения" />
+              <button class="btn" id="expensesCompareApply" type="button">Сравнить</button>
+            </div>
+          </div>
+          <div class="muted" id="expensesCompareHint">Сравнивается подтверждённая сумма, признанная внутри выбранных дат.</div>
         </div>
       </div>
 
@@ -157,6 +180,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-expenses.js?v=20260729-slotecon1"></script>
+  <script type="module" src="/owner-expenses.js?v=20260729-compare2"></script>
 </body>
 </html>

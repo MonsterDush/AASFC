@@ -20,6 +20,12 @@ import {
   mountDemoPageTour,
   trackDemoEvent,
 } from "/app.js?v=20260726-navmore1";
+import {
+  formatComparisonRange,
+  normalizeIsoRange,
+  resolveAutoComparison,
+  resolveComparisonRange,
+} from "/app/period-comparison.js?v=20260729-compare2";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
 let financialValuesHidden = false;
@@ -58,6 +64,12 @@ let state = {
   statuses: "",
   stats: null,
   nightShiftsEnabled: false,
+  periodSummary: null,
+  comparisonSummary: null,
+  comparisonError: null,
+  compareMode: "auto",
+  compareFrom: "",
+  compareTo: "",
 };
 
 async function openExportLink(path) {
@@ -97,6 +109,31 @@ function fmtMinor(minor) {
   } catch {
     return rub.toFixed(2) + " ₽";
   }
+}
+
+function fmtSignedMinor(minor) {
+  const amount = Number(minor || 0);
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  return `${sign}${fmtMinor(Math.abs(amount))}`;
+}
+
+function relativeExpenseDelta(currentValue, previousValue) {
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  const delta = current - previous;
+  const tone = delta < 0 ? "is-good" : delta > 0 ? "is-bad" : "is-neutral";
+  if (previous === 0) {
+    return {
+      text: current === 0 ? "Без изменений" : `Нет базы · ${fmtSignedMinor(delta)}`,
+      tone,
+    };
+  }
+  const percent = delta / Math.abs(previous) * 100;
+  const sign = percent > 0 ? "+" : percent < 0 ? "−" : "";
+  return {
+    text: `${sign}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% · ${fmtSignedMinor(delta)}`,
+    tone,
+  };
 }
 
 function parseMoneyToMinor(value) {
@@ -414,6 +451,67 @@ function syncToolbar() {
   setVisible(openSuppliersBtn, access.canManageCatalogs);
 }
 
+function currentComparison() {
+  return resolveComparisonRange({
+    compareMode: state.compareMode,
+    compareFrom: state.compareFrom,
+    compareTo: state.compareTo,
+    period: "month",
+    month: state.month,
+  });
+}
+
+function syncComparisonControls() {
+  const comparison = currentComparison();
+  const custom = state.compareMode === "custom";
+  setVisible(document.getElementById("expensesCompareRange"), custom);
+  document.querySelectorAll("#expensesCompareSeg button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.compare === state.compareMode);
+  });
+  const periodText = document.getElementById("expensesComparePeriodText");
+  const hint = document.getElementById("expensesCompareHint");
+  if (periodText) periodText.textContent = formatComparisonRange(comparison);
+  if (hint) hint.textContent = comparison?.caption
+    ? `${comparison.caption}. Сравнивается подтверждённая сумма, признанная внутри выбранных дат.`
+    : "Выбери период сравнения.";
+  if (custom) {
+    const from = document.getElementById("expensesCompareFrom");
+    const to = document.getElementById("expensesCompareTo");
+    if (from) from.value = comparison?.from || state.compareFrom || "";
+    if (to) to.value = comparison?.to || state.compareTo || "";
+  }
+}
+
+function syncComparisonUrl() {
+  const qp = new URLSearchParams(location.search);
+  qp.set("month", state.month || currentMonth());
+  qp.set("compare_mode", state.compareMode);
+  if (state.compareMode === "custom") {
+    const comparison = currentComparison();
+    if (comparison?.from) qp.set("compare_from", comparison.from);
+    if (comparison?.to) qp.set("compare_to", comparison.to);
+  } else {
+    qp.delete("compare_from");
+    qp.delete("compare_to");
+  }
+  history.replaceState(null, "", `${location.pathname}?${qp.toString()}`);
+}
+
+function buildPeriodSummaryQuery({ comparison = false } = {}) {
+  const qp = new URLSearchParams();
+  if (comparison) {
+    const range = currentComparison();
+    qp.set("date_from", range?.from || todayISO());
+    qp.set("date_to", range?.to || range?.from || todayISO());
+  } else {
+    qp.set("month", state.month || currentMonth());
+  }
+  if (state.categoryId) qp.set("category_id", state.categoryId);
+  if (state.supplierId) qp.set("supplier_id", state.supplierId);
+  if (state.statuses) qp.set("statuses", state.statuses);
+  return qp;
+}
+
 async function loadCatalogs() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
@@ -470,11 +568,24 @@ async function loadExpenses() {
   if (state.supplierId) qp.set("supplier_id", state.supplierId);
   if (state.statuses) qp.set("statuses", state.statuses);
 
-  const [rows] = await Promise.all([
+  syncComparisonControls();
+  syncComparisonUrl();
+  const currentSummaryPromise = api(
+    `/venues/${encodeURIComponent(venueId)}/expenses/period-summary?${buildPeriodSummaryQuery().toString()}`,
+  ).catch(() => null);
+  const comparisonSummaryPromise = api(
+    `/venues/${encodeURIComponent(venueId)}/expenses/period-summary?${buildPeriodSummaryQuery({ comparison: true }).toString()}`,
+  ).then((value) => ({ value })).catch((error) => ({ error }));
+  const [rows, , currentSummary, comparisonResult] = await Promise.all([
     api(`/venues/${encodeURIComponent(venueId)}/expenses?${qp.toString()}`),
     loadExpenseStats(),
+    currentSummaryPromise,
+    comparisonSummaryPromise,
   ]);
   state.expenses = Array.isArray(rows) ? rows : [];
+  state.periodSummary = currentSummary;
+  state.comparisonSummary = comparisonResult.value || null;
+  state.comparisonError = comparisonResult.error || null;
   renderExpenses();
 }
 
@@ -485,8 +596,23 @@ function renderExpenses() {
   const stateEl = document.getElementById("expensesState");
   if (!list) return;
 
-  const recognizedTotalMinor = state.expenses.reduce((acc, item) => acc + Number(item.recognized_amount_minor_for_month || 0), 0);
+  const listRecognizedTotalMinor = state.expenses
+    .filter((item) => String(item?.status || "").toUpperCase() === "CONFIRMED")
+    .reduce((acc, item) => acc + Number(item.recognized_amount_minor_for_month || 0), 0);
+  const recognizedTotalMinor = state.periodSummary?.total_minor ?? listRecognizedTotalMinor;
   if (totalEl) totalEl.textContent = fmtMinor(recognizedTotalMinor);
+  const deltaEl = document.getElementById("expensesTotalDelta");
+  if (deltaEl) {
+    deltaEl.classList.remove("is-good", "is-bad", "is-neutral");
+    if (state.comparisonSummary && !financialValuesHidden) {
+      const view = relativeExpenseDelta(recognizedTotalMinor, state.comparisonSummary.total_minor);
+      deltaEl.textContent = `${view.text} ${currentComparison()?.caption || ""}`.trim();
+      deltaEl.classList.add(view.tone);
+    } else {
+      deltaEl.textContent = state.comparisonError ? "Сравнение недоступно" : "—";
+      deltaEl.classList.add("is-neutral");
+    }
+  }
   if (countEl) countEl.textContent = String(state.expenses.length);
   if (stateEl) stateEl.textContent = state.expenses.length
     ? `Месяц ${state.month} · ${expenseStatusesLabel(state.statuses)} · признано ${fmtMinor(recognizedTotalMinor)}`
@@ -844,6 +970,10 @@ async function boot() {
 
   state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-expenses" });
   state.statuses = params.get("statuses") || "";
+  state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareFrom = params.get("compare_from") || "";
+  state.compareTo = params.get("compare_to") || "";
+  syncComparisonControls();
   const monthPick = document.getElementById("expensesMonthPick");
   if (monthPick) {
     monthPick.value = state.month;
@@ -852,6 +982,37 @@ async function boot() {
       await loadExpenses();
     };
   }
+
+  document.querySelectorAll("#expensesCompareSeg button").forEach((button) => {
+    button.onclick = async () => {
+      const mode = button.dataset.compare === "custom" ? "custom" : "auto";
+      if (mode === "custom" && state.compareMode !== "custom") {
+        const automatic = resolveAutoComparison({ period: "month", month: state.month });
+        state.compareFrom = automatic?.from || todayISO();
+        state.compareTo = automatic?.to || state.compareFrom;
+      }
+      state.compareMode = mode;
+      syncComparisonControls();
+      if (mode === "auto") await loadExpenses();
+      else syncComparisonUrl();
+    };
+  });
+  document.getElementById("expensesCompareFrom").onchange = (event) => {
+    state.compareFrom = event.target.value || state.compareFrom;
+  };
+  document.getElementById("expensesCompareTo").onchange = (event) => {
+    state.compareTo = event.target.value || state.compareTo;
+  };
+  document.getElementById("expensesCompareApply").onclick = async () => {
+    const normalized = normalizeIsoRange(state.compareFrom, state.compareTo);
+    if (!normalized) {
+      toast("Выбери даты сравнения", "err");
+      return;
+    }
+    state.compareFrom = normalized.from;
+    state.compareTo = normalized.to;
+    await loadExpenses();
+  };
 
   const statusFilter = document.getElementById("expenseStatusFilter");
   if (statusFilter) {

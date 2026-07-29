@@ -13,6 +13,15 @@
 .payroll-period-card input.finance-control{width:auto;min-width:170px}
 .payroll-period-card .range-pick{display:grid;grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) auto;gap:8px;width:100%}
 .payroll-run-card{min-width:0;border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--surface2),var(--accentSoftBg))}
+.payroll-comparison-card{grid-column:1/-1;display:grid;gap:10px;min-width:0;background:linear-gradient(145deg,var(--surface2),rgba(255,255,255,.015))}
+.payroll-comparison-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0}
+.payroll-comparison-card__head > *{min-width:0}
+.payroll-comparison-card__controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.payroll-comparison-card .seg{min-width:220px}
+.payroll-metric-delta,.payroll-person__delta{min-height:18px;color:var(--muted);font-size:12px;font-weight:800;line-height:1.35}
+.payroll-metric-delta.is-good,.payroll-person__delta.is-good{color:var(--statusSuccessText)}
+.payroll-metric-delta.is-bad,.payroll-person__delta.is-bad{color:var(--statusWarningText)}
+.payroll-person__delta{margin-top:4px;text-align:right}
 .payroll-kpis{grid-template-columns:1.2fr repeat(2,minmax(0,.9fr));align-items:stretch}
 .payroll-metric{height:100%;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
 .payroll-metric:hover{border-color:var(--accentSoftBorder);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
@@ -61,6 +70,10 @@
   .payroll-period-card .finance-period-segment{width:100%}
   .payroll-period-card input.finance-control{width:100%;min-width:0}
   .payroll-period-card .range-pick{grid-template-columns:1fr}
+  .payroll-comparison-card__head,
+  .payroll-comparison-card__controls{display:grid;width:100%}
+  .payroll-comparison-card .seg{width:100%;min-width:0}
+  .payroll-comparison-card .range-pick{grid-template-columns:1fr}
   .payroll-metric:hover,.payroll-person:hover{box-shadow:none;transform:none}
 }
 

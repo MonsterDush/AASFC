@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/owner-economics.css?v=20260726-polish11" />
+  <link rel="stylesheet" href="/styles/pages/owner-economics.css?v=20260729-compare2" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Экономика дня</title>
 </head>
@@ -83,6 +83,24 @@
             <div class="muted" id="economicsMetaHint">—</div>
           </div>
         </div>
+
+        <div class="itemcard economics-comparison-card">
+          <div class="economics-comparison-card__head">
+            <div>
+              <div class="finance-period-card__label">Сравнение дня</div>
+              <div class="finance-period-card__value" id="economicsComparePeriodText">—</div>
+            </div>
+            <div class="seg" id="economicsCompareSeg">
+              <button type="button" data-compare="auto" class="active">Авто</button>
+              <button type="button" data-compare="custom">Другой день</button>
+            </div>
+          </div>
+          <div class="economics-comparison-card__controls hidden" id="economicsCompareControls">
+            <input class="economics-date-picker" id="economicsCompareDatePick" type="date" aria-label="Дата сравнения" />
+            <button class="btn" id="economicsCompareApply" type="button">Сравнить</button>
+          </div>
+          <div class="muted" id="economicsCompareHint">Автоматически сравнивается с таким же днём недели неделю назад.</div>
+        </div>
       </div>
 
       <div class="itemcard mt-12 hidden" id="economicsDraftCard">
@@ -96,21 +114,21 @@
       </div>
 
       <div class="finance-kpis finance-kpis--primary mt-12">
-        <div class="itemcard finance-stat finance-stat--hero"><div class="finance-stat__label">Выручка дня</div><div class="finance-stat__value" id="economicsRevenue">—</div></div>
-        <div class="itemcard finance-stat finance-stat--hero"><div class="finance-stat__label">Расходы дня</div><div class="finance-stat__value" id="economicsExpenses">—</div></div>
-        <div class="itemcard finance-stat finance-stat--hero"><div class="finance-stat__label">Прибыль дня</div><div class="finance-stat__value" id="economicsProfit">—</div></div>
+        <div class="itemcard finance-stat finance-stat--hero"><div class="finance-stat__label">Выручка дня</div><div class="finance-stat__value" id="economicsRevenue">—</div><div class="economics-metric-delta is-neutral" id="economicsRevenueDelta">—</div></div>
+        <div class="itemcard finance-stat finance-stat--hero"><div class="finance-stat__label">Расходы дня</div><div class="finance-stat__value" id="economicsExpenses">—</div><div class="economics-metric-delta is-neutral" id="economicsExpensesDelta">—</div></div>
+        <div class="itemcard finance-stat finance-stat--hero"><div class="finance-stat__label">Прибыль дня</div><div class="finance-stat__value" id="economicsProfit">—</div><div class="economics-metric-delta is-neutral" id="economicsProfitDelta">—</div></div>
       </div>
 
       <div class="finance-kpis finance-kpis--compact mt-12">
-        <div class="itemcard finance-stat"><div class="finance-stat__label">Маржинальность</div><div class="finance-stat__value" id="economicsMargin">—</div></div>
-        <div class="itemcard finance-stat"><div class="finance-stat__label">Сотрудников в дне</div><div class="finance-stat__value" id="economicsAssignedUsers">—</div></div>
-        <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка на сотрудника</div><div class="finance-stat__value" id="economicsRevenuePerAssigned">—</div></div>
-        <div class="itemcard finance-stat"><div class="finance-stat__label">Чаевые на сотрудника</div><div class="finance-stat__value" id="economicsTipsPerAssigned">—</div></div>
-        <div class="itemcard finance-stat"><div class="finance-stat__label">Чаевые дня</div><div class="finance-stat__value" id="economicsTips">—</div></div>
-        <div class="itemcard finance-stat"><div class="finance-stat__label">Расходы / выручка</div><div class="finance-stat__value" id="economicsExpenseRatio">—</div></div>
-        <div class="itemcard finance-stat"><div class="finance-stat__label">Разовые / выручка</div><div class="finance-stat__value" id="economicsPointExpenseRatio">—</div></div>
-        <div class="itemcard finance-stat"><div class="finance-stat__label">Регулярные / выручка</div><div class="finance-stat__value" id="economicsRecurringExpenseRatio">—</div></div>
-        <div class="itemcard finance-stat"><div class="finance-stat__label">ФОТ / выручка</div><div class="finance-stat__value" id="economicsPayrollRatio">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Маржинальность</div><div class="finance-stat__value" id="economicsMargin">—</div><div class="economics-metric-delta is-neutral" id="economicsMarginDelta">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Сотрудников в дне</div><div class="finance-stat__value" id="economicsAssignedUsers">—</div><div class="economics-metric-delta is-neutral" id="economicsAssignedUsersDelta">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Выручка на сотрудника</div><div class="finance-stat__value" id="economicsRevenuePerAssigned">—</div><div class="economics-metric-delta is-neutral" id="economicsRevenuePerAssignedDelta">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Чаевые на сотрудника</div><div class="finance-stat__value" id="economicsTipsPerAssigned">—</div><div class="economics-metric-delta is-neutral" id="economicsTipsPerAssignedDelta">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Чаевые дня</div><div class="finance-stat__value" id="economicsTips">—</div><div class="economics-metric-delta is-neutral" id="economicsTipsDelta">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Расходы / выручка</div><div class="finance-stat__value" id="economicsExpenseRatio">—</div><div class="economics-metric-delta is-neutral" id="economicsExpenseRatioDelta">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Разовые / выручка</div><div class="finance-stat__value" id="economicsPointExpenseRatio">—</div><div class="economics-metric-delta is-neutral" id="economicsPointExpenseRatioDelta">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">Регулярные / выручка</div><div class="finance-stat__value" id="economicsRecurringExpenseRatio">—</div><div class="economics-metric-delta is-neutral" id="economicsRecurringExpenseRatioDelta">—</div></div>
+        <div class="itemcard finance-stat"><div class="finance-stat__label">ФОТ / выручка</div><div class="finance-stat__value" id="economicsPayrollRatio">—</div><div class="economics-metric-delta is-neutral" id="economicsPayrollRatioDelta">—</div></div>
       </div>
 
       <div class="section-stack economics-section-grid">
@@ -237,6 +255,6 @@
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
-  <script type="module" src="/owner-day-economics.js?v=20260729-slotecon1"></script>
+  <script type="module" src="/owner-day-economics.js?v=20260729-compare2"></script>
 </body>
 </html>

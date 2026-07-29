@@ -16,6 +16,14 @@ class _AllResult:
         return self._rows
 
 
+class _OneResult:
+    def __init__(self, row):
+        self._row = row
+
+    def one(self):
+        return self._row
+
+
 class _FakeSession:
     def __init__(self, responses):
         self._responses = list(responses)
@@ -29,6 +37,50 @@ class _FakeSession:
 
 
 class ExpensesTests(TestCase):
+    def test_period_summary_uses_daily_recognition_entries(self):
+        db = _FakeSession(responses=[_OneResult((98765, 4))])
+        user = SimpleNamespace(id=101, system_role="NONE")
+
+        with patch.object(venue_expenses, "require_venue_permission", return_value=None):
+            result = venue_expenses.get_expense_period_summary(
+                venue_id=3,
+                month=None,
+                date_from=date(2026, 3, 10),
+                date_to=date(2026, 3, 16),
+                category_id=7,
+                supplier_id=None,
+                statuses="CONFIRMED",
+                db=db,
+                user=user,
+            )
+
+        self.assertEqual(result["period_start"], "2026-03-10")
+        self.assertEqual(result["period_end"], "2026-03-16")
+        self.assertEqual(result["total_minor"], 98765)
+        self.assertEqual(result["expense_count"], 4)
+        self.assertIn("expense_recognition_entries", str(db.statements[0]))
+
+    def test_period_summary_is_zero_when_confirmed_status_is_excluded(self):
+        db = _FakeSession(responses=[])
+        user = SimpleNamespace(id=101, system_role="NONE")
+
+        with patch.object(venue_expenses, "require_venue_permission", return_value=None):
+            result = venue_expenses.get_expense_period_summary(
+                venue_id=3,
+                month="2026-03",
+                date_from=None,
+                date_to=None,
+                category_id=None,
+                supplier_id=None,
+                statuses="DRAFT,CANCELLED",
+                db=db,
+                user=user,
+            )
+
+        self.assertEqual(result["total_minor"], 0)
+        self.assertEqual(result["expense_count"], 0)
+        self.assertEqual(db.statements, [])
+
     def test_list_expenses_filters_confirmed_by_recognition_month(self):
         expense = SimpleNamespace(
             id=15,

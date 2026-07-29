@@ -40,6 +40,7 @@ class FinanceRevenueServiceTests(TestCase):
             return amounts[(direction, kind)]
 
         with patch("app.services.finance.summary._backfill_missing_expense_recognition", return_value=0), \
+             patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=500000), \
              patch("app.services.finance.summary._sum_amount", side_effect=fake_sum), \
              patch("app.services.finance.summary._sum_expense_recognition_minor", return_value=120000), \
              patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=80000), \
@@ -52,6 +53,23 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertEqual(summary["adjustments_minor"], -10000)
         self.assertEqual(summary["profit_minor"], 290000)
         self.assertEqual(summary["margin_bps"], 5800)
+
+    def test_get_finance_summary_uses_report_revenue_when_payment_ledger_differs(self):
+        def fake_sum(db, *, venue_id, period_start, period_end, direction, kind):
+            if direction == "INCOME" and kind == "REVENUE":
+                return 501200
+            return 0
+
+        with patch("app.services.finance.summary._backfill_missing_expense_recognition", return_value=0), \
+             patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=500000), \
+             patch("app.services.finance.summary._sum_amount", side_effect=fake_sum), \
+             patch("app.services.finance.summary._sum_expense_recognition_minor", return_value=0), \
+             patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=0), \
+             patch("app.services.finance.summary._expense_document_stats_for_period", return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0}):
+            summary = get_finance_summary(db=object(), venue_id=5, month="2026-03")
+
+        self.assertEqual(summary["revenue_minor"], 500000)
+        self.assertEqual(summary["profit_minor"], 500000)
 
     def test_get_monthly_finance_summary_adds_breakdowns(self):
         with patch("app.services.finance.summary.get_finance_summary", return_value={

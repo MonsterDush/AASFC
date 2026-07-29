@@ -9,7 +9,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, get_current_user_optional
@@ -19,6 +19,7 @@ from app.models.expense import Expense
 from app.models.expense_allocation import ExpenseAllocation
 from app.models.expense_attachment import ExpenseAttachment
 from app.models.expense_category import ExpenseCategory
+from app.models.expense_recognition_entry import ExpenseRecognitionEntry
 from app.models.payment_method import PaymentMethod
 from app.models.supplier import Supplier
 from app.models.user import User
@@ -33,6 +34,7 @@ from app.services.finance.expenses import (
     list_expense_allocations,
     rebuild_expense_allocations_for_expense,
 )
+from app.services.finance.summary import resolve_finance_period
 from app.services.financial_privacy import sanitize_financial_payload_for_user
 from app.services.signed_links import make_signed_token, verify_signed_token
 from app.settings import settings
@@ -254,6 +256,65 @@ def _collect_expense_status_stats(*, rows: list[tuple[Expense, ExpenseCategory, 
         'cancelled_count': counts.get('CANCELLED', 0),
         'cancelled_total_minor': totals.get('CANCELLED', 0),
     }
+
+
+@router.get("/{venue_id}/expenses/period-summary")
+def get_expense_period_summary(
+    venue_id: int,
+    month: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    category_id: int | None = Query(default=None),
+    supplier_id: int | None = Query(default=None),
+    statuses: str | None = Query(default=None, description='Comma-separated statuses: DRAFT,CONFIRMED,CANCELLED'),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
+    try:
+        period_start, period_end = resolve_finance_period(
+            month=month,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    status_filter = _parse_expense_statuses_filter(statuses)
+    if status_filter is not None and "CONFIRMED" not in status_filter:
+        return sanitize_financial_payload_for_user(user, {
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "total_minor": 0,
+            "expense_count": 0,
+        })
+
+    stmt = (
+        select(
+            func.coalesce(func.sum(ExpenseRecognitionEntry.amount_minor), 0),
+            func.count(func.distinct(ExpenseRecognitionEntry.expense_id)),
+        )
+        .select_from(ExpenseRecognitionEntry)
+        .join(Expense, Expense.id == ExpenseRecognitionEntry.expense_id)
+        .where(
+            ExpenseRecognitionEntry.venue_id == int(venue_id),
+            ExpenseRecognitionEntry.recognition_date >= period_start,
+            ExpenseRecognitionEntry.recognition_date <= period_end,
+            Expense.status == "CONFIRMED",
+        )
+    )
+    if category_id is not None:
+        stmt = stmt.where(Expense.category_id == int(category_id))
+    if supplier_id is not None:
+        stmt = stmt.where(Expense.supplier_id == int(supplier_id))
+
+    total_minor, expense_count = db.execute(stmt).one()
+    return sanitize_financial_payload_for_user(user, {
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
+        "total_minor": int(total_minor or 0),
+        "expense_count": int(expense_count or 0),
+    })
 
 
 @router.get("/{venue_id}/expenses")
@@ -622,5 +683,4 @@ def upload_expense_attachments(
 
     db.commit()
     return {"ok": True, "items": [_serialize_expense_attachment(a) for a in created]}
-
 

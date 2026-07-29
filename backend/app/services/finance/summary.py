@@ -674,7 +674,16 @@ def get_finance_summary(*, db: Session, venue_id: int, month: str | None = None,
     period_start, period_end = resolve_finance_period(month, date_from, date_to)
     _backfill_missing_expense_recognition(db, venue_id=venue_id)
 
-    revenue_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REVENUE')
+    # DailyReport.revenue_total is the canonical sales axis. Payment-method
+    # values may intentionally differ from it when a closed report contains a
+    # documented reconciliation discrepancy, so ledger inflow must not change
+    # revenue, profit, or margin in the management summary.
+    revenue_minor = _sum_closed_report_revenue_minor(
+        db,
+        venue_id=venue_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
     expense_minor = _sum_expense_recognition_minor(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
     payroll_minor = _sum_payroll_minor_for_period(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
     adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='ADJUSTMENT')

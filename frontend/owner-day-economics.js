@@ -17,6 +17,11 @@ import {
   getDemoMonthLabel,
 } from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+import {
+  formatComparisonRange,
+  resolveAutoComparison,
+  resolveComparisonRange,
+} from "/app/period-comparison.js?v=20260729-compare2";
 
 let financialValuesHidden = false;
 
@@ -49,6 +54,12 @@ function updateEconomicsSlotUrl() {
       q.set("shift_slot", normalizeEconomicsShiftSlot(state.shiftSlot));
     } else {
       q.delete("shift_slot");
+    }
+    q.set("compare_mode", state.compareMode);
+    if (state.compareMode === "custom" && state.compareDate) {
+      q.set("compare_date", state.compareDate);
+    } else {
+      q.delete("compare_date");
     }
     const next = `${location.pathname}?${q.toString()}${location.hash || ""}`;
     history.replaceState(null, "", next);
@@ -302,6 +313,10 @@ const state = {
   shiftSlot: "TOTAL",
   nightShiftsEnabled: false,
   economics: null,
+  comparisonEconomics: null,
+  comparisonError: null,
+  compareMode: "auto",
+  compareDate: "",
 };
 
 const access = {
@@ -539,6 +554,104 @@ function renderEconomics(econ) {
   );
 }
 
+function currentComparison() {
+  return resolveComparisonRange({
+    compareMode: state.compareMode,
+    compareFrom: state.compareDate,
+    compareTo: state.compareDate,
+    period: "day",
+    day: state.date,
+  });
+}
+
+function syncComparisonControls() {
+  const comparison = currentComparison();
+  const custom = state.compareMode === "custom";
+  document.getElementById("economicsCompareControls")?.classList.toggle("hidden", !custom);
+  document.querySelectorAll("#economicsCompareSeg button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.compare === state.compareMode);
+  });
+  setText("economicsComparePeriodText", formatComparisonRange(comparison));
+  setText("economicsCompareHint", comparison?.caption || "Выбери день сравнения");
+  const picker = document.getElementById("economicsCompareDatePick");
+  if (custom && picker) picker.value = comparison?.from || state.compareDate || "";
+}
+
+function signedMinor(minor) {
+  const amount = Number(minor || 0);
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  return `${sign}${fmtMoneyMinor(Math.abs(amount))}`;
+}
+
+function economicsDeltaView(currentValue, previousValue, { type = "money", goodWhen = "neutral" } = {}) {
+  if (previousValue === null || previousValue === undefined) return null;
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  const delta = current - previous;
+  const good = (goodWhen === "up" && delta > 0) || (goodWhen === "down" && delta < 0);
+  const bad = (goodWhen === "up" && delta < 0) || (goodWhen === "down" && delta > 0);
+  const tone = good ? "is-good" : bad ? "is-bad" : "is-neutral";
+  if (type === "bps") {
+    const points = delta / 100;
+    const sign = points > 0 ? "+" : points < 0 ? "−" : "";
+    return {
+      text: `${sign}${Math.abs(points).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} п.п.`,
+      tone,
+    };
+  }
+  const absolute = type === "count"
+    ? `${delta > 0 ? "+" : ""}${delta.toLocaleString("ru-RU")}`
+    : signedMinor(delta);
+  if (previous === 0) {
+    return { text: current === 0 ? "Без изменений" : `Нет базы · ${absolute}`, tone };
+  }
+  const percent = delta / Math.abs(previous) * 100;
+  const sign = percent > 0 ? "+" : percent < 0 ? "−" : "";
+  return {
+    text: `${sign}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% · ${absolute}`,
+    tone,
+  };
+}
+
+function renderEconomicsMetricDelta(id, currentValue, previousValue, options = {}) {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.classList.remove("is-good", "is-bad", "is-neutral");
+  if (financialValuesHidden || !state.comparisonEconomics) {
+    element.textContent = state.comparisonError ? "Сравнение недоступно" : "—";
+    element.classList.add("is-neutral");
+    return;
+  }
+  const view = economicsDeltaView(currentValue, previousValue, options);
+  element.textContent = view ? `${view.text} ${currentComparison()?.caption || ""}`.trim() : "—";
+  element.classList.add(view?.tone || "is-neutral");
+}
+
+function renderEconomicsComparison(econ, comparison) {
+  const summary = econ?.summary || {};
+  const previousSummary = comparison?.summary || {};
+  const metrics = econ?.metrics || {};
+  const previousMetrics = comparison?.metrics || {};
+  const report = econ?.report || {};
+  const previousReport = comparison?.report || {};
+  const team = econ?.team || {};
+  const previousTeam = comparison?.team || {};
+  const profitComparable = economicsProfitAvailable(econ) && economicsProfitAvailable(comparison);
+
+  renderEconomicsMetricDelta("economicsRevenueDelta", summary.revenue_minor, previousSummary.revenue_minor, { goodWhen: "up" });
+  renderEconomicsMetricDelta("economicsExpensesDelta", profitComparable ? summary.expense_minor : null, profitComparable ? previousSummary.expense_minor : null, { goodWhen: "down" });
+  renderEconomicsMetricDelta("economicsProfitDelta", profitComparable ? summary.profit_minor : null, profitComparable ? previousSummary.profit_minor : null, { goodWhen: "up" });
+  renderEconomicsMetricDelta("economicsMarginDelta", profitComparable ? summary.margin_bps : null, profitComparable ? previousSummary.margin_bps : null, { type: "bps", goodWhen: "up" });
+  renderEconomicsMetricDelta("economicsAssignedUsersDelta", team.assigned_user_count, previousTeam.assigned_user_count, { type: "count" });
+  renderEconomicsMetricDelta("economicsRevenuePerAssignedDelta", metrics.revenue_per_assigned_minor, previousMetrics.revenue_per_assigned_minor, { goodWhen: "up" });
+  renderEconomicsMetricDelta("economicsTipsPerAssignedDelta", metrics.tips_per_assigned_minor, previousMetrics.tips_per_assigned_minor, { goodWhen: "up" });
+  renderEconomicsMetricDelta("economicsTipsDelta", report.tips_total_minor, previousReport.tips_total_minor, { goodWhen: "up" });
+  renderEconomicsMetricDelta("economicsExpenseRatioDelta", profitComparable ? metrics.expense_ratio_bps : null, profitComparable ? previousMetrics.expense_ratio_bps : null, { type: "bps", goodWhen: "down" });
+  renderEconomicsMetricDelta("economicsPointExpenseRatioDelta", profitComparable ? metrics.point_expense_ratio_bps : null, profitComparable ? previousMetrics.point_expense_ratio_bps : null, { type: "bps", goodWhen: "down" });
+  renderEconomicsMetricDelta("economicsRecurringExpenseRatioDelta", profitComparable ? metrics.recurring_expense_ratio_bps : null, profitComparable ? previousMetrics.recurring_expense_ratio_bps : null, { type: "bps", goodWhen: "down" });
+  renderEconomicsMetricDelta("economicsPayrollRatioDelta", profitComparable ? metrics.payroll_ratio_bps : null, profitComparable ? previousMetrics.payroll_ratio_bps : null, { type: "bps", goodWhen: "down" });
+}
+
 async function loadEconomics() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
@@ -554,10 +667,20 @@ async function loadEconomics() {
   }
   setEconomicsLoading(true);
   hideEconomicsPageState();
+  syncComparisonControls();
+  updateEconomicsSlotUrl();
   try {
-    const econ = await api(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(state.date)}&shift_slot=${encodeURIComponent(normalizeEconomicsShiftSlot(state.shiftSlot))}`);
+    const comparison = currentComparison();
+    const primaryPromise = api(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(state.date)}&shift_slot=${encodeURIComponent(normalizeEconomicsShiftSlot(state.shiftSlot))}`);
+    const comparisonPromise = api(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(comparison?.from || state.date)}&shift_slot=${encodeURIComponent(normalizeEconomicsShiftSlot(state.shiftSlot))}`)
+      .then((value) => ({ value }))
+      .catch((error) => ({ error }));
+    const [econ, comparisonResult] = await Promise.all([primaryPromise, comparisonPromise]);
     state.economics = econ;
+    state.comparisonEconomics = comparisonResult.value || null;
+    state.comparisonError = comparisonResult.error || null;
     renderEconomics(econ);
+    renderEconomicsComparison(econ, state.comparisonEconomics);
     hideEconomicsPageState();
   } catch (err) {
     toast(err?.data?.detail || err.message || "Не удалось загрузить экономику дня", "err");
@@ -598,7 +721,13 @@ async function boot() {
   const params = new URLSearchParams(location.search);
   state.date = coerceDemoDate(params.get("date") || todayISO(), { notify: false, context: "owner-day-economics" });
   state.shiftSlot = normalizeEconomicsShiftSlot(params.get("shift_slot") || localStorage.getItem(LS_DAY_ECONOMICS_SHIFT_SLOT) || "TOTAL");
+  state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareDate = params.get("compare_date") || "";
   await loadVenueEconomicsSettings();
+  if (!state.compareDate) {
+    state.compareDate = resolveAutoComparison({ period: "day", day: state.date })?.from || state.date;
+  }
+  syncComparisonControls();
 
   const datePick = document.getElementById("economicsDatePick");
   if (datePick) {
@@ -628,6 +757,31 @@ async function boot() {
   document.getElementById("economicsSlotTotal")?.addEventListener("click", () => { switchEconomicsShiftSlot("TOTAL"); });
   document.getElementById("economicsSlotDay")?.addEventListener("click", () => { switchEconomicsShiftSlot("DAY"); });
   document.getElementById("economicsSlotNight")?.addEventListener("click", () => { switchEconomicsShiftSlot("NIGHT"); });
+
+  document.querySelectorAll("#economicsCompareSeg button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const mode = button.dataset.compare === "custom" ? "custom" : "auto";
+      if (mode === "custom" && state.compareMode !== "custom") {
+        state.compareDate = resolveAutoComparison({ period: "day", day: state.date })?.from || state.date;
+      }
+      state.compareMode = mode;
+      syncComparisonControls();
+      updateEconomicsSlotUrl();
+      if (mode === "auto") await loadEconomics();
+    });
+  });
+  document.getElementById("economicsCompareDatePick")?.addEventListener("change", (event) => {
+    state.compareDate = event.target.value || state.compareDate;
+  });
+  document.getElementById("economicsCompareApply")?.addEventListener("click", async () => {
+    const value = String(state.compareDate || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      toast("Выбери день сравнения", "err");
+      return;
+    }
+    updateEconomicsSlotUrl();
+    await loadEconomics();
+  });
 
   const refreshBtn = document.getElementById("refreshEconomicsBtn");
   if (refreshBtn) refreshBtn.onclick = async () => { await loadEconomics(); };

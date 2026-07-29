@@ -20,6 +20,12 @@ import {
   trackDemoEvent,
 } from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+import {
+  formatComparisonRange,
+  normalizeIsoRange,
+  resolveAutoComparison,
+  resolveComparisonRange,
+} from "/app/period-comparison.js?v=20260729-compare2";
 
 let financialValuesHidden = false;
 
@@ -351,6 +357,11 @@ let state = {
   perms: null,
   can: { view: false, calculate: false },
   data: null,
+  comparisonData: null,
+  comparisonError: null,
+  compareMode: "auto",
+  compareFrom: "",
+  compareTo: "",
 };
 
 async function openExportLink(path) {
@@ -455,6 +466,26 @@ function renderShell() {
               <div class="finance-period-card__value is-loading" id="runMeta" aria-busy="true">Загрузка…</div>
               <div class="muted">Перерасчёт обновляет ФОТ и детализацию для каждого сотрудника.</div>
             </div>
+            <div class="itemcard payroll-comparison-card">
+              <div class="payroll-comparison-card__head">
+                <div>
+                  <div class="finance-period-card__label">Сравнение</div>
+                  <div class="finance-period-card__value" id="payrollComparePeriodText">—</div>
+                </div>
+                <div class="seg" id="payrollCompareSeg">
+                  <button type="button" data-compare="auto" class="active">Авто</button>
+                  <button type="button" data-compare="custom">Другой период</button>
+                </div>
+              </div>
+              <div class="payroll-comparison-card__controls hidden" id="payrollCompareRange">
+                <div class="range-pick">
+                  <input id="payrollCompareFrom" type="date" aria-label="Начало периода сравнения" />
+                  <input id="payrollCompareTo" type="date" aria-label="Конец периода сравнения" />
+                  <button class="btn" id="payrollCompareApply" type="button">Сравнить</button>
+                </div>
+              </div>
+              <div class="muted" id="payrollCompareHint">—</div>
+            </div>
           </div>
         </div>
 
@@ -462,16 +493,19 @@ function renderShell() {
           <div class="itemcard finance-stat finance-stat--hero payroll-metric payroll-metric--total">
             <div class="finance-stat__label">Фонд оплаты труда</div>
             <div class="finance-stat__value is-loading" id="totalAmount" aria-busy="true">Загрузка…</div>
+            <div class="payroll-metric-delta" id="totalAmountDelta">—</div>
             <div class="finance-stat__meta">Итого начислено команде за выбранный период.</div>
           </div>
           <div class="itemcard finance-stat payroll-metric">
             <div class="finance-stat__label">Сотрудников в расчёте</div>
             <div class="finance-stat__value is-loading" id="linesCount" aria-busy="true">Загрузка…</div>
+            <div class="payroll-metric-delta" id="linesCountDelta">—</div>
             <div class="finance-stat__meta">Участники, для которых сформированы строки начислений.</div>
           </div>
           <div class="itemcard finance-stat payroll-metric">
             <div class="finance-stat__label">Среднее начисление</div>
             <div class="finance-stat__value is-loading" id="averageAmount" aria-busy="true">Загрузка…</div>
+            <div class="payroll-metric-delta" id="averageAmountDelta">—</div>
             <div class="finance-stat__meta">Средняя сумма на одного сотрудника в текущем расчёте.</div>
           </div>
         </div>
@@ -523,8 +557,45 @@ function getPeriodQuery() {
   } else {
     params.set("month", state.month);
   }
+  params.set("compare_mode", state.compareMode);
+  if (state.compareMode === "custom") {
+    const comparison = currentComparison();
+    if (comparison?.from) params.set("compare_from", comparison.from);
+    if (comparison?.to) params.set("compare_to", comparison.to);
+  }
   if (state.venueId) params.set("venue_id", state.venueId);
   return params;
+}
+
+function currentComparison() {
+  return resolveComparisonRange({
+    compareMode: state.compareMode,
+    compareFrom: state.compareFrom,
+    compareTo: state.compareTo,
+    period: state.periodMode,
+    month: state.month,
+    from: state.dateFrom,
+    to: state.dateTo,
+  });
+}
+
+function syncComparisonControls() {
+  const comparison = currentComparison();
+  const custom = state.compareMode === "custom";
+  setVisible(document.getElementById("payrollCompareRange"), custom);
+  document.querySelectorAll("#payrollCompareSeg button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.compare === state.compareMode);
+  });
+  const periodText = document.getElementById("payrollComparePeriodText");
+  const hint = document.getElementById("payrollCompareHint");
+  if (periodText) periodText.textContent = formatComparisonRange(comparison);
+  if (hint) hint.textContent = comparison?.caption || "Выбери период сравнения";
+  if (custom) {
+    const from = document.getElementById("payrollCompareFrom");
+    const to = document.getElementById("payrollCompareTo");
+    if (from) from.value = comparison?.from || state.compareFrom || "";
+    if (to) to.value = comparison?.to || state.compareTo || "";
+  }
 }
 
 function syncUrl() {
@@ -556,6 +627,7 @@ function renderState() {
   setVisible(rangeControls, !isDemoUiMode() && state.periodMode === "range");
   periodMonthBtn?.classList.toggle("active", state.periodMode === "month");
   periodRangeBtn?.classList.toggle("active", state.periodMode === "range");
+  syncComparisonControls();
 
   setVisible(btnCalculate, state.can.calculate && state.periodMode === "month");
   setVisible(btnExport, state.can.view);
@@ -621,12 +693,19 @@ function renderLines() {
 
   const data = state.data || { lines: [], total_amount_minor: 0, lines_count: 0, run: null, latest_recalculation: null };
   const calculatedLinesCount = Number(data.lines_count || 0);
+  const comparisonData = state.comparisonData || null;
+  const comparisonLinesCount = Number(comparisonData?.lines_count || 0);
+  const currentAverage = calculatedLinesCount ? Math.round(Number(data.total_amount_minor || 0) / calculatedLinesCount) : 0;
+  const comparisonAverage = comparisonLinesCount ? Math.round(Number(comparisonData?.total_amount_minor || 0) / comparisonLinesCount) : 0;
   settleMetric(totalAmount, fmtMoneyMinor(data.total_amount_minor));
   settleMetric(linesCount, String(calculatedLinesCount));
   settleMetric(
     averageAmount,
-    calculatedLinesCount ? fmtMoneyMinor(Math.round(Number(data.total_amount_minor || 0) / calculatedLinesCount)) : "—",
+    calculatedLinesCount ? fmtMoneyMinor(currentAverage) : "—",
   );
+  renderPayrollMetricDelta("totalAmountDelta", data.total_amount_minor, comparisonData?.total_amount_minor, { money: true, goodWhen: "down" });
+  renderPayrollMetricDelta("linesCountDelta", calculatedLinesCount, comparisonData?.lines_count, { goodWhen: "neutral" });
+  renderPayrollMetricDelta("averageAmountDelta", currentAverage, comparisonData ? comparisonAverage : null, { money: true, goodWhen: "down" });
   if (runMeta) {
     if (data.run?.calculated_at) {
       const metaText = recalculationText(data.latest_recalculation, data.run.calculated_at);
@@ -650,6 +729,12 @@ function renderLines() {
   }
 
   linesList.innerHTML = "";
+  const comparisonLines = new Map(
+    (Array.isArray(comparisonData?.lines) ? comparisonData.lines : []).map((line) => [
+      String(line?.member_user_id ?? line?.member?.user_id ?? ""),
+      line,
+    ]),
+  );
   lines.forEach((line) => {
     const breakdown = line.breakdown || {};
     const metrics = breakdown.metrics || {};
@@ -661,6 +746,10 @@ function renderLines() {
       ? '<span class="badge">частично</span>'
       : (periodState === "ready" ? '' : '');
     const workedDatesCount = Number(metrics.worked_dates_count || 0);
+    const comparisonLine = comparisonLines.get(String(line?.member_user_id ?? line?.member?.user_id ?? ""));
+    const personDelta = comparisonLine && !financialValuesHidden
+      ? payrollDeltaView(line.amount_minor, comparisonLine.amount_minor, { money: true, goodWhen: "neutral" })
+      : null;
     row.innerHTML = `
       <div class="payroll-person__main">
         <div class="payroll-person__head">
@@ -676,7 +765,10 @@ function renderLines() {
               ${workedDatesCount ? `<span><b>${esc(workedDatesCount)}</b> дней</span>` : ""}
             </div>
           </div>
-          <div class="payroll-person__amount">${esc(fmtMoneyMinor(line.amount_minor))}</div>
+          <div>
+            <div class="payroll-person__amount">${esc(fmtMoneyMinor(line.amount_minor))}</div>
+            ${personDelta ? `<div class="payroll-person__delta ${personDelta.tone}">${esc(personDelta.text)}</div>` : ""}
+          </div>
         </div>
         <details class="mt-12 payroll-breakdown">
           <summary>${state.periodMode === "month" ? "Показать разбор" : "Показать разбор периода"}</summary>
@@ -715,6 +807,47 @@ function buildPayrollPath() {
   return `/venues/${encodeURIComponent(state.venueId)}/payroll?month=${encodeURIComponent(state.month)}`;
 }
 
+function buildComparisonPayrollPath() {
+  const comparison = currentComparison();
+  return `/venues/${encodeURIComponent(state.venueId)}/payroll?date_from=${encodeURIComponent(comparison?.from || todayIso())}&date_to=${encodeURIComponent(comparison?.to || comparison?.from || todayIso())}`;
+}
+
+function payrollDeltaView(currentValue, previousValue, { money = false, goodWhen = "neutral" } = {}) {
+  if (previousValue === null || previousValue === undefined) return null;
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  const delta = current - previous;
+  const good = (goodWhen === "up" && delta > 0) || (goodWhen === "down" && delta < 0);
+  const bad = (goodWhen === "up" && delta < 0) || (goodWhen === "down" && delta > 0);
+  const tone = good ? "is-good" : bad ? "is-bad" : "is-neutral";
+  const absolute = money
+    ? `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${fmtMoneyMinor(Math.abs(delta))}`
+    : `${delta > 0 ? "+" : ""}${delta.toLocaleString("ru-RU")}`;
+  if (previous === 0) {
+    return { text: current === 0 ? "Без изменений" : `Нет базы · ${absolute}`, tone };
+  }
+  const percent = delta / Math.abs(previous) * 100;
+  const sign = percent > 0 ? "+" : percent < 0 ? "−" : "";
+  return {
+    text: `${sign}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% · ${absolute}`,
+    tone,
+  };
+}
+
+function renderPayrollMetricDelta(id, currentValue, previousValue, options) {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.classList.remove("is-good", "is-bad", "is-neutral");
+  if (financialValuesHidden || !state.comparisonData) {
+    element.textContent = state.comparisonError ? "Сравнение недоступно" : "—";
+    element.classList.add("is-neutral");
+    return;
+  }
+  const view = payrollDeltaView(currentValue, previousValue, options);
+  element.textContent = view ? `${view.text} ${currentComparison()?.caption || ""}`.trim() : "—";
+  element.classList.add(view?.tone || "is-neutral");
+}
+
 async function load() {
   const linesList = document.getElementById("linesList");
   if (linesList) {
@@ -723,7 +856,14 @@ async function load() {
     linesList.innerHTML = `<div class="payroll-line-skeleton skeleton"></div><div class="payroll-line-skeleton skeleton"></div>`;
   }
   try {
-    state.data = await api(buildPayrollPath());
+    const primaryPromise = api(buildPayrollPath());
+    const comparisonPromise = api(buildComparisonPayrollPath())
+      .then((value) => ({ value }))
+      .catch((error) => ({ error }));
+    const [data, comparisonResult] = await Promise.all([primaryPromise, comparisonPromise]);
+    state.data = data;
+    state.comparisonData = comparisonResult.value || null;
+    state.comparisonError = comparisonResult.error || null;
     renderLines();
   } catch (e) {
     const detail = e?.data?.detail || e?.message || "не удалось загрузить";
@@ -789,6 +929,9 @@ async function boot() {
   state.dateFrom = demoRangePayroll.from || (hasRange ? String(params.get("date_from")) : monthStartIso(state.month));
   state.dateTo = demoRangePayroll.to || (hasRange ? String(params.get("date_to")) : monthEndIso(state.month));
   if (state.dateTo < state.dateFrom) state.dateTo = state.dateFrom;
+  state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareFrom = params.get("compare_from") || "";
+  state.compareTo = params.get("compare_to") || "";
 
   await mountNav({ activeTab: "summary" });
 
@@ -842,6 +985,41 @@ async function boot() {
       return;
     }
     await applyRangeFromControls();
+  });
+  document.querySelectorAll("#payrollCompareSeg button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const mode = button.dataset.compare === "custom" ? "custom" : "auto";
+      if (mode === "custom" && state.compareMode !== "custom") {
+        const automatic = resolveAutoComparison({
+          period: state.periodMode,
+          month: state.month,
+          from: state.dateFrom,
+          to: state.dateTo,
+        });
+        state.compareFrom = automatic?.from || todayIso();
+        state.compareTo = automatic?.to || state.compareFrom;
+      }
+      state.compareMode = mode;
+      renderState();
+      if (mode === "auto") await load();
+    });
+  });
+  document.getElementById("payrollCompareFrom")?.addEventListener("change", (event) => {
+    state.compareFrom = event.target.value || state.compareFrom;
+  });
+  document.getElementById("payrollCompareTo")?.addEventListener("change", (event) => {
+    state.compareTo = event.target.value || state.compareTo;
+  });
+  document.getElementById("payrollCompareApply")?.addEventListener("click", async () => {
+    const normalized = normalizeIsoRange(state.compareFrom, state.compareTo);
+    if (!normalized) {
+      toast("Выбери даты сравнения", "err");
+      return;
+    }
+    state.compareFrom = normalized.from;
+    state.compareTo = normalized.to;
+    renderState();
+    await load();
   });
   document.getElementById("btnCalculate")?.addEventListener("click", onCalculate);
   document.getElementById("btnExport")?.addEventListener("click", async () => {

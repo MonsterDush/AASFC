@@ -104,7 +104,8 @@ class PrimaryPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            self.assertIn(f'/{style_path}?v=20260723-polish2', html, html_name)
+            cache_key = "20260729-compare1" if html_name == "owner-summary.html" else "20260723-polish2"
+            self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
@@ -214,7 +215,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         entrypoints = {
-            "staff-salary.html": "/staff-salary.js?v=20260729-payroll1",
+            "staff-salary.html": "/staff-salary.js?v=20260729-salarybars1",
             "staff-adjustments.html": "/staff-adjustments.js?v=20260726-navmore1",
             "staff-report.html": "/staff-report.js?v=20260726-navmore1",
         }
@@ -225,6 +226,42 @@ class WorkflowPageUiPolishContractTests(TestCase):
         salary_summary = (FRONTEND / "staff-salary-summary.html").read_text(encoding="utf-8")
         self.assertIn("redirectToUnifiedSalary", salary_summary)
         self.assertIn("location.replace(`/staff-salary.html?", salary_summary)
+
+    def test_financial_pages_keep_shared_comparison_controls_and_queries(self):
+        pages = {
+            "owner-turnover": (
+                "revenueCompareSeg",
+                "revenueCompareFrom",
+                "revenueTotalDelta",
+            ),
+            "owner-expenses": (
+                "expensesCompareSeg",
+                "expensesCompareFrom",
+                "expensesTotalDelta",
+            ),
+            "owner-payroll": (
+                "payrollCompareSeg",
+                "payrollCompareFrom",
+                "totalAmountDelta",
+            ),
+            "owner-day-economics": (
+                "economicsCompareSeg",
+                "economicsCompareDatePick",
+                "economicsRevenueDelta",
+            ),
+        }
+        for page_name, contracts in pages.items():
+            html = (FRONTEND / f"{page_name}.html").read_text(encoding="utf-8")
+            script = (FRONTEND / f"{page_name}.js").read_text(encoding="utf-8")
+            self.assertIn("period-comparison.js?v=20260729-compare2", script, page_name)
+            self.assertIn("compareMode", script, page_name)
+            for contract in contracts:
+                self.assertTrue(contract in html or contract in script, f"{page_name}: {contract}")
+
+        expenses_script = (FRONTEND / "owner-expenses.js").read_text(encoding="utf-8")
+        self.assertIn("/expenses/period-summary?", expenses_script)
+        comparison_helper = (FRONTEND / "app/period-comparison.js").read_text(encoding="utf-8")
+        self.assertIn('if (mode === "week")', comparison_helper)
 
     def test_auth_adjustments_and_pay_profiles_keep_responsive_visual_states(self):
         contracts = {
@@ -276,8 +313,8 @@ class WorkflowPageUiPolishContractTests(TestCase):
         script = (FRONTEND / "owner-payroll.js").read_text(encoding="utf-8")
         styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
 
-        self.assertIn("/styles/pages/owner-payroll.css?v=20260726-polish12", html)
-        self.assertIn("/owner-payroll.js?v=20260729-payroll1", html)
+        self.assertIn("/styles/pages/owner-payroll.css?v=20260729-compare2", html)
+        self.assertIn("/owner-payroll.js?v=20260729-compare2", html)
         self.assertIn('class="owner-payroll-page"', html)
         self.assertIn("payroll-bootstrap", html)
         for contract in (
@@ -337,10 +374,11 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-economics.css").read_text(encoding="utf-8")
 
         for html, page_name, script_version in (
-            (day_html, "owner-day-economics", "20260729-slotecon1"),
+            (day_html, "owner-day-economics", "20260729-compare2"),
             (rules_html, "owner-economics-rules", "20260726-navmore1"),
         ):
-            self.assertIn("/styles/pages/owner-economics.css?v=20260726-polish11", html, page_name)
+            style_version = "20260729-compare2" if page_name == "owner-day-economics" else "20260726-polish11"
+            self.assertIn(f"/styles/pages/owner-economics.css?v={style_version}", html, page_name)
             self.assertIn(f"/{page_name}.js?v={script_version}", html, page_name)
             self.assertIn('class="finance-page-state hidden"', html, page_name)
 
@@ -357,7 +395,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
             self.assertIn(f'"{detail_id}"', day_script)
 
         day_load = day_script.split("async function loadEconomics()", 1)[1]
-        self.assertLess(day_load.index("if (!access.canView)"), day_load.index("await api("))
+        self.assertLess(day_load.index("if (!access.canView)"), day_load.index("primaryPromise = api("))
         self.assertIn("setEconomicsLoading(false)", day_load)
         self.assertIn("finance-page-state--denied", styles)
 

@@ -15,6 +15,12 @@ import {
   getDemoMonthLabel,
 } from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+import {
+  formatComparisonRange,
+  normalizeIsoRange,
+  resolveAutoComparison,
+  resolveComparisonRange,
+} from "/app/period-comparison.js?v=20260729-compare2";
 
 let financialValuesHidden = false;
 
@@ -54,6 +60,9 @@ let state = {
   to: null,
   canView: true,
   canExport: true,
+  compareMode: "auto",
+  compareFrom: null,
+  compareTo: null,
 };
 
 function $(id) { return document.getElementById(id); }
@@ -75,6 +84,33 @@ function fmtMoney(n) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const x = Math.round(Number(n || 0));
   try { return new Intl.NumberFormat("ru-RU").format(x) + " ₽"; } catch { return String(x) + " ₽"; }
+}
+
+function fmtSignedMoney(value) {
+  const amount = Number(value || 0);
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  return `${sign}${fmtMoney(Math.abs(amount))}`;
+}
+
+function relativeDelta(currentValue, previousValue, { goodWhen = "up" } = {}) {
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  const delta = current - previous;
+  const good = (goodWhen === "up" && delta > 0) || (goodWhen === "down" && delta < 0);
+  const bad = (goodWhen === "up" && delta < 0) || (goodWhen === "down" && delta > 0);
+  const tone = good ? "is-good" : bad ? "is-bad" : "is-neutral";
+  if (previous === 0) {
+    return {
+      text: current === 0 ? "Без изменений" : `Нет базы · ${fmtSignedMoney(delta)}`,
+      tone,
+    };
+  }
+  const percent = delta / Math.abs(previous) * 100;
+  const sign = percent > 0 ? "+" : percent < 0 ? "−" : "";
+  return {
+    text: `${sign}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% · ${fmtSignedMoney(delta)}`,
+    tone,
+  };
 }
 
 function startOfWeekISO(dateStr) {
@@ -121,6 +157,32 @@ function syncPickers() {
   setVisible(rangePick, state.period === "range");
 }
 
+function currentComparison() {
+  return resolveComparisonRange({
+    compareMode: state.compareMode,
+    compareFrom: state.compareFrom,
+    compareTo: state.compareTo,
+    period: state.period,
+    month: state.month,
+    day: state.day,
+    from: state.from,
+    to: state.to,
+  });
+}
+
+function syncComparisonControls() {
+  const comparison = currentComparison();
+  const custom = state.compareMode === "custom";
+  setVisible($("revenueCompareRange"), custom);
+  setActiveSeg("revenueCompareSeg", "compare", state.compareMode);
+  $("revenueComparePeriodText").textContent = formatComparisonRange(comparison);
+  $("revenueCompareHint").textContent = comparison?.caption || "Выбери период сравнения";
+  if (custom) {
+    $("revenueCompareFrom").value = comparison?.from || state.compareFrom || "";
+    $("revenueCompareTo").value = comparison?.to || state.compareTo || "";
+  }
+}
+
 function periodLabel() {
   if (state.period === "month") return `За ${state.month || currentMonth()}`;
   if (state.period === "day") return `За ${state.day || todayISO()}`;
@@ -163,8 +225,24 @@ function buildQuery() {
   return qp;
 }
 
+function buildComparisonQuery() {
+  const comparison = currentComparison();
+  const qp = new URLSearchParams();
+  qp.set("mode", state.mode);
+  qp.set("period", "range");
+  qp.set("date_from", comparison?.from || todayISO());
+  qp.set("date_to", comparison?.to || comparison?.from || todayISO());
+  return qp;
+}
+
 function syncUrl() {
   const qp = buildQuery();
+  qp.set("compare_mode", state.compareMode);
+  if (state.compareMode === "custom") {
+    const comparison = currentComparison();
+    if (comparison?.from) qp.set("compare_from", comparison.from);
+    if (comparison?.to) qp.set("compare_to", comparison.to);
+  }
   const venueId = getActiveVenueId();
   if (venueId) qp.set("venue_id", venueId);
   const target = `${location.pathname}?${qp.toString()}`;
@@ -177,12 +255,27 @@ async function load() {
 
   normalizeRange();
   syncCaption();
+  syncComparisonControls();
   syncUrl();
 
-  const qs = buildQuery().toString();
-  const data = await api(`/venues/${encodeURIComponent(venueId)}/revenue?${qs}`);
+  const primaryPromise = api(`/venues/${encodeURIComponent(venueId)}/revenue?${buildQuery().toString()}`);
+  const comparisonPromise = api(`/venues/${encodeURIComponent(venueId)}/revenue?${buildComparisonQuery().toString()}`)
+    .then((value) => ({ value }))
+    .catch((error) => ({ error }));
+  const [data, comparisonResult] = await Promise.all([primaryPromise, comparisonPromise]);
+  const comparisonData = comparisonResult.value || null;
 
   $("total").textContent = fmtMoney(data?.total || 0);
+  const totalDelta = $("revenueTotalDelta");
+  totalDelta.classList.remove("is-good", "is-bad", "is-neutral");
+  if (comparisonData && !financialValuesHidden) {
+    const view = relativeDelta(data?.total, comparisonData?.total, { goodWhen: "up" });
+    totalDelta.textContent = `${view.text} ${currentComparison()?.caption || ""}`.trim();
+    totalDelta.classList.add(view.tone);
+  } else {
+    totalDelta.textContent = comparisonResult.error ? "Сравнение недоступно" : "—";
+    totalDelta.classList.add("is-neutral");
+  }
 
   const rowsEl = $("rows");
   rowsEl.innerHTML = "";
@@ -196,11 +289,27 @@ async function load() {
     return;
   }
 
+  const comparisonRows = new Map(
+    (Array.isArray(comparisonData?.rows) ? comparisonData.rows : []).map((row) => [
+      String(row?.ref_id ?? row?.id ?? row?.code ?? row?.title ?? row?.name ?? ""),
+      row,
+    ]),
+  );
   for (const r of rows) {
     const el = document.createElement("div");
     el.className = "row row--between finance-table-row";
     const title = r?.title || r?.name || r?.code || "—";
-    el.innerHTML = `<div>${esc(title)}</div><div class="mono">${esc(fmtMoney(r?.amount || 0))}</div>`;
+    const rowKey = String(r?.ref_id ?? r?.id ?? r?.code ?? r?.title ?? r?.name ?? "");
+    const comparisonRow = comparisonRows.get(rowKey);
+    const rowDelta = comparisonRow && !financialValuesHidden
+      ? relativeDelta(r?.amount, comparisonRow?.amount, { goodWhen: "up" })
+      : null;
+    el.innerHTML = `
+      <div>${esc(title)}</div>
+      <div>
+        <div class="mono">${esc(fmtMoney(r?.amount || 0))}</div>
+        ${rowDelta ? `<div class="finance-row-delta ${rowDelta.tone}">${esc(rowDelta.text)}</div>` : ""}
+      </div>`;
     rowsEl.appendChild(el);
   }
 }
@@ -237,6 +346,9 @@ function initFromQuery() {
   state.day = q.get("day") || q.get("date_from") || today;
   state.from = q.get("date_from") || today;
   state.to = q.get("date_to") || today;
+  state.compareMode = q.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareFrom = q.get("compare_from") || null;
+  state.compareTo = q.get("compare_to") || null;
   normalizeRange();
 
   $("monthPick").value = state.month || currentMonth();
@@ -247,6 +359,7 @@ function initFromQuery() {
   setActiveSeg("modeSeg", "mode", state.mode);
   setActiveSeg("periodSeg", "period", state.period);
   syncCaption();
+  syncComparisonControls();
 }
 
 function bindPickers() {
@@ -254,6 +367,33 @@ function bindPickers() {
   $("dayPick").onchange = (e) => { state.day = e.target.value || todayISO(); load().catch(console.error); };
   $("fromPick").onchange = (e) => { state.from = e.target.value || todayISO(); load().catch(console.error); };
   $("toPick").onchange = (e) => { state.to = e.target.value || todayISO(); load().catch(console.error); };
+
+  document.querySelectorAll("#revenueCompareSeg button").forEach((button) => {
+    button.onclick = () => {
+      const mode = button.dataset.compare === "custom" ? "custom" : "auto";
+      if (mode === "custom" && state.compareMode !== "custom") {
+        const automatic = resolveAutoComparison(state);
+        state.compareFrom = automatic?.from || state.day || todayISO();
+        state.compareTo = automatic?.to || state.compareFrom;
+      }
+      state.compareMode = mode;
+      syncComparisonControls();
+      if (mode === "auto") load().catch(console.error);
+      else syncUrl();
+    };
+  });
+  $("revenueCompareFrom").onchange = (event) => { state.compareFrom = event.target.value || state.compareFrom; };
+  $("revenueCompareTo").onchange = (event) => { state.compareTo = event.target.value || state.compareTo; };
+  $("revenueCompareApply").onclick = () => {
+    const normalized = normalizeIsoRange(state.compareFrom, state.compareTo);
+    if (!normalized) {
+      toast("Выбери даты сравнения", "err");
+      return;
+    }
+    state.compareFrom = normalized.from;
+    state.compareTo = normalized.to;
+    load().catch(console.error);
+  };
 
   $("exportBtn").onclick = async () => {
     const venueId = getActiveVenueId();
@@ -328,6 +468,7 @@ async function boot() {
 
   initFromQuery();
   syncPickers();
+  syncComparisonControls();
   applySeg("modeSeg", "mode");
   applySeg("periodSeg", "period");
   bindPickers();
