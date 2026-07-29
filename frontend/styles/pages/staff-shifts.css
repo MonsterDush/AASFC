@@ -2,9 +2,44 @@
 .staff-shifts-shell,.staff-shifts-content{display:grid;gap:14px}
 .staff-shifts-content{padding-bottom:var(--bottom-nav-space)}
 .staff-shifts-demo,.staff-shifts-calendar-card{margin:0}
-.staff-shifts-calendar-card{min-width:0}
-.staff-shifts-toolbar{align-items:flex-start;gap:12px}
-.staff-shifts-toolbar>.row:last-child{justify-content:flex-end;flex-wrap:wrap;min-width:0}
+.staff-shifts-calendar-card{min-width:0;overflow:visible}
+.staff-shifts-toolbar{
+  display:grid;
+  grid-template-columns:minmax(260px,340px) minmax(0,1fr);
+  align-items:start;
+  gap:14px;
+  min-width:0;
+}
+.staff-shifts-month-nav{
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) 42px;
+  align-items:center;
+  gap:8px;
+  width:100%;
+  justify-content:stretch;
+  text-align:center;
+  font-size:22px;
+}
+.staff-shifts-month-nav #monthLabel{min-width:0;line-height:1.1;white-space:nowrap}
+.staff-shifts-month-button{width:42px;min-height:42px;padding:0;font-size:12px}
+.staff-shifts-toolbar__controls{display:grid;gap:7px;min-width:0}
+.staff-shifts-toolbar__row{display:flex;align-items:center;gap:6px;min-width:0}
+.staff-shifts-toolbar__row--scopes{justify-content:space-between}
+.staff-shifts-toolbar__row--scopes #calendarMode{margin-left:auto}
+.staff-shifts-toolbar__row--planning,
+.staff-shifts-toolbar__row--filters{justify-content:flex-start}
+.staff-shifts-label-compact{display:none}
+.staff-shifts-tool-button{
+  flex:0 0 auto;
+  min-height:37px;
+  padding:8px 10px;
+  border-radius:12px;
+  color:var(--textSoft);
+  font-size:12px;
+  white-space:nowrap;
+  overflow-wrap:normal;
+}
+.staff-shifts-toolbar__row .schedule-filter-trigger{font-size:12px}
 .shifts-calendar-loading{min-height:520px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:10px;border:1px dashed var(--border);border-radius:16px;background:var(--surfaceTintSoft)}
 .shifts-calendar-loading .skeleton:first-child{grid-column:1/-1}
 .shifts-calendar-loading .skeleton{min-height:150px;border-radius:14px}
@@ -20,19 +55,40 @@
 #calGrid.is-week .cal-line,#calGrid.is-week .cal-line__text{min-width:0}
 #calGrid.is-week .cal-line--more{grid-column:1/-1;opacity:.75}
 #calGrid.is-week .cal-cell.is-empty .cal-badges{display:none!important}
+@media (max-width:760px){
+  .staff-shifts-toolbar{grid-template-columns:1fr}
+}
 @media (max-width:560px){
-  .staff-shifts-toolbar{flex-direction:column;align-items:stretch}
-  .staff-shifts-toolbar>.row,.staff-shifts-toolbar>.row:last-child{width:100%;justify-content:stretch}
-  .staff-shifts-toolbar>.row:last-child>.btn,.staff-shifts-toolbar>.row:last-child>.shift-toggle,.staff-shifts-toolbar>.row:last-child>.schedule-filter-dropdown{flex:1 1 calc(50% - 8px)}
-  .month-controls{justify-content:space-between}
+  .staff-shifts-calendar-card{padding:12px}
+  .staff-shifts-toolbar{display:grid;gap:9px}
+  .staff-shifts-month-nav{width:100%;grid-template-columns:40px minmax(0,1fr) 40px;gap:6px;font-size:22px}
+  .staff-shifts-month-button{width:40px;min-height:40px;border-radius:12px}
+  .staff-shifts-toolbar__controls{width:100%;display:grid;gap:7px}
+  .staff-shifts-toolbar__row{width:100%;flex-wrap:nowrap;gap:6px}
+  .staff-shifts-toolbar__row--scopes{justify-content:space-between}
+  .staff-shifts-toolbar__row--scopes .shift-toggle{flex:0 1 auto}
+  .staff-shifts-toolbar__row--scopes #calendarMode{margin-left:auto}
+  .staff-shifts-toolbar__row--planning .staff-shifts-tool-button{flex:1 1 0}
+  .staff-shifts-toolbar__row--filters .staff-shifts-tool-button,
+  .staff-shifts-toolbar__row--filters .schedule-filter-dropdown{flex:1 1 0}
+  .staff-shifts-label-wide{display:none}
+  .staff-shifts-label-compact{display:inline}
+  .staff-shifts-tool-button{min-height:36px;padding:7px 9px;font-size:11px}
+  .staff-shifts-toolbar__row .schedule-filter-trigger{width:100%;height:36px;min-height:36px;padding:0 30px 0 10px;font-size:11px}
+  .staff-shifts-toolbar__row .schedule-filter-trigger::after{right:10px}
+  .staff-shifts-toolbar__row--scopes .shift-toggle button{padding:8px 9px;font-size:11px}
+  #calGrid{margin-top:8px}
   .shifts-calendar-loading{min-height:420px;grid-template-columns:1fr}
   .shifts-calendar-loading .skeleton:first-child{grid-column:auto}
   #calGrid.is-week .cal-body{grid-template-columns:1fr}
   #calGrid.is-week .cal-cell{max-height:150px;padding:8px}
   #calGrid.is-week .cal-cell.is-empty{min-height:52px;max-height:52px;padding:8px}
 }
-@media (max-width:400px){
-  .staff-shifts-toolbar>.row:last-child>.btn,.staff-shifts-toolbar>.row:last-child>.shift-toggle,.staff-shifts-toolbar>.row:last-child>.schedule-filter-dropdown{flex-basis:100%}
+@media (max-width:360px){
+  .staff-shifts-month-nav{font-size:20px}
+  .staff-shifts-toolbar__row--scopes{gap:4px}
+  .staff-shifts-toolbar__row--scopes .shift-toggle{padding:2px}
+  .staff-shifts-toolbar__row--scopes .shift-toggle button{padding:7px 6px;font-size:10px}
 }
 @media (max-width:340px){#calGrid.is-week .cal-badges{grid-template-columns:1fr}}
 .shift-assignee-select{flex:1 1 auto;min-width:240px}
@@ -40,6 +96,35 @@
 .shift-create-interval{background:var(--surface2)}
 .cal-line--probe{visibility:hidden;position:absolute;left:-9999px;top:-9999px}
 .cal-cell--expanded-layout{grid-column:span 3;grid-row:span 2}
+
+.staff-shifts-page :is(.chk,.checkline){
+  display:inline-grid;
+  grid-template-columns:18px minmax(0,1fr);
+  align-items:start;
+  column-gap:8px;
+  max-width:100%;
+}
+.staff-shifts-page .schedule-check{
+  display:grid;
+  grid-template-columns:18px minmax(0,1fr);
+  align-items:start;
+}
+.staff-shifts-page :is(label,span).row:has(> input[type="checkbox"],> input[type="radio"]){
+  display:grid;
+  grid-template-columns:18px minmax(0,1fr);
+  align-items:start;
+  gap:8px;
+}
+.staff-shifts-page :is(.chk,.checkline,.schedule-check) > input[type="checkbox"],
+.staff-shifts-page :is(.chk,.checkline,.schedule-check) > input[type="radio"],
+.staff-shifts-page :is(label,span).row:has(> input[type="checkbox"],> input[type="radio"]) > input{
+  margin-top:2px;
+}
+.staff-shifts-page :is(.chk,.checkline,.schedule-check) > :not(input),
+.staff-shifts-page :is(label,span).row:has(> input[type="checkbox"],> input[type="radio"]) > :not(input){
+  min-width:0;
+  overflow-wrap:anywhere;
+}
 
 .staff-shifts-page .comment.is-target{
   border-color:var(--accent);

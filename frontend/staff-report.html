@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
-  <link rel="stylesheet" href="/styles/pages/staff-report.css?v=20260726-polish6" />
+  <link rel="stylesheet" href="/styles/pages/staff-report.css?v=20260728-responsive1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Отчёты</title>
 </head>
@@ -26,23 +26,38 @@
     <section class="card section-card staff-report-calendar-card">
       <div class="staff-report-toolbar">
         <div class="staff-report-month month-controls">
-          <button class="btn" id="monthPrev">◀</button>
+          <button class="btn staff-report-month-button" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
-          <button class="btn" id="monthNext">▶</button>
+          <button class="btn staff-report-month-button" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
         <div class="staff-report-toolbar__aside">
           <div id="reportSlotToggle" class="shift-toggle hidden" aria-label="Слот отчёта">
             <button type="button" id="reportSlotDay">День</button>
             <button type="button" id="reportSlotNight">Ночь</button>
           </div>
-          <div class="muted small">Нажмите на день, чтобы открыть или заполнить отчёт</div>
+          <div class="muted small staff-report-hint">
+            <span class="staff-report-label-wide">Нажмите на день, чтобы открыть или заполнить отчёт</span>
+            <span class="staff-report-label-compact">Выберите день</span>
+          </div>
         </div>
       </div>
 
       <div class="report-legend staff-report-legend">
-        <div class="report-legend__item"><span class="report-legend__swatch report-legend__swatch--closed"></span><span>Закрытая смена</span></div>
-        <div class="report-legend__item"><span class="report-legend__swatch report-legend__swatch--draft"></span><span>Черновое закрытие</span></div>
-        <div class="report-legend__item"><span class="report-legend__swatch report-legend__swatch--overdue"></span><span>Прошедший день без закрытия</span></div>
+        <div class="report-legend__item">
+          <span class="report-legend__swatch report-legend__swatch--closed"></span>
+          <span class="staff-report-label-wide">Закрытая смена</span>
+          <span class="staff-report-label-compact">Закрыт</span>
+        </div>
+        <div class="report-legend__item">
+          <span class="report-legend__swatch report-legend__swatch--draft"></span>
+          <span class="staff-report-label-wide">Черновое закрытие</span>
+          <span class="staff-report-label-compact">Черновик</span>
+        </div>
+        <div class="report-legend__item">
+          <span class="report-legend__swatch report-legend__swatch--overdue"></span>
+          <span class="staff-report-label-wide">Прошедший день без закрытия</span>
+          <span class="staff-report-label-compact">Не закрыт</span>
+        </div>
       </div>
       <div id="calGrid" class="cal staff-report-calendar" aria-live="polite">
         <div class="report-loading-skeleton skeleton"></div>

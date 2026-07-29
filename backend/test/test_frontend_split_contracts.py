@@ -193,14 +193,21 @@ class WorkflowPageUiPolishContractTests(TestCase):
             ),
             "staff-report.html": (
                 "styles/pages/staff-report.css",
-                ("staff-report-toolbar", "staff-report-calendar", "staff-report-state"),
+                (
+                    "staff-report-toolbar",
+                    "staff-report-month-button",
+                    "staff-report-label-compact",
+                    "staff-report-calendar",
+                    "staff-report-state",
+                ),
             ),
         }
 
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            self.assertIn(f'/{style_path}?v=20260726-polish6', html, html_name)
+            cache_key = "20260728-responsive1" if html_name == "staff-report.html" else "20260726-polish6"
+            self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
@@ -488,7 +495,14 @@ class FunctionalFrontendRegressionContractTests(TestCase):
 
     def test_shift_planning_pages_keep_stable_loading_and_responsive_layout_contracts(self):
         html_contracts = {
-            "staff-shifts.html": ("staff-shifts-toolbar", "shifts-calendar-loading"),
+            "staff-shifts.html": (
+                "staff-shifts-toolbar__controls",
+                "staff-shifts-toolbar__row--scopes",
+                "staff-shifts-toolbar__row--planning",
+                "staff-shifts-toolbar__row--filters",
+                "staff-shifts-tool-button",
+                "shifts-calendar-loading",
+            ),
             "shift-intervals.html": ("shift-tool-state--loading", "shift-tools.css?v=20260726-polish8"),
             "shift-schedule-templates.html": ("shift-tool-state--loading", "shift-tools.css?v=20260726-polish8"),
         }
