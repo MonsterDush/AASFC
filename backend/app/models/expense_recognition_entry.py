@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,7 +14,9 @@ class ExpenseRecognitionEntry(Base):
     __tablename__ = "expense_recognition_entries"
     __table_args__ = (
         CheckConstraint("amount_minor >= 0", name="ck_expense_recognition_entries_amount_non_negative"),
+        CheckConstraint("shift_slot IN ('DAY', 'NIGHT')", name="ck_expense_recognition_entries_shift_slot_valid"),
         Index("ix_expense_recognition_entries_venue_date", "venue_id", "recognition_date"),
+        Index("ix_expense_recognition_entries_venue_date_slot", "venue_id", "recognition_date", "shift_slot"),
         Index("ix_expense_recognition_entries_expense", "expense_id", "recognition_date"),
     )
 
@@ -22,6 +24,7 @@ class ExpenseRecognitionEntry(Base):
     expense_id: Mapped[int] = mapped_column(ForeignKey("expenses.id"), nullable=False, index=True)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), nullable=False, index=True)
     recognition_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    shift_slot: Mapped[str] = mapped_column(String(16), nullable=False, default="DAY", server_default="DAY")
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     meta_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)

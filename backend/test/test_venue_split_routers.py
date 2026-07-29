@@ -54,7 +54,7 @@ class VenueFinanceSummaryRouterTests(TestCase):
                 5, "2026-07", None, None, "PAYMENTS", db, user
             )
             daily = venue_finance_summary.get_venue_day_finance_summary(
-                5, target_date, "DEPARTMENTS", db, user
+                5, target_date, "DEPARTMENTS", db, user, "NIGHT"
             )
             finance = venue_finance_summary.get_venue_finance_summary(
                 5, "2026-07", None, None, db, user
@@ -397,6 +397,10 @@ class VenueAdjustmentAndScheduleRouterTests(TestCase):
         self.assertEqual(end, date(2026, 7, 31))
         self.assertEqual(end_exclusive, date(2026, 8, 1))
         self.assertEqual(venue_schedule_templates._shift_slot_label("NIGHT"), "Ночь")
+        self.assertEqual(
+            venue_schedule_templates._shift_template_weekday_slot_title(2, "NIGHT"),
+            "Ночь · Среда",
+        )
         self.assertIn("month=2026-07", path)
         self.assertIn("intervals=3%2C4", path)
         self.assertIn("unstaffed=1", path)

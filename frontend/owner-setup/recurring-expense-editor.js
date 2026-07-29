@@ -56,6 +56,7 @@ export function createRecurringExpenseSetupController(context) {
                       ${item.is_active === false ? '<span class="badge">выключено</span>' : ''}
                     </div>
                     <div class="setup-minirow__meta">${esc(item.category?.title || 'Без категории')} · день ${esc(item.day_of_month || 1)} · ${String(item.generation_mode || 'FIXED').toUpperCase() === 'PERCENT' ? `${esc(minorToMoneyInput(item.percent_bps || 0))}%` : `${esc(minorToMoneyInput(item.amount_minor || 0))} ₽`}</div>
+                    <div class="setup-minirow__meta">${String(item.shift_slot || 'TOTAL').toUpperCase() === 'DAY' ? 'Только день' : String(item.shift_slot || 'TOTAL').toUpperCase() === 'NIGHT' ? 'Только ночь' : 'Все смены поровну'}</div>
                   </div>
                   <div class="setup-minirow__actions">
                     <button class="btn sm" type="button" data-edit-recurring="${esc(item.id)}">Изменить</button>
@@ -77,6 +78,7 @@ export function createRecurringExpenseSetupController(context) {
               <label><span>Дата старта</span><input class="input" id="recurringStartDate" type="date" value="${esc(editing?.start_date || todayIso())}" /></label>
               <label><span>Дата окончания</span><input class="input" id="recurringEndDate" type="date" value="${esc(editing?.end_date || '')}" /></label>
               <label><span>День месяца</span><input class="input" id="recurringDayOfMonth" type="number" min="1" max="31" value="${esc(editing?.day_of_month || 1)}" /></label>
+              <label><span>Отнести расход</span><select class="input" id="recurringShiftSlot"><option value="TOTAL" ${String(editing?.shift_slot || 'TOTAL').toUpperCase() === 'TOTAL' ? 'selected' : ''}>На все смены поровну</option><option value="DAY" ${String(editing?.shift_slot || '').toUpperCase() === 'DAY' ? 'selected' : ''}>Только день</option><option value="NIGHT" ${String(editing?.shift_slot || '').toUpperCase() === 'NIGHT' ? 'selected' : ''}>Только ночь</option></select></label>
               <label><span>Размазать на месяцев</span><input class="input" id="recurringSpreadMonths" type="number" min="1" max="120" value="${esc(editing?.spread_months || 1)}" /></label>
               <label><span>Режим</span><select class="input" id="recurringGenerationMode"><option value="FIXED" ${isPercent ? '' : 'selected'}>Фиксированная сумма</option><option value="PERCENT" ${isPercent ? 'selected' : ''}>Процент от оплат</option></select></label>
               <label id="recurringAmountWrap" class="${isPercent ? 'hidden' : ''}"><span>Сумма, ₽</span><input class="input" id="recurringAmount" placeholder="150000.00" value="${esc(minorToMoneyInput(editing?.amount_minor))}" /></label>
@@ -164,6 +166,7 @@ export function createRecurringExpenseSetupController(context) {
         end_date: String(document.getElementById('recurringEndDate')?.value || '').trim() || null,
         frequency: 'MONTHLY',
         day_of_month: Number(document.getElementById('recurringDayOfMonth')?.value || 1),
+        shift_slot: String(document.getElementById('recurringShiftSlot')?.value || 'TOTAL').toUpperCase(),
         spread_months: Number(document.getElementById('recurringSpreadMonths')?.value || 1),
         generation_mode: generationMode,
         amount_minor: generationMode === 'FIXED' ? parseMoneyToMinor(document.getElementById('recurringAmount')?.value || '') : null,

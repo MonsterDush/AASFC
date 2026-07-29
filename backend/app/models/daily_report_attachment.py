@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -10,6 +10,12 @@ from app.core.db import Base
 
 class DailyReportAttachment(Base):
     __tablename__ = "daily_report_attachments"
+    __table_args__ = (
+        CheckConstraint(
+            "shift_slot IN ('DAY', 'NIGHT')",
+            name="ck_daily_report_attachments_shift_slot_valid",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
 

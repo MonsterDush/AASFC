@@ -13,19 +13,20 @@ import {
 } from "/app.js?v=20260726-navmore1";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
+import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
 
 const root = document.getElementById("root");
 applyTelegramTheme();
 await ensureLogin({ silent: true });
 
 const DAYS = [
-  { value: 0, title: "Понедельник", short: "Пн", from: "понедельника", to: "вторник", toShort: "Вт" },
-  { value: 1, title: "Вторник", short: "Вт", from: "вторника", to: "среду", toShort: "Ср" },
-  { value: 2, title: "Среда", short: "Ср", from: "среды", to: "четверг", toShort: "Чт" },
-  { value: 3, title: "Четверг", short: "Чт", from: "четверга", to: "пятницу", toShort: "Пт" },
-  { value: 4, title: "Пятница", short: "Пт", from: "пятницы", to: "субботу", toShort: "Сб" },
-  { value: 5, title: "Суббота", short: "Сб", from: "субботы", to: "воскресенье", toShort: "Вс" },
-  { value: 6, title: "Воскресенье", short: "Вс", from: "воскресенья", to: "понедельник", toShort: "Пн" },
+  { value: 0, title: "Понедельник", short: "Пн" },
+  { value: 1, title: "Вторник", short: "Вт" },
+  { value: 2, title: "Среда", short: "Ср" },
+  { value: 3, title: "Четверг", short: "Чт" },
+  { value: 4, title: "Пятница", short: "Пт" },
+  { value: 5, title: "Суббота", short: "Сб" },
+  { value: 6, title: "Воскресенье", short: "Вс" },
 ];
 
 function normalizeShiftSlot(value) {
@@ -36,18 +37,18 @@ function dayByValue(value) {
 }
 function scheduleSlotTitle(weekday, slot) {
   const day = dayByValue(weekday);
-  return normalizeShiftSlot(slot) === "NIGHT" ? `Ночь с ${day.from} на ${day.to}` : day.title;
+  return normalizeShiftSlot(slot) === "NIGHT" ? `Ночь · ${day.title}` : day.title;
 }
 function scheduleSlotShortTitle(weekday, slot) {
   const day = dayByValue(weekday);
-  return normalizeShiftSlot(slot) === "NIGHT" ? `Ночь ${day.short}→${day.toShort}` : day.short;
+  return normalizeShiftSlot(slot) === "NIGHT" ? `Ночь · ${day.short}` : day.short;
 }
 function editorSlots() {
   const rows = [];
   for (const day of DAYS) {
     rows.push({ weekday: day.value, shift_slot: "DAY", title: day.title, hint: "Дневной слот этого календарного дня" });
     if (state.nightShiftsEnabled) {
-      rows.push({ weekday: day.value, shift_slot: "NIGHT", title: scheduleSlotTitle(day.value, "NIGHT"), hint: "Ночная смена хранится датой начала ночи" });
+      rows.push({ weekday: day.value, shift_slot: "NIGHT", title: scheduleSlotTitle(day.value, "NIGHT"), hint: "Дата смены — календарная дата начала, даже если окончание будет на следующих сутках" });
     }
   }
   return rows;
@@ -130,6 +131,7 @@ const state = {
   intervals: [],
   applyTemplate: null,
   nightShiftsEnabled: false,
+  settingsLoaded: false,
 };
 
 function renderShell() {
@@ -147,7 +149,7 @@ function renderShell() {
 
     <main class="shift-tool-content">
       <section class="card shift-tool-hero">
-        <div class="shift-tool-hero__copy">Настрой дни недели один раз, а затем применяй шаблон к нужному месяцу. Если в заведении включены ночные смены, шаблон отдельно показывает день и ночь вида «Ночь с понедельника на вторник».</div>
+        <div class="shift-tool-hero__copy">Настрой дни недели один раз, а затем применяй шаблон к нужному месяцу. Дата любой смены определяется календарной датой её начала, даже если она заканчивается на следующих сутках.</div>
       </section>
 
       <section class="card shift-tool-list-card">
@@ -238,7 +240,7 @@ function wireModalClose() {
 }
 
 function intervalLabel(interval) {
-  return `${interval?.title || "Интервал"} · ${interval?.start_time || "??:??"}–${interval?.end_time || "??:??"}`;
+  return `${interval?.title || "Интервал"} · ${formatShiftIntervalRange(interval?.start_time, interval?.end_time)}`;
 }
 
 function templateGroups(template) {
@@ -423,7 +425,7 @@ function editorHtml({ item }) {
       <div class="muted mb-6">Описание</div>
       <textarea id="tpl_description" class="input" rows="2" placeholder="Например, будни стандартные, выходные усиленные">${esc(item?.description || "")}</textarea>
     </div>
-    <div class="muted mt-12">Выбери, какие интервалы нужно создавать в каждый слот недели. Ночь «с понедельника на вторник» будет создана датой понедельника и слотом NIGHT.</div>
+    <div class="muted mt-12">Выбери интервалы для календарного дня их начала. Окончание после полуночи не переносит смену и отчёт на следующую дату.</div>
     <div class="grid grid2 schedule-template-days">${daysHtml}</div>
     <div class="row row--end gap-8 mt-12 shift-tool-modal-actions">
       <button class="btn" id="btnCancelEdit">Отмена</button>
@@ -448,6 +450,18 @@ function collectEditorItems() {
 }
 
 function openEditor({ mode, item = null }) {
+  if (!state.settingsLoaded) {
+    toast("Не удалось проверить настройку ночных смен. Обнови страницу перед редактированием шаблона.", "err");
+    return;
+  }
+  if (
+    mode === "edit"
+    && !state.nightShiftsEnabled
+    && (item?.items || []).some((templateItem) => normalizeShiftSlot(templateItem?.shift_slot) === "NIGHT")
+  ) {
+    toast("В шаблоне есть ночные интервалы. Сначала включи ночные смены в настройках заведения.", "warn");
+    return;
+  }
   if (!state.intervals.length) {
     toast("Сначала создай хотя бы один интервал смен", "warn");
   }
@@ -459,6 +473,10 @@ function openEditor({ mode, item = null }) {
 
   document.getElementById("btnCancelEdit")?.addEventListener("click", closeEditModal);
   document.getElementById("btnSaveTemplate")?.addEventListener("click", async () => {
+    if (!state.settingsLoaded) {
+      toast("Настройки смен не загружены. Обнови страницу и повтори.", "err");
+      return;
+    }
     const title = document.getElementById("tpl_title")?.value?.trim();
     const description = document.getElementById("tpl_description")?.value?.trim() || null;
     const is_active = !!document.getElementById("tpl_active")?.checked;
@@ -515,7 +533,7 @@ function openApplyModal(template) {
       </div>
     </div>
     <div class="muted mt-12" id="applyMonthNote"></div>
-    ${state.nightShiftsEnabled ? `<div class="itemcard mt-12"><b>Важно по ночам</b><div class="muted mt-6">Например, «Ночь с понедельника на вторник» будет создана на календарную дату понедельника в ночном слоте. В графике её видно при переключателе «Ночь».</div></div>` : ``}
+    ${state.nightShiftsEnabled ? `<div class="itemcard mt-12"><b>Важно по ночам</b><div class="muted mt-6">Смена 29-го с началом в 22:00 относится к 29-му, даже если закончится 30-го. Смена с началом 30-го в 04:00 относится уже к 30-му.</div></div>` : ``}
     <div class="row row--end gap-8 mt-12 shift-tool-modal-actions">
       <button class="btn" id="btnCancelApply">Отмена</button>
       <button class="btn primary" id="btnRunApply">Применить к месяцу</button>
@@ -587,8 +605,11 @@ state.perms = await getMyVenuePermissions(state.venueId).catch(() => null);
 try {
   const settings = state.venueId ? await getVenueSettings(state.venueId) : null;
   state.nightShiftsEnabled = !!settings?.night_shifts_enabled;
+  state.settingsLoaded = !!settings;
 } catch {
   state.nightShiftsEnabled = false;
+  state.settingsLoaded = false;
+  toast("Не удалось загрузить настройку ночных смен. Редактирование шаблонов временно заблокировано.", "err");
 }
 state.canManage = canManageTemplates({ me: state.me, perms: state.perms });
 
@@ -597,8 +618,15 @@ await mountNav({ activeTab: "shifts", requireVenue: true });
 document.getElementById("backToIntervals")?.setAttribute("href", `/shift-intervals.html?venue_id=${encodeURIComponent(state.venueId)}`);
 document.getElementById("backToShifts")?.setAttribute("href", `/staff-shifts.html?venue_id=${encodeURIComponent(state.venueId)}`);
 document.getElementById("backToVenue")?.setAttribute("href", `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`);
-document.getElementById("btnCreateTemplate")?.addEventListener("click", () => openEditor({ mode: "create" }));
-document.getElementById("btnCreateTemplate")?.classList.toggle("hidden", !state.canManage);
+const createTemplateButton = document.getElementById("btnCreateTemplate");
+createTemplateButton?.addEventListener("click", () => openEditor({ mode: "create" }));
+createTemplateButton?.classList.toggle("hidden", !state.canManage);
+if (createTemplateButton) {
+  createTemplateButton.disabled = !!state.canManage && !state.settingsLoaded;
+  if (createTemplateButton.disabled) {
+    createTemplateButton.title = "Обнови страницу: настройки смен не загрузились";
+  }
+}
 document.getElementById("showArchived")?.addEventListener("change", async (e) => {
   state.includeArchived = !!e.target.checked;
   await loadTemplates();

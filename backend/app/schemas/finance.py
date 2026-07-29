@@ -11,6 +11,7 @@ class ExpenseCreateIn(BaseModel):
     payment_method_id: int | None = Field(default=None, gt=0)
     amount_minor: int = Field(..., ge=0)
     expense_date: date
+    shift_slot: str = Field("TOTAL", pattern="^(TOTAL|DAY|NIGHT)$")
     spread_months: int = Field(1, ge=1, le=120)
     status: str = Field("DRAFT", min_length=5, max_length=16)
     comment: str | None = Field(default=None, max_length=1000)
@@ -24,6 +25,7 @@ class ExpenseUpdateIn(BaseModel):
     clear_payment_method: bool = False
     amount_minor: int | None = Field(default=None, ge=0)
     expense_date: date | None = None
+    shift_slot: str | None = Field(default=None, pattern="^(TOTAL|DAY|NIGHT)$")
     spread_months: int | None = Field(default=None, ge=1, le=120)
     status: str | None = Field(default=None, min_length=5, max_length=16)
     comment: str | None = Field(default=None, max_length=1000)
@@ -67,6 +69,7 @@ class PaymentMethodTransferUpdateIn(BaseModel):
 
 class RecurringExpenseRuleCreateIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
+    shift_slot: str = Field("TOTAL", pattern="^(TOTAL|DAY|NIGHT)$")
     category_id: int = Field(..., gt=0)
     supplier_id: int | None = Field(default=None, gt=0)
     payment_method_id: int | None = Field(default=None, gt=0)
@@ -85,6 +88,7 @@ class RecurringExpenseRuleCreateIn(BaseModel):
 
 class RecurringExpenseRuleUpdateIn(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=160)
+    shift_slot: str | None = Field(default=None, pattern="^(TOTAL|DAY|NIGHT)$")
     category_id: int | None = Field(default=None, gt=0)
     supplier_id: int | None = Field(default=None, gt=0)
     payment_method_id: int | None = Field(default=None, gt=0)
@@ -154,6 +158,9 @@ class MonthlyFinanceSummaryOut(FinanceSummaryOut):
 class DailyFinanceSummaryOut(FinanceSummaryOut):
     date: date
     income_mode: str
+    shift_slot: str = "TOTAL"
+    slot_costs_available: bool = True
+    slot_profit_available: bool = True
     revenue_breakdown: list[MonthlyFinanceBreakdownRowOut]
     point_expenses: list[MonthlyFinanceBreakdownRowOut]
     point_expense_minor: int

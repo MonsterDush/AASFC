@@ -12,6 +12,7 @@ import {
 } from "/app.js?v=20260726-navmore1";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
+import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
 
 const root = document.getElementById("root");
 applyTelegramTheme();
@@ -188,7 +189,7 @@ function renderList() {
           <b>${esc(item.title)}</b>
           ${item.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
-        <div class="mono muted listrow__meta">${esc(item.start_time)}–${esc(item.end_time)} · Смен: ${Number(item.usage_count || 0)} · Шаблонов: ${Number(item.template_usage_count || 0)}</div>
+        <div class="mono muted listrow__meta">${esc(formatShiftIntervalRange(item.start_time, item.end_time))} · Смен: ${Number(item.usage_count || 0)} · Шаблонов: ${Number(item.template_usage_count || 0)}</div>
       </div>
       <div class="row row--nowrap gap-8 shift-tool-row__actions">
         <button class="btn sm" data-edit="${item.id}">Изменить</button>

@@ -37,6 +37,10 @@ function economicsShiftSlotLabel(slot = state.shiftSlot) {
   return "Итого";
 }
 
+function economicsProfitAvailable(econ) {
+  return econ?.summary?.slot_profit_available !== false;
+}
+
 function updateEconomicsSlotUrl() {
   try {
     const q = new URLSearchParams(location.search);
@@ -344,16 +348,32 @@ function renderStatus(econ) {
   const summary = econ?.summary || {};
   const resultStatus = String(metrics.result_status || "BREAKEVEN").toUpperCase();
   const reportStatus = String(report.status || "MISSING").toUpperCase();
+  const profitAvailable = economicsProfitAvailable(econ);
+  const slotSpecific = normalizeEconomicsShiftSlot(econ?.shift_slot || state.shiftSlot) !== "TOTAL";
 
-  const resultLabel = resultStatus === "PROFIT" ? "Прибыльный день" : resultStatus === "LOSS" ? "Убыточный день" : "День в ноль";
+  const resultLabel = profitAvailable
+    ? (
+      resultStatus === "PROFIT"
+        ? (slotSpecific ? "Прибыльная смена" : "Прибыльный день")
+        : resultStatus === "LOSS"
+          ? (slotSpecific ? "Убыточная смена" : "Убыточный день")
+          : `${slotSpecific ? "Смена" : "День"} в ноль`
+    )
+    : "Доход выбранного слота";
   const reportLabel = reportStatus === "CLOSED" ? "Отчёт закрыт" : reportStatus === "DRAFT" ? "Отчёт в черновике" : "Отчёта нет";
-  setText("economicsStatusTitle", `${resultLabel} · ${fmtMoneyMinor(summary.profit_minor || 0)}`);
+  setText(
+    "economicsStatusTitle",
+    `${resultLabel} · ${fmtMoneyMinor(profitAvailable ? summary.profit_minor : summary.revenue_minor)}`
+  );
 
   let statusHint = reportStatus === "CLOSED"
     ? `Отчёт закрыт ${formatDateTimeRu(report.closed_at)}. Доходы считаются по закрытому дню.`
     : reportStatus === "DRAFT"
       ? "Отчёт за день существует, но ещё не закрыт. Часть управленческих данных может быть неполной."
       : "Закрытого отчёта за день нет. Экономика дня построится только по доступным подтверждённым движениям.";
+  if (!profitAvailable) {
+    statusHint += " Прибыль и расходы доступны в режиме «Итого», поскольку затраты пока не распределяются между слотами.";
+  }
   if ((report.comment || "").trim()) statusHint += ` Комментарий: ${String(report.comment).trim()}`;
   setText("economicsStatusHint", statusHint);
   setText("economicsResultBadge", resultLabel);
@@ -401,15 +421,16 @@ function renderAlerts(alerts) {
 function renderPlanFact(econ) {
   const plan = econ?.plan || {};
   const pf = econ?.plan_fact || {};
+  const comparisonAvailable = pf.comparison_available !== false;
 
   setText("economicsPlanRevenue", fmtMoneyMinor(plan.revenue_plan_minor));
-  setText("economicsPlanRevenueDelta", fmtDeltaMinor(pf.revenue_delta_minor));
+  setText("economicsPlanRevenueDelta", comparisonAvailable ? fmtDeltaMinor(pf.revenue_delta_minor) : "—");
   setText("economicsPlanProfit", fmtMoneyMinor(plan.profit_plan_minor));
-  setText("economicsPlanProfitDelta", fmtDeltaMinor(pf.profit_delta_minor));
+  setText("economicsPlanProfitDelta", comparisonAvailable ? fmtDeltaMinor(pf.profit_delta_minor) : "—");
   setText("economicsPlanPerAssigned", fmtMoneyMinor(plan.revenue_per_assigned_plan_minor));
-  setText("economicsPlanPerAssignedDelta", fmtDeltaMinor(pf.revenue_per_assigned_delta_minor));
+  setText("economicsPlanPerAssignedDelta", comparisonAvailable ? fmtDeltaMinor(pf.revenue_per_assigned_delta_minor) : "—");
   setText("economicsPlanAssignedTarget", plan.assigned_user_target == null ? "—" : String(plan.assigned_user_target));
-  setText("economicsPlanAssignedDelta", fmtDeltaInt(pf.assigned_user_delta));
+  setText("economicsPlanAssignedDelta", comparisonAvailable ? fmtDeltaInt(pf.assigned_user_delta) : "—");
 
   const source = String(plan.source || "NONE").toUpperCase();
   const kind = dayKindLabel(plan?.day_kind);
@@ -426,6 +447,11 @@ function renderPlanFact(econ) {
   } else if (source === "WEEKDAY_TEMPLATE") {
     sourceText = `Используется шаблон: ${plan.template_weekday_title || "день недели"}`;
   }
+  if (!comparisonAvailable) {
+    sourceText += " · План задан на дату целиком, сравнение отдельного слота отключено";
+  } else if (plan.allocated_from_total) {
+    sourceText += " · Общий план даты распределён между дневной и ночной сменами";
+  }
 
   setText("economicsPlanSourceHint", sourceText);
 }
@@ -434,31 +460,34 @@ function renderPlanFact(econ) {
 function renderRules(econ) {
   const rules = econ?.rules || {};
   const parts = [];
-  if (rules.max_expense_ratio_bps != null) parts.push(`расходы ≤ ${fmtPercentBps(rules.max_expense_ratio_bps)}`);
-  if (rules.max_payroll_ratio_bps != null) parts.push(`ФОТ ≤ ${fmtPercentBps(rules.max_payroll_ratio_bps)}`);
-  if (rules.min_revenue_per_assigned_minor != null) parts.push(`выручка/сотрудник ≥ ${fmtMoneyMinor(rules.min_revenue_per_assigned_minor)}`);
+  const profitAvailable = economicsProfitAvailable(econ);
+  if (profitAvailable && rules.max_expense_ratio_bps != null) parts.push(`расходы ≤ ${fmtPercentBps(rules.max_expense_ratio_bps)}`);
+  if (profitAvailable && rules.max_payroll_ratio_bps != null) parts.push(`ФОТ ≤ ${fmtPercentBps(rules.max_payroll_ratio_bps)}`);
+  if (profitAvailable && rules.min_revenue_per_assigned_minor != null) parts.push(`выручка/сотрудник ≥ ${fmtMoneyMinor(rules.min_revenue_per_assigned_minor)}`);
   if (rules.min_assigned_shift_coverage_bps != null) parts.push(`покрытие смен ≥ ${fmtPercentBps(rules.min_assigned_shift_coverage_bps)}`);
-  if (rules.min_profit_minor != null) parts.push(`прибыль ≥ ${fmtMoneyMinor(rules.min_profit_minor)}`);
-  if (rules.warn_on_draft_expenses) parts.push(`предупреждать о неподтверждённых расходах`);
+  if (profitAvailable && rules.min_profit_minor != null) parts.push(`прибыль ≥ ${fmtMoneyMinor(rules.min_profit_minor)}`);
+  if (profitAvailable && rules.warn_on_draft_expenses) parts.push(`предупреждать о неподтверждённых расходах`);
+  if (!profitAvailable) parts.push("финансовые нормативы применяются в «Итого»");
   setText("economicsRulesHint", parts.length ? parts.join(" · ") : "Нормативы ещё не заданы.");
 }
 
 
 function renderRollup(econ) {
   const r = econ?.rollup || {};
+  const profitAvailable = r.profit_available !== false;
   setText("economicsRollupClosedDays", r.closed_day_count == null ? "—" : `${r.closed_day_count} / ${r.days_in_period || 0}`);
-  setText("economicsRollupProfitDays", r.profitable_day_count == null ? "—" : String(r.profitable_day_count));
-  setText("economicsRollupLossDays", r.loss_day_count == null ? "—" : String(r.loss_day_count));
-  setText("economicsRollupProfitTotal", fmtMoneyMinor(r.profit_total_minor));
-  setText("economicsRollupAvgProfit", fmtMoneyMinor(r.avg_profit_minor));
+  setText("economicsRollupProfitDays", profitAvailable && r.profitable_day_count != null ? String(r.profitable_day_count) : "—");
+  setText("economicsRollupLossDays", profitAvailable && r.loss_day_count != null ? String(r.loss_day_count) : "—");
+  setText("economicsRollupProfitTotal", profitAvailable ? fmtMoneyMinor(r.profit_total_minor) : "—");
+  setText("economicsRollupAvgProfit", profitAvailable ? fmtMoneyMinor(r.avg_profit_minor) : "—");
   setText("economicsRollupAvgRevenuePerAssigned", fmtMoneyMinor(r.avg_revenue_per_assigned_minor));
   setText(
     "economicsRollupBestDay",
-    r.best_day ? `${formatDateRu(r.best_day.date)} · ${fmtMoneyMinor(r.best_day.profit_minor)}` : "—"
+    profitAvailable && r.best_day ? `${formatDateRu(r.best_day.date)} · ${fmtMoneyMinor(r.best_day.profit_minor)}` : "—"
   );
   setText(
     "economicsRollupWorstDay",
-    r.worst_day ? `${formatDateRu(r.worst_day.date)} · ${fmtMoneyMinor(r.worst_day.profit_minor)}` : "—"
+    profitAvailable && r.worst_day ? `${formatDateRu(r.worst_day.date)} · ${fmtMoneyMinor(r.worst_day.profit_minor)}` : "—"
   );
 }
 
@@ -467,6 +496,7 @@ function renderEconomics(econ) {
   const report = econ?.report || {};
   const team = econ?.team || {};
   const metrics = econ?.metrics || {};
+  const profitAvailable = economicsProfitAvailable(econ);
 
   renderStatus(econ);
   renderAlerts(econ?.alerts || []);
@@ -476,9 +506,9 @@ function renderEconomics(econ) {
 
   setText("title", `Экономика дня · ${economicsShiftSlotLabel(econ?.shift_slot || state.shiftSlot)}`);
   setText("economicsRevenue", fmtMoneyMinor(summary.revenue_minor || 0));
-  setText("economicsExpenses", fmtMoneyMinor(summary.expense_minor || 0));
-  setText("economicsProfit", fmtMoneyMinor(summary.profit_minor || 0));
-  setText("economicsMargin", fmtPercentBps(summary.margin_bps));
+  setText("economicsExpenses", profitAvailable ? fmtMoneyMinor(summary.expense_minor || 0) : "—");
+  setText("economicsProfit", profitAvailable ? fmtMoneyMinor(summary.profit_minor || 0) : "—");
+  setText("economicsMargin", profitAvailable ? fmtPercentBps(summary.margin_bps) : "—");
   setText("economicsAssignedUsers", String(team.assigned_user_count || 0));
   setText("economicsRevenuePerAssigned", metrics.revenue_per_assigned_minor == null ? "—" : fmtMoneyMinor(metrics.revenue_per_assigned_minor));
   setText("economicsTipsPerAssigned", metrics.tips_per_assigned_minor == null ? "—" : fmtMoneyMinor(metrics.tips_per_assigned_minor));

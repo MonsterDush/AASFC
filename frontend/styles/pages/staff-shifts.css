@@ -1,5 +1,6 @@
 /* JS toggles is-week on #calGrid, so these selectors intentionally target that element. */
 .staff-shifts-shell,.staff-shifts-content{display:grid;gap:14px}
+.staff-shifts-shell{max-width:1680px}
 .staff-shifts-content{padding-bottom:var(--bottom-nav-space)}
 .staff-shifts-demo,.staff-shifts-calendar-card{margin:0}
 .staff-shifts-calendar-card{min-width:0;overflow:visible}
@@ -55,6 +56,62 @@
 #calGrid.is-week .cal-line,#calGrid.is-week .cal-line__text{min-width:0}
 #calGrid.is-week .cal-line--more{grid-column:1/-1;opacity:.75}
 #calGrid.is-week .cal-cell.is-empty .cal-badges{display:none!important}
+@media (min-width:1000px){
+  .staff-shifts-shell{width:min(100%,1680px)}
+  .staff-shifts-page .topbar{min-height:58px;margin-bottom:20px;padding-inline:8px}
+  .staff-shifts-page .topbar .logo{width:48px;height:48px}
+  .staff-shifts-page .topbar .title b{font-size:20px}
+  .staff-shifts-page .topbar .title div{font-size:14px}
+  .staff-shifts-content{gap:20px}
+  .staff-shifts-calendar-card{padding:24px;border-radius:22px}
+  .staff-shifts-toolbar{
+    grid-template-columns:minmax(300px,.8fr) minmax(0,1.45fr);
+    align-items:stretch;
+    gap:20px;
+  }
+  .staff-shifts-month-nav,
+  .staff-shifts-toolbar__controls{
+    min-height:154px;
+    padding:14px;
+    border:1px solid var(--border);
+    border-radius:18px;
+    background:var(--surfaceTintSoft);
+  }
+  .staff-shifts-month-nav{
+    grid-template-columns:48px minmax(0,1fr) 48px;
+    gap:14px;
+    font-size:clamp(24px,2vw,32px);
+  }
+  .staff-shifts-month-button{width:48px;min-height:48px;border-radius:14px}
+  .staff-shifts-toolbar__controls{align-content:center;gap:9px}
+  .staff-shifts-toolbar__row{gap:8px}
+  .staff-shifts-toolbar__row--scopes{justify-content:flex-end}
+  .staff-shifts-toolbar__row--scopes #calendarMode{margin-left:16px}
+  .staff-shifts-toolbar__row--planning,
+  .staff-shifts-toolbar__row--filters{justify-content:flex-end}
+  .staff-shifts-tool-button{min-height:40px;padding:9px 14px;font-size:13px}
+  .staff-shifts-toolbar__row .schedule-filter-trigger{height:40px;min-height:40px;font-size:13px}
+  .staff-shifts-page #calGrid{margin-top:20px}
+  .staff-shifts-page #calGrid .cal-head,
+  .staff-shifts-page #calGrid .cal-body{gap:10px}
+  .staff-shifts-page #calGrid .cal-hcell{padding:8px 0;font-size:13px;font-weight:750}
+  .staff-shifts-page #calGrid:not(.is-week) .cal-cell{
+    min-height:clamp(92px,6.4vw,124px);
+    padding:11px;
+    border-radius:16px;
+  }
+  .staff-shifts-page #calGrid .cal-daynum{font-size:14px}
+  .staff-shifts-page #calGrid .cal-line{font-size:11px;padding:4px 8px}
+}
+@media (min-width:1500px){
+  .staff-shifts-toolbar{
+    grid-template-columns:minmax(420px,.9fr) minmax(760px,1.35fr);
+    gap:24px;
+  }
+  .staff-shifts-month-nav,
+  .staff-shifts-toolbar__controls{min-height:164px;padding:16px}
+  .staff-shifts-page #calGrid:not(.is-week) .cal-cell{min-height:124px}
+}
 @media (max-width:760px){
   .staff-shifts-toolbar{grid-template-columns:1fr}
 }

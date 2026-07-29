@@ -15,12 +15,14 @@ class RecurringExpenseRule(Base):
         CheckConstraint("spread_months >= 1", name="ck_recurring_expense_rules_spread_months_positive"),
         CheckConstraint("amount_minor IS NULL OR amount_minor >= 0", name="ck_recurring_expense_rules_amount_minor_non_negative"),
         CheckConstraint("percent_bps IS NULL OR percent_bps >= 0", name="ck_recurring_expense_rules_percent_bps_non_negative"),
+        CheckConstraint("shift_slot IN ('TOTAL', 'DAY', 'NIGHT')", name="ck_recurring_expense_rules_shift_slot_valid"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)
 
     title: Mapped[str] = mapped_column(String(160), nullable=False)
+    shift_slot: Mapped[str] = mapped_column(String(16), nullable=False, default="TOTAL", server_default="TOTAL")
     category_id: Mapped[int] = mapped_column(ForeignKey("expense_categories.id"), index=True, nullable=False)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), index=True, nullable=True)
     payment_method_id: Mapped[int | None] = mapped_column(ForeignKey("payment_methods.id"), index=True, nullable=True)

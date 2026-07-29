@@ -20,9 +20,10 @@ import {
 } from "/app.js?v=20260726-navmore1";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
+import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
 
 import { createStaffShiftExportController } from "/staff-shifts/export-controller.js?v=20260719-split1";
-import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260720-unified6";
+import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260729-overnight1";
 import { createStaffShiftCommentController } from "/staff-shifts/comment-controller.js?v=20260728-comments1";
 
 window.onerror = function (msg, src, line, col, err) {
@@ -209,8 +210,8 @@ function openLegendModal() {
   }
 
   const rows = list.map((i) => {
-    const title = i.title || i.name || `${i.start_time || "?"}–${i.end_time || "?"}`;
-    const sub = `${i.start_time || "?"}–${i.end_time || "?"}`;
+    const title = i.title || i.name || formatShiftIntervalRange(i.start_time, i.end_time);
+    const sub = formatShiftIntervalRange(i.start_time, i.end_time);
     const c = colorForInterval(i.id);
     return `
       <div class="legend__row">
@@ -313,7 +314,7 @@ function venueShiftFiltersQuery() {
     .sort((a, b) => a - b);
   for (const id of ids) p.append("interval_ids", String(id));
   if (unstaffedOnly) p.set("staffing_state", "unstaffed");
-  if (nightShiftsEnabled) p.set("shift_slot", selectedShiftSlot);
+  p.set("shift_slot", nightShiftsEnabled ? selectedShiftSlot : "DAY");
   return p;
 }
 
@@ -519,17 +520,8 @@ function normalizeShiftSlot(value) {
 function shiftSlotLabel(slot = selectedShiftSlot) {
   return normalizeShiftSlot(slot) === "NIGHT" ? "Ночь" : "День";
 }
-const NIGHT_FROM_RU = ["понедельника", "вторника", "среды", "четверга", "пятницы", "субботы", "воскресенья"];
-const NIGHT_TO_RU = ["вторник", "среду", "четверг", "пятницу", "субботу", "воскресенье", "понедельник"];
-function shiftSlotContextLabel(dateISO, slot = selectedShiftSlot) {
+function shiftSlotContextLabel(_dateISO, slot = selectedShiftSlot) {
   if (normalizeShiftSlot(slot) !== "NIGHT") return "День";
-  try {
-    const d = new Date(String(dateISO || "") + "T00:00:00");
-    if (!Number.isNaN(d.getTime())) {
-      const idx = (d.getDay() + 6) % 7;
-      return `Ночь с ${NIGHT_FROM_RU[idx]} на ${NIGHT_TO_RU[idx]}`;
-    }
-  } catch {}
   return "Ночь";
 }
 let selectedShiftSlot = normalizeShiftSlot(params.get("shift_slot") || localStorage.getItem(LS_SHIFT_SLOT) || localStorage.getItem("axelio.shift_slot") || "DAY");
@@ -586,7 +578,7 @@ function shiftTimeLabel(s) {
   const i = s.interval || s.shift_interval || {};
   const st = i.start_time || s.start_time || "";
   const et = i.end_time || s.end_time || "";
-  return (st && et) ? `${st}-${et}` : (st || "");
+  return formatShiftIntervalRange(st, et);
 }
 function shiftStartHHMM(s) {
   const i = s.interval || s.shift_interval || {};
@@ -818,7 +810,7 @@ function renderScheduleFilters() {
         <input type="checkbox" ${selectedIntervalIds.has(id) ? "checked" : ""} />
         <span class="schedule-check__text">
           <span class="schedule-check__title">${escapeHtml(it.title || "Интервал")}</span>
-          <span class="schedule-check__meta">${escapeHtml(it.start_time || "?")}-${escapeHtml(it.end_time || "?")}</span>
+          <span class="schedule-check__meta">${escapeHtml(formatShiftIntervalRange(it.start_time, it.end_time))}</span>
         </span>
       `;
       const input = label.querySelector("input");
@@ -1177,6 +1169,7 @@ const staffShiftCalendar = createStaffShiftCalendarController({
   shiftSlotLabel,
   shiftIntervalId,
   shiftStartHHMM,
+  formatShiftIntervalRange,
   sortShiftsForBadges,
   shiftDonePrefix,
   formatGlobalLine,
@@ -1440,7 +1433,7 @@ function openDay(dateStr) {
     for (const i of intervals) {
       const opt = document.createElement("option");
       opt.value = String(i.id);
-      opt.textContent = `${i.title} · ${i.start_time}-${i.end_time}`;
+      opt.textContent = `${i.title} · ${formatShiftIntervalRange(i.start_time, i.end_time)}`;
       sel.appendChild(opt);
     }
 

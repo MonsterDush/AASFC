@@ -23,7 +23,7 @@ class DailyReportTipAllocation(Base):
     # Money in integer units (same convention as daily_reports.tips_total)
     amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    split_mode: Mapped[str] = mapped_column(String(24), nullable=False, default="EQUAL")  # EQUAL | WEIGHTED_BY_POSITION (stub)
+    split_mode: Mapped[str] = mapped_column(String(24), nullable=False, default="EQUAL")  # EQUAL | WEIGHTED_BY_POSITION
     meta_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

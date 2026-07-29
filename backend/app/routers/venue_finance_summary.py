@@ -55,6 +55,7 @@ def get_venue_day_finance_summary(
     income_mode: str = Query("PAYMENTS", description="PAYMENTS|DEPARTMENTS"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    shift_slot: str = Query("TOTAL", pattern="^(TOTAL|DAY|NIGHT)$"),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
@@ -65,6 +66,7 @@ def get_venue_day_finance_summary(
             venue_id=venue_id,
             target_date=summary_date,
             income_mode=income_mode,
+            shift_slot=shift_slot,
         )
         return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
@@ -95,5 +97,3 @@ def get_venue_finance_summary(
         return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-
-

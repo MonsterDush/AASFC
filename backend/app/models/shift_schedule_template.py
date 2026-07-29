@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -42,6 +42,10 @@ class ShiftScheduleTemplateItem(Base):
 
     __tablename__ = "shift_schedule_template_items"
     __table_args__ = (
+        CheckConstraint(
+            "shift_slot IN ('DAY', 'NIGHT')",
+            name="ck_shift_schedule_template_items_shift_slot_valid",
+        ),
         UniqueConstraint(
             "template_id",
             "weekday",

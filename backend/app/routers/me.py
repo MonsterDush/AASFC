@@ -784,6 +784,19 @@ def my_shifts_across_venues(
         )
     ).scalars().all()
     report_by_key = {(r.venue_id, r.date, normalize_shift_slot(getattr(r, "shift_slot", None))): r for r in reports}
+    report_ids = sorted({int(report.id) for report in reports})
+    my_tip_by_report_id: dict[int, int] = {}
+    if report_ids:
+        tip_rows = db.execute(
+            select(DailyReportTipAllocation.report_id, DailyReportTipAllocation.amount).where(
+                DailyReportTipAllocation.report_id.in_(report_ids),
+                DailyReportTipAllocation.user_id == int(user.id),
+            )
+        ).all()
+        my_tip_by_report_id = {
+            int(row.report_id): int(row.amount or 0)
+            for row in tip_rows
+        }
 
     out = []
     for r in rows:
@@ -818,6 +831,11 @@ def my_shifts_across_venues(
                 "report_exists": bool(rep),
                 "report_closed": bool(report_closed),
                 "my_salary": my_salary,
+                "my_tips_share": (
+                    my_tip_by_report_id.get(int(rep.id), 0)
+                    if rep is not None
+                    else 0
+                ),
                 "revenue_total": revenue_total,
             }
         )

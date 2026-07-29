@@ -29,6 +29,7 @@ const el = {
   add: document.getElementById("addRuleBtn"),
   save: document.getElementById("saveBtn"),
   saveHint: document.getElementById("saveHint"),
+  rulesNote: document.getElementById("rulesNote"),
 };
 
 const esc = (s) => String(s ?? "")
@@ -69,6 +70,18 @@ let availableTitles = [];
 let rows = [];
 let listError = "";
 
+function renderRulesNote() {
+  const configuredTotal = rows.reduce(
+    (sum, row) => sum + Math.max(0, Math.min(100, Number(row?.percent || 0) || 0)),
+    0,
+  );
+  if (!el.rulesNote) return;
+  const warning = configuredTotal > 100
+    ? ` В текущих правилах уже ${Math.round(configuredTotal)}% даже без учёта повторяющихся должностей — проверь состав смен перед закрытием отчёта.`
+    : "";
+  el.rulesNote.textContent = `Сумма процентов может быть меньше 100%: нераспределённый остаток делится поровну между остальными сотрудниками смены. Процент применяется к каждому назначенному сотруднику; если фактическая сумма долей смены превысит 100%, отчёт нельзя будет закрыть.${warning}`;
+}
+
 function buildTitleOptions(current = "") {
   const options = [...availableTitles];
   if (current && !options.some((x) => normalizeTitle(x) === normalizeTitle(current))) options.unshift(current);
@@ -77,6 +90,7 @@ function buildTitleOptions(current = "") {
 
 function render() {
   if (!el.list) return;
+  renderRulesNote();
   if (listError) {
     el.list.innerHTML = `<div class="tip-settings-state tip-settings-state--error"><b>Не удалось загрузить правила</b><span>${esc(listError)}</span></div>`;
     return;
@@ -116,6 +130,7 @@ function render() {
     if (percentEl) {
       percentEl.addEventListener("input", () => {
         rows[idx].percent = Math.max(0, Math.min(100, Number(percentEl.value || 0) || 0));
+        renderRulesNote();
       });
     }
     if (removeEl) {

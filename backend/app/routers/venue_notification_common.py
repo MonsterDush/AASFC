@@ -114,15 +114,36 @@ def _frontend_base_url() -> str:
     return settings.frontend_base_url()
 
 
-def _build_owner_day_economics_link(*, venue_id: int, target_date: date) -> str:
-    return f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}&date={quote(target_date.isoformat())}"
+def _notification_shift_slot_query(shift_slot: str | None) -> str:
+    slot = str(shift_slot or "TOTAL").strip().upper()
+    return f"&shift_slot={quote(slot)}" if slot in {"DAY", "NIGHT"} else ""
 
 
-def _build_staff_salary_day_link(*, venue_id: int, target_date: date) -> str:
+def _build_owner_day_economics_link(
+    *,
+    venue_id: int,
+    target_date: date,
+    shift_slot: str | None = None,
+) -> str:
+    slot_query = _notification_shift_slot_query(shift_slot)
+    return (
+        f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}"
+        f"&date={quote(target_date.isoformat())}{slot_query}"
+    )
+
+
+def _build_staff_salary_day_link(
+    *,
+    venue_id: int,
+    target_date: date,
+    shift_slot: str | None = None,
+) -> str:
     month_value = target_date.strftime("%Y-%m")
+    slot_query = _notification_shift_slot_query(shift_slot)
     return (
         f"{_frontend_base_url()}/staff-salary.html?venue_id={int(venue_id)}"
-        f"&month={quote(month_value)}&date={quote(target_date.isoformat())}&open_day=1"
+        f"&month={quote(month_value)}&date={quote(target_date.isoformat())}"
+        f"&open_day=1{slot_query}"
     )
 
 

@@ -32,6 +32,7 @@ from app.routers.venue_notification_common import (
 )
 from app.routers.venue_permissions import _is_shift_comments_allowed
 from app.services.notification_logs import notification_dedupe_scope
+from app.services.shifts.slots import normalize_shift_slot
 
 
 _RU_MONTHS_GENITIVE = {
@@ -96,9 +97,11 @@ def _comment_preview(value: str | None, limit: int = 300) -> str:
 
 def _shift_comment_link(*, venue_id: int, shift: Shift, comment_id: int) -> str:
     month_value = shift.date.strftime("%Y-%m")
+    shift_slot = normalize_shift_slot(getattr(shift, "shift_slot", None))
     return (
         f"{_frontend_base_url()}/staff-shifts.html?venue_id={int(venue_id)}"
         f"&month={quote(month_value)}&date={quote(shift.date.isoformat())}"
+        f"&shift_slot={quote(shift_slot)}"
         f"&open_shift={int(shift.id)}&comment={int(comment_id)}"
     )
 
@@ -106,7 +109,8 @@ def _shift_comment_link(*, venue_id: int, shift: Shift, comment_id: int) -> str:
 def _shift_date_label(shift: Shift, interval: ShiftInterval) -> str:
     month = _RU_MONTHS_GENITIVE.get(int(shift.date.month), str(shift.date.month))
     start_time = interval.start_time.strftime("%H:%M")
-    return f"{shift.date.day} {month} · {start_time}"
+    slot_label = "Ночь" if normalize_shift_slot(getattr(shift, "shift_slot", None)) == "NIGHT" else "День"
+    return f"{shift.date.day} {month} · {slot_label} · {start_time}"
 
 
 def _send_shift_comment_notifications(db: Session, *, venue_id: int, comment_id: int) -> None:

@@ -173,7 +173,9 @@ class WorkflowPageUiPolishContractTests(TestCase):
 
         tip_settings_html = (FRONTEND / "owner-tip-settings.html").read_text(encoding="utf-8")
         tip_settings_js = (FRONTEND / "owner-tip-settings.js").read_text(encoding="utf-8")
-        self.assertIn('/owner-tip-settings.js?v=20260726-navmore1', tip_settings_html)
+        self.assertIn('/owner-tip-settings.js?v=20260729-tips1', tip_settings_html)
+        self.assertIn('id="rulesNote"', tip_settings_html)
+        self.assertIn("renderRulesNote", tip_settings_js)
         self.assertIn("Promise.allSettled", tip_settings_js)
         self.assertIn('el.save.disabled = true', tip_settings_js)
 
@@ -334,12 +336,12 @@ class WorkflowPageUiPolishContractTests(TestCase):
         rules_script = (FRONTEND / "owner-economics-rules.js").read_text(encoding="utf-8")
         styles = (FRONTEND / "styles/pages/owner-economics.css").read_text(encoding="utf-8")
 
-        for html, page_name in (
-            (day_html, "owner-day-economics"),
-            (rules_html, "owner-economics-rules"),
+        for html, page_name, script_version in (
+            (day_html, "owner-day-economics", "20260729-slotecon1"),
+            (rules_html, "owner-economics-rules", "20260726-navmore1"),
         ):
             self.assertIn("/styles/pages/owner-economics.css?v=20260726-polish11", html, page_name)
-            self.assertIn(f"/{page_name}.js?v=20260726-navmore1", html, page_name)
+            self.assertIn(f"/{page_name}.js?v={script_version}", html, page_name)
             self.assertIn('class="finance-page-state hidden"', html, page_name)
 
         for detail_id in (
@@ -520,23 +522,31 @@ class FunctionalFrontendRegressionContractTests(TestCase):
             for token in required_tokens:
                 self.assertIn(token, source, f"{filename} lost {token}")
 
+        staff_shifts = (FRONTEND / "staff-shifts.js").read_text(encoding="utf-8")
+        templates = (FRONTEND / "shift-schedule-templates.js").read_text(encoding="utf-8")
+        self.assertNotIn("Ночь с ${", staff_shifts)
+        self.assertNotIn("Ночь с ${", templates)
+        self.assertNotIn("с понедельника на вторник", templates)
+        self.assertIn("календарной датой её начала", templates)
+        self.assertIn("Смена с началом 30-го в 04:00 относится уже к 30-му", templates)
+
 
 class OwnerSetupSplitContractTests(TestCase):
     def test_owner_setup_keeps_all_editor_modules_and_step_dispatch(self):
         main = (FRONTEND / "owner-setup.js").read_text(encoding="utf-8")
         html = (FRONTEND / "owner-setup.html").read_text(encoding="utf-8")
         controllers = {
-            "catalog-editor.js": ("createCatalogSetupController", "mountCatalogEditor"),
-            "pay-profile-editor.js": ("createPayProfileSetupController", "mountPayProfilesEditor"),
-            "position-editor.js": ("createPositionSetupController", "mountPositionsEditor"),
-            "invite-editor.js": ("createInviteSetupController", "mountInvitesEditor"),
-            "shift-interval-editor.js": ("createShiftIntervalSetupController", "mountShiftIntervalsEditor"),
-            "supplier-editor.js": ("createSupplierSetupController", "mountSuppliersEditor"),
-            "recurring-expense-editor.js": ("createRecurringExpenseSetupController", "mountRecurringExpensesEditor"),
+            "catalog-editor.js": ("createCatalogSetupController", "mountCatalogEditor", "20260720-unified10"),
+            "pay-profile-editor.js": ("createPayProfileSetupController", "mountPayProfilesEditor", "20260720-unified10"),
+            "position-editor.js": ("createPositionSetupController", "mountPositionsEditor", "20260720-unified10"),
+            "invite-editor.js": ("createInviteSetupController", "mountInvitesEditor", "20260720-unified10"),
+            "shift-interval-editor.js": ("createShiftIntervalSetupController", "mountShiftIntervalsEditor", "20260729-overnight1"),
+            "supplier-editor.js": ("createSupplierSetupController", "mountSuppliersEditor", "20260720-unified10"),
+            "recurring-expense-editor.js": ("createRecurringExpenseSetupController", "mountRecurringExpensesEditor", "20260729-slotecon1"),
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260726-navmore1", html)
+        self.assertIn("owner-setup.js?v=20260729-slotecon1", html)
         self.assertIn("position-template-ui.js?v=20260726-navmore1", main)
         self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
@@ -547,10 +557,10 @@ class OwnerSetupSplitContractTests(TestCase):
             main.index("function renderOverview")
         ]
         self.assertNotIn('visible.find(({ ui }) => !ui.locked)', resume_helper)
-        for filename, (factory, mount_method) in controllers.items():
+        for filename, (factory, mount_method, version) in controllers.items():
             source = (FRONTEND / "owner-setup" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500)
-            self.assertIn(f'/owner-setup/{filename}?v=20260720-unified10', main)
+            self.assertIn(f'/owner-setup/{filename}?v={version}', main)
             self.assertNotRegex(source, r"(?:<style\b|\sstyle\s*=|\.style\b)")
             self.assertIn(f"export function {factory}", source)
             self.assertIn(mount_method, source)
@@ -592,9 +602,9 @@ class StaffShiftsSplitContractTests(TestCase):
         self.assertLess(len(calendar.splitlines()), 850)
         self.assertLess(len(comments.splitlines()), 700)
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
-        self.assertIn("/staff-shifts/calendar-controller.js?v=20260720-unified6", main)
+        self.assertIn("/staff-shifts/calendar-controller.js?v=20260729-overnight1", main)
         self.assertIn("/staff-shifts/comment-controller.js?v=20260728-comments1", main)
-        self.assertIn("staff-shifts.js?v=20260728-comments1", html)
+        self.assertIn("staff-shifts.js?v=20260729-overnight1", html)
         self.assertIn("/shifts/export-metadata?", module)
         self.assertIn("/mentionable-members", comments)
         self.assertIn("reply_to_comment_id", comments)

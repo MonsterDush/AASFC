@@ -765,6 +765,61 @@ def get_members(
 
 # ---------- Venue settings ----------
 
+def _night_shift_disable_blockers(db: Session, *, venue_id: int) -> dict[str, int]:
+    template_ids = select(ShiftScheduleTemplate.id).where(
+        ShiftScheduleTemplate.venue_id == int(venue_id)
+    )
+    return {
+        "active_shifts": int(
+            db.execute(
+                select(func.count(Shift.id)).where(
+                    Shift.venue_id == int(venue_id),
+                    Shift.shift_slot == "NIGHT",
+                    Shift.is_active.is_(True),
+                )
+            ).scalar()
+            or 0
+        ),
+        "reports": int(
+            db.execute(
+                select(func.count(DailyReport.id)).where(
+                    DailyReport.venue_id == int(venue_id),
+                    DailyReport.shift_slot == "NIGHT",
+                )
+            ).scalar()
+            or 0
+        ),
+        "template_items": int(
+            db.execute(
+                select(func.count(ShiftScheduleTemplateItem.id)).where(
+                    ShiftScheduleTemplateItem.template_id.in_(template_ids),
+                    ShiftScheduleTemplateItem.shift_slot == "NIGHT",
+                )
+            ).scalar()
+            or 0
+        ),
+    }
+
+
+def _night_shift_disable_blocker_detail(blockers: dict[str, int]) -> str:
+    labels = (
+        ("active_shifts", "активных ночных смен"),
+        ("reports", "ночных отчётов"),
+        ("template_items", "ночных элементов шаблонов"),
+    )
+    parts = [
+        f"{label} — {int(blockers.get(key, 0) or 0)}"
+        for key, label in labels
+        if int(blockers.get(key, 0) or 0) > 0
+    ]
+    return (
+        "Нельзя отключить ночные смены, пока существуют ночные данные: "
+        + ", ".join(parts)
+        + ". Архивируйте активные смены и очистите ночные пункты шаблонов. "
+        "Если уже есть ночные отчёты, режим должен оставаться включённым для доступа к истории."
+    )
+
+
 @router.get("/{venue_id}/settings", response_model=VenueSettingsOut)
 def get_venue_settings(
     venue_id: int,
@@ -805,7 +860,15 @@ def patch_venue_settings(
         venue.tips_enabled = bool(payload.tips_enabled)
 
     if payload.night_shifts_enabled is not None:
-        venue.night_shifts_enabled = bool(payload.night_shifts_enabled)
+        next_night_shifts_enabled = bool(payload.night_shifts_enabled)
+        if bool(getattr(venue, "night_shifts_enabled", False)) and not next_night_shifts_enabled:
+            blockers = _night_shift_disable_blockers(db, venue_id=venue_id)
+            if any(int(value or 0) > 0 for value in blockers.values()):
+                raise HTTPException(
+                    status_code=409,
+                    detail=_night_shift_disable_blocker_detail(blockers),
+                )
+        venue.night_shifts_enabled = next_night_shifts_enabled
 
     if payload.tips_split_mode is not None:
         mode = str(payload.tips_split_mode).strip().upper()
@@ -813,7 +876,6 @@ def patch_venue_settings(
             raise HTTPException(status_code=400, detail="Bad tips_split_mode")
         venue.tips_split_mode = mode
 
-    # stub (weights are stored, but not used yet)
     if payload.tips_weights is not None:
         venue.tips_weights = payload.tips_weights
 

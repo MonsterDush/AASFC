@@ -175,11 +175,17 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
                 economics_date=target_date,
                 db=self.db,
                 user=self.user,
+                shift_slot="NIGHT",
             )
 
         self.assertIs(result, sanitized)
         require_view.assert_called_once_with(self.db, venue_id=5, user=self.user)
-        get_day.assert_called_once_with(db=self.db, venue_id=5, target_date=target_date)
+        get_day.assert_called_once_with(
+            db=self.db,
+            venue_id=5,
+            target_date=target_date,
+            shift_slot="NIGHT",
+        )
         sanitize.assert_called_once_with(self.user, raw_payload)
 
     def test_write_route_preserves_service_arguments_commit_and_usage(self):

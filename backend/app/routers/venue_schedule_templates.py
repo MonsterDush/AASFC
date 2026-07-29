@@ -33,6 +33,9 @@ from app.routers.venue_permissions import (
 from app.routers.venue_payroll_support import (
     _recalculate_payroll_for_dates,
 )
+from app.routers.venue_reports import (
+    _rebuild_closed_report_tip_allocations_for_keys,
+)
 
 
 router = APIRouter()
@@ -48,26 +51,6 @@ _WEEKDAY_TITLES_RU = {
     5: "Суббота",
     6: "Воскресенье",
 }
-_WEEKDAY_FROM_RU = {
-    0: "понедельника",
-    1: "вторника",
-    2: "среды",
-    3: "четверга",
-    4: "пятницы",
-    5: "субботы",
-    6: "воскресенья",
-}
-_WEEKDAY_TO_RU = {
-    0: "понедельник",
-    1: "вторник",
-    2: "среду",
-    3: "четверг",
-    4: "пятницу",
-    5: "субботу",
-    6: "воскресенье",
-}
-
-
 def _venue_night_shifts_enabled(db: Session, *, venue_id: int) -> bool:
     return bool(
         db.execute(
@@ -89,10 +72,10 @@ def _shift_slot_label(slot: str | None) -> str:
 
 def _shift_template_weekday_slot_title(weekday: int, slot: str | None) -> str:
     weekday = int(weekday)
+    weekday_title = _WEEKDAY_TITLES_RU.get(weekday, str(weekday))
     if normalize_shift_slot(slot) == "NIGHT":
-        next_weekday = (weekday + 1) % 7
-        return f"Ночь с {_WEEKDAY_FROM_RU.get(weekday, str(weekday))} на {_WEEKDAY_TO_RU.get(next_weekday, str(next_weekday))}"
-    return _WEEKDAY_TITLES_RU.get(weekday, str(weekday))
+        return f"Ночь · {weekday_title}"
+    return weekday_title
 
 
 def _normalize_shift_schedule_template_title(title: str) -> str:
@@ -338,12 +321,28 @@ def update_shift_schedule_template(
         title = _normalize_shift_schedule_template_title(payload.title)
         _ensure_shift_schedule_template_title_unique(db, venue_id=venue_id, title=title, exclude_template_id=template_id)
         obj.title = title
-    payload_fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    payload_fields_set = getattr(payload, "model_fields_set", None)
+    if payload_fields_set is None:
+        payload_fields_set = getattr(payload, "__fields_set__", set())
     if "description" in payload_fields_set:
         obj.description = payload.description or None
     if payload.is_active is not None:
         obj.is_active = bool(payload.is_active)
     if payload.items is not None:
+        if not _venue_night_shifts_enabled(db, venue_id=venue_id):
+            has_stored_night_items = db.execute(
+                select(ShiftScheduleTemplateItem.id)
+                .where(
+                    ShiftScheduleTemplateItem.template_id == int(obj.id),
+                    ShiftScheduleTemplateItem.shift_slot == "NIGHT",
+                )
+                .limit(1)
+            ).scalar_one_or_none() is not None
+            if has_stored_night_items:
+                raise HTTPException(
+                    status_code=409,
+                    detail="В шаблоне сохранены ночные интервалы. Сначала включите ночные смены, затем измените шаблон.",
+                )
         _replace_shift_schedule_template_items(db, template=obj, venue_id=venue_id, raw_items=payload.items)
 
     try:
@@ -482,6 +481,15 @@ def apply_shift_schedule_template(
         changed_dates.update(shift.date for shift in existing_month_shifts if month_start <= shift.date < month_end_exclusive)
 
     if changed_dates:
+        _rebuild_closed_report_tip_allocations_for_keys(
+            db,
+            venue_id=venue_id,
+            report_keys={
+                (changed_date, shift_slot)
+                for changed_date in changed_dates
+                for shift_slot in ("DAY", "NIGHT")
+            },
+        )
         _recalculate_payroll_for_dates(
             db,
             venue_id=venue_id,

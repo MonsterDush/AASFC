@@ -49,9 +49,9 @@ import { createCatalogSetupController } from "/owner-setup/catalog-editor.js?v=2
 import { createPayProfileSetupController } from "/owner-setup/pay-profile-editor.js?v=20260720-unified10";
 import { createPositionSetupController } from "/owner-setup/position-editor.js?v=20260720-unified10";
 import { createInviteSetupController } from "/owner-setup/invite-editor.js?v=20260720-unified10";
-import { createShiftIntervalSetupController } from "/owner-setup/shift-interval-editor.js?v=20260720-unified10";
+import { createShiftIntervalSetupController } from "/owner-setup/shift-interval-editor.js?v=20260729-overnight1";
 import { createSupplierSetupController } from "/owner-setup/supplier-editor.js?v=20260720-unified10";
-import { createRecurringExpenseSetupController } from "/owner-setup/recurring-expense-editor.js?v=20260720-unified10";
+import { createRecurringExpenseSetupController } from "/owner-setup/recurring-expense-editor.js?v=20260729-slotecon1";
 
 applyTelegramTheme();
 mountCommonUI("venue");

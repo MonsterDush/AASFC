@@ -12,7 +12,7 @@ Env:
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone, date
+from datetime import date, datetime, time, timedelta, timezone
 
 try:
     from zoneinfo import ZoneInfo  # py3.9+
@@ -30,6 +30,7 @@ from app.services.notification_logs import (
     notification_delivery_exists,
     notification_dedupe_scope,
 )
+from app.services.shifts.slots import normalize_shift_slot
 
 
 DEFAULT_REMINDER_HOURS = int(os.getenv("REMINDER_HOURS", "18"))
@@ -66,8 +67,24 @@ def _fmt_time(t) -> str:
         return s[:5] if len(s) >= 5 else s
 
 
-def _shift_start_naive(shift_date, start_time):
+def _shift_start_naive(shift_date: date, start_time: time) -> datetime:
+    """Return the actual local start moment for the stored shift date.
+
+    Shift.date is always the calendar date when the interval starts. An
+    overnight interval may end on the next day, but NIGHT itself never shifts
+    the start date forward or backward.
+    """
     return datetime.combine(shift_date, start_time)
+
+
+def _build_shift_reminder_text(*, shift, interval, venue) -> str:
+    shift_slot = normalize_shift_slot(getattr(shift, "shift_slot", None))
+    shift_kind = "ночная смена" if shift_slot == "NIGHT" else "дневная смена"
+    return (
+        f"Напоминаем, что у Вас {shift_kind} {format_date_ru(shift.date)} "
+        f"в {_fmt_time(interval.start_time)} "
+        f"в заведении \"{venue.name}\""
+    )
 
 
 def _get_tzinfo():
@@ -136,14 +153,10 @@ def main() -> int:
             if now > planned_at + timedelta(minutes=max(LATE_GRACE_MINUTES, WINDOW_MINUTES)):
                 continue
 
-            text = (
-                f"Напоминаем, что у Вас смена {format_date_ru(sh.date)} "
-                f"в {_fmt_time(interval.start_time)} "
-                f"в заведении \"{venue.name}\""
-            )
+            shift_slot = normalize_shift_slot(getattr(sh, "shift_slot", None))
+            text = _build_shift_reminder_text(shift=sh, interval=interval, venue=venue)
             chat_id = int(FORCE_CHAT_ID) if FORCE_CHAT_ID else int(user.tg_user_id)
             dedupe_scope = f"force:{chat_id}" if FORCE_CHAT_ID else notification_dedupe_scope(user)
-            shift_slot = str(getattr(sh, "shift_slot", None) or "DAY").upper()
             idempotency_key = (
                 f"shift_reminder:{int(sh.id)}:{dedupe_scope}:{lead_hours}:"
                 f"{sh.date.isoformat()}:{_fmt_time(interval.start_time)}:{shift_slot}"

@@ -3,6 +3,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  formatShiftIntervalRange,
+  shiftIntervalEndsNextDay,
+} from "./shift-time.js";
 
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
@@ -127,7 +131,7 @@ const pageStyleCacheKeyOverrides = new Map([
   ["staff-finance.html", "20260726-polish6"],
   ["staff-report.html", "20260728-responsive1"],
   ["staff-salary.html", "20260726-polish6"],
-  ["staff-shifts.html", "20260728-toolbar2"],
+  ["staff-shifts.html", "20260729-desktop2"],
 ]);
 const inlineFreePages = [
   "admin-position-templates.html",
@@ -161,11 +165,11 @@ const inlineFreeEntrypoints = new Map([
   ["admin-position-templates.html", "/admin-position-templates.js?v=20260726-navmore1"],
   ["app-adjustments.html", "/app-adjustments.js?v=20260726-navmore1"],
   ["owner-departments.html", "/owner-departments.js?v=20260726-navmore1"],
-  ["owner-day-economics.html", "/owner-day-economics.js?v=20260726-navmore1"],
+  ["owner-day-economics.html", "/owner-day-economics.js?v=20260729-slotecon1"],
   ["owner-economics-plans.html", "/owner-economics-plans.js?v=20260726-navmore1"],
   ["owner-economics-rules.html", "/owner-economics-rules.js?v=20260726-navmore1"],
   ["owner-expense-categories.html", "/owner-expense-categories.js?v=20260726-navmore1"],
-  ["owner-expenses.html", "/owner-expenses.js?v=20260726-navmore1"],
+  ["owner-expenses.html", "/owner-expenses.js?v=20260729-slotecon1"],
   ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20260726-navmore1"],
   ["owner-kpi.html", "/owner-kpi.js?v=20260726-navmore1"],
   ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260726-navmore1"],
@@ -173,12 +177,12 @@ const inlineFreeEntrypoints = new Map([
   ["owner-payroll.html", "/owner-payroll.js?v=20260726-payrollpolish1"],
   ["owner-payment-methods.html", "/owner-payment-methods.js?v=20260726-navmore1"],
   ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260726-navmore1"],
-  ["owner-setup.html", "/owner-setup.js?v=20260726-navmore1"],
+  ["owner-setup.html", "/owner-setup.js?v=20260729-slotecon1"],
   ["owner-summary.html", "/owner-summary.js?v=20260726-navmore1"],
   ["owner-suppliers.html", "/owner-suppliers.js?v=20260726-navmore1"],
   ["owner-turnover.html", "/owner-turnover.js?v=20260726-navmore1"],
-  ["shift-intervals.html", "/shift-intervals.js?v=20260726-navmore1"],
-  ["shift-schedule-templates.html", "/shift-schedule-templates.js?v=20260726-navmore1"],
+  ["shift-intervals.html", "/shift-intervals.js?v=20260729-overnight1"],
+  ["shift-schedule-templates.html", "/shift-schedule-templates.js?v=20260729-overnight1"],
   ["staff-adjustments.html", "/staff-adjustments.js?v=20260726-navmore1"],
 ]);
 const inlineFreeModules = [
@@ -221,6 +225,7 @@ const inlineFreeModules = [
   "positions/position-list.js",
   "shift-schedule-templates.js",
   "shift-intervals.js",
+  "shift-time.js",
   "staff-adjustments.js",
   "staff-report.js",
 ];
@@ -697,6 +702,11 @@ assert.equal(inlineStyleCount, approvedInlineStyleCount, "dynamic inline style c
 assert.equal(embeddedStyleBlockCount, 0, "embedded style blocks are forbidden");
 assert.equal(embeddedStyleLineCount, 0, "embedded style lines are forbidden");
 assert.deepEqual([...cssHrefVariants], [`/styles.css?v=${globalStyleCacheKey}`]);
+assert.equal(formatShiftIntervalRange("12:00", "20:00"), "12:00–20:00");
+assert.equal(formatShiftIntervalRange("22:00", "04:00"), "22:00–04:00 (+1 день)");
+assert.equal(formatShiftIntervalRange("04:00", "04:00"), "04:00–04:00 (+1 день)");
+assert.equal(shiftIntervalEndsNextDay("22:00", "04:00"), true);
+assert.equal(shiftIntervalEndsNextDay("04:00", "12:00"), false);
 
 console.log(
   `style contract: ${stylesSource.split("\n").length - 1} CSS lines in ${coreStyleFiles.length} modules, `

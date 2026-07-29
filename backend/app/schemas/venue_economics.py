@@ -74,6 +74,7 @@ class DepartmentPlanAutofillOut(BaseModel):
 
 class DayEconomicsReportOut(BaseModel):
     exists: bool
+    shift_slot: str = "TOTAL"
     report_id: int | None = None
     status: str
     closed_at: datetime | None = None
@@ -131,6 +132,8 @@ class KpiSummaryOut(BaseModel):
 
 class DayEconomicsPlanOut(BaseModel):
     date: date
+    shift_slot: str = "TOTAL"
+    allocated_from_total: bool = False
     source: str = "NONE"
     template_weekday: int | None = None
     template_weekday_title: str | None = None
@@ -242,6 +245,7 @@ class VenueEconomicsRulesIn(BaseModel):
 
 
 class DayEconomicsPlanFactOut(BaseModel):
+    comparison_available: bool = True
     revenue_fact_minor: int
     revenue_plan_minor: int | None = None
     revenue_delta_minor: int | None = None
@@ -272,6 +276,7 @@ class DayEconomicsRollupDayOut(BaseModel):
 
 class DayEconomicsRollupOut(BaseModel):
     month: str
+    profit_available: bool = True
     days_in_period: int
     evaluated_day_count: int
     closed_day_count: int
@@ -289,6 +294,7 @@ class DayEconomicsOut(BaseModel):
     can_view_financial_values: bool = True
     financial_values_hidden_reason: str | None = None
     date: date
+    shift_slot: str = "TOTAL"
     report: DayEconomicsReportOut
     team: DayEconomicsTeamOut
     metrics: DayEconomicsMetricsOut

@@ -21,7 +21,9 @@ class NotificationTriggerMatrixContractTests(TestCase):
             "_enqueue_salary_day_breakdown_job",
             "_enqueue_soft_alerts_job",
         ):
-            self.assertIn(f"{enqueue_call}(db, venue_id=venue_id, target_date=report_date)", source)
+            self.assertIn(f"{enqueue_call}(db, **notification_job_args)", source)
+        self.assertIn('"shift_slot": normalized_shift_slot', source)
+        self.assertIn('"event_key": notification_event_key', source)
         self.assertIn("background_tasks.add_task(process_pending_notification_jobs_once, 10)", source)
 
     def test_adjustment_mutations_enqueue_assignment_and_dispute_events(self):
@@ -63,6 +65,8 @@ class NotificationTriggerMatrixContractTests(TestCase):
         self.assertIn("if now >= start_dt:", source)
         self.assertIn("notification_delivery_exists", source)
         self.assertIn("sa.reminder_sent_at = sent_at", source)
+        self.assertIn("_build_shift_reminder_text", source)
+        self.assertIn('shift_kind = "ночная смена"', source)
 
         demo_bootstrap = _source("services/demo/bootstrap.py")
         self.assertIn("created_at=datetime.combine(day, time(hour=9), tzinfo=timezone.utc)", demo_bootstrap)

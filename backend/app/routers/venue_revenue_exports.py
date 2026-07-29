@@ -231,6 +231,7 @@ def _build_revenue_export_details(*, db: Session, venue_id: int, period_start: d
         details_rows.append(
             {
                 "date": report.date,
+                "shift_slot": str(getattr(report, "shift_slot", None) or "DAY").upper(),
                 "report_id": int(report.id),
                 "status": str(report.status or "DRAFT").upper(),
                 "revenue_total_minor": int(report.revenue_total or 0) * 100,
@@ -249,6 +250,7 @@ def _build_revenue_export_details(*, db: Session, venue_id: int, period_start: d
             detail_values.append(
                 {
                     "date": report.date,
+                    "shift_slot": str(getattr(report, "shift_slot", None) or "DAY").upper(),
                     "report_id": int(report.id),
                     "kind": str(value.kind or "").upper(),
                     "code": catalog_item.get("code"),

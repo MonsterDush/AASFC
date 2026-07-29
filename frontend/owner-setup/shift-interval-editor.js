@@ -1,3 +1,5 @@
+import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
+
 export function createShiftIntervalSetupController(context) {
   const { toast, confirmModal, api, state, esc, getStepByKey, getNextStepKey, moveToStep, loadSetup } = context;
 
@@ -41,7 +43,7 @@ export function createShiftIntervalSetupController(context) {
                       <b>${esc(item.title)}</b>
                       ${item.is_active === false ? '<span class="badge">архив</span>' : ''}
                     </div>
-                    <div class="setup-minirow__meta">${esc(item.start_time)}–${esc(item.end_time)} · Смен: ${Number(item.usage_count || 0)}</div>
+                    <div class="setup-minirow__meta">${esc(formatShiftIntervalRange(item.start_time, item.end_time))} · Смен: ${Number(item.usage_count || 0)}</div>
                   </div>
                   <div class="setup-minirow__actions">
                     <button class="btn sm" type="button" data-edit-interval="${esc(item.id)}">Изменить</button>

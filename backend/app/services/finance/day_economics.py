@@ -10,7 +10,12 @@ from app.models.day_economics_month_plan import DayEconomicsMonthPlan
 from app.models.day_economics_plan import DayEconomicsPlan
 from app.models.day_economics_plan_template import DayEconomicsPlanTemplate
 from app.models.venue_economics_rule import VenueEconomicsRule
-from app.services.finance.summary import get_day_finance_summary, _group_revenue_breakdown
+from app.services.finance.summary import (
+    _active_finance_shift_slots,
+    _amount_share_for_slot,
+    _group_revenue_breakdown,
+    get_day_finance_summary,
+)
 
 
 WEEKDAY_TITLES = {
@@ -635,18 +640,26 @@ def upsert_venue_economics_rules(
     return _serialize_rules(rule)
 
 
-def _build_plan_fact(*, summary: dict, metrics: dict, team: dict, plan: dict) -> dict:
+def _build_plan_fact(
+    *,
+    summary: dict,
+    metrics: dict,
+    team: dict,
+    plan: dict,
+    comparison_available: bool = True,
+) -> dict:
     revenue_fact_minor = int(summary.get('revenue_minor') or 0)
     profit_fact_minor = int(summary.get('profit_minor') or 0)
     revenue_per_assigned_fact_minor = metrics.get('revenue_per_assigned_minor')
     assigned_user_fact = int(team.get('assigned_user_count') or 0)
 
-    revenue_plan_minor = plan.get('revenue_plan_minor')
-    profit_plan_minor = plan.get('profit_plan_minor')
-    revenue_per_assigned_plan_minor = plan.get('revenue_per_assigned_plan_minor')
-    assigned_user_target = plan.get('assigned_user_target')
+    revenue_plan_minor = plan.get('revenue_plan_minor') if comparison_available else None
+    profit_plan_minor = plan.get('profit_plan_minor') if comparison_available else None
+    revenue_per_assigned_plan_minor = plan.get('revenue_per_assigned_plan_minor') if comparison_available else None
+    assigned_user_target = plan.get('assigned_user_target') if comparison_available else None
 
     return {
+        'comparison_available': bool(comparison_available),
         'revenue_fact_minor': revenue_fact_minor,
         'revenue_plan_minor': revenue_plan_minor,
         'revenue_delta_minor': (revenue_fact_minor - int(revenue_plan_minor)) if revenue_plan_minor is not None else None,
@@ -663,8 +676,33 @@ def _build_plan_fact(*, summary: dict, metrics: dict, team: dict, plan: dict) ->
     }
 
 
+def _allocate_common_plan_to_slot(
+    *,
+    plan: dict,
+    shift_slot: str,
+    active_slots: list[str],
+) -> dict:
+    slot = _normalize_economics_shift_slot(shift_slot)
+    payload = dict(plan or {})
+    payload['shift_slot'] = slot
+    payload['allocated_from_total'] = slot in {'DAY', 'NIGHT'}
+    if slot not in {'DAY', 'NIGHT'}:
+        return payload
+    for key in ('revenue_plan_minor', 'profit_plan_minor', 'assigned_user_target'):
+        value = payload.get(key)
+        if value is None:
+            continue
+        payload[key] = _amount_share_for_slot(
+            amount_minor=int(value),
+            slots=active_slots,
+            shift_slot=slot,
+        )
+    return payload
+
+
 def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict, rules: dict, shift_slot: str = 'TOTAL') -> list[dict]:
     alerts: list[dict] = []
+    slot_specific = _is_slot_specific(shift_slot)
 
     report_status = str(report.get('status') or 'MISSING').upper()
     if report_status != 'CLOSED':
@@ -683,7 +721,7 @@ def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict
             'detail': f"{int(summary.get('draft_expense_count') or 0)} черновик(ов) на сумму {_format_minor_as_rub_text(summary.get('draft_expense_total_minor'))}.",
         })
 
-    if _is_slot_specific(shift_slot) and not bool(summary.get('slot_costs_available', True)):
+    if slot_specific and not bool(summary.get('slot_costs_available', True)):
         alerts.append({
             'severity': 'INFO',
             'code': 'SLOT_COSTS_NOT_ALLOCATED',
@@ -691,43 +729,44 @@ def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict
             'detail': 'Текущие расходы, корректировки и ФОТ пока хранятся на уровне даты, поэтому не распределяются между дневной и ночной сменой.',
         })
 
-    if int(summary.get('profit_minor') or 0) < 0:
-        alerts.append({
-            'severity': 'CRITICAL',
-            'code': 'LOSS_DAY',
-            'title': 'День убыточный',
-            'detail': 'Фактическая прибыль дня ушла в минус.',
-        })
+    if bool(summary.get('slot_profit_available', True)):
+        if int(summary.get('profit_minor') or 0) < 0:
+            alerts.append({
+                'severity': 'CRITICAL',
+                'code': 'LOSS_DAY',
+                'title': 'День убыточный',
+                'detail': 'Фактическая прибыль дня ушла в минус.',
+            })
 
-    max_expense_ratio_bps = rules.get('max_expense_ratio_bps')
-    expense_ratio_bps = metrics.get('expense_ratio_bps')
-    if max_expense_ratio_bps is not None and expense_ratio_bps is not None and int(expense_ratio_bps) > int(max_expense_ratio_bps):
-        alerts.append({
-            'severity': 'WARN',
-            'code': 'EXPENSE_RATIO_HIGH',
-            'title': 'Расходы выше нормы',
-            'detail': f'Расходы к выручке: {expense_ratio_bps / 100:.2f}% при лимите {int(max_expense_ratio_bps) / 100:.2f}%.',
-        })
+        max_expense_ratio_bps = rules.get('max_expense_ratio_bps')
+        expense_ratio_bps = metrics.get('expense_ratio_bps')
+        if max_expense_ratio_bps is not None and expense_ratio_bps is not None and int(expense_ratio_bps) > int(max_expense_ratio_bps):
+            alerts.append({
+                'severity': 'WARN',
+                'code': 'EXPENSE_RATIO_HIGH',
+                'title': 'Расходы выше нормы',
+                'detail': f'Расходы к выручке: {expense_ratio_bps / 100:.2f}% при лимите {int(max_expense_ratio_bps) / 100:.2f}%.',
+            })
 
-    max_payroll_ratio_bps = rules.get('max_payroll_ratio_bps')
-    payroll_ratio_bps = metrics.get('payroll_ratio_bps')
-    if max_payroll_ratio_bps is not None and payroll_ratio_bps is not None and int(payroll_ratio_bps) > int(max_payroll_ratio_bps):
-        alerts.append({
-            'severity': 'WARN',
-            'code': 'PAYROLL_RATIO_HIGH',
-            'title': 'ФОТ выше нормы',
-            'detail': f'ФОТ к выручке: {payroll_ratio_bps / 100:.2f}% при лимите {int(max_payroll_ratio_bps) / 100:.2f}%.',
-        })
+        max_payroll_ratio_bps = rules.get('max_payroll_ratio_bps')
+        payroll_ratio_bps = metrics.get('payroll_ratio_bps')
+        if max_payroll_ratio_bps is not None and payroll_ratio_bps is not None and int(payroll_ratio_bps) > int(max_payroll_ratio_bps):
+            alerts.append({
+                'severity': 'WARN',
+                'code': 'PAYROLL_RATIO_HIGH',
+                'title': 'ФОТ выше нормы',
+                'detail': f'ФОТ к выручке: {payroll_ratio_bps / 100:.2f}% при лимите {int(max_payroll_ratio_bps) / 100:.2f}%.',
+            })
 
-    min_revenue_per_assigned_minor = rules.get('min_revenue_per_assigned_minor')
-    revenue_per_assigned_minor = metrics.get('revenue_per_assigned_minor')
-    if min_revenue_per_assigned_minor is not None and revenue_per_assigned_minor is not None and int(revenue_per_assigned_minor) < int(min_revenue_per_assigned_minor):
-        alerts.append({
-            'severity': 'WARN',
-            'code': 'REVENUE_PER_ASSIGNED_LOW',
-            'title': 'Низкая выручка на сотрудника',
-            'detail': 'Выручка на сотрудника ниже заданной нормы.',
-        })
+        min_revenue_per_assigned_minor = rules.get('min_revenue_per_assigned_minor')
+        revenue_per_assigned_minor = metrics.get('revenue_per_assigned_minor')
+        if min_revenue_per_assigned_minor is not None and revenue_per_assigned_minor is not None and int(revenue_per_assigned_minor) < int(min_revenue_per_assigned_minor):
+            alerts.append({
+                'severity': 'WARN',
+                'code': 'REVENUE_PER_ASSIGNED_LOW',
+                'title': 'Низкая выручка на сотрудника',
+                'detail': 'Выручка на сотрудника ниже заданной нормы.',
+            })
 
     min_assigned_shift_coverage_bps = rules.get('min_assigned_shift_coverage_bps')
     coverage_bps = metrics.get('assigned_shift_coverage_bps')
@@ -739,36 +778,38 @@ def _build_alerts(*, report: dict, summary: dict, metrics: dict, plan_fact: dict
             'detail': f'Покрытие смен: {coverage_bps / 100:.2f}% при целевом значении {int(min_assigned_shift_coverage_bps) / 100:.2f}%.',
         })
 
-    min_profit_minor = rules.get('min_profit_minor')
-    if min_profit_minor is not None and int(summary.get('profit_minor') or 0) < int(min_profit_minor):
-        alerts.append({
-            'severity': 'WARN',
-            'code': 'PROFIT_BELOW_TARGET',
-            'title': 'Прибыль ниже порога',
-            'detail': 'Фактическая прибыль дня ниже заданного минимального порога.',
-        })
+    if bool(summary.get('slot_profit_available', True)):
+        min_profit_minor = rules.get('min_profit_minor')
+        if min_profit_minor is not None and int(summary.get('profit_minor') or 0) < int(min_profit_minor):
+            alerts.append({
+                'severity': 'WARN',
+                'code': 'PROFIT_BELOW_TARGET',
+                'title': 'Прибыль ниже порога',
+                'detail': 'Фактическая прибыль дня ниже заданного минимального порога.',
+            })
 
-    if plan_fact.get('revenue_delta_minor') is not None and int(plan_fact['revenue_delta_minor']) < 0:
-        alerts.append({
-            'severity': 'INFO',
-            'code': 'REVENUE_PLAN_MISSED',
-            'title': 'План по выручке не выполнен',
-            'detail': 'Фактическая выручка ниже плана дня.',
-        })
+        if plan_fact.get('revenue_delta_minor') is not None and int(plan_fact['revenue_delta_minor']) < 0:
+            alerts.append({
+                'severity': 'INFO',
+                'code': 'REVENUE_PLAN_MISSED',
+                'title': 'План по выручке не выполнен',
+                'detail': 'Фактическая выручка ниже плана дня.',
+            })
 
-    if plan_fact.get('profit_delta_minor') is not None and int(plan_fact['profit_delta_minor']) < 0:
-        alerts.append({
-            'severity': 'INFO',
-            'code': 'PROFIT_PLAN_MISSED',
-            'title': 'План по прибыли не выполнен',
-            'detail': 'Фактическая прибыль ниже плана дня.',
-        })
+        if plan_fact.get('profit_delta_minor') is not None and int(plan_fact['profit_delta_minor']) < 0:
+            alerts.append({
+                'severity': 'INFO',
+                'code': 'PROFIT_PLAN_MISSED',
+                'title': 'План по прибыли не выполнен',
+                'detail': 'Фактическая прибыль ниже плана дня.',
+            })
 
     return alerts
 
 
 def _build_rollup(*, db: Session, venue_id: int, target_date: date, shift_slot: str = 'TOTAL') -> dict:
     month_start = target_date.replace(day=1)
+    profit_available = True
     cursor = month_start
     days: list[dict] = []
     avg_revenue_per_assigned_parts: list[int] = []
@@ -793,16 +834,25 @@ def _build_rollup(*, db: Session, venue_id: int, target_date: date, shift_slot: 
             })
         cursor += timedelta(days=1)
 
-    profit_total_minor = int(sum(int(item['profit_minor']) for item in days)) if days else 0
-    avg_profit_minor = int(profit_total_minor / len(days)) if days else None
+    profit_total_minor = (
+        int(sum(int(item['profit_minor']) for item in days))
+        if profit_available and days
+        else 0
+    )
+    avg_profit_minor = (
+        int(profit_total_minor / len(days))
+        if profit_available and days
+        else None
+    )
     avg_revenue_per_assigned_minor = int(sum(avg_revenue_per_assigned_parts) / len(avg_revenue_per_assigned_parts)) if avg_revenue_per_assigned_parts else None
-    profitable_day_count = sum(1 for item in days if int(item['profit_minor']) > 0)
-    loss_day_count = sum(1 for item in days if int(item['profit_minor']) < 0)
-    best_day = max(days, key=lambda item: int(item['profit_minor'])) if days else None
-    worst_day = min(days, key=lambda item: int(item['profit_minor'])) if days else None
+    profitable_day_count = sum(1 for item in days if int(item['profit_minor']) > 0) if profit_available else 0
+    loss_day_count = sum(1 for item in days if int(item['profit_minor']) < 0) if profit_available else 0
+    best_day = max(days, key=lambda item: int(item['profit_minor'])) if profit_available and days else None
+    worst_day = min(days, key=lambda item: int(item['profit_minor'])) if profit_available and days else None
 
     return {
         'month': month_start.strftime('%Y-%m'),
+        'profit_available': profit_available,
         'days_in_period': (target_date - month_start).days + 1,
         'evaluated_day_count': len(days),
         'closed_day_count': closed_day_count,
@@ -828,8 +878,11 @@ def _build_metrics(*, summary: dict, report: dict, team: dict, department_share_
     assigned_shift_count = int(team.get('assigned_shift_count') or 0)
     assignment_count = int(team.get('assignment_count') or 0)
     tips_total_minor = int(report.get('tips_total_minor') or 0)
+    profit_available = bool(summary.get('slot_profit_available', True))
 
-    if profit_minor > 0:
+    if not profit_available:
+        result_status = 'UNAVAILABLE'
+    elif profit_minor > 0:
         result_status = 'PROFIT'
     elif profit_minor < 0:
         result_status = 'LOSS'
@@ -843,15 +896,15 @@ def _build_metrics(*, summary: dict, report: dict, team: dict, department_share_
         'result_status': result_status,
         'revenue_per_assigned_minor': int(revenue_minor / assigned_user_count) if assigned_user_count > 0 else None,
         'tips_per_assigned_minor': int(tips_total_minor / assigned_user_count) if assigned_user_count > 0 else None,
-        'profit_per_assigned_minor': int(profit_minor / assigned_user_count) if assigned_user_count > 0 else None,
+        'profit_per_assigned_minor': int(profit_minor / assigned_user_count) if profit_available and assigned_user_count > 0 else None,
         'revenue_per_shift_minor': int(revenue_minor / total_shift_count) if total_shift_count > 0 else None,
-        'profit_per_shift_minor': int(profit_minor / total_shift_count) if total_shift_count > 0 else None,
+        'profit_per_shift_minor': int(profit_minor / total_shift_count) if profit_available and total_shift_count > 0 else None,
         'assignments_per_shift': round(assignment_count / total_shift_count, 2) if total_shift_count > 0 else None,
         'assigned_shift_coverage_bps': _safe_ratio_bps(numerator_minor=assigned_shift_count, denominator_minor=total_shift_count),
-        'expense_ratio_bps': _safe_ratio_bps(numerator_minor=expense_minor, denominator_minor=revenue_minor),
-        'point_expense_ratio_bps': _safe_ratio_bps(numerator_minor=point_expense_minor, denominator_minor=revenue_minor),
-        'recurring_expense_ratio_bps': _safe_ratio_bps(numerator_minor=recurring_expense_minor, denominator_minor=revenue_minor),
-        'payroll_ratio_bps': _safe_ratio_bps(numerator_minor=payroll_minor, denominator_minor=revenue_minor),
+        'expense_ratio_bps': _safe_ratio_bps(numerator_minor=expense_minor, denominator_minor=revenue_minor) if profit_available else None,
+        'point_expense_ratio_bps': _safe_ratio_bps(numerator_minor=point_expense_minor, denominator_minor=revenue_minor) if profit_available else None,
+        'recurring_expense_ratio_bps': _safe_ratio_bps(numerator_minor=recurring_expense_minor, denominator_minor=revenue_minor) if profit_available else None,
+        'payroll_ratio_bps': _safe_ratio_bps(numerator_minor=payroll_minor, denominator_minor=revenue_minor) if profit_available else None,
         'top_department_title': top_department.get('title') if top_department else None,
         'top_department_share_bps': top_department.get('share_bps') if top_department else None,
         'kpi_metric_count': int(kpi_summary['metric_count']),
@@ -862,6 +915,7 @@ def _build_metrics(*, summary: dict, report: dict, team: dict, department_share_
 
 def get_day_economics(*, db: Session, venue_id: int, target_date: date, shift_slot: str = 'TOTAL') -> dict:
     slot = _normalize_economics_shift_slot(shift_slot)
+    slot_specific = _is_slot_specific(slot)
     summary = get_day_finance_summary(db=db, venue_id=venue_id, target_date=target_date, income_mode='PAYMENTS', shift_slot=slot)
     report = _get_report_state(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
     team = _get_team_snapshot(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
@@ -870,9 +924,23 @@ def get_day_economics(*, db: Session, venue_id: int, target_date: date, shift_sl
     department_share_breakdown = _build_share_breakdown(department_revenue_breakdown)
     kpi_breakdown = _get_kpi_breakdown(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
     metrics = _build_metrics(summary=summary, report=report, team=team, department_share_breakdown=department_share_breakdown, kpi_breakdown=kpi_breakdown)
-    plan = get_day_economics_plan(db=db, venue_id=venue_id, target_date=target_date)
+    plan = _allocate_common_plan_to_slot(
+        plan=get_day_economics_plan(db=db, venue_id=venue_id, target_date=target_date),
+        shift_slot=slot,
+        active_slots=(
+            _active_finance_shift_slots(db, venue_id=venue_id)
+            if slot_specific
+            else ["DAY"]
+        ),
+    )
     rules = get_venue_economics_rules(db=db, venue_id=venue_id)
-    plan_fact = _build_plan_fact(summary=summary, metrics=metrics, team=team, plan=plan)
+    plan_fact = _build_plan_fact(
+        summary=summary,
+        metrics=metrics,
+        team=team,
+        plan=plan,
+        comparison_available=True,
+    )
     alerts = _build_alerts(report=report, summary=summary, metrics=metrics, plan_fact=plan_fact, rules=rules, shift_slot=slot)
     rollup = _build_rollup(db=db, venue_id=venue_id, target_date=target_date, shift_slot=slot)
     return {

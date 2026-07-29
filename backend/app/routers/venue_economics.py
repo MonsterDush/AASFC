@@ -165,10 +165,16 @@ def get_venue_day_economics(
     economics_date: date = Query(..., alias="date", description="YYYY-MM-DD"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    shift_slot: str = Query("TOTAL", pattern="^(TOTAL|DAY|NIGHT)$"),
 ):
     _require_economics_view(db, venue_id=venue_id, user=user)
     try:
-        payload = get_day_economics(db=db, venue_id=venue_id, target_date=economics_date)
+        payload = get_day_economics(
+            db=db,
+            venue_id=venue_id,
+            target_date=economics_date,
+            shift_slot=shift_slot,
+        )
         return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
