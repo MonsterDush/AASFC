@@ -65,33 +65,37 @@
   .staff-shifts-content{gap:20px}
   .staff-shifts-calendar-card{padding:24px;border-radius:22px}
   .staff-shifts-toolbar{
-    grid-template-columns:minmax(300px,.8fr) minmax(0,1.45fr);
-    align-items:stretch;
-    gap:20px;
-  }
-  .staff-shifts-month-nav,
-  .staff-shifts-toolbar__controls{
-    min-height:154px;
-    padding:14px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-height:72px;
+    padding:12px;
     border:1px solid var(--border);
     border-radius:18px;
     background:var(--surfaceTintSoft);
   }
   .staff-shifts-month-nav{
-    grid-template-columns:48px minmax(0,1fr) 48px;
-    gap:14px;
-    font-size:clamp(24px,2vw,32px);
+    flex:1 1 260px;
+    min-width:220px;
+    width:auto;
+    grid-template-columns:40px minmax(0,1fr) 40px;
+    gap:8px;
+    font-size:clamp(20px,1.5vw,26px);
   }
-  .staff-shifts-month-button{width:48px;min-height:48px;border-radius:14px}
-  .staff-shifts-toolbar__controls{align-content:center;gap:9px}
-  .staff-shifts-toolbar__row{gap:8px}
-  .staff-shifts-toolbar__row--scopes{justify-content:flex-end}
-  .staff-shifts-toolbar__row--scopes #calendarMode{margin-left:16px}
-  .staff-shifts-toolbar__row--planning,
-  .staff-shifts-toolbar__row--filters{justify-content:flex-end}
+  .staff-shifts-month-button{width:40px;min-height:40px;border-radius:12px}
+  .staff-shifts-toolbar__controls{
+    display:flex;
+    flex:0 1 auto;
+    align-items:center;
+    gap:8px;
+    min-width:0;
+    white-space:nowrap;
+  }
+  .staff-shifts-toolbar__row{display:contents}
+  .staff-shifts-toolbar__row--scopes #calendarMode{margin-left:0}
   .staff-shifts-tool-button{min-height:40px;padding:9px 14px;font-size:13px}
   .staff-shifts-toolbar__row .schedule-filter-trigger{height:40px;min-height:40px;font-size:13px}
-  .staff-shifts-page #calGrid{margin-top:20px}
+  .staff-shifts-page #calGrid{margin-top:14px}
   .staff-shifts-page #calGrid .cal-head,
   .staff-shifts-page #calGrid .cal-body{gap:10px}
   .staff-shifts-page #calGrid .cal-hcell{padding:8px 0;font-size:13px;font-weight:750}
@@ -103,13 +107,38 @@
   .staff-shifts-page #calGrid .cal-daynum{font-size:14px}
   .staff-shifts-page #calGrid .cal-line{font-size:11px;padding:4px 8px}
 }
-@media (min-width:1500px){
-  .staff-shifts-toolbar{
-    grid-template-columns:minmax(420px,.9fr) minmax(760px,1.35fr);
-    gap:24px;
+@media (min-width:1000px) and (max-width:1399px){
+  .staff-shifts-toolbar{gap:5px;padding:10px}
+  .staff-shifts-month-nav{
+    flex-basis:220px;
+    min-width:200px;
+    grid-template-columns:36px minmax(0,1fr) 36px;
+    gap:4px;
+    font-size:clamp(17px,1.7vw,21px);
   }
-  .staff-shifts-month-nav,
-  .staff-shifts-toolbar__controls{min-height:164px;padding:16px}
+  .staff-shifts-month-button{width:36px;min-height:36px}
+  .staff-shifts-toolbar__controls{gap:5px}
+  .staff-shifts-toolbar .shift-toggle{padding:2px}
+  .staff-shifts-toolbar .shift-toggle button{padding:7px 6px;font-size:10px}
+  .staff-shifts-label-wide{display:none}
+  .staff-shifts-label-compact{display:inline}
+  .staff-shifts-tool-button{min-height:36px;padding:7px 8px;font-size:11px}
+  .staff-shifts-toolbar__row .schedule-filter-trigger{
+    height:36px;
+    min-height:36px;
+    padding-inline:9px 28px;
+    font-size:11px;
+  }
+}
+@media (min-width:1500px){
+  .staff-shifts-toolbar{gap:10px;padding:14px}
+  .staff-shifts-month-nav{
+    flex-basis:340px;
+    min-width:300px;
+    grid-template-columns:44px minmax(0,1fr) 44px;
+    font-size:28px;
+  }
+  .staff-shifts-month-button{width:44px;min-height:44px}
   .staff-shifts-page #calGrid:not(.is-week) .cal-cell{min-height:124px}
 }
 @media (max-width:760px){
