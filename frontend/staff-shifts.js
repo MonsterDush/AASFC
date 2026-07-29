@@ -1231,6 +1231,11 @@ function renderShiftCard(s, allowEdit) {
   }
 
   const commentsHtml = staffShiftComments.renderCommentsSection(shiftId, canComment);
+  const exchangeHtml = canComment ? `
+    <section class="shift-exchange" data-shift-exchange="${shiftId}">
+      <div class="shift-exchange__loading muted">Загружаем запросы на обмен…</div>
+    </section>
+  ` : "";
 
   return `
     <div class="card shiftcard" data-shiftcard="${shiftId}">
@@ -1243,9 +1248,370 @@ function renderShiftCard(s, allowEdit) {
       </div>
       ${peopleHtml}
       ${editorHtml ? `<div class="shiftcard__editor">${editorHtml}</div>` : ``}
+      ${exchangeHtml}
       ${commentsHtml}
     </div>
   `;
+}
+
+function availabilityLabel(status) {
+  if (status === "AVAILABLE") return "Может";
+  if (status === "UNAVAILABLE") return "Не может";
+  return "Не указано";
+}
+
+function swapStatusLabel(status) {
+  if (status === "OPEN") return "Ожидает решения";
+  if (status === "APPROVED") return "Подтверждён";
+  if (status === "REJECTED") return "Отклонён";
+  if (status === "CANCELLED") return "Отменён";
+  return status || "—";
+}
+
+function positionMemberUserId(position) {
+  return Number(position?.member_user_id ?? position?.member?.user_id ?? 0) || 0;
+}
+
+function decorateAssigneeAvailability(card, availabilityItems) {
+  const byUser = new Map(
+    (availabilityItems || []).map((item) => [Number(item?.member?.id || 0), item?.status || null]),
+  );
+  card.querySelectorAll("[data-posselect] option").forEach((option) => {
+    const position = positions.find((item) => String(item.id) === String(option.value));
+    if (!position) return;
+    if (!option.dataset.baseLabel) option.dataset.baseLabel = option.textContent || "";
+    const status = byUser.get(positionMemberUserId(position));
+    option.textContent = `${option.dataset.baseLabel} · ${availabilityLabel(status).toLowerCase()}`;
+    option.classList.toggle("is-unavailable", status === "UNAVAILABLE");
+  });
+}
+
+function renderCandidateOptions(items, selectedUserId = null) {
+  const options = [
+    `<option value="">Без конкретной замены</option>`,
+  ];
+  for (const item of items || []) {
+    const userId = Number(item.member_user_id || item?.member?.id || 0);
+    const name = item?.member?.display_name || "Сотрудник";
+    const suffix = item.availability === "AVAILABLE"
+      ? " · может"
+      : item.availability === "UNAVAILABLE"
+        ? " · не может"
+        : "";
+    const reason = item.can_replace ? "" : ` · ${item.reason || "недоступен"}`;
+    options.push(
+      `<option value="${userId}" ${item.can_replace ? "" : "disabled"} ${Number(selectedUserId) === userId ? "selected" : ""}>${escapeHtml(`${name}${suffix}${reason}`)}</option>`,
+    );
+  }
+  return options.join("");
+}
+
+async function loadShiftCandidates(shiftId, requesterUserId = null) {
+  const q = new URLSearchParams();
+  if (requesterUserId) q.set("requester_user_id", String(requesterUserId));
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/swap-candidates${suffix}`);
+  return normalizeList(out);
+}
+
+async function saveOwnAvailability(dateStr, shiftSlot, status) {
+  const path = `/venues/${encodeURIComponent(venueId)}/shift-availability/${encodeURIComponent(dateStr)}/${encodeURIComponent(normalizeShiftSlot(shiftSlot))}`;
+  if (!status) {
+    await api(path, { method: "DELETE" });
+    return;
+  }
+  await api(path, { method: "PUT", body: { status } });
+}
+
+function renderStaffAvailability(exchange, dateStr, shift, ownAvailability) {
+  const shiftId = shift.id ?? shift.shift_id;
+  const current = ownAvailability?.status || "";
+  const disabled = isPastDay(dateStr) || shiftIsClosed(shift);
+  exchange.insertAdjacentHTML("beforeend", `
+    <div class="shift-exchange__section">
+      <div class="shift-exchange__heading">
+        <b>Моя доступность</b>
+        <span class="muted small">${disabled ? "Прошедшая или закрытая смена" : "Помогает составить график"}</span>
+      </div>
+      <div class="shift-availability-toggle" data-availability-toggle="${shiftId}">
+        <button class="btn sm ${current === "AVAILABLE" ? "active success" : ""}" type="button" data-availability-status="AVAILABLE" ${disabled ? "disabled" : ""}>Могу</button>
+        <button class="btn sm ${current === "UNAVAILABLE" ? "active danger" : ""}" type="button" data-availability-status="UNAVAILABLE" ${disabled ? "disabled" : ""}>Не могу</button>
+        <button class="btn sm ${!current ? "active" : ""}" type="button" data-availability-status="" ${disabled ? "disabled" : ""}>Не указано</button>
+      </div>
+    </div>
+  `);
+  exchange.querySelectorAll("[data-availability-status]").forEach((button) => {
+    button.onclick = async () => {
+      try {
+        button.disabled = true;
+        await saveOwnAvailability(
+          dateStr,
+          shift.shift_slot || selectedShiftSlot,
+          button.getAttribute("data-availability-status") || "",
+        );
+        toast("Доступность сохранена", "ok");
+        await reloadCurrentView();
+        openDay(dateStr);
+      } catch (error) {
+        button.disabled = false;
+        toast(error?.data?.detail || error?.message || "Не удалось сохранить доступность", "err");
+      }
+    };
+  });
+}
+
+function renderManagerAvailability(exchange, availabilityItems) {
+  const entries = availabilityItems || [];
+  const body = entries.length
+    ? entries.map((item) => {
+        const status = item.status || "";
+        const name = item?.member?.display_name || "Сотрудник";
+        return `
+          <span class="shift-availability-person ${status === "AVAILABLE" ? "is-available" : "is-unavailable"}">
+            ${escapeHtml(name)} · ${escapeHtml(availabilityLabel(status).toLowerCase())}
+          </span>
+        `;
+      }).join("")
+    : `<span class="muted small">Сотрудники пока не отметили доступность</span>`;
+  exchange.insertAdjacentHTML("beforeend", `
+    <div class="shift-exchange__section">
+      <div class="shift-exchange__heading"><b>Доступность команды</b></div>
+      <div class="shift-availability-list">${body}</div>
+    </div>
+  `);
+}
+
+async function renderStaffSwap(exchange, dateStr, shift, requests) {
+  const shiftId = shift.id ?? shift.shift_id;
+  const assignments = shift.assignments || shift.shift_assignments || [];
+  const myUserId = Number(me?.id || 0);
+  const isAssigned = assignments.some((item) => Number(item.member_user_id || 0) === myUserId);
+  if (!isAssigned) return;
+
+  const openRequest = (requests || []).find((item) => item.status === "OPEN" && Number(item?.requester?.id || 0) === myUserId);
+  const latestClosed = (requests || []).find((item) => item.status !== "OPEN" && Number(item?.requester?.id || 0) === myUserId);
+  if (openRequest) {
+    const replacement = openRequest?.replacement?.display_name || "без конкретной замены";
+    exchange.insertAdjacentHTML("beforeend", `
+      <div class="shift-exchange__section shift-swap-request is-open">
+        <div class="shift-exchange__heading">
+          <div><b>Запрос на обмен</b><div class="muted small">${escapeHtml(swapStatusLabel(openRequest.status))} · ${escapeHtml(replacement)}</div></div>
+          <button class="btn sm danger" type="button" data-cancel-swap="${openRequest.id}">Отменить</button>
+        </div>
+        ${openRequest.comment ? `<div class="shift-swap-request__comment">${escapeHtml(openRequest.comment)}</div>` : ""}
+      </div>
+    `);
+    exchange.querySelector(`[data-cancel-swap="${openRequest.id}"]`)?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      try {
+        button.disabled = true;
+        await api(`/venues/${encodeURIComponent(venueId)}/shift-swap-requests/${encodeURIComponent(openRequest.id)}/cancel`, {
+          method: "POST",
+        });
+        toast("Запрос отменён", "ok");
+        await reloadCurrentView();
+        openDay(dateStr);
+      } catch (error) {
+        button.disabled = false;
+        toast(error?.data?.detail || error?.message || "Не удалось отменить запрос", "err");
+      }
+    });
+    return;
+  }
+
+  if (isPastDay(dateStr) || shiftIsClosed(shift)) {
+    if (latestClosed) {
+      exchange.insertAdjacentHTML("beforeend", `
+        <div class="shift-swap-history muted small">Последний обмен: ${escapeHtml(swapStatusLabel(latestClosed.status))}</div>
+      `);
+    }
+    return;
+  }
+
+  exchange.insertAdjacentHTML("beforeend", `
+    <div class="shift-exchange__section">
+      <div class="shift-exchange__heading">
+        <div><b>Не получается выйти?</b><div class="muted small">Предложи замену — управляющий подтвердит её.</div></div>
+        <button class="btn sm" type="button" data-open-swap="${shiftId}">Отдать смену</button>
+      </div>
+      <div class="shift-swap-compose hidden" data-swap-compose="${shiftId}"></div>
+    </div>
+  `);
+  const openButton = exchange.querySelector(`[data-open-swap="${shiftId}"]`);
+  const composer = exchange.querySelector(`[data-swap-compose="${shiftId}"]`);
+  openButton?.addEventListener("click", async () => {
+    if (!composer) return;
+    openButton.disabled = true;
+    composer.classList.remove("hidden");
+    composer.innerHTML = `<div class="muted small">Загружаем возможные замены…</div>`;
+    try {
+      const candidates = await loadShiftCandidates(shiftId);
+      composer.innerHTML = `
+        <label class="shift-swap-field">
+          <span>Кого предлагаешь</span>
+          <select class="input" data-swap-replacement>${renderCandidateOptions(candidates)}</select>
+        </label>
+        <label class="shift-swap-field">
+          <span>Комментарий</span>
+          <textarea class="input" rows="2" maxlength="1000" data-swap-comment placeholder="Почему нужна замена"></textarea>
+        </label>
+        <div class="shift-swap-compose__actions">
+          <button class="btn primary" type="button" data-submit-swap>Отправить запрос</button>
+          <button class="btn" type="button" data-close-swap>Отмена</button>
+        </div>
+      `;
+      composer.querySelector("[data-close-swap]")?.addEventListener("click", () => {
+        composer.classList.add("hidden");
+        composer.innerHTML = "";
+        openButton.disabled = false;
+      });
+      composer.querySelector("[data-submit-swap]")?.addEventListener("click", async (event) => {
+        const submit = event.currentTarget;
+        const replacementUserId = Number(composer.querySelector("[data-swap-replacement]")?.value || 0) || null;
+        const comment = composer.querySelector("[data-swap-comment]")?.value?.trim() || null;
+        try {
+          submit.disabled = true;
+          await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/swap-requests`, {
+            method: "POST",
+            body: { replacement_user_id: replacementUserId, comment },
+          });
+          toast("Запрос отправлен управляющему", "ok");
+          await reloadCurrentView();
+          openDay(dateStr);
+        } catch (error) {
+          submit.disabled = false;
+          toast(error?.data?.detail || error?.message || "Не удалось отправить запрос", "err");
+        }
+      });
+    } catch (error) {
+      composer.innerHTML = `<div class="muted small">Не удалось загрузить замены</div>`;
+      openButton.disabled = false;
+      toast(error?.data?.detail || error?.message || "Не удалось загрузить замены", "err");
+    }
+  });
+}
+
+async function renderManagerSwaps(exchange, dateStr, shift, requests) {
+  const openRequests = (requests || []).filter((item) => item.status === "OPEN");
+  if (!openRequests.length) return;
+  const shiftId = shift.id ?? shift.shift_id;
+  const cards = await Promise.all(openRequests.map(async (request) => {
+    let candidates = [];
+    try {
+      candidates = await loadShiftCandidates(shiftId, request?.requester?.id);
+    } catch {}
+    return { request, candidates };
+  }));
+  exchange.insertAdjacentHTML("beforeend", `
+    <div class="shift-exchange__section shift-swap-manager">
+      <div class="shift-exchange__heading"><b>Запросы на обмен</b><span class="badge">${openRequests.length}</span></div>
+      <div class="shift-swap-manager__list">
+        ${cards.map(({ request, candidates }) => `
+          <article class="shift-swap-request is-open" data-manager-swap="${request.id}">
+            <div>
+              <b>${escapeHtml(request?.requester?.display_name || "Сотрудник")}</b>
+              ${request.comment ? `<div class="shift-swap-request__comment">${escapeHtml(request.comment)}</div>` : ""}
+            </div>
+            <label class="shift-swap-field">
+              <span>Замена</span>
+              <select class="input" data-manager-replacement>${renderCandidateOptions(candidates, request.replacement_user_id)}</select>
+            </label>
+            <label class="shift-swap-field">
+              <span>Комментарий к решению</span>
+              <input class="input" maxlength="1000" data-manager-comment placeholder="Необязательно" />
+            </label>
+            <div class="shift-swap-compose__actions">
+              <button class="btn primary sm" type="button" data-approve-swap>Подтвердить</button>
+              <button class="btn danger sm" type="button" data-reject-swap>Отклонить</button>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </div>
+  `);
+  for (const { request } of cards) {
+    const requestCard = exchange.querySelector(`[data-manager-swap="${request.id}"]`);
+    if (!requestCard) continue;
+    const decide = async (action, button) => {
+      const replacementUserId = Number(requestCard.querySelector("[data-manager-replacement]")?.value || 0) || null;
+      const comment = requestCard.querySelector("[data-manager-comment]")?.value?.trim() || null;
+      if (action === "approve" && !replacementUserId) {
+        return toast("Выбери замену перед подтверждением", "warn");
+      }
+      try {
+        requestCard.querySelectorAll("button").forEach((item) => { item.disabled = true; });
+        await api(`/venues/${encodeURIComponent(venueId)}/shift-swap-requests/${encodeURIComponent(request.id)}/${action}`, {
+          method: "POST",
+          body: { replacement_user_id: replacementUserId, comment },
+        });
+        toast(action === "approve" ? "Замена подтверждена" : "Запрос отклонён", "ok");
+        await reloadCurrentView();
+        openDay(dateStr);
+      } catch (error) {
+        requestCard.querySelectorAll("button").forEach((item) => { item.disabled = false; });
+        toast(error?.data?.detail || error?.message || "Не удалось сохранить решение", "err");
+      }
+    };
+    requestCard.querySelector("[data-approve-swap]")?.addEventListener("click", (event) => decide("approve", event.currentTarget));
+    requestCard.querySelector("[data-reject-swap]")?.addEventListener("click", (event) => decide("reject", event.currentTarget));
+  }
+}
+
+async function wireShiftExchange(dateStr, shift, allowEdit) {
+  if (calendarScope === "global") return;
+  const shiftId = shift.id ?? shift.shift_id;
+  const exchange = document.querySelector(`[data-shift-exchange="${shiftId}"]`);
+  if (!exchange) return;
+  try {
+    const swapsOut = await api(`/venues/${encodeURIComponent(venueId)}/shift-swap-requests?shift_id=${encodeURIComponent(shiftId)}`);
+    if (!exchange.isConnected) return;
+    const requests = normalizeList(swapsOut);
+    exchange.innerHTML = "";
+    if (allowEdit) {
+      await renderStaffSwap(exchange, dateStr, shift, requests);
+      await renderManagerSwaps(exchange, dateStr, shift, requests);
+    } else {
+      await renderStaffSwap(exchange, dateStr, shift, requests);
+    }
+    exchange.classList.toggle("hidden", !exchange.children.length);
+  } catch (error) {
+    if (!exchange.isConnected) return;
+    exchange.innerHTML = `<div class="muted small">Доступность и обмены сейчас недоступны</div>`;
+    console.error(error);
+  }
+}
+
+async function wireDayAvailability(dateStr) {
+  if (calendarScope === "global") return;
+  const panel = document.querySelector("[data-day-availability]");
+  if (!panel) return;
+  try {
+    const query = new URLSearchParams({
+      date: dateStr,
+      shift_slot: normalizeShiftSlot(selectedShiftSlot),
+    });
+    const out = await api(`/venues/${encodeURIComponent(venueId)}/shift-availability?${query.toString()}`);
+    if (!panel.isConnected) return;
+    const items = normalizeList(out);
+    const own = items.find((item) => Number(item?.member?.id || 0) === Number(me?.id || 0));
+    panel.innerHTML = "";
+    renderStaffAvailability(
+      panel,
+      dateStr,
+      { id: `day-${dateStr}`, shift_slot: selectedShiftSlot, report_closed: false },
+      own,
+    );
+    if (canEdit) {
+      renderManagerAvailability(panel, items);
+      document.querySelectorAll("[data-shiftcard]").forEach((card) => {
+        decorateAssigneeAvailability(card, items);
+      });
+    }
+  } catch (error) {
+    if (!panel.isConnected) return;
+    panel.innerHTML = `<div class="muted small">Не удалось загрузить доступность команды</div>`;
+    console.error(error);
+  }
 }
 
 
@@ -1364,6 +1730,7 @@ function openDay(dateStr) {
       </div>
       ${allowEdit ? `<div class="row gap-8 mt-6"><button class="btn" id="btnManageIntervals">Интервалы</button><button class="btn primary" id="btnAddShift">+ Добавить смену</button></div>` : ``}
     </div>
+    ${calendarScope !== "global" ? `<section class="day-availability shift-exchange" data-day-availability><div class="muted">Загружаем доступность команды…</div></section>` : ""}
   `;
 
   if (!list.length) {
@@ -1404,6 +1771,7 @@ function openDay(dateStr) {
   }
 
   openModal(title, subtitle, html);
+  wireDayAvailability(dateStr);
   document.getElementById("btnOpenAdjustments")?.addEventListener("click", () => {
     const vid = getActiveVenueId();
     if (!vid) return toast("Не выбрано заведение", "err");
@@ -1514,6 +1882,7 @@ function openDay(dateStr) {
   // wire cards (comments must work even on past days; comments disabled in global mode)
   for (const s of list) {
     wireShiftEditor(dateStr, s, allowEdit);
+    wireShiftExchange(dateStr, s, canEdit);
     if (calendarScope !== "global") staffShiftComments.wireShiftComments((s.id ?? s.shift_id));
   }
 

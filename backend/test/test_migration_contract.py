@@ -38,6 +38,27 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn('"shift_comment_mentions"', source)
         self.assertIn('"uq_shift_comment_mention_user"', source)
 
+    def test_shift_availability_and_swaps_extend_current_head(self):
+        config = Config(str(BACKEND_DIR / "alembic.ini"))
+        config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+        scripts = ScriptDirectory.from_config(config)
+
+        revision = scripts.get_revision("7d0f2b6c8e33")
+
+        self.assertIsNotNone(revision)
+        self.assertEqual(revision.down_revision, "6c9e1a4b7d22")
+        source = (
+            BACKEND_DIR
+            / "alembic"
+            / "versions"
+            / "7d0f2b6c8e33_add_shift_availability_and_swaps.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"shift_availabilities"', source)
+        self.assertIn('"shift_swap_requests"', source)
+        self.assertIn('"uq_shift_availability_member_date_slot"', source)
+        self.assertIn('"uq_shift_swap_requests_open_assignment"', source)
+        self.assertIn('ondelete="SET NULL"', source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -60,3 +60,18 @@ class ShiftScheduleTemplateApplyIn(BaseModel):
 
 class ShiftAssignmentAddIn(BaseModel):
     venue_position_id: int = Field(..., gt=0)
+
+
+class ShiftAvailabilityUpsertIn(BaseModel):
+    status: str = Field(..., pattern="^(AVAILABLE|UNAVAILABLE)$")
+    comment: str | None = Field(default=None, max_length=500)
+
+
+class ShiftSwapCreateIn(BaseModel):
+    replacement_user_id: int | None = Field(default=None, gt=0)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class ShiftSwapDecisionIn(BaseModel):
+    replacement_user_id: int | None = Field(default=None, gt=0)
+    comment: str | None = Field(default=None, max_length=1000)

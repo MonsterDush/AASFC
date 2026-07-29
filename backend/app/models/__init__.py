@@ -12,6 +12,8 @@ from .venue_position import VenuePosition
 from .shift_interval import ShiftInterval
 from .shift import Shift
 from .shift_assignment import ShiftAssignment
+from .shift_availability import ShiftAvailability
+from .shift_swap_request import ShiftSwapRequest
 from .shift_comment import ShiftComment
 from .shift_comment_mention import ShiftCommentMention
 from .shift_schedule_template import ShiftScheduleTemplate, ShiftScheduleTemplateItem
@@ -78,6 +80,8 @@ __all__ = [
     "ShiftInterval",
     "Shift",
     "ShiftAssignment",
+    "ShiftAvailability",
+    "ShiftSwapRequest",
     "ShiftComment",
     "ShiftCommentMention",
     "ShiftScheduleTemplate",

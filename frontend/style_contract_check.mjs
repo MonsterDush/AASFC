@@ -131,7 +131,7 @@ const pageStyleCacheKeyOverrides = new Map([
   ["staff-finance.html", "20260726-polish6"],
   ["staff-report.html", "20260728-responsive1"],
   ["staff-salary.html", "20260726-polish6"],
-  ["staff-shifts.html", "20260729-desktop3"],
+  ["staff-shifts.html", "20260729-swaps1"],
 ]);
 const inlineFreePages = [
   "admin-position-templates.html",

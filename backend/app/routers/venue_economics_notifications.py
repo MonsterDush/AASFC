@@ -58,6 +58,7 @@ from app.routers.venue_common import (
     _NOTIFICATION_JOB_TYPE_SALARY_DAY_BREAKDOWN,
     _NOTIFICATION_JOB_TYPE_SOFT_ALERTS,
     _NOTIFICATION_JOB_TYPE_SHIFT_COMMENT,
+    _NOTIFICATION_JOB_TYPE_SHIFT_SWAP,
     log,
 )
 from app.routers.venue_permissions import _has_adjustments_manage_access
@@ -67,6 +68,7 @@ from app.routers.venue_adjustment_notifications import (
     _send_adjustment_dispute_event_notifications,
 )
 from app.routers.venue_shift_notifications import _send_shift_comment_notifications
+from app.routers.venue_shift_swap_notifications import _send_shift_swap_notifications
 from app.routers.venue_notification_common import (
     NotificationDeliveryError,
     _build_owner_day_economics_link,
@@ -973,6 +975,12 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
                         db,
                         venue_id=int(payload.get("venue_id")),
                         comment_id=int(payload.get("comment_id")),
+                    )
+                elif job.job_type == _NOTIFICATION_JOB_TYPE_SHIFT_SWAP:
+                    _send_shift_swap_notifications(
+                        db,
+                        request_id=int(payload.get("request_id")),
+                        event_kind=str(payload.get("event_kind") or ""),
                     )
                 else:
                     raise ValueError(f"Unsupported notification job type: {job.job_type}")

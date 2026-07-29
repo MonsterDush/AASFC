@@ -27,7 +27,9 @@ from app.models import (
     RecurringExpenseRule,
     Shift,
     ShiftAssignment,
+    ShiftAvailability,
     ShiftComment,
+    ShiftSwapRequest,
     User,
     VenueInvite,
     VenueMember,
@@ -69,6 +71,8 @@ def merge_user_accounts(
     _merge_venue_members(db, target_user=target_user, source_user=source_user)
     position_map = _merge_venue_positions(db, target_user=target_user, source_user=source_user)
     _merge_shift_assignments(db, target_user=target_user, source_user=source_user, position_map=position_map)
+    _merge_shift_availabilities(db, target_user=target_user, source_user=source_user)
+    _merge_shift_swap_refs(db, target_user=target_user, source_user=source_user)
     _merge_pay_profile_assignments(db, target_user=target_user, source_user=source_user)
     _merge_tip_allocations(db, target_user=target_user, source_user=source_user)
     _merge_payroll_lines(db, target_user=target_user, source_user=source_user)
@@ -97,6 +101,7 @@ def merge_user_accounts(
     _bulk_reassign_user_ref(db, RecurringExpenseRule, "created_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, Shift, "created_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, ShiftComment, "author_user_id", source_user.id, target_user.id)
+    _bulk_reassign_user_ref(db, ShiftSwapRequest, "decided_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, VenueInvite, "accepted_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, VenueInvite, "created_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, Writeoff, "member_user_id", source_user.id, target_user.id)
@@ -234,6 +239,18 @@ def _merge_venue_positions(db: Session, *, target_user: User, source_user: User)
         )
         existing.permission_codes = json.dumps(merged_codes, ensure_ascii=False) if merged_codes else None
         position_map[int(row.id)] = int(existing.id)
+        assignment_rows = db.execute(
+            select(ShiftAssignment).where(ShiftAssignment.venue_position_id == int(row.id))
+        ).scalars().all()
+        for assignment in assignment_rows:
+            assignment.venue_position_id = int(existing.id)
+        swap_rows = db.execute(
+            select(ShiftSwapRequest).where(
+                ShiftSwapRequest.replacement_position_id == int(row.id)
+            )
+        ).scalars().all()
+        for swap_request in swap_rows:
+            swap_request.replacement_position_id = int(existing.id)
         db.delete(row)
 
     db.flush()
@@ -270,6 +287,72 @@ def _merge_shift_assignments(
             existing.reminder_sent_at = row.reminder_sent_at
         db.delete(row)
 
+    db.flush()
+
+
+def _merge_shift_availabilities(
+    db: Session,
+    *,
+    target_user: User,
+    source_user: User,
+) -> None:
+    target_rows = db.execute(
+        select(ShiftAvailability)
+        .where(ShiftAvailability.member_user_id == int(target_user.id))
+        .order_by(ShiftAvailability.id.asc())
+    ).scalars().all()
+    source_rows = db.execute(
+        select(ShiftAvailability)
+        .where(ShiftAvailability.member_user_id == int(source_user.id))
+        .order_by(ShiftAvailability.id.asc())
+    ).scalars().all()
+    target_keys = {
+        (int(row.venue_id), row.date, str(row.shift_slot)): row
+        for row in target_rows
+    }
+    for row in source_rows:
+        key = (int(row.venue_id), row.date, str(row.shift_slot))
+        existing = target_keys.get(key)
+        if existing is None:
+            row.member_user_id = int(target_user.id)
+            target_keys[key] = row
+            continue
+        if not existing.comment and row.comment:
+            existing.comment = row.comment
+        db.delete(row)
+    db.flush()
+
+
+def _merge_shift_swap_refs(
+    db: Session,
+    *,
+    target_user: User,
+    source_user: User,
+) -> None:
+    rows = db.execute(
+        select(ShiftSwapRequest).where(
+            (ShiftSwapRequest.requester_user_id == int(source_user.id))
+            | (ShiftSwapRequest.replacement_user_id == int(source_user.id))
+        )
+    ).scalars().all()
+    for row in rows:
+        requester_id = (
+            int(target_user.id)
+            if int(row.requester_user_id) == int(source_user.id)
+            else int(row.requester_user_id)
+        )
+        replacement_id = (
+            int(target_user.id)
+            if row.replacement_user_id is not None
+            and int(row.replacement_user_id) == int(source_user.id)
+            else row.replacement_user_id
+        )
+        row.requester_user_id = requester_id
+        if replacement_id is not None and int(replacement_id) == requester_id:
+            row.replacement_user_id = None
+            row.replacement_position_id = None
+        else:
+            row.replacement_user_id = replacement_id
     db.flush()
 
 

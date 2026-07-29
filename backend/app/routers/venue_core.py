@@ -103,6 +103,8 @@ from app.models.shift import Shift
 from app.models.shift_comment import ShiftComment
 from app.models.shift_comment_mention import ShiftCommentMention
 from app.models.shift_assignment import ShiftAssignment
+from app.models.shift_availability import ShiftAvailability
+from app.models.shift_swap_request import ShiftSwapRequest
 from app.models.shift_schedule_template import ShiftScheduleTemplate, ShiftScheduleTemplateItem
 from app.models.daily_report import DailyReport
 from app.models.daily_report_attachment import DailyReportAttachment
@@ -416,6 +418,8 @@ def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
     add_count("shift_schedule_template_items", ShiftScheduleTemplateItem, select(func.count(ShiftScheduleTemplateItem.id)).where(ShiftScheduleTemplateItem.template_id.in_(shift_schedule_template_ids)))
     add_count("shifts", Shift, select(func.count(Shift.id)).where(Shift.venue_id == venue_id))
     add_count("shift_assignments", ShiftAssignment, select(func.count(ShiftAssignment.id)).where(ShiftAssignment.shift_id.in_(shift_ids)))
+    add_count("shift_availabilities", ShiftAvailability, select(func.count(ShiftAvailability.id)).where(ShiftAvailability.venue_id == venue_id))
+    add_count("shift_swap_requests", ShiftSwapRequest, select(func.count(ShiftSwapRequest.id)).where(ShiftSwapRequest.venue_id == venue_id))
     add_count("shift_comment_mentions", ShiftCommentMention, select(func.count(ShiftCommentMention.id)).where(ShiftCommentMention.comment_id.in_(shift_comment_ids)))
     add_count("shift_comments", ShiftComment, select(func.count(ShiftComment.id)).where(ShiftComment.shift_id.in_(shift_ids)))
 
@@ -592,7 +596,9 @@ def delete_venue(
     try:
         deleted["shift_comment_mentions"] = _safe_delete_where(db, ShiftCommentMention, ShiftCommentMention.comment_id.in_(shift_comment_ids))
         deleted["shift_comments"] = _safe_delete_where(db, ShiftComment, ShiftComment.shift_id.in_(shift_ids))
+        deleted["shift_swap_requests"] = _safe_delete_where(db, ShiftSwapRequest, ShiftSwapRequest.venue_id == venue_id)
         deleted["shift_assignments"] = _safe_delete_where(db, ShiftAssignment, ShiftAssignment.shift_id.in_(shift_ids))
+        deleted["shift_availabilities"] = _safe_delete_where(db, ShiftAvailability, ShiftAvailability.venue_id == venue_id)
 
         deleted["daily_report_tip_allocations"] = _safe_delete_where(db, DailyReportTipAllocation, DailyReportTipAllocation.report_id.in_(report_ids))
         deleted["daily_report_values"] = _safe_delete_where(db, DailyReportValue, DailyReportValue.report_id.in_(report_ids))
