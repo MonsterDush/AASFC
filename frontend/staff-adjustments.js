@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
   getStoredDemoUiState,
   coerceDemoMonth,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 
 import { canManageAdjustments, hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
 
@@ -118,6 +118,17 @@ function typeTitle(t) {
   return t || "—";
 }
 
+function typeClass(t) {
+  const value = String(t || "").toLowerCase();
+  return ["penalty", "writeoff", "bonus"].includes(value) ? value : "neutral";
+}
+
+function signedAmount(it) {
+  const amount = Number(it?.amount || 0);
+  const positive = String(it?.type || "").toLowerCase() === "bonus";
+  return `${positive && amount > 0 ? "+" : (amount > 0 ? "−" : "")}${Math.abs(amount)}`;
+}
+
 // modal (reuse markup from html)
 const modal = document.getElementById("modal");
 const modalTitle = modal?.querySelector(".modal__title");
@@ -172,7 +183,7 @@ function renderList(data) {
 
   const items = data?.items || [];
   if (!items.length) {
-    el.list.innerHTML = `<div class="muted">Записей нет</div>`;
+    el.list.innerHTML = `<div class="staff-adjustments-state"><b>Записей нет</b><span>За выбранный месяц корректировки не найдены.</span></div>`;
     return;
   }
 
@@ -182,31 +193,37 @@ function renderList(data) {
   for (const [day, list] of groups) {
     const dayCard = document.createElement("div");
     dayCard.id = `day-${day}`;
-    dayCard.className = "itemcard mt-10";
+    dayCard.className = "itemcard staff-adjustment-day";
 
     const sum = list.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
 
     dayCard.innerHTML = `
-      <div class="row row--between gap-10 ai-start">
-        <div>
+      <div class="staff-adjustment-day__head">
+        <div class="staff-adjustment-day__date">
           <b>${esc(day)}</b>
-          <div class="muted mt-4">${esc(list.length)} шт. · сумма ${esc(sum)}</div>
+          <div class="muted small">${esc(list.length)} ${list.length === 1 ? "запись" : "записей"}</div>
         </div>
+        <b class="staff-adjustment-day__sum">${esc(sum)}</b>
       </div>
-      <div class="mt-10" data-items></div>
+      <div class="staff-adjustment-day__items" data-items></div>
     `;
 
     const wrap = dayCard.querySelector("[data-items]");
     for (const it of list) {
       const row = document.createElement("div");
-      row.className = "row row--between gap-10 staff-adjustment-row";
+      row.className = "staff-adjustment-row";
+      const kind = typeClass(it.type);
+      const positive = kind === "bonus";
 
       row.innerHTML = `
-        <div>
-          <b>${esc(typeTitle(it.type))} · ${esc(it.amount)}</b>
-          <div class="muted mt-4">${esc(it.reason || "—")}</div>
+        <div class="staff-adjustment-row__main">
+          <span class="staff-adjustment-type staff-adjustment-type--${esc(kind)}">${esc(typeTitle(it.type))}</span>
+          <div class="staff-adjustment-row__copy">
+            <b class="staff-adjustment-amount staff-adjustment-amount--${positive ? "positive" : "negative"}">${esc(signedAmount(it))}</b>
+            <div class="muted small mt-4">${esc(it.reason || "Без комментария")}</div>
+          </div>
         </div>
-        <button class="btn" data-open>Открыть</button>
+        <button class="btn sm" data-open>Подробнее</button>
       `;
 
       row.querySelector("[data-open]").onclick = () => openItem(it);
@@ -217,18 +234,44 @@ function renderList(data) {
   }
 }
 
+function renderListLoading() {
+  if (el.monthLabel) el.monthLabel.textContent = monthTitle(curMonth);
+  if (el.list) {
+    el.list.innerHTML = `<div class="staff-adjustments-loading"><div class="skeleton"></div><div class="skeleton"></div></div>`;
+  }
+}
+
+async function refreshList({ scrollToTarget = false } = {}) {
+  renderListLoading();
+  try {
+    const data = await loadList();
+    renderList(data);
+    if (scrollToTarget && targetDay) {
+      document.getElementById(`day-${targetDay}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  } catch (e) {
+    toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
+    el.list.innerHTML = `<div class="staff-adjustments-state"><b>Не удалось загрузить данные</b><span>Проверь подключение и повтори попытку.</span></div>`;
+  }
+}
+
 function buildItemHtml(it) {
   return `
-    <div class="itemcard mt-12">
-      <b>${esc(typeTitle(it.type))} · ${esc(it.amount)}</b>
-      <div class="muted mt-6">Дата: ${esc(it.date)}</div>
-      <div class="muted mt-6">Причина: ${esc(it.reason || "—")}</div>
-      <div class="muted mt-6">Оспорить</div>
-      <div class="row gap-8 mt-12">
-        <textarea id="disputeMsg" rows="3" placeholder="Напиши комментарий"></textarea>
-        <button class="btn primary" id="btnDispute">Отправить</button>
+    <div class="staff-adjustment-detail">
+      <div class="staff-adjustment-detail__summary">
+        <div><span class="staff-adjustment-type staff-adjustment-type--${esc(typeClass(it.type))}">${esc(typeTitle(it.type))}</span></div>
+        <b class="staff-adjustment-amount">${esc(signedAmount(it))}</b>
+        <div class="muted small">Дата: ${esc(it.date)}</div>
+        <div class="muted small">Причина: ${esc(it.reason || "Без комментария")}</div>
       </div>
-      <div class="muted small mt-10">
+      <div class="staff-adjustment-dispute">
+        <label for="disputeMsg"><b>Оспорить корректировку</b></label>
+        <textarea id="disputeMsg" rows="3" placeholder="Напиши комментарий"></textarea>
+        <div class="staff-adjustment-dispute__actions">
+          <button class="btn primary" id="btnDispute">Отправить</button>
+        </div>
+      </div>
+      <div class="muted small">
         После отправки владелец/менеджер получит уведомление и сможет отредактировать или удалить запись.
       </div>
     </div>
@@ -260,42 +303,29 @@ function openItem(it) {
 
 async function boot() {
   if (!venueId) {
-    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted mt-6">Выбери заведение и открой раздел ещё раз.</div></div>`;
+    el.list.innerHTML = `<div class="staff-adjustments-state"><b>Не выбрано заведение</b><span>Выбери заведение и открой раздел ещё раз.</span></div>`;
     return;
   }
 
-  try {
-    const data = await loadList();
-    renderList(data);
-  if (targetDay) {
-    const elDay = document.getElementById(`day-${targetDay}`);
-    if (elDay) elDay.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-  } catch (e) {
-    toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
-    el.list.innerHTML = `<div class="muted">Не удалось загрузить данные</div>`;
-  }
+  await refreshList({ scrollToTarget: true });
 }
 
 el.prev?.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() - 1);
   curMonth.setDate(1);
-  const data = await loadList();
-  renderList(data);
+  await refreshList();
 });
 
 el.next?.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() + 1);
   curMonth.setDate(1);
-  const data = await loadList();
-  renderList(data);
+  await refreshList();
 });
 
 el.typeSel?.addEventListener("change", async () => {
-  const data = await loadList();
-  renderList(data);
+  await refreshList();
 });
 
 await setupManageButton();
 
-boot();
+await boot();

@@ -4,13 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/owner-economics.css?v=20260726-polish11" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Экономика дня</title>
 </head>
-<body>
-  <div class="container">
-    <div class="topbar">
+<body class="owner-day-economics-page is-loading">
+  <div class="container economics-shell">
+    <div class="topbar economics-topbar">
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
@@ -40,7 +41,9 @@
       </div>
     </div>
 
-    <div class="card finance-toolbar">
+    <div class="finance-page-state hidden" id="economicsPageState" aria-live="polite"></div>
+
+    <div class="card finance-toolbar economics-content" id="economicsContent" aria-busy="true">
       <div class="screen-hero">
         <div class="screen-hero__head">
           <div>
@@ -53,7 +56,7 @@
               <button type="button" id="economicsSlotDay">День</button>
               <button type="button" id="economicsSlotNight">Ночь</button>
             </div>
-            <input id="economicsDatePick" type="date" style="width:auto; min-width:160px;" />
+            <input class="economics-date-picker" id="economicsDatePick" type="date" />
             <button class="btn" id="refreshEconomicsBtn">Обновить</button>
           </div>
         </div>
@@ -82,7 +85,7 @@
         </div>
       </div>
 
-      <div class="itemcard mt-12" id="economicsDraftCard" style="display:none;">
+      <div class="itemcard mt-12 hidden" id="economicsDraftCard">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Есть черновые расходы</b>
@@ -110,8 +113,8 @@
         <div class="itemcard finance-stat"><div class="finance-stat__label">ФОТ / выручка</div><div class="finance-stat__value" id="economicsPayrollRatio">—</div></div>
       </div>
 
-      <div class="section-stack mt-12">
-        <div class="itemcard">
+      <div class="section-stack economics-section-grid">
+        <div class="itemcard economics-section-card">
           <div class="section-card__head">
             <div class="section-card__title">
               <b>План / факт дня</b>
@@ -131,18 +134,28 @@
           <div class="muted mt-12" id="economicsPlanNotesView">—</div>
         </div>
 
-        <div class="itemcard">
+        <div class="itemcard economics-section-card">
           <div class="section-card__head">
             <div class="section-card__title">
               <b>Алерты дня</b>
               <div class="muted">Нормативы, незакрытый день и проблемные зоны</div>
             </div>
           </div>
-          <div id="economicsAlerts" class="mt-12"></div>
+          <div id="economicsAlerts" class="economics-state-list"></div>
+        </div>
+
+        <div class="itemcard economics-section-card economics-section-card--wide">
+          <div class="section-card__head">
+            <div class="section-card__title">
+              <b>Активные нормативы</b>
+              <div class="muted">Правила, по которым формируются предупреждения дня</div>
+            </div>
+          </div>
+          <div class="economics-rules-summary" id="economicsRulesHint">—</div>
         </div>
       </div>
 
-      <div class="itemcard mt-12">
+      <div class="itemcard economics-rollup-card">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Rollup месяца к дате</b>
@@ -161,7 +174,52 @@
         </div>
       </div>
 
-      <div class="itemcard mt-12" id="economicsManageBlock" style="display:none;">
+      <div class="economics-detail-grid">
+        <div class="itemcard economics-detail-card">
+          <div class="section-card__title">
+            <b>Выручка по способам оплаты</b>
+            <div class="muted">Закрытый денежный приход за день</div>
+          </div>
+          <div class="economics-detail-list" id="economicsPaymentRevenueBreakdown"><div class="skeleton"></div><div class="skeleton"></div></div>
+        </div>
+        <div class="itemcard economics-detail-card">
+          <div class="section-card__title">
+            <b>Выручка по департаментам</b>
+            <div class="muted">Аналитическое распределение доходов</div>
+          </div>
+          <div class="economics-detail-list" id="economicsDepartmentRevenueBreakdown"><div class="skeleton"></div><div class="skeleton"></div></div>
+        </div>
+        <div class="itemcard economics-detail-card">
+          <div class="section-card__title">
+            <b>Разовые расходы</b>
+            <div class="muted">Подтверждённые расходы выбранного дня</div>
+          </div>
+          <div class="economics-detail-list" id="economicsPointExpenses"><div class="skeleton"></div><div class="skeleton"></div></div>
+        </div>
+        <div class="itemcard economics-detail-card">
+          <div class="section-card__title">
+            <b>Регулярные расходы</b>
+            <div class="muted">Начисления регулярных правил на дату</div>
+          </div>
+          <div class="economics-detail-list" id="economicsRecurringExpenses"><div class="skeleton"></div><div class="skeleton"></div></div>
+        </div>
+        <div class="itemcard economics-detail-card">
+          <div class="section-card__title">
+            <b>Баланс способов оплаты</b>
+            <div class="muted">Приход, расход и итоговый баланс</div>
+          </div>
+          <div class="economics-detail-list" id="economicsPaymentBalances"><div class="skeleton"></div><div class="skeleton"></div></div>
+        </div>
+        <div class="itemcard economics-detail-card">
+          <div class="section-card__title">
+            <b>KPI дня</b>
+            <div class="muted">Фактические показатели закрытого отчёта</div>
+          </div>
+          <div class="economics-detail-list" id="economicsKpiBreakdown"><div class="skeleton"></div><div class="skeleton"></div></div>
+        </div>
+      </div>
+
+      <div class="itemcard economics-manage-card hidden" id="economicsManageBlock">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Управление планом и нормативами</b>
@@ -179,6 +237,6 @@
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
-  <script type="module" src="/owner-day-economics.js"></script>
+  <script type="module" src="/owner-day-economics.js?v=20260729-slotecon1"></script>
 </body>
 </html>

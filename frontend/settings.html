@@ -4,12 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/settings.css?v=20260725-polish5" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Настройки</title>
 </head>
-<body>
-  <div class="container">
+<body class="settings-page">
+  <div class="container settings-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -21,112 +22,135 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card mt-12">
-      <b>Профиль</b>
+    <main class="settings-content">
+    <div class="card section-card settings-card settings-profile-card">
+      <div class="settings-card__title">
+        <span class="settings-card__eyebrow">Аккаунт</span>
+        <b>Профиль</b>
+      </div>
       <div class="muted mt-6">Привет, <span id="helloName">…</span></div>
-      <div class="row mt-10">
+      <div class="settings-actions mt-10">
         <button class="btn" onclick="location.href='/profile.html'">Редактировать профиль</button>
       </div>
     </div>
 
-    <div class="card mt-12">
-      <b>Заведение</b>
+    <div class="card section-card settings-card settings-venue-card">
+      <div class="settings-card__title">
+        <span class="settings-card__eyebrow">Рабочее пространство</span>
+        <b>Заведение</b>
+      </div>
       <div class="muted mt-6">Выберите активное заведение или откройте нужный раздел</div>
       <div id="venueMenuMount" class="mt-10"></div>
     </div>
 
-    <div class="card mt-12">
-      <b>Уведомления</b>
+    <div class="card section-card settings-card settings-notifications-card">
+      <div class="settings-card__title">
+        <span class="settings-card__eyebrow">Связь</span>
+        <b>Уведомления</b>
+      </div>
       <div class="muted mt-6">Напоминания от бота</div>
-      <div class="row mt-10 gap-8 wrap">
+      <div class="settings-actions mt-10">
         <button class="btn" id="btnNotifSettings">Настройка уведомлений</button>
         <button class="btn" id="btnNotifHistory">История уведомлений</button>
       </div>
     </div>
 
-    <div class="card mt-12">
-      <b>Язык интерфейса</b>
+    <div class="card section-card settings-card settings-language-card">
+      <div class="settings-card__title">
+        <span class="settings-card__eyebrow">Интерфейс</span>
+        <b>Язык интерфейса</b>
+      </div>
       <div class="muted mt-6">Выберите язык интерфейса. Не волнуйтесь, это не повлияет на язык Telegram.</div>
-      <div class="row mt-10">
+      <div class="settings-actions mt-10">
         <button class="btn" id="langRu">Русский</button>
         <button class="btn" id="langEn">English</button>
       </div>
-      <div class="muted" id="langHint"></div>
+      <div class="muted settings-current-value" id="langHint"></div>
     </div>
 
-    <div class="card mt-12">
-      <b>Тема</b>
+    <div class="card section-card settings-card settings-theme-card">
+      <div class="settings-card__title">
+        <span class="settings-card__eyebrow">Интерфейс</span>
+        <b>Тема</b>
+      </div>
       <div class="muted mt-6">По умолчанию — как в системе. Можно принудительно выбрать светлую или тёмную.</div>
-      <div class="row mt-10">
+      <div class="settings-actions mt-10">
         <select id="themeSelect" class="input minw-240">
           <option value="system">Системная</option>
           <option value="light">Светлая</option>
           <option value="dark">Тёмная</option>
         </select>
       </div>
-      <div class="muted" id="themeHint"></div>
+      <div class="muted settings-current-value" id="themeHint"></div>
     </div>
 
 
-    <div class="card mt-12">
-      <b>Документы и информация</b>
+    <div class="card section-card settings-card settings-documents-card">
+      <div class="settings-card__title">
+        <span class="settings-card__eyebrow">Сервис</span>
+        <b>Документы и информация</b>
+      </div>
       <div class="muted mt-6">Условия подписки, политика конфиденциальности, контакты и информация о сервисе.</div>
-      <div class="stack mt-12">
-        <a class="itemcard link-plain" href="/axelio-about.html">
-          <div class="row row--between gap-8 wrap">
+      <div class="settings-document-list mt-12">
+        <a class="itemcard link-plain settings-document-link" href="/axelio-about.html">
+          <div class="settings-document-link__layout">
             <div>
               <b>О сервисе</b>
               <div class="muted mt-6">Описание Axelio, формат доступа и модель подписки.</div>
             </div>
-            <span class="muted">Открыть →</span>
+            <span class="settings-document-link__action">Открыть →</span>
           </div>
         </a>
-        <a class="itemcard link-plain" href="/axelio-offer.html">
-          <div class="row row--between gap-8 wrap">
+        <a class="itemcard link-plain settings-document-link" href="/axelio-offer.html">
+          <div class="settings-document-link__layout">
             <div>
               <b>Публичная оферта</b>
               <div class="muted mt-6">Условия предоставления доступа к сервису по подписке.</div>
             </div>
-            <span class="muted">Открыть →</span>
+            <span class="settings-document-link__action">Открыть →</span>
           </div>
         </a>
-        <a class="itemcard link-plain" href="/axelio-privacy.html">
-          <div class="row row--between gap-8 wrap">
+        <a class="itemcard link-plain settings-document-link" href="/axelio-privacy.html">
+          <div class="settings-document-link__layout">
             <div>
               <b>Политика конфиденциальности</b>
               <div class="muted mt-6">Порядок обработки персональных данных пользователей.</div>
             </div>
-            <span class="muted">Открыть →</span>
+            <span class="settings-document-link__action">Открыть →</span>
           </div>
         </a>
-        <a class="itemcard link-plain" href="/axelio-subscription.html">
-          <div class="row row--between gap-8 wrap">
+        <a class="itemcard link-plain settings-document-link" href="/axelio-subscription.html">
+          <div class="settings-document-link__layout">
             <div>
               <b>Подписка, отмена и возврат</b>
               <div class="muted mt-6">Как работает продление, отмена последующих списаний и возвраты.</div>
             </div>
-            <span class="muted">Открыть →</span>
+            <span class="settings-document-link__action">Открыть →</span>
           </div>
         </a>
-        <a class="itemcard link-plain" href="/axelio-contacts.html">
-          <div class="row row--between gap-8 wrap">
+        <a class="itemcard link-plain settings-document-link" href="/axelio-contacts.html">
+          <div class="settings-document-link__layout">
             <div>
               <b>Контакты и реквизиты</b>
               <div class="muted mt-6">Поддержка, продавец и сведения для связи.</div>
             </div>
-            <span class="muted">Открыть →</span>
+            <span class="settings-document-link__action">Открыть →</span>
           </div>
         </a>
       </div>
     </div>
 
-    <div class="card mt-12 hidden" id="logoutCard">
-      <b>Аккаунт</b>
+    <div class="card section-card settings-card settings-account-card hidden" id="logoutCard">
+      <div class="settings-card__title">
+        <span class="settings-card__eyebrow">Сеанс</span>
+        <b>Выход из аккаунта</b>
+      </div>
       <div class="muted mt-6">Выход доступен в обычном браузере и при входе не через Telegram Mini App.</div>
-      <div class="row mt-10">
+      <div class="settings-actions mt-10">
         <button class="btn danger" id="btnLogout">Выйти из аккаунта</button>
       </div>
     </div>
+    </main>
 
     <div class="nav">
       <div class="wrap">
@@ -167,7 +191,7 @@
       getStoredDemoUiState,
       isDemoReadonlyUi,
       getDemoMonthLabel,
-    } from "/app.js?v=20260719-split1";
+    } from "/app.js?v=20260726-navmore1";
 
     applyTelegramTheme();
     mountCommonUI("settings");
@@ -547,7 +571,7 @@
         const error = item?.error_text ? `<div class="notif-history-error mt-8">${esc(item.error_text)}</div>` : "";
         return `
           <div class="itemcard mt-8 notif-history-card">
-            <div class="row gap-8 wrap" style="justify-content:space-between; align-items:flex-start;">
+            <div class="row row--between gap-8 wrap ai-start">
               <div>
                 <b>${esc(typeLabel(item?.notification_type))}</b>
                 <div class="muted small mt-6">${esc(timeLabel)}</div>

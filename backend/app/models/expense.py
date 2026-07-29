@@ -13,6 +13,7 @@ class Expense(Base):
     __table_args__ = (
         CheckConstraint("amount_minor >= 0", name="ck_expenses_amount_minor_non_negative"),
         CheckConstraint("spread_months >= 1", name="ck_expenses_spread_months_positive"),
+        CheckConstraint("shift_slot IN ('TOTAL', 'DAY', 'NIGHT')", name="ck_expenses_shift_slot_valid"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -25,6 +26,7 @@ class Expense(Base):
 
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     expense_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    shift_slot: Mapped[str] = mapped_column(String(16), nullable=False, default="TOTAL", server_default="TOTAL")
     generated_for_month: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     spread_months: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     comment: Mapped[str | None] = mapped_column(String(1000), nullable=True)

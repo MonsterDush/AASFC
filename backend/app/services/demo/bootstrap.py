@@ -427,6 +427,7 @@ def _create_schedule(db: Session, *, venue: Venue, reference_year: int, referenc
                 shift_id=int(evening_shift.id),
                 author_user_id=int(users_by_key["anna_admin"].id),
                 text=shift_note,
+                created_at=datetime.combine(day, time(hour=9), tzinfo=timezone.utc),
             ))
             created_comments += 1
 

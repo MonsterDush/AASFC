@@ -96,7 +96,14 @@ def _collect_member_candidate_dates(
     shift_rows = db.execute(
         select(Shift.venue_id, Shift.date)
         .join(ShiftAssignment, ShiftAssignment.shift_id == Shift.id)
-        .join(DailyReport, and_(DailyReport.venue_id == Shift.venue_id, DailyReport.date == Shift.date))
+        .join(
+            DailyReport,
+            and_(
+                DailyReport.venue_id == Shift.venue_id,
+                DailyReport.date == Shift.date,
+                DailyReport.shift_slot == Shift.shift_slot,
+            ),
+        )
         .where(
             ShiftAssignment.member_user_id == int(member_user_id),
             Shift.is_active.is_(True),

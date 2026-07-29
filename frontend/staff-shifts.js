@@ -17,12 +17,14 @@ import {
   getStoredDemoUiState,
   getDemoMonthLabel,
   mountDemoPageTour,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
+import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
 
 import { createStaffShiftExportController } from "/staff-shifts/export-controller.js?v=20260719-split1";
-import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260720-unified6";
+import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260729-overnight1";
+import { createStaffShiftCommentController } from "/staff-shifts/comment-controller.js?v=20260728-comments1";
 
 window.onerror = function (msg, src, line, col, err) {
   const text = `JS ошибка: ${msg}\n${src || ""}:${line || 0}:${col || 0}`;
@@ -63,6 +65,9 @@ mountCommonUI("shifts");
 await ensureLogin({ silent: true });
 
 const params = new URLSearchParams(location.search);
+const deepLinkDate = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date") || "")) ? String(params.get("date")) : "";
+const deepLinkShiftId = Number(params.get("open_shift") || 0) || null;
+const deepLinkCommentId = Number(params.get("comment") || 0) || null;
 const DEMO_STAFF_INTRO_DISMISSED_KEY = "axelio.demo_intro.staff_shifts.dismissed";
 const DEMO_MODE = isDemoUiMode(getStoredDemoUiState());
 
@@ -205,12 +210,12 @@ function openLegendModal() {
   }
 
   const rows = list.map((i) => {
-    const title = i.title || i.name || `${i.start_time || "?"}–${i.end_time || "?"}`;
-    const sub = `${i.start_time || "?"}–${i.end_time || "?"}`;
+    const title = i.title || i.name || formatShiftIntervalRange(i.start_time, i.end_time);
+    const sub = formatShiftIntervalRange(i.start_time, i.end_time);
     const c = colorForInterval(i.id);
     return `
       <div class="legend__row">
-        <div class="legend__swatch" style="background:${escapeHtml(c)}"></div>
+        <div class="legend__swatch" style="--interval-color:${escapeHtml(c)}"></div>
         <div class="legend__text">
           <div class="legend__title">${escapeHtml(title)}</div>
           <div class="legend__sub">${escapeHtml(sub)}</div>
@@ -309,7 +314,7 @@ function venueShiftFiltersQuery() {
     .sort((a, b) => a - b);
   for (const id of ids) p.append("interval_ids", String(id));
   if (unstaffedOnly) p.set("staffing_state", "unstaffed");
-  if (nightShiftsEnabled) p.set("shift_slot", selectedShiftSlot);
+  p.set("shift_slot", nightShiftsEnabled ? selectedShiftSlot : "DAY");
   return p;
 }
 
@@ -515,17 +520,8 @@ function normalizeShiftSlot(value) {
 function shiftSlotLabel(slot = selectedShiftSlot) {
   return normalizeShiftSlot(slot) === "NIGHT" ? "Ночь" : "День";
 }
-const NIGHT_FROM_RU = ["понедельника", "вторника", "среды", "четверга", "пятницы", "субботы", "воскресенья"];
-const NIGHT_TO_RU = ["вторник", "среду", "четверг", "пятницу", "субботу", "воскресенье", "понедельник"];
-function shiftSlotContextLabel(dateISO, slot = selectedShiftSlot) {
+function shiftSlotContextLabel(_dateISO, slot = selectedShiftSlot) {
   if (normalizeShiftSlot(slot) !== "NIGHT") return "День";
-  try {
-    const d = new Date(String(dateISO || "") + "T00:00:00");
-    if (!Number.isNaN(d.getTime())) {
-      const idx = (d.getDay() + 6) % 7;
-      return `Ночь с ${NIGHT_FROM_RU[idx]} на ${NIGHT_TO_RU[idx]}`;
-    }
-  } catch {}
   return "Ночь";
 }
 let selectedShiftSlot = normalizeShiftSlot(params.get("shift_slot") || localStorage.getItem(LS_SHIFT_SLOT) || localStorage.getItem("axelio.shift_slot") || "DAY");
@@ -534,8 +530,12 @@ let calendarScope = localStorage.getItem(LS_SCOPE) === "global" ? "global" : "ve
 let isMultiVenue = false;
 
 let curMonth = new Date();
-let selectedDate = null;
+let selectedDate = deepLinkDate || null;
 curMonth.setDate(1);
+if (deepLinkDate) {
+  const requestedDate = new Date(`${deepLinkDate}T00:00:00`);
+  if (!Number.isNaN(requestedDate.getTime())) curMonth = new Date(requestedDate.getFullYear(), requestedDate.getMonth(), 1);
+}
 const __demoState = getStoredDemoUiState();
 if (isDemoUiMode(__demoState) && !params.get("month")) {
   const demoYear = Number(__demoState?.demo_reference_year || 0);
@@ -578,7 +578,7 @@ function shiftTimeLabel(s) {
   const i = s.interval || s.shift_interval || {};
   const st = i.start_time || s.start_time || "";
   const et = i.end_time || s.end_time || "";
-  return (st && et) ? `${st}-${et}` : (st || "");
+  return formatShiftIntervalRange(st, et);
 }
 function shiftStartHHMM(s) {
   const i = s.interval || s.shift_interval || {};
@@ -810,7 +810,7 @@ function renderScheduleFilters() {
         <input type="checkbox" ${selectedIntervalIds.has(id) ? "checked" : ""} />
         <span class="schedule-check__text">
           <span class="schedule-check__title">${escapeHtml(it.title || "Интервал")}</span>
-          <span class="schedule-check__meta">${escapeHtml(it.start_time || "?")}-${escapeHtml(it.end_time || "?")}</span>
+          <span class="schedule-check__meta">${escapeHtml(formatShiftIntervalRange(it.start_time, it.end_time))}</span>
         </span>
       `;
       const input = label.querySelector("input");
@@ -842,8 +842,8 @@ function positionScheduleFilterMenu() {
   const triggerRect = trigger.getBoundingClientRect();
   const menuWidth = Math.min(360, Math.max(280, window.innerWidth - pad * 2));
 
-  menu.style.width = `${menuWidth}px`;
-  menu.style.maxWidth = `${Math.max(240, window.innerWidth - pad * 2)}px`;
+  menu.style.setProperty("--filter-menu-width", `${menuWidth}px`);
+  menu.style.setProperty("--filter-menu-max-width", `${Math.max(240, window.innerWidth - pad * 2)}px`);
 
   const menuRect = menu.getBoundingClientRect();
   let left = triggerRect.left + (triggerRect.width / 2) - (menuRect.width / 2);
@@ -855,8 +855,8 @@ function positionScheduleFilterMenu() {
   if (!fitsBelow && fitsAbove) top = triggerRect.top - 8 - menuRect.height;
   else if (!fitsBelow) top = Math.max(pad, window.innerHeight - pad - menuRect.height);
 
-  menu.style.left = `${Math.round(left)}px`;
-  menu.style.top = `${Math.round(top)}px`;
+  menu.style.setProperty("--filter-menu-left", `${Math.round(left)}px`);
+  menu.style.setProperty("--filter-menu-top", `${Math.round(top)}px`);
 }
 
 function setScheduleFilterMenuOpen(open) {
@@ -1169,6 +1169,7 @@ const staffShiftCalendar = createStaffShiftCalendarController({
   shiftSlotLabel,
   shiftIntervalId,
   shiftStartHHMM,
+  formatShiftIntervalRange,
   sortShiftsForBadges,
   shiftDonePrefix,
   formatGlobalLine,
@@ -1176,6 +1177,17 @@ const staffShiftCalendar = createStaffShiftCalendarController({
   openDay,
 });
 const { renderWeek, buildIndex, defaultSelectedDateForMonth, selectDate, monthTitle, formatDateRuNoG, filterForCalendar, shiftIsClosed, renderMonth } = staffShiftCalendar;
+const staffShiftCommentRuntime = {
+  get venueId() { return venueId; },
+  get deepLinkShiftId() { return deepLinkShiftId; },
+  get deepLinkCommentId() { return deepLinkCommentId; },
+};
+const staffShiftComments = createStaffShiftCommentController({
+  runtime: staffShiftCommentRuntime,
+  api,
+  toast,
+});
+
 function renderShiftCard(s, allowEdit) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
@@ -1218,32 +1230,13 @@ function renderShiftCard(s, allowEdit) {
     `;
   }
 
-  const commentsHtml = canComment
-    ? `
-      <div class="comments">
-        <div class="comments__head">
-          <b>Комментарии</b>
-          <span class="muted small" data-comments-status="${shiftId}"></span>
-        </div>
-        <div data-comments-list="${shiftId}" class="commentlist"><div class="muted small">Загрузка…</div></div>
-        <div class="commentform">
-          <textarea class="commentform__input" data-comments-input="${shiftId}" placeholder="Написать комментарий…"></textarea>
-          <button class="btn commentform__send" data-comments-send="${shiftId}">Отправить</button>
-        </div>
-      </div>
-    `
-    : `
-      <div class="comments">
-        <div class="comments__head"><b>Комментарии</b></div>
-        <div class="muted small mt-6">Комментарии доступны в режимах «Все» или «Только мои».</div>
-      </div>
-    `;
+  const commentsHtml = staffShiftComments.renderCommentsSection(shiftId, canComment);
 
   return `
     <div class="card shiftcard" data-shiftcard="${shiftId}">
       <div class="shiftcard__head">
         <div class="shiftcard__title">
-          <div class="shiftcard__line1"><span class="intchip" style="background:${intColor}"></span><b>${escapeHtml(title)}</b>${shiftIsClosed(s) ? `<span class="badge shift-done-badge">✓ закрыта</span>` : ``}</div>
+          <div class="shiftcard__line1"><span class="intchip" style="--interval-color:${escapeHtml(intColor)}"></span><b>${escapeHtml(title)}</b>${shiftIsClosed(s) ? `<span class="badge shift-done-badge">✓ закрыта</span>` : ``}</div>
           ${time ? `<div class="shiftcard__meta muted">${escapeHtml(time)}</div>` : ``}
         </div>
         ${allowEdit ? `<button class="btn danger sm" data-delete-shift="${shiftId}" type="button">Удалить смену</button>` : ``}
@@ -1255,91 +1248,6 @@ function renderShiftCard(s, allowEdit) {
   `;
 }
 
-
-async function loadShiftComments(shiftId) {
-  const out = await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/comments`).catch(() => []);
-  return Array.isArray(out) ? out : [];
-}
-
-function formatCommentAuthor(u) {
-  if (!u) return "—";
-  return u.short_name || u.full_name || (u.tg_username ? "@" + u.tg_username : "Сотрудник");
-}
-
-function renderCommentsInto(shiftId, comments) {
-  const box = document.querySelector(`[data-comments-list="${shiftId}"]`);
-  if (!box) return;
-  if (!comments || !comments.length) {
-    box.innerHTML = '<div class="muted small">Нет комментариев</div>';
-    return;
-  }
-  box.innerHTML = "";
-  for (const c of comments) {
-    const who = formatCommentAuthor(c.author);
-    const dt = c.created_at ? new Date(c.created_at) : null;
-    const when = dt ? dt.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
-
-    const item = document.createElement("div");
-    item.className = "comment";
-    item.innerHTML = `
-      <div class="comment__head">
-        <div class="comment__author">${escapeHtml(who)}</div>
-        ${when ? `<div class="comment__when">${escapeHtml(when)}</div>` : `<div class="comment__when"></div>`}
-      </div>
-      <div class="comment__text">${escapeHtml(c.text || "")}</div>
-    `;
-    box.appendChild(item);
-  }
-}
-
-async function wireShiftComments(shiftId) {
-  const btn = document.querySelector(`[data-comments-send="${shiftId}"]`);
-  const inp = document.querySelector(`[data-comments-input="${shiftId}"]`);
-  if (!btn || !inp) return;
-
-  const syncBtn = () => {
-    const hasText = String(inp.value || "").trim().length > 0;
-    if (!btn.dataset.sending) btn.disabled = !hasText;
-  };
-
-  inp.addEventListener("input", syncBtn);
-  inp.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      btn.click();
-    }
-  });
-
-  const refresh = async () => {
-    const comments = await loadShiftComments(shiftId);
-    renderCommentsInto(shiftId, comments);
-  };
-
-  // initial load
-  refresh();
-
-  syncBtn();
-
-  btn.onclick = async () => {
-    const text = String(inp.value || "").trim();
-    if (!text) return;
-    btn.dataset.sending = "1";
-    btn.disabled = true;
-    try {
-      await api(`/venues/${encodeURIComponent(venueId)}/shifts/${encodeURIComponent(shiftId)}/comments`, {
-        method: "POST",
-        body: { text },
-      });
-      inp.value = "";
-      await refresh();
-    } catch (e) {
-      toast(e?.message || "Не удалось отправить комментарий", "err");
-    } finally {
-      delete btn.dataset.sending;
-      syncBtn();
-    }
-  };
-}
 
 function wireShiftEditor(dateStr, shift, allowEdit) {
   if (!allowEdit) return;
@@ -1525,7 +1433,7 @@ function openDay(dateStr) {
     for (const i of intervals) {
       const opt = document.createElement("option");
       opt.value = String(i.id);
-      opt.textContent = `${i.title} · ${i.start_time}-${i.end_time}`;
+      opt.textContent = `${i.title} · ${formatShiftIntervalRange(i.start_time, i.end_time)}`;
       sel.appendChild(opt);
     }
 
@@ -1606,7 +1514,7 @@ function openDay(dateStr) {
   // wire cards (comments must work even on past days; comments disabled in global mode)
   for (const s of list) {
     wireShiftEditor(dateStr, s, allowEdit);
-    if (calendarScope !== "global") wireShiftComments((s.id ?? s.shift_id));
+    if (calendarScope !== "global") staffShiftComments.wireShiftComments((s.id ?? s.shift_id));
   }
 
 }
@@ -1688,6 +1596,10 @@ if (calendarView === "week") {
   await loadWeek();
 } else {
   await loadMonth();
+}
+if (deepLinkDate && deepLinkShiftId && (shiftsByDate.get(deepLinkDate) || []).some((shift) => Number(shift?.id ?? shift?.shift_id) === deepLinkShiftId)) {
+  selectDate(deepLinkDate, { noExpand: true });
+  openDay(deepLinkDate);
 }
 
 try { renderDemoStaffIntro(); } catch {}

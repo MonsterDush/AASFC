@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/admin-demo.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/admin-demo.css?v=20260726-polish7" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Админ · DEMO</title>
 </head>
-<body>
-  <div class="container">
+<body class="admin-demo-page">
+  <div class="container admin-demo-shell">
     <div class="topbar demo-admin-topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -22,12 +22,18 @@
       <div class="userpill" data-userpill>—</div>
     </div>
 
-    <div class="card">
-      <div class="demo-admin-kpis" id="demoKpis"></div>
-    </div>
+    <main class="admin-demo-content">
+    <section class="card demo-admin-hero">
+      <div class="demo-admin-kpis" id="demoKpis" aria-live="polite">
+        <div class="demo-admin-kpi demo-admin-kpi--loading">Загрузка…</div>
+        <div class="demo-admin-kpi demo-admin-kpi--loading">Загрузка…</div>
+        <div class="demo-admin-kpi demo-admin-kpi--loading">Загрузка…</div>
+        <div class="demo-admin-kpi demo-admin-kpi--loading">Загрузка…</div>
+      </div>
+    </section>
 
     <div class="demo-admin-grid">
-      <div class="card">
+      <section class="card demo-admin-section demo-admin-section--settings">
         <div class="row demo-admin-cardhead">
           <div>
             <div class="section-title"><b>Настройки DEMO</b></div>
@@ -51,14 +57,14 @@
           <button class="btn subtle" id="exportBtn">Экспорт fixture</button>
           <button class="btn subtle" id="resetBtn">Сбросить из fixture</button>
         </div>
-      </div>
+      </section>
 
-      <div class="card">
+      <section class="card demo-admin-section">
         <div class="section-title"><b>Состояние</b></div>
         <div id="statusBlock" class="demo-admin-pre">Загрузка…</div>
-      </div>
+      </section>
 
-      <div class="card">
+      <section class="card demo-admin-section demo-admin-section--wide">
         <div class="row demo-admin-cardhead">
           <div class="section-title"><b>Аналитика DEMO</b></div>
           <a class="btn subtle" href="/admin-demo-analytics.html">Подробная аналитика</a>
@@ -67,16 +73,16 @@
         <div class="demo-admin-split">
           <div>
             <div class="section-title mt-12"><b>CTA и события</b></div>
-            <div id="analyticsBlock" class="demo-admin-list mt-12">Загрузка…</div>
+            <div id="analyticsBlock" class="demo-admin-list demo-admin-state demo-admin-state--loading mt-12">Загрузка…</div>
           </div>
           <div>
             <div class="section-title mt-12"><b>Топ страниц и активность</b></div>
-            <div id="analyticsSecondary" class="demo-admin-list mt-12">Загрузка…</div>
+            <div id="analyticsSecondary" class="demo-admin-list demo-admin-state demo-admin-state--loading mt-12">Загрузка…</div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="card">
+      <section class="card demo-admin-section">
         <div class="section-title"><b>Template / Public</b></div>
         <div class="muted mt-6">Поддержка рабочего template и отдельного публичного DEMO без ручной магии.</div>
         <div class="demo-admin-actions">
@@ -86,9 +92,9 @@
           <button class="btn subtle" id="resetOwnerTourBtn" type="button">Сбросить тур owner</button>
           <button class="btn subtle" id="resetStaffTourBtn" type="button">Сбросить тур staff</button>
         </div>
-      </div>
+      </section>
 
-      <div class="card">
+      <section class="card demo-admin-section">
         <div class="section-title"><b>Быстрый preview DEMO</b></div>
         <div class="muted mt-6">Открывает новый DEMO-сеанс в выбранной persona и сразу ведёт в нужный экран.</div>
         <div class="demo-admin-preview mt-12" id="previewActions">
@@ -98,9 +104,9 @@
           <button class="btn" id="previewStaffBtn" type="button">Preview staff</button>
           <button class="btn subtle" id="previewStaffSalaryBtn" type="button">Staff → зарплата</button>
         </div>
-      </div>
+      </section>
 
-      <div class="card">
+      <section class="card demo-admin-section demo-admin-section--wide">
         <div class="section-title"><b>Smoke-check после публикации</b></div>
         <div class="demo-admin-checklist mt-12">
           <div class="demo-admin-check"><span>1.</span><div><b>Проверь owner flow</b><div class="muted">Сводка → расходы → начисления → карточка заведения.</div></div></div>
@@ -108,16 +114,17 @@
           <div class="demo-admin-check"><span>3.</span><div><b>Проверь CTA и выход</b><div class="muted">Кнопки в DEMO-панели должны вести на сайт/форму и закрывать DEMO-сеанс.</div></div></div>
           <div class="demo-admin-check"><span>4.</span><div><b>Проверь fixture</b><div class="muted">После ручной доводки сохрани новый fixture, чтобы эталон не потерялся.</div></div></div>
         </div>
-      </div>
+      </section>
 
     </div>
+    </main>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour, cacheSystemRole } from "/app.js?v=20260719-split1";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour, cacheSystemRole } from "/app.js?v=20260726-navmore1";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");
@@ -126,7 +133,7 @@
   const me = auth?.data || {};
   cacheSystemRole(me?.system_role || "");
   if (String(me?.system_role || "").toUpperCase() !== "SUPER_ADMIN") {
-    document.body.innerHTML = `<div class="container"><div class="card"><b>Нет доступа</b><div class="muted mt-8">Страница DEMO доступна только SUPER_ADMIN.</div></div></div>`;
+    document.body.innerHTML = `<div class="container"><div class="demo-admin-denied"><b>Нет доступа</b><div class="muted mt-8">Страница DEMO доступна только SUPER_ADMIN.</div><div class="row gap-8 mt-12"><a class="btn" href="/">На главную</a><a class="btn subtle" href="/settings.html">Профиль</a></div></div></div>`;
     throw new Error("SUPER_ADMIN_REQUIRED");
   }
   await mountNav({ activeTab: "admin-demo" });
@@ -177,7 +184,8 @@
 
   function renderList(el, rows, formatter){
     if (!el) return;
-    if (!rows || !rows.length) { el.innerHTML = '<div class="muted">Пока нет данных</div>'; return; }
+    el.classList.remove('demo-admin-state', 'demo-admin-state--loading');
+    if (!rows || !rows.length) { el.innerHTML = '<div class="demo-admin-state demo-admin-state--empty">Пока нет данных</div>'; return; }
     el.innerHTML = rows.map(formatter).join('');
   }
 

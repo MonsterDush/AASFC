@@ -55,7 +55,8 @@ for (const [fileName, factoryName] of moduleContracts) {
   const source = fs.readFileSync(filePath, "utf8");
   facadeSources.push(source);
   assert.ok(source.split("\n").length < 500, `${fileName} is too large`);
-  assert.match(mainSource, new RegExp(`/app/${fileName.replace(".", "\\.")}\\?v=20260719-split1`));
+  const cacheKey = fileName === "navigation.js" ? "20260726-navmore1" : "20260719-split1";
+  assert.match(mainSource, new RegExp(`/app/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
   importedModules[fileName] = await import(pathToFileURL(filePath));
   assert.equal(typeof importedModules[fileName][factoryName], "function");
 }
@@ -133,6 +134,16 @@ const navigation = importedModules["navigation.js"].createNavigation({
 for (const methodName of moduleContracts[2][2]) assert.equal(typeof navigation[methodName], "function");
 assert.equal(navigation.can("REPORTS_VIEW", { permissions: ["REPORTS_VIEW"] }), true);
 assert.deepEqual(await navigation.getVenueById(2), { id: 2, name: "Venue" });
+const navigationSource = fs.readFileSync(path.join(frontendDir, "app/navigation.js"), "utf8");
+for (const mobileMoreContract of [
+  "const mobilePrimaryLinkCount = 3",
+  "const overflowLinks = links.slice(mobilePrimaryLinkCount)",
+  'button.textContent = t("more")',
+  'button.setAttribute("aria-haspopup", "menu")',
+  'if (event.key === "Escape" && !menu.hidden)',
+]) {
+  assert.ok(navigationSource.includes(mobileMoreContract), `navigation lost ${mobileMoreContract}`);
+}
 
 function sourceFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -144,7 +155,7 @@ function sourceFiles(directory) {
 let consumerCount = 0;
 for (const filePath of sourceFiles(frontendDir)) {
   const source = fs.readFileSync(filePath, "utf8");
-  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20260719-split1["']/g)) {
+  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20260726-navmore1["']/g)) {
     consumerCount += 1;
     const imported = match[1].split(",").map((entry) => entry.trim().split(/\s+as\s+/)[0]).filter(Boolean);
     for (const name of imported) assert.ok(EXPECTED_EXPORTS.includes(name), `${path.basename(filePath)} imports missing ${name}`);

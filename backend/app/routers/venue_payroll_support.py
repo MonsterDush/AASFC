@@ -138,7 +138,7 @@ def _has_closed_report_for_date(db: Session, *, venue_id: int, target_date: date
             DailyReport.venue_id == int(venue_id),
             DailyReport.date == target_date,
             DailyReport.status == "CLOSED",
-        )
+        ).limit(1)
     ).scalar_one_or_none()
     return report_id is not None
 
@@ -290,7 +290,14 @@ def _collect_venue_payroll_candidate_dates(
     shift_rows = db.execute(
         select(ShiftAssignment.member_user_id, Shift.date)
         .join(Shift, Shift.id == ShiftAssignment.shift_id)
-        .join(DailyReport, sa.and_(DailyReport.venue_id == Shift.venue_id, DailyReport.date == Shift.date))
+        .join(
+            DailyReport,
+            sa.and_(
+                DailyReport.venue_id == Shift.venue_id,
+                DailyReport.date == Shift.date,
+                DailyReport.shift_slot == Shift.shift_slot,
+            ),
+        )
         .where(
             Shift.venue_id == int(venue_id),
             Shift.is_active.is_(True),

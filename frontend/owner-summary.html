@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260720-unified9" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Сводка</title>
 </head>
-<body>
+<body class="owner-summary-page">
   <div class="container">
     <div class="topbar">
       <div class="brand">
@@ -22,7 +22,7 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card demo-flow-card hidden" id="demoSummaryIntro">
+    <div class="card demo-flow-card summary-demo-card hidden" id="demoSummaryIntro">
       <div class="demo-flow-card__head">
         <div>
           <b>Что посмотреть в DEMO владельца</b>
@@ -42,14 +42,14 @@
       </div>
     </div>
 
-    <div class="card finance-toolbar">
-      <div class="screen-hero">
+    <div class="card finance-toolbar summary-shell">
+      <div class="screen-hero summary-hero">
         <div class="screen-hero__head">
           <div>
             <b>Финансовая сводка</b>
             <div class="muted mt-6">главные показатели по закрытым отчётам и подтверждённым расходам</div>
           </div>
-          <div class="seg seg--period" id="summaryPeriodSeg">
+          <div class="seg seg--period summary-period-segment" id="summaryPeriodSeg">
             <button data-period="month" class="active">Месяц</button>
             <button data-period="range">Период</button>
           </div>
@@ -70,70 +70,75 @@
           </div>
         </div>
 
-        <div class="itemcard finance-period-card" id="summaryMetaCard">
+        <div class="itemcard finance-period-card summary-period-card" id="summaryMetaCard">
           <div class="finance-period-card__label">Текущий период</div>
-          <div class="finance-period-card__value" id="summaryPeriodText">—</div>
+          <div class="finance-period-card__value is-loading" id="summaryPeriodText" aria-busy="true">Загрузка…</div>
           <div class="muted" id="summaryHint">—</div>
         </div>
       </div>
 
-      <div class="finance-kpis finance-kpis--primary mt-12">
-        <div class="itemcard finance-stat finance-stat--hero" id="revenueCard">
+      <div class="state summary-state hidden" id="summaryState" role="status">
+        <div class="state__title" id="summaryStateTitle"></div>
+        <div class="state__text" id="summaryStateText"></div>
+      </div>
+
+      <div class="finance-kpis finance-kpis--primary summary-kpis summary-kpis--primary mt-12" id="summaryPrimaryKpis">
+        <div class="itemcard finance-stat finance-stat--hero summary-metric summary-metric--revenue" id="revenueCard">
           <div class="finance-stat__label">Выручка</div>
-          <div class="finance-stat__value" id="summaryRevenue">—</div>
+          <div class="finance-stat__value is-loading" id="summaryRevenue" aria-busy="true">Загрузка…</div>
           <div class="finance-stat__meta">Основная сумма по закрытым отчётам за выбранный период.</div>
         </div>
-        <div class="itemcard finance-stat finance-stat--hero" id="profitCard">
+        <div class="itemcard finance-stat finance-stat--hero summary-metric summary-metric--profit" id="profitCard">
           <div class="finance-stat__label">Прибыль</div>
-          <div class="finance-stat__value" id="summaryProfit">—</div>
+          <div class="finance-stat__value is-loading" id="summaryProfit" aria-busy="true">Загрузка…</div>
           <div class="finance-stat__meta">Выручка за вычетом расходов без ФОТ и фонда оплаты труда.</div>
         </div>
-        <div class="itemcard finance-stat finance-stat--hero" id="marginCard">
+        <div class="itemcard finance-stat finance-stat--hero summary-metric summary-metric--margin" id="marginCard">
           <div class="finance-stat__label">Маржинальность</div>
-          <div class="finance-stat__value" id="summaryMargin">—</div>
+          <div class="finance-stat__value is-loading" id="summaryMargin" aria-busy="true">Загрузка…</div>
           <div class="finance-stat__meta">Доля прибыли от выручки за период.</div>
         </div>
       </div>
 
-      <div class="finance-kpis finance-kpis--secondary mt-12">
-        <div class="itemcard finance-stat" id="expensesCard">
+      <div class="finance-kpis finance-kpis--secondary summary-kpis mt-12" id="summarySecondaryKpis">
+        <div class="itemcard finance-stat summary-metric summary-metric--cost" id="expensesCard">
           <div class="finance-stat__label">Расходы без ФОТ</div>
-          <div class="finance-stat__value" id="summaryExpenses">—</div>
+          <div class="finance-stat__value is-loading" id="summaryExpenses" aria-busy="true">Загрузка…</div>
         </div>
-        <div class="itemcard finance-stat" id="payrollCard">
+        <div class="itemcard finance-stat summary-metric summary-metric--cost" id="payrollCard">
           <div class="finance-stat__label">ФОТ</div>
-          <div class="finance-stat__value" id="summaryPayroll">—</div>
+          <div class="finance-stat__value is-loading" id="summaryPayroll" aria-busy="true">Загрузка…</div>
         </div>
-        <div class="itemcard finance-stat" id="totalCostCard">
+        <div class="itemcard finance-stat summary-metric summary-metric--cost" id="totalCostCard">
           <div class="finance-stat__label">Всего затрат</div>
-          <div class="finance-stat__value" id="summaryTotalCost">—</div>
+          <div class="finance-stat__value is-loading" id="summaryTotalCost" aria-busy="true">Загрузка…</div>
         </div>
-        <div class="itemcard finance-stat" id="adjustmentsCard">
+        <div class="itemcard finance-stat summary-metric" id="adjustmentsCard">
           <div class="finance-stat__label">Корректировки</div>
-          <div class="finance-stat__value" id="summaryAdjustments">—</div>
+          <div class="finance-stat__value is-loading" id="summaryAdjustments" aria-busy="true">Загрузка…</div>
         </div>
-        <div class="itemcard finance-stat" id="refundsCard">
+        <div class="itemcard finance-stat summary-metric" id="refundsCard">
           <div class="finance-stat__label">Возвраты</div>
-          <div class="finance-stat__value" id="summaryRefunds">—</div>
+          <div class="finance-stat__value is-loading" id="summaryRefunds" aria-busy="true">Загрузка…</div>
         </div>
       </div>
 
-      <div class="finance-kpis finance-kpis--ratios mt-12">
+      <div class="finance-kpis finance-kpis--ratios summary-kpis summary-kpis--ratios mt-12" id="summaryRatioKpis">
         <div class="itemcard finance-stat" id="expenseRatioCard">
           <div class="finance-stat__label">Расходы от выручки</div>
-          <div class="finance-stat__value" id="summaryExpenseRatio">—</div>
+          <div class="finance-stat__value is-loading" id="summaryExpenseRatio" aria-busy="true">Загрузка…</div>
         </div>
         <div class="itemcard finance-stat" id="payrollRatioCard">
           <div class="finance-stat__label">ФОТ от выручки</div>
-          <div class="finance-stat__value" id="summaryPayrollRatio">—</div>
+          <div class="finance-stat__value is-loading" id="summaryPayrollRatio" aria-busy="true">Загрузка…</div>
         </div>
         <div class="itemcard finance-stat" id="totalCostRatioCard">
           <div class="finance-stat__label">Затраты от выручки</div>
-          <div class="finance-stat__value" id="summaryTotalCostRatio">—</div>
+          <div class="finance-stat__value is-loading" id="summaryTotalCostRatio" aria-busy="true">Загрузка…</div>
         </div>
       </div>
 
-      <div class="itemcard mt-12">
+      <div class="itemcard mt-12 summary-details-card" id="summaryDetailsCard">
         <div class="section-head">
           <div class="section-title"><b>Перейти к деталям</b></div>
           <div class="muted">Открой нужный финансовый раздел без перегруза первого экрана.</div>
@@ -166,6 +171,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-summary.js?v=20260720-unified9"></script>
+  <script type="module" src="/owner-summary.js?v=20260726-navmore1"></script>
 </body>
 </html>

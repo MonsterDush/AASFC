@@ -7,3 +7,4 @@ axelio_pgdata/
 .DS_Store
 .coverage
 htmlcov/
+artifacts/ui-audit-*/

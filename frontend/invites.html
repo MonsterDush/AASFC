@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/invites.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/invites.css?v=20260725-polish4" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Приглашения</title>
 </head>
-<body>
-  <div class="container">
+<body class="invites-page">
+  <div class="container invites-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -22,65 +22,89 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div id="selectorCard" class="itemcard mt-12 hidden">
-        <b>Выбрать заведение</b>
-        <div class="muted mt-6">Сначала выбери заведение, для которого нужно создать приглашение.</div>
-        <div class="row mt-10">
+    <main class="invites-content">
+      <section id="selectorCard" class="itemcard section-card invite-selector-card hidden">
+        <div class="section-card__title">
+          <b>Выбрать заведение</b>
+          <div class="muted">Сначала выберите заведение, для которого нужно создать приглашение.</div>
+        </div>
+        <div class="invite-selector-actions">
           <select class="invite-venue-select invite-venue-select--wide" id="venueSelect"></select>
           <button class="btn primary" id="btnUseVenue">Выбрать</button>
           <a class="btn subtle inline" id="openLink" href="/invites.html">Открыть страницу</a>
         </div>
-      </div>
+      </section>
 
-      <div class="itemcard mt-12">
-        <b id="inviteTitle">Пригласить участника</b>
-        <div id="venueMeta" class="muted mt-6"></div>
+      <section class="itemcard section-card invite-create-card">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b id="inviteTitle">Пригласить участника</b>
+            <div id="venueMeta" class="muted"></div>
+          </div>
+        </div>
 
         <div class="invite-grid">
-          <div>
-            <label class="muted">Способ приглашения</label>
+          <label class="invite-field">
+            <span>Способ приглашения</span>
             <select id="inviteChannel">
               <option value="TELEGRAM">Telegram</option>
               <option value="PHONE">Телефон</option>
             </select>
-          </div>
-          <div id="tgWrap">
-            <label class="muted">Ник в Telegram</label>
+          </label>
+          <label class="invite-field" id="tgWrap">
+            <span>Ник в Telegram</span>
             <input id="tg" placeholder="@username" />
-          </div>
-          <div class="hidden" id="phoneWrap">
-            <label class="muted">Телефон</label>
+          </label>
+          <label class="invite-field hidden" id="phoneWrap">
+            <span>Телефон</span>
             <input id="phone" placeholder="+7 999 123-45-67" />
-          </div>
-          <div>
-            <label class="muted">Имя или заметка</label>
+          </label>
+          <label class="invite-field">
+            <span>Имя или заметка</span>
             <input id="contactLabel" placeholder="Иван / Новый кальянщик" />
-          </div>
-          <div>
-            <label class="muted">Роль</label>
+          </label>
+          <label class="invite-field">
+            <span>Роль</span>
             <select id="role">
               <option value="STAFF">Персонал</option>
               <option value="OWNER">Владелец</option>
             </select>
-          </div>
+          </label>
         </div>
-        <div class="row mt-10">
+        <div class="invite-create-actions">
           <button class="btn primary" id="btnInvite">Создать приглашение</button>
-          <div id="inviteResult" class="muted"></div>
+          <div id="inviteResult" class="invite-result muted" aria-live="polite"></div>
         </div>
-      </div>
+      </section>
 
-      <div class="itemcard mt-12">
-        <b>Приглашения в ожидании</b>
-        <div id="pending" class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
-      </div>
+      <section class="itemcard section-card invite-list-card">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Приглашения в ожидании</b>
+            <div class="muted small">Ссылки, которые ещё не были приняты участниками.</div>
+          </div>
+          <span class="invite-count" id="pendingCount">…</span>
+        </div>
+        <div id="pending" class="invite-list" aria-live="polite">
+          <div class="skeleton skeleton--card"></div>
+          <div class="skeleton skeleton--card"></div>
+        </div>
+      </section>
 
-      <div class="itemcard mt-12">
-        <b>Участники</b>
-        <div id="members" class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
-      </div>
-    </div>
+      <section class="itemcard section-card invite-list-card">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Участники</b>
+            <div class="muted small">Люди с активным доступом к выбранному заведению.</div>
+          </div>
+          <span class="invite-count" id="membersCount">…</span>
+        </div>
+        <div id="members" class="invite-list" aria-live="polite">
+          <div class="skeleton skeleton--card"></div>
+          <div class="skeleton skeleton--card"></div>
+        </div>
+      </section>
+    </main>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
@@ -112,7 +136,7 @@
       getMe,
       getStoredDemoUiState,
       isDemoReadonlyUi
-    } from "/app.js?v=20260719-split1";
+    } from "/app.js?v=20260726-navmore1";
     import { isOwnerRole, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260321-miniappfix2";
 
     function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -142,6 +166,8 @@
     const venueMeta = document.getElementById("venueMeta");
     const pending = document.getElementById("pending");
     const members = document.getElementById("members");
+    const pendingCount = document.getElementById("pendingCount");
+    const membersCount = document.getElementById("membersCount");
     const inviteResult = document.getElementById("inviteResult");
     const inviteChannel = document.getElementById("inviteChannel");
     const tgWrap = document.getElementById("tgWrap");
@@ -175,10 +201,10 @@
 
     function applyInviteAccess() {
       if (!btnInvite || !roleSelect) return;
-      btnInvite.style.display = canManageStaff ? "" : "none";
+      btnInvite.classList.toggle("hidden", !canManageStaff);
       btnInvite.disabled = !canManageStaff;
       const ownerOption = roleSelect.querySelector('option[value="OWNER"]');
-      if (ownerOption) ownerOption.style.display = canInviteOwners ? "" : "none";
+      if (ownerOption) ownerOption.hidden = !canInviteOwners;
       if (!canInviteOwners && String(roleSelect.value || "STAFF").toUpperCase() === "OWNER") {
         roleSelect.value = "STAFF";
       }
@@ -187,7 +213,7 @@
       if (inviteResultEl) {
         inviteResultEl.textContent = canManageStaff ? "" : "Нет прав на управление участниками.";
       }
-      if (inviteCard) inviteCard.style.display = canManageStaff ? "" : "none";
+      inviteCard?.classList.toggle("hidden", !canManageStaff);
     }
 
     function syncChannel() {
@@ -257,17 +283,18 @@
 
     function renderPending(items) {
       pending.innerHTML = "";
+      pendingCount.textContent = String(items?.length || 0);
       if (!items?.length) {
-        pending.innerHTML = `<div class="muted">Нет ожидающих приглашений</div>`;
+        pending.innerHTML = `<div class="invite-state">Нет ожидающих приглашений</div>`;
         return;
       }
       items.forEach(i => {
         const row = document.createElement("div");
         row.className = "invite-card";
         row.innerHTML = `
-          <div class="row row--between ai-start gap-12">
-            <div>
-              <div><b>${pendingContact(i)}</b> <span class="chip">${esc(channelLabel(i.channel))}</span> <span class="chip">${esc(roleLabel(i.venue_role))}</span></div>
+          <div class="invite-card__layout">
+            <div class="invite-card__main">
+              <div class="invite-card__title"><b>${pendingContact(i)}</b> <span class="chip">${esc(channelLabel(i.channel))}</span> <span class="chip">${esc(roleLabel(i.venue_role))}</span></div>
               <div class="muted mono-wrap mt-6">${i.phone ? esc(i.phone) + ' · ' : ''}${esc(i.created_at || '')}</div>
               ${linkedTargetHtml(i)}
               <div class="mt-6"><a class="link" href="${escAttr(i.invite_link || '#')}" target="_blank" rel="noreferrer">Открыть приглашение</a></div>
@@ -304,8 +331,9 @@
 
     function renderMembers(items) {
       members.innerHTML = "";
+      membersCount.textContent = String(items?.length || 0);
       if (!items?.length) {
-        members.innerHTML = `<div class="muted">Участников пока нет</div>`;
+        members.innerHTML = `<div class="invite-state">Участников пока нет</div>`;
         return;
       }
       items.forEach(m => {
@@ -314,9 +342,9 @@
         const display = m.display_name || m.short_name || m.full_name || (m.tg_username ? '@' + m.tg_username : 'Участник');
         const canRemoveMember = canManageStaff && (canInviteOwners || String(m.venue_role || '').toUpperCase() !== 'OWNER');
         row.innerHTML = `
-          <div class="row row--between ai-start gap-12">
-            <div>
-              <div><b>${esc(display)}</b> <span class="chip">${esc(roleLabel(m.venue_role))}</span></div>
+          <div class="invite-card__layout">
+            <div class="invite-card__main">
+              <div class="invite-card__title"><b>${esc(display)}</b> <span class="chip">${esc(roleLabel(m.venue_role))}</span></div>
               <div class="muted mt-6">${m.tg_username ? "@" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? esc(m.phone) : ""}</div>
               <div class="mt-6">${authChips(m.auth_methods || [])}</div>
             </div>
@@ -354,23 +382,29 @@
 
     async function loadMembers() {
       if (!venueId) {
-        pending.innerHTML = `<div class="muted">Сначала выбери заведение</div>`;
-        members.innerHTML = `<div class="muted">Сначала выбери заведение</div>`;
+        pendingCount.textContent = "0";
+        membersCount.textContent = "0";
+        pending.innerHTML = `<div class="invite-state">Сначала выберите заведение</div>`;
+        members.innerHTML = `<div class="invite-state">Сначала выберите заведение</div>`;
         return;
       }
       await refreshPermissions();
       await ensureVenueName();
       setVenueMeta();
-      pending.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
-      members.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+      pendingCount.textContent = "…";
+      membersCount.textContent = "…";
+      pending.innerHTML = `<div class="skeleton skeleton--card"></div><div class="skeleton skeleton--card"></div>`;
+      members.innerHTML = `<div class="skeleton skeleton--card"></div><div class="skeleton skeleton--card"></div>`;
       try {
         const data = await api(`/venues/${venueId}/members`);
         window.__lastJson = data;
         renderPending(data.pending_invites || []);
         renderMembers(data.members || []);
       } catch (e) {
-        pending.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
-        members.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
+        pendingCount.textContent = "—";
+        membersCount.textContent = "—";
+        pending.innerHTML = `<div class="invite-state invite-state--error">Ошибка: ${esc(e.message)}</div>`;
+        members.innerHTML = `<div class="invite-state invite-state--error">Ошибка: ${esc(e.message)}</div>`;
         toast('Ошибка загрузки: ' + e.message, 'err');
       }
     }
@@ -396,6 +430,7 @@
         body.phone = phone;
       }
       inviteResult.textContent = '';
+      inviteResult.classList.remove('is-success');
       try {
         const out = await api(`/venues/${venueId}/invites`, { method:'POST', body });
         window.__lastJson = out;
@@ -413,6 +448,7 @@
         } else {
           inviteResult.textContent = out?.mode || 'ok';
         }
+        inviteResult.classList.add('is-success');
         toast(out?.mode === 'member_added' ? 'Участник добавлен' : 'Приглашение создано', 'ok');
         await loadMembers();
       } catch (e) {

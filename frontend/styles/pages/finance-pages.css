@@ -9,8 +9,30 @@ select.finance-control--wide{min-width:170px}
 .revenue-control-panel{flex:1 1 360px;min-width:min(360px,100%)}
 .finance-table-empty{padding:6px 0}
 .finance-table-row{padding:8px 0}
+
+.owner-summary-page .summary-shell{display:grid;gap:14px}
+.owner-summary-page .summary-hero{padding-bottom:2px}
+.owner-summary-page .summary-period-card{background:linear-gradient(145deg,var(--accentSoftBg),var(--surface2) 72%);border-color:var(--accentSoftBorder)}
+.owner-summary-page .summary-period-segment{align-self:start}
+.owner-summary-page .summary-kpis{align-items:stretch}
+.owner-summary-page .finance-kpis--secondary{grid-template-columns:repeat(3,minmax(0,1fr))}
+.owner-summary-page .summary-metric{height:100%;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.owner-summary-page .summary-metric:hover{border-color:var(--accentSoftBorder);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+.owner-summary-page .summary-metric--revenue,.owner-summary-page .summary-metric--profit{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--surface2) 76%)}
+.owner-summary-page .summary-metric--margin{background:linear-gradient(145deg,var(--statusSuccessBg),var(--surface2) 78%);border-color:var(--statusSuccessBorder)}
+.owner-summary-page .summary-metric--cost{background:linear-gradient(145deg,var(--statusWarningBgSoft),var(--surface2) 82%)}
+.owner-summary-page .summary-state{margin-top:12px;box-shadow:none;background:var(--surface2)}
+.owner-summary-page .summary-details-card{background:linear-gradient(145deg,var(--surface2),rgba(255,255,255,.015))}
+.owner-summary-page .finance-stat__value.is-loading,.owner-summary-page .finance-period-card__value.is-loading{position:relative;color:transparent;overflow:hidden;min-height:1.25em}
+.owner-summary-page .finance-stat__value.is-loading::after,.owner-summary-page .finance-period-card__value.is-loading::after{content:"";position:absolute;inset:4px 18% 4px 0;border-radius:999px;background:linear-gradient(90deg,var(--shimmer),var(--surfaceTintStrong),var(--shimmer));animation:shimmer 1.1s infinite}
 @media (max-width:560px){
   input.finance-control,
   select.finance-control{width:100%;min-width:0}
   .finance-state-span-2{grid-column:auto}
+  .owner-summary-page .finance-kpis--secondary{grid-template-columns:1fr}
+  .owner-summary-page .summary-metric:hover{box-shadow:none;transform:none}
+  .owner-summary-page .summary-details-card .section-head{gap:6px}
+}
+@media (min-width:561px) and (max-width:900px){
+  .owner-summary-page .finance-kpis--secondary{grid-template-columns:repeat(2,minmax(0,1fr))}
 }

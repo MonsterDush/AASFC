@@ -18,6 +18,7 @@ from app.settings import settings
 
 DEFAULT_OWNER_PHONE = "+79990000001"
 DEFAULT_STAFF_PHONE = "+79990000002"
+DEFAULT_ADMIN_PHONE = "+79990000003"
 DEFAULT_VENUE_NAME = "Axelio E2E Lounge"
 LOCAL_DATABASE_HOSTS = {"127.0.0.1", "localhost", "::1", "db"}
 
@@ -85,6 +86,28 @@ def _attach_phone_login(db: Session, *, user: User, phone: str, password: str) -
     set_password(user, password)
 
 
+def _find_or_create_admin_user(db: Session, *, phone: str) -> User:
+    identity = db.execute(
+        select(AuthIdentity).where(AuthIdentity.phone_e164 == normalize_phone_e164(phone))
+    ).scalar_one_or_none()
+    if identity is not None:
+        user = db.get(User, int(identity.user_id))
+        if user is None:
+            raise RuntimeError("E2E admin identity points to a missing user")
+    else:
+        user = User(
+            full_name="Axelio E2E Admin",
+            short_name="E2E Admin",
+            system_role="SUPER_ADMIN",
+            is_demo_user=False,
+            demo_persona=None,
+        )
+        db.add(user)
+        db.flush()
+    user.system_role = "SUPER_ADMIN"
+    return user
+
+
 def bootstrap_e2e_data(db: Session) -> dict[str, object]:
     require_safe_e2e_database(
         settings.database_url,
@@ -94,8 +117,9 @@ def bootstrap_e2e_data(db: Session) -> dict[str, object]:
     venue_name = str(os.getenv("E2E_VENUE_NAME") or DEFAULT_VENUE_NAME).strip() or DEFAULT_VENUE_NAME
     owner_phone = normalize_phone_e164(os.getenv("E2E_OWNER_PHONE") or DEFAULT_OWNER_PHONE)
     staff_phone = normalize_phone_e164(os.getenv("E2E_STAFF_PHONE") or DEFAULT_STAFF_PHONE)
-    if owner_phone == staff_phone:
-        raise RuntimeError("E2E owner and staff phones must differ")
+    admin_phone = normalize_phone_e164(os.getenv("E2E_ADMIN_PHONE") or DEFAULT_ADMIN_PHONE)
+    if len({owner_phone, staff_phone, admin_phone}) != 3:
+        raise RuntimeError("E2E owner, staff and admin phones must differ")
 
     existing_venues = db.execute(
         select(Venue).where(Venue.name == venue_name).order_by(Venue.id.asc())
@@ -130,8 +154,10 @@ def bootstrap_e2e_data(db: Session) -> dict[str, object]:
 
     owner = _find_persona_user(db, venue_id=int(venue.id), persona="OWNER")
     staff = _find_persona_user(db, venue_id=int(venue.id), persona="STAFF")
+    admin = _find_or_create_admin_user(db, phone=admin_phone)
     _attach_phone_login(db, user=owner, phone=owner_phone, password=password)
     _attach_phone_login(db, user=staff, phone=staff_phone, password=password)
+    _attach_phone_login(db, user=admin, phone=admin_phone, password=password)
 
     billing = db.execute(
         select(VenueBillingState).where(VenueBillingState.venue_id == int(venue.id))
@@ -151,6 +177,7 @@ def bootstrap_e2e_data(db: Session) -> dict[str, object]:
         "reference_month": f"{now.year:04d}-{now.month:02d}",
         "owner": {"user_id": int(owner.id), "phone": owner_phone, "role": "OWNER"},
         "staff": {"user_id": int(staff.id), "phone": staff_phone, "role": "STAFF"},
+        "admin": {"user_id": int(admin.id), "phone": admin_phone, "role": "SUPER_ADMIN"},
         "counts": result.counts,
     }
 

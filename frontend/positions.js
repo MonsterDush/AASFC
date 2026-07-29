@@ -18,14 +18,14 @@ import {
   deleteVenuePosition,
   patchInviteDefaultPosition,
   isDemoUiMode,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 
 import { permSetFromResponse, roleUpper, hasAnyPerm } from "/permissions.js";
-import { createPositionPermissionController } from "/positions/permission-controller.js?v=20260720-unified6";
+import { createPositionPermissionController } from "/positions/permission-controller.js?v=20260726-navmore1";
 import { createPositionDomain } from "/positions/position-domain.js?v=20260720-unified6";
-import { createPositionEditor } from "/positions/position-editor.js?v=20260720-unified6";
-import { createPositionList } from "/positions/position-list.js?v=20260720-unified6";
-import { createPositionInviteController } from "/positions/invite-controller.js?v=20260720-unified6";
+import { createPositionEditor } from "/positions/position-editor.js?v=20260723-functional1";
+import { createPositionList } from "/positions/position-list.js?v=20260725-polish3";
+import { createPositionInviteController } from "/positions/invite-controller.js?v=20260725-polish4";
 
 const root = document.getElementById("root");
 
@@ -51,39 +51,50 @@ function renderShell() {
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div class="muted">Создайте должности, назначьте сотрудников и при необходимости выберите для них профиль зарплаты.</div>
-      <div class="muted small mt-6" id="accessHint"></div>
+    <main class="positions-shell">
+      <section class="card section-card positions-hero">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Роли команды и рабочие настройки</b>
+            <div class="muted">Создайте должности, назначьте сотрудников и выберите профиль начислений и права.</div>
+          </div>
+        </div>
+        <div class="positions-access" id="accessHint"></div>
+      </section>
 
-      <div class="itemcard mt-12">
-        <div class="row row--between ai-center">
-          <b>Список должностей</b>
+      <section class="itemcard section-card positions-section">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Список должностей</b>
+            <div class="muted small">Шаблон должности остаётся в списке, даже если сотрудник ещё не назначен.</div>
+          </div>
           <button class="btn primary" id="btnOpenCreate">+ Создать</button>
         </div>
-        <div class="mt-10" id="list">
-          <div class="skeleton"></div><div class="skeleton"></div>
+        <div class="position-group-list" id="list" aria-live="polite">
+          <div class="skeleton skeleton--card"></div>
+          <div class="skeleton skeleton--card"></div>
         </div>
-      </div>
+      </section>
 
+      <section class="itemcard section-card positions-section positions-invites hidden" id="invitesCard">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Приглашённые <span class="badge badge--draft">ожидают входа</span></b>
+            <div class="muted small">Назначьте должность заранее — она применится после принятия приглашения.</div>
+          </div>
+        </div>
+        <div class="position-invite-list" id="invitesList" aria-live="polite">
+          <div class="muted">—</div>
+        </div>
+      </section>
 
-
-<div class="itemcard mt-12 hidden" id="invitesCard">
-  <div class="row row--between ai-center">
-    <b>Приглашённые <span class="badge badge--draft">приглашён</span></b>
-  </div>
-  <div class="muted small mt-6">Назначьте должность заранее — применится после принятия приглашения.</div>
-  <div class="mt-10" id="invitesList">
-    <div class="muted">—</div>
-  </div>
-</div>
-      <div class="row mt-12">
+      <div class="positions-back-actions">
         <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
       </div>
-    </div>
+    </main>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
 
-    <!-- confirm modal (используется confirmModal()) -->
     <div id="modal" class="modal">
       <div class="modal__backdrop"></div>
       <div class="modal__panel">
@@ -95,7 +106,6 @@ function renderShell() {
       </div>
     </div>
 
-    <!-- editor modal для создания/редактирования должности -->
     <div id="posModal" class="modal">
       <div class="modal__backdrop" data-close></div>
       <div class="modal__panel">
@@ -134,7 +144,12 @@ function applyAccessToShell() {
   const ah = document.getElementById("accessHint");
   if (ah) {
     const marks = (ok) => ok ? "✓" : "—";
-    ah.textContent = `Доступ: список ${marks(auth.canViewList)} · редактирование ${marks(auth.canManage)} · права ${marks(auth.canManagePerms)} · назначения ${marks(auth.canAssign)}`;
+    ah.innerHTML = `
+      <span class="position-access-chip">Список ${marks(auth.canViewList)}</span>
+      <span class="position-access-chip">Редактирование ${marks(auth.canManage)}</span>
+      <span class="position-access-chip">Права ${marks(auth.canManagePerms)}</span>
+      <span class="position-access-chip">Назначения ${marks(auth.canAssign)}</span>
+    `;
   }
 }
 
@@ -340,7 +355,7 @@ async function main() {
   } catch (e) {
     toast("Ошибка загрузки: " + (e?.message || e), "err");
     const list = document.getElementById("list");
-    if (list) list.innerHTML = `<div class="muted">Ошибка загрузки: ${esc(e?.message || e)}</div>`;
+    if (list) list.innerHTML = `<div class="position-state position-state--error">Ошибка загрузки: ${esc(e?.message || e)}</div>`;
   }
 }
 

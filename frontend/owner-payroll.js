@@ -18,7 +18,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
 let financialValuesHidden = false;
@@ -381,100 +381,114 @@ function periodTitle() {
 
 function renderShell() {
   root.innerHTML = `
-    <div class="topbar">
+    <div class="topbar payroll-topbar">
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
           <b id="title">Начисления</b>
-          <div class="muted" id="subtitle">${esc(periodTitle())}</div>
+          <div class="muted" id="subtitle">ФОТ и детализация команды</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card demo-flow-card hidden" id="demoOwnerPayrollIntro">
-      <div class="demo-flow-card__head">
-        <div>
-          <b>Что посмотреть в DEMO владельца</b>
-          <div class="muted mt-6" id="demoOwnerPayrollIntroText">Здесь видно общий ФОТ и разбор начислений команды по профилям.</div>
-        </div>
-        <button class="btn sm subtle" id="demoOwnerPayrollIntroClose" type="button">Скрыть</button>
-      </div>
-      <div class="demo-flow-card__chips mt-10">
-        <span class="demo-flow-card__chip">Общий ФОТ</span>
-        <span class="demo-flow-card__chip">Строки начислений</span>
-        <span class="demo-flow-card__chip">Детализация по сотруднику</span>
-      </div>
-      <div class="demo-flow-card__actions mt-12">
-        <button class="btn" id="demoOwnerPayrollGoSummary" type="button">Открыть сводку</button>
-        <button class="btn subtle" id="demoOwnerPayrollGoExpenses" type="button">Открыть расходы</button>
-      </div>
-    </div>
-
-    <div class="card finance-toolbar">
-      <div class="screen-hero">
-        <div class="screen-hero__head">
+    <main class="payroll-content">
+      <div class="card demo-flow-card hidden" id="demoOwnerPayrollIntro">
+        <div class="demo-flow-card__head">
           <div>
-            <b>Расчёт зарплаты</b>
-            <div class="page-caption mt-6">Считается по активным назначениям профилей. Поддержаны ставки, проценты и KPI-бонусы по закрытым отчётам и выбранному периоду.</div>
+            <b>Что посмотреть в DEMO владельца</b>
+            <div class="muted mt-6" id="demoOwnerPayrollIntroText">Здесь видно общий ФОТ и разбор начислений команды по профилям.</div>
           </div>
-          <div class="screen-hero__actions">
-            <button class="btn primary" id="btnCalculate">Рассчитать</button>
-            <button class="btn ghost" id="btnExport">Экспорт XLSX</button>
-            <a class="btn subtle" id="openProfilesBtn" href="#">Профили</a>
-          </div>
+          <button class="btn sm subtle" id="demoOwnerPayrollIntroClose" type="button">Скрыть</button>
         </div>
-
-        <div class="screen-hero__toolbar">
-          <div class="screen-hero__period">
-            <div class="seg seg--period finance-period-segment" id="periodSeg">
-              <button type="button" id="periodMonthBtn">Месяц</button>
-              <button type="button" id="periodRangeBtn">Период</button>
-            </div>
-            <div id="monthControls" class="pickers">
-              <input id="monthPick" class="finance-control" type="month" />
-            </div>
-            <div id="rangeControls" class="range-pick hidden">
-              <input id="rangeFrom" type="date" />
-              <input id="rangeTo" type="date" />
-              <button class="btn" id="rangeApply">Показать</button>
-            </div>
-          </div>
-          <div class="itemcard finance-period-card">
-            <div class="finance-period-card__label">Период расчёта</div>
-            <div class="finance-period-card__value" id="runMeta">—</div>
-            <div class="muted">Автоматический перерасчёт и экспорт доступны прямо с этого экрана.</div>
-          </div>
+        <div class="demo-flow-card__chips mt-10">
+          <span class="demo-flow-card__chip">Общий ФОТ</span>
+          <span class="demo-flow-card__chip">Строки начислений</span>
+          <span class="demo-flow-card__chip">Детализация по сотруднику</span>
+        </div>
+        <div class="demo-flow-card__actions mt-12">
+          <button class="btn" id="demoOwnerPayrollGoSummary" type="button">Открыть сводку</button>
+          <button class="btn subtle" id="demoOwnerPayrollGoExpenses" type="button">Открыть расходы</button>
         </div>
       </div>
 
-      <div class="finance-stats finance-stats--payroll mt-12">
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Итого</div>
-          <div class="finance-stat__value" id="totalAmount">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Сотрудников</div>
-          <div class="finance-stat__value" id="linesCount">—</div>
-        </div>
-        <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Статус расчёта</div>
-          <div class="finance-stat__value" id="runMetaStat">—</div>
-        </div>
-      </div>
+      <section class="card payroll-overview-card">
+        <div class="screen-hero payroll-hero">
+          <div class="screen-hero__head">
+            <div>
+              <b>Расчёт зарплаты</b>
+              <div class="page-caption mt-6">Начисления по активным профилям: ставки, проценты и KPI-бонусы по закрытым отчётам выбранного периода.</div>
+            </div>
+            <div class="screen-hero__actions screen-hero__actions--adaptive payroll-hero__actions">
+              <a class="btn subtle" id="openProfilesBtn" href="#">Профили</a>
+              <button class="btn ghost" id="btnExport">Экспорт XLSX</button>
+              <button class="btn primary" id="btnCalculate">Рассчитать</button>
+            </div>
+          </div>
 
-      <div class="itemcard mt-12">
-        <div class="section-head">
-          <div class="section-title"><b>Строки начислений</b></div>
+          <div class="payroll-period-grid">
+            <div class="itemcard payroll-period-card">
+              <div class="finance-period-card__label">Период начислений</div>
+              <div class="payroll-period-card__controls">
+                <div class="seg seg--period finance-period-segment" id="periodSeg">
+                  <button type="button" id="periodMonthBtn">Месяц</button>
+                  <button type="button" id="periodRangeBtn">Период</button>
+                </div>
+                <div id="monthControls" class="pickers">
+                  <input id="monthPick" class="finance-control" type="month" aria-label="Месяц начислений" />
+                </div>
+                <div id="rangeControls" class="range-pick hidden">
+                  <input id="rangeFrom" type="date" aria-label="Начало периода" />
+                  <input id="rangeTo" type="date" aria-label="Конец периода" />
+                  <button class="btn" id="rangeApply">Показать</button>
+                </div>
+              </div>
+            </div>
+            <div class="itemcard finance-period-card payroll-run-card">
+              <div class="finance-period-card__label">Последний расчёт</div>
+              <div class="finance-period-card__value is-loading" id="runMeta" aria-busy="true">Загрузка…</div>
+              <div class="muted">Перерасчёт обновляет ФОТ и детализацию для каждого сотрудника.</div>
+            </div>
+          </div>
         </div>
-        <div id="linesList" class="mt-12"><div class="skeleton"></div><div class="skeleton"></div></div>
-      </div>
 
-      <div class="row row--between gap-12 mt-12">
+        <div class="finance-kpis payroll-kpis">
+          <div class="itemcard finance-stat finance-stat--hero payroll-metric payroll-metric--total">
+            <div class="finance-stat__label">Фонд оплаты труда</div>
+            <div class="finance-stat__value is-loading" id="totalAmount" aria-busy="true">Загрузка…</div>
+            <div class="finance-stat__meta">Итого начислено команде за выбранный период.</div>
+          </div>
+          <div class="itemcard finance-stat payroll-metric">
+            <div class="finance-stat__label">Сотрудников в расчёте</div>
+            <div class="finance-stat__value is-loading" id="linesCount" aria-busy="true">Загрузка…</div>
+            <div class="finance-stat__meta">Участники, для которых сформированы строки начислений.</div>
+          </div>
+          <div class="itemcard finance-stat payroll-metric">
+            <div class="finance-stat__label">Среднее начисление</div>
+            <div class="finance-stat__value is-loading" id="averageAmount" aria-busy="true">Загрузка…</div>
+            <div class="finance-stat__meta">Средняя сумма на одного сотрудника в текущем расчёте.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card section-card payroll-lines-card">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Начисления сотрудникам</b>
+            <div class="muted">Сумма, рабочая нагрузка и полный разбор компонентов профиля.</div>
+          </div>
+        </div>
+        <div id="linesList" class="payroll-lines payroll-loading" aria-live="polite" aria-busy="true">
+          <div class="payroll-line-skeleton skeleton"></div>
+          <div class="payroll-line-skeleton skeleton"></div>
+        </div>
+      </section>
+
+      <div class="payroll-footer">
         <a class="btn subtle inline" id="backVenue" href="#">← Назад к заведению</a>
         <a class="btn subtle inline" id="openSummary" href="#">Открыть сводку →</a>
       </div>
-    </div>
+    </main>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
     <div id="modal" class="modal">
@@ -576,42 +590,56 @@ function recalculationText(latestRecalc, runCalculatedAt) {
 function renderLines() {
   const totalAmount = document.getElementById("totalAmount");
   const linesCount = document.getElementById("linesCount");
+  const averageAmount = document.getElementById("averageAmount");
   const runMeta = document.getElementById("runMeta");
-  const runMetaStat = document.getElementById("runMetaStat");
   const linesList = document.getElementById("linesList");
   if (!linesList) return;
 
+  const settleMetric = (element, value) => {
+    if (!element) return;
+    element.textContent = value;
+    element.classList.remove("is-loading");
+    element.setAttribute("aria-busy", "false");
+  };
+  linesList.classList.remove("payroll-loading");
+  linesList.setAttribute("aria-busy", "false");
+
   if (!state.can.view) {
-    linesList.innerHTML = `<div class="muted">Нет доступа к начислениям</div>`;
-    if (totalAmount) totalAmount.textContent = "—";
-    if (linesCount) linesCount.textContent = "—";
-    if (runMeta) runMeta.textContent = "нет доступа";
-    if (runMetaStat) runMetaStat.textContent = "нет доступа";
+    linesList.innerHTML = `<div class="payroll-state payroll-state--denied"><b>Нет доступа к начислениям</b><span>Для просмотра ФОТ нужны права на начисления.</span></div>`;
+    settleMetric(totalAmount, "—");
+    settleMetric(linesCount, "—");
+    settleMetric(averageAmount, "—");
+    settleMetric(runMeta, "нет доступа");
     return;
   }
 
   const data = state.data || { lines: [], total_amount_minor: 0, lines_count: 0, run: null, latest_recalculation: null };
-  if (totalAmount) totalAmount.textContent = fmtMoneyMinor(data.total_amount_minor);
-  if (linesCount) linesCount.textContent = String(Number(data.lines_count || 0));
+  const calculatedLinesCount = Number(data.lines_count || 0);
+  settleMetric(totalAmount, fmtMoneyMinor(data.total_amount_minor));
+  settleMetric(linesCount, String(calculatedLinesCount));
+  settleMetric(
+    averageAmount,
+    calculatedLinesCount ? fmtMoneyMinor(Math.round(Number(data.total_amount_minor || 0) / calculatedLinesCount)) : "—",
+  );
   if (runMeta) {
     if (data.run?.calculated_at) {
       const metaText = recalculationText(data.latest_recalculation, data.run.calculated_at);
-      runMeta.textContent = metaText;
-      if (runMetaStat) runMetaStat.textContent = metaText;
+      settleMetric(runMeta, metaText);
     } else if (data.latest_recalculation?.created_at) {
       const metaText = recalculationText(data.latest_recalculation, null);
-      runMeta.textContent = metaText;
-      if (runMetaStat) runMetaStat.textContent = metaText;
+      settleMetric(runMeta, metaText);
     } else {
       const metaText = state.periodMode === "month" ? "ещё не считалось" : "агрегация по дневным начислениям";
-      runMeta.textContent = metaText;
-      if (runMetaStat) runMetaStat.textContent = metaText;
+      settleMetric(runMeta, metaText);
     }
   }
 
   const lines = Array.isArray(data.lines) ? data.lines : [];
   if (!lines.length) {
-    linesList.innerHTML = `<div class="muted">${state.periodMode === "month" ? "За выбранный месяц начислений пока нет. Нажми «Рассчитать», если профили уже назначены." : "За выбранный диапазон начислений пока нет."}</div>`;
+    const emptyText = state.periodMode === "month"
+      ? "За выбранный месяц начислений пока нет. Нажми «Рассчитать», если профили уже назначены."
+      : "За выбранный диапазон начислений пока нет.";
+    linesList.innerHTML = `<div class="payroll-state payroll-state--empty"><b>Нет строк начислений</b><span>${esc(emptyText)}</span></div>`;
     return;
   }
 
@@ -621,19 +649,29 @@ function renderLines() {
     const metrics = breakdown.metrics || {};
     const components = Array.isArray(breakdown.components) ? breakdown.components : [];
     const row = document.createElement("div");
-    row.className = "expense-row";
+    row.className = "payroll-person";
     const periodState = String(line.period_state || breakdown.period_state || "").toLowerCase();
     const stateBadge = periodState === "partial"
       ? '<span class="badge">частично</span>'
       : (periodState === "ready" ? '' : '');
+    const workedDatesCount = Number(metrics.worked_dates_count || 0);
     row.innerHTML = `
-      <div>
-        <div class="row gap-8">
-          <b class="expense-row__title">${esc(memberName(line.member))}</b>
-          ${line.pay_profile_title ? `<span class="badge">${esc(line.pay_profile_title)}</span>` : ""}
-          ${stateBadge}
+      <div class="payroll-person__main">
+        <div class="payroll-person__head">
+          <div class="payroll-person__identity">
+            <div class="payroll-person__title">
+              <b>${esc(memberName(line.member))}</b>
+              ${line.pay_profile_title ? `<span class="badge">${esc(line.pay_profile_title)}</span>` : ""}
+              ${stateBadge}
+            </div>
+            <div class="payroll-person__metrics">
+              <span><b>${esc(metrics.hours_total ?? 0)}</b> ч</span>
+              <span><b>${esc(metrics.shifts_count ?? 0)}</b> смен</span>
+              ${workedDatesCount ? `<span><b>${esc(workedDatesCount)}</b> дней</span>` : ""}
+            </div>
+          </div>
+          <div class="payroll-person__amount">${esc(fmtMoneyMinor(line.amount_minor))}</div>
         </div>
-        <div class="mono mt-6">Часы: ${esc(metrics.hours_total ?? 0)} · Смены: ${esc(metrics.shifts_count ?? 0)}${Number(metrics.worked_dates_count || 0) ? ` · Дней: ${esc(metrics.worked_dates_count)}` : ""}</div>
         <details class="mt-12 payroll-breakdown">
           <summary>${state.periodMode === "month" ? "Показать разбор" : "Показать разбор периода"}</summary>
           <div class="payroll-breakdown__body mt-8">
@@ -659,9 +697,6 @@ function renderLines() {
           </div>
         </details>
       </div>
-      <div class="expense-row__side">
-        <div class="expense-row__amount">${esc(fmtMoneyMinor(line.amount_minor))}</div>
-      </div>
     `;
     linesList.appendChild(row);
   });
@@ -676,13 +711,21 @@ function buildPayrollPath() {
 
 async function load() {
   const linesList = document.getElementById("linesList");
-  if (linesList) linesList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+  if (linesList) {
+    linesList.classList.add("payroll-loading");
+    linesList.setAttribute("aria-busy", "true");
+    linesList.innerHTML = `<div class="payroll-line-skeleton skeleton"></div><div class="payroll-line-skeleton skeleton"></div>`;
+  }
   try {
     state.data = await api(buildPayrollPath());
     renderLines();
   } catch (e) {
     const detail = e?.data?.detail || e?.message || "не удалось загрузить";
-    if (linesList) linesList.innerHTML = `<div class="muted">Ошибка: ${esc(detail)}</div>`;
+    if (linesList) {
+      linesList.classList.remove("payroll-loading");
+      linesList.setAttribute("aria-busy", "false");
+      linesList.innerHTML = `<div class="payroll-state payroll-state--error"><b>Не удалось загрузить начисления</b><span>${esc(detail)}</span></div>`;
+    }
     toast("Не удалось загрузить начисления", "err");
   }
 }

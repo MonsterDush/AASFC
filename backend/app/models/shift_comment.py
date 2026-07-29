@@ -17,6 +17,11 @@ class ShiftComment(Base):
 
     shift_id: Mapped[int] = mapped_column(ForeignKey("shifts.id", ondelete="CASCADE"), index=True)
     author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    parent_comment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("shift_comments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -24,3 +29,6 @@ class ShiftComment(Base):
 
     shift = relationship("Shift", back_populates="comments")
     author = relationship("User")
+    parent_comment = relationship("ShiftComment", remote_side=[id], back_populates="replies")
+    replies = relationship("ShiftComment", back_populates="parent_comment")
+    mentions = relationship("ShiftCommentMention", back_populates="comment", cascade="all, delete-orphan")

@@ -1,0 +1,75 @@
+.owner-day-economics-page .economics-shell,
+.owner-economics-rules-page .economics-shell{display:grid;gap:14px}
+.economics-topbar{margin-bottom:0}
+.economics-content,
+.economics-rules-content{min-width:0;border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 34%)}
+.finance-page-state{display:grid;gap:6px;padding:18px;border:1px dashed var(--border);border-radius:16px;background:var(--surfaceTintSoft);color:var(--muted);line-height:1.45}
+.finance-page-state b{color:var(--text)}
+.finance-page-state--denied{border-color:var(--statusWarningBorder);background:var(--statusWarningBg)}
+.finance-page-state--error{border-color:var(--statusErrorBorder);background:var(--statusErrorBg)}
+
+.owner-day-economics-page.is-loading .finance-stat__value,
+.owner-day-economics-page.is-loading .finance-period-card__value,
+.owner-economics-rules-page.is-loading .finance-period-card__value{position:relative;min-height:1.25em;overflow:hidden;color:transparent}
+.owner-day-economics-page.is-loading .finance-stat__value::after,
+.owner-day-economics-page.is-loading .finance-period-card__value::after,
+.owner-economics-rules-page.is-loading .finance-period-card__value::after{content:"";position:absolute;inset:4px 16% 4px 0;border-radius:999px;background:linear-gradient(90deg,var(--shimmer),var(--surfaceTintStrong),var(--shimmer));animation:shimmer 1.1s infinite}
+
+.owner-day-economics-page .screen-hero__actions{align-items:center}
+.owner-day-economics-page .economics-date-picker{min-width:160px}
+.owner-day-economics-page .finance-shortcuts{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px}
+.owner-day-economics-page .finance-kpis{align-items:stretch}
+.owner-day-economics-page .finance-stat{height:100%;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.owner-day-economics-page .finance-stat:hover{border-color:var(--accentSoftBorder);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+.owner-day-economics-page .finance-stat--hero{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--surface2) 78%)}
+.economics-section-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
+.economics-section-card{min-width:0}
+.economics-section-card--wide{grid-column:1/-1}
+.economics-state-list,
+.economics-rules-summary{display:grid;gap:8px;margin-top:12px}
+.economics-rules-summary{padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted);line-height:1.5}
+.economics-state{display:grid;gap:5px;padding:14px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted);line-height:1.45}
+.economics-alert{margin-top:8px}
+.economics-rollup-card,
+.economics-manage-card{margin-top:12px}
+.economics-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
+.economics-detail-card{display:grid;align-content:start;gap:12px;min-width:0}
+.economics-detail-list{display:grid;gap:0;min-height:72px}
+.economics-detail-list .summary-list-row:last-child{border-bottom:0}
+.economics-detail-list .skeleton + .skeleton{margin-top:8px}
+
+.economics-rules-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.economics-rules-shortcuts .btn{width:100%}
+.economics-rules-summary{margin-top:12px}
+.economics-rules-manage{margin-top:12px}
+.economics-rules-presets{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.economics-rules-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
+.economics-rules-form > label{min-width:0;padding:13px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
+.economics-rules-form > .checkline{grid-column:1/-1}
+.economics-rules-form > label > input:not([type="checkbox"]){margin-top:9px}
+.economics-rules-form > div:last-child{grid-column:1/-1;display:flex;justify-content:flex-end}
+.economics-rules-loading{grid-column:1/-1;display:grid;gap:10px;min-height:250px}
+
+@media (max-width:760px){
+  .economics-section-grid,
+  .economics-detail-grid,
+  .economics-rules-form{grid-template-columns:1fr}
+  .economics-section-card--wide,
+  .economics-rules-form > .checkline,
+  .economics-rules-form > div:last-child{grid-column:auto}
+}
+
+@media (max-width:560px){
+  .owner-day-economics-page .screen-hero__actions,
+  .owner-day-economics-page .finance-shortcuts,
+  .economics-rules-shortcuts,
+  .economics-rules-presets{display:grid;grid-template-columns:1fr;width:100%}
+  .owner-day-economics-page .screen-hero__actions > *,
+  .owner-day-economics-page .finance-shortcuts .btn,
+  .economics-rules-shortcuts .btn,
+  .economics-rules-presets .btn{width:100%;min-width:0}
+  .owner-day-economics-page .finance-stat:hover{box-shadow:none;transform:none}
+  .economics-rules-form > div:last-child .btn{width:100%}
+  .summary-list-row{align-items:flex-start}
+  .summary-list-value{white-space:normal;overflow-wrap:anywhere}
+}

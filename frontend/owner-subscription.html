@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/owner-subscription.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/owner-subscription.css?v=20260725-polish5" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Подписка</title>
 </head>
-<body>
-  <div class="container">
+<body class="owner-subscription-page">
+  <div class="container subscription-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -22,50 +22,67 @@
       <div class="userpill" data-userpill>—</div>
     </div>
 
-    <div class="card">
-      <div class="row row--between gap-10">
-        <div>
-          <div><b id="planLabel">Тариф</b></div>
-          <div class="muted mt-6" id="statusLine">—</div>
+    <main class="subscription-content">
+    <div class="card section-card subscription-hero">
+      <div class="subscription-head">
+        <div class="subscription-title">
+          <div class="subscription-eyebrow">Тариф заведения</div>
+          <b id="planLabel">Тариф</b>
+          <div class="subscription-status subscription-status--loading mt-8" id="statusLine">Загрузка статуса…</div>
         </div>
-        <div class="row gap-8">
+        <div class="subscription-actions">
           <button class="btn primary" id="extendBtn">Продлить на 30 дней</button>
           <button class="btn" id="exportBtn">Экспорт XLSX</button>
           <a class="btn subtle" id="backBtn" href="/app-venues.html">Назад</a>
         </div>
       </div>
-      <div class="meta-grid mt-12">
-        <div class="info-card">
-          <div class="muted">Оплачено до</div>
-          <b id="paidUntil">—</b>
-          <div class="muted mt-12">Льготный период до</div>
-          <b id="graceUntil">—</b>
+      <div class="subscription-meta-grid mt-12">
+        <div class="subscription-info-card">
+          <div class="subscription-info-item">
+            <span>Оплачено до</span>
+            <b id="paidUntil">—</b>
+          </div>
+          <div class="subscription-info-item">
+            <span>Льготный период до</span>
+            <b id="graceUntil">—</b>
+          </div>
         </div>
-        <div class="info-card">
-          <div class="muted">Последняя оплата</div>
-          <b id="lastPaymentAt">—</b>
-          <div class="muted mt-12">Следующий ориентир оплаты</div>
-          <b id="nextPaymentDueAt">—</b>
+        <div class="subscription-info-card">
+          <div class="subscription-info-item">
+            <span>Последняя оплата</span>
+            <b id="lastPaymentAt">—</b>
+          </div>
+          <div class="subscription-info-item">
+            <span>Следующий ориентир оплаты</span>
+            <b id="nextPaymentDueAt">—</b>
+          </div>
         </div>
       </div>
-      <div class="muted mt-12">Возвраты, ручные продления и оплаты собираются в единой истории ниже.</div>
+      <div class="subscription-note mt-12">Возвраты, ручные продления и оплаты собираются в единой истории ниже.</div>
     </div>
 
-    <div class="card">
-      <div class="row row--between gap-10">
+    <div class="card section-card subscription-history-card">
+      <div class="section-card__head">
         <div>
           <b>История операций</b>
           <div class="muted">Оплаты, продления, возвраты и события статуса.</div>
         </div>
       </div>
-      <div id="historyBlock" class="mt-12"><div class="muted">Загрузка…</div></div>
+      <div id="historyBlock" class="subscription-history mt-12" aria-live="polite">
+        <div class="subscription-history-loading" aria-label="Загрузка истории">
+          <div class="skeleton skeleton--line"></div>
+          <div class="skeleton skeleton--line"></div>
+          <div class="skeleton skeleton--line"></div>
+        </div>
+      </div>
     </div>
+    </main>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, downloadFile } from '/app.js?v=20260719-split1';
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, downloadFile } from '/app.js?v=20260726-navmore1';
   import { getBillingAccessMode, getBillingStatus, isOwnerRole, isSysAdminRole, roleUpper } from '/permissions.js?v=20260331-billing2';
 
   applyTelegramTheme();
@@ -91,6 +108,20 @@
   function formatMinor(value){ return `${(Number(value || 0)/100).toLocaleString('ru-RU', {minimumFractionDigits:0, maximumFractionDigits:0})} ₽`; }
   function txTypeLabel(v){ return ({ PAYMENT:'Оплата', EXTEND:'Продление', SET_PAID_UNTIL:'Установка paid until', REFUND:'Возврат' }[String(v || '').toUpperCase()]) || String(v || '—'); }
   function txStatusLabel(v){ return ({ SUCCEEDED:'Успешно', PENDING:'В обработке', FAILED:'Ошибка', CANCELED:'Отменено' }[String(v || '').toUpperCase()]) || String(v || '—'); }
+  function txStatusClass(v){
+    const value = String(v || '').toUpperCase();
+    if (value === 'SUCCEEDED') return 'subscription-operation-status--success';
+    if (value === 'PENDING') return 'subscription-operation-status--pending';
+    if (value === 'FAILED' || value === 'CANCELED') return 'subscription-operation-status--error';
+    return '';
+  }
+  function billingStatusClass(v){
+    const value = String(v || '').toUpperCase();
+    if (value === 'ACTIVE') return 'subscription-status--success';
+    if (value === 'GRACE' || value === 'TRIAL') return 'subscription-status--warning';
+    if (value === 'BLOCKED' || value === 'EXPIRED' || value === 'SUSPENDED') return 'subscription-status--error';
+    return 'subscription-status--neutral';
+  }
   function eventLabel(v){ const map = { BILLING_REFUND_CREATED:'Возврат создан', BILLING_EXTENDED_MANUALLY:'Ручное продление', BILLING_PAID_UNTIL_SET_MANUALLY:'Установка paid until', BILLING_STATUS_CHANGED_AUTO:'Автопереход статуса', ROBOKASSA_PAYMENT_SUCCEEDED:'Оплата подтверждена', ROBOKASSA_PAYMENT_FAILED:'Ошибка оплаты', ROBOKASSA_PAYMENT_CANCELED:'Платёж отменён', ROBOKASSA_PAYMENT_EXPIRED:'Checkout истёк', ROBOKASSA_RESULT_SIGNATURE_INVALID:'Неверная подпись callback', ROBOKASSA_AMOUNT_MISMATCH:'Сумма callback не совпала', ROBOKASSA_RESULT_DUPLICATE:'Повторный callback', ROBOKASSA_REFUND_REQUESTED:'Возврат отправлен в Robokassa', ROBOKASSA_REFUND_FINISHED:'Возврат выполнен', ROBOKASSA_REFUND_CANCELED:'Возврат отменён', ROBOKASSA_REFUND_FAILED:'Ошибка возврата' }; return map[String(v || '').toUpperCase()] || String(v || '—'); }
 
   async function startCheckout(){
@@ -112,27 +143,38 @@
     const events = Array.isArray(data?.events) ? data.events : [];
     const entries = [
       ...txs.map((tx) => ({ ts: new Date(tx.created_at || 0).getTime(), html: `
-        <div class="history-row">
-          <div><b>${esc(txTypeLabel(tx.type))}</b> · ${esc(txStatusLabel(tx.status))}</div>
-          <div class="small mt-6">${esc(formatDateTime(tx.created_at))}</div>
-          <div class="small mt-6">Сумма: ${esc(formatMinor(tx.amount_minor || 0))}</div>
-          <div class="small mt-6">Источник: ${esc(tx.source || '—')}</div>
-          ${tx.period_from || tx.period_until ? `<div class="small mt-6">Период: ${esc(formatDate(tx.period_from))} → ${esc(formatDate(tx.period_until))}</div>` : ''}
-          ${tx.comment ? `<div class="small mt-6">Комментарий: ${esc(tx.comment)}</div>` : ''}
+        <div class="subscription-history-row">
+          <div class="subscription-history-row__head">
+            <b>${esc(txTypeLabel(tx.type))}</b>
+            <span class="subscription-operation-status ${txStatusClass(tx.status)}">${esc(txStatusLabel(tx.status))}</span>
+          </div>
+          <div class="subscription-history-meta">
+            <span>${esc(formatDateTime(tx.created_at))}</span>
+            <span>Сумма: <b>${esc(formatMinor(tx.amount_minor || 0))}</b></span>
+            <span>Источник: ${esc(tx.source || '—')}</span>
+            ${tx.period_from || tx.period_until ? `<span>Период: ${esc(formatDate(tx.period_from))} → ${esc(formatDate(tx.period_until))}</span>` : ''}
+          </div>
+          ${tx.comment ? `<div class="subscription-history-comment">Комментарий: ${esc(tx.comment)}</div>` : ''}
         </div>` })),
       ...events.map((event) => ({ ts: new Date(event.created_at || 0).getTime(), html: `
-        <div class="history-row">
-          <div><b>${esc(eventLabel(event.event_type))}</b></div>
-          <div class="small mt-6">${esc(formatDateTime(event.created_at))}</div>
+        <div class="subscription-history-row subscription-history-row--event">
+          <div class="subscription-history-row__head">
+            <b>${esc(eventLabel(event.event_type))}</b>
+            <span class="subscription-operation-status">Событие</span>
+          </div>
+          <div class="subscription-history-meta"><span>${esc(formatDateTime(event.created_at))}</span></div>
         </div>` }))
     ].sort((a, b) => b.ts - a.ts);
-    historyBlock.innerHTML = entries.length ? entries.map((item) => item.html).join('') : '<div class="muted">История пока пуста</div>';
+    historyBlock.innerHTML = entries.length
+      ? entries.map((item) => item.html).join('')
+      : '<div class="subscription-state"><b>История пока пуста</b><span>Первая операция появится здесь после оплаты, продления или изменения статуса.</span></div>';
   }
 
   function setPageMessage(message){
     const text = String(message || '');
-    historyBlock.innerHTML = `<div class="muted">${esc(text || 'Нет данных')}</div>`;
+    historyBlock.innerHTML = `<div class="subscription-state subscription-state--error"><b>Не удалось показать подписку</b><span>${esc(text || 'Нет данных')}</span></div>`;
     statusLineEl.textContent = text || '—';
+    statusLineEl.className = 'subscription-status subscription-status--error mt-8';
   }
 
   async function boot(){
@@ -153,6 +195,7 @@
     venueNameEl.textContent = data?.venue_name || `Заведение #${venueId}`;
     planLabelEl.textContent = data?.plan?.label || 'Axelio · 2990 ₽ / 30 дней';
     statusLineEl.textContent = `Статус: ${status} · Режим доступа: ${accessMode}`;
+    statusLineEl.className = `subscription-status ${billingStatusClass(status)} mt-8`;
     paidUntilEl.textContent = formatDate(data?.paid_until);
     graceUntilEl.textContent = formatDate(data?.grace_until);
     lastPaymentAtEl.textContent = formatDateTime(data?.last_payment_at);

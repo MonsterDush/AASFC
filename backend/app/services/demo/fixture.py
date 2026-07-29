@@ -50,6 +50,7 @@ from app.models import (
     Shift,
     ShiftAssignment,
     ShiftComment,
+    ShiftCommentMention,
     ShiftInterval,
     Supplier,
     User,
@@ -74,6 +75,7 @@ USER_REFERENCE_COLUMNS = {
     'closed_by_user_id',
     'created_by_user_id',
     'member_user_id',
+    'mentioned_user_id',
     'resolved_by_user_id',
     'triggered_by_user_id',
     'updated_by_user_id',
@@ -234,6 +236,7 @@ def _collect_live_context(db: Session, venue_id: int) -> dict[str, Any]:
     ctx['shift_interval_ids'] = load_ids(ShiftInterval.__table__, ShiftInterval.__table__.c.venue_id == int(venue_id))
     ctx['shift_ids'] = load_ids(shift_tbl, shift_tbl.c.venue_id == int(venue_id))
     ctx['shift_assignment_ids'] = load_ids(ShiftAssignment.__table__, _in_ids(ShiftAssignment.__table__.c.shift_id, ctx['shift_ids']))
+    ctx['shift_comment_ids'] = load_ids(ShiftComment.__table__, _in_ids(ShiftComment.__table__.c.shift_id, ctx['shift_ids']))
     ctx['daily_report_ids'] = load_ids(report_tbl, report_tbl.c.venue_id == int(venue_id))
     ctx['expense_ids'] = load_ids(expense_tbl, expense_tbl.c.venue_id == int(venue_id))
     ctx['recurring_rule_ids'] = load_ids(recurring_tbl, recurring_tbl.c.venue_id == int(venue_id))
@@ -270,6 +273,7 @@ def _fixture_table_plans() -> list[FixtureTablePlan]:
         FixtureTablePlan('shifts', Shift, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('shift_assignments', ShiftAssignment, lambda c, t: _in_ids(t.c.shift_id, c['shift_ids']), lambda c, t: _in_ids(t.c.shift_id, c['shift_ids'])),
         FixtureTablePlan('shift_comments', ShiftComment, lambda c, t: _in_ids(t.c.shift_id, c['shift_ids']), lambda c, t: _in_ids(t.c.shift_id, c['shift_ids'])),
+        FixtureTablePlan('shift_comment_mentions', ShiftCommentMention, lambda c, t: _in_ids(t.c.comment_id, c['shift_comment_ids']), lambda c, t: _in_ids(t.c.comment_id, c['shift_comment_ids'])),
         FixtureTablePlan('daily_reports', DailyReport, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('daily_report_values', DailyReportValue, lambda c, t: _in_ids(t.c.report_id, c['daily_report_ids']), lambda c, t: _in_ids(t.c.report_id, c['daily_report_ids'])),
         FixtureTablePlan('daily_report_audits', DailyReportAudit, lambda c, t: _in_ids(t.c.report_id, c['daily_report_ids']), lambda c, t: _in_ids(t.c.report_id, c['daily_report_ids'])),

@@ -9,7 +9,7 @@ import {
   getMyVenuePermissions,
   api,
   toast,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 import { roleUpper } from "/permissions.js";
 
 const state = { access: { canManage: false } };
@@ -69,6 +69,25 @@ function esc(value) {
 function setText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
+}
+
+function setRulesLoading(isLoading) {
+  document.body.classList.toggle("is-loading", !!isLoading);
+  document.getElementById("rulesContent")?.setAttribute("aria-busy", isLoading ? "true" : "false");
+}
+
+function showRulesPageState(kind, title, detail) {
+  const stateEl = document.getElementById("rulesPageState");
+  if (stateEl) {
+    stateEl.className = `finance-page-state finance-page-state--${kind}`;
+    stateEl.innerHTML = `<b>${esc(title)}</b><span>${esc(detail)}</span>`;
+  }
+  document.getElementById("rulesContent")?.classList.add("hidden");
+}
+
+function hideRulesPageState() {
+  document.getElementById("rulesPageState")?.classList.add("hidden");
+  document.getElementById("rulesContent")?.classList.remove("hidden");
 }
 
 function setAllRuleToggles(form, checked) {
@@ -199,7 +218,7 @@ function renderRules(rules = {}) {
   const form = document.getElementById("economicsRulesFormPage");
   if (!form) return;
   form.innerHTML = buildRulesForm(rules);
-  form.style.display = state.access.canManage ? "" : "none";
+  form.classList.toggle("hidden", !state.access.canManage);
   form.addEventListener("submit", saveRules);
   bindToggle(form, "enable_max_expense_ratio", "max_expense_ratio_pct");
   bindToggle(form, "enable_max_payroll_ratio", "max_payroll_ratio_pct");
@@ -218,8 +237,31 @@ function renderRules(rules = {}) {
 async function loadRules() {
   const venueId = getActiveVenueId();
   if (!venueId) return;
-  const rules = await api(`/venues/${encodeURIComponent(venueId)}/economics/rules`);
-  renderRules(rules || {});
+  if (!state.access.canManage) {
+    setRulesLoading(false);
+    showRulesPageState(
+      "denied",
+      "Нормативы доступны только владельцу",
+      "Для просмотра и изменения правил требуется роль владельца заведения.",
+    );
+    return;
+  }
+  setRulesLoading(true);
+  hideRulesPageState();
+  try {
+    const rules = await api(`/venues/${encodeURIComponent(venueId)}/economics/rules`);
+    renderRules(rules || {});
+    hideRulesPageState();
+  } catch (err) {
+    toast(err?.data?.detail || err.message || "Не удалось загрузить нормативы", "err");
+    showRulesPageState(
+      "error",
+      "Не удалось загрузить нормативы",
+      err?.data?.detail || err.message || "Повторите попытку позже.",
+    );
+  } finally {
+    setRulesLoading(false);
+  }
 }
 
 async function saveRules(event) {
@@ -256,6 +298,15 @@ async function boot() {
 
   await mountNav({ activeTab: "summary" });
   await loadAccess();
+  if (!state.access.canManage) {
+    setRulesLoading(false);
+    showRulesPageState(
+      "denied",
+      "Нормативы доступны только владельцу",
+      "Для просмотра и изменения правил требуется роль владельца заведения.",
+    );
+    return;
+  }
 
   const openDay = document.getElementById("openDayEconomicsFromRulesBtn");
   if (openDay) openDay.onclick = () => { location.href = buildDayEconomicsLink(); };
@@ -263,7 +314,7 @@ async function boot() {
   if (openPlans) openPlans.onclick = () => { location.href = buildPlansLink(); };
 
   const manageCard = document.getElementById("rulesManageCard");
-  if (manageCard) manageCard.style.display = state.access.canManage ? "" : "none";
+  manageCard?.classList.toggle("hidden", !state.access.canManage);
 
   await loadRules();
 }

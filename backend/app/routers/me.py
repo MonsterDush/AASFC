@@ -493,6 +493,10 @@ def my_venue_permissions(
 ):
     """Return permissions + venue role for current user and billing state."""
 
+    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+
     system_billing_snapshot = get_venue_billing_snapshot(db, venue_id=venue_id)
     system_billing_payload = {
         "billing_status": system_billing_snapshot.status,
@@ -502,7 +506,6 @@ def my_venue_permissions(
         "billing_restricted_reason": None,
         **financial_visibility_payload(user),
     }
-    venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     venue_inactive = bool(getattr(venue, "is_archived", False))
     demo_payload = _serialize_demo_payload(user, venue=venue, venue_id=venue_id)
     setup_summary = build_setup_summary(db, venue_id=venue_id, create_missing=False)
@@ -781,6 +784,19 @@ def my_shifts_across_venues(
         )
     ).scalars().all()
     report_by_key = {(r.venue_id, r.date, normalize_shift_slot(getattr(r, "shift_slot", None))): r for r in reports}
+    report_ids = sorted({int(report.id) for report in reports})
+    my_tip_by_report_id: dict[int, int] = {}
+    if report_ids:
+        tip_rows = db.execute(
+            select(DailyReportTipAllocation.report_id, DailyReportTipAllocation.amount).where(
+                DailyReportTipAllocation.report_id.in_(report_ids),
+                DailyReportTipAllocation.user_id == int(user.id),
+            )
+        ).all()
+        my_tip_by_report_id = {
+            int(row.report_id): int(row.amount or 0)
+            for row in tip_rows
+        }
 
     out = []
     for r in rows:
@@ -815,6 +831,11 @@ def my_shifts_across_venues(
                 "report_exists": bool(rep),
                 "report_closed": bool(report_closed),
                 "my_salary": my_salary,
+                "my_tips_share": (
+                    my_tip_by_report_id.get(int(rep.id), 0)
+                    if rep is not None
+                    else 0
+                ),
                 "revenue_total": revenue_total,
             }
         )
@@ -986,4 +1007,3 @@ def my_salary_summary(
     if month is not None:
         response["month"] = month
     return sanitize_financial_payload_for_user(user, response)
-

@@ -366,6 +366,7 @@ def generate_draft_expenses_for_month(
             existing.category_id = int(rule.category_id)
             existing.supplier_id = int(rule.supplier_id) if rule.supplier_id is not None else None
             existing.payment_method_id = int(rule.payment_method_id) if rule.payment_method_id is not None else None
+            existing.shift_slot = str(getattr(rule, "shift_slot", "TOTAL") or "TOTAL").upper()
             existing.amount_minor = int(amount_minor)
             existing.expense_date = build_generated_expense_date(month_start=month_start, day_of_month=int(rule.day_of_month or 1))
             existing.generated_for_month = month_start
@@ -386,6 +387,7 @@ def generate_draft_expenses_for_month(
             supplier_id=int(rule.supplier_id) if rule.supplier_id is not None else None,
             payment_method_id=int(rule.payment_method_id) if rule.payment_method_id is not None else None,
             recurring_rule_id=int(rule.id),
+            shift_slot=str(getattr(rule, "shift_slot", "TOTAL") or "TOTAL").upper(),
             amount_minor=int(amount_minor),
             expense_date=build_generated_expense_date(month_start=month_start, day_of_month=int(rule.day_of_month or 1)),
             generated_for_month=month_start,

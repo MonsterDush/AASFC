@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260723-polish2" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Заведение</title>
 </head>
@@ -22,15 +22,18 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card section-card">
-      <div class="page-caption">Здесь собраны основные разделы, настройки и команда заведения.</div>
+    <div class="card section-card venue-page">
+      <div class="page-caption venue-page__intro">Здесь собраны основные разделы, настройки и команда заведения.</div>
 
-      <div class="itemcard mt-12 hidden" id="archiveNotice">
+      <div class="itemcard mt-12 hidden venue-notice venue-notice--archive" id="archiveNotice">
         <b>Заведение в архиве</b>
         <div class="muted mt-6">Оно скрыто из списка активных заведений для команды. Владелец может открыть карточку, вернуть заведение или удалить его.</div>
       </div>
 
-      <div class="itemcard mt-12 section-card">
+      <div class="itemcard mt-12 hidden venue-notice venue-notice--setup" id="setupTopNotice"></div>
+      <div class="itemcard mt-12 hidden venue-notice venue-notice--billing" id="billingTopNotice"></div>
+
+      <div class="itemcard mt-12 section-card venue-info-card">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Информация</b>
@@ -38,18 +41,18 @@
           </div>
         </div>
 
-        <div class="action-grid action-grid--3 action-grid--mobile-2">
-          <button class="btn" id="btnRename">Переименовать</button>
-          <button class="btn" id="openSetup" type="button">Быстрая настройка</button>
-          <button class="btn" id="btnArchive">В архив</button>
-          <button class="btn" id="btnUnarchive">Вернуть</button>
-                    <button class="btn danger" id="btnLeave">Выйти из заведения</button>
+        <div class="action-grid action-grid--3 action-grid--mobile-2 venue-info-actions">
+          <button class="btn subtle" id="btnRename">Переименовать</button>
+          <button class="btn primary" id="openSetup" type="button">Быстрая настройка</button>
+          <button class="btn subtle" id="btnArchive">В архив</button>
+          <button class="btn subtle" id="btnUnarchive">Вернуть</button>
+          <button class="btn danger" id="btnLeave">Выйти из заведения</button>
           <button class="btn danger" id="btnDelete">Удалить</button>
         </div>
 
         <div class="muted mt-6" id="metaHint"></div>
       </div>
-      <div class="itemcard mt-12 section-card hidden" id="demoVenueGuideCard">
+      <div class="itemcard mt-12 section-card hidden venue-guide-card" id="demoVenueGuideCard">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Куда идти в DEMO дальше</b>
@@ -64,7 +67,7 @@
         </div>
       </div>
 
-      <div class="itemcard mt-12 section-card" id="sectionsCard">
+      <div class="itemcard mt-12 section-card venue-nav-card venue-nav-card--sections" id="sectionsCard">
               <div class="section-card__head">
                 <div class="section-card__title">
                   <b>Разделы</b>
@@ -80,7 +83,7 @@
       </div>
 
       <div class="section-split-grid mt-12">
-        <div class="itemcard section-card" id="financeCard">
+        <div class="itemcard section-card venue-nav-card venue-nav-card--finance" id="financeCard">
           <div class="section-card__head">
             <div class="section-card__title">
               <b>Финансы</b>
@@ -99,7 +102,7 @@
           </div>
         </div>
 
-        <div class="itemcard section-card" id="referencesCard">
+        <div class="itemcard section-card venue-nav-card venue-nav-card--references" id="referencesCard">
           <div class="section-card__head">
             <div class="section-card__title">
               <b>Справочники</b>
@@ -115,9 +118,13 @@
         </div>
       </div>
 
-<div class="itemcard mt-12 section-card" id="tipsSettingsCard">
-        <b>Настройки заведения</b>
-        <div class="muted mt-6">Ночные смены и учёт чаевых в отчёте закрытия смены.</div>
+      <div class="itemcard mt-12 section-card venue-settings-card" id="tipsSettingsCard">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Настройки заведения</b>
+            <div class="muted">Ночные смены и учёт чаевых в отчёте закрытия смены.</div>
+          </div>
+        </div>
 
         <div class="toggle mt-12">
           <div class="toggle__label">
@@ -157,7 +164,9 @@
         </div>
       </div>
 
-      <div class="itemcard mt-12 section-card" id="membersCard">
+      <div class="itemcard mt-12 section-card hidden venue-billing-card" id="billingCard"></div>
+
+      <div class="itemcard mt-12 section-card venue-members-card" id="membersCard">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Участники</b>
@@ -165,7 +174,7 @@
           </div>
         </div>
         <div id="members" class="mt-10">
-          <div class="skeleton"></div><div class="skeleton"></div>
+          <div class="skeleton skeleton--control"></div><div class="skeleton skeleton--control mt-8"></div>
         </div>
       </div>
     </div>
@@ -190,7 +199,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20260719-split1";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20260726-navmore1";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSetupDone, isSetupPrepareDone, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260409-setup5";
 
     applyTelegramTheme();
@@ -357,18 +366,18 @@ const titleEl = document.getElementById("title");
         const pageRootCard = document.querySelector(".card.section-card");
         if (pageRootCard && !document.getElementById("setupTopNotice")) {
           archiveNotice?.insertAdjacentHTML("afterend", `
-            <div class="itemcard mt-12 hidden" id="setupTopNotice"></div>
+            <div class="itemcard mt-12 hidden venue-notice venue-notice--setup" id="setupTopNotice"></div>
           `);
         }
         const setupTopNotice = document.getElementById("setupTopNotice");
         if (pageRootCard && !document.getElementById("billingTopNotice")) {
           (setupTopNotice || archiveNotice)?.insertAdjacentHTML("afterend", `
-            <div class="itemcard mt-12 hidden" id="billingTopNotice"></div>
+            <div class="itemcard mt-12 hidden venue-notice venue-notice--billing" id="billingTopNotice"></div>
           `);
         }
         if (membersCard && !document.getElementById("billingCard")) {
           membersCard.insertAdjacentHTML("beforebegin", `
-            <div class="itemcard mt-12 section-card" id="billingCard"></div>
+            <div class="itemcard mt-12 section-card hidden venue-billing-card" id="billingCard"></div>
           `);
         }
         const billingTopNotice = document.getElementById("billingTopNotice");
@@ -1001,14 +1010,14 @@ openAdjustments.href = canManageAdjustments
         function renderMembers(items) {
           membersEl.innerHTML = "";
           if (!items?.length) {
-            membersEl.innerHTML = `<div class="muted">Участников пока нет</div>`;
+            membersEl.innerHTML = `<div class="state venue-inline-state"><div class="state__title">Участников пока нет</div><div class="state__text">Добавьте сотрудника через приглашение с назначенной должностью.</div></div>`;
             return;
           }
           items.forEach(m => {
             const row = document.createElement("div");
-            row.className = "row venue-member-row";
+            row.className = "venue-member-row";
             row.innerHTML = `
-              <div>
+              <div class="venue-member-row__main">
                   <b>${esc(m.short_name || m.display_name || m.full_name || (m.tg_username ? "@" + String(m.tg_username).replace(/^@+/, "") : "Участник"))}</b> <span class="muted">${esc(m.venue_role === "OWNER" ? "Владелец" : "Персонал")}</span><br/>
                 <span class="muted">${m.tg_username ? "@" + esc(String(m.tg_username).replace(/^@+/, "")) : ""}${m.tg_username && m.phone ? " · " : ""}${m.phone ? esc(m.phone) : ""}</span>
               </div>
@@ -1155,13 +1164,13 @@ if (nightShiftsEnabledEl) {
           if (!venueId) return;
 
           if (!billingReadonly && isVisible(membersCard)) {
-            membersEl.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+            membersEl.innerHTML = `<div class="skeleton skeleton--control"></div><div class="skeleton skeleton--control mt-8"></div>`;
             try {
-              const data = await api(`/venues/${venueId}/members`);
+              const data = await api(`/me/venues/${venueId}/members`);
               window.__lastJson = data;
               renderMembers(data.members);
             } catch (e) {
-              membersEl.innerHTML = `<div class="muted">Ошибка: ${esc(e.message)}</div>`;
+              membersEl.innerHTML = `<div class="state venue-inline-state"><div class="state__title">Не удалось загрузить участников</div><div class="state__text">${esc(e.message)}</div></div>`;
               toast("Ошибка загрузки: " + e.message, "err");
             }
           }

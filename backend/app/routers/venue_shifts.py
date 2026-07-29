@@ -1,8 +1,12 @@
+import re
+
 from fastapi import APIRouter
 
 from app.routers.venue_core import (
+    BackgroundTasks,
     BaseModel,
     DailyReport,
+    DailyReportTipAllocation,
     Depends,
     Field,
     HTTPException,
@@ -33,6 +37,7 @@ from app.routers.venue_core import (
     update,
     verify_signed_token,
 )
+from app.models.shift_comment_mention import ShiftCommentMention
 from app.routers.venue_common import (
     _SCHEDULE_SHARE_TTL_SECONDS,
 )
@@ -51,7 +56,12 @@ from app.routers.venue_payroll_support import (
 from app.routers.venue_notification_common import (
     _frontend_base_url,
 )
-from app.routers.venue_reports import _rebuild_report_tip_allocations
+from app.routers.venue_shift_notifications import _enqueue_shift_comment_job
+from app.routers.venue_economics_notifications import process_pending_notification_jobs_once
+from app.routers.venue_reports import (
+    _rebuild_closed_report_tip_allocations_for_keys,
+    _rebuild_report_tip_allocations,
+)
 from app.routers.venue_schedule_templates import _normalize_shift_slot_for_venue, _shift_slot_label
 
 
@@ -238,7 +248,7 @@ def get_shifts_export_metadata(
     week_start: date | None = Query(default=None),
     interval_ids: list[int] | None = Query(default=None),
     staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
-    shift_slot: str | None = Query(default=None, max_length=16),
+    shift_slot: str | None = Query(default=None, pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -336,7 +346,7 @@ def list_shifts(
     date_to: date | None = Query(default=None),
     interval_ids: list[int] | None = Query(default=None),
     staffing_state: str = Query(default="all", pattern="^(all|staffed|unstaffed)$"),
-    shift_slot: str | None = Query(default=None, max_length=16),
+    shift_slot: str | None = Query(default=None, pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -388,15 +398,19 @@ def list_shifts(
 
     shifts = db.execute(stmt.order_by(Shift.date.asc(), Shift.id.asc())).scalars().all()
 
-    # preload daily reports for these shift dates (for report_exists + salary calculation)
+    # Preload reports by date and slot. A venue can have separate DAY and NIGHT
+    # reports for the same calendar date.
     shift_dates = {s.date for s in shifts}
-    report_by_date: dict[date, DailyReport] = {}
+    report_by_date_slot: dict[tuple[date, str], DailyReport] = {}
     if shift_dates:
         report_stmt = select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date.in_(shift_dates))
         if normalized_shift_slot is not None:
             report_stmt = report_stmt.where(DailyReport.shift_slot == normalized_shift_slot)
         rrows = db.execute(report_stmt).scalars().all()
-        report_by_date = {r.date: r for r in rrows}
+        report_by_date_slot = {
+            (r.date, normalize_shift_slot(getattr(r, "shift_slot", None))): r
+            for r in rrows
+        }
 
     show_revenue = _has_revenue_view_access(db, venue_id=venue_id, user=user)
 
@@ -435,8 +449,6 @@ def list_shifts(
                     "tg_username": r.tg_username,
                     "full_name": r.full_name,
                     "short_name": r.short_name,
-                "full_name": r.full_name,
-                "short_name": r.short_name,
                 }
             )
 
@@ -468,6 +480,22 @@ def list_shifts(
         ).all()
         my_assignment_by_shift = {r.shift_id: {"rate": int(r.rate), "percent": int(r.percent)} for r in my_rows}
 
+    my_tip_by_report_id: dict[int, int] = {}
+    report_ids = sorted({int(report.id) for report in report_by_date_slot.values()})
+    if report_ids:
+        tip_rows = db.execute(
+            select(DailyReportTipAllocation.report_id, DailyReportTipAllocation.amount).where(
+                DailyReportTipAllocation.report_id.in_(report_ids),
+                DailyReportTipAllocation.user_id == user.id,
+            )
+        ).all()
+        my_tip_by_report_id = {int(row.report_id): int(row.amount or 0) for row in tip_rows}
+
+    def report_for_shift(shift: Shift) -> DailyReport | None:
+        return report_by_date_slot.get(
+            (shift.date, normalize_shift_slot(getattr(shift, "shift_slot", None)))
+        )
+
     return [
         {
             "id": s.id,
@@ -478,21 +506,28 @@ def list_shifts(
             "shift_slot_label": _shift_slot_label(getattr(s, "shift_slot", None)),
             "is_active": bool(s.is_active),
             "assignments": assignments_by_shift.get(s.id, []),
-            "report_exists": bool(report_by_date.get(s.date)),
-            "report_closed": bool(report_by_date.get(s.date) and str(getattr(report_by_date.get(s.date), "status", "") or "").upper() == "CLOSED"),
+            "report_exists": bool(report_for_shift(s)),
+            "report_closed": bool(
+                report_for_shift(s)
+                and str(getattr(report_for_shift(s), "status", "") or "").upper() == "CLOSED"
+            ),
             "revenue_total": (
-                report_by_date.get(s.date).revenue_total
-                if (show_revenue and report_by_date.get(s.date))
+                report_for_shift(s).revenue_total
+                if (show_revenue and report_for_shift(s))
                 else None
             ),
             "my_salary": (
-                (my_assignment_by_shift.get(s.id)["rate"] + (my_assignment_by_shift.get(s.id)["percent"] / 100.0) * report_by_date.get(s.date).revenue_total)
-                if (report_by_date.get(s.date) and my_assignment_by_shift.get(s.id))
+                (
+                    my_assignment_by_shift.get(s.id)["rate"]
+                    + (my_assignment_by_shift.get(s.id)["percent"] / 100.0)
+                    * report_for_shift(s).revenue_total
+                )
+                if (report_for_shift(s) and my_assignment_by_shift.get(s.id))
                 else None
             ),
             "my_tips_share": (
-                (report_by_date.get(s.date).tips_total / max(1, len({a["member_user_id"] for a in assignments_by_shift.get(s.id, [])})))
-                if (report_by_date.get(s.date) and my_assignment_by_shift.get(s.id) and report_by_date.get(s.date).tips_total)
+                my_tip_by_report_id.get(int(report_for_shift(s).id), 0)
+                if report_for_shift(s) and my_assignment_by_shift.get(s.id)
                 else 0
             ),
         }
@@ -560,10 +595,26 @@ def update_shift(
         raise HTTPException(status_code=404, detail="Shift not found")
 
     previous_date = obj.date
+    previous_slot = normalize_shift_slot(getattr(obj, "shift_slot", None))
     date_changed = payload.date is not None and payload.date != obj.date
     interval_changed = payload.interval_id is not None and payload.interval_id != obj.interval_id
     active_changed = payload.is_active is not None and payload.is_active != obj.is_active
     slot_changed = payload.shift_slot is not None and normalize_shift_slot(payload.shift_slot) != normalize_shift_slot(getattr(obj, "shift_slot", None))
+    normalized_payload_slot: str | None = None
+    if payload.shift_slot is not None:
+        normalized_payload_slot = _normalize_shift_slot_for_venue(
+            db,
+            venue_id=venue_id,
+            shift_slot=payload.shift_slot,
+        )
+    elif payload.is_active is True and normalize_shift_slot(getattr(obj, "shift_slot", None)) == "NIGHT":
+        # Inactive NIGHT rows may remain as history after night mode is disabled.
+        # They must not be reactivated without enabling night shifts again.
+        _normalize_shift_slot_for_venue(
+            db,
+            venue_id=venue_id,
+            shift_slot=getattr(obj, "shift_slot", None),
+        )
 
     if payload.date is not None:
         obj.date = payload.date
@@ -578,8 +629,8 @@ def update_shift(
         if interval is None:
             raise HTTPException(status_code=400, detail="Shift interval not found")
         obj.interval_id = payload.interval_id
-    if payload.shift_slot is not None:
-        obj.shift_slot = _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=payload.shift_slot)
+    if normalized_payload_slot is not None:
+        obj.shift_slot = normalized_payload_slot
     if payload.is_active is not None:
         obj.is_active = payload.is_active
 
@@ -592,6 +643,15 @@ def update_shift(
                 .values(reminder_sent_at=None)
             )
         if date_changed or interval_changed or slot_changed or active_changed:
+            if date_changed or slot_changed or active_changed:
+                _rebuild_closed_report_tip_allocations_for_keys(
+                    db,
+                    venue_id=venue_id,
+                    report_keys={
+                        (previous_date, previous_slot),
+                        (obj.date, normalize_shift_slot(getattr(obj, "shift_slot", None))),
+                    },
+                )
             _recalculate_payroll_for_dates(
                 db,
                 venue_id=venue_id,
@@ -600,9 +660,15 @@ def update_shift(
                 trigger_reason="shift_updated",
             )
         db.commit()
-    except Exception:
+    except HTTPException:
+        db.rollback()
+        raise
+    except sa.exc.IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="Shift already exists for this date, interval and slot")
+    except Exception:
+        db.rollback()
+        raise
 
     return {"ok": True, "shift_slot": normalize_shift_slot(getattr(obj, "shift_slot", None))}
 
@@ -623,7 +689,13 @@ def delete_shift(
         raise HTTPException(status_code=404, detail="Shift not found")
 
     shift_date = obj.date
+    shift_slot = normalize_shift_slot(getattr(obj, "shift_slot", None))
     obj.is_active = False
+    _rebuild_closed_report_tip_allocations_for_keys(
+        db,
+        venue_id=venue_id,
+        report_keys={(shift_date, shift_slot)},
+    )
     _recalculate_payroll_for_dates(
         db,
         venue_id=venue_id,
@@ -753,6 +825,7 @@ def add_shift_assignment(
         select(DailyReport).where(
             DailyReport.venue_id == venue_id,
             DailyReport.date == shift.date,
+            DailyReport.shift_slot == normalize_shift_slot(getattr(shift, "shift_slot", None)),
             DailyReport.status == "CLOSED",
         )
     ).scalar_one_or_none()
@@ -794,15 +867,18 @@ def remove_shift_assignment(
     if a is None:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
-    shift_date = db.execute(
-        select(Shift.date).where(Shift.id == shift_id, Shift.venue_id == venue_id)
+    shift_row = db.execute(
+        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)
     ).scalar_one_or_none()
     db.delete(a)
-    if shift_date is not None:
+    if shift_row is not None:
+        shift_date = shift_row.date
         closed_report = db.execute(
             select(DailyReport).where(
                 DailyReport.venue_id == venue_id,
                 DailyReport.date == shift_date,
+                DailyReport.shift_slot
+                == normalize_shift_slot(getattr(shift_row, "shift_slot", None)),
                 DailyReport.status == "CLOSED",
             )
         ).scalar_one_or_none()
@@ -822,8 +898,153 @@ def remove_shift_assignment(
 
 
 
+_MAX_SHIFT_COMMENT_MENTIONS = 20
+
+
 class ShiftCommentIn(BaseModel):
     text: str = Field(..., min_length=1, max_length=2000)
+    mentioned_user_ids: list[int] = Field(default_factory=list, max_length=_MAX_SHIFT_COMMENT_MENTIONS)
+    reply_to_comment_id: int | None = Field(default=None, gt=0)
+
+
+def _shift_comment_user_display_name(user: User) -> str:
+    value = user.short_name or user.full_name or (f"@{user.tg_username}" if user.tg_username else None)
+    return str(value or f"Сотрудник #{int(user.id)}").strip()
+
+
+def _shift_comment_user_brief(user: User) -> dict:
+    return {
+        "id": int(user.id),
+        "tg_username": user.tg_username,
+        "full_name": user.full_name,
+        "short_name": user.short_name,
+        "display_name": _shift_comment_user_display_name(user),
+    }
+
+
+def _normalize_shift_comment_mention_ids(values: list[int] | None) -> list[int]:
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for raw in values or []:
+        value = int(raw)
+        if value <= 0 or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    if len(normalized) > _MAX_SHIFT_COMMENT_MENTIONS:
+        raise HTTPException(status_code=400, detail=f"Можно упомянуть не более {_MAX_SHIFT_COMMENT_MENTIONS} сотрудников")
+    return normalized
+
+
+def _shift_comment_has_mention_token(text: str, user: User) -> bool:
+    labels = [
+        _shift_comment_user_display_name(user),
+        str(user.tg_username or "").lstrip("@").strip(),
+    ]
+    for label in labels:
+        if not label:
+            continue
+        token = f"@{label.lstrip('@')}"
+        if re.search(rf"(?<![\w@]){re.escape(token)}(?!\w)", str(text or ""), flags=re.IGNORECASE):
+            return True
+    return False
+
+
+def _load_shift_comment_mentionable_members(
+    db: Session,
+    *,
+    venue_id: int,
+    exclude_user_id: int | None = None,
+) -> list[tuple[User, str, str | None]]:
+    stmt = (
+        select(User, VenueMember.venue_role, VenuePosition.title)
+        .join(
+            VenueMember,
+            (VenueMember.user_id == User.id)
+            & (VenueMember.venue_id == int(venue_id))
+            & VenueMember.is_active.is_(True),
+        )
+        .outerjoin(
+            VenuePosition,
+            (VenuePosition.member_user_id == User.id)
+            & (VenuePosition.venue_id == int(venue_id))
+            & VenuePosition.is_active.is_(True),
+        )
+        .order_by(
+            sa.func.coalesce(User.short_name, User.full_name, User.tg_username, sa.cast(User.id, sa.String)).asc(),
+            User.id.asc(),
+        )
+    )
+    if exclude_user_id is not None:
+        stmt = stmt.where(User.id != int(exclude_user_id))
+    return list(db.execute(stmt).all())
+
+
+def _serialize_shift_comment(
+    comment: ShiftComment,
+    author: User,
+    *,
+    mention_users: list[User] | None = None,
+    parent: tuple[ShiftComment, User] | None = None,
+) -> dict:
+    reply_to = None
+    if parent is not None:
+        parent_comment, parent_author = parent
+        reply_to = {
+            "id": int(parent_comment.id),
+            "text": parent_comment.text,
+            "author": _shift_comment_user_brief(parent_author),
+        }
+    return {
+        "id": int(comment.id),
+        "shift_id": int(comment.shift_id),
+        "text": comment.text,
+        "created_at": comment.created_at.isoformat(),
+        "author": _shift_comment_user_brief(author),
+        "mentions": [
+            {
+                "user_id": int(mentioned_user.id),
+                "display_name": _shift_comment_user_display_name(mentioned_user),
+            }
+            for mentioned_user in (mention_users or [])
+        ],
+        "reply_to": reply_to,
+    }
+
+
+@router.get("/{venue_id}/shifts/{shift_id}/mentionable-members")
+def list_shift_comment_mentionable_members(
+    venue_id: int,
+    shift_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_shift_comments_allowed(db, venue_id=venue_id, shift_id=shift_id, user=user)
+    shift = db.execute(
+        select(Shift).where(
+            Shift.id == shift_id,
+            Shift.venue_id == venue_id,
+            Shift.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if shift is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    rows = _load_shift_comment_mentionable_members(
+        db,
+        venue_id=venue_id,
+        exclude_user_id=int(user.id),
+    )
+    return [
+        {
+            "user_id": int(member.id),
+            "display_name": _shift_comment_user_display_name(member),
+            "tg_username": member.tg_username,
+            "position_title": position_title,
+            "venue_role": venue_role,
+        }
+        for member, venue_role, position_title in rows
+    ]
 
 
 @router.get("/{venue_id}/shifts/{shift_id}/comments")
@@ -846,20 +1067,28 @@ def list_shift_comments(
         .order_by(ShiftComment.created_at.asc(), ShiftComment.id.asc())
     ).all()
 
+    comment_rows = list(rows)
+    comment_ids = [int(comment.id) for comment, _ in comment_rows]
+    mentions_by_comment: dict[int, list[User]] = {}
+    if comment_ids:
+        mention_rows = db.execute(
+            select(ShiftCommentMention, User)
+            .join(User, User.id == ShiftCommentMention.mentioned_user_id)
+            .where(ShiftCommentMention.comment_id.in_(comment_ids))
+            .order_by(ShiftCommentMention.comment_id.asc(), ShiftCommentMention.id.asc())
+        ).all()
+        for mention, mentioned_user in mention_rows:
+            mentions_by_comment.setdefault(int(mention.comment_id), []).append(mentioned_user)
+
+    rows_by_id = {int(comment.id): (comment, author) for comment, author in comment_rows}
     return [
-        {
-            "id": c.id,
-            "shift_id": c.shift_id,
-            "text": c.text,
-            "created_at": c.created_at.isoformat(),
-            "author": {
-                "id": u.id,
-                "tg_username": u.tg_username,
-                "full_name": u.full_name,
-                "short_name": u.short_name,
-            },
-        }
-        for (c, u) in rows
+        _serialize_shift_comment(
+            comment,
+            author,
+            mention_users=mentions_by_comment.get(int(comment.id), []),
+            parent=rows_by_id.get(int(comment.parent_comment_id)) if comment.parent_comment_id is not None else None,
+        )
+        for comment, author in comment_rows
     ]
 
 
@@ -868,6 +1097,7 @@ def add_shift_comment(
     venue_id: int,
     shift_id: int,
     payload: ShiftCommentIn,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -881,20 +1111,61 @@ def add_shift_comment(
     if not text:
         raise HTTPException(status_code=400, detail="Empty comment")
 
-    c = ShiftComment(shift_id=shift_id, author_user_id=user.id, text=text)
+    parent: tuple[ShiftComment, User] | None = None
+    if payload.reply_to_comment_id is not None:
+        parent = db.execute(
+            select(ShiftComment, User)
+            .join(User, User.id == ShiftComment.author_user_id)
+            .where(
+                ShiftComment.id == int(payload.reply_to_comment_id),
+                ShiftComment.shift_id == int(shift_id),
+            )
+        ).first()
+        if parent is None:
+            raise HTTPException(status_code=400, detail="Комментарий для ответа не найден в этой смене")
+
+    mention_ids = _normalize_shift_comment_mention_ids(payload.mentioned_user_ids)
+    mentionable_rows = _load_shift_comment_mentionable_members(
+        db,
+        venue_id=venue_id,
+        exclude_user_id=int(user.id),
+    )
+    mentionable_users = {int(member.id): member for member, _, _ in mentionable_rows}
+    invalid_ids = [mentioned_user_id for mentioned_user_id in mention_ids if mentioned_user_id not in mentionable_users]
+    if invalid_ids:
+        raise HTTPException(status_code=400, detail="Некоторые упомянутые сотрудники не входят в это заведение")
+    missing_tokens = [
+        mentioned_user_id
+        for mentioned_user_id in mention_ids
+        if not _shift_comment_has_mention_token(text, mentionable_users[mentioned_user_id])
+    ]
+    if missing_tokens:
+        raise HTTPException(status_code=400, detail="Упоминание удалено из текста; выберите сотрудника через подсказку ещё раз")
+
+    c = ShiftComment(
+        shift_id=shift_id,
+        author_user_id=user.id,
+        parent_comment_id=int(payload.reply_to_comment_id) if payload.reply_to_comment_id is not None else None,
+        text=text,
+    )
     db.add(c)
+    db.flush()
+    mention_users = [mentionable_users[mentioned_user_id] for mentioned_user_id in mention_ids]
+    for mentioned_user in mention_users:
+        db.add(
+            ShiftCommentMention(
+                comment_id=int(c.id),
+                mentioned_user_id=int(mentioned_user.id),
+            )
+        )
+    _enqueue_shift_comment_job(db, venue_id=venue_id, comment_id=int(c.id))
     db.commit()
     db.refresh(c)
+    background_tasks.add_task(process_pending_notification_jobs_once, 10)
 
-    return {
-        "id": c.id,
-        "shift_id": c.shift_id,
-        "text": c.text,
-        "created_at": c.created_at.isoformat(),
-        "author": {
-            "id": user.id,
-            "tg_username": user.tg_username,
-            "full_name": user.full_name,
-            "short_name": user.short_name,
-        },
-    }
+    return _serialize_shift_comment(
+        c,
+        user,
+        mention_users=mention_users,
+        parent=parent,
+    )

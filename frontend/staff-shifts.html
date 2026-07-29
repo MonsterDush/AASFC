@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/staff-shifts.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/staff-shifts.css?v=20260729-desktop3" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Смены</title>
 </head>
-<body>
-  <div class="container">
+<body class="staff-shifts-page">
+  <div class="container staff-shifts-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -22,7 +22,8 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card demo-flow-card hidden" id="demoStaffIntro">
+    <main class="staff-shifts-content">
+    <section class="card demo-flow-card staff-shifts-demo hidden" id="demoStaffIntro">
       <div class="demo-flow-card__head">
         <div>
           <b>Что посмотреть в DEMO персонала</b>
@@ -37,50 +38,71 @@
       <div class="demo-flow-card__actions mt-12">
         <button class="btn" id="demoOpenStaffSalary" type="button">Открыть начисления</button>
       </div>
-    </div>
+    </section>
 
-    <div class="card">
-      <div class="row row--between">
-        <div class="row ai-center gap-10 month-controls">
-          <button class="btn" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
+    <section class="card staff-shifts-calendar-card">
+      <div class="staff-shifts-toolbar">
+        <div class="month-controls staff-shifts-month-nav">
+          <button class="btn staff-shifts-month-button" id="monthPrev" aria-label="Предыдущий месяц">◀</button>
           <b id="monthLabel">…</b>
-          <button class="btn" id="monthNext" aria-label="Следующий месяц">▶</button>
+          <button class="btn staff-shifts-month-button" id="monthNext" aria-label="Следующий месяц">▶</button>
         </div>
-        <div class="row ai-center gap-10 row--center">
-<div id="calendarView" class="shift-toggle">
-  <button type="button" id="viewMonth">Месяц</button>
-  <button type="button" id="viewWeek">Неделя</button>
-</div>
-<div id="shiftSlotToggle" class="shift-toggle hidden">
-  <button type="button" id="slotDay">День</button>
-  <button type="button" id="slotNight">Ночь</button>
-</div>
-<button class="btn hidden" id="btnIntervals" type="button">Интервалы</button>
-          <button class="btn" id="btnLegend" type="button">Легенда</button>
-          <div id="calendarMode" class="shift-toggle hidden">
-            <button type="button" id="modeAll">Все</button>
-            <button type="button" id="modeMine">Только мои</button>
-            <button type="button" id="modeGlobal">Общий</button>
-          </div>
-          <div class="schedule-filter-dropdown" id="scheduleFilters">
-            <button class="schedule-filter-trigger" id="btnScheduleFiltersToggle" type="button" aria-haspopup="true" aria-expanded="false">Фильтр</button>
-            <div class="schedule-filter-menu hidden" id="scheduleFilterMenu">
-              <div class="schedule-filter-actions">
-                <button class="btn" id="btnResetScheduleFilters" type="button">Сбросить</button>
-                <button class="btn btn-chip" id="btnUnstaffedOnly" type="button">Без назначений</button>
-              </div>
-              <div class="schedule-interval-list" id="scheduleIntervalList"></div>
-              <div class="muted small hidden" id="scheduleFilterScopeNote">В режиме «Общий» фильтры по интервалам недоступны.</div>
+
+        <div class="staff-shifts-toolbar__controls">
+          <div class="staff-shifts-toolbar__row staff-shifts-toolbar__row--scopes">
+            <div id="calendarView" class="shift-toggle">
+              <button type="button" id="viewMonth">Месяц</button>
+              <button type="button" id="viewWeek">Неделя</button>
+            </div>
+            <div id="calendarMode" class="shift-toggle hidden">
+              <button type="button" id="modeAll">Все</button>
+              <button type="button" id="modeMine">
+                <span class="staff-shifts-label-wide">Только мои</span>
+                <span class="staff-shifts-label-compact">Мои</span>
+              </button>
+              <button type="button" id="modeGlobal">Общий</button>
             </div>
           </div>
-          <button class="btn" id="btnExportImage" type="button">Экспорт графика</button>
-</div>
 
+          <div class="staff-shifts-toolbar__row staff-shifts-toolbar__row--planning">
+            <div id="shiftSlotToggle" class="shift-toggle hidden">
+              <button type="button" id="slotDay">День</button>
+              <button type="button" id="slotNight">Ночь</button>
+            </div>
+            <button class="btn staff-shifts-tool-button hidden" id="btnIntervals" type="button">Интервалы</button>
+            <button class="btn staff-shifts-tool-button" id="btnExportImage" type="button" aria-label="Экспорт графика">
+              <span class="staff-shifts-label-wide">Экспорт графика</span>
+              <span class="staff-shifts-label-compact">Экспорт</span>
+            </button>
+          </div>
+
+          <div class="staff-shifts-toolbar__row staff-shifts-toolbar__row--filters">
+            <button class="btn staff-shifts-tool-button" id="btnLegend" type="button">Легенда</button>
+            <div class="schedule-filter-dropdown" id="scheduleFilters">
+              <button class="schedule-filter-trigger" id="btnScheduleFiltersToggle" type="button" aria-haspopup="true" aria-expanded="false">Фильтры</button>
+              <div class="schedule-filter-menu hidden" id="scheduleFilterMenu">
+                <div class="schedule-filter-actions">
+                  <button class="btn" id="btnResetScheduleFilters" type="button">Сбросить</button>
+                  <button class="btn btn-chip" id="btnUnstaffedOnly" type="button">Без назначений</button>
+                </div>
+                <div class="schedule-interval-list" id="scheduleIntervalList"></div>
+                <div class="muted small hidden" id="scheduleFilterScopeNote">В режиме «Общий» фильтры по интервалам недоступны.</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
 
-      <div id="calGrid" class="cal mt-10"></div>
-    </div>
+      <div id="calGrid" class="cal mt-10" aria-live="polite">
+        <div class="shifts-calendar-loading">
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+        </div>
+      </div>
+    </section>
+    </main>
     <div class="nav">
       <div class="wrap">
         <div id="nav"></div>
@@ -145,6 +167,6 @@
     </div>
 
   <div id="shiftsRoot" class="hidden"></div>
-  <script type="module" src="/staff-shifts.js?v=20260720-unified6"></script>
+  <script type="module" src="/staff-shifts.js?v=20260729-overnight1"></script>
 </body>
 </html>

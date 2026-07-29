@@ -7,6 +7,7 @@ import {
   setActiveVenueId,
   getMyVenues,
   getMyVenuePermissions,
+  getVenueSettings,
   api,
   API_BASE,
   toast,
@@ -18,7 +19,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
 let financialValuesHidden = false;
@@ -56,6 +57,7 @@ let state = {
   supplierId: "",
   statuses: "",
   stats: null,
+  nightShiftsEnabled: false,
 };
 
 async function openExportLink(path) {
@@ -162,6 +164,12 @@ function statusLabel(status) {
   return "Черновик";
 }
 
+function expenseShiftSlotLabel(value) {
+  const slot = String(value || "TOTAL").trim().toUpperCase();
+  if (slot === "DAY") return "Дневная смена";
+  if (slot === "NIGHT") return "Ночная смена";
+  return "Все смены";
+}
 
 function expenseStatusesLabel(value) {
   const norm = String(value || '').toUpperCase();
@@ -323,6 +331,7 @@ function expenseFormDraftFromItem(item = null) {
     payment_method_id: item?.payment_method_id ? String(item.payment_method_id) : "",
     amount: item ? (Number(item.amount_minor || 0) / 100).toFixed(2) : "",
     expense_date: item?.expense_date || todayISO(),
+    shift_slot: String(item?.shift_slot || "TOTAL").toUpperCase(),
     spread_months: String(item?.spread_months || 1),
     status: String(item?.status || "DRAFT").toUpperCase(),
     comment: item?.comment || "",
@@ -336,6 +345,7 @@ function normalizeExpenseDraft(draft = {}) {
     payment_method_id: draft?.payment_method_id ? String(draft.payment_method_id) : "",
     amount: String(draft?.amount || ""),
     expense_date: String(draft?.expense_date || todayISO()),
+    shift_slot: String(draft?.shift_slot || "TOTAL").toUpperCase(),
     spread_months: String(draft?.spread_months || 1),
     status: String(draft?.status || "DRAFT").toUpperCase(),
     comment: String(draft?.comment || ""),
@@ -350,6 +360,7 @@ function readExpenseFormDraft(form) {
     payment_method_id: fd.get("payment_method_id"),
     amount: fd.get("amount"),
     expense_date: fd.get("expense_date"),
+    shift_slot: fd.get("shift_slot"),
     spread_months: fd.get("spread_months"),
     status: fd.get("status"),
     comment: fd.get("comment"),
@@ -511,6 +522,7 @@ function renderExpenses() {
             ${buildRegularBadges(item)}
           </div>
           <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}${item.payment_method?.title ? ` · ${esc(item.payment_method.title)}` : ""}</div>
+          <div class="muted mt-6">${esc(expenseShiftSlotLabel(item.shift_slot))}</div>
           ${item.comment ? `<div class="mt-8">${esc(item.comment)}</div>` : ""}
           <div class="mt-8"><b>Признано в ${esc(state.month)}:</b> ${esc(fmtMinor(item.recognized_amount_minor_for_month || 0))}</div>
           ${item.recurring_rule_id ? `<div class="muted mt-6">Это документ, созданный из правила регулярного расхода. После подтверждения он будет участвовать в расходах и сводке.</div>` : ''}
@@ -580,6 +592,14 @@ function buildExpenseForm(draft = null) {
       <label>Оплачено через<select name="payment_method_id">${paymentMethodOptions}</select></label>
       <label>Сумма, ₽<input name="amount" type="text" placeholder="1200.00" value="${esc(data.amount)}" required /></label>
       <label>Дата расхода<input name="expense_date" type="date" value="${esc(data.expense_date)}" required /></label>
+      <label>Отнести расход
+        <select name="shift_slot">
+          <option value="TOTAL" ${data.shift_slot === "TOTAL" ? "selected" : ""}>На все смены поровну</option>
+          <option value="DAY" ${data.shift_slot === "DAY" ? "selected" : ""}>Только на дневную смену</option>
+          ${state.nightShiftsEnabled || data.shift_slot === "NIGHT" ? `<option value="NIGHT" ${data.shift_slot === "NIGHT" ? "selected" : ""}>Только на ночную смену</option>` : ""}
+        </select>
+      </label>
+      <div class="muted small">Общий расход распределяется по всем активным сменам месяца: 60–62 части при включённых дневной и ночной сменах.</div>
       <label>Распределить на месяцев<input name="spread_months" type="number" min="1" max="120" value="${esc(data.spread_months)}" required /></label>
       <label>Статус
         <select name="status">
@@ -641,6 +661,7 @@ function openExpenseForm(expenseId = null, draftValues = null) {
       payment_method_id: fd.get("payment_method_id") ? Number(fd.get("payment_method_id")) : null,
       amount_minor: parseMoneyToMinor(fd.get("amount")),
       expense_date: String(fd.get("expense_date") || ""),
+      shift_slot: String(fd.get("shift_slot") || "TOTAL").toUpperCase(),
       spread_months: Number(fd.get("spread_months") || 1),
       status: String(fd.get("status") || "DRAFT"),
       comment: String(fd.get("comment") || "").trim() || null,
@@ -805,6 +826,12 @@ async function boot() {
   } catch {}
 
   await loadAccess();
+  try {
+    const settings = await getVenueSettings(getActiveVenueId());
+    state.nightShiftsEnabled = !!settings?.night_shifts_enabled;
+  } catch {
+    state.nightShiftsEnabled = false;
+  }
   syncToolbar();
 
   const activeVenueId = getActiveVenueId();

@@ -158,7 +158,7 @@ def build_weighted_by_position_tip_allocations(
             fallback_members.append((uid, position_title))
 
     if sum(percent for _uid, _title, percent in explicit_members) > 100:
-        raise ValueError("Configured tip shares exceed 100% for assigned staff")
+        raise ValueError("Сумма долей чаевых для назначенных сотрудников превышает 100%")
 
     final_amounts: dict[int, int] = {uid: 0 for uid, _title in uniq_members}
 

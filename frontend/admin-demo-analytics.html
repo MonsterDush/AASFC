@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/admin-demo-analytics.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/admin-demo-analytics.css?v=20260726-polish7" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · DEMO аналитика</title>
 </head>
-<body>
-  <div class="container" id="pageRoot">
+<body class="admin-demo-analytics-page">
+  <div class="container demo-analytics-shell" id="pageRoot">
     <div class="topbar demo-analytics-topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -25,7 +25,8 @@
       </div>
     </div>
 
-    <div class="card">
+    <main class="demo-analytics-content">
+    <section class="card demo-analytics-filter-card">
       <div class="row demo-analytics-header">
         <div class="demo-analytics-header-main">
           <div class="section-title"><b>Фильтр периода</b></div>
@@ -73,61 +74,62 @@
         <button class="btn" id="applyBtn" type="button">Показать</button>
         <button class="btn subtle" id="resetBtn" type="button">Сбросить</button>
       </div>
-    </div>
+    </section>
 
     <div class="demo-analytics-grid">
-      <div class="card">
+      <section class="card demo-analytics-section">
         <div class="section-title"><b>Ключевые метрики</b></div>
-        <div class="demo-analytics-kpis mt-12" id="kpisBlock"></div>
-      </div>
+        <div class="demo-analytics-kpis demo-analytics-state demo-analytics-state--loading mt-12" id="kpisBlock">Загрузка…</div>
+      </section>
 
       <div class="demo-analytics-split">
-        <div class="card">
+        <section class="card demo-analytics-section">
           <div class="section-title"><b>Воронка DEMO</b></div>
           <div class="demo-analytics-note mt-6">Показывает, сколько сессий дошло от просмотра экрана до клика по целевому действию.</div>
-          <div class="demo-analytics-bars mt-12" id="funnelBlock"></div>
-        </div>
-        <div class="card">
+          <div class="demo-analytics-bars demo-analytics-state demo-analytics-state--loading mt-12" id="funnelBlock">Загрузка…</div>
+        </section>
+        <section class="card demo-analytics-section">
           <div class="section-title"><b>Активность по дням</b></div>
           <div class="demo-analytics-note mt-6">Подходит для быстрого просмотра всплесков активности, как в простом срезе Метрики.</div>
-          <div class="demo-analytics-bars mt-12" id="activityBlock"></div>
-        </div>
+          <div class="demo-analytics-bars demo-analytics-state demo-analytics-state--loading mt-12" id="activityBlock">Загрузка…</div>
+        </section>
       </div>
 
       <div class="demo-analytics-split">
-        <div class="card">
+        <section class="card demo-analytics-section">
           <div class="row demo-analytics-stacktitle">
             <div class="section-title"><b>Разделы DEMO</b></div>
             <div class="demo-analytics-note">Сырые ссылки заменены на названия разделов.</div>
           </div>
-          <div class="demo-analytics-tablewrap mt-12" id="sectionsBlock"></div>
-        </div>
-        <div class="card">
+          <div class="demo-analytics-tablewrap demo-analytics-state demo-analytics-state--loading mt-12" id="sectionsBlock">Загрузка…</div>
+        </section>
+        <section class="card demo-analytics-section">
           <div class="section-title"><b>Разбивка по ролям</b></div>
           <div class="demo-analytics-note mt-6">Отдельно видно владельца и персонал: сессии, просмотры, CTA и завершение экскурсии.</div>
-          <div class="demo-analytics-tablewrap mt-12" id="personasBlock"></div>
-        </div>
+          <div class="demo-analytics-tablewrap demo-analytics-state demo-analytics-state--loading mt-12" id="personasBlock">Загрузка…</div>
+        </section>
       </div>
 
       <div class="demo-analytics-split">
-        <div class="card">
+        <section class="card demo-analytics-section">
           <div class="section-title"><b>События и CTA</b></div>
-          <div class="demo-analytics-tablewrap mt-12" id="eventsBlock"></div>
+          <div class="demo-analytics-tablewrap demo-analytics-state demo-analytics-state--loading mt-12" id="eventsBlock">Загрузка…</div>
           <div class="demo-analytics-tablewrap mt-12" id="ctaBlock"></div>
-        </div>
-        <div class="card">
+        </section>
+        <section class="card demo-analytics-section">
           <div class="section-title"><b>Последние события</b></div>
-          <div class="demo-analytics-tablewrap mt-12" id="recentBlock"></div>
-        </div>
+          <div class="demo-analytics-tablewrap demo-analytics-state demo-analytics-state--loading mt-12" id="recentBlock">Загрузка…</div>
+        </section>
       </div>
     </div>
+    </main>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, cacheSystemRole } from "/app.js?v=20260719-split1";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, cacheSystemRole } from "/app.js?v=20260726-navmore1";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");
@@ -188,7 +190,11 @@
     catch { return String(iso); }
   }
   function monthLabel(value){ const idx = Number(value || 1) - 1; return monthNames[idx] || String(value); }
-  function setHtml(el, html){ if (el) el.innerHTML = html; }
+  function setHtml(el, html){
+    if (!el) return;
+    el.classList.remove("demo-analytics-state", "demo-analytics-state--loading");
+    el.innerHTML = html;
+  }
   function emptyState(text="Пока нет данных"){ return `<div class="demo-analytics-empty">${esc(text)}</div>`; }
   function fillPercent(value, max){
     const safeMax = Math.max(Number(max || 0), 1);
@@ -264,7 +270,7 @@
           <span>${esc(row.label)}</span>
           <b>${esc(valueFormatter(row))}</b>
         </div>
-        <div class="demo-analytics-track"><div class="demo-analytics-fill" style="width:${fillPercent(row?.[valueKey], max)}%"></div></div>
+        <div class="demo-analytics-track"><div class="demo-analytics-fill" style="--fill-width:${fillPercent(row?.[valueKey], max)}%"></div></div>
       </div>
     `).join(""));
   }

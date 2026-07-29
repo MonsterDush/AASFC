@@ -31,6 +31,13 @@ seed() {
   )
 }
 
+verify_night_shift() {
+  (
+    cd "${repo_dir}/backend"
+    .venv/bin/python -m app.scripts.verify_night_shift_e2e
+  )
+}
+
 case "${1:-}" in
   up)
     "${compose[@]}" up -d --wait
@@ -40,6 +47,11 @@ case "${1:-}" in
   reset)
     migrate
     seed
+    ;;
+  verify-night)
+    migrate
+    seed
+    verify_night_shift
     ;;
   status)
     "${compose[@]}" ps
@@ -56,7 +68,7 @@ case "${1:-}" in
     "${compose[@]}" down
     ;;
   *)
-    echo "Usage: $0 {up|reset|status|backend|frontend|down}" >&2
+    echo "Usage: $0 {up|reset|verify-night|status|backend|frontend|down}" >&2
     exit 2
     ;;
 esac

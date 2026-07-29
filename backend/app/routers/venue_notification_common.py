@@ -60,6 +60,13 @@ from app.routers.venue_common import (
 )
 from app.routers.venue_permissions import _has_adjustments_manage_access
 
+
+class NotificationDeliveryError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool):
+        super().__init__(message)
+        self.retryable = bool(retryable)
+
+
 _ADJ_TYPE_LABELS = {
     "ru": {"penalty": "Штраф", "writeoff": "Списание", "bonus": "Премия", "tip": "Чаевые"},
     "en": {"penalty": "Penalty", "writeoff": "Write-off", "bonus": "Bonus", "tip": "Tips"},
@@ -81,7 +88,7 @@ def _venue_name(db: Session, venue_id: int) -> str:
 def _should_notify_user(u: User, kind: str) -> bool:
     """Best-effort per-user notification gate.
 
-    kind: 'adjustments' | 'shifts' | 'day_economics' | 'salary' | 'soft_alerts'
+    kind: 'adjustments' | 'shifts' | 'shift_comments' | 'day_economics' | 'salary' | 'soft_alerts'
     """
     if not u:
         return False
@@ -91,6 +98,8 @@ def _should_notify_user(u: User, kind: str) -> bool:
         return bool(getattr(u, "notify_adjustments", True))
     if kind == "shifts":
         return bool(getattr(u, "notify_shifts", True))
+    if kind == "shift_comments":
+        return bool(getattr(u, "notify_shift_comments", True))
     if kind == "day_economics":
         return bool(getattr(u, "notify_day_economics", True))
     if kind == "salary":
@@ -105,15 +114,36 @@ def _frontend_base_url() -> str:
     return settings.frontend_base_url()
 
 
-def _build_owner_day_economics_link(*, venue_id: int, target_date: date) -> str:
-    return f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}&date={quote(target_date.isoformat())}"
+def _notification_shift_slot_query(shift_slot: str | None) -> str:
+    slot = str(shift_slot or "TOTAL").strip().upper()
+    return f"&shift_slot={quote(slot)}" if slot in {"DAY", "NIGHT"} else ""
 
 
-def _build_staff_salary_day_link(*, venue_id: int, target_date: date) -> str:
+def _build_owner_day_economics_link(
+    *,
+    venue_id: int,
+    target_date: date,
+    shift_slot: str | None = None,
+) -> str:
+    slot_query = _notification_shift_slot_query(shift_slot)
+    return (
+        f"{_frontend_base_url()}/owner-day-economics.html?venue_id={int(venue_id)}"
+        f"&date={quote(target_date.isoformat())}{slot_query}"
+    )
+
+
+def _build_staff_salary_day_link(
+    *,
+    venue_id: int,
+    target_date: date,
+    shift_slot: str | None = None,
+) -> str:
     month_value = target_date.strftime("%Y-%m")
+    slot_query = _notification_shift_slot_query(shift_slot)
     return (
         f"{_frontend_base_url()}/staff-salary.html?venue_id={int(venue_id)}"
-        f"&month={quote(month_value)}&date={quote(target_date.isoformat())}&open_day=1"
+        f"&month={quote(month_value)}&date={quote(target_date.isoformat())}"
+        f"&open_day=1{slot_query}"
     )
 
 
@@ -176,10 +206,12 @@ def _deliver_user_notification(
     text: str,
     url: str | None = None,
     button_text: str | None = None,
+    shift_id: int | None = None,
+    shift_assignment_id: int | None = None,
 ) -> tuple[bool, bool]:
     lock_notification_idempotency_key(db, idempotency_key)
     if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
-        return False, False
+        return True, False
 
     planned_at = datetime.utcnow().replace(tzinfo=timezone.utc)
     pending_log = log_notification_attempt(
@@ -188,6 +220,8 @@ def _deliver_user_notification(
         status="pending",
         user_id=int(recipient.id),
         venue_id=int(venue_id),
+        shift_id=int(shift_id) if shift_id is not None else None,
+        shift_assignment_id=int(shift_assignment_id) if shift_assignment_id is not None else None,
         planned_at=planned_at,
         idempotency_key=idempotency_key,
         payload_preview=text[:2000],

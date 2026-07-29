@@ -5,7 +5,7 @@ import {
   buildPermissionTemplateOptions,
   renderPermissionTemplateSummaryById,
   applyPermissionTemplateToCheckboxHost,
-} from "/position-template-ui.js?v=20260409-setup-polish1";
+} from "/position-template-ui.js?v=20260726-navmore1";
 
 export function createPositionPermissionController({ state, api }) {
 function buildDefaultPermissionsCatalog() {

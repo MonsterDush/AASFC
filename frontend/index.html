@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Загрузка</title>
 </head>
@@ -12,10 +12,10 @@
   <div class="splash" id="splash">
     <div class="splash__logo"></div>
     <b>Axelio</b>
-    <div class="muted" style="margin-top:4px">Загружаю…</div>
+    <div class="muted mt-4">Загружаю…</div>
     <div class="spinner"></div>
   </div>
-  <div class="container" id="fallback">
+  <div class="container hidden" id="fallback">
     <div class="card">
       <b>Не удалось загрузить приложение</b>
       <div class="muted mt-8">
@@ -32,16 +32,16 @@
     window.__axelioIndexWatchdog = setTimeout(() => {
       const splash = document.getElementById("splash");
       const fallback = document.getElementById("fallback");
-      if (splash) splash.style.display = "none";
-      if (fallback) fallback.style.display = "block";
+      splash?.classList.add("hidden");
+      fallback?.classList.remove("hidden");
     }, 8000);
   </script>
  <script type="module">
-  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260719-split1";
+  import { applyTelegramTheme, ensureLogin, getMe, getMyVenues, getMyVenuePermissions, toast, setActiveVenueId, buildAuthUrl } from "/app.js?v=20260726-navmore1";
 
   const splash = document.getElementById("splash");
   const fallback = document.getElementById("fallback");
-  const hideSplash = () => splash && (splash.style.display = "none");
+  const hideSplash = () => splash?.classList.add("hidden");
 
   applyTelegramTheme();
 
@@ -56,7 +56,7 @@
 
       if (!login.ok) {
         hideSplash();
-        fallback.style.display = "block";
+        fallback.classList.remove("hidden");
         // Покажем понятную причину (если есть)
         const msg =
           login.code === "TIMEOUT"
@@ -82,7 +82,7 @@
 let venues = [];
 try { venues = await getMyVenues({ timeoutMs: 8000 }); } catch (e) {
   hideSplash();
-  fallback.style.display = "block";
+  fallback.classList.remove("hidden");
   toast(e?.code === "TIMEOUT" || /TIMEOUT/i.test(String(e?.message || "")) ? "Не удалось получить список заведений. Похоже, завис запрос /me/venues в Telegram WebView." : "Не удалось получить список заведений", "err");
   return;
 }
@@ -133,7 +133,7 @@ try {
 }
 } catch (e) {
       hideSplash();
-      fallback.style.display = "block";
+      fallback.classList.remove("hidden");
       toast("Ошибка загрузки: " + (e?.data?.detail || e?.message || e), "err");
     }
   })();

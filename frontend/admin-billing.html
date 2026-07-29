@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/admin-billing.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/admin-billing.css?v=20260726-polish7" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Админ · Биллинг</title>
 </head>
-<body>
-  <div class="container">
+<body class="admin-billing-page">
+  <div class="container admin-billing-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -22,24 +22,30 @@
       <div class="userpill" data-userpill>—</div>
     </div>
 
-    <div class="card">
-      <div class="summary-grid" id="summaryGrid"></div>
-    </div>
+    <main class="admin-billing-content">
+    <section class="card admin-billing-hero">
+      <div class="summary-grid" id="summaryGrid" aria-live="polite">
+        <div class="summary-card summary-card--loading">Загрузка…</div>
+        <div class="summary-card summary-card--loading">Загрузка…</div>
+        <div class="summary-card summary-card--loading">Загрузка…</div>
+        <div class="summary-card summary-card--loading">Загрузка…</div>
+      </div>
+    </section>
 
-    <div class="card">
+    <section class="card admin-billing-section">
       <div class="section-title"><b>Состояние биллинга</b></div>
-      <div id="healthBlock" class="muted">Загрузка…</div>
-    </div>
+      <div id="healthBlock" class="billing-state billing-state--loading" aria-live="polite">Загрузка…</div>
+    </section>
 
 
-    <div class="card">
+    <section class="card admin-billing-section">
       <div class="row row--between ai-start gap-12">
         <div>
           <div class="section-title"><b>Промокоды</b></div>
           <div class="muted">Скидки и бесплатные дни. На одно заведение можно применить только один промокод.</div>
         </div>
       </div>
-      <div class="toolbar">
+      <div class="toolbar billing-promo-form">
         <input id="promoCodeInput" type="text" placeholder="Код, например START500" />
         <input id="promoTitleInput" type="text" placeholder="Название / заметка" />
         <select id="promoKindSelect">
@@ -52,11 +58,11 @@
         <button class="btn primary" id="promoCreateBtn">Создать промокод</button>
       </div>
       <div class="small muted" id="promoValueHint">Для скидки в процентах укажи число от 1 до 100.</div>
-      <div id="promoList" class="mt-12 muted">Загрузка…</div>
-    </div>
+      <div id="promoList" class="mt-12 billing-state billing-state--loading" aria-live="polite">Загрузка…</div>
+    </section>
 
-    <div class="card">
-      <div class="toolbar">
+    <section class="card admin-billing-section">
+      <div class="toolbar billing-filters">
         <select id="statusFilter">
           <option value="">Все статусы</option>
           <option value="ACTIVE">ACTIVE</option>
@@ -84,16 +90,16 @@
         <button class="btn" id="refreshBtn">Обновить</button>
       </div>
       <div class="muted" id="count">0</div>
-      <div id="list"></div>
+      <div id="list" class="billing-list"></div>
       <div class="row gap-8 mt-12 row--end">
         <button class="btn subtle" id="prevPageBtn">← Назад</button>
         <span class="muted" id="pageInfo">1</span>
         <button class="btn subtle" id="nextPageBtn">Вперёд →</button>
       </div>
-    </div>
+    </section>
 
     <div class="split-grid">
-      <div class="card">
+      <section class="card admin-billing-section">
         <div class="row row--between gap-10">
           <div>
             <div class="section-title"><b>Операции</b></div>
@@ -103,10 +109,10 @@
             <button class="btn subtle" id="exportOpsBtn">Экспорт XLSX</button>
           </div>
         </div>
-        <div id="operationsBlock" class="muted">Загрузка…</div>
-      </div>
+        <div id="operationsBlock" class="billing-state billing-state--loading" aria-live="polite">Загрузка…</div>
+      </section>
 
-      <div class="card">
+      <section class="card admin-billing-section">
         <div class="row row--between gap-10">
           <div>
             <div class="section-title"><b>Проблемы и сверка</b></div>
@@ -122,9 +128,10 @@
             <button class="btn subtle" id="exportReconBtn">Экспорт XLSX</button>
           </div>
         </div>
-        <div id="reconciliationBlock" class="muted">Загрузка…</div>
-      </div>
+        <div id="reconciliationBlock" class="billing-state billing-state--loading" aria-live="polite">Загрузка…</div>
+      </section>
     </div>
+    </main>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
@@ -167,7 +174,7 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, openModal } from "/app.js?v=20260719-split1";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, openModal } from "/app.js?v=20260726-navmore1";
 
   applyTelegramTheme();
   mountCommonUI("admin-billing");
@@ -249,9 +256,10 @@
   }
 
   function renderPromocodes(items){
+    promoList.classList.remove('billing-state', 'billing-state--loading');
     const rows = Array.isArray(items) ? items : [];
     if (!rows.length) {
-      promoList.innerHTML = '<div class="muted">Промокодов пока нет</div>';
+      promoList.innerHTML = '<div class="billing-state billing-state--empty">Промокодов пока нет</div>';
       return;
     }
     promoList.innerHTML = rows.map((item) => `
@@ -364,6 +372,7 @@
   }
 
   function renderHealth(data){
+    healthBlock.classList.remove('billing-state', 'billing-state--loading');
     const sev = data?.severity || {};
     const top = Array.isArray(data?.top_issue_codes) ? data.top_issue_codes : [];
     healthBlock.innerHTML = `
@@ -386,7 +395,7 @@
     prevPageBtn.disabled = currentPage <= 1;
     nextPageBtn.disabled = !hasNextPage;
     if (!rows.length) {
-      listEl.innerHTML = `<div class="muted">Ничего не найдено</div>`;
+      listEl.innerHTML = `<div class="billing-state billing-state--empty">Ничего не найдено</div>`;
       return;
     }
     listEl.innerHTML = rows.map((item) => `
@@ -422,8 +431,9 @@
   }
 
   function renderOperations(items){
+    operationsBlock.classList.remove('billing-state', 'billing-state--loading');
     const rows = Array.isArray(items) ? items : [];
-    if (!rows.length) { operationsBlock.innerHTML = '<div class="muted">Операций пока нет</div>'; return; }
+    if (!rows.length) { operationsBlock.innerHTML = '<div class="billing-state billing-state--empty">Операций пока нет</div>'; return; }
     operationsBlock.innerHTML = rows.slice(0, 20).map((item) => `
       <div class="billing-table-row">
         <div class="row row--between gap-12 ai-start">
@@ -440,8 +450,9 @@
   }
 
   function renderReconciliation(items){
+    reconciliationBlock.classList.remove('billing-state', 'billing-state--loading');
     const rows = Array.isArray(items) ? items : [];
-    if (!rows.length) { reconciliationBlock.innerHTML = '<div class="muted">Проблем по выбранному фильтру не найдено</div>'; return; }
+    if (!rows.length) { reconciliationBlock.innerHTML = '<div class="billing-state billing-state--empty">Проблем по выбранному фильтру не найдено</div>'; return; }
     reconciliationBlock.innerHTML = rows.slice(0, 20).map((item) => `
       <div class="billing-table-row">
         <div class="row row--between gap-12 ai-start">

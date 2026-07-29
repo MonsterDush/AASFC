@@ -6,6 +6,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from typing import Any
 
 log = logging.getLogger("axelio.tg_notify")
@@ -35,6 +36,10 @@ def _normalize_error_message(body_text: str | None) -> str | None:
 
 def _reply_markup(*, url: str | None, button_text: str | None) -> dict[str, Any] | None:
     if not url:
+        return None
+    parsed = urlparse(str(url).strip())
+    if parsed.scheme.lower() != "https" or not parsed.netloc:
+        log.warning("telegram web_app button skipped for non-HTTPS URL")
         return None
     return {
         "inline_keyboard": [

@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/auth.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/auth.css?v=20260726-polish9" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Авторизация</title>
 </head>
-<body>
+<body class="auth-page">
   <div class="container auth-shell">
-    <div class="topbar">
+    <div class="topbar auth-topbar">
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
@@ -21,12 +21,15 @@
       <div class="userpill" data-userpill>гость</div>
     </div>
 
-    <div class="auth-grid">
-      <div class="card">
-        <b>Вход по телефону</b>
-        <div class="muted mt-8">Основной способ входа — по номеру телефона и паролю. Звонок нужен только для первой настройки номера и для сброса пароля.</div>
+    <main class="auth-grid">
+      <section class="card auth-card">
+        <div class="auth-intro">
+          <span class="auth-eyebrow">Безопасный вход</span>
+          <b class="auth-title">Вход по телефону</b>
+          <div class="muted">Основной способ входа — по номеру телефона и паролю. Звонок нужен только для первой настройки номера и для сброса пароля.</div>
+        </div>
 
-        <div id="loginPanel" class="stack mt-16">
+        <div id="loginPanel" class="stack auth-login-panel">
           <div>
             <label class="auth-label" for="loginPhoneInput">Номер телефона</label>
             <input id="loginPhoneInput" placeholder="+7 999 123-45-67" inputmode="tel" autocomplete="tel" />
@@ -42,7 +45,7 @@
           </div>
         </div>
 
-        <div class="miniapp-open-box" id="telegramMiniAppBox">
+        <div class="miniapp-open-box auth-secondary-panel" id="telegramMiniAppBox">
           <b>Открыть Axelio в Telegram</b>
           <div class="muted mt-8">Если удобнее работать внутри Telegram, открой Mini App напрямую. В браузере вход через Telegram больше не используется.</div>
           <div class="miniapp-open-actions">
@@ -96,9 +99,9 @@
           </div>
         </div>
 
-        <div class="muted mt-16" id="nextHint">После входа тебя вернёт на страницу, с которой запрашивалась авторизация.</div>
-      </div>
-    </div>
+        <div class="muted auth-next-hint" id="nextHint">После входа тебя вернёт на страницу, с которой запрашивалась авторизация.</div>
+      </section>
+    </main>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
@@ -119,7 +122,7 @@
       api,
       toast,
       mountLogo,
-    } from "/app.js?v=20260719-split1";
+    } from "/app.js?v=20260726-navmore1";
 
     applyTelegramTheme();
     mountLogo();

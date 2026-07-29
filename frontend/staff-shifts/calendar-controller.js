@@ -1,5 +1,5 @@
 export function createStaffShiftCalendarController(context) {
-  const { runtime, toast, DEMO_MODE, shouldShowDemoSalaryValue, el, toHHMM, pad2, ym, ymd, addDays, WEEKDAYS, isPastDay, colorForInterval, escapeHtml, pickShortName, displayPerson, shiftSlotLabel, shiftIntervalId, shiftStartHHMM, sortShiftsForBadges, shiftDonePrefix, formatGlobalLine, canEditDay, openDay } = context;
+  const { runtime, toast, DEMO_MODE, shouldShowDemoSalaryValue, el, toHHMM, pad2, ym, ymd, addDays, WEEKDAYS, isPastDay, colorForInterval, escapeHtml, pickShortName, displayPerson, shiftSlotLabel, shiftIntervalId, shiftStartHHMM, formatShiftIntervalRange, sortShiftsForBadges, shiftDonePrefix, formatGlobalLine, canEditDay, openDay } = context;
 
   function updateBadgesCols(box) {
     // v6: hard 2 columns are controlled by CSS (#calGrid.is-week .cal-badges)
@@ -239,7 +239,9 @@ export function createStaffShiftCalendarController(context) {
       else if (people != null && people > 0) meta = `${people} чел.`;
       else if (assigns != null && assigns > 0) meta = `${assigns} назнач.`;
 
-      const label = (st && et) ? `${st}–${et}` : (st || timelineRowLabel(s0) || '');
+      const label = (st && et)
+        ? formatShiftIntervalRange(st, et)
+        : (st || timelineRowLabel(s0) || '');
 
       items.push({ stMin: stMin ?? 9999, leftPct, widthPct, rgb, label, meta });
     }

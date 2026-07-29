@@ -43,6 +43,7 @@ from app.routers.venue_core import (
     sanitize_financial_payload_for_user,
     select,
     sync_daily_recurring_accruals_for_date,
+    normalize_shift_slot,
     uuid,
 )
 from app.routers.venue_common import (
@@ -183,6 +184,7 @@ def _build_dynamic_items(
 def upsert_daily_report(
     venue_id: int,
     payload: DailyReportUpsertIn,
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -194,10 +196,15 @@ def upsert_daily_report(
         raise HTTPException(status_code=404, detail="Venue not found")
     tips_enabled = bool(getattr(venue, "tips_enabled", False))
     safe_tips_total = int(payload.tips_total or 0) if tips_enabled else 0
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
 
 
     obj = db.execute(
-        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == payload.date)
+        select(DailyReport).where(
+            DailyReport.venue_id == venue_id,
+            DailyReport.date == payload.date,
+            DailyReport.shift_slot == normalized_shift_slot,
+        )
     ).scalar_one_or_none()
 
     audited_before = None
@@ -207,6 +214,7 @@ def upsert_daily_report(
         obj = DailyReport(
             venue_id=venue_id,
             date=payload.date,
+            shift_slot=normalized_shift_slot,
             cash=payload.cash,
             cashless=payload.cashless,
             revenue_total=payload.revenue_total,
@@ -306,6 +314,7 @@ def upsert_daily_report(
 
     db.flush()
     if str(obj.status or "").upper() == "CLOSED":
+        _rebuild_report_tip_allocations(db, report=obj, venue=venue)
         rebuild_revenue_entries_for_report(db=db, report=obj)
         _recalculate_payroll_for_dates(
             db,
@@ -318,7 +327,12 @@ def upsert_daily_report(
 
     db.commit()
     db.refresh(obj)
-    return {"id": obj.id, "date": obj.date.isoformat(), "mode": "updated" if obj.updated_at else "created"}
+    return {
+        "id": obj.id,
+        "date": obj.date.isoformat(),
+        "shift_slot": normalize_shift_slot(getattr(obj, "shift_slot", None)),
+        "mode": "updated" if obj.updated_at else "created",
+    }
 
 
 
@@ -326,6 +340,7 @@ def upsert_daily_report(
 def list_daily_reports(
     venue_id: int,
     month: str = Query(..., description="YYYY-MM"),
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -341,9 +356,15 @@ def list_daily_reports(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
 
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
     rows = db.execute(
         select(DailyReport)
-        .where(DailyReport.venue_id == venue_id, DailyReport.date >= start, DailyReport.date < end)
+        .where(
+            DailyReport.venue_id == venue_id,
+            DailyReport.date >= start,
+            DailyReport.date < end,
+            DailyReport.shift_slot == normalized_shift_slot,
+        )
         .order_by(DailyReport.date.asc())
     ).scalars().all()
 
@@ -353,6 +374,7 @@ def list_daily_reports(
         {
             "id": r.id,
             "date": r.date.isoformat(),
+            "shift_slot": normalize_shift_slot(getattr(r, "shift_slot", None)),
             "status": getattr(r, "status", "DRAFT"),
             "closed_at": r.closed_at.isoformat() if getattr(r, "closed_at", None) else None,
             "cash": r.cash if show_numbers else None,
@@ -369,14 +391,20 @@ def list_daily_reports(
 def get_daily_report(
     venue_id: int,
     report_date: date,
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
     r = db.execute(
-        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+        select(DailyReport).where(
+            DailyReport.venue_id == venue_id,
+            DailyReport.date == report_date,
+            DailyReport.shift_slot == normalized_shift_slot,
+        )
     ).scalar_one_or_none()
     if r is None:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -396,6 +424,7 @@ def get_daily_report(
     return {
         "id": r.id,
         "date": r.date.isoformat(),
+        "shift_slot": normalize_shift_slot(getattr(r, "shift_slot", None)),
         "status": getattr(r, "status", "DRAFT"),
         "closed_by_user_id": int(r.closed_by_user_id) if getattr(r, "closed_by_user_id", None) else None,
         "closed_at": r.closed_at.isoformat() if getattr(r, "closed_at", None) else None,
@@ -429,7 +458,14 @@ def get_daily_report(
     }
 
 
-def _load_assigned_members_for_report_date(db: Session, *, venue_id: int, report_date: date) -> list[tuple[int, str | None]]:
+def _load_assigned_members_for_report_date(
+    db: Session,
+    *,
+    venue_id: int,
+    report_date: date,
+    shift_slot: str,
+) -> list[tuple[int, str | None]]:
+    normalized_slot = normalize_shift_slot(shift_slot)
     rows = db.execute(
         select(ShiftAssignment.member_user_id, VenuePosition.title)
         .join(Shift, Shift.id == ShiftAssignment.shift_id)
@@ -437,6 +473,7 @@ def _load_assigned_members_for_report_date(db: Session, *, venue_id: int, report
         .where(
             Shift.venue_id == venue_id,
             Shift.date == report_date,
+            Shift.shift_slot == normalized_slot,
             Shift.is_active.is_(True),
         )
         .order_by(ShiftAssignment.member_user_id.asc(), ShiftAssignment.id.asc())
@@ -461,7 +498,12 @@ def _rebuild_report_tip_allocations(
         return []
 
     tips_split_mode = str(getattr(venue, "tips_split_mode", "EQUAL") or "EQUAL").upper()
-    assigned_members = _load_assigned_members_for_report_date(db, venue_id=int(report.venue_id), report_date=report.date)
+    assigned_members = _load_assigned_members_for_report_date(
+        db,
+        venue_id=int(report.venue_id),
+        report_date=report.date,
+        shift_slot=normalize_shift_slot(getattr(report, "shift_slot", None)),
+    )
     if not assigned_members:
         return []
 
@@ -487,6 +529,76 @@ def _rebuild_report_tip_allocations(
     return allocations
 
 
+def _rebuild_closed_report_tip_allocations_for_keys(
+    db: Session,
+    *,
+    venue_id: int,
+    report_keys: set[tuple[date, str]] | list[tuple[date, str]] | tuple[tuple[date, str], ...],
+) -> int:
+    normalized_keys = {
+        (report_date, normalize_shift_slot(shift_slot))
+        for report_date, shift_slot in report_keys
+        if isinstance(report_date, date)
+    }
+    if not normalized_keys:
+        return 0
+
+    venue = db.execute(
+        select(Venue).where(Venue.id == int(venue_id))
+    ).scalar_one_or_none()
+    if venue is None:
+        return 0
+
+    reports = db.execute(
+        select(DailyReport).where(
+            DailyReport.venue_id == int(venue_id),
+            DailyReport.date.in_(sorted({report_date for report_date, _slot in normalized_keys})),
+            DailyReport.status == "CLOSED",
+        )
+    ).scalars().all()
+
+    rebuilt = 0
+    for report in reports:
+        key = (
+            report.date,
+            normalize_shift_slot(getattr(report, "shift_slot", None)),
+        )
+        if key not in normalized_keys:
+            continue
+        _rebuild_report_tip_allocations(db, report=report, venue=venue)
+        rebuilt += 1
+    return rebuilt
+
+
+def _sync_recurring_accruals_after_report_reopen(
+    db: Session,
+    *,
+    report: DailyReport,
+) -> str:
+    other_closed_report_id = db.execute(
+        select(DailyReport.id).where(
+            DailyReport.venue_id == int(report.venue_id),
+            DailyReport.date == report.date,
+            DailyReport.id != int(report.id),
+            DailyReport.status == "CLOSED",
+        ).limit(1)
+    ).scalar_one_or_none()
+    if other_closed_report_id is not None:
+        sync_daily_recurring_accruals_for_date(
+            db=db,
+            venue_id=int(report.venue_id),
+            target_date=report.date,
+        )
+        return "synced"
+
+    delete_daily_recurring_accruals_for_date(
+        db=db,
+        venue_id=int(report.venue_id),
+        target_date=report.date,
+    )
+    return "deleted"
+
+
 
 @router.post("/{venue_id}/reports/{report_date}/close")
 def close_daily_report(
@@ -494,6 +606,7 @@ def close_daily_report(
     report_date: date,
     payload: DailyReportCloseIn,
     background_tasks: BackgroundTasks,
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -507,13 +620,19 @@ def close_daily_report(
     if not allowed:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
     rep = db.execute(
-        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+        select(DailyReport).where(
+            DailyReport.venue_id == venue_id,
+            DailyReport.date == report_date,
+            DailyReport.shift_slot == normalized_shift_slot,
+        )
     ).scalar_one_or_none()
     if rep is None:
         rep = DailyReport(
             venue_id=venue_id,
             date=report_date,
+            shift_slot=normalized_shift_slot,
             cash=0,
             cashless=0,
             revenue_total=0,
@@ -566,9 +685,18 @@ def close_daily_report(
         force=True,
         trigger_reason="report_closed",
     )
-    _enqueue_day_economics_summary_job(db, venue_id=venue_id, target_date=report_date)
-    _enqueue_salary_day_breakdown_job(db, venue_id=venue_id, target_date=report_date)
-    _enqueue_soft_alerts_job(db, venue_id=venue_id, target_date=report_date)
+    notification_event_key = (
+        f"report:{int(rep.id)}:closed:{rep.closed_at.isoformat(timespec='microseconds')}"
+    )
+    notification_job_args = {
+        "venue_id": venue_id,
+        "target_date": report_date,
+        "shift_slot": normalized_shift_slot,
+        "event_key": notification_event_key,
+    }
+    _enqueue_day_economics_summary_job(db, **notification_job_args)
+    _enqueue_salary_day_breakdown_job(db, **notification_job_args)
+    _enqueue_soft_alerts_job(db, **notification_job_args)
 
     db.commit()
     background_tasks.add_task(process_pending_notification_jobs_once, 10)
@@ -580,6 +708,7 @@ def close_daily_report(
 def reopen_daily_report(
     venue_id: int,
     report_date: date,
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -591,8 +720,13 @@ def reopen_daily_report(
     if not allowed:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
     rep = db.execute(
-        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+        select(DailyReport).where(
+            DailyReport.venue_id == venue_id,
+            DailyReport.date == report_date,
+            DailyReport.shift_slot == normalized_shift_slot,
+        )
     ).scalar_one_or_none()
     if rep is None:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -607,7 +741,7 @@ def reopen_daily_report(
     rep.updated_at = datetime.utcnow()
     delete_revenue_entries_for_report(db=db, report_id=rep.id)
     db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == rep.id))
-    delete_daily_recurring_accruals_for_date(db=db, venue_id=venue_id, target_date=report_date)
+    _sync_recurring_accruals_after_report_reopen(db, report=rep)
     _recalculate_payroll_for_dates(
         db,
         venue_id=venue_id,
@@ -627,14 +761,20 @@ def reopen_daily_report(
 def list_daily_report_audit(
     venue_id: int,
     report_date: date,
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
     rep = db.execute(
-        select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)
+        select(DailyReport).where(
+            DailyReport.venue_id == venue_id,
+            DailyReport.date == report_date,
+            DailyReport.shift_slot == normalized_shift_slot,
+        )
     ).scalar_one_or_none()
     if rep is None:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -660,17 +800,20 @@ def list_daily_report_audit(
 def list_report_attachments(
     venue_id: int,
     report_date: date,
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
     rows = db.execute(
         select(DailyReportAttachment)
         .where(
             DailyReportAttachment.venue_id == venue_id,
             DailyReportAttachment.report_date == report_date,
+            DailyReportAttachment.shift_slot == normalized_shift_slot,
             DailyReportAttachment.is_active.is_(True),
         )
         .order_by(DailyReportAttachment.id.asc())
@@ -683,7 +826,10 @@ def list_report_attachments(
                 "file_name": a.file_name,
                 "content_type": a.content_type,
                 # NOTE: frontend should prefix this path with API_BASE.
-                "url": f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}",
+                "url": (
+                    f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}"
+                    f"?shift_slot={normalized_shift_slot}"
+                ),
             }
             for a in rows
         ]
@@ -695,17 +841,20 @@ def download_report_attachment(
     venue_id: int,
     report_date: date,
     attachment_id: int,
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
     a = db.execute(
         select(DailyReportAttachment).where(
             DailyReportAttachment.id == attachment_id,
             DailyReportAttachment.venue_id == venue_id,
             DailyReportAttachment.report_date == report_date,
+            DailyReportAttachment.shift_slot == normalized_shift_slot,
             DailyReportAttachment.is_active.is_(True),
         )
     ).scalar_one_or_none()
@@ -723,17 +872,20 @@ def delete_report_attachment(
     venue_id: int,
     report_date: date,
     attachment_id: int,
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_maker(db, venue_id=venue_id, user=user)
 
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
     a = db.execute(
         select(DailyReportAttachment).where(
             DailyReportAttachment.id == attachment_id,
             DailyReportAttachment.venue_id == venue_id,
             DailyReportAttachment.report_date == report_date,
+            DailyReportAttachment.shift_slot == normalized_shift_slot,
             DailyReportAttachment.is_active.is_(True),
         )
     ).scalar_one_or_none()
@@ -759,6 +911,7 @@ def upload_report_attachments(
     venue_id: int,
     report_date: date,
     files: list[UploadFile] = File(...),
+    shift_slot: str = Query(default="DAY", pattern="^(DAY|NIGHT)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -766,11 +919,19 @@ def upload_report_attachments(
     _require_report_maker(db, venue_id=venue_id, user=user)
 
     # ensure report exists (or create empty one)
-    rep = db.execute(select(DailyReport).where(DailyReport.venue_id == venue_id, DailyReport.date == report_date)).scalar_one_or_none()
+    normalized_shift_slot = normalize_shift_slot(shift_slot)
+    rep = db.execute(
+        select(DailyReport).where(
+            DailyReport.venue_id == venue_id,
+            DailyReport.date == report_date,
+            DailyReport.shift_slot == normalized_shift_slot,
+        )
+    ).scalar_one_or_none()
     if rep is None:
         rep = DailyReport(
             venue_id=venue_id,
             date=report_date,
+            shift_slot=normalized_shift_slot,
             cash=0,
             cashless=0,
             revenue_total=0,
@@ -799,7 +960,10 @@ def upload_report_attachments(
             raise HTTPException(status_code=415, detail=f"Unsupported content_type: {f.content_type}")
 
         uid = uuid.uuid4().hex
-        dst = os.path.join(base_dir, f"{venue_id}_{report_date.isoformat()}_{uid}_{safe_name}")
+        dst = os.path.join(
+            base_dir,
+            f"{venue_id}_{report_date.isoformat()}_{normalized_shift_slot}_{uid}_{safe_name}",
+        )
         with open(dst, "wb") as out:
             total = 0
             while True:
@@ -819,6 +983,7 @@ def upload_report_attachments(
         obj = DailyReportAttachment(
             venue_id=venue_id,
             report_date=report_date,
+            shift_slot=normalized_shift_slot,
             file_name=safe_name,
             content_type=f.content_type,
             storage_path=dst,
@@ -837,7 +1002,10 @@ def upload_report_attachments(
                 "id": a.id,
                 "file_name": a.file_name,
                 "content_type": a.content_type,
-                "url": f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}",
+                "url": (
+                    f"/venues/{venue_id}/reports/{report_date.isoformat()}/attachments/{a.id}"
+                    f"?shift_slot={normalized_shift_slot}"
+                ),
             }
             for a in created
         ],

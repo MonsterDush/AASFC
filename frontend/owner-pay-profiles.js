@@ -13,7 +13,7 @@ import {
   updatePayProfile,
   deletePayProfile,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 const root = document.getElementById("root");
@@ -50,7 +50,7 @@ let state = {
 
 function renderShell() {
   root.innerHTML = `
-    <div class="topbar">
+    <div class="topbar pay-profile-topbar">
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
@@ -61,10 +61,11 @@ function renderShell() {
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div class="muted">Здесь настраиваются шаблоны начислений: оклад, почасовая ставка и фикс за смену. Назначения к сотрудникам редактируются внутри карточки профиля.</div>
+    <main class="pay-profile-content">
+    <section class="card pay-profile-hero">
+      <div class="muted pay-profile-intro">Здесь настраиваются шаблоны начислений: оклад, почасовая ставка и фикс за смену. Назначения к сотрудникам редактируются внутри карточки профиля.</div>
 
-      <div class="itemcard mt-12">
+      <div class="itemcard pay-profile-list-card">
         <div class="section-head">
           <div class="section-title">
             <b>Список профилей</b>
@@ -74,22 +75,23 @@ function renderShell() {
           </div>
         </div>
 
-        <div class="section-actions mt-8">
-          <label class="chk">
+        <div class="section-actions">
+          <label class="chk pay-profile-filter">
             <input type="checkbox" id="showInactive" />
             <span class="muted">Показывать неактивные</span>
           </label>
         </div>
 
-        <div id="list" class="mt-10">
-          <div class="skeleton"></div><div class="skeleton"></div>
+        <div id="list" class="pay-profile-list">
+          <div class="pay-profile-loading"><div class="skeleton"></div><div class="skeleton"></div></div>
         </div>
       </div>
 
-      <div class="row mt-12">
+      <div class="pay-profile-footer">
         <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
       </div>
-    </div>
+    </section>
+    </main>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
 
@@ -163,38 +165,38 @@ function renderList() {
   const chk = document.getElementById("showInactive");
   const back = document.getElementById("back");
 
-  if (btnCreate) btnCreate.style.display = state.can.manage ? "" : "none";
+  btnCreate?.classList.toggle("hidden", !state.can.manage);
   if (chk) chk.checked = !!state.includeInactive;
   if (back) back.href = `/app-venue.html?venue_id=${encodeURIComponent(state.venueId)}`;
 
   if (!el) return;
   if (!state.can.view) {
-    el.innerHTML = `<div class="muted">Нет доступа к профилям зарплаты</div>`;
+    el.innerHTML = `<div class="pay-profile-state pay-profile-state--denied"><b>Нет доступа</b><span>Для просмотра профилей оплаты нужны соответствующие права.</span></div>`;
     return;
   }
   if (!state.items.length) {
-    el.innerHTML = `<div class="muted">Пока нет профилей</div>`;
+    el.innerHTML = `<div class="pay-profile-state pay-profile-state--empty"><b>Профилей пока нет</b><span>Создай первый профиль, чтобы настроить компоненты и назначения сотрудникам.</span></div>`;
     return;
   }
 
   el.innerHTML = "";
   state.items.forEach((it) => {
     const row = document.createElement("div");
-    row.className = "listrow";
+    row.className = "pay-profile-row";
 
     const left = document.createElement("div");
-    left.className = "listrow__left";
+    left.className = "pay-profile-row__copy";
     left.innerHTML = `
-      <div class="text-actions">
+      <div class="pay-profile-row__title">
         <b>${esc(it.title)}</b>
         ${it.is_active ? "" : `<span class="badge">неактивен</span>`}
       </div>
-      <div class="muted mt-6">${esc(it.description || "Без описания")}</div>
-      <div class="mono listrow__meta">Компонентов: ${Number(it.components_count || 0)} · Назначений: ${Number(it.assignments_count || 0)}</div>
+      <div class="muted">${esc(it.description || "Без описания")}</div>
+      <div class="mono small">Компонентов: ${Number(it.components_count || 0)} · Назначений: ${Number(it.assignments_count || 0)}</div>
     `;
 
     const right = document.createElement("div");
-    right.className = "row row--nowrap row--end gap-8 flex-none";
+    right.className = "pay-profile-row__actions";
 
     const openBtn = document.createElement("a");
     openBtn.className = "btn sm";
@@ -270,7 +272,7 @@ function editorForm({ mode, item }) {
       </label>
     </div>
 
-    <div class="row row--end gap-8 mt-12">
+    <div class="pay-profile-modal-actions">
       <button class="btn" id="btnCancel" type="button">Отмена</button>
       <button class="btn primary" id="btnSave" type="button">Сохранить</button>
     </div>
@@ -324,13 +326,20 @@ function openEditor({ mode, item = null }) {
 
 async function load() {
   const list = document.getElementById("list");
-  if (list) list.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+  if (!state.can.view) {
+    state.items = [];
+    renderList();
+    return;
+  }
+  if (list) list.innerHTML = `<div class="pay-profile-loading"><div class="skeleton"></div><div class="skeleton"></div></div>`;
 
   try {
     state.items = await getPayProfiles(state.venueId, { includeInactive: state.includeInactive });
     renderList();
   } catch (e) {
-    if (list) list.innerHTML = `<div class="muted">Ошибка: ${esc(e?.data?.detail || e?.message || "не удалось загрузить")}</div>`;
+    if (list) {
+      list.innerHTML = `<div class="pay-profile-state pay-profile-state--error"><b>Не удалось загрузить профили</b><span>${esc(e?.data?.detail || e?.message || "Проверь подключение и повтори попытку.")}</span></div>`;
+    }
     toast("Не удалось загрузить профили", "err");
   }
 }
@@ -343,7 +352,7 @@ async function boot() {
 
   state.venueId = parseVenueId();
   if (!state.venueId) {
-    root.innerHTML = `<div class="card"><div class="muted">Не найден venue_id</div></div>`;
+    root.innerHTML = `<div class="pay-profile-state"><b>Не выбрано заведение</b><span>Открой профили оплаты из карточки нужного заведения.</span></div>`;
     return;
   }
 

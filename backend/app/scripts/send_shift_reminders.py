@@ -12,7 +12,7 @@ Env:
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone, date
+from datetime import date, datetime, time, timedelta, timezone
 
 try:
     from zoneinfo import ZoneInfo  # py3.9+
@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
-from app.models import Shift, ShiftInterval, ShiftAssignment, ShiftComment, User, Venue
+from app.models import Shift, ShiftInterval, ShiftAssignment, User, Venue
 from app.services import tg_notify
 from app.services.notification_logs import (
     lock_notification_idempotency_key,
@@ -30,6 +30,7 @@ from app.services.notification_logs import (
     notification_delivery_exists,
     notification_dedupe_scope,
 )
+from app.services.shifts.slots import normalize_shift_slot
 
 
 DEFAULT_REMINDER_HOURS = int(os.getenv("REMINDER_HOURS", "18"))
@@ -54,103 +55,6 @@ DRY_RUN = os.getenv("DRY_RUN", "").strip() in ("1", "true", "yes")
 FORCE_CHAT_ID = os.getenv("FORCE_CHAT_ID")
 
 
-def _comment_preview(text: str, limit: int = 220) -> str:
-    value = str(text or "").strip().replace("\n", " ")
-    if len(value) <= limit:
-        return value
-    return value[: max(limit - 1, 0)].rstrip() + "…"
-
-
-
-def _send_shift_comment_notifications(db, *, now, tz) -> int:
-    window_minutes = max(WINDOW_MINUTES * 2, 20)
-    since_utc = datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(minutes=window_minutes)
-
-    rows = db.execute(
-        select(ShiftComment, Shift, ShiftInterval, Venue, User)
-        .join(Shift, Shift.id == ShiftComment.shift_id)
-        .join(ShiftInterval, ShiftInterval.id == Shift.interval_id)
-        .join(Venue, Venue.id == Shift.venue_id)
-        .join(User, User.id == ShiftComment.author_user_id)
-        .where(Shift.is_active.is_(True))
-        .where(ShiftComment.created_at >= since_utc)
-        .order_by(ShiftComment.created_at.asc(), ShiftComment.id.asc())
-    ).all()
-
-    sent = 0
-    for comment, shift, interval, venue, author in rows:
-        assignments = db.execute(
-            select(ShiftAssignment, User)
-            .join(User, User.id == ShiftAssignment.member_user_id)
-            .where(ShiftAssignment.shift_id == shift.id)
-        ).all()
-        if not assignments:
-            continue
-
-        author_name = getattr(author, "short_name", None) or getattr(author, "full_name", None) or (f"@{author.tg_username}" if getattr(author, "tg_username", None) else "Коллега")
-        shift_dt = _shift_start_naive(shift.date, interval.start_time).replace(tzinfo=tz)
-        created_at = comment.created_at
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
-        planned_at = created_at.astimezone(timezone.utc)
-        text = (
-            f'Новый комментарий к смене в "{venue.name}"\n'
-            f'{format_date_ru(shift.date)} · {_fmt_time(interval.start_time)}\n'
-            f'От: {author_name}\n\n'
-            f'{_comment_preview(comment.text)}'
-        )
-
-        for sa, recipient in assignments:
-            if int(recipient.id) == int(comment.author_user_id):
-                continue
-            if not getattr(recipient, "notify_enabled", True):
-                continue
-            if not getattr(recipient, "notify_shift_comments", True):
-                continue
-            if not getattr(recipient, "tg_user_id", None) and not FORCE_CHAT_ID:
-                continue
-
-            chat_id = int(FORCE_CHAT_ID) if FORCE_CHAT_ID else int(recipient.tg_user_id)
-            dedupe_scope = f"force:{chat_id}" if FORCE_CHAT_ID else notification_dedupe_scope(recipient)
-            idempotency_key = f"shift_comment:{int(comment.id)}:{dedupe_scope}"
-            lock_notification_idempotency_key(db, idempotency_key)
-            if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
-                continue
-
-            if DRY_RUN:
-                print(
-                    f"DRY_RUN comment: chat_id={chat_id} user_id={recipient.id} shift_id={shift.id} "
-                    f"comment_id={comment.id} venue=\"{venue.name}\""
-                )
-                continue
-
-            pending_log = log_notification_attempt(
-                db,
-                notification_type="shift_comment",
-                status="pending",
-                user_id=int(recipient.id),
-                venue_id=int(venue.id),
-                shift_id=int(shift.id),
-                shift_assignment_id=int(sa.id),
-                planned_at=planned_at,
-                idempotency_key=idempotency_key,
-                payload_preview=text,
-            )
-            db.flush()
-            db.commit()
-
-            result = tg_notify.notify_result(chat_id=chat_id, text=text)
-            ok = bool(result.get("ok"))
-            pending_log.status = "sent" if ok else "failed"
-            pending_log.sent_at = datetime.utcnow().replace(tzinfo=timezone.utc) if ok else None
-            pending_log.error_text = None if ok else str(result.get("error") or "notify() returned False")[:2000]
-            db.add(pending_log)
-            db.commit()
-            if ok and not FORCE_CHAT_ID:
-                sent += 1
-    return sent
-
-
 def format_date_ru(d) -> str:
     return f"{d.day} {RU_MONTHS_GEN.get(d.month, str(d.month))}"
 
@@ -163,8 +67,24 @@ def _fmt_time(t) -> str:
         return s[:5] if len(s) >= 5 else s
 
 
-def _shift_start_naive(shift_date, start_time):
+def _shift_start_naive(shift_date: date, start_time: time) -> datetime:
+    """Return the actual local start moment for the stored shift date.
+
+    Shift.date is always the calendar date when the interval starts. An
+    overnight interval may end on the next day, but NIGHT itself never shifts
+    the start date forward or backward.
+    """
     return datetime.combine(shift_date, start_time)
+
+
+def _build_shift_reminder_text(*, shift, interval, venue) -> str:
+    shift_slot = normalize_shift_slot(getattr(shift, "shift_slot", None))
+    shift_kind = "ночная смена" if shift_slot == "NIGHT" else "дневная смена"
+    return (
+        f"Напоминаем, что у Вас {shift_kind} {format_date_ru(shift.date)} "
+        f"в {_fmt_time(interval.start_time)} "
+        f"в заведении \"{venue.name}\""
+    )
 
 
 def _get_tzinfo():
@@ -195,7 +115,6 @@ def main() -> int:
     d_to: date = scan_until.date()
 
     sent = 0
-    comment_sent = 0
     with SessionLocal() as db:
         q = (
             select(ShiftAssignment, Shift, ShiftInterval, User, Venue)
@@ -234,14 +153,10 @@ def main() -> int:
             if now > planned_at + timedelta(minutes=max(LATE_GRACE_MINUTES, WINDOW_MINUTES)):
                 continue
 
-            text = (
-                f"Напоминаем, что у Вас смена {format_date_ru(sh.date)} "
-                f"в {_fmt_time(interval.start_time)} "
-                f"в заведении \"{venue.name}\""
-            )
+            shift_slot = normalize_shift_slot(getattr(sh, "shift_slot", None))
+            text = _build_shift_reminder_text(shift=sh, interval=interval, venue=venue)
             chat_id = int(FORCE_CHAT_ID) if FORCE_CHAT_ID else int(user.tg_user_id)
             dedupe_scope = f"force:{chat_id}" if FORCE_CHAT_ID else notification_dedupe_scope(user)
-            shift_slot = str(getattr(sh, "shift_slot", None) or "DAY").upper()
             idempotency_key = (
                 f"shift_reminder:{int(sh.id)}:{dedupe_scope}:{lead_hours}:"
                 f"{sh.date.isoformat()}:{_fmt_time(interval.start_time)}:{shift_slot}"
@@ -289,10 +204,7 @@ def main() -> int:
                 sent += 1
             db.commit()
 
-        comment_sent = _send_shift_comment_notifications(db, now=now, tz=tz)
-        db.commit()
-
-    return sent + comment_sent
+    return sent
 
 
 if __name__ == "__main__":

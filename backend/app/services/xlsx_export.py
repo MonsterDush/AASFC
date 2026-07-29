@@ -194,6 +194,7 @@ def build_revenue_xlsx(
         reports_ws,
         [
             "Дата",
+            "Слот",
             "Report ID",
             "Статус",
             "Выручка итого, ₽",
@@ -208,6 +209,7 @@ def build_revenue_xlsx(
         [
             [
                 item.get("date"),
+                item.get("shift_slot"),
                 item.get("report_id"),
                 item.get("status"),
                 _minor_to_major(item.get("revenue_total_minor")),
@@ -221,9 +223,9 @@ def build_revenue_xlsx(
             ]
             for item in report_rows
         ],
-        currency_cols={4, 5, 6, 7, 8},
+        currency_cols={5, 6, 7, 8, 9},
         date_cols={1},
-        datetime_cols={10},
+        datetime_cols={11},
     )
 
     values_ws = wb.create_sheet("Значения")
@@ -231,10 +233,11 @@ def build_revenue_xlsx(
     _write_title(values_ws, "Значения отчётов")
     _write_table(
         values_ws,
-        ["Дата", "Report ID", "Тип", "Код", "Название", "Значение"],
+        ["Дата", "Слот", "Report ID", "Тип", "Код", "Название", "Значение"],
         [
             [
                 item.get("date"),
+                item.get("shift_slot"),
                 item.get("report_id"),
                 item.get("kind"),
                 item.get("code"),
@@ -243,7 +246,7 @@ def build_revenue_xlsx(
             ]
             for item in value_rows
         ],
-        integer_cols={6},
+        integer_cols={7},
         date_cols={1},
     )
 

@@ -2,7 +2,7 @@ import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm,
 
 import { createAuthActions } from "/app/auth-actions.js?v=20260719-split1";
 import { createVenueApi } from "/app/venue-api.js?v=20260719-split1";
-import { createNavigation } from "/app/navigation.js?v=20260719-split1";
+import { createNavigation } from "/app/navigation.js?v=20260726-navmore1";
 
 function normalizeBaseUrl(value) {
   const raw = String(value || "").trim();
@@ -939,6 +939,7 @@ const DICT = {
     manage_venues: "Управление заведениями",
     leave_venue: "Выйти из заведения",
     settings: "Настройки",
+    more: "Ещё",
     adjustments: "Штрафы",
     shifts: "График",
     salary: "Зарплаты",
@@ -956,6 +957,7 @@ const DICT = {
     manage_venues: "Manage venues",
     leave_venue: "Leave venue",
     settings: "Settings",
+    more: "More",
     adjustments: "Adjustments",
     shifts: "Schedule",
     salary: "Salary",
@@ -1215,8 +1217,7 @@ export function mountLogo() {
     const img = document.createElement("img");
     img.src = "/logo.png"; // или /logo.svg
     img.alt = "Axelio";
-    img.style.width = "100%";
-    img.style.display = "block";
+    img.className = "block w-100";
 
     el.appendChild(img);
   });
@@ -1283,6 +1284,9 @@ export async function api(path, opts = {}) {
   let body = opts.body;
   const isForm = (typeof FormData !== "undefined") && (body instanceof FormData);
   if (isPlainObject(body)) body = JSON.stringify(body);
+  const method = String(opts.method || "GET").toUpperCase();
+  const hasBody = body !== undefined && body !== null;
+  const shouldSetJsonContentType = !isForm && hasBody && method !== "GET" && method !== "HEAD";
 
   const handle401 = opts.handle401 !== false;
   const timeoutMs = Number(opts.timeoutMs || 0) > 0 ? Number(opts.timeoutMs) : 0;
@@ -1313,14 +1317,12 @@ export async function api(path, opts = {}) {
     r = await fetch(url, {
       cache: "no-store",
       ...opts,
+      method,
       body,
       signal,
       credentials: "include",
       headers: {
-        ...(isForm ? {} : { "Content-Type": "application/json" }),
-        // extra cache-busting headers (safe no-op for most backends)
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
+        ...(shouldSetJsonContentType ? { "Content-Type": "application/json" } : {}),
         ...(opts.headers || {}),
       },
     });
@@ -1509,14 +1511,12 @@ export function confirmModal({ title, text, confirmText = "Подтвердит�
     body.textContent = "";
 
     const p = document.createElement("div");
-    p.className = "muted";
-    p.style.marginTop = "10px";
+    p.className = "muted mt-10";
     p.textContent = text;
     body.appendChild(p);
 
     const actions = document.createElement("div");
-    actions.className = "row";
-    actions.style.marginTop = "12px";
+    actions.className = "row mt-12";
 
     const btnCancel = document.createElement("button");
     btnCancel.className = "btn";

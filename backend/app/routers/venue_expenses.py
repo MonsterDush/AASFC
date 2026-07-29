@@ -188,6 +188,7 @@ def _serialize_expense(
         "recurring_rule_id": expense.recurring_rule_id,
         "amount_minor": int(expense.amount_minor or 0),
         "expense_date": expense.expense_date.isoformat() if expense.expense_date else None,
+        "shift_slot": str(getattr(expense, "shift_slot", "TOTAL") or "TOTAL").upper(),
         "generated_for_month": expense.generated_for_month.isoformat() if expense.generated_for_month else None,
         "spread_months": int(expense.spread_months or 1),
         "status": str(getattr(expense, 'status', 'CONFIRMED') or 'CONFIRMED').upper(),
@@ -385,6 +386,7 @@ def create_expense(
         payment_method_id=int(payload.payment_method_id) if payload.payment_method_id is not None else None,
         amount_minor=int(payload.amount_minor),
         expense_date=payload.expense_date,
+        shift_slot=str(payload.shift_slot or "TOTAL").upper(),
         spread_months=int(payload.spread_months or 1),
         status=str(payload.status or 'DRAFT').upper(),
         comment=(payload.comment or None),
@@ -437,6 +439,8 @@ def update_expense(
         obj.amount_minor = int(payload.amount_minor)
     if payload.expense_date is not None:
         obj.expense_date = payload.expense_date
+    if payload.shift_slot is not None:
+        obj.shift_slot = str(payload.shift_slot or "TOTAL").upper()
     if payload.spread_months is not None:
         obj.spread_months = int(payload.spread_months)
     if payload.comment is not None:
@@ -618,6 +622,5 @@ def upload_expense_attachments(
 
     db.commit()
     return {"ok": True, "items": [_serialize_expense_attachment(a) for a in created]}
-
 
 

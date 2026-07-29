@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/app-dashboard.css?v=20260723-polish2" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Обзор</title>
 </head>
@@ -21,7 +22,7 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card finance-toolbar">
+    <div class="card finance-toolbar dashboard-shell">
       <div class="screen-hero">
         <div class="screen-hero__head">
           <div>
@@ -31,8 +32,13 @@
         </div>
       </div>
 
-      <div class="action-grid action-grid--adaptive action-grid--mobile-2 mt-12" id="sectionsGrid">
-        <div class="itemcard section-card"><div class="muted">Загрузка разделов…</div></div>
+      <div class="dashboard-sections-grid mt-12" id="sectionsGrid" aria-live="polite">
+        <div class="dashboard-card-grid" aria-hidden="true">
+          <div class="skeleton skeleton--card"></div>
+          <div class="skeleton skeleton--card"></div>
+          <div class="skeleton skeleton--card"></div>
+          <div class="skeleton skeleton--card"></div>
+        </div>
       </div>
     </div>
 
@@ -66,7 +72,7 @@ import {
   getMyVenues,
   getMyVenuePermissions,
   getMe,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 import {
   permSetFromResponse,
   roleUpper,
@@ -100,21 +106,56 @@ function esc(s) {
 function renderItems(items = []) {
   if (!grid) return;
   if (!items.length) {
-    grid.innerHTML = `<div class="itemcard section-card"><b>Нет доступных разделов</b><div class="muted mt-6">Для этого заведения вам пока не выданы права на отдельные экраны.</div></div>`;
+    renderState({
+      title: "Нет доступных разделов",
+      text: "Для этого заведения вам пока не выданы права на отдельные экраны.",
+    });
     return;
   }
 
-  grid.innerHTML = items.map((item) => `
-    <div class="itemcard section-card">
+  const renderCard = (item) => `
+    <article class="itemcard section-card dashboard-section-card${item.isExtra ? " dashboard-section-card--extra" : ""}">
       <div class="section-card__title">
-        <b>${esc(item.title || "Раздел")}</b>
+        <b class="dashboard-section-card__title">${esc(item.title || "Раздел")}</b>
         <div class="muted">${esc(item.hint || "")}</div>
       </div>
-      <div class="btn-row mt-12">
+      <div class="dashboard-section-card__actions">
         <a class="btn primary" href="${esc(item.href || '#')}">Открыть</a>
       </div>
-    </div>
+    </article>
+  `;
+  const primaryItems = items.filter((item) => !item.isExtra);
+  const extraItems = items.filter((item) => item.isExtra);
+  const groups = [
+    { title: "Основные разделы", items: primaryItems },
+    { title: "Дополнительные разделы", items: extraItems, extra: true },
+  ].filter((group) => group.items.length);
+
+  grid.classList.remove("dashboard-sections-grid--state");
+  grid.innerHTML = groups.map((group) => `
+    <section class="dashboard-section-group${group.extra ? " dashboard-section-group--extra" : ""}">
+      <div class="section-head dashboard-section-group__head">
+        <div class="section-title"><b>${group.title}</b><span class="badge">${group.items.length}</span></div>
+      </div>
+      <div class="dashboard-card-grid">${group.items.map(renderCard).join("")}</div>
+    </section>
   `).join("");
+}
+
+function renderState({ title, text, actionHref = "", actionLabel = "", retry = false } = {}) {
+  if (!grid) return;
+  grid.classList.add("dashboard-sections-grid--state");
+  const action = actionHref && actionLabel
+    ? `<a class="btn primary" href="${esc(actionHref)}">${esc(actionLabel)}</a>`
+    : (retry ? '<button class="btn" id="retryDashboardBtn" type="button">Повторить</button>' : "");
+  grid.innerHTML = `
+    <div class="state dashboard-state">
+      <div class="state__title">${esc(title || "Разделы недоступны")}</div>
+      <div class="state__text">${esc(text || "Попробуйте обновить страницу позже.")}</div>
+      ${action ? `<div class="state__actions">${action}</div>` : ""}
+    </div>
+  `;
+  if (retry) document.getElementById("retryDashboardBtn")?.addEventListener("click", () => location.reload());
 }
 
 try {
@@ -129,7 +170,12 @@ try {
 } catch {}
 
 if (!activeId) {
-  renderItems([]);
+  renderState({
+    title: "Заведение не выбрано",
+    text: "Выберите заведение, чтобы увидеть доступные рабочие разделы.",
+    actionHref: "/app-venues.html",
+    actionLabel: "Выбрать заведение",
+  });
   if (overviewHint) overviewHint.textContent = "Сначала выберите заведение.";
 } else {
   try {
@@ -149,8 +195,9 @@ if (!activeId) {
         : "Здесь собраны ваши основные рабочие разделы для этого заведения.";
     }
   } catch (e) {
-    renderItems([]);
-    if (overviewHint) overviewHint.textContent = e?.message || "Не удалось загрузить доступные разделы.";
+    const errorText = e?.message || "Не удалось загрузить доступные разделы.";
+    renderState({ title: "Не удалось загрузить разделы", text: errorText, retry: true });
+    if (overviewHint) overviewHint.textContent = errorText;
   }
 }
   </script>

@@ -12,7 +12,7 @@ import {
   isDemoReadonlyUi,
   getDemoMonthLabel,
   coerceDemoMonth,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm } from "/permissions.js";
@@ -169,14 +169,25 @@ function typeTitle(t) {
   return t;
 }
 
+function typeClass(t) {
+  if (t === "bonus") return "bonus";
+  if (t === "writeoff") return "writeoff";
+  return "penalty";
+}
+
+function signedAmount(item) {
+  const amount = Number(item?.amount || 0);
+  return `${item?.type === "bonus" ? "+" : "−"}${Math.abs(amount)}`;
+}
+
 function renderList(data) {
   el.monthLabel.textContent = monthTitle(curMonth);
 
   if (!hasManageAccess()) {
     el.list.innerHTML = `
-      <div class="itemcard">
+      <div class="app-adjustments-state app-adjustments-state--denied">
         <b>Нет доступа</b>
-        <div class="muted mt-6">Нужны права на управление штрафами/списаниями/премиями.</div>
+        <span>Нужны права на управление штрафами, списаниями и премиями.</span>
       </div>
     `;
     el.btnCreate.classList.add("hidden");
@@ -187,31 +198,38 @@ function renderList(data) {
   if (demoReadonly && !document.getElementById("demoAdjustmentsNote")) {
     const note = document.createElement("div");
     note.id = "demoAdjustmentsNote";
-    note.className = "muted mb-10";
+    note.className = "app-adjustments-note";
     note.textContent = `Пробный режим: изменения по штрафам, списаниям и премиям отключены. Подготовлены данные за ${getDemoMonthLabel(demoState)}.`;
     el.list.parentElement?.insertBefore(note, el.list);
   }
 
   const items = data?.items || [];
   if (!items.length) {
-    el.list.innerHTML = `<div class="muted">Записей нет</div>`;
+    el.list.innerHTML = `<div class="app-adjustments-state app-adjustments-state--empty"><b>Записей нет</b><span>За выбранный месяц и тип операции корректировки не найдены.</span></div>`;
     return;
   }
 
   el.list.innerHTML = "";
   for (const it of items) {
     const row = document.createElement("div");
-    row.className = "row adjustment-row";
+    row.className = "itemcard app-adjustment-row";
 
     const who = it.member ? personLabel(it.member) : "(заведение)";
+    const kind = typeClass(it.type);
+    const positive = kind === "bonus";
 
     row.innerHTML = `
-      <div>
-        <b>${esc(typeTitle(it.type))} · ${esc(it.amount)}</b>
-        <div class="muted mt-4">${esc(it.date)} · ${esc(who)}</div>
-        <div class="muted mt-4">${esc(it.reason || "—")}</div>
+      <div class="app-adjustment-row__main">
+        <span class="app-adjustment-type app-adjustment-type--${esc(kind)}">${esc(typeTitle(it.type))}</span>
+        <div class="app-adjustment-row__copy">
+          <div class="app-adjustment-row__head">
+            <b class="app-adjustment-amount app-adjustment-amount--${positive ? "positive" : "negative"}">${esc(signedAmount(it))}</b>
+            <span class="muted small">${esc(it.date)} · ${esc(who)}</span>
+          </div>
+          <div class="muted small">${esc(it.reason || "Без комментария")}</div>
+        </div>
       </div>
-      <button class="btn" data-edit data-id="${esc(it.id)}">${demoReadonly ? "Просмотр" : "Открыть"}</button>
+      <button class="btn sm" data-edit data-id="${esc(it.id)}">${demoReadonly ? "Просмотр" : "Подробнее"}</button>
     `;
 
     row.querySelector("[data-edit]").onclick = async () => {
@@ -421,8 +439,7 @@ openModal("Карточка", "Редактирование", html);
           });
           toast("Сохранено", "ok");
           closeModal();
-          const data = await loadList();
-          renderList(data);
+          await refreshList();
           maybeOpenFromQuery();
 
         } catch (e) {
@@ -436,8 +453,7 @@ openModal("Карточка", "Редактирование", html);
           await api(`/venues/${encodeURIComponent(venueId)}/adjustments/${encodeURIComponent(it.id)}`, { method: "DELETE" });
           toast("Удалено", "ok");
           closeModal();
-          const data = await loadList();
-          renderList(data);
+          await refreshList();
           maybeOpenFromQuery();
         } catch (e) {
           toast("Не удалось удалить: " + (e?.data?.detail || e?.message || "ошибка"), "err");
@@ -495,7 +511,7 @@ function buildCreateForm(members) {
   const opts = members.map(m => `<option value="${esc(m.user_id)}">@${esc(m.tg_username || "-")}${m.full_name ? ` (${esc(m.full_name)})` : ""}</option>`).join("");
 
   return `
-    <div class="itemcard mt-12">
+    <div class="app-adjustment-create">
       <div class="row adjustment-create-grid">
         <label class="adjustment-field adjustment-field--member">
           <div class="muted small mb-4">Тип</div>
@@ -531,7 +547,7 @@ function buildCreateForm(members) {
         <textarea id="adjReason" rows="3" placeholder="Опиши причину"></textarea>
       </div>
 
-      <div class="row row--end gap-8 mt-12">
+      <div class="app-adjustment-form-actions">
         <button class="btn primary" id="btnCreateAdj">Создать</button>
       </div>
     </div>
@@ -601,49 +617,63 @@ async function openCreate() {
       });
       toast("Создано", "ok");
       closeModal();
-      const data = await loadList();
-      renderList(data);
+      await refreshList();
     } catch (e) {
       toast("Ошибка: " + (e?.message || "неизвестно"), "err");
     }
   });
 }
 
-async function boot() {
-  if (!venueId) {
-    el.list.innerHTML = `<div class="itemcard"><b>Не выбрано заведение</b><div class="muted mt-6">Выбери заведение и открой раздел ещё раз.</div></div>`;
+function renderListLoading() {
+  if (el.monthLabel) el.monthLabel.textContent = monthTitle(curMonth);
+  if (el.list) {
+    el.list.innerHTML = `<div class="app-adjustments-loading"><div class="skeleton"></div><div class="skeleton"></div></div>`;
+  }
+}
+
+async function refreshList() {
+  if (!hasManageAccess()) {
+    renderList({ items: [] });
     return;
   }
-
-  await loadPerms();
-
+  renderListLoading();
   try {
     const data = await loadList();
     renderList(data);
   } catch (e) {
     toast("Ошибка загрузки: " + (e?.message || "неизвестно"), "err");
+    if (el.list) {
+      el.list.innerHTML = `<div class="app-adjustments-state app-adjustments-state--error"><b>Не удалось загрузить данные</b><span>Проверь подключение и повтори попытку.</span></div>`;
+    }
   }
+}
+
+async function boot() {
+  if (!venueId) {
+    el.list.innerHTML = `<div class="app-adjustments-state"><b>Не выбрано заведение</b><span>Выбери заведение и открой раздел ещё раз.</span></div>`;
+    return;
+  }
+
+  await loadPerms();
+  await refreshList();
 }
 
 el.prev?.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() - 1);
   curMonth.setDate(1);
-  const data = await loadList();
-  renderList(data);
+  await refreshList();
 });
 
 el.next?.addEventListener("click", async () => {
   curMonth.setMonth(curMonth.getMonth() + 1);
   curMonth.setDate(1);
-  const data = await loadList();
-  renderList(data);
+  await refreshList();
 });
 
 el.typeSel?.addEventListener("change", async () => {
-  const data = await loadList();
-  renderList(data);
+  await refreshList();
 });
 
 el.btnCreate?.addEventListener("click", openCreate);
 
-boot();
+await boot();

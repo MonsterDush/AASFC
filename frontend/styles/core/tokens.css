@@ -1,0 +1,279 @@
+:root{
+  /* typography */
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  --radius:16px;
+  /* scales */
+  --fs-1:12px;
+  --fs-2:14px;
+  --fs-3:16px;
+  --fs-4:18px;
+  --fs-5:22px;
+  --lh-1:1.2;
+  --lh-2:1.4;
+  --lh-3:1.6;
+
+  --sp-1:4px;
+  --sp-2:8px;
+  --sp-3:12px;
+  --sp-4:16px;
+  --sp-5:20px;
+  --sp-6:24px;
+  --sp-7:32px;
+  --sp-8:40px;
+
+  --radius-sm:12px;
+  --radius-md:16px;
+  --radius-lg:22px;
+
+  /* shared layout and responsive component geometry */
+  --content-max:980px;
+  --page-gutter:14px;
+  --page-gutter-compact:10px;
+  --control-height:44px;
+  --bottom-nav-space:84px;
+  --modal-gutter:14px;
+
+  --shadow-sm:0 6px 16px rgba(11,18,32,.10);
+  --shadow-md:0 10px 24px rgba(11,18,32,.10);
+
+  --textSoft:var(--muted);
+  --borderSoft:var(--border);
+  --focusRingColor:rgba(22,75,138,.22);
+  --focusRing:0 0 0 3px var(--focusRingColor);
+
+  /* Theme G (Cloud Dancer + Oxford) — LIGHT by default */
+  color-scheme: light dark;
+
+  --bg:#F7F8FA;
+  --card:#FFFFFF;
+  --surface2:#EEF2F6;
+
+  --text:#0B1220;
+  --muted:#4B5563;
+
+  --border:#D6DDE6;
+  --shadow:0 10px 24px rgba(11,18,32,.10);
+
+  --accent:#164B8A;
+  --accentText:#FFFFFF;
+  --accentSoftBg:rgba(22,75,138,.10);
+  --accentSoftBorder:rgba(22,75,138,.28);
+  --accentA10:rgba(22,75,138,.10);
+  --accentA12:rgba(22,75,138,.12);
+  --accentA18:rgba(22,75,138,.18);
+  --accentA22:rgba(22,75,138,.22);
+  --accentA28:rgba(22,75,138,.28);
+  --accentA45:rgba(22,75,138,.45);
+  --accentA55:rgba(22,75,138,.55);
+
+  --barInset:rgba(255,255,255,.10);
+
+
+  --danger:#E5484D;
+  --dangerBg:rgba(229,72,77,.10);
+  --dangerBorder:rgba(229,72,77,.35);
+  --dangerText:#8A1F24;
+
+  --warning:#F2A541;
+  --success:#20B486;
+
+  /* semantic status surfaces */
+  --statusWarningBg:rgba(255,184,77,.12);
+  --statusWarningBgSoft:rgba(255,184,77,.10);
+  --statusWarningBorder:rgba(255,184,77,.35);
+  --statusWarningText:#8A5A00;
+  --statusErrorBg:rgba(255,107,107,.12);
+  --statusErrorBgSoft:rgba(255,107,107,.10);
+  --statusErrorBorder:rgba(255,107,107,.30);
+  --statusErrorBorderSoft:rgba(255,107,107,.25);
+  --statusErrorText:#8A1F24;
+  --statusSuccessBg:rgba(32,180,134,.12);
+  --statusSuccessBorder:rgba(32,180,134,.35);
+  --statusSuccessText:#0D6B51;
+
+  /* reusable translucent surfaces */
+  --surfaceTint:rgba(255,255,255,.04);
+  --surfaceTintSoft:rgba(255,255,255,.02);
+  --surfaceTintStrong:rgba(255,255,255,.06);
+
+  --dotPast:#9AA7B2;
+  --dotInset:rgba(11,18,32,.10);
+
+  --inputBg:#EEF2F6;
+  --navBg:rgba(247,248,250,.78);
+  --toastBg:rgba(255,255,255,.88);
+
+  --shimmer:rgba(11,18,32,.07);
+}
+
+/* System dark (when user didn't force light) */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) {
+    --bg:#090F1D;
+    --card:#0E1730;
+    --surface2:#0B1328;
+
+    --text:#E8ECF5;
+    --muted:#B3BDD6;
+
+    --border:#1C2C55;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+
+    --accent:#3C78C8;
+    --accentText:#081022;
+    --accentSoftBg:rgba(60,120,200,.18);
+    --accentSoftBorder:rgba(60,120,200,.45);
+    --focusRingColor:rgba(60,120,200,.30);
+
+    --accentA10:rgba(60,120,200,.10);
+    --accentA12:rgba(60,120,200,.22);
+    --accentA18:rgba(60,120,200,.28);
+    --accentA22:rgba(60,120,200,.22);
+    --accentA28:rgba(60,120,200,.28);
+    --accentA45:rgba(60,120,200,.45);
+    --accentA55:rgba(60,120,200,.55);
+
+    --barInset:rgba(0,0,0,.18);
+
+
+    --danger:#FF5B5B;
+    --dangerBg:rgba(255,91,91,.12);
+    --dangerBorder:rgba(255,91,91,.35);
+    --dangerText:#FFD1D1;
+
+    --warning:#FFCA5A;
+    --success:#34D399;
+    --statusWarningText:#FFD08A;
+    --statusErrorText:#FFD1D1;
+    --statusSuccessBg:rgba(52,211,153,.12);
+    --statusSuccessBorder:rgba(52,211,153,.35);
+    --statusSuccessText:#A7F3D0;
+
+    --dotPast:#6C7A8B;
+    --dotInset:rgba(255,255,255,.06);
+
+    --inputBg:rgba(0,0,0,.18);
+    --navBg:rgba(9,15,29,.72);
+    --toastBg:rgba(11,18,32,.68);
+
+    --shimmer:rgba(255,255,255,.10);
+  }
+}
+
+/* Forced dark */
+:root[data-theme="dark"]{
+  --bg:#090F1D;
+  --card:#0E1730;
+  --surface2:#0B1328;
+
+  --text:#E8ECF5;
+  --muted:#B3BDD6;
+
+  --border:#1C2C55;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+
+  --accent:#3C78C8;
+  --accentText:#081022;
+  --accentSoftBg:rgba(60,120,200,.18);
+  --accentSoftBorder:rgba(60,120,200,.45);
+  --focusRingColor:rgba(60,120,200,.30);
+
+  --accentA10:rgba(60,120,200,.10);
+  --accentA12:rgba(60,120,200,.22);
+  --accentA18:rgba(60,120,200,.28);
+  --accentA22:rgba(60,120,200,.22);
+  --accentA28:rgba(60,120,200,.28);
+  --accentA45:rgba(60,120,200,.45);
+  --accentA55:rgba(60,120,200,.55);
+
+  --barInset:rgba(0,0,0,.18);
+
+
+  --danger:#FF5B5B;
+  --dangerBg:rgba(255,91,91,.12);
+  --dangerBorder:rgba(255,91,91,.35);
+  --dangerText:#FFD1D1;
+
+  --warning:#FFCA5A;
+  --success:#34D399;
+  --statusWarningText:#FFD08A;
+  --statusErrorText:#FFD1D1;
+  --statusSuccessBg:rgba(52,211,153,.12);
+  --statusSuccessBorder:rgba(52,211,153,.35);
+  --statusSuccessText:#A7F3D0;
+
+  --dotPast:#6C7A8B;
+  --dotInset:rgba(255,255,255,.06);
+
+  --inputBg:rgba(0,0,0,.18);
+  --navBg:rgba(9,15,29,.72);
+  --toastBg:rgba(11,18,32,.68);
+
+  --shimmer:rgba(255,255,255,.10);
+}
+
+
+/* HookahPlace theme (brand: black + red neon) */
+:root[data-theme="hookahplace"]{
+  color-scheme: dark;
+
+  --bg:#070707;
+  --card:#111111;
+  --surface2:#151515;
+
+  --text:#F5F5F5;
+  --muted:#B7B7B7;
+
+  --border:#262626;
+  --shadow:0 10px 30px rgba(0,0,0,.55);
+
+  --accent:#E00000;
+  --accentText:#FFFFFF;
+  --accentSoftBg:rgba(224,0,0,.14);
+  --accentSoftBorder:rgba(224,0,0,.40);
+
+  --focusRingColor:rgba(224,0,0,.28);
+
+  --danger:#FF5B5B;
+  --dangerBg:rgba(255,91,91,.12);
+  --dangerBorder:rgba(255,91,91,.35);
+  --dangerText:#FFD1D1;
+
+  --warning:#FFCA5A;
+  --success:#34D399;
+  --statusWarningText:#FFD08A;
+  --statusErrorText:#FFD1D1;
+  --statusSuccessBg:rgba(52,211,153,.12);
+  --statusSuccessBorder:rgba(52,211,153,.35);
+  --statusSuccessText:#A7F3D0;
+
+  --dotPast:#6C7A8B;
+  --dotInset:rgba(255,255,255,.06);
+
+  --inputBg:rgba(255,255,255,.06);
+  --navBg:rgba(7,7,7,.72);
+  --toastBg:rgba(15,15,15,.74);
+
+  --shimmer:rgba(255,255,255,.10);
+
+  --accentA10:rgba(224,0,0,.10);
+  --accentA12:rgba(224,0,0,.12);
+  --accentA18:rgba(224,0,0,.18);
+  --accentA22:rgba(224,0,0,.22);
+  --accentA28:rgba(224,0,0,.28);
+  --accentA45:rgba(224,0,0,.45);
+  --accentA55:rgba(224,0,0,.55);
+
+  --barInset:rgba(0,0,0,.22);
+
+  --calLineAlpha:.18;
+  --calLineBorderAlpha:.45;
+}
+
+html[data-theme="hookahplace"] body{
+  background:
+    radial-gradient(900px 420px at 20% 115%, rgba(224,0,0,.22), rgba(224,0,0,0) 60%),
+    radial-gradient(700px 360px at 85% 10%, rgba(224,0,0,.16), rgba(224,0,0,0) 55%),
+    var(--bg);
+}

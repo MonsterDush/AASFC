@@ -17,7 +17,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 
 let financialValuesHidden = false;
@@ -107,7 +107,11 @@ function renderDemoOwnerIntro() {
 
 function setText(id, value) {
   const el = document.getElementById(id);
-  if (el) el.textContent = value;
+  if (el) {
+    el.textContent = value;
+    el.classList.remove("is-loading");
+    el.removeAttribute("aria-busy");
+  }
 }
 
 function showBlock(id, visible) {
@@ -117,6 +121,14 @@ function showBlock(id, visible) {
 
 function setVisible(element, visible) {
   element?.classList.toggle("hidden", !visible);
+}
+
+function setSummaryState(title = "", text = "") {
+  const stateCard = document.getElementById("summaryState");
+  const visible = Boolean(title || text);
+  setText("summaryStateTitle", title);
+  setText("summaryStateText", text);
+  setVisible(stateCard, visible);
 }
 
 function normalizeRange() {
@@ -296,7 +308,11 @@ function syncActions() {
 
 async function loadSummary() {
   const venueId = getActiveVenueId();
-  if (!venueId) return;
+  if (!venueId) {
+    setSummaryState("Заведение не выбрано", "Вернитесь к списку заведений и выберите нужное заведение.");
+    ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis", "summaryDetailsCard"].forEach((id) => showBlock(id, false));
+    return;
+  }
 
   normalizeRange();
   syncPickers();
@@ -304,6 +320,8 @@ async function loadSummary() {
   await loadFinanceAccess();
   renderDemoOwnerIntro();
   syncActions();
+  setSummaryState();
+  ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis", "summaryDetailsCard"].forEach((id) => showBlock(id, true));
 
   showBlock("revenueCard", financeAccess.canViewRevenue);
   showBlock("profitCard", financeAccess.canViewRevenue);
@@ -330,6 +348,8 @@ async function loadSummary() {
     setText("summaryPayrollRatio", "—");
     setText("summaryTotalCostRatio", "—");
     setText("summaryHint", "Нет прав на финансовую сводку");
+    setSummaryState("Финансовая сводка недоступна", "Для этой страницы не выданы права на выручку, расходы или начисления.");
+    ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis", "summaryDetailsCard"].forEach((id) => showBlock(id, false));
     return;
   }
 
@@ -359,6 +379,7 @@ async function loadSummary() {
     setText("summaryTotalCostRatio", fmtPercentBps(summary?.total_cost_ratio_bps));
     setText("summaryPeriodText", summary?.period_start && summary?.period_end ? `${summary.period_start} — ${summary.period_end}` : statePeriodText());
     setText("summaryHint", `Главный экран оставляет только ключевые метрики. Детальные разделы ниже открываются отдельно.`);
+    setSummaryState();
   } catch (e) {
     setText("summaryRevenue", "—");
     setText("summaryExpenses", "—");
@@ -372,6 +393,8 @@ async function loadSummary() {
     setText("summaryPayrollRatio", "—");
     setText("summaryTotalCostRatio", "—");
     setText("summaryHint", e?.data?.detail || e.message || "Ошибка загрузки");
+    setSummaryState("Не удалось загрузить финансовую сводку", e?.data?.detail || e.message || "Попробуйте повторить загрузку позже.");
+    ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis"].forEach((id) => showBlock(id, false));
     toast("Не удалось загрузить финансовую сводку", "err");
   }
 }

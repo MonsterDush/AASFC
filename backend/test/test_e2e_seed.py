@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import unittest
 
-from app.scripts.bootstrap_e2e_data import require_safe_e2e_database
+from app.scripts.bootstrap_e2e_data import (
+    DEFAULT_ADMIN_PHONE,
+    DEFAULT_OWNER_PHONE,
+    DEFAULT_STAFF_PHONE,
+    require_safe_e2e_database,
+)
 
 
 class E2ESeedSafetyTests(unittest.TestCase):
@@ -32,6 +37,12 @@ class E2ESeedSafetyTests(unittest.TestCase):
                 "postgresql+psycopg://user:pass@localhost/axelio_prod",
                 confirmation="1",
             )
+
+    def test_default_persona_phones_are_distinct(self):
+        self.assertEqual(
+            len({DEFAULT_OWNER_PHONE, DEFAULT_STAFF_PHONE, DEFAULT_ADMIN_PHONE}),
+            3,
+        )
 
 
 if __name__ == "__main__":

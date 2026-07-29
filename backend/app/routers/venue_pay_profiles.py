@@ -51,6 +51,7 @@ from app.routers.venue_pay_profile_support import (
     _serialize_pay_profile_assignment,
     _validate_pay_component_fields,
 )
+from app.routers.venue_membership_support import _build_user_auth_snapshot_map
 
 
 router = APIRouter()
@@ -215,7 +216,12 @@ def create_pay_profile_assignment(
     db.add(assignment)
     db.commit()
     member = db.execute(select(User).where(User.id == payload.member_user_id)).scalar_one_or_none()
-    return _serialize_pay_profile_assignment(assignment, member=member)
+    auth_map = _build_user_auth_snapshot_map(db, [int(member.id)]) if member is not None else {}
+    return _serialize_pay_profile_assignment(
+        assignment,
+        member=member,
+        auth_snapshot=auth_map.get(int(member.id)) if member is not None else None,
+    )
 
 
 @router.patch("/{venue_id}/pay-profile-assignments/{assignment_id}")
@@ -244,7 +250,12 @@ def update_pay_profile_assignment(
     assignment.updated_at = datetime.utcnow()
     db.commit()
     member = db.execute(select(User).where(User.id == assignment.member_user_id)).scalar_one_or_none()
-    return _serialize_pay_profile_assignment(assignment, member=member)
+    auth_map = _build_user_auth_snapshot_map(db, [int(member.id)]) if member is not None else {}
+    return _serialize_pay_profile_assignment(
+        assignment,
+        member=member,
+        auth_snapshot=auth_map.get(int(member.id)) if member is not None else None,
+    )
 
 
 @router.delete("/{venue_id}/pay-profile-assignments/{assignment_id}")

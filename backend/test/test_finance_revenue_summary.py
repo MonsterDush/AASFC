@@ -120,3 +120,29 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertEqual(summary["point_expense_minor"], 15000)
         self.assertEqual(summary["recurring_expense_minor"], 2500)
         self.assertEqual(summary["profit_minor"], 82500)
+
+    def test_slot_finance_summary_includes_allocated_costs_and_profit(self):
+        with patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=100000), \
+             patch("app.services.finance.summary._group_daily_point_expenses", return_value=[{"title": "Закупка", "amount_minor": 15000}]), \
+             patch("app.services.finance.summary._group_daily_recurring_expenses", return_value=[{"title": "Аренда", "amount_minor": 5000}]), \
+             patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=25000), \
+             patch("app.services.finance.summary._sum_amount", return_value=0), \
+             patch("app.services.finance.summary._expense_document_stats_for_period", return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0}), \
+             patch("app.services.finance.summary._group_revenue_breakdown", return_value=[]), \
+             patch("app.services.finance.summary._group_payment_method_balances", return_value=[]):
+            summary = get_day_finance_summary(
+                db=object(),
+                venue_id=5,
+                target_date=date(2026, 3, 12),
+                income_mode="PAYMENTS",
+                shift_slot="NIGHT",
+            )
+
+        self.assertEqual(summary["revenue_minor"], 100000)
+        self.assertEqual(summary["expense_minor"], 20000)
+        self.assertEqual(summary["payroll_minor"], 25000)
+        self.assertEqual(summary["profit_minor"], 55000)
+        self.assertEqual(summary["margin_bps"], 5500)
+        self.assertEqual(summary["expense_ratio_bps"], 2000)
+        self.assertTrue(summary["slot_costs_available"])
+        self.assertTrue(summary["slot_profit_available"])

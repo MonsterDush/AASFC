@@ -10,7 +10,7 @@ import {
   getMyVenuePermissions,
   api,
   isDemoUiMode,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 const root = document.getElementById("root");
@@ -38,11 +38,11 @@ function slugifyCategoryCode(value) {
     .slice(0, 64) || "expense";
 }
 
-let state = { venueId: "", items: [], includeArchived: false, canManage: false, canView: false };
+let state = { venueId: "", items: [], loadError: "", includeArchived: false, canManage: false, canView: false };
 
 function renderShell() {
   root.innerHTML = `
-    <div class="topbar">
+    <div class="topbar catalog-topbar">
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
@@ -53,18 +53,19 @@ function renderShell() {
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card">
-      <div class="itemcard">
+    <div class="card catalog-hero">
+      <div class="muted catalog-intro">Соберите единый список статей, которые сотрудники смогут выбирать при добавлении расходов.</div>
+      <div class="itemcard catalog-list-card">
         <div class="section-head">
           <div class="section-title"><b>Список категорий</b></div>
           <div class="section-actions"><button class="btn primary" id="btnCreate">+ Добавить</button></div>
         </div>
-        <div class="section-actions">
+        <div class="section-actions catalog-filter" id="catalogFilter">
           <label class="chk"><input type="checkbox" id="showArchived" /><span class="muted">Показывать архив</span></label>
         </div>
-        <div id="list" class="mt-10"><div class="skeleton"></div><div class="skeleton"></div></div>
+        <div id="list" class="catalog-list" aria-live="polite"><div class="catalog-loading" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div></div></div>
       </div>
-      <div class="row mt-12"><a class="btn subtle inline" id="back" href="#">← К расходам</a></div>
+      <div class="catalog-footer"><a class="btn subtle inline" id="back" href="#">← К расходам</a></div>
     </div>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>
@@ -103,18 +104,19 @@ function wireEditModalClose() { document.querySelectorAll("#editModal [data-clos
 function renderList() {
   const el = document.getElementById("list");
   if (!el) return;
-  if (!state.canView) { el.innerHTML = `<div class="muted">Нет доступа</div>`; return; }
-  if (!state.items.length) { el.innerHTML = `<div class="muted">Пока пусто</div>`; return; }
+  if (!state.canView) { el.innerHTML = `<div class="catalog-state catalog-state--denied"><b>Нет доступа к категориям расходов</b><span>Обратитесь к владельцу заведения, чтобы получить право просмотра.</span></div>`; return; }
+  if (state.loadError) { el.innerHTML = `<div class="catalog-state catalog-state--error"><b>Не удалось загрузить категории расходов</b><span>${esc(state.loadError)}</span></div>`; return; }
+  if (!state.items.length) { el.innerHTML = `<div class="catalog-state catalog-state--empty"><b>Категорий расходов пока нет</b><span>Добавьте первую категорию для корректного учёта расходов.</span></div>`; return; }
   el.innerHTML = state.items.map((it) => `
-    <div class="listrow">
-      <div class="listrow__left">
-        <div class="text-actions">
+    <div class="catalog-row">
+      <div class="catalog-row__copy">
+        <div class="catalog-row__title">
           <b>${esc(it.title)}</b>
           ${it.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
-        <div class="muted listrow__meta">${it.is_active ? "Доступна при создании расхода" : "Скрыта из списка"}</div>
+        <div class="muted catalog-row__meta">${it.is_active ? "Доступна при создании расхода" : "Скрыта из списка"}</div>
       </div>
-      <div class="row row--nowrap gap-8 flex-none${state.canManage ? "" : " hidden"}">
+      <div class="catalog-row__actions${state.canManage ? "" : " hidden"}">
         <button class="btn sm" data-edit="${it.id}">Изменить</button>
         <button class="btn sm ${it.is_active ? "danger" : ""}" data-archive="${it.id}">${it.is_active ? "В архив" : "Вернуть"}</button>
       </div>
@@ -144,7 +146,7 @@ function renderList() {
 function editorForm(item = null) {
   const it = item || {};
   return `
-    <div class="grid grid2 mt-10">
+    <div class="grid grid2 catalog-form">
       <div>
         <div class="muted mb-6">Название</div>
         <input id="f_title" placeholder="Аренда" value="${esc(it.title || "")}" />
@@ -161,7 +163,7 @@ function editorForm(item = null) {
         </label>
       </div>
     </div>
-    <div class="row row--end gap-8 mt-12">
+    <div class="catalog-modal-actions">
       <button class="btn ghost" id="btnCancel">Отмена</button>
       <button class="btn primary" id="btnSave">Сохранить</button>
     </div>
@@ -197,8 +199,23 @@ function openEditor(item = null) {
 }
 
 async function load() {
-  const rows = await api(`/venues/${encodeURIComponent(state.venueId)}/expense-categories?include_archived=${state.includeArchived ? "true" : "false"}`);
-  state.items = Array.isArray(rows) ? rows : [];
+  const listEl = document.getElementById("list");
+  if (listEl) listEl.innerHTML = `<div class="catalog-loading" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div></div>`;
+  if (!state.canView) {
+    state.items = [];
+    state.loadError = "";
+    renderList();
+    return;
+  }
+  try {
+    const rows = await api(`/venues/${encodeURIComponent(state.venueId)}/expense-categories?include_archived=${state.includeArchived ? "true" : "false"}`);
+    state.items = Array.isArray(rows) ? rows : [];
+    state.loadError = "";
+  } catch (e) {
+    state.items = [];
+    state.loadError = e?.data?.detail || e?.message || "Повторите попытку позже.";
+    toast("Ошибка загрузки", "err");
+  }
   renderList();
 }
 
@@ -223,18 +240,15 @@ async function boot() {
     state.canView = false;
     state.canManage = false;
   }
+  document.getElementById("catalogFilter")?.classList.toggle("hidden", !state.canView);
 
   document.getElementById("showArchived").checked = state.includeArchived;
   document.getElementById("showArchived").onchange = async (e) => { state.includeArchived = !!e.target.checked; await load(); };
   document.getElementById("btnCreate").onclick = () => openEditor();
-  document.getElementById("btnCreate").style.display = state.canManage ? "" : "none";
+  document.getElementById("btnCreate").classList.toggle("hidden", !state.canManage);
   document.getElementById("back").href = `/owner-expenses.html?venue_id=${encodeURIComponent(state.venueId)}`;
 
-  try {
-    await load();
-  } catch (e) {
-    document.getElementById("list").innerHTML = `<div class="muted">${esc(e?.data?.detail || e.message || "Ошибка загрузки")}</div>`;
-  }
+  await load();
 }
 
 document.addEventListener("DOMContentLoaded", boot);

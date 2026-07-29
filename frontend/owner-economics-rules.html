@@ -4,13 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/owner-economics.css?v=20260726-polish11" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Нормативы и алерты</title>
 </head>
-<body>
-  <div class="container">
-    <div class="topbar">
+<body class="owner-economics-rules-page is-loading">
+  <div class="container economics-shell">
+    <div class="topbar economics-topbar">
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
@@ -21,46 +22,53 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card finance-toolbar">
+    <div class="finance-page-state hidden" id="rulesPageState" aria-live="polite"></div>
+
+    <div class="card finance-toolbar economics-rules-content" id="rulesContent" aria-busy="true">
       <div class="screen-hero">
         <div class="screen-hero__head">
           <div>
             <b>Правила заведения</b>
             <div class="page-caption mt-6">Пустое или выключенное правило не участвует в алертах экономики дня. Здесь лучше держать только те сигналы, которые реально помогают владельцу принимать решение.</div>
           </div>
-          <div class="screen-hero__actions">
+          <div class="screen-hero__actions economics-rules-shortcuts">
             <button class="btn subtle" id="openPlansBtn">Планы</button>
             <button class="btn subtle" id="openDayEconomicsFromRulesBtn">Экономика дня</button>
           </div>
         </div>
 
-        <div class="itemcard finance-period-card">
+        <div class="itemcard finance-period-card economics-rules-summary">
           <div class="finance-period-card__label">Активные правила</div>
           <div class="finance-period-card__value" id="rulesSummaryHint">—</div>
           <div class="muted">Правила включаются и выключаются независимо друг от друга.</div>
         </div>
       </div>
 
-      <div class="itemcard mt-12" id="rulesManageCard">
+      <div class="itemcard economics-rules-manage" id="rulesManageCard">
         <div class="section-card__head">
           <div class="section-card__title">
             <b>Редактировать нормативы</b>
             <div class="muted mt-6">Можно включать и выключать каждое правило отдельно, чтобы экран «Экономика дня» не был перегружен лишними предупреждениями.</div>
           </div>
-          <div class="section-card__actions">
+          <div class="section-card__actions economics-rules-presets">
             <span class="badge">Только владелец</span>
             <button class="btn ghost" id="enableAllRulesBtn" type="button">Включить всё</button>
             <button class="btn ghost" id="disableAllRulesBtn" type="button">Выключить всё</button>
             <button class="btn ghost" id="applyBaseRulesBtn" type="button">Базовый набор</button>
           </div>
         </div>
-        <form id="economicsRulesFormPage" class="finance-form mt-12"></form>
+        <form id="economicsRulesFormPage" class="finance-form economics-rules-form">
+          <div class="economics-rules-loading" aria-busy="true">
+            <div class="skeleton skeleton--card"></div>
+            <div class="skeleton skeleton--card"></div>
+          </div>
+        </form>
       </div>
     </div>
   </div>
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
-  <script type="module" src="/owner-economics-rules.js"></script>
+  <script type="module" src="/owner-economics-rules.js?v=20260726-navmore1"></script>
 </body>
 </html>

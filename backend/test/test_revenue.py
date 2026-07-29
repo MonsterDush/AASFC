@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from datetime import date
+from io import BytesIO
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
+from openpyxl import load_workbook
+
 from app.routers import venue_revenue_exports
+from app.services.xlsx_export import build_revenue_xlsx
 
 
 class _ScalarResult:
@@ -128,3 +132,55 @@ class RevenueTests(TestCase):
         self.assertIn('attachment;', content_disposition)
         self.assertIn('filename="revenue_Test_Venue_2026-03_departments.xlsx"', content_disposition)
         self.assertIn("filename*=UTF-8''revenue_Test_Venue_2026-03_departments.xlsx", content_disposition)
+
+    def test_revenue_xlsx_distinguishes_day_and_night_reports(self):
+        report = SimpleNamespace(
+            id=7,
+            date=date(2026, 3, 12),
+            shift_slot="NIGHT",
+            status="CLOSED",
+            revenue_total=1000,
+            tips_total=100,
+            comment=None,
+            closed_at=None,
+        )
+        value = SimpleNamespace(
+            report_id=7,
+            kind="PAYMENT",
+            ref_id=3,
+            value_numeric=1000,
+        )
+        db = _FakeSession(
+            responses=[
+                _AllResult([(report, None)]),
+                _ScalarsResult([value]),
+                _AllResult([]),
+                _AllResult([]),
+                _AllResult([]),
+            ]
+        )
+
+        report_rows, value_rows = venue_revenue_exports._build_revenue_export_details(
+            db=db,
+            venue_id=1,
+            period_start=date(2026, 3, 1),
+            period_end=date(2026, 3, 31),
+        )
+        workbook_bytes = build_revenue_xlsx(
+            month="2026-03",
+            mode="PAYMENTS",
+            venue_name="Test Venue",
+            rows=[],
+            total=1000,
+            closed_reports=1,
+            report_rows=report_rows,
+            value_rows=value_rows,
+        )
+        workbook = load_workbook(BytesIO(workbook_bytes), read_only=True)
+
+        self.assertEqual(report_rows[0]["shift_slot"], "NIGHT")
+        self.assertEqual(value_rows[0]["shift_slot"], "NIGHT")
+        self.assertEqual(workbook["Отчёты"]["B3"].value, "Слот")
+        self.assertEqual(workbook["Отчёты"]["B4"].value, "NIGHT")
+        self.assertEqual(workbook["Значения"]["B3"].value, "Слот")
+        self.assertEqual(workbook["Значения"]["B4"].value, "NIGHT")

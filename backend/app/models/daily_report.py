@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -11,6 +11,7 @@ from app.core.db import Base
 class DailyReport(Base):
     __tablename__ = "daily_reports"
     __table_args__ = (
+        CheckConstraint("shift_slot IN ('DAY', 'NIGHT')", name="ck_daily_reports_shift_slot_valid"),
         UniqueConstraint("venue_id", "date", "shift_slot", name="uq_daily_reports_venue_date_slot"),
     )
 

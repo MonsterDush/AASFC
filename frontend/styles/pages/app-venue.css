@@ -1,11 +1,37 @@
+.venue-page{display:grid;gap:0}
+.venue-page__intro{padding:2px 2px 0}
+.venue-notice{border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
+.venue-notice--archive{border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft)}
+.venue-notice--billing{border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft)}
+.venue-info-card{background:linear-gradient(145deg,var(--surface2),rgba(255,255,255,.015))}
+.venue-info-actions{margin-top:2px}
+.venue-info-actions .btn.danger{box-shadow:none}
+.venue-guide-card{border-color:var(--accentSoftBorder);background:var(--accentSoftBg)}
+.venue-nav-card{transition:border-color .16s ease,box-shadow .16s ease}
+.venue-nav-card:hover{border-color:var(--accentSoftBorder);box-shadow:var(--shadow-sm)}
+.venue-nav-card--finance{background:linear-gradient(145deg,var(--accentSoftBg),var(--surface2) 68%)}
+.venue-settings-card .toggle{align-items:flex-start}
+.venue-billing-card{background:linear-gradient(145deg,var(--surface2),rgba(255,255,255,.015))}
+.venue-inline-state{box-shadow:none;background:var(--surface2)}
 .venue-widget-row{justify-content:space-between;align-items:flex-start;gap:12px}
 .venue-widget-copy{min-width:0;flex:1 1 340px}
 .venue-widget-actions,.billing-promo-row{align-items:flex-start;flex-wrap:wrap}
-.venue-widget-actions{justify-content:flex-end}
+.venue-widget-actions{justify-content:flex-end;max-width:460px}
+.venue-widget-actions .btn{min-width:128px}
 .billing-history-row{justify-content:space-between;gap:8px;margin-top:6px}
-.billing-promo-input{min-width:180px;flex:1 1 auto}
-.venue-member-row{justify-content:space-between;border-bottom:1px solid var(--border);padding:10px 0}
+.billing-promo-input{width:auto;min-width:180px;flex:1 1 280px}
+.venue-member-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;border-bottom:1px solid var(--border);padding:12px 0}
+.venue-member-row:last-child{border-bottom:0;padding-bottom:0}
+.venue-member-row__main{min-width:0;overflow-wrap:anywhere}
 @media (max-width:560px){
   .venue-widget-copy{flex-basis:100%}
+  .venue-widget-row{display:grid;grid-template-columns:minmax(0,1fr)}
+  .venue-widget-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));width:100%;max-width:none}
+  .venue-widget-actions .btn{width:100%;min-width:0}
   .billing-promo-input{min-width:0;width:100%}
+  .billing-promo-row{display:grid;grid-template-columns:1fr}
+  .billing-promo-row .btn{width:100%}
+  .venue-member-row{grid-template-columns:1fr;align-items:stretch}
+  .venue-member-row .btn{width:100%}
+  .venue-nav-card:hover{box-shadow:none}
 }

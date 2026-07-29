@@ -365,6 +365,33 @@ def calculate_payroll_for_month(
             )
             line_total += int(top_up_minor)
 
+        worked_shifts_ordered = _ordered_worked_shifts(metrics)
+        allocated_shift_total_minor = int(sum(int(value or 0) for value in earnings_by_shift_minor.values()))
+        unallocated_shift_minor = int(line_total) - allocated_shift_total_minor
+        if worked_shifts_ordered and unallocated_shift_minor:
+            remainder_allocations = _allocate_minor_by_keys(
+                unallocated_shift_minor,
+                [int(item.shift_id) for item in worked_shifts_ordered],
+                {int(item.shift_id): max(1, int(item.minutes or 0)) for item in worked_shifts_ordered},
+            )
+            for shift_id, shift_amount_minor in remainder_allocations.items():
+                earnings_by_shift_minor[int(shift_id)] = (
+                    int(earnings_by_shift_minor.get(int(shift_id), 0) or 0)
+                    + int(shift_amount_minor or 0)
+                )
+
+        shift_allocations = [
+            {
+                "shift_id": int(item.shift_id),
+                "date": item.shift_date.isoformat(),
+                "shift_slot": str(item.shift_slot or "DAY").upper(),
+                "minutes": int(item.minutes or 0),
+                "amount_minor": int(earnings_by_shift_minor.get(int(item.shift_id), 0) or 0),
+            }
+            for item in worked_shifts_ordered
+            if int(earnings_by_shift_minor.get(int(item.shift_id), 0) or 0) != 0
+        ]
+
         breakdown_payload = {
             "member_user_id": int(member_user.id),
             "member_name": member_user.short_name or member_user.full_name or member_user.tg_username or f"user #{member_user.id}",
@@ -385,6 +412,7 @@ def calculate_payroll_for_month(
                 for metric_id, value in sorted(kpi_metrics.totals_by_metric_id.items())
             },
             "components": breakdown_items,
+            "shift_allocations": shift_allocations,
         }
 
         line = PayrollLine(

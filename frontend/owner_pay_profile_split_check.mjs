@@ -73,9 +73,10 @@ const sizeLimits = {
 };
 for (const [fileName, limit] of Object.entries(sizeLimits)) {
   assert.ok(moduleSources[fileName].split("\n").length < limit, `${fileName} is too large`);
-  assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=20260720-unified7`));
+  const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260720-unified7";
+  assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /owner-pay-profile\.js\?v=20260720-unified7/);
+assert.match(htmlSource, /owner-pay-profile\.js\?v=20260726-navmore1/);
 
 const state = {
   can: { view: true, manage: true },
@@ -179,5 +180,20 @@ const assignmentController = assignmentModule.createPayAssignmentController({
 });
 assert.equal(typeof assignmentController.renderAssignments, "function");
 assert.equal(typeof assignmentController.openAssignmentEditor, "function");
+state.members = [{ user_id: 17, phone: "+79990000999", display_name: "+79990000999" }];
+assert.deepEqual(
+  assignmentController.resolveAssignmentMember({
+    member_user_id: 17,
+    member: { user_id: 17, short_name: null, full_name: null, tg_username: null },
+  }),
+  {
+    user_id: 17,
+    short_name: null,
+    full_name: null,
+    tg_username: null,
+    phone: "+79990000999",
+    display_name: "+79990000999",
+  },
+);
 
 console.log(`owner pay profile split contract: ${moduleFiles.length} modules, ${apiCallManifest.length} API calls, ${domBindingManifest.length} DOM bindings`);

@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
-  <link rel="stylesheet" href="/styles/pages/invites.css?v=20260720-unified7" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/invites.css?v=20260725-polish4" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Принять приглашение</title>
 </head>
-<body>
-  <div class="container">
+<body class="invite-accept-page">
+  <div class="container invite-accept-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -22,14 +22,14 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card" id="card">
-      <div id="state" class="muted">Загрузка…</div>
-    </div>
+    <main class="itemcard section-card invite-accept-card" id="card">
+      <div id="state" class="invite-state invite-accept-state">Загрузка приглашения…</div>
+    </main>
   </div>
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, wa, redirectToAuth } from '/app.js?v=20260719-split1';
+    import { applyTelegramTheme, ensureLogin, api, toast, wa, redirectToAuth } from '/app.js?v=20260726-navmore1';
     function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     const params = new URLSearchParams(location.search);
     const token = (params.get('token') || '').trim();
@@ -49,22 +49,45 @@
       if (s === 'EXPIRED') return 'Истекло';
       return status || '—';
     }
+    function inviteStatusClass(status) {
+      const s = String(status || '').toUpperCase();
+      if (s === 'ACCEPTED') return 'invite-status invite-status--success';
+      if (s === 'CANCELLED' || s === 'EXPIRED') return 'invite-status invite-status--error';
+      return 'invite-status invite-status--pending';
+    }
+
+    function renderAcceptError(message) {
+      card.innerHTML = `
+        <div class="invite-state invite-state--error invite-accept-state">
+          <b>Не удалось открыть приглашение</b>
+          <span>${esc(message || 'Ссылка недействительна или больше не активна.')}</span>
+          <a class="btn subtle inline" href="/index.html">На главную</a>
+        </div>
+      `;
+    }
 
     function renderInvite(inv) {
       const contact = inv.invite_channel === 'PHONE' ? (inv.contact_label || inv.phone || '—') : ('@' + (inv.tg_username || '—'));
+      const positionTitle = inv?.default_position?.title || inv?.position_title || '';
       const loginHint = inv.invite_channel === 'PHONE'
         ? 'Для этого приглашения нужно войти по тому же номеру телефона, на который оно отправлено.'
         : 'Для этого приглашения нужно войти под нужным Telegram-аккаунтом.';
       card.innerHTML = `
-        <div><b>${esc(inv.venue_name || 'Приглашение')}</b></div>
-        <div class="invite-meta mt-12">
-          <div><span class="chip">${esc(channelLabel(inv.invite_channel))}</span></div>
-          <div><span class="chip">${esc(roleLabel(inv.venue_role))}</span></div>
-          <div class="muted">${esc(contact)}</div>
-          <div class="muted">${esc(inviteStatusLabel(inv.status))}</div>
+        <div class="invite-accept-head">
+          <div>
+            <div class="invite-accept-eyebrow">Вас приглашают в заведение</div>
+            <b class="invite-accept-title">${esc(inv.venue_name || 'Приглашение')}</b>
+          </div>
+          <span class="${inviteStatusClass(inv.status)}">${esc(inviteStatusLabel(inv.status))}</span>
         </div>
-        <div class="muted mt-12">${esc(loginHint)}</div>
-        <div class="row gap-8 mt-12" id="actionsRow"></div>
+        <div class="invite-meta">
+          <div class="invite-meta-item"><span>Канал</span><b>${esc(channelLabel(inv.invite_channel))}</b></div>
+          <div class="invite-meta-item"><span>Роль</span><b>${esc(roleLabel(inv.venue_role))}</b></div>
+          <div class="invite-meta-item"><span>Получатель</span><b>${esc(contact)}</b></div>
+          ${positionTitle ? `<div class="invite-meta-item"><span>Должность</span><b>${esc(positionTitle)}</b></div>` : ''}
+        </div>
+        <div class="invite-login-note">${esc(loginHint)}</div>
+        <div class="invite-accept-actions" id="actionsRow"></div>
       `;
       const actions = document.getElementById('actionsRow');
       const btnAccept = document.createElement('button');
@@ -107,13 +130,16 @@
     }
 
     if (!token) {
-      state.textContent = 'Ссылка приглашения недействительна';
+      renderAcceptError('Ссылка приглашения недействительна');
     } else {
       try {
         const inv = await api(`/public/invites/${encodeURIComponent(token)}`);
         renderInvite(inv);
       } catch (e) {
-        state.textContent = e?.data?.detail || e.message || 'Не удалось открыть приглашение';
+        const detail = e?.data?.detail || e.message || '';
+        renderAcceptError(detail === 'Invite not found'
+          ? 'Приглашение не найдено, отменено или ссылка больше не активна.'
+          : (detail || 'Не удалось открыть приглашение'));
       }
     }
   </script>

@@ -101,6 +101,7 @@ from app.models.venue_setup_state import VenueSetupState
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
 from app.models.shift_comment import ShiftComment
+from app.models.shift_comment_mention import ShiftCommentMention
 from app.models.shift_assignment import ShiftAssignment
 from app.models.shift_schedule_template import ShiftScheduleTemplate, ShiftScheduleTemplateItem
 from app.models.daily_report import DailyReport
@@ -388,6 +389,7 @@ def _safe_delete_where(db: Session, model, *conditions) -> int:
 def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
     venue_id = int(venue.id)
     shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+    shift_comment_ids = select(ShiftComment.id).where(ShiftComment.shift_id.in_(shift_ids))
     shift_schedule_template_ids = select(ShiftScheduleTemplate.id).where(ShiftScheduleTemplate.venue_id == venue_id)
     report_ids = select(DailyReport.id).where(DailyReport.venue_id == venue_id)
     adjustment_ids = select(Adjustment.id).where(Adjustment.venue_id == venue_id)
@@ -414,6 +416,7 @@ def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
     add_count("shift_schedule_template_items", ShiftScheduleTemplateItem, select(func.count(ShiftScheduleTemplateItem.id)).where(ShiftScheduleTemplateItem.template_id.in_(shift_schedule_template_ids)))
     add_count("shifts", Shift, select(func.count(Shift.id)).where(Shift.venue_id == venue_id))
     add_count("shift_assignments", ShiftAssignment, select(func.count(ShiftAssignment.id)).where(ShiftAssignment.shift_id.in_(shift_ids)))
+    add_count("shift_comment_mentions", ShiftCommentMention, select(func.count(ShiftCommentMention.id)).where(ShiftCommentMention.comment_id.in_(shift_comment_ids)))
     add_count("shift_comments", ShiftComment, select(func.count(ShiftComment.id)).where(ShiftComment.shift_id.in_(shift_ids)))
 
     add_count("daily_reports", DailyReport, select(func.count(DailyReport.id)).where(DailyReport.venue_id == venue_id))
@@ -577,6 +580,7 @@ def delete_venue(
         raise HTTPException(400, "Archive venue before delete")
 
     shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
+    shift_comment_ids = select(ShiftComment.id).where(ShiftComment.shift_id.in_(shift_ids))
     shift_schedule_template_ids = select(ShiftScheduleTemplate.id).where(ShiftScheduleTemplate.venue_id == venue_id)
     report_ids = select(DailyReport.id).where(DailyReport.venue_id == venue_id)
     dispute_ids = select(AdjustmentDispute.id).where(AdjustmentDispute.venue_id == venue_id)
@@ -586,6 +590,7 @@ def delete_venue(
     deleted: dict[str, int] = {}
 
     try:
+        deleted["shift_comment_mentions"] = _safe_delete_where(db, ShiftCommentMention, ShiftCommentMention.comment_id.in_(shift_comment_ids))
         deleted["shift_comments"] = _safe_delete_where(db, ShiftComment, ShiftComment.shift_id.in_(shift_ids))
         deleted["shift_assignments"] = _safe_delete_where(db, ShiftAssignment, ShiftAssignment.shift_id.in_(shift_ids))
 
@@ -760,6 +765,61 @@ def get_members(
 
 # ---------- Venue settings ----------
 
+def _night_shift_disable_blockers(db: Session, *, venue_id: int) -> dict[str, int]:
+    template_ids = select(ShiftScheduleTemplate.id).where(
+        ShiftScheduleTemplate.venue_id == int(venue_id)
+    )
+    return {
+        "active_shifts": int(
+            db.execute(
+                select(func.count(Shift.id)).where(
+                    Shift.venue_id == int(venue_id),
+                    Shift.shift_slot == "NIGHT",
+                    Shift.is_active.is_(True),
+                )
+            ).scalar()
+            or 0
+        ),
+        "reports": int(
+            db.execute(
+                select(func.count(DailyReport.id)).where(
+                    DailyReport.venue_id == int(venue_id),
+                    DailyReport.shift_slot == "NIGHT",
+                )
+            ).scalar()
+            or 0
+        ),
+        "template_items": int(
+            db.execute(
+                select(func.count(ShiftScheduleTemplateItem.id)).where(
+                    ShiftScheduleTemplateItem.template_id.in_(template_ids),
+                    ShiftScheduleTemplateItem.shift_slot == "NIGHT",
+                )
+            ).scalar()
+            or 0
+        ),
+    }
+
+
+def _night_shift_disable_blocker_detail(blockers: dict[str, int]) -> str:
+    labels = (
+        ("active_shifts", "активных ночных смен"),
+        ("reports", "ночных отчётов"),
+        ("template_items", "ночных элементов шаблонов"),
+    )
+    parts = [
+        f"{label} — {int(blockers.get(key, 0) or 0)}"
+        for key, label in labels
+        if int(blockers.get(key, 0) or 0) > 0
+    ]
+    return (
+        "Нельзя отключить ночные смены, пока существуют ночные данные: "
+        + ", ".join(parts)
+        + ". Архивируйте активные смены и очистите ночные пункты шаблонов. "
+        "Если уже есть ночные отчёты, режим должен оставаться включённым для доступа к истории."
+    )
+
+
 @router.get("/{venue_id}/settings", response_model=VenueSettingsOut)
 def get_venue_settings(
     venue_id: int,
@@ -800,7 +860,15 @@ def patch_venue_settings(
         venue.tips_enabled = bool(payload.tips_enabled)
 
     if payload.night_shifts_enabled is not None:
-        venue.night_shifts_enabled = bool(payload.night_shifts_enabled)
+        next_night_shifts_enabled = bool(payload.night_shifts_enabled)
+        if bool(getattr(venue, "night_shifts_enabled", False)) and not next_night_shifts_enabled:
+            blockers = _night_shift_disable_blockers(db, venue_id=venue_id)
+            if any(int(value or 0) > 0 for value in blockers.values()):
+                raise HTTPException(
+                    status_code=409,
+                    detail=_night_shift_disable_blocker_detail(blockers),
+                )
+        venue.night_shifts_enabled = next_night_shifts_enabled
 
     if payload.tips_split_mode is not None:
         mode = str(payload.tips_split_mode).strip().upper()
@@ -808,7 +876,6 @@ def patch_venue_settings(
             raise HTTPException(status_code=400, detail="Bad tips_split_mode")
         venue.tips_split_mode = mode
 
-    # stub (weights are stored, but not used yet)
     if payload.tips_weights is not None:
         venue.tips_weights = payload.tips_weights
 

@@ -75,9 +75,15 @@ const moduleContracts = {
 for (const [fileName, [factoryName, lineLimit]] of Object.entries(moduleContracts)) {
   assert.ok(moduleSources[fileName].split("\n").length < lineLimit, `${fileName} is too large`);
   assert.match(moduleSources[fileName], new RegExp(`export function ${factoryName}\\b`));
-  assert.match(mainSource, new RegExp(`/positions/${fileName.replace(".", "\\.")}\\?v=20260720-unified6`));
+  const cacheKey = fileName === "permission-controller.js"
+    ? "20260726-navmore1"
+    : (["position-list.js", "invite-controller.js"].includes(fileName)
+      ? (fileName === "invite-controller.js" ? "20260725-polish4" : "20260725-polish3")
+      : (fileName === "position-editor.js" ? "20260723-functional1" : "20260720-unified6"));
+  assert.match(mainSource, new RegExp(`/positions/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /positions\.js\?v=20260720-unified6/);
+assert.match(htmlSource, /positions\.js\?v=20260726-navmore1/);
+assert.match(moduleSources["permission-controller.js"], /position-template-ui\.js\?v=20260726-navmore1/);
 
 const state = {
   venueId: "7",
@@ -185,6 +191,27 @@ const list = listModule.createPositionList({
   load: asyncNoop,
 });
 assert.equal(typeof list.renderPositions, "function");
+state.positionPresets = [{
+  id: "setup-manager",
+  title: "Менеджер настройки",
+  pay_profile_id: 3,
+  pay_profile_title: "Основной",
+  permission_codes: ["SHIFTS_VIEW"],
+  is_active: true,
+}];
+assert.deepEqual(
+  list.buildPositionGroups().map((group) => ({
+    title: group.title,
+    count: group.positions.length,
+    presetId: group.preset?.id || null,
+  })),
+  [{ title: "Менеджер настройки", count: 0, presetId: "setup-manager" }],
+);
+state.positions = [{ id: 9, title: "Менеджер настройки", member_user_id: 17, is_active: true }];
+assert.deepEqual(
+  list.buildPositionGroups().map((group) => ({ title: group.title, count: group.positions.length })),
+  [{ title: "Менеджер настройки", count: 1 }],
+);
 
 const inviteModule = await import(pathToFileURL(path.join(moduleDir, "invite-controller.js")));
 const invites = inviteModule.createPositionInviteController({
@@ -196,5 +223,6 @@ const invites = inviteModule.createPositionInviteController({
   patchInviteDefaultPosition: asyncNoop,
 });
 assert.equal(typeof invites.renderInvites, "function");
+assert.match(moduleSources["invite-controller.js"], /contact_label\s*\|\|\s*inv\?\.phone/);
 
 console.log(`positions split contract: ${moduleFiles.length} modules, ${apiCallManifest.length} API calls, ${uniqueDomBindings.length} DOM controls`);

@@ -4,12 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260720-unified11" />
+  <link rel="stylesheet" href="/styles.css?v=20260726-navmore1" />
+  <link rel="stylesheet" href="/styles/pages/staff-finance.css?v=20260726-polish6" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Финансы</title>
 </head>
-<body>
-  <div class="container">
+<body class="staff-finance-page">
+  <div class="container staff-finance-shell">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
@@ -21,10 +22,12 @@
       <div class="userpill" data-userpill>…</div>
     </div>
 
-    <div class="card finance-toolbar">
+    <main class="staff-finance-content">
+    <div class="card section-card staff-finance-hero">
       <div class="screen-hero">
         <div class="screen-hero__head">
           <div>
+            <div class="staff-finance-eyebrow">Личный кабинет</div>
             <b>Личный финансовый раздел</b>
             <div class="page-caption mt-6">Здесь собраны только два сценария: посмотреть начисления и открыть корректировки. Экран оставлен коротким, чтобы быстро перейти в нужный раздел.</div>
           </div>
@@ -32,28 +35,31 @@
       </div>
 
       <div class="action-grid action-grid--2 mt-12">
-        <div class="itemcard section-card">
+        <section class="itemcard section-card staff-finance-action-card">
           <div class="section-card__title">
+            <span class="staff-finance-action-card__index">01</span>
             <b>Зарплата</b>
             <div class="muted">Сводка по месяцам и детализация по дням.</div>
           </div>
-          <div class="btn-row mt-12">
+          <div class="btn-row staff-finance-actions mt-12">
             <button class="btn primary" id="goSalary">Это заведение</button>
             <button class="btn subtle" id="goSalarySummary">Все заведения</button>
           </div>
-        </div>
+        </section>
 
-        <div class="itemcard section-card">
+        <section class="itemcard section-card staff-finance-action-card">
           <div class="section-card__title">
+            <span class="staff-finance-action-card__index">02</span>
             <b>Штрафы / Списания / Премии</b>
             <div class="muted">История и детализация по дням.</div>
           </div>
-          <div class="btn-row mt-12">
+          <div class="btn-row staff-finance-actions mt-12">
             <button class="btn primary" id="goAdjustments">Открыть</button>
           </div>
-        </div>
+        </section>
       </div>
     </div>
+    </main>
 
     <div class="nav">
       <div class="wrap">
@@ -84,7 +90,7 @@ import {
   setActiveVenueId,
   getMyVenues,
   getMyVenuePermissions,
-} from "/app.js?v=20260719-split1";
+} from "/app.js?v=20260726-navmore1";
 import { hasReportAccess, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 applyTelegramTheme();
@@ -124,7 +130,7 @@ if (!canReports) {
 try {
   const venues = await getMyVenues().catch(() => []);
   const btnAll = document.getElementById("goSalarySummary");
-  if (btnAll && (!Array.isArray(venues) || venues.length < 2)) btnAll.style.display = "none";
+  btnAll?.classList.toggle("hidden", !Array.isArray(venues) || venues.length < 2);
 } catch {}
 
 document.getElementById("goSalary")?.addEventListener("click", () => {

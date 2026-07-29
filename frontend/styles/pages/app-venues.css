@@ -1,7 +1,27 @@
+.app-venues-shell{display:grid;gap:14px}
 .app-venues-head{align-items:flex-start;gap:12px;flex-wrap:wrap}
 .venue-create-field{display:block;margin-top:12px}
-.venue-status-chip{margin-left:8px}
+.venue-status-chip{margin:0}
+.venue-group{display:grid;gap:10px}
+.venue-group + .venue-group{margin-top:8px;padding-top:16px;border-top:1px solid var(--border)}
+.venue-group__head{padding:0 2px}
+.venue-group--archived{opacity:.9}
+.venue-card{background:linear-gradient(145deg,var(--surface2),rgba(255,255,255,.015));transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}
+.venue-card:hover{border-color:var(--accentSoftBorder);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+.venue-card--archived{background:var(--surface2)}
+.venue-card__layout{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:start}
 .venue-card-main{min-width:0;flex:1 1 280px}
+.venue-card__title-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
+.venue-card__title{font-size:16px;line-height:1.3;overflow-wrap:anywhere}
+.venue-card__chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.venue-card__role{margin-top:4px}
+.venue-card__actions{display:flex;gap:8px;align-items:flex-start;justify-content:flex-end;flex-wrap:wrap;max-width:340px}
+.venue-card__actions .btn{min-width:116px}
+.venue-list-state{box-shadow:none;background:var(--surface2)}
 @media (max-width:560px){
   .venue-card-main{flex-basis:100%}
+  .venue-card__layout{grid-template-columns:1fr;gap:12px}
+  .venue-card__actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));width:100%;max-width:none}
+  .venue-card__actions .btn{width:100%;min-width:0}
+  .venue-card:hover{transform:none}
 }

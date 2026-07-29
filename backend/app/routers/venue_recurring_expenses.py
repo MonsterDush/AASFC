@@ -57,6 +57,7 @@ def _serialize_recurring_expense_rule(
         "id": rule.id,
         "venue_id": rule.venue_id,
         "title": rule.title,
+        "shift_slot": str(getattr(rule, "shift_slot", "TOTAL") or "TOTAL").upper(),
         "category_id": rule.category_id,
         "supplier_id": rule.supplier_id,
         "payment_method_id": rule.payment_method_id,
@@ -165,6 +166,7 @@ def create_recurring_expense_rule(
     rule = RecurringExpenseRule(
         venue_id=venue_id,
         title=payload.title.strip(),
+        shift_slot=str(payload.shift_slot or "TOTAL").upper(),
         category_id=int(payload.category_id),
         supplier_id=int(payload.supplier_id) if payload.supplier_id is not None else None,
         payment_method_id=int(payload.payment_method_id) if payload.payment_method_id is not None else None,
@@ -210,6 +212,8 @@ def update_recurring_expense_rule(
 
     if payload.title is not None:
         rule.title = payload.title.strip()
+    if payload.shift_slot is not None:
+        rule.shift_slot = str(payload.shift_slot or "TOTAL").upper()
     if payload.category_id is not None:
         _get_expense_category_or_404(db, venue_id=venue_id, category_id=payload.category_id)
         rule.category_id = int(payload.category_id)
@@ -339,6 +343,5 @@ def generate_recurring_expense_drafts(
         "updated": updated_payload,
         "skipped": result["skipped"],
     }
-
 
 
