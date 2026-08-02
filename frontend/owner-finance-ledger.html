@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-ledgerdrill1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-ledgerfilters1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Финансовые движения</title>
 </head>
@@ -48,15 +48,30 @@
             <b>Журнал финансовых движений</b>
             <div class="muted mt-6">Приходы, списания, корректировки и внутренние переводы по данным журнала</div>
           </div>
-          <button class="btn hidden" id="addTransferBtn" type="button">Новый перевод</button>
+          <div class="ledger-hero-actions">
+            <button class="btn hidden" id="addAdjustmentBtn" type="button">Новая корректировка</button>
+            <button class="btn hidden" id="addTransferBtn" type="button">Новый перевод</button>
+          </div>
         </div>
         <div class="finance-shortcuts" id="ledgerFinanceShortcuts">
           <a class="btn subtle" id="openSummaryBtn" href="#">Сводка</a>
           <a class="btn subtle" id="openRevenueBtn" href="#">Выручка</a>
           <a class="btn subtle" id="openExpensesBtn" href="#">Расходы</a>
         </div>
+        <div class="ledger-period-panel">
+          <div class="seg" id="ledgerPeriodSeg" aria-label="Период журнала">
+            <button type="button" data-period="month" class="active">Месяц</button>
+            <button type="button" data-period="range">Диапазон</button>
+          </div>
+          <label class="ledger-control-label" id="ledgerMonthWrap">Месяц<input class="finance-control" id="ledgerMonthPick" type="month" /></label>
+          <div class="range-pick hidden" id="ledgerDateRange">
+            <input id="ledgerDateFrom" type="date" aria-label="Начало периода" />
+            <span class="muted">—</span>
+            <input id="ledgerDateTo" type="date" aria-label="Конец периода" />
+            <button class="btn" id="ledgerDateApply" type="button">Применить</button>
+          </div>
+        </div>
         <div class="ledger-filter-grid">
-          <label class="ledger-control-label">Месяц<input class="finance-control" id="ledgerMonthPick" type="month" /></label>
           <label class="ledger-control-label">Тип оплаты<select class="finance-control finance-control--wide" id="ledgerPaymentMethodPick">
             <option value="">Все оплаты</option>
           </select></label>
@@ -70,6 +85,23 @@
             <option value="ADJUSTMENT">Корректировки</option>
             <option value="REFUND">Возвраты</option>
           </select></label>
+          <label class="ledger-control-label">Направление<select class="finance-control" id="ledgerDirectionPick">
+            <option value="">Приход и списание</option>
+            <option value="INCOME">Только приход</option>
+            <option value="EXPENSE">Только списание</option>
+          </select></label>
+          <label class="ledger-control-label">Источник<select class="finance-control finance-control--wide" id="ledgerSourcePick">
+            <option value="">Все источники</option>
+            <option value="daily_report">Отчёты смен</option>
+            <option value="expense">Расходы</option>
+            <option value="payroll_run">Расчёты начислений</option>
+            <option value="payment_method_transfer">Переводы между оплатами</option>
+            <option value="balance_adjustment">Корректировки баланса</option>
+          </select></label>
+        </div>
+        <div class="ledger-filter-footer">
+          <div class="muted">Период применяется ко всей странице. Остальные фильтры — к журналу, показателям и графикам.</div>
+          <button class="btn subtle small" id="ledgerFiltersReset" type="button">Сбросить фильтры</button>
         </div>
 
         <div class="itemcard finance-comparison-card ledger-comparison-card">
@@ -155,6 +187,16 @@
         <div id="ledgerEntriesList" class="mt-12"></div>
       </div>
 
+      <div class="itemcard mt-12" id="balance-adjustments">
+        <div class="row row--between gap-12">
+          <div>
+            <b>Корректировки баланса</b>
+            <div class="muted mt-6" id="adjustmentHint">Ручные изменения остатка по выбранному типу оплаты</div>
+          </div>
+        </div>
+        <div id="adjustmentList" class="mt-12"></div>
+      </div>
+
       <div class="itemcard mt-12" id="transfers">
         <div class="row row--between gap-12">
           <div>
@@ -185,6 +227,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-finance-ledger.js?v=20260802-ledgerdrill1"></script>
+  <script type="module" src="/owner-finance-ledger.js?v=20260802-ledgerfilters1"></script>
 </body>
 </html>

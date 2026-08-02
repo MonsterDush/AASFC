@@ -129,6 +129,15 @@ export function buildLedgerSourceDrilldown(entry, { venueId, month } = {}) {
     })}#transfers`;
   }
 
+  if (sourceType === "balance_adjustment") {
+    result.actionLabel = "Показать корректировку";
+    result.href = `/owner-finance-ledger.html?${buildQuery({
+      venue_id: normalizedVenueId,
+      month: periodMonth,
+      adjustment_id: sourceId,
+    })}#balance-adjustments`;
+  }
+
   return result;
 }
 

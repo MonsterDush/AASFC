@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import calendar
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -181,25 +180,21 @@ def _resolve_ledger_period(
 def list_balance_adjustments(
     venue_id: int,
     month: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
-    _require_revenue_viewer(db, venue_id=venue_id, user=user)
-    _require_report_viewer(db, venue_id=venue_id, user=user)
+    _require_finance_ledger_view(db, venue_id=venue_id, user=user)
 
     stmt = select(BalanceAdjustment, PaymentMethod).join(
         PaymentMethod, PaymentMethod.id == BalanceAdjustment.payment_method_id
     ).where(BalanceAdjustment.venue_id == venue_id)
 
-    if month:
-        try:
-            dt = datetime.strptime(month, "%Y-%m").date()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
-        start = dt.replace(day=1)
-        _, last_day = calendar.monthrange(dt.year, dt.month)
-        end = dt.replace(day=last_day)
+    period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
+    if period is not None:
+        start, end = period
         stmt = stmt.where(BalanceAdjustment.adjustment_date >= start, BalanceAdjustment.adjustment_date <= end)
 
     rows = db.execute(stmt.order_by(BalanceAdjustment.adjustment_date.desc(), BalanceAdjustment.id.desc())).all()
@@ -347,6 +342,8 @@ def list_finance_entries(
 def list_payment_method_transfers(
     venue_id: int,
     month: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -361,14 +358,9 @@ def list_payment_method_transfers(
         to_pm, to_pm.c.id == PaymentMethodTransfer.to_payment_method_id
     ).where(PaymentMethodTransfer.venue_id == venue_id)
 
-    if month:
-        try:
-            dt = datetime.strptime(month, "%Y-%m").date()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
-        start = dt.replace(day=1)
-        _, last_day = calendar.monthrange(dt.year, dt.month)
-        end = dt.replace(day=last_day)
+    period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
+    if period is not None:
+        start, end = period
         stmt = stmt.where(PaymentMethodTransfer.transfer_date >= start, PaymentMethodTransfer.transfer_date <= end)
 
     rows = db.execute(stmt.order_by(PaymentMethodTransfer.transfer_date.desc(), PaymentMethodTransfer.id.desc())).all()
@@ -471,4 +463,3 @@ def delete_payment_method_transfer(
     db.delete(obj)
     db.commit()
     return {"ok": True}
-

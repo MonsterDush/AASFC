@@ -78,4 +78,13 @@ assert.equal(
   "/owner-finance-ledger.html?venue_id=5&month=2026-07&transfer_id=19#transfers",
 );
 
+assert.equal(
+  buildLedgerSourceDrilldown({
+    entry_date: "2026-07-16",
+    source_type: "balance_adjustment",
+    source_id: 23,
+  }, { venueId: 5, month: "2026-07" }).href,
+  "/owner-finance-ledger.html?venue_id=5&month=2026-07&adjustment_id=23#balance-adjustments",
+);
+
 console.log("finance ledger contract: ok");

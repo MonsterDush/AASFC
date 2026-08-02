@@ -142,6 +142,44 @@ class VenueFinanceSummaryRouterTests(TestCase):
 
 
 class VenueLedgerRouterTests(TestCase):
+    def test_adjustments_and_transfers_accept_explicit_ledger_period(self):
+        user = SimpleNamespace(id=17)
+        adjustment_db = SimpleNamespace(execute=Mock(return_value=SimpleNamespace(all=lambda: [])))
+        transfer_db = SimpleNamespace(execute=Mock(return_value=SimpleNamespace(all=lambda: [])))
+
+        with patch.object(venue_ledger, "_require_active_member_or_admin"), \
+             patch.object(venue_ledger, "_require_finance_ledger_view"), \
+             patch.object(venue_ledger, "sanitize_financial_payload_for_user", side_effect=lambda current_user, payload: payload):
+            self.assertEqual(
+                venue_ledger.list_balance_adjustments(
+                    5,
+                    None,
+                    date(2026, 7, 10),
+                    date(2026, 7, 20),
+                    adjustment_db,
+                    user,
+                ),
+                [],
+            )
+            self.assertEqual(
+                venue_ledger.list_payment_method_transfers(
+                    5,
+                    None,
+                    date(2026, 7, 10),
+                    date(2026, 7, 20),
+                    transfer_db,
+                    user,
+                ),
+                [],
+            )
+
+        adjustment_sql = str(adjustment_db.execute.call_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        transfer_sql = str(transfer_db.execute.call_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("balance_adjustments.adjustment_date >= '2026-07-10'", adjustment_sql)
+        self.assertIn("balance_adjustments.adjustment_date <= '2026-07-20'", adjustment_sql)
+        self.assertIn("payment_method_transfers.transfer_date >= '2026-07-10'", transfer_sql)
+        self.assertIn("payment_method_transfers.transfer_date <= '2026-07-20'", transfer_sql)
+
     def test_ledger_serializers_preserve_minor_units_and_nested_catalogs(self):
         payment_method = SimpleNamespace(id=2, code="cash", title="Наличные")
         department = SimpleNamespace(id=3, code="bar", title="Бар")
