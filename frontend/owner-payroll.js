@@ -20,6 +20,16 @@ import {
   trackDemoEvent,
 } from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+import {
+  formatComparisonRange,
+  normalizeIsoRange,
+  resolveAutoComparison,
+  resolveComparisonRange,
+} from "/app/period-comparison.js?v=20260802-financeux2";
+import {
+  buildPayrollTeamAnalytics,
+  payrollLineShiftMetrics,
+} from "/app/payroll-analytics.js?v=20260802-payrollanalytics1";
 
 let financialValuesHidden = false;
 
@@ -351,6 +361,17 @@ let state = {
   perms: null,
   can: { view: false, calculate: false },
   data: null,
+  comparisonData: null,
+  comparisonError: null,
+  compareMode: "auto",
+  compareFrom: "",
+  compareTo: "",
+  focusPayrollLineId: null,
+  focusMemberUserId: null,
+  sourceTargetFocused: false,
+  paymentMethods: [],
+  paymentSettings: null,
+  paymentSettingsError: null,
 };
 
 async function openExportLink(path) {
@@ -426,7 +447,7 @@ function renderShell() {
               <div class="page-caption mt-6">Начисления по активным профилям: ставки, проценты и KPI-бонусы по закрытым отчётам выбранного периода.</div>
             </div>
             <div class="screen-hero__actions screen-hero__actions--adaptive payroll-hero__actions">
-              <a class="btn subtle" id="openProfilesBtn" href="#">Профили</a>
+              <button class="btn subtle small" id="openProfilesBtn" type="button" data-nav-button>Профили</button>
               <button class="btn ghost" id="btnExport">Экспорт XLSX</button>
               <button class="btn primary" id="btnCalculate">Рассчитать</button>
             </div>
@@ -455,6 +476,33 @@ function renderShell() {
               <div class="finance-period-card__value is-loading" id="runMeta" aria-busy="true">Загрузка…</div>
               <div class="muted">Перерасчёт обновляет ФОТ и детализацию для каждого сотрудника.</div>
             </div>
+            <details class="itemcard payroll-comparison-card finance-comparison-disclosure">
+              <summary class="finance-comparison-disclosure__summary">
+                <span><b>Сравнение начислений</b><span class="muted">Открыть настройки сравнения</span></span>
+                <span class="badge">Настроить</span>
+              </summary>
+              <div class="finance-comparison-disclosure__body">
+              <div class="payroll-comparison-card__head">
+                <div>
+                  <div class="finance-period-card__label">Сравнение</div>
+                  <div class="finance-period-card__value" id="payrollComparePeriodText">—</div>
+                </div>
+                <div class="seg" id="payrollCompareSeg">
+                  <button type="button" data-compare="auto" class="active">Авто</button>
+                  <button type="button" data-compare="custom">Другой период</button>
+                  <button type="button" data-compare="none">Без сравнения</button>
+                </div>
+              </div>
+              <div class="payroll-comparison-card__controls hidden" id="payrollCompareRange">
+                <div class="range-pick">
+                  <input id="payrollCompareFrom" type="date" aria-label="Начало периода сравнения" />
+                  <input id="payrollCompareTo" type="date" aria-label="Конец периода сравнения" />
+                  <button class="btn" id="payrollCompareApply" type="button">Сравнить</button>
+                </div>
+              </div>
+              <div class="muted" id="payrollCompareHint">—</div>
+              </div>
+            </details>
           </div>
         </div>
 
@@ -462,18 +510,113 @@ function renderShell() {
           <div class="itemcard finance-stat finance-stat--hero payroll-metric payroll-metric--total">
             <div class="finance-stat__label">Фонд оплаты труда</div>
             <div class="finance-stat__value is-loading" id="totalAmount" aria-busy="true">Загрузка…</div>
+            <div class="payroll-metric-delta" id="totalAmountDelta">—</div>
             <div class="finance-stat__meta">Итого начислено команде за выбранный период.</div>
           </div>
           <div class="itemcard finance-stat payroll-metric">
             <div class="finance-stat__label">Сотрудников в расчёте</div>
             <div class="finance-stat__value is-loading" id="linesCount" aria-busy="true">Загрузка…</div>
+            <div class="payroll-metric-delta" id="linesCountDelta">—</div>
             <div class="finance-stat__meta">Участники, для которых сформированы строки начислений.</div>
           </div>
           <div class="itemcard finance-stat payroll-metric">
             <div class="finance-stat__label">Среднее начисление</div>
             <div class="finance-stat__value is-loading" id="averageAmount" aria-busy="true">Загрузка…</div>
+            <div class="payroll-metric-delta" id="averageAmountDelta">—</div>
             <div class="finance-stat__meta">Средняя сумма на одного сотрудника в текущем расчёте.</div>
           </div>
+          <div class="itemcard finance-stat payroll-metric payroll-metric--per-shift">
+            <div class="finance-stat__label">Среднее за смену</div>
+            <div class="finance-stat__value is-loading" id="averagePerShift" aria-busy="true">Загрузка…</div>
+            <div class="payroll-metric-delta" id="averagePerShiftDelta">—</div>
+            <div class="finance-stat__meta">Взвешенное среднее по сотрудникам, у которых есть отработанные смены.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card section-card payroll-payment-card" id="payrollPaymentCard">
+        <details class="payroll-payment-disclosure" id="payrollPaymentDisclosure">
+          <summary class="payroll-payment-disclosure__summary">
+            <span>
+              <b>Выплаты ФОТ</b>
+              <span class="muted" id="payrollPaymentSummary">Способ оплаты, даты выплат и расчётные периоды</span>
+            </span>
+            <span class="badge" id="payrollPaymentBadge">Настроить</span>
+          </summary>
+          <div class="payroll-payment-disclosure__body">
+            <div class="payroll-payment-grid">
+              <label class="payroll-payment-field">
+                <span>Способ оплаты</span>
+                <select id="payrollPaymentMethod"><option value="">Выберите способ оплаты</option></select>
+              </label>
+              <label class="payroll-payment-field">
+                <span>Периодичность</span>
+                <select id="payrollPaymentCadence">
+                  <option value="DAILY">Каждый день</option>
+                  <option value="WEEKLY">Раз в неделю</option>
+                  <option value="MONTHLY">По датам месяца</option>
+                </select>
+              </label>
+              <label class="payroll-payment-field hidden" id="payrollWeeklyField">
+                <span>День выплаты</span>
+                <select id="payrollWeeklyDay">
+                  <option value="0">Понедельник</option>
+                  <option value="1">Вторник</option>
+                  <option value="2">Среда</option>
+                  <option value="3">Четверг</option>
+                  <option value="4">Пятница</option>
+                  <option value="5">Суббота</option>
+                  <option value="6">Воскресенье</option>
+                </select>
+              </label>
+              <label class="payroll-payment-enabled">
+                <input id="payrollPaymentEnabled" type="checkbox" />
+                <span>Формировать черновики выплат</span>
+              </label>
+            </div>
+
+            <div class="payroll-monthly-rules" id="payrollMonthlyRulesWrap">
+              <div class="section-card__head">
+                <div>
+                  <b>Даты и периоды выплат</b>
+                  <div class="muted mt-6">Для каждой даты укажите, начисления за какие числа попадут в черновик.</div>
+                </div>
+                <button class="btn subtle small" id="payrollAddPaymentRule" type="button">Добавить выплату</button>
+              </div>
+              <div class="payroll-monthly-rules__list" id="payrollMonthlyRules"></div>
+            </div>
+
+            <div class="itemcard payroll-payment-preview">
+              <div>
+                <b>Предпросмотр выплат выбранного месяца</b>
+                <div class="muted mt-6">Черновик не влияет на сводку. Списание выбранного баланса произойдёт после подтверждения расхода.</div>
+              </div>
+              <div class="payroll-payment-preview__list" id="payrollPaymentPreview"><span class="muted">Загрузка…</span></div>
+            </div>
+
+            <div class="payroll-payment-actions">
+              <button class="btn primary" id="payrollSavePaymentSettings" type="button">Сохранить настройки</button>
+              <button class="btn" id="payrollGenerateDrafts" type="button">Сформировать черновики</button>
+              <button class="btn subtle small" id="payrollOpenDrafts" type="button" data-nav-button>Открыть черновики расходов</button>
+            </div>
+            <div class="muted" id="payrollPaymentHint">—</div>
+          </div>
+        </details>
+      </section>
+
+      <section class="card section-card payroll-leaderboard-card" id="payrollLeaderboardCard">
+        <div class="section-card__head payroll-leaderboard-head">
+          <div class="section-card__title">
+            <b>Лидеры по начислению за смену</b>
+            <div class="muted" id="payrollLeaderboardSubtitle">Сравнение сотрудников с сопоставимой нагрузкой.</div>
+          </div>
+          <span class="badge" id="payrollLeaderboardThreshold">минимум 3 смены</span>
+        </div>
+        <div id="payrollLeaderboard" class="payroll-leaderboard payroll-loading" aria-live="polite" aria-busy="true">
+          <div class="payroll-leaderboard-skeleton skeleton"></div>
+        </div>
+        <div class="payroll-leaderboard-note muted" id="payrollLeaderboardNote">
+          Это рейтинг начислений, а не личных продаж: сумма может зависеть от оклада, ставок, KPI, премий и штрафов.
         </div>
       </section>
 
@@ -491,8 +634,8 @@ function renderShell() {
       </section>
 
       <div class="payroll-footer">
-        <a class="btn subtle inline" id="backVenue" href="#">← Назад к заведению</a>
-        <a class="btn subtle inline" id="openSummary" href="#">Открыть сводку →</a>
+        <button class="btn subtle inline" id="backVenue" type="button" data-nav-button>← Назад к заведению</button>
+        <button class="btn subtle inline" id="openSummary" type="button" data-nav-button>Открыть сводку →</button>
       </div>
     </main>
 
@@ -523,14 +666,237 @@ function getPeriodQuery() {
   } else {
     params.set("month", state.month);
   }
+  params.set("compare_mode", state.compareMode);
+  if (state.compareMode === "custom") {
+    const comparison = currentComparison();
+    if (comparison?.from) params.set("compare_from", comparison.from);
+    if (comparison?.to) params.set("compare_to", comparison.to);
+  }
   if (state.venueId) params.set("venue_id", state.venueId);
   return params;
+}
+
+function currentComparison() {
+  return resolveComparisonRange({
+    compareMode: state.compareMode,
+    compareFrom: state.compareFrom,
+    compareTo: state.compareTo,
+    period: state.periodMode,
+    month: state.month,
+    from: state.dateFrom,
+    to: state.dateTo,
+  });
+}
+
+function syncComparisonControls() {
+  const comparison = currentComparison();
+  const custom = state.compareMode === "custom";
+  const disabled = state.compareMode === "none";
+  setVisible(document.getElementById("payrollCompareRange"), custom);
+  document.querySelectorAll("#payrollCompareSeg button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.compare === state.compareMode);
+  });
+  const periodText = document.getElementById("payrollComparePeriodText");
+  const hint = document.getElementById("payrollCompareHint");
+  if (periodText) periodText.textContent = disabled ? "Сравнение отключено" : formatComparisonRange(comparison);
+  if (hint) hint.textContent = disabled ? "Дополнительный период не загружается." : (comparison?.caption || "Выбери период сравнения");
+  if (custom) {
+    const from = document.getElementById("payrollCompareFrom");
+    const to = document.getElementById("payrollCompareTo");
+    if (from) from.value = comparison?.from || state.compareFrom || "";
+    if (to) to.value = comparison?.to || state.compareTo || "";
+  }
 }
 
 function syncUrl() {
   try {
     history.replaceState(null, "", `${location.pathname}?${getPeriodQuery().toString()}`);
   } catch {}
+}
+
+const DEFAULT_PAYMENT_RULES = [
+  { payment_day: 5, period_start_day: 16, period_end_day: 31, period_month_offset: -1 },
+  { payment_day: 20, period_start_day: 1, period_end_day: 15, period_month_offset: 0 },
+];
+
+function payrollCadenceLabel(value) {
+  const cadence = String(value || "MONTHLY").toUpperCase();
+  if (cadence === "DAILY") return "каждый день";
+  if (cadence === "WEEKLY") return "раз в неделю";
+  return "по датам месяца";
+}
+
+function paymentSettingsRules() {
+  const rows = state.paymentSettings?.monthly_rules;
+  return Array.isArray(rows) && rows.length ? rows : DEFAULT_PAYMENT_RULES;
+}
+
+function renderPaymentRuleRows(rules = paymentSettingsRules()) {
+  const list = document.getElementById("payrollMonthlyRules");
+  if (!list) return;
+  const rows = Array.isArray(rules) && rules.length ? rules : [DEFAULT_PAYMENT_RULES[0]];
+  list.innerHTML = rows.map((rule, index) => `
+    <div class="payroll-payment-rule" data-payment-rule="${index}">
+      <label><span>Выплата</span><span class="payroll-payment-rule__input"><input type="number" min="1" max="31" value="${Number(rule.payment_day || 1)}" data-rule-field="payment_day" /><span>числа</span></span></label>
+      <label><span>Период с</span><input type="number" min="1" max="31" value="${Number(rule.period_start_day || 1)}" data-rule-field="period_start_day" /></label>
+      <label><span>по</span><input type="number" min="1" max="31" value="${Number(rule.period_end_day || 31)}" data-rule-field="period_end_day" /></label>
+      <label><span>Месяц периода</span><select data-rule-field="period_month_offset"><option value="0" ${Number(rule.period_month_offset || 0) === 0 ? "selected" : ""}>Текущий</option><option value="-1" ${Number(rule.period_month_offset || 0) === -1 ? "selected" : ""}>Предыдущий</option></select></label>
+      <button class="btn subtle small payroll-payment-rule__remove" type="button" data-remove-payment-rule="${index}" aria-label="Удалить дату выплаты">Удалить</button>
+    </div>
+  `).join("");
+}
+
+function readPaymentRuleRows() {
+  return [...document.querySelectorAll("[data-payment-rule]")].map((row) => {
+    const value = (field) => Number(row.querySelector(`[data-rule-field="${field}"]`)?.value || 0);
+    return {
+      payment_day: value("payment_day"),
+      period_start_day: value("period_start_day"),
+      period_end_day: value("period_end_day"),
+      period_month_offset: value("period_month_offset"),
+    };
+  });
+}
+
+function capturePaymentSettingsControls() {
+  if (!state.paymentSettings) state.paymentSettings = {};
+  state.paymentSettings.payment_method_id = Number(document.getElementById("payrollPaymentMethod")?.value || 0) || null;
+  state.paymentSettings.cadence = String(document.getElementById("payrollPaymentCadence")?.value || state.paymentSettings.cadence || "MONTHLY").toUpperCase();
+  state.paymentSettings.weekly_payment_weekday = Number(document.getElementById("payrollWeeklyDay")?.value || 0);
+  state.paymentSettings.is_active = document.getElementById("payrollPaymentEnabled")?.checked !== false;
+  state.paymentSettings.monthly_rules = readPaymentRuleRows();
+}
+
+function renderPaymentSettings() {
+  const card = document.getElementById("payrollPaymentCard");
+  if (!card) return;
+  setVisible(card, state.can.view);
+  if (!state.can.view) return;
+
+  const settings = state.paymentSettings || {
+    configured: false,
+    cadence: "MONTHLY",
+    weekly_payment_weekday: 0,
+    monthly_rules: DEFAULT_PAYMENT_RULES,
+    is_active: true,
+    preview: [],
+  };
+  const paymentMethod = document.getElementById("payrollPaymentMethod");
+  const cadence = document.getElementById("payrollPaymentCadence");
+  const weeklyDay = document.getElementById("payrollWeeklyDay");
+  const enabled = document.getElementById("payrollPaymentEnabled");
+  const hint = document.getElementById("payrollPaymentHint");
+  const badge = document.getElementById("payrollPaymentBadge");
+  const summary = document.getElementById("payrollPaymentSummary");
+  const configuredPaymentMethod = String(settings.payment_method_id || "");
+
+  if (paymentMethod) {
+    paymentMethod.innerHTML = '<option value="">Выберите способ оплаты</option>' + state.paymentMethods
+      .filter((item) => item?.is_active !== false || String(item?.id) === configuredPaymentMethod)
+      .map((item) => `<option value="${esc(item.id)}">${esc(item.title)}</option>`)
+      .join("");
+    paymentMethod.value = configuredPaymentMethod;
+    paymentMethod.disabled = !state.can.calculate;
+  }
+  if (cadence) {
+    cadence.value = String(settings.cadence || "MONTHLY").toUpperCase();
+    cadence.disabled = !state.can.calculate;
+  }
+  if (weeklyDay) {
+    weeklyDay.value = String(settings.weekly_payment_weekday ?? 0);
+    weeklyDay.disabled = !state.can.calculate;
+  }
+  if (enabled) {
+    enabled.checked = settings.is_active !== false;
+    enabled.disabled = !state.can.calculate;
+  }
+  setVisible(document.getElementById("payrollWeeklyField"), String(settings.cadence).toUpperCase() === "WEEKLY");
+  setVisible(document.getElementById("payrollMonthlyRulesWrap"), String(settings.cadence).toUpperCase() === "MONTHLY");
+  renderPaymentRuleRows(settings.monthly_rules);
+  document.querySelectorAll("#payrollMonthlyRules :is(input,select,button)").forEach((element) => {
+    element.disabled = !state.can.calculate;
+  });
+
+  const preview = document.getElementById("payrollPaymentPreview");
+  const previewRows = Array.isArray(settings.preview) ? settings.preview : [];
+  if (preview) {
+    preview.innerHTML = previewRows.length
+      ? previewRows.map((item) => `<div class="payroll-payment-preview__row"><b>${esc(formatDateRu(item.payment_date))}</b><span>${esc(formatDateRu(item.period_start))} — ${esc(formatDateRu(item.period_end))}</span></div>`).join("")
+      : '<span class="muted">Нет дат выплат для выбранного месяца.</span>';
+  }
+  const methodTitle = settings.payment_method?.title || state.paymentMethods.find((item) => String(item.id) === configuredPaymentMethod)?.title;
+  if (summary) {
+    summary.textContent = settings.configured
+      ? `${methodTitle || "способ не выбран"} · ${payrollCadenceLabel(settings.cadence)}`
+      : "Настройте способ оплаты и календарь выплат";
+  }
+  if (badge) badge.textContent = !settings.configured ? "Не настроено" : (settings.is_active ? "Включено" : "Выключено");
+  if (hint) hint.textContent = state.paymentSettingsError
+    ? `Настройки недоступны: ${state.paymentSettingsError}`
+    : "Подтверждённый черновик создаёт проводку ФОТ, но не добавляет ФОТ второй раз в управленческую сводку.";
+  const saveButton = document.getElementById("payrollSavePaymentSettings");
+  const generateButton = document.getElementById("payrollGenerateDrafts");
+  if (saveButton) saveButton.disabled = !state.can.calculate;
+  if (generateButton) generateButton.disabled = !state.can.calculate || !settings.configured || settings.is_active === false;
+  const draftsLink = document.getElementById("payrollOpenDrafts");
+  if (draftsLink) draftsLink.href = `/owner-expenses.html?venue_id=${encodeURIComponent(state.venueId)}&month=${encodeURIComponent(state.month)}&statuses=DRAFT&expense_kind=PAYROLL`;
+}
+
+async function loadPaymentSettings() {
+  if (!state.can.view) {
+    renderPaymentSettings();
+    return;
+  }
+  state.paymentSettingsError = null;
+  try {
+    const [paymentMethods, settings] = await Promise.all([
+      api(`/venues/${encodeURIComponent(state.venueId)}/payment-methods`).catch(() => []),
+      api(`/venues/${encodeURIComponent(state.venueId)}/payroll/payment-settings?month=${encodeURIComponent(state.month)}`),
+    ]);
+    state.paymentMethods = Array.isArray(paymentMethods) ? paymentMethods : [];
+    state.paymentSettings = settings;
+  } catch (error) {
+    state.paymentSettingsError = error?.data?.detail || error?.message || "не удалось загрузить";
+  }
+  renderPaymentSettings();
+}
+
+async function savePaymentSettings() {
+  const paymentMethodId = Number(document.getElementById("payrollPaymentMethod")?.value || 0);
+  if (!paymentMethodId) {
+    toast("Выберите способ оплаты ФОТ", "err");
+    return;
+  }
+  const cadence = String(document.getElementById("payrollPaymentCadence")?.value || "MONTHLY").toUpperCase();
+  try {
+    await api(`/venues/${encodeURIComponent(state.venueId)}/payroll/payment-settings`, {
+      method: "PUT",
+      body: {
+        payment_method_id: paymentMethodId,
+        cadence,
+        weekly_payment_weekday: cadence === "WEEKLY" ? Number(document.getElementById("payrollWeeklyDay")?.value || 0) : null,
+        monthly_rules: cadence === "MONTHLY" ? readPaymentRuleRows() : [],
+        is_active: document.getElementById("payrollPaymentEnabled")?.checked !== false,
+      },
+    });
+    toast("Настройки выплат сохранены", "ok");
+    await loadPaymentSettings();
+  } catch (error) {
+    toast(error?.data?.detail || error?.message || "Не удалось сохранить настройки", "err");
+  }
+}
+
+async function generatePaymentDrafts() {
+  try {
+    const result = await api(`/venues/${encodeURIComponent(state.venueId)}/payroll/payment-drafts/generate`, {
+      method: "POST",
+      body: { month: state.month },
+    });
+    const changed = Number(result?.created || 0) + Number(result?.updated || 0);
+    toast(changed ? `Черновики ФОТ готовы: ${changed}` : "Новых черновиков ФОТ нет", changed ? "ok" : "warn");
+  } catch (error) {
+    toast(error?.data?.detail || error?.message || "Не удалось сформировать черновики", "err");
+  }
 }
 
 function renderState() {
@@ -556,6 +922,7 @@ function renderState() {
   setVisible(rangeControls, !isDemoUiMode() && state.periodMode === "range");
   periodMonthBtn?.classList.toggle("active", state.periodMode === "month");
   periodRangeBtn?.classList.toggle("active", state.periodMode === "range");
+  syncComparisonControls();
 
   setVisible(btnCalculate, state.can.calculate && state.periodMode === "month");
   setVisible(btnExport, state.can.view);
@@ -593,10 +960,71 @@ function recalculationText(latestRecalc, runCalculatedAt) {
   return reason ? `${baseText} · ${reasonMap[reason] || "автоперерасчёт"}` : baseText;
 }
 
+function renderPayrollLeaderboard(analytics) {
+  const list = document.getElementById("payrollLeaderboard");
+  const subtitle = document.getElementById("payrollLeaderboardSubtitle");
+  const threshold = document.getElementById("payrollLeaderboardThreshold");
+  const note = document.getElementById("payrollLeaderboardNote");
+  if (!list) return;
+  list.classList.remove("payroll-loading");
+  list.setAttribute("aria-busy", "false");
+  if (threshold) threshold.textContent = `минимум ${analytics.minimumShifts} смены`;
+  if (subtitle) {
+    subtitle.textContent = state.periodMode === "month"
+      ? `Топ за ${state.month}: среднее начисление, количество смен и итоговая сумма.`
+      : `Топ за ${formatDateRu(state.dateFrom)} — ${formatDateRu(state.dateTo)}.`;
+  }
+  if (note) {
+    const excluded = analytics.excludedSmallSampleCount
+      ? ` ${analytics.excludedSmallSampleCount} сотрудник(а) с меньшим числом смен не участвуют в ранжировании.`
+      : "";
+    note.textContent = `Это рейтинг начислений, а не личных продаж: сумма может зависеть от оклада, ставок, KPI, премий и штрафов.${excluded}`;
+  }
+  if (!state.can.view) {
+    list.innerHTML = '<div class="payroll-state payroll-state--denied"><b>Нет доступа к рейтингу</b><span>Для сравнения нужны права на начисления.</span></div>';
+    return;
+  }
+  if (financialValuesHidden) {
+    list.innerHTML = `<div class="payroll-state"><b>${esc(FINANCIAL_VALUES_HIDDEN_LABEL)}</b><span>Рейтинг не строится без доступных финансовых значений.</span></div>`;
+    return;
+  }
+  if (!analytics.rows.length) {
+    list.innerHTML = `<div class="payroll-state payroll-state--empty"><b>Пока недостаточно смен для рейтинга</b><span>Нужно минимум ${esc(analytics.minimumShifts)} смены у сотрудника за выбранный период.</span></div>`;
+    return;
+  }
+  list.innerHTML = analytics.rows.map((entry) => {
+    const delta = Number(entry.deltaFromTeamAverageMinor || 0);
+    const deltaText = delta === 0
+      ? "на уровне среднего по команде"
+      : `${fmtMoneyMinor(Math.abs(delta))} ${delta > 0 ? "выше" : "ниже"} среднего по команде`;
+    return `<article class="payroll-leaderboard-row" aria-label="${esc(memberName(entry.line?.member))}: ${esc(fmtMoneyMinor(entry.averagePerShiftMinor))} за смену">
+      <div class="payroll-leaderboard-rank" aria-hidden="true">${entry.rank}</div>
+      <div class="payroll-leaderboard-main">
+        <div class="payroll-leaderboard-row__head">
+          <div>
+            <div class="payroll-leaderboard-name">${esc(memberName(entry.line?.member))}</div>
+            <div class="payroll-leaderboard-meta">${entry.shiftsCount} смен · ${esc(fmtMoneyMinor(entry.amountMinor))} за период</div>
+          </div>
+          <div class="payroll-leaderboard-value">
+            <b>${esc(fmtMoneyMinor(entry.averagePerShiftMinor))}</b>
+            <span>за смену</span>
+          </div>
+        </div>
+        <svg class="payroll-leaderboard-bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+          <rect class="payroll-leaderboard-track" x="0" y="0" width="100" height="8" rx="4"></rect>
+          <rect class="payroll-leaderboard-fill" x="0" y="0" width="${entry.relativeWidthPercent.toFixed(2)}" height="8" rx="4"></rect>
+        </svg>
+        <div class="payroll-leaderboard-delta">${esc(deltaText)}</div>
+      </div>
+    </article>`;
+  }).join("");
+}
+
 function renderLines() {
   const totalAmount = document.getElementById("totalAmount");
   const linesCount = document.getElementById("linesCount");
   const averageAmount = document.getElementById("averageAmount");
+  const averagePerShift = document.getElementById("averagePerShift");
   const runMeta = document.getElementById("runMeta");
   const linesList = document.getElementById("linesList");
   if (!linesList) return;
@@ -615,18 +1043,42 @@ function renderLines() {
     settleMetric(totalAmount, "—");
     settleMetric(linesCount, "—");
     settleMetric(averageAmount, "—");
+    settleMetric(averagePerShift, "—");
     settleMetric(runMeta, "нет доступа");
+    renderPayrollLeaderboard(buildPayrollTeamAnalytics([]));
     return;
   }
 
   const data = state.data || { lines: [], total_amount_minor: 0, lines_count: 0, run: null, latest_recalculation: null };
   const calculatedLinesCount = Number(data.lines_count || 0);
+  const comparisonData = state.comparisonData || null;
+  const comparisonLinesCount = Number(comparisonData?.lines_count || 0);
+  const currentAverage = calculatedLinesCount ? Math.round(Number(data.total_amount_minor || 0) / calculatedLinesCount) : 0;
+  const comparisonAverage = comparisonLinesCount ? Math.round(Number(comparisonData?.total_amount_minor || 0) / comparisonLinesCount) : 0;
+  const lines = Array.isArray(data.lines) ? data.lines : [];
+  const comparisonLines = Array.isArray(comparisonData?.lines) ? comparisonData.lines : [];
+  const analytics = buildPayrollTeamAnalytics(lines, { minimumShifts: 3, maxRows: 6 });
+  const comparisonAnalytics = buildPayrollTeamAnalytics(comparisonLines, { minimumShifts: 3, maxRows: 6 });
   settleMetric(totalAmount, fmtMoneyMinor(data.total_amount_minor));
   settleMetric(linesCount, String(calculatedLinesCount));
   settleMetric(
     averageAmount,
-    calculatedLinesCount ? fmtMoneyMinor(Math.round(Number(data.total_amount_minor || 0) / calculatedLinesCount)) : "—",
+    calculatedLinesCount ? fmtMoneyMinor(currentAverage) : "—",
   );
+  settleMetric(
+    averagePerShift,
+    analytics.teamAveragePerShiftMinor === null ? "—" : fmtMoneyMinor(analytics.teamAveragePerShiftMinor),
+  );
+  renderPayrollMetricDelta("totalAmountDelta", data.total_amount_minor, comparisonData?.total_amount_minor, { money: true, goodWhen: "down" });
+  renderPayrollMetricDelta("linesCountDelta", calculatedLinesCount, comparisonData?.lines_count, { goodWhen: "neutral" });
+  renderPayrollMetricDelta("averageAmountDelta", currentAverage, comparisonData ? comparisonAverage : null, { money: true, goodWhen: "down" });
+  renderPayrollMetricDelta(
+    "averagePerShiftDelta",
+    analytics.teamAveragePerShiftMinor,
+    comparisonData ? comparisonAnalytics.teamAveragePerShiftMinor : null,
+    { money: true, goodWhen: "neutral" },
+  );
+  renderPayrollLeaderboard(analytics);
   if (runMeta) {
     if (data.run?.calculated_at) {
       const metaText = recalculationText(data.latest_recalculation, data.run.calculated_at);
@@ -640,7 +1092,6 @@ function renderLines() {
     }
   }
 
-  const lines = Array.isArray(data.lines) ? data.lines : [];
   if (!lines.length) {
     const emptyText = state.periodMode === "month"
       ? "За выбранный месяц начислений пока нет. Нажми «Рассчитать», если профили уже назначены."
@@ -650,17 +1101,30 @@ function renderLines() {
   }
 
   linesList.innerHTML = "";
+  const comparisonLinesByMember = new Map(
+    comparisonLines.map((line) => [
+      String(line?.member_user_id ?? line?.member?.user_id ?? ""),
+      line,
+    ]),
+  );
   lines.forEach((line) => {
     const breakdown = line.breakdown || {};
     const metrics = breakdown.metrics || {};
     const components = Array.isArray(breakdown.components) ? breakdown.components : [];
     const row = document.createElement("div");
     row.className = "payroll-person";
+    row.dataset.payrollLineId = String(line?.id || "");
+    row.dataset.memberUserId = String(line?.member_user_id ?? line?.member?.user_id ?? "");
     const periodState = String(line.period_state || breakdown.period_state || "").toLowerCase();
     const stateBadge = periodState === "partial"
       ? '<span class="badge">частично</span>'
       : (periodState === "ready" ? '' : '');
     const workedDatesCount = Number(metrics.worked_dates_count || 0);
+    const shiftMetrics = payrollLineShiftMetrics(line);
+    const comparisonLine = comparisonLinesByMember.get(String(line?.member_user_id ?? line?.member?.user_id ?? ""));
+    const personDelta = comparisonLine && !financialValuesHidden
+      ? payrollDeltaView(line.amount_minor, comparisonLine.amount_minor, { money: true, goodWhen: "neutral" })
+      : null;
     row.innerHTML = `
       <div class="payroll-person__main">
         <div class="payroll-person__head">
@@ -674,9 +1138,13 @@ function renderLines() {
               <span><b>${esc(metrics.hours_total ?? 0)}</b> ч</span>
               <span><b>${esc(metrics.shifts_count ?? 0)}</b> смен</span>
               ${workedDatesCount ? `<span><b>${esc(workedDatesCount)}</b> дней</span>` : ""}
+              ${shiftMetrics.averagePerShiftMinor === null ? "" : `<span class="payroll-person__metric-average"><b>${esc(fmtMoneyMinor(shiftMetrics.averagePerShiftMinor))}</b> за смену</span>`}
             </div>
           </div>
-          <div class="payroll-person__amount">${esc(fmtMoneyMinor(line.amount_minor))}</div>
+          <div>
+            <div class="payroll-person__amount">${esc(fmtMoneyMinor(line.amount_minor))}</div>
+            ${personDelta ? `<div class="payroll-person__delta ${personDelta.tone}">${esc(personDelta.text)}</div>` : ""}
+          </div>
         </div>
         <details class="mt-12 payroll-breakdown">
           <summary>${state.periodMode === "month" ? "Показать разбор" : "Показать разбор периода"}</summary>
@@ -706,6 +1174,24 @@ function renderLines() {
     `;
     linesList.appendChild(row);
   });
+  focusLinkedPayrollLine();
+}
+
+function focusLinkedPayrollLine() {
+  if (state.sourceTargetFocused) return;
+  const target = state.focusPayrollLineId
+    ? document.querySelector(`[data-payroll-line-id="${state.focusPayrollLineId}"]`)
+    : (state.focusMemberUserId ? document.querySelector(`[data-member-user-id="${state.focusMemberUserId}"]`) : null);
+  if (!target) return;
+  state.sourceTargetFocused = true;
+  target.classList.add("is-source-target");
+  target.setAttribute("tabindex", "-1");
+  const details = target.querySelector("details");
+  if (details) details.open = true;
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
+  });
 }
 
 function buildPayrollPath() {
@@ -715,15 +1201,71 @@ function buildPayrollPath() {
   return `/venues/${encodeURIComponent(state.venueId)}/payroll?month=${encodeURIComponent(state.month)}`;
 }
 
+function buildComparisonPayrollPath() {
+  const comparison = currentComparison();
+  return `/venues/${encodeURIComponent(state.venueId)}/payroll?date_from=${encodeURIComponent(comparison?.from || todayIso())}&date_to=${encodeURIComponent(comparison?.to || comparison?.from || todayIso())}`;
+}
+
+function payrollDeltaView(currentValue, previousValue, { money = false, goodWhen = "neutral" } = {}) {
+  if (previousValue === null || previousValue === undefined) return null;
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  const delta = current - previous;
+  const good = (goodWhen === "up" && delta > 0) || (goodWhen === "down" && delta < 0);
+  const bad = (goodWhen === "up" && delta < 0) || (goodWhen === "down" && delta > 0);
+  const tone = good ? "is-good" : bad ? "is-bad" : "is-neutral";
+  const absolute = money
+    ? `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${fmtMoneyMinor(Math.abs(delta))}`
+    : `${delta > 0 ? "+" : ""}${delta.toLocaleString("ru-RU")}`;
+  if (previous === 0) {
+    return { text: current === 0 ? "Без изменений" : `Нет базы · ${absolute}`, tone };
+  }
+  const percent = delta / Math.abs(previous) * 100;
+  const sign = percent > 0 ? "+" : percent < 0 ? "−" : "";
+  return {
+    text: `${sign}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% · ${absolute}`,
+    tone,
+  };
+}
+
+function renderPayrollMetricDelta(id, currentValue, previousValue, options) {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.classList.remove("is-good", "is-bad", "is-neutral");
+  if (financialValuesHidden || !state.comparisonData) {
+    element.textContent = state.comparisonError ? "Сравнение недоступно" : "—";
+    element.classList.add("is-neutral");
+    return;
+  }
+  const view = payrollDeltaView(currentValue, previousValue, options);
+  element.textContent = view ? `${view.text} ${currentComparison()?.caption || ""}`.trim() : "—";
+  element.classList.add(view?.tone || "is-neutral");
+}
+
 async function load() {
   const linesList = document.getElementById("linesList");
+  const leaderboard = document.getElementById("payrollLeaderboard");
   if (linesList) {
     linesList.classList.add("payroll-loading");
     linesList.setAttribute("aria-busy", "true");
     linesList.innerHTML = `<div class="payroll-line-skeleton skeleton"></div><div class="payroll-line-skeleton skeleton"></div>`;
   }
+  if (leaderboard) {
+    leaderboard.classList.add("payroll-loading");
+    leaderboard.setAttribute("aria-busy", "true");
+    leaderboard.innerHTML = '<div class="payroll-leaderboard-skeleton skeleton"></div>';
+  }
   try {
-    state.data = await api(buildPayrollPath());
+    const primaryPromise = api(buildPayrollPath());
+    const comparisonPromise = state.compareMode === "none"
+      ? Promise.resolve({ value: null })
+      : api(buildComparisonPayrollPath())
+          .then((value) => ({ value }))
+          .catch((error) => ({ error }));
+    const [data, comparisonResult] = await Promise.all([primaryPromise, comparisonPromise]);
+    state.data = data;
+    state.comparisonData = comparisonResult.value || null;
+    state.comparisonError = comparisonResult.error || null;
     renderLines();
   } catch (e) {
     const detail = e?.data?.detail || e?.message || "не удалось загрузить";
@@ -731,6 +1273,11 @@ async function load() {
       linesList.classList.remove("payroll-loading");
       linesList.setAttribute("aria-busy", "false");
       linesList.innerHTML = `<div class="payroll-state payroll-state--error"><b>Не удалось загрузить начисления</b><span>${esc(detail)}</span></div>`;
+    }
+    if (leaderboard) {
+      leaderboard.classList.remove("payroll-loading");
+      leaderboard.setAttribute("aria-busy", "false");
+      leaderboard.innerHTML = `<div class="payroll-state payroll-state--error"><b>Рейтинг недоступен</b><span>${esc(detail)}</span></div>`;
     }
     toast("Не удалось загрузить начисления", "err");
   }
@@ -782,6 +1329,8 @@ async function boot() {
 
   const params = new URLSearchParams(location.search);
   state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-payroll" });
+  state.focusPayrollLineId = Number(params.get("payroll_line_id") || 0) || null;
+  state.focusMemberUserId = Number(params.get("member_user_id") || 0) || null;
   const hasRange = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_from") || "")) && /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_to") || ""));
   state.periodMode = (params.get("period_mode") || (hasRange ? "range" : "month")).toLowerCase() === "range" ? "range" : "month";
   if (isDemoUiMode()) state.periodMode = "month";
@@ -789,6 +1338,9 @@ async function boot() {
   state.dateFrom = demoRangePayroll.from || (hasRange ? String(params.get("date_from")) : monthStartIso(state.month));
   state.dateTo = demoRangePayroll.to || (hasRange ? String(params.get("date_to")) : monthEndIso(state.month));
   if (state.dateTo < state.dateFrom) state.dateTo = state.dateFrom;
+  state.compareMode = ["auto", "custom", "none"].includes(params.get("compare_mode")) ? params.get("compare_mode") : "auto";
+  state.compareFrom = params.get("compare_from") || "";
+  state.compareTo = params.get("compare_to") || "";
 
   await mountNav({ activeTab: "summary" });
 
@@ -809,6 +1361,38 @@ async function boot() {
   renderState();
   renderDemoOwnerPayrollIntro();
 
+  document.getElementById("payrollPaymentCadence")?.addEventListener("change", (event) => {
+    capturePaymentSettingsControls();
+    state.paymentSettings.cadence = event.target.value || "MONTHLY";
+    renderPaymentSettings();
+  });
+  document.getElementById("payrollAddPaymentRule")?.addEventListener("click", () => {
+    capturePaymentSettingsControls();
+    const rows = readPaymentRuleRows();
+    const previous = rows.at(-1);
+    const nextDay = Math.min(31, Math.max(1, Number(previous?.payment_day || 0) + 10));
+    rows.push({ payment_day: nextDay, period_start_day: 1, period_end_day: 31, period_month_offset: 0 });
+    if (!state.paymentSettings) state.paymentSettings = {};
+    state.paymentSettings.monthly_rules = rows;
+    renderPaymentSettings();
+  });
+  document.getElementById("payrollMonthlyRules")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-payment-rule]");
+    if (!button) return;
+    capturePaymentSettingsControls();
+    const removeIndex = Number(button.dataset.removePaymentRule || -1);
+    const rows = readPaymentRuleRows().filter((_item, index) => index !== removeIndex);
+    if (!rows.length) {
+      toast("Нужен хотя бы один период выплаты", "warn");
+      return;
+    }
+    if (!state.paymentSettings) state.paymentSettings = {};
+    state.paymentSettings.monthly_rules = rows;
+    renderPaymentSettings();
+  });
+  document.getElementById("payrollSavePaymentSettings")?.addEventListener("click", savePaymentSettings);
+  document.getElementById("payrollGenerateDrafts")?.addEventListener("click", generatePaymentDrafts);
+
   document.getElementById("periodMonthBtn")?.addEventListener("click", async () => {
     if (state.periodMode === "month") return;
     setPeriodMode("month");
@@ -828,7 +1412,7 @@ async function boot() {
       state.dateTo = monthEndIso(state.month);
     }
     renderState();
-    await load();
+    await Promise.all([load(), loadPaymentSettings()]);
   });
 
   document.getElementById("rangeApply")?.addEventListener("click", async () => {
@@ -842,6 +1426,42 @@ async function boot() {
       return;
     }
     await applyRangeFromControls();
+  });
+  document.querySelectorAll("#payrollCompareSeg button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const requestedMode = button.dataset.compare;
+      const mode = ["auto", "custom", "none"].includes(requestedMode) ? requestedMode : "auto";
+      if (mode === "custom" && state.compareMode !== "custom") {
+        const automatic = resolveAutoComparison({
+          period: state.periodMode,
+          month: state.month,
+          from: state.dateFrom,
+          to: state.dateTo,
+        });
+        state.compareFrom = automatic?.from || todayIso();
+        state.compareTo = automatic?.to || state.compareFrom;
+      }
+      state.compareMode = mode;
+      renderState();
+      if (mode !== "custom") await load();
+    });
+  });
+  document.getElementById("payrollCompareFrom")?.addEventListener("change", (event) => {
+    state.compareFrom = event.target.value || state.compareFrom;
+  });
+  document.getElementById("payrollCompareTo")?.addEventListener("change", (event) => {
+    state.compareTo = event.target.value || state.compareTo;
+  });
+  document.getElementById("payrollCompareApply")?.addEventListener("click", async () => {
+    const normalized = normalizeIsoRange(state.compareFrom, state.compareTo);
+    if (!normalized) {
+      toast("Выбери даты сравнения", "err");
+      return;
+    }
+    state.compareFrom = normalized.from;
+    state.compareTo = normalized.to;
+    renderState();
+    await load();
   });
   document.getElementById("btnCalculate")?.addEventListener("click", onCalculate);
   document.getElementById("btnExport")?.addEventListener("click", async () => {
@@ -859,7 +1479,7 @@ async function boot() {
     }
   });
 
-  await load();
+  await Promise.all([load(), loadPaymentSettings()]);
 }
 
 document.addEventListener("DOMContentLoaded", boot);

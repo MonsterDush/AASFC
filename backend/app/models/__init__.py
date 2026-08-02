@@ -52,6 +52,7 @@ from .pay_component import PayComponent
 from .payroll_run import PayrollRun
 from .payroll_line import PayrollLine
 from .payroll_recalculation_log import PayrollRecalculationLog
+from .payroll_payment_settings import PayrollPaymentSettings
 from .notification_delivery_log import NotificationDeliveryLog
 from .notification_job import NotificationJob
 from .venue_billing_state import VenueBillingState
@@ -121,6 +122,7 @@ __all__ = [
     "PayrollRun",
     "PayrollLine",
     "PayrollRecalculationLog",
+    "PayrollPaymentSettings",
     "NotificationDeliveryLog",
     "NotificationJob",
     "VenueBillingState",

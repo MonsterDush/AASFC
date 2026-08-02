@@ -26,6 +26,7 @@ from app.services.payroll.calculator import (
     parse_month_start,
 )
 from app.services.payroll.day_breakdown import build_member_day_breakdown
+from app.services.payroll.adjustments import load_member_payroll_adjustments
 from app.routers.venue_access import (
     _has_revenue_view_access,
     _is_active_member_or_admin,
@@ -186,6 +187,7 @@ def _recalculate_payroll_for_dates(
 
 def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
     month_start = parse_month_start(month)
+    month_end = (date(month_start.year + 1, 1, 1) if month_start.month == 12 else date(month_start.year, month_start.month + 1, 1)) - timedelta(days=1)
     latest_recalculation = _latest_payroll_recalculation_log(db, venue_id=int(venue_id), period_month=month_start)
     run = db.execute(
         select(PayrollRun).where(
@@ -194,14 +196,16 @@ def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
         )
     ).scalar_one_or_none()
     if run is None:
-        return {
-            "month": month,
-            "run": None,
-            "lines": [],
-            "total_amount_minor": 0,
-            "lines_count": 0,
-            "latest_recalculation": _serialize_payroll_recalculation_log(latest_recalculation),
-        }
+        partial = _build_venue_payroll_period_payload(
+            db,
+            venue_id=int(venue_id),
+            period_start=month_start,
+            period_end=month_end,
+            period_meta={"mode": "month", "month": month},
+        )
+        partial["run"] = None
+        partial["latest_recalculation"] = _serialize_payroll_recalculation_log(latest_recalculation)
+        return partial
 
     rows = db.execute(
         select(PayrollLine, User, PayProfile)
@@ -211,13 +215,33 @@ def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
         .order_by(User.short_name.asc(), User.full_name.asc(), PayrollLine.id.asc())
     ).all()
 
+    adjustments_by_member = load_member_payroll_adjustments(
+        db,
+        venue_id=int(venue_id),
+        period_start=month_start,
+        period_end=month_end,
+    )
+    members_by_id = {int(member.id): member for _line, member, _profile in rows}
+    missing_member_ids = sorted(set(adjustments_by_member) - set(members_by_id))
+    if missing_member_ids:
+        extra_members = db.execute(select(User).where(User.id.in_(missing_member_ids))).scalars().all()
+        members_by_id.update({int(member.id): member for member in extra_members})
+
     lines = []
+    seen_member_ids: set[int] = set()
     for line, member, profile in rows:
+        member_id = int(line.member_user_id)
+        seen_member_ids.add(member_id)
+        adjustment_items = adjustments_by_member.get(member_id, [])
+        adjustment_total_minor = sum(int(item.get("amount_minor") or 0) for item in adjustment_items)
+        breakdown = _parse_json_text(line.breakdown_json) or {}
+        breakdown["components"] = [*(breakdown.get("components") or []), *adjustment_items]
+        breakdown["adjustments_minor"] = int(adjustment_total_minor)
         lines.append(
             {
                 "id": int(line.id),
-                "member_user_id": int(line.member_user_id),
-                "amount_minor": int(line.amount_minor or 0),
+                "member_user_id": member_id,
+                "amount_minor": int(line.amount_minor or 0) + int(adjustment_total_minor),
                 "pay_profile_id": int(line.pay_profile_id) if line.pay_profile_id is not None else None,
                 "pay_profile_title": profile.title if profile is not None else None,
                 "member": {
@@ -227,9 +251,40 @@ def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
                     "full_name": member.full_name,
                     "short_name": member.short_name,
                 },
-                "breakdown": _parse_json_text(line.breakdown_json),
+                "breakdown": breakdown,
             }
         )
+
+    for member_id in sorted(set(adjustments_by_member) - seen_member_ids):
+        member = members_by_id.get(member_id)
+        if member is None:
+            continue
+        adjustment_items = adjustments_by_member[member_id]
+        adjustment_total_minor = sum(int(item.get("amount_minor") or 0) for item in adjustment_items)
+        lines.append(
+            {
+                "id": None,
+                "member_user_id": int(member_id),
+                "amount_minor": int(adjustment_total_minor),
+                "pay_profile_id": None,
+                "pay_profile_title": None,
+                "member": {
+                    "user_id": int(member.id),
+                    "tg_user_id": member.tg_user_id,
+                    "tg_username": member.tg_username,
+                    "full_name": member.full_name,
+                    "short_name": member.short_name,
+                },
+                "breakdown": {
+                    "metrics": {"hours_total": 0, "shifts_count": 0, "worked_dates_count": 0, "worked_dates": []},
+                    "components": list(adjustment_items),
+                    "adjustments_minor": int(adjustment_total_minor),
+                },
+            }
+        )
+
+    lines.sort(key=lambda item: (str((item.get("member") or {}).get("short_name") or (item.get("member") or {}).get("full_name") or "").lower(), int(item.get("member_user_id") or 0)))
+    total_amount_minor = sum(int(item.get("amount_minor") or 0) for item in lines)
 
     return {
         "month": month,
@@ -239,12 +294,13 @@ def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
             "period_month": run.period_month.isoformat() if run.period_month else None,
             "calculated_by_user_id": run.calculated_by_user_id,
             "calculated_at": run.calculated_at.isoformat() if run.calculated_at else None,
-            "total_amount_minor": int(run.total_amount_minor or 0),
-            "lines_count": int(run.lines_count or 0),
+            "total_amount_minor": int(total_amount_minor),
+            "base_total_amount_minor": int(run.total_amount_minor or 0),
+            "lines_count": len(lines),
         },
         "lines": lines,
-        "total_amount_minor": int(run.total_amount_minor or 0),
-        "lines_count": int(run.lines_count or 0),
+        "total_amount_minor": int(total_amount_minor),
+        "lines_count": len(lines),
         "latest_recalculation": _serialize_payroll_recalculation_log(latest_recalculation),
     }
 

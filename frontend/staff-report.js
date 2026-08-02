@@ -245,7 +245,11 @@ function withTimeout(p, ms, label) {
 
 // ---- Calendar ----
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-let curMonth = new Date(`${coerceDemoMonth(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`, { notify: false, context: "staff-report" })}-01T00:00:00`);
+let linkedReportDate = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("report_date") || "")) ? String(params.get("report_date")) : "";
+const initialReportMonth = linkedReportDate
+  ? linkedReportDate.slice(0, 7)
+  : `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+let curMonth = new Date(`${coerceDemoMonth(initialReportMonth, { notify: false, context: "staff-report" })}-01T00:00:00`);
 curMonth.setDate(1);
 
 let reportsByDate = new Map(); // dateISO -> report
@@ -1312,3 +1316,8 @@ if (!canView()) {
 await loadMonthReports();
 
 renderMonth();
+if (linkedReportDate && linkedReportDate.startsWith(`${ym(curMonth)}-`)) {
+  const targetReportDate = linkedReportDate;
+  linkedReportDate = "";
+  await openDay(targetReportDate);
+}

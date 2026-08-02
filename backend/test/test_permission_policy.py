@@ -31,6 +31,12 @@ class PermissionPolicyTests(TestCase):
         )
         self.assertEqual(permission_policy.expand_permission_codes(None), set())
 
+    def test_payroll_calculate_implies_payroll_view(self):
+        self.assertEqual(
+            permission_policy.expand_permission_codes(["PAYROLL_CALCULATE"]),
+            {"PAYROLL_CALCULATE", "PAYROLL_VIEW"},
+        )
+
     def test_manager_defaults_include_report_dependencies(self):
         codes = permission_policy.get_default_permission_codes_for_role("venue_manager")
 

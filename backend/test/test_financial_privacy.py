@@ -33,6 +33,7 @@ class FinancialPrivacyTests(TestCase):
             "venue_id": 12,
             "report_date": date(2026, 7, 18),
             "revenue_minor": 123_456,
+            "net_minor": 98_765,
             "margin_bps": 2_500,
             "is_active": True,
             "department_count": 3,
@@ -52,6 +53,7 @@ class FinancialPrivacyTests(TestCase):
         self.assertEqual(result["venue_id"], 12)
         self.assertEqual(result["report_date"], date(2026, 7, 18))
         self.assertEqual(result["revenue_minor"], 0)
+        self.assertEqual(result["net_minor"], 0)
         self.assertEqual(result["margin_bps"], 0)
         self.assertTrue(result["is_active"])
         self.assertEqual(result["department_count"], 3)

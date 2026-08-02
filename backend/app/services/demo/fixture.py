@@ -42,6 +42,7 @@ from app.models import (
     PaymentMethod,
     PaymentMethodTransfer,
     PayrollLine,
+    PayrollPaymentSettings,
     PayrollRecalculationLog,
     PayrollRun,
     RecurringExpenseAccrual,
@@ -268,6 +269,7 @@ def _fixture_table_plans() -> list[FixtureTablePlan]:
         FixtureTablePlan('venue_invites', VenueInvite, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('departments', Department, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('payment_methods', PaymentMethod, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
+        FixtureTablePlan('payroll_payment_settings', PayrollPaymentSettings, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('kpi_metrics', KpiMetric, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('shift_intervals', ShiftInterval, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('shifts', Shift, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
@@ -284,6 +286,7 @@ def _fixture_table_plans() -> list[FixtureTablePlan]:
         FixtureTablePlan('recurring_expense_rules', RecurringExpenseRule, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('recurring_expense_rule_payment_methods', RecurringExpenseRulePaymentMethod, lambda c, t: _in_ids(t.c.rule_id, c['recurring_rule_ids']), lambda c, t: _in_ids(t.c.rule_id, c['recurring_rule_ids'])),
         FixtureTablePlan('recurring_expense_accruals', RecurringExpenseAccrual, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
+        FixtureTablePlan('payroll_runs', PayrollRun, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('expenses', Expense, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('expense_allocations', ExpenseAllocation, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('expense_recognition_entries', ExpenseRecognitionEntry, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
@@ -299,7 +302,6 @@ def _fixture_table_plans() -> list[FixtureTablePlan]:
         FixtureTablePlan('pay_profiles', PayProfile, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('pay_profile_assignments', PayProfileAssignment, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('pay_components', PayComponent, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
-        FixtureTablePlan('payroll_runs', PayrollRun, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('payroll_lines', PayrollLine, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('payroll_recalculation_logs', PayrollRecalculationLog, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
         FixtureTablePlan('adjustments', Adjustment, lambda c, t: t.c.venue_id == c['venue_id'], lambda c, t: t.c.venue_id == c['venue_id']),
@@ -369,7 +371,10 @@ def load_demo_fixture(*, fixture_path: str | None = None) -> dict[str, Any]:
 
 def clear_demo_venue_data(db: Session, *, venue_id: int) -> dict[str, int]:
     ctx = _collect_live_context(db, int(venue_id))
-    plans = [plan for plan in _fixture_table_plans() if plan.name != 'venues']
+    # User rows are global and a DEMO user can still be referenced by another
+    # venue (for example, by a TEMPLATE venue). Bootstrap reuses the users that
+    # belonged to the target venue instead of deleting shared rows.
+    plans = [plan for plan in _fixture_table_plans() if plan.name not in {'venues', 'users'}]
     deleted: dict[str, int] = {}
     for plan in reversed(plans):
         table = plan.model.__table__

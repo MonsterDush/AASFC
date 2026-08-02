@@ -65,7 +65,7 @@ function renderShell() {
         </div>
         <div id="list" class="catalog-list" aria-live="polite"><div class="catalog-loading" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div></div></div>
       </div>
-      <div class="catalog-footer"><a class="btn subtle inline" id="back" href="#">← К расходам</a></div>
+      <div class="catalog-footer"><button class="btn subtle inline" id="back" type="button" data-nav-button>← К расходам</button></div>
     </div>
 
     <div id="toast" class="toast"><div class="toast__text"></div></div>

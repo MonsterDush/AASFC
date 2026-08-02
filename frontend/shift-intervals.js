@@ -89,8 +89,8 @@ function renderShell() {
       </section>
 
       <nav class="row shift-tool-links">
-        <a class="btn subtle inline" id="backToShifts" href="#">← Назад к графику</a>
-        <a class="btn subtle inline" id="backToVenue" href="#">К заведению</a>
+        <button class="btn subtle inline" id="backToShifts" type="button" data-nav-button>← Назад к графику</button>
+        <button class="btn subtle inline" id="backToVenue" type="button" data-nav-button>К заведению</button>
       </nav>
     </main>
 

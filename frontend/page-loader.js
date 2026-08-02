@@ -94,6 +94,15 @@
     }
   };
 
+  document.addEventListener("click", (event) => {
+    const button = event.target?.closest?.("button[data-nav-button]");
+    if (!button || button.disabled) return;
+    const target = button.dataset.href || button.getAttribute("href") || button.href;
+    if (!target || target === "#") return;
+    event.preventDefault();
+    window.location.assign(String(target));
+  });
+
   function begin() {
     if (finished) return () => {};
     pending += 1;

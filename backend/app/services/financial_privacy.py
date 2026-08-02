@@ -136,6 +136,8 @@ _FINANCIAL_EXACT_KEYS = {
     "income",
     "income_minor",
     "inflow_minor",
+    "net",
+    "net_minor",
     "outflow_minor",
     "balance_minor",
     "payroll_minor",

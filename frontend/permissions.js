@@ -187,6 +187,7 @@ export function buildStaffDashboardItems(permSet, venueRoleUpper, systemRoleUppe
   const canViewSummary =
     isOwnerRole(role) ||
     isSysAdminRole(sys) ||
+    hasPerm(permSet, "REPORTS_VIEW_PNL") ||
     hasPerm(permSet, "MONTHLY_SUMMARY_VIEW") ||
     hasExpenseViewAccess(permSet, role, sys) ||
     hasPayrollViewAccess(permSet, role, sys) ||

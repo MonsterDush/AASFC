@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
-  <script src="/page-loader.js?v=20260720-loader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-financeux4" />
+  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
   <title>Axelio · Выручка</title>
 </head>
-<body>
+<body class="owner-turnover-page">
   <div class="container">
     <div class="topbar">
       <div class="brand">
@@ -47,10 +47,11 @@
         <div class="screen-hero__head">
           <div>
             <b>Выручка</b>
-            <div class="page-caption mt-6">Один экран для просмотра выручки по департаментам или типам оплат. Сначала выбираешь период, потом режим детализации.</div>
+            <div class="page-caption mt-6">Выручка по департаментам и способам оплаты</div>
           </div>
           <div class="screen-hero__actions">
-            <button class="btn ghost" id="exportBtn">Экспорт XLSX</button>
+            <a class="btn ghost finance-action-btn" id="openLedgerBtn" href="#">Финансовые движения</a>
+            <button class="btn ghost finance-action-btn" id="exportBtn">Экспорт XLSX</button>
           </div>
         </div>
 
@@ -89,20 +90,62 @@
             <div class="hero-summary-card__eyebrow">Текущий срез</div>
             <div class="hero-summary-card__meta" id="periodCaption">—</div>
             <div class="hero-summary-card__value" id="total">—</div>
+            <div class="finance-metric-delta is-neutral" id="revenueTotalDelta">—</div>
             <div class="hero-summary-card__meta">Итоговая выручка по выбранному периоду и режиму.</div>
           </div>
         </div>
+
+        <details class="itemcard finance-comparison-card finance-comparison-disclosure">
+          <summary class="finance-comparison-disclosure__summary">
+            <span><b>Сравнение выручки</b><span class="muted">Открыть настройки сравнения</span></span>
+            <span class="badge">Настроить</span>
+          </summary>
+          <div class="finance-comparison-disclosure__body">
+          <div class="finance-comparison-card__head">
+            <div>
+              <div class="finance-period-card__label">Сравнение</div>
+              <div class="finance-period-card__value" id="revenueComparePeriodText">—</div>
+            </div>
+            <div class="seg" id="revenueCompareSeg">
+              <button type="button" data-compare="auto" class="active">Авто</button>
+              <button type="button" data-compare="custom">Другой период</button>
+              <button type="button" data-compare="none">Без сравнения</button>
+            </div>
+          </div>
+          <div class="finance-comparison-card__controls hidden" id="revenueCompareRange">
+            <div class="range-pick">
+              <input id="revenueCompareFrom" type="date" aria-label="Начало периода сравнения" />
+              <span class="muted">—</span>
+              <input id="revenueCompareTo" type="date" aria-label="Конец периода сравнения" />
+              <button class="btn" id="revenueCompareApply" type="button">Сравнить</button>
+            </div>
+          </div>
+          <div class="muted" id="revenueCompareHint">—</div>
+          </div>
+        </details>
       </div>
     </div>
 
-    <div class="card mt-12 section-card">
+    <section class="card mt-12 section-card revenue-trend-card" id="revenueTrendCard">
+      <div class="section-card__head revenue-trend-head">
+        <div class="section-card__title">
+          <b>Динамика выручки</b>
+          <div class="muted" id="revenueTrendSubtitle">По дням выбранного и сравниваемого периода, ₽</div>
+        </div>
+        <div class="revenue-trend-legend" id="revenueTrendLegend" aria-label="Легенда графика"></div>
+      </div>
+      <div class="revenue-trend-chart mt-12" id="revenueTrendChart" aria-live="polite"></div>
+      <div class="revenue-trend-focus mt-10" id="revenueTrendFocus">Выбери день на графике</div>
+    </section>
+
+    <div class="card mt-12 section-card revenue-structure-card">
       <div class="section-card__head">
         <div class="section-card__title">
-          <b>Детализация</b>
-          <div class="muted">Список автоматически меняется между департаментами и типами оплат.</div>
+          <b id="revenueRowsTitle">Структура выручки</b>
+          <div class="muted" id="revenueRowsSubtitle">Доля, сумма и изменение относительно периода сравнения.</div>
         </div>
       </div>
-      <div id="rows" class="table-like-list"></div>
+      <div id="rows" class="revenue-structure-list"></div>
     </div>
 
     <div class="nav">
@@ -124,7 +167,7 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-turnover.js?v=20260726-navmore1"></script>
+  <script type="module" src="/owner-turnover.js?v=20260802-financeux2"></script>
   <!-- Canonical revenue page -->
 </body>
 </html>

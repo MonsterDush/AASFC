@@ -122,8 +122,8 @@ function renderShell() {
       </div>
 
       <div class="pay-profile-links">
-        <a class="btn subtle inline" id="backProfiles" href="#">← К списку профилей</a>
-        <a class="btn subtle inline" id="openPayroll" href="#">Открыть начисления →</a>
+        <button class="btn subtle inline" id="backProfiles" type="button" data-nav-button>← К списку профилей</button>
+        <button class="btn subtle inline" id="openPayroll" type="button" data-nav-button>Открыть начисления →</button>
       </div>
     </section>
     </main>

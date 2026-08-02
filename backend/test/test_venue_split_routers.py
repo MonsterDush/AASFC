@@ -46,9 +46,16 @@ class VenueFinanceSummaryRouterTests(TestCase):
         with patch.object(venue_finance_summary, "_require_active_member_or_admin") as active, \
              patch.object(venue_finance_summary, "_require_revenue_viewer") as revenue, \
              patch.object(venue_finance_summary, "_require_report_viewer") as reports, \
+             patch.object(venue_finance_summary, "_finance_summary_access", return_value={
+                 "can_view_revenue": True,
+                 "can_view_expenses": True,
+                 "can_view_payroll": True,
+                 "can_view_profit": True,
+             }), \
+             patch.object(venue_finance_summary, "_restrict_finance_summary_payload", side_effect=lambda payload, access: payload), \
              patch.object(venue_finance_summary, "get_monthly_finance_summary", return_value={"kind": "monthly"}), \
              patch.object(venue_finance_summary, "get_day_finance_summary", return_value={"kind": "daily"}), \
-             patch.object(venue_finance_summary, "get_finance_summary", return_value={"kind": "finance"}), \
+             patch.object(venue_finance_summary, "get_finance_summary", return_value={"kind": "finance"}) as finance_summary, \
              patch.object(venue_finance_summary, "sanitize_financial_payload_for_user", side_effect=lambda current_user, payload: payload):
             monthly = venue_finance_summary.get_venue_monthly_finance_summary(
                 5, "2026-07", None, None, "PAYMENTS", db, user
@@ -63,12 +70,116 @@ class VenueFinanceSummaryRouterTests(TestCase):
         self.assertEqual(monthly, {"kind": "monthly"})
         self.assertEqual(daily, {"kind": "daily"})
         self.assertEqual(finance, {"kind": "finance"})
+        self.assertFalse(finance_summary.call_args.kwargs["include_series"])
         self.assertEqual(active.call_count, 3)
-        self.assertEqual(revenue.call_count, 3)
-        self.assertEqual(reports.call_count, 3)
+        self.assertEqual(revenue.call_count, 2)
+        self.assertEqual(reports.call_count, 2)
+
+    def test_finance_summary_payload_hides_unavailable_axes_and_derived_metrics(self):
+        payload = {
+            "revenue_minor": 500_000,
+            "expense_minor": 120_000,
+            "expense_without_payroll_minor": 120_000,
+            "payroll_minor": 80_000,
+            "payroll_expense_minor": 80_000,
+            "total_cost_minor": 200_000,
+            "adjustments_minor": 10_000,
+            "refunds_minor": -5_000,
+            "profit_minor": 305_000,
+            "margin_bps": 6100,
+            "expense_ratio_bps": 2400,
+            "payroll_ratio_bps": 1600,
+            "total_cost_ratio_bps": 4000,
+            "daily_series": [{
+                "date": date(2026, 7, 18),
+                "revenue_minor": 500_000,
+                "expense_minor": 120_000,
+                "payroll_minor": 80_000,
+                "total_cost_minor": 200_000,
+                "adjustments_minor": 10_000,
+                "refunds_minor": -5_000,
+                "profit_minor": 305_000,
+            }],
+            "cost_structure": [
+                {"key": "expense:1", "title": "Закупка", "amount_minor": 120_000},
+                {"key": "payroll", "title": "ФОТ", "amount_minor": 80_000},
+            ],
+        }
+
+        restricted = venue_finance_summary._restrict_finance_summary_payload(payload, {
+            "can_view_revenue": True,
+            "can_view_expenses": False,
+            "can_view_payroll": False,
+            "can_view_profit": False,
+        })
+
+        self.assertEqual(restricted["revenue_minor"], 500_000)
+        self.assertIsNone(restricted["expense_minor"])
+        self.assertIsNone(restricted["payroll_minor"])
+        self.assertIsNone(restricted["total_cost_minor"])
+        self.assertIsNone(restricted["profit_minor"])
+        self.assertIsNone(restricted["daily_series"][0]["expense_minor"])
+        self.assertIsNone(restricted["daily_series"][0]["profit_minor"])
+        self.assertEqual(restricted["cost_structure"], [])
+
+    def test_finance_summary_access_supports_expense_only_without_exposing_profit(self):
+        with patch.object(venue_finance_summary, "_is_owner_or_super_admin", return_value=False), \
+             patch.object(
+                 venue_finance_summary,
+                 "has_venue_permission",
+                 side_effect=lambda db, *, venue_id, user, permission_code: permission_code == "EXPENSE_VIEW",
+             ):
+            access = venue_finance_summary._finance_summary_access(
+                SimpleNamespace(),
+                venue_id=5,
+                user=SimpleNamespace(id=17),
+            )
+
+        self.assertFalse(access["can_view_revenue"])
+        self.assertTrue(access["can_view_expenses"])
+        self.assertFalse(access["can_view_payroll"])
+        self.assertFalse(access["can_view_profit"])
 
 
 class VenueLedgerRouterTests(TestCase):
+    def test_adjustments_and_transfers_accept_explicit_ledger_period(self):
+        user = SimpleNamespace(id=17)
+        adjustment_db = SimpleNamespace(execute=Mock(return_value=SimpleNamespace(all=lambda: [])))
+        transfer_db = SimpleNamespace(execute=Mock(return_value=SimpleNamespace(all=lambda: [])))
+
+        with patch.object(venue_ledger, "_require_active_member_or_admin"), \
+             patch.object(venue_ledger, "_require_finance_ledger_view"), \
+             patch.object(venue_ledger, "sanitize_financial_payload_for_user", side_effect=lambda current_user, payload: payload):
+            self.assertEqual(
+                venue_ledger.list_balance_adjustments(
+                    5,
+                    None,
+                    date(2026, 7, 10),
+                    date(2026, 7, 20),
+                    adjustment_db,
+                    user,
+                ),
+                [],
+            )
+            self.assertEqual(
+                venue_ledger.list_payment_method_transfers(
+                    5,
+                    None,
+                    date(2026, 7, 10),
+                    date(2026, 7, 20),
+                    transfer_db,
+                    user,
+                ),
+                [],
+            )
+
+        adjustment_sql = str(adjustment_db.execute.call_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        transfer_sql = str(transfer_db.execute.call_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("balance_adjustments.adjustment_date >= '2026-07-10'", adjustment_sql)
+        self.assertIn("balance_adjustments.adjustment_date <= '2026-07-20'", adjustment_sql)
+        self.assertIn("payment_method_transfers.transfer_date >= '2026-07-10'", transfer_sql)
+        self.assertIn("payment_method_transfers.transfer_date <= '2026-07-20'", transfer_sql)
+
     def test_ledger_serializers_preserve_minor_units_and_nested_catalogs(self):
         payment_method = SimpleNamespace(id=2, code="cash", title="Наличные")
         department = SimpleNamespace(id=3, code="bar", title="Бар")
@@ -90,6 +201,32 @@ class VenueLedgerRouterTests(TestCase):
         self.assertEqual(payload["amount_minor"], 12_345)
         self.assertEqual(payload["payment_method"]["code"], "cash")
         self.assertEqual(payload["department"]["title"], "Бар")
+
+    def test_ledger_period_accepts_month_or_explicit_date_range(self):
+        self.assertEqual(
+            venue_ledger._resolve_ledger_period(month="2026-07", date_from=None, date_to=None),
+            (date(2026, 7, 1), date(2026, 7, 31)),
+        )
+        self.assertEqual(
+            venue_ledger._resolve_ledger_period(
+                month=None,
+                date_from=date(2026, 6, 15),
+                date_to=date(2026, 6, 21),
+            ),
+            (date(2026, 6, 15), date(2026, 6, 21)),
+        )
+        self.assertIsNone(
+            venue_ledger._resolve_ledger_period(month=None, date_from=None, date_to=None)
+        )
+
+    def test_ledger_period_rejects_mixed_month_and_dates(self):
+        with self.assertRaises(HTTPException) as raised:
+            venue_ledger._resolve_ledger_period(
+                month="2026-07",
+                date_from=date(2026, 6, 1),
+                date_to=date(2026, 6, 30),
+            )
+        self.assertEqual(raised.exception.status_code, 400)
 
 
 class VenueRecurringExpenseRouterTests(TestCase):

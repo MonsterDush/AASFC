@@ -50,10 +50,34 @@ def rebuild_expense_allocations_for_expense(*, db: Session, expense: Expense) ->
 
     db.execute(delete(ExpenseAllocation).where(ExpenseAllocation.expense_id == int(expense.id)))
     delete_finance_entries_for_source(db=db, source_type="expense", source_id=int(expense.id))
+    delete_finance_entries_for_source(db=db, source_type="payroll_expense", source_id=int(expense.id))
     delete_expense_recognition_entries_for_expense(db=db, expense_id=int(expense.id))
 
     expense_status = str(getattr(expense, 'status', 'CONFIRMED') or 'CONFIRMED').upper()
     if expense_status != 'CONFIRMED':
+        return []
+
+    expense_kind = str(getattr(expense, "expense_kind", "OPERATING") or "OPERATING").upper()
+    if expense_kind == "PAYROLL":
+        create_finance_entry(
+            db=db,
+            venue_id=int(expense.venue_id),
+            entry_date=expense.expense_date,
+            amount_minor=int(expense.amount_minor or 0),
+            direction="EXPENSE",
+            kind="PAYROLL",
+            source_type="payroll_expense",
+            source_id=int(expense.id),
+            payment_method_id=int(expense.payment_method_id) if expense.payment_method_id is not None else None,
+            meta_json={
+                "expense_id": int(expense.id),
+                "payment_method_id": int(expense.payment_method_id) if expense.payment_method_id is not None else None,
+                "payroll_run_id": int(expense.payroll_run_id) if getattr(expense, "payroll_run_id", None) is not None else None,
+                "period_start": expense.payroll_period_start.isoformat() if getattr(expense, "payroll_period_start", None) else None,
+                "period_end": expense.payroll_period_end.isoformat() if getattr(expense, "payroll_period_end", None) else None,
+                "payout_key": getattr(expense, "payroll_payout_key", None),
+            },
+        )
         return []
 
     allocations: list[ExpenseAllocation] = []
@@ -99,6 +123,7 @@ def rebuild_expense_allocations_for_expense(*, db: Session, expense: Expense) ->
 def delete_expense_allocations_for_expense(*, db: Session, expense_id: int) -> int:
     deleted = db.execute(delete(ExpenseAllocation).where(ExpenseAllocation.expense_id == int(expense_id)))
     delete_finance_entries_for_source(db=db, source_type="expense", source_id=int(expense_id))
+    delete_finance_entries_for_source(db=db, source_type="payroll_expense", source_id=int(expense_id))
     delete_expense_recognition_entries_for_expense(db=db, expense_id=int(expense_id))
     return int(deleted.rowcount or 0)
 
@@ -121,6 +146,7 @@ def backfill_missing_expense_recognition_entries(*, db: Session, venue_id: int) 
         .where(
             Expense.venue_id == int(venue_id),
             Expense.status == 'CONFIRMED',
+            Expense.expense_kind == 'OPERATING',
             Expense.recurring_rule_id.is_(None),
             ExpenseRecognitionEntry.id.is_(None),
         )

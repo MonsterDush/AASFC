@@ -717,12 +717,29 @@ function renderSummary() {
   if (el.sumWriteoffs) el.sumWriteoffs.textContent = formatMoney(totalWriteoffs);
   el.payrollBreakdownRow?.classList.toggle("hidden", !(periodMode === "month" && payrollLine?.breakdown));
   if (el.daysChartHint) {
-    el.daysChartHint.textContent = periodMode === "month"
-      ? ((monthSummaryItem?.source === "payroll") ? "Подсвечены даты, которые вошли в итоговый расчёт" : "Выбери день для подробностей")
-      : "Выбери день, чтобы увидеть детализацию начисления и перерасчёта";
+    el.daysChartHint.textContent = "Максимальное начисление периода принято за 100%; остальные столбцы показаны относительно него";
   }
 }
 
+function payrollAmountsByDate() {
+  const result = new Map();
+  const allocations = Array.isArray(payrollLine?.breakdown?.shift_allocations)
+    ? payrollLine.breakdown.shift_allocations
+    : [];
+  for (const allocation of allocations) {
+    const date = String(allocation?.date || "").slice(0, 10);
+    if (!date) continue;
+    const amountRub = Number(allocation?.amount_minor || 0) / 100;
+    result.set(date, Number(result.get(date) || 0) + amountRub);
+  }
+  return result;
+}
+
+function chartSalaryAmount(day, payrollAmounts) {
+  return payrollAmounts.has(day.date)
+    ? Number(payrollAmounts.get(day.date) || 0)
+    : Number(day.salary || 0);
+}
 
 function renderMonthChart() {
   if (!el.monthChart) return;
@@ -732,19 +749,20 @@ function renderMonthChart() {
   }
 
   const isPayroll = monthSummaryItem?.source === "payroll";
+  const payrollAmounts = payrollAmountsByDate();
+  const chartAmounts = days.map((day) => Math.max(0, chartSalaryAmount(day, payrollAmounts)));
+  const maxChartAmount = Math.max(0, ...chartAmounts);
   const bars = days.map((d) => {
     const dt = new Date(String(d.date).length === 10 ? d.date + "T00:00:00" : d.date);
     const label = periodMode === "month" ? String(dt.getDate()) : `${pad2(dt.getDate())}.${pad2(dt.getMonth() + 1)}`;
-    const shiftsCount = Math.max(0, d.shifts?.length || 0);
-    const hasAdjustments = (Number(d.adjustmentCount || 0) > 0);
-    const h = isPayroll
-      ? (d.includedInPayroll ? 100 : (hasAdjustments ? 55 : (shiftsCount ? 35 : 12)))
-      : (d.hasReport ? 100 : (hasAdjustments ? 55 : (shiftsCount ? 45 : 12)));
+    const chartAmount = Math.max(0, chartSalaryAmount(d, payrollAmounts));
+    const h = maxChartAmount > 0 ? Math.min(100, (chartAmount / maxChartAmount) * 100) : 0;
     const barColor = isPayroll
-      ? (d.includedInPayroll ? "var(--accent)" : "var(--borderSoft)")
-      : (d.hasReport ? "var(--accent)" : "var(--borderSoft)");
+      ? (d.includedInPayroll || chartAmount > 0 ? "var(--accent)" : "var(--borderSoft)")
+      : (d.hasReport || chartAmount > 0 ? "var(--accent)" : "var(--borderSoft)");
+    const amountLabel = `${formatMoney(chartAmount)} ₽`;
     return `
-      <button class="bar" type="button" data-date="${esc(d.date)}" style="--h:${h}%;--barColor:${barColor}">
+      <button class="bar" type="button" data-date="${esc(d.date)}" aria-label="${esc(`${formatDateRu(d.date)}: ${amountLabel}`)}" title="${esc(amountLabel)}" style="--h:${h}%;--barColor:${barColor}">
         <div class="bar__track"><div class="bar__fill"></div></div>
         <div class="bar__label">${esc(label)}</div>
       </button>`;

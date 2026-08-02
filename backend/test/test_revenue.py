@@ -88,6 +88,44 @@ class RevenueTests(TestCase):
             'Revenue queries must explicitly filter DailyReport.status == CLOSED',
         )
 
+    def test_revenue_daily_series_uses_selected_mode_and_fills_missing_dates(self):
+        db = _FakeSession(
+            responses=[
+                _ScalarResult(2),
+                _AllResult([SimpleNamespace(ref_id=10, amount=700)]),
+                _AllResult([SimpleNamespace(id=10, code='HOOKAH', title='Кальяны', venue_id=1)]),
+                _AllResult([
+                    SimpleNamespace(date=date(2026, 3, 1), amount=400),
+                    SimpleNamespace(date=date(2026, 3, 3), amount=300),
+                ]),
+            ]
+        )
+        user = SimpleNamespace(id=101, system_role='NONE')
+
+        with patch.object(venue_revenue_exports, '_require_active_member_or_admin', return_value=None), \
+             patch.object(venue_revenue_exports, '_require_report_viewer', return_value=None), \
+             patch.object(venue_revenue_exports, '_require_revenue_viewer', return_value=None):
+            result = venue_revenue_exports.get_revenue_summary(
+                venue_id=1,
+                month='2026-03',
+                date_from=None,
+                date_to=None,
+                mode='DEPARTMENTS',
+                include_series=True,
+                db=db,
+                user=user,
+            )
+
+        self.assertEqual(len(result['daily_series']), 31)
+        self.assertEqual(result['daily_series'][0], {'date': date(2026, 3, 1), 'amount': 400})
+        self.assertEqual(result['daily_series'][1], {'date': date(2026, 3, 2), 'amount': 0})
+        self.assertEqual(result['daily_series'][2], {'date': date(2026, 3, 3), 'amount': 300})
+        self.assertEqual(sum(point['amount'] for point in result['daily_series']), result['total'])
+
+        daily_params = db.statements[-1].compile().params
+        self.assertIn('DEPT', daily_params.values())
+        self.assertIn('CLOSED', daily_params.values())
+
     def test_export_revenue_returns_attachment_headers(self):
         db = _FakeSession(
             responses=[

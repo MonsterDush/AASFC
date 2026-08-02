@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from io import BytesIO
+import json
 from typing import Any, Iterable
 
 from openpyxl import Workbook
@@ -147,6 +148,130 @@ def _finalize_workbook(wb: Workbook) -> bytes:
     out = BytesIO()
     wb.save(out)
     return out.getvalue()
+
+
+def _parse_iso_date(value: Any) -> date | Any:
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value or ""))
+    except (TypeError, ValueError):
+        return value
+
+
+def _parse_iso_datetime(value: Any) -> datetime | Any:
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return value
+
+
+def build_finance_ledger_xlsx(
+    *,
+    venue_name: str,
+    period_start: date,
+    period_end: date,
+    rows: list[dict[str, Any]],
+    filters: list[tuple[str, Any]] | None = None,
+) -> bytes:
+    direction_labels = {"INCOME": "Приход", "EXPENSE": "Списание"}
+    kind_labels = {
+        "REVENUE": "Выручка",
+        "EXPENSE": "Расход",
+        "PAYROLL": "ФОТ",
+        "ADJUSTMENT": "Корректировка",
+        "REFUND": "Возврат",
+        "BALANCE_ADJUSTMENT": "Корректировка баланса",
+        "TRANSFER": "Перевод",
+    }
+    source_labels = {
+        "daily_report": "Отчёт смены",
+        "expense": "Расход",
+        "payroll_run": "Расчёт начислений",
+        "payment_method_transfer": "Перевод между оплатами",
+        "balance_adjustment": "Корректировка баланса",
+    }
+    income_minor = sum(
+        int(row.get("amount_minor") or 0)
+        for row in rows
+        if str(row.get("direction") or "").upper() == "INCOME"
+    )
+    expense_minor = sum(
+        int(row.get("amount_minor") or 0)
+        for row in rows
+        if str(row.get("direction") or "").upper() == "EXPENSE"
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Операции"
+    ws.sheet_view.showGridLines = False
+    _write_title(ws, f"Финансовые движения · {venue_name}")
+    summary_rows = [
+        ("Период", f"{period_start.isoformat()} — {period_end.isoformat()}"),
+        *((filters or [])),
+        ("Записей", len(rows)),
+        ("Приход, ₽", _minor_to_major(income_minor)),
+        ("Списание, ₽", _minor_to_major(expense_minor)),
+        ("Чистый поток, ₽", _minor_to_major(income_minor - expense_minor)),
+    ]
+    _write_key_values(ws, summary_rows)
+    for row_idx in range(3, 3 + len(summary_rows)):
+        if str(ws.cell(row=row_idx, column=1).value or "").endswith(", ₽"):
+            ws.cell(row=row_idx, column=2).number_format = CURRENCY_FORMAT
+
+    table_rows: list[list[Any]] = []
+    for item in rows:
+        direction = str(item.get("direction") or "").upper()
+        kind = str(item.get("kind") or "").upper()
+        source_type = str(item.get("source_type") or "").lower()
+        amount_major = _minor_to_major(item.get("amount_minor"))
+        signed_amount = amount_major if direction == "INCOME" else -amount_major
+        meta = dict(item.get("meta_json") or {})
+        details = json.dumps(meta, ensure_ascii=False, sort_keys=True) if meta else None
+        table_rows.append([
+            _parse_iso_date(item.get("entry_date")),
+            direction_labels.get(direction, direction or "—"),
+            kind_labels.get(kind, kind or "—"),
+            signed_amount,
+            amount_major,
+            (item.get("payment_method") or {}).get("title"),
+            (item.get("department") or {}).get("title"),
+            source_labels.get(source_type, source_type or "—"),
+            item.get("source_id"),
+            meta.get("shift_slot"),
+            details,
+            item.get("id"),
+            _parse_iso_datetime(item.get("created_at")),
+        ])
+
+    _write_table(
+        ws,
+        [
+            "Дата",
+            "Направление",
+            "Вид движения",
+            "Сумма со знаком, ₽",
+            "Сумма, ₽",
+            "Тип оплаты",
+            "Департамент",
+            "Источник",
+            "ID источника",
+            "Смена",
+            "Детали",
+            "ID проводки",
+            "Создано",
+        ],
+        table_rows,
+        currency_cols={4, 5},
+        integer_cols={9, 12},
+        date_cols={1},
+        datetime_cols={13},
+    )
+    ws.column_dimensions["K"].width = 48
+    return _finalize_workbook(wb)
 
 
 

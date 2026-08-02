@@ -174,9 +174,9 @@ function renderShell() {
       </section>
 
       <nav class="row shift-tool-links">
-        <a class="btn subtle inline" id="backToIntervals" href="#">← Интервалы смен</a>
-        <a class="btn subtle inline" id="backToShifts" href="#">К графику</a>
-        <a class="btn subtle inline" id="backToVenue" href="#">К заведению</a>
+        <button class="btn subtle inline" id="backToIntervals" type="button" data-nav-button>← Интервалы смен</button>
+        <button class="btn subtle inline" id="backToShifts" type="button" data-nav-button>К графику</button>
+        <button class="btn subtle inline" id="backToVenue" type="button" data-nav-button>К заведению</button>
       </nav>
     </main>
 

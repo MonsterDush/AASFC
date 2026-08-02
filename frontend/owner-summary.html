@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
-  <script src="/page-loader.js?v=20260720-loader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-financeux4" />
+  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
   <title>Axelio · Сводка</title>
 </head>
 <body class="owner-summary-page">
@@ -47,17 +47,19 @@
         <div class="screen-hero__head">
           <div>
             <b>Финансовая сводка</b>
-            <div class="muted mt-6">главные показатели по закрытым отчётам и подтверждённым расходам</div>
+            <div class="muted mt-6">Закрытые отчёты, подтверждённые расходы и ФОТ</div>
           </div>
           <div class="seg seg--period summary-period-segment" id="summaryPeriodSeg">
             <button data-period="month" class="active">Месяц</button>
+            <button data-period="day">День</button>
             <button data-period="range">Период</button>
           </div>
         </div>
 
-        <div class="screen-hero__toolbar">
+        <div class="screen-hero__toolbar summary-primary-toolbar">
           <div class="screen-hero__period">
             <input class="finance-control" id="summaryMonthPick" type="month" />
+            <input class="finance-control hidden" id="summaryDayPick" type="date" />
             <div id="summaryRangePick" class="range-pick hidden">
               <input id="summaryFromPick" type="date" />
               <span class="muted">—</span>
@@ -75,6 +77,33 @@
           <div class="finance-period-card__value is-loading" id="summaryPeriodText" aria-busy="true">Загрузка…</div>
           <div class="muted" id="summaryHint">—</div>
         </div>
+
+        <details class="itemcard finance-comparison-card finance-comparison-disclosure summary-comparison-card">
+          <summary class="finance-comparison-disclosure__summary">
+            <span><b>Сравнение периодов</b><span class="muted">Открыть настройки сравнения</span></span>
+            <span class="badge">Настроить</span>
+          </summary>
+          <div class="finance-comparison-disclosure__body">
+          <div class="summary-comparison-card__head">
+            <div>
+              <div class="finance-period-card__label">Сравнение</div>
+              <div class="finance-period-card__value" id="summaryComparePeriodText">—</div>
+            </div>
+            <div class="seg summary-compare-segment" id="summaryCompareSeg">
+              <button data-compare="auto" class="active">Авто</button>
+              <button data-compare="custom">Другой период</button>
+              <button data-compare="none">Без сравнения</button>
+            </div>
+          </div>
+          <div class="range-pick hidden" id="summaryCompareRangePick">
+            <input id="summaryCompareFromPick" type="date" aria-label="Начало периода сравнения" />
+            <span class="muted">—</span>
+            <input id="summaryCompareToPick" type="date" aria-label="Конец периода сравнения" />
+            <button class="btn" id="summaryCompareApplyBtn" type="button">Сравнить</button>
+          </div>
+          <div class="muted" id="summaryCompareHint">Автоматический период сравнения зависит от выбранного режима.</div>
+          </div>
+        </details>
       </div>
 
       <div class="state summary-state hidden" id="summaryState" role="status">
@@ -86,40 +115,77 @@
         <div class="itemcard finance-stat finance-stat--hero summary-metric summary-metric--revenue" id="revenueCard">
           <div class="finance-stat__label">Выручка</div>
           <div class="finance-stat__value is-loading" id="summaryRevenue" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryRevenueDelta">—</div>
           <div class="finance-stat__meta">Основная сумма по закрытым отчётам за выбранный период.</div>
         </div>
         <div class="itemcard finance-stat finance-stat--hero summary-metric summary-metric--profit" id="profitCard">
           <div class="finance-stat__label">Прибыль</div>
           <div class="finance-stat__value is-loading" id="summaryProfit" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryProfitDelta">—</div>
           <div class="finance-stat__meta">Выручка за вычетом расходов без ФОТ и фонда оплаты труда.</div>
         </div>
         <div class="itemcard finance-stat finance-stat--hero summary-metric summary-metric--margin" id="marginCard">
           <div class="finance-stat__label">Маржинальность</div>
           <div class="finance-stat__value is-loading" id="summaryMargin" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryMarginDelta">—</div>
           <div class="finance-stat__meta">Доля прибыли от выручки за период.</div>
         </div>
+      </div>
+
+      <div class="summary-analytics-grid mt-12" id="summaryAnalyticsGrid">
+        <section class="itemcard summary-chart-card summary-trend-card" id="summaryTrendCard" aria-labelledby="summaryTrendTitle">
+          <div class="section-head">
+            <div>
+              <b id="summaryTrendTitle">Динамика выручки, затрат и прибыли</b>
+              <div class="muted mt-6" id="summaryTrendSubtitle">По дням выбранного периода, ₽</div>
+            </div>
+            <div class="summary-chart-tools">
+              <div class="seg summary-trend-metric-seg" id="summaryTrendMetricSeg" aria-label="Показатель графика">
+                <button type="button" class="active" data-trend-metric="revenue">Выручка</button>
+                <button type="button" data-trend-metric="cost">Затраты</button>
+                <button type="button" data-trend-metric="profit">Прибыль</button>
+              </div>
+              <div class="summary-chart-legend" id="summaryTrendLegend" aria-label="Легенда графика"></div>
+            </div>
+          </div>
+          <div class="summary-trend-chart mt-12" id="summaryTrendChart"></div>
+          <div class="summary-chart-focus mt-10" id="summaryTrendFocus" aria-live="polite">Выбери день на графике</div>
+        </section>
+
+        <section class="itemcard summary-chart-card" id="summaryStructureCard" aria-labelledby="summaryStructureTitle">
+          <div>
+            <b id="summaryStructureTitle">Структура затрат</b>
+            <div class="muted mt-6" id="summaryStructureSubtitle">Подтверждённые расходы и распределённый ФОТ</div>
+          </div>
+          <div class="summary-cost-structure mt-12" id="summaryCostStructure"></div>
+        </section>
       </div>
 
       <div class="finance-kpis finance-kpis--secondary summary-kpis mt-12" id="summarySecondaryKpis">
         <div class="itemcard finance-stat summary-metric summary-metric--cost" id="expensesCard">
           <div class="finance-stat__label">Расходы без ФОТ</div>
           <div class="finance-stat__value is-loading" id="summaryExpenses" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryExpensesDelta">—</div>
         </div>
         <div class="itemcard finance-stat summary-metric summary-metric--cost" id="payrollCard">
           <div class="finance-stat__label">ФОТ</div>
           <div class="finance-stat__value is-loading" id="summaryPayroll" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryPayrollDelta">—</div>
         </div>
         <div class="itemcard finance-stat summary-metric summary-metric--cost" id="totalCostCard">
           <div class="finance-stat__label">Всего затрат</div>
           <div class="finance-stat__value is-loading" id="summaryTotalCost" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryTotalCostDelta">—</div>
         </div>
         <div class="itemcard finance-stat summary-metric" id="adjustmentsCard">
           <div class="finance-stat__label">Корректировки</div>
           <div class="finance-stat__value is-loading" id="summaryAdjustments" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryAdjustmentsDelta">—</div>
         </div>
         <div class="itemcard finance-stat summary-metric" id="refundsCard">
           <div class="finance-stat__label">Возвраты</div>
           <div class="finance-stat__value is-loading" id="summaryRefunds" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryRefundsDelta">—</div>
         </div>
       </div>
 
@@ -127,27 +193,30 @@
         <div class="itemcard finance-stat" id="expenseRatioCard">
           <div class="finance-stat__label">Расходы от выручки</div>
           <div class="finance-stat__value is-loading" id="summaryExpenseRatio" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryExpenseRatioDelta">—</div>
         </div>
         <div class="itemcard finance-stat" id="payrollRatioCard">
           <div class="finance-stat__label">ФОТ от выручки</div>
           <div class="finance-stat__value is-loading" id="summaryPayrollRatio" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryPayrollRatioDelta">—</div>
         </div>
         <div class="itemcard finance-stat" id="totalCostRatioCard">
           <div class="finance-stat__label">Затраты от выручки</div>
           <div class="finance-stat__value is-loading" id="summaryTotalCostRatio" aria-busy="true">Загрузка…</div>
+          <div class="finance-stat__delta" id="summaryTotalCostRatioDelta">—</div>
         </div>
       </div>
 
       <div class="itemcard mt-12 summary-details-card" id="summaryDetailsCard">
         <div class="section-head">
           <div class="section-title"><b>Перейти к деталям</b></div>
-          <div class="muted">Открой нужный финансовый раздел без перегруза первого экрана.</div>
         </div>
         <div class="finance-shortcuts mt-12">
-          <button class="btn subtle" id="openRevenueBtn" type="button">Выручка</button>
-          <button class="btn subtle" id="openExpensesBtn" type="button">Расходы</button>
-          <button class="btn subtle" id="openPayrollBtn" type="button">Начисления</button>
-          <button class="btn subtle" id="openEconomicsBtn" type="button">Экономика дня</button>
+          <button class="btn subtle finance-action-btn" id="openRevenueBtn" type="button">Выручка</button>
+          <button class="btn subtle finance-action-btn" id="openExpensesBtn" type="button">Расходы</button>
+          <button class="btn subtle finance-action-btn" id="openPayrollBtn" type="button">Начисления</button>
+          <button class="btn subtle finance-action-btn hidden" id="openLedgerBtn" type="button" data-nav-button>Финансовые движения</button>
+          <button class="btn subtle finance-action-btn" id="openEconomicsBtn" type="button">Экономика дня</button>
         </div>
       </div>
     </div>
@@ -171,6 +240,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-summary.js?v=20260726-navmore1"></script>
+  <script type="module" src="/owner-summary.js?v=20260802-financeux2"></script>
 </body>
 </html>
