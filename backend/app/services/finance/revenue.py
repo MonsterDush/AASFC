@@ -19,6 +19,7 @@ def load_report_values(*, db: Session, report_id: int) -> list[DailyReportValue]
 
 
 def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportValue]) -> list[dict]:
+    shift_slot = str(getattr(report, "shift_slot", "DAY") or "DAY").upper()
     payment_values = [v for v in values if v.kind == "PAYMENT" and int(v.value_numeric or 0) > 0]
     if payment_values:
         return [
@@ -28,6 +29,7 @@ def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportVa
                 "payment_method_id": int(v.ref_id),
                 "meta_json": {
                     "report_date": report.date.isoformat(),
+                    "shift_slot": shift_slot,
                     "dimension": "payment_method",
                     "ref_id": int(v.ref_id),
                 },
@@ -44,6 +46,7 @@ def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportVa
                 "payment_method_id": None,
                 "meta_json": {
                     "report_date": report.date.isoformat(),
+                    "shift_slot": shift_slot,
                     "dimension": "department_only_fallback",
                     "ref_id": int(v.ref_id),
                 },
@@ -62,6 +65,7 @@ def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportVa
             "payment_method_id": None,
             "meta_json": {
                 "report_date": report.date.isoformat(),
+                "shift_slot": shift_slot,
                 "dimension": "report_total",
             },
         }

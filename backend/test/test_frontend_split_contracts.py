@@ -148,6 +148,19 @@ class WorkflowPageUiPolishContractTests(TestCase):
         self.assertIn("access.canViewRevenue", ledger_script)
         self.assertIn("access.canViewExpenses", ledger_script)
         self.assertIn("syncFinanceLinks", ledger_script)
+        self.assertIn("buildLedgerSourceDrilldown", ledger_script)
+        self.assertIn("data-source-details", ledger_script)
+        self.assertIn("focusLinkedTransfer", ledger_script)
+
+        expense_script = (FRONTEND / "owner-expenses.js").read_text(encoding="utf-8")
+        payroll_script = (FRONTEND / "owner-payroll.js").read_text(encoding="utf-8")
+        report_script = (FRONTEND / "staff-report.js").read_text(encoding="utf-8")
+        self.assertIn('params.get("expense_id")', expense_script)
+        self.assertIn("focusLinkedExpense", expense_script)
+        self.assertIn('params.get("payroll_line_id")', payroll_script)
+        self.assertIn("focusLinkedPayrollLine", payroll_script)
+        self.assertIn('params.get("report_date")', report_script)
+        self.assertIn("await openDay(targetReportDate)", report_script)
 
     def test_setup_positions_and_invites_keep_responsive_visual_states(self):
         contracts = {
@@ -252,7 +265,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         entrypoints = {
             "staff-salary.html": "/staff-salary.js?v=20260729-salarybars1",
             "staff-adjustments.html": "/staff-adjustments.js?v=20260726-navmore1",
-            "staff-report.html": "/staff-report.js?v=20260726-navmore1",
+            "staff-report.html": "/staff-report.js?v=20260802-ledgerdrill1",
         }
         for html_name, entrypoint in entrypoints.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
@@ -360,8 +373,8 @@ class WorkflowPageUiPolishContractTests(TestCase):
         script = (FRONTEND / "owner-payroll.js").read_text(encoding="utf-8")
         styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
 
-        self.assertIn("/styles/pages/owner-payroll.css?v=20260802-payrollanalytics1", html)
-        self.assertIn("/owner-payroll.js?v=20260802-payrollanalytics1", html)
+        self.assertIn("/styles/pages/owner-payroll.css?v=20260802-ledgerdrill1", html)
+        self.assertIn("/owner-payroll.js?v=20260802-ledgerdrill1", html)
         self.assertIn('class="owner-payroll-page"', html)
         self.assertIn("payroll-bootstrap", html)
         for contract in (

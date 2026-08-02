@@ -46,7 +46,7 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertEqual(sum(row["amount_minor"] for row in rows), 125_000)
 
     def test_build_report_revenue_plan_prefers_payments_for_money_axis(self):
-        report = SimpleNamespace(id=1, venue_id=5, date=date(2026, 3, 10), revenue_total=1500)
+        report = SimpleNamespace(id=1, venue_id=5, date=date(2026, 3, 10), shift_slot="NIGHT", revenue_total=1500)
         values = [
             SimpleNamespace(kind="PAYMENT", ref_id=11, value_numeric=700),
             SimpleNamespace(kind="PAYMENT", ref_id=12, value_numeric=800),
@@ -59,6 +59,7 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertEqual(sum(item["amount_minor"] for item in plan), 150000)
         self.assertEqual(plan[0]["payment_method_id"], 11)
         self.assertIsNone(plan[0]["department_id"])
+        self.assertEqual(plan[0]["meta_json"]["shift_slot"], "NIGHT")
 
     def test_get_finance_summary_calculates_profit_and_margin(self):
         amounts = {

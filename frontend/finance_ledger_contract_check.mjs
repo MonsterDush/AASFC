@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  buildLedgerSourceDrilldown,
   buildLedgerDailySeries,
   buildLedgerStructure,
   calculateLedgerMetrics,
@@ -31,5 +32,50 @@ assert.equal(structure.length, 3);
 assert.deepEqual(structure[0], { direction: "INCOME", kind: "REVENUE", amountMinor: 100_000, count: 1 });
 assert.deepEqual(structure[2], { direction: "MIXED", kind: "OTHER", amountMinor: 20_000, count: 2 });
 assert.equal(ledgerKindLabel("BALANCE_ADJUSTMENT"), "Баланс");
+
+assert.deepEqual(
+  buildLedgerSourceDrilldown({
+    venue_id: 5,
+    entry_date: "2026-07-18",
+    source_type: "daily_report",
+    source_id: 71,
+    meta_json: { report_date: "2026-07-18", shift_slot: "NIGHT" },
+  }),
+  {
+    sourceType: "daily_report",
+    sourceId: 71,
+    sourceLabel: "Отчёт смены",
+    actionLabel: "Открыть отчёт",
+    href: "/staff-report.html?venue_id=5&report_date=2026-07-18&shift_slot=NIGHT",
+  },
+);
+
+assert.equal(
+  buildLedgerSourceDrilldown({
+    entry_date: "2026-07-03",
+    source_type: "expense",
+    source_id: 42,
+  }, { venueId: 5, month: "2026-07" }).href,
+  "/owner-expenses.html?venue_id=5&month=2026-07&expense_id=42",
+);
+
+assert.equal(
+  buildLedgerSourceDrilldown({
+    entry_date: "2026-07-01",
+    source_type: "payroll_run",
+    source_id: 9,
+    meta_json: { period_month: "2026-07", member_user_id: 12, payroll_line_id: 88 },
+  }, { venueId: 5 }).href,
+  "/owner-payroll.html?venue_id=5&month=2026-07&member_user_id=12&payroll_line_id=88",
+);
+
+assert.equal(
+  buildLedgerSourceDrilldown({
+    entry_date: "2026-07-15",
+    source_type: "payment_method_transfer",
+    source_id: 19,
+  }, { venueId: 5, month: "2026-07" }).href,
+  "/owner-finance-ledger.html?venue_id=5&month=2026-07&transfer_id=19#transfers",
+);
 
 console.log("finance ledger contract: ok");

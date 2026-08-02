@@ -21,11 +21,12 @@ import {
   resolveComparisonRange,
 } from "/app/period-comparison.js?v=20260729-compare2";
 import {
+  buildLedgerSourceDrilldown,
   buildLedgerDailySeries,
   buildLedgerStructure,
   calculateLedgerMetrics,
   ledgerKindLabel,
-} from "/app/finance-ledger-analytics.js?v=20260802-ledger1";
+} from "/app/finance-ledger-analytics.js?v=20260802-ledgerdrill1";
 
 let financialValuesHidden = false;
 
@@ -132,6 +133,8 @@ let access = {
   canViewSummary: false,
   canViewRevenue: false,
   canViewExpenses: false,
+  canViewPayroll: false,
+  canViewReports: false,
 };
 
 const state = {
@@ -144,6 +147,8 @@ const state = {
   compareFrom: "",
   compareTo: "",
   transfers: [],
+  focusTransferId: null,
+  sourceTargetFocused: false,
 };
 
 function syncFinanceLinks() {
@@ -181,15 +186,27 @@ async function loadAccess() {
     const canViewRevenue = isOwner || isAdmin || hasPerm(pset, "REVENUE_VIEW");
     const canViewExpenses = isOwner || isAdmin || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
     const canViewPayroll = isOwner || isAdmin || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");
+    const canViewReports = isOwner || isAdmin || ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]
+      .some((code) => hasPerm(pset, code));
     access = {
       canView: isOwner || isAdmin || hasPerm(pset, "FINANCE_LEDGER_VIEW") || hasPerm(pset, "REVENUE_VIEW") || hasPerm(pset, "EXPENSE_VIEW"),
       canManageTransfers: isOwner || isAdmin || hasPerm(pset, "PAYMENT_TRANSFERS_MANAGE") || hasPerm(pset, "EXPENSE_ADD"),
       canViewSummary: canViewRevenue || canViewExpenses || canViewPayroll || hasPerm(pset, "REPORTS_VIEW_PNL") || hasPerm(pset, "MONTHLY_SUMMARY_VIEW"),
       canViewRevenue,
       canViewExpenses,
+      canViewPayroll,
+      canViewReports,
     };
   } catch {
-    access = { canView: false, canManageTransfers: false, canViewSummary: false, canViewRevenue: false, canViewExpenses: false };
+    access = {
+      canView: false,
+      canManageTransfers: false,
+      canViewSummary: false,
+      canViewRevenue: false,
+      canViewExpenses: false,
+      canViewPayroll: false,
+      canViewReports: false,
+    };
   }
   return access;
 }
@@ -456,25 +473,70 @@ function renderEntries() {
 
   el.innerHTML = state.entries.map((item) => {
     const directionText = item.direction === "INCOME" ? "Приход" : "Списание";
-    const scope = item.payment_method?.title || item.department?.title || item.source_type || "—";
-    const meta = item.meta_json ? `<div class="muted mt-6">Есть дополнительные данные по операции</div>` : "";
+    const source = buildLedgerSourceDrilldown(item, {
+      venueId: getActiveVenueId(),
+      month: state.month,
+    });
+    const scope = item.payment_method?.title || item.department?.title || source.sourceLabel || "—";
+    const canOpenSource = source.sourceType === "expense"
+      ? access.canViewExpenses
+      : source.sourceType === "payroll_run"
+        ? access.canViewPayroll
+        : source.sourceType === "daily_report"
+          ? access.canViewReports
+          : access.canView;
+    const sourceAction = canOpenSource
+      ? (source.href
+          ? `<a class="btn ghost small ledger-source-action" href="${esc(source.href)}">${esc(source.actionLabel)}</a>`
+          : `<button class="btn ghost small ledger-source-action" type="button" data-source-details="${esc(item.id)}">${esc(source.actionLabel)}</button>`)
+      : "";
     return `
-      <div class="expense-row">
+      <div class="expense-row ledger-entry-row" data-ledger-entry-id="${esc(item.id)}">
         <div class="expense-row__main">
           <div class="row gap-8">
             <div class="expense-row__title">${esc(ledgerKindLabel(item.kind))}</div>
             <span class="badge">${esc(directionText)}</span>
             <span class="badge">${esc(scope)}</span>
           </div>
-          <div class="muted mt-6">${esc(item.entry_date || "—")}${item.source_type ? ` · источник: ${esc(item.source_type)}` : ""}</div>
-          ${meta}
+          <div class="muted mt-6">${esc(formatEntryDate(item.entry_date))}</div>
+          <div class="ledger-source-meta mt-8"><span>Источник: ${esc(source.sourceLabel)}</span>${source.sourceId ? `<span class="mono">#${esc(source.sourceId)}</span>` : ""}</div>
         </div>
         <div class="expense-row__side">
           <div class="expense-row__amount">${esc(fmtMoneyMinor(item.amount_minor || 0))}</div>
+          ${sourceAction}
         </div>
       </div>
     `;
   }).join("");
+
+  el.querySelectorAll("[data-source-details]").forEach((button) => {
+    button.onclick = () => {
+      const entry = state.entries.find((item) => String(item.id) === String(button.getAttribute("data-source-details")));
+      if (entry) openLedgerSourceDetails(entry);
+    };
+  });
+}
+
+function sourceDetailRow(label, value) {
+  if (value === null || value === undefined || String(value).trim() === "") return "";
+  return `<div class="finance-kv-row"><span class="muted">${esc(label)}</span><b>${esc(value)}</b></div>`;
+}
+
+function openLedgerSourceDetails(entry) {
+  const source = buildLedgerSourceDrilldown(entry, { venueId: getActiveVenueId(), month: state.month });
+  const meta = entry?.meta_json && typeof entry.meta_json === "object" ? entry.meta_json : {};
+  const rows = [
+    sourceDetailRow("Источник", `${source.sourceLabel}${source.sourceId ? ` #${source.sourceId}` : ""}`),
+    sourceDetailRow("Дата движения", formatEntryDate(entry.entry_date)),
+    sourceDetailRow("Сумма", fmtMoneyMinor(entry.amount_minor || 0)),
+    sourceDetailRow("Тип", ledgerKindLabel(entry.kind)),
+    sourceDetailRow("Дата документа", meta.adjustment_date || meta.transfer_date || meta.expense_date || meta.report_date),
+    sourceDetailRow("Смена", String(meta.shift_slot || "").toUpperCase() === "NIGHT" ? "Ночь" : (meta.shift_slot ? "День" : "")),
+    sourceDetailRow("Период начисления", meta.period_month),
+    sourceDetailRow("Причина", meta.reason),
+    sourceDetailRow("Комментарий", meta.comment),
+  ].filter(Boolean).join("");
+  openHtmlModal(source.sourceLabel, `<div class="finance-kv-list">${rows}</div>`);
 }
 
 function renderTransfers() {
@@ -496,7 +558,7 @@ function renderTransfers() {
         <button class="btn danger small" data-transfer-del="${item.id}">Удалить</button>
       </div>` : "";
     return `
-      <div class="expense-row">
+      <div class="expense-row ledger-source-target" id="transfer-${esc(item.id)}" data-transfer-row="${esc(item.id)}">
         <div class="expense-row__main">
           <div class="row gap-8">
             <div class="expense-row__title">${esc(item.from_payment_method?.title || "—")} → ${esc(item.to_payment_method?.title || "—")}</div>
@@ -521,6 +583,20 @@ function renderTransfers() {
   });
   el.querySelectorAll("[data-transfer-status]").forEach((btn) => {
     btn.onclick = () => updateTransfer(Number(btn.getAttribute("data-transfer-id")), { status: String(btn.getAttribute("data-transfer-status") || "DRAFT") });
+  });
+  focusLinkedTransfer();
+}
+
+function focusLinkedTransfer() {
+  if (state.sourceTargetFocused || !state.focusTransferId) return;
+  const target = document.querySelector(`[data-transfer-row="${state.focusTransferId}"]`);
+  if (!target) return;
+  state.sourceTargetFocused = true;
+  target.classList.add("is-source-target");
+  target.setAttribute("tabindex", "-1");
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
   });
 }
 
@@ -668,6 +744,7 @@ async function boot() {
   document.getElementById("ledgerPaymentMethodPick").value = params.get("payment_method_id") || "";
   document.getElementById("ledgerKindPick").value = (params.get("kind") || "").toUpperCase();
   state.month = document.getElementById("ledgerMonthPick").value;
+  state.focusTransferId = Number(params.get("transfer_id") || 0) || null;
   syncFinanceLinks();
   state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
   state.compareFrom = params.get("compare_from") || "";

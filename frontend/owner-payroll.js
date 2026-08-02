@@ -366,6 +366,9 @@ let state = {
   compareMode: "auto",
   compareFrom: "",
   compareTo: "",
+  focusPayrollLineId: null,
+  focusMemberUserId: null,
+  sourceTargetFocused: false,
 };
 
 async function openExportLink(path) {
@@ -844,6 +847,8 @@ function renderLines() {
     const components = Array.isArray(breakdown.components) ? breakdown.components : [];
     const row = document.createElement("div");
     row.className = "payroll-person";
+    row.dataset.payrollLineId = String(line?.id || "");
+    row.dataset.memberUserId = String(line?.member_user_id ?? line?.member?.user_id ?? "");
     const periodState = String(line.period_state || breakdown.period_state || "").toLowerCase();
     const stateBadge = periodState === "partial"
       ? '<span class="badge">частично</span>'
@@ -902,6 +907,24 @@ function renderLines() {
       </div>
     `;
     linesList.appendChild(row);
+  });
+  focusLinkedPayrollLine();
+}
+
+function focusLinkedPayrollLine() {
+  if (state.sourceTargetFocused) return;
+  const target = state.focusPayrollLineId
+    ? document.querySelector(`[data-payroll-line-id="${state.focusPayrollLineId}"]`)
+    : (state.focusMemberUserId ? document.querySelector(`[data-member-user-id="${state.focusMemberUserId}"]`) : null);
+  if (!target) return;
+  state.sourceTargetFocused = true;
+  target.classList.add("is-source-target");
+  target.setAttribute("tabindex", "-1");
+  const details = target.querySelector("details");
+  if (details) details.open = true;
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
   });
 }
 
@@ -1038,6 +1061,8 @@ async function boot() {
 
   const params = new URLSearchParams(location.search);
   state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-payroll" });
+  state.focusPayrollLineId = Number(params.get("payroll_line_id") || 0) || null;
+  state.focusMemberUserId = Number(params.get("member_user_id") || 0) || null;
   const hasRange = /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_from") || "")) && /^\d{4}-\d{2}-\d{2}$/.test(String(params.get("date_to") || ""));
   state.periodMode = (params.get("period_mode") || (hasRange ? "range" : "month")).toLowerCase() === "range" ? "range" : "month";
   if (isDemoUiMode()) state.periodMode = "month";

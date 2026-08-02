@@ -70,6 +70,8 @@ let state = {
   compareMode: "auto",
   compareFrom: "",
   compareTo: "",
+  focusExpenseId: null,
+  sourceTargetFocused: false,
 };
 
 async function openExportLink(path) {
@@ -657,7 +659,7 @@ function renderExpenses() {
         <button class="btn danger small" data-del="${item.id}">Удалить</button>
       </div>` : "";
     return `
-      <div class="expense-row">
+      <div class="expense-row" data-expense-row="${esc(item.id)}">
         <div class="expense-row__main">
           <div class="row gap-8">
             <div class="expense-row__title">${esc(item.category?.title || "Без категории")}</div>
@@ -705,6 +707,20 @@ function renderExpenses() {
       const [expenseId, attachmentId] = String(btn.getAttribute("data-expense-file") || "").split(":");
       if (expenseId && attachmentId) openExpenseAttachmentPreview(expenseId, attachmentId);
     };
+  });
+  focusLinkedExpense();
+}
+
+function focusLinkedExpense() {
+  if (state.sourceTargetFocused || !state.focusExpenseId) return;
+  const target = document.querySelector(`[data-expense-row="${state.focusExpenseId}"]`);
+  if (!target) return;
+  state.sourceTargetFocused = true;
+  target.classList.add("is-source-target");
+  target.setAttribute("tabindex", "-1");
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
   });
 }
 
@@ -986,6 +1002,7 @@ async function boot() {
   if (openSuppliersBtn) openSuppliersBtn.href = `/owner-suppliers.html?venue_id=${encodeURIComponent(activeVenueId)}`;
 
   state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-expenses" });
+  state.focusExpenseId = Number(params.get("expense_id") || 0) || null;
   syncLedgerLink();
   state.categoryId = params.get("category_id") || "";
   state.supplierId = params.get("supplier_id") || "";

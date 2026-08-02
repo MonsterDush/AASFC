@@ -4,7 +4,7 @@ import calendar
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
@@ -12,6 +12,7 @@ from app.auth.venue_permissions import require_venue_permission
 from app.core.db import get_db
 from app.models.balance_adjustment import BalanceAdjustment
 from app.models.department import Department
+from app.models.daily_report import DailyReport
 from app.models.finance_entry import FinanceEntry
 from app.models.payment_method import PaymentMethod
 from app.models.payment_method_transfer import PaymentMethodTransfer
@@ -102,9 +103,14 @@ def _serialize_finance_entry(
     entry: FinanceEntry,
     payment_method: PaymentMethod | None = None,
     department: Department | None = None,
+    report_shift_slot: str | None = None,
 ) -> dict:
     pm = payment_method or getattr(entry, 'payment_method', None)
     dept = department or getattr(entry, 'department', None)
+    source_type = str(entry.source_type or '').lower()
+    meta_json = dict(entry.meta_json or {})
+    if source_type == 'daily_report' and report_shift_slot:
+        meta_json.setdefault('shift_slot', str(report_shift_slot).upper())
     return {
         'id': entry.id,
         'venue_id': entry.venue_id,
@@ -112,9 +118,9 @@ def _serialize_finance_entry(
         'amount_minor': int(entry.amount_minor or 0),
         'direction': str(entry.direction or '').upper(),
         'kind': str(entry.kind or '').upper(),
-        'source_type': str(entry.source_type or '').lower(),
+        'source_type': source_type,
         'source_id': int(entry.source_id) if entry.source_id is not None else None,
-        'meta_json': entry.meta_json or None,
+        'meta_json': meta_json or None,
         'payment_method': {
             'id': pm.id,
             'code': pm.code,
@@ -306,10 +312,13 @@ def list_finance_entries(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_finance_ledger_view(db, venue_id=venue_id, user=user)
 
-    stmt = select(FinanceEntry, PaymentMethod, Department).outerjoin(
+    stmt = select(FinanceEntry, PaymentMethod, Department, DailyReport.shift_slot).outerjoin(
         PaymentMethod, PaymentMethod.id == FinanceEntry.payment_method_id
     ).outerjoin(
         Department, Department.id == FinanceEntry.department_id
+    ).outerjoin(
+        DailyReport,
+        and_(FinanceEntry.source_type == 'daily_report', DailyReport.id == FinanceEntry.source_id),
     ).where(FinanceEntry.venue_id == venue_id)
 
     period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
@@ -327,7 +336,10 @@ def list_finance_entries(
         stmt = stmt.where(FinanceEntry.source_type == str(source_type).lower())
 
     rows = db.execute(stmt.order_by(FinanceEntry.entry_date.desc(), FinanceEntry.id.desc())).all()
-    payload = [_serialize_finance_entry(entry, payment_method, department) for entry, payment_method, department in rows]
+    payload = [
+        _serialize_finance_entry(entry, payment_method, department, report_shift_slot)
+        for entry, payment_method, department, report_shift_slot in rows
+    ]
     return sanitize_financial_payload_for_user(user, payload)
 
 
@@ -459,5 +471,4 @@ def delete_payment_method_transfer(
     db.delete(obj)
     db.commit()
     return {"ok": True}
-
 
