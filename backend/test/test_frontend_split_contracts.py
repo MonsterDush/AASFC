@@ -13,7 +13,7 @@ class PageLoaderContractTests(TestCase):
     def test_all_pages_share_the_fetch_and_dom_aware_loader(self):
         loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
         styles_manifest = (FRONTEND / "styles.css").read_text(encoding="utf-8")
-        style_cache_key = "20260729-payroll1"
+        style_cache_key = "20260802-navbuttons1"
         core_style_files = (
             "tokens.css",
             "base-layout.css",
@@ -51,7 +51,7 @@ class PageLoaderContractTests(TestCase):
         self.assertEqual(len(html_pages), 50)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
-            self.assertIn('/page-loader.js?v=20260720-loader1', source, path.name)
+            self.assertIn('/page-loader.js?v=20260802-navbuttons1', source, path.name)
             self.assertIn(f'/styles.css?v={style_cache_key}', source, path.name)
 
         self.assertLess(len(loader.splitlines()), 180)
@@ -104,7 +104,7 @@ class PrimaryPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            cache_key = "20260802-financeux3" if html_name == "owner-summary.html" else "20260723-polish2"
+            cache_key = "20260802-financeux4" if html_name == "owner-summary.html" else "20260723-polish2"
             self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
@@ -142,16 +142,28 @@ class WorkflowPageUiPolishContractTests(TestCase):
         expenses_html = (FRONTEND / "owner-expenses.html").read_text(encoding="utf-8")
         summary_html = (FRONTEND / "owner-summary.html").read_text(encoding="utf-8")
         economics_html = (FRONTEND / "owner-day-economics.html").read_text(encoding="utf-8")
-        self.assertIn('class="btn ghost" id="openLedgerBtn"', turnover_html)
+        self.assertIn('class="btn ghost finance-action-btn" id="openLedgerBtn"', turnover_html)
         self.assertIn('id="expenseCatalogsWrap"', expenses_html)
-        self.assertIn('class="btn subtle" id="openLedgerBtn"', expenses_html)
-        self.assertIn('class="btn subtle hidden" id="openLedgerBtn"', summary_html)
-        self.assertIn('class="btn subtle" id="openLedgerBtn"', economics_html)
+        self.assertIn('class="btn subtle finance-action-btn" id="openLedgerBtn"', expenses_html)
+        self.assertIn('class="btn subtle finance-action-btn hidden" id="openLedgerBtn"', summary_html)
+        self.assertIn('class="btn subtle small" id="openLedgerBtn"', economics_html)
         self.assertIn('class="owner-expenses-page"', expenses_html)
+        self.assertIn('class="expense-catalog-grid"', expenses_html)
+        self.assertIn('class="expense-catalog-card__actions"', expenses_html)
+        self.assertLess(expenses_html.index('id="openExpenseCategoriesBtn"'), expenses_html.index('id="addCategoryBtn"'))
+        self.assertLess(expenses_html.index('id="openSuppliersBtn"'), expenses_html.index('id="addSupplierBtn"'))
 
         summary_script = (FRONTEND / "owner-summary.js").read_text(encoding="utf-8")
         self.assertIn("hasFinanceLedgerViewAccess", summary_script)
         self.assertIn("financeAccess.canViewLedger", summary_script)
+
+        for path in sorted(FRONTEND.rglob("*")):
+            if path.suffix not in {".html", ".js"} or path.name == "app-venue.html":
+                continue
+            source = path.read_text(encoding="utf-8")
+            self.assertNotRegex(source, r'<a\s+class="[^"]*btn subtle', str(path.relative_to(FRONTEND)))
+        loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
+        self.assertIn('button[data-nav-button]', loader)
 
         ledger_html = (FRONTEND / "owner-finance-ledger.html").read_text(encoding="utf-8")
         ledger_script = (FRONTEND / "owner-finance-ledger.js").read_text(encoding="utf-8")
@@ -363,7 +375,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         self.assertIn("/expenses/period-summary?", expenses_script)
         revenue_html = (FRONTEND / "owner-turnover.html").read_text(encoding="utf-8")
         revenue_script = (FRONTEND / "owner-turnover.js").read_text(encoding="utf-8")
-        self.assertIn("/styles/pages/finance-pages.css?v=20260802-financeux3", revenue_html)
+        self.assertIn("/styles/pages/finance-pages.css?v=20260802-financeux4", revenue_html)
         self.assertIn("/owner-turnover.js?v=20260802-financeux2", revenue_html)
         self.assertIn('id="revenueTrendChart"', revenue_html)
         self.assertIn('id="revenueRowsSubtitle"', revenue_html)

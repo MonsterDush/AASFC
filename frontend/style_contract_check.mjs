@@ -11,7 +11,7 @@ import {
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const stylesPath = path.join(frontendDir, "styles.css");
-const globalStyleCacheKey = "20260729-payroll1";
+const globalStyleCacheKey = "20260802-navbuttons1";
 const coreStyleFiles = [
   "tokens.css",
   "base-layout.css",
@@ -108,8 +108,8 @@ const pageStyleCacheKeyOverrides = new Map([
   ["owner-day-economics.html", "20260802-financeux2"],
   ["owner-expense-categories.html", "20260726-polish10"],
   ["owner-economics-rules.html", "20260726-polish11"],
-  ["owner-expenses.html", "20260802-financeux2"],
-  ["owner-finance-ledger.html", "20260802-financeux2"],
+  ["owner-expenses.html", "20260802-financeux4"],
+  ["owner-finance-ledger.html", "20260802-financeux4"],
   ["owner-kpi.html", "20260726-polish10"],
   ["owner-payroll.html", "20260802-payrollpayments1"],
   ["owner-payment-methods.html", "20260726-polish10"],
@@ -118,10 +118,10 @@ const pageStyleCacheKeyOverrides = new Map([
   ["owner-recurring-expenses.html", "20260723-polish2"],
   ["owner-setup.html", "20260725-polish3"],
   ["owner-subscription.html", "20260725-polish5"],
-  ["owner-summary.html", "20260802-financeux2"],
+  ["owner-summary.html", "20260802-financeux4"],
   ["owner-suppliers.html", "20260726-polish10"],
   ["owner-tip-settings.html", "20260725-polish5"],
-  ["owner-turnover.html", "20260802-financeux2"],
+  ["owner-turnover.html", "20260802-financeux4"],
   ["positions.html", "20260725-polish3"],
   ["profile.html", "20260725-polish5"],
   ["settings.html", "20260725-polish5"],
@@ -338,7 +338,7 @@ assert.equal(htmlPageFiles.length, 50, "every frontend HTML page must use the gl
 for (const fileName of htmlPageFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.ok(
-    source.includes('<script src="/page-loader.js?v=20260720-loader1"></script>'),
+    source.includes('<script src="/page-loader.js?v=20260802-navbuttons1"></script>'),
     `${fileName} page loader cache key is stale`,
   );
   assert.ok(

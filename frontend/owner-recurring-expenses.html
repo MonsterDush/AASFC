@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
+  <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
-  <script src="/page-loader.js?v=20260720-loader1"></script>
+  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
   <title>Axelio · Регулярные расходы</title>
 </head>
 <body>
@@ -30,7 +30,7 @@
             <div class="page-caption mt-6">Настрой правила, по которым регулярные расходы будут создаваться автоматически.</div>
           </div>
           <div class="screen-hero__actions">
-            <a class="btn subtle" id="openExpensesBtn" href="#">Открыть расходы</a>
+            <button class="btn subtle small" id="openExpensesBtn" type="button" data-nav-button>Открыть расходы</button>
             <button class="btn" id="generateRulesBtn">Сгенерировать за месяц</button>
             <button class="btn primary" id="addRuleBtn">Добавить правило</button>
           </div>
@@ -72,7 +72,7 @@
             <b>Результат последней генерации</b>
             <div class="muted mt-6" id="generationResultHint">—</div>
           </div>
-          <a class="btn subtle" id="openGeneratedExpensesBtn" href="#">Открыть расходы месяца</a>
+          <button class="btn subtle small" id="openGeneratedExpensesBtn" type="button" data-nav-button>Открыть расходы месяца</button>
         </div>
         <div id="generationResultList" class="mt-12"></div>
       </div>

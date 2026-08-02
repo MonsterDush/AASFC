@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
+  <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/admin-billing.css?v=20260726-polish7" />
-  <script src="/page-loader.js?v=20260720-loader1"></script>
+  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
   <title>Axelio · Админ · Биллинг</title>
 </head>
 <body class="admin-billing-page">
@@ -402,7 +402,7 @@
       <div class="billing-table-row">
         <div class="row row--between ai-start gap-12">
           <div class="minw-0 flex-1">
-            <div class="row gap-8"><a class="btn subtle inline" href="/app-venue.html?venue_id=${item.venue_id}"><b>${esc(item.venue_name)}</b></a>${statusChip(item.status)}</div>
+            <div class="row gap-8"><button class="btn subtle inline" type="button" data-nav-button data-href="/app-venue.html?venue_id=${item.venue_id}"><b>${esc(item.venue_name)}</b></button>${statusChip(item.status)}</div>
             <div class="small mt-6">Владелец: ${esc(item?.owner?.label || '—')}</div>
             <div class="small mt-6">Оплачено до: ${esc(formatDate(item.paid_until))}</div>
             <div class="small mt-6">Grace до: ${esc(formatDate(item.grace_until))}</div>

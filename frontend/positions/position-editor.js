@@ -154,7 +154,7 @@ function renderPositionForm({ mode, position }) {
         <select id="f_perm_template" ${canEditPerms ? "" : "disabled"}>${renderPermissionTemplateSelect(p.template_id || "")}</select>
         <div class="row gap-8 mt-8">
           ${canEditPerms ? '<button class="btn sm" type="button" id="btnApplyTemplate">Применить шаблон</button>' : ''}
-          ${(auth.sysRole === "SUPER_ADMIN") ? '<a class="btn sm subtle inline" href="/admin-position-templates.html">Управлять шаблонами</a>' : ''}
+          ${(auth.sysRole === "SUPER_ADMIN") ? '<button class="btn sm subtle inline" type="button" data-nav-button data-href="/admin-position-templates.html">Управлять шаблонами</button>' : ''}
         </div>
       </div>
     </div>

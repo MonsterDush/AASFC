@@ -12,6 +12,7 @@ from app.services.payroll.adjustments import (
     payroll_adjustment_signed_minor,
 )
 from app.services.payroll.payments import build_payment_windows, normalize_monthly_rules
+from app.services.payroll import notifications as payroll_notifications
 
 
 class PayrollPaymentWindowTests(TestCase):
@@ -148,3 +149,94 @@ class PayrollExpenseLedgerTests(TestCase):
         self.assertEqual(create_entry.call_args.kwargs["source_type"], "payroll_expense")
         self.assertEqual(create_entry.call_args.kwargs["payment_method_id"], 7)
         rebuild_recognition.assert_not_called()
+
+
+class PayrollNotificationTests(TestCase):
+    def setUp(self):
+        self.window = build_payment_windows(
+            schedule_month=date(2026, 7, 1),
+            cadence="WEEKLY",
+            weekly_payment_weekday=0,
+        )[0]
+
+    def test_notification_texts_show_period_amount_and_adjustments(self):
+        manager_text = payroll_notifications.build_payroll_draft_ready_text(
+            venue_name="Тестовый бар",
+            window=self.window,
+            amount_minor=245_000,
+        )
+        employee_text = payroll_notifications.build_employee_payroll_period_text(
+            venue_name="Тестовый бар",
+            window=self.window,
+            summary={
+                "items": [{"days_count": 4}],
+                "totals": {"net_minor": 220_000, "bonuses_minor": 30_000, "penalties_minor": 10_000},
+            },
+        )
+
+        self.assertIn("ФОТ рассчитан", manager_text)
+        self.assertIn("2 450 ₽", manager_text)
+        self.assertIn("Начислено: 2 200 ₽", employee_text)
+        self.assertIn("Смен: 4", employee_text)
+        self.assertIn("Премии: +300 ₽", employee_text)
+        self.assertIn("Штрафы и списания: −100 ₽", employee_text)
+
+    def test_weekly_window_notifies_managers_and_all_active_employees(self):
+        manager = SimpleNamespace(id=1, tg_user_id=101)
+        employees = [SimpleNamespace(id=2, tg_user_id=102, notify_salary=True), SimpleNamespace(id=3, tg_user_id=103, notify_salary=True)]
+        settings_row = SimpleNamespace(venue_id=7, cadence="WEEKLY")
+
+        with (
+            patch.object(payroll_notifications, "_venue_name", return_value="Тестовый бар"),
+            patch.object(payroll_notifications, "list_expense_notification_recipients", return_value=[manager]),
+            patch.object(payroll_notifications, "_active_venue_users", return_value=[(item, "STAFF") for item in employees]),
+            patch.object(payroll_notifications, "build_member_period_summary", return_value={"items": [], "totals": {"net_minor": 0}}),
+            patch.object(payroll_notifications, "_send_once", return_value=True) as send_once,
+        ):
+            result = payroll_notifications.send_payroll_window_notifications(
+                SimpleNamespace(),
+                settings_row=settings_row,
+                window=self.window,
+                amount_minor=245_000,
+            )
+
+        self.assertEqual(result, {"managers_sent": 1, "employees_sent": 2})
+        self.assertEqual(send_once.call_count, 3)
+        self.assertEqual(
+            [call.kwargs["notification_type"] for call in send_once.call_args_list],
+            ["payroll_draft_ready", "payroll_period_summary", "payroll_period_summary"],
+        )
+
+    def test_daily_window_does_not_send_employee_period_summary(self):
+        settings_row = SimpleNamespace(venue_id=7, cadence="DAILY")
+        with (
+            patch.object(payroll_notifications, "_venue_name", return_value="Тестовый бар"),
+            patch.object(payroll_notifications, "list_expense_notification_recipients", return_value=[]),
+            patch.object(payroll_notifications, "_active_venue_users") as active_users,
+            patch.object(payroll_notifications, "_send_once") as send_once,
+        ):
+            result = payroll_notifications.send_payroll_window_notifications(
+                SimpleNamespace(),
+                settings_row=settings_row,
+                window=self.window,
+                amount_minor=245_000,
+            )
+
+        self.assertEqual(result, {"managers_sent": 0, "employees_sent": 0})
+        active_users.assert_not_called()
+        send_once.assert_not_called()
+
+    def test_due_draft_expense_reminder_is_grouped_per_venue(self):
+        db = SimpleNamespace(execute=lambda _statement: SimpleNamespace(all=lambda: [(7, 3, 450_000)]))
+        recipient = SimpleNamespace(id=1, tg_user_id=101)
+        with (
+            patch.object(payroll_notifications, "_venue_name", return_value="Тестовый бар"),
+            patch.object(payroll_notifications, "list_expense_notification_recipients", return_value=[recipient]),
+            patch.object(payroll_notifications, "_send_once", return_value=True) as send_once,
+        ):
+            sent = payroll_notifications.send_due_draft_expense_reminders_once(db, today=date(2026, 7, 20))
+
+        self.assertEqual(sent, 1)
+        self.assertEqual(send_once.call_args.kwargs["notification_type"], "draft_expense_reminder")
+        self.assertIn("Расходов: 3", send_once.call_args.kwargs["text"])
+        self.assertIn("4 500 ₽", send_once.call_args.kwargs["text"])

@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
+  <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/admin-venues.css?v=20260726-polish7" />
-  <script src="/page-loader.js?v=20260720-loader1"></script>
+  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
   <title>Axelio · Админ · Заведения</title>
 
 </head>
@@ -216,9 +216,9 @@
           <div class="row admin-venue-card__layout">
             <div class="admin-venue-card__main">
               <div>
-                <a class="btn subtle inline" href="/app-venue.html?venue_id=${v.id}">
+                <button class="btn subtle inline" type="button" data-nav-button data-href="/app-venue.html?venue_id=${v.id}">
                     <b>${name}</b>
-                </a>
+                </button>
                 ${badge}
                 </div>
               <div class="muted">${v.archived_at ? "В архиве с " + esc(v.archived_at) : "Открыть карточку заведения"}</div>

@@ -89,7 +89,7 @@ function renderShell() {
       </section>
 
       <div class="positions-back-actions">
-        <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
+        <button class="btn subtle inline" id="back" type="button" data-nav-button>← Назад к заведению</button>
       </div>
     </main>
 

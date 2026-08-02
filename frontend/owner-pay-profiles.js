@@ -88,7 +88,7 @@ function renderShell() {
       </div>
 
       <div class="pay-profile-footer">
-        <a class="btn subtle inline" id="back" href="#">← Назад к заведению</a>
+        <button class="btn subtle inline" id="back" type="button" data-nav-button>← Назад к заведению</button>
       </div>
     </section>
     </main>

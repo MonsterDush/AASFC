@@ -447,7 +447,7 @@ function renderShell() {
               <div class="page-caption mt-6">Начисления по активным профилям: ставки, проценты и KPI-бонусы по закрытым отчётам выбранного периода.</div>
             </div>
             <div class="screen-hero__actions screen-hero__actions--adaptive payroll-hero__actions">
-              <a class="btn subtle" id="openProfilesBtn" href="#">Профили</a>
+              <button class="btn subtle small" id="openProfilesBtn" type="button" data-nav-button>Профили</button>
               <button class="btn ghost" id="btnExport">Экспорт XLSX</button>
               <button class="btn primary" id="btnCalculate">Рассчитать</button>
             </div>
@@ -597,7 +597,7 @@ function renderShell() {
             <div class="payroll-payment-actions">
               <button class="btn primary" id="payrollSavePaymentSettings" type="button">Сохранить настройки</button>
               <button class="btn" id="payrollGenerateDrafts" type="button">Сформировать черновики</button>
-              <a class="btn subtle" id="payrollOpenDrafts" href="#">Открыть черновики расходов</a>
+              <button class="btn subtle small" id="payrollOpenDrafts" type="button" data-nav-button>Открыть черновики расходов</button>
             </div>
             <div class="muted" id="payrollPaymentHint">—</div>
           </div>
@@ -634,8 +634,8 @@ function renderShell() {
       </section>
 
       <div class="payroll-footer">
-        <a class="btn subtle inline" id="backVenue" href="#">← Назад к заведению</a>
-        <a class="btn subtle inline" id="openSummary" href="#">Открыть сводку →</a>
+        <button class="btn subtle inline" id="backVenue" type="button" data-nav-button>← Назад к заведению</button>
+        <button class="btn subtle inline" id="openSummary" type="button" data-nav-button>Открыть сводку →</button>
       </div>
     </main>
 

@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
+  <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/admin-demo-analytics.css?v=20260726-polish7" />
-  <script src="/page-loader.js?v=20260720-loader1"></script>
+  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
   <title>Axelio · DEMO аналитика</title>
 </head>
 <body class="admin-demo-analytics-page">
@@ -20,7 +20,7 @@
         </div>
       </div>
       <div class="row demo-analytics-topbar-actions">
-        <a class="btn subtle" href="/admin-demo.html">Назад к DEMO</a>
+        <button class="btn subtle small" type="button" data-nav-button data-href="/admin-demo.html">Назад к DEMO</button>
         <div class="userpill" data-userpill>—</div>
       </div>
     </div>
@@ -146,7 +146,7 @@
         <div class="demo-analytics-denied">
           <b>Нет доступа</b>
           <div class="muted mt-8">Страница аналитики DEMO доступна только SUPER_ADMIN.</div>
-          <div class="row gap-8 mt-12"><a class="btn" href="/">На главную</a><a class="btn subtle" href="/settings.html">Профиль</a></div>
+          <div class="row gap-8 mt-12"><a class="btn" href="/">На главную</a><button class="btn subtle small" type="button" data-nav-button data-href="/settings.html">Профиль</button></div>
         </div>
       </div>
     `;

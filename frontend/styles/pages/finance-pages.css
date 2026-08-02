@@ -31,8 +31,10 @@ select.finance-control--wide{min-width:170px}
 .finance-row-delta.is-good{color:var(--statusSuccessText)}
 .finance-row-delta.is-bad{color:var(--statusWarningText)}
 .finance-chart-empty{display:grid;grid-column:1/-1;place-items:center;min-height:160px;padding:18px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted);text-align:center}
+.finance-action-btn{font-family:inherit;font-size:12px;font-weight:800;line-height:1.25}
 
 .owner-turnover-page .revenue-trend-card,.owner-turnover-page .revenue-structure-card{min-width:0;background:linear-gradient(145deg,var(--card),var(--surface2))}
+.owner-turnover-page .screen-hero__actions .finance-action-btn{font-size:11px;white-space:nowrap}
 .owner-turnover-page .revenue-trend-head{align-items:flex-start}
 .owner-turnover-page .revenue-trend-legend{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;font-weight:800}
 .owner-turnover-page .revenue-trend-legend span{display:inline-flex;align-items:center;gap:6px}
@@ -78,6 +80,15 @@ select.finance-control--wide{min-width:170px}
 .owner-expenses-page .screen-hero__head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
 .owner-expenses-page .screen-hero__actions--adaptive{display:flex;width:auto}
 .owner-expenses-page .screen-hero__actions--adaptive .btn{width:auto;white-space:nowrap}
+.owner-expenses-page .expense-catalog-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.owner-expenses-page .expense-catalog-card{display:grid;align-content:space-between;gap:12px;min-width:0;padding:13px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
+.owner-expenses-page .expense-catalog-card__copy{display:grid;gap:4px;min-width:0}
+.owner-expenses-page .expense-catalog-card__copy b{font-size:14px;line-height:1.3}
+.owner-expenses-page .expense-catalog-card__copy .muted{font-size:11px;line-height:1.4}
+.owner-expenses-page .expense-catalog-card__actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;min-width:0}
+.owner-expenses-page .expense-catalog-card .btn{width:100%;min-height:40px;padding:8px 10px}
+.owner-expenses-page .expense-catalog-card--compact{grid-template-columns:minmax(0,1fr) minmax(92px,auto);align-items:center}
+.owner-expenses-page .expense-catalog-card--utility{grid-column:1/-1;grid-template-columns:minmax(0,1fr) minmax(280px,1fr);align-items:center}
 
 .owner-finance-ledger-page .ledger-shell{display:grid;gap:14px}
 .owner-finance-ledger-page .ledger-hero-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
@@ -287,6 +298,10 @@ select.finance-control--wide{min-width:170px}
   .owner-summary-page .summary-primary-toolbar .screen-hero__period:has(.range-pick:not(.hidden))+.screen-hero__actions .btn{width:100%}
   .owner-expenses-page .screen-hero__head{grid-template-columns:1fr}
   .owner-expenses-page .screen-hero__actions--adaptive,.owner-expenses-page .screen-hero__actions--adaptive .btn{width:100%}
+  .owner-expenses-page .expense-catalog-grid{grid-template-columns:1fr}
+  .owner-expenses-page .expense-catalog-card--compact,.owner-expenses-page .expense-catalog-card--utility{grid-column:auto;grid-template-columns:1fr;align-items:stretch}
+  .owner-expenses-page .expense-catalog-card .btn{height:44px;font-size:11px}
+  .owner-turnover-page .screen-hero__actions .finance-action-btn{height:44px;padding-inline:9px}
   .finance-comparison-card__head,
   .finance-comparison-card__controls{display:grid;width:100%}
   .finance-comparison-card .seg{width:100%;min-width:0}

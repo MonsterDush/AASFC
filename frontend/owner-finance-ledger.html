@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-financeux3" />
-  <script src="/page-loader.js?v=20260720-loader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-financeux4" />
+  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
   <title>Axelio · Финансовые движения</title>
 </head>
 <body class="owner-finance-ledger-page">
@@ -55,9 +55,9 @@
           </div>
         </div>
         <div class="finance-shortcuts" id="ledgerFinanceShortcuts">
-          <a class="btn subtle" id="openSummaryBtn" href="#">Сводка</a>
-          <a class="btn subtle" id="openRevenueBtn" href="#">Выручка</a>
-          <a class="btn subtle" id="openExpensesBtn" href="#">Расходы</a>
+          <button class="btn subtle small" id="openSummaryBtn" type="button" data-nav-button>Сводка</button>
+          <button class="btn subtle small" id="openRevenueBtn" type="button" data-nav-button>Выручка</button>
+          <button class="btn subtle small" id="openExpensesBtn" type="button" data-nav-button>Расходы</button>
         </div>
         <div class="ledger-period-panel">
           <div class="seg" id="ledgerPeriodSeg" aria-label="Период журнала">
