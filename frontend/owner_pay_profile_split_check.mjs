@@ -58,10 +58,10 @@ const listenerManifest = Array.from(
 
 assert.equal(apiCallManifest.length, 20);
 assert.equal(manifestHash(apiCallManifest), "740b80bd7e581f6142f8e4a9eeb14d332016a8f1ef3c1d10773d4a9d6ccfa98f");
-assert.equal(domBindingManifest.length, 165);
-assert.equal(manifestHash(domBindingManifest), "9404da1e4dace6750e7aa26001c824071e135d37cb4d608bc8c00bb5523c07df");
-assert.equal(listenerManifest.length, 26);
-assert.equal(manifestHash(listenerManifest), "92cedc960ff5c6e5d8f9b52b179c1850c27fc11e4772e9ef585b171ea7bc67f6");
+assert.equal(domBindingManifest.length, 174);
+assert.equal(manifestHash(domBindingManifest), "e89bbd8b138d1fbdb695917495ce8506f8982af29dd1c3d7a1fa7fbc97cd3917");
+assert.equal(listenerManifest.length, 28);
+assert.equal(manifestHash(listenerManifest), "3b77f46b97004d8b5b09a551f6d561b3a303bee527e876486507d47ae2ec5b29");
 
 assert.ok(mainSource.split("\n").length < 450, "owner-pay-profile.js should remain an orchestration module");
 const sizeLimits = {
@@ -73,10 +73,10 @@ const sizeLimits = {
 };
 for (const [fileName, limit] of Object.entries(sizeLimits)) {
   assert.ok(moduleSources[fileName].split("\n").length < limit, `${fileName} is too large`);
-  const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260720-unified7";
+  const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260729-payroll1";
   assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /owner-pay-profile\.js\?v=20260726-navmore1/);
+assert.match(htmlSource, /owner-pay-profile\.js\?v=20260729-payroll1/);
 
 const state = {
   can: { view: true, manage: true },

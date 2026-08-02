@@ -324,13 +324,14 @@ class WorkflowPageUiPolishContractTests(TestCase):
         script = (FRONTEND / "owner-payroll.js").read_text(encoding="utf-8")
         styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
 
-        self.assertIn("/styles/pages/owner-payroll.css?v=20260729-compare2", html)
-        self.assertIn("/owner-payroll.js?v=20260729-compare2", html)
+        self.assertIn("/styles/pages/owner-payroll.css?v=20260802-payrollanalytics1", html)
+        self.assertIn("/owner-payroll.js?v=20260802-payrollanalytics1", html)
         self.assertIn('class="owner-payroll-page"', html)
         self.assertIn("payroll-bootstrap", html)
         for contract in (
             "payroll-period-grid",
-            "payroll-metric--total",
+            "payroll-metric--per-shift",
+            "payroll-leaderboard-row",
             "payroll-person__metrics",
             "payroll-state--error",
             "@media (max-width:560px)",
@@ -338,7 +339,11 @@ class WorkflowPageUiPolishContractTests(TestCase):
             self.assertIn(contract, styles)
         for contract in (
             'id="averageAmount"',
+            'id="averagePerShift"',
+            'id="payrollLeaderboard"',
             'row.className = "payroll-person"',
+            "buildPayrollTeamAnalytics",
+            "payrollLineShiftMetrics",
             "payroll-state--denied",
             "payroll-state--empty",
             "payroll-state--error",

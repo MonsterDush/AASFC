@@ -26,6 +26,10 @@ import {
   resolveAutoComparison,
   resolveComparisonRange,
 } from "/app/period-comparison.js?v=20260729-compare2";
+import {
+  buildPayrollTeamAnalytics,
+  payrollLineShiftMetrics,
+} from "/app/payroll-analytics.js?v=20260802-payrollanalytics1";
 
 let financialValuesHidden = false;
 
@@ -508,6 +512,28 @@ function renderShell() {
             <div class="payroll-metric-delta" id="averageAmountDelta">—</div>
             <div class="finance-stat__meta">Средняя сумма на одного сотрудника в текущем расчёте.</div>
           </div>
+          <div class="itemcard finance-stat payroll-metric payroll-metric--per-shift">
+            <div class="finance-stat__label">Среднее за смену</div>
+            <div class="finance-stat__value is-loading" id="averagePerShift" aria-busy="true">Загрузка…</div>
+            <div class="payroll-metric-delta" id="averagePerShiftDelta">—</div>
+            <div class="finance-stat__meta">Взвешенное среднее по сотрудникам, у которых есть отработанные смены.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card section-card payroll-leaderboard-card" id="payrollLeaderboardCard">
+        <div class="section-card__head payroll-leaderboard-head">
+          <div class="section-card__title">
+            <b>Лидеры по начислению за смену</b>
+            <div class="muted" id="payrollLeaderboardSubtitle">Сравнение сотрудников с сопоставимой нагрузкой.</div>
+          </div>
+          <span class="badge" id="payrollLeaderboardThreshold">минимум 3 смены</span>
+        </div>
+        <div id="payrollLeaderboard" class="payroll-leaderboard payroll-loading" aria-live="polite" aria-busy="true">
+          <div class="payroll-leaderboard-skeleton skeleton"></div>
+        </div>
+        <div class="payroll-leaderboard-note muted" id="payrollLeaderboardNote">
+          Это рейтинг начислений, а не личных продаж: сумма может зависеть от оклада, ставок, KPI, премий и штрафов.
         </div>
       </section>
 
@@ -665,10 +691,71 @@ function recalculationText(latestRecalc, runCalculatedAt) {
   return reason ? `${baseText} · ${reasonMap[reason] || "автоперерасчёт"}` : baseText;
 }
 
+function renderPayrollLeaderboard(analytics) {
+  const list = document.getElementById("payrollLeaderboard");
+  const subtitle = document.getElementById("payrollLeaderboardSubtitle");
+  const threshold = document.getElementById("payrollLeaderboardThreshold");
+  const note = document.getElementById("payrollLeaderboardNote");
+  if (!list) return;
+  list.classList.remove("payroll-loading");
+  list.setAttribute("aria-busy", "false");
+  if (threshold) threshold.textContent = `минимум ${analytics.minimumShifts} смены`;
+  if (subtitle) {
+    subtitle.textContent = state.periodMode === "month"
+      ? `Топ за ${state.month}: среднее начисление, количество смен и итоговая сумма.`
+      : `Топ за ${formatDateRu(state.dateFrom)} — ${formatDateRu(state.dateTo)}.`;
+  }
+  if (note) {
+    const excluded = analytics.excludedSmallSampleCount
+      ? ` ${analytics.excludedSmallSampleCount} сотрудник(а) с меньшим числом смен не участвуют в ранжировании.`
+      : "";
+    note.textContent = `Это рейтинг начислений, а не личных продаж: сумма может зависеть от оклада, ставок, KPI, премий и штрафов.${excluded}`;
+  }
+  if (!state.can.view) {
+    list.innerHTML = '<div class="payroll-state payroll-state--denied"><b>Нет доступа к рейтингу</b><span>Для сравнения нужны права на начисления.</span></div>';
+    return;
+  }
+  if (financialValuesHidden) {
+    list.innerHTML = `<div class="payroll-state"><b>${esc(FINANCIAL_VALUES_HIDDEN_LABEL)}</b><span>Рейтинг не строится без доступных финансовых значений.</span></div>`;
+    return;
+  }
+  if (!analytics.rows.length) {
+    list.innerHTML = `<div class="payroll-state payroll-state--empty"><b>Пока недостаточно смен для рейтинга</b><span>Нужно минимум ${esc(analytics.minimumShifts)} смены у сотрудника за выбранный период.</span></div>`;
+    return;
+  }
+  list.innerHTML = analytics.rows.map((entry) => {
+    const delta = Number(entry.deltaFromTeamAverageMinor || 0);
+    const deltaText = delta === 0
+      ? "на уровне среднего по команде"
+      : `${fmtMoneyMinor(Math.abs(delta))} ${delta > 0 ? "выше" : "ниже"} среднего по команде`;
+    return `<article class="payroll-leaderboard-row" aria-label="${esc(memberName(entry.line?.member))}: ${esc(fmtMoneyMinor(entry.averagePerShiftMinor))} за смену">
+      <div class="payroll-leaderboard-rank" aria-hidden="true">${entry.rank}</div>
+      <div class="payroll-leaderboard-main">
+        <div class="payroll-leaderboard-row__head">
+          <div>
+            <div class="payroll-leaderboard-name">${esc(memberName(entry.line?.member))}</div>
+            <div class="payroll-leaderboard-meta">${entry.shiftsCount} смен · ${esc(fmtMoneyMinor(entry.amountMinor))} за период</div>
+          </div>
+          <div class="payroll-leaderboard-value">
+            <b>${esc(fmtMoneyMinor(entry.averagePerShiftMinor))}</b>
+            <span>за смену</span>
+          </div>
+        </div>
+        <svg class="payroll-leaderboard-bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+          <rect class="payroll-leaderboard-track" x="0" y="0" width="100" height="8" rx="4"></rect>
+          <rect class="payroll-leaderboard-fill" x="0" y="0" width="${entry.relativeWidthPercent.toFixed(2)}" height="8" rx="4"></rect>
+        </svg>
+        <div class="payroll-leaderboard-delta">${esc(deltaText)}</div>
+      </div>
+    </article>`;
+  }).join("");
+}
+
 function renderLines() {
   const totalAmount = document.getElementById("totalAmount");
   const linesCount = document.getElementById("linesCount");
   const averageAmount = document.getElementById("averageAmount");
+  const averagePerShift = document.getElementById("averagePerShift");
   const runMeta = document.getElementById("runMeta");
   const linesList = document.getElementById("linesList");
   if (!linesList) return;
@@ -687,7 +774,9 @@ function renderLines() {
     settleMetric(totalAmount, "—");
     settleMetric(linesCount, "—");
     settleMetric(averageAmount, "—");
+    settleMetric(averagePerShift, "—");
     settleMetric(runMeta, "нет доступа");
+    renderPayrollLeaderboard(buildPayrollTeamAnalytics([]));
     return;
   }
 
@@ -697,15 +786,30 @@ function renderLines() {
   const comparisonLinesCount = Number(comparisonData?.lines_count || 0);
   const currentAverage = calculatedLinesCount ? Math.round(Number(data.total_amount_minor || 0) / calculatedLinesCount) : 0;
   const comparisonAverage = comparisonLinesCount ? Math.round(Number(comparisonData?.total_amount_minor || 0) / comparisonLinesCount) : 0;
+  const lines = Array.isArray(data.lines) ? data.lines : [];
+  const comparisonLines = Array.isArray(comparisonData?.lines) ? comparisonData.lines : [];
+  const analytics = buildPayrollTeamAnalytics(lines, { minimumShifts: 3, maxRows: 6 });
+  const comparisonAnalytics = buildPayrollTeamAnalytics(comparisonLines, { minimumShifts: 3, maxRows: 6 });
   settleMetric(totalAmount, fmtMoneyMinor(data.total_amount_minor));
   settleMetric(linesCount, String(calculatedLinesCount));
   settleMetric(
     averageAmount,
     calculatedLinesCount ? fmtMoneyMinor(currentAverage) : "—",
   );
+  settleMetric(
+    averagePerShift,
+    analytics.teamAveragePerShiftMinor === null ? "—" : fmtMoneyMinor(analytics.teamAveragePerShiftMinor),
+  );
   renderPayrollMetricDelta("totalAmountDelta", data.total_amount_minor, comparisonData?.total_amount_minor, { money: true, goodWhen: "down" });
   renderPayrollMetricDelta("linesCountDelta", calculatedLinesCount, comparisonData?.lines_count, { goodWhen: "neutral" });
   renderPayrollMetricDelta("averageAmountDelta", currentAverage, comparisonData ? comparisonAverage : null, { money: true, goodWhen: "down" });
+  renderPayrollMetricDelta(
+    "averagePerShiftDelta",
+    analytics.teamAveragePerShiftMinor,
+    comparisonData ? comparisonAnalytics.teamAveragePerShiftMinor : null,
+    { money: true, goodWhen: "neutral" },
+  );
+  renderPayrollLeaderboard(analytics);
   if (runMeta) {
     if (data.run?.calculated_at) {
       const metaText = recalculationText(data.latest_recalculation, data.run.calculated_at);
@@ -719,7 +823,6 @@ function renderLines() {
     }
   }
 
-  const lines = Array.isArray(data.lines) ? data.lines : [];
   if (!lines.length) {
     const emptyText = state.periodMode === "month"
       ? "За выбранный месяц начислений пока нет. Нажми «Рассчитать», если профили уже назначены."
@@ -729,8 +832,8 @@ function renderLines() {
   }
 
   linesList.innerHTML = "";
-  const comparisonLines = new Map(
-    (Array.isArray(comparisonData?.lines) ? comparisonData.lines : []).map((line) => [
+  const comparisonLinesByMember = new Map(
+    comparisonLines.map((line) => [
       String(line?.member_user_id ?? line?.member?.user_id ?? ""),
       line,
     ]),
@@ -746,7 +849,8 @@ function renderLines() {
       ? '<span class="badge">частично</span>'
       : (periodState === "ready" ? '' : '');
     const workedDatesCount = Number(metrics.worked_dates_count || 0);
-    const comparisonLine = comparisonLines.get(String(line?.member_user_id ?? line?.member?.user_id ?? ""));
+    const shiftMetrics = payrollLineShiftMetrics(line);
+    const comparisonLine = comparisonLinesByMember.get(String(line?.member_user_id ?? line?.member?.user_id ?? ""));
     const personDelta = comparisonLine && !financialValuesHidden
       ? payrollDeltaView(line.amount_minor, comparisonLine.amount_minor, { money: true, goodWhen: "neutral" })
       : null;
@@ -763,6 +867,7 @@ function renderLines() {
               <span><b>${esc(metrics.hours_total ?? 0)}</b> ч</span>
               <span><b>${esc(metrics.shifts_count ?? 0)}</b> смен</span>
               ${workedDatesCount ? `<span><b>${esc(workedDatesCount)}</b> дней</span>` : ""}
+              ${shiftMetrics.averagePerShiftMinor === null ? "" : `<span class="payroll-person__metric-average"><b>${esc(fmtMoneyMinor(shiftMetrics.averagePerShiftMinor))}</b> за смену</span>`}
             </div>
           </div>
           <div>
@@ -850,10 +955,16 @@ function renderPayrollMetricDelta(id, currentValue, previousValue, options) {
 
 async function load() {
   const linesList = document.getElementById("linesList");
+  const leaderboard = document.getElementById("payrollLeaderboard");
   if (linesList) {
     linesList.classList.add("payroll-loading");
     linesList.setAttribute("aria-busy", "true");
     linesList.innerHTML = `<div class="payroll-line-skeleton skeleton"></div><div class="payroll-line-skeleton skeleton"></div>`;
+  }
+  if (leaderboard) {
+    leaderboard.classList.add("payroll-loading");
+    leaderboard.setAttribute("aria-busy", "true");
+    leaderboard.innerHTML = '<div class="payroll-leaderboard-skeleton skeleton"></div>';
   }
   try {
     const primaryPromise = api(buildPayrollPath());
@@ -871,6 +982,11 @@ async function load() {
       linesList.classList.remove("payroll-loading");
       linesList.setAttribute("aria-busy", "false");
       linesList.innerHTML = `<div class="payroll-state payroll-state--error"><b>Не удалось загрузить начисления</b><span>${esc(detail)}</span></div>`;
+    }
+    if (leaderboard) {
+      leaderboard.classList.remove("payroll-loading");
+      leaderboard.setAttribute("aria-busy", "false");
+      leaderboard.innerHTML = `<div class="payroll-state payroll-state--error"><b>Рейтинг недоступен</b><span>${esc(detail)}</span></div>`;
     }
     toast("Не удалось загрузить начисления", "err");
   }
