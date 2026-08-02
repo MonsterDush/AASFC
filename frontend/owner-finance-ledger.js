@@ -129,6 +129,9 @@ function setupDemoLedgerIntro() {
 let access = {
   canView: false,
   canManageTransfers: false,
+  canViewSummary: false,
+  canViewRevenue: false,
+  canViewExpenses: false,
 };
 
 const state = {
@@ -143,6 +146,27 @@ const state = {
   transfers: [],
 };
 
+function syncFinanceLinks() {
+  const venueId = getActiveVenueId();
+  if (!venueId) return;
+  const financeQuery = new URLSearchParams();
+  financeQuery.set("venue_id", String(venueId));
+  financeQuery.set("month", state.month || currentMonth());
+  const summaryLink = document.getElementById("openSummaryBtn");
+  const revenueLink = document.getElementById("openRevenueBtn");
+  const expensesLink = document.getElementById("openExpensesBtn");
+  setVisible(summaryLink, access.canViewSummary);
+  setVisible(revenueLink, access.canViewRevenue);
+  setVisible(expensesLink, access.canViewExpenses);
+  if (summaryLink) summaryLink.href = `/owner-summary.html?${financeQuery.toString()}`;
+  if (revenueLink) revenueLink.href = `/owner-turnover.html?${financeQuery.toString()}`;
+  if (expensesLink) expensesLink.href = `/owner-expenses.html?${financeQuery.toString()}`;
+  setVisible(
+    document.getElementById("ledgerFinanceShortcuts"),
+    access.canViewSummary || access.canViewRevenue || access.canViewExpenses,
+  );
+}
+
 async function loadAccess() {
   const venueId = getActiveVenueId();
   if (!venueId) return access;
@@ -150,14 +174,22 @@ async function loadAccess() {
     const permsResp = await getMyVenuePermissions(venueId);
     financialValuesHidden = isFinancialValuesHidden(permsResp);
     const role = roleUpper(permsResp);
+    const systemRole = String(permsResp?.system_role || "").trim().toUpperCase();
     const pset = permSetFromResponse(permsResp);
     const isOwner = role === "OWNER" || role === "VENUE_OWNER";
+    const isAdmin = ["SUPER_ADMIN", "MODERATOR"].includes(systemRole) || ["SUPER_ADMIN", "MODERATOR"].includes(role);
+    const canViewRevenue = isOwner || isAdmin || hasPerm(pset, "REVENUE_VIEW");
+    const canViewExpenses = isOwner || isAdmin || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
+    const canViewPayroll = isOwner || isAdmin || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");
     access = {
-      canView: isOwner || hasPerm(pset, "FINANCE_LEDGER_VIEW") || hasPerm(pset, "REVENUE_VIEW") || hasPerm(pset, "EXPENSE_VIEW"),
-      canManageTransfers: isOwner || hasPerm(pset, "PAYMENT_TRANSFERS_MANAGE") || hasPerm(pset, "EXPENSE_ADD"),
+      canView: isOwner || isAdmin || hasPerm(pset, "FINANCE_LEDGER_VIEW") || hasPerm(pset, "REVENUE_VIEW") || hasPerm(pset, "EXPENSE_VIEW"),
+      canManageTransfers: isOwner || isAdmin || hasPerm(pset, "PAYMENT_TRANSFERS_MANAGE") || hasPerm(pset, "EXPENSE_ADD"),
+      canViewSummary: canViewRevenue || canViewExpenses || canViewPayroll || hasPerm(pset, "REPORTS_VIEW_PNL") || hasPerm(pset, "MONTHLY_SUMMARY_VIEW"),
+      canViewRevenue,
+      canViewExpenses,
     };
   } catch {
-    access = { canView: false, canManageTransfers: false };
+    access = { canView: false, canManageTransfers: false, canViewSummary: false, canViewRevenue: false, canViewExpenses: false };
   }
   return access;
 }
@@ -579,6 +611,7 @@ async function reload() {
   const paymentMethodId = document.getElementById("ledgerPaymentMethodPick")?.value || "";
   const kind = document.getElementById("ledgerKindPick")?.value || "";
   state.month = month;
+  syncFinanceLinks();
   syncComparisonUi();
 
   const qp = new URLSearchParams({ month });
@@ -635,6 +668,7 @@ async function boot() {
   document.getElementById("ledgerPaymentMethodPick").value = params.get("payment_method_id") || "";
   document.getElementById("ledgerKindPick").value = (params.get("kind") || "").toUpperCase();
   state.month = document.getElementById("ledgerMonthPick").value;
+  syncFinanceLinks();
   state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
   state.compareFrom = params.get("compare_from") || "";
   state.compareTo = params.get("compare_to") || "";

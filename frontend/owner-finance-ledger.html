@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-ledger1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-ledgernav1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Финансовые движения</title>
 </head>
@@ -49,6 +49,11 @@
             <div class="muted mt-6">Приходы, списания, корректировки и внутренние переводы по данным журнала</div>
           </div>
           <button class="btn hidden" id="addTransferBtn" type="button">Новый перевод</button>
+        </div>
+        <div class="finance-shortcuts" id="ledgerFinanceShortcuts">
+          <a class="btn subtle" id="openSummaryBtn" href="#">Сводка</a>
+          <a class="btn subtle" id="openRevenueBtn" href="#">Выручка</a>
+          <a class="btn subtle" id="openExpensesBtn" href="#">Расходы</a>
         </div>
         <div class="ledger-filter-grid">
           <label class="ledger-control-label">Месяц<input class="finance-control" id="ledgerMonthPick" type="month" /></label>
@@ -180,6 +185,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-finance-ledger.js?v=20260802-ledger1"></script>
+  <script type="module" src="/owner-finance-ledger.js?v=20260802-ledgernav1"></script>
 </body>
 </html>

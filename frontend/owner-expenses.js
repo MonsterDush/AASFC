@@ -227,6 +227,16 @@ function buildExpensesLink({ month = state.month, statuses = state.statuses } = 
   return `/owner-expenses.html?${qp.toString()}`;
 }
 
+function syncLedgerLink() {
+  const link = document.getElementById("openLedgerBtn");
+  const venueId = getActiveVenueId();
+  if (!link || !venueId) return;
+  const qp = new URLSearchParams();
+  qp.set("venue_id", String(venueId));
+  qp.set("month", state.month || currentMonth());
+  link.href = `/owner-finance-ledger.html?${qp.toString()}`;
+}
+
 function renderDraftBanner() {
   const card = document.getElementById('draftExpensesCard');
   const hint = document.getElementById('draftExpensesHint');
@@ -483,6 +493,7 @@ function syncComparisonControls() {
 }
 
 function syncComparisonUrl() {
+  syncLedgerLink();
   const qp = new URLSearchParams(location.search);
   qp.set("month", state.month || currentMonth());
   if (state.categoryId) qp.set("category_id", state.categoryId);
@@ -975,6 +986,7 @@ async function boot() {
   if (openSuppliersBtn) openSuppliersBtn.href = `/owner-suppliers.html?venue_id=${encodeURIComponent(activeVenueId)}`;
 
   state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-expenses" });
+  syncLedgerLink();
   state.categoryId = params.get("category_id") || "";
   state.supplierId = params.get("supplier_id") || "";
   state.statuses = params.get("statuses") || "";
@@ -987,6 +999,7 @@ async function boot() {
     monthPick.value = state.month;
     monthPick.onchange = async (e) => {
       state.month = coerceDemoMonth(e.target.value || currentMonth(), { context: "owner-expenses" });
+      syncLedgerLink();
       await loadExpenses();
     };
   }

@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260729-compare2" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-revenueanalytics1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Выручка</title>
 </head>
-<body>
+<body class="owner-turnover-page">
   <div class="container">
     <div class="topbar">
       <div class="brand">
@@ -50,6 +50,7 @@
             <div class="page-caption mt-6">Один экран для просмотра выручки по департаментам или типам оплат. Сначала выбираешь период, потом режим детализации.</div>
           </div>
           <div class="screen-hero__actions">
+            <a class="btn subtle" id="openLedgerBtn" href="#">Финансовые движения</a>
             <button class="btn ghost" id="exportBtn">Экспорт XLSX</button>
           </div>
         </div>
@@ -118,14 +119,26 @@
       </div>
     </div>
 
-    <div class="card mt-12 section-card">
+    <section class="card mt-12 section-card revenue-trend-card" id="revenueTrendCard">
+      <div class="section-card__head revenue-trend-head">
+        <div class="section-card__title">
+          <b>Динамика выручки</b>
+          <div class="muted" id="revenueTrendSubtitle">По дням выбранного и сравниваемого периода, ₽</div>
+        </div>
+        <div class="revenue-trend-legend" id="revenueTrendLegend" aria-label="Легенда графика"></div>
+      </div>
+      <div class="revenue-trend-chart mt-12" id="revenueTrendChart" aria-live="polite"></div>
+      <div class="revenue-trend-focus mt-10" id="revenueTrendFocus">Выбери день на графике</div>
+    </section>
+
+    <div class="card mt-12 section-card revenue-structure-card">
       <div class="section-card__head">
         <div class="section-card__title">
-          <b>Детализация</b>
-          <div class="muted">Список автоматически меняется между департаментами и типами оплат.</div>
+          <b id="revenueRowsTitle">Структура выручки</b>
+          <div class="muted" id="revenueRowsSubtitle">Доля, сумма и изменение относительно периода сравнения.</div>
         </div>
       </div>
-      <div id="rows" class="table-like-list"></div>
+      <div id="rows" class="revenue-structure-list"></div>
     </div>
 
     <div class="nav">
@@ -147,7 +160,7 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-turnover.js?v=20260729-compare2"></script>
+  <script type="module" src="/owner-turnover.js?v=20260802-ledgernav1"></script>
   <!-- Canonical revenue page -->
 </body>
 </html>

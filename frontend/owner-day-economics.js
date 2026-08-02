@@ -262,6 +262,14 @@ function buildSummaryLink() {
   return `/owner-summary.html?${qp.toString()}`;
 }
 
+function buildLedgerLink() {
+  const venueId = getActiveVenueId();
+  const qp = new URLSearchParams();
+  if (venueId) qp.set("venue_id", String(venueId));
+  qp.set("month", String((state.date || todayISO()).slice(0, 7)));
+  return `/owner-finance-ledger.html?${qp.toString()}`;
+}
+
 function parseMoneyInputToMinor(value) {
   const raw = String(value ?? "").trim().replace(/\s+/g, "").replace(",", ".");
   if (!raw) return null;
@@ -734,6 +742,8 @@ async function boot() {
     datePick.value = state.date;
     datePick.onchange = async (e) => {
       state.date = coerceDemoDate(e.target.value || todayISO(), { context: "owner-day-economics" });
+      const ledgerLink = document.getElementById("openLedgerBtn");
+      if (ledgerLink) ledgerLink.href = buildLedgerLink();
       updateEconomicsSlotUrl();
       await loadEconomics();
     };
@@ -744,6 +754,8 @@ async function boot() {
 
   const openSummaryBtn = document.getElementById("openSummaryBtn");
   if (openSummaryBtn) openSummaryBtn.onclick = () => { location.href = buildSummaryLink(); };
+  const openLedgerBtn = document.getElementById("openLedgerBtn");
+  if (openLedgerBtn) openLedgerBtn.href = buildLedgerLink();
   const openDraftBtn = document.getElementById("openEconomicsDraftExpensesBtn");
   if (openDraftBtn) openDraftBtn.onclick = () => { location.href = buildDraftExpensesLink(); };
   const openPlansBtn = document.getElementById("openPlanTemplatesBtn");

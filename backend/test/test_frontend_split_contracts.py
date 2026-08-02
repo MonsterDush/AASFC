@@ -125,6 +125,30 @@ class PrimaryPageUiPolishContractTests(TestCase):
 
 
 class WorkflowPageUiPolishContractTests(TestCase):
+    def test_finance_pages_expose_permission_aware_ledger_navigation(self):
+        page_scripts = {
+            "owner-summary.html": "owner-summary.js",
+            "owner-turnover.html": "owner-turnover.js",
+            "owner-expenses.html": "owner-expenses.js",
+            "owner-day-economics.html": "owner-day-economics.js",
+        }
+        for html_name, script_name in page_scripts.items():
+            html = (FRONTEND / html_name).read_text(encoding="utf-8")
+            script = (FRONTEND / script_name).read_text(encoding="utf-8")
+            self.assertIn('id="openLedgerBtn"', html, html_name)
+            self.assertIn("/owner-finance-ledger.html?", script, script_name)
+
+        summary_script = (FRONTEND / "owner-summary.js").read_text(encoding="utf-8")
+        self.assertIn("hasFinanceLedgerViewAccess", summary_script)
+        self.assertIn("financeAccess.canViewLedger", summary_script)
+
+        ledger_html = (FRONTEND / "owner-finance-ledger.html").read_text(encoding="utf-8")
+        ledger_script = (FRONTEND / "owner-finance-ledger.js").read_text(encoding="utf-8")
+        self.assertIn('id="ledgerFinanceShortcuts"', ledger_html)
+        self.assertIn("access.canViewRevenue", ledger_script)
+        self.assertIn("access.canViewExpenses", ledger_script)
+        self.assertIn("syncFinanceLinks", ledger_script)
+
     def test_setup_positions_and_invites_keep_responsive_visual_states(self):
         contracts = {
             "owner-setup.html": (
@@ -271,6 +295,18 @@ class WorkflowPageUiPolishContractTests(TestCase):
 
         expenses_script = (FRONTEND / "owner-expenses.js").read_text(encoding="utf-8")
         self.assertIn("/expenses/period-summary?", expenses_script)
+        revenue_html = (FRONTEND / "owner-turnover.html").read_text(encoding="utf-8")
+        revenue_script = (FRONTEND / "owner-turnover.js").read_text(encoding="utf-8")
+        self.assertIn("/styles/pages/finance-pages.css?v=20260802-revenueanalytics1", revenue_html)
+        self.assertIn("/owner-turnover.js?v=20260802-ledgernav1", revenue_html)
+        self.assertIn('id="revenueTrendChart"', revenue_html)
+        self.assertIn('id="revenueRowsSubtitle"', revenue_html)
+        self.assertIn('primaryQuery.set("include_series", "1")', revenue_script)
+        self.assertIn('comparisonQuery.set("include_series", "1")', revenue_script)
+        self.assertIn("normalizeRevenueDailySeries", revenue_script)
+        self.assertIn("buildRevenueStructure", revenue_script)
+        self.assertIn('id="openLedgerBtn"', revenue_html)
+        self.assertIn("/owner-finance-ledger.html?", revenue_script)
         comparison_helper = (FRONTEND / "app/period-comparison.js").read_text(encoding="utf-8")
         self.assertIn('if (mode === "week")', comparison_helper)
 
@@ -390,7 +426,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-economics.css").read_text(encoding="utf-8")
 
         for html, page_name, script_version in (
-            (day_html, "owner-day-economics", "20260729-compare2"),
+            (day_html, "owner-day-economics", "20260802-ledgernav1"),
             (rules_html, "owner-economics-rules", "20260726-navmore1"),
         ):
             style_version = "20260729-compare2" if page_name == "owner-day-economics" else "20260726-polish11"

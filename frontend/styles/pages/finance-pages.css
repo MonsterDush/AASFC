@@ -21,8 +21,54 @@ select.finance-control--wide{min-width:170px}
 .finance-row-delta{margin-top:3px;color:var(--muted);font-size:11px;font-weight:800;text-align:right}
 .finance-row-delta.is-good{color:var(--statusSuccessText)}
 .finance-row-delta.is-bad{color:var(--statusWarningText)}
+.finance-chart-empty{display:grid;grid-column:1/-1;place-items:center;min-height:160px;padding:18px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted);text-align:center}
+
+.owner-turnover-page .revenue-trend-card,.owner-turnover-page .revenue-structure-card{min-width:0;background:linear-gradient(145deg,var(--card),var(--surface2))}
+.owner-turnover-page .revenue-trend-head{align-items:flex-start}
+.owner-turnover-page .revenue-trend-legend{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;font-weight:800}
+.owner-turnover-page .revenue-trend-legend span{display:inline-flex;align-items:center;gap:6px}
+.owner-turnover-page .revenue-trend-swatch{display:inline-block;width:17px;height:0;border-top:3px solid var(--accent)}
+.owner-turnover-page .revenue-trend-swatch--comparison{border-top-style:dashed;opacity:.58}
+.owner-turnover-page .revenue-trend-chart{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px;min-width:0}
+.owner-turnover-page .revenue-trend-scale{position:relative;height:224px;color:var(--muted);font-size:10px;font-weight:800}
+.owner-turnover-page .revenue-trend-scale span{position:absolute;right:0;white-space:nowrap}
+.owner-turnover-page .revenue-trend-scale span:first-child{top:-2px}
+.owner-turnover-page .revenue-trend-scale span:last-child{bottom:18px}
+.owner-turnover-page .revenue-trend-visual{display:grid;grid-template-rows:200px 20px;gap:4px;min-width:0}
+.owner-turnover-page .revenue-trend-svg{display:block;width:100%;height:200px;overflow:visible}
+.owner-turnover-page .revenue-trend-gridline{stroke:var(--border);stroke-width:1;stroke-dasharray:4 4;vector-effect:non-scaling-stroke}
+.owner-turnover-page .revenue-trend-line{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}
+.owner-turnover-page .revenue-trend-line--current{stroke:var(--accent)}
+.owner-turnover-page .revenue-trend-line--comparison{stroke:var(--accent);stroke-width:2;stroke-dasharray:3 6;opacity:.58}
+.owner-turnover-page .revenue-trend-marker{vector-effect:non-scaling-stroke;pointer-events:none}
+.owner-turnover-page .revenue-trend-marker--current{fill:var(--accent);stroke:var(--card);stroke-width:1}
+.owner-turnover-page .revenue-trend-marker--comparison{fill:var(--card);stroke:var(--accent);stroke-width:2;opacity:.72}
+.owner-turnover-page .revenue-trend-bar{pointer-events:none}
+.owner-turnover-page .revenue-trend-bar--current{fill:var(--accent)}
+.owner-turnover-page .revenue-trend-bar--comparison{fill:transparent;stroke:var(--accent);stroke-width:2;opacity:.64;vector-effect:non-scaling-stroke}
+.owner-turnover-page .revenue-trend-hit{fill:transparent}
+.owner-turnover-page .revenue-trend-hit-group{cursor:pointer}
+.owner-turnover-page .revenue-trend-hit-group:hover .revenue-trend-hit,.owner-turnover-page .revenue-trend-hit-group.is-active .revenue-trend-hit{fill:var(--accentSoftBg)}
+.owner-turnover-page .revenue-trend-hit-group:focus{outline:none}
+.owner-turnover-page .revenue-trend-hit-group:focus .revenue-trend-hit{stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
+.owner-turnover-page .revenue-trend-ticks{display:flex;justify-content:space-between;min-width:0;color:var(--muted);font-size:9px;font-weight:800;line-height:20px}
+.owner-turnover-page .revenue-trend-focus{min-height:42px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;background:var(--surfaceTintSoft);font-size:12px;line-height:1.45}
+.owner-turnover-page .revenue-structure-list{display:grid;gap:10px;min-width:0}
+.owner-turnover-page .revenue-structure-row{display:grid;gap:8px;min-width:0;padding:13px 14px;border:1px solid var(--border);border-radius:16px;background:var(--surfaceTintSoft)}
+.owner-turnover-page .revenue-structure-row:first-child{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--surfaceTintSoft) 84%)}
+.owner-turnover-page .revenue-structure-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;min-width:0}
+.owner-turnover-page .revenue-structure-head > *{min-width:0}
+.owner-turnover-page .revenue-structure-title{font-size:14px;font-weight:900;line-height:1.35;overflow-wrap:anywhere}
+.owner-turnover-page .revenue-structure-share{margin-top:3px;color:var(--muted);font-size:11px;font-weight:800}
+.owner-turnover-page .revenue-structure-value{display:grid;justify-items:end;flex:none;text-align:right}
+.owner-turnover-page .revenue-structure-value b{font-size:16px;white-space:nowrap}
+.owner-turnover-page .revenue-structure-bar{display:block;width:100%;height:9px;overflow:visible}
+.owner-turnover-page .revenue-structure-track{fill:var(--surfaceTintStrong)}
+.owner-turnover-page .revenue-structure-fill{fill:var(--accent)}
 
 .owner-finance-ledger-page .ledger-shell{display:grid;gap:14px}
+.owner-finance-ledger-page #ledgerFinanceShortcuts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.owner-finance-ledger-page #ledgerFinanceShortcuts .btn{width:100%;min-width:0}
 .owner-finance-ledger-page .ledger-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;min-width:0}
 .owner-finance-ledger-page .ledger-control-label{display:grid;gap:6px;min-width:0;color:var(--muted);font-size:12px;font-weight:800}
 .owner-finance-ledger-page .ledger-control-label .finance-control{width:100%;min-width:0}
@@ -180,6 +226,16 @@ select.finance-control--wide{min-width:170px}
   .owner-finance-ledger-page .ledger-trend-visual{grid-template-rows:160px 20px}
   .owner-finance-ledger-page .ledger-trend-svg{height:160px}
   .owner-finance-ledger-page .ledger-trend-ticks{font-size:8px}
+  .owner-turnover-page .revenue-trend-head{display:grid;gap:8px}
+  .owner-turnover-page .revenue-trend-legend{justify-content:flex-start}
+  .owner-turnover-page .revenue-trend-chart{grid-template-columns:38px minmax(0,1fr);gap:6px}
+  .owner-turnover-page .revenue-trend-scale{height:204px}
+  .owner-turnover-page .revenue-trend-visual{grid-template-rows:180px 20px}
+  .owner-turnover-page .revenue-trend-svg{height:180px}
+  .owner-turnover-page .revenue-structure-head{display:grid;gap:7px}
+  .owner-turnover-page .revenue-structure-value{justify-items:start;text-align:left}
+  .owner-turnover-page .revenue-structure-value b{white-space:normal}
+  .owner-turnover-page .revenue-structure-value .finance-row-delta{text-align:left}
 }
 @media (min-width:561px) and (max-width:900px){
   .owner-summary-page .finance-kpis--secondary{grid-template-columns:repeat(2,minmax(0,1fr))}

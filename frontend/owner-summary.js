@@ -18,7 +18,7 @@ import {
   mountDemoPageTour,
   trackDemoEvent,
 } from "/app.js?v=20260726-navmore1";
-import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
+import { canViewRevenue, hasFinanceLedgerViewAccess, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260729-compare1";
 import {
   buildFinanceCostStructure,
@@ -725,6 +725,7 @@ let financeAccess = {
   canViewRevenue: false,
   canViewExpenses: false,
   canViewPayroll: false,
+  canViewLedger: false,
   canViewProfit: false,
   canCalculatePayroll: false,
 };
@@ -746,15 +747,17 @@ async function loadFinanceAccess() {
     const canViewRevenueValue = hasFullSummary || canViewRevenue(pset, role, systemRole);
     const canViewExpensesValue = hasFullSummary || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
     const canViewPayrollValue = hasFullSummary || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");
+    const canViewLedgerValue = hasFinanceLedgerViewAccess(pset, role, systemRole);
     financeAccess = {
       canViewRevenue: canViewRevenueValue,
       canViewExpenses: canViewExpensesValue,
       canViewPayroll: canViewPayrollValue,
+      canViewLedger: canViewLedgerValue,
       canViewProfit: canViewRevenueValue && canViewExpensesValue && canViewPayrollValue,
       canCalculatePayroll: hasFullSummary || hasPerm(pset, "PAYROLL_CALCULATE"),
     };
   } catch {
-    financeAccess = { canViewRevenue: false, canViewExpenses: false, canViewPayroll: false, canViewProfit: false, canCalculatePayroll: false };
+    financeAccess = { canViewRevenue: false, canViewExpenses: false, canViewPayroll: false, canViewLedger: false, canViewProfit: false, canCalculatePayroll: false };
   }
   return financeAccess;
 }
@@ -782,7 +785,11 @@ function syncActions() {
   const revenueBtn = document.getElementById("openRevenueBtn");
   const expensesBtn = document.getElementById("openExpensesBtn");
   const payrollBtn = document.getElementById("openPayrollBtn");
+  const ledgerBtn = document.getElementById("openLedgerBtn");
   const economicsBtn = document.getElementById("openEconomicsBtn");
+  const selectedMonth = state.period === "month"
+    ? state.month
+    : (state.period === "day" ? state.day : state.to || state.from || todayISO()).slice(0, 7);
 
   if (exportSummaryBtn) {
     setVisible(exportSummaryBtn, financeAccess.canViewRevenue);
@@ -810,9 +817,6 @@ function syncActions() {
     expensesBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
-      const selectedMonth = state.period === "month"
-        ? state.month
-        : (state.period === "day" ? state.day : state.to || state.from || todayISO()).slice(0, 7);
       qp.set("month", selectedMonth || currentMonth());
       location.href = `/owner-expenses.html?${qp.toString()}`;
     };
@@ -823,12 +827,17 @@ function syncActions() {
     payrollBtn.onclick = () => {
       const qp = new URLSearchParams();
       qp.set("venue_id", String(venueId));
-      const selectedMonth = state.period === "month"
-        ? state.month
-        : (state.period === "day" ? state.day : state.to || state.from || todayISO()).slice(0, 7);
       qp.set("month", selectedMonth || currentMonth());
       location.href = `/owner-payroll.html?${qp.toString()}`;
     };
+  }
+
+  if (ledgerBtn) {
+    setVisible(ledgerBtn, financeAccess.canViewLedger);
+    const qp = new URLSearchParams();
+    qp.set("venue_id", String(venueId));
+    qp.set("month", selectedMonth || currentMonth());
+    ledgerBtn.href = `/owner-finance-ledger.html?${qp.toString()}`;
   }
 
   if (economicsBtn) {

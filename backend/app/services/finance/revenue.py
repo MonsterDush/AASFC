@@ -132,7 +132,34 @@ def resolve_revenue_period(month: str | None, date_from: date | None, date_to: d
     return date(today.year, today.month, 1), date(today.year, today.month, last_day)
 
 
-def compute_revenue_summary(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, db: Session) -> dict:
+def build_revenue_daily_series(*, period_start: date, period_end: date, rows: list) -> list[dict]:
+    amounts_by_date: dict[date, int] = {}
+    for row in rows:
+        if hasattr(row, "date") and hasattr(row, "amount"):
+            row_date = getattr(row, "date")
+            amount = getattr(row, "amount")
+        else:
+            row_date, amount = row
+        amounts_by_date[row_date] = int(amount or 0)
+
+    result: list[dict] = []
+    current = period_start
+    while current <= period_end:
+        result.append({"date": current, "amount": amounts_by_date.get(current, 0)})
+        current += timedelta(days=1)
+    return result
+
+
+def compute_revenue_summary(
+    *,
+    venue_id: int,
+    month: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    mode: str,
+    db: Session,
+    include_series: bool = False,
+) -> dict:
     period_start, period_end = resolve_revenue_period(month, date_from, date_to)
     mode_norm = (mode or "payments").strip().lower()
     if mode_norm not in {"payments", "departments"}:
@@ -195,6 +222,30 @@ def compute_revenue_summary(*, venue_id: int, month: str | None, date_from: date
         out_rows.append({"ref_id": int(ref_id), "code": code, "title": title, "amount": amount_int})
 
     out_rows.sort(key=lambda x: (-x["amount"], x["title"]))
+    daily_series: list[dict] = []
+    if include_series:
+        daily_rows = db.execute(
+            select(
+                DailyReport.date,
+                func.coalesce(func.sum(DailyReportValue.value_numeric), 0).label("amount"),
+            )
+            .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
+            .where(
+                DailyReport.venue_id == int(venue_id),
+                DailyReport.status == "CLOSED",
+                DailyReport.date >= period_start,
+                DailyReport.date <= period_end,
+                DailyReportValue.kind == kind,
+            )
+            .group_by(DailyReport.date)
+            .order_by(DailyReport.date.asc())
+        ).all()
+        daily_series = build_revenue_daily_series(
+            period_start=period_start,
+            period_end=period_end,
+            rows=daily_rows,
+        )
+
     return {
         "month": month,
         "period_start": period_start,
@@ -203,4 +254,5 @@ def compute_revenue_summary(*, venue_id: int, month: str | None, date_from: date
         "closed_reports": closed_reports,
         "total": total,
         "rows": out_rows,
+        "daily_series": daily_series,
     }

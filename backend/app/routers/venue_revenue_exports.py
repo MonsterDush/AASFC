@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.routers.venue_core import (
     BaseModel,
+    Field,
     BytesIO,
     DailyReport,
     DailyReportValue,
@@ -72,6 +73,11 @@ class RevenueRowOut(BaseModel):
     amount: int
 
 
+class RevenueDailyPointOut(BaseModel):
+    date: date
+    amount: int
+
+
 class RevenueSummaryOut(BaseModel):
     financial_values_hidden: bool = False
     can_view_financial_values: bool = True
@@ -83,6 +89,7 @@ class RevenueSummaryOut(BaseModel):
     closed_reports: int
     total: int
     rows: list[RevenueRowOut]
+    daily_series: list[RevenueDailyPointOut] = Field(default_factory=list)
 
 
 def _parse_month_yyyy_mm(month: str) -> tuple[date, date]:
@@ -133,7 +140,16 @@ def _revenue_kind_and_catalog(mode: str):
     raise HTTPException(status_code=400, detail="Bad mode, expected DEPARTMENTS or PAYMENTS")
 
 
-def _compute_revenue_summary(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, db: Session):
+def _compute_revenue_summary(
+    *,
+    venue_id: int,
+    month: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    mode: str,
+    db: Session,
+    include_series: bool = False,
+):
     try:
         summary = compute_revenue_summary(
             venue_id=venue_id,
@@ -142,6 +158,7 @@ def _compute_revenue_summary(*, venue_id: int, month: str | None, date_from: dat
             date_to=date_to,
             mode=mode,
             db=db,
+            include_series=include_series,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -158,6 +175,7 @@ def _compute_revenue_summary(*, venue_id: int, month: str | None, date_from: dat
         "closed_reports": int(summary["closed_reports"]),
         "total": int(summary["total"]),
         "rows": summary["rows"],
+        "daily_series": summary.get("daily_series") or [],
     }
 
 
@@ -335,6 +353,7 @@ def get_revenue_summary(
     date_from: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     mode: str = Query("DEPARTMENTS", description="DEPARTMENTS | PAYMENTS"),
+    include_series: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -342,7 +361,15 @@ def get_revenue_summary(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
-    summary = _compute_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db)
+    summary = _compute_revenue_summary(
+        venue_id=venue_id,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        mode=mode,
+        db=db,
+        include_series=include_series,
+    )
     return sanitize_financial_payload_for_user(user, summary)
 
 
