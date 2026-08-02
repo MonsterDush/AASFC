@@ -48,7 +48,7 @@ class VenueFinanceSummaryRouterTests(TestCase):
              patch.object(venue_finance_summary, "_require_report_viewer") as reports, \
              patch.object(venue_finance_summary, "get_monthly_finance_summary", return_value={"kind": "monthly"}), \
              patch.object(venue_finance_summary, "get_day_finance_summary", return_value={"kind": "daily"}), \
-             patch.object(venue_finance_summary, "get_finance_summary", return_value={"kind": "finance"}), \
+             patch.object(venue_finance_summary, "get_finance_summary", return_value={"kind": "finance"}) as finance_summary, \
              patch.object(venue_finance_summary, "sanitize_financial_payload_for_user", side_effect=lambda current_user, payload: payload):
             monthly = venue_finance_summary.get_venue_monthly_finance_summary(
                 5, "2026-07", None, None, "PAYMENTS", db, user
@@ -63,6 +63,7 @@ class VenueFinanceSummaryRouterTests(TestCase):
         self.assertEqual(monthly, {"kind": "monthly"})
         self.assertEqual(daily, {"kind": "daily"})
         self.assertEqual(finance, {"kind": "finance"})
+        self.assertFalse(finance_summary.call_args.kwargs["include_series"])
         self.assertEqual(active.call_count, 3)
         self.assertEqual(revenue.call_count, 3)
         self.assertEqual(reports.call_count, 3)
@@ -90,6 +91,32 @@ class VenueLedgerRouterTests(TestCase):
         self.assertEqual(payload["amount_minor"], 12_345)
         self.assertEqual(payload["payment_method"]["code"], "cash")
         self.assertEqual(payload["department"]["title"], "Бар")
+
+    def test_ledger_period_accepts_month_or_explicit_date_range(self):
+        self.assertEqual(
+            venue_ledger._resolve_ledger_period(month="2026-07", date_from=None, date_to=None),
+            (date(2026, 7, 1), date(2026, 7, 31)),
+        )
+        self.assertEqual(
+            venue_ledger._resolve_ledger_period(
+                month=None,
+                date_from=date(2026, 6, 15),
+                date_to=date(2026, 6, 21),
+            ),
+            (date(2026, 6, 15), date(2026, 6, 21)),
+        )
+        self.assertIsNone(
+            venue_ledger._resolve_ledger_period(month=None, date_from=None, date_to=None)
+        )
+
+    def test_ledger_period_rejects_mixed_month_and_dates(self):
+        with self.assertRaises(HTTPException) as raised:
+            venue_ledger._resolve_ledger_period(
+                month="2026-07",
+                date_from=date(2026, 6, 1),
+                date_to=date(2026, 6, 30),
+            )
+        self.assertEqual(raised.exception.status_code, 400)
 
 
 class VenueRecurringExpenseRouterTests(TestCase):

@@ -5,18 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-ledger1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Финансовые движения</title>
 </head>
-<body>
+<body class="owner-finance-ledger-page">
   <div class="container">
     <div class="topbar">
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
           <b>Финансовые движения</b>
-          <div class="muted">ledger, переводы между типами оплат и детализация балансов</div>
+          <div class="muted">журнал, переводы между типами оплат и детализация балансов</div>
         </div>
       </div>
       <div class="userpill" data-userpill>…</div>
@@ -41,18 +41,21 @@
       </div>
     </div>
 
-    <div class="card finance-toolbar">
-      <div class="row row--between gap-12">
-        <div>
-          <b>Журнал финансовых движений</b>
-          <div class="muted mt-6">Выручка, расходы, корректировки и переводы между оплатами</div>
+    <div class="card finance-toolbar ledger-shell">
+      <div class="screen-hero ledger-hero">
+        <div class="screen-hero__head">
+          <div>
+            <b>Журнал финансовых движений</b>
+            <div class="muted mt-6">Приходы, списания, корректировки и внутренние переводы по данным журнала</div>
+          </div>
+          <button class="btn hidden" id="addTransferBtn" type="button">Новый перевод</button>
         </div>
-        <div class="row gap-8">
-          <input class="finance-control" id="ledgerMonthPick" type="month" />
-          <select class="finance-control finance-control--wide" id="ledgerPaymentMethodPick">
+        <div class="ledger-filter-grid">
+          <label class="ledger-control-label">Месяц<input class="finance-control" id="ledgerMonthPick" type="month" /></label>
+          <label class="ledger-control-label">Тип оплаты<select class="finance-control finance-control--wide" id="ledgerPaymentMethodPick">
             <option value="">Все оплаты</option>
-          </select>
-          <select class="finance-control finance-control--wide" id="ledgerKindPick">
+          </select></label>
+          <label class="ledger-control-label">Вид движения<select class="finance-control finance-control--wide" id="ledgerKindPick">
             <option value="">Все типы</option>
             <option value="REVENUE">Выручка</option>
             <option value="EXPENSE">Расходы</option>
@@ -61,30 +64,86 @@
             <option value="PAYROLL">ФОТ</option>
             <option value="ADJUSTMENT">Корректировки</option>
             <option value="REFUND">Возвраты</option>
-          </select>
-          <button class="btn hidden" id="addTransferBtn">Перевод</button>
+          </select></label>
+        </div>
+
+        <div class="itemcard finance-comparison-card ledger-comparison-card">
+          <div class="finance-comparison-card__head">
+            <div>
+              <div class="finance-period-card__label">Сравнение</div>
+              <div class="finance-period-card__value" id="ledgerComparePeriodText">—</div>
+            </div>
+            <div class="seg" id="ledgerCompareSeg">
+              <button type="button" data-compare="auto" class="active">Авто</button>
+              <button type="button" data-compare="custom">Другой период</button>
+            </div>
+          </div>
+          <div class="finance-comparison-card__controls hidden" id="ledgerCompareRange">
+            <div class="range-pick">
+              <input id="ledgerCompareFrom" type="date" aria-label="Начало периода сравнения" />
+              <span class="muted">—</span>
+              <input id="ledgerCompareTo" type="date" aria-label="Конец периода сравнения" />
+              <button class="btn" id="ledgerCompareApply" type="button">Сравнить</button>
+            </div>
+          </div>
+          <div class="muted" id="ledgerCompareHint">По умолчанию сравниваем с прошлым месяцем.</div>
         </div>
       </div>
 
-      <div class="finance-stats mt-12">
+      <div class="finance-stats ledger-stats mt-12">
         <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Доход за фильтр</div>
+          <div class="finance-stat__label">Приход</div>
           <div class="finance-stat__value" id="ledgerIncomeTotal">—</div>
+          <div class="finance-metric-delta" id="ledgerIncomeDelta">—</div>
         </div>
         <div class="itemcard finance-stat">
-          <div class="finance-stat__label">Расход за фильтр</div>
+          <div class="finance-stat__label">Списание</div>
           <div class="finance-stat__value" id="ledgerExpenseTotal">—</div>
+          <div class="finance-metric-delta" id="ledgerExpenseDelta">—</div>
+        </div>
+        <div class="itemcard finance-stat ledger-stat--net">
+          <div class="finance-stat__label">Чистый поток</div>
+          <div class="finance-stat__value" id="ledgerNetTotal">—</div>
+          <div class="finance-metric-delta" id="ledgerNetDelta">—</div>
         </div>
         <div class="itemcard finance-stat">
           <div class="finance-stat__label">Записей</div>
           <div class="finance-stat__value" id="ledgerCount">—</div>
+          <div class="finance-metric-delta" id="ledgerCountDelta">—</div>
         </div>
       </div>
+
+      <div class="ledger-analytics-grid mt-12">
+        <section class="itemcard ledger-chart-card ledger-trend-card" aria-labelledby="ledgerTrendTitle">
+          <div class="section-head">
+            <div>
+              <b id="ledgerTrendTitle">Движение денег по дням</b>
+              <div class="muted mt-6" id="ledgerTrendSubtitle">Приход и списание за выбранный месяц</div>
+            </div>
+            <div class="ledger-chart-legend" aria-label="Легенда графика">
+              <span><i class="ledger-legend-swatch ledger-legend-swatch--income"></i>Приход</span>
+              <span><i class="ledger-legend-swatch ledger-legend-swatch--expense"></i>Списание</span>
+            </div>
+          </div>
+          <div id="ledgerTrendChart" class="ledger-trend-chart mt-12"></div>
+          <div id="ledgerTrendFocus" class="ledger-chart-focus mt-10" aria-live="polite">Выбери день на графике</div>
+        </section>
+
+        <section class="itemcard ledger-chart-card" aria-labelledby="ledgerStructureTitle">
+          <div>
+            <b id="ledgerStructureTitle">Структура движений</b>
+            <div class="muted mt-6" id="ledgerStructureSubtitle">Виды операций по объёму; приход и списание разделены</div>
+          </div>
+          <div id="ledgerStructureChart" class="ledger-structure-chart mt-12"></div>
+        </section>
+      </div>
+
+      <div class="ledger-transfer-note muted mt-12">Внутренние переводы создают приход и списание на одинаковую сумму: объём движений растёт, а чистый поток заведения не меняется.</div>
 
       <div class="itemcard mt-12">
         <div class="row row--between gap-12">
           <div>
-            <b>Ledger entries</b>
+            <b>Операции</b>
             <div class="muted mt-6" id="ledgerHint">—</div>
           </div>
         </div>
@@ -121,6 +180,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-finance-ledger.js?v=20260726-navmore1"></script>
+  <script type="module" src="/owner-finance-ledger.js?v=20260802-ledger1"></script>
 </body>
 </html>

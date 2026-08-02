@@ -97,14 +97,14 @@ class PrimaryPageUiPolishContractTests(TestCase):
             ),
             "owner-summary.html": (
                 "styles/pages/finance-pages.css",
-                ("summary-metric--profit", "summary-state", "finance-stat__value is-loading"),
+                ("summary-metric--profit", "summary-state", "finance-stat__value is-loading", "summary-analytics-grid"),
             ),
         }
 
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            cache_key = "20260729-compare1" if html_name == "owner-summary.html" else "20260723-polish2"
+            cache_key = "20260802-summarycharts1" if html_name == "owner-summary.html" else "20260723-polish2"
             self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")

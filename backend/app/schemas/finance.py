@@ -108,6 +108,23 @@ class RecurringExpenseRuleUpdateIn(BaseModel):
     payment_method_ids: list[int] | None = None
 
 
+class FinanceDailyPointOut(BaseModel):
+    date: date
+    revenue_minor: int
+    expense_minor: int
+    payroll_minor: int
+    total_cost_minor: int
+    adjustments_minor: int
+    refunds_minor: int
+    profit_minor: int
+
+
+class FinanceCostStructureRowOut(BaseModel):
+    key: str
+    title: str
+    amount_minor: int
+
+
 class FinanceSummaryOut(BaseModel):
     financial_values_hidden: bool = False
     can_view_financial_values: bool = True
@@ -128,6 +145,8 @@ class FinanceSummaryOut(BaseModel):
     expense_ratio_bps: int | None = None
     payroll_ratio_bps: int | None = None
     total_cost_ratio_bps: int | None = None
+    daily_series: list[FinanceDailyPointOut] = Field(default_factory=list)
+    cost_structure: list[FinanceCostStructureRowOut] = Field(default_factory=list)
 
 
 class MonthlyFinanceBreakdownRowOut(BaseModel):

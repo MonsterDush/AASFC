@@ -82,6 +82,7 @@ def get_venue_finance_summary(
     date_to: date | None = Query(None, description="YYYY-MM-DD (inclusive)"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    include_series: bool = False,
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
@@ -93,6 +94,7 @@ def get_venue_finance_summary(
             month=month,
             date_from=date_from,
             date_to=date_to,
+            include_series=include_series,
         )
         return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:

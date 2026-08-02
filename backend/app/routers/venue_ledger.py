@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import calendar
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -37,6 +37,7 @@ from app.services.finance.payment_transfers import (
     delete_payment_method_transfer_entries,
     rebuild_payment_method_transfer_entries,
 )
+from app.services.finance.summary import resolve_finance_period
 from app.services.financial_privacy import sanitize_financial_payload_for_user
 
 
@@ -152,6 +153,22 @@ def _require_payment_transfers_manage(db: Session, *, venue_id: int, user: User)
         return
     except HTTPException:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
+
+
+def _resolve_ledger_period(
+    *,
+    month: str | None,
+    date_from: date | None,
+    date_to: date | None,
+) -> tuple[date, date] | None:
+    if month and (date_from is not None or date_to is not None):
+        raise HTTPException(status_code=400, detail="Use either month or date_from/date_to")
+    if month is None and date_from is None and date_to is None:
+        return None
+    try:
+        return resolve_finance_period(month=month, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/{venue_id}/balance-adjustments")
@@ -277,6 +294,8 @@ def delete_balance_adjustment(
 def list_finance_entries(
     venue_id: int,
     month: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     payment_method_id: int | None = Query(default=None),
     direction: str | None = Query(default=None),
     kind: str | None = Query(default=None),
@@ -293,14 +312,9 @@ def list_finance_entries(
         Department, Department.id == FinanceEntry.department_id
     ).where(FinanceEntry.venue_id == venue_id)
 
-    if month:
-        try:
-            dt = datetime.strptime(month, "%Y-%m").date()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
-        start = dt.replace(day=1)
-        _, last_day = calendar.monthrange(dt.year, dt.month)
-        end = dt.replace(day=last_day)
+    period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
+    if period is not None:
+        start, end = period
         stmt = stmt.where(FinanceEntry.entry_date >= start, FinanceEntry.entry_date <= end)
 
     if payment_method_id is not None:
@@ -445,6 +459,5 @@ def delete_payment_method_transfer(
     db.delete(obj)
     db.commit()
     return {"ok": True}
-
 
 

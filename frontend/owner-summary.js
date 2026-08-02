@@ -20,6 +20,11 @@ import {
 } from "/app.js?v=20260726-navmore1";
 import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260729-compare1";
+import {
+  buildFinanceCostStructure,
+  buildFinanceTrendGeometry,
+  normalizeFinanceDailySeries,
+} from "/app/finance-summary-analytics.js?v=20260802-summarycharts1";
 
 let financialValuesHidden = false;
 
@@ -42,6 +47,40 @@ function fmtPercentBps(bps) {
     return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(pct) + "%";
   } catch {
     return pct.toFixed(2) + "%";
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function fmtCompactMoneyMinor(minor) {
+  const rubles = Number(minor || 0) / 100;
+  const absolute = Math.abs(rubles);
+  const format = (value, suffix) => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: value >= 10 ? 0 : 1 }).format(value)}${suffix}`;
+  if (absolute >= 1_000_000) return `${rubles < 0 ? "−" : ""}${format(absolute / 1_000_000, " млн")}`;
+  if (absolute >= 1_000) return `${rubles < 0 ? "−" : ""}${format(absolute / 1_000, " тыс")}`;
+  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(rubles)}`;
+}
+
+function fmtShortDate(value) {
+  const [year, month, day] = String(value || "").split("-");
+  return year && month && day ? `${day}.${month}` : String(value || "");
+}
+
+function fmtLongDate(value) {
+  const [year, month, day] = String(value || "").split("-");
+  if (!year || !month || !day) return String(value || "");
+  try {
+    return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+      .format(new Date(Date.UTC(Number(year), Number(month) - 1, Number(day))));
+  } catch {
+    return `${day}.${month}.${year}`;
   }
 }
 
@@ -336,6 +375,205 @@ function resetComparisonDeltas(text = "—") {
   });
 }
 
+function syncAnalyticsAccess() {
+  const grid = document.getElementById("summaryAnalyticsGrid");
+  const trendVisible = financeAccess.canViewRevenue;
+  const structureVisible = financeAccess.canViewExpenses || financeAccess.canViewPayroll;
+  showBlock("summaryTrendCard", trendVisible);
+  showBlock("summaryStructureCard", structureVisible);
+  showBlock("summaryAnalyticsGrid", trendVisible || structureVisible);
+  grid?.classList.toggle("summary-analytics-grid--single", trendVisible !== structureVisible);
+}
+
+function renderSummaryTrendFocus(point, { showCost, showProfit } = {}) {
+  const focus = document.getElementById("summaryTrendFocus");
+  if (!focus) return;
+  if (!point || financialValuesHidden) {
+    focus.textContent = financialValuesHidden ? FINANCIAL_VALUES_HIDDEN_LABEL : "Выбери день на графике";
+    return;
+  }
+  const values = [
+    `<span><b>${escapeHtml(fmtLongDate(point.date))}</b></span>`,
+    `<span>Выручка: <b>${escapeHtml(fmtMoneyMinor(point.revenueMinor))}</b></span>`,
+  ];
+  if (showCost) values.push(`<span>Затраты: <b>${escapeHtml(fmtMoneyMinor(point.totalCostMinor))}</b></span>`);
+  if (showProfit) values.push(`<span>Прибыль: <b>${escapeHtml(fmtMoneyMinor(point.profitMinor))}</b></span>`);
+  focus.innerHTML = values.join(" · ");
+}
+
+function renderSummaryTrend(summary) {
+  const chart = document.getElementById("summaryTrendChart");
+  const legend = document.getElementById("summaryTrendLegend");
+  const subtitle = document.getElementById("summaryTrendSubtitle");
+  if (!chart || !legend || !subtitle) return;
+
+  const showCost = financeAccess.canViewExpenses || financeAccess.canViewPayroll;
+  const showProfit = financeAccess.canViewExpenses && financeAccess.canViewPayroll;
+  const sourcePoints = normalizeFinanceDailySeries(summary?.daily_series);
+  const points = sourcePoints.map((point) => {
+    const visibleExpense = financeAccess.canViewExpenses ? point.expenseMinor : 0;
+    const visiblePayroll = financeAccess.canViewPayroll ? point.payrollMinor : 0;
+    const visibleCost = visibleExpense + visiblePayroll;
+    return {
+      ...point,
+      totalCostMinor: visibleCost,
+      profitMinor: showProfit
+        ? point.revenueMinor - visibleCost + point.adjustmentsMinor - point.refundsMinor
+        : 0,
+    };
+  });
+  const periodText = summary?.period_start && summary?.period_end
+    ? `${summary.period_start} — ${summary.period_end}`
+    : statePeriodText();
+  subtitle.textContent = `${periodText} · по дням, ₽`;
+
+  const legendItems = [
+    ["", "Выручка"],
+    ...(showCost ? [["--cost", "Затраты"]] : []),
+    ...(showProfit ? [["--profit", "Прибыль"]] : []),
+  ];
+  legend.innerHTML = legendItems.map(([modifier, title]) => (
+    `<span><i class="summary-legend-swatch${modifier ? ` summary-legend-swatch${modifier}` : ""}" aria-hidden="true"></i>${escapeHtml(title)}</span>`
+  )).join("");
+
+  if (financialValuesHidden) {
+    chart.innerHTML = `<div class="summary-chart-empty">${escapeHtml(FINANCIAL_VALUES_HIDDEN_LABEL)}</div>`;
+    renderSummaryTrendFocus(null, { showCost, showProfit });
+    return;
+  }
+  if (points.length < 2) {
+    chart.innerHTML = `<div class="summary-chart-empty">${points.length
+      ? "Для одного дня динамика не строится — точные значения уже показаны в KPI."
+      : "За выбранный период нет дневных данных для графика."}</div>`;
+    renderSummaryTrendFocus(points[0] || null, { showCost, showProfit });
+    return;
+  }
+
+  const geometry = buildFinanceTrendGeometry(points, { width: 720, height: 200 });
+  if (!geometry) return;
+  const denseClass = geometry.points.length > 45 ? " is-dense" : "";
+  const gridLines = [0, 50, 100, 150, 200]
+    .map((y) => `<line class="summary-trend-gridline" x1="0" y1="${y}" x2="720" y2="${y}"></line>`)
+    .join("");
+  const zeroLine = geometry.zeroY > 1 && geometry.zeroY < geometry.height - 1
+    ? `<line class="summary-trend-zero" x1="0" y1="${geometry.zeroY.toFixed(2)}" x2="720" y2="${geometry.zeroY.toFixed(2)}"></line>`
+    : "";
+  let marks = "";
+  if (geometry.mode === "lines") {
+    marks += `<path class="summary-trend-line summary-trend-line--revenue" d="${geometry.revenuePath}"></path>`;
+    if (showCost) marks += `<path class="summary-trend-line summary-trend-line--cost" d="${geometry.totalCostPath}"></path>`;
+    if (showProfit) marks += `<path class="summary-trend-line summary-trend-line--profit" d="${geometry.profitPath}"></path>`;
+    marks += geometry.points.map((point) => [
+      `<circle class="summary-trend-marker summary-trend-marker--revenue" cx="${point.x.toFixed(2)}" cy="${point.revenueY.toFixed(2)}" r="3"></circle>`,
+      showCost ? `<circle class="summary-trend-marker summary-trend-marker--cost" cx="${point.x.toFixed(2)}" cy="${point.totalCostY.toFixed(2)}" r="3"></circle>` : "",
+      showProfit ? `<circle class="summary-trend-marker summary-trend-marker--profit" cx="${point.x.toFixed(2)}" cy="${point.profitY.toFixed(2)}" r="2.5"></circle>` : "",
+    ].join("")).join("");
+  } else {
+    marks += geometry.points.map((point) => {
+      const barWidth = Math.max(5, Math.min(28, point.hitWidth * (showCost ? 0.28 : 0.44)));
+      const revenueX = showCost ? point.x - barWidth - 2 : point.x - (barWidth / 2);
+      const costX = point.x + 2;
+      return [
+        `<rect class="summary-trend-bar--revenue" x="${revenueX.toFixed(2)}" y="${point.revenueY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${point.revenueHeight.toFixed(2)}" rx="2"></rect>`,
+        showCost ? `<rect class="summary-trend-bar--cost" x="${costX.toFixed(2)}" y="${point.totalCostY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${point.totalCostHeight.toFixed(2)}" rx="2"></rect>` : "",
+      ].join("");
+    }).join("");
+  }
+  const hitTargets = geometry.points.map((point, index) => (
+    `<g class="summary-trend-hit-group" data-summary-point="${index}" role="button" tabindex="0" aria-label="Показатели за ${escapeHtml(fmtLongDate(point.date))}">`
+      + `<rect class="summary-trend-hit" x="${point.hitX.toFixed(2)}" y="0" width="${point.hitWidth.toFixed(2)}" height="200"></rect>`
+      + "</g>"
+  )).join("");
+  const tickCount = Math.min(7, geometry.points.length);
+  const tickIndexes = [...new Set(Array.from({ length: tickCount }, (_, index) => (
+    Math.round((index * (geometry.points.length - 1)) / Math.max(1, tickCount - 1))
+  )))];
+  const ticks = tickIndexes.map((index) => `<span>${escapeHtml(fmtShortDate(geometry.points[index].date))}</span>`).join("");
+  chart.innerHTML = `
+    <div class="summary-trend-scale" aria-hidden="true">
+      <span>${escapeHtml(fmtCompactMoneyMinor(geometry.maxValue))}</span>
+      <span>${escapeHtml(fmtCompactMoneyMinor(geometry.minValue))}</span>
+    </div>
+    <div class="summary-trend-visual">
+      <svg class="summary-trend-svg${denseClass}" viewBox="0 0 720 200" preserveAspectRatio="none" role="img" aria-label="Динамика финансовых показателей по дням">
+        ${gridLines}${zeroLine}${marks}${hitTargets}
+      </svg>
+      <div class="summary-trend-ticks" aria-hidden="true">${ticks}</div>
+    </div>`;
+
+  let defaultIndex = geometry.points.length - 1;
+  for (let index = geometry.points.length - 1; index >= 0; index -= 1) {
+    const point = geometry.points[index];
+    if (point.revenueMinor || point.totalCostMinor || point.profitMinor) {
+      defaultIndex = index;
+      break;
+    }
+  }
+  const activatePoint = (index) => {
+    chart.querySelectorAll("[data-summary-point]").forEach((target) => {
+      const active = Number(target.dataset.summaryPoint) === index;
+      target.classList.toggle("is-active", active);
+      target.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    renderSummaryTrendFocus(geometry.points[index], { showCost, showProfit });
+  };
+  chart.querySelectorAll("[data-summary-point]").forEach((target) => {
+    const index = Number(target.dataset.summaryPoint);
+    target.addEventListener("click", () => activatePoint(index));
+    target.addEventListener("focus", () => activatePoint(index));
+    target.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      activatePoint(index);
+    });
+  });
+  activatePoint(defaultIndex);
+}
+
+function renderSummaryCostStructure(summary) {
+  const container = document.getElementById("summaryCostStructure");
+  const subtitle = document.getElementById("summaryStructureSubtitle");
+  if (!container || !subtitle) return;
+  const sourceRows = (Array.isArray(summary?.cost_structure) ? summary.cost_structure : []).filter((row) => (
+    String(row?.key || "") === "payroll" ? financeAccess.canViewPayroll : financeAccess.canViewExpenses
+  ));
+  const visibleTotal = sourceRows.reduce((sum, row) => sum + Math.max(0, Number(row?.amount_minor || 0)), 0);
+  const rows = buildFinanceCostStructure(sourceRows, visibleTotal, 6);
+  const periodText = summary?.period_start && summary?.period_end
+    ? `${summary.period_start} — ${summary.period_end}`
+    : statePeriodText();
+  subtitle.textContent = `${periodText} · подтверждённые расходы и распределённый ФОТ`;
+  if (financialValuesHidden) {
+    container.innerHTML = `<div class="summary-chart-empty">${escapeHtml(FINANCIAL_VALUES_HIDDEN_LABEL)}</div>`;
+    return;
+  }
+  if (!rows.length) {
+    container.innerHTML = '<div class="summary-chart-empty">За выбранный период подтверждённых затрат нет.</div>';
+    return;
+  }
+  container.innerHTML = rows.map((row) => {
+    const sharePercent = Math.max(0, Math.min(100, row.shareBps / 100));
+    const fillWidth = row.amountMinor > 0 ? Math.max(1.5, sharePercent) : 0;
+    const rowClass = row.key === "payroll" ? " summary-cost-row--payroll" : "";
+    return `<div class="summary-cost-row${rowClass}">
+      <div class="summary-cost-head">
+        <span class="summary-cost-label">${escapeHtml(row.title)}</span>
+        <span class="summary-cost-value">${escapeHtml(fmtMoneyMinor(row.amountMinor))} · ${escapeHtml(fmtPercentBps(row.shareBps))}</span>
+      </div>
+      <svg class="summary-cost-svg" viewBox="0 0 100 9" preserveAspectRatio="none" aria-hidden="true">
+        <rect class="summary-cost-track" x="0" y="0" width="100" height="9" rx="4.5"></rect>
+        <rect class="summary-cost-fill" x="0" y="0" width="${fillWidth.toFixed(2)}" height="9" rx="4.5"></rect>
+      </svg>
+    </div>`;
+  }).join("");
+}
+
+function renderSummaryAnalytics(summary) {
+  syncAnalyticsAccess();
+  if (financeAccess.canViewRevenue) renderSummaryTrend(summary);
+  if (financeAccess.canViewExpenses || financeAccess.canViewPayroll) renderSummaryCostStructure(summary);
+}
+
 function withTimeout(promise, ms, label = "REQUEST_TIMEOUT") {
   let timer = null;
   return new Promise((resolve, reject) => {
@@ -486,7 +724,7 @@ async function loadSummary() {
   const venueId = getActiveVenueId();
   if (!venueId) {
     setSummaryState("Заведение не выбрано", "Вернитесь к списку заведений и выберите нужное заведение.");
-    ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis", "summaryDetailsCard"].forEach((id) => showBlock(id, false));
+    ["summaryPrimaryKpis", "summaryAnalyticsGrid", "summarySecondaryKpis", "summaryRatioKpis", "summaryDetailsCard"].forEach((id) => showBlock(id, false));
     return;
   }
 
@@ -497,6 +735,7 @@ async function loadSummary() {
   await loadFinanceAccess();
   renderDemoOwnerIntro();
   syncActions();
+  syncAnalyticsAccess();
   setSummaryState();
   ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis", "summaryDetailsCard"].forEach((id) => showBlock(id, true));
 
@@ -526,12 +765,14 @@ async function loadSummary() {
     setText("summaryTotalCostRatio", "—");
     setText("summaryHint", "Нет прав на финансовую сводку");
     setSummaryState("Финансовая сводка недоступна", "Для этой страницы не выданы права на выручку, расходы или начисления.");
-    ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis", "summaryDetailsCard"].forEach((id) => showBlock(id, false));
+    ["summaryPrimaryKpis", "summaryAnalyticsGrid", "summarySecondaryKpis", "summaryRatioKpis", "summaryDetailsCard"].forEach((id) => showBlock(id, false));
     return;
   }
 
   try {
-    const primaryPromise = loadFinanceSummaryForQuery(venueId, buildSummaryQuery(), "OWNER_SUMMARY_TIMEOUT");
+    const primaryQuery = buildSummaryQuery();
+    primaryQuery.set("include_series", "1");
+    const primaryPromise = loadFinanceSummaryForQuery(venueId, primaryQuery, "OWNER_SUMMARY_TIMEOUT");
     const comparisonPromise = loadFinanceSummaryForQuery(venueId, buildComparisonQuery(), "OWNER_SUMMARY_COMPARISON_TIMEOUT");
     const [summary, comparisonResult] = await Promise.all([
       primaryPromise,
@@ -550,6 +791,7 @@ async function loadSummary() {
     setText("summaryTotalCostRatio", fmtPercentBps(summary?.total_cost_ratio_bps));
     setText("summaryPeriodText", summary?.period_start && summary?.period_end ? `${summary.period_start} — ${summary.period_end}` : statePeriodText());
     setText("summaryHint", `Главный экран оставляет только ключевые метрики. Детальные разделы ниже открываются отдельно.`);
+    renderSummaryAnalytics(summary);
     if (comparisonResult.value) {
       renderComparison(summary, comparisonResult.value);
     } else {
@@ -572,7 +814,7 @@ async function loadSummary() {
     setText("summaryHint", e?.data?.detail || e.message || "Ошибка загрузки");
     resetComparisonDeltas();
     setSummaryState("Не удалось загрузить финансовую сводку", e?.data?.detail || e.message || "Попробуйте повторить загрузку позже.");
-    ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis"].forEach((id) => showBlock(id, false));
+    ["summaryPrimaryKpis", "summaryAnalyticsGrid", "summarySecondaryKpis", "summaryRatioKpis"].forEach((id) => showBlock(id, false));
     toast("Не удалось загрузить финансовую сводку", "err");
   }
 }

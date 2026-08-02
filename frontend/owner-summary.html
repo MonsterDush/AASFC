@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260729-compare1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-summarycharts1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Сводка</title>
 </head>
@@ -125,6 +125,28 @@
         </div>
       </div>
 
+      <div class="summary-analytics-grid mt-12" id="summaryAnalyticsGrid">
+        <section class="itemcard summary-chart-card summary-trend-card" id="summaryTrendCard" aria-labelledby="summaryTrendTitle">
+          <div class="section-head">
+            <div>
+              <b id="summaryTrendTitle">Динамика выручки, затрат и прибыли</b>
+              <div class="muted mt-6" id="summaryTrendSubtitle">По дням выбранного периода, ₽</div>
+            </div>
+            <div class="summary-chart-legend" id="summaryTrendLegend" aria-label="Легенда графика"></div>
+          </div>
+          <div class="summary-trend-chart mt-12" id="summaryTrendChart"></div>
+          <div class="summary-chart-focus mt-10" id="summaryTrendFocus" aria-live="polite">Выбери день на графике</div>
+        </section>
+
+        <section class="itemcard summary-chart-card" id="summaryStructureCard" aria-labelledby="summaryStructureTitle">
+          <div>
+            <b id="summaryStructureTitle">Структура затрат</b>
+            <div class="muted mt-6" id="summaryStructureSubtitle">Подтверждённые расходы и распределённый ФОТ</div>
+          </div>
+          <div class="summary-cost-structure mt-12" id="summaryCostStructure"></div>
+        </section>
+      </div>
+
       <div class="finance-kpis finance-kpis--secondary summary-kpis mt-12" id="summarySecondaryKpis">
         <div class="itemcard finance-stat summary-metric summary-metric--cost" id="expensesCard">
           <div class="finance-stat__label">Расходы без ФОТ</div>
@@ -204,6 +226,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-summary.js?v=20260729-compare1"></script>
+  <script type="module" src="/owner-summary.js?v=20260802-summarycharts1"></script>
 </body>
 </html>

@@ -14,6 +14,18 @@ import {
   getDemoMonthLabel,
 } from "/app.js?v=20260726-navmore1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
+import {
+  formatComparisonRange,
+  monthRange,
+  normalizeIsoRange,
+  resolveComparisonRange,
+} from "/app/period-comparison.js?v=20260729-compare2";
+import {
+  buildLedgerDailySeries,
+  buildLedgerStructure,
+  calculateLedgerMetrics,
+  ledgerKindLabel,
+} from "/app/finance-ledger-analytics.js?v=20260802-ledger1";
 
 let financialValuesHidden = false;
 
@@ -123,6 +135,11 @@ const state = {
   month: currentMonth(),
   paymentMethods: [],
   entries: [],
+  comparisonEntries: [],
+  comparisonError: null,
+  compareMode: "auto",
+  compareFrom: "",
+  compareTo: "",
   transfers: [],
 };
 
@@ -153,14 +170,251 @@ function renderPaymentMethodOptions() {
   pick.value = current;
 }
 
+function currentComparison() {
+  return resolveComparisonRange({
+    compareMode: state.compareMode,
+    compareFrom: state.compareFrom,
+    compareTo: state.compareTo,
+    period: "month",
+    month: state.month,
+  });
+}
+
+function syncUrl() {
+  const qp = new URLSearchParams(location.search);
+  qp.set("venue_id", String(getActiveVenueId() || ""));
+  qp.set("month", state.month);
+  qp.set("compare_mode", state.compareMode);
+  const paymentMethodId = document.getElementById("ledgerPaymentMethodPick")?.value || "";
+  const kind = document.getElementById("ledgerKindPick")?.value || "";
+  paymentMethodId ? qp.set("payment_method_id", paymentMethodId) : qp.delete("payment_method_id");
+  kind ? qp.set("kind", kind) : qp.delete("kind");
+  if (state.compareMode === "custom") {
+    const comparison = currentComparison();
+    if (comparison?.from) qp.set("compare_from", comparison.from);
+    if (comparison?.to) qp.set("compare_to", comparison.to);
+  } else {
+    qp.delete("compare_from");
+    qp.delete("compare_to");
+  }
+  history.replaceState(null, "", `${location.pathname}?${qp.toString()}`);
+}
+
+function syncComparisonUi() {
+  const comparison = currentComparison();
+  const custom = state.compareMode === "custom";
+  document.querySelectorAll("#ledgerCompareSeg [data-compare]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.compare === state.compareMode);
+  });
+  document.getElementById("ledgerCompareRange")?.classList.toggle("hidden", !custom);
+  setText("ledgerComparePeriodText", formatComparisonRange(comparison));
+  setText("ledgerCompareHint", comparison?.caption || "Выбери корректный период сравнения.");
+  if (custom) {
+    const from = document.getElementById("ledgerCompareFrom");
+    const to = document.getElementById("ledgerCompareTo");
+    if (from) from.value = comparison?.from || state.compareFrom || "";
+    if (to) to.value = comparison?.to || state.compareTo || "";
+  }
+}
+
+function fmtSignedMoneyMinor(value) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
+  const amount = Number(value || 0);
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  return `${sign}${fmtMoneyMinor(Math.abs(amount))}`;
+}
+
+function fmtCompactMoneyMinor(value) {
+  if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
+  const rub = Number(value || 0) / 100;
+  try {
+    return new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }).format(rub) + " ₽";
+  } catch {
+    return fmtMoneyMinor(value);
+  }
+}
+
+function renderMetricDelta(id, currentValue, previousValue, { type = "money", goodWhen = "neutral" } = {}) {
+  const element = document.getElementById(id);
+  if (!element) return;
+  element.classList.remove("is-good", "is-bad", "is-neutral");
+  if (financialValuesHidden || state.comparisonError || previousValue === null || previousValue === undefined) {
+    element.textContent = state.comparisonError ? "Сравнение недоступно" : "—";
+    element.classList.add("is-neutral");
+    return;
+  }
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  const delta = current - previous;
+  const caption = currentComparison()?.caption || "";
+  const good = (goodWhen === "up" && delta > 0) || (goodWhen === "down" && delta < 0);
+  const bad = (goodWhen === "up" && delta < 0) || (goodWhen === "down" && delta > 0);
+  element.classList.add(good ? "is-good" : bad ? "is-bad" : "is-neutral");
+  if (previous === 0) {
+    const deltaLabel = type === "money" ? fmtSignedMoneyMinor(delta) : `${delta > 0 ? "+" : ""}${delta}`;
+    element.textContent = current === 0 ? `Без изменений ${caption}`.trim() : `Нет базы · ${deltaLabel} ${caption}`.trim();
+    return;
+  }
+  const percent = (delta / Math.abs(previous)) * 100;
+  const percentLabel = `${percent > 0 ? "+" : percent < 0 ? "−" : ""}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
+  const deltaLabel = type === "money" ? ` · ${fmtSignedMoneyMinor(delta)}` : "";
+  element.textContent = `${percentLabel}${deltaLabel} ${caption}`.trim();
+}
+
+function renderMetrics() {
+  const current = calculateLedgerMetrics(state.entries);
+  const previous = state.comparisonError ? null : calculateLedgerMetrics(state.comparisonEntries);
+  setText("ledgerIncomeTotal", fmtMoneyMinor(current.incomeMinor));
+  setText("ledgerExpenseTotal", fmtMoneyMinor(current.expenseMinor));
+  setText("ledgerNetTotal", fmtMoneyMinor(current.netMinor));
+  setText("ledgerCount", String(current.count));
+  renderMetricDelta("ledgerIncomeDelta", current.incomeMinor, previous?.incomeMinor, { goodWhen: "up" });
+  renderMetricDelta("ledgerExpenseDelta", current.expenseMinor, previous?.expenseMinor, { goodWhen: "down" });
+  renderMetricDelta("ledgerNetDelta", current.netMinor, previous?.netMinor, { goodWhen: "up" });
+  renderMetricDelta("ledgerCountDelta", current.count, previous?.count, { type: "count" });
+}
+
+function formatEntryDate(value) {
+  const parts = String(value || "").split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return String(value || "—");
+  try {
+    return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+      .format(new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])));
+  } catch {
+    return String(value || "—");
+  }
+}
+
+function formatMonthLabel(value) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return String(value || "—");
+  try {
+    return new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" })
+      .format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1)));
+  } catch {
+    return String(value || "—");
+  }
+}
+
+function renderChartContext() {
+  const paymentMethod = document.getElementById("ledgerPaymentMethodPick")?.selectedOptions?.[0]?.textContent?.trim() || "Все оплаты";
+  const kind = document.getElementById("ledgerKindPick")?.selectedOptions?.[0]?.textContent?.trim() || "Все типы";
+  const context = `${formatMonthLabel(state.month)} · ${paymentMethod} · ${kind}`;
+  setText("ledgerTrendSubtitle", context);
+  setText("ledgerStructureSubtitle", `Объём по видам операций · ${context}`);
+}
+
+function renderTrendFocus(point) {
+  const element = document.getElementById("ledgerTrendFocus");
+  if (!element || !point) return;
+  element.innerHTML = `<b>${esc(formatEntryDate(point.date))}</b> · приход ${esc(fmtMoneyMinor(point.incomeMinor))} · списание ${esc(fmtMoneyMinor(point.expenseMinor))} · чистый поток ${esc(fmtSignedMoneyMinor(point.netMinor))}`;
+}
+
+function renderTrendChart() {
+  const element = document.getElementById("ledgerTrendChart");
+  if (!element) return;
+  if (financialValuesHidden) {
+    element.innerHTML = `<div class="ledger-chart-empty">${esc(FINANCIAL_VALUES_HIDDEN_LABEL)}</div>`;
+    setText("ledgerTrendFocus", FINANCIAL_VALUES_HIDDEN_LABEL);
+    return;
+  }
+  const points = buildLedgerDailySeries(state.entries, monthRange(state.month));
+  const maxValue = Math.max(0, ...points.flatMap((point) => [point.incomeMinor, point.expenseMinor]));
+  if (!points.length || maxValue <= 0) {
+    element.innerHTML = `<div class="ledger-chart-empty">За выбранный фильтр нет движений для графика.</div>`;
+    setText("ledgerTrendFocus", "Нет данных за выбранный месяц");
+    return;
+  }
+  const peak = points.reduce((best, point) => (
+    Math.max(point.incomeMinor, point.expenseMinor) > Math.max(best.incomeMinor, best.expenseMinor) ? point : best
+  ), points[0]);
+  const bars = points.map((point, index) => {
+    const chartWidth = 620;
+    const chartHeight = 180;
+    const bandWidth = chartWidth / points.length;
+    const barWidth = Math.max(2, bandWidth * 0.32);
+    const gap = Math.max(1, bandWidth * 0.06);
+    const groupWidth = (barWidth * 2) + gap;
+    const startX = (index * bandWidth) + ((bandWidth - groupWidth) / 2);
+    const incomeHeight = point.incomeMinor > 0 ? Math.max(2, (point.incomeMinor / maxValue) * chartHeight) : 0;
+    const expenseHeight = point.expenseMinor > 0 ? Math.max(2, (point.expenseMinor / maxValue) * chartHeight) : 0;
+    const showTick = point.day === 1 || point.day % 5 === 0 || index === points.length - 1;
+    const aria = `${formatEntryDate(point.date)}. Приход ${fmtMoneyMinor(point.incomeMinor)}. Списание ${fmtMoneyMinor(point.expenseMinor)}. Чистый поток ${fmtSignedMoneyMinor(point.netMinor)}.`;
+    return {
+      svg: `<g class="ledger-day-group${point.date === peak.date ? " is-active" : ""}" data-ledger-day="${esc(point.date)}" role="button" tabindex="0" aria-label="${esc(aria)}">
+        <title>${esc(aria)}</title>
+        <rect class="ledger-day__hit" x="${(index * bandWidth).toFixed(2)}" y="0" width="${bandWidth.toFixed(2)}" height="180" rx="3"></rect>
+        <rect class="ledger-day__bar ledger-day__bar--income" x="${startX.toFixed(2)}" y="${(chartHeight - incomeHeight).toFixed(2)}" width="${barWidth.toFixed(2)}" height="${incomeHeight.toFixed(2)}" rx="2"></rect>
+        <rect class="ledger-day__bar ledger-day__bar--expense" x="${(startX + barWidth + gap).toFixed(2)}" y="${(chartHeight - expenseHeight).toFixed(2)}" width="${barWidth.toFixed(2)}" height="${expenseHeight.toFixed(2)}" rx="2"></rect>
+      </g>`,
+      tick: `<span>${showTick ? point.day : ""}</span>`,
+    };
+  });
+  element.innerHTML = `<div class="ledger-trend-scale" aria-hidden="true"><span>${esc(fmtCompactMoneyMinor(maxValue))}</span><span>0</span></div>
+    <div class="ledger-trend-visual">
+      <svg class="ledger-trend-svg" viewBox="0 0 620 180" preserveAspectRatio="none" role="group" aria-label="Дневные значения прихода и списания">
+        <line class="ledger-trend-gridline" x1="0" y1="0" x2="620" y2="0"></line>
+        <line class="ledger-trend-gridline" x1="0" y1="60" x2="620" y2="60"></line>
+        <line class="ledger-trend-gridline" x1="0" y1="120" x2="620" y2="120"></line>
+        <line class="ledger-trend-gridline" x1="0" y1="180" x2="620" y2="180"></line>
+        ${bars.map((item) => item.svg).join("")}
+      </svg>
+      <div class="ledger-trend-ticks ledger-trend-ticks--${points.length}" aria-hidden="true">${bars.map((item) => item.tick).join("")}</div>
+    </div>`;
+  renderTrendFocus(peak);
+  element.querySelectorAll("[data-ledger-day]").forEach((button) => {
+    const selectPoint = () => {
+      element.querySelectorAll("[data-ledger-day]").forEach((item) => item.classList.toggle("is-active", item === button));
+      renderTrendFocus(points.find((point) => point.date === button.dataset.ledgerDay));
+    };
+    button.addEventListener("click", selectPoint);
+    button.addEventListener("focus", selectPoint);
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      selectPoint();
+    });
+  });
+}
+
+function structureLabel(item) {
+  if (item.kind === "OTHER") return "Остальные операции";
+  const direction = item.direction === "INCOME" ? "приход" : "списание";
+  return `${ledgerKindLabel(item.kind)} · ${direction}`;
+}
+
+function renderStructureChart() {
+  const element = document.getElementById("ledgerStructureChart");
+  if (!element) return;
+  if (financialValuesHidden) {
+    element.innerHTML = `<div class="ledger-chart-empty">${esc(FINANCIAL_VALUES_HIDDEN_LABEL)}</div>`;
+    return;
+  }
+  const groups = buildLedgerStructure(state.entries);
+  const maxValue = Math.max(0, ...groups.map((item) => item.amountMinor));
+  if (!groups.length || maxValue <= 0) {
+    element.innerHTML = `<div class="ledger-chart-empty">Нет операций для структуры.</div>`;
+    return;
+  }
+  element.innerHTML = groups.map((item) => {
+    const width = Math.max(2, (item.amountMinor / maxValue) * 100);
+    const rowClass = item.direction === "EXPENSE" ? " ledger-structure-row--expense" : item.direction === "MIXED" ? " ledger-structure-row--mixed" : "";
+    return `<div class="ledger-structure-row${rowClass}">
+      <div class="ledger-structure-head">
+        <span class="ledger-structure-label">${esc(structureLabel(item))}</span>
+        <span class="ledger-structure-value">${esc(fmtMoneyMinor(item.amountMinor))}</span>
+      </div>
+      <svg class="ledger-structure-svg" viewBox="0 0 100 9" preserveAspectRatio="none" role="img" aria-label="${esc(`${structureLabel(item)}: ${fmtMoneyMinor(item.amountMinor)}`)}">
+        <rect class="ledger-structure-track" x="0" y="0" width="100" height="9" rx="4.5"></rect>
+        <rect class="ledger-structure-fill" x="0" y="0" width="${width.toFixed(2)}" height="9" rx="4.5"></rect>
+      </svg>
+    </div>`;
+  }).join("");
+}
+
 function renderEntries() {
   const el = document.getElementById("ledgerEntriesList");
   if (!el) return;
-  const income = state.entries.filter((x) => x.direction === "INCOME").reduce((a, x) => a + Number(x.amount_minor || 0), 0);
-  const expense = state.entries.filter((x) => x.direction === "EXPENSE").reduce((a, x) => a + Number(x.amount_minor || 0), 0);
-  setText("ledgerIncomeTotal", fmtMoneyMinor(income));
-  setText("ledgerExpenseTotal", fmtMoneyMinor(expense));
-  setText("ledgerCount", String(state.entries.length));
   setText("ledgerHint", state.entries.length ? `Период ${state.month}` : `За ${state.month} записей нет`);
 
   if (!state.entries.length) {
@@ -169,14 +423,14 @@ function renderEntries() {
   }
 
   el.innerHTML = state.entries.map((item) => {
-    const directionText = item.direction === "INCOME" ? "Доход" : "Расход";
+    const directionText = item.direction === "INCOME" ? "Приход" : "Списание";
     const scope = item.payment_method?.title || item.department?.title || item.source_type || "—";
     const meta = item.meta_json ? `<div class="muted mt-6">Есть дополнительные данные по операции</div>` : "";
     return `
       <div class="expense-row">
         <div class="expense-row__main">
           <div class="row gap-8">
-            <div class="expense-row__title">${esc(item.kind || "—")}</div>
+            <div class="expense-row__title">${esc(ledgerKindLabel(item.kind))}</div>
             <span class="badge">${esc(directionText)}</span>
             <span class="badge">${esc(scope)}</span>
           </div>
@@ -325,13 +579,36 @@ async function reload() {
   const paymentMethodId = document.getElementById("ledgerPaymentMethodPick")?.value || "";
   const kind = document.getElementById("ledgerKindPick")?.value || "";
   state.month = month;
+  syncComparisonUi();
 
   const qp = new URLSearchParams({ month });
   if (paymentMethodId) qp.set("payment_method_id", paymentMethodId);
   if (kind) qp.set("kind", kind);
 
-  state.entries = access.canView ? await api(`/venues/${encodeURIComponent(venueId)}/finance/entries?${qp.toString()}`) : [];
-  state.transfers = access.canView ? await api(`/venues/${encodeURIComponent(venueId)}/payment-method-transfers?month=${encodeURIComponent(month)}`) : [];
+  const comparison = currentComparison();
+  const compareQp = new URLSearchParams();
+  if (comparison?.from) compareQp.set("date_from", comparison.from);
+  if (comparison?.to) compareQp.set("date_to", comparison.to);
+  if (paymentMethodId) compareQp.set("payment_method_id", paymentMethodId);
+  if (kind) compareQp.set("kind", kind);
+
+  const entriesPromise = access.canView ? api(`/venues/${encodeURIComponent(venueId)}/finance/entries?${qp.toString()}`) : Promise.resolve([]);
+  const comparisonPromise = access.canView && comparison
+    ? api(`/venues/${encodeURIComponent(venueId)}/finance/entries?${compareQp.toString()}`).then((value) => ({ value })).catch((error) => ({ error }))
+    : Promise.resolve({ value: [] });
+  const transfersPromise = access.canView
+    ? api(`/venues/${encodeURIComponent(venueId)}/payment-method-transfers?month=${encodeURIComponent(month)}`)
+    : Promise.resolve([]);
+  const [entries, comparisonResult, transfers] = await Promise.all([entriesPromise, comparisonPromise, transfersPromise]);
+  state.entries = Array.isArray(entries) ? entries : [];
+  state.comparisonEntries = Array.isArray(comparisonResult.value) ? comparisonResult.value : [];
+  state.comparisonError = comparisonResult.error || null;
+  state.transfers = Array.isArray(transfers) ? transfers : [];
+  syncUrl();
+  renderChartContext();
+  renderMetrics();
+  renderTrendChart();
+  renderStructureChart();
   renderEntries();
   renderTransfers();
 }
@@ -357,12 +634,47 @@ async function boot() {
   document.getElementById("ledgerMonthPick").value = params.get("month") || currentMonth();
   document.getElementById("ledgerPaymentMethodPick").value = params.get("payment_method_id") || "";
   document.getElementById("ledgerKindPick").value = (params.get("kind") || "").toUpperCase();
+  state.month = document.getElementById("ledgerMonthPick").value;
+  state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareFrom = params.get("compare_from") || "";
+  state.compareTo = params.get("compare_to") || "";
+  if (state.compareMode === "custom" && !normalizeIsoRange(state.compareFrom, state.compareTo)) {
+    const automatic = resolveComparisonRange({ period: "month", month: state.month });
+    state.compareFrom = automatic?.from || `${state.month}-01`;
+    state.compareTo = automatic?.to || state.compareFrom;
+  }
+  syncComparisonUi();
   document.getElementById("ledgerMonthPick").onchange = reload;
   document.getElementById("ledgerPaymentMethodPick").onchange = reload;
   document.getElementById("ledgerKindPick").onchange = reload;
   const addTransferBtn = document.getElementById("addTransferBtn");
   setVisible(addTransferBtn, access.canManageTransfers);
   addTransferBtn.onclick = () => openTransferForm();
+  document.querySelectorAll("#ledgerCompareSeg [data-compare]").forEach((button) => {
+    button.onclick = async () => {
+      const nextMode = button.dataset.compare === "custom" ? "custom" : "auto";
+      if (nextMode === "custom" && state.compareMode !== "custom") {
+        const automatic = resolveComparisonRange({ period: "month", month: state.month });
+        state.compareFrom = automatic?.from || `${state.month}-01`;
+        state.compareTo = automatic?.to || state.compareFrom;
+      }
+      state.compareMode = nextMode;
+      syncComparisonUi();
+      await reload();
+    };
+  });
+  document.getElementById("ledgerCompareFrom").onchange = (event) => { state.compareFrom = event.target.value || state.compareFrom; };
+  document.getElementById("ledgerCompareTo").onchange = (event) => { state.compareTo = event.target.value || state.compareTo; };
+  document.getElementById("ledgerCompareApply").onclick = async () => {
+    const normalized = normalizeIsoRange(state.compareFrom, state.compareTo);
+    if (!normalized) {
+      toast("Выбери обе даты периода сравнения", "warn");
+      return;
+    }
+    state.compareFrom = normalized.from;
+    state.compareTo = normalized.to;
+    await reload();
+  };
   document.querySelectorAll("[data-close], .modal__backdrop").forEach((el) => el.addEventListener("click", closeModal));
 
   await reload();
