@@ -47,7 +47,41 @@ from app.services.payroll import calculate_payroll_for_month
 
 DEFAULT_DEMO_REFERENCE_YEAR = 2026
 DEFAULT_DEMO_REFERENCE_MONTH = 3
+DEFAULT_DEMO_HISTORY_MONTHS = 1
 DEFAULT_DEMO_VENUE_NAME = "NOIR Lounge · DEMO by Axelio"
+
+# March is the reference point for the existing hand-tuned DEMO dataset. The
+# remaining coefficients describe a lounge with a clear cold-season peak and a
+# sustained off-season decline beginning in May.
+DEMO_SEASONAL_FACTORS: dict[int, float] = {
+    1: 1.12,
+    2: 1.08,
+    3: 1.00,
+    4: 0.94,
+    5: 0.84,
+    6: 0.72,
+    7: 0.66,
+    8: 0.70,
+    9: 0.78,
+    10: 0.88,
+    11: 1.02,
+    12: 1.16,
+}
+
+MONTH_NAMES_ACCUSATIVE = {
+    1: "январь",
+    2: "февраль",
+    3: "март",
+    4: "апрель",
+    5: "май",
+    6: "июнь",
+    7: "июль",
+    8: "август",
+    9: "сентябрь",
+    10: "октябрь",
+    11: "ноябрь",
+    12: "декабрь",
+}
 
 OWNER_PERMISSIONS: list[str] = []
 HOOKAH_REPORTER_PERMISSIONS = [
@@ -66,6 +100,9 @@ class DemoBootstrapResult:
     venue_name: str
     reference_year: int
     reference_month: int
+    history_months: int
+    period_start_year: int
+    period_start_month: int
     fixture_path: str | None
     counts: dict[str, int]
     warnings: list[str]
@@ -96,6 +133,32 @@ def _month_iter(year: int, month: int) -> Iterable[date]:
     while cur <= end:
         yield cur
         cur += timedelta(days=1)
+
+
+def _history_periods(reference_year: int, reference_month: int, history_months: int) -> list[tuple[int, int]]:
+    if not 1 <= int(reference_month) <= 12:
+        raise ValueError("reference_month должен быть от 1 до 12")
+    if not 1 <= int(history_months) <= 24:
+        raise ValueError("history_months должен быть от 1 до 24")
+    reference_index = int(reference_year) * 12 + (int(reference_month) - 1)
+    periods: list[tuple[int, int]] = []
+    for offset in range(int(history_months) - 1, -1, -1):
+        month_index = reference_index - offset
+        periods.append((month_index // 12, (month_index % 12) + 1))
+    return periods
+
+
+def _seasonal_factor(month: int) -> float:
+    return float(DEMO_SEASONAL_FACTORS.get(int(month), 1.0))
+
+
+def _scale_minor(amount_minor: int, factor: float) -> int:
+    return int(round(int(amount_minor) * float(factor)))
+
+
+def _merge_counts(target: dict[str, int], additions: dict[str, int]) -> None:
+    for key, value in additions.items():
+        target[key] = int(target.get(key, 0)) + int(value or 0)
 
 
 def _require_safe_target_venue(db: Session, venue: Venue) -> None:
@@ -363,8 +426,18 @@ def _rotation_pick(pool: list[str], idx: int, count: int) -> list[str]:
     return out
 
 
-def _create_schedule(db: Session, *, venue: Venue, reference_year: int, reference_month: int, users_by_key: dict[str, User], positions_by_key: dict[str, VenuePosition], owner_user: User) -> dict[str, int]:
-    intervals = _create_intervals(db, venue=venue)
+def _create_schedule(
+    db: Session,
+    *,
+    venue: Venue,
+    reference_year: int,
+    reference_month: int,
+    users_by_key: dict[str, User],
+    positions_by_key: dict[str, VenuePosition],
+    owner_user: User,
+    intervals: dict[str, ShiftInterval] | None = None,
+) -> dict[str, int]:
+    intervals = intervals or _create_intervals(db, venue=venue)
     hookah_keys = ["staff_persona", "kirill_hookah", "maksim_hookah"]
     floor_keys = ["aleksey_waiter", "polina_waiter"]
     admin_keys = ["anna_admin", "sofia_manager"]
@@ -413,10 +486,10 @@ def _create_schedule(db: Session, *, venue: Venue, reference_year: int, referenc
                 created_assignments += 1
 
         shift_note = None
-        if day.day == 8:
+        if day.month == 3 and day.day == 8:
             shift_note = "Праздничный день: усилить VIP-зал, собрать предзаказы и держать запас льда и фруктов."
         elif day.day in {14, 15}:
-            shift_note = "Пятница/суббота: готовим две VIP-комнаты и держим запас по топовым вкусам."
+            shift_note = "Пиковая посадка в середине месяца: готовим две VIP-комнаты и держим запас по топовым вкусам."
         elif day.day in {22, 28}:
             shift_note = "Акцент на сервис: проверить посадку, подготовить welcome-комплименты и сделать фотоотчёт по залу."
         elif day.day == 3:
@@ -433,7 +506,6 @@ def _create_schedule(db: Session, *, venue: Venue, reference_year: int, referenc
 
     db.flush()
     return {
-        "shift_intervals": 2,
         "shifts": created_shifts,
         "shift_assignments": created_assignments,
         "shift_comments": created_comments,
@@ -441,17 +513,19 @@ def _create_schedule(db: Session, *, venue: Venue, reference_year: int, referenc
 
 
 def _daily_base_minor(day: date) -> int:
-    if day.day == 8:
-        return 11800000
-    if day.day in {14, 15, 28, 29}:
-        return 10300000
-    if day.weekday() in {4, 5}:  # fri/sat
-        return 9400000
-    if day.weekday() == 6:
-        return 7900000
-    if day.weekday() == 0:
-        return 4700000
-    return 6250000
+    if day.month == 3 and day.day == 8:
+        base_minor = 11800000
+    elif day.day in {14, 15, 28, 29}:
+        base_minor = 10300000
+    elif day.weekday() in {4, 5}:  # fri/sat
+        base_minor = 9400000
+    elif day.weekday() == 6:
+        base_minor = 7900000
+    elif day.weekday() == 0:
+        base_minor = 4700000
+    else:
+        base_minor = 6250000
+    return _scale_minor(base_minor, _seasonal_factor(day.month))
 
 
 def _minor_to_report_units(amount_minor: int) -> int:
@@ -469,14 +543,16 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
     created_finance_entries = 0
     owner_user = users_by_key["owner"]
     admin_user = users_by_key["anna_admin"]
+    season_factor = _seasonal_factor(reference_month)
 
     for idx, day in enumerate(_month_iter(reference_year, reference_month)):
+        is_peak_day = (day.month == 3 and day.day == 8) or day.day in {14, 15, 28, 29}
         total_minor = _daily_base_minor(day) + ((idx % 5) * 250000)
         total_value = _minor_to_report_units(total_minor)
 
         hookah_ratio = 0.58
         bar_ratio = 0.27
-        if day.day in {8, 14, 15, 28, 29}:
+        if is_peak_day:
             hookah_ratio = 0.61
             bar_ratio = 0.24
         elif day.weekday() == 0:
@@ -489,7 +565,7 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
         cash_ratio = 0.22
         cashless_ratio = 0.53
         sbp_ratio = 0.20
-        if day.day in {8, 14, 15, 28, 29}:
+        if is_peak_day:
             cash_ratio = 0.17
             cashless_ratio = 0.55
             sbp_ratio = 0.24
@@ -508,12 +584,12 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
             discrepancy = _minor_to_report_units(50000)
             cash_value += discrepancy
             comment = "Пример дня с расхождением: гость доплатил наличными после сверки кассы."
-        elif day.day == 8:
+        elif day.month == 3 and day.day == 8:
             comment = "Праздничный вечер: усиленная посадка, две VIP-комнаты и повышенный спрос на премиум-миксы."
         elif day.day in {14, 15}:
-            comment = "Пиковая пятница/суббота: высокий оборот по кальянам и СБП, усиленный состав на вечер."
+            comment = "Пиковая посадка в середине месяца: высокий оборот по кальянам и СБП, усиленный состав на вечер."
 
-        tips_total = _minor_to_report_units(360000 + (idx % 4) * 65000 + (120000 if day.day in {8, 14, 15, 28, 29} else 0))
+        tips_total = _minor_to_report_units(_scale_minor(360000 + (idx % 4) * 65000 + (120000 if is_peak_day else 0), season_factor))
         report = DailyReport(
             venue_id=int(venue.id),
             date=day,
@@ -542,9 +618,9 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
             ("DEPT", int(dept["hookah"].id), hookah_value),
             ("DEPT", int(dept["bar"].id), bar_value),
             ("DEPT", int(dept["kitchen"].id), kitchen_value),
-            ("KPI", int(kpis["upsale"].id), 11 + (idx % 7) + (2 if day.day in {8, 14, 15, 28, 29} else 0)),
-            ("KPI", int(kpis["vip"].id), 2 + (1 if day.weekday() in {4, 5} else 0) + (1 if day.day in {8, 14, 15, 28, 29} else 0)),
-            ("KPI", int(kpis["retail"].id), _minor_to_report_units(85000 + (idx % 6) * 12000 + (25000 if day.day in {8, 14, 15} else 0))),
+            ("KPI", int(kpis["upsale"].id), max(1, int(round((11 + (idx % 7) + (2 if is_peak_day else 0)) * season_factor)))),
+            ("KPI", int(kpis["vip"].id), max(1, int(round((2 + (1 if day.weekday() in {4, 5} else 0) + (1 if is_peak_day else 0)) * season_factor)))),
+            ("KPI", int(kpis["retail"].id), _minor_to_report_units(_scale_minor(85000 + (idx % 6) * 12000 + (25000 if is_peak_day else 0), season_factor))),
         ]
         report_values: list[DailyReportValue] = []
         for kind, ref_id, value in values:
@@ -601,15 +677,18 @@ def _create_expenses(db: Session, *, venue: Venue, dictionaries: dict, users_by_
     suppliers = dictionaries["suppliers"]
     payment_methods = dictionaries["payment_methods"]
     owner = users_by_key["owner"]
+    season_factor = _seasonal_factor(reference_month)
+    variable_cost_factor = 0.55 + (0.45 * season_factor)
+    month_title = MONTH_NAMES_ACCUSATIVE[int(reference_month)]
     items = [
-        ("rent", "Metro Cash & Carry", 13500000, date(reference_year, reference_month, 5), 1, "Аренда помещения за март"),
-        ("tobacco", "Hookah Trade", 5200000, date(reference_year, reference_month, 3), 2, "Стартовая закупка табака, угля и чаш перед пиковыми выходными"),
-        ("barstock", "Metro Cash & Carry", 2850000, date(reference_year, reference_month, 7), 1, "Барная закупка: лимонады, пюре, лёд и стекло"),
-        ("supplies", "Local Partner", 980000, date(reference_year, reference_month, 10), 1, "Хозтовары, расходники и уборка после первых пиковых дней"),
-        ("marketing", "Local Partner", 1800000, date(reference_year, reference_month, 12), 3, "Таргет и блогеры под пятничные и праздничные посадки"),
-        ("tobacco", "Hookah Trade", 3450000, date(reference_year, reference_month, 17), 2, "Дозакупка премиум-линеек и самых ходовых вкусов"),
-        ("barstock", "Metro Cash & Carry", 1620000, date(reference_year, reference_month, 21), 1, "Дозакупка фруктов, напитков и сиропов под конец месяца"),
-        ("supplies", "Local Partner", 760000, date(reference_year, reference_month, 25), 1, "Текстиль, аромасвечи и расходники для VIP-комнат"),
+        ("rent", "Metro Cash & Carry", 13500000, date(reference_year, reference_month, 5), 1, f"Аренда помещения за {month_title}"),
+        ("tobacco", "Hookah Trade", _scale_minor(5200000, variable_cost_factor), date(reference_year, reference_month, 3), 2, "Стартовая закупка табака, угля и чаш перед пиковыми выходными"),
+        ("barstock", "Metro Cash & Carry", _scale_minor(2850000, variable_cost_factor), date(reference_year, reference_month, 7), 1, "Барная закупка: лимонады, пюре, лёд и стекло"),
+        ("supplies", "Local Partner", _scale_minor(980000, variable_cost_factor), date(reference_year, reference_month, 10), 1, "Хозтовары, расходники и уборка после первых пиковых дней"),
+        ("marketing", "Local Partner", _scale_minor(1800000, variable_cost_factor), date(reference_year, reference_month, 12), 3, "Таргет и блогеры под пятничные и праздничные посадки"),
+        ("tobacco", "Hookah Trade", _scale_minor(3450000, variable_cost_factor), date(reference_year, reference_month, 17), 2, "Дозакупка премиум-линеек и самых ходовых вкусов"),
+        ("barstock", "Metro Cash & Carry", _scale_minor(1620000, variable_cost_factor), date(reference_year, reference_month, 21), 1, "Дозакупка фруктов, напитков и сиропов под конец месяца"),
+        ("supplies", "Local Partner", _scale_minor(760000, variable_cost_factor), date(reference_year, reference_month, 25), 1, "Текстиль, аромасвечи и расходники для VIP-комнат"),
     ]
     created = 0
     for category_code, supplier_title, amount_minor, expense_date, spread_months, comment in items:
@@ -764,12 +843,15 @@ def bootstrap_demo_venue(
     venue_name: str = DEFAULT_DEMO_VENUE_NAME,
     reference_year: int = DEFAULT_DEMO_REFERENCE_YEAR,
     reference_month: int = DEFAULT_DEMO_REFERENCE_MONTH,
+    history_months: int = DEFAULT_DEMO_HISTORY_MONTHS,
     make_public: bool = True,
     export_fixture_path: str | None = None,
     export_fixture_after: bool = False,
 ) -> DemoBootstrapResult:
     warnings: list[str] = []
     counts: dict[str, int] = {}
+    periods = _history_periods(reference_year, reference_month, history_months)
+    period_start_year, period_start_month = periods[0]
 
     venue = _ensure_venue(
         db,
@@ -804,55 +886,70 @@ def bootstrap_demo_venue(
     counts["expense_categories"] = len(dictionaries["categories"])
     counts["suppliers"] = len(dictionaries["suppliers"])
 
-    counts.update(_create_schedule(
-        db,
-        venue=venue,
-        reference_year=int(reference_year),
-        reference_month=int(reference_month),
-        users_by_key=users_by_key,
-        positions_by_key=positions_by_key,
-        owner_user=users_by_key["owner"],
-    ))
-    counts.update(_create_reports(
-        db,
-        venue=venue,
-        reference_year=int(reference_year),
-        reference_month=int(reference_month),
-        users_by_key=users_by_key,
-        dictionaries=dictionaries,
-    ))
-    counts.update(_create_expenses(
+    intervals = _create_intervals(db, venue=venue)
+    counts["shift_intervals"] = len(intervals)
+    counts.update(_create_pay_profiles(
         db,
         venue=venue,
         dictionaries=dictionaries,
         users_by_key=users_by_key,
-        reference_year=int(reference_year),
-        reference_month=int(reference_month),
+        reference_year=int(period_start_year),
+        reference_month=int(period_start_month),
     ))
-    counts.update(_create_pay_profiles(db, venue=venue, dictionaries=dictionaries, users_by_key=users_by_key, reference_year=int(reference_year), reference_month=int(reference_month)))
-    counts.update(_create_adjustments(
-        db,
-        venue=venue,
-        users_by_key=users_by_key,
-        owner_user=users_by_key["owner"],
-        reference_year=int(reference_year),
-        reference_month=int(reference_month),
-    ))
+
+    for year, month in periods:
+        _merge_counts(counts, _create_schedule(
+            db,
+            venue=venue,
+            reference_year=int(year),
+            reference_month=int(month),
+            users_by_key=users_by_key,
+            positions_by_key=positions_by_key,
+            owner_user=users_by_key["owner"],
+            intervals=intervals,
+        ))
+        _merge_counts(counts, _create_reports(
+            db,
+            venue=venue,
+            reference_year=int(year),
+            reference_month=int(month),
+            users_by_key=users_by_key,
+            dictionaries=dictionaries,
+        ))
+        _merge_counts(counts, _create_expenses(
+            db,
+            venue=venue,
+            dictionaries=dictionaries,
+            users_by_key=users_by_key,
+            reference_year=int(year),
+            reference_month=int(month),
+        ))
+        _merge_counts(counts, _create_adjustments(
+            db,
+            venue=venue,
+            users_by_key=users_by_key,
+            owner_user=users_by_key["owner"],
+            reference_year=int(year),
+            reference_month=int(month),
+        ))
     counts.update(_configure_billing(db, venue=venue, owner_user=users_by_key["owner"]))
 
     db.flush()
-    try:
-        calc = calculate_payroll_for_month(
-            db=db,
-            venue_id=int(venue.id),
-            month=f"{int(reference_year):04d}-{int(reference_month):02d}",
-            calculated_by_user_id=int(users_by_key["owner"].id),
-        )
-        counts["payroll_runs"] = 1
-        counts["payroll_lines"] = len(calc.lines or [])
-        counts["payroll_total_amount_minor"] = int(calc.run.total_amount_minor or 0) if getattr(calc, "run", None) is not None else 0
-    except Exception as exc:  # pragma: no cover - best effort seed
-        warnings.append(f"Payroll bootstrap skipped: {exc}")
+    for year, month in periods:
+        try:
+            calc = calculate_payroll_for_month(
+                db=db,
+                venue_id=int(venue.id),
+                month=f"{int(year):04d}-{int(month):02d}",
+                calculated_by_user_id=int(users_by_key["owner"].id),
+            )
+            counts["payroll_runs"] = int(counts.get("payroll_runs", 0)) + 1
+            counts["payroll_lines"] = int(counts.get("payroll_lines", 0)) + len(calc.lines or [])
+            counts["payroll_total_amount_minor"] = int(counts.get("payroll_total_amount_minor", 0)) + (
+                int(calc.run.total_amount_minor or 0) if getattr(calc, "run", None) is not None else 0
+            )
+        except Exception as exc:  # pragma: no cover - best effort seed
+            warnings.append(f"Payroll bootstrap skipped for {int(year):04d}-{int(month):02d}: {exc}")
 
     db.flush()
     fixture_path = None
@@ -868,6 +965,9 @@ def bootstrap_demo_venue(
         venue_name=str(venue.name or ""),
         reference_year=int(reference_year),
         reference_month=int(reference_month),
+        history_months=len(periods),
+        period_start_year=int(period_start_year),
+        period_start_month=int(period_start_month),
         fixture_path=fixture_path,
         counts=counts,
         warnings=warnings,

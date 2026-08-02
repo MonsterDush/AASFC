@@ -51,6 +51,7 @@ class DemoBootstrapIn(BaseModel):
     venue_name: str | None = Field(default=None, max_length=200)
     reference_year: int | None = Field(default=None, ge=2020, le=2100)
     reference_month: int | None = Field(default=None, ge=1, le=12)
+    history_months: int = Field(default=1, ge=1, le=24)
     make_public: bool = True
     export_fixture_after: bool = True
     fixture_path: str | None = Field(default=None, max_length=500)
@@ -257,6 +258,7 @@ def admin_demo_bootstrap(payload: DemoBootstrapIn, db: Session = Depends(get_db)
             venue_name=str(payload.venue_name or '').strip() or 'Axelio DEMO · Hookah Lounge',
             reference_year=int(payload.reference_year or 2026),
             reference_month=int(payload.reference_month or 3),
+            history_months=int(payload.history_months),
             make_public=bool(payload.make_public),
             export_fixture_after=bool(payload.export_fixture_after),
             export_fixture_path=payload.fixture_path,
@@ -264,4 +266,4 @@ def admin_demo_bootstrap(payload: DemoBootstrapIn, db: Session = Depends(get_db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
-    return {'ok': True, 'venue_id': result.venue_id, 'venue_name': result.venue_name, 'reference_year': result.reference_year, 'reference_month': result.reference_month, 'fixture_path': result.fixture_path, 'counts': result.counts, 'warnings': result.warnings}
+    return {'ok': True, 'venue_id': result.venue_id, 'venue_name': result.venue_name, 'reference_year': result.reference_year, 'reference_month': result.reference_month, 'history_months': result.history_months, 'period_start_year': result.period_start_year, 'period_start_month': result.period_start_month, 'fixture_path': result.fixture_path, 'counts': result.counts, 'warnings': result.warnings}

@@ -110,13 +110,13 @@ class RecurringExpenseRuleUpdateIn(BaseModel):
 
 class FinanceDailyPointOut(BaseModel):
     date: date
-    revenue_minor: int
-    expense_minor: int
-    payroll_minor: int
-    total_cost_minor: int
-    adjustments_minor: int
-    refunds_minor: int
-    profit_minor: int
+    revenue_minor: int | None = None
+    expense_minor: int | None = None
+    payroll_minor: int | None = None
+    total_cost_minor: int | None = None
+    adjustments_minor: int | None = None
+    refunds_minor: int | None = None
+    profit_minor: int | None = None
 
 
 class FinanceCostStructureRowOut(BaseModel):
@@ -129,18 +129,22 @@ class FinanceSummaryOut(BaseModel):
     financial_values_hidden: bool = False
     can_view_financial_values: bool = True
     financial_values_hidden_reason: str | None = None
+    can_view_revenue: bool = True
+    can_view_expenses: bool = True
+    can_view_payroll: bool = True
+    can_view_profit: bool = True
     month: str | None = None
     period_start: date
     period_end: date
-    revenue_minor: int
-    expense_minor: int
+    revenue_minor: int | None = None
+    expense_minor: int | None = None
     expense_without_payroll_minor: int | None = None
-    payroll_minor: int
+    payroll_minor: int | None = None
     payroll_expense_minor: int | None = None
     total_cost_minor: int | None = None
-    adjustments_minor: int
-    refunds_minor: int
-    profit_minor: int
+    adjustments_minor: int | None = None
+    refunds_minor: int | None = None
+    profit_minor: int | None = None
     margin_bps: int | None = None
     expense_ratio_bps: int | None = None
     payroll_ratio_bps: int | None = None

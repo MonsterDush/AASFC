@@ -22,9 +22,9 @@ import { canViewRevenue, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, i
 import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260729-compare1";
 import {
   buildFinanceCostStructure,
-  buildFinanceTrendGeometry,
+  buildFinancePeriodComparisonGeometry,
   normalizeFinanceDailySeries,
-} from "/app/finance-summary-analytics.js?v=20260802-summarycharts1";
+} from "/app/finance-summary-analytics.js?v=20260802-summarycompare1";
 
 let financialValuesHidden = false;
 
@@ -108,6 +108,9 @@ let state = {
   compareMode: "auto",
   compareFrom: "",
   compareTo: "",
+  trendMetric: "revenue",
+  summaryData: null,
+  comparisonSummaryData: null,
 };
 
 
@@ -377,7 +380,7 @@ function resetComparisonDeltas(text = "—") {
 
 function syncAnalyticsAccess() {
   const grid = document.getElementById("summaryAnalyticsGrid");
-  const trendVisible = financeAccess.canViewRevenue;
+  const trendVisible = financeAccess.canViewRevenue || financeAccess.canViewExpenses || financeAccess.canViewPayroll;
   const structureVisible = financeAccess.canViewExpenses || financeAccess.canViewPayroll;
   showBlock("summaryTrendCard", trendVisible);
   showBlock("summaryStructureCard", structureVisible);
@@ -385,73 +388,149 @@ function syncAnalyticsAccess() {
   grid?.classList.toggle("summary-analytics-grid--single", trendVisible !== structureVisible);
 }
 
-function renderSummaryTrendFocus(point, { showCost, showProfit } = {}) {
+function syncSummaryMetricAccess() {
+  showBlock("summaryPrimaryKpis", financeAccess.canViewRevenue || financeAccess.canViewProfit);
+  showBlock("summarySecondaryKpis", financeAccess.canViewRevenue || financeAccess.canViewExpenses || financeAccess.canViewPayroll);
+  showBlock(
+    "summaryRatioKpis",
+    (financeAccess.canViewRevenue && financeAccess.canViewExpenses)
+      || (financeAccess.canViewRevenue && financeAccess.canViewPayroll),
+  );
+  showBlock("revenueCard", financeAccess.canViewRevenue);
+  showBlock("profitCard", financeAccess.canViewProfit);
+  showBlock("marginCard", financeAccess.canViewProfit);
+  showBlock("expensesCard", financeAccess.canViewExpenses);
+  showBlock("payrollCard", financeAccess.canViewPayroll);
+  showBlock("totalCostCard", financeAccess.canViewExpenses && financeAccess.canViewPayroll);
+  showBlock("adjustmentsCard", financeAccess.canViewRevenue);
+  showBlock("refundsCard", financeAccess.canViewRevenue);
+  showBlock("expenseRatioCard", financeAccess.canViewRevenue && financeAccess.canViewExpenses);
+  showBlock("payrollRatioCard", financeAccess.canViewRevenue && financeAccess.canViewPayroll);
+  showBlock("totalCostRatioCard", financeAccess.canViewProfit);
+}
+
+function visibleTrendPoints(summary) {
+  return normalizeFinanceDailySeries(summary?.daily_series).map((point) => {
+    const visibleExpense = financeAccess.canViewExpenses ? Number(point.expenseMinor || 0) : 0;
+    const visiblePayroll = financeAccess.canViewPayroll ? Number(point.payrollMinor || 0) : 0;
+    return {
+      ...point,
+      revenueMinor: financeAccess.canViewRevenue ? point.revenueMinor : null,
+      totalCostMinor: (financeAccess.canViewExpenses || financeAccess.canViewPayroll)
+        ? visibleExpense + visiblePayroll
+        : null,
+      profitMinor: financeAccess.canViewProfit ? point.profitMinor : null,
+    };
+  });
+}
+
+function availableTrendMetrics() {
+  return [
+    ...(financeAccess.canViewRevenue ? ["revenue"] : []),
+    ...(financeAccess.canViewExpenses || financeAccess.canViewPayroll ? ["cost"] : []),
+    ...(financeAccess.canViewProfit ? ["profit"] : []),
+  ];
+}
+
+function trendMetricTitle(metric) {
+  if (metric === "profit") return "Прибыль";
+  if (metric === "cost") {
+    if (financeAccess.canViewExpenses && financeAccess.canViewPayroll) return "Затраты";
+    return financeAccess.canViewExpenses ? "Расходы" : "ФОТ";
+  }
+  return "Выручка";
+}
+
+function syncTrendMetricControls() {
+  const available = availableTrendMetrics();
+  if (!available.includes(state.trendMetric)) state.trendMetric = available[0] || "revenue";
+  document.querySelectorAll("#summaryTrendMetricSeg [data-trend-metric]").forEach((button) => {
+    const metric = button.dataset.trendMetric;
+    setVisible(button, available.includes(metric));
+    button.classList.toggle("active", metric === state.trendMetric);
+    button.setAttribute("aria-pressed", metric === state.trendMetric ? "true" : "false");
+    button.onclick = () => {
+      state.trendMetric = metric;
+      renderSummaryTrend(state.summaryData, state.comparisonSummaryData);
+    };
+  });
+}
+
+function buildDayEconomicsDrilldown(currentPoint, comparisonPoint) {
+  if (!currentPoint?.date || (!financeAccess.canViewRevenue && !financeAccess.canViewExpenses)) return "";
+  const qp = new URLSearchParams();
+  const venueId = getActiveVenueId();
+  if (venueId) qp.set("venue_id", String(venueId));
+  qp.set("date", currentPoint.date);
+  if (comparisonPoint?.date) {
+    qp.set("compare_mode", "custom");
+    qp.set("compare_date", comparisonPoint.date);
+  }
+  return `/owner-day-economics.html?${qp.toString()}`;
+}
+
+function renderSummaryTrendFocus(currentPoint, comparisonPoint, metric) {
   const focus = document.getElementById("summaryTrendFocus");
   if (!focus) return;
-  if (!point || financialValuesHidden) {
+  if ((!currentPoint && !comparisonPoint) || financialValuesHidden) {
     focus.textContent = financialValuesHidden ? FINANCIAL_VALUES_HIDDEN_LABEL : "Выбери день на графике";
     return;
   }
-  const values = [
-    `<span><b>${escapeHtml(fmtLongDate(point.date))}</b></span>`,
-    `<span>Выручка: <b>${escapeHtml(fmtMoneyMinor(point.revenueMinor))}</b></span>`,
-  ];
-  if (showCost) values.push(`<span>Затраты: <b>${escapeHtml(fmtMoneyMinor(point.totalCostMinor))}</b></span>`);
-  if (showProfit) values.push(`<span>Прибыль: <b>${escapeHtml(fmtMoneyMinor(point.profitMinor))}</b></span>`);
+  const field = { revenue: "revenueMinor", cost: "totalCostMinor", profit: "profitMinor" }[metric] || "revenueMinor";
+  const values = [];
+  if (currentPoint) {
+    values.push(`<span>Текущий: <b>${escapeHtml(fmtLongDate(currentPoint.date))}</b> · ${escapeHtml(fmtMoneyMinor(currentPoint[field]))}</span>`);
+  }
+  if (comparisonPoint) {
+    values.push(`<span>Сравнение: <b>${escapeHtml(fmtLongDate(comparisonPoint.date))}</b> · ${escapeHtml(fmtMoneyMinor(comparisonPoint[field]))}</span>`);
+  }
+  const detailUrl = buildDayEconomicsDrilldown(currentPoint, comparisonPoint);
+  if (detailUrl) values.push(`<a href="${escapeHtml(detailUrl)}">Открыть экономику дня</a>`);
   focus.innerHTML = values.join(" · ");
 }
 
-function renderSummaryTrend(summary) {
+function renderSummaryTrend(summary, comparisonSummary = null) {
   const chart = document.getElementById("summaryTrendChart");
   const legend = document.getElementById("summaryTrendLegend");
   const subtitle = document.getElementById("summaryTrendSubtitle");
-  if (!chart || !legend || !subtitle) return;
+  const title = document.getElementById("summaryTrendTitle");
+  if (!chart || !legend || !subtitle || !title) return;
 
-  const showCost = financeAccess.canViewExpenses || financeAccess.canViewPayroll;
-  const showProfit = financeAccess.canViewExpenses && financeAccess.canViewPayroll;
-  const sourcePoints = normalizeFinanceDailySeries(summary?.daily_series);
-  const points = sourcePoints.map((point) => {
-    const visibleExpense = financeAccess.canViewExpenses ? point.expenseMinor : 0;
-    const visiblePayroll = financeAccess.canViewPayroll ? point.payrollMinor : 0;
-    const visibleCost = visibleExpense + visiblePayroll;
-    return {
-      ...point,
-      totalCostMinor: visibleCost,
-      profitMinor: showProfit
-        ? point.revenueMinor - visibleCost + point.adjustmentsMinor - point.refundsMinor
-        : 0,
-    };
-  });
+  syncTrendMetricControls();
+  const metric = state.trendMetric;
+  const metricTitle = trendMetricTitle(metric);
+  const points = visibleTrendPoints(summary);
+  const comparisonPoints = visibleTrendPoints(comparisonSummary);
   const periodText = summary?.period_start && summary?.period_end
     ? `${summary.period_start} — ${summary.period_end}`
     : statePeriodText();
-  subtitle.textContent = `${periodText} · по дням, ₽`;
-
-  const legendItems = [
-    ["", "Выручка"],
-    ...(showCost ? [["--cost", "Затраты"]] : []),
-    ...(showProfit ? [["--profit", "Прибыль"]] : []),
-  ];
-  legend.innerHTML = legendItems.map(([modifier, title]) => (
-    `<span><i class="summary-legend-swatch${modifier ? ` summary-legend-swatch${modifier}` : ""}" aria-hidden="true"></i>${escapeHtml(title)}</span>`
-  )).join("");
+  const comparisonText = comparisonSummary?.period_start && comparisonSummary?.period_end
+    ? `${comparisonSummary.period_start} — ${comparisonSummary.period_end}`
+    : "";
+  title.textContent = `Динамика: ${metricTitle.toLowerCase()}`;
+  subtitle.textContent = comparisonPoints.length
+    ? `${periodText} против ${comparisonText} · сопоставление по порядковому дню, ₽`
+    : `${periodText} · по дням, ₽`;
+  legend.innerHTML = [
+    `<span><i class="summary-legend-swatch" aria-hidden="true"></i>Текущий период</span>`,
+    ...(comparisonPoints.length ? [`<span><i class="summary-legend-swatch summary-legend-swatch--comparison" aria-hidden="true"></i>Сравниваемый период</span>`] : []),
+  ].join("");
 
   if (financialValuesHidden) {
     chart.innerHTML = `<div class="summary-chart-empty">${escapeHtml(FINANCIAL_VALUES_HIDDEN_LABEL)}</div>`;
-    renderSummaryTrendFocus(null, { showCost, showProfit });
+    renderSummaryTrendFocus(null, null, metric);
     return;
   }
-  if (points.length < 2) {
-    chart.innerHTML = `<div class="summary-chart-empty">${points.length
+  const geometry = buildFinancePeriodComparisonGeometry(points, comparisonPoints, { metric, width: 720, height: 200 });
+  if (!geometry || geometry.pointCount < 2) {
+    chart.innerHTML = `<div class="summary-chart-empty">${geometry?.pointCount
       ? "Для одного дня динамика не строится — точные значения уже показаны в KPI."
       : "За выбранный период нет дневных данных для графика."}</div>`;
-    renderSummaryTrendFocus(points[0] || null, { showCost, showProfit });
+    renderSummaryTrendFocus(points[0] || null, comparisonPoints[0] || null, metric);
     return;
   }
 
-  const geometry = buildFinanceTrendGeometry(points, { width: 720, height: 200 });
-  if (!geometry) return;
-  const denseClass = geometry.points.length > 45 ? " is-dense" : "";
+  const denseClass = geometry.pointCount > 45 ? " is-dense" : "";
   const gridLines = [0, 50, 100, 150, 200]
     .map((y) => `<line class="summary-trend-gridline" x1="0" y1="${y}" x2="720" y2="${y}"></line>`)
     .join("");
@@ -460,51 +539,53 @@ function renderSummaryTrend(summary) {
     : "";
   let marks = "";
   if (geometry.mode === "lines") {
-    marks += `<path class="summary-trend-line summary-trend-line--revenue" d="${geometry.revenuePath}"></path>`;
-    if (showCost) marks += `<path class="summary-trend-line summary-trend-line--cost" d="${geometry.totalCostPath}"></path>`;
-    if (showProfit) marks += `<path class="summary-trend-line summary-trend-line--profit" d="${geometry.profitPath}"></path>`;
-    marks += geometry.points.map((point) => [
-      `<circle class="summary-trend-marker summary-trend-marker--revenue" cx="${point.x.toFixed(2)}" cy="${point.revenueY.toFixed(2)}" r="3"></circle>`,
-      showCost ? `<circle class="summary-trend-marker summary-trend-marker--cost" cx="${point.x.toFixed(2)}" cy="${point.totalCostY.toFixed(2)}" r="3"></circle>` : "",
-      showProfit ? `<circle class="summary-trend-marker summary-trend-marker--profit" cx="${point.x.toFixed(2)}" cy="${point.profitY.toFixed(2)}" r="2.5"></circle>` : "",
-    ].join("")).join("");
+    marks += `<path class="summary-trend-line summary-trend-line--current" d="${geometry.currentPath}"></path>`;
+    if (geometry.comparisonPath) marks += `<path class="summary-trend-line summary-trend-line--comparison" d="${geometry.comparisonPath}"></path>`;
+    marks += geometry.current.filter(Boolean).map((point) => `<circle class="summary-trend-marker summary-trend-marker--current" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="3"></circle>`).join("");
+    marks += geometry.comparison.filter(Boolean).map((point) => `<circle class="summary-trend-marker summary-trend-marker--comparison" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="3"></circle>`).join("");
   } else {
-    marks += geometry.points.map((point) => {
-      const barWidth = Math.max(5, Math.min(28, point.hitWidth * (showCost ? 0.28 : 0.44)));
-      const revenueX = showCost ? point.x - barWidth - 2 : point.x - (barWidth / 2);
-      const costX = point.x + 2;
+    const barWidth = Math.max(5, Math.min(28, geometry.bandWidth * (comparisonPoints.length ? 0.28 : 0.44)));
+    marks += Array.from({ length: geometry.pointCount }, (_, index) => {
+      const currentPoint = geometry.current[index];
+      const comparisonPoint = geometry.comparison[index];
+      const centerX = (index + 0.5) * geometry.bandWidth;
       return [
-        `<rect class="summary-trend-bar--revenue" x="${revenueX.toFixed(2)}" y="${point.revenueY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${point.revenueHeight.toFixed(2)}" rx="2"></rect>`,
-        showCost ? `<rect class="summary-trend-bar--cost" x="${costX.toFixed(2)}" y="${point.totalCostY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${point.totalCostHeight.toFixed(2)}" rx="2"></rect>` : "",
+        currentPoint ? `<rect class="summary-trend-bar--current" x="${(centerX - barWidth - 2).toFixed(2)}" y="${currentPoint.barY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${currentPoint.barHeight.toFixed(2)}" rx="2"></rect>` : "",
+        comparisonPoint ? `<rect class="summary-trend-bar--comparison" x="${(centerX + 2).toFixed(2)}" y="${comparisonPoint.barY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${comparisonPoint.barHeight.toFixed(2)}" rx="2"></rect>` : "",
       ].join("");
     }).join("");
   }
-  const hitTargets = geometry.points.map((point, index) => (
-    `<g class="summary-trend-hit-group" data-summary-point="${index}" role="button" tabindex="0" aria-label="Показатели за ${escapeHtml(fmtLongDate(point.date))}">`
-      + `<rect class="summary-trend-hit" x="${point.hitX.toFixed(2)}" y="0" width="${point.hitWidth.toFixed(2)}" height="200"></rect>`
+  const hitTargets = Array.from({ length: geometry.pointCount }, (_, index) => (
+    `<g class="summary-trend-hit-group" data-summary-point="${index}" role="button" tabindex="0" aria-label="Порядковый день ${index + 1}">`
+      + `<rect class="summary-trend-hit" x="${(index * geometry.bandWidth).toFixed(2)}" y="0" width="${geometry.bandWidth.toFixed(2)}" height="200"></rect>`
       + "</g>"
   )).join("");
-  const tickCount = Math.min(7, geometry.points.length);
+  const tickCount = Math.min(7, geometry.pointCount);
   const tickIndexes = [...new Set(Array.from({ length: tickCount }, (_, index) => (
-    Math.round((index * (geometry.points.length - 1)) / Math.max(1, tickCount - 1))
+    Math.round((index * (geometry.pointCount - 1)) / Math.max(1, tickCount - 1))
   )))];
-  const ticks = tickIndexes.map((index) => `<span>${escapeHtml(fmtShortDate(geometry.points[index].date))}</span>`).join("");
+  const ticks = tickIndexes.map((index) => {
+    const point = points[index] || comparisonPoints[index];
+    const label = comparisonPoints.length ? String(index + 1) : fmtShortDate(point?.date);
+    return `<span>${escapeHtml(label)}</span>`;
+  }).join("");
   chart.innerHTML = `
     <div class="summary-trend-scale" aria-hidden="true">
       <span>${escapeHtml(fmtCompactMoneyMinor(geometry.maxValue))}</span>
       <span>${escapeHtml(fmtCompactMoneyMinor(geometry.minValue))}</span>
     </div>
     <div class="summary-trend-visual">
-      <svg class="summary-trend-svg${denseClass}" viewBox="0 0 720 200" preserveAspectRatio="none" role="img" aria-label="Динамика финансовых показателей по дням">
+      <svg class="summary-trend-svg${denseClass}" viewBox="0 0 720 200" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(comparisonPoints.length
+        ? `${metricTitle} по порядковым дням текущего и сравниваемого периода`
+        : `${metricTitle} по дням выбранного периода`)}">
         ${gridLines}${zeroLine}${marks}${hitTargets}
       </svg>
       <div class="summary-trend-ticks" aria-hidden="true">${ticks}</div>
     </div>`;
 
-  let defaultIndex = geometry.points.length - 1;
-  for (let index = geometry.points.length - 1; index >= 0; index -= 1) {
-    const point = geometry.points[index];
-    if (point.revenueMinor || point.totalCostMinor || point.profitMinor) {
+  let defaultIndex = geometry.pointCount - 1;
+  for (let index = geometry.pointCount - 1; index >= 0; index -= 1) {
+    if (geometry.current[index] || geometry.comparison[index]) {
       defaultIndex = index;
       break;
     }
@@ -515,7 +596,7 @@ function renderSummaryTrend(summary) {
       target.classList.toggle("is-active", active);
       target.setAttribute("aria-pressed", active ? "true" : "false");
     });
-    renderSummaryTrendFocus(geometry.points[index], { showCost, showProfit });
+    renderSummaryTrendFocus(points[index] || null, comparisonPoints[index] || null, metric);
   };
   chart.querySelectorAll("[data-summary-point]").forEach((target) => {
     const index = Number(target.dataset.summaryPoint);
@@ -551,11 +632,35 @@ function renderSummaryCostStructure(summary) {
     container.innerHTML = '<div class="summary-chart-empty">За выбранный период подтверждённых затрат нет.</div>';
     return;
   }
+  const buildDrilldown = (row) => {
+    const qp = new URLSearchParams();
+    const venueId = getActiveVenueId();
+    if (venueId) qp.set("venue_id", String(venueId));
+    qp.set("compare_mode", state.compareMode);
+    const comparison = currentComparison();
+    if (state.compareMode === "custom" && comparison?.from && comparison?.to) {
+      qp.set("compare_from", comparison.from);
+      qp.set("compare_to", comparison.to);
+    }
+    if (row.key === "payroll") {
+      if (summary?.period_start) qp.set("date_from", summary.period_start);
+      if (summary?.period_end) qp.set("date_to", summary.period_end);
+      return `/owner-payroll.html?${qp.toString()}`;
+    }
+    const categoryMatch = /^expense:(\d+)$/.exec(String(row.key || ""));
+    if (!categoryMatch) return "";
+    qp.set("category_id", categoryMatch[1]);
+    qp.set("month", String(summary?.period_start || state.month || currentMonth()).slice(0, 7));
+    return `/owner-expenses.html?${qp.toString()}`;
+  };
   container.innerHTML = rows.map((row) => {
     const sharePercent = Math.max(0, Math.min(100, row.shareBps / 100));
     const fillWidth = row.amountMinor > 0 ? Math.max(1.5, sharePercent) : 0;
     const rowClass = row.key === "payroll" ? " summary-cost-row--payroll" : "";
-    return `<div class="summary-cost-row${rowClass}">
+    const drilldown = buildDrilldown(row);
+    const tag = drilldown ? "a" : "div";
+    const href = drilldown ? ` href="${escapeHtml(drilldown)}" aria-label="Открыть детализацию: ${escapeHtml(row.title)}"` : "";
+    return `<${tag} class="summary-cost-row${rowClass}"${href}>
       <div class="summary-cost-head">
         <span class="summary-cost-label">${escapeHtml(row.title)}</span>
         <span class="summary-cost-value">${escapeHtml(fmtMoneyMinor(row.amountMinor))} · ${escapeHtml(fmtPercentBps(row.shareBps))}</span>
@@ -564,13 +669,17 @@ function renderSummaryCostStructure(summary) {
         <rect class="summary-cost-track" x="0" y="0" width="100" height="9" rx="4.5"></rect>
         <rect class="summary-cost-fill" x="0" y="0" width="${fillWidth.toFixed(2)}" height="9" rx="4.5"></rect>
       </svg>
-    </div>`;
+    </${tag}>`;
   }).join("");
 }
 
-function renderSummaryAnalytics(summary) {
+function renderSummaryAnalytics(summary, comparisonSummary = null) {
+  state.summaryData = summary || null;
+  state.comparisonSummaryData = comparisonSummary || null;
   syncAnalyticsAccess();
-  if (financeAccess.canViewRevenue) renderSummaryTrend(summary);
+  if (financeAccess.canViewRevenue || financeAccess.canViewExpenses || financeAccess.canViewPayroll) {
+    renderSummaryTrend(summary, comparisonSummary);
+  }
   if (financeAccess.canViewExpenses || financeAccess.canViewPayroll) renderSummaryCostStructure(summary);
 }
 
@@ -595,16 +704,7 @@ async function startupApi(path, timeoutMs = 10000, label = "STARTUP_TIMEOUT") {
 
 async function loadFinanceSummaryForQuery(venueId, query, timeoutLabel) {
   const qs = query.toString();
-  try {
-    return await startupApi(`/venues/${encodeURIComponent(venueId)}/finance/summary?${qs}`, 10000, timeoutLabel);
-  } catch {
-    const summary = await startupApi(`/venues/${encodeURIComponent(venueId)}/summary/monthly?${qs}&income_mode=PAYMENTS`, 10000, timeoutLabel);
-    return {
-      ...summary,
-      expense_without_payroll_minor: summary?.expense_without_payroll_minor ?? summary?.expense_minor,
-      total_cost_minor: summary?.total_cost_minor ?? (Number(summary?.expense_minor || 0) + Number(summary?.payroll_minor || 0)),
-    };
-  }
+  return startupApi(`/venues/${encodeURIComponent(venueId)}/finance/summary?${qs}`, 10000, timeoutLabel);
 }
 
 async function openExportLink(path) {
@@ -625,6 +725,7 @@ let financeAccess = {
   canViewRevenue: false,
   canViewExpenses: false,
   canViewPayroll: false,
+  canViewProfit: false,
   canCalculatePayroll: false,
 };
 
@@ -635,18 +736,44 @@ async function loadFinanceAccess() {
     const permsResp = await getMyVenuePermissions(venueId);
     financialValuesHidden = isFinancialValuesHidden(permsResp);
     const role = roleUpper(permsResp);
+    const systemRole = String(permsResp?.system_role || "").trim().toUpperCase();
     const pset = permSetFromResponse(permsResp);
     const isOwner = isOwnerRole(role);
+    const hasFullSummary = isOwner
+      || ["SUPER_ADMIN", "MODERATOR"].includes(systemRole)
+      || hasPerm(pset, "REPORTS_VIEW_PNL")
+      || hasPerm(pset, "MONTHLY_SUMMARY_VIEW");
+    const canViewRevenueValue = hasFullSummary || canViewRevenue(pset, role, systemRole);
+    const canViewExpensesValue = hasFullSummary || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
+    const canViewPayrollValue = hasFullSummary || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");
     financeAccess = {
-      canViewRevenue: canViewRevenue(pset, role, ""),
-      canViewExpenses: isOwner || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD"),
-      canViewPayroll: isOwner || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE"),
-      canCalculatePayroll: isOwner || hasPerm(pset, "PAYROLL_CALCULATE"),
+      canViewRevenue: canViewRevenueValue,
+      canViewExpenses: canViewExpensesValue,
+      canViewPayroll: canViewPayrollValue,
+      canViewProfit: canViewRevenueValue && canViewExpensesValue && canViewPayrollValue,
+      canCalculatePayroll: hasFullSummary || hasPerm(pset, "PAYROLL_CALCULATE"),
     };
   } catch {
-    financeAccess = { canViewRevenue: false, canViewExpenses: false, canViewPayroll: false, canCalculatePayroll: false };
+    financeAccess = { canViewRevenue: false, canViewExpenses: false, canViewPayroll: false, canViewProfit: false, canCalculatePayroll: false };
   }
   return financeAccess;
+}
+
+function applyServerFinanceAccess(summary) {
+  if (!summary || typeof summary !== "object") return;
+  if (typeof summary.can_view_revenue === "boolean") {
+    financeAccess.canViewRevenue = financeAccess.canViewRevenue && summary.can_view_revenue;
+  }
+  if (typeof summary.can_view_expenses === "boolean") {
+    financeAccess.canViewExpenses = financeAccess.canViewExpenses && summary.can_view_expenses;
+  }
+  if (typeof summary.can_view_payroll === "boolean") {
+    financeAccess.canViewPayroll = financeAccess.canViewPayroll && summary.can_view_payroll;
+  }
+  financeAccess.canViewProfit = financeAccess.canViewRevenue
+    && financeAccess.canViewExpenses
+    && financeAccess.canViewPayroll
+    && summary.can_view_profit !== false;
 }
 
 function syncActions() {
@@ -738,18 +865,7 @@ async function loadSummary() {
   syncAnalyticsAccess();
   setSummaryState();
   ["summaryPrimaryKpis", "summarySecondaryKpis", "summaryRatioKpis", "summaryDetailsCard"].forEach((id) => showBlock(id, true));
-
-  showBlock("revenueCard", financeAccess.canViewRevenue);
-  showBlock("profitCard", financeAccess.canViewRevenue);
-  showBlock("marginCard", financeAccess.canViewRevenue);
-  showBlock("expensesCard", financeAccess.canViewExpenses);
-  showBlock("payrollCard", financeAccess.canViewPayroll);
-  showBlock("totalCostCard", financeAccess.canViewExpenses || financeAccess.canViewPayroll);
-  showBlock("adjustmentsCard", financeAccess.canViewRevenue);
-  showBlock("refundsCard", financeAccess.canViewRevenue);
-  showBlock("expenseRatioCard", financeAccess.canViewRevenue && financeAccess.canViewExpenses);
-  showBlock("payrollRatioCard", financeAccess.canViewRevenue && financeAccess.canViewPayroll);
-  showBlock("totalCostRatioCard", financeAccess.canViewRevenue && (financeAccess.canViewExpenses || financeAccess.canViewPayroll));
+  syncSummaryMetricAccess();
 
   if (!financeAccess.canViewRevenue && !financeAccess.canViewExpenses && !financeAccess.canViewPayroll) {
     setText("summaryRevenue", "—");
@@ -772,12 +888,17 @@ async function loadSummary() {
   try {
     const primaryQuery = buildSummaryQuery();
     primaryQuery.set("include_series", "1");
+    const comparisonQuery = buildComparisonQuery();
+    comparisonQuery.set("include_series", "1");
     const primaryPromise = loadFinanceSummaryForQuery(venueId, primaryQuery, "OWNER_SUMMARY_TIMEOUT");
-    const comparisonPromise = loadFinanceSummaryForQuery(venueId, buildComparisonQuery(), "OWNER_SUMMARY_COMPARISON_TIMEOUT");
+    const comparisonPromise = loadFinanceSummaryForQuery(venueId, comparisonQuery, "OWNER_SUMMARY_COMPARISON_TIMEOUT");
     const [summary, comparisonResult] = await Promise.all([
       primaryPromise,
       comparisonPromise.then((value) => ({ value })).catch((error) => ({ error })),
     ]);
+    applyServerFinanceAccess(summary);
+    syncAnalyticsAccess();
+    syncSummaryMetricAccess();
     setText("summaryRevenue", fmtMoneyMinor(summary?.revenue_minor));
     setText("summaryExpenses", fmtMoneyMinor(summary?.expense_without_payroll_minor ?? summary?.expense_minor));
     setText("summaryPayroll", fmtMoneyMinor(summary?.payroll_minor));
@@ -791,7 +912,7 @@ async function loadSummary() {
     setText("summaryTotalCostRatio", fmtPercentBps(summary?.total_cost_ratio_bps));
     setText("summaryPeriodText", summary?.period_start && summary?.period_end ? `${summary.period_start} — ${summary.period_end}` : statePeriodText());
     setText("summaryHint", `Главный экран оставляет только ключевые метрики. Детальные разделы ниже открываются отдельно.`);
-    renderSummaryAnalytics(summary);
+    renderSummaryAnalytics(summary, comparisonResult.value || null);
     if (comparisonResult.value) {
       renderComparison(summary, comparisonResult.value);
     } else {

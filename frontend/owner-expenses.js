@@ -485,6 +485,12 @@ function syncComparisonControls() {
 function syncComparisonUrl() {
   const qp = new URLSearchParams(location.search);
   qp.set("month", state.month || currentMonth());
+  if (state.categoryId) qp.set("category_id", state.categoryId);
+  else qp.delete("category_id");
+  if (state.supplierId) qp.set("supplier_id", state.supplierId);
+  else qp.delete("supplier_id");
+  if (state.statuses) qp.set("statuses", state.statuses);
+  else qp.delete("statuses");
   qp.set("compare_mode", state.compareMode);
   if (state.compareMode === "custom") {
     const comparison = currentComparison();
@@ -969,6 +975,8 @@ async function boot() {
   if (openSuppliersBtn) openSuppliersBtn.href = `/owner-suppliers.html?venue_id=${encodeURIComponent(activeVenueId)}`;
 
   state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-expenses" });
+  state.categoryId = params.get("category_id") || "";
+  state.supplierId = params.get("supplier_id") || "";
   state.statuses = params.get("statuses") || "";
   state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
   state.compareFrom = params.get("compare_from") || "";
@@ -1058,6 +1066,10 @@ async function boot() {
 
   try {
     await loadCatalogs();
+    const categoryFilter = document.getElementById("expenseCategoryFilter");
+    const supplierFilter = document.getElementById("expenseSupplierFilter");
+    if (categoryFilter) categoryFilter.value = state.categoryId;
+    if (supplierFilter) supplierFilter.value = state.supplierId;
     await loadExpenses();
   } catch (err) {
     document.getElementById("expensesList").innerHTML = `<div class="muted">${esc(err?.data?.detail || err.message || "Ошибка загрузки")}</div>`;

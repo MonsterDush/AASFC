@@ -46,6 +46,13 @@ class VenueFinanceSummaryRouterTests(TestCase):
         with patch.object(venue_finance_summary, "_require_active_member_or_admin") as active, \
              patch.object(venue_finance_summary, "_require_revenue_viewer") as revenue, \
              patch.object(venue_finance_summary, "_require_report_viewer") as reports, \
+             patch.object(venue_finance_summary, "_finance_summary_access", return_value={
+                 "can_view_revenue": True,
+                 "can_view_expenses": True,
+                 "can_view_payroll": True,
+                 "can_view_profit": True,
+             }), \
+             patch.object(venue_finance_summary, "_restrict_finance_summary_payload", side_effect=lambda payload, access: payload), \
              patch.object(venue_finance_summary, "get_monthly_finance_summary", return_value={"kind": "monthly"}), \
              patch.object(venue_finance_summary, "get_day_finance_summary", return_value={"kind": "daily"}), \
              patch.object(venue_finance_summary, "get_finance_summary", return_value={"kind": "finance"}) as finance_summary, \
@@ -65,8 +72,73 @@ class VenueFinanceSummaryRouterTests(TestCase):
         self.assertEqual(finance, {"kind": "finance"})
         self.assertFalse(finance_summary.call_args.kwargs["include_series"])
         self.assertEqual(active.call_count, 3)
-        self.assertEqual(revenue.call_count, 3)
-        self.assertEqual(reports.call_count, 3)
+        self.assertEqual(revenue.call_count, 2)
+        self.assertEqual(reports.call_count, 2)
+
+    def test_finance_summary_payload_hides_unavailable_axes_and_derived_metrics(self):
+        payload = {
+            "revenue_minor": 500_000,
+            "expense_minor": 120_000,
+            "expense_without_payroll_minor": 120_000,
+            "payroll_minor": 80_000,
+            "payroll_expense_minor": 80_000,
+            "total_cost_minor": 200_000,
+            "adjustments_minor": 10_000,
+            "refunds_minor": -5_000,
+            "profit_minor": 305_000,
+            "margin_bps": 6100,
+            "expense_ratio_bps": 2400,
+            "payroll_ratio_bps": 1600,
+            "total_cost_ratio_bps": 4000,
+            "daily_series": [{
+                "date": date(2026, 7, 18),
+                "revenue_minor": 500_000,
+                "expense_minor": 120_000,
+                "payroll_minor": 80_000,
+                "total_cost_minor": 200_000,
+                "adjustments_minor": 10_000,
+                "refunds_minor": -5_000,
+                "profit_minor": 305_000,
+            }],
+            "cost_structure": [
+                {"key": "expense:1", "title": "Закупка", "amount_minor": 120_000},
+                {"key": "payroll", "title": "ФОТ", "amount_minor": 80_000},
+            ],
+        }
+
+        restricted = venue_finance_summary._restrict_finance_summary_payload(payload, {
+            "can_view_revenue": True,
+            "can_view_expenses": False,
+            "can_view_payroll": False,
+            "can_view_profit": False,
+        })
+
+        self.assertEqual(restricted["revenue_minor"], 500_000)
+        self.assertIsNone(restricted["expense_minor"])
+        self.assertIsNone(restricted["payroll_minor"])
+        self.assertIsNone(restricted["total_cost_minor"])
+        self.assertIsNone(restricted["profit_minor"])
+        self.assertIsNone(restricted["daily_series"][0]["expense_minor"])
+        self.assertIsNone(restricted["daily_series"][0]["profit_minor"])
+        self.assertEqual(restricted["cost_structure"], [])
+
+    def test_finance_summary_access_supports_expense_only_without_exposing_profit(self):
+        with patch.object(venue_finance_summary, "_is_owner_or_super_admin", return_value=False), \
+             patch.object(
+                 venue_finance_summary,
+                 "has_venue_permission",
+                 side_effect=lambda db, *, venue_id, user, permission_code: permission_code == "EXPENSE_VIEW",
+             ):
+            access = venue_finance_summary._finance_summary_access(
+                SimpleNamespace(),
+                venue_id=5,
+                user=SimpleNamespace(id=17),
+            )
+
+        self.assertFalse(access["can_view_revenue"])
+        self.assertTrue(access["can_view_expenses"])
+        self.assertFalse(access["can_view_payroll"])
+        self.assertFalse(access["can_view_profit"])
 
 
 class VenueLedgerRouterTests(TestCase):

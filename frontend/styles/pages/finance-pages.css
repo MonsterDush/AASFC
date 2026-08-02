@@ -90,11 +90,15 @@ select.finance-control--wide{min-width:170px}
 .owner-summary-page .summary-analytics-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(280px,1fr);gap:12px;align-items:stretch;min-width:0}
 .owner-summary-page .summary-analytics-grid--single{grid-template-columns:1fr}
 .owner-summary-page .summary-chart-card{display:grid;align-content:start;min-width:0;overflow:hidden}
+.owner-summary-page .summary-chart-tools{display:grid;justify-items:end;gap:8px;min-width:0}
+.owner-summary-page .summary-trend-metric-seg{min-width:260px}
+.owner-summary-page .summary-trend-metric-seg button{min-height:34px;padding:7px 10px;font-size:11px}
 .owner-summary-page .summary-chart-legend{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;font-weight:800}
 .owner-summary-page .summary-chart-legend span{display:inline-flex;align-items:center;gap:6px}
 .owner-summary-page .summary-legend-swatch{display:inline-block;width:16px;height:0;border-top:3px solid var(--accent)}
 .owner-summary-page .summary-legend-swatch--cost{border-top-color:var(--warning);border-top-style:dashed}
 .owner-summary-page .summary-legend-swatch--profit{border-top-color:var(--text);border-top-width:2px}
+.owner-summary-page .summary-legend-swatch--comparison{border-top-style:dashed;opacity:.58}
 .owner-summary-page .summary-trend-chart{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px;min-width:0}
 .owner-summary-page .summary-trend-scale{position:relative;height:224px;color:var(--muted);font-size:10px;font-weight:800}
 .owner-summary-page .summary-trend-scale span{position:absolute;right:0;white-space:nowrap}
@@ -108,10 +112,14 @@ select.finance-control--wide{min-width:170px}
 .owner-summary-page .summary-trend-line--revenue{stroke:var(--accent)}
 .owner-summary-page .summary-trend-line--cost{stroke:var(--warning);stroke-dasharray:7 5}
 .owner-summary-page .summary-trend-line--profit{stroke:var(--text);stroke-width:2}
+.owner-summary-page .summary-trend-line--current{stroke:var(--accent)}
+.owner-summary-page .summary-trend-line--comparison{stroke:var(--accent);stroke-width:2;stroke-dasharray:3 6;opacity:.58}
 .owner-summary-page .summary-trend-marker{vector-effect:non-scaling-stroke;pointer-events:none}
 .owner-summary-page .summary-trend-marker--revenue{fill:var(--accent);stroke:var(--card);stroke-width:1}
 .owner-summary-page .summary-trend-marker--cost{fill:var(--card);stroke:var(--warning);stroke-width:2}
 .owner-summary-page .summary-trend-marker--profit{fill:var(--text);stroke:var(--card);stroke-width:1}
+.owner-summary-page .summary-trend-marker--current{fill:var(--accent);stroke:var(--card);stroke-width:1}
+.owner-summary-page .summary-trend-marker--comparison{fill:var(--card);stroke:var(--accent);stroke-width:2;opacity:.72}
 .owner-summary-page .summary-trend-svg.is-dense .summary-trend-marker{display:none}
 .owner-summary-page .summary-trend-hit{fill:transparent}
 .owner-summary-page .summary-trend-hit-group{cursor:pointer}
@@ -120,11 +128,17 @@ select.finance-control--wide{min-width:170px}
 .owner-summary-page .summary-trend-hit-group:focus .summary-trend-hit{stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
 .owner-summary-page .summary-trend-bar--revenue{fill:var(--accent);pointer-events:none}
 .owner-summary-page .summary-trend-bar--cost{fill:transparent;stroke:var(--warning);stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none}
+.owner-summary-page .summary-trend-bar--current{fill:var(--accent);pointer-events:none}
+.owner-summary-page .summary-trend-bar--comparison{fill:transparent;stroke:var(--accent);stroke-width:2;opacity:.64;vector-effect:non-scaling-stroke;pointer-events:none}
 .owner-summary-page .summary-trend-ticks{display:flex;justify-content:space-between;min-width:0;color:var(--muted);font-size:9px;font-weight:800;line-height:20px}
 .owner-summary-page .summary-chart-focus{min-height:42px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;background:var(--surfaceTintSoft);font-size:12px;line-height:1.45}
+.owner-summary-page .summary-chart-focus a{color:var(--accent);font-weight:900;text-decoration:none}
+.owner-summary-page .summary-chart-focus a:hover{text-decoration:underline}
 .owner-summary-page .summary-chart-empty{display:grid;grid-column:1/-1;place-items:center;min-height:160px;padding:18px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted);text-align:center}
 .owner-summary-page .summary-cost-structure{display:grid;gap:13px;min-width:0}
 .owner-summary-page .summary-cost-row{display:grid;gap:6px;min-width:0}
+.owner-summary-page a.summary-cost-row{color:inherit;text-decoration:none}
+.owner-summary-page a.summary-cost-row:hover .summary-cost-label{color:var(--accent)}
 .owner-summary-page .summary-cost-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;font-size:12px}
 .owner-summary-page .summary-cost-label{min-width:0;font-weight:800;overflow-wrap:anywhere}
 .owner-summary-page .summary-cost-value{flex:none;font-weight:900;white-space:nowrap}
@@ -147,6 +161,8 @@ select.finance-control--wide{min-width:170px}
   .owner-summary-page .summary-details-card .section-head{gap:6px}
   .owner-summary-page .summary-analytics-grid{grid-template-columns:1fr}
   .owner-summary-page .summary-chart-legend{width:100%;justify-content:flex-start}
+  .owner-summary-page .summary-chart-tools{width:100%;justify-items:stretch}
+  .owner-summary-page .summary-trend-metric-seg{width:100%;min-width:0}
   .owner-summary-page .summary-trend-chart{grid-template-columns:38px minmax(0,1fr);gap:6px}
   .owner-summary-page .summary-trend-scale{height:204px}
   .owner-summary-page .summary-trend-visual{grid-template-rows:180px 20px}

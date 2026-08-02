@@ -24,6 +24,42 @@ source /var/www/axelio/dev/venv/bin/activate
 python -m app.scripts.bootstrap_demo_data --make-public --export-fixture-after
 ```
 
+## Год истории для DEMO марта 2026
+Рекомендуемый вариант создаёт 12 последовательных месяцев, заканчивая опорным
+месяцем. Для марта 2026 это период с апреля 2025 по март 2026 включительно:
+
+```bash
+cd /var/www/axelio/dev/repo/backend
+source /var/www/axelio/dev/venv/bin/activate
+python -m app.scripts.bootstrap_demo_data \
+  --current-public-demo \
+  --reference-year 2026 \
+  --reference-month 3 \
+  --history-months 12 \
+  --make-public \
+  --export-fixture-after
+```
+
+В годовом профиле декабрь–февраль являются пиковыми месяцами, с мая начинается
+выраженная просадка, а июнь–август остаются низким сезоном. Март остаётся
+опорным месяцем DEMO, а автоматическое сравнение на сводке использует февраль.
+
+Если нужен только второй отчётный месяц для сравнения марта с февралем:
+
+```bash
+python -m app.scripts.bootstrap_demo_data \
+  --current-public-demo \
+  --reference-year 2026 \
+  --reference-month 3 \
+  --history-months 2 \
+  --make-public \
+  --export-fixture-after
+```
+
+Важно: bootstrap полностью пересобирает данные выбранного DEMO venue. Не нужно
+запускать команду отдельно для каждого месяца — повторный запуск не добавляет
+месяц к существующей истории.
+
 ## Команда bootstrap в конкретное venue
 ```bash
 python -m app.scripts.bootstrap_demo_data --venue-id 123 --make-public --export-fixture-after

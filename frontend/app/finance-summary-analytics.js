@@ -3,6 +3,10 @@ function amount(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function nullableAmount(value) {
+  return value === null || value === undefined ? null : amount(value);
+}
+
 function validIsoDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
   if (!match) return false;
@@ -19,15 +23,89 @@ export function normalizeFinanceDailySeries(rows) {
     .filter((row) => validIsoDate(row?.date))
     .map((row) => ({
       date: String(row.date),
-      revenueMinor: amount(row.revenue_minor),
-      expenseMinor: amount(row.expense_minor),
-      payrollMinor: amount(row.payroll_minor),
-      totalCostMinor: amount(row.total_cost_minor),
-      adjustmentsMinor: amount(row.adjustments_minor),
-      refundsMinor: amount(row.refunds_minor),
-      profitMinor: amount(row.profit_minor),
+      revenueMinor: nullableAmount(row.revenue_minor),
+      expenseMinor: nullableAmount(row.expense_minor),
+      payrollMinor: nullableAmount(row.payroll_minor),
+      totalCostMinor: nullableAmount(row.total_cost_minor),
+      adjustmentsMinor: nullableAmount(row.adjustments_minor),
+      refundsMinor: nullableAmount(row.refunds_minor),
+      profitMinor: nullableAmount(row.profit_minor),
     }))
     .sort((left, right) => left.date.localeCompare(right.date));
+}
+
+export function buildFinancePeriodComparisonGeometry(
+  currentPoints,
+  comparisonPoints,
+  { metric = "revenue", width = 720, height = 200 } = {},
+) {
+  const current = Array.isArray(currentPoints) ? currentPoints : [];
+  const comparison = Array.isArray(comparisonPoints) ? comparisonPoints : [];
+  const field = {
+    revenue: "revenueMinor",
+    cost: "totalCostMinor",
+    profit: "profitMinor",
+  }[metric] || "revenueMinor";
+  const pointCount = Math.max(current.length, comparison.length);
+  if (!pointCount) return null;
+  const mode = financeTrendMode(Array.from({ length: pointCount }));
+  const rawValues = [...current, ...comparison]
+    .map((row) => row?.[field])
+    .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+    .map(Number);
+  if (!rawValues.length) return null;
+  let minValue = Math.min(0, ...rawValues);
+  let maxValue = Math.max(0, ...rawValues);
+  if (minValue === maxValue) maxValue = minValue + 1;
+  if (mode === "lines") {
+    const padding = Math.max(1, (maxValue - minValue) * 0.06);
+    maxValue += padding;
+    if (minValue < 0) minValue -= padding;
+  }
+  const range = maxValue - minValue || 1;
+  const y = (value) => height - (((Number(value) - minValue) / range) * height);
+  const zeroY = y(0);
+  const bandWidth = width / pointCount;
+  const xAt = (index) => mode === "lines"
+    ? (pointCount === 1 ? width / 2 : (index / (pointCount - 1)) * width)
+    : (index + 0.5) * bandWidth;
+  const coordinates = (rows) => rows.map((row, index) => {
+    const rawValue = row?.[field];
+    const value = rawValue === null || rawValue === undefined ? null : Number(rawValue);
+    if (value === null || !Number.isFinite(value)) return null;
+    const valueY = y(value);
+    return {
+      index,
+      date: row.date,
+      value,
+      x: xAt(index),
+      y: valueY,
+      barY: Math.min(valueY, zeroY),
+      barHeight: Math.abs(zeroY - valueY),
+    };
+  });
+  const currentCoordinates = coordinates(current);
+  const comparisonCoordinates = coordinates(comparison);
+  const pathFor = (points) => points
+    .filter(Boolean)
+    .map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+    .join(" ");
+  return {
+    mode,
+    metric,
+    field,
+    width,
+    height,
+    minValue,
+    maxValue,
+    zeroY,
+    pointCount,
+    bandWidth,
+    current: currentCoordinates,
+    comparison: comparisonCoordinates,
+    currentPath: mode === "lines" ? pathFor(currentCoordinates) : "",
+    comparisonPath: mode === "lines" ? pathFor(comparisonCoordinates) : "",
+  };
 }
 
 export function financeTrendMode(points) {

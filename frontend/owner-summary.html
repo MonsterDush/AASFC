@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-summarycharts1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-summarycompare1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Сводка</title>
 </head>
@@ -132,7 +132,14 @@
               <b id="summaryTrendTitle">Динамика выручки, затрат и прибыли</b>
               <div class="muted mt-6" id="summaryTrendSubtitle">По дням выбранного периода, ₽</div>
             </div>
-            <div class="summary-chart-legend" id="summaryTrendLegend" aria-label="Легенда графика"></div>
+            <div class="summary-chart-tools">
+              <div class="seg summary-trend-metric-seg" id="summaryTrendMetricSeg" aria-label="Показатель графика">
+                <button type="button" class="active" data-trend-metric="revenue">Выручка</button>
+                <button type="button" data-trend-metric="cost">Затраты</button>
+                <button type="button" data-trend-metric="profit">Прибыль</button>
+              </div>
+              <div class="summary-chart-legend" id="summaryTrendLegend" aria-label="Легенда графика"></div>
+            </div>
           </div>
           <div class="summary-trend-chart mt-12" id="summaryTrendChart"></div>
           <div class="summary-chart-focus mt-10" id="summaryTrendFocus" aria-live="polite">Выбери день на графике</div>
@@ -226,6 +233,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-summary.js?v=20260802-summarycharts1"></script>
+  <script type="module" src="/owner-summary.js?v=20260802-summarycompare1"></script>
 </body>
 </html>

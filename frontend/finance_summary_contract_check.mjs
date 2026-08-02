@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildFinanceCostStructure,
+  buildFinancePeriodComparisonGeometry,
   buildFinanceTrendGeometry,
   financeTrendMode,
   normalizeFinanceDailySeries,
@@ -15,11 +16,33 @@ assert.equal(rows[0].date, "2026-07-01");
 assert.equal(financeTrendMode(rows), "bars");
 assert.equal(financeTrendMode([...rows, ...rows, ...rows, ...rows]), "lines");
 
+const redactedRows = normalizeFinanceDailySeries([
+  { date: "2026-07-01", revenue_minor: null, expense_minor: 25_000, payroll_minor: null, total_cost_minor: null, profit_minor: null },
+]);
+assert.equal(redactedRows[0].revenueMinor, null);
+assert.equal(redactedRows[0].expenseMinor, 25_000);
+assert.equal(redactedRows[0].profitMinor, null);
+
 const geometry = buildFinanceTrendGeometry(rows, { width: 200, height: 100 });
 assert.equal(geometry.mode, "bars");
 assert.equal(geometry.points.length, 2);
 assert.equal(geometry.zeroY, 100);
 assert.equal(geometry.points[1].revenueHeight, 100);
+
+const comparisonGeometry = buildFinancePeriodComparisonGeometry(
+  rows,
+  normalizeFinanceDailySeries([
+    { date: "2026-06-01", revenue_minor: 80_000, total_cost_minor: 35_000, profit_minor: 45_000 },
+    { date: "2026-06-02", revenue_minor: 110_000, total_cost_minor: 45_000, profit_minor: 65_000 },
+    { date: "2026-06-03", revenue_minor: 90_000, total_cost_minor: 50_000, profit_minor: 40_000 },
+  ]),
+  { metric: "revenue", width: 300, height: 100 },
+);
+assert.equal(comparisonGeometry.mode, "bars");
+assert.equal(comparisonGeometry.pointCount, 3);
+assert.equal(comparisonGeometry.current.length, 2);
+assert.equal(comparisonGeometry.comparison.length, 3);
+assert.equal(comparisonGeometry.comparison[2].date, "2026-06-03");
 
 const structure = buildFinanceCostStructure([
   { key: "rent", title: "Аренда", amount_minor: 60_000 },

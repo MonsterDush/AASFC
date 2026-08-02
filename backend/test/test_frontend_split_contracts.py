@@ -104,13 +104,24 @@ class PrimaryPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            cache_key = "20260802-summarycharts1" if html_name == "owner-summary.html" else "20260723-polish2"
+            cache_key = "20260802-summarycompare1" if html_name == "owner-summary.html" else "20260723-polish2"
             self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         summary_js = (FRONTEND / "owner-summary.js").read_text(encoding="utf-8")
         self.assertIn('classList.remove("is-loading")', summary_js)
+        self.assertIn('primaryQuery.set("include_series", "1")', summary_js)
+        self.assertIn('comparisonQuery.set("include_series", "1")', summary_js)
+        self.assertIn("buildFinancePeriodComparisonGeometry", summary_js)
+        self.assertIn("/owner-day-economics.html?", summary_js)
+        self.assertIn("/owner-expenses.html?", summary_js)
+        self.assertIn("/owner-payroll.html?", summary_js)
+        self.assertNotIn("/summary/monthly?${qs}", summary_js)
+
+        summary_html = (FRONTEND / "owner-summary.html").read_text(encoding="utf-8")
+        self.assertIn('id="summaryTrendMetricSeg"', summary_html)
+        self.assertIn('data-trend-metric="revenue"', summary_html)
 
 
 class WorkflowPageUiPolishContractTests(TestCase):
