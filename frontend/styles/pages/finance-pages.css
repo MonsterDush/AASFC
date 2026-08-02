@@ -132,6 +132,28 @@ select.finance-control--wide{min-width:170px}
 .owner-finance-ledger-page .ledger-source-target.is-source-target,[data-expense-row].is-source-target{border-color:var(--accent);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 78%);box-shadow:0 0 0 3px var(--accentSoftBg);scroll-margin-block:100px;outline:none}
 .owner-finance-ledger-page .ledger-adjustment-amount.is-positive{color:var(--statusSuccessText)}
 .owner-finance-ledger-page .ledger-adjustment-amount.is-negative{color:var(--statusWarningText)}
+.owner-finance-ledger-page .ledger-reconciliation{display:grid;gap:0;background:linear-gradient(145deg,var(--surface2),rgba(255,255,255,.015))}
+.owner-finance-ledger-page .ledger-reconciliation.hidden{display:none}
+.owner-finance-ledger-page .ledger-reconciliation__status{flex:none}
+.owner-finance-ledger-page .ledger-reconciliation__status.is-ok{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBg);color:var(--statusSuccessText)}
+.owner-finance-ledger-page .ledger-reconciliation__status.is-warning{border-color:var(--statusWarningBorder);background:var(--statusWarningBg);color:var(--statusWarningText)}
+.owner-finance-ledger-page .ledger-reconciliation__status.is-neutral{color:var(--muted)}
+.owner-finance-ledger-page .ledger-reconciliation__checks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;min-width:0}
+.owner-finance-ledger-page .ledger-reconciliation-check{display:grid;align-content:start;gap:7px;min-width:0;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
+.owner-finance-ledger-page .ledger-reconciliation-check.is-warning{border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft)}
+.owner-finance-ledger-page .ledger-reconciliation-check.is-ok{border-color:var(--statusSuccessBorder)}
+.owner-finance-ledger-page .ledger-reconciliation-check__head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0}
+.owner-finance-ledger-page .ledger-reconciliation-check__head span{flex:none;color:var(--muted);font-size:11px;font-weight:900}
+.owner-finance-ledger-page .ledger-reconciliation-check.is-warning .ledger-reconciliation-check__head span{color:var(--statusWarningText)}
+.owner-finance-ledger-page .ledger-reconciliation-check.is-ok .ledger-reconciliation-check__head span{color:var(--statusSuccessText)}
+.owner-finance-ledger-page .ledger-reconciliation-check__metric{font-size:12px;font-weight:900;line-height:1.45;overflow-wrap:anywhere}
+.owner-finance-ledger-page .ledger-reconciliation-check .muted{font-size:11px;line-height:1.45}
+.owner-finance-ledger-page .ledger-reconciliation__issues{display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--border)}
+.owner-finance-ledger-page .ledger-reconciliation__issues.hidden{display:none}
+.owner-finance-ledger-page .ledger-reconciliation-issues__title{font-weight:900}
+.owner-finance-ledger-page .ledger-reconciliation-issue{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 12px;border:1px solid var(--statusWarningBorder);border-radius:14px;background:var(--statusWarningBgSoft)}
+.owner-finance-ledger-page .ledger-reconciliation-issue__main{display:grid;gap:4px;min-width:0}
+.owner-finance-ledger-page .ledger-reconciliation-issue__amounts{font-size:12px;font-weight:800;line-height:1.45;overflow-wrap:anywhere}
 
 .owner-summary-page .summary-shell{display:grid;gap:14px}
 .owner-summary-page .summary-hero{padding-bottom:2px}
@@ -252,6 +274,10 @@ select.finance-control--wide{min-width:170px}
   .owner-finance-ledger-page .ledger-trend-visual{grid-template-rows:160px 20px}
   .owner-finance-ledger-page .ledger-trend-svg{height:160px}
   .owner-finance-ledger-page .ledger-trend-ticks{font-size:8px}
+  .owner-finance-ledger-page .ledger-reconciliation__head{display:grid;gap:8px}
+  .owner-finance-ledger-page .ledger-reconciliation__checks{grid-template-columns:1fr}
+  .owner-finance-ledger-page .ledger-reconciliation-issue{align-items:stretch;flex-direction:column}
+  .owner-finance-ledger-page .ledger-reconciliation-issue .btn{width:100%}
   .owner-turnover-page .revenue-trend-head{display:grid;gap:8px}
   .owner-turnover-page .revenue-trend-legend{justify-content:flex-start}
   .owner-turnover-page .revenue-trend-chart{grid-template-columns:38px minmax(0,1fr);gap:6px}
@@ -267,6 +293,7 @@ select.finance-control--wide{min-width:170px}
   .owner-summary-page .finance-kpis--secondary{grid-template-columns:repeat(2,minmax(0,1fr))}
   .owner-summary-page .summary-analytics-grid{grid-template-columns:1fr}
   .owner-finance-ledger-page .ledger-analytics-grid{grid-template-columns:1fr}
+  .owner-finance-ledger-page .ledger-reconciliation__checks{grid-template-columns:1fr}
 }
 @media (min-width:561px) and (max-width:1100px){
   .owner-finance-ledger-page .ledger-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}

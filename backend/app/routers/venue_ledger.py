@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from io import BytesIO
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_user, get_current_user_optional
 from app.auth.venue_permissions import require_venue_permission
+from app.core.config import settings
 from app.core.db import get_db
 from app.models.balance_adjustment import BalanceAdjustment
 from app.models.department import Department
@@ -16,6 +20,7 @@ from app.models.finance_entry import FinanceEntry
 from app.models.payment_method import PaymentMethod
 from app.models.payment_method_transfer import PaymentMethodTransfer
 from app.models.user import User
+from app.models.venue import Venue
 from app.routers.venue_access import (
     is_owner_or_super_admin as _is_owner_or_super_admin,
     require_active_member_or_admin as _require_active_member_or_admin,
@@ -23,6 +28,10 @@ from app.routers.venue_access import (
     require_revenue_viewer as _require_revenue_viewer,
 )
 from app.routers.venue_catalogs import _get_payment_method_or_404
+from app.routers.venue_common import (
+    _load_user_for_signed_export,
+    _require_financial_values_export_allowed,
+)
 from app.schemas.finance import (
     BalanceAdjustmentCreateIn,
     BalanceAdjustmentUpdateIn,
@@ -38,7 +47,10 @@ from app.services.finance.payment_transfers import (
     rebuild_payment_method_transfer_entries,
 )
 from app.services.finance.summary import resolve_finance_period
+from app.services.finance.reconciliation import build_finance_reconciliation
 from app.services.financial_privacy import sanitize_financial_payload_for_user
+from app.services.signed_links import make_signed_token, verify_signed_token
+from app.services.xlsx_export import build_finance_ledger_xlsx
 
 
 router = APIRouter()
@@ -149,6 +161,19 @@ def _require_finance_ledger_view(db: Session, *, venue_id: int, user: User) -> N
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
 
 
+def _require_finance_reconciliation_view(db: Session, *, venue_id: int, user: User) -> None:
+    if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        return
+    for permission_code in ("REPORTS_VIEW_PNL", "MONTHLY_SUMMARY_VIEW"):
+        try:
+            require_venue_permission(db, venue_id=venue_id, user=user, permission_code=permission_code)
+            return
+        except HTTPException:
+            pass
+    for permission_code in ("REVENUE_VIEW", "EXPENSE_VIEW", "PAYROLL_VIEW"):
+        require_venue_permission(db, venue_id=venue_id, user=user, permission_code=permission_code)
+
+
 
 def _require_payment_transfers_manage(db: Session, *, venue_id: int, user: User) -> None:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
@@ -174,6 +199,71 @@ def _resolve_ledger_period(
         return resolve_finance_period(month=month, date_from=date_from, date_to=date_to)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+def _finance_entries_statement(
+    *,
+    venue_id: int,
+    month: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    payment_method_id: int | None,
+    direction: str | None,
+    kind: str | None,
+    source_type: str | None,
+):
+    stmt = select(FinanceEntry, PaymentMethod, Department, DailyReport.shift_slot).outerjoin(
+        PaymentMethod, PaymentMethod.id == FinanceEntry.payment_method_id
+    ).outerjoin(
+        Department, Department.id == FinanceEntry.department_id
+    ).outerjoin(
+        DailyReport,
+        and_(FinanceEntry.source_type == 'daily_report', DailyReport.id == FinanceEntry.source_id),
+    ).where(FinanceEntry.venue_id == venue_id)
+
+    period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
+    if period is not None:
+        start, end = period
+        stmt = stmt.where(FinanceEntry.entry_date >= start, FinanceEntry.entry_date <= end)
+    if payment_method_id is not None:
+        stmt = stmt.where(FinanceEntry.payment_method_id == int(payment_method_id))
+    if direction:
+        stmt = stmt.where(FinanceEntry.direction == str(direction).upper())
+    if kind:
+        stmt = stmt.where(FinanceEntry.kind == str(kind).upper())
+    if source_type:
+        stmt = stmt.where(FinanceEntry.source_type == str(source_type).lower())
+    return stmt.order_by(FinanceEntry.entry_date.desc(), FinanceEntry.id.desc())
+
+
+def _load_finance_entry_payload(
+    db: Session,
+    *,
+    venue_id: int,
+    month: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    payment_method_id: int | None,
+    direction: str | None,
+    kind: str | None,
+    source_type: str | None,
+) -> list[dict]:
+    rows = db.execute(
+        _finance_entries_statement(
+            venue_id=venue_id,
+            month=month,
+            date_from=date_from,
+            date_to=date_to,
+            payment_method_id=payment_method_id,
+            direction=direction,
+            kind=kind,
+            source_type=source_type,
+        )
+    ).all()
+    return [
+        _serialize_finance_entry(entry, payment_method, department, report_shift_slot)
+        for entry, payment_method, department, report_shift_slot in rows
+    ]
 
 
 @router.get("/{venue_id}/balance-adjustments")
@@ -306,36 +396,183 @@ def list_finance_entries(
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_finance_ledger_view(db, venue_id=venue_id, user=user)
+    payload = _load_finance_entry_payload(
+        db,
+        venue_id=venue_id,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        payment_method_id=payment_method_id,
+        direction=direction,
+        kind=kind,
+        source_type=source_type,
+    )
+    return sanitize_financial_payload_for_user(user, payload)
 
-    stmt = select(FinanceEntry, PaymentMethod, Department, DailyReport.shift_slot).outerjoin(
-        PaymentMethod, PaymentMethod.id == FinanceEntry.payment_method_id
-    ).outerjoin(
-        Department, Department.id == FinanceEntry.department_id
-    ).outerjoin(
-        DailyReport,
-        and_(FinanceEntry.source_type == 'daily_report', DailyReport.id == FinanceEntry.source_id),
-    ).where(FinanceEntry.venue_id == venue_id)
+
+@router.get("/{venue_id}/finance/reconciliation")
+def get_finance_reconciliation(
+    venue_id: int,
+    month: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_finance_reconciliation_view(db, venue_id=venue_id, user=user)
+    try:
+        payload = build_finance_reconciliation(
+            db=db,
+            venue_id=venue_id,
+            month=month,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return sanitize_financial_payload_for_user(user, payload)
+
+
+@router.get("/{venue_id}/finance/entries/export-link")
+def get_finance_entries_export_link(
+    venue_id: int,
+    request: Request,
+    month: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    payment_method_id: int | None = Query(default=None),
+    direction: str | None = Query(default=None),
+    kind: str | None = Query(default=None),
+    source_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_finance_ledger_view(db, venue_id=venue_id, user=user)
+    _require_financial_values_export_allowed(user)
+    if _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to) is None:
+        raise HTTPException(status_code=400, detail="Export period is required")
+    token = make_signed_token({
+        "action": "finance_entries_export",
+        "venue_id": int(venue_id),
+        "month": month or None,
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
+        "payment_method_id": int(payment_method_id) if payment_method_id is not None else None,
+        "direction": str(direction).upper() if direction else None,
+        "kind": str(kind).upper() if kind else None,
+        "source_type": str(source_type).lower() if source_type else None,
+        "user_id": int(user.id),
+    })
+    query: list[str] = []
+    for key, value in (
+        ("month", month),
+        ("date_from", date_from.isoformat() if date_from else None),
+        ("date_to", date_to.isoformat() if date_to else None),
+        ("payment_method_id", payment_method_id),
+        ("direction", str(direction).upper() if direction else None),
+        ("kind", str(kind).upper() if kind else None),
+        ("source_type", str(source_type).lower() if source_type else None),
+    ):
+        if value is not None and value != "":
+            query.append(f"{key}={quote(str(value))}")
+    query.append(f"token={quote(token)}")
+    base = str(request.base_url).rstrip("/")
+    export_path = f"/venues/{venue_id}/finance/entries/export?{'&'.join(query)}"
+    return {
+        "export_path": export_path,
+        "export_link": f"{base}{export_path}",
+        "expires_in": int(getattr(settings, "EXPORT_LINK_TTL_SECONDS", 600) or 600),
+    }
+
+
+@router.get("/{venue_id}/finance/entries/export")
+def export_finance_entries(
+    venue_id: int,
+    month: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    payment_method_id: int | None = Query(default=None),
+    direction: str | None = Query(default=None),
+    kind: str | None = Query(default=None),
+    source_type: str | None = Query(default=None),
+    token: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+):
+    if token:
+        try:
+            signed = verify_signed_token(token)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid export token")
+        if str(signed.get("action") or "") != "finance_entries_export" or int(signed.get("venue_id") or 0) != int(venue_id):
+            raise HTTPException(status_code=401, detail="Invalid export token")
+        month = signed.get("month") or None
+        date_from = date.fromisoformat(signed["date_from"]) if signed.get("date_from") else None
+        date_to = date.fromisoformat(signed["date_to"]) if signed.get("date_to") else None
+        payment_method_id = int(signed["payment_method_id"]) if signed.get("payment_method_id") is not None else None
+        direction = signed.get("direction") or None
+        kind = signed.get("kind") or None
+        source_type = signed.get("source_type") or None
+        export_user = _load_user_for_signed_export(db, signed)
+        _require_financial_values_export_allowed(export_user)
+    else:
+        if user is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+        _require_finance_ledger_view(db, venue_id=venue_id, user=user)
+        _require_financial_values_export_allowed(user)
 
     period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
-    if period is not None:
-        start, end = period
-        stmt = stmt.where(FinanceEntry.entry_date >= start, FinanceEntry.entry_date <= end)
-
+    if period is None:
+        raise HTTPException(status_code=400, detail="Export period is required")
+    period_start, period_end = period
+    rows = _load_finance_entry_payload(
+        db,
+        venue_id=venue_id,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        payment_method_id=payment_method_id,
+        direction=direction,
+        kind=kind,
+        source_type=source_type,
+    )
+    venue_name = db.execute(select(Venue.name).where(Venue.id == int(venue_id))).scalar_one_or_none() or f"Заведение {venue_id}"
+    filters: list[tuple[str, str]] = []
     if payment_method_id is not None:
-        stmt = stmt.where(FinanceEntry.payment_method_id == int(payment_method_id))
+        payment_title = db.execute(
+            select(PaymentMethod.title).where(
+                PaymentMethod.id == int(payment_method_id),
+                PaymentMethod.venue_id == int(venue_id),
+            )
+        ).scalar_one_or_none()
+        filters.append(("Тип оплаты", payment_title or f"ID {payment_method_id}"))
     if direction:
-        stmt = stmt.where(FinanceEntry.direction == str(direction).upper())
+        filters.append(("Направление", "Приход" if str(direction).upper() == "INCOME" else "Списание"))
     if kind:
-        stmt = stmt.where(FinanceEntry.kind == str(kind).upper())
+        filters.append(("Вид движения", str(kind).upper()))
     if source_type:
-        stmt = stmt.where(FinanceEntry.source_type == str(source_type).lower())
-
-    rows = db.execute(stmt.order_by(FinanceEntry.entry_date.desc(), FinanceEntry.id.desc())).all()
-    payload = [
-        _serialize_finance_entry(entry, payment_method, department, report_shift_slot)
-        for entry, payment_method, department, report_shift_slot in rows
-    ]
-    return sanitize_financial_payload_for_user(user, payload)
+        filters.append(("Источник", str(source_type).lower()))
+    xlsx_bytes = build_finance_ledger_xlsx(
+        venue_name=str(venue_name),
+        period_start=period_start,
+        period_end=period_end,
+        rows=rows,
+        filters=filters,
+    )
+    filename = f"finance_ledger_{venue_id}_{period_start.isoformat()}_{period_end.isoformat()}.xlsx"
+    return StreamingResponse(
+        BytesIO(xlsx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{filename}"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+        },
+    )
 
 
 @router.get("/{venue_id}/payment-method-transfers")

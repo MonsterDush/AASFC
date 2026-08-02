@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-ledgerfilters1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-ledgerreconcile1" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Финансовые движения</title>
 </head>
@@ -49,6 +49,7 @@
             <div class="muted mt-6">Приходы, списания, корректировки и внутренние переводы по данным журнала</div>
           </div>
           <div class="ledger-hero-actions">
+            <button class="btn subtle hidden" id="exportLedgerBtn" type="button">Экспорт XLSX</button>
             <button class="btn hidden" id="addAdjustmentBtn" type="button">Новая корректировка</button>
             <button class="btn hidden" id="addTransferBtn" type="button">Новый перевод</button>
           </div>
@@ -150,6 +151,18 @@
         </div>
       </div>
 
+      <section class="itemcard ledger-reconciliation hidden" id="ledgerReconciliation" aria-labelledby="ledgerReconciliationTitle">
+        <div class="section-head ledger-reconciliation__head">
+          <div>
+            <b id="ledgerReconciliationTitle">Сверка сводки и журнала</b>
+            <div class="muted mt-6" id="ledgerReconciliationHint">Проверяем выбранный период без учёта фильтров операций.</div>
+          </div>
+          <span class="badge ledger-reconciliation__status" id="ledgerReconciliationStatus">—</span>
+        </div>
+        <div class="ledger-reconciliation__checks mt-12" id="ledgerReconciliationChecks"></div>
+        <div class="ledger-reconciliation__issues mt-12 hidden" id="ledgerReconciliationIssues"></div>
+      </section>
+
       <div class="ledger-analytics-grid mt-12">
         <section class="itemcard ledger-chart-card ledger-trend-card" aria-labelledby="ledgerTrendTitle">
           <div class="section-head">
@@ -227,6 +240,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-finance-ledger.js?v=20260802-ledgerfilters1"></script>
+  <script type="module" src="/owner-finance-ledger.js?v=20260802-ledgerreconcile1"></script>
 </body>
 </html>

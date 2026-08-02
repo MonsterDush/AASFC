@@ -7,6 +7,7 @@ import {
   setActiveVenueId,
   getMyVenuePermissions,
   getPaymentMethods,
+  API_BASE,
   api,
   toast,
   getStoredDemoUiState,
@@ -148,6 +149,7 @@ let access = {
   canViewExpenses: false,
   canViewPayroll: false,
   canViewReports: false,
+  canViewReconciliation: false,
 };
 
 const state = {
@@ -164,6 +166,8 @@ const state = {
   compareTo: "",
   transfers: [],
   adjustments: [],
+  reconciliation: null,
+  reconciliationError: null,
   focusTransferId: null,
   focusAdjustmentId: null,
   sourceTargetFocused: false,
@@ -206,6 +210,14 @@ async function loadAccess() {
     const canViewPayroll = isOwner || isAdmin || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");
     const canViewReports = isOwner || isAdmin || ["SHIFT_REPORT_VIEW", "SHIFT_REPORT_CLOSE", "SHIFT_REPORT_EDIT", "SHIFT_REPORT_REOPEN"]
       .some((code) => hasPerm(pset, code));
+    const canViewReconciliation = isOwner || isAdmin
+      || hasPerm(pset, "REPORTS_VIEW_PNL")
+      || hasPerm(pset, "MONTHLY_SUMMARY_VIEW")
+      || (
+        hasPerm(pset, "REVENUE_VIEW")
+        && hasPerm(pset, "EXPENSE_VIEW")
+        && hasPerm(pset, "PAYROLL_VIEW")
+      );
     access = {
       canView: isOwner || isAdmin || hasPerm(pset, "FINANCE_LEDGER_VIEW") || hasPerm(pset, "REVENUE_VIEW") || hasPerm(pset, "EXPENSE_VIEW"),
       canManageTransfers: isOwner || isAdmin || hasPerm(pset, "PAYMENT_TRANSFERS_MANAGE") || hasPerm(pset, "EXPENSE_ADD"),
@@ -215,6 +227,7 @@ async function loadAccess() {
       canViewExpenses,
       canViewPayroll,
       canViewReports,
+      canViewReconciliation,
     };
   } catch {
     access = {
@@ -226,6 +239,7 @@ async function loadAccess() {
       canViewExpenses: false,
       canViewPayroll: false,
       canViewReports: false,
+      canViewReconciliation: false,
     };
   }
   return access;
@@ -270,6 +284,36 @@ function appendPrimaryPeriod(query) {
     query.set("month", state.month || currentMonth());
   }
   return query;
+}
+
+function appendLedgerFilters(query) {
+  const paymentMethodId = document.getElementById("ledgerPaymentMethodPick")?.value || "";
+  const kind = document.getElementById("ledgerKindPick")?.value || "";
+  const direction = document.getElementById("ledgerDirectionPick")?.value || "";
+  const sourceType = document.getElementById("ledgerSourcePick")?.value || "";
+  if (paymentMethodId) query.set("payment_method_id", paymentMethodId);
+  if (kind) query.set("kind", kind);
+  if (direction) query.set("direction", direction);
+  if (sourceType) query.set("source_type", sourceType);
+  return query;
+}
+
+function currentLedgerQuery() {
+  return appendLedgerFilters(appendPrimaryPeriod(new URLSearchParams()));
+}
+
+async function openExportLink(path) {
+  const data = await api(path);
+  const url = data?.export_link || (data?.export_path ? `${API_BASE}${data.export_path}` : "");
+  if (!url) throw new Error("export link missing");
+  const tg = window.Telegram?.WebApp;
+  try {
+    if (tg?.openLink) {
+      tg.openLink(url, { try_instant_view: false });
+      return;
+    }
+  } catch {}
+  window.location.href = url;
 }
 
 function defaultLedgerDate() {
@@ -541,6 +585,105 @@ function renderStructureChart() {
       </svg>
     </div>`;
   }).join("");
+}
+
+function reconciliationSourceLabel(sourceType) {
+  const labels = {
+    daily_report: "отчёт смены",
+    expense: "расход",
+    payroll_run: "расчёт начислений",
+    payment_method_transfer: "перевод",
+    balance_adjustment: "корректировка баланса",
+  };
+  return labels[String(sourceType || "").toLowerCase()] || String(sourceType || "источник");
+}
+
+function renderReconciliation() {
+  const card = document.getElementById("ledgerReconciliation");
+  const checksElement = document.getElementById("ledgerReconciliationChecks");
+  const issuesElement = document.getElementById("ledgerReconciliationIssues");
+  const statusElement = document.getElementById("ledgerReconciliationStatus");
+  if (!card || !checksElement || !issuesElement || !statusElement) return;
+  setVisible(card, access.canViewReconciliation);
+  if (!access.canViewReconciliation) return;
+
+  statusElement.classList.remove("is-ok", "is-warning", "is-neutral");
+  if (state.reconciliationError || !state.reconciliation) {
+    statusElement.textContent = "Недоступна";
+    statusElement.classList.add("is-neutral");
+    setText("ledgerReconciliationHint", "Не удалось выполнить сверку. Остальная страница продолжает работать.");
+    checksElement.innerHTML = `<div class="muted">${esc(state.reconciliationError?.data?.detail || state.reconciliationError?.message || "Повтори загрузку позже.")}</div>`;
+    issuesElement.classList.add("hidden");
+    issuesElement.innerHTML = "";
+    return;
+  }
+
+  const payload = state.reconciliation;
+  const warning = String(payload.status || "OK").toUpperCase() === "WARNING";
+  statusElement.textContent = warning ? `Есть расхождения: ${Number(payload.warning_count || 0)}` : "Всё сходится";
+  statusElement.classList.add(warning ? "is-warning" : "is-ok");
+  setText(
+    "ledgerReconciliationHint",
+    warning
+      ? "Найдены расхождения за весь выбранный период. Фильтры операций на результат сверки не влияют."
+      : "Сводка и связанные проводки проверены за весь выбранный период, без фильтров операций.",
+  );
+
+  checksElement.innerHTML = (payload.checks || []).map((check) => {
+    const checkStatus = String(check.status || "INFO").toUpperCase();
+    const statusLabel = checkStatus === "WARNING" ? "Расхождение" : checkStatus === "OK" ? "Сходится" : "Справочно";
+    const metric = check.comparable_to_summary
+      ? `Сводка: ${fmtMoneyMinor(check.summary_minor)} · журнал: ${fmtMoneyMinor(check.ledger_minor)} · разница: ${fmtSignedMoneyMinor(check.delta_minor)}`
+      : `В сводке: ${fmtMoneyMinor(check.summary_minor)} · по источникам журнала: ${fmtMoneyMinor(check.source_ledger_minor)}`;
+    return `<div class="ledger-reconciliation-check ${checkStatus === "WARNING" ? "is-warning" : checkStatus === "OK" ? "is-ok" : "is-info"}">
+      <div class="ledger-reconciliation-check__head">
+        <b>${esc(check.title || check.key || "Проверка")}</b>
+        <span>${esc(statusLabel)}</span>
+      </div>
+      <div class="ledger-reconciliation-check__metric">${esc(metric)}</div>
+      <div class="muted">${esc(check.note || "")}</div>
+    </div>`;
+  }).join("");
+
+  const issues = Array.isArray(payload.issues) ? payload.issues : [];
+  if (!issues.length) {
+    issuesElement.classList.add("hidden");
+    issuesElement.innerHTML = "";
+    return;
+  }
+  const reasonLabels = {
+    MISSING_LEDGER_ENTRY: "нет проводки",
+    EXTRA_LEDGER_ENTRY: "лишняя проводка",
+    AMOUNT_MISMATCH: "не совпадает сумма",
+  };
+  issuesElement.classList.remove("hidden");
+  issuesElement.innerHTML = `<div class="ledger-reconciliation-issues__title">Проблемные источники</div>${issues.map((issue) => {
+    const sourceId = issue.source_id ? ` #${issue.source_id}` : "";
+    const sourceDate = issue.source_date ? ` · ${formatEntryDate(issue.source_date)}` : "";
+    return `<div class="ledger-reconciliation-issue">
+      <div class="ledger-reconciliation-issue__main">
+        <b>${esc(reconciliationSourceLabel(issue.source_type))}${esc(sourceId)}</b>
+        <div class="muted">${esc(reasonLabels[issue.reason] || issue.reason || "расхождение")}${esc(sourceDate)}</div>
+        <div class="ledger-reconciliation-issue__amounts">Ожидалось ${esc(fmtMoneyMinor(issue.expected_minor))} · в журнале ${esc(fmtMoneyMinor(issue.ledger_minor))} · разница ${esc(fmtSignedMoneyMinor(issue.delta_minor))}</div>
+      </div>
+      <button class="btn ghost small" type="button" data-reconciliation-filter="1" data-kind="${esc(issue.kind || "")}" data-direction="${esc(issue.direction || "")}" data-source-type="${esc(issue.source_type || "")}">Показать проводки</button>
+    </div>`;
+  }).join("")}${payload.issues_truncated ? `<div class="muted mt-8">Показаны первые 50 источников с наибольшим расхождением.</div>` : ""}`;
+
+  issuesElement.querySelectorAll("[data-reconciliation-filter]").forEach((button) => {
+    button.onclick = async () => {
+      document.getElementById("ledgerPaymentMethodPick").value = "";
+      document.getElementById("ledgerKindPick").value = String(button.dataset.kind || "").toUpperCase();
+      document.getElementById("ledgerDirectionPick").value = String(button.dataset.direction || "").toUpperCase();
+      const sourcePick = document.getElementById("ledgerSourcePick");
+      const sourceType = String(button.dataset.sourceType || "").toLowerCase();
+      if (sourcePick) {
+        sourcePick.value = Array.from(sourcePick.options).some((option) => option.value === sourceType) ? sourceType : "";
+      }
+      await reload();
+      document.getElementById("ledgerEntriesList")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+  });
 }
 
 function renderEntries() {
@@ -924,29 +1067,18 @@ async function deleteTransfer(id) {
 async function reload() {
   const venueId = getActiveVenueId();
   const month = document.getElementById("ledgerMonthPick")?.value || state.month || currentMonth();
-  const paymentMethodId = document.getElementById("ledgerPaymentMethodPick")?.value || "";
-  const kind = document.getElementById("ledgerKindPick")?.value || "";
-  const direction = document.getElementById("ledgerDirectionPick")?.value || "";
-  const sourceType = document.getElementById("ledgerSourcePick")?.value || "";
   if (state.periodMode === "month") state.month = month;
   syncFinanceLinks();
   syncComparisonUi();
 
   const periodQp = appendPrimaryPeriod(new URLSearchParams());
-  const qp = new URLSearchParams(periodQp);
-  if (paymentMethodId) qp.set("payment_method_id", paymentMethodId);
-  if (kind) qp.set("kind", kind);
-  if (direction) qp.set("direction", direction);
-  if (sourceType) qp.set("source_type", sourceType);
+  const qp = appendLedgerFilters(new URLSearchParams(periodQp));
 
   const comparison = currentComparison();
   const compareQp = new URLSearchParams();
   if (comparison?.from) compareQp.set("date_from", comparison.from);
   if (comparison?.to) compareQp.set("date_to", comparison.to);
-  if (paymentMethodId) compareQp.set("payment_method_id", paymentMethodId);
-  if (kind) compareQp.set("kind", kind);
-  if (direction) compareQp.set("direction", direction);
-  if (sourceType) compareQp.set("source_type", sourceType);
+  appendLedgerFilters(compareQp);
 
   const entriesPromise = access.canView ? api(`/venues/${encodeURIComponent(venueId)}/finance/entries?${qp.toString()}`) : Promise.resolve([]);
   const comparisonPromise = access.canView && comparison
@@ -958,22 +1090,29 @@ async function reload() {
   const adjustmentsPromise = access.canView
     ? api(`/venues/${encodeURIComponent(venueId)}/balance-adjustments?${periodQp.toString()}`)
     : Promise.resolve([]);
-  const [entries, comparisonResult, transfers, adjustments] = await Promise.all([
+  const reconciliationPromise = access.canViewReconciliation
+    ? api(`/venues/${encodeURIComponent(venueId)}/finance/reconciliation?${periodQp.toString()}`).then((value) => ({ value })).catch((error) => ({ error }))
+    : Promise.resolve({ value: null });
+  const [entries, comparisonResult, transfers, adjustments, reconciliationResult] = await Promise.all([
     entriesPromise,
     comparisonPromise,
     transfersPromise,
     adjustmentsPromise,
+    reconciliationPromise,
   ]);
   state.entries = Array.isArray(entries) ? entries : [];
   state.comparisonEntries = Array.isArray(comparisonResult.value) ? comparisonResult.value : [];
   state.comparisonError = comparisonResult.error || null;
   state.transfers = Array.isArray(transfers) ? transfers : [];
   state.adjustments = Array.isArray(adjustments) ? adjustments : [];
+  state.reconciliation = reconciliationResult.value || null;
+  state.reconciliationError = reconciliationResult.error || null;
   syncUrl();
   renderChartContext();
   renderMetrics();
   renderTrendChart();
   renderStructureChart();
+  renderReconciliation();
   renderEntries();
   renderAdjustments();
   renderTransfers();
@@ -1072,6 +1211,19 @@ async function boot() {
     document.getElementById("ledgerDirectionPick").value = "";
     document.getElementById("ledgerSourcePick").value = "";
     await reload();
+  };
+  const exportLedgerBtn = document.getElementById("exportLedgerBtn");
+  setVisible(exportLedgerBtn, access.canView && !financialValuesHidden);
+  exportLedgerBtn.onclick = async () => {
+    exportLedgerBtn.disabled = true;
+    try {
+      const query = currentLedgerQuery();
+      await openExportLink(`/venues/${encodeURIComponent(venueId)}/finance/entries/export-link?${query.toString()}`);
+    } catch (error) {
+      toast(error?.data?.detail || error?.message || "Не удалось сформировать XLSX", "err");
+    } finally {
+      exportLedgerBtn.disabled = false;
+    }
   };
   const addAdjustmentBtn = document.getElementById("addAdjustmentBtn");
   setVisible(addAdjustmentBtn, access.canManageAdjustments);
