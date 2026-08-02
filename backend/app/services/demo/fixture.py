@@ -369,7 +369,10 @@ def load_demo_fixture(*, fixture_path: str | None = None) -> dict[str, Any]:
 
 def clear_demo_venue_data(db: Session, *, venue_id: int) -> dict[str, int]:
     ctx = _collect_live_context(db, int(venue_id))
-    plans = [plan for plan in _fixture_table_plans() if plan.name != 'venues']
+    # User rows are global and a DEMO user can still be referenced by another
+    # venue (for example, by a TEMPLATE venue). Bootstrap reuses the users that
+    # belonged to the target venue instead of deleting shared rows.
+    plans = [plan for plan in _fixture_table_plans() if plan.name not in {'venues', 'users'}]
     deleted: dict[str, int] = {}
     for plan in reversed(plans):
         table = plan.model.__table__

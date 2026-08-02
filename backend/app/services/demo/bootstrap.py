@@ -320,25 +320,25 @@ def _build_demo_users() -> list[dict]:
     ]
 
 
-def _create_user(db: Session, spec: dict) -> User:
-    user = User(
-        tg_username=spec.get("tg_username"),
-        full_name=spec.get("full_name"),
-        short_name=spec.get("short_name"),
-        system_role="NONE",
-        notify_enabled=False,
-        notify_adjustments=False,
-        notify_shifts=False,
-        notify_shift_comments=False,
-        notify_day_economics=False,
-        notify_salary=False,
-        notify_soft_alerts=False,
-        shift_reminder_lead_time_hours=18,
-        notification_detail_level="standard",
-        is_demo_user=True,
-        demo_persona=spec.get("persona"),
-    )
-    db.add(user)
+def _create_user(db: Session, spec: dict, *, existing_user: User | None = None) -> User:
+    user = existing_user or User()
+    user.tg_username = spec.get("tg_username")
+    user.full_name = spec.get("full_name")
+    user.short_name = spec.get("short_name")
+    user.system_role = "NONE"
+    user.notify_enabled = False
+    user.notify_adjustments = False
+    user.notify_shifts = False
+    user.notify_shift_comments = False
+    user.notify_day_economics = False
+    user.notify_salary = False
+    user.notify_soft_alerts = False
+    user.shift_reminder_lead_time_hours = 18
+    user.notification_detail_level = "standard"
+    user.is_demo_user = True
+    user.demo_persona = spec.get("persona")
+    if existing_user is None:
+        db.add(user)
     db.flush()
     return user
 
@@ -862,6 +862,21 @@ def bootstrap_demo_venue(
         make_public=bool(make_public),
     )
 
+    existing_users_by_username: dict[str, User] = {}
+    existing_demo_users = db.execute(
+        select(User)
+        .join(VenueMember, VenueMember.user_id == User.id)
+        .where(
+            VenueMember.venue_id == int(venue.id),
+            User.is_demo_user.is_(True),
+        )
+        .order_by(User.id.asc())
+    ).scalars().all()
+    for existing_user in existing_demo_users:
+        username = str(existing_user.tg_username or "").strip()
+        if username:
+            existing_users_by_username.setdefault(username, existing_user)
+
     deleted = clear_demo_venue_data(db, venue_id=int(venue.id))
     for key, value in deleted.items():
         if value:
@@ -870,7 +885,11 @@ def bootstrap_demo_venue(
     users_by_key: dict[str, User] = {}
     positions_by_key: dict[str, VenuePosition] = {}
     for spec in _build_demo_users():
-        user = _create_user(db, spec)
+        user = _create_user(
+            db,
+            spec,
+            existing_user=existing_users_by_username.get(str(spec.get("tg_username") or "")),
+        )
         users_by_key[spec["key"]] = user
         position = _create_member_and_position(db, venue=venue, user=user, spec=spec)
         if position is not None:
