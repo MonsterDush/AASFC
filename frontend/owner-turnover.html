@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-revenueanalytics1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-financeux3" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Выручка</title>
 </head>
@@ -50,7 +50,7 @@
             <div class="page-caption mt-6">Один экран для просмотра выручки по департаментам или типам оплат. Сначала выбираешь период, потом режим детализации.</div>
           </div>
           <div class="screen-hero__actions">
-            <a class="btn subtle" id="openLedgerBtn" href="#">Финансовые движения</a>
+            <a class="btn ghost" id="openLedgerBtn" href="#">Финансовые движения</a>
             <button class="btn ghost" id="exportBtn">Экспорт XLSX</button>
           </div>
         </div>
@@ -95,7 +95,12 @@
           </div>
         </div>
 
-        <div class="itemcard finance-comparison-card">
+        <details class="itemcard finance-comparison-card finance-comparison-disclosure">
+          <summary class="finance-comparison-disclosure__summary">
+            <span><b>Сравнение выручки</b><span class="muted">Открыть настройки сравнения</span></span>
+            <span class="badge">Настроить</span>
+          </summary>
+          <div class="finance-comparison-disclosure__body">
           <div class="finance-comparison-card__head">
             <div>
               <div class="finance-period-card__label">Сравнение</div>
@@ -104,6 +109,7 @@
             <div class="seg" id="revenueCompareSeg">
               <button type="button" data-compare="auto" class="active">Авто</button>
               <button type="button" data-compare="custom">Другой период</button>
+              <button type="button" data-compare="none">Без сравнения</button>
             </div>
           </div>
           <div class="finance-comparison-card__controls hidden" id="revenueCompareRange">
@@ -115,7 +121,8 @@
             </div>
           </div>
           <div class="muted" id="revenueCompareHint">—</div>
-        </div>
+          </div>
+        </details>
       </div>
     </div>
 
@@ -160,7 +167,7 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-turnover.js?v=20260802-ledgernav1"></script>
+  <script type="module" src="/owner-turnover.js?v=20260802-financeux2"></script>
   <!-- Canonical revenue page -->
 </body>
 </html>

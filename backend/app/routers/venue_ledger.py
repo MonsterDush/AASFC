@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import and_, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, get_current_user_optional
@@ -219,8 +219,35 @@ def _finance_entries_statement(
     ).outerjoin(
         DailyReport,
         and_(FinanceEntry.source_type == 'daily_report', DailyReport.id == FinanceEntry.source_id),
-    ).where(FinanceEntry.venue_id == venue_id)
+    )
 
+    stmt = _apply_finance_entry_filters(
+        stmt,
+        venue_id=venue_id,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        payment_method_id=payment_method_id,
+        direction=direction,
+        kind=kind,
+        source_type=source_type,
+    )
+    return stmt.order_by(FinanceEntry.entry_date.desc(), FinanceEntry.id.desc())
+
+
+def _apply_finance_entry_filters(
+    stmt,
+    *,
+    venue_id: int,
+    month: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    payment_method_id: int | None,
+    direction: str | None,
+    kind: str | None,
+    source_type: str | None,
+):
+    stmt = stmt.where(FinanceEntry.venue_id == venue_id)
     period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
     if period is not None:
         start, end = period
@@ -233,7 +260,7 @@ def _finance_entries_statement(
         stmt = stmt.where(FinanceEntry.kind == str(kind).upper())
     if source_type:
         stmt = stmt.where(FinanceEntry.source_type == str(source_type).lower())
-    return stmt.order_by(FinanceEntry.entry_date.desc(), FinanceEntry.id.desc())
+    return stmt
 
 
 def _load_finance_entry_payload(
@@ -247,9 +274,54 @@ def _load_finance_entry_payload(
     direction: str | None,
     kind: str | None,
     source_type: str | None,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict]:
-    rows = db.execute(
-        _finance_entries_statement(
+    stmt = _finance_entries_statement(
+        venue_id=venue_id,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        payment_method_id=payment_method_id,
+        direction=direction,
+        kind=kind,
+        source_type=source_type,
+    )
+    if offset > 0:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    rows = db.execute(stmt).all()
+    return [
+        _serialize_finance_entry(entry, payment_method, department, report_shift_slot)
+        for entry, payment_method, department, report_shift_slot in rows
+    ]
+
+
+def _load_finance_entry_analytics(
+    db: Session,
+    *,
+    venue_id: int,
+    month: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    payment_method_id: int | None,
+    direction: str | None,
+    kind: str | None,
+    source_type: str | None,
+) -> dict:
+    income_amount = case(
+        (FinanceEntry.direction == "INCOME", FinanceEntry.amount_minor),
+        else_=0,
+    )
+    expense_amount = case(
+        (FinanceEntry.direction == "EXPENSE", FinanceEntry.amount_minor),
+        else_=0,
+    )
+
+    def filtered(stmt):
+        return _apply_finance_entry_filters(
+            stmt,
             venue_id=venue_id,
             month=month,
             date_from=date_from,
@@ -259,11 +331,59 @@ def _load_finance_entry_payload(
             kind=kind,
             source_type=source_type,
         )
-    ).all()
-    return [
-        _serialize_finance_entry(entry, payment_method, department, report_shift_slot)
-        for entry, payment_method, department, report_shift_slot in rows
-    ]
+
+    metrics_row = db.execute(filtered(select(
+        func.coalesce(func.sum(income_amount), 0),
+        func.coalesce(func.sum(expense_amount), 0),
+        func.count(FinanceEntry.id),
+    ))).one()
+    income_minor = int(metrics_row[0] or 0)
+    expense_minor = int(metrics_row[1] or 0)
+
+    daily_rows = db.execute(filtered(select(
+        FinanceEntry.entry_date,
+        func.coalesce(func.sum(income_amount), 0),
+        func.coalesce(func.sum(expense_amount), 0),
+        func.count(FinanceEntry.id),
+    )).group_by(FinanceEntry.entry_date).order_by(FinanceEntry.entry_date)).all()
+
+    structure_rows = db.execute(filtered(select(
+        FinanceEntry.direction,
+        FinanceEntry.kind,
+        func.coalesce(func.sum(FinanceEntry.amount_minor), 0),
+        func.count(FinanceEntry.id),
+    )).where(FinanceEntry.direction.in_(("INCOME", "EXPENSE"))).group_by(
+        FinanceEntry.direction,
+        FinanceEntry.kind,
+    )).all()
+
+    return {
+        "metrics": {
+            "income_minor": income_minor,
+            "expense_minor": expense_minor,
+            "net_minor": income_minor - expense_minor,
+            "count": int(metrics_row[2] or 0),
+        },
+        "daily_series": [
+            {
+                "date": row[0].isoformat(),
+                "income_minor": int(row[1] or 0),
+                "expense_minor": int(row[2] or 0),
+                "net_minor": int(row[1] or 0) - int(row[2] or 0),
+                "count": int(row[3] or 0),
+            }
+            for row in daily_rows
+        ],
+        "structure": [
+            {
+                "direction": str(row[0] or "").upper(),
+                "kind": str(row[1] or "").upper(),
+                "amount_minor": int(row[2] or 0),
+                "count": int(row[3] or 0),
+            }
+            for row in structure_rows
+        ],
+    }
 
 
 @router.get("/{venue_id}/balance-adjustments")
@@ -391,12 +511,45 @@ def list_finance_entries(
     direction: str | None = Query(default=None),
     kind: str | None = Query(default=None),
     source_type: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_finance_ledger_view(db, venue_id=venue_id, user=user)
     payload = _load_finance_entry_payload(
+        db,
+        venue_id=venue_id,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        payment_method_id=payment_method_id,
+        direction=direction,
+        kind=kind,
+        source_type=source_type,
+        limit=limit,
+        offset=offset,
+    )
+    return sanitize_financial_payload_for_user(user, payload)
+
+
+@router.get("/{venue_id}/finance/entries/analytics")
+def get_finance_entries_analytics(
+    venue_id: int,
+    month: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    payment_method_id: int | None = Query(default=None),
+    direction: str | None = Query(default=None),
+    kind: str | None = Query(default=None),
+    source_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    _require_finance_ledger_view(db, venue_id=venue_id, user=user)
+    payload = _load_finance_entry_analytics(
         db,
         venue_id=venue_id,
         month=month,

@@ -6,7 +6,7 @@ import json
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollRun, User
+from app.models import PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollPaymentSettings, PayrollRun, User
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 from .component_calculations import (
@@ -452,25 +452,31 @@ def calculate_payroll_for_month(
 
     db.flush()
 
-    for line in lines:
-        if int(line.amount_minor or 0) <= 0:
-            continue
-        create_finance_entry(
-            db=db,
-            venue_id=int(venue_id),
-            entry_date=month_start,
-            amount_minor=int(line.amount_minor),
-            direction="EXPENSE",
-            kind="PAYROLL",
-            source_type="payroll_run",
-            source_id=int(run.id),
-            meta_json={
-                "member_user_id": int(line.member_user_id),
-                "pay_profile_id": int(line.pay_profile_id) if line.pay_profile_id is not None else None,
-                "payroll_line_id": int(line.id),
-                "period_month": month_start.strftime("%Y-%m"),
-            },
+    payment_settings_enabled = db.execute(
+        select(PayrollPaymentSettings.id).where(
+            PayrollPaymentSettings.venue_id == int(venue_id),
         )
+    ).scalar_one_or_none() is not None
+    if not payment_settings_enabled:
+        for line in lines:
+            if int(line.amount_minor or 0) <= 0:
+                continue
+            create_finance_entry(
+                db=db,
+                venue_id=int(venue_id),
+                entry_date=month_start,
+                amount_minor=int(line.amount_minor),
+                direction="EXPENSE",
+                kind="PAYROLL",
+                source_type="payroll_run",
+                source_id=int(run.id),
+                meta_json={
+                    "member_user_id": int(line.member_user_id),
+                    "pay_profile_id": int(line.pay_profile_id) if line.pay_profile_id is not None else None,
+                    "payroll_line_id": int(line.id),
+                    "period_month": month_start.strftime("%Y-%m"),
+                },
+            )
 
     run.total_amount_minor = int(total_amount_minor)
     run.lines_count = len(lines)

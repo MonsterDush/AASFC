@@ -26,6 +26,15 @@
 .economics-comparison-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0}
 .economics-comparison-card__controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 .economics-comparison-card .seg{min-width:220px}
+.finance-comparison-disclosure{padding:0;overflow:hidden}
+.finance-comparison-disclosure:not([open])>.finance-comparison-disclosure__body{display:none}
+.finance-comparison-disclosure__summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;cursor:pointer;list-style:none}
+.finance-comparison-disclosure__summary::-webkit-details-marker{display:none}
+.finance-comparison-disclosure__summary>span:first-child{display:grid;gap:3px;min-width:0}
+.finance-comparison-disclosure__summary .muted{font-size:11px;font-weight:700}
+.finance-comparison-disclosure[open]>.finance-comparison-disclosure__summary{border-bottom:1px solid var(--border)}
+.finance-comparison-disclosure__body{display:grid;gap:10px;padding:12px 14px 14px}
+.finance-comparison-disclosure .seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:min(100%,430px);min-width:300px}
 .economics-metric-delta{min-height:18px;color:var(--muted);font-size:12px;font-weight:800;line-height:1.35}
 .economics-metric-delta.is-good{color:var(--statusSuccessText)}
 .economics-metric-delta.is-bad{color:var(--statusWarningText)}
@@ -79,6 +88,7 @@
   .economics-comparison-card__head,
   .economics-comparison-card__controls{display:grid;width:100%}
   .economics-comparison-card .seg{width:100%;min-width:0}
+  .finance-comparison-disclosure .seg{grid-template-columns:repeat(3,minmax(0,1fr))}
   .owner-day-economics-page .finance-stat:hover{box-shadow:none;transform:none}
   .economics-rules-form > div:last-child .btn{width:100%}
   .summary-list-row{align-items:flex-start}

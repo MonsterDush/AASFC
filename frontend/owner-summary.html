@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-summarycompare1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-financeux3" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Сводка</title>
 </head>
@@ -56,7 +56,7 @@
           </div>
         </div>
 
-        <div class="screen-hero__toolbar">
+        <div class="screen-hero__toolbar summary-primary-toolbar">
           <div class="screen-hero__period">
             <input class="finance-control" id="summaryMonthPick" type="month" />
             <input class="finance-control hidden" id="summaryDayPick" type="date" />
@@ -78,7 +78,12 @@
           <div class="muted" id="summaryHint">—</div>
         </div>
 
-        <div class="itemcard summary-comparison-card">
+        <details class="itemcard finance-comparison-card finance-comparison-disclosure summary-comparison-card">
+          <summary class="finance-comparison-disclosure__summary">
+            <span><b>Сравнение периодов</b><span class="muted">Открыть настройки сравнения</span></span>
+            <span class="badge">Настроить</span>
+          </summary>
+          <div class="finance-comparison-disclosure__body">
           <div class="summary-comparison-card__head">
             <div>
               <div class="finance-period-card__label">Сравнение</div>
@@ -87,6 +92,7 @@
             <div class="seg summary-compare-segment" id="summaryCompareSeg">
               <button data-compare="auto" class="active">Авто</button>
               <button data-compare="custom">Другой период</button>
+              <button data-compare="none">Без сравнения</button>
             </div>
           </div>
           <div class="range-pick hidden" id="summaryCompareRangePick">
@@ -96,7 +102,8 @@
             <button class="btn" id="summaryCompareApplyBtn" type="button">Сравнить</button>
           </div>
           <div class="muted" id="summaryCompareHint">Автоматический период сравнения зависит от выбранного режима.</div>
-        </div>
+          </div>
+        </details>
       </div>
 
       <div class="state summary-state hidden" id="summaryState" role="status">
@@ -234,6 +241,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-summary.js?v=20260802-ledgernav1"></script>
+  <script type="module" src="/owner-summary.js?v=20260802-financeux2"></script>
 </body>
 </html>

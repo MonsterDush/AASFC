@@ -19,7 +19,7 @@ import {
   trackDemoEvent,
 } from "/app.js?v=20260726-navmore1";
 import { canViewRevenue, hasFinanceLedgerViewAccess, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
-import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260729-compare1";
+import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260802-financeux2";
 import {
   buildFinanceCostStructure,
   buildFinancePeriodComparisonGeometry,
@@ -221,6 +221,7 @@ function syncPickers() {
 }
 
 function currentComparison() {
+  if (state.compareMode === "none") return null;
   if (state.compareMode === "custom") {
     const range = normalizeCompareRange();
     return { ...range, caption: "к выбранному периоду" };
@@ -230,6 +231,7 @@ function currentComparison() {
 
 function syncComparisonControls() {
   const custom = state.compareMode === "custom";
+  const disabled = state.compareMode === "none";
   showBlock("summaryCompareRangePick", custom);
   setActiveSeg("summaryCompareSeg", "compare", state.compareMode);
   const comparison = currentComparison();
@@ -239,11 +241,11 @@ function syncComparisonControls() {
   if (custom && toPick) toPick.value = comparison?.to || "";
   setText(
     "summaryComparePeriodText",
-    comparison?.from && comparison?.to ? `${comparison.from} — ${comparison.to}` : "Период не определён",
+    disabled ? "Сравнение отключено" : (comparison?.from && comparison?.to ? `${comparison.from} — ${comparison.to}` : "Период не определён"),
   );
   setText(
     "summaryCompareHint",
-    comparison?.caption || "Автоматический период сравнения зависит от выбранного режима.",
+    disabled ? "Дополнительный период не загружается." : (comparison?.caption || "Автоматический период сравнения зависит от выбранного режима."),
   );
 }
 
@@ -897,10 +899,15 @@ async function loadSummary() {
   try {
     const primaryQuery = buildSummaryQuery();
     primaryQuery.set("include_series", "1");
-    const comparisonQuery = buildComparisonQuery();
-    comparisonQuery.set("include_series", "1");
     const primaryPromise = loadFinanceSummaryForQuery(venueId, primaryQuery, "OWNER_SUMMARY_TIMEOUT");
-    const comparisonPromise = loadFinanceSummaryForQuery(venueId, comparisonQuery, "OWNER_SUMMARY_COMPARISON_TIMEOUT");
+    const comparison = currentComparison();
+    const comparisonPromise = comparison
+      ? (() => {
+          const comparisonQuery = buildComparisonQuery();
+          comparisonQuery.set("include_series", "1");
+          return loadFinanceSummaryForQuery(venueId, comparisonQuery, "OWNER_SUMMARY_COMPARISON_TIMEOUT");
+        })()
+      : Promise.resolve(null);
     const [summary, comparisonResult] = await Promise.all([
       primaryPromise,
       comparisonPromise.then((value) => ({ value })).catch((error) => ({ error })),
@@ -925,8 +932,8 @@ async function loadSummary() {
     if (comparisonResult.value) {
       renderComparison(summary, comparisonResult.value);
     } else {
-      resetComparisonDeltas("Сравнение недоступно");
-      setText("summaryCompareHint", comparisonResult.error?.data?.detail || comparisonResult.error?.message || "Не удалось загрузить период сравнения");
+      resetComparisonDeltas(state.compareMode === "none" ? "Без сравнения" : "Сравнение недоступно");
+      if (state.compareMode !== "none") setText("summaryCompareHint", comparisonResult.error?.data?.detail || comparisonResult.error?.message || "Не удалось загрузить период сравнения");
     }
     setSummaryState();
   } catch (e) {
@@ -976,7 +983,7 @@ async function boot() {
   const demoRange = coerceDemoRange(params.get("date_from") || todayISO(), params.get("date_to") || (params.get("date_from") || todayISO()), { notify: false, context: "owner-summary" });
   state.from = demoRange.from || params.get("date_from") || todayISO();
   state.to = demoRange.to || params.get("date_to") || state.from;
-  state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareMode = ["auto", "custom", "none"].includes(params.get("compare_mode")) ? params.get("compare_mode") : "auto";
   state.compareFrom = params.get("compare_from") || "";
   state.compareTo = params.get("compare_to") || "";
   if (isDemoUiMode()) state.period = "month";
@@ -1051,7 +1058,8 @@ async function boot() {
 
   document.querySelectorAll(`#summaryCompareSeg button`).forEach((btn) => {
     btn.onclick = () => {
-      const nextMode = btn.dataset.compare === "custom" ? "custom" : "auto";
+      const requestedMode = btn.dataset.compare;
+      const nextMode = ["auto", "custom", "none"].includes(requestedMode) ? requestedMode : "auto";
       if (nextMode === "custom" && state.compareMode !== "custom") {
         const automatic = resolveAutoComparison(state);
         state.compareFrom = automatic?.from || state.day || todayISO();
@@ -1059,7 +1067,7 @@ async function boot() {
       }
       state.compareMode = nextMode;
       syncComparisonControls();
-      if (nextMode === "auto") {
+      if (nextMode !== "custom") {
         loadSummary().catch((err) => toast(err?.message || "Ошибка загрузки", "err"));
       } else {
         syncUrl();

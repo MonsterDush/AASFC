@@ -25,7 +25,7 @@ import {
   normalizeIsoRange,
   resolveAutoComparison,
   resolveComparisonRange,
-} from "/app/period-comparison.js?v=20260729-compare2";
+} from "/app/period-comparison.js?v=20260802-financeux2";
 import {
   buildPayrollTeamAnalytics,
   payrollLineShiftMetrics,
@@ -369,6 +369,9 @@ let state = {
   focusPayrollLineId: null,
   focusMemberUserId: null,
   sourceTargetFocused: false,
+  paymentMethods: [],
+  paymentSettings: null,
+  paymentSettingsError: null,
 };
 
 async function openExportLink(path) {
@@ -473,7 +476,12 @@ function renderShell() {
               <div class="finance-period-card__value is-loading" id="runMeta" aria-busy="true">Загрузка…</div>
               <div class="muted">Перерасчёт обновляет ФОТ и детализацию для каждого сотрудника.</div>
             </div>
-            <div class="itemcard payroll-comparison-card">
+            <details class="itemcard payroll-comparison-card finance-comparison-disclosure">
+              <summary class="finance-comparison-disclosure__summary">
+                <span><b>Сравнение начислений</b><span class="muted">Открыть настройки сравнения</span></span>
+                <span class="badge">Настроить</span>
+              </summary>
+              <div class="finance-comparison-disclosure__body">
               <div class="payroll-comparison-card__head">
                 <div>
                   <div class="finance-period-card__label">Сравнение</div>
@@ -482,6 +490,7 @@ function renderShell() {
                 <div class="seg" id="payrollCompareSeg">
                   <button type="button" data-compare="auto" class="active">Авто</button>
                   <button type="button" data-compare="custom">Другой период</button>
+                  <button type="button" data-compare="none">Без сравнения</button>
                 </div>
               </div>
               <div class="payroll-comparison-card__controls hidden" id="payrollCompareRange">
@@ -492,7 +501,8 @@ function renderShell() {
                 </div>
               </div>
               <div class="muted" id="payrollCompareHint">—</div>
-            </div>
+              </div>
+            </details>
           </div>
         </div>
 
@@ -522,6 +532,76 @@ function renderShell() {
             <div class="finance-stat__meta">Взвешенное среднее по сотрудникам, у которых есть отработанные смены.</div>
           </div>
         </div>
+      </section>
+
+      <section class="card section-card payroll-payment-card" id="payrollPaymentCard">
+        <details class="payroll-payment-disclosure" id="payrollPaymentDisclosure">
+          <summary class="payroll-payment-disclosure__summary">
+            <span>
+              <b>Выплаты ФОТ</b>
+              <span class="muted" id="payrollPaymentSummary">Способ оплаты, даты выплат и расчётные периоды</span>
+            </span>
+            <span class="badge" id="payrollPaymentBadge">Настроить</span>
+          </summary>
+          <div class="payroll-payment-disclosure__body">
+            <div class="payroll-payment-grid">
+              <label class="payroll-payment-field">
+                <span>Способ оплаты</span>
+                <select id="payrollPaymentMethod"><option value="">Выберите способ оплаты</option></select>
+              </label>
+              <label class="payroll-payment-field">
+                <span>Периодичность</span>
+                <select id="payrollPaymentCadence">
+                  <option value="DAILY">Каждый день</option>
+                  <option value="WEEKLY">Раз в неделю</option>
+                  <option value="MONTHLY">По датам месяца</option>
+                </select>
+              </label>
+              <label class="payroll-payment-field hidden" id="payrollWeeklyField">
+                <span>День выплаты</span>
+                <select id="payrollWeeklyDay">
+                  <option value="0">Понедельник</option>
+                  <option value="1">Вторник</option>
+                  <option value="2">Среда</option>
+                  <option value="3">Четверг</option>
+                  <option value="4">Пятница</option>
+                  <option value="5">Суббота</option>
+                  <option value="6">Воскресенье</option>
+                </select>
+              </label>
+              <label class="payroll-payment-enabled">
+                <input id="payrollPaymentEnabled" type="checkbox" />
+                <span>Формировать черновики выплат</span>
+              </label>
+            </div>
+
+            <div class="payroll-monthly-rules" id="payrollMonthlyRulesWrap">
+              <div class="section-card__head">
+                <div>
+                  <b>Даты и периоды выплат</b>
+                  <div class="muted mt-6">Для каждой даты укажите, начисления за какие числа попадут в черновик.</div>
+                </div>
+                <button class="btn subtle small" id="payrollAddPaymentRule" type="button">Добавить выплату</button>
+              </div>
+              <div class="payroll-monthly-rules__list" id="payrollMonthlyRules"></div>
+            </div>
+
+            <div class="itemcard payroll-payment-preview">
+              <div>
+                <b>Предпросмотр выплат выбранного месяца</b>
+                <div class="muted mt-6">Черновик не влияет на сводку. Списание выбранного баланса произойдёт после подтверждения расхода.</div>
+              </div>
+              <div class="payroll-payment-preview__list" id="payrollPaymentPreview"><span class="muted">Загрузка…</span></div>
+            </div>
+
+            <div class="payroll-payment-actions">
+              <button class="btn primary" id="payrollSavePaymentSettings" type="button">Сохранить настройки</button>
+              <button class="btn" id="payrollGenerateDrafts" type="button">Сформировать черновики</button>
+              <a class="btn subtle" id="payrollOpenDrafts" href="#">Открыть черновики расходов</a>
+            </div>
+            <div class="muted" id="payrollPaymentHint">—</div>
+          </div>
+        </details>
       </section>
 
       <section class="card section-card payroll-leaderboard-card" id="payrollLeaderboardCard">
@@ -611,14 +691,15 @@ function currentComparison() {
 function syncComparisonControls() {
   const comparison = currentComparison();
   const custom = state.compareMode === "custom";
+  const disabled = state.compareMode === "none";
   setVisible(document.getElementById("payrollCompareRange"), custom);
   document.querySelectorAll("#payrollCompareSeg button").forEach((button) => {
     button.classList.toggle("active", button.dataset.compare === state.compareMode);
   });
   const periodText = document.getElementById("payrollComparePeriodText");
   const hint = document.getElementById("payrollCompareHint");
-  if (periodText) periodText.textContent = formatComparisonRange(comparison);
-  if (hint) hint.textContent = comparison?.caption || "Выбери период сравнения";
+  if (periodText) periodText.textContent = disabled ? "Сравнение отключено" : formatComparisonRange(comparison);
+  if (hint) hint.textContent = disabled ? "Дополнительный период не загружается." : (comparison?.caption || "Выбери период сравнения");
   if (custom) {
     const from = document.getElementById("payrollCompareFrom");
     const to = document.getElementById("payrollCompareTo");
@@ -631,6 +712,191 @@ function syncUrl() {
   try {
     history.replaceState(null, "", `${location.pathname}?${getPeriodQuery().toString()}`);
   } catch {}
+}
+
+const DEFAULT_PAYMENT_RULES = [
+  { payment_day: 5, period_start_day: 16, period_end_day: 31, period_month_offset: -1 },
+  { payment_day: 20, period_start_day: 1, period_end_day: 15, period_month_offset: 0 },
+];
+
+function payrollCadenceLabel(value) {
+  const cadence = String(value || "MONTHLY").toUpperCase();
+  if (cadence === "DAILY") return "каждый день";
+  if (cadence === "WEEKLY") return "раз в неделю";
+  return "по датам месяца";
+}
+
+function paymentSettingsRules() {
+  const rows = state.paymentSettings?.monthly_rules;
+  return Array.isArray(rows) && rows.length ? rows : DEFAULT_PAYMENT_RULES;
+}
+
+function renderPaymentRuleRows(rules = paymentSettingsRules()) {
+  const list = document.getElementById("payrollMonthlyRules");
+  if (!list) return;
+  const rows = Array.isArray(rules) && rules.length ? rules : [DEFAULT_PAYMENT_RULES[0]];
+  list.innerHTML = rows.map((rule, index) => `
+    <div class="payroll-payment-rule" data-payment-rule="${index}">
+      <label><span>Выплата</span><span class="payroll-payment-rule__input"><input type="number" min="1" max="31" value="${Number(rule.payment_day || 1)}" data-rule-field="payment_day" /><span>числа</span></span></label>
+      <label><span>Период с</span><input type="number" min="1" max="31" value="${Number(rule.period_start_day || 1)}" data-rule-field="period_start_day" /></label>
+      <label><span>по</span><input type="number" min="1" max="31" value="${Number(rule.period_end_day || 31)}" data-rule-field="period_end_day" /></label>
+      <label><span>Месяц периода</span><select data-rule-field="period_month_offset"><option value="0" ${Number(rule.period_month_offset || 0) === 0 ? "selected" : ""}>Текущий</option><option value="-1" ${Number(rule.period_month_offset || 0) === -1 ? "selected" : ""}>Предыдущий</option></select></label>
+      <button class="btn subtle small payroll-payment-rule__remove" type="button" data-remove-payment-rule="${index}" aria-label="Удалить дату выплаты">Удалить</button>
+    </div>
+  `).join("");
+}
+
+function readPaymentRuleRows() {
+  return [...document.querySelectorAll("[data-payment-rule]")].map((row) => {
+    const value = (field) => Number(row.querySelector(`[data-rule-field="${field}"]`)?.value || 0);
+    return {
+      payment_day: value("payment_day"),
+      period_start_day: value("period_start_day"),
+      period_end_day: value("period_end_day"),
+      period_month_offset: value("period_month_offset"),
+    };
+  });
+}
+
+function capturePaymentSettingsControls() {
+  if (!state.paymentSettings) state.paymentSettings = {};
+  state.paymentSettings.payment_method_id = Number(document.getElementById("payrollPaymentMethod")?.value || 0) || null;
+  state.paymentSettings.cadence = String(document.getElementById("payrollPaymentCadence")?.value || state.paymentSettings.cadence || "MONTHLY").toUpperCase();
+  state.paymentSettings.weekly_payment_weekday = Number(document.getElementById("payrollWeeklyDay")?.value || 0);
+  state.paymentSettings.is_active = document.getElementById("payrollPaymentEnabled")?.checked !== false;
+  state.paymentSettings.monthly_rules = readPaymentRuleRows();
+}
+
+function renderPaymentSettings() {
+  const card = document.getElementById("payrollPaymentCard");
+  if (!card) return;
+  setVisible(card, state.can.view);
+  if (!state.can.view) return;
+
+  const settings = state.paymentSettings || {
+    configured: false,
+    cadence: "MONTHLY",
+    weekly_payment_weekday: 0,
+    monthly_rules: DEFAULT_PAYMENT_RULES,
+    is_active: true,
+    preview: [],
+  };
+  const paymentMethod = document.getElementById("payrollPaymentMethod");
+  const cadence = document.getElementById("payrollPaymentCadence");
+  const weeklyDay = document.getElementById("payrollWeeklyDay");
+  const enabled = document.getElementById("payrollPaymentEnabled");
+  const hint = document.getElementById("payrollPaymentHint");
+  const badge = document.getElementById("payrollPaymentBadge");
+  const summary = document.getElementById("payrollPaymentSummary");
+  const configuredPaymentMethod = String(settings.payment_method_id || "");
+
+  if (paymentMethod) {
+    paymentMethod.innerHTML = '<option value="">Выберите способ оплаты</option>' + state.paymentMethods
+      .filter((item) => item?.is_active !== false || String(item?.id) === configuredPaymentMethod)
+      .map((item) => `<option value="${esc(item.id)}">${esc(item.title)}</option>`)
+      .join("");
+    paymentMethod.value = configuredPaymentMethod;
+    paymentMethod.disabled = !state.can.calculate;
+  }
+  if (cadence) {
+    cadence.value = String(settings.cadence || "MONTHLY").toUpperCase();
+    cadence.disabled = !state.can.calculate;
+  }
+  if (weeklyDay) {
+    weeklyDay.value = String(settings.weekly_payment_weekday ?? 0);
+    weeklyDay.disabled = !state.can.calculate;
+  }
+  if (enabled) {
+    enabled.checked = settings.is_active !== false;
+    enabled.disabled = !state.can.calculate;
+  }
+  setVisible(document.getElementById("payrollWeeklyField"), String(settings.cadence).toUpperCase() === "WEEKLY");
+  setVisible(document.getElementById("payrollMonthlyRulesWrap"), String(settings.cadence).toUpperCase() === "MONTHLY");
+  renderPaymentRuleRows(settings.monthly_rules);
+  document.querySelectorAll("#payrollMonthlyRules :is(input,select,button)").forEach((element) => {
+    element.disabled = !state.can.calculate;
+  });
+
+  const preview = document.getElementById("payrollPaymentPreview");
+  const previewRows = Array.isArray(settings.preview) ? settings.preview : [];
+  if (preview) {
+    preview.innerHTML = previewRows.length
+      ? previewRows.map((item) => `<div class="payroll-payment-preview__row"><b>${esc(formatDateRu(item.payment_date))}</b><span>${esc(formatDateRu(item.period_start))} — ${esc(formatDateRu(item.period_end))}</span></div>`).join("")
+      : '<span class="muted">Нет дат выплат для выбранного месяца.</span>';
+  }
+  const methodTitle = settings.payment_method?.title || state.paymentMethods.find((item) => String(item.id) === configuredPaymentMethod)?.title;
+  if (summary) {
+    summary.textContent = settings.configured
+      ? `${methodTitle || "способ не выбран"} · ${payrollCadenceLabel(settings.cadence)}`
+      : "Настройте способ оплаты и календарь выплат";
+  }
+  if (badge) badge.textContent = !settings.configured ? "Не настроено" : (settings.is_active ? "Включено" : "Выключено");
+  if (hint) hint.textContent = state.paymentSettingsError
+    ? `Настройки недоступны: ${state.paymentSettingsError}`
+    : "Подтверждённый черновик создаёт проводку ФОТ, но не добавляет ФОТ второй раз в управленческую сводку.";
+  const saveButton = document.getElementById("payrollSavePaymentSettings");
+  const generateButton = document.getElementById("payrollGenerateDrafts");
+  if (saveButton) saveButton.disabled = !state.can.calculate;
+  if (generateButton) generateButton.disabled = !state.can.calculate || !settings.configured || settings.is_active === false;
+  const draftsLink = document.getElementById("payrollOpenDrafts");
+  if (draftsLink) draftsLink.href = `/owner-expenses.html?venue_id=${encodeURIComponent(state.venueId)}&month=${encodeURIComponent(state.month)}&statuses=DRAFT&expense_kind=PAYROLL`;
+}
+
+async function loadPaymentSettings() {
+  if (!state.can.view) {
+    renderPaymentSettings();
+    return;
+  }
+  state.paymentSettingsError = null;
+  try {
+    const [paymentMethods, settings] = await Promise.all([
+      api(`/venues/${encodeURIComponent(state.venueId)}/payment-methods`).catch(() => []),
+      api(`/venues/${encodeURIComponent(state.venueId)}/payroll/payment-settings?month=${encodeURIComponent(state.month)}`),
+    ]);
+    state.paymentMethods = Array.isArray(paymentMethods) ? paymentMethods : [];
+    state.paymentSettings = settings;
+  } catch (error) {
+    state.paymentSettingsError = error?.data?.detail || error?.message || "не удалось загрузить";
+  }
+  renderPaymentSettings();
+}
+
+async function savePaymentSettings() {
+  const paymentMethodId = Number(document.getElementById("payrollPaymentMethod")?.value || 0);
+  if (!paymentMethodId) {
+    toast("Выберите способ оплаты ФОТ", "err");
+    return;
+  }
+  const cadence = String(document.getElementById("payrollPaymentCadence")?.value || "MONTHLY").toUpperCase();
+  try {
+    await api(`/venues/${encodeURIComponent(state.venueId)}/payroll/payment-settings`, {
+      method: "PUT",
+      body: {
+        payment_method_id: paymentMethodId,
+        cadence,
+        weekly_payment_weekday: cadence === "WEEKLY" ? Number(document.getElementById("payrollWeeklyDay")?.value || 0) : null,
+        monthly_rules: cadence === "MONTHLY" ? readPaymentRuleRows() : [],
+        is_active: document.getElementById("payrollPaymentEnabled")?.checked !== false,
+      },
+    });
+    toast("Настройки выплат сохранены", "ok");
+    await loadPaymentSettings();
+  } catch (error) {
+    toast(error?.data?.detail || error?.message || "Не удалось сохранить настройки", "err");
+  }
+}
+
+async function generatePaymentDrafts() {
+  try {
+    const result = await api(`/venues/${encodeURIComponent(state.venueId)}/payroll/payment-drafts/generate`, {
+      method: "POST",
+      body: { month: state.month },
+    });
+    const changed = Number(result?.created || 0) + Number(result?.updated || 0);
+    toast(changed ? `Черновики ФОТ готовы: ${changed}` : "Новых черновиков ФОТ нет", changed ? "ok" : "warn");
+  } catch (error) {
+    toast(error?.data?.detail || error?.message || "Не удалось сформировать черновики", "err");
+  }
 }
 
 function renderState() {
@@ -991,9 +1257,11 @@ async function load() {
   }
   try {
     const primaryPromise = api(buildPayrollPath());
-    const comparisonPromise = api(buildComparisonPayrollPath())
-      .then((value) => ({ value }))
-      .catch((error) => ({ error }));
+    const comparisonPromise = state.compareMode === "none"
+      ? Promise.resolve({ value: null })
+      : api(buildComparisonPayrollPath())
+          .then((value) => ({ value }))
+          .catch((error) => ({ error }));
     const [data, comparisonResult] = await Promise.all([primaryPromise, comparisonPromise]);
     state.data = data;
     state.comparisonData = comparisonResult.value || null;
@@ -1070,7 +1338,7 @@ async function boot() {
   state.dateFrom = demoRangePayroll.from || (hasRange ? String(params.get("date_from")) : monthStartIso(state.month));
   state.dateTo = demoRangePayroll.to || (hasRange ? String(params.get("date_to")) : monthEndIso(state.month));
   if (state.dateTo < state.dateFrom) state.dateTo = state.dateFrom;
-  state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareMode = ["auto", "custom", "none"].includes(params.get("compare_mode")) ? params.get("compare_mode") : "auto";
   state.compareFrom = params.get("compare_from") || "";
   state.compareTo = params.get("compare_to") || "";
 
@@ -1093,6 +1361,38 @@ async function boot() {
   renderState();
   renderDemoOwnerPayrollIntro();
 
+  document.getElementById("payrollPaymentCadence")?.addEventListener("change", (event) => {
+    capturePaymentSettingsControls();
+    state.paymentSettings.cadence = event.target.value || "MONTHLY";
+    renderPaymentSettings();
+  });
+  document.getElementById("payrollAddPaymentRule")?.addEventListener("click", () => {
+    capturePaymentSettingsControls();
+    const rows = readPaymentRuleRows();
+    const previous = rows.at(-1);
+    const nextDay = Math.min(31, Math.max(1, Number(previous?.payment_day || 0) + 10));
+    rows.push({ payment_day: nextDay, period_start_day: 1, period_end_day: 31, period_month_offset: 0 });
+    if (!state.paymentSettings) state.paymentSettings = {};
+    state.paymentSettings.monthly_rules = rows;
+    renderPaymentSettings();
+  });
+  document.getElementById("payrollMonthlyRules")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-payment-rule]");
+    if (!button) return;
+    capturePaymentSettingsControls();
+    const removeIndex = Number(button.dataset.removePaymentRule || -1);
+    const rows = readPaymentRuleRows().filter((_item, index) => index !== removeIndex);
+    if (!rows.length) {
+      toast("Нужен хотя бы один период выплаты", "warn");
+      return;
+    }
+    if (!state.paymentSettings) state.paymentSettings = {};
+    state.paymentSettings.monthly_rules = rows;
+    renderPaymentSettings();
+  });
+  document.getElementById("payrollSavePaymentSettings")?.addEventListener("click", savePaymentSettings);
+  document.getElementById("payrollGenerateDrafts")?.addEventListener("click", generatePaymentDrafts);
+
   document.getElementById("periodMonthBtn")?.addEventListener("click", async () => {
     if (state.periodMode === "month") return;
     setPeriodMode("month");
@@ -1112,7 +1412,7 @@ async function boot() {
       state.dateTo = monthEndIso(state.month);
     }
     renderState();
-    await load();
+    await Promise.all([load(), loadPaymentSettings()]);
   });
 
   document.getElementById("rangeApply")?.addEventListener("click", async () => {
@@ -1129,7 +1429,8 @@ async function boot() {
   });
   document.querySelectorAll("#payrollCompareSeg button").forEach((button) => {
     button.addEventListener("click", async () => {
-      const mode = button.dataset.compare === "custom" ? "custom" : "auto";
+      const requestedMode = button.dataset.compare;
+      const mode = ["auto", "custom", "none"].includes(requestedMode) ? requestedMode : "auto";
       if (mode === "custom" && state.compareMode !== "custom") {
         const automatic = resolveAutoComparison({
           period: state.periodMode,
@@ -1142,7 +1443,7 @@ async function boot() {
       }
       state.compareMode = mode;
       renderState();
-      if (mode === "auto") await load();
+      if (mode !== "custom") await load();
     });
   });
   document.getElementById("payrollCompareFrom")?.addEventListener("change", (event) => {
@@ -1178,7 +1479,7 @@ async function boot() {
     }
   });
 
-  await load();
+  await Promise.all([load(), loadPaymentSettings()]);
 }
 
 document.addEventListener("DOMContentLoaded", boot);

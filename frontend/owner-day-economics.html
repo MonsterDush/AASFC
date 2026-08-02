@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/owner-economics.css?v=20260729-compare2" />
+  <link rel="stylesheet" href="/styles/pages/owner-economics.css?v=20260802-financeux2" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Экономика дня</title>
 </head>
@@ -85,7 +85,12 @@
           </div>
         </div>
 
-        <div class="itemcard economics-comparison-card">
+        <details class="itemcard economics-comparison-card finance-comparison-disclosure">
+          <summary class="finance-comparison-disclosure__summary">
+            <span><b>Сравнение дня</b><span class="muted">Открыть настройки сравнения</span></span>
+            <span class="badge">Настроить</span>
+          </summary>
+          <div class="finance-comparison-disclosure__body">
           <div class="economics-comparison-card__head">
             <div>
               <div class="finance-period-card__label">Сравнение дня</div>
@@ -94,6 +99,7 @@
             <div class="seg" id="economicsCompareSeg">
               <button type="button" data-compare="auto" class="active">Авто</button>
               <button type="button" data-compare="custom">Другой день</button>
+              <button type="button" data-compare="none">Без сравнения</button>
             </div>
           </div>
           <div class="economics-comparison-card__controls hidden" id="economicsCompareControls">
@@ -101,7 +107,8 @@
             <button class="btn" id="economicsCompareApply" type="button">Сравнить</button>
           </div>
           <div class="muted" id="economicsCompareHint">Автоматически сравнивается с таким же днём недели неделю назад.</div>
-        </div>
+          </div>
+        </details>
       </div>
 
       <div class="itemcard mt-12 hidden" id="economicsDraftCard">
@@ -256,6 +263,6 @@
 
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
   <div class="toast" id="toast"><div class="toast__text"></div></div>
-  <script type="module" src="/owner-day-economics.js?v=20260802-ledgernav1"></script>
+  <script type="module" src="/owner-day-economics.js?v=20260802-financeux2"></script>
 </body>
 </html>

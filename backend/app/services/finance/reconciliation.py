@@ -6,7 +6,7 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import DailyReport, Expense, FinanceEntry, PayrollLine, PayrollRun
+from app.models import DailyReport, Expense, FinanceEntry, PayrollLine, PayrollPaymentSettings, PayrollRun
 from app.services.finance.summary import get_finance_summary, resolve_finance_period
 
 
@@ -213,6 +213,7 @@ def build_finance_reconciliation(
         .where(
             Expense.venue_id == int(venue_id),
             Expense.status == "CONFIRMED",
+            Expense.expense_kind == "OPERATING",
             Expense.expense_date >= period_start,
             Expense.expense_date <= period_end,
         )
@@ -241,9 +242,39 @@ def build_finance_reconciliation(
         kind="PAYROLL",
     )
     full_months = _is_complete_calendar_month_range(period_start, period_end)
+    payment_settings_enabled = db.execute(
+        select(PayrollPaymentSettings.id).where(
+            PayrollPaymentSettings.venue_id == int(venue_id),
+        )
+    ).scalar_one_or_none() is not None
     payroll_expected: dict[int, dict] = {}
     payroll_issues: list[dict] = []
-    if full_months:
+    payroll_source_type = "payroll_expense" if payment_settings_enabled else "payroll_run"
+    if payment_settings_enabled:
+        payout_rows = db.execute(
+            select(Expense.id, Expense.expense_date, Expense.amount_minor)
+            .where(
+                Expense.venue_id == int(venue_id),
+                Expense.expense_kind == "PAYROLL",
+                Expense.status == "CONFIRMED",
+                Expense.expense_date >= period_start,
+                Expense.expense_date <= period_end,
+            )
+            .order_by(Expense.expense_date.asc(), Expense.id.asc())
+        ).all()
+        payroll_expected = {
+            int(expense_id): {"source_date": expense_date, "amount_minor": int(amount_minor or 0)}
+            for expense_id, expense_date, amount_minor in payout_rows
+        }
+        payroll_issues = _compare_sources(
+            check_key="payroll",
+            source_type="payroll_expense",
+            expected=payroll_expected,
+            ledger=payroll_ledger,
+            direction="EXPENSE",
+            kind="PAYROLL",
+        )
+    elif full_months:
         payroll_rows = db.execute(
             select(
                 PayrollRun.id,
@@ -313,27 +344,31 @@ def build_finance_reconciliation(
             "key": "payroll",
             "title": "ФОТ",
             "status": (
-                "INFO"
-                if not full_months
-                else "WARNING"
-                if payroll_issues or payroll_total != int(summary.get("payroll_minor") or 0)
+                "WARNING"
+                if payroll_issues
+                or (not payment_settings_enabled and full_months and payroll_total != int(summary.get("payroll_minor") or 0))
+                else "INFO"
+                if not payment_settings_enabled and not full_months
                 else "OK"
             ),
-            "comparable_to_summary": bool(full_months),
+            "comparable_to_summary": bool(full_months and not payment_settings_enabled),
             "summary_minor": int(summary.get("payroll_minor") or 0),
             "ledger_minor": int(payroll_total),
             "delta_minor": (
                 int(payroll_total - int(summary.get("payroll_minor") or 0))
-                if full_months
+                if full_months and not payment_settings_enabled
                 else None
             ),
-            "source_expected_minor": int(payroll_expected_total) if full_months else None,
+            "source_expected_minor": int(payroll_expected_total) if payment_settings_enabled or full_months else None,
             "source_ledger_minor": int(payroll_total),
             "issue_count": len(payroll_issues),
-            "source_type": "payroll_run",
+            "source_type": payroll_source_type,
             "direction": "EXPENSE",
             "kind": "PAYROLL",
             "note": (
+                "Начисления отражаются в сводке, а подтверждённые выплаты сверяются с проводками выбранного способа оплаты."
+                if payment_settings_enabled
+                else
                 "За полный месяц сверяются начисления и проводки ФОТ."
                 if full_months
                 else "Для части месяца ФОТ распределяется по дням, а проводка создаётся на месяц; прямое сравнение отключено."

@@ -20,7 +20,7 @@ import {
   normalizeIsoRange,
   resolveAutoComparison,
   resolveComparisonRange,
-} from "/app/period-comparison.js?v=20260729-compare2";
+} from "/app/period-comparison.js?v=20260802-financeux2";
 import { buildFinancePeriodComparisonGeometry } from "/app/finance-summary-analytics.js?v=20260802-summarycompare1";
 import { buildRevenueStructure, normalizeRevenueDailySeries } from "/app/revenue-analytics.js?v=20260802-revenueanalytics1";
 
@@ -206,10 +206,11 @@ function currentComparison() {
 function syncComparisonControls() {
   const comparison = currentComparison();
   const custom = state.compareMode === "custom";
+  const disabled = state.compareMode === "none";
   setVisible($("revenueCompareRange"), custom);
   setActiveSeg("revenueCompareSeg", "compare", state.compareMode);
-  $("revenueComparePeriodText").textContent = formatComparisonRange(comparison);
-  $("revenueCompareHint").textContent = comparison?.caption || "Выбери период сравнения";
+  $("revenueComparePeriodText").textContent = disabled ? "Сравнение отключено" : formatComparisonRange(comparison);
+  $("revenueCompareHint").textContent = disabled ? "Дополнительный период не загружается." : (comparison?.caption || "Выбери период сравнения");
   if (custom) {
     $("revenueCompareFrom").value = comparison?.from || state.compareFrom || "";
     $("revenueCompareTo").value = comparison?.to || state.compareTo || "";
@@ -476,12 +477,16 @@ async function load() {
 
   const primaryQuery = buildQuery();
   primaryQuery.set("include_series", "1");
-  const comparisonQuery = buildComparisonQuery();
-  comparisonQuery.set("include_series", "1");
   const primaryPromise = api(`/venues/${encodeURIComponent(venueId)}/revenue?${primaryQuery.toString()}`);
-  const comparisonPromise = api(`/venues/${encodeURIComponent(venueId)}/revenue?${comparisonQuery.toString()}`)
-    .then((value) => ({ value }))
-    .catch((error) => ({ error }));
+  const comparisonPromise = state.compareMode === "none"
+    ? Promise.resolve({ value: null })
+    : (() => {
+        const comparisonQuery = buildComparisonQuery();
+        comparisonQuery.set("include_series", "1");
+        return api(`/venues/${encodeURIComponent(venueId)}/revenue?${comparisonQuery.toString()}`)
+          .then((value) => ({ value }))
+          .catch((error) => ({ error }));
+      })();
   const [data, comparisonResult] = await Promise.all([
     primaryPromise,
     comparisonPromise,
@@ -535,7 +540,7 @@ function initFromQuery() {
   state.day = q.get("day") || q.get("date_from") || today;
   state.from = q.get("date_from") || today;
   state.to = q.get("date_to") || today;
-  state.compareMode = q.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareMode = ["auto", "custom", "none"].includes(q.get("compare_mode")) ? q.get("compare_mode") : "auto";
   state.compareFrom = q.get("compare_from") || null;
   state.compareTo = q.get("compare_to") || null;
   normalizeRange();
@@ -559,7 +564,8 @@ function bindPickers() {
 
   document.querySelectorAll("#revenueCompareSeg button").forEach((button) => {
     button.onclick = () => {
-      const mode = button.dataset.compare === "custom" ? "custom" : "auto";
+      const requestedMode = button.dataset.compare;
+      const mode = ["auto", "custom", "none"].includes(requestedMode) ? requestedMode : "auto";
       if (mode === "custom" && state.compareMode !== "custom") {
         const automatic = resolveAutoComparison(state);
         state.compareFrom = automatic?.from || state.day || todayISO();
@@ -567,7 +573,7 @@ function bindPickers() {
       }
       state.compareMode = mode;
       syncComparisonControls();
-      if (mode === "auto") load().catch(console.error);
+      if (mode !== "custom") load().catch(console.error);
       else syncUrl();
     };
   });

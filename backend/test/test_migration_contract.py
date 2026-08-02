@@ -77,6 +77,25 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn('"kpi_calculation_mode"', source)
         self.assertIn('"salary_accrual_day"', source)
 
+    def test_payroll_payment_schedule_extends_current_head(self):
+        config = Config(str(BACKEND_DIR / "alembic.ini"))
+        config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+        scripts = ScriptDirectory.from_config(config)
+
+        revision = scripts.get_revision("9c2e4f6a8b10")
+
+        self.assertIsNotNone(revision)
+        self.assertEqual(revision.down_revision, "8b4d1e7a9c20")
+        source = (
+            BACKEND_DIR
+            / "alembic"
+            / "versions"
+            / "9c2e4f6a8b10_payroll_payment_schedule.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"payroll_payment_settings"', source)
+        self.assertIn('"expense_kind"', source)
+        self.assertIn('"payroll_payout_key"', source)
+
 
 if __name__ == "__main__":
     unittest.main()

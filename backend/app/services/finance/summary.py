@@ -272,7 +272,7 @@ def _sum_payroll_minor_for_period(
             shift_slot=shift_slot,
         )
     allocated_total_minor = int(sum(int(amount or 0) for amount in daily_amounts.values()))
-    if allocated_total_minor > 0:
+    if any(int(amount or 0) != 0 for amount in daily_amounts.values()):
         return int(allocated_total_minor)
     return _sum_amount(
         db,
@@ -303,6 +303,17 @@ def _group_daily_payroll_allocated_minor(
             shift_slot=shift_slot,
         )
         day += timedelta(days=1)
+    if _normalize_summary_shift_slot(shift_slot) is None:
+        from app.services.payroll.adjustments import group_payroll_adjustment_net_by_date
+
+        adjustments_by_date = group_payroll_adjustment_net_by_date(
+            db,
+            venue_id=int(venue_id),
+            period_start=period_start,
+            period_end=period_end,
+        )
+        for adjustment_date, amount_minor in adjustments_by_date.items():
+            out[adjustment_date] = int(out.get(adjustment_date, 0) or 0) + int(amount_minor or 0)
     return out
 
 
@@ -332,6 +343,7 @@ def _backfill_missing_expense_recognition(db: Session, *, venue_id: int) -> int:
         .where(
             Expense.venue_id == int(venue_id),
             Expense.status == 'CONFIRMED',
+            Expense.expense_kind == 'OPERATING',
             Expense.id.not_in(select(ExpenseRecognitionEntry.expense_id)),
         )
         .order_by(Expense.id.asc())

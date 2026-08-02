@@ -14,6 +14,15 @@ select.finance-control--wide{min-width:170px}
 .finance-comparison-card__head > *{min-width:0}
 .finance-comparison-card__controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 .finance-comparison-card .seg{min-width:220px}
+.finance-comparison-disclosure{padding:0;overflow:hidden}
+.finance-comparison-disclosure:not([open])>.finance-comparison-disclosure__body{display:none}
+.finance-comparison-disclosure__summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;cursor:pointer;list-style:none}
+.finance-comparison-disclosure__summary::-webkit-details-marker{display:none}
+.finance-comparison-disclosure__summary>span:first-child{display:grid;gap:3px;min-width:0}
+.finance-comparison-disclosure__summary .muted{font-size:11px;font-weight:700}
+.finance-comparison-disclosure[open]>.finance-comparison-disclosure__summary{border-bottom:1px solid var(--border)}
+.finance-comparison-disclosure__body{display:grid;gap:10px;padding:12px 14px 14px}
+.finance-comparison-disclosure .seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:min(100%,430px);min-width:300px}
 .finance-metric-delta{min-height:18px;color:var(--muted);font-size:12px;font-weight:800;line-height:1.35}
 .finance-metric-delta.is-good{color:var(--statusSuccessText)}
 .finance-metric-delta.is-bad{color:var(--statusWarningText)}
@@ -65,6 +74,10 @@ select.finance-control--wide{min-width:170px}
 .owner-turnover-page .revenue-structure-bar{display:block;width:100%;height:9px;overflow:visible}
 .owner-turnover-page .revenue-structure-track{fill:var(--surfaceTintStrong)}
 .owner-turnover-page .revenue-structure-fill{fill:var(--accent)}
+
+.owner-expenses-page .screen-hero__head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.owner-expenses-page .screen-hero__actions--adaptive{display:flex;width:auto}
+.owner-expenses-page .screen-hero__actions--adaptive .btn{width:auto;white-space:nowrap}
 
 .owner-finance-ledger-page .ledger-shell{display:grid;gap:14px}
 .owner-finance-ledger-page .ledger-hero-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
@@ -122,6 +135,16 @@ select.finance-control--wide{min-width:170px}
 .owner-finance-ledger-page .ledger-chart-empty{display:grid;place-items:center;min-height:160px;padding:18px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted);text-align:center}
 .owner-finance-ledger-page .ledger-trend-chart > .ledger-chart-empty{grid-column:1/-1}
 .owner-finance-ledger-page .ledger-transfer-note{padding:10px 12px;border-left:3px solid var(--accentSoftBorder);background:var(--surfaceTintSoft);line-height:1.45}
+.owner-finance-ledger-page .ledger-operations{padding:0;overflow:hidden;scroll-margin-block:90px}
+.owner-finance-ledger-page .ledger-operations__summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;cursor:pointer;list-style:none}
+.owner-finance-ledger-page .ledger-operations__summary::-webkit-details-marker{display:none}
+.owner-finance-ledger-page .ledger-operations[open]>.ledger-operations__summary{border-bottom:1px solid var(--border)}
+.owner-finance-ledger-page .ledger-operations__body{padding:14px}
+.owner-finance-ledger-page .ledger-operations__filter{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;padding:10px 12px;border:1px solid var(--accentSoftBorder);border-radius:12px;background:var(--accentSoftBg);font-size:12px;font-weight:800}
+.owner-finance-ledger-page .ledger-operations__filter.hidden{display:none}
+.owner-finance-ledger-page .ledger-operations__more{display:block;width:min(100%,320px);margin:12px auto 0}
+.owner-finance-ledger-page .ledger-operations__loading{display:grid;gap:8px}
+.owner-finance-ledger-page .ledger-operations__loading .skeleton{height:82px;border-radius:14px}
 .owner-finance-ledger-page .ledger-source-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;color:var(--muted);font-size:12px;font-weight:800}
 .owner-finance-ledger-page .ledger-source-meta .mono{padding:2px 6px;border:1px solid var(--border);border-radius:8px;background:var(--surfaceTintSoft);font-size:10px}
 .owner-finance-ledger-page .ledger-source-action{margin-top:10px;white-space:nowrap}
@@ -254,9 +277,21 @@ select.finance-control--wide{min-width:170px}
   .owner-summary-page .summary-trend-svg{height:180px}
   .owner-summary-page .summary-comparison-card__head{display:grid}
   .owner-summary-page .summary-compare-segment{width:100%;min-width:0}
+  .owner-summary-page .summary-period-segment{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;min-width:0}
+  .owner-summary-page .summary-primary-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;width:100%}
+  .owner-summary-page .summary-primary-toolbar .screen-hero__period,.owner-summary-page .summary-primary-toolbar .screen-hero__actions{width:auto;min-width:0}
+  .owner-summary-page .summary-primary-toolbar .screen-hero__period>input{width:100%;min-width:0}
+  .owner-summary-page .summary-primary-toolbar .screen-hero__actions .btn{width:auto;min-width:0;white-space:nowrap}
+  .owner-summary-page .summary-primary-toolbar .screen-hero__period:has(.range-pick:not(.hidden)){grid-column:1/-1}
+  .owner-summary-page .summary-primary-toolbar .screen-hero__period:has(.range-pick:not(.hidden))+.screen-hero__actions{grid-column:1/-1}
+  .owner-summary-page .summary-primary-toolbar .screen-hero__period:has(.range-pick:not(.hidden))+.screen-hero__actions .btn{width:100%}
+  .owner-expenses-page .screen-hero__head{grid-template-columns:1fr}
+  .owner-expenses-page .screen-hero__actions--adaptive,.owner-expenses-page .screen-hero__actions--adaptive .btn{width:100%}
   .finance-comparison-card__head,
   .finance-comparison-card__controls{display:grid;width:100%}
   .finance-comparison-card .seg{width:100%;min-width:0}
+  .finance-comparison-disclosure__summary{align-items:flex-start}
+  .finance-comparison-disclosure .seg{grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
   .finance-comparison-card .range-pick > *{width:100%}
   .owner-finance-ledger-page .ledger-filter-grid,.owner-finance-ledger-page .ledger-analytics-grid{grid-template-columns:1fr}
   .owner-finance-ledger-page .ledger-period-panel{grid-template-columns:1fr}
@@ -278,6 +313,8 @@ select.finance-control--wide{min-width:170px}
   .owner-finance-ledger-page .ledger-reconciliation__checks{grid-template-columns:1fr}
   .owner-finance-ledger-page .ledger-reconciliation-issue{align-items:stretch;flex-direction:column}
   .owner-finance-ledger-page .ledger-reconciliation-issue .btn{width:100%}
+  .owner-finance-ledger-page .ledger-operations__filter{align-items:stretch;flex-direction:column}
+  .owner-finance-ledger-page .ledger-operations__filter .btn{width:100%}
   .owner-turnover-page .revenue-trend-head{display:grid;gap:8px}
   .owner-turnover-page .revenue-trend-legend{justify-content:flex-start}
   .owner-turnover-page .revenue-trend-chart{grid-template-columns:38px minmax(0,1fr);gap:6px}

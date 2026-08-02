@@ -128,3 +128,22 @@ class PayComponentUpdateIn(BaseModel):
 
 class PayrollCalculateIn(BaseModel):
     month: str = Field(..., min_length=7, max_length=7, description="YYYY-MM")
+
+
+class PayrollPaymentMonthlyRuleIn(BaseModel):
+    payment_day: int = Field(..., ge=1, le=31)
+    period_start_day: int = Field(..., ge=1, le=31)
+    period_end_day: int = Field(..., ge=1, le=31)
+    period_month_offset: int = Field(0, ge=-1, le=0)
+
+
+class PayrollPaymentSettingsIn(BaseModel):
+    payment_method_id: int = Field(..., gt=0)
+    cadence: str = Field("MONTHLY", pattern="^(DAILY|WEEKLY|MONTHLY)$")
+    weekly_payment_weekday: int | None = Field(default=None, ge=0, le=6)
+    monthly_rules: list[PayrollPaymentMonthlyRuleIn] = Field(default_factory=list, max_length=31)
+    is_active: bool = True
+
+
+class PayrollPaymentDraftGenerateIn(BaseModel):
+    month: str = Field(..., min_length=7, max_length=7, description="Месяц дат выплаты, YYYY-MM")

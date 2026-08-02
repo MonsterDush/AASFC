@@ -21,7 +21,7 @@ import {
   formatComparisonRange,
   resolveAutoComparison,
   resolveComparisonRange,
-} from "/app/period-comparison.js?v=20260729-compare2";
+} from "/app/period-comparison.js?v=20260802-financeux2";
 
 let financialValuesHidden = false;
 
@@ -575,12 +575,13 @@ function currentComparison() {
 function syncComparisonControls() {
   const comparison = currentComparison();
   const custom = state.compareMode === "custom";
+  const disabled = state.compareMode === "none";
   document.getElementById("economicsCompareControls")?.classList.toggle("hidden", !custom);
   document.querySelectorAll("#economicsCompareSeg button").forEach((button) => {
     button.classList.toggle("active", button.dataset.compare === state.compareMode);
   });
-  setText("economicsComparePeriodText", formatComparisonRange(comparison));
-  setText("economicsCompareHint", comparison?.caption || "Выбери день сравнения");
+  setText("economicsComparePeriodText", disabled ? "Сравнение отключено" : formatComparisonRange(comparison));
+  setText("economicsCompareHint", disabled ? "Дополнительный день не загружается." : (comparison?.caption || "Выбери день сравнения"));
   const picker = document.getElementById("economicsCompareDatePick");
   if (custom && picker) picker.value = comparison?.from || state.compareDate || "";
 }
@@ -680,9 +681,11 @@ async function loadEconomics() {
   try {
     const comparison = currentComparison();
     const primaryPromise = api(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(state.date)}&shift_slot=${encodeURIComponent(normalizeEconomicsShiftSlot(state.shiftSlot))}`);
-    const comparisonPromise = api(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(comparison?.from || state.date)}&shift_slot=${encodeURIComponent(normalizeEconomicsShiftSlot(state.shiftSlot))}`)
-      .then((value) => ({ value }))
-      .catch((error) => ({ error }));
+    const comparisonPromise = comparison
+      ? api(`/venues/${encodeURIComponent(venueId)}/economics/day?date=${encodeURIComponent(comparison.from)}&shift_slot=${encodeURIComponent(normalizeEconomicsShiftSlot(state.shiftSlot))}`)
+          .then((value) => ({ value }))
+          .catch((error) => ({ error }))
+      : Promise.resolve({ value: null });
     const [econ, comparisonResult] = await Promise.all([primaryPromise, comparisonPromise]);
     state.economics = econ;
     state.comparisonEconomics = comparisonResult.value || null;
@@ -729,7 +732,7 @@ async function boot() {
   const params = new URLSearchParams(location.search);
   state.date = coerceDemoDate(params.get("date") || todayISO(), { notify: false, context: "owner-day-economics" });
   state.shiftSlot = normalizeEconomicsShiftSlot(params.get("shift_slot") || localStorage.getItem(LS_DAY_ECONOMICS_SHIFT_SLOT) || "TOTAL");
-  state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.compareMode = ["auto", "custom", "none"].includes(params.get("compare_mode")) ? params.get("compare_mode") : "auto";
   state.compareDate = params.get("compare_date") || "";
   await loadVenueEconomicsSettings();
   if (!state.compareDate) {
@@ -772,14 +775,15 @@ async function boot() {
 
   document.querySelectorAll("#economicsCompareSeg button").forEach((button) => {
     button.addEventListener("click", async () => {
-      const mode = button.dataset.compare === "custom" ? "custom" : "auto";
+      const requestedMode = button.dataset.compare;
+      const mode = ["auto", "custom", "none"].includes(requestedMode) ? requestedMode : "auto";
       if (mode === "custom" && state.compareMode !== "custom") {
         state.compareDate = resolveAutoComparison({ period: "day", day: state.date })?.from || state.date;
       }
       state.compareMode = mode;
       syncComparisonControls();
       updateEconomicsSlotUrl();
-      if (mode === "auto") await loadEconomics();
+      if (mode !== "custom") await loadEconomics();
     });
   });
   document.getElementById("economicsCompareDatePick")?.addEventListener("change", (event) => {

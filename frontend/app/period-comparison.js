@@ -73,6 +73,7 @@ export function resolveComparisonRange({
   compareTo = "",
   ...periodState
 }) {
+  if (String(compareMode).toLowerCase() === "none") return null;
   if (String(compareMode).toLowerCase() === "custom") {
     const range = normalizeIsoRange(compareFrom, compareTo);
     return range ? { ...range, caption: "к выбранному периоду" } : null;

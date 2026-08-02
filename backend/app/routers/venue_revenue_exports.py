@@ -288,6 +288,7 @@ def _load_expenses_for_export(
     category_id: int | None,
     supplier_id: int | None,
     statuses: str | None,
+    expense_kind: str | None = None,
     base_url: str | None = None,
 ) -> list[dict]:
     stmt = (
@@ -311,6 +312,7 @@ def _load_expenses_for_export(
         period_end = recognized_month.replace(day=last_day)
         stmt = stmt.outerjoin(ExpenseAllocation, ExpenseAllocation.expense_id == Expense.id).where(
             (ExpenseAllocation.month == recognized_month)
+            | ((Expense.expense_kind == 'PAYROLL') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
             | ((Expense.status != 'CONFIRMED') & (Expense.generated_for_month == recognized_month))
             | ((Expense.status != 'CONFIRMED') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
         )
@@ -319,6 +321,8 @@ def _load_expenses_for_export(
         stmt = stmt.where(Expense.category_id == int(category_id))
     if supplier_id is not None:
         stmt = stmt.where(Expense.supplier_id == int(supplier_id))
+    if expense_kind is not None:
+        stmt = stmt.where(Expense.expense_kind == str(expense_kind).upper())
 
     rows = db.execute(stmt.distinct().order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
     status_filter = _parse_expense_statuses_filter(statuses)
@@ -565,7 +569,7 @@ def export_revenue(
 
 
 
-def _build_expenses_export_response(*, venue_id: int, month: str | None, category_id: int | None, supplier_id: int | None, statuses: str | None, db: Session, user: User | None = None, base_url: str | None = None):
+def _build_expenses_export_response(*, venue_id: int, month: str | None, category_id: int | None, supplier_id: int | None, statuses: str | None, expense_kind: str | None = None, db: Session, user: User | None = None, base_url: str | None = None):
     if user is not None:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
         _require_financial_values_export_allowed(user)
@@ -580,6 +584,7 @@ def _build_expenses_export_response(*, venue_id: int, month: str | None, categor
         category_id=category_id,
         supplier_id=supplier_id,
         statuses=statuses,
+        expense_kind=expense_kind,
         base_url=base_url,
     )
     total_minor = sum(int(item.get("recognized_amount_minor_for_month") or 0) for item in rows)
@@ -610,6 +615,7 @@ def get_expenses_export_link(
     category_id: int | None = Query(None),
     supplier_id: int | None = Query(None),
     statuses: str | None = Query(None, description="Comma-separated statuses"),
+    expense_kind: str | None = Query(None, pattern="^(OPERATING|PAYROLL)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -622,6 +628,7 @@ def get_expenses_export_link(
         "category_id": int(category_id) if category_id is not None else None,
         "supplier_id": int(supplier_id) if supplier_id is not None else None,
         "statuses": statuses or None,
+        "expense_kind": expense_kind or None,
         "user_id": int(user.id),
     })
 
@@ -634,6 +641,8 @@ def get_expenses_export_link(
         q.append(f"supplier_id={int(supplier_id)}")
     if statuses:
         q.append(f"statuses={quote(statuses)}")
+    if expense_kind:
+        q.append(f"expense_kind={quote(expense_kind)}")
     q.append(f"token={quote(token)}")
 
     base = str(request.base_url).rstrip("/")
@@ -653,6 +662,7 @@ def export_expenses(
     category_id: int | None = Query(None),
     supplier_id: int | None = Query(None),
     statuses: str | None = Query(None, description="Comma-separated statuses"),
+    expense_kind: str | None = Query(None, pattern="^(OPERATING|PAYROLL)$"),
     token: str | None = Query(None, description="Signed export token for external browser"),
     db: Session = Depends(get_db),
     user: User | None = Depends(get_current_user_optional),
@@ -668,6 +678,7 @@ def export_expenses(
         category_id = int(payload.get("category_id")) if payload.get("category_id") is not None else None
         supplier_id = int(payload.get("supplier_id")) if payload.get("supplier_id") is not None else None
         statuses = payload.get("statuses") or None
+        expense_kind = payload.get("expense_kind") or None
         _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
         return _build_expenses_export_response(
             venue_id=venue_id,
@@ -675,6 +686,7 @@ def export_expenses(
             category_id=category_id,
             supplier_id=supplier_id,
             statuses=statuses,
+            expense_kind=expense_kind,
             db=db,
             user=None,
             base_url=str(request.base_url).rstrip("/"),
@@ -689,6 +701,7 @@ def export_expenses(
         category_id=category_id,
         supplier_id=supplier_id,
         statuses=statuses,
+        expense_kind=expense_kind,
         db=db,
         user=user,
         base_url=str(request.base_url).rstrip("/"),

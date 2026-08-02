@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-ledgerreconcile1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-financeux3" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Финансовые движения</title>
 </head>
@@ -105,7 +105,12 @@
           <button class="btn subtle small" id="ledgerFiltersReset" type="button">Сбросить фильтры</button>
         </div>
 
-        <div class="itemcard finance-comparison-card ledger-comparison-card">
+        <details class="itemcard finance-comparison-card finance-comparison-disclosure ledger-comparison-card">
+          <summary class="finance-comparison-disclosure__summary">
+            <span><b>Сравнение движений</b><span class="muted">Открыть настройки сравнения</span></span>
+            <span class="badge">Настроить</span>
+          </summary>
+          <div class="finance-comparison-disclosure__body">
           <div class="finance-comparison-card__head">
             <div>
               <div class="finance-period-card__label">Сравнение</div>
@@ -114,6 +119,7 @@
             <div class="seg" id="ledgerCompareSeg">
               <button type="button" data-compare="auto" class="active">Авто</button>
               <button type="button" data-compare="custom">Другой период</button>
+              <button type="button" data-compare="none">Без сравнения</button>
             </div>
           </div>
           <div class="finance-comparison-card__controls hidden" id="ledgerCompareRange">
@@ -125,7 +131,8 @@
             </div>
           </div>
           <div class="muted" id="ledgerCompareHint">По умолчанию сравниваем с прошлым месяцем.</div>
-        </div>
+          </div>
+        </details>
       </div>
 
       <div class="finance-stats ledger-stats mt-12">
@@ -190,15 +197,24 @@
 
       <div class="ledger-transfer-note muted mt-12">Внутренние переводы создают приход и списание на одинаковую сумму: объём движений растёт, а чистый поток заведения не меняется.</div>
 
-      <div class="itemcard mt-12">
-        <div class="row row--between gap-12">
+      <details class="itemcard mt-12 ledger-operations" id="ledgerOperations">
+        <summary class="ledger-operations__summary">
           <div>
             <b>Операции</b>
-            <div class="muted mt-6" id="ledgerHint">—</div>
+            <div class="muted mt-6">Список загрузится после открытия</div>
           </div>
+          <span class="badge" id="ledgerOperationsCount">Показать</span>
+        </summary>
+        <div class="ledger-operations__body">
+          <div class="ledger-operations__filter hidden" id="ledgerOperationsDayFilter">
+            <span id="ledgerOperationsDayText">—</span>
+            <button class="btn subtle small" id="ledgerOperationsDayReset" type="button">Показать весь период</button>
+          </div>
+          <div class="muted" id="ledgerHint">—</div>
+          <div id="ledgerEntriesList" class="mt-12"><div class="muted">Операции пока не загружены.</div></div>
+          <button class="btn subtle ledger-operations__more hidden" id="ledgerOperationsMore" type="button">Показать ещё</button>
         </div>
-        <div id="ledgerEntriesList" class="mt-12"></div>
-      </div>
+      </details>
 
       <div class="itemcard mt-12" id="balance-adjustments">
         <div class="row row--between gap-12">
@@ -240,6 +256,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-finance-ledger.js?v=20260802-ledgerreconcile1"></script>
+  <script type="module" src="/owner-finance-ledger.js?v=20260802-financeux2"></script>
 </body>
 </html>

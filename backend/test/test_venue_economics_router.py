@@ -47,7 +47,7 @@ from app.services.payroll.calculator import (
 )
 
 
-EXPECTED_VENUES_ROUTE_MANIFEST_SHA256 = "1aa38b00f85dc20e56ed126d3c371d33a1e12078f9580d3e5cccc138b6b17001"
+EXPECTED_VENUES_ROUTE_MANIFEST_SHA256 = "7d66c6ba303d7850ca14909f0e20046f5474694d0b1a34fa77534e7a0fe4868b"
 
 
 def _route_manifest(router) -> list[tuple[list[str], str, str]]:
@@ -64,7 +64,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
 
-        self.assertEqual(len(manifest), 160)
+        self.assertEqual(len(manifest), 164)
         self.assertEqual(digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
 
     def test_extracted_router_owns_all_twenty_economics_routes(self):
@@ -82,10 +82,10 @@ class VenueEconomicsRouterContractTests(TestCase):
         expected_counts = [
             (venue_catalogs.router, 15),
             (venue_expenses.router, 11),
-            (venue_ledger.router, 12),
+            (venue_ledger.router, 13),
             (venue_recurring_expenses.router, 5),
             (venue_finance_summary.router, 3),
-            (venue_finance.router, 31),
+            (venue_finance.router, 32),
         ]
         venues_manifest = {
             (tuple(methods), path, name)
@@ -118,7 +118,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_core.router, 11),
             (venue_positions.router, 5),
             (venue_pay_profiles.router, 11),
-            (venue_payroll.router, 3),
+            (venue_payroll.router, 6),
             (venue_reports.router, 10),
             (venue_revenue_exports.router, 9),
             (venue_adjustments.router, 9),
@@ -143,7 +143,7 @@ class VenueEconomicsRouterContractTests(TestCase):
                 self.assertIn(route, venues_manifest)
                 native_manifest.add(route)
 
-        self.assertEqual(len(native_manifest), 94)
+        self.assertEqual(len(native_manifest), 97)
 
 
 class VenueEconomicsRouterBehaviorTests(TestCase):

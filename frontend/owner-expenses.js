@@ -25,7 +25,7 @@ import {
   normalizeIsoRange,
   resolveAutoComparison,
   resolveComparisonRange,
-} from "/app/period-comparison.js?v=20260729-compare2";
+} from "/app/period-comparison.js?v=20260802-financeux2";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
 let financialValuesHidden = false;
@@ -62,6 +62,7 @@ let state = {
   categoryId: "",
   supplierId: "",
   statuses: "",
+  expenseKind: "",
   stats: null,
   nightShiftsEnabled: false,
   periodSummary: null,
@@ -220,12 +221,20 @@ function expenseStatusesLabel(value) {
   return norm;
 }
 
+function expenseKindLabel(value) {
+  const kind = String(value || "").toUpperCase();
+  if (kind === "PAYROLL") return "выплаты ФОТ";
+  if (kind === "OPERATING") return "операционные расходы";
+  return "все виды";
+}
+
 function buildExpensesLink({ month = state.month, statuses = state.statuses } = {}) {
   const venueId = getActiveVenueId();
   const qp = new URLSearchParams();
   if (venueId) qp.set('venue_id', String(venueId));
   if (month) qp.set('month', String(month));
   if (statuses) qp.set('statuses', String(statuses));
+  if (state.expenseKind) qp.set("expense_kind", state.expenseKind);
   return `/owner-expenses.html?${qp.toString()}`;
 }
 
@@ -476,14 +485,17 @@ function currentComparison() {
 function syncComparisonControls() {
   const comparison = currentComparison();
   const custom = state.compareMode === "custom";
+  const disabled = state.compareMode === "none";
   setVisible(document.getElementById("expensesCompareRange"), custom);
   document.querySelectorAll("#expensesCompareSeg button").forEach((button) => {
     button.classList.toggle("active", button.dataset.compare === state.compareMode);
   });
   const periodText = document.getElementById("expensesComparePeriodText");
   const hint = document.getElementById("expensesCompareHint");
-  if (periodText) periodText.textContent = formatComparisonRange(comparison);
-  if (hint) hint.textContent = comparison?.caption
+  if (periodText) periodText.textContent = disabled ? "Сравнение отключено" : formatComparisonRange(comparison);
+  if (hint) hint.textContent = disabled
+    ? "Дополнительный период не загружается."
+    : comparison?.caption
     ? `${comparison.caption}. Сравнивается подтверждённая сумма, признанная внутри выбранных дат.`
     : "Выбери период сравнения.";
   if (custom) {
@@ -504,6 +516,8 @@ function syncComparisonUrl() {
   else qp.delete("supplier_id");
   if (state.statuses) qp.set("statuses", state.statuses);
   else qp.delete("statuses");
+  if (state.expenseKind) qp.set("expense_kind", state.expenseKind);
+  else qp.delete("expense_kind");
   qp.set("compare_mode", state.compareMode);
   if (state.compareMode === "custom") {
     const comparison = currentComparison();
@@ -560,6 +574,7 @@ async function loadExpenseStats() {
   if (state.categoryId) qp.set('category_id', state.categoryId);
   if (state.supplierId) qp.set('supplier_id', state.supplierId);
   if (state.statuses) qp.set('statuses', state.statuses);
+  if (state.expenseKind) qp.set("expense_kind", state.expenseKind);
   try {
     state.stats = await api(`/venues/${encodeURIComponent(venueId)}/expenses/stats?${qp.toString()}`);
   } catch {
@@ -586,15 +601,18 @@ async function loadExpenses() {
   if (state.categoryId) qp.set("category_id", state.categoryId);
   if (state.supplierId) qp.set("supplier_id", state.supplierId);
   if (state.statuses) qp.set("statuses", state.statuses);
+  if (state.expenseKind) qp.set("expense_kind", state.expenseKind);
 
   syncComparisonControls();
   syncComparisonUrl();
   const currentSummaryPromise = api(
     `/venues/${encodeURIComponent(venueId)}/expenses/period-summary?${buildPeriodSummaryQuery().toString()}`,
   ).catch(() => null);
-  const comparisonSummaryPromise = api(
-    `/venues/${encodeURIComponent(venueId)}/expenses/period-summary?${buildPeriodSummaryQuery({ comparison: true }).toString()}`,
-  ).then((value) => ({ value })).catch((error) => ({ error }));
+  const comparisonSummaryPromise = state.compareMode === "none"
+    ? Promise.resolve({ value: null })
+    : api(
+        `/venues/${encodeURIComponent(venueId)}/expenses/period-summary?${buildPeriodSummaryQuery({ comparison: true }).toString()}`,
+      ).then((value) => ({ value })).catch((error) => ({ error }));
   const [rows, , currentSummary, comparisonResult] = await Promise.all([
     api(`/venues/${encodeURIComponent(venueId)}/expenses?${qp.toString()}`),
     loadExpenseStats(),
@@ -634,8 +652,8 @@ function renderExpenses() {
   }
   if (countEl) countEl.textContent = String(state.expenses.length);
   if (stateEl) stateEl.textContent = state.expenses.length
-    ? `Месяц ${state.month} · ${expenseStatusesLabel(state.statuses)} · признано ${fmtMinor(recognizedTotalMinor)}`
-    : `За ${state.month} расходов нет (${expenseStatusesLabel(state.statuses)})`;
+    ? `Месяц ${state.month} · ${expenseStatusesLabel(state.statuses)} · ${expenseKindLabel(state.expenseKind)} · признано ${fmtMinor(recognizedTotalMinor)}`
+    : `За ${state.month} расходов нет (${expenseStatusesLabel(state.statuses)}, ${expenseKindLabel(state.expenseKind)})`;
 
   if (!state.expenses.length) {
     list.innerHTML = `<div class="muted">Нет расходов за выбранный период.</div>`;
@@ -650,12 +668,13 @@ function renderExpenses() {
       ? recognizedAllocs.map((a) => `<span class="badge">${esc(a.month)} · ${esc(fmtMinor(a.amount_minor))}</span>`).join(" ")
       : `<span class="muted">В выбранном месяце не признаётся</span>`;
     const status = String(item.status || "DRAFT").toUpperCase();
+    const payrollExpense = String(item.expense_kind || "OPERATING").toUpperCase() === "PAYROLL";
     const quickActions = access.canEdit ? `
       <div class="row row--end gap-8 mt-10">
         ${status !== "CONFIRMED" ? `<button class="btn small" data-status="CONFIRMED" data-id="${item.id}">Подтвердить</button>` : ""}
         ${status !== "DRAFT" ? `<button class="btn ghost small" data-status="DRAFT" data-id="${item.id}">В черновик</button>` : ""}
         ${status !== "CANCELLED" ? `<button class="btn ghost small" data-status="CANCELLED" data-id="${item.id}">Отменить</button>` : ""}
-        <button class="btn small" data-edit="${item.id}">Изменить</button>
+        ${payrollExpense ? "" : `<button class="btn small" data-edit="${item.id}">Изменить</button>`}
         <button class="btn danger small" data-del="${item.id}">Удалить</button>
       </div>` : "";
     return `
@@ -664,16 +683,15 @@ function renderExpenses() {
           <div class="row gap-8">
             <div class="expense-row__title">${esc(item.category?.title || "Без категории")}</div>
             <span class="badge">${esc(statusLabel(status))}</span>
+            ${payrollExpense ? '<span class="badge">Выплата ФОТ</span>' : ''}
             ${buildRegularBadges(item)}
           </div>
           <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}${item.payment_method?.title ? ` · ${esc(item.payment_method.title)}` : ""}</div>
-          <div class="muted mt-6">${esc(expenseShiftSlotLabel(item.shift_slot))}</div>
+          <div class="muted mt-6">${payrollExpense ? `Расчётный период: ${esc(item.payroll_period_start || "—")} — ${esc(item.payroll_period_end || "—")}` : esc(expenseShiftSlotLabel(item.shift_slot))}</div>
           ${item.comment ? `<div class="mt-8">${esc(item.comment)}</div>` : ""}
-          <div class="mt-8"><b>Признано в ${esc(state.month)}:</b> ${esc(fmtMinor(item.recognized_amount_minor_for_month || 0))}</div>
+          ${payrollExpense ? '<div class="muted mt-8">Не дублирует ФОТ в сводке: после подтверждения только списывает выбранный способ оплаты.</div>' : `<div class="mt-8"><b>Признано в ${esc(state.month)}:</b> ${esc(fmtMinor(item.recognized_amount_minor_for_month || 0))}</div>`}
           ${item.recurring_rule_id ? `<div class="muted mt-6">Это документ, созданный из правила регулярного расхода. После подтверждения он будет участвовать в расходах и сводке.</div>` : ''}
-          <div class="expense-row__allocations mt-8">${recognizedHtml}</div>
-          <div class="muted mt-8">Все аллокации</div>
-          <div class="expense-row__allocations mt-8">${allocationsHtml || '<span class="muted">Без распределения</span>'}</div>
+          ${payrollExpense ? '' : `<div class="expense-row__allocations mt-8">${recognizedHtml}</div><div class="muted mt-8">Все аллокации</div><div class="expense-row__allocations mt-8">${allocationsHtml || '<span class="muted">Без распределения</span>'}</div>`}
           ${buildExpenseAttachmentsHtml(item)}
         </div>
         <div class="expense-row__side">
@@ -997,9 +1015,11 @@ async function boot() {
   const openRecurringExpensesBtn = document.getElementById("openRecurringExpensesBtn");
   const openExpenseCategoriesBtn = document.getElementById("openExpenseCategoriesBtn");
   const openSuppliersBtn = document.getElementById("openSuppliersBtn");
+  const openPaymentMethodsBtn = document.getElementById("openPaymentMethodsBtn");
   if (openRecurringExpensesBtn) openRecurringExpensesBtn.href = `/owner-recurring-expenses.html?venue_id=${encodeURIComponent(activeVenueId)}`;
   if (openExpenseCategoriesBtn) openExpenseCategoriesBtn.href = `/owner-expense-categories.html?venue_id=${encodeURIComponent(activeVenueId)}`;
   if (openSuppliersBtn) openSuppliersBtn.href = `/owner-suppliers.html?venue_id=${encodeURIComponent(activeVenueId)}`;
+  if (openPaymentMethodsBtn) openPaymentMethodsBtn.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(activeVenueId)}`;
 
   state.month = coerceDemoMonth(params.get("month") || currentMonth(), { notify: false, context: "owner-expenses" });
   state.focusExpenseId = Number(params.get("expense_id") || 0) || null;
@@ -1007,7 +1027,8 @@ async function boot() {
   state.categoryId = params.get("category_id") || "";
   state.supplierId = params.get("supplier_id") || "";
   state.statuses = params.get("statuses") || "";
-  state.compareMode = params.get("compare_mode") === "custom" ? "custom" : "auto";
+  state.expenseKind = ["OPERATING", "PAYROLL"].includes(String(params.get("expense_kind") || "").toUpperCase()) ? String(params.get("expense_kind")).toUpperCase() : "";
+  state.compareMode = ["auto", "custom", "none"].includes(params.get("compare_mode")) ? params.get("compare_mode") : "auto";
   state.compareFrom = params.get("compare_from") || "";
   state.compareTo = params.get("compare_to") || "";
   syncComparisonControls();
@@ -1023,7 +1044,8 @@ async function boot() {
 
   document.querySelectorAll("#expensesCompareSeg button").forEach((button) => {
     button.onclick = async () => {
-      const mode = button.dataset.compare === "custom" ? "custom" : "auto";
+      const requestedMode = button.dataset.compare;
+      const mode = ["auto", "custom", "none"].includes(requestedMode) ? requestedMode : "auto";
       if (mode === "custom" && state.compareMode !== "custom") {
         const automatic = resolveAutoComparison({ period: "month", month: state.month });
         state.compareFrom = automatic?.from || todayISO();
@@ -1031,7 +1053,7 @@ async function boot() {
       }
       state.compareMode = mode;
       syncComparisonControls();
-      if (mode === "auto") await loadExpenses();
+      if (mode !== "custom") await loadExpenses();
       else syncComparisonUrl();
     };
   });
@@ -1057,6 +1079,14 @@ async function boot() {
     statusFilter.value = state.statuses;
     statusFilter.onchange = async (e) => {
       state.statuses = e.target.value || "";
+      await loadExpenses();
+    };
+  }
+  const kindFilter = document.getElementById("expenseKindFilter");
+  if (kindFilter) {
+    kindFilter.value = state.expenseKind;
+    kindFilter.onchange = async (event) => {
+      state.expenseKind = event.target.value || "";
       await loadExpenses();
     };
   }
@@ -1086,6 +1116,7 @@ async function boot() {
       if (state.categoryId) qp.set("category_id", state.categoryId);
       if (state.supplierId) qp.set("supplier_id", state.supplierId);
       if (state.statuses) qp.set("statuses", state.statuses);
+      if (state.expenseKind) qp.set("expense_kind", state.expenseKind);
       await openExportLink(`/venues/${encodeURIComponent(venueId)}/expenses/export-link?${qp.toString()}`);
     } catch (err) {
       toast(err?.data?.detail || err?.message || "Не удалось начать экспорт", "err");

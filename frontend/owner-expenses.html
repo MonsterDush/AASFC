@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260729-payroll1" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-ledgerdrill1" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260802-financeux3" />
   <script src="/page-loader.js?v=20260720-loader1"></script>
   <title>Axelio · Расходы</title>
 </head>
-<body>
+<body class="owner-expenses-page">
   <div class="container">
     <div class="topbar">
       <div class="brand">
@@ -50,8 +50,6 @@
             <div class="muted mt-6">операционный экран: признано в месяце, фильтры, список и быстрое добавление расхода</div>
           </div>
           <div class="screen-hero__actions screen-hero__actions--adaptive">
-            <a class="btn subtle" id="openLedgerBtn" href="#">Финансовые движения</a>
-            <button class="btn ghost" id="exportExpensesBtn">Экспорт XLSX</button>
             <button class="btn primary" id="addExpenseBtn">Добавить расход</button>
           </div>
         </div>
@@ -68,7 +66,12 @@
           </div>
         </div>
 
-        <div class="itemcard finance-comparison-card">
+        <details class="itemcard finance-comparison-card finance-comparison-disclosure">
+          <summary class="finance-comparison-disclosure__summary">
+            <span><b>Сравнение расходов</b><span class="muted">Открыть настройки сравнения</span></span>
+            <span class="badge">Настроить</span>
+          </summary>
+          <div class="finance-comparison-disclosure__body">
           <div class="finance-comparison-card__head">
             <div>
               <div class="finance-period-card__label">Сравнение признанных расходов</div>
@@ -77,6 +80,7 @@
             <div class="seg" id="expensesCompareSeg">
               <button type="button" data-compare="auto" class="active">Авто</button>
               <button type="button" data-compare="custom">Другой период</button>
+              <button type="button" data-compare="none">Без сравнения</button>
             </div>
           </div>
           <div class="finance-comparison-card__controls hidden" id="expensesCompareRange">
@@ -88,7 +92,8 @@
             </div>
           </div>
           <div class="muted" id="expensesCompareHint">Сравнивается подтверждённая сумма, признанная внутри выбранных дат.</div>
-        </div>
+          </div>
+        </details>
       </div>
 
       <details class="collapsible-card mt-12" id="expenseFiltersWrap">
@@ -108,6 +113,11 @@
               <option value="CANCELLED">Только отменённые</option>
               <option value="DRAFT,CONFIRMED">Черновики + подтверждённые</option>
             </select>
+            <select id="expenseKindFilter">
+              <option value="">Все виды расходов</option>
+              <option value="OPERATING">Операционные расходы</option>
+              <option value="PAYROLL">Выплаты ФОТ</option>
+            </select>
           </div>
 
           <div class="itemcard hidden" id="draftExpensesCard">
@@ -126,8 +136,11 @@
         <summary>Справочники и быстрые действия</summary>
         <div class="collapsible-card__body">
           <div class="catalog-actions">
+            <a class="btn subtle" id="openLedgerBtn" href="#">Финансовые движения</a>
+            <button class="btn subtle" id="exportExpensesBtn" type="button">Экспорт XLSX</button>
             <a class="btn subtle" id="openExpenseCategoriesBtn" href="#">Категории расходов</a>
             <a class="btn subtle" id="openSuppliersBtn" href="#">Поставщики</a>
+            <a class="btn subtle" id="openPaymentMethodsBtn" href="#">Способы оплаты</a>
             <a class="btn subtle" id="openRecurringExpensesBtn" href="#">Регулярные расходы</a>
             <button class="btn subtle" id="addCategoryBtn" type="button">Добавить категорию</button>
             <button class="btn subtle" id="addSupplierBtn" type="button">Добавить поставщика</button>
@@ -181,6 +194,6 @@
     </div>
   </div>
 
-  <script type="module" src="/owner-expenses.js?v=20260802-ledgerdrill1"></script>
+  <script type="module" src="/owner-expenses.js?v=20260802-payrollpayments1"></script>
 </body>
 </html>

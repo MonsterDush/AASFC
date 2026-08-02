@@ -215,6 +215,7 @@ class PayrollMonthOrchestratorTests(TestCase):
             self.results = [
                 PayrollMonthOrchestratorTests._Result(scalar_one_or_none=None),
                 PayrollMonthOrchestratorTests._Result(rows=[]),
+                PayrollMonthOrchestratorTests._Result(scalar_one_or_none=None),
             ]
             self.added = []
             self.flush_count = 0

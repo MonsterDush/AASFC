@@ -6,6 +6,9 @@ import {
   financeTrendMode,
   normalizeFinanceDailySeries,
 } from "./app/finance-summary-analytics.js";
+import { resolveComparisonRange } from "./app/period-comparison.js";
+
+assert.equal(resolveComparisonRange({ compareMode: "none", period: "month", month: "2026-07" }), null);
 
 const rows = normalizeFinanceDailySeries([
   { date: "2026-07-02", revenue_minor: 120_000, expense_minor: 30_000, payroll_minor: 20_000, total_cost_minor: 50_000, adjustments_minor: 0, refunds_minor: 0, profit_minor: 70_000 },
