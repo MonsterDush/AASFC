@@ -37,7 +37,6 @@ STEP_STATUS_COMPLETED = "COMPLETED"
 STEP_STATUS_SKIPPED = "SKIPPED"
 STEP_STATUS_REQUIRES_ATTENTION = "REQUIRES_ATTENTION"
 
-STEP_WELCOME = "welcome"
 STEP_PAYMENT_METHODS = "payment_methods"
 STEP_DEPARTMENTS = "departments"
 STEP_KPI = "kpi"
@@ -50,14 +49,6 @@ STEP_SUPPLIERS = "suppliers"
 STEP_RECURRING_EXPENSES = "recurring_expenses"
 
 SETUP_STEPS: list[dict[str, Any]] = [
-    {
-        "key": STEP_WELCOME,
-        "title": "Приветствие и название",
-        "phase": SETUP_PHASE_PREPARE,
-        "requires_data": False,
-        "count_key": None,
-        "skippable": False,
-    },
     {
         "key": STEP_PAYMENT_METHODS,
         "title": "Способы оплат",
@@ -279,7 +270,7 @@ def get_or_create_setup_state(db: Session, *, venue_id: int) -> VenueSetupState:
         wizard_version=SETUP_WIZARD_VERSION,
         status=SETUP_STATUS_NOT_STARTED,
         phase=SETUP_PHASE_PREPARE,
-        current_step_key=STEP_WELCOME,
+        current_step_key=STEP_PAYMENT_METHODS,
         completed_steps_json=[],
         skipped_steps_json=[],
         step_meta_json={},
@@ -462,7 +453,7 @@ def _write_summary_back_to_state(state: VenueSetupState, summary: dict[str, Any]
     state.phase = str(summary.get("phase") or SETUP_PHASE_PREPARE)
     state.current_step_key = summary.get("resume_step") or summary.get("current_step_key") or state.current_step_key
     if state.status == SETUP_STATUS_NOT_STARTED and state.started_at is None:
-        state.current_step_key = STEP_WELCOME
+        state.current_step_key = STEP_PAYMENT_METHODS
     if summary.get("prepare_done") and state.prepare_completed_at is None:
         state.prepare_completed_at = now
     if summary.get("status") == SETUP_STATUS_DONE and state.done_at is None:
@@ -494,7 +485,7 @@ def start_setup(db: Session, *, venue_id: int, seen_by_user: User | None = None)
     state.updated_at = now
     state.status = SETUP_STATUS_IN_PROGRESS
     state.phase = SETUP_PHASE_PREPARE
-    state.current_step_key = state.current_step_key or STEP_WELCOME
+    state.current_step_key = state.current_step_key or STEP_PAYMENT_METHODS
     if seen_by_user is not None:
         state.last_seen_by_user_id = int(seen_by_user.id)
     db.flush()

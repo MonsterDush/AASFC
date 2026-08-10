@@ -731,7 +731,7 @@ class OwnerSetupSplitContractTests(TestCase):
         main = (FRONTEND / "owner-setup.js").read_text(encoding="utf-8")
         html = (FRONTEND / "owner-setup.html").read_text(encoding="utf-8")
         controllers = {
-            "catalog-editor.js": ("createCatalogSetupController", "mountCatalogEditor", "20260720-unified10"),
+            "catalog-editor.js": ("createCatalogSetupController", "mountCatalogEditor", "20260810-setup1"),
             "pay-profile-editor.js": ("createPayProfileSetupController", "mountPayProfilesEditor", "20260729-payroll1"),
             "position-editor.js": ("createPositionSetupController", "mountPositionsEditor", "20260720-unified10"),
             "invite-editor.js": ("createInviteSetupController", "mountInvitesEditor", "20260720-unified10"),
@@ -741,7 +741,7 @@ class OwnerSetupSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260729-payroll1", html)
+        self.assertIn("owner-setup.js?v=20260810-setup1", html)
         self.assertIn("position-template-ui.js?v=20260726-navmore1", main)
         self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
@@ -761,7 +761,6 @@ class OwnerSetupSplitContractTests(TestCase):
             self.assertIn(mount_method, source)
 
         step_dispatch = {
-            "welcome": "mountWelcomeEditor",
             "pay_profiles": "mountPayProfilesEditor",
             "positions": "mountPositionsEditor",
             "invites": "mountInvitesEditor",

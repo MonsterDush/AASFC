@@ -10,7 +10,6 @@ class SetupSummaryTests(TestCase):
         state = {
             "wizard_version": 1,
             "completed_steps_json": [
-                setup.STEP_WELCOME,
                 setup.STEP_PAYMENT_METHODS,
                 setup.STEP_DEPARTMENTS,
                 setup.STEP_PAY_PROFILES,
@@ -40,8 +39,8 @@ class SetupSummaryTests(TestCase):
         self.assertEqual(summary["status"], setup.SETUP_STATUS_PREPARE_DONE)
         self.assertEqual(summary["phase"], setup.SETUP_PHASE_EXTRA)
         self.assertEqual(summary["resume_step"], setup.STEP_EXPENSE_CATEGORIES)
-        self.assertEqual(summary["progress_done"], 6)
-        self.assertEqual(summary["progress_resolved"], 8)
+        self.assertEqual(summary["progress_done"], 5)
+        self.assertEqual(summary["progress_resolved"], 7)
 
     def test_completed_step_without_required_data_needs_attention(self):
         state = {
@@ -62,7 +61,6 @@ class SetupSummaryTests(TestCase):
     def test_done_status_requires_resolved_extra_steps(self):
         state = {
             "completed_steps_json": [
-                setup.STEP_WELCOME,
                 setup.STEP_PAYMENT_METHODS,
                 setup.STEP_DEPARTMENTS,
                 setup.STEP_PAY_PROFILES,
@@ -93,3 +91,17 @@ class SetupSummaryTests(TestCase):
         self.assertTrue(summary["prepare_done"])
         self.assertTrue(summary["extra_done"])
         self.assertIsNone(summary["resume_step"])
+
+    def test_legacy_welcome_state_resumes_at_payment_methods(self):
+        state = {
+            "completed_steps_json": ["welcome"],
+            "skipped_steps_json": [],
+            "phase": setup.SETUP_PHASE_PREPARE,
+            "current_step_key": "welcome",
+        }
+
+        summary = setup.build_setup_summary_from_data(state=state, counts={})
+
+        self.assertNotIn("welcome", [item["key"] for item in summary["steps"]])
+        self.assertEqual(summary["resume_step"], setup.STEP_PAYMENT_METHODS)
+        self.assertEqual(summary["prepare_total"], 7)

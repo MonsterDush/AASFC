@@ -45,7 +45,7 @@ import {
 } from "/permissions.js?v=20260409-setup2";
 import { normalizePermissionTemplates, getPermissionTemplateById as getSharedPositionTemplateById, buildPermissionTemplateOptions, renderPermissionTemplateSummaryById, applyPermissionTemplateToCheckboxHost } from "/position-template-ui.js?v=20260726-navmore1";
 
-import { createCatalogSetupController } from "/owner-setup/catalog-editor.js?v=20260720-unified10";
+import { createCatalogSetupController } from "/owner-setup/catalog-editor.js?v=20260810-setup1";
 import { createPayProfileSetupController } from "/owner-setup/pay-profile-editor.js?v=20260729-payroll1";
 import { createPositionSetupController } from "/owner-setup/position-editor.js?v=20260720-unified10";
 import { createInviteSetupController } from "/owner-setup/invite-editor.js?v=20260720-unified10";
@@ -126,15 +126,6 @@ function parsePercentInputToBps(value) {
 }
 
 const STEP_CONTENT = {
-  welcome: {
-    title: "Приветствие и название",
-    subtitle: "Подтверди текущее название или переименуй заведение до старта настройки.",
-    what: "Это базовая карточка заведения, с которой начинается дальнейшая настройка.",
-    where: "Название показывается в навигации, в списке заведений и в командных сценариях.",
-    later: "Можно оставить как есть и вернуться к редактированию позже.",
-    primaryLabel: "Открыть карточку заведения",
-    primaryHref: (venueId) => `/app-venue.html?venue_id=${encodeURIComponent(String(venueId))}`,
-  },
   payment_methods: {
     title: "Способы оплат",
     subtitle: "Настрой, какие оплаты доступны в заведении и будут участвовать в закрытии смены.",
@@ -235,7 +226,7 @@ const STATUS_LABELS = {
   LOCKED: "Недоступно",
 };
 
-const INLINE_STEP_KEYS = new Set(["welcome", "payment_methods", "departments", "kpi", "pay_profiles", "positions", "invites", "shift_intervals", "expense_categories", "suppliers", "recurring_expenses"]);
+const INLINE_STEP_KEYS = new Set(["payment_methods", "departments", "kpi", "pay_profiles", "positions", "invites", "shift_intervals", "expense_categories", "suppliers", "recurring_expenses"]);
 
 const CATALOG_CONFIG = {
   payment_methods: {
@@ -389,7 +380,6 @@ function getStepSummaryText(step, ui = getStepUiInfo(step)) {
   if (step.skipped) return "Можно вернуться позже";
   if (step.requires_attention || String(step.status || "").toUpperCase() === "REQUIRES_ATTENTION") return "Нужно проверить настройки";
   if (step.data_ready) return "Можно переходить дальше";
-  if (step.key === "welcome") return "Подтверди название заведения";
   if (step.key === "pay_profiles") return "Собери базовые профили начислений";
   if (step.key === "positions") return "Создай роли и права команды";
   if (step.key === "invites") return "Добавь команду и назначь должности";
@@ -474,15 +464,6 @@ function syncInlinePayComponentFields() {
 
 function setVisible(element, visible) {
   element?.classList.toggle('hidden', !visible);
-}
-
-async function renameVenue(venueId, name) {
-  const trimmed = String(name || "").trim();
-  if (!trimmed) throw new Error("Введите название заведения");
-  return await api(`/venues/${encodeURIComponent(venueId)}/setup/venue`, {
-    method: "PATCH",
-    body: { name: trimmed },
-  });
 }
 
 function esc(value) {
@@ -1302,7 +1283,6 @@ const editorContext = {
   UNIT_LABEL,
   CATALOG_CONFIG,
   state,
-  renameVenue,
   esc,
   slugifyCode,
   ensureUniqueCode,
@@ -1346,7 +1326,7 @@ const editorContext = {
   buildBasisPaymentMethodCheckboxes,
   setVisible,
 };
-const { mountWelcomeEditor, mountCatalogEditor } = createCatalogSetupController(editorContext);
+const { mountCatalogEditor } = createCatalogSetupController(editorContext);
 const { mountPayProfilesEditor, loadInlinePayProfiles } = createPayProfileSetupController(editorContext);
 editorContext.loadInlinePayProfiles = loadInlinePayProfiles;
 const { mountPositionsEditor } = createPositionSetupController(editorContext);
@@ -1356,10 +1336,6 @@ const { mountSuppliersEditor } = createSupplierSetupController(editorContext);
 const { mountRecurringExpensesEditor } = createRecurringExpenseSetupController(editorContext);
 async function mountInlineEditor(currentStep) {
   if (!shouldUseInlineEditor(currentStep?.key)) return;
-  if (currentStep.key === "welcome") {
-    await mountWelcomeEditor(getStepByKey("welcome") || currentStep);
-    return;
-  }
   if (currentStep.key === "pay_profiles") {
     await mountPayProfilesEditor(getStepByKey("pay_profiles") || currentStep);
     return;
