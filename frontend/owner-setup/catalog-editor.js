@@ -1,5 +1,5 @@
 export function createCatalogSetupController(context) {
-  const { toast, confirmModal, api, getVenueById, UNIT_LABEL, CATALOG_CONFIG, state, renameVenue, esc, slugifyCode, ensureUniqueCode, getStepByKey, getInlineCatalogState, buildUnitOptions, getNextStepKey, moveToStep, loadSetup } = context;
+  const { toast, confirmModal, api, UNIT_LABEL, CATALOG_CONFIG, state, esc, slugifyCode, ensureUniqueCode, getStepByKey, getInlineCatalogState, buildUnitOptions, getNextStepKey, moveToStep, loadSetup } = context;
 
   function renderCatalogListItems(stepKey, items, currentStep) {
     const cfg = CATALOG_CONFIG[stepKey];
@@ -91,65 +91,6 @@ export function createCatalogSetupController(context) {
         </div>
       </div>
     `;
-  }
-
-  async function mountWelcomeEditor(currentStep) {
-    const host = document.getElementById("setupInlineEditor");
-    if (!host) return;
-    const currentName = String(state.venue?.name || "").trim();
-    host.innerHTML = `
-      <div class="setup-editor__panel">
-        <div class="setup-formcard">
-          <div class="setup-editor__title">Как будет называться заведение</div>
-          <div class="muted mt-6">Название можно подтвердить как есть или поменять прямо сейчас. Это не блокирует дальнейшую работу и позже его тоже можно будет изменить.</div>
-          <div class="setup-formgrid mt-12">
-            <label>
-              <span>Название заведения</span>
-              <input class="input" id="welcomeVenueName" placeholder="Введите название" value="${esc(currentName)}" />
-            </label>
-          </div>
-          <div class="setup-actionbar mt-14">
-            <button class="btn primary" id="btnWelcomeSave" type="button">Сохранить и продолжить</button>
-            ${!currentStep.completed ? `<button class="btn subtle" id="btnWelcomeKeep" type="button">Оставить как есть</button>` : ""}
-          </div>
-        </div>
-      </div>
-    `;
-
-    document.getElementById("btnWelcomeSave")?.addEventListener("click", async () => {
-      const input = document.getElementById("welcomeVenueName");
-      const name = String(input?.value || "").trim();
-      if (!name) {
-        toast("Введите название заведения", "err");
-        input?.focus();
-        return;
-      }
-      try {
-        await renameVenue(state.venueId, name);
-        if (!currentStep.completed) {
-          await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: "POST", body: { step_key: currentStep.key } });
-        }
-        state.venue = await getVenueById(state.venueId);
-        await loadSetup({ preserveSelection: true });
-        toast("Название сохранено", "ok");
-        const next = getNextStepKey(currentStep.key);
-        if (next) moveToStep(next);
-      } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось сохранить название", "err");
-      }
-    });
-
-    document.getElementById("btnWelcomeKeep")?.addEventListener("click", async () => {
-      try {
-        await api(`/venues/${encodeURIComponent(state.venueId)}/setup/complete-step`, { method: "POST", body: { step_key: currentStep.key } });
-        await loadSetup({ preserveSelection: true });
-        toast("Название подтверждено", "ok");
-        const next = getNextStepKey(currentStep.key);
-        if (next) moveToStep(next);
-      } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось завершить шаг", "err");
-      }
-    });
   }
 
   async function loadInlineCatalogItems(stepKey, { force = false } = {}) {
@@ -324,5 +265,5 @@ export function createCatalogSetupController(context) {
     });
   }
 
-  return { mountWelcomeEditor, mountCatalogEditor };
+  return { mountCatalogEditor };
 }

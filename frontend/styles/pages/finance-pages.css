@@ -89,6 +89,30 @@ select.finance-control--wide{min-width:170px}
 .owner-expenses-page .expense-catalog-card .btn{width:100%;min-height:40px;padding:8px 10px}
 .owner-expenses-page .expense-catalog-card--compact{grid-template-columns:minmax(0,1fr) minmax(92px,auto);align-items:center}
 .owner-expenses-page .expense-catalog-card--utility{grid-column:1/-1;grid-template-columns:minmax(0,1fr) minmax(280px,1fr);align-items:center}
+.owner-expenses-page .expense-list{gap:14px}
+.owner-expenses-page .expense-row{align-items:start;gap:18px;padding:16px}
+.owner-expenses-page .expense-row__main{display:grid;align-content:start;gap:0}
+.owner-expenses-page .expense-row__header{display:grid;gap:7px}
+.owner-expenses-page .expense-row__title{font-size:15px;line-height:1.35}
+.owner-expenses-page .expense-row__badges{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.owner-expenses-page .expense-status-badge{font-weight:900}
+.owner-expenses-page .expense-status-badge--confirmed{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBg);color:var(--statusSuccessText)}
+.owner-expenses-page .expense-status-badge--draft{border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft);color:var(--statusWarningText)}
+.owner-expenses-page .expense-status-badge--cancelled{border-color:var(--statusErrorBorder);background:var(--statusErrorBg);color:var(--statusErrorText)}
+.owner-expenses-page .expense-row__meta{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;margin-top:9px;color:var(--muted);font-size:11px;font-weight:700;line-height:1.4}
+.owner-expenses-page .expense-row__meta span+span::before{content:"·";margin-right:12px;color:var(--muted)}
+.owner-expenses-page .expense-row__slot{margin-top:7px;color:var(--muted);font-size:11px;font-weight:700;line-height:1.4}
+.owner-expenses-page .expense-row__comment{margin-top:13px;padding:10px 12px;border-left:3px solid var(--accentSoftBorder);border-radius:0 10px 10px 0;background:var(--surfaceTintSoft);line-height:1.45}
+.owner-expenses-page .expense-row__recognition{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:13px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;line-height:1.4}
+.owner-expenses-page .expense-row__recognition span{color:var(--muted);font-weight:700}
+.owner-expenses-page .expense-row__recognition b{white-space:nowrap}
+.owner-expenses-page .expense-row__note{margin-top:10px;color:var(--muted);font-size:11px;line-height:1.45}
+.owner-expenses-page .expense-row__allocation-group{display:grid;gap:7px;margin-top:12px}
+.owner-expenses-page .expense-row__section-label{color:var(--muted);font-size:10px;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
+.owner-expenses-page .expense-row__side{gap:4px}
+.owner-expenses-page .expense-row__amount-label{color:var(--muted);font-size:10px;font-weight:900;letter-spacing:.05em;text-transform:uppercase}
+.owner-expenses-page .expense-row__actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;width:100%;margin-top:12px}
+.owner-expenses-page .expense-row__actions .btn{width:100%;min-width:0}
 
 .owner-finance-ledger-page .ledger-shell{display:grid;gap:14px}
 .owner-finance-ledger-page .ledger-hero-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
@@ -250,7 +274,10 @@ select.finance-control--wide{min-width:170px}
 .owner-summary-page .summary-trend-bar--current{fill:var(--accent);pointer-events:none}
 .owner-summary-page .summary-trend-bar--comparison{fill:transparent;stroke:var(--accent);stroke-width:2;opacity:.64;vector-effect:non-scaling-stroke;pointer-events:none}
 .owner-summary-page .summary-trend-ticks{display:flex;justify-content:space-between;min-width:0;color:var(--muted);font-size:9px;font-weight:800;line-height:20px}
-.owner-summary-page .summary-chart-focus{min-height:42px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;background:var(--surfaceTintSoft);font-size:12px;line-height:1.45}
+.owner-summary-page .summary-chart-focus{display:grid;gap:11px;min-height:42px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surfaceTintSoft);font-size:12px;line-height:1.45}
+.owner-summary-page .summary-chart-focus__values{display:grid;gap:3px}
+.owner-summary-page .summary-chart-focus__value{display:flex;align-items:baseline;gap:5px;flex-wrap:wrap}
+.owner-summary-page .summary-chart-focus__action{justify-self:start}
 .owner-summary-page .summary-chart-focus a{color:var(--accent);font-weight:900;text-decoration:none}
 .owner-summary-page .summary-chart-focus a:hover{text-decoration:underline}
 .owner-summary-page .summary-chart-empty{display:grid;grid-column:1/-1;place-items:center;min-height:160px;padding:18px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted);text-align:center}
@@ -276,6 +303,8 @@ select.finance-control--wide{min-width:170px}
   select.finance-control{width:100%;min-width:0}
   .finance-state-span-2{grid-column:auto}
   .owner-summary-page .finance-kpis--secondary{grid-template-columns:1fr}
+  .owner-summary-page .summary-kpis{gap:16px}
+  .owner-summary-page .summary-kpis + .summary-kpis{margin-top:16px}
   .owner-summary-page .summary-metric:hover{box-shadow:none;transform:none}
   .owner-summary-page .summary-details-card .section-head{gap:6px}
   .owner-summary-page .summary-analytics-grid{grid-template-columns:1fr}
@@ -301,6 +330,13 @@ select.finance-control--wide{min-width:170px}
   .owner-expenses-page .expense-catalog-grid{grid-template-columns:1fr}
   .owner-expenses-page .expense-catalog-card--compact,.owner-expenses-page .expense-catalog-card--utility{grid-column:auto;grid-template-columns:1fr;align-items:stretch}
   .owner-expenses-page .expense-catalog-card .btn{height:44px;font-size:11px}
+  .owner-expenses-page .expense-row{gap:14px;padding:14px}
+  .owner-expenses-page .expense-row__side{width:100%;padding-top:13px;border-top:1px solid var(--border)}
+  .owner-expenses-page .expense-row__amount-label{order:0}
+  .owner-expenses-page .expense-row__amount{order:1}
+  .owner-expenses-page .expense-row__actions{order:2}
+  .owner-expenses-page .expense-row__recognition{align-items:flex-start;flex-direction:column;gap:4px}
+  .owner-expenses-page .expense-row__meta span+span::before{display:none}
   .owner-turnover-page .screen-hero__actions .finance-action-btn{height:44px;padding-inline:9px}
   .finance-comparison-card__head,
   .finance-comparison-card__controls{display:grid;width:100%}

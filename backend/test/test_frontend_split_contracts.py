@@ -104,7 +104,7 @@ class PrimaryPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            cache_key = "20260802-financeux4" if html_name == "owner-summary.html" else "20260723-polish2"
+            cache_key = "20260810-financepolish1" if html_name == "owner-summary.html" else "20260723-polish2"
             self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
@@ -117,6 +117,10 @@ class PrimaryPageUiPolishContractTests(TestCase):
         self.assertIn("/owner-day-economics.html?", summary_js)
         self.assertIn("/owner-expenses.html?", summary_js)
         self.assertIn("/owner-payroll.html?", summary_js)
+        self.assertIn("summary-chart-focus__values", summary_js)
+        self.assertIn("(${fmtSignedMoneyMinor(delta)})", summary_js)
+        self.assertIn("— сопоставление по порядковому дню", summary_js)
+        self.assertNotIn("сопоставление по порядковому дню, ₽", summary_js)
         self.assertNotIn("/summary/monthly?${qs}", summary_js)
 
         summary_html = (FRONTEND / "owner-summary.html").read_text(encoding="utf-8")
@@ -125,6 +129,22 @@ class PrimaryPageUiPolishContractTests(TestCase):
 
 
 class WorkflowPageUiPolishContractTests(TestCase):
+    def test_expense_rows_keep_status_tones_and_visual_hierarchy(self):
+        html = (FRONTEND / "owner-expenses.html").read_text(encoding="utf-8")
+        script = (FRONTEND / "owner-expenses.js").read_text(encoding="utf-8")
+        styles = (FRONTEND / "styles/pages/finance-pages.css").read_text(encoding="utf-8")
+
+        self.assertIn("/styles/pages/finance-pages.css?v=20260810-financepolish1", html)
+        self.assertIn("/owner-expenses.js?v=20260810-financepolish1", html)
+        for contract in (
+            "expense-status-badge--confirmed",
+            "expense-row__recognition",
+            "expense-row__allocation-group",
+            "expense-row__actions",
+        ):
+            self.assertIn(contract, script)
+            self.assertIn(contract, styles)
+
     def test_finance_pages_expose_permission_aware_ledger_navigation(self):
         page_scripts = {
             "owner-summary.html": "owner-summary.js",
@@ -508,10 +528,10 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-economics.css").read_text(encoding="utf-8")
 
         for html, page_name, script_version in (
-            (day_html, "owner-day-economics", "20260802-financeux2"),
+            (day_html, "owner-day-economics", "20260810-financepolish1"),
             (rules_html, "owner-economics-rules", "20260726-navmore1"),
         ):
-            style_version = "20260802-financeux2" if page_name == "owner-day-economics" else "20260726-polish11"
+            style_version = "20260810-financepolish1" if page_name == "owner-day-economics" else "20260726-polish11"
             self.assertIn(f"/styles/pages/owner-economics.css?v={style_version}", html, page_name)
             self.assertIn(f"/{page_name}.js?v={script_version}", html, page_name)
             self.assertIn('class="finance-page-state hidden"', html, page_name)
@@ -532,6 +552,9 @@ class WorkflowPageUiPolishContractTests(TestCase):
         self.assertLess(day_load.index("if (!access.canView)"), day_load.index("primaryPromise = api("))
         self.assertIn("setEconomicsLoading(false)", day_load)
         self.assertIn("finance-page-state--denied", styles)
+        self.assertIn("Предупреждать о неподтверждённых расходах", day_script)
+        self.assertIn("economics-manage-card .section-card__actions .btn", styles)
+        self.assertIn("height:54px", styles)
 
         rules_load = rules_script.split("async function loadRules()", 1)[1]
         self.assertLess(rules_load.index("if (!state.access.canManage)"), rules_load.index("await api("))
@@ -708,7 +731,7 @@ class OwnerSetupSplitContractTests(TestCase):
         main = (FRONTEND / "owner-setup.js").read_text(encoding="utf-8")
         html = (FRONTEND / "owner-setup.html").read_text(encoding="utf-8")
         controllers = {
-            "catalog-editor.js": ("createCatalogSetupController", "mountCatalogEditor", "20260720-unified10"),
+            "catalog-editor.js": ("createCatalogSetupController", "mountCatalogEditor", "20260810-setup1"),
             "pay-profile-editor.js": ("createPayProfileSetupController", "mountPayProfilesEditor", "20260729-payroll1"),
             "position-editor.js": ("createPositionSetupController", "mountPositionsEditor", "20260720-unified10"),
             "invite-editor.js": ("createInviteSetupController", "mountInvitesEditor", "20260720-unified10"),
@@ -718,7 +741,7 @@ class OwnerSetupSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260729-payroll1", html)
+        self.assertIn("owner-setup.js?v=20260810-setup1", html)
         self.assertIn("position-template-ui.js?v=20260726-navmore1", main)
         self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
@@ -738,7 +761,6 @@ class OwnerSetupSplitContractTests(TestCase):
             self.assertIn(mount_method, source)
 
         step_dispatch = {
-            "welcome": "mountWelcomeEditor",
             "pay_profiles": "mountPayProfilesEditor",
             "positions": "mountPositionsEditor",
             "invites": "mountInvitesEditor",

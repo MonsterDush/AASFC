@@ -10,7 +10,7 @@ const mainSource = fs.readFileSync(mainPath, "utf8");
 const htmlSource = fs.readFileSync(htmlPath, "utf8");
 
 const controllers = [
-  ["catalog-editor.js", "20260720-unified10", "createCatalogSetupController", ["mountWelcomeEditor", "mountCatalogEditor"]],
+  ["catalog-editor.js", "20260810-setup1", "createCatalogSetupController", ["mountCatalogEditor"]],
   ["pay-profile-editor.js", "20260729-payroll1", "createPayProfileSetupController", ["mountPayProfilesEditor", "loadInlinePayProfiles"]],
   ["position-editor.js", "20260720-unified10", "createPositionSetupController", ["mountPositionsEditor"]],
   ["invite-editor.js", "20260720-unified10", "createInviteSetupController", ["mountInvitesEditor"]],
@@ -20,7 +20,7 @@ const controllers = [
 ];
 
 assert.ok(mainSource.split("\n").length < 1_600, "owner-setup.js must remain an orchestration module");
-assert.match(htmlSource, /owner-setup\.js\?v=20260729-payroll1/);
+assert.match(htmlSource, /owner-setup\.js\?v=20260810-setup1/);
 assert.match(mainSource, /position-template-ui\.js\?v=20260726-navmore1/);
 assert.doesNotMatch(htmlSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);
 assert.doesNotMatch(mainSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);
@@ -54,7 +54,6 @@ for (const [fileName, cacheKey, factoryName, methodNames] of controllers) {
 }
 
 const stepDispatch = new Map([
-  ["welcome", "mountWelcomeEditor"],
   ["pay_profiles", "mountPayProfilesEditor"],
   ["positions", "mountPositionsEditor"],
   ["invites", "mountInvitesEditor"],
