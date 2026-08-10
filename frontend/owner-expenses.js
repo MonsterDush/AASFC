@@ -204,6 +204,13 @@ function statusLabel(status) {
   return "Черновик";
 }
 
+function expenseStatusClass(status) {
+  const norm = String(status || "DRAFT").toUpperCase();
+  if (norm === "CONFIRMED") return "expense-status-badge--confirmed";
+  if (norm === "CANCELLED") return "expense-status-badge--cancelled";
+  return "expense-status-badge--draft";
+}
+
 function expenseShiftSlotLabel(value) {
   const slot = String(value || "TOTAL").trim().toUpperCase();
   if (slot === "DAY") return "Дневная смена";
@@ -670,7 +677,7 @@ function renderExpenses() {
     const status = String(item.status || "DRAFT").toUpperCase();
     const payrollExpense = String(item.expense_kind || "OPERATING").toUpperCase() === "PAYROLL";
     const quickActions = access.canEdit ? `
-      <div class="row row--end gap-8 mt-10">
+      <div class="expense-row__actions">
         ${status !== "CONFIRMED" ? `<button class="btn small" data-status="CONFIRMED" data-id="${item.id}">Подтвердить</button>` : ""}
         ${status !== "DRAFT" ? `<button class="btn ghost small" data-status="DRAFT" data-id="${item.id}">В черновик</button>` : ""}
         ${status !== "CANCELLED" ? `<button class="btn ghost small" data-status="CANCELLED" data-id="${item.id}">Отменить</button>` : ""}
@@ -680,23 +687,31 @@ function renderExpenses() {
     return `
       <div class="expense-row" data-expense-row="${esc(item.id)}">
         <div class="expense-row__main">
-          <div class="row gap-8">
+          <div class="expense-row__header">
             <div class="expense-row__title">${esc(item.category?.title || "Без категории")}</div>
-            <span class="badge">${esc(statusLabel(status))}</span>
-            ${payrollExpense ? '<span class="badge">Выплата ФОТ</span>' : ''}
-            ${buildRegularBadges(item)}
+            <div class="expense-row__badges">
+              <span class="badge expense-status-badge ${expenseStatusClass(status)}">${esc(statusLabel(status))}</span>
+              ${payrollExpense ? '<span class="badge">Выплата ФОТ</span>' : ''}
+              ${buildRegularBadges(item)}
+            </div>
           </div>
-          <div class="muted mt-6">${esc(item.expense_date || "—")}${item.supplier?.title ? ` · ${esc(item.supplier.title)}` : ""}${item.payment_method?.title ? ` · ${esc(item.payment_method.title)}` : ""}</div>
-          <div class="muted mt-6">${payrollExpense ? `Расчётный период: ${esc(item.payroll_period_start || "—")} — ${esc(item.payroll_period_end || "—")}` : esc(expenseShiftSlotLabel(item.shift_slot))}</div>
-          ${item.comment ? `<div class="mt-8">${esc(item.comment)}</div>` : ""}
-          ${payrollExpense ? '<div class="muted mt-8">Не дублирует ФОТ в сводке: после подтверждения только списывает выбранный способ оплаты.</div>' : `<div class="mt-8"><b>Признано в ${esc(state.month)}:</b> ${esc(fmtMinor(item.recognized_amount_minor_for_month || 0))}</div>`}
-          ${item.recurring_rule_id ? `<div class="muted mt-6">Это документ, созданный из правила регулярного расхода. После подтверждения он будет участвовать в расходах и сводке.</div>` : ''}
-          ${payrollExpense ? '' : `<div class="expense-row__allocations mt-8">${recognizedHtml}</div><div class="muted mt-8">Все аллокации</div><div class="expense-row__allocations mt-8">${allocationsHtml || '<span class="muted">Без распределения</span>'}</div>`}
+          <div class="expense-row__meta">
+            <span>${esc(item.expense_date || "—")}</span>
+            ${item.supplier?.title ? `<span>${esc(item.supplier.title)}</span>` : ""}
+            ${item.payment_method?.title ? `<span>${esc(item.payment_method.title)}</span>` : ""}
+          </div>
+          <div class="expense-row__slot">${payrollExpense ? `Расчётный период: ${esc(item.payroll_period_start || "—")} — ${esc(item.payroll_period_end || "—")}` : esc(expenseShiftSlotLabel(item.shift_slot))}</div>
+          ${item.comment ? `<div class="expense-row__comment">${esc(item.comment)}</div>` : ""}
+          <div class="expense-row__recognition">
+            ${payrollExpense ? '<span>После подтверждения списывает выбранный способ оплаты и не дублирует ФОТ в сводке.</span>' : `<span>Признано в ${esc(state.month)}</span><b>${esc(fmtMinor(item.recognized_amount_minor_for_month || 0))}</b>`}
+          </div>
+          ${item.recurring_rule_id ? `<div class="expense-row__note">Документ создан из правила регулярного расхода. После подтверждения он попадёт в расходы и сводку.</div>` : ''}
+          ${payrollExpense ? '' : `<div class="expense-row__allocation-group"><span class="expense-row__section-label">Признанные аллокации</span><div class="expense-row__allocations">${recognizedHtml}</div></div><div class="expense-row__allocation-group"><span class="expense-row__section-label">Все аллокации</span><div class="expense-row__allocations">${allocationsHtml || '<span class="muted">Без распределения</span>'}</div></div>`}
           ${buildExpenseAttachmentsHtml(item)}
         </div>
         <div class="expense-row__side">
+          <div class="expense-row__amount-label">Полная сумма</div>
           <div class="expense-row__amount">${esc(fmtMinor(item.amount_minor))}</div>
-          <div class="muted mt-6">Полная сумма</div>
           ${quickActions}
         </div>
       </div>

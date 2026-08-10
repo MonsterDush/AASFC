@@ -54,6 +54,8 @@
 .economics-detail-list{display:grid;gap:0;min-height:72px}
 .economics-detail-list .summary-list-row:last-child{border-bottom:0}
 .economics-detail-list .skeleton + .skeleton{margin-top:8px}
+.owner-day-economics-page .economics-manage-card .section-card__actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:min(100%,320px)}
+.owner-day-economics-page .economics-manage-card .section-card__actions .btn{width:100%;height:54px;min-width:0;padding:8px 10px;line-height:1.2;white-space:normal}
 
 .economics-rules-shortcuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 .economics-rules-shortcuts .btn{width:100%}
@@ -93,4 +95,5 @@
   .economics-rules-form > div:last-child .btn{width:100%}
   .summary-list-row{align-items:flex-start}
   .summary-list-value{white-space:normal;overflow-wrap:anywhere}
+  .owner-day-economics-page .economics-manage-card .section-card__actions{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
 }

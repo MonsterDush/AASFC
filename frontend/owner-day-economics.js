@@ -484,13 +484,13 @@ function renderRules(econ) {
   const rules = econ?.rules || {};
   const parts = [];
   const profitAvailable = economicsProfitAvailable(econ);
-  if (profitAvailable && rules.max_expense_ratio_bps != null) parts.push(`расходы ≤ ${fmtPercentBps(rules.max_expense_ratio_bps)}`);
+  if (profitAvailable && rules.max_expense_ratio_bps != null) parts.push(`Расходы ≤ ${fmtPercentBps(rules.max_expense_ratio_bps)}`);
   if (profitAvailable && rules.max_payroll_ratio_bps != null) parts.push(`ФОТ ≤ ${fmtPercentBps(rules.max_payroll_ratio_bps)}`);
-  if (profitAvailable && rules.min_revenue_per_assigned_minor != null) parts.push(`выручка/сотрудник ≥ ${fmtMoneyMinor(rules.min_revenue_per_assigned_minor)}`);
-  if (rules.min_assigned_shift_coverage_bps != null) parts.push(`покрытие смен ≥ ${fmtPercentBps(rules.min_assigned_shift_coverage_bps)}`);
-  if (profitAvailable && rules.min_profit_minor != null) parts.push(`прибыль ≥ ${fmtMoneyMinor(rules.min_profit_minor)}`);
-  if (profitAvailable && rules.warn_on_draft_expenses) parts.push(`предупреждать о неподтверждённых расходах`);
-  if (!profitAvailable) parts.push("финансовые нормативы применяются в «Итого»");
+  if (profitAvailable && rules.min_revenue_per_assigned_minor != null) parts.push(`Выручка/сотрудник ≥ ${fmtMoneyMinor(rules.min_revenue_per_assigned_minor)}`);
+  if (rules.min_assigned_shift_coverage_bps != null) parts.push(`Покрытие смен ≥ ${fmtPercentBps(rules.min_assigned_shift_coverage_bps)}`);
+  if (profitAvailable && rules.min_profit_minor != null) parts.push(`Прибыль ≥ ${fmtMoneyMinor(rules.min_profit_minor)}`);
+  if (profitAvailable && rules.warn_on_draft_expenses) parts.push(`Предупреждать о неподтверждённых расходах`);
+  if (!profitAvailable) parts.push("Финансовые нормативы применяются в «Итого»");
   setText("economicsRulesHint", parts.length ? parts.join(" · ") : "Нормативы ещё не заданы.");
 }
 

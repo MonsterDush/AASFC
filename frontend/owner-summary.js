@@ -330,11 +330,11 @@ function renderMetricDelta(id, currentValue, previousValue, { type = "money", ca
     return;
   }
   if (previous === 0) {
-    element.textContent = current === 0 ? `Без изменений ${caption}`.trim() : `Нет базы · ${fmtSignedMoneyMinor(delta)} ${caption}`.trim();
+    element.textContent = current === 0 ? `Без изменений ${caption}`.trim() : `Нет базы: ${fmtSignedMoneyMinor(delta)} ${caption}`.trim();
     return;
   }
   const percent = (delta / Math.abs(previous)) * 100;
-  element.textContent = `${fmtSignedNumber(percent, 1)}% · ${fmtSignedMoneyMinor(delta)} ${caption}`.trim();
+  element.textContent = `${fmtSignedNumber(percent, 1)}% (${fmtSignedMoneyMinor(delta)}) ${caption}`.trim();
 }
 
 function renderComparison(summary, comparisonSummary) {
@@ -481,14 +481,16 @@ function renderSummaryTrendFocus(currentPoint, comparisonPoint, metric) {
   const field = { revenue: "revenueMinor", cost: "totalCostMinor", profit: "profitMinor" }[metric] || "revenueMinor";
   const values = [];
   if (currentPoint) {
-    values.push(`<span>Текущий: <b>${escapeHtml(fmtLongDate(currentPoint.date))}</b> · ${escapeHtml(fmtMoneyMinor(currentPoint[field]))}</span>`);
+    values.push(`<span class="summary-chart-focus__value">Текущий: <b>${escapeHtml(fmtLongDate(currentPoint.date))}</b><span aria-hidden="true">—</span>${escapeHtml(fmtMoneyMinor(currentPoint[field]))}</span>`);
   }
   if (comparisonPoint) {
-    values.push(`<span>Сравнение: <b>${escapeHtml(fmtLongDate(comparisonPoint.date))}</b> · ${escapeHtml(fmtMoneyMinor(comparisonPoint[field]))}</span>`);
+    values.push(`<span class="summary-chart-focus__value">Сравнение: <b>${escapeHtml(fmtLongDate(comparisonPoint.date))}</b><span aria-hidden="true">—</span>${escapeHtml(fmtMoneyMinor(comparisonPoint[field]))}</span>`);
   }
   const detailUrl = buildDayEconomicsDrilldown(currentPoint, comparisonPoint);
-  if (detailUrl) values.push(`<a href="${escapeHtml(detailUrl)}">Открыть экономику дня</a>`);
-  focus.innerHTML = values.join(" · ");
+  const detailLink = detailUrl
+    ? `<a class="summary-chart-focus__action" href="${escapeHtml(detailUrl)}">Открыть экономику дня</a>`
+    : "";
+  focus.innerHTML = `<span class="summary-chart-focus__values">${values.join("")}</span>${detailLink}`;
 }
 
 function renderSummaryTrend(summary, comparisonSummary = null) {
@@ -511,8 +513,8 @@ function renderSummaryTrend(summary, comparisonSummary = null) {
     : "";
   title.textContent = `Динамика: ${metricTitle.toLowerCase()}`;
   subtitle.textContent = comparisonPoints.length
-    ? `${periodText} против ${comparisonText} · сопоставление по порядковому дню, ₽`
-    : `${periodText} · по дням, ₽`;
+    ? `${periodText} против ${comparisonText} — сопоставление по порядковому дню`
+    : `${periodText} — по дням`;
   legend.innerHTML = [
     `<span><i class="summary-legend-swatch" aria-hidden="true"></i>Текущий период</span>`,
     ...(comparisonPoints.length ? [`<span><i class="summary-legend-swatch summary-legend-swatch--comparison" aria-hidden="true"></i>Сравниваемый период</span>`] : []),
