@@ -83,6 +83,32 @@ class BillingAccessTests(TestCase):
         self.assertEqual(payload["billing_status"], "GRACE")
         self.assertEqual(payload["billing_access_mode"], access.BILLING_ACCESS_DENIED)
 
+    def test_matching_demo_session_bypasses_billing_restriction_for_reads(self):
+        fake_db = _FakeSession(member_role="STAFF")
+        user = SimpleNamespace(
+            id=12,
+            system_role="NONE",
+            _demo_mode=True,
+            _demo_venue_id=99,
+            _demo_persona="STAFF",
+        )
+        now = datetime(2026, 4, 2, 12, 0, tzinfo=timezone.utc)
+        state = SimpleNamespace(
+            paid_until=now - timedelta(days=3),
+            grace_until=now - timedelta(days=1),
+            status="EXPIRED",
+            provider="TRIAL",
+        )
+        with patch.object(access, "get_or_create_billing_state", return_value=state), patch.object(
+            access,
+            "utcnow",
+            return_value=now,
+        ):
+            payload = access.get_user_billing_access(fake_db, venue_id=99, user=user, membership_role="STAFF")
+
+        self.assertEqual(payload["billing_access_mode"], access.BILLING_ACCESS_FULL)
+        self.assertIsNone(payload["billing_restricted_reason"])
+
 
 class BillingJobsTests(TestCase):
     def test_expire_stale_pending_checkouts_marks_transaction_failed(self):

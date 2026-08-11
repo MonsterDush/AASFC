@@ -7,6 +7,9 @@ from typing import Any
 import jwt  # PyJWT
 
 
+RESERVED_ACCESS_CLAIMS = {"sub", "sv", "iat", "exp", "iss", "aud", "typ"}
+
+
 @dataclass(frozen=True)
 class JwtConfig:
     secret: str
@@ -33,6 +36,10 @@ def create_access_token(
         "typ": "access",
     }
     if extra_claims:
+        conflicts = RESERVED_ACCESS_CLAIMS.intersection(extra_claims)
+        if conflicts:
+            names = ", ".join(sorted(conflicts))
+            raise ValueError(f"extra_claims cannot override reserved access claims: {names}")
         payload.update(extra_claims)
     return jwt.encode(payload, cfg.secret, algorithm="HS256")
 

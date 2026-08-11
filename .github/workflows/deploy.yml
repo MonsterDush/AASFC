@@ -15,18 +15,19 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: axelio_ci
+          POSTGRES_DB: axelio_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d axelio_ci"
+          --health-cmd "pg_isready -U postgres -d axelio_test"
           --health-interval 2s
           --health-timeout 3s
           --health-retries 20
     env:
       APP_ENV: test
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/axelio_ci
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/axelio_test
       TG_BOT_TOKEN: ci-not-used
+      TG_BROWSER_LOGIN_BOT_USERNAME: axelio_ci_bot
       JWT_SECRET: axelio-ci-secret-not-for-runtime
       JWT_ISS: axelio-ci
       JWT_AUD: axelio-ci
@@ -54,32 +55,90 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "11.16.0"
+
       - name: Install Python dependencies
         run: python -m pip install -r backend/requirements-dev.txt -r bot_service/requirements.txt
 
+      - name: Install browser test dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Compile Python
         run: python -m compileall -q backend/app bot_service
+
+      - name: Lint Python and check critical formatting
+        run: |
+          python -m ruff check --select E9,F63,F7,F82 backend/app backend/test bot_service tools
+          python -m ruff check \
+            backend/app/auth/jwt_tokens.py \
+            backend/app/auth/passwords.py \
+            backend/app/core/permission_policy.py \
+            backend/app/services/billing/access.py \
+            backend/app/services/billing/state.py \
+            backend/app/services/finance/recognition.py \
+            backend/app/services/financial_privacy.py \
+            backend/app/services/payroll/calculator.py \
+            backend/app/services/security_rate_limits.py \
+            backend/app/services/signed_links.py \
+            backend/test/test_auth_security_primitives.py \
+            backend/test/test_financial_privacy.py \
+            backend/test/test_permission_policy.py \
+            backend/test/test_security_rate_limits.py \
+            backend/test/test_signed_links.py \
+            tools/check_critical_coverage.py \
+            tools/check_repository_hygiene.py
+          python -m ruff format --check \
+            backend/app/auth/jwt_tokens.py \
+            backend/app/auth/passwords.py \
+            backend/app/core/permission_policy.py \
+            backend/app/services/billing/access.py \
+            backend/app/services/billing/state.py \
+            backend/app/services/finance/recognition.py \
+            backend/app/services/financial_privacy.py \
+            backend/app/services/payroll/calculator.py \
+            backend/app/services/security_rate_limits.py \
+            backend/app/services/signed_links.py \
+            backend/test/test_auth_security_primitives.py \
+            backend/test/test_financial_privacy.py \
+            backend/test/test_permission_policy.py \
+            backend/test/test_security_rate_limits.py \
+            backend/test/test_signed_links.py \
+            tools/check_critical_coverage.py \
+            tools/check_repository_hygiene.py
+
+      - name: Check repository hygiene and shell syntax
+        run: |
+          python tools/check_repository_hygiene.py
+          bash -n tools/e2e-local.sh tools/migration-smoke.sh
 
       - name: Run backend tests with branch coverage gate
         working-directory: backend
         run: |
           python -m coverage run --branch --source=app -m unittest discover -s test -v
           python -m coverage report --show-missing --fail-under=41
+          python ../tools/check_critical_coverage.py
 
       - name: Run bot tests
         working-directory: bot_service
         run: python -m unittest discover -s test -v
 
-      - name: Validate and apply migrations on clean PostgreSQL
-        working-directory: backend
+      - name: PostgreSQL migration round-trip smoke
+        env:
+          ALEMBIC_BIN: alembic
+        run: tools/migration-smoke.sh
+
+      - name: Audit runtime dependencies
         run: |
-          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
-          alembic upgrade head
-          alembic current
+          python -m pip_audit --strict -r backend/requirements.txt
+          python -m pip_audit --strict -r bot_service/requirements.txt
+          pnpm audit --audit-level high
 
       - name: Check tracked JavaScript syntax
         run: |
-          git ls-files -z 'frontend/*.js' 'frontend/**/*.js' 'frontend/*.mjs' 'frontend/**/*.mjs' |
+          git ls-files -z 'frontend/*.js' 'frontend/**/*.js' 'frontend/*.mjs' 'frontend/**/*.mjs' 'tools/*.mjs' |
             xargs -0 -n1 node --check
 
       - name: Run frontend contracts
@@ -94,6 +153,58 @@ jobs:
           node frontend/finance_summary_contract_check.mjs
           node frontend/payroll_analytics_contract_check.mjs
           node frontend/revenue_analytics_contract_check.mjs
+
+      - name: Browser E2E owner, staff and public demo
+        env:
+          DEMO_ENABLED: "true"
+          FRONTEND_BASE_URL: http://127.0.0.1:8765
+          APP_BASE_URL: http://127.0.0.1:8765
+          API_BASE_URL: http://127.0.0.1:9001
+          CORS_ALLOW_ORIGINS: http://127.0.0.1:8765
+          AXELIO_E2E_ALLOW_SEED: "1"
+          E2E_OWNER_PHONE: "+79990000001"
+          E2E_STAFF_PHONE: "+79990000002"
+          E2E_ADMIN_PHONE: "+79990000003"
+          E2E_PASSWORD: AxelioE2E123!
+          E2E_VENUE_NAME: Axelio E2E Lounge
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          set -euo pipefail
+          (
+            cd backend
+            python -m app.core.sync_permissions
+            python -m app.scripts.seed_position_permission_templates
+            python -m app.scripts.bootstrap_e2e_data
+            python -m app.scripts.bootstrap_demo_data \
+              --make-public \
+              --venue-name "Axelio CI Public Demo"
+          )
+
+          (cd backend && exec python -m uvicorn app.main:app --host 127.0.0.1 --port 9001) \
+            >"${RUNNER_TEMP}/axelio-api.log" 2>&1 &
+          api_pid=$!
+          python -m http.server 8765 --bind 127.0.0.1 --directory frontend \
+            >"${RUNNER_TEMP}/axelio-frontend.log" 2>&1 &
+          frontend_pid=$!
+          cleanup() {
+            kill "${api_pid}" "${frontend_pid}" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:9001/health >/dev/null && \
+               curl --fail --silent http://127.0.0.1:8765/auth.html >/dev/null; then
+              break
+            fi
+            if [[ "${attempt}" = "30" ]]; then
+              cat "${RUNNER_TEMP}/axelio-api.log"
+              cat "${RUNNER_TEMP}/axelio-frontend.log"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          pnpm test:browser
 
   deploy:
     if: github.event_name == 'push'

@@ -33,7 +33,9 @@ def _ensure_aware(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def derive_billing_dates(*, paid_until: datetime | None, grace_until: datetime | None, grace_days: int = DEFAULT_BILLING_GRACE_DAYS) -> tuple[datetime | None, datetime | None]:
+def derive_billing_dates(
+    *, paid_until: datetime | None, grace_until: datetime | None, grace_days: int = DEFAULT_BILLING_GRACE_DAYS
+) -> tuple[datetime | None, datetime | None]:
     paid_until_utc = _ensure_aware(paid_until)
     grace_until_utc = _ensure_aware(grace_until)
     if paid_until_utc is not None and grace_until_utc is None:
@@ -41,9 +43,18 @@ def derive_billing_dates(*, paid_until: datetime | None, grace_until: datetime |
     return paid_until_utc, grace_until_utc
 
 
-def build_billing_snapshot(*, paid_until: datetime | None, grace_until: datetime | None, status: str | None = None, now: datetime | None = None, grace_days: int = DEFAULT_BILLING_GRACE_DAYS) -> BillingSnapshot:
+def build_billing_snapshot(
+    *,
+    paid_until: datetime | None,
+    grace_until: datetime | None,
+    status: str | None = None,
+    now: datetime | None = None,
+    grace_days: int = DEFAULT_BILLING_GRACE_DAYS,
+) -> BillingSnapshot:
     current = _ensure_aware(now) or utcnow()
-    paid_until_utc, grace_until_utc = derive_billing_dates(paid_until=paid_until, grace_until=grace_until, grace_days=grace_days)
+    paid_until_utc, grace_until_utc = derive_billing_dates(
+        paid_until=paid_until, grace_until=grace_until, grace_days=grace_days
+    )
 
     effective_status = str(status or "").strip().upper() or BILLING_STATUS_ACTIVE
     if paid_until_utc is not None:
@@ -67,7 +78,9 @@ def build_billing_snapshot(*, paid_until: datetime | None, grace_until: datetime
         if grace_until_utc is not None:
             delta_seconds = max(0.0, (grace_until_utc - current).total_seconds())
             days_left = int(delta_seconds // 86400)
-            restricted_reason = f"Оплаченный период закончился. Льготный период действует до {grace_until_utc.date().isoformat()}."
+            restricted_reason = (
+                f"Оплаченный период закончился. Льготный период действует до {grace_until_utc.date().isoformat()}."
+            )
         else:
             restricted_reason = "Оплаченный период закончился. Доступ ограничен льготным периодом."
     else:

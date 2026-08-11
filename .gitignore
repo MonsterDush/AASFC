@@ -5,6 +5,7 @@
 .env.e2e
 axelio_pgdata/
 .DS_Store
-.coverage
+.coverage*
 htmlcov/
 artifacts/ui-audit-*/
+node_modules/

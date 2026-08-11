@@ -38,6 +38,13 @@ verify_night_shift() {
   )
 }
 
+verify_browser() {
+  (
+    cd "${repo_dir}"
+    pnpm test:browser
+  )
+}
+
 case "${1:-}" in
   up)
     "${compose[@]}" up -d --wait
@@ -52,6 +59,12 @@ case "${1:-}" in
     migrate
     seed
     verify_night_shift
+    ;;
+  migration-smoke)
+    "${repo_dir}/tools/migration-smoke.sh"
+    ;;
+  browser)
+    verify_browser
     ;;
   status)
     "${compose[@]}" ps
@@ -68,7 +81,7 @@ case "${1:-}" in
     "${compose[@]}" down
     ;;
   *)
-    echo "Usage: $0 {up|reset|verify-night|status|backend|frontend|down}" >&2
+    echo "Usage: $0 {up|reset|verify-night|migration-smoke|backend|frontend|browser|status|down}" >&2
     exit 2
     ;;
 esac

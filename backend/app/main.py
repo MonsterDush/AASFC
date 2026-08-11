@@ -47,16 +47,6 @@ from app.routers.setup import router as setup_router
 from app.routers.position_permission_templates import router as position_permission_templates_router, public_router as position_permission_templates_public_router
 from app.routers import auth, me
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_allow_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
-)
-
-
 @app.middleware("http")
 async def demo_readonly_guard(request: Request, call_next):
     if should_block_demo_request(
@@ -72,6 +62,16 @@ async def demo_readonly_guard(request: Request, call_next):
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     return apply_security_headers(response, production=settings.is_production())
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allow_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+)
 
 
 app.include_router(auth.router)

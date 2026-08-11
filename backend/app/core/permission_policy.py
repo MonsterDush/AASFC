@@ -4,11 +4,7 @@ from collections.abc import Iterable
 
 from app.core.permissions_registry import PERMISSIONS
 
-ALL_PERMISSION_CODES: set[str] = {
-    str(p.code or "").strip().upper()
-    for p in PERMISSIONS
-    if str(p.code or "").strip()
-}
+ALL_PERMISSION_CODES: set[str] = {str(p.code or "").strip().upper() for p in PERMISSIONS if str(p.code or "").strip()}
 
 _SHIFT_REPORT_CODES: set[str] = {
     "SHIFT_REPORT_VIEW",
@@ -72,11 +68,7 @@ def normalize_permission_code(code: str | None) -> str:
 
 
 def expand_permission_codes(codes: Iterable[str] | None) -> set[str]:
-    result = {
-        normalize_permission_code(code)
-        for code in (codes or [])
-        if normalize_permission_code(code)
-    }
+    result = {normalize_permission_code(code) for code in (codes or []) if normalize_permission_code(code)}
     if not result:
         return set()
 

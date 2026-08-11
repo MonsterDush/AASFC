@@ -8,9 +8,7 @@ from app.models.user import User
 from app.settings import settings
 
 
-FINANCIAL_VALUES_HIDDEN_MESSAGE = (
-    "Финансовые показатели скрыты для SUPER_ADMIN текущей настройкой окружения."
-)
+FINANCIAL_VALUES_HIDDEN_MESSAGE = "Финансовые показатели скрыты для SUPER_ADMIN текущей настройкой окружения."
 
 
 def _role(user: User | None) -> str:
@@ -195,7 +193,10 @@ def _is_financial_key(key: str) -> bool:
     if k.endswith("_bps"):
         return any(part in k for part in ("revenue", "expense", "payroll", "profit", "margin", "income"))
     if k.endswith("_total"):
-        return any(part in k for part in ("revenue", "expense", "payroll", "profit", "income", "tips", "amount", "cash", "cashless"))
+        return any(
+            part in k
+            for part in ("revenue", "expense", "payroll", "profit", "income", "tips", "amount", "cash", "cashless")
+        )
     return any(part in k for part in _FINANCIAL_PARTS)
 
 
@@ -232,11 +233,13 @@ def sanitize_financial_payload(payload: Any, *, hidden: bool = True, _top: bool 
             else:
                 out[key] = sanitize_financial_payload(value, hidden=True, _top=False)
         if _top:
-            out.update({
-                "financial_values_hidden": True,
-                "can_view_financial_values": False,
-                "financial_values_hidden_reason": FINANCIAL_VALUES_HIDDEN_MESSAGE,
-            })
+            out.update(
+                {
+                    "financial_values_hidden": True,
+                    "can_view_financial_values": False,
+                    "financial_values_hidden_reason": FINANCIAL_VALUES_HIDDEN_MESSAGE,
+                }
+            )
         return out
 
     if isinstance(payload, list):

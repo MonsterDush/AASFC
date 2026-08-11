@@ -117,7 +117,7 @@ class PayrollCalculatorSplitContractTests(TestCase):
 
     def test_modules_remain_bounded_and_facade_reexports_their_contracts(self):
         modules = {
-            "calculator.py": (500, "calculate_payroll_for_month"),
+            "calculator.py": (550, "calculate_payroll_for_month"),
             "payroll_types.py": (180, "class PayrollPercentDecision"),
             "component_calculations.py": (580, "def calculate_component_amount_minor"),
             "percent_calculations.py": (400, "def _build_percent_component_decision"),

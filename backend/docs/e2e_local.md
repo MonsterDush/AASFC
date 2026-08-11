@@ -41,6 +41,7 @@ Cookie для локального backend создаётся без `Secure`, �
 ```bash
 tools/e2e-local.sh reset
 tools/e2e-local.sh verify-night
+tools/e2e-local.sh migration-smoke
 tools/e2e-local.sh status
 tools/e2e-local.sh down
 ```
@@ -55,3 +56,23 @@ PostgreSQL смену последнего дня месяца `22:00–04:00`: 
 создаются три notification job, XLSX сохраняет слот, повторное открытие отчёта
 удаляет связанные начисления, а CHECK-ограничения отвергают неизвестный
 `shift_slot`. Реальные Telegram-уведомления команда не отправляет.
+
+`migration-smoke` проверяет единственную Alembic head, upgrade на PostgreSQL,
+откат последней миграции и её повторное применение. Полный `alembic check` не
+входит в smoke: исторические legacy-таблицы и индексы требуют отдельной
+schema-drift нормализации.
+
+## Browser E2E
+
+После `tools/e2e-local.sh up` запустите backend и frontend в отдельных
+терминалах, затем:
+
+```bash
+pnpm install --frozen-lockfile
+tools/e2e-local.sh browser
+```
+
+Browser smoke использует системный Google Chrome и проверяет три независимых
+контекста: OWNER со сводкой, STAFF с календарём и публичное DEMO персонала на
+viewport 375 px. Дополнительно проверяются API 5xx, ошибки JavaScript,
+горизонтальный overflow и read-only блокировка DEMO-мутаций.
