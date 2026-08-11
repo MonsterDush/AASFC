@@ -27,6 +27,7 @@ jobs:
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/axelio_test
       TG_BOT_TOKEN: ci-not-used
+      TG_BROWSER_LOGIN_BOT_USERNAME: axelio_ci_bot
       JWT_SECRET: axelio-ci-secret-not-for-runtime
       JWT_ISS: axelio-ci
       JWT_AUD: axelio-ci
