@@ -1,0 +1,205 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Axelio: честная оценка текущего состояния",
+    "description": "Независимый продуктово-технический аудит по девяти взвешенным критериям.",
+    "generatedAt": "2026-08-11T12:00:00+03:00",
+    "cards": [
+      {
+        "id": "headline_card",
+        "description": "Главные подтвержденные показатели аудита.",
+        "dataset": "headline",
+        "sourceId": "audit_headline_sql",
+        "metrics": [
+          { "label": "Итоговая оценка", "field": "overall_score", "format": "number" },
+          { "label": "Автотесты прошли", "field": "tests_passed", "format": "integer" },
+          { "label": "Branch coverage", "field": "branch_coverage", "format": "percent" }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "criteria_chart",
+        "title": "Оценки по критериям",
+        "subtitle": "Шкала 0–10; аудит состояния на 11 августа 2026 года",
+        "type": "bar",
+        "dataset": "criteria_ranked",
+        "sourceId": "audit_score_sql",
+        "valueFormat": "number",
+        "encodings": {
+          "x": { "field": "criterion", "type": "nominal", "label": "Критерий" },
+          "y": { "field": "score", "type": "quantitative", "label": "Оценка" },
+          "tooltip": [
+            { "field": "score", "type": "quantitative", "label": "Оценка", "format": "number" },
+            { "field": "weight", "type": "quantitative", "label": "Вес, %", "format": "number" },
+            { "field": "deduction", "type": "quantitative", "label": "Снижение итога", "format": "number" }
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "criteria_table",
+        "title": "Взвешенная оценка",
+        "subtitle": "Итог: 6,6525 из 10, округлено до 6,7.",
+        "dataset": "criteria",
+        "sourceId": "audit_score_sql",
+        "columns": [
+          { "field": "criterion", "label": "Критерий", "type": "text" },
+          { "field": "weight", "label": "Вес, %", "format": "number" },
+          { "field": "score", "label": "Оценка", "format": "number" },
+          { "field": "deduction", "label": "Снижение итога", "format": "number" },
+          { "field": "reason", "label": "Почему не 10", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "repo_audit",
+        "label": "Axelio repository and live-product audit",
+        "path": "repository/axelio@b7b4eb1dcf82ec7b2c2a740b5b1b8a7784360661"
+      },
+      {
+        "id": "audit_headline_sql",
+        "label": "Audit headline metrics",
+        "path": "queries/audit_headline.sql"
+      },
+      {
+        "id": "audit_score_sql",
+        "label": "Weighted audit scoring",
+        "path": "queries/audit_scores.sql"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Axelio — честная оценка текущего состояния\n\n**Дата среза:** 11 августа 2026 года  \n**Ветка и коммит:** `develop`, `b7b4eb1dcf82ec7b2c2a740b5b1b8a7784360661`  \n**Формат:** продуктовый, инженерный и эксплуатационный аудит"
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "sourceId": "repo_audit",
+        "body": "## Вердикт\n\n**6,7 из 10. Условная награда: Silver — «Сильный отраслевой продуктовый фундамент».**\n\nAxelio уже нельзя назвать прототипом: это функционально насыщенный отраслевой продукт с живой production-версией, глубокой логикой смен, отчётов, финансов и зарплат. В проверке прошли **284 автотеста**, чистая база PostgreSQL поднялась через все **63 миграции**, а ночной E2E-сценарий довёл данные от смены до расчёта зарплаты, финансового результата, уведомлений и XLSX.\n\nНо это пока не уровень «enterprise-ready». Основной разрыв — не в количестве функций, а в защитных и эксплуатационных контурах: защита password-login от перебора, security headers, release gates, браузерный CI, доступность, наблюдаемость и управляемость большой кодовой базы. Поэтому высокая продуктовая оценка не превращается в 8–9 баллов общего результата."
+      },
+      { "id": "headline", "type": "metric-strip", "cardIds": ["headline_card"] },
+      {
+        "id": "method",
+        "type": "markdown",
+        "sourceId": "repo_audit",
+        "body": "## Как выставлялась оценка\n\nЭто не впечатление по скриншотам. Проверены структура и история репозитория, backend и bot unit-тесты, branch coverage, синтаксис frontend-кода и контрактные проверки, полный PostgreSQL E2E на чистой базе, ключевые экраны production и текущей ветки на desktop/mobile, базовые security headers, настройки аутентификации, CI/CD, системные сервисы, документация и доступность интерфейса.\n\nКаждый критерий имеет вес. Итог рассчитан как сумма `оценка × вес`; сумма весов — 100%. Колонка «Снижение итога» показывает, сколько именно баллов из 10 потеряно в данном критерии относительно идеального состояния."
+      },
+      { "id": "criteria_visual", "type": "chart", "chartId": "criteria_chart" },
+      { "id": "criteria_detail", "type": "table", "tableId": "criteria_table" },
+      {
+        "id": "strengths",
+        "type": "markdown",
+        "sourceId": "repo_audit",
+        "body": "## За что Axelio получил высокий балл\n\n### 1. Необычно глубокая предметная логика\n\nВ одном продукте связаны заведения, роли и разрешения, приглашения, должности, смены DAY/NIGHT, доступность и замены, отчёты, вложения, чаевые, штрафы и споры, доходы и расходы, поставщики, KPI, формулы зарплаты, payroll runs и выплаты, биллинг, промокоды, возвраты, сверка платежей, уведомления и XLSX. Это цельная операционная система заведения, а не набор несвязанных экранов.\n\n### 2. Финансовый и расчётный контур реально работает\n\nИзолированный E2E прошёл на PostgreSQL 16: все миграции применились, demo seed сформировал связанную модель данных, ночная смена корректно пересекла границу суток, были рассчитаны минуты, расходы, payroll, прибыль, уведомления и финальный отчёт. Сильные критические модули — `permission_policy`, `signed_links`, `financial_privacy`, reconciliation и demo bootstrap.\n\n### 3. Интерфейс уже выглядит как коммерческий продукт\n\nOwner summary, расходы и зарплаты дают содержательные метрики, сравнения, структуру затрат, детализацию и экспорт. Есть роли owner/staff, onboarding, demo-персоны и объясняющие туры. На обычном авторизованном мобильном сценарии календарь смен не создаёт горизонтального переполнения.\n\n### 4. Есть хорошие базовые security-решения\n\nJWT хранится в `HttpOnly`/`Secure` cookie, проверяются `exp`, `iat`, issuer, audience и subject; пароль хешируется PBKDF2-SHA256 с солью; OTP имеет cooldown, лимиты попыток и блокировки; смена пароля инвалидирует старые сессии. Финансовые права и подписанные ссылки реализованы аккуратно."
+      },
+      {
+        "id": "weak_security",
+        "type": "markdown",
+        "sourceId": "repo_audit",
+        "body": "## Слабые места и точные причины снижения\n\n### Безопасность и приватность — 5,2/10; минус 0,72 к общему баллу\n\n- **Нет защиты password-login от перебора.** `POST /password/login` сразу проверяет телефон и пароль и возвращает 401; лимита по IP/аккаунту, задержки или временной блокировки в маршруте нет. Для публичного сервиса это главный security-недочёт.\n- **На live frontend/API не выставлены базовые защитные заголовки:** HSTS, CSP, `X-Frame-Options`/`frame-ancestors`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`. Сервер также раскрывает версию nginx.\n- **Swagger `/docs` открыт в production и dev.** Сам по себе это не уязвимость, но увеличивает объём доступной внешнему наблюдателю информации.\n- **Опасные значения по умолчанию:** `DEMO_ENABLED=True`, `PHONE_AUTH_PROVIDER=debug`, `PHONE_AUTH_DEBUG_REVEAL_CODE=True`. Production может переопределять их через окружение, но безопасная система должна ошибаться в закрытую сторону.\n- **Нет автоматического SAST, dependency audit, secret scan или Dependabot-подобного контура.**\n- В frontend много ручного DOM-шаблонирования через `innerHTML`. Экранирование часто присутствует, поэтому подтверждённую XSS заявлять нельзя, но поверхность для ручной ошибки велика."
+      },
+      {
+        "id": "weak_quality",
+        "type": "markdown",
+        "sourceId": "repo_audit",
+        "body": "### Тестирование — 6,5/10; минус 0,35 к общему баллу\n\n- **Все 268 backend-тестов и 16 bot-тестов прошли**, однако общий branch coverage backend — только **41%**.\n- Наиболее рискованные пробелы находятся не в декоративном коде: `auth/phone_auth.py` — 12%, `routers/billing.py` — 16%, `venue_pay_profiles.py` — 8%, `venue_reports.py` — 18%, billing monitoring — 10%, invites — 10%, day economics — 27%.\n- Frontend имеет полезные контрактные проверки, но они в основном ловят форму модулей, API-вызовы и CSS-контракт. Они не заменяют пользовательские браузерные сценарии.\n- В CI нет обязательного browser smoke на owner/staff, mobile overflow и критические финансовые сценарии. Именно поэтому demo-специфичный мобильный дефект мог дойти до production.\n\n### Надёжность данных — 8,0/10; минус 0,30\n\n- Сильная сторона — единая Alembic head, успешное применение 63 миграций и полный E2E на реальном PostgreSQL.\n- Балл снижен за неравномерное тестирование критических маршрутов, отсутствие проверяемой процедуры production backup/restore и отсутствие автоматического post-deploy smoke/rollback."
+      },
+      {
+        "id": "weak_ui",
+        "type": "markdown",
+        "sourceId": "repo_audit",
+        "body": "### UX/UI — 7,7/10; минус 0,29\n\n- Основные финансовые страницы зрелые и хорошо объясняют состояние бизнеса.\n- **В публичном demo staff на ширине 375 px подтверждено горизонтальное переполнение:** документ расширяется примерно до 878 px; календарь и demo-обвязка обрезаются. В текущем авторизованном локальном сценарии календарь адаптивен, значит дефект возникает именно из сочетания demo-слоя с экраном.\n- В owner demo одновременно конкурируют верхний demo-баннер, intro-card, тур и нижняя навигация. На маленьком экране кнопка «Скрыть» сжимается и переносится вертикально, а часть полезной площади занята подсказками.\n- Есть мелкие редакторские шероховатости, например двойная точка в подписи месяца.\n\n### Доступность и локализация — 4,8/10; минус 0,39\n\n- На проверенной owner summary отсутствуют `h1–h3` и основные семантические landmarks (`main`, `nav`, `header`).\n- Четыре поля выбора периода не имеют доступного имени; найдены пустые кнопки без `aria-label`/`title`. При 72 фокусируемых элементах это уже влияет на клавиатурную навигацию и screen reader.\n- При этом часть графиков и интерактивных точек ARIA-размечена, а auth-страница использует `main` и подписи формы — фундамент есть, но он применяется непоследовательно.\n- Настройка обещает English, но словарь содержит лишь небольшую группу пунктов навигации; содержимое большинства страниц остаётся русским. Это скорее частичная локализация, чем полноценный второй язык."
+      },
+      {
+        "id": "weak_engineering",
+        "type": "markdown",
+        "sourceId": "repo_audit",
+        "body": "### Архитектура и поддерживаемость — 6,0/10; минус 0,50\n\n- В проекте есть хорошие выделенные сервисы и контроллеры, но несколько ключевых файлов выросли до 1 000–1 975 строк: `staff-shifts.js`, `app.js`, `owner-setup.js`, `owner-payroll.js`, `day_economics.py`, `venue_shifts.py`, `finance/summary.py`. Это повышает цену изменений и ревью.\n- В git лежат **пять точных дубликатов** с суффиксом ` 2` — модели, сервис payroll, frontend-модули и contract check. Они создают риск правки не того файла и искажают coverage.\n- Нет общего formatter/linter/type-checker контура для Python и JavaScript. Нет корневого README с быстрым запуском, архитектурой и рабочими командами; отсутствуют LICENSE, SECURITY, CONTRIBUTING и CHANGELOG.\n- Многостраничный vanilla JS остаётся быстрым и прозрачным, но приводит к дублированию оболочки, различной семантике экранов и большой ручной поверхности DOM-кода.\n\n### Производительность и наблюдаемость — 5,4/10; минус 0,23\n\n- Production-статика отдаётся без `Content-Encoding` и без явного `Cache-Control`/`Expires`; браузер вынужден передавать несжатые байты и полагаться на revalidation по ETag/Last-Modified.\n- Нет подтверждённых Core Web Vitals/Lighthouse budgets и автоматического performance regression gate.\n- Не найден централизованный error tracking/tracing/metrics-контур уровня Sentry, OpenTelemetry или Prometheus. Основной эксплуатационный канал — логи/journald и точечные runbook-операции.\n\n### DevOps, релизы и документация — 4,8/10; минус 0,39\n\n- Единственный GitHub Actions workflow **деплоит каждый push в `develop` и `main` по SSH**, но до миграций и рестартов не запускает tests, lint, coverage, build, security scan или browser smoke.\n- Нет явного canary/blue-green/rollback. Миграция выполняется перед рестартом сервисов, поэтому несовместимая миграция повышает blast radius.\n- Репозиторий не полностью воспроизводит production-службы: deploy ожидает prod bot и notification timer, а часть соответствующих prod unit-файлов в репозитории не обнаружена. Они могут существовать вручную на сервере, но это и есть drift-риск.\n- `docker-compose.yml` поднимает только PostgreSQL; цельного воспроизводимого локального/стейджингового стека приложения нет."
+      },
+      {
+        "id": "priorities",
+        "type": "markdown",
+        "sourceId": "repo_audit",
+        "body": "## Что быстрее всего поднимет оценку\n\n### Первые 30 дней\n\n1. Добавить rate limiting/lockout для password-login и public leads; закрыть debug auth defaults, production docs и выставить HSTS/CSP/anti-frame/MIME/referrer headers.\n2. Поставить перед deploy обязательные backend+bot tests, frontend checks, migration smoke и минимальный browser E2E; запретить прямой production deploy при красном gate.\n3. Исправить public demo staff overflow на 375 px и добавить отдельные mobile smoke-сценарии для owner/staff/demo.\n4. Покрыть тестами auth, billing, pay profiles, venue reports и day economics; разумная первая цель — 60% branch coverage при обязательных порогах для критических модулей.\n\n### Следующие 60–90 дней\n\n5. Ввести Sentry/аналог, request ID, базовые latency/error-rate метрики, алерты, проверяемый backup/restore и documented rollback.\n6. Удалить дубликаты, разделить файлы >1 000 строк, ввести formatter/linter/type checks и корневую инженерную документацию.\n7. Провести accessibility-проход: landmarks, заголовки, имена полей/кнопок, focus order, клавиатура; либо завершить English, либо честно пометить его как beta.\n8. Включить gzip/brotli и версионированный long-term cache для статики, затем закрепить performance budget.\n\nПри выполнении первых четырёх пунктов Axelio реалистично может перейти в диапазон **7,5–8,0**, не добавляя ни одной новой бизнес-функции."
+      },
+      {
+        "id": "bottom_line",
+        "type": "markdown",
+        "sourceId": "repo_audit",
+        "body": "## Итог одним предложением\n\n**Axelio уже сильный продукт для отрасли, но пока ещё сильнее как бизнес-функция, чем как защищённая, наблюдаемая и предсказуемо выпускаемая платформа.** Именно инженерные гарантии, а не новый функционал, отделяют текущие 6,7 от действительно высокой оценки."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-11T12:00:00+03:00",
+    "status": "ready",
+    "datasets": {
+      "headline": [
+        { "overall_score": 6.7, "tests_passed": 284, "branch_coverage": 0.41 }
+      ],
+      "criteria": [
+        { "criterion": "Продукт и функциональность", "weight": 15, "score": 8.8, "deduction": 0.18, "reason": "Большая глубина, но нет достаточных внешних данных об эффективности и зрелости всех сценариев." },
+        { "criterion": "UX/UI и onboarding", "weight": 12.5, "score": 7.7, "deduction": 0.29, "reason": "Зрелые owner-экраны; public demo staff ломает мобильную ширину, demo-слои перегружают экран." },
+        { "criterion": "Надёжность и целостность данных", "weight": 15, "score": 8.0, "deduction": 0.30, "reason": "Реальный E2E и миграции сильны; нет проверяемого backup/restore, post-deploy smoke и rollback." },
+        { "criterion": "Безопасность и приватность", "weight": 15, "score": 5.2, "deduction": 0.72, "reason": "Нет защиты password-login от перебора, защитных HTTP headers и автоматического security scanning; небезопасные defaults." },
+        { "criterion": "Архитектура и поддерживаемость", "weight": 12.5, "score": 6.0, "deduction": 0.50, "reason": "Есть хорошее модульное ядро, но много гигантских файлов, точные дубликаты и нет единого lint/type/format контура." },
+        { "criterion": "Тестирование и QA", "weight": 10, "score": 6.5, "deduction": 0.35, "reason": "284 теста прошли, но branch coverage 41%, критические модули покрыты слабо, browser E2E не является release gate." },
+        { "criterion": "Доступность и локализация", "weight": 7.5, "score": 4.8, "deduction": 0.39, "reason": "Непоследовательная семантика и доступные имена; English охватывает лишь малую часть интерфейса." },
+        { "criterion": "Производительность и observability", "weight": 5, "score": 5.4, "deduction": 0.23, "reason": "Нет compression/cache policy, performance budgets и централизованных traces/metrics/error tracking." },
+        { "criterion": "DevOps, релизы и документация", "weight": 7.5, "score": 4.8, "deduction": 0.39, "reason": "Push сразу деплоится без quality gate; rollback и полный IaC отсутствуют, инженерная документация неполна." }
+      ],
+      "criteria_ranked": [
+        { "criterion": "Продукт", "weight": 15, "score": 8.8, "deduction": 0.18 },
+        { "criterion": "Надёжность", "weight": 15, "score": 8.0, "deduction": 0.30 },
+        { "criterion": "UX/UI", "weight": 12.5, "score": 7.7, "deduction": 0.29 },
+        { "criterion": "Тесты", "weight": 10, "score": 6.5, "deduction": 0.35 },
+        { "criterion": "Поддерживаемость", "weight": 12.5, "score": 6.0, "deduction": 0.50 },
+        { "criterion": "Производительность", "weight": 5, "score": 5.4, "deduction": 0.23 },
+        { "criterion": "Безопасность", "weight": 15, "score": 5.2, "deduction": 0.72 },
+        { "criterion": "Доступность", "weight": 7.5, "score": 4.8, "deduction": 0.39 },
+        { "criterion": "DevOps", "weight": 7.5, "score": 4.8, "deduction": 0.39 }
+      ]
+    },
+    "accessIssues": []
+  },
+  "sources": [
+    {
+      "id": "repo_audit",
+      "query": {
+        "engine": "local-repository-and-live-browser",
+        "description": "Fresh read-only audit of the Axelio repository at commit b7b4eb1, automated tests and coverage, isolated PostgreSQL E2E, production/dev HTTP behavior, and desktop/mobile browser flows.",
+        "executed_at": "2026-08-11T12:00:00+03:00"
+      }
+    },
+    {
+      "id": "audit_headline_sql",
+      "query": {
+        "engine": "sqlite",
+        "sql": "SELECT 6.7 AS overall_score, 284 AS tests_passed, 0.41 AS branch_coverage;",
+        "description": "Reproduces the headline audit metrics after the reviewed evidence pass.",
+        "executed_at": "2026-08-11T12:00:00+03:00"
+      }
+    },
+    {
+      "id": "audit_score_sql",
+      "query": {
+        "engine": "sqlite",
+        "sql": "SELECT 'Продукт и функциональность' AS criterion, 15.0 AS weight, 8.8 AS score, 0.18 AS deduction UNION ALL SELECT 'UX/UI и onboarding', 12.5, 7.7, 0.29 UNION ALL SELECT 'Надёжность и целостность данных', 15.0, 8.0, 0.30 UNION ALL SELECT 'Безопасность и приватность', 15.0, 5.2, 0.72 UNION ALL SELECT 'Архитектура и поддерживаемость', 12.5, 6.0, 0.50 UNION ALL SELECT 'Тестирование и QA', 10.0, 6.5, 0.35 UNION ALL SELECT 'Доступность и локализация', 7.5, 4.8, 0.39 UNION ALL SELECT 'Производительность и observability', 5.0, 5.4, 0.23 UNION ALL SELECT 'DevOps, релизы и документация', 7.5, 4.8, 0.39;",
+        "description": "Reproduces the reviewed criterion scores, weights and rounded overall deductions used by the report chart and table.",
+        "executed_at": "2026-08-11T12:00:00+03:00"
+      }
+    }
+  ],
+  "package_info": {
+    "originUrl": "artifact://axelio-audit-2026-08-11",
+    "controls": { "edit": false, "refresh": false }
+  }
+}

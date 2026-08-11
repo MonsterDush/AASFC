@@ -15,6 +15,7 @@ from app.auth.phone_auth import (
     upsert_telegram_identity,
 )
 from app.core.db import SessionLocal
+from app.core.request_ip import resolve_client_ip
 from app.models import NotificationDeliveryLog, User
 from app.services import tg_notify
 from app.services.notification_logs import (
@@ -70,7 +71,7 @@ def _clear_access_cookie(response: Response) -> None:
 
 
 def _client_ip(request: Request) -> str | None:
-    return request.client.host if request.client else None
+    return resolve_client_ip(request)
 
 
 def _upsert_user_from_telegram_payload(

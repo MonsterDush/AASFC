@@ -3,14 +3,16 @@ from __future__ import annotations
 import html
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.db import SessionLocal
+from app.core.db import get_db
+from app.core.request_ip import resolve_client_ip
 from app.models.user import User
 from app.services import tg_notify
+from app.services.security_rate_limits import RateLimitPolicy, consume_rate_limit
 
 router = APIRouter(prefix="/public/leads", tags=["public-leads"])
 
@@ -85,13 +87,32 @@ def _format_lead_message(payload: PublicLeadIn, request: Request) -> str:
 
 
 @router.post("")
-def create_public_lead(payload: PublicLeadIn, request: Request):
+def create_public_lead(payload: PublicLeadIn, request: Request, db: Session = Depends(get_db)):
+    decision = consume_rate_limit(
+        db,
+        scope="public-lead-ip",
+        subject=resolve_client_ip(request),
+        policy=RateLimitPolicy(
+            limit=int(settings.PUBLIC_LEAD_IP_LIMIT or 5),
+            window_seconds=int(settings.PUBLIC_LEAD_RATE_WINDOW_SECONDS or 3600),
+            block_seconds=int(settings.PUBLIC_LEAD_BLOCK_SECONDS or 3600),
+        ),
+    )
+    if not decision.allowed:
+        db.commit()
+        raise HTTPException(
+            status_code=429,
+            detail="Слишком много заявок. Попробуйте позже.",
+            headers={"Retry-After": str(max(1, decision.retry_after_seconds))},
+        )
+
     expected_key = str(settings.PUBLIC_LEAD_SITE_KEY or "").strip()
     if expected_key and payload.publicSiteKey != expected_key:
+        db.commit()
         raise HTTPException(status_code=401, detail="bad public site key")
 
-    with SessionLocal() as db:
-        chat_ids = _collect_super_admin_chat_ids(db)
+    chat_ids = _collect_super_admin_chat_ids(db)
+    db.commit()
 
     if not chat_ids:
         raise HTTPException(status_code=503, detail="No super admin Telegram recipients configured")

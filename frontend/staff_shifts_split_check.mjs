@@ -10,11 +10,13 @@ const modulePath = path.join(frontendDir, "staff-shifts", "export-controller.js"
 const calendarModulePath = path.join(frontendDir, "staff-shifts", "calendar-controller.js");
 const commentModulePath = path.join(frontendDir, "staff-shifts", "comment-controller.js");
 const htmlPath = path.join(frontendDir, "staff-shifts.html");
+const stylesPath = path.join(frontendDir, "styles", "pages", "staff-shifts.css");
 const mainSource = fs.readFileSync(mainPath, "utf8");
 const moduleSource = fs.readFileSync(modulePath, "utf8");
 const calendarModuleSource = fs.readFileSync(calendarModulePath, "utf8");
 const commentModuleSource = fs.readFileSync(commentModulePath, "utf8");
 const htmlSource = fs.readFileSync(htmlPath, "utf8");
+const stylesSource = fs.readFileSync(stylesPath, "utf8");
 const combinedSource = [mainSource, calendarModuleSource, commentModuleSource, moduleSource].join("\n");
 
 const apiCallManifest = Array.from(
@@ -38,7 +40,11 @@ assert.ok(commentModuleSource.split("\n").length < 700, "comment controller is t
 assert.match(mainSource, /\/staff-shifts\/export-controller\.js\?v=20260719-split1/);
 assert.match(mainSource, /\/staff-shifts\/calendar-controller\.js\?v=20260729-overnight1/);
 assert.match(mainSource, /\/staff-shifts\/comment-controller\.js\?v=20260728-comments1/);
-assert.match(htmlSource, /staff-shifts\.js\?v=20260729-swaps1/);
+assert.match(htmlSource, /staff-shifts\.js\?v=20260811-assurance1/);
+assert.match(htmlSource, /styles\/pages\/staff-shifts\.css\?v=20260811-assurance1/);
+assert.match(stylesSource, /\.staff-shifts-shell\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
+assert.match(stylesSource, /\.staff-shifts-shell>\*\{min-width:0\}/);
+assert.match(stylesSource, /\.staff-shifts-page \.demo-banner\{[^}]*min-width:0[^}]*overflow:hidden/);
 for (const route of ["/shift-availability?", "/swap-candidates", "/swap-requests"]) {
   assert.ok(mainSource.includes(route), `${route} is no longer wired`);
 }
