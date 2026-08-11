@@ -12,12 +12,18 @@ from app.services import financial_privacy
 class FinancialPrivacyTests(TestCase):
     def test_only_super_admin_is_hidden_when_setting_is_disabled(self):
         with patch.object(financial_privacy.settings, "SUPER_ADMIN_CAN_VIEW_FINANCIAL_VALUES", False):
-            self.assertTrue(financial_privacy.should_hide_financial_values_for_user(SimpleNamespace(system_role=" super_admin ")))
-            self.assertFalse(financial_privacy.should_hide_financial_values_for_user(SimpleNamespace(system_role="VENUE_OWNER")))
+            self.assertTrue(
+                financial_privacy.should_hide_financial_values_for_user(SimpleNamespace(system_role=" super_admin "))
+            )
+            self.assertFalse(
+                financial_privacy.should_hide_financial_values_for_user(SimpleNamespace(system_role="VENUE_OWNER"))
+            )
             self.assertFalse(financial_privacy.should_hide_financial_values_for_user(None))
 
         with patch.object(financial_privacy.settings, "SUPER_ADMIN_CAN_VIEW_FINANCIAL_VALUES", True):
-            self.assertFalse(financial_privacy.should_hide_financial_values_for_user(SimpleNamespace(system_role="SUPER_ADMIN")))
+            self.assertFalse(
+                financial_privacy.should_hide_financial_values_for_user(SimpleNamespace(system_role="SUPER_ADMIN"))
+            )
 
     def test_visibility_payload_explains_hidden_state(self):
         user = SimpleNamespace(system_role="SUPER_ADMIN")
@@ -104,5 +110,7 @@ class FinancialPrivacyTests(TestCase):
         payload = {"profit_minor": 700}
 
         with patch.object(financial_privacy.settings, "SUPER_ADMIN_CAN_VIEW_FINANCIAL_VALUES", False):
-            self.assertEqual(financial_privacy.sanitize_financial_payload_for_user(hidden_user, payload)["profit_minor"], 0)
+            self.assertEqual(
+                financial_privacy.sanitize_financial_payload_for_user(hidden_user, payload)["profit_minor"], 0
+            )
             self.assertIs(financial_privacy.sanitize_financial_payload_for_user(visible_user, payload), payload)

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.venue_billing_state import VenueBillingState
 from app.models.venue_member import VenueMember
+from app.services.demo.access import is_demo_session_for_venue
 from .manager import TRIAL_PROVIDER, get_or_create_billing_state
 from .state import BILLING_STATUS_ACTIVE, build_billing_snapshot, utcnow
 
@@ -59,7 +60,10 @@ def get_user_billing_access(db: Session, *, venue_id: int, user: User, membershi
     state = get_or_create_billing_state(db, venue_id=int(venue_id))
     snapshot = get_billing_snapshot_for_state(state)
 
-    if user.system_role in {"SUPER_ADMIN", "MODERATOR"}:
+    if user.system_role in {"SUPER_ADMIN", "MODERATOR"} or is_demo_session_for_venue(
+        user,
+        venue_id=venue_id,
+    ):
         return {
             "billing_status": snapshot.status,
             "billing_access_mode": BILLING_ACCESS_FULL,

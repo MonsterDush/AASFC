@@ -39,9 +39,15 @@ class SecurityRateLimitServiceTests(TestCase):
 
     def test_consume_allows_limit_then_blocks_without_storing_raw_subject(self):
         with self.Session() as db:
-            first = consume_rate_limit(db, scope="public-lead-ip", subject="203.0.113.7", policy=self.policy, now=self.now)
-            second = consume_rate_limit(db, scope="public-lead-ip", subject="203.0.113.7", policy=self.policy, now=self.now)
-            blocked = consume_rate_limit(db, scope="public-lead-ip", subject="203.0.113.7", policy=self.policy, now=self.now)
+            first = consume_rate_limit(
+                db, scope="public-lead-ip", subject="203.0.113.7", policy=self.policy, now=self.now
+            )
+            second = consume_rate_limit(
+                db, scope="public-lead-ip", subject="203.0.113.7", policy=self.policy, now=self.now
+            )
+            blocked = consume_rate_limit(
+                db, scope="public-lead-ip", subject="203.0.113.7", policy=self.policy, now=self.now
+            )
             db.commit()
 
             row = db.execute(select(SecurityRateLimit)).scalar_one()
@@ -55,16 +61,24 @@ class SecurityRateLimitServiceTests(TestCase):
 
     def test_failed_attempts_block_at_threshold_and_reset_after_success(self):
         with self.Session() as db:
-            first = register_rate_limit_failure(db, scope="password-login-account", subject="+79990000001", policy=self.policy, now=self.now)
-            blocked = register_rate_limit_failure(db, scope="password-login-account", subject="+79990000001", policy=self.policy, now=self.now)
-            current = check_rate_limit(db, scope="password-login-account", subject="+79990000001", policy=self.policy, now=self.now)
+            first = register_rate_limit_failure(
+                db, scope="password-login-account", subject="+79990000001", policy=self.policy, now=self.now
+            )
+            blocked = register_rate_limit_failure(
+                db, scope="password-login-account", subject="+79990000001", policy=self.policy, now=self.now
+            )
+            current = check_rate_limit(
+                db, scope="password-login-account", subject="+79990000001", policy=self.policy, now=self.now
+            )
             self.assertTrue(first.allowed)
             self.assertFalse(blocked.allowed)
             self.assertFalse(current.allowed)
 
             reset_rate_limit(db, scope="password-login-account", subject="+79990000001")
             db.commit()
-            allowed = check_rate_limit(db, scope="password-login-account", subject="+79990000001", policy=self.policy, now=self.now)
+            allowed = check_rate_limit(
+                db, scope="password-login-account", subject="+79990000001", policy=self.policy, now=self.now
+            )
             self.assertTrue(allowed.allowed)
 
     def test_expired_window_starts_fresh(self):
@@ -140,8 +154,10 @@ class SecurityRateLimitRouterTests(TestCase):
     def test_password_login_stops_before_password_check_when_blocked(self):
         request = SimpleNamespace(client=SimpleNamespace(host="198.51.100.1"), headers={})
         db = MagicMock()
-        with patch.object(auth_phone, "check_rate_limit", return_value=RateLimitDecision(False, 90, 0)), \
-             patch.object(auth_phone, "find_user_by_phone") as find_user:
+        with (
+            patch.object(auth_phone, "check_rate_limit", return_value=RateLimitDecision(False, 90, 0)),
+            patch.object(auth_phone, "find_user_by_phone") as find_user,
+        ):
             with self.assertRaises(HTTPException) as raised:
                 auth_phone.password_login(
                     PasswordLoginIn(phone="+79990000001", password="Wrong123"),
@@ -156,9 +172,13 @@ class SecurityRateLimitRouterTests(TestCase):
     def test_password_login_records_both_failed_subjects(self):
         request = SimpleNamespace(client=SimpleNamespace(host="198.51.100.2"), headers={})
         db = MagicMock()
-        with patch.object(auth_phone, "check_rate_limit", return_value=RateLimitDecision(True, 0, 1)), \
-             patch.object(auth_phone, "find_user_by_phone", return_value=None), \
-             patch.object(auth_phone, "register_rate_limit_failure", return_value=RateLimitDecision(True, 0, 1)) as register:
+        with (
+            patch.object(auth_phone, "check_rate_limit", return_value=RateLimitDecision(True, 0, 1)),
+            patch.object(auth_phone, "find_user_by_phone", return_value=None),
+            patch.object(
+                auth_phone, "register_rate_limit_failure", return_value=RateLimitDecision(True, 0, 1)
+            ) as register,
+        ):
             with self.assertRaises(HTTPException) as raised:
                 auth_phone.password_login(
                     PasswordLoginIn(phone="+79990000001", password="Wrong123"),
@@ -174,8 +194,10 @@ class SecurityRateLimitRouterTests(TestCase):
         request = SimpleNamespace(client=SimpleNamespace(host="198.51.100.3"), headers={})
         db = MagicMock()
         payload = public_leads.PublicLeadIn(name="Тест", phone="+79990000001")
-        with patch.object(public_leads, "consume_rate_limit", return_value=RateLimitDecision(False, 60, 0)), \
-             patch.object(public_leads.tg_notify, "notify_result") as notify:
+        with (
+            patch.object(public_leads, "consume_rate_limit", return_value=RateLimitDecision(False, 60, 0)),
+            patch.object(public_leads.tg_notify, "notify_result") as notify,
+        ):
             with self.assertRaises(HTTPException) as raised:
                 public_leads.create_public_lead(payload, request, db)
         self.assertEqual(raised.exception.status_code, 429)

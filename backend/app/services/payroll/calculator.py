@@ -6,7 +6,15 @@ import json
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import PayComponent, PayProfile, PayProfileAssignment, PayrollLine, PayrollPaymentSettings, PayrollRun, User
+from app.models import (
+    PayComponent,
+    PayProfile,
+    PayProfileAssignment,
+    PayrollLine,
+    PayrollPaymentSettings,
+    PayrollRun,
+    User,
+)
 from app.services.finance.ledger import create_finance_entry, delete_finance_entries_for_source
 
 from .component_calculations import (
@@ -122,7 +130,9 @@ def calculate_payroll_for_month(
         db.add(run)
         db.flush()
     else:
-        run.calculated_by_user_id = int(calculated_by_user_id) if calculated_by_user_id is not None else run.calculated_by_user_id
+        run.calculated_by_user_id = (
+            int(calculated_by_user_id) if calculated_by_user_id is not None else run.calculated_by_user_id
+        )
         run.calculated_at = datetime.utcnow()
         db.execute(delete(PayrollLine).where(PayrollLine.payroll_run_id == int(run.id)))
         delete_finance_entries_for_source(db=db, source_type="payroll_run", source_id=int(run.id))
@@ -134,7 +144,9 @@ def calculate_payroll_for_month(
         .join(User, User.id == PayProfileAssignment.member_user_id)
         .where(PayProfileAssignment.venue_id == int(venue_id))
     ).all()
-    selected_assignments = _pick_latest_assignments(list(assignment_rows), month_start=month_start, month_end_excl=month_end_excl)
+    selected_assignments = _pick_latest_assignments(
+        list(assignment_rows), month_start=month_start, month_end_excl=month_end_excl
+    )
 
     member_user_ids = [int(assignment.member_user_id) for assignment, _profile, _user in selected_assignments]
     profile_ids = sorted({int(profile.id) for _assignment, profile, _user in selected_assignments})
@@ -186,7 +198,9 @@ def calculate_payroll_for_month(
             component_department_ids = _component_department_ids(component)
             if component_department_ids:
                 base_scope = _component_base_scope(component)
-                department_revenue_by_date = _sum_department_revenue_by_date_minor(revenue_metrics, component_department_ids)
+                department_revenue_by_date = _sum_department_revenue_by_date_minor(
+                    revenue_metrics, component_department_ids
+                )
                 if base_scope == BASE_SCOPE_FULL_PERIOD:
                     department_base_minor = _sum_department_revenue_minor(revenue_metrics, component_department_ids)
                 else:
@@ -248,7 +262,9 @@ def calculate_payroll_for_month(
                 breakdown_item["boost_percent_bps"] = percent_decision.boost_percent_bps
                 breakdown_item["base_amount_minor"] = int(percent_decision.base_amount_minor)
                 breakdown_item["base_scope"] = percent_decision.base_scope
-                breakdown_item["base_scope_title"] = BASE_SCOPE_TITLES.get(percent_decision.base_scope, percent_decision.base_scope)
+                breakdown_item["base_scope_title"] = BASE_SCOPE_TITLES.get(
+                    percent_decision.base_scope, percent_decision.base_scope
+                )
                 breakdown_item["boost_enabled"] = bool(percent_decision.boost_enabled)
                 breakdown_item["boost_applied"] = bool(percent_decision.boost_applied)
                 breakdown_item["boost_source_type"] = percent_decision.boost_source_type
@@ -260,8 +276,16 @@ def calculate_payroll_for_month(
                 breakdown_item["boost_actual_minor"] = percent_decision.boost_actual_minor
                 breakdown_item["boost_target_value"] = percent_decision.boost_target_value
                 breakdown_item["boost_actual_value"] = percent_decision.boost_actual_value
-                breakdown_item["boost_department_id"] = int(component.boost_department_id) if getattr(component, "boost_department_id", None) is not None else None
-                breakdown_item["boost_department_title"] = component.boost_department.title if getattr(component, "boost_department", None) is not None else None
+                breakdown_item["boost_department_id"] = (
+                    int(component.boost_department_id)
+                    if getattr(component, "boost_department_id", None) is not None
+                    else None
+                )
+                breakdown_item["boost_department_title"] = (
+                    component.boost_department.title
+                    if getattr(component, "boost_department", None) is not None
+                    else None
+                )
                 breakdown_item["department_ids"] = percent_decision.department_ids
                 breakdown_item["department_titles"] = percent_decision.department_titles
                 breakdown_item["boost_department_ids"] = percent_decision.boost_department_ids
@@ -272,7 +296,9 @@ def calculate_payroll_for_month(
                 breakdown_item["regular_amount_minor"] = int(percent_decision.regular_amount_minor)
                 breakdown_item["minimum_guarantee_minor"] = percent_decision.minimum_guarantee_minor
                 breakdown_item["minimum_guarantee_scope"] = percent_decision.minimum_guarantee_scope
-                breakdown_item["minimum_guarantee_scope_title"] = "за день" if percent_decision.minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY else "за месяц"
+                breakdown_item["minimum_guarantee_scope_title"] = (
+                    "за день" if percent_decision.minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY else "за месяц"
+                )
                 breakdown_item["maximum_cap_minor"] = percent_decision.maximum_cap_minor
                 breakdown_item["minimum_applied"] = bool(percent_decision.minimum_applied)
                 breakdown_item["maximum_applied"] = bool(percent_decision.maximum_applied)
@@ -282,11 +308,17 @@ def calculate_payroll_for_month(
                 breakdown_item["percent_bps"] = int(percent_decision.applied_percent_bps)
                 breakdown_item["regular_percent_bps"] = int(percent_decision.regular_percent_bps)
                 breakdown_item["boost_percent_bps"] = percent_decision.boost_percent_bps
-                breakdown_item["department_id"] = int(component.department_id) if component.department_id is not None else None
-                breakdown_item["department_title"] = component.department.title if getattr(component, "department", None) is not None else None
+                breakdown_item["department_id"] = (
+                    int(component.department_id) if component.department_id is not None else None
+                )
+                breakdown_item["department_title"] = (
+                    component.department.title if getattr(component, "department", None) is not None else None
+                )
                 breakdown_item["base_amount_minor"] = int(percent_decision.base_amount_minor)
                 breakdown_item["base_scope"] = percent_decision.base_scope
-                breakdown_item["base_scope_title"] = BASE_SCOPE_TITLES.get(percent_decision.base_scope, percent_decision.base_scope)
+                breakdown_item["base_scope_title"] = BASE_SCOPE_TITLES.get(
+                    percent_decision.base_scope, percent_decision.base_scope
+                )
                 breakdown_item["worked_dates_count"] = len(worked_dates_sorted)
                 breakdown_item["worked_dates"] = [day.isoformat() for day in worked_dates_sorted]
                 breakdown_item["boost_enabled"] = bool(percent_decision.boost_enabled)
@@ -300,8 +332,16 @@ def calculate_payroll_for_month(
                 breakdown_item["boost_actual_minor"] = percent_decision.boost_actual_minor
                 breakdown_item["boost_target_value"] = percent_decision.boost_target_value
                 breakdown_item["boost_actual_value"] = percent_decision.boost_actual_value
-                breakdown_item["boost_department_id"] = int(component.boost_department_id) if getattr(component, "boost_department_id", None) is not None else None
-                breakdown_item["boost_department_title"] = component.boost_department.title if getattr(component, "boost_department", None) is not None else None
+                breakdown_item["boost_department_id"] = (
+                    int(component.boost_department_id)
+                    if getattr(component, "boost_department_id", None) is not None
+                    else None
+                )
+                breakdown_item["boost_department_title"] = (
+                    component.boost_department.title
+                    if getattr(component, "boost_department", None) is not None
+                    else None
+                )
                 breakdown_item["department_ids"] = percent_decision.department_ids
                 breakdown_item["department_titles"] = percent_decision.department_titles
                 breakdown_item["boost_department_ids"] = percent_decision.boost_department_ids
@@ -312,7 +352,9 @@ def calculate_payroll_for_month(
                 breakdown_item["regular_amount_minor"] = int(percent_decision.regular_amount_minor)
                 breakdown_item["minimum_guarantee_minor"] = percent_decision.minimum_guarantee_minor
                 breakdown_item["minimum_guarantee_scope"] = percent_decision.minimum_guarantee_scope
-                breakdown_item["minimum_guarantee_scope_title"] = "за день" if percent_decision.minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY else "за месяц"
+                breakdown_item["minimum_guarantee_scope_title"] = (
+                    "за день" if percent_decision.minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY else "за месяц"
+                )
                 breakdown_item["maximum_cap_minor"] = percent_decision.maximum_cap_minor
                 breakdown_item["minimum_applied"] = bool(percent_decision.minimum_applied)
                 breakdown_item["maximum_applied"] = bool(percent_decision.maximum_applied)
@@ -320,8 +362,12 @@ def calculate_payroll_for_month(
                 breakdown_item["calculation_snapshot"] = _build_percent_component_snapshot(component, percent_decision)
             elif component_type == "KPI_BONUS":
                 kpi_decision = calculate_kpi_bonus(component, kpi_metric_value=int(kpi_metric_value))
-                breakdown_item["kpi_metric_id"] = int(component.kpi_metric_id) if component.kpi_metric_id is not None else None
-                breakdown_item["kpi_metric_title"] = component.kpi_metric.title if getattr(component, "kpi_metric", None) is not None else None
+                breakdown_item["kpi_metric_id"] = (
+                    int(component.kpi_metric_id) if component.kpi_metric_id is not None else None
+                )
+                breakdown_item["kpi_metric_title"] = (
+                    component.kpi_metric.title if getattr(component, "kpi_metric", None) is not None else None
+                )
                 breakdown_item["metric_value"] = int(kpi_decision.metric_value)
                 breakdown_item["threshold_value"] = kpi_decision.threshold_value
                 breakdown_item["matched_step"] = kpi_decision.matched_step
@@ -343,7 +389,9 @@ def calculate_payroll_for_month(
                 kpi_values_by_metric_date_slot=kpi_metrics.values_by_metric_date_slot,
             )
             for shift_id, shift_amount_minor in shift_allocations.items():
-                earnings_by_shift_minor[int(shift_id)] = int(earnings_by_shift_minor.get(int(shift_id), 0) or 0) + int(shift_amount_minor or 0)
+                earnings_by_shift_minor[int(shift_id)] = int(earnings_by_shift_minor.get(int(shift_id), 0) or 0) + int(
+                    shift_amount_minor or 0
+                )
             line_total += int(amount_minor)
 
         for component in minimum_payout_components:
@@ -361,7 +409,9 @@ def calculate_payroll_for_month(
                 for row in shift_rows:
                     shift_id = int(row.get("shift_id") or 0)
                     if shift_id:
-                        earnings_by_shift_minor[shift_id] = int(earnings_by_shift_minor.get(shift_id, 0) or 0) + int(row.get("amount_minor") or 0)
+                        earnings_by_shift_minor[shift_id] = int(earnings_by_shift_minor.get(shift_id, 0) or 0) + int(
+                            row.get("amount_minor") or 0
+                        )
             else:
                 top_up_minor = max(0, minimum_target_minor - amount_before_minimum_minor)
             breakdown_items.append(
@@ -377,9 +427,15 @@ def calculate_payroll_for_month(
                     "minimum_guarantee_scope": minimum_scope,
                     "minimum_guarantee_scope_title": _minimum_payout_scope_title(minimum_scope),
                     "amount_before_minimum_minor": int(amount_before_minimum_minor),
-                    "aggregate_shift_amount_before_minimum_minor": int(sum(int(row.get("amount_before_minimum_minor") or 0) for row in shift_rows)) if shift_rows else None,
+                    "aggregate_shift_amount_before_minimum_minor": int(
+                        sum(int(row.get("amount_before_minimum_minor") or 0) for row in shift_rows)
+                    )
+                    if shift_rows
+                    else None,
                     "minimum_applied": bool(top_up_minor > 0),
-                    "minimum_applied_shifts_count": int(sum(1 for row in shift_rows if row.get("minimum_applied"))) if shift_rows else None,
+                    "minimum_applied_shifts_count": int(sum(1 for row in shift_rows if row.get("minimum_applied")))
+                    if shift_rows
+                    else None,
                     "shift_rows": shift_rows,
                     "minutes_total": int(metrics.minutes_total),
                     "hours_total": round(int(metrics.minutes_total) / 60.0, 2),
@@ -398,9 +454,8 @@ def calculate_payroll_for_month(
                 {int(item.shift_id): max(1, int(item.minutes or 0)) for item in worked_shifts_ordered},
             )
             for shift_id, shift_amount_minor in remainder_allocations.items():
-                earnings_by_shift_minor[int(shift_id)] = (
-                    int(earnings_by_shift_minor.get(int(shift_id), 0) or 0)
-                    + int(shift_amount_minor or 0)
+                earnings_by_shift_minor[int(shift_id)] = int(earnings_by_shift_minor.get(int(shift_id), 0) or 0) + int(
+                    shift_amount_minor or 0
                 )
 
         shift_allocations = [
@@ -417,7 +472,10 @@ def calculate_payroll_for_month(
 
         breakdown_payload = {
             "member_user_id": int(member_user.id),
-            "member_name": member_user.short_name or member_user.full_name or member_user.tg_username or f"user #{member_user.id}",
+            "member_name": member_user.short_name
+            or member_user.full_name
+            or member_user.tg_username
+            or f"user #{member_user.id}",
             "pay_profile_id": int(profile.id),
             "pay_profile_title": profile.title,
             "metrics": {
@@ -431,8 +489,7 @@ def calculate_payroll_for_month(
                 "total_revenue_minor": int(revenue_metrics.total_revenue_minor),
             },
             "kpi_metrics": {
-                str(metric_id): int(value)
-                for metric_id, value in sorted(kpi_metrics.totals_by_metric_id.items())
+                str(metric_id): int(value) for metric_id, value in sorted(kpi_metrics.totals_by_metric_id.items())
             },
             "components": breakdown_items,
             "shift_allocations": shift_allocations,
@@ -452,11 +509,14 @@ def calculate_payroll_for_month(
 
     db.flush()
 
-    payment_settings_enabled = db.execute(
-        select(PayrollPaymentSettings.id).where(
-            PayrollPaymentSettings.venue_id == int(venue_id),
-        )
-    ).scalar_one_or_none() is not None
+    payment_settings_enabled = (
+        db.execute(
+            select(PayrollPaymentSettings.id).where(
+                PayrollPaymentSettings.venue_id == int(venue_id),
+            )
+        ).scalar_one_or_none()
+        is not None
+    )
     if not payment_settings_enabled:
         for line in lines:
             if int(line.amount_minor or 0) <= 0:

@@ -19,6 +19,15 @@ EXPECTED_AUTH_ROUTE_MANIFEST_SHA256 = "b83f1dfa02554a396c3dd1fa6b9f019da82bca47c
 EXPECTED_AUTH_OPENAPI_SHA256 = "43f936ede98ad94d22560f1871cc8345c36a1c551253404fb484c2e5d1e7b39d"
 
 
+def _effective_routes(router):
+    for route in router.routes:
+        effective_contexts = getattr(route, "effective_route_contexts", None)
+        if callable(effective_contexts):
+            yield from effective_contexts()
+        else:
+            yield route
+
+
 def _route_manifest(router) -> list[dict]:
     return [
         {
@@ -28,7 +37,7 @@ def _route_manifest(router) -> list[dict]:
             "status": route.status_code,
             "response_model": getattr(getattr(route, "response_model", None), "__name__", None),
         }
-        for route in router.routes
+        for route in _effective_routes(router)
     ]
 
 
@@ -107,7 +116,7 @@ class AuthRouterSplitContractTests(TestCase):
     def test_canonical_and_legacy_webhook_routes_are_registered(self):
         routes = {
             (method, route.path, route.name)
-            for route in main.app.routes
+            for route in _effective_routes(main.app.router)
             for method in getattr(route, "methods", set())
         }
         self.assertIn(("POST", "/auth/telegram/browser/webhook", "telegram_browser_webhook"), routes)

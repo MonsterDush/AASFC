@@ -87,15 +87,21 @@ def build_expense_recognition_plan(
                         "spread_months": int(expense.spread_months or 1),
                         "category_id": int(expense.category_id),
                         "supplier_id": int(expense.supplier_id) if expense.supplier_id is not None else None,
-                        "payment_method_id": int(expense.payment_method_id) if expense.payment_method_id is not None else None,
-                        "recurring_rule_id": int(expense.recurring_rule_id) if expense.recurring_rule_id is not None else None,
+                        "payment_method_id": int(expense.payment_method_id)
+                        if expense.payment_method_id is not None
+                        else None,
+                        "recurring_rule_id": int(expense.recurring_rule_id)
+                        if expense.recurring_rule_id is not None
+                        else None,
                     },
                 )
             )
     return plan
 
 
-def rebuild_expense_recognition_entries_for_expense(*, db: Session, expense: Expense, allocations: list[ExpenseAllocation] | None = None) -> list[ExpenseRecognitionEntry]:
+def rebuild_expense_recognition_entries_for_expense(
+    *, db: Session, expense: Expense, allocations: list[ExpenseAllocation] | None = None
+) -> list[ExpenseRecognitionEntry]:
     if expense.id is None:
         raise ValueError("Expense must be flushed before recognition rebuild")
 
@@ -105,16 +111,18 @@ def rebuild_expense_recognition_entries_for_expense(*, db: Session, expense: Exp
     if expense_status != "CONFIRMED":
         return []
 
-    allocation_rows = allocations if allocations is not None else list(
-        db.scalars(
-            select(ExpenseAllocation)
-            .where(ExpenseAllocation.expense_id == int(expense.id))
-            .order_by(ExpenseAllocation.month.asc(), ExpenseAllocation.id.asc())
-        ).all()
+    allocation_rows = (
+        allocations
+        if allocations is not None
+        else list(
+            db.scalars(
+                select(ExpenseAllocation)
+                .where(ExpenseAllocation.expense_id == int(expense.id))
+                .order_by(ExpenseAllocation.month.asc(), ExpenseAllocation.id.asc())
+            ).all()
+        )
     )
-    venue = db.execute(
-        select(Venue).where(Venue.id == int(expense.venue_id))
-    ).scalar_one_or_none()
+    venue = db.execute(select(Venue).where(Venue.id == int(expense.venue_id))).scalar_one_or_none()
     available_shift_slots = ["DAY", "NIGHT"] if bool(getattr(venue, "night_shifts_enabled", False)) else ["DAY"]
     plan = build_expense_recognition_plan(
         expense=expense,

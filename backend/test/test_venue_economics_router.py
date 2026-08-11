@@ -50,10 +50,19 @@ from app.services.payroll.calculator import (
 EXPECTED_VENUES_ROUTE_MANIFEST_SHA256 = "7d66c6ba303d7850ca14909f0e20046f5474694d0b1a34fa77534e7a0fe4868b"
 
 
+def _effective_routes(router):
+    for route in router.routes:
+        effective_contexts = getattr(route, "effective_route_contexts", None)
+        if callable(effective_contexts):
+            yield from effective_contexts()
+        else:
+            yield route
+
+
 def _route_manifest(router) -> list[tuple[list[str], str, str]]:
     return sorted(
         (sorted(getattr(route, "methods", set())), route.path, route.name)
-        for route in router.routes
+        for route in _effective_routes(router)
     )
 
 
