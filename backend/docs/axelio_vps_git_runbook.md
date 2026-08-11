@@ -221,6 +221,9 @@ APP_ENV=development
 APP_ENV=production
 COOKIE_SECURE=true
 PHONE_AUTH_DEBUG_REVEAL_CODE=false
+SENTRY_DSN=https://public-key@your-sentry-host/project-id
+SENTRY_TRACES_SAMPLE_RATE=0.05
+LOG_JSON=true
 ```
 
 Для production-входа по SMS используйте `PHONE_AUTH_PROVIDER=sms_ru`.
@@ -498,39 +501,14 @@ git clean -fd
 
 ---
 
-## 15. Git: откат к конкретному коммиту
+## 15. Откат релиза
 
-Посмотреть историю:
+Не переписывайте историю веток и не используйте `git push --force` для отката
+production. Запустите GitHub Actions workflow `Rollback`, выберите окружение и
+оставьте `target_sha` пустым для возврата к записанному предыдущему релизу.
 
-```bash
-git log --oneline
-```
-
-Временно перейти на коммит:
-
-```bash
-git checkout HASH_КОММИТА
-```
-
-Откатить ветку жёстко до коммита:
-
-```bash
-git reset --hard HASH_КОММИТА
-```
-
-Запушить такой откат в develop:
-
-```bash
-git push origin develop --force
-```
-
-Запушить такой откат в main:
-
-```bash
-git push origin main --force
-```
-
-`--force` использовать только когда точно понимаешь, что хочешь переписать историю.
+Полная процедура, автоматический smoke и ограничения отката миграций описаны в
+`backend/docs/engineering-stage3-runbook.md`.
 
 ---
 
@@ -554,28 +532,12 @@ git update-index -q --refresh
 
 ## 17. Ручной деплой dev с сервера
 
-```bash
-cd /var/www/axelio/dev/repo
-git checkout develop
-git pull origin develop
+Штатный деплой выполняется только GitHub Actions после зелёного quality gate.
+Ручное изменение checkout, установка зависимостей и миграция по отдельности не
+считаются управляемым релизом и не должны использоваться как обычный процесс.
 
-cd backend
-source /var/www/axelio/dev/venv/bin/activate
-pip install -r requirements.txt
-alembic upgrade head
-
-sudo systemctl restart axelio-api-dev
-sudo systemctl restart axelio-bot-dev
-sudo systemctl reload nginx
-```
-
-Проверка:
-
-```bash
-curl http://127.0.0.1:9001/health
-journalctl -u axelio-api-dev -n 50 --no-pager
-journalctl -u axelio-bot-dev -n 50 --no-pager
-```
+Для диагностики и аварийных действий используйте
+`backend/docs/engineering-stage3-runbook.md`.
 
 ---
 
@@ -585,7 +547,8 @@ journalctl -u axelio-bot-dev -n 50 --no-pager
 sudo systemctl status axelio-api-dev --no-pager
 sudo systemctl status axelio-bot-dev --no-pager
 sudo nginx -t
-curl http://127.0.0.1:9001/health
+curl -i https://api-dev.axelio.ru/health/ready
+cat /var/www/axelio/dev/deployments/current.sha
 ```
 
 Если что-то упало:

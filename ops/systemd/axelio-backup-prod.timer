@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Axelio production backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+Unit=axelio-backup-prod.service
+
+[Install]
+WantedBy=timers.target

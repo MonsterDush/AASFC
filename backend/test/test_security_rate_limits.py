@@ -123,6 +123,7 @@ class ProductionSecurityConfigurationTests(TestCase):
             "PHONE_AUTH_PROVIDER": "sms_ru",
             "PHONE_AUTH_DEBUG_REVEAL_CODE": False,
             "COOKIE_SECURE": True,
+            "SENTRY_DSN": "https://public@example.invalid/1",
         }
         values.update(overrides)
         return Settings(**values)
@@ -134,6 +135,12 @@ class ProductionSecurityConfigurationTests(TestCase):
             self._settings(PHONE_AUTH_DEBUG_REVEAL_CODE=True)
         with self.assertRaisesRegex(ValueError, "COOKIE_SECURE=false"):
             self._settings(COOKIE_SECURE=False)
+        with self.assertRaisesRegex(ValueError, "SENTRY_DSN is required"):
+            self._settings(SENTRY_DSN="")
+
+    def test_sentry_trace_sample_rate_is_bounded(self):
+        with self.assertRaisesRegex(ValueError, "between 0 and 1"):
+            self._settings(SENTRY_TRACES_SAMPLE_RATE=1.5)
 
     def test_production_disables_openapi_surfaces(self):
         with patch.object(main.settings, "APP_ENV", "production"):

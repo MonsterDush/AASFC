@@ -1,0 +1,76 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to roll back
+        required: true
+        type: choice
+        options:
+          - development
+          - production
+      target_sha:
+        description: Full commit SHA; leave empty to use the recorded previous release
+        required: false
+        type: string
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: rollback-${{ inputs.environment }}
+      cancel-in-progress: false
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ inputs.environment == 'production' && 'https://app.axelio.ru' || 'https://app-dev.axelio.ru' }}
+    steps:
+      - name: Check secrets presence
+        run: |
+          test -n "${{ secrets.SSH_HOST }}" || { echo "SSH_HOST is empty"; exit 1; }
+          test -n "${{ secrets.SSH_USER }}" || { echo "SSH_USER is empty"; exit 1; }
+          test -n "${{ secrets.SSH_KEY }}" || { echo "SSH_KEY is empty"; exit 1; }
+          test -n "${{ secrets.SSH_PORT }}" || { echo "SSH_PORT is empty"; exit 1; }
+
+      - name: Roll back exact release
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          RELEASE_SHA: ${{ inputs.target_sha }}
+          CI_ACTOR: ${{ github.actor }}
+          CI_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          APP_ROOT: ${{ inputs.environment == 'production' && '/var/www/axelio/prod' || '/var/www/axelio/dev' }}
+          BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+          ENV_NAME: ${{ inputs.environment == 'production' && 'prod' || 'dev' }}
+          API_SERVICE: ${{ inputs.environment == 'production' && 'axelio-api-prod' || 'axelio-api-dev' }}
+          BOT_SERVICE: ${{ inputs.environment == 'production' && 'axelio-bot-prod' || 'axelio-bot-dev' }}
+          SHIFT_TIMER: ${{ inputs.environment == 'production' && 'axelio-shift-reminders-prod.timer' || 'axelio-shift-reminders-dev.timer' }}
+          NOTIFY_TIMER: ${{ inputs.environment == 'production' && 'axelio-notification-jobs-prod.timer' || 'axelio-notification-jobs-dev.timer' }}
+          API_BASE_URL: ${{ inputs.environment == 'production' && 'https://api.axelio.ru' || 'https://api-dev.axelio.ru' }}
+          FRONTEND_BASE_URL: ${{ inputs.environment == 'production' && 'https://app.axelio.ru' || 'https://app-dev.axelio.ru' }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: RELEASE_SHA,CI_ACTOR,CI_RUN_URL,APP_ROOT,BRANCH,ENV_NAME,API_SERVICE,BOT_SERVICE,SHIFT_TIMER,NOTIFY_TIMER,API_BASE_URL,FRONTEND_BASE_URL
+          script: |
+            set -euo pipefail
+            REPO_DIR="${APP_ROOT}/repo"
+            DEPLOY_TOOL_DIR="${APP_ROOT}/.deploy-tools"
+
+            git -C "${REPO_DIR}" fetch --prune origin
+            TOOL_SHA="$(git -C "${REPO_DIR}" rev-parse "origin/${BRANCH}")"
+            install -d -m 0700 "${DEPLOY_TOOL_DIR}"
+            git -C "${REPO_DIR}" show \
+              "${TOOL_SHA}:ops/deploy/release.sh" \
+              >"${DEPLOY_TOOL_DIR}/release.sh"
+            git -C "${REPO_DIR}" show \
+              "${TOOL_SHA}:ops/deploy/post-deploy-smoke.sh" \
+              >"${DEPLOY_TOOL_DIR}/post-deploy-smoke.sh"
+            chmod 0700 \
+              "${DEPLOY_TOOL_DIR}/release.sh" \
+              "${DEPLOY_TOOL_DIR}/post-deploy-smoke.sh"
+
+            SMOKE_SCRIPT="${DEPLOY_TOOL_DIR}/post-deploy-smoke.sh" \
+              "${DEPLOY_TOOL_DIR}/release.sh" rollback

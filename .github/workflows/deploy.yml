@@ -112,7 +112,14 @@ jobs:
       - name: Check repository hygiene and shell syntax
         run: |
           python tools/check_repository_hygiene.py
-          bash -n tools/e2e-local.sh tools/migration-smoke.sh
+          bash -n \
+            tools/e2e-local.sh \
+            tools/migration-smoke.sh \
+            ops/backup/postgres-backup.sh \
+            ops/backup/restore-drill.sh \
+            ops/deploy/post-deploy-smoke.sh \
+            ops/deploy/production-readiness.sh \
+            ops/deploy/release.sh
 
       - name: Run backend tests with branch coverage gate
         working-directory: backend
@@ -206,104 +213,122 @@ jobs:
 
           pnpm test:browser
 
-  deploy:
-    if: github.event_name == 'push'
+      - name: Encrypted PostgreSQL backup and restore drill
+        env:
+          RESTORE_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/axelio_restore_drill
+          BACKUP_ENCRYPTION_PASSWORD: axelio-ci-restore-drill-only
+          BACKUP_VERIFY_TABLES: users venues finance_entries payroll_runs
+          RELEASE_VERSION: ${{ github.sha }}
+        run: ops/backup/restore-drill.sh
+
+  production_readiness:
+    if: github.event_name == 'push' && github.ref_name == 'develop'
     needs: quality
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: production-readiness
+      cancel-in-progress: false
+    environment:
+      name: production-readiness
     steps:
       - name: Check secrets presence
         run: |
-          if [ -z "${{ secrets.SSH_KEY }}" ]; then
-            echo "SSH_KEY is empty"
-            exit 1
-          else
-            echo "SSH_KEY is present"
-          fi
+          test -n "${{ secrets.SSH_HOST }}" || { echo "SSH_HOST is empty"; exit 1; }
+          test -n "${{ secrets.SSH_USER }}" || { echo "SSH_USER is empty"; exit 1; }
+          test -n "${{ secrets.SSH_KEY }}" || { echo "SSH_KEY is empty"; exit 1; }
+          test -n "${{ secrets.SSH_PORT }}" || { echo "SSH_PORT is empty"; exit 1; }
 
-      - name: SSH Deploy
+      - name: Verify production observability and offsite backup
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          PROD_APP_ROOT: /var/www/axelio/prod
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          envs: RELEASE_SHA,PROD_APP_ROOT
           script: |
             set -euo pipefail
+            REPO_DIR="${PROD_APP_ROOT}/repo"
+            READINESS_TOOL_DIR="${PROD_APP_ROOT}/.readiness-tools"
 
-            if [ "${{ github.ref_name }}" = "develop" ]; then
-              APP_ROOT=/var/www/axelio/dev
-              BRANCH=develop
-              API_SERVICE=axelio-api-dev
-              BOT_SERVICE=axelio-bot-dev
-              SHIFT_TIMER=axelio-shift-reminders-dev.timer
-              NOTIFY_TIMER=axelio-notification-jobs-dev.timer
-              ENV_NAME=dev
-            else
-              APP_ROOT=/var/www/axelio/prod
-              BRANCH=main
-              API_SERVICE=axelio-api-prod
-              BOT_SERVICE=axelio-bot-prod
-              SHIFT_TIMER=axelio-shift-reminders-prod.timer
-              NOTIFY_TIMER=axelio-notification-jobs-prod.timer
-              ENV_NAME=prod
-            fi
+            git -C "${REPO_DIR}" fetch --prune origin
+            git -C "${REPO_DIR}" cat-file -e "${RELEASE_SHA}^{commit}"
+            install -d -m 0700 "${READINESS_TOOL_DIR}"
+            git -C "${REPO_DIR}" show \
+              "${RELEASE_SHA}:ops/deploy/production-readiness.sh" \
+              >"${READINESS_TOOL_DIR}/production-readiness.sh"
+            git -C "${REPO_DIR}" show \
+              "${RELEASE_SHA}:ops/backup/postgres-backup.sh" \
+              >"${READINESS_TOOL_DIR}/postgres-backup.sh"
+            chmod 0700 \
+              "${READINESS_TOOL_DIR}/production-readiness.sh" \
+              "${READINESS_TOOL_DIR}/postgres-backup.sh"
 
-            REPO_DIR=$APP_ROOT/repo
-            BACKEND_DIR=$REPO_DIR/backend
-            VENV_BIN=$APP_ROOT/venv/bin
+            sudo PROD_APP_ROOT="${PROD_APP_ROOT}" \
+              RELEASE_SHA="${RELEASE_SHA}" \
+              BACKUP_SCRIPT="${READINESS_TOOL_DIR}/postgres-backup.sh" \
+              "${READINESS_TOOL_DIR}/production-readiness.sh"
 
-            echo "Deploy branch: $BRANCH -> $ENV_NAME"
-            echo "App root: $APP_ROOT"
+  deploy:
+    if: github.event_name == 'push'
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: deploy-${{ github.ref_name }}
+      cancel-in-progress: false
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+      url: ${{ github.ref_name == 'main' && 'https://app.axelio.ru' || 'https://app-dev.axelio.ru' }}
+    steps:
+      - name: Check secrets presence
+        run: |
+          test -n "${{ secrets.SSH_HOST }}" || { echo "SSH_HOST is empty"; exit 1; }
+          test -n "${{ secrets.SSH_USER }}" || { echo "SSH_USER is empty"; exit 1; }
+          test -n "${{ secrets.SSH_KEY }}" || { echo "SSH_KEY is empty"; exit 1; }
+          test -n "${{ secrets.SSH_PORT }}" || { echo "SSH_PORT is empty"; exit 1; }
 
-            cd "$REPO_DIR"
-            git fetch --prune origin
-            git checkout "$BRANCH"
-            git reset --hard "origin/$BRANCH"
-            git clean -fd
+      - name: SSH Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          CI_ACTOR: ${{ github.actor }}
+          CI_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          APP_ROOT: ${{ github.ref_name == 'main' && '/var/www/axelio/prod' || '/var/www/axelio/dev' }}
+          BRANCH: ${{ github.ref_name }}
+          ENV_NAME: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+          API_SERVICE: ${{ github.ref_name == 'main' && 'axelio-api-prod' || 'axelio-api-dev' }}
+          BOT_SERVICE: ${{ github.ref_name == 'main' && 'axelio-bot-prod' || 'axelio-bot-dev' }}
+          SHIFT_TIMER: ${{ github.ref_name == 'main' && 'axelio-shift-reminders-prod.timer' || 'axelio-shift-reminders-dev.timer' }}
+          NOTIFY_TIMER: ${{ github.ref_name == 'main' && 'axelio-notification-jobs-prod.timer' || 'axelio-notification-jobs-dev.timer' }}
+          API_BASE_URL: ${{ github.ref_name == 'main' && 'https://api.axelio.ru' || 'https://api-dev.axelio.ru' }}
+          FRONTEND_BASE_URL: ${{ github.ref_name == 'main' && 'https://app.axelio.ru' || 'https://app-dev.axelio.ru' }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: RELEASE_SHA,CI_ACTOR,CI_RUN_URL,APP_ROOT,BRANCH,ENV_NAME,API_SERVICE,BOT_SERVICE,SHIFT_TIMER,NOTIFY_TIMER,API_BASE_URL,FRONTEND_BASE_URL
+          script: |
+            set -euo pipefail
+            REPO_DIR="${APP_ROOT}/repo"
+            DEPLOY_TOOL_DIR="${APP_ROOT}/.deploy-tools"
 
-            ENV_FILE="$BACKEND_DIR/.env"
-            if [ ! -f "$ENV_FILE" ]; then
-              echo "Missing backend env: $ENV_FILE"
-              exit 1
-            fi
+            git -C "${REPO_DIR}" fetch --prune origin
+            install -d -m 0700 "${DEPLOY_TOOL_DIR}"
+            git -C "${REPO_DIR}" show \
+              "${RELEASE_SHA}:ops/deploy/release.sh" \
+              >"${DEPLOY_TOOL_DIR}/release.sh"
+            git -C "${REPO_DIR}" show \
+              "${RELEASE_SHA}:ops/deploy/post-deploy-smoke.sh" \
+              >"${DEPLOY_TOOL_DIR}/post-deploy-smoke.sh"
+            chmod 0700 \
+              "${DEPLOY_TOOL_DIR}/release.sh" \
+              "${DEPLOY_TOOL_DIR}/post-deploy-smoke.sh"
 
-            set_env_value() {
-              key="$1"
-              value="$2"
-              if grep -q "^${key}=" "$ENV_FILE"; then
-                sudo sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
-              else
-                printf '\n%s=%s\n' "$key" "$value" | sudo tee -a "$ENV_FILE" >/dev/null
-              fi
-            }
-
-            if [ "$ENV_NAME" = "prod" ]; then
-              set_env_value APP_ENV production
-              set_env_value COOKIE_SECURE true
-              set_env_value PHONE_AUTH_DEBUG_REVEAL_CODE false
-            else
-              set_env_value APP_ENV development
-            fi
-
-            "$VENV_BIN/pip" install -r "$BACKEND_DIR/requirements.txt"
-
-            cd "$BACKEND_DIR"
-            if [ "$ENV_NAME" = "prod" ]; then
-              "$VENV_BIN/python" -c 'from app.core.config import settings; assert settings.is_production(), "Set APP_ENV=production in backend/.env before deploying production"'
-            fi
-            "$VENV_BIN/alembic" upgrade head
-            "$VENV_BIN/python" -m app.core.sync_permissions
-            "$VENV_BIN/python" -m app.scripts.seed_position_permission_templates
-
-            sudo install -D -m 0644 \
-              "$REPO_DIR/ops/nginx/axelio-security-headers.conf" \
-              /etc/nginx/snippets/axelio-security-headers.conf
-            sudo nginx -t
-            sudo systemctl daemon-reload
-            sudo systemctl restart "$API_SERVICE"
-            sudo systemctl restart "$BOT_SERVICE"
-            sudo systemctl restart "$SHIFT_TIMER"
-            sudo systemctl restart "$NOTIFY_TIMER"
-            sudo systemctl reload nginx
-
-            echo "Deployed $BRANCH -> $ENV_NAME"
+            SMOKE_SCRIPT="${DEPLOY_TOOL_DIR}/post-deploy-smoke.sh" \
+              "${DEPLOY_TOOL_DIR}/release.sh" deploy

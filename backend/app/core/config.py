@@ -6,6 +6,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     APP_ENV: str = "development"
+    RELEASE_VERSION: str = "local"
+
+    # Observability
+    LOG_LEVEL: str = "INFO"
+    LOG_JSON: bool = True
+    SENTRY_DSN: str = ""
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
 
     # Database
     database_url: str
@@ -117,6 +124,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self):
+        if not 0.0 <= float(self.SENTRY_TRACES_SAMPLE_RATE) <= 1.0:
+            raise ValueError("SENTRY_TRACES_SAMPLE_RATE must be between 0 and 1")
         if self.is_production():
             provider = str(self.PHONE_AUTH_PROVIDER or "").strip().lower()
             if provider == "debug":
@@ -125,18 +134,19 @@ class Settings(BaseSettings):
                 raise ValueError("PHONE_AUTH_DEBUG_REVEAL_CODE=true is forbidden in production")
             if not self.COOKIE_SECURE:
                 raise ValueError("COOKIE_SECURE=false is forbidden in production")
+            if not str(self.SENTRY_DSN or "").strip():
+                raise ValueError("SENTRY_DSN is required in production")
         return self
 
     def is_production(self) -> bool:
         return str(self.APP_ENV or "").strip().lower() in {"prod", "production"}
 
+    def release_version(self) -> str:
+        return str(self.RELEASE_VERSION or "local").strip() or "local"
+
     def trusted_proxy_ips(self) -> set[str]:
         raw = str(self.TRUSTED_PROXY_IPS or "")
-        return {
-            item.strip()
-            for item in raw.replace(";", ",").replace("\n", ",").split(",")
-            if item.strip()
-        }
+        return {item.strip() for item in raw.replace(";", ",").replace("\n", ",").split(",") if item.strip()}
 
     def frontend_base_url(self) -> str:
         raw = (self.FRONTEND_BASE_URL or self.APP_BASE_URL or "").strip().rstrip("/")
@@ -155,6 +165,7 @@ class Settings(BaseSettings):
         if frontend:
             try:
                 from urllib.parse import urlparse
+
                 parsed = urlparse(frontend)
                 host = (parsed.hostname or "").strip().lower()
                 if host:
