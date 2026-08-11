@@ -24,10 +24,14 @@ Validate before reload:
 sudo nginx -t
 sudo systemctl reload nginx
 curl -sSI https://app.axelio.ru/ | grep -Ei \
-  'strict-transport-security|content-security-policy|x-frame-options|x-content-type-options|referrer-policy|permissions-policy'
+  'strict-transport-security|content-security-policy|x-content-type-options|referrer-policy|permissions-policy'
 curl -sSI https://api.axelio.ru/health | grep -Ei \
   'strict-transport-security|content-security-policy|x-frame-options|x-content-type-options|referrer-policy|permissions-policy'
 ```
+
+The frontend CSP allows framing only by Telegram Web. Do not add
+`X-Frame-Options: DENY` to app responses: Telegram web clients load Mini Apps
+in an iframe. FastAPI keeps `X-Frame-Options: DENY` for API responses.
 
 Do not replace an unknown server configuration automatically. Adding the
 `include` is a one-time reviewed operations change; afterward the tracked
