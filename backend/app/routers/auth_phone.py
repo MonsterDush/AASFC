@@ -25,8 +25,16 @@ from app.auth.phone_auth import (
     resolve_verified_challenge,
 )
 from app.core.db import get_db
+from app.core.request_ip import resolve_client_ip
 from app.models import User
 from app.services.invites import accept_phone_invites_for_user
+from app.services.security_rate_limits import (
+    RateLimitDecision,
+    RateLimitPolicy,
+    check_rate_limit,
+    register_rate_limit_failure,
+    reset_rate_limit,
+)
 from app.services.sms_auth import get_sms_provider
 from app.settings import settings
 
@@ -45,6 +53,38 @@ from .auth_schemas import (
 
 router = APIRouter()
 link_router = APIRouter()
+
+_PASSWORD_LOGIN_ACCOUNT_SCOPE = "password-login-account"
+_PASSWORD_LOGIN_IP_SCOPE = "password-login-ip"
+
+
+def _password_login_policies() -> tuple[RateLimitPolicy, RateLimitPolicy]:
+    window_seconds = int(settings.PASSWORD_LOGIN_RATE_WINDOW_SECONDS or 900)
+    block_seconds = int(settings.PASSWORD_LOGIN_BLOCK_SECONDS or 900)
+    return (
+        RateLimitPolicy(
+            limit=int(settings.PASSWORD_LOGIN_ACCOUNT_LIMIT or 5),
+            window_seconds=window_seconds,
+            block_seconds=block_seconds,
+        ),
+        RateLimitPolicy(
+            limit=int(settings.PASSWORD_LOGIN_IP_LIMIT or 20),
+            window_seconds=window_seconds,
+            block_seconds=block_seconds,
+        ),
+    )
+
+
+def _raise_login_rate_limit(decisions: list[RateLimitDecision]) -> None:
+    blocked = [decision for decision in decisions if not decision.allowed]
+    if not blocked:
+        return
+    retry_after = max(decision.retry_after_seconds for decision in blocked)
+    raise HTTPException(
+        status_code=429,
+        detail="Слишком много попыток входа. Попробуйте позже.",
+        headers={"Retry-After": str(max(1, retry_after))},
+    )
 
 
 def _phone_auth_config_payload() -> dict:
@@ -238,12 +278,49 @@ def verify_phone_code(payload: PhoneCodeVerifyIn, response: Response, db: Sessio
 
 
 @router.post("/password/login", response_model=AuthStateOut)
-def password_login(payload: PasswordLoginIn, response: Response, db: Session = Depends(get_db)):
+def password_login(payload: PasswordLoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
     phone_e164 = normalize_phone_e164(payload.phone)
+    client_ip = resolve_client_ip(request)
+    account_policy, ip_policy = _password_login_policies()
+    _raise_login_rate_limit(
+        [
+            check_rate_limit(
+                db,
+                scope=_PASSWORD_LOGIN_ACCOUNT_SCOPE,
+                subject=phone_e164,
+                policy=account_policy,
+            ),
+            check_rate_limit(
+                db,
+                scope=_PASSWORD_LOGIN_IP_SCOPE,
+                subject=client_ip,
+                policy=ip_policy,
+            ),
+        ]
+    )
+
     user = find_user_by_phone(db, phone_e164=phone_e164)
     if user is None or not verify_password(payload.password, user.password_hash):
+        decisions = [
+            register_rate_limit_failure(
+                db,
+                scope=_PASSWORD_LOGIN_ACCOUNT_SCOPE,
+                subject=phone_e164,
+                policy=account_policy,
+            ),
+            register_rate_limit_failure(
+                db,
+                scope=_PASSWORD_LOGIN_IP_SCOPE,
+                subject=client_ip,
+                policy=ip_policy,
+            ),
+        ]
+        db.commit()
+        _raise_login_rate_limit(decisions)
         raise HTTPException(status_code=401, detail="Неверный номер или пароль")
 
+    reset_rate_limit(db, scope=_PASSWORD_LOGIN_ACCOUNT_SCOPE, subject=phone_e164)
+    db.commit()
     _write_access_cookie(response, user=user)
     return _auth_state(db, user=user)
 

@@ -85,7 +85,11 @@ function renderDemoStaffIntro() {
   if (!isDemoUiMode(demoState)) { intro.classList.add("hidden"); return; }
   try { if (sessionStorage.getItem(DEMO_STAFF_INTRO_DISMISSED_KEY) === "1") { intro.classList.add("hidden"); return; } } catch {}
   const introText = document.getElementById("demoStaffIntroText");
-  if (introText) introText.textContent = `Подготовленный график за ${getDemoMonthLabel(demoState) || "DEMO-месяц"}. Здесь смотри индикаторы смен и затем переходи к начислениям.`;
+  if (introText) {
+    const monthLabel = getDemoMonthLabel(demoState) || "DEMO-месяц";
+    const sentenceLabel = monthLabel.endsWith(".") ? monthLabel : `${monthLabel}.`;
+    introText.textContent = `Подготовленный график за ${sentenceLabel} Здесь смотри индикаторы смен и затем переходи к начислениям.`;
+  }
   document.getElementById("demoOpenStaffSalary")?.addEventListener("click", () => { const v = venueId || getActiveVenueId(); if (v) location.href = `/staff-salary.html?venue_id=${encodeURIComponent(String(v))}`; });
   document.getElementById("demoStaffIntroClose")?.addEventListener("click", () => { intro.classList.add("hidden"); try { sessionStorage.setItem(DEMO_STAFF_INTRO_DISMISSED_KEY, "1"); } catch {} });
   intro.classList.remove("hidden");

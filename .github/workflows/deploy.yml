@@ -3,9 +3,101 @@ name: Deploy
 on:
   push:
     branches: ["develop", "main"]
+  pull_request:
+    branches: ["develop", "main"]
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: axelio_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d axelio_ci"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/axelio_ci
+      TG_BOT_TOKEN: ci-not-used
+      JWT_SECRET: axelio-ci-secret-not-for-runtime
+      JWT_ISS: axelio-ci
+      JWT_AUD: axelio-ci
+      COOKIE_DOMAIN: ""
+      COOKIE_SECURE: "false"
+      PHONE_AUTH_PROVIDER: console
+      PHONE_AUTH_DEBUG_REVEAL_CODE: "false"
+      DEMO_ENABLED: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+            bot_service/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python dependencies
+        run: python -m pip install -r backend/requirements-dev.txt -r bot_service/requirements.txt
+
+      - name: Compile Python
+        run: python -m compileall -q backend/app bot_service
+
+      - name: Run backend tests with branch coverage gate
+        working-directory: backend
+        run: |
+          python -m coverage run --branch --source=app -m unittest discover -s test -v
+          python -m coverage report --show-missing --fail-under=41
+
+      - name: Run bot tests
+        working-directory: bot_service
+        run: python -m unittest discover -s test -v
+
+      - name: Validate and apply migrations on clean PostgreSQL
+        working-directory: backend
+        run: |
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head
+          alembic current
+
+      - name: Check tracked JavaScript syntax
+        run: |
+          git ls-files -z 'frontend/*.js' 'frontend/**/*.js' 'frontend/*.mjs' 'frontend/**/*.mjs' |
+            xargs -0 -n1 node --check
+
+      - name: Run frontend contracts
+        run: |
+          node frontend/app_split_check.mjs
+          node frontend/owner_pay_profile_split_check.mjs
+          node frontend/owner_setup_split_check.mjs
+          node frontend/positions_split_check.mjs
+          node frontend/staff_shifts_split_check.mjs
+          node frontend/style_contract_check.mjs
+          node frontend/finance_ledger_contract_check.mjs
+          node frontend/finance_summary_contract_check.mjs
+          node frontend/payroll_analytics_contract_check.mjs
+          node frontend/revenue_analytics_contract_check.mjs
+
   deploy:
+    if: github.event_name == 'push'
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - name: Check secrets presence
@@ -58,13 +150,44 @@ jobs:
             git reset --hard "origin/$BRANCH"
             git clean -fd
 
+            ENV_FILE="$BACKEND_DIR/.env"
+            if [ ! -f "$ENV_FILE" ]; then
+              echo "Missing backend env: $ENV_FILE"
+              exit 1
+            fi
+
+            set_env_value() {
+              key="$1"
+              value="$2"
+              if grep -q "^${key}=" "$ENV_FILE"; then
+                sudo sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+              else
+                printf '\n%s=%s\n' "$key" "$value" | sudo tee -a "$ENV_FILE" >/dev/null
+              fi
+            }
+
+            if [ "$ENV_NAME" = "prod" ]; then
+              set_env_value APP_ENV production
+              set_env_value COOKIE_SECURE true
+              set_env_value PHONE_AUTH_DEBUG_REVEAL_CODE false
+            else
+              set_env_value APP_ENV development
+            fi
+
             "$VENV_BIN/pip" install -r "$BACKEND_DIR/requirements.txt"
 
             cd "$BACKEND_DIR"
+            if [ "$ENV_NAME" = "prod" ]; then
+              "$VENV_BIN/python" -c 'from app.core.config import settings; assert settings.is_production(), "Set APP_ENV=production in backend/.env before deploying production"'
+            fi
             "$VENV_BIN/alembic" upgrade head
             "$VENV_BIN/python" -m app.core.sync_permissions
             "$VENV_BIN/python" -m app.scripts.seed_position_permission_templates
 
+            sudo install -D -m 0644 \
+              "$REPO_DIR/ops/nginx/axelio-security-headers.conf" \
+              /etc/nginx/snippets/axelio-security-headers.conf
+            sudo nginx -t
             sudo systemctl daemon-reload
             sudo systemctl restart "$API_SERVICE"
             sudo systemctl restart "$BOT_SERVICE"

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/app-venues.css?v=20260723-polish2" />
   <script src="/page-loader.js?v=20260802-navbuttons1"></script>
+  <script defer src="/metrika.js?v=20260811-direct1"></script>
   <title>Axelio · Мои заведения</title>
 </head>
 <body>
@@ -113,6 +114,7 @@ async function submitCreateVenue(){
     if (result?.id) setActiveVenueId(result.id);
     if (result?.trial_granted) {
       toast("Заведение создано. Пробный доступ на 3 дня включён.");
+      await window.axelioTrackMetrikaGoal?.("trial_venue_created");
     } else {
       toast("Заведение создано. Для работы нужно продлить доступ.");
     }

@@ -207,7 +207,27 @@ Backend env:
 
 ```bash
 nano /var/www/axelio/dev/repo/backend/.env
+nano /var/www/axelio/prod/repo/backend/.env
 ```
+
+Явно задавайте окружение. Production-деплой остановится до миграций, если
+`APP_ENV=production` отсутствует или production-настройки небезопасны:
+
+```dotenv
+# dev
+APP_ENV=development
+
+# prod
+APP_ENV=production
+COOKIE_SECURE=true
+PHONE_AUTH_DEBUG_REVEAL_CODE=false
+```
+
+Для production-входа по SMS используйте `PHONE_AUTH_PROVIDER=sms_ru`.
+Значение `debug` в production запрещено валидатором конфигурации.
+Deploy workflow синхронизирует `APP_ENV`, `COOKIE_SECURE` и
+`PHONE_AUTH_DEBUG_REVEAL_CODE` с веткой перед миграциями; остальные секреты и
+провайдер авторизации остаются в управляемом на VPS `.env`.
 
 Bot env:
 

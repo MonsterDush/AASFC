@@ -1,8 +1,11 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    APP_ENV: str = "development"
 
     # Database
     database_url: str
@@ -18,6 +21,9 @@ class Settings(BaseSettings):
 
     # Public landing leads
     PUBLIC_LEAD_SITE_KEY: str = ""
+    PUBLIC_LEAD_IP_LIMIT: int = 5
+    PUBLIC_LEAD_RATE_WINDOW_SECONDS: int = 60 * 60
+    PUBLIC_LEAD_BLOCK_SECONDS: int = 60 * 60
 
     # JWT (cookie-based auth)
     JWT_SECRET: str
@@ -36,6 +42,7 @@ class Settings(BaseSettings):
     APP_BASE_URL: str = ""
     API_BASE_URL: str = ""
     CORS_ALLOW_ORIGINS: str = ""
+    TRUSTED_PROXY_IPS: str = "127.0.0.1,::1"
 
     # Robokassa
     ROBOKASSA_MERCHANT_LOGIN: str = ""
@@ -66,7 +73,7 @@ class Settings(BaseSettings):
     SUPER_ADMIN_CAN_VIEW_FINANCIAL_VALUES: bool = True
 
     # Phone auth / OTP
-    DEMO_ENABLED: bool = True
+    DEMO_ENABLED: bool = False
     DEMO_RETURN_URL: str = "https://axelio.ru"
     DEMO_PRIMARY_CTA_URL: str = "https://axelio.ru/#contact"
     DEMO_PRIMARY_CTA_LABEL: str = "Оставить заявку"
@@ -74,8 +81,8 @@ class Settings(BaseSettings):
     DEMO_SECONDARY_CTA_LABEL: str = "Начать пользоваться"
     DEMO_FIXTURE_PATH: str = "app/demo/demo_fixture.json"
 
-    PHONE_AUTH_PROVIDER: str = "debug"  # debug | console | sms_ru
-    PHONE_AUTH_DEBUG_REVEAL_CODE: bool = True
+    PHONE_AUTH_PROVIDER: str = "console"  # debug | console | sms_ru
+    PHONE_AUTH_DEBUG_REVEAL_CODE: bool = False
     PHONE_AUTH_DEFAULT_COUNTRY_CODE: str = "7"
     PHONE_AUTH_REQUIRE_RU_NUMBERS: bool = False
     PHONE_AUTH_CODE_LENGTH: int = 6
@@ -94,6 +101,10 @@ class Settings(BaseSettings):
     # Пароли
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_PBKDF2_ITERATIONS: int = 260_000
+    PASSWORD_LOGIN_ACCOUNT_LIMIT: int = 5
+    PASSWORD_LOGIN_IP_LIMIT: int = 20
+    PASSWORD_LOGIN_RATE_WINDOW_SECONDS: int = 60 * 15
+    PASSWORD_LOGIN_BLOCK_SECONDS: int = 60 * 15
 
     # SMS.ru
     SMS_RU_API_ID: str = ""
@@ -103,6 +114,29 @@ class Settings(BaseSettings):
     SMS_RU_FROM: str = ""
     SMS_RU_CALL_ADD_URL: str = "https://sms.ru/callcheck/add"
     SMS_RU_CALL_STATUS_URL: str = "https://sms.ru/callcheck/status"
+
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        if self.is_production():
+            provider = str(self.PHONE_AUTH_PROVIDER or "").strip().lower()
+            if provider == "debug":
+                raise ValueError("PHONE_AUTH_PROVIDER=debug is forbidden in production")
+            if self.PHONE_AUTH_DEBUG_REVEAL_CODE:
+                raise ValueError("PHONE_AUTH_DEBUG_REVEAL_CODE=true is forbidden in production")
+            if not self.COOKIE_SECURE:
+                raise ValueError("COOKIE_SECURE=false is forbidden in production")
+        return self
+
+    def is_production(self) -> bool:
+        return str(self.APP_ENV or "").strip().lower() in {"prod", "production"}
+
+    def trusted_proxy_ips(self) -> set[str]:
+        raw = str(self.TRUSTED_PROXY_IPS or "")
+        return {
+            item.strip()
+            for item in raw.replace(";", ",").replace("\n", ",").split(",")
+            if item.strip()
+        }
 
     def frontend_base_url(self) -> str:
         raw = (self.FRONTEND_BASE_URL or self.APP_BASE_URL or "").strip().rstrip("/")

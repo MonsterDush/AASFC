@@ -80,6 +80,34 @@ class PageLoaderContractTests(TestCase):
             self.assertIn(responsive_contract, styles)
 
 
+class MetrikaConversionContractTests(TestCase):
+    def test_self_service_signup_and_trial_creation_emit_production_goals(self):
+        metrika = (FRONTEND / "metrika.js").read_text(encoding="utf-8")
+        auth = (FRONTEND / "auth.html").read_text(encoding="utf-8")
+        venues = (FRONTEND / "app-venues.html").read_text(encoding="utf-8")
+
+        self.assertIn('const COUNTER_ID = 108617620', metrika)
+        self.assertIn('new Set(["app.axelio.ru"])', metrika)
+        self.assertIn("if (!enabled) return", metrika)
+        self.assertIn('window.ym(COUNTER_ID, "reachGoal", normalizedGoal', metrika)
+        self.assertIn('/metrika.js?v=20260811-direct1', auth)
+        self.assertIn('/metrika.js?v=20260811-direct1', venues)
+        self.assertIn('axelioTrackMetrikaGoal?.("signup_success")', auth)
+        self.assertIn('axelioTrackMetrikaGoal?.("trial_venue_created")', venues)
+        self.assertLess(
+            auth.index("await setPasswordAfterPhoneVerify("),
+            auth.index('await window.axelioTrackMetrikaGoal?.("signup_success")'),
+        )
+        self.assertLess(
+            venues.index('if (result?.trial_granted)'),
+            venues.index('await window.axelioTrackMetrikaGoal?.("trial_venue_created")'),
+        )
+        self.assertLess(
+            venues.index('await window.axelioTrackMetrikaGoal?.("trial_venue_created")'),
+            venues.index("location.href = target"),
+        )
+
+
 class PrimaryPageUiPolishContractTests(TestCase):
     def test_primary_pages_keep_shared_visual_states_and_page_styles(self):
         contracts = {
@@ -798,7 +826,7 @@ class StaffShiftsSplitContractTests(TestCase):
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
         self.assertIn("/staff-shifts/calendar-controller.js?v=20260729-overnight1", main)
         self.assertIn("/staff-shifts/comment-controller.js?v=20260728-comments1", main)
-        self.assertIn("staff-shifts.js?v=20260729-swaps1", html)
+        self.assertIn("staff-shifts.js?v=20260811-assurance1", html)
         self.assertIn("/shifts/export-metadata?", module)
         self.assertIn("/mentionable-members", comments)
         self.assertIn("reply_to_comment_id", comments)

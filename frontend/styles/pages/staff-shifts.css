@@ -1,6 +1,9 @@
 /* JS toggles is-week on #calGrid, so these selectors intentionally target that element. */
 .staff-shifts-shell,.staff-shifts-content{display:grid;gap:14px}
-.staff-shifts-shell{max-width:1680px}
+.staff-shifts-shell{width:100%;max-width:1680px;min-width:0;grid-template-columns:minmax(0,1fr)}
+.staff-shifts-shell>*{min-width:0}
+.staff-shifts-page .demo-banner{max-width:100%;min-width:0;overflow:hidden}
+.staff-shifts-page .demo-banner__bar{width:100%;max-width:100%;min-width:0}
 .staff-shifts-content{padding-bottom:var(--bottom-nav-space)}
 .staff-shifts-demo,.staff-shifts-calendar-card{margin:0}
 .staff-shifts-calendar-card{min-width:0;overflow:visible}

@@ -64,6 +64,7 @@ from .billing_reconciliation_issue import BillingReconciliationIssue
 from .billing_promo_code import BillingPromoCode
 from .billing_promo_redemption import BillingPromoRedemption
 from .demo_event import DemoEvent
+from .security_rate_limit import SecurityRateLimit
 
 __all__ = [
     "SystemRole",
@@ -134,4 +135,5 @@ __all__ = [
     "BillingPromoCode",
     "BillingPromoRedemption",
     "DemoEvent",
+    "SecurityRateLimit",
 ]
