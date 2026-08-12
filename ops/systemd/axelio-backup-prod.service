@@ -1,0 +1,23 @@
+[Unit]
+Description=Axelio production encrypted PostgreSQL backup
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/axelio/prod/repo
+Environment=BACKUP_DIR=/var/backups/axelio/prod
+Environment=BACKUP_REQUIRE_OFFSITE=true
+EnvironmentFile=/var/www/axelio/prod/repo/backend/.env
+EnvironmentFile=/etc/axelio/backup-prod.env
+ExecStart=/var/www/axelio/prod/repo/ops/backup/postgres-backup.sh
+User=root
+Group=root
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/axelio/prod
+
+[Install]
+WantedBy=multi-user.target

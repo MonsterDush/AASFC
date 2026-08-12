@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <script defer src="/metrika.js?v=20260812-payment1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260723-polish2" />
   <script src="/page-loader.js?v=20260802-navbuttons1"></script>
@@ -261,6 +262,7 @@
         const params = new URLSearchParams(location.search);
         const venueId = params.get("venue_id") || "";
         const billingPaymentHint = String(params.get("billing_payment") || "").trim().toLowerCase();
+        const billingPaymentInvoiceId = String(params.get("billing_invoice_id") || "").trim();
         const billingPaymentReason = String(params.get("billing_reason") || "").trim();
 
 
@@ -553,31 +555,165 @@ const titleEl = document.getElementById("title");
           }
         }
 
+        const SUBSCRIPTION_PAYMENT_GOAL = "subscription_first_payment_success";
+        const BILLING_PAYMENT_PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+        function billingPaymentPendingStorageKey() {
+          return `axelio.metrika.pending_subscription_payment.${String(venueId || "")}`;
+        }
+
+        function billingPaymentTrackedStorageKey(invoiceId) {
+          return `axelio.metrika.goal.${SUBSCRIPTION_PAYMENT_GOAL}.${String(invoiceId || "")}`;
+        }
+
+        function rememberPendingBillingPayment(invoiceId) {
+          const normalized = String(invoiceId || "").trim();
+          if (!normalized || !venueId) return;
+          try {
+            localStorage.setItem(billingPaymentPendingStorageKey(), JSON.stringify({
+              invoice_id: normalized,
+              saved_at: Date.now(),
+            }));
+          } catch {}
+        }
+
+        function forgetPendingBillingPayment() {
+          try { localStorage.removeItem(billingPaymentPendingStorageKey()); } catch {}
+        }
+
+        function getRememberedPendingBillingPayment() {
+          if (!venueId) return "";
+          try {
+            const raw = localStorage.getItem(billingPaymentPendingStorageKey());
+            if (!raw) return "";
+            const parsed = JSON.parse(raw);
+            const invoiceId = String(parsed?.invoice_id || "").trim();
+            const savedAt = Number(parsed?.saved_at || 0);
+            if (!invoiceId || !savedAt || (Date.now() - savedAt) > BILLING_PAYMENT_PENDING_TTL_MS) {
+              forgetPendingBillingPayment();
+              return "";
+            }
+            return invoiceId;
+          } catch {
+            return "";
+          }
+        }
+
+        function findBillingPaymentTransaction(invoiceId, info = billingInfo) {
+          const normalized = String(invoiceId || "").trim();
+          if (!normalized) return null;
+          const txs = Array.isArray(info?.transactions) ? info.transactions : [];
+          return txs.find((tx) => String(tx?.provider_invoice_id || "").trim() === normalized) || null;
+        }
+
+        function isFirstSuccessfulPaidSubscription(invoiceId, info = billingInfo) {
+          const tx = findBillingPaymentTransaction(invoiceId, info);
+          if (!tx) return false;
+          if (String(tx?.type || "").toUpperCase() !== "PAYMENT") return false;
+          if (String(tx?.status || "").toUpperCase() !== "SUCCEEDED") return false;
+          if (String(tx?.source || "").toUpperCase() !== "ROBOKASSA") return false;
+          if (Number(tx?.amount_minor || 0) <= 0) return false;
+
+          const successfulPaidTransactions = (Array.isArray(info?.transactions) ? info.transactions : []).filter((item) =>
+            String(item?.type || "").toUpperCase() === "PAYMENT" &&
+            String(item?.status || "").toUpperCase() === "SUCCEEDED" &&
+            String(item?.source || "").toUpperCase() === "ROBOKASSA" &&
+            Number(item?.amount_minor || 0) > 0
+          );
+          return successfulPaidTransactions.length === 1;
+        }
+
+        async function trackFirstSubscriptionPaymentIfConfirmed(invoiceId) {
+          const normalized = String(invoiceId || "").trim();
+          if (!normalized || !isFirstSuccessfulPaidSubscription(normalized, billingInfo)) return false;
+
+          const trackedKey = billingPaymentTrackedStorageKey(normalized);
+          try {
+            if (localStorage.getItem(trackedKey) === "1") {
+              forgetPendingBillingPayment();
+              return true;
+            }
+          } catch {}
+
+          const tracked = await window.axelioTrackMetrikaGoal?.(SUBSCRIPTION_PAYMENT_GOAL);
+          if (tracked) {
+            try { localStorage.setItem(trackedKey, "1"); } catch {}
+            forgetPendingBillingPayment();
+            return true;
+          }
+          return false;
+        }
+
+        async function refreshBillingForPaymentTracking() {
+          billingInfo = await api(`/venues/${venueId}/billing`);
+          billingStatus = String(billingInfo?.status || billingStatus || "ACTIVE").toUpperCase();
+          billingAccessMode = String(billingInfo?.billing_access_mode || billingAccessMode || "FULL").toUpperCase();
+          billingReadonly = billingAccessMode !== "FULL" && (isOwner || isAdmin);
+          renderBillingWidgets();
+          return billingInfo;
+        }
+
+        async function waitForConfirmedBillingPayment(invoiceId, attempts = 8) {
+          const normalized = String(invoiceId || "").trim();
+          if (!normalized) return null;
+          for (let attempt = 0; attempt < attempts; attempt += 1) {
+            if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1250));
+            try {
+              await refreshBillingForPaymentTracking();
+              const tx = findBillingPaymentTransaction(normalized, billingInfo);
+              const status = String(tx?.status || "").toUpperCase();
+              if (status === "SUCCEEDED" || status === "FAILED" || status === "CANCELED") return tx;
+            } catch {}
+          }
+          return findBillingPaymentTransaction(normalized, billingInfo);
+        }
+
         async function handleBillingPaymentHint() {
-          if (!billingPaymentHint || !venueId) return;
+          if (!venueId) return;
+
+          const invoiceId = billingPaymentInvoiceId || getRememberedPendingBillingPayment();
+          if (billingPaymentInvoiceId && billingPaymentHint !== "failed") {
+            rememberPendingBillingPayment(billingPaymentInvoiceId);
+          }
+
           if (billingPaymentHint === "failed") {
+            forgetPendingBillingPayment();
             toast(billingPaymentReason || "Оплата не завершена. Попробуй ещё раз.", "warn");
             clearBillingPaymentHintFromUrl();
             return;
           }
-          if (billingPaymentHint === "success") {
-            toast("Оплата подтверждена.", "ok");
+
+          if (!invoiceId) return;
+
+          let tx = findBillingPaymentTransaction(invoiceId, billingInfo);
+          let status = String(tx?.status || "").toUpperCase();
+          if (status !== "SUCCEEDED" && status !== "FAILED" && status !== "CANCELED") {
+            if (billingPaymentHint === "processing") {
+              toast("Платёж обрабатывается. Проверяем подтверждение…", "warn");
+            }
+            tx = await waitForConfirmedBillingPayment(invoiceId);
+            status = String(tx?.status || "").toUpperCase();
+          }
+
+          if (status === "SUCCEEDED") {
+            await trackFirstSubscriptionPaymentIfConfirmed(invoiceId);
+            if (billingPaymentHint) toast("Оплата подтверждена.", "ok");
             clearBillingPaymentHintFromUrl();
             return;
           }
-          if (billingPaymentHint === "processing") {
-            toast("Платёж обрабатывается. Обновляем статус…", "warn");
-            try {
-              billingInfo = await api(`/venues/${venueId}/billing`);
-              billingStatus = String(billingInfo?.status || billingStatus || "ACTIVE").toUpperCase();
-              billingAccessMode = String(billingInfo?.billing_access_mode || billingAccessMode || "FULL").toUpperCase();
-              billingReadonly = billingAccessMode !== "FULL" && (isOwner || isAdmin);
-              renderBillingWidgets();
-              const latestTx = Array.isArray(billingInfo?.transactions) ? billingInfo.transactions[0] : null;
-              if (String(latestTx?.status || "").toUpperCase() === "SUCCEEDED") {
-                toast("Оплата подтверждена.", "ok");
-              }
-            } catch {}
+
+          if (status === "FAILED" || status === "CANCELED") {
+            forgetPendingBillingPayment();
+            if (billingPaymentHint) toast("Оплата не завершена. Попробуй ещё раз.", "warn");
+            clearBillingPaymentHintFromUrl();
+            return;
+          }
+
+          // Robokassa ResultURL иногда приходит позже возврата пользователя.
+          // Оставляем invoice в localStorage: при следующем открытии заведения
+          // подтверждённая оплата будет проверена и цель отправится один раз.
+          if (billingPaymentHint) {
+            toast("Платёж ещё обрабатывается. Статус обновится автоматически при следующем открытии заведения.", "warn");
             clearBillingPaymentHintFromUrl();
           }
         }

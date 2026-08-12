@@ -1,10 +1,12 @@
 from fastapi import Depends, FastAPI, Header, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.auth.jwt_tokens import JwtConfig, decode_access_token
 from app.core.config import settings
 from app.core.db import get_db
+from app.core.observability import configure_logging, init_error_tracking, observe_request
 from app.core.security_headers import apply_security_headers
 from app.services.demo import build_demo_readonly_error_payload, is_demo_session_payload, should_block_demo_request
 from sqlalchemy.orm import Session
@@ -29,11 +31,15 @@ def _has_demo_session_cookie(request: Request) -> bool:
         return False
     return is_demo_session_payload(payload)
 
+
 def _fastapi_options() -> dict[str, str | None]:
     if settings.is_production():
         return {"docs_url": None, "redoc_url": None, "openapi_url": None}
     return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
 
+
+configure_logging()
+init_error_tracking()
 
 app = FastAPI(title="Axelio API", **_fastapi_options())
 from app.routers.venues import router as venues_router
@@ -44,8 +50,12 @@ from app.routers.admin_billing import router as admin_billing_router
 from app.routers.admin_demo import router as admin_demo_router
 from app.routers.demo_telemetry import router as demo_telemetry_router
 from app.routers.setup import router as setup_router
-from app.routers.position_permission_templates import router as position_permission_templates_router, public_router as position_permission_templates_public_router
+from app.routers.position_permission_templates import (
+    router as position_permission_templates_router,
+    public_router as position_permission_templates_public_router,
+)
 from app.routers import auth, me
+
 
 @app.middleware("http")
 async def demo_readonly_guard(request: Request, call_next):
@@ -56,6 +66,11 @@ async def demo_readonly_guard(request: Request, call_next):
     ):
         return JSONResponse(status_code=403, content=build_demo_readonly_error_payload())
     return await call_next(request)
+
+
+@app.middleware("http")
+async def request_observability(request: Request, call_next):
+    return await observe_request(request, call_next)
 
 
 @app.middleware("http")
@@ -70,7 +85,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
+    expose_headers=["Content-Disposition", "X-Request-ID"],
 )
 
 
@@ -87,7 +102,6 @@ app.include_router(billing_public_router)
 app.include_router(admin_billing_router)
 app.include_router(admin_demo_router)
 app.include_router(demo_telemetry_router)
-
 
 
 @app.post("/telegram/webhook", status_code=status.HTTP_204_NO_CONTENT)
@@ -110,6 +124,30 @@ async def telegram_browser_webhook_legacy_alias(
     )
     return None
 
+
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "environment": str(settings.APP_ENV or "development"),
+        "release": settings.release_version(),
+    }
+
+
+@app.get("/health/ready")
+def readiness(db: Session = Depends(get_db)):
+    db.execute(text("SELECT 1"))
+    return {
+        "status": "ready",
+        "database": "ok",
+        "environment": str(settings.APP_ENV or "development"),
+        "release": settings.release_version(),
+    }
+
+
+@app.get("/version")
+def version():
+    return {
+        "environment": str(settings.APP_ENV or "development"),
+        "release": settings.release_version(),
+    }
