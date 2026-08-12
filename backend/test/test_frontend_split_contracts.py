@@ -85,6 +85,7 @@ class MetrikaConversionContractTests(TestCase):
         metrika = (FRONTEND / "metrika.js").read_text(encoding="utf-8")
         auth = (FRONTEND / "auth.html").read_text(encoding="utf-8")
         venues = (FRONTEND / "app-venues.html").read_text(encoding="utf-8")
+        venue = (FRONTEND / "app-venue.html").read_text(encoding="utf-8")
 
         self.assertIn('const COUNTER_ID = 108617620', metrika)
         self.assertIn('new Set(["app.axelio.ru"])', metrika)
@@ -92,8 +93,13 @@ class MetrikaConversionContractTests(TestCase):
         self.assertIn('window.ym(COUNTER_ID, "reachGoal", normalizedGoal', metrika)
         self.assertIn('/metrika.js?v=20260811-direct1', auth)
         self.assertIn('/metrika.js?v=20260811-direct1', venues)
+        self.assertIn('/metrika.js?v=20260812-payment1', venue)
         self.assertIn('axelioTrackMetrikaGoal?.("signup_success")', auth)
         self.assertIn('axelioTrackMetrikaGoal?.("trial_venue_created")', venues)
+        self.assertIn('const SUBSCRIPTION_PAYMENT_GOAL = "subscription_first_payment_success"', venue)
+        self.assertIn('String(tx?.status || "").toUpperCase() !== "SUCCEEDED"', venue)
+        self.assertIn('String(tx?.source || "").toUpperCase() !== "ROBOKASSA"', venue)
+        self.assertIn('await window.axelioTrackMetrikaGoal?.(SUBSCRIPTION_PAYMENT_GOAL)', venue)
         self.assertLess(
             auth.index("await setPasswordAfterPhoneVerify("),
             auth.index('await window.axelioTrackMetrikaGoal?.("signup_success")'),
