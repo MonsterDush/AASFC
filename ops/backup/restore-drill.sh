@@ -7,7 +7,15 @@ set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 backup_script="${BACKUP_SCRIPT:-${repo_dir}/ops/backup/postgres-backup.sh}"
-alembic_bin="${ALEMBIC_BIN:-${repo_dir}/backend/.venv/bin/alembic}"
+if [[ -n "${ALEMBIC_BIN:-}" ]]; then
+  alembic_cmd=("${ALEMBIC_BIN}")
+elif [[ -x "${repo_dir}/backend/.venv/bin/alembic" ]]; then
+  alembic_cmd=("${repo_dir}/backend/.venv/bin/alembic")
+elif command -v alembic >/dev/null 2>&1; then
+  alembic_cmd=("$(command -v alembic)")
+else
+  alembic_cmd=(python -m alembic)
+fi
 keep_restore_database="${KEEP_RESTORE_DATABASE:-false}"
 verify_tables="${BACKUP_VERIFY_TABLES:-users venues finance_entries payroll_runs}"
 source_database_url="${DATABASE_URL/postgresql+psycopg:/postgresql:}"
@@ -91,10 +99,12 @@ pg_restore \
   --no-privileges \
   --dbname="${restore_database_url}" \
   "${archive_path}"
-
+  
 (
   cd "${repo_dir}/backend"
-  DATABASE_URL="${RESTORE_DATABASE_URL}" "${alembic_bin}" upgrade head
+  echo "Restore drill Alembic command: ${alembic_cmd[*]}"
+  "${alembic_cmd[@]}" --version
+  DATABASE_URL="${RESTORE_DATABASE_URL}" "${alembic_cmd[@]}" upgrade head
 )
 
 for table in ${verify_tables}; do
