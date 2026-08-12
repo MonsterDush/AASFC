@@ -3,6 +3,7 @@ import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm,
 import { createAuthActions } from "/app/auth-actions.js?v=20260719-split1";
 import { createVenueApi } from "/app/venue-api.js?v=20260719-split1";
 import { createNavigation } from "/app/navigation.js?v=20260726-navmore1";
+import { enableDemoMetrika, disableDemoMetrika } from "/app/demo-metrika.js";
 
 function normalizeBaseUrl(value) {
   const raw = String(value || "").trim();
@@ -522,12 +523,26 @@ function bootstrapStoredDemoBanner() {
 }
 
 bootstrapStoredDemoBanner();
+
+const initialDemoState = getStoredDemoUiState();
+
+if (initialDemoState?.demo_mode) {
+  enableDemoMetrika();
+}
+
 window.addEventListener("axelio:demo-state-changed", (event) => {
-  const state = event?.detail?.demo_mode ? event.detail : getStoredDemoUiState();
+  const state = event?.detail?.demo_mode
+    ? event.detail
+    : getStoredDemoUiState();
+
   if (state?.demo_mode) {
+    enableDemoMetrika();
+
     mountDemoBanner(state);
     maybeTrackDemoPageView(state);
   } else {
+    disableDemoMetrika();
+
     removeDemoBanner();
   }
 });
