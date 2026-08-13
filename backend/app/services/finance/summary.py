@@ -431,8 +431,6 @@ def _sum_expense_recognition_minor(db: Session, *, venue_id: int, period_start: 
 
 def _expense_document_stats_for_period(db: Session, *, venue_id: int, period_start: date, period_end: date) -> dict:
     month_start = period_start.replace(day=1)
-    last_day = calendar.monthrange(period_start.year, period_start.month)[1]
-    month_end = period_start.replace(day=last_day)
     stmt = (
         select(Expense.id, Expense.status, Expense.amount_minor)
         .where(
@@ -1031,7 +1029,6 @@ def get_day_finance_summary(
         raise ValueError('Bad income_mode, expected PAYMENTS or DEPARTMENTS')
 
     slot = _normalize_summary_shift_slot(shift_slot)
-    slot_specific = slot is not None
 
     revenue_minor = _sum_closed_report_revenue_minor(
         db,

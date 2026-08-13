@@ -90,7 +90,6 @@ def _write_table(
     datetime_cols: set[int] | None = None,
     date_cols: set[int] | None = None,
 ) -> None:
-    start_row = ws.max_row + 1
     ws.append(headers)
     header_row = ws.max_row
     for cell in ws[header_row]:
