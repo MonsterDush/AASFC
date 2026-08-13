@@ -64,6 +64,15 @@ class MonitoringContractTests(TestCase):
         self.assertIn("AXELIO_ALERT_TG_CHAT_IDS", readiness)
         self.assertIn("SUPER_ADMIN_TG_USER_IDS", readiness)
 
+        backup_unit_install = release[
+            release.index("install_backup_units()") : release.index("has_monitoring_sources()")
+        ]
+        self.assertLess(
+            backup_unit_install.index("install -d -m 0755 /var/lib/axelio-monitoring"),
+            backup_unit_install.index("systemctl start axelio-backup-prod.service"),
+        )
+        self.assertIn("journalctl -u axelio-backup-prod.service", backup_unit_install)
+
     def test_monitor_covers_services_readiness_backup_and_business_failures(self):
         monitor = (REPO_DIR / "ops/monitoring/health-check.sh").read_text(encoding="utf-8")
         for contract in (

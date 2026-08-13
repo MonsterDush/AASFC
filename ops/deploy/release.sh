@@ -108,17 +108,30 @@ install_backup_units() {
     "${repo_dir}/ops/systemd/axelio-backup-prod.timer" \
     /etc/systemd/system/axelio-backup-prod.timer
   sudo install -d -m 0700 /var/backups/axelio/prod
+  # ReadWritePaths targets must exist before systemd builds the service sandbox.
+  sudo install -d -m 0755 /var/lib/axelio-monitoring
   sudo systemctl daemon-reload
   if [[ ! -f /etc/axelio/backup-prod.env ]]; then
     echo "Missing /etc/axelio/backup-prod.env; production deploy requires encrypted offsite backup" >&2
     exit 1
   fi
-  sudo systemctl start axelio-backup-prod.service
+  if ! sudo systemctl start axelio-backup-prod.service; then
+    sudo systemctl status axelio-backup-prod.service --no-pager || true
+    sudo journalctl -u axelio-backup-prod.service -n 100 --no-pager || true
+    return 1
+  fi
   sudo systemctl enable --now axelio-backup-prod.timer
+}
+
+has_monitoring_sources() {
+  [[ -f "${repo_dir}/ops/monitoring/health-check.sh" && \
+     -f "${repo_dir}/ops/systemd/axelio-monitor-prod.service" && \
+     -f "${repo_dir}/ops/systemd/axelio-monitor-prod.timer" ]]
 }
 
 install_monitoring_units() {
   [[ "${ENV_NAME}" == "prod" ]] || return 0
+  has_monitoring_sources || return 0
   sudo install -D -m 0644 \
     "${repo_dir}/ops/systemd/axelio-monitor-prod.service" \
     /etc/systemd/system/axelio-monitor-prod.service
@@ -160,9 +173,11 @@ restart_services() {
   sudo install -D -m 0644 \
     "${repo_dir}/ops/nginx/axelio-security-headers.conf" \
     /etc/nginx/snippets/axelio-security-headers.conf
-  sudo install -D -m 0644 \
-    "${repo_dir}/ops/nginx/axelio-performance.conf" \
-    /etc/nginx/snippets/axelio-performance.conf
+  if [[ -f "${repo_dir}/ops/nginx/axelio-performance.conf" ]]; then
+    sudo install -D -m 0644 \
+      "${repo_dir}/ops/nginx/axelio-performance.conf" \
+      /etc/nginx/snippets/axelio-performance.conf
+  fi
   install_monitoring_units
   sudo nginx -t
   sudo systemctl daemon-reload
@@ -171,14 +186,18 @@ restart_services() {
   sudo systemctl restart "${SHIFT_TIMER}"
   sudo systemctl restart "${NOTIFY_TIMER}"
   if [[ "${ENV_NAME}" == "prod" ]]; then
-    sudo systemctl enable --now axelio-monitor-prod.timer
+    if has_monitoring_sources; then
+      sudo systemctl enable --now axelio-monitor-prod.timer
+    else
+      sudo systemctl disable --now axelio-monitor-prod.timer >/dev/null 2>&1 || true
+    fi
   fi
   sudo systemctl reload nginx
   sudo systemctl is-active --quiet "${API_SERVICE}"
   sudo systemctl is-active --quiet "${BOT_SERVICE}"
   sudo systemctl is-active --quiet "${SHIFT_TIMER}"
   sudo systemctl is-active --quiet "${NOTIFY_TIMER}"
-  if [[ "${ENV_NAME}" == "prod" ]]; then
+  if [[ "${ENV_NAME}" == "prod" ]] && has_monitoring_sources; then
     sudo systemctl is-active --quiet axelio-monitor-prod.timer
   fi
 }
