@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.guards import require_super_admin
 from app.core.db import get_db
+from app.core.i18n import user_locale
 from app.models.user import User
 from app.models.venue import Venue
 from app.models.venue_billing_event import VenueBillingEvent
@@ -738,7 +739,12 @@ def export_admin_billing_transactions(
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
-    xlsx = build_billing_transactions_xlsx(title="Axelio · Реестр billing-операций", rows=items, filters=filters)
+    xlsx = build_billing_transactions_xlsx(
+        title="Axelio · Реестр billing-операций",
+        rows=items,
+        filters=filters,
+        locale=user_locale(user),
+    )
     return StreamingResponse(
         BytesIO(xlsx),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -802,7 +808,12 @@ def export_admin_billing_reconciliation(
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": 'attachment; filename="billing_reconciliation.csv"'},
         )
-    xlsx = build_billing_reconciliation_xlsx(title="Axelio · Billing reconciliation", rows=issues, filters=filters)
+    xlsx = build_billing_reconciliation_xlsx(
+        title="Axelio · Billing reconciliation",
+        rows=issues,
+        filters=filters,
+        locale=user_locale(user),
+    )
     return StreamingResponse(
         BytesIO(xlsx),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -884,7 +895,9 @@ def extend_admin_venue_billing(
         notification_type="manual_extend",
         event_key=str(tx.id),
         text=f"Доступ по заведению «{venue.name}» продлён вручную на {int(payload.days)} дн. Новый срок оплаты — до {paid_until_label}.",
+        text_en=f"Access for venue “{venue.name}” was manually extended by {int(payload.days)} days. The new paid-through date is {paid_until_label}.",
         button_text="Открыть заведение",
+        button_text_en="Open venue",
     )
     db.commit()
 
@@ -940,7 +953,9 @@ def set_admin_venue_billing_paid_until(
         notification_type="manual_set_paid_until",
         event_key=str(tx.id),
         text=f"Срок оплаты по заведению «{venue.name}» обновлён вручную. Новый paid until — {paid_until_label}.",
+        text_en=f"The paid-through date for venue “{venue.name}” was updated manually. The new date is {paid_until_label}.",
         button_text="Открыть заведение",
+        button_text_en="Open venue",
     )
     db.commit()
 

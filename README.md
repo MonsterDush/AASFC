@@ -28,6 +28,7 @@ python -m coverage run --branch --source=app -m unittest discover -s test -v
 cd ..
 
 pnpm test:budgets
+pnpm test:i18n
 node frontend/app_split_check.mjs
 node frontend/staff_shifts_split_check.mjs
 ```
@@ -54,5 +55,6 @@ Operational and contributor references:
 - [Architecture](backend/docs/architecture.md)
 - [Engineering stage 3: deploy, rollback, Sentry, backups](backend/docs/engineering-stage3-runbook.md)
 - [Engineering stage 4: metrics, alerts, accessibility, performance](backend/docs/engineering-stage4-runbook.md)
+- [Russian and English localization](backend/docs/localization.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)

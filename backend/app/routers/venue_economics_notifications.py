@@ -7,6 +7,7 @@ from sqlalchemy import select
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 from app.core.db import SessionLocal
+from app.core.i18n import localized, user_locale
 from app.services import tg_notify
 from app.services.notification_logs import (
     log_notification_attempt,
@@ -97,13 +98,45 @@ def _normalize_notification_shift_slot(value: str | None) -> str:
     return slot if slot in {"DAY", "NIGHT"} else "TOTAL"
 
 
-def _notification_shift_slot_label(value: str | None) -> str:
+def _notification_shift_slot_label(value: str | None, *, locale: str = "ru") -> str:
     slot = _normalize_notification_shift_slot(value)
     if slot == "DAY":
-        return "День"
+        return localized(locale, ru="День", en="Day")
     if slot == "NIGHT":
-        return "Ночь"
-    return "Итого за дату"
+        return localized(locale, ru="Ночь", en="Night")
+    return localized(locale, ru="Итого за дату", en="Full day")
+
+
+_EN_ALERT_COPY = {
+    "REPORT_NOT_CLOSED": ("Day is not closed", "The day figures may be incomplete until the report is closed."),
+    "DRAFT_EXPENSES": ("Draft expenses found", "Draft expenses are not included in the final figures yet."),
+    "SLOT_COSTS_NOT_ALLOCATED": (
+        "Expenses and payroll are shown under Full day",
+        "Current expenses, adjustments, and payroll are not allocated between day and night shifts.",
+    ),
+    "LOSS_DAY": ("The day is operating at a loss", "Actual profit for the day is negative."),
+    "EXPENSE_RATIO_HIGH": (
+        "Expenses are above the limit",
+        "The expense-to-revenue ratio exceeds the configured limit.",
+    ),
+    "PAYROLL_RATIO_HIGH": ("Payroll is above the limit", "The payroll-to-revenue ratio exceeds the configured limit."),
+    "REVENUE_PER_ASSIGNED_LOW": ("Low revenue per employee", "Revenue per employee is below the configured target."),
+    "SHIFT_COVERAGE_LOW": ("Low shift coverage", "Shift coverage is below the configured target."),
+    "PROFIT_BELOW_TARGET": (
+        "Profit is below the threshold",
+        "Actual profit is below the configured minimum threshold.",
+    ),
+    "REVENUE_PLAN_MISSED": ("Revenue plan missed", "Actual revenue is below the daily plan."),
+    "PROFIT_PLAN_MISSED": ("Profit plan missed", "Actual profit is below the daily plan."),
+}
+
+
+def _localized_alert_copy(alert: dict, *, locale: str) -> tuple[str, str]:
+    title = str((alert or {}).get("title") or localized(locale, ru="Алерт", en="Alert")).strip()
+    detail = str((alert or {}).get("detail") or "").strip()
+    if locale != "en":
+        return title, detail
+    return _EN_ALERT_COPY.get(str((alert or {}).get("code") or "").strip().upper(), (title, detail))
 
 
 def _notification_event_token(value: str | None) -> str:
@@ -152,6 +185,7 @@ def _build_soft_alerts_notification_text(
     alerts: list[dict],
     detail_level: str,
     shift_slot: str = "TOTAL",
+    locale: str = "ru",
 ) -> str:
     level = _notification_detail_level(detail_level)
     summary = economics.get("summary") or {}
@@ -160,36 +194,43 @@ def _build_soft_alerts_notification_text(
     profit_available = bool(summary.get("slot_profit_available", True))
 
     lines: list[str] = [
-        f"⚠️ Мягкие алерты · {_format_ru_date(target_date)}",
-        f"Заведение: {venue_name}",
-        f"Слот: {_notification_shift_slot_label(shift_slot)}",
+        f"⚠️ {localized(locale, ru='Мягкие алерты', en='Alerts')} · {_format_notification_date(target_date, locale=locale)}",
+        f"{localized(locale, ru='Заведение', en='Venue')}: {venue_name}",
+        f"{localized(locale, ru='Слот', en='Shift')}: {_notification_shift_slot_label(shift_slot, locale=locale)}",
     ]
     if level in {"standard", "detailed"}:
-        lines.append(f"Выручка: {_fmt_money_minor(summary.get('revenue_minor'))}")
+        lines.append(
+            f"{localized(locale, ru='Выручка', en='Revenue')}: {_fmt_money_minor(summary.get('revenue_minor'))}"
+        )
         if profit_available:
             lines.extend(
                 [
-                    f"Расходы: {_fmt_money_minor(summary.get('expense_minor'))} ({_fmt_percent_bps(metrics.get('expense_ratio_bps'))})",
-                    f"ФОТ: {_fmt_money_minor(summary.get('payroll_minor'))} ({_fmt_percent_bps(metrics.get('payroll_ratio_bps'))})",
-                    f"Прибыль: {_fmt_money_minor(summary.get('profit_minor'))}",
+                    f"{localized(locale, ru='Расходы', en='Expenses')}: {_fmt_money_minor(summary.get('expense_minor'))} ({_fmt_percent_bps(metrics.get('expense_ratio_bps'))})",
+                    f"{localized(locale, ru='ФОТ', en='Payroll')}: {_fmt_money_minor(summary.get('payroll_minor'))} ({_fmt_percent_bps(metrics.get('payroll_ratio_bps'))})",
+                    f"{localized(locale, ru='Прибыль', en='Profit')}: {_fmt_money_minor(summary.get('profit_minor'))}",
                 ]
             )
         else:
-            lines.append("Расходы, ФОТ и прибыль: доступны только в «Итого»")
+            lines.append(
+                localized(
+                    locale,
+                    ru="Расходы, ФОТ и прибыль: доступны только в «Итого»",
+                    en="Expenses, payroll, and profit are available only under Full day",
+                )
+            )
 
-    lines.append("Что требует внимания:")
+    lines.append(localized(locale, ru="Что требует внимания:", en="Needs attention:"))
     visible = alerts if level == "detailed" else alerts[:4]
     for alert in visible:
         severity = str((alert or {}).get("severity") or "").strip().upper()
-        title = str((alert or {}).get("title") or "Алерт").strip()
-        detail = str((alert or {}).get("detail") or "").strip()
+        title, detail = _localized_alert_copy(alert, locale=locale)
         icon = "🔴" if severity == "CRITICAL" else "🟠"
         lines.append(f"{icon} {title}")
         if level in {"standard", "detailed"} and detail:
             lines.append(f"  {detail}")
     extra = max(len(alerts) - len(visible), 0)
     if extra:
-        lines.append(f"• ещё {extra}")
+        lines.append(localized(locale, ru=f"• ещё {extra}", en=f"• {extra} more"))
 
     if level == "detailed":
         max_payroll_ratio_bps = rules.get("max_payroll_ratio_bps")
@@ -197,15 +238,21 @@ def _build_soft_alerts_notification_text(
         min_coverage_bps = rules.get("min_assigned_shift_coverage_bps")
         policy_parts: list[str] = []
         if profit_available and max_payroll_ratio_bps is not None:
-            policy_parts.append(f"ФОТ ≤ {_fmt_percent_bps(max_payroll_ratio_bps)}")
+            policy_parts.append(
+                f"{localized(locale, ru='ФОТ', en='payroll')} ≤ {_fmt_percent_bps(max_payroll_ratio_bps)}"
+            )
         if profit_available and max_expense_ratio_bps is not None:
-            policy_parts.append(f"расходы ≤ {_fmt_percent_bps(max_expense_ratio_bps)}")
+            policy_parts.append(
+                f"{localized(locale, ru='расходы', en='expenses')} ≤ {_fmt_percent_bps(max_expense_ratio_bps)}"
+            )
         if min_coverage_bps is not None:
-            policy_parts.append(f"покрытие смен ≥ {_fmt_percent_bps(min_coverage_bps)}")
+            policy_parts.append(
+                f"{localized(locale, ru='покрытие смен', en='shift coverage')} ≥ {_fmt_percent_bps(min_coverage_bps)}"
+            )
         if bool(rules.get("warn_on_draft_expenses", True)):
-            policy_parts.append("черновые расходы учитываются")
+            policy_parts.append(localized(locale, ru="черновые расходы учитываются", en="draft expenses are included"))
         if policy_parts:
-            lines.append("Пороговые правила: " + " · ".join(policy_parts))
+            lines.append(localized(locale, ru="Пороговые правила: ", en="Threshold rules: ") + " · ".join(policy_parts))
 
     return "\n".join(lines)
 
@@ -229,7 +276,9 @@ def _fmt_percent_bps(value_bps: int | None) -> str:
     return f"{rendered}%"
 
 
-def _format_ru_date(value: date) -> str:
+def _format_notification_date(value: date, *, locale: str = "ru") -> str:
+    if locale == "en":
+        return value.strftime("%B %-d, %Y")
     months = {
         1: "января",
         2: "февраля",
@@ -251,18 +300,18 @@ def _truncate_breakdown_items(items: list[dict], *, limit: int) -> list[dict]:
     return list(items[: max(int(limit), 0)])
 
 
-def _render_breakdown(title: str, items: list[dict], *, limit: int) -> list[str]:
+def _render_breakdown(title: str, items: list[dict], *, limit: int, locale: str = "ru") -> list[str]:
     if not items:
         return [f"{title}: —"]
     visible = _truncate_breakdown_items(items, limit=limit)
     lines = [f"{title}:"]
     for item in visible:
         lines.append(
-            f"• {item.get('title') or 'Без названия'} — {_fmt_money_minor(int(item.get('amount_minor') or 0))}"
+            f"• {item.get('title') or localized(locale, ru='Без названия', en='Untitled')} — {_fmt_money_minor(int(item.get('amount_minor') or 0))}"
         )
     extra = max(len(items) - len(visible), 0)
     if extra:
-        lines.append(f"• ещё {extra}")
+        lines.append(localized(locale, ru=f"• ещё {extra}", en=f"• {extra} more"))
     return lines
 
 
@@ -273,6 +322,7 @@ def _build_day_economics_notification_text(
     economics: dict,
     detail_level: str,
     shift_slot: str = "TOTAL",
+    locale: str = "ru",
 ) -> str:
     level = _notification_detail_level(detail_level)
 
@@ -282,42 +332,82 @@ def _build_day_economics_notification_text(
     profit_available = bool(summary.get("slot_profit_available", True))
 
     lines: list[str] = [
-        f"📊 Экономика дня · {_format_ru_date(target_date)}",
-        f"Заведение: {venue_name}",
-        f"Слот: {_notification_shift_slot_label(shift_slot)}",
-        f"Выручка: {_fmt_money_minor(summary.get('revenue_minor'))}",
+        f"📊 {localized(locale, ru='Экономика дня', en='Daily economics')} · {_format_notification_date(target_date, locale=locale)}",
+        f"{localized(locale, ru='Заведение', en='Venue')}: {venue_name}",
+        f"{localized(locale, ru='Слот', en='Shift')}: {_notification_shift_slot_label(shift_slot, locale=locale)}",
+        f"{localized(locale, ru='Выручка', en='Revenue')}: {_fmt_money_minor(summary.get('revenue_minor'))}",
     ]
     if profit_available:
         lines.extend(
             [
-                f"ФОТ: {_fmt_money_minor(summary.get('payroll_minor'))} ({_fmt_percent_bps(summary.get('payroll_ratio_bps'))})",
-                f"Прибыль: {_fmt_money_minor(summary.get('profit_minor'))}",
+                f"{localized(locale, ru='ФОТ', en='Payroll')}: {_fmt_money_minor(summary.get('payroll_minor'))} ({_fmt_percent_bps(summary.get('payroll_ratio_bps'))})",
+                f"{localized(locale, ru='Прибыль', en='Profit')}: {_fmt_money_minor(summary.get('profit_minor'))}",
             ]
         )
     else:
-        lines.append("Расходы, ФОТ и прибыль: доступны только в «Итого»")
+        lines.append(
+            localized(
+                locale,
+                ru="Расходы, ФОТ и прибыль: доступны только в «Итого»",
+                en="Expenses, payroll, and profit are available only under Full day",
+            )
+        )
 
     draft_total_minor = int(summary.get("draft_expense_total_minor") or 0)
     draft_count = int(summary.get("draft_expense_count") or 0)
 
     if level in {"standard", "detailed"}:
-        lines.extend(_render_breakdown("По оплатам", payment_breakdown, limit=4 if level == "standard" else 8))
-        lines.extend(_render_breakdown("По департаментам", department_breakdown, limit=4 if level == "standard" else 8))
+        lines.extend(
+            _render_breakdown(
+                localized(locale, ru="По оплатам", en="By payment method"),
+                payment_breakdown,
+                limit=4 if level == "standard" else 8,
+                locale=locale,
+            )
+        )
+        lines.extend(
+            _render_breakdown(
+                localized(locale, ru="По департаментам", en="By department"),
+                department_breakdown,
+                limit=4 if level == "standard" else 8,
+                locale=locale,
+            )
+        )
         if profit_available:
-            lines.append(f"Разовые расходы: {_fmt_money_minor(summary.get('point_expense_minor'))}")
-            lines.append(f"Регулярные расходы: {_fmt_money_minor(summary.get('recurring_expense_minor'))}")
+            lines.append(
+                f"{localized(locale, ru='Разовые расходы', en='One-time expenses')}: {_fmt_money_minor(summary.get('point_expense_minor'))}"
+            )
+            lines.append(
+                f"{localized(locale, ru='Регулярные расходы', en='Recurring expenses')}: {_fmt_money_minor(summary.get('recurring_expense_minor'))}"
+            )
             if draft_count > 0 or draft_total_minor > 0:
-                lines.append(f"Черновые расходы: {_fmt_money_minor(draft_total_minor)} ({draft_count} шт.)")
+                lines.append(
+                    f"{localized(locale, ru='Черновые расходы', en='Draft expenses')}: {_fmt_money_minor(draft_total_minor)} ({draft_count} {localized(locale, ru='шт.', en='items')})"
+                )
             else:
-                lines.append("Черновые расходы: —")
+                lines.append(localized(locale, ru="Черновые расходы: —", en="Draft expenses: —"))
 
     if level == "detailed":
         point_expenses = summary.get("point_expenses") or []
         recurring_expenses = summary.get("recurring_expenses") or []
         if point_expenses:
-            lines.extend(_render_breakdown("Детализация разовых расходов", point_expenses, limit=6))
+            lines.extend(
+                _render_breakdown(
+                    localized(locale, ru="Детализация разовых расходов", en="One-time expense details"),
+                    point_expenses,
+                    limit=6,
+                    locale=locale,
+                )
+            )
         if recurring_expenses:
-            lines.extend(_render_breakdown("Детализация регулярных расходов", recurring_expenses, limit=6))
+            lines.extend(
+                _render_breakdown(
+                    localized(locale, ru="Детализация регулярных расходов", en="Recurring expense details"),
+                    recurring_expenses,
+                    limit=6,
+                    locale=locale,
+                )
+            )
 
     return "\n".join(lines)
 
@@ -329,6 +419,7 @@ def _build_salary_day_breakdown_text(
     breakdown: dict,
     detail_level: str,
     shift_slot: str = "TOTAL",
+    locale: str = "ru",
 ) -> str:
     level = _notification_detail_level(detail_level)
 
@@ -338,49 +429,71 @@ def _build_salary_day_breakdown_text(
     state = str(breakdown.get("state") or "ready")
 
     lines: list[str] = [
-        f"💸 Начисление за день · {_format_ru_date(target_date)}",
-        f"Заведение: {venue_name}",
-        f"Слот: {_notification_shift_slot_label(shift_slot)}",
-        f"Итого начисление: {_fmt_money_minor(summary.get('total_minor'))}",
+        f"💸 {localized(locale, ru='Начисление за день', en='Daily earnings')} · {_format_notification_date(target_date, locale=locale)}",
+        f"{localized(locale, ru='Заведение', en='Venue')}: {venue_name}",
+        f"{localized(locale, ru='Слот', en='Shift')}: {_notification_shift_slot_label(shift_slot, locale=locale)}",
+        f"{localized(locale, ru='Итого начисление', en='Total earnings')}: {_fmt_money_minor(summary.get('total_minor'))}",
     ]
 
     if state == "partial":
-        lines.append("Данные частичные: часть начислений ещё в пересчёте")
+        lines.append(
+            localized(
+                locale,
+                ru="Данные частичные: часть начислений ещё в пересчёте",
+                en="Partial data: some earnings are still being recalculated",
+            )
+        )
     elif state == "no_payroll":
-        lines.append("Начисление ещё не рассчитано payroll, ниже только доступные данные")
+        lines.append(
+            localized(
+                locale,
+                ru="Начисление ещё не рассчитано payroll, ниже только доступные данные",
+                en="Payroll has not been calculated yet; only currently available data is shown",
+            )
+        )
     elif state == "empty":
-        lines.append("За этот день начислений не найдено")
+        lines.append(
+            localized(locale, ru="За этот день начислений не найдено", en="No earnings were found for this day")
+        )
 
     if level in {"standard", "detailed"}:
-        lines.append(f"Основное начисление: {_fmt_money_minor(summary.get('earnings_minor'))}")
+        lines.append(
+            f"{localized(locale, ru='Основное начисление', en='Base earnings')}: {_fmt_money_minor(summary.get('earnings_minor'))}"
+        )
         if int(summary.get("tips_minor") or 0):
-            lines.append(f"Чаевые: {_fmt_money_minor(summary.get('tips_minor'))}")
+            lines.append(f"{localized(locale, ru='Чаевые', en='Tips')}: {_fmt_money_minor(summary.get('tips_minor'))}")
         if int(summary.get("bonuses_minor") or 0):
-            lines.append(f"Премии: {_fmt_money_minor(summary.get('bonuses_minor'))}")
+            lines.append(
+                f"{localized(locale, ru='Премии', en='Bonuses')}: {_fmt_money_minor(summary.get('bonuses_minor'))}"
+            )
         if int(summary.get("penalties_minor") or 0):
-            lines.append(f"Штрафы/списания: {_fmt_money_minor(-int(summary.get('penalties_minor') or 0))}")
+            lines.append(
+                f"{localized(locale, ru='Штрафы/списания', en='Penalties/write-offs')}: {_fmt_money_minor(-int(summary.get('penalties_minor') or 0))}"
+            )
         hours_total = context.get("hours_total")
         shifts_count = context.get("shifts_count")
         if hours_total not in (None, "") or shifts_count not in (None, ""):
-            lines.append(f"Смен: {int(shifts_count or 0)} · Часы: {hours_total or 0}")
+            lines.append(
+                f"{localized(locale, ru='Смен', en='Shifts')}: {int(shifts_count or 0)} · {localized(locale, ru='Часы', en='Hours')}: {hours_total or 0}"
+            )
 
     if items and level in {"standard", "detailed"}:
         visible = items[:4] if level == "standard" else items[:8]
-        lines.append("Из чего сложилось:")
+        lines.append(localized(locale, ru="Из чего сложилось:", en="Breakdown:"))
         for item in visible:
             lines.append(
-                f"• {item.get('title') or 'Компонент'} — {_fmt_money_minor(int(item.get('amount_minor') or 0))}"
+                f"• {item.get('title') or localized(locale, ru='Компонент', en='Component')} — {_fmt_money_minor(int(item.get('amount_minor') or 0))}"
             )
             if level == "detailed":
                 base_text = str(item.get("base_text") or "").strip()
                 formula_text = str(item.get("formula_text") or "").strip()
                 if base_text:
-                    lines.append(f"  База: {base_text}")
+                    lines.append(f"  {localized(locale, ru='База', en='Base')}: {base_text}")
                 if formula_text:
-                    lines.append(f"  Формула: {formula_text}")
+                    lines.append(f"  {localized(locale, ru='Формула', en='Formula')}: {formula_text}")
         extra = max(len(items) - len(visible), 0)
         if extra:
-            lines.append(f"• ещё {extra}")
+            lines.append(localized(locale, ru=f"• ещё {extra}", en=f"• {extra} more"))
 
     return "\n".join(lines)
 
@@ -569,12 +682,14 @@ def _send_salary_day_breakdown_notifications(
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
+        locale = user_locale(recipient)
         text = _build_salary_day_breakdown_text(
             venue_name=venue_name,
             target_date=target_date,
             breakdown=breakdown,
             detail_level=detail_level,
             shift_slot=slot,
+            locale=locale,
         )
 
         sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
@@ -595,7 +710,7 @@ def _send_salary_day_breakdown_notifications(
             chat_id=chat_id,
             text=text,
             url=link,
-            button_text="Открыть начисления",
+            button_text=localized(locale, ru="Открыть начисления", en="Open earnings"),
         )
         ok = bool(result.get("ok"))
         retryable = bool(result.get("retryable"))
@@ -752,6 +867,7 @@ def _send_soft_alert_notifications(
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
+        locale = user_locale(recipient)
         text = _build_soft_alerts_notification_text(
             venue_name=venue_name,
             target_date=target_date,
@@ -759,6 +875,7 @@ def _send_soft_alert_notifications(
             alerts=alerts,
             detail_level=detail_level,
             shift_slot=slot,
+            locale=locale,
         )
 
         pending_log = log_notification_attempt(
@@ -778,7 +895,7 @@ def _send_soft_alert_notifications(
             chat_id=chat_id,
             text=text,
             url=link,
-            button_text="Открыть экономику дня",
+            button_text=localized(locale, ru="Открыть экономику дня", en="Open daily economics"),
         )
         ok = bool(result.get("ok"))
         retryable = bool(result.get("retryable"))
@@ -1083,12 +1200,14 @@ def _send_day_economics_summary_notifications(
             continue
 
         detail_level = getattr(recipient, "notification_detail_level", "standard")
+        locale = user_locale(recipient)
         text = _build_day_economics_notification_text(
             venue_name=venue_name,
             target_date=target_date,
             economics=economics,
             detail_level=detail_level,
             shift_slot=slot,
+            locale=locale,
         )
 
         sent_at = datetime.utcnow().replace(tzinfo=timezone.utc)
@@ -1109,7 +1228,7 @@ def _send_day_economics_summary_notifications(
             chat_id=chat_id,
             text=text,
             url=link,
-            button_text="Открыть экономику дня",
+            button_text=localized(locale, ru="Открыть экономику дня", en="Open daily economics"),
         )
         ok = bool(result.get("ok"))
         retryable = bool(result.get("retryable"))

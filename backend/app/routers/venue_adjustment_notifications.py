@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.services.notification_logs import (
     notification_dedupe_scope,
 )
+from app.core.i18n import user_locale
 from app.models.user import User
 from app.models.notification_job import NotificationJob
 from app.models.adjustment import Adjustment
@@ -133,10 +134,21 @@ def _send_adjustment_assigned_notification(db: Session, *, venue_id: int, adjust
 
     venue_name = _venue_name(db, venue_id)
     label = _adj_type_label(adj.type)
-    text = (
-        f"{venue_name}: вам добавлен(а) {label} на {adj.date.isoformat()} "
-        f"на сумму {adj.amount}. Причина: {(adj.reason or '—')}"
-    )
+    locale = user_locale(recipient)
+    if locale == "en":
+        english_label = {"PENALTY": "adjustment", "WRITEOFF": "deduction", "BONUS": "bonus"}.get(
+            str(adj.type or "").upper(),
+            "adjustment",
+        )
+        text = (
+            f"{venue_name}: a new {english_label} was added for {adj.date.isoformat()} "
+            f"in the amount of {adj.amount}. Reason: {(adj.reason or '—')}"
+        )
+    else:
+        text = (
+            f"{venue_name}: вам добавлен(а) {label} на {adj.date.isoformat()} "
+            f"на сумму {adj.amount}. Причина: {(adj.reason or '—')}"
+        )
     ok, retryable_error = _deliver_user_notification(
         db,
         notification_type="adjustment_assigned",
@@ -145,7 +157,7 @@ def _send_adjustment_assigned_notification(db: Session, *, venue_id: int, adjust
         idempotency_key=f"adjustment_assigned:{int(adj.id)}:{notification_dedupe_scope(recipient)}",
         text=text,
         url=_build_staff_adjustments_link(venue_id=venue_id, adjustment_id=int(adj.id), tab=adj.type),
-        button_text="Открыть",
+        button_text="Open" if locale == "en" else "Открыть",
     )
     if not ok:
         raise NotificationDeliveryError(
@@ -243,7 +255,20 @@ def _send_adjustment_dispute_event_notifications(
             if recipient_is_manager
             else _build_staff_adjustments_link(venue_id=venue_id, adjustment_id=int(adj.id), tab="disputes")
         )
-        if prefix == "Новый спор":
+        locale = user_locale(recipient)
+        if locale == "en":
+            english_label = {"PENALTY": "adjustment", "WRITEOFF": "deduction", "BONUS": "bonus"}.get(
+                str(adj.type or "").upper(),
+                "adjustment",
+            )
+            if prefix == "Новый спор":
+                text = (
+                    f"{venue_name}: new dispute. {who} disputed {english_label} #{adj.id} "
+                    f"dated {adj.date.isoformat()} (amount {adj.amount}).\nComment: {message_text}"
+                )
+            else:
+                text = f"{venue_name}: new comment in the dispute for {english_label} #{adj.id} from {who}.\n{message_text}"
+        elif prefix == "Новый спор":
             text = (
                 f"{venue_name}: {prefix}. {who} оспорил {label} #{adj.id} на {adj.date.isoformat()} "
                 f"(сумма {adj.amount}).\nКомментарий: {message_text}"
@@ -259,7 +284,7 @@ def _send_adjustment_dispute_event_notifications(
             idempotency_key=f"adjustment_dispute_event:{int(comment.id)}:{notification_dedupe_scope(recipient)}",
             text=text,
             url=link,
-            button_text="Открыть спор",
+            button_text="Open dispute" if locale == "en" else "Открыть спор",
         )
         had_delivery_failure = had_delivery_failure or not ok
         had_retryable_error = had_retryable_error or retryable_error

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.i18n import localized, user_locale
 from app.models.user import User
 from app.models.venue import Venue
 from app.models.venue_member import VenueMember
@@ -57,7 +58,9 @@ def send_owner_billing_notification_once(
     notification_type: str,
     event_key: str,
     text: str,
+    text_en: str | None = None,
     button_text: str = "Открыть Axelio",
+    button_text_en: str = "Open Axelio",
     users: Iterable[User] | None = None,
 ) -> int:
     recipients = list(users or list_owner_notification_recipients(db, venue_id=venue_id))
@@ -86,6 +89,10 @@ def send_owner_billing_notification_once(
         if _delivery_exists(db, idempotency_key=key):
             continue
 
+        locale = user_locale(user)
+        rendered_text = text_en if locale == "en" and text_en else text
+        rendered_button = localized(locale, ru=button_text, en=button_text_en)
+
         entry = log_notification_attempt(
             db,
             notification_type=f"billing_{notification_type}",
@@ -94,12 +101,17 @@ def send_owner_billing_notification_once(
             venue_id=int(venue_id),
             planned_at=now,
             idempotency_key=key,
-            payload_preview=str(text or "")[:1000],
+            payload_preview=str(rendered_text or "")[:1000],
         )
         db.flush()
         db.commit()
 
-        result = tg_notify.notify_result(chat_id=int(chat_id), text=text, url=open_url, button_text=button_text)
+        result = tg_notify.notify_result(
+            chat_id=int(chat_id),
+            text=rendered_text,
+            url=open_url,
+            button_text=rendered_button,
+        )
         entry.status = "sent" if result.get("ok") else "failed"
         entry.sent_at = _utc_now() if result.get("ok") else None
         if result.get("error"):

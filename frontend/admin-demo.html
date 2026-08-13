@@ -6,7 +6,18 @@
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/admin-demo.css?v=20260726-polish7" />
-  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
+  <script src="/page-loader.js?v=20260813-i18n5"></script>
   <title>Axelio · Админ · DEMO</title>
 </head>
 <body class="admin-demo-page">
@@ -124,7 +135,7 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour, cacheSystemRole } from "/app.js?v=20260726-navmore1";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour, cacheSystemRole } from "/app.js?v=20260813-i18n1";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");

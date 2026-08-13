@@ -4,7 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
-  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
+  <script src="/page-loader.js?v=20260813-i18n5"></script>
   <title>Axelio · Выручка</title>
   <script>
     // Route alias: keep the old route working, but send everything to the canonical page.

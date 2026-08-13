@@ -5,7 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
-  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
+  <script src="/page-loader.js?v=20260813-i18n5"></script>
   <title>Axelio · Сводка зарплаты</title>
 </head>
 <body>
@@ -17,7 +28,7 @@
   </div>
 
   <script type="module">
-import { getActiveVenueId, setActiveVenueId } from "/app.js?v=20260726-navmore1";
+import { getActiveVenueId, setActiveVenueId } from "/app.js?v=20260813-i18n1";
 const p = new URLSearchParams(location.search);
 const venueId = p.get("venue_id") || getActiveVenueId();
 if (venueId) setActiveVenueId(venueId);

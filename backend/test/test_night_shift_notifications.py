@@ -151,6 +151,37 @@ class NightShiftNotificationContentTests(TestCase):
         for text_value in (day_text, salary_text, alerts_text):
             self.assertIn("Слот: Ночь", text_value)
 
+    def test_report_notification_texts_support_english_recipients(self):
+        day_text = venue_economics_notifications._build_day_economics_notification_text(
+            venue_name="North Bar",
+            target_date=date(2026, 7, 29),
+            economics={"summary": {}},
+            detail_level="short",
+            shift_slot="NIGHT",
+            locale="en",
+        )
+        salary_text = venue_economics_notifications._build_salary_day_breakdown_text(
+            venue_name="North Bar",
+            target_date=date(2026, 7, 29),
+            breakdown={"summary": {}},
+            detail_level="short",
+            shift_slot="NIGHT",
+            locale="en",
+        )
+        alerts_text = venue_economics_notifications._build_soft_alerts_notification_text(
+            venue_name="North Bar",
+            target_date=date(2026, 7, 29),
+            economics={"summary": {}, "metrics": {}, "rules": {}},
+            alerts=[{"code": "LOSS_DAY", "severity": "CRITICAL", "title": "День убыточный"}],
+            detail_level="short",
+            shift_slot="NIGHT",
+            locale="en",
+        )
+
+        for text_value in (day_text, salary_text, alerts_text):
+            self.assertIn("Shift: Night", text_value)
+            self.assertNotRegex(text_value, r"[А-Яа-яЁё]")
+
     def test_shift_comment_link_and_label_preserve_night_context(self):
         shift = SimpleNamespace(
             id=41,

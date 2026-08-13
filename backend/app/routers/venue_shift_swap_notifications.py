@@ -7,6 +7,7 @@ from urllib.parse import quote
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
+from app.core.i18n import user_locale
 from app.models.notification_job import NotificationJob
 from app.models.shift import Shift
 from app.models.shift_interval import ShiftInterval
@@ -85,8 +86,11 @@ def _shift_swap_link(*, venue_id: int, shift: Shift) -> str:
     )
 
 
-def _shift_label(shift: Shift, interval: ShiftInterval) -> str:
-    slot = "Ночь" if normalize_shift_slot(shift.shift_slot) == "NIGHT" else "День"
+def _shift_label(shift: Shift, interval: ShiftInterval, *, locale: str = "ru") -> str:
+    if locale == "en":
+        slot = "Night" if normalize_shift_slot(shift.shift_slot) == "NIGHT" else "Day"
+    else:
+        slot = "Ночь" if normalize_shift_slot(shift.shift_slot) == "NIGHT" else "День"
     start = interval.start_time.strftime("%H:%M")
     end = interval.end_time.strftime("%H:%M")
     return f"{shift.date.strftime('%d.%m.%Y')} · {slot} · {start}–{end}"
@@ -134,40 +138,65 @@ def _send_shift_swap_notifications(
     request, shift, interval, venue, requester, replacement = row
     event = str(event_kind or "").strip().lower()
     requester_name = _display_user_name(requester)
-    replacement_name = _display_user_name(replacement) if replacement is not None else "не выбрана"
-    shift_label = _shift_label(shift, interval)
+    replacement_name = _display_user_name(replacement) if replacement is not None else None
     link = _shift_swap_link(venue_id=int(venue.id), shift=shift)
 
     recipients: dict[int, tuple[User, str, str]] = {}
     if event in {"created", "cancelled"}:
-        title = "Новый запрос на обмен сменой" if event == "created" else "Запрос на обмен сменой отменён"
         for manager in _manager_recipients(db, venue_id=int(venue.id)):
             if int(manager.id) == int(requester.id):
                 continue
-            text = (
-                f"{title}\n"
-                f"Заведение: {venue.name}\n"
-                f"Сотрудник: {requester_name}\n"
-                f"Смена: {shift_label}\n"
-                f"Предложенная замена: {replacement_name}"
-            )
-            recipients[int(manager.id)] = (manager, text, "Открыть запрос")
+            locale = user_locale(manager)
+            shift_label = _shift_label(shift, interval, locale=locale)
+            if locale == "en":
+                title = "New shift swap request" if event == "created" else "Shift swap request cancelled"
+                text = (
+                    f"{title}\nVenue: {venue.name}\nTeam member: {requester_name}\nShift: {shift_label}\n"
+                    f"Suggested replacement: {replacement_name or 'not selected'}"
+                )
+                button_text = "Open request"
+            else:
+                title = "Новый запрос на обмен сменой" if event == "created" else "Запрос на обмен сменой отменён"
+                text = (
+                    f"{title}\nЗаведение: {venue.name}\nСотрудник: {requester_name}\nСмена: {shift_label}\n"
+                    f"Предложенная замена: {replacement_name or 'не выбрана'}"
+                )
+                button_text = "Открыть запрос"
+            recipients[int(manager.id)] = (manager, text, button_text)
     elif event in {"approved", "rejected"}:
         approved = event == "approved"
-        title = "Обмен сменой подтверждён" if approved else "Обмен сменой отклонён"
         manager_note = str(request.manager_comment or "").strip()
-        requester_text = f"{title}\nЗаведение: {venue.name}\nСмена: {shift_label}\nЗамена: {replacement_name}"
+        requester_locale = user_locale(requester)
+        shift_label = _shift_label(shift, interval, locale=requester_locale)
+        if requester_locale == "en":
+            title = "Shift swap approved" if approved else "Shift swap rejected"
+            requester_text = (
+                f"{title}\nVenue: {venue.name}\nShift: {shift_label}\nReplacement: {replacement_name or 'not selected'}"
+            )
+        else:
+            title = "Обмен сменой подтверждён" if approved else "Обмен сменой отклонён"
+            requester_text = (
+                f"{title}\nЗаведение: {venue.name}\nСмена: {shift_label}\nЗамена: {replacement_name or 'не выбрана'}"
+            )
         if manager_note:
-            requester_text += f"\nКомментарий: {manager_note}"
-        recipients[int(requester.id)] = (requester, requester_text, "Открыть график")
+            requester_text += f"\n{'Comment' if requester_locale == 'en' else 'Комментарий'}: {manager_note}"
+        recipients[int(requester.id)] = (
+            requester,
+            requester_text,
+            "Open schedule" if requester_locale == "en" else "Открыть график",
+        )
         if approved and replacement is not None:
+            replacement_locale = user_locale(replacement)
+            replacement_shift_label = _shift_label(shift, interval, locale=replacement_locale)
             replacement_text = (
-                f"Вам передали смену\nЗаведение: {venue.name}\nСмена: {shift_label}\nОт сотрудника: {requester_name}"
+                f"A shift was assigned to you\nVenue: {venue.name}\nShift: {replacement_shift_label}\nFrom: {requester_name}"
+                if replacement_locale == "en"
+                else f"Вам передали смену\nЗаведение: {venue.name}\nСмена: {replacement_shift_label}\nОт сотрудника: {requester_name}"
             )
             recipients[int(replacement.id)] = (
                 replacement,
                 replacement_text,
-                "Открыть график",
+                "Open schedule" if replacement_locale == "en" else "Открыть график",
             )
     else:
         return
