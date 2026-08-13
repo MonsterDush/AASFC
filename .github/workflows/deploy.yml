@@ -118,6 +118,7 @@ jobs:
             ops/backup/postgres-backup.sh \
             ops/backup/restore-drill.sh \
             ops/monitoring/health-check.sh \
+            ops/nginx/activate-performance.sh \
             ops/deploy/post-deploy-smoke.sh \
             ops/deploy/production-readiness.sh \
             ops/deploy/release.sh
@@ -268,14 +269,20 @@ jobs:
             git -C "${REPO_DIR}" show \
               "${RELEASE_SHA}:ops/backup/postgres-backup.sh" \
               >"${READINESS_TOOL_DIR}/postgres-backup.sh"
+            git -C "${REPO_DIR}" show \
+              "${RELEASE_SHA}:ops/nginx/activate-performance.sh" \
+              >"${READINESS_TOOL_DIR}/activate-nginx-performance.sh"
             chmod 0700 \
               "${READINESS_TOOL_DIR}/production-readiness.sh" \
-              "${READINESS_TOOL_DIR}/postgres-backup.sh"
+              "${READINESS_TOOL_DIR}/postgres-backup.sh" \
+              "${READINESS_TOOL_DIR}/activate-nginx-performance.sh"
 
             sudo PROD_APP_ROOT="${PROD_APP_ROOT}" \
               RELEASE_SHA="${RELEASE_SHA}" \
               BACKUP_SCRIPT="${READINESS_TOOL_DIR}/postgres-backup.sh" \
               "${READINESS_TOOL_DIR}/production-readiness.sh"
+            sudo NGINX_ACTIVATE_DRY_RUN=true \
+              "${READINESS_TOOL_DIR}/activate-nginx-performance.sh"
 
   deploy:
     if: github.event_name == 'push'

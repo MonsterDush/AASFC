@@ -63,6 +63,10 @@ class MonitoringContractTests(TestCase):
         self.assertIn("backup-last-success.timestamp", backup)
         self.assertIn("AXELIO_ALERT_TG_CHAT_IDS", readiness)
         self.assertIn("SUPER_ADMIN_TG_USER_IDS", readiness)
+        self.assertIn("activate_nginx_performance", release)
+
+        workflow = (REPO_DIR / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
+        self.assertIn("NGINX_ACTIVATE_DRY_RUN=true", workflow)
 
         backup_unit_install = release[
             release.index("install_backup_units()") : release.index("has_monitoring_sources()")
