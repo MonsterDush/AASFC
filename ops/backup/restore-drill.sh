@@ -5,7 +5,11 @@ set -euo pipefail
 : "${RESTORE_DATABASE_URL:?Set RESTORE_DATABASE_URL}"
 : "${BACKUP_ENCRYPTION_PASSWORD:?Set BACKUP_ENCRYPTION_PASSWORD}"
 
-repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+repo_dir="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+[[ -d "${repo_dir}/backend" ]] || {
+  echo "Repository backend directory is missing: ${repo_dir}/backend" >&2
+  exit 2
+}
 backup_script="${BACKUP_SCRIPT:-${repo_dir}/ops/backup/postgres-backup.sh}"
 if [[ -n "${ALEMBIC_BIN:-}" ]]; then
   alembic_bin="${ALEMBIC_BIN}"

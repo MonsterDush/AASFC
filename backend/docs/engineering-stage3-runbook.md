@@ -178,6 +178,14 @@ CI performs the same drill against seeded PostgreSQL data on every change.
 Record every quarterly production-data drill with date, source backup, operator,
 actual RPO, actual RTO, row-count result, migration result, and follow-up issues.
 
+The preferred procedure is the GitHub Actions workflow `Production assurance
+drill` in `all` or `restore` mode on `main`. It creates a fresh encrypted
+production snapshot, restores it only into the suffixed drill database, runs
+migrations, compares critical row counts, removes the drill database, and writes
+an auditable RPO/RTO report under
+`/var/www/axelio/prod/deployments/drills`. Run it after material backup changes
+and at least quarterly even when the scheduled backups remain green.
+
 ## Structured logs and request correlation
 
 Every API response includes `X-Request-ID`. A safe incoming ID is preserved;

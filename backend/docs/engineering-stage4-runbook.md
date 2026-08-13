@@ -31,6 +31,13 @@ minutes and checks:
 Alerts are deduplicated by the current failure set. A separate recovery message
 is sent after all checks return to green.
 
+Run the GitHub Actions workflow `Production assurance drill` in
+`observability` mode after changing metrics or alerts and at least quarterly.
+It verifies the authenticated public metrics endpoint, executes the real
+production monitor, sends a clearly labelled Telegram test alert followed by a
+recovery message, and records its last successful timestamp. It does not induce
+a production outage.
+
 ## 2. Activation and verification
 
 The Nginx include is a one-time reviewed server change. Follow
