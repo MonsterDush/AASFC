@@ -15,11 +15,14 @@ class ExpenseRecognitionTests(TestCase):
             period_start=date(2026, 3, 1),
             period_end=date(2026, 3, 3),
         )
-        self.assertEqual(plan, [
-            (date(2026, 3, 1), 34),
-            (date(2026, 3, 2), 33),
-            (date(2026, 3, 3), 33),
-        ])
+        self.assertEqual(
+            plan,
+            [
+                (date(2026, 3, 1), 34),
+                (date(2026, 3, 2), 33),
+                (date(2026, 3, 3), 33),
+            ],
+        )
 
     def test_build_expense_recognition_plan_spreads_single_slot_month_by_days(self):
         expense = SimpleNamespace(

@@ -30,6 +30,7 @@ the `quality` job in `.github/workflows/deploy.yml`.
 ```bash
 python -m ruff check --select E9,F63,F7,F82 backend/app backend/test bot_service tools
 python -m ruff check backend/app backend/test bot_service tools
+python -m ruff format --check backend/app backend/test bot_service tools
 python tools/check_repository_hygiene.py
 pnpm test:budgets
 
@@ -42,7 +43,8 @@ python -m unittest discover -s test -v
 The repository-wide lint gate covers every configured Ruff rule, including
 unused imports. Compatibility facades declare their intended re-exports with
 redundant aliases, so a plain import remains distinguishable from public API.
-Critical modules additionally pass the full formatting list in the workflow.
+The formatting gate covers all maintained backend, test, bot, and Python tool
+code; Alembic migration history remains excluded by the Ruff configuration.
 
 Do not weaken a coverage, accessibility, security, dependency, or performance
 gate merely to make CI green. Fix the regression, or document and review a

@@ -12,9 +12,7 @@ class ShiftScheduleTemplate(Base):
     """Reusable weekly pattern for generating shifts for a month."""
 
     __tablename__ = "shift_schedule_templates"
-    __table_args__ = (
-        UniqueConstraint("venue_id", "title", name="uq_shift_schedule_templates_venue_title"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", "title", name="uq_shift_schedule_templates_venue_title"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), nullable=False, index=True)

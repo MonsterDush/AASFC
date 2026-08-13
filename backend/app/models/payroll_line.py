@@ -10,13 +10,13 @@ from app.core.db import Base
 
 class PayrollLine(Base):
     __tablename__ = "payroll_lines"
-    __table_args__ = (
-        UniqueConstraint("payroll_run_id", "member_user_id", name="uq_payroll_lines_run_member"),
-    )
+    __table_args__ = (UniqueConstraint("payroll_run_id", "member_user_id", name="uq_payroll_lines_run_member"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    payroll_run_id: Mapped[int] = mapped_column(ForeignKey("payroll_runs.id", ondelete="CASCADE"), index=True, nullable=False)
+    payroll_run_id: Mapped[int] = mapped_column(
+        ForeignKey("payroll_runs.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)
     member_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     pay_profile_id: Mapped[int | None] = mapped_column(ForeignKey("pay_profiles.id"), nullable=True)

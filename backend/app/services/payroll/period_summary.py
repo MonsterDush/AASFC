@@ -10,7 +10,9 @@ from app.models import Adjustment, DailyReport, PayrollRecalculationLog, Shift, 
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 
 
-def resolve_salary_period(*, month: str | None = None, date_from: date | None = None, date_to: date | None = None) -> tuple[date, date, dict]:
+def resolve_salary_period(
+    *, month: str | None = None, date_from: date | None = None, date_to: date | None = None
+) -> tuple[date, date, dict]:
     if month and (date_from is not None or date_to is not None):
         raise ValueError("Use either month or date_from/date_to")
     if month:
@@ -19,7 +21,11 @@ def resolve_salary_period(*, month: str | None = None, date_from: date | None = 
             year = int(year_s)
             month_i = int(month_s)
             period_start = date(year, month_i, 1)
-            period_end = date(year + 1, 1, 1) - timedelta(days=1) if month_i == 12 else date(year, month_i + 1, 1) - timedelta(days=1)
+            period_end = (
+                date(year + 1, 1, 1) - timedelta(days=1)
+                if month_i == 12
+                else date(year, month_i + 1, 1) - timedelta(days=1)
+            )
         except Exception as exc:  # pragma: no cover - validated in router
             raise ValueError("Bad month format, expected YYYY-MM") from exc
         return period_start, period_end, {"mode": "month", "month": month}
@@ -50,7 +56,9 @@ def _serialize_recalculation_log(log: PayrollRecalculationLog | None) -> dict | 
         "id": int(log.id),
         "period_month": log.period_month.strftime("%Y-%m") if getattr(log, "period_month", None) else None,
         "trigger_reason": str(log.trigger_reason or ""),
-        "triggered_by_user_id": int(log.triggered_by_user_id) if getattr(log, "triggered_by_user_id", None) is not None else None,
+        "triggered_by_user_id": int(log.triggered_by_user_id)
+        if getattr(log, "triggered_by_user_id", None) is not None
+        else None,
         "created_at": log.created_at.isoformat() if getattr(log, "created_at", None) else None,
     }
 
@@ -67,14 +75,22 @@ def _latest_recalculation_by_venue(
     months = _month_starts_between(period_start, period_end)
     if not months:
         return {}
-    rows = db.execute(
-        select(PayrollRecalculationLog)
-        .where(
-            PayrollRecalculationLog.venue_id.in_(venue_ids),
-            PayrollRecalculationLog.period_month.in_(months),
+    rows = (
+        db.execute(
+            select(PayrollRecalculationLog)
+            .where(
+                PayrollRecalculationLog.venue_id.in_(venue_ids),
+                PayrollRecalculationLog.period_month.in_(months),
+            )
+            .order_by(
+                PayrollRecalculationLog.venue_id.asc(),
+                PayrollRecalculationLog.created_at.desc(),
+                PayrollRecalculationLog.id.desc(),
+            )
         )
-        .order_by(PayrollRecalculationLog.venue_id.asc(), PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     out: dict[int, dict | None] = {int(vid): None for vid in venue_ids}
     for row in rows:
         vid = int(row.venue_id)
@@ -207,7 +223,11 @@ def build_member_period_summary(
         else:
             period_state = "empty"
 
-        source = "payroll" if payroll_present else ("partial" if any([earned_minor, tips_minor, bonuses_minor, penalties_minor]) else "not_calculated")
+        source = (
+            "payroll"
+            if payroll_present
+            else ("partial" if any([earned_minor, tips_minor, bonuses_minor, penalties_minor]) else "not_calculated")
+        )
         item = {
             "venue": {"id": int(vid), "name": venue_names.get(int(vid), "")},
             "earned_minor": int(earned_minor),

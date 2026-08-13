@@ -181,7 +181,9 @@ def _request_call_challenge(db: Session, *, phone_e164: str, request: Request, p
     )
     challenge.provider = call_result.provider
     challenge.external_check_id = str(call_result.get("check_id") or "").strip() or None
-    challenge.external_target = str(call_result.get("call_phone_pretty") or call_result.get("call_phone") or "").strip() or None
+    challenge.external_target = (
+        str(call_result.get("call_phone_pretty") or call_result.get("call_phone") or "").strip() or None
+    )
     db.flush()
     db.commit()
     return {
@@ -209,6 +211,7 @@ def _resolve_verification(db: Session, *, phone_e164: str, purpose: str, code: s
         challenge_id=challenge_id,
     )
 
+
 @router.get("/phone/config")
 def phone_auth_config():
     return _phone_auth_config_payload()
@@ -229,7 +232,9 @@ def request_phone_code(payload: PhoneCodeRequestIn, request: Request, db: Sessio
 
 
 @router.get("/phone/call-status/{challenge_id}", response_model=PhoneCallStatusOut)
-def phone_call_status(challenge_id: int, phone: str = Query(..., min_length=5, max_length=32), db: Session = Depends(get_db)):
+def phone_call_status(
+    challenge_id: int, phone: str = Query(..., min_length=5, max_length=32), db: Session = Depends(get_db)
+):
     phone_e164 = normalize_phone_e164(phone)
     challenge = get_challenge_by_id(db, challenge_id=challenge_id, phone_e164=phone_e164)
     if str(challenge.verification_channel or OTP_CHANNEL_SMS) != OTP_CHANNEL_CALL:
@@ -252,7 +257,9 @@ def phone_call_status(challenge_id: int, phone: str = Query(..., min_length=5, m
 
     db.commit()
     challenge = get_challenge_by_id(db, challenge_id=challenge_id, phone_e164=phone_e164)
-    out = _challenge_to_status_out(challenge, status_text=str(status_result.get("check_status_text") or "").strip() or None)
+    out = _challenge_to_status_out(
+        challenge, status_text=str(status_result.get("check_status_text") or "").strip() or None
+    )
     if status_result.get("call_phone_pretty") and not out.call_phone_pretty:
         out.call_phone_pretty = str(status_result.get("call_phone_pretty") or "") or out.call_phone_pretty
     return out
@@ -423,6 +430,7 @@ def change_password(
         password_set_at=(user.password_set_at.isoformat() if user.password_set_at else None),
         password_changed_at=(user.password_changed_at.isoformat() if user.password_changed_at else None),
     )
+
 
 @link_router.post("/link/phone/request-call")
 def request_link_phone_call(

@@ -124,32 +124,37 @@ def default_demo_target_path(*, venue_id: int, persona: str | None = None) -> st
 
 def build_demo_start_url(*, venue_id: int, persona: str | None = None, next_path: str | None = None) -> str:
     safe_path = sanitize_frontend_next_path(next_path)
-    target_path = _with_venue_param(safe_path, venue_id=int(venue_id)) if safe_path else default_demo_target_path(venue_id=int(venue_id), persona=persona)
+    target_path = (
+        _with_venue_param(safe_path, venue_id=int(venue_id))
+        if safe_path
+        else default_demo_target_path(venue_id=int(venue_id), persona=persona)
+    )
     base = _frontend_base_url() or ""
     if base:
         return urljoin(base + "/", target_path.lstrip("/"))
     return target_path
 
 
-
-
 def build_frontend_route_url(*, venue_id: int, path: str) -> str:
-    safe_path = sanitize_frontend_next_path(path) or default_demo_target_path(venue_id=int(venue_id), persona=DEMO_PERSONA_OWNER)
+    safe_path = sanitize_frontend_next_path(path) or default_demo_target_path(
+        venue_id=int(venue_id), persona=DEMO_PERSONA_OWNER
+    )
     return build_demo_start_url(venue_id=int(venue_id), persona=DEMO_PERSONA_OWNER, next_path=safe_path)
 
 
 def build_demo_auth_start_url(*, persona: str | None = None, next_path: str | None = None) -> str:
     persona_upper = normalize_demo_persona(persona, default=DEMO_PERSONA_OWNER)
-    api_base = (settings.api_base_url() or '').rstrip('/')
-    path = '/auth/demo/start'
-    query: list[tuple[str, str]] = [('persona', persona_upper)]
+    api_base = (settings.api_base_url() or "").rstrip("/")
+    path = "/auth/demo/start"
+    query: list[tuple[str, str]] = [("persona", persona_upper)]
     safe_path = sanitize_frontend_next_path(next_path)
     if safe_path:
-        query.append(('next_path', safe_path))
+        query.append(("next_path", safe_path))
     qs = urlencode(query)
     if api_base:
         return f"{api_base}{path}?{qs}"
     return f"{path}?{qs}"
+
 
 def get_public_demo_venue(db: Session) -> Venue | None:
     venue = db.execute(
@@ -163,10 +168,7 @@ def get_public_demo_venue(db: Session) -> Venue | None:
 
 def get_demo_template_venue(db: Session) -> Venue | None:
     return db.execute(
-        select(Venue)
-        .where(Venue.demo_kind == DEMO_KIND_TEMPLATE)
-        .order_by(Venue.id.asc())
-        .limit(1)
+        select(Venue).where(Venue.demo_kind == DEMO_KIND_TEMPLATE).order_by(Venue.id.asc()).limit(1)
     ).scalar_one_or_none()
 
 

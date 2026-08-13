@@ -37,7 +37,9 @@ class FinanceEntry(Base):
     direction: Mapped[str] = mapped_column(String(16), nullable=False)  # INCOME | EXPENSE
     kind: Mapped[str] = mapped_column(String(32), nullable=False)  # REVENUE | EXPENSE | PAYROLL | ADJUSTMENT | REFUND
 
-    source_type: Mapped[str] = mapped_column(String(32), nullable=False)  # daily_report | expense | payroll_run | adjustment
+    source_type: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # daily_report | expense | payroll_run | adjustment
     source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), nullable=True)

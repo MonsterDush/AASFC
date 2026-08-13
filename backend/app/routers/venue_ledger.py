@@ -55,24 +55,26 @@ router = APIRouter()
 
 
 def _serialize_balance_adjustment(adjustment: BalanceAdjustment, payment_method: PaymentMethod | None = None) -> dict:
-    pm = payment_method or getattr(adjustment, 'payment_method', None)
+    pm = payment_method or getattr(adjustment, "payment_method", None)
     return {
-        'id': adjustment.id,
-        'venue_id': adjustment.venue_id,
-        'payment_method_id': adjustment.payment_method_id,
-        'adjustment_date': adjustment.adjustment_date.isoformat() if adjustment.adjustment_date else None,
-        'delta_minor': int(adjustment.delta_minor or 0),
-        'status': str(getattr(adjustment, 'status', 'CONFIRMED') or 'CONFIRMED').upper(),
-        'reason': adjustment.reason,
-        'comment': adjustment.comment,
-        'created_by_user_id': adjustment.created_by_user_id,
-        'created_at': adjustment.created_at.isoformat() if adjustment.created_at else None,
-        'updated_at': adjustment.updated_at.isoformat() if adjustment.updated_at else None,
-        'payment_method': {
-            'id': pm.id,
-            'code': pm.code,
-            'title': pm.title,
-        } if pm is not None else None,
+        "id": adjustment.id,
+        "venue_id": adjustment.venue_id,
+        "payment_method_id": adjustment.payment_method_id,
+        "adjustment_date": adjustment.adjustment_date.isoformat() if adjustment.adjustment_date else None,
+        "delta_minor": int(adjustment.delta_minor or 0),
+        "status": str(getattr(adjustment, "status", "CONFIRMED") or "CONFIRMED").upper(),
+        "reason": adjustment.reason,
+        "comment": adjustment.comment,
+        "created_by_user_id": adjustment.created_by_user_id,
+        "created_at": adjustment.created_at.isoformat() if adjustment.created_at else None,
+        "updated_at": adjustment.updated_at.isoformat() if adjustment.updated_at else None,
+        "payment_method": {
+            "id": pm.id,
+            "code": pm.code,
+            "title": pm.title,
+        }
+        if pm is not None
+        else None,
     }
 
 
@@ -81,30 +83,34 @@ def _serialize_payment_method_transfer(
     from_payment_method: PaymentMethod | None = None,
     to_payment_method: PaymentMethod | None = None,
 ) -> dict:
-    from_pm = from_payment_method or getattr(transfer, 'from_payment_method', None)
-    to_pm = to_payment_method or getattr(transfer, 'to_payment_method', None)
+    from_pm = from_payment_method or getattr(transfer, "from_payment_method", None)
+    to_pm = to_payment_method or getattr(transfer, "to_payment_method", None)
     return {
-        'id': transfer.id,
-        'venue_id': transfer.venue_id,
-        'from_payment_method_id': transfer.from_payment_method_id,
-        'to_payment_method_id': transfer.to_payment_method_id,
-        'transfer_date': transfer.transfer_date.isoformat() if transfer.transfer_date else None,
-        'amount_minor': int(transfer.amount_minor or 0),
-        'status': str(getattr(transfer, 'status', 'CONFIRMED') or 'CONFIRMED').upper(),
-        'comment': transfer.comment,
-        'created_by_user_id': transfer.created_by_user_id,
-        'created_at': transfer.created_at.isoformat() if transfer.created_at else None,
-        'updated_at': transfer.updated_at.isoformat() if transfer.updated_at else None,
-        'from_payment_method': {
-            'id': from_pm.id,
-            'code': from_pm.code,
-            'title': from_pm.title,
-        } if from_pm is not None else None,
-        'to_payment_method': {
-            'id': to_pm.id,
-            'code': to_pm.code,
-            'title': to_pm.title,
-        } if to_pm is not None else None,
+        "id": transfer.id,
+        "venue_id": transfer.venue_id,
+        "from_payment_method_id": transfer.from_payment_method_id,
+        "to_payment_method_id": transfer.to_payment_method_id,
+        "transfer_date": transfer.transfer_date.isoformat() if transfer.transfer_date else None,
+        "amount_minor": int(transfer.amount_minor or 0),
+        "status": str(getattr(transfer, "status", "CONFIRMED") or "CONFIRMED").upper(),
+        "comment": transfer.comment,
+        "created_by_user_id": transfer.created_by_user_id,
+        "created_at": transfer.created_at.isoformat() if transfer.created_at else None,
+        "updated_at": transfer.updated_at.isoformat() if transfer.updated_at else None,
+        "from_payment_method": {
+            "id": from_pm.id,
+            "code": from_pm.code,
+            "title": from_pm.title,
+        }
+        if from_pm is not None
+        else None,
+        "to_payment_method": {
+            "id": to_pm.id,
+            "code": to_pm.code,
+            "title": to_pm.title,
+        }
+        if to_pm is not None
+        else None,
     }
 
 
@@ -114,33 +120,37 @@ def _serialize_finance_entry(
     department: Department | None = None,
     report_shift_slot: str | None = None,
 ) -> dict:
-    pm = payment_method or getattr(entry, 'payment_method', None)
-    dept = department or getattr(entry, 'department', None)
-    source_type = str(entry.source_type or '').lower()
+    pm = payment_method or getattr(entry, "payment_method", None)
+    dept = department or getattr(entry, "department", None)
+    source_type = str(entry.source_type or "").lower()
     meta_json = dict(entry.meta_json or {})
-    if source_type == 'daily_report' and report_shift_slot:
-        meta_json.setdefault('shift_slot', str(report_shift_slot).upper())
+    if source_type == "daily_report" and report_shift_slot:
+        meta_json.setdefault("shift_slot", str(report_shift_slot).upper())
     return {
-        'id': entry.id,
-        'venue_id': entry.venue_id,
-        'entry_date': entry.entry_date.isoformat() if entry.entry_date else None,
-        'amount_minor': int(entry.amount_minor or 0),
-        'direction': str(entry.direction or '').upper(),
-        'kind': str(entry.kind or '').upper(),
-        'source_type': source_type,
-        'source_id': int(entry.source_id) if entry.source_id is not None else None,
-        'meta_json': meta_json or None,
-        'payment_method': {
-            'id': pm.id,
-            'code': pm.code,
-            'title': pm.title,
-        } if pm is not None else None,
-        'department': {
-            'id': dept.id,
-            'code': dept.code,
-            'title': dept.title,
-        } if dept is not None else None,
-        'created_at': entry.created_at.isoformat() if entry.created_at else None,
+        "id": entry.id,
+        "venue_id": entry.venue_id,
+        "entry_date": entry.entry_date.isoformat() if entry.entry_date else None,
+        "amount_minor": int(entry.amount_minor or 0),
+        "direction": str(entry.direction or "").upper(),
+        "kind": str(entry.kind or "").upper(),
+        "source_type": source_type,
+        "source_id": int(entry.source_id) if entry.source_id is not None else None,
+        "meta_json": meta_json or None,
+        "payment_method": {
+            "id": pm.id,
+            "code": pm.code,
+            "title": pm.title,
+        }
+        if pm is not None
+        else None,
+        "department": {
+            "id": dept.id,
+            "code": dept.code,
+            "title": dept.title,
+        }
+        if dept is not None
+        else None,
+        "created_at": entry.created_at.isoformat() if entry.created_at else None,
     }
 
 
@@ -170,7 +180,6 @@ def _require_finance_reconciliation_view(db: Session, *, venue_id: int, user: Us
             pass
     for permission_code in ("REVENUE_VIEW", "EXPENSE_VIEW", "PAYROLL_VIEW"):
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code=permission_code)
-
 
 
 def _require_payment_transfers_manage(db: Session, *, venue_id: int, user: User) -> None:
@@ -210,13 +219,14 @@ def _finance_entries_statement(
     kind: str | None,
     source_type: str | None,
 ):
-    stmt = select(FinanceEntry, PaymentMethod, Department, DailyReport.shift_slot).outerjoin(
-        PaymentMethod, PaymentMethod.id == FinanceEntry.payment_method_id
-    ).outerjoin(
-        Department, Department.id == FinanceEntry.department_id
-    ).outerjoin(
-        DailyReport,
-        and_(FinanceEntry.source_type == 'daily_report', DailyReport.id == FinanceEntry.source_id),
+    stmt = (
+        select(FinanceEntry, PaymentMethod, Department, DailyReport.shift_slot)
+        .outerjoin(PaymentMethod, PaymentMethod.id == FinanceEntry.payment_method_id)
+        .outerjoin(Department, Department.id == FinanceEntry.department_id)
+        .outerjoin(
+            DailyReport,
+            and_(FinanceEntry.source_type == "daily_report", DailyReport.id == FinanceEntry.source_id),
+        )
     )
 
     stmt = _apply_finance_entry_filters(
@@ -330,30 +340,46 @@ def _load_finance_entry_analytics(
             source_type=source_type,
         )
 
-    metrics_row = db.execute(filtered(select(
-        func.coalesce(func.sum(income_amount), 0),
-        func.coalesce(func.sum(expense_amount), 0),
-        func.count(FinanceEntry.id),
-    ))).one()
+    metrics_row = db.execute(
+        filtered(
+            select(
+                func.coalesce(func.sum(income_amount), 0),
+                func.coalesce(func.sum(expense_amount), 0),
+                func.count(FinanceEntry.id),
+            )
+        )
+    ).one()
     income_minor = int(metrics_row[0] or 0)
     expense_minor = int(metrics_row[1] or 0)
 
-    daily_rows = db.execute(filtered(select(
-        FinanceEntry.entry_date,
-        func.coalesce(func.sum(income_amount), 0),
-        func.coalesce(func.sum(expense_amount), 0),
-        func.count(FinanceEntry.id),
-    )).group_by(FinanceEntry.entry_date).order_by(FinanceEntry.entry_date)).all()
+    daily_rows = db.execute(
+        filtered(
+            select(
+                FinanceEntry.entry_date,
+                func.coalesce(func.sum(income_amount), 0),
+                func.coalesce(func.sum(expense_amount), 0),
+                func.count(FinanceEntry.id),
+            )
+        )
+        .group_by(FinanceEntry.entry_date)
+        .order_by(FinanceEntry.entry_date)
+    ).all()
 
-    structure_rows = db.execute(filtered(select(
-        FinanceEntry.direction,
-        FinanceEntry.kind,
-        func.coalesce(func.sum(FinanceEntry.amount_minor), 0),
-        func.count(FinanceEntry.id),
-    )).where(FinanceEntry.direction.in_(("INCOME", "EXPENSE"))).group_by(
-        FinanceEntry.direction,
-        FinanceEntry.kind,
-    )).all()
+    structure_rows = db.execute(
+        filtered(
+            select(
+                FinanceEntry.direction,
+                FinanceEntry.kind,
+                func.coalesce(func.sum(FinanceEntry.amount_minor), 0),
+                func.count(FinanceEntry.id),
+            )
+        )
+        .where(FinanceEntry.direction.in_(("INCOME", "EXPENSE")))
+        .group_by(
+            FinanceEntry.direction,
+            FinanceEntry.kind,
+        )
+    ).all()
 
     return {
         "metrics": {
@@ -396,9 +422,11 @@ def list_balance_adjustments(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_finance_ledger_view(db, venue_id=venue_id, user=user)
 
-    stmt = select(BalanceAdjustment, PaymentMethod).join(
-        PaymentMethod, PaymentMethod.id == BalanceAdjustment.payment_method_id
-    ).where(BalanceAdjustment.venue_id == venue_id)
+    stmt = (
+        select(BalanceAdjustment, PaymentMethod)
+        .join(PaymentMethod, PaymentMethod.id == BalanceAdjustment.payment_method_id)
+        .where(BalanceAdjustment.venue_id == venue_id)
+    )
 
     period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
     if period is not None:
@@ -427,7 +455,7 @@ def create_balance_adjustment(
         payment_method_id=int(payload.payment_method_id),
         adjustment_date=payload.adjustment_date,
         delta_minor=int(payload.delta_minor),
-        status=str(payload.status or 'CONFIRMED').upper(),
+        status=str(payload.status or "CONFIRMED").upper(),
         reason=(payload.reason or None),
         comment=(payload.comment or None),
         created_by_user_id=user.id,
@@ -466,7 +494,7 @@ def update_balance_adjustment(
             raise HTTPException(status_code=400, detail="delta_minor must be non-zero")
         obj.delta_minor = int(payload.delta_minor)
     if payload.status is not None:
-        obj.status = str(payload.status or 'CONFIRMED').upper()
+        obj.status = str(payload.status or "CONFIRMED").upper()
     if payload.reason is not None:
         obj.reason = payload.reason or None
     if payload.comment is not None:
@@ -604,18 +632,20 @@ def get_finance_entries_export_link(
     _require_financial_values_export_allowed(user)
     if _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to) is None:
         raise HTTPException(status_code=400, detail="Export period is required")
-    token = make_signed_token({
-        "action": "finance_entries_export",
-        "venue_id": int(venue_id),
-        "month": month or None,
-        "date_from": date_from.isoformat() if date_from else None,
-        "date_to": date_to.isoformat() if date_to else None,
-        "payment_method_id": int(payment_method_id) if payment_method_id is not None else None,
-        "direction": str(direction).upper() if direction else None,
-        "kind": str(kind).upper() if kind else None,
-        "source_type": str(source_type).lower() if source_type else None,
-        "user_id": int(user.id),
-    })
+    token = make_signed_token(
+        {
+            "action": "finance_entries_export",
+            "venue_id": int(venue_id),
+            "month": month or None,
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+            "payment_method_id": int(payment_method_id) if payment_method_id is not None else None,
+            "direction": str(direction).upper() if direction else None,
+            "kind": str(kind).upper() if kind else None,
+            "source_type": str(source_type).lower() if source_type else None,
+            "user_id": int(user.id),
+        }
+    )
     query: list[str] = []
     for key, value in (
         ("month", month),
@@ -657,7 +687,9 @@ def export_finance_entries(
             signed = verify_signed_token(token)
         except Exception:
             raise HTTPException(status_code=401, detail="Invalid export token")
-        if str(signed.get("action") or "") != "finance_entries_export" or int(signed.get("venue_id") or 0) != int(venue_id):
+        if str(signed.get("action") or "") != "finance_entries_export" or int(signed.get("venue_id") or 0) != int(
+            venue_id
+        ):
             raise HTTPException(status_code=401, detail="Invalid export token")
         month = signed.get("month") or None
         date_from = date.fromisoformat(signed["date_from"]) if signed.get("date_from") else None
@@ -690,7 +722,9 @@ def export_finance_entries(
         kind=kind,
         source_type=source_type,
     )
-    venue_name = db.execute(select(Venue.name).where(Venue.id == int(venue_id))).scalar_one_or_none() or f"Заведение {venue_id}"
+    venue_name = (
+        db.execute(select(Venue.name).where(Venue.id == int(venue_id))).scalar_one_or_none() or f"Заведение {venue_id}"
+    )
     filters: list[tuple[str, str]] = []
     if payment_method_id is not None:
         payment_title = db.execute(
@@ -717,12 +751,7 @@ def export_finance_entries(
     return StreamingResponse(
         BytesIO(xlsx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": (
-                f'attachment; filename="{filename}"; '
-                f"filename*=UTF-8''{quote(filename)}"
-            )
-        },
+        headers={"Content-Disposition": (f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}")},
     )
 
 
@@ -738,13 +767,22 @@ def list_payment_method_transfers(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_finance_ledger_view(db, venue_id=venue_id, user=user)
 
-    from_pm = PaymentMethod.__table__.alias('from_pm')
-    to_pm = PaymentMethod.__table__.alias('to_pm')
-    stmt = select(PaymentMethodTransfer, from_pm.c.id, from_pm.c.code, from_pm.c.title, to_pm.c.id, to_pm.c.code, to_pm.c.title).join(
-        from_pm, from_pm.c.id == PaymentMethodTransfer.from_payment_method_id
-    ).join(
-        to_pm, to_pm.c.id == PaymentMethodTransfer.to_payment_method_id
-    ).where(PaymentMethodTransfer.venue_id == venue_id)
+    from_pm = PaymentMethod.__table__.alias("from_pm")
+    to_pm = PaymentMethod.__table__.alias("to_pm")
+    stmt = (
+        select(
+            PaymentMethodTransfer,
+            from_pm.c.id,
+            from_pm.c.code,
+            from_pm.c.title,
+            to_pm.c.id,
+            to_pm.c.code,
+            to_pm.c.title,
+        )
+        .join(from_pm, from_pm.c.id == PaymentMethodTransfer.from_payment_method_id)
+        .join(to_pm, to_pm.c.id == PaymentMethodTransfer.to_payment_method_id)
+        .where(PaymentMethodTransfer.venue_id == venue_id)
+    )
 
     period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
     if period is not None:
@@ -755,8 +793,8 @@ def list_payment_method_transfers(
     out = []
     for row in rows:
         transfer = row[0]
-        from_payment_method = type('PM', (), {'id': row[1], 'code': row[2], 'title': row[3]})()
-        to_payment_method = type('PM', (), {'id': row[4], 'code': row[5], 'title': row[6]})()
+        from_payment_method = type("PM", (), {"id": row[1], "code": row[2], "title": row[3]})()
+        to_payment_method = type("PM", (), {"id": row[4], "code": row[5], "title": row[6]})()
         out.append(_serialize_payment_method_transfer(transfer, from_payment_method, to_payment_method))
     return sanitize_financial_payload_for_user(user, out)
 
@@ -769,8 +807,12 @@ def create_payment_method_transfer(
     user: User = Depends(get_current_user),
 ):
     _require_payment_transfers_manage(db, venue_id=venue_id, user=user)
-    from_payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.from_payment_method_id)
-    to_payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=payload.to_payment_method_id)
+    from_payment_method = _get_payment_method_or_404(
+        db, venue_id=venue_id, payment_method_id=payload.from_payment_method_id
+    )
+    to_payment_method = _get_payment_method_or_404(
+        db, venue_id=venue_id, payment_method_id=payload.to_payment_method_id
+    )
     if int(payload.from_payment_method_id) == int(payload.to_payment_method_id):
         raise HTTPException(status_code=400, detail="Transfer methods must be different")
 
@@ -780,7 +822,7 @@ def create_payment_method_transfer(
         to_payment_method_id=int(payload.to_payment_method_id),
         transfer_date=payload.transfer_date,
         amount_minor=int(payload.amount_minor),
-        status=str(payload.status or 'CONFIRMED').upper(),
+        status=str(payload.status or "CONFIRMED").upper(),
         comment=(payload.comment or None),
         created_by_user_id=user.id,
         created_at=datetime.utcnow(),
@@ -803,7 +845,9 @@ def update_payment_method_transfer(
 ):
     _require_payment_transfers_manage(db, venue_id=venue_id, user=user)
     obj = db.execute(
-        select(PaymentMethodTransfer).where(PaymentMethodTransfer.id == transfer_id, PaymentMethodTransfer.venue_id == venue_id)
+        select(PaymentMethodTransfer).where(
+            PaymentMethodTransfer.id == transfer_id, PaymentMethodTransfer.venue_id == venue_id
+        )
     ).scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Payment method transfer not found")
@@ -821,7 +865,7 @@ def update_payment_method_transfer(
     if payload.amount_minor is not None:
         obj.amount_minor = int(payload.amount_minor)
     if payload.status is not None:
-        obj.status = str(payload.status or 'CONFIRMED').upper()
+        obj.status = str(payload.status or "CONFIRMED").upper()
     if payload.comment is not None:
         obj.comment = payload.comment or None
     obj.updated_at = datetime.utcnow()
@@ -829,7 +873,9 @@ def update_payment_method_transfer(
     rebuild_payment_method_transfer_entries(db=db, transfer=obj)
     db.commit()
     db.refresh(obj)
-    from_payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.from_payment_method_id)
+    from_payment_method = _get_payment_method_or_404(
+        db, venue_id=venue_id, payment_method_id=obj.from_payment_method_id
+    )
     to_payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.to_payment_method_id)
     return _serialize_payment_method_transfer(obj, from_payment_method, to_payment_method)
 
@@ -843,7 +889,9 @@ def delete_payment_method_transfer(
 ):
     _require_payment_transfers_manage(db, venue_id=venue_id, user=user)
     obj = db.execute(
-        select(PaymentMethodTransfer).where(PaymentMethodTransfer.id == transfer_id, PaymentMethodTransfer.venue_id == venue_id)
+        select(PaymentMethodTransfer).where(
+            PaymentMethodTransfer.id == transfer_id, PaymentMethodTransfer.venue_id == venue_id
+        )
     ).scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Payment method transfer not found")

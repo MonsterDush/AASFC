@@ -8,8 +8,8 @@ class VenueSelfServiceCreateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
 
 
-
 # ---------- Schemas ----------
+
 
 class VenueCreateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
@@ -31,7 +31,6 @@ class InviteCreateIn(BaseModel):
     venue_role: str = "STAFF"  # OWNER | STAFF
 
 
-
 class InviteDefaultPositionIn(BaseModel):
     # preset position data to apply after invite is accepted
     title: str = Field(..., min_length=1, max_length=100)
@@ -41,7 +40,6 @@ class InviteDefaultPositionIn(BaseModel):
     pay_profile_title: str | None = Field(default=None, max_length=120)
     # Fine-grained permissions (only source of truth)
     permission_codes: list[str] | None = None
-
 
 
 class InviteDefaultPositionPatchIn(BaseModel):
@@ -60,4 +58,3 @@ class VenueSettingsPatchIn(BaseModel):
     night_shifts_enabled: bool | None = None
     tips_split_mode: str | None = None
     tips_weights: dict | None = None
-

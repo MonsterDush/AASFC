@@ -32,7 +32,11 @@ _ORIGINAL_GETADDRINFO = socket.getaddrinfo
 
 
 def _telegram_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    if str(host or "").lower() == "api.telegram.org" and str(os.getenv("TELEGRAM_FORCE_IPV4", "1")).lower() not in {"0", "false", "no"}:
+    if str(host or "").lower() == "api.telegram.org" and str(os.getenv("TELEGRAM_FORCE_IPV4", "1")).lower() not in {
+        "0",
+        "false",
+        "no",
+    }:
         return _ORIGINAL_GETADDRINFO(host, port, socket.AF_INET, type, proto, flags)
     return _ORIGINAL_GETADDRINFO(host, port, family, type, proto, flags)
 
@@ -118,10 +122,14 @@ def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) ->
         "curl",
         "-sS",
         "--show-error",
-        "--max-time", str(timeout_seconds),
-        "--connect-timeout", str(connect_timeout),
-        "-H", "Content-Type: application/x-www-form-urlencoded",
-        "--data-binary", "@-",
+        "--max-time",
+        str(timeout_seconds),
+        "--connect-timeout",
+        str(connect_timeout),
+        "-H",
+        "Content-Type: application/x-www-form-urlencoded",
+        "--data-binary",
+        "@-",
         api_url,
     ]
     if force_ipv4:
@@ -140,7 +148,9 @@ def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) ->
             )
             body = proc.stdout.decode("utf-8", errors="ignore")
             stderr = proc.stderr.decode("utf-8", errors="ignore").strip()
-            result = _parse_telegram_api_response(method, 200 if proc.returncode == 0 else None, body, curl_returncode=proc.returncode)
+            result = _parse_telegram_api_response(
+                method, 200 if proc.returncode == 0 else None, body, curl_returncode=proc.returncode
+            )
             if result.get("ok"):
                 return result
             last_error = result.get("error") or stderr or f"curl exit {proc.returncode}"
@@ -154,7 +164,13 @@ def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) ->
                 return {"ok": False, "retryable": True, "status_code": None, "error": last_error, "result": None}
         time.sleep(min(0.5 * (attempt + 1), 1.5))
 
-    return {"ok": False, "retryable": True, "status_code": None, "error": last_error or f"telegram {method} failed", "result": None}
+    return {
+        "ok": False,
+        "retryable": True,
+        "status_code": None,
+        "error": last_error or f"telegram {method} failed",
+        "result": None,
+    }
 
 
 def _telegram_api_post_urllib(token: str, method: str, payload: dict[str, Any]) -> dict:
@@ -184,7 +200,13 @@ def _telegram_api_post_urllib(token: str, method: str, payload: dict[str, Any]) 
             if attempt == 2:
                 return {"ok": False, "retryable": True, "status_code": None, "error": last_error, "result": None}
         time.sleep(min(0.35 * (attempt + 1), 1.0))
-    return {"ok": False, "retryable": True, "status_code": None, "error": last_error or f"telegram {method} failed", "result": None}
+    return {
+        "ok": False,
+        "retryable": True,
+        "status_code": None,
+        "error": last_error or f"telegram {method} failed",
+        "result": None,
+    }
 
 
 def _telegram_api_post(token: str, method: str, payload: dict[str, Any]) -> dict:

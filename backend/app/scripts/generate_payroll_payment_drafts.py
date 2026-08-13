@@ -24,11 +24,15 @@ def main(today: date | None = None) -> int:
     changed = 0
     notifications_sent = 0
     with SessionLocal() as db:
-        settings_rows = db.execute(
-            select(PayrollPaymentSettings)
-            .where(PayrollPaymentSettings.is_active.is_(True))
-            .order_by(PayrollPaymentSettings.venue_id.asc())
-        ).scalars().all()
+        settings_rows = (
+            db.execute(
+                select(PayrollPaymentSettings)
+                .where(PayrollPaymentSettings.is_active.is_(True))
+                .order_by(PayrollPaymentSettings.venue_id.asc())
+            )
+            .scalars()
+            .all()
+        )
         for settings in settings_rows:
             try:
                 windows = payment_windows_for_settings(

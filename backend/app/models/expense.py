@@ -24,8 +24,12 @@ class Expense(Base):
     category_id: Mapped[int] = mapped_column(ForeignKey("expense_categories.id"), index=True, nullable=False)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), index=True, nullable=True)
     payment_method_id: Mapped[int | None] = mapped_column(ForeignKey("payment_methods.id"), index=True, nullable=True)
-    recurring_rule_id: Mapped[int | None] = mapped_column(ForeignKey("recurring_expense_rules.id"), index=True, nullable=True)
-    payroll_run_id: Mapped[int | None] = mapped_column(ForeignKey("payroll_runs.id", ondelete="SET NULL"), index=True, nullable=True)
+    recurring_rule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("recurring_expense_rules.id"), index=True, nullable=True
+    )
+    payroll_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payroll_runs.id", ondelete="SET NULL"), index=True, nullable=True
+    )
 
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     expense_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
@@ -33,8 +37,10 @@ class Expense(Base):
     generated_for_month: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     spread_months: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     comment: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default='CONFIRMED')
-    expense_kind: Mapped[str] = mapped_column(String(24), nullable=False, default="OPERATING", server_default="OPERATING")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="CONFIRMED")
+    expense_kind: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="OPERATING", server_default="OPERATING"
+    )
     payroll_period_start: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     payroll_period_end: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     payroll_payout_key: Mapped[str | None] = mapped_column(String(160), nullable=True)

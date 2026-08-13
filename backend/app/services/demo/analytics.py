@@ -157,7 +157,9 @@ def record_demo_event(
     if not demo_mode and user is not None and not bool(getattr(user, "is_demo_user", False)):
         return None
 
-    resolved_venue_id = int(venue_id) if venue_id is not None else (int(getattr(user, "_demo_venue_id", 0) or 0) or None)
+    resolved_venue_id = (
+        int(venue_id) if venue_id is not None else (int(getattr(user, "_demo_venue_id", 0) or 0) or None)
+    )
 
     evt = DemoEvent(
         venue_id=resolved_venue_id,
@@ -272,11 +274,13 @@ def get_demo_analytics_summary(
     ).all()
     top_pages = [{"page_path": row[0], "views": int(row[1] or 0)} for row in top_pages_rows]
 
-    recent_rows = db.execute(
-        select(DemoEvent)
-        .order_by(DemoEvent.created_at.desc(), DemoEvent.id.desc())
-        .limit(int(limit_events))
-    ).scalars().all()
+    recent_rows = (
+        db.execute(
+            select(DemoEvent).order_by(DemoEvent.created_at.desc(), DemoEvent.id.desc()).limit(int(limit_events))
+        )
+        .scalars()
+        .all()
+    )
     recent_events = [
         {
             "id": int(row.id),
@@ -300,7 +304,10 @@ def get_demo_analytics_summary(
         .group_by(DemoEvent.event_name)
         .order_by(func.count(DemoEvent.id).desc(), DemoEvent.event_name.asc())
     ).all()
-    events_by_name = [{"event_name": row[0], "event_label": _event_label(row[0]), "count": int(row[1] or 0)} for row in event_name_rows]
+    events_by_name = [
+        {"event_name": row[0], "event_label": _event_label(row[0]), "count": int(row[1] or 0)}
+        for row in event_name_rows
+    ]
 
     persona_expr = func.coalesce(DemoEvent.persona, "UNKNOWN")
     page_expr = func.coalesce(DemoEvent.page_path, "UNKNOWN")
@@ -326,7 +333,9 @@ def get_demo_analytics_summary(
         .group_by(cta_expr)
         .order_by(func.count(DemoEvent.id).desc(), cta_expr.asc())
     ).all()
-    cta_breakdown = [{"cta_code": row[0], "cta_label": _cta_label(row[0]), "count": int(row[1] or 0)} for row in cta_rows]
+    cta_breakdown = [
+        {"cta_code": row[0], "cta_label": _cta_label(row[0]), "count": int(row[1] or 0)} for row in cta_rows
+    ]
 
     page_persona_rows = db.execute(
         select(
@@ -342,11 +351,13 @@ def get_demo_analytics_summary(
     for persona, page_path, cnt in page_persona_rows:
         bucket = top_pages_by_persona.setdefault(str(persona), [])
         if len(bucket) < int(limit_pages):
-            bucket.append({
-                "page_path": page_path,
-                "label": _section_label(page_path),
-                "views": int(cnt or 0),
-            })
+            bucket.append(
+                {
+                    "page_path": page_path,
+                    "label": _section_label(page_path),
+                    "views": int(cnt or 0),
+                }
+            )
 
     session_persona_rows = db.execute(
         select(
@@ -434,18 +445,64 @@ def get_demo_analytics_dashboard(
     day_expr = func.date(DemoEvent.created_at)
 
     total_events = _safe_int(db.execute(select(func.count(DemoEvent.id)).where(*filters)).scalar())
-    unique_sessions = _safe_int(db.execute(select(func.count(func.distinct(DemoEvent.session_id))).where(*filters, DemoEvent.session_id.is_not(None))).scalar())
-    page_views = _safe_int(db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "page_view")).scalar())
-    page_view_sessions = _safe_int(db.execute(select(func.count(func.distinct(DemoEvent.session_id))).where(*filters, DemoEvent.event_name == "page_view", DemoEvent.session_id.is_not(None))).scalar())
-    cta_clicks = _safe_int(db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "cta_click")).scalar())
-    cta_sessions = _safe_int(db.execute(select(func.count(func.distinct(DemoEvent.session_id))).where(*filters, DemoEvent.event_name == "cta_click", DemoEvent.session_id.is_not(None))).scalar())
-    tour_started = _safe_int(db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "tour_started")).scalar())
-    tour_started_sessions = _safe_int(db.execute(select(func.count(func.distinct(DemoEvent.session_id))).where(*filters, DemoEvent.event_name == "tour_started", DemoEvent.session_id.is_not(None))).scalar())
-    tour_completed = _safe_int(db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "tour_completed")).scalar())
-    tour_completed_sessions = _safe_int(db.execute(select(func.count(func.distinct(DemoEvent.session_id))).where(*filters, DemoEvent.event_name == "tour_completed", DemoEvent.session_id.is_not(None))).scalar())
-    demo_start_sessions = _safe_int(db.execute(select(func.count(func.distinct(DemoEvent.session_id))).where(*filters, DemoEvent.event_name == "demo_start", DemoEvent.session_id.is_not(None))).scalar())
-    persona_switches = _safe_int(db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "switch_persona")).scalar())
-    exits = _safe_int(db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "exit_demo")).scalar())
+    unique_sessions = _safe_int(
+        db.execute(
+            select(func.count(func.distinct(DemoEvent.session_id))).where(*filters, DemoEvent.session_id.is_not(None))
+        ).scalar()
+    )
+    page_views = _safe_int(
+        db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "page_view")).scalar()
+    )
+    page_view_sessions = _safe_int(
+        db.execute(
+            select(func.count(func.distinct(DemoEvent.session_id))).where(
+                *filters, DemoEvent.event_name == "page_view", DemoEvent.session_id.is_not(None)
+            )
+        ).scalar()
+    )
+    cta_clicks = _safe_int(
+        db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "cta_click")).scalar()
+    )
+    cta_sessions = _safe_int(
+        db.execute(
+            select(func.count(func.distinct(DemoEvent.session_id))).where(
+                *filters, DemoEvent.event_name == "cta_click", DemoEvent.session_id.is_not(None)
+            )
+        ).scalar()
+    )
+    tour_started = _safe_int(
+        db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "tour_started")).scalar()
+    )
+    tour_started_sessions = _safe_int(
+        db.execute(
+            select(func.count(func.distinct(DemoEvent.session_id))).where(
+                *filters, DemoEvent.event_name == "tour_started", DemoEvent.session_id.is_not(None)
+            )
+        ).scalar()
+    )
+    tour_completed = _safe_int(
+        db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "tour_completed")).scalar()
+    )
+    tour_completed_sessions = _safe_int(
+        db.execute(
+            select(func.count(func.distinct(DemoEvent.session_id))).where(
+                *filters, DemoEvent.event_name == "tour_completed", DemoEvent.session_id.is_not(None)
+            )
+        ).scalar()
+    )
+    demo_start_sessions = _safe_int(
+        db.execute(
+            select(func.count(func.distinct(DemoEvent.session_id))).where(
+                *filters, DemoEvent.event_name == "demo_start", DemoEvent.session_id.is_not(None)
+            )
+        ).scalar()
+    )
+    persona_switches = _safe_int(
+        db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "switch_persona")).scalar()
+    )
+    exits = _safe_int(
+        db.execute(select(func.count(DemoEvent.id)).where(*filters, DemoEvent.event_name == "exit_demo")).scalar()
+    )
 
     totals = {
         "events": total_events,
@@ -516,7 +573,9 @@ def get_demo_analytics_dashboard(
         item = ensure_section(str(page_path))
         item["views"] += _safe_int(views)
         item["sessions"] += _safe_int(sessions)
-        p = item["persona_breakdown"].setdefault(str(persona), {"views": 0, "sessions": 0, "cta_clicks": 0, "cta_sessions": 0})
+        p = item["persona_breakdown"].setdefault(
+            str(persona), {"views": 0, "sessions": 0, "cta_clicks": 0, "cta_sessions": 0}
+        )
         p["views"] += _safe_int(views)
         p["sessions"] += _safe_int(sessions)
 
@@ -524,7 +583,9 @@ def get_demo_analytics_dashboard(
         item = ensure_section(str(page_path))
         item["cta_clicks"] += _safe_int(clicks)
         item["cta_sessions"] += _safe_int(sessions)
-        p = item["persona_breakdown"].setdefault(str(persona), {"views": 0, "sessions": 0, "cta_clicks": 0, "cta_sessions": 0})
+        p = item["persona_breakdown"].setdefault(
+            str(persona), {"views": 0, "sessions": 0, "cta_clicks": 0, "cta_sessions": 0}
+        )
         p["cta_clicks"] += _safe_int(clicks)
         p["cta_sessions"] += _safe_int(sessions)
 
@@ -540,7 +601,9 @@ def get_demo_analytics_dashboard(
             if persona not in ordered:
                 ordered[persona] = value
         item["persona_breakdown"] = ordered
-    sections.sort(key=lambda row: (-_safe_int(row.get("views")), -_safe_int(row.get("sessions")), str(row.get("label") or "")))
+    sections.sort(
+        key=lambda row: (-_safe_int(row.get("views")), -_safe_int(row.get("sessions")), str(row.get("label") or ""))
+    )
     sections = sections[: max(int(limit_sections or 50), 1)]
 
     persona_total_rows = db.execute(
@@ -556,19 +619,32 @@ def get_demo_analytics_dashboard(
         .order_by(func.count(func.distinct(DemoEvent.session_id)).desc(), persona_expr.asc())
     ).all()
     persona_page_rows = db.execute(
-        select(persona_expr.label("persona"), func.count(DemoEvent.id).label("cnt"), func.count(func.distinct(DemoEvent.session_id)).label("sessions"))
+        select(
+            persona_expr.label("persona"),
+            func.count(DemoEvent.id).label("cnt"),
+            func.count(func.distinct(DemoEvent.session_id)).label("sessions"),
+        )
         .where(*filters, DemoEvent.event_name == "page_view")
         .group_by(persona_expr)
         .order_by(func.count(DemoEvent.id).desc(), persona_expr.asc())
     ).all()
     persona_cta_rows = db.execute(
-        select(persona_expr.label("persona"), func.count(DemoEvent.id).label("cnt"), func.count(func.distinct(DemoEvent.session_id)).label("sessions"))
+        select(
+            persona_expr.label("persona"),
+            func.count(DemoEvent.id).label("cnt"),
+            func.count(func.distinct(DemoEvent.session_id)).label("sessions"),
+        )
         .where(*filters, DemoEvent.event_name == "cta_click")
         .group_by(persona_expr)
         .order_by(func.count(DemoEvent.id).desc(), persona_expr.asc())
     ).all()
     persona_event_rows = db.execute(
-        select(persona_expr.label("persona"), DemoEvent.event_name, func.count(DemoEvent.id).label("cnt"), func.count(func.distinct(DemoEvent.session_id)).label("sessions"))
+        select(
+            persona_expr.label("persona"),
+            DemoEvent.event_name,
+            func.count(DemoEvent.id).label("cnt"),
+            func.count(func.distinct(DemoEvent.session_id)).label("sessions"),
+        )
         .where(*filters)
         .group_by(persona_expr, DemoEvent.event_name)
         .order_by(persona_expr.asc(), func.count(DemoEvent.id).desc(), DemoEvent.event_name.asc())
@@ -628,11 +704,19 @@ def get_demo_analytics_dashboard(
     personas = list(persona_map.values())
     for bucket in personas:
         bucket["conversion_rate_cta_sessions"] = _round_pct(bucket["cta_sessions"], bucket["sessions"])
-        bucket["conversion_rate_tour_sessions"] = _round_pct(bucket["tour_completed_sessions"], bucket["tour_started_sessions"])
-    personas.sort(key=lambda row: (-_safe_int(row.get("sessions")), -_safe_int(row.get("events")), str(row.get("persona") or "")))
+        bucket["conversion_rate_tour_sessions"] = _round_pct(
+            bucket["tour_completed_sessions"], bucket["tour_started_sessions"]
+        )
+    personas.sort(
+        key=lambda row: (-_safe_int(row.get("sessions")), -_safe_int(row.get("events")), str(row.get("persona") or ""))
+    )
 
     event_rows = db.execute(
-        select(DemoEvent.event_name, func.count(DemoEvent.id).label("cnt"), func.count(func.distinct(DemoEvent.session_id)).label("sessions"))
+        select(
+            DemoEvent.event_name,
+            func.count(DemoEvent.id).label("cnt"),
+            func.count(func.distinct(DemoEvent.session_id)).label("sessions"),
+        )
         .where(*filters)
         .group_by(DemoEvent.event_name)
         .order_by(func.count(DemoEvent.id).desc(), DemoEvent.event_name.asc())
@@ -648,7 +732,11 @@ def get_demo_analytics_dashboard(
     ]
 
     cta_rows = db.execute(
-        select(cta_expr.label("cta_code"), func.count(DemoEvent.id).label("cnt"), func.count(func.distinct(DemoEvent.session_id)).label("sessions"))
+        select(
+            cta_expr.label("cta_code"),
+            func.count(DemoEvent.id).label("cnt"),
+            func.count(func.distinct(DemoEvent.session_id)).label("sessions"),
+        )
         .where(*filters, DemoEvent.event_name == "cta_click")
         .group_by(cta_expr)
         .order_by(func.count(DemoEvent.id).desc(), cta_expr.asc())
@@ -665,12 +753,19 @@ def get_demo_analytics_dashboard(
     ]
 
     activity_rows = db.execute(
-        select(day_expr.label("day"), func.count(DemoEvent.id).label("cnt"), func.count(func.distinct(DemoEvent.session_id)).label("sessions"))
+        select(
+            day_expr.label("day"),
+            func.count(DemoEvent.id).label("cnt"),
+            func.count(func.distinct(DemoEvent.session_id)).label("sessions"),
+        )
         .where(*filters)
         .group_by(day_expr)
         .order_by(day_expr.asc())
     ).all()
-    activity_map = {str(row[0])[:10]: {"date": str(row[0])[:10], "events": _safe_int(row[1]), "sessions": _safe_int(row[2])} for row in activity_rows}
+    activity_map = {
+        str(row[0])[:10]: {"date": str(row[0])[:10], "events": _safe_int(row[1]), "sessions": _safe_int(row[2])}
+        for row in activity_rows
+    }
     activity_by_day: list[dict[str, Any]] = []
     cursor = start_at.date()
     final_day = (end_at - timedelta(days=1)).date()
@@ -679,12 +774,16 @@ def get_demo_analytics_dashboard(
         activity_by_day.append(activity_map.get(key, {"date": key, "events": 0, "sessions": 0}))
         cursor += timedelta(days=1)
 
-    recent_rows = db.execute(
-        select(DemoEvent)
-        .where(*filters)
-        .order_by(DemoEvent.created_at.desc(), DemoEvent.id.desc())
-        .limit(max(int(limit_recent or 20), 1))
-    ).scalars().all()
+    recent_rows = (
+        db.execute(
+            select(DemoEvent)
+            .where(*filters)
+            .order_by(DemoEvent.created_at.desc(), DemoEvent.id.desc())
+            .limit(max(int(limit_recent or 20), 1))
+        )
+        .scalars()
+        .all()
+    )
     recent_events = [
         {
             "id": int(row.id),
@@ -755,9 +854,13 @@ def get_demo_analytics_dashboard(
         "public_venue": {
             "id": int(public_venue.id),
             "name": public_venue.name,
-        } if public_venue is not None else None,
+        }
+        if public_venue is not None
+        else None,
         "template_venue": {
             "id": int(template_venue.id),
             "name": template_venue.name,
-        } if template_venue is not None else None,
+        }
+        if template_venue is not None
+        else None,
     }

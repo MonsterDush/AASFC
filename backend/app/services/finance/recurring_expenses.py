@@ -41,7 +41,9 @@ def month_bounds(month: str) -> tuple[date, date]:
 
 def replace_rule_payment_methods(*, db: Session, rule_id: int, payment_method_ids: list[int]) -> None:
     normalized = sorted({int(x) for x in payment_method_ids or []})
-    db.execute(delete(RecurringExpenseRulePaymentMethod).where(RecurringExpenseRulePaymentMethod.rule_id == int(rule_id)))
+    db.execute(
+        delete(RecurringExpenseRulePaymentMethod).where(RecurringExpenseRulePaymentMethod.rule_id == int(rule_id))
+    )
     for payment_method_id in normalized:
         db.add(
             RecurringExpenseRulePaymentMethod(
@@ -52,15 +54,21 @@ def replace_rule_payment_methods(*, db: Session, rule_id: int, payment_method_id
 
 
 def list_rule_payment_method_ids(*, db: Session, rule_id: int) -> list[int]:
-    rows = db.execute(
-        select(RecurringExpenseRulePaymentMethod.payment_method_id)
-        .where(RecurringExpenseRulePaymentMethod.rule_id == int(rule_id))
-        .order_by(RecurringExpenseRulePaymentMethod.id.asc())
-    ).scalars().all()
+    rows = (
+        db.execute(
+            select(RecurringExpenseRulePaymentMethod.payment_method_id)
+            .where(RecurringExpenseRulePaymentMethod.rule_id == int(rule_id))
+            .order_by(RecurringExpenseRulePaymentMethod.id.asc())
+        )
+        .scalars()
+        .all()
+    )
     return [int(x) for x in rows]
 
 
-def normalize_rule_fields(*, generation_mode: str, frequency: str, amount_minor: int | None, percent_bps: int | None) -> tuple[str, str, int | None, int | None]:
+def normalize_rule_fields(
+    *, generation_mode: str, frequency: str, amount_minor: int | None, percent_bps: int | None
+) -> tuple[str, str, int | None, int | None]:
     mode = str(generation_mode or "FIXED").strip().upper()
     if mode not in VALID_GENERATION_MODES:
         raise ValueError("Bad generation_mode, expected FIXED or PERCENT")
@@ -109,17 +117,19 @@ def build_generated_expense_date(*, month_start: date, day_of_month: int) -> dat
     return month_start.replace(day=min(max(int(day_of_month or 1), 1), last_day))
 
 
-def _sum_closed_payment_base_minor(*, db: Session, venue_id: int, period_start: date, period_end: date, payment_method_ids: list[int] | None = None) -> int:
+def _sum_closed_payment_base_minor(
+    *, db: Session, venue_id: int, period_start: date, period_end: date, payment_method_ids: list[int] | None = None
+) -> int:
     stmt = (
         select(func.coalesce(func.sum(DailyReportValue.value_numeric), 0))
         .select_from(DailyReportValue)
         .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
         .where(
             DailyReport.venue_id == int(venue_id),
-            DailyReport.status == 'CLOSED',
+            DailyReport.status == "CLOSED",
             DailyReport.date >= period_start,
             DailyReport.date <= period_end,
-            DailyReportValue.kind == 'PAYMENT',
+            DailyReportValue.kind == "PAYMENT",
         )
     )
     if payment_method_ids:
@@ -150,15 +160,19 @@ def build_generated_comment(*, db: Session, rule: RecurringExpenseRule, month: s
         return f"{base} · фикс"
     payment_method_ids = list_rule_payment_method_ids(db=db, rule_id=rule.id)
     if payment_method_ids:
-        names = db.execute(
-            select(PaymentMethod.title)
-            .where(PaymentMethod.id.in_(payment_method_ids))
-            .order_by(PaymentMethod.title.asc())
-        ).scalars().all()
+        names = (
+            db.execute(
+                select(PaymentMethod.title)
+                .where(PaymentMethod.id.in_(payment_method_ids))
+                .order_by(PaymentMethod.title.asc())
+            )
+            .scalars()
+            .all()
+        )
         joined = ", ".join(str(x) for x in names)
     else:
         joined = "всех оплат"
-    percent_value = (int(rule.percent_bps or 0) / 100)
+    percent_value = int(rule.percent_bps or 0) / 100
     return f"{base} · {percent_value:.2f}% от {joined}"
 
 
@@ -195,11 +209,15 @@ def _percent_rule_daily_minor(*, db: Session, rule: RecurringExpenseRule, target
 
 
 def sync_daily_recurring_accruals_for_date(*, db: Session, venue_id: int, target_date: date) -> dict:
-    rules = db.execute(
-        select(RecurringExpenseRule)
-        .where(RecurringExpenseRule.venue_id == int(venue_id))
-        .order_by(RecurringExpenseRule.id.asc())
-    ).scalars().all()
+    rules = (
+        db.execute(
+            select(RecurringExpenseRule)
+            .where(RecurringExpenseRule.venue_id == int(venue_id))
+            .order_by(RecurringExpenseRule.id.asc())
+        )
+        .scalars()
+        .all()
+    )
 
     created = 0
     updated = 0
@@ -209,9 +227,9 @@ def sync_daily_recurring_accruals_for_date(*, db: Session, venue_id: int, target
     for rule in rules:
         if not rule_applies_to_date(rule=rule, target_date=target_date):
             continue
-        mode = str(rule.generation_mode or 'FIXED').upper()
+        mode = str(rule.generation_mode or "FIXED").upper()
         basis_minor = None
-        if mode == 'FIXED':
+        if mode == "FIXED":
             amount_minor = _fixed_rule_daily_minor(rule=rule, target_date=target_date)
         else:
             basis_minor, amount_minor = _percent_rule_daily_minor(db=db, rule=rule, target_date=target_date)
@@ -230,14 +248,14 @@ def sync_daily_recurring_accruals_for_date(*, db: Session, venue_id: int, target
             continue
 
         meta_json = {
-            'generation_mode': mode,
-            'payment_method_id': int(rule.payment_method_id) if rule.payment_method_id is not None else None,
-            'category_id': int(rule.category_id),
-            'supplier_id': int(rule.supplier_id) if rule.supplier_id is not None else None,
+            "generation_mode": mode,
+            "payment_method_id": int(rule.payment_method_id) if rule.payment_method_id is not None else None,
+            "category_id": int(rule.category_id),
+            "supplier_id": int(rule.supplier_id) if rule.supplier_id is not None else None,
         }
         if basis_minor is not None:
-            meta_json['basis_minor'] = int(basis_minor)
-            meta_json['basis_payment_method_ids'] = list_rule_payment_method_ids(db=db, rule_id=rule.id)
+            meta_json["basis_minor"] = int(basis_minor)
+            meta_json["basis_payment_method_ids"] = list_rule_payment_method_ids(db=db, rule_id=rule.id)
 
         if existing is None:
             db.add(
@@ -261,10 +279,10 @@ def sync_daily_recurring_accruals_for_date(*, db: Session, venue_id: int, target
             kept_ids.add(int(existing.id))
 
     return {
-        'date': target_date,
-        'created': created,
-        'updated': updated,
-        'deleted': deleted,
+        "date": target_date,
+        "created": created,
+        "updated": updated,
+        "deleted": deleted,
     }
 
 
@@ -294,22 +312,24 @@ def get_daily_recurring_expense_summary(*, db: Session, venue_id: int, target_da
             RecurringExpenseAccrual.accrual_date == target_date,
         )
         .group_by(RecurringExpenseRule.title, ExpenseCategory.code, ExpenseCategory.title)
-        .order_by(func.coalesce(func.sum(RecurringExpenseAccrual.amount_minor), 0).desc(), RecurringExpenseRule.title.asc())
+        .order_by(
+            func.coalesce(func.sum(RecurringExpenseAccrual.amount_minor), 0).desc(), RecurringExpenseRule.title.asc()
+        )
     ).all()
     out = [
         {
-            'title': row[0],
-            'code': row[1],
-            'subtitle': row[2],
-            'amount_minor': int(row[3] or 0),
+            "title": row[0],
+            "code": row[1],
+            "subtitle": row[2],
+            "amount_minor": int(row[3] or 0),
         }
         for row in rows
     ]
-    total_minor = int(sum(int(item['amount_minor']) for item in out))
+    total_minor = int(sum(int(item["amount_minor"]) for item in out))
     return {
-        'date': target_date,
-        'rows': out,
-        'total_minor': int(total_minor),
+        "date": target_date,
+        "rows": out,
+        "total_minor": int(total_minor),
     }
 
 
@@ -346,29 +366,35 @@ def generate_draft_expenses_for_month(
 
         amount_minor = calculate_rule_amount_minor(db=db, rule=rule, month_start=month_start, month_end=month_end)
         if existing is not None:
-            existing_status = str(getattr(existing, 'status', 'DRAFT') or 'DRAFT').upper()
-            if existing_status != 'DRAFT':
-                skipped.append({
-                    "rule_id": int(rule.id),
-                    "title": rule.title,
-                    "reason": f"already_{existing_status.lower()}",
-                    "expense_id": int(existing.id),
-                })
+            existing_status = str(getattr(existing, "status", "DRAFT") or "DRAFT").upper()
+            if existing_status != "DRAFT":
+                skipped.append(
+                    {
+                        "rule_id": int(rule.id),
+                        "title": rule.title,
+                        "reason": f"already_{existing_status.lower()}",
+                        "expense_id": int(existing.id),
+                    }
+                )
                 continue
             if amount_minor <= 0:
-                skipped.append({
-                    "rule_id": int(rule.id),
-                    "title": rule.title,
-                    "reason": "zero_amount",
-                    "expense_id": int(existing.id),
-                })
+                skipped.append(
+                    {
+                        "rule_id": int(rule.id),
+                        "title": rule.title,
+                        "reason": "zero_amount",
+                        "expense_id": int(existing.id),
+                    }
+                )
                 continue
             existing.category_id = int(rule.category_id)
             existing.supplier_id = int(rule.supplier_id) if rule.supplier_id is not None else None
             existing.payment_method_id = int(rule.payment_method_id) if rule.payment_method_id is not None else None
             existing.shift_slot = str(getattr(rule, "shift_slot", "TOTAL") or "TOTAL").upper()
             existing.amount_minor = int(amount_minor)
-            existing.expense_date = build_generated_expense_date(month_start=month_start, day_of_month=int(rule.day_of_month or 1))
+            existing.expense_date = build_generated_expense_date(
+                month_start=month_start, day_of_month=int(rule.day_of_month or 1)
+            )
             existing.generated_for_month = month_start
             existing.spread_months = int(rule.spread_months or 1)
             existing.comment = build_generated_comment(db=db, rule=rule, month=month)
@@ -389,7 +415,9 @@ def generate_draft_expenses_for_month(
             recurring_rule_id=int(rule.id),
             shift_slot=str(getattr(rule, "shift_slot", "TOTAL") or "TOTAL").upper(),
             amount_minor=int(amount_minor),
-            expense_date=build_generated_expense_date(month_start=month_start, day_of_month=int(rule.day_of_month or 1)),
+            expense_date=build_generated_expense_date(
+                month_start=month_start, day_of_month=int(rule.day_of_month or 1)
+            ),
             generated_for_month=month_start,
             spread_months=int(rule.spread_months or 1),
             comment=build_generated_comment(db=db, rule=rule, month=month),

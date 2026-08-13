@@ -12,10 +12,10 @@ from openpyxl.utils import get_column_letter
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="EDEFF5")
 TITLE_FONT = Font(bold=True, size=14)
 HEADER_FONT = Font(bold=True)
-CURRENCY_FORMAT = '#,##0.00'
-INTEGER_FORMAT = '#,##0'
-DATETIME_FORMAT = 'yyyy-mm-dd hh:mm'
-DATE_FORMAT = 'yyyy-mm-dd'
+CURRENCY_FORMAT = "#,##0.00"
+INTEGER_FORMAT = "#,##0"
+DATETIME_FORMAT = "yyyy-mm-dd hh:mm"
+DATE_FORMAT = "yyyy-mm-dd"
 
 
 def _auto_width(ws, col_idx: int, values: Iterable[Any], min_w: int = 8, max_w: int = 60) -> None:
@@ -29,7 +29,6 @@ def _auto_width(ws, col_idx: int, values: Iterable[Any], min_w: int = 8, max_w: 
     ws.column_dimensions[get_column_letter(col_idx)].width = w
 
 
-
 def _minor_to_major(value: Any) -> float:
     try:
         return int(value or 0) / 100.0
@@ -37,13 +36,11 @@ def _minor_to_major(value: Any) -> float:
         return 0.0
 
 
-
 def _write_title(ws, title: str) -> None:
     ws.append([title])
     ws[1][0].font = TITLE_FONT
     ws[1][0].alignment = Alignment(vertical="top", wrap_text=True)
     ws.append([])
-
 
 
 def _excel_safe_value(value: Any) -> Any:
@@ -57,7 +54,13 @@ def _excel_safe_value(value: Any) -> Any:
 def _xlsx_cell_value(value: Any) -> Any:
     """Return a safe display value for regular cells and hyperlink cells."""
     if isinstance(value, dict) and (value.get("hyperlink") or value.get("url")):
-        return _excel_safe_value(value.get("text") or value.get("label") or value.get("file_name") or value.get("hyperlink") or value.get("url"))
+        return _excel_safe_value(
+            value.get("text")
+            or value.get("label")
+            or value.get("file_name")
+            or value.get("hyperlink")
+            or value.get("url")
+        )
     return _excel_safe_value(value)
 
 
@@ -77,7 +80,6 @@ def _write_key_values(ws, rows: list[tuple[str, Any]]) -> None:
             for cell in row:
                 cell.alignment = Alignment(vertical="top", wrap_text=True)
     _apply_auto_width(ws)
-
 
 
 def _write_table(
@@ -135,12 +137,10 @@ def _write_table(
     _apply_auto_width(ws)
 
 
-
 def _apply_auto_width(ws) -> None:
     for idx, col_cells in enumerate(ws.columns, start=1):
         values = [cell.value for cell in col_cells if cell.value is not None]
         _auto_width(ws, idx, values, min_w=10, max_w=48)
-
 
 
 def _finalize_workbook(wb: Workbook) -> bytes:
@@ -193,14 +193,10 @@ def build_finance_ledger_xlsx(
         "balance_adjustment": "Корректировка баланса",
     }
     income_minor = sum(
-        int(row.get("amount_minor") or 0)
-        for row in rows
-        if str(row.get("direction") or "").upper() == "INCOME"
+        int(row.get("amount_minor") or 0) for row in rows if str(row.get("direction") or "").upper() == "INCOME"
     )
     expense_minor = sum(
-        int(row.get("amount_minor") or 0)
-        for row in rows
-        if str(row.get("direction") or "").upper() == "EXPENSE"
+        int(row.get("amount_minor") or 0) for row in rows if str(row.get("direction") or "").upper() == "EXPENSE"
     )
 
     wb = Workbook()
@@ -210,7 +206,7 @@ def build_finance_ledger_xlsx(
     _write_title(ws, f"Финансовые движения · {venue_name}")
     summary_rows = [
         ("Период", f"{period_start.isoformat()} — {period_end.isoformat()}"),
-        *((filters or [])),
+        *(filters or []),
         ("Записей", len(rows)),
         ("Приход, ₽", _minor_to_major(income_minor)),
         ("Списание, ₽", _minor_to_major(expense_minor)),
@@ -230,21 +226,23 @@ def build_finance_ledger_xlsx(
         signed_amount = amount_major if direction == "INCOME" else -amount_major
         meta = dict(item.get("meta_json") or {})
         details = json.dumps(meta, ensure_ascii=False, sort_keys=True) if meta else None
-        table_rows.append([
-            _parse_iso_date(item.get("entry_date")),
-            direction_labels.get(direction, direction or "—"),
-            kind_labels.get(kind, kind or "—"),
-            signed_amount,
-            amount_major,
-            (item.get("payment_method") or {}).get("title"),
-            (item.get("department") or {}).get("title"),
-            source_labels.get(source_type, source_type or "—"),
-            item.get("source_id"),
-            meta.get("shift_slot"),
-            details,
-            item.get("id"),
-            _parse_iso_datetime(item.get("created_at")),
-        ])
+        table_rows.append(
+            [
+                _parse_iso_date(item.get("entry_date")),
+                direction_labels.get(direction, direction or "—"),
+                kind_labels.get(kind, kind or "—"),
+                signed_amount,
+                amount_major,
+                (item.get("payment_method") or {}).get("title"),
+                (item.get("department") or {}).get("title"),
+                source_labels.get(source_type, source_type or "—"),
+                item.get("source_id"),
+                meta.get("shift_slot"),
+                details,
+                item.get("id"),
+                _parse_iso_datetime(item.get("created_at")),
+            ]
+        )
 
     _write_table(
         ws,
@@ -271,7 +269,6 @@ def build_finance_ledger_xlsx(
     )
     ws.column_dimensions["K"].width = 48
     return _finalize_workbook(wb)
-
 
 
 def build_revenue_xlsx(
@@ -377,7 +374,6 @@ def build_revenue_xlsx(
     return _finalize_workbook(wb)
 
 
-
 def build_revenue_csv(
     *,
     month: str,
@@ -404,7 +400,6 @@ def build_revenue_csv(
         return '"' + s.replace('"', '""') + '"'
 
     return "\n".join(delimiter.join(esc(x) for x in row) for row in lines)
-
 
 
 def build_expenses_xlsx(
@@ -467,23 +462,25 @@ def build_expenses_xlsx(
             label = file_item.get("file_name") or file_item.get("name") or f"Файл {idx + 1}"
             attachment_cells.append({"text": label, "hyperlink": url} if url else label)
 
-        doc_rows.append([
-            item.get("id"),
-            item.get("expense_date"),
-            item.get("status"),
-            (item.get("category") or {}).get("title"),
-            (item.get("supplier") or {}).get("title"),
-            (item.get("payment_method") or {}).get("title"),
-            _minor_to_major(item.get("amount_minor")),
-            _minor_to_major(item.get("recognized_amount_minor_for_month")),
-            item.get("spread_months"),
-            item.get("generated_for_month"),
-            item.get("recurring_rule_id"),
-            item.get("comment"),
-            item.get("created_at"),
-            item.get("updated_at"),
-            *attachment_cells,
-        ])
+        doc_rows.append(
+            [
+                item.get("id"),
+                item.get("expense_date"),
+                item.get("status"),
+                (item.get("category") or {}).get("title"),
+                (item.get("supplier") or {}).get("title"),
+                (item.get("payment_method") or {}).get("title"),
+                _minor_to_major(item.get("amount_minor")),
+                _minor_to_major(item.get("recognized_amount_minor_for_month")),
+                item.get("spread_months"),
+                item.get("generated_for_month"),
+                item.get("recurring_rule_id"),
+                item.get("comment"),
+                item.get("created_at"),
+                item.get("updated_at"),
+                *attachment_cells,
+            ]
+        )
 
     _write_table(
         docs_ws,
@@ -523,7 +520,6 @@ def build_expenses_xlsx(
     return _finalize_workbook(wb)
 
 
-
 def build_monthly_summary_xlsx(
     *,
     month: str | None,
@@ -554,14 +550,19 @@ def build_monthly_summary_xlsx(
             ("ФОТ, ₽", _minor_to_major(payments_summary.get("payroll_minor"))),
             ("Всего затрат, ₽", _minor_to_major(payments_summary.get("total_cost_minor"))),
             ("Прибыль, ₽", _minor_to_major(payments_summary.get("profit_minor"))),
-            ("Маржинальность, %", (payments_summary.get("margin_bps") or 0) / 100 if payments_summary.get("margin_bps") is not None else None),
+            (
+                "Маржинальность, %",
+                (payments_summary.get("margin_bps") or 0) / 100
+                if payments_summary.get("margin_bps") is not None
+                else None,
+            ),
             ("Черновиков расходов", int(payments_summary.get("draft_expense_count") or 0)),
             ("Черновики на сумму, ₽", _minor_to_major(payments_summary.get("draft_expense_total_minor"))),
         ],
     )
     for row_idx in (4, 5, 6, 7, 8, 11):
         ws[row_idx][1].number_format = CURRENCY_FORMAT
-    ws[9][1].number_format = '0.00'
+    ws[9][1].number_format = "0.00"
     ws[10][1].number_format = INTEGER_FORMAT
 
     payments_ws = wb.create_sheet("Выручка по оплатам")
@@ -569,7 +570,10 @@ def build_monthly_summary_xlsx(
     _write_table(
         payments_ws,
         ["Код", "Статья", "Сумма, ₽"],
-        [[row.get("code"), row.get("title"), _minor_to_major(row.get("amount_minor"))] for row in (payments_summary.get("revenue_breakdown") or [])],
+        [
+            [row.get("code"), row.get("title"), _minor_to_major(row.get("amount_minor"))]
+            for row in (payments_summary.get("revenue_breakdown") or [])
+        ],
         currency_cols={3},
     )
 
@@ -578,7 +582,10 @@ def build_monthly_summary_xlsx(
     _write_table(
         dept_ws,
         ["Код", "Департамент", "Сумма, ₽"],
-        [[row.get("code"), row.get("title"), _minor_to_major(row.get("amount_minor"))] for row in (departments_summary.get("revenue_breakdown") or [])],
+        [
+            [row.get("code"), row.get("title"), _minor_to_major(row.get("amount_minor"))]
+            for row in (departments_summary.get("revenue_breakdown") or [])
+        ],
         currency_cols={3},
     )
 
@@ -587,7 +594,10 @@ def build_monthly_summary_xlsx(
     _write_table(
         expenses_ws,
         ["Код", "Категория", "Сумма, ₽"],
-        [[row.get("code"), row.get("title"), _minor_to_major(row.get("amount_minor"))] for row in (payments_summary.get("expense_categories") or [])],
+        [
+            [row.get("code"), row.get("title"), _minor_to_major(row.get("amount_minor"))]
+            for row in (payments_summary.get("expense_categories") or [])
+        ],
         currency_cols={3},
     )
 
@@ -610,7 +620,6 @@ def build_monthly_summary_xlsx(
     )
 
     return _finalize_workbook(wb)
-
 
 
 def build_payroll_xlsx(
@@ -649,7 +658,9 @@ def build_payroll_xlsx(
         ["Сотрудник", "Username", "Профиль", "Сумма, ₽", "Часы", "Смены", "Отработано дней"],
         [
             [
-                (line.get("member") or {}).get("short_name") or (line.get("member") or {}).get("full_name") or f"user #{line.get('member_user_id')}",
+                (line.get("member") or {}).get("short_name")
+                or (line.get("member") or {}).get("full_name")
+                or f"user #{line.get('member_user_id')}",
                 (line.get("member") or {}).get("tg_username"),
                 line.get("pay_profile_title"),
                 _minor_to_major(line.get("amount_minor")),
@@ -668,19 +679,41 @@ def build_payroll_xlsx(
     component_rows: list[list[Any]] = []
     percent_day_rows: list[list[Any]] = []
     for line in lines:
-        member = (line.get("member") or {}).get("short_name") or (line.get("member") or {}).get("full_name") or f"user #{line.get('member_user_id')}"
+        member = (
+            (line.get("member") or {}).get("short_name")
+            or (line.get("member") or {}).get("full_name")
+            or f"user #{line.get('member_user_id')}"
+        )
         profile = line.get("pay_profile_title")
-        for comp in (((line.get("breakdown") or {}).get("components")) or []):
+        for comp in ((line.get("breakdown") or {}).get("components")) or []:
             matched_step = comp.get("matched_step") or {}
             snapshot = comp.get("calculation_snapshot") if isinstance(comp.get("calculation_snapshot"), dict) else {}
             base_scope_title = snapshot.get("base_scope_title") or comp.get("base_scope_title")
             boost_source_title = snapshot.get("boost_source_title") or comp.get("boost_source_title")
             boost_mode_title = snapshot.get("boost_recalc_mode_title") or comp.get("boost_recalc_mode_title")
-            boost_mode_effective = snapshot.get("boost_recalc_mode_effective") or comp.get("boost_recalc_mode_effective")
-            boost_target_minor = snapshot.get("boost_target_minor") if snapshot.get("boost_target_minor") is not None else comp.get("boost_target_minor")
-            boost_actual_minor = snapshot.get("boost_actual_minor") if snapshot.get("boost_actual_minor") is not None else comp.get("boost_actual_minor")
-            boost_target_value = snapshot.get("boost_target_value") if snapshot.get("boost_target_value") is not None else comp.get("boost_target_value")
-            boost_actual_value = snapshot.get("boost_actual_value") if snapshot.get("boost_actual_value") is not None else comp.get("boost_actual_value")
+            boost_mode_effective = snapshot.get("boost_recalc_mode_effective") or comp.get(
+                "boost_recalc_mode_effective"
+            )
+            boost_target_minor = (
+                snapshot.get("boost_target_minor")
+                if snapshot.get("boost_target_minor") is not None
+                else comp.get("boost_target_minor")
+            )
+            boost_actual_minor = (
+                snapshot.get("boost_actual_minor")
+                if snapshot.get("boost_actual_minor") is not None
+                else comp.get("boost_actual_minor")
+            )
+            boost_target_value = (
+                snapshot.get("boost_target_value")
+                if snapshot.get("boost_target_value") is not None
+                else comp.get("boost_target_value")
+            )
+            boost_actual_value = (
+                snapshot.get("boost_actual_value")
+                if snapshot.get("boost_actual_value") is not None
+                else comp.get("boost_actual_value")
+            )
             component_rows.append(
                 [
                     member,
@@ -688,9 +721,13 @@ def build_payroll_xlsx(
                     comp.get("title") or comp.get("component_type"),
                     comp.get("component_type"),
                     _minor_to_major(comp.get("amount_minor")),
-                    _minor_to_major(comp.get("base_amount_minor")) if comp.get("base_amount_minor") is not None else None,
+                    _minor_to_major(comp.get("base_amount_minor"))
+                    if comp.get("base_amount_minor") is not None
+                    else None,
                     base_scope_title,
-                    (comp.get("regular_percent_bps") or 0) / 100 if comp.get("regular_percent_bps") is not None else None,
+                    (comp.get("regular_percent_bps") or 0) / 100
+                    if comp.get("regular_percent_bps") is not None
+                    else None,
                     (comp.get("percent_bps") or 0) / 100 if comp.get("percent_bps") is not None else None,
                     boost_source_title,
                     _minor_to_major(boost_target_minor) if boost_target_minor is not None else None,
@@ -700,8 +737,12 @@ def build_payroll_xlsx(
                     (comp.get("boost_percent_bps") or 0) / 100 if comp.get("boost_percent_bps") is not None else None,
                     boost_mode_title,
                     boost_mode_effective,
-                    _minor_to_major(comp.get("minimum_guarantee_minor")) if comp.get("minimum_guarantee_minor") is not None else None,
-                    _minor_to_major(comp.get("maximum_cap_minor")) if comp.get("maximum_cap_minor") is not None else None,
+                    _minor_to_major(comp.get("minimum_guarantee_minor"))
+                    if comp.get("minimum_guarantee_minor") is not None
+                    else None,
+                    _minor_to_major(comp.get("maximum_cap_minor"))
+                    if comp.get("maximum_cap_minor") is not None
+                    else None,
                     comp.get("department_title"),
                     comp.get("boost_department_title"),
                     comp.get("boost_kpi_metric_title") or comp.get("kpi_metric_title"),
@@ -712,7 +753,7 @@ def build_payroll_xlsx(
                     matched_step.get("bonus_minor") / 100.0 if matched_step.get("bonus_minor") is not None else None,
                 ]
             )
-            for day_row in (snapshot.get("day_rows") or comp.get("day_rows") or []):
+            for day_row in snapshot.get("day_rows") or comp.get("day_rows") or []:
                 if not isinstance(day_row, dict):
                     continue
                 percent_day_rows.append(
@@ -722,11 +763,19 @@ def build_payroll_xlsx(
                         comp.get("title") or comp.get("component_type"),
                         boost_source_title,
                         day_row.get("date"),
-                        _minor_to_major(day_row.get("base_amount_minor")) if day_row.get("base_amount_minor") is not None else None,
-                        _minor_to_major(day_row.get("target_amount_minor")) if day_row.get("target_amount_minor") is not None else None,
-                        _minor_to_major(day_row.get("actual_amount_minor")) if day_row.get("actual_amount_minor") is not None else None,
+                        _minor_to_major(day_row.get("base_amount_minor"))
+                        if day_row.get("base_amount_minor") is not None
+                        else None,
+                        _minor_to_major(day_row.get("target_amount_minor"))
+                        if day_row.get("target_amount_minor") is not None
+                        else None,
+                        _minor_to_major(day_row.get("actual_amount_minor"))
+                        if day_row.get("actual_amount_minor") is not None
+                        else None,
                         (day_row.get("percent_bps") or 0) / 100 if day_row.get("percent_bps") is not None else None,
-                        _minor_to_major(day_row.get("amount_minor")) if day_row.get("amount_minor") is not None else None,
+                        _minor_to_major(day_row.get("amount_minor"))
+                        if day_row.get("amount_minor") is not None
+                        else None,
                         "Да" if day_row.get("boost_applied") else "Нет",
                         boost_mode_effective,
                     ]
@@ -794,7 +843,9 @@ def build_payroll_xlsx(
     return _finalize_workbook(wb)
 
 
-def build_billing_transactions_xlsx(*, title: str, rows: list[dict[str, Any]], filters: list[tuple[str, Any]] | None = None) -> bytes:
+def build_billing_transactions_xlsx(
+    *, title: str, rows: list[dict[str, Any]], filters: list[tuple[str, Any]] | None = None
+) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Операции"
@@ -802,25 +853,37 @@ def build_billing_transactions_xlsx(*, title: str, rows: list[dict[str, Any]], f
     _write_key_values(ws, filters or [])
     table_rows: list[list[Any]] = []
     for row in rows:
-        table_rows.append([
-            row.get("created_at"),
-            row.get("venue_name"),
-            row.get("status"),
-            row.get("type"),
-            row.get("source"),
-            row.get("amount_major", 0.0),
-            row.get("days_added"),
-            row.get("period_from"),
-            row.get("period_until"),
-            row.get("provider_invoice_id"),
-            row.get("provider_payment_id"),
-            row.get("comment"),
-        ])
+        table_rows.append(
+            [
+                row.get("created_at"),
+                row.get("venue_name"),
+                row.get("status"),
+                row.get("type"),
+                row.get("source"),
+                row.get("amount_major", 0.0),
+                row.get("days_added"),
+                row.get("period_from"),
+                row.get("period_until"),
+                row.get("provider_invoice_id"),
+                row.get("provider_payment_id"),
+                row.get("comment"),
+            ]
+        )
     _write_table(
         ws,
         [
-            "Создано", "Заведение", "Статус", "Тип", "Источник", "Сумма, ₽", "Дней",
-            "Период c", "Период до", "Invoice", "Payment ID", "Комментарий",
+            "Создано",
+            "Заведение",
+            "Статус",
+            "Тип",
+            "Источник",
+            "Сумма, ₽",
+            "Дней",
+            "Период c",
+            "Период до",
+            "Invoice",
+            "Payment ID",
+            "Комментарий",
         ],
         table_rows,
         currency_cols={6},
@@ -830,7 +893,9 @@ def build_billing_transactions_xlsx(*, title: str, rows: list[dict[str, Any]], f
     return _finalize_workbook(wb)
 
 
-def build_billing_reconciliation_xlsx(*, title: str, rows: list[dict[str, Any]], filters: list[tuple[str, Any]] | None = None) -> bytes:
+def build_billing_reconciliation_xlsx(
+    *, title: str, rows: list[dict[str, Any]], filters: list[tuple[str, Any]] | None = None
+) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Сверка"
@@ -838,22 +903,36 @@ def build_billing_reconciliation_xlsx(*, title: str, rows: list[dict[str, Any]],
     _write_key_values(ws, filters or [])
     table_rows: list[list[Any]] = []
     for row in rows:
-        table_rows.append([
-            row.get("created_at") or row.get("first_detected_at"),
-            row.get("last_seen_at"),
-            row.get("resolved_at"),
-            row.get("status"),
-            row.get("severity"),
-            row.get("issue_code"),
-            row.get("venue_name"),
-            row.get("transaction_id"),
-            row.get("event_id"),
-            row.get("message"),
-            row.get("resolution_comment"),
-        ])
+        table_rows.append(
+            [
+                row.get("created_at") or row.get("first_detected_at"),
+                row.get("last_seen_at"),
+                row.get("resolved_at"),
+                row.get("status"),
+                row.get("severity"),
+                row.get("issue_code"),
+                row.get("venue_name"),
+                row.get("transaction_id"),
+                row.get("event_id"),
+                row.get("message"),
+                row.get("resolution_comment"),
+            ]
+        )
     _write_table(
         ws,
-        ["Обнаружено", "Последний раз", "Закрыто", "Статус", "Severity", "Код", "Заведение", "Transaction ID", "Event ID", "Описание", "Комментарий"],
+        [
+            "Обнаружено",
+            "Последний раз",
+            "Закрыто",
+            "Статус",
+            "Severity",
+            "Код",
+            "Заведение",
+            "Transaction ID",
+            "Event ID",
+            "Описание",
+            "Комментарий",
+        ],
         table_rows,
         datetime_cols={1, 2, 3},
         integer_cols={8, 9},

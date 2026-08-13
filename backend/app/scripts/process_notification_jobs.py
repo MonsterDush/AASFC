@@ -39,11 +39,20 @@ def main() -> int:
         shift_reminders = send_shift_reminders_once()
     except Exception as exc:  # pragma: no cover - keep queued jobs runner alive
         log.exception("shift reminders processing failed: %s", exc)
-        print(f"payroll_payment_drafts={payroll_payment_drafts} draft_expense_reminders={draft_expense_reminders} processed_jobs={processed_jobs} shift_reminders_error={exc}")
+        print(
+            f"payroll_payment_drafts={payroll_payment_drafts} draft_expense_reminders={draft_expense_reminders} processed_jobs={processed_jobs} shift_reminders_error={exc}"
+        )
         return int(payroll_payment_drafts or 0) + int(draft_expense_reminders or 0) + int(processed_jobs or 0)
 
-    print(f"payroll_payment_drafts={payroll_payment_drafts} draft_expense_reminders={draft_expense_reminders} processed_jobs={processed_jobs} shift_reminders={shift_reminders}")
-    return int(payroll_payment_drafts or 0) + int(draft_expense_reminders or 0) + int(processed_jobs or 0) + int(shift_reminders or 0)
+    print(
+        f"payroll_payment_drafts={payroll_payment_drafts} draft_expense_reminders={draft_expense_reminders} processed_jobs={processed_jobs} shift_reminders={shift_reminders}"
+    )
+    return (
+        int(payroll_payment_drafts or 0)
+        + int(draft_expense_reminders or 0)
+        + int(processed_jobs or 0)
+        + int(shift_reminders or 0)
+    )
 
 
 if __name__ == "__main__":

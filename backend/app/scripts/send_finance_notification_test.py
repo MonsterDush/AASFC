@@ -40,7 +40,8 @@ def main() -> int:
     base_url = settings.frontend_base_url()
     previews = [
         (
-            "ТЕСТ · напоминание о расходах\n\n" + build_due_draft_expenses_text(
+            "ТЕСТ · напоминание о расходах\n\n"
+            + build_due_draft_expenses_text(
                 venue_name="Тестовое заведение",
                 draft_count=3,
                 amount_minor=485_000,
@@ -49,7 +50,8 @@ def main() -> int:
             "Открыть черновики",
         ),
         (
-            "ТЕСТ · черновик ФОТ\n\n" + build_payroll_draft_ready_text(
+            "ТЕСТ · черновик ФОТ\n\n"
+            + build_payroll_draft_ready_text(
                 venue_name="Тестовое заведение",
                 window=window,
                 amount_minor=1_245_000,
@@ -58,7 +60,8 @@ def main() -> int:
             "Открыть черновик",
         ),
         (
-            "ТЕСТ · сводка сотрудника\n\n" + build_employee_payroll_period_text(
+            "ТЕСТ · сводка сотрудника\n\n"
+            + build_employee_payroll_period_text(
                 venue_name="Тестовое заведение",
                 window=window,
                 summary={

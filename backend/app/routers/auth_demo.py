@@ -70,7 +70,16 @@ def start_demo_session(
     redirect = RedirectResponse(url=redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     _write_access_cookie(redirect, user=demo_user, extra_claims=claims)
     try:
-        record_demo_event(db, event_name="demo_start", user=demo_user, venue_id=int(venue.id), persona=persona_upper, page_path=redirect_url, session_id=claims.get("demo_session_id"), meta={"source": "auth_start"})
+        record_demo_event(
+            db,
+            event_name="demo_start",
+            user=demo_user,
+            venue_id=int(venue.id),
+            persona=persona_upper,
+            page_path=redirect_url,
+            session_id=claims.get("demo_session_id"),
+            meta={"source": "auth_start"},
+        )
         db.commit()
     except Exception:
         db.rollback()
@@ -104,13 +113,24 @@ def switch_demo_persona(
         "demo_venue_id": int(venue.id),
         "demo_reference_year": getattr(venue, "demo_reference_year", None),
         "demo_reference_month": getattr(venue, "demo_reference_month", None),
-        "redirect_url": build_demo_start_url(venue_id=int(venue.id), persona=persona_upper, next_path=payload.next_path),
+        "redirect_url": build_demo_start_url(
+            venue_id=int(venue.id), persona=persona_upper, next_path=payload.next_path
+        ),
         "banner": build_demo_banner_payload(),
     }
     resp = JSONResponse(body)
     _write_access_cookie(resp, user=demo_user, extra_claims=claims)
     try:
-        record_demo_event(db, event_name="switch_persona", user=demo_user, venue_id=int(venue.id), persona=persona_upper, page_path=body.get("redirect_url"), session_id=claims.get("demo_session_id"), meta={"source": "auth_switch"})
+        record_demo_event(
+            db,
+            event_name="switch_persona",
+            user=demo_user,
+            venue_id=int(venue.id),
+            persona=persona_upper,
+            page_path=body.get("redirect_url"),
+            session_id=claims.get("demo_session_id"),
+            meta={"source": "auth_switch"},
+        )
         db.commit()
     except Exception:
         db.rollback()
@@ -118,12 +138,20 @@ def switch_demo_persona(
 
 
 @router.post("/demo/exit")
-def exit_demo_session(response: Response, db: Session = Depends(get_db), user: User | None = Depends(get_current_user_optional)):
+def exit_demo_session(
+    response: Response, db: Session = Depends(get_db), user: User | None = Depends(get_current_user_optional)
+):
     demo_ctx = get_demo_session_or_none(user)
     if demo_ctx is None:
         return {"ok": True, "demo_mode": False, "redirect_url": build_demo_banner_payload().get("return_url")}
     try:
-        record_demo_event(db, event_name="exit_demo", user=user, session_id=getattr(demo_ctx, "session_id", None), meta={"source": "auth_exit"})
+        record_demo_event(
+            db,
+            event_name="exit_demo",
+            user=user,
+            session_id=getattr(demo_ctx, "session_id", None),
+            meta={"source": "auth_exit"},
+        )
         db.commit()
     except Exception:
         db.rollback()

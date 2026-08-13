@@ -97,14 +97,13 @@ def derive_billing_reconciliation_issues(
     limit: int = 500,
 ) -> list[dict[str, Any]]:
     limit = max(1, min(int(limit or 500), 1000))
-    venue_map = {
-        int(v.id): str(v.name or f"Заведение #{int(v.id)}")
-        for v in db.execute(select(Venue)).scalars().all()
-    }
+    venue_map = {int(v.id): str(v.name or f"Заведение #{int(v.id)}") for v in db.execute(select(Venue)).scalars().all()}
     now = _utc_now()
     issues: list[dict[str, Any]] = []
 
-    tx_stmt = select(VenueBillingTransaction).order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
+    tx_stmt = select(VenueBillingTransaction).order_by(
+        VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc()
+    )
     if venue_id is not None:
         tx_stmt = tx_stmt.where(VenueBillingTransaction.venue_id == int(venue_id))
     txs = list(db.execute(tx_stmt).scalars().all())
@@ -137,59 +136,69 @@ def derive_billing_reconciliation_issues(
         if tx_type == "PAYMENT" and tx_status == "PENDING":
             expires_at = get_checkout_expires_at(tx)
             if (expires_at and expires_at <= now) or (created_at and created_at <= stale_cutoff):
-                issues.append(_issue_item(
-                    issue_code="STALE_PENDING_CHECKOUT",
+                issues.append(
+                    _issue_item(
+                        issue_code="STALE_PENDING_CHECKOUT",
+                        venue_id=v_id,
+                        venue_name=v_name,
+                        transaction_id=int(tx.id),
+                        created_at=expires_at or created_at,
+                        message="Checkout висит слишком долго и требует проверки.",
+                        raw={"status": tx_status, "expires_at": expires_at.isoformat() if expires_at else None},
+                    )
+                )
+        if tx_type == "PAYMENT" and tx_status == "FAILED":
+            issues.append(
+                _issue_item(
+                    issue_code="FAILED_PAYMENT",
                     venue_id=v_id,
                     venue_name=v_name,
                     transaction_id=int(tx.id),
-                    created_at=expires_at or created_at,
-                    message="Checkout висит слишком долго и требует проверки.",
-                    raw={"status": tx_status, "expires_at": expires_at.isoformat() if expires_at else None},
-                ))
-        if tx_type == "PAYMENT" and tx_status == "FAILED":
-            issues.append(_issue_item(
-                issue_code="FAILED_PAYMENT",
-                venue_id=v_id,
-                venue_name=v_name,
-                transaction_id=int(tx.id),
-                created_at=created_at,
-                message=str(tx.comment or payload.get("comment") or "Платёж завершился ошибкой."),
-                raw={"status": tx_status},
-            ))
+                    created_at=created_at,
+                    message=str(tx.comment or payload.get("comment") or "Платёж завершился ошибкой."),
+                    raw={"status": tx_status},
+                )
+            )
         if tx_type == "PAYMENT" and tx_status == "SUCCEEDED":
             linked_events = event_by_tx.get(int(tx.id), [])
             has_success = any(str(ev.event_type or "").upper() == "ROBOKASSA_PAYMENT_SUCCEEDED" for ev in linked_events)
             if not has_success:
-                issues.append(_issue_item(
-                    issue_code="SUCCEEDED_NOT_APPLIED",
-                    venue_id=v_id,
-                    venue_name=v_name,
-                    transaction_id=int(tx.id),
-                    created_at=created_at,
-                    message="Транзакция успешна, но событие применения продления не найдено.",
-                    raw={"status": tx_status},
-                ))
+                issues.append(
+                    _issue_item(
+                        issue_code="SUCCEEDED_NOT_APPLIED",
+                        venue_id=v_id,
+                        venue_name=v_name,
+                        transaction_id=int(tx.id),
+                        created_at=created_at,
+                        message="Транзакция успешна, но событие применения продления не найдено.",
+                        raw={"status": tx_status},
+                    )
+                )
         if tx_type == "REFUND" and tx_status == "PENDING":
             if created_at and created_at <= stale_cutoff:
-                issues.append(_issue_item(
-                    issue_code="REFUND_PROCESSING_TOO_LONG",
+                issues.append(
+                    _issue_item(
+                        issue_code="REFUND_PROCESSING_TOO_LONG",
+                        venue_id=v_id,
+                        venue_name=v_name,
+                        transaction_id=int(tx.id),
+                        created_at=created_at,
+                        message="Запрос возврата слишком долго остаётся в processing.",
+                        raw={"status": tx_status},
+                    )
+                )
+        if tx_type == "REFUND" and tx_status == "CANCELED":
+            issues.append(
+                _issue_item(
+                    issue_code="REFUND_CANCELED",
                     venue_id=v_id,
                     venue_name=v_name,
                     transaction_id=int(tx.id),
                     created_at=created_at,
-                    message="Запрос возврата слишком долго остаётся в processing.",
+                    message=str(tx.comment or "Возврат отменён на стороне платёжного провайдера."),
                     raw={"status": tx_status},
-                ))
-        if tx_type == "REFUND" and tx_status == "CANCELED":
-            issues.append(_issue_item(
-                issue_code="REFUND_CANCELED",
-                venue_id=v_id,
-                venue_name=v_name,
-                transaction_id=int(tx.id),
-                created_at=created_at,
-                message=str(tx.comment or "Возврат отменён на стороне платёжного провайдера."),
-                raw={"status": tx_status},
-            ))
+                )
+            )
 
     issue_event_codes = {
         "ROBOKASSA_RESULT_SIGNATURE_INVALID": "INVALID_SIGNATURE",
@@ -208,22 +217,25 @@ def derive_billing_reconciliation_issues(
                 tx_id = int(tx_id_val)
         except (TypeError, ValueError):
             tx_id = None
-        issues.append(_issue_item(
-            issue_code=issue_code,
-            venue_id=int(event.venue_id),
-            venue_name=venue_map.get(int(event.venue_id)),
-            transaction_id=tx_id,
-            event_id=int(event.id),
-            created_at=_ensure_aware(event.created_at),
-            message=str(meta.get("details") or event.event_type),
-            raw=meta,
-        ))
+        issues.append(
+            _issue_item(
+                issue_code=issue_code,
+                venue_id=int(event.venue_id),
+                venue_name=venue_map.get(int(event.venue_id)),
+                transaction_id=tx_id,
+                event_id=int(event.id),
+                created_at=_ensure_aware(event.created_at),
+                message=str(meta.get("details") or event.event_type),
+                raw=meta,
+            )
+        )
 
     if search:
         needle = str(search).strip().lower()
         if needle:
             issues = [
-                item for item in issues
+                item
+                for item in issues
                 if needle in str(item.get("venue_name") or "").lower()
                 or needle in str(item.get("message") or "").lower()
                 or needle in str(item.get("issue_code") or "").lower()
@@ -320,7 +332,14 @@ def sync_billing_reconciliation_issues(db: Session, *, venue_id: int | None = No
         "reopened": reopened,
         "refreshed": refreshed,
         "auto_resolved": auto_resolved,
-        "open_total": int(db.execute(select(func.count()).select_from(BillingReconciliationIssue).where(BillingReconciliationIssue.status == ISSUE_STATUS_OPEN)).scalar() or 0),
+        "open_total": int(
+            db.execute(
+                select(func.count())
+                .select_from(BillingReconciliationIssue)
+                .where(BillingReconciliationIssue.status == ISSUE_STATUS_OPEN)
+            ).scalar()
+            or 0
+        ),
     }
 
 
@@ -395,7 +414,9 @@ def set_billing_reconciliation_issue_status(
     acted_by_user_id: int | None,
     comment: str | None = None,
 ) -> BillingReconciliationIssue:
-    row = db.execute(select(BillingReconciliationIssue).where(BillingReconciliationIssue.id == int(issue_id))).scalar_one_or_none()
+    row = db.execute(
+        select(BillingReconciliationIssue).where(BillingReconciliationIssue.id == int(issue_id))
+    ).scalar_one_or_none()
     if row is None:
         raise ValueError("Billing reconciliation issue not found")
     now = _utc_now()
@@ -420,7 +441,9 @@ def get_billing_health_summary(db: Session) -> dict[str, Any]:
             select(BillingReconciliationIssue)
             .where(BillingReconciliationIssue.status == ISSUE_STATUS_OPEN)
             .order_by(BillingReconciliationIssue.last_seen_at.desc(), BillingReconciliationIssue.id.desc())
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     counts = {"critical": 0, "warning": 0, "info": 0}
     code_counts: dict[str, int] = {}
@@ -429,15 +452,19 @@ def get_billing_health_summary(db: Session) -> dict[str, Any]:
         counts[severity] = counts.get(severity, 0) + 1
         code = str(row.issue_code or "UNKNOWN")
         code_counts[code] = code_counts.get(code, 0) + 1
-    recent_failed = db.execute(
-        select(VenueBillingTransaction)
-        .where(
-            VenueBillingTransaction.type == "PAYMENT",
-            VenueBillingTransaction.status == "FAILED",
-            VenueBillingTransaction.created_at >= _utc_now() - timedelta(hours=24),
+    recent_failed = (
+        db.execute(
+            select(VenueBillingTransaction)
+            .where(
+                VenueBillingTransaction.type == "PAYMENT",
+                VenueBillingTransaction.status == "FAILED",
+                VenueBillingTransaction.created_at >= _utc_now() - timedelta(hours=24),
+            )
+            .order_by(VenueBillingTransaction.created_at.desc())
         )
-        .order_by(VenueBillingTransaction.created_at.desc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     stale_pending = sum(1 for row in open_rows if str(row.issue_code or "").upper() == "STALE_PENDING_CHECKOUT")
     recent_issues, _ = list_billing_reconciliation_issues(db, status=ISSUE_STATUS_OPEN, page=1, page_size=10)
     return {
@@ -453,6 +480,9 @@ def get_billing_health_summary(db: Session) -> dict[str, Any]:
         "failed_checkout_24h": len(recent_failed),
         "issues_total": len(open_rows),
         "by_issue_code": code_counts,
-        "top_issue_codes": [{"code": code, "count": count} for code, count in sorted(code_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]],
+        "top_issue_codes": [
+            {"code": code, "count": count}
+            for code, count in sorted(code_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        ],
         "recent_issues": recent_issues,
     }

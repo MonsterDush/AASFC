@@ -51,12 +51,10 @@ _WEEKDAY_TITLES_RU = {
     5: "Суббота",
     6: "Воскресенье",
 }
+
+
 def _venue_night_shifts_enabled(db: Session, *, venue_id: int) -> bool:
-    return bool(
-        db.execute(
-            select(Venue.night_shifts_enabled).where(Venue.id == int(venue_id))
-        ).scalar_one_or_none()
-    )
+    return bool(db.execute(select(Venue.night_shifts_enabled).where(Venue.id == int(venue_id))).scalar_one_or_none())
 
 
 def _normalize_shift_slot_for_venue(db: Session, *, venue_id: int, shift_slot: str | None) -> str:
@@ -228,7 +226,9 @@ def _serialize_shift_schedule_template(template: ShiftScheduleTemplate) -> dict:
                 "id": int(item.id),
                 "weekday": int(item.weekday),
                 "weekday_title": _WEEKDAY_TITLES_RU.get(int(item.weekday), str(item.weekday)),
-                "weekday_slot_title": _shift_template_weekday_slot_title(int(item.weekday), getattr(item, "shift_slot", None)),
+                "weekday_slot_title": _shift_template_weekday_slot_title(
+                    int(item.weekday), getattr(item, "shift_slot", None)
+                ),
                 "interval_id": int(item.interval_id),
                 "shift_slot": normalize_shift_slot(getattr(item, "shift_slot", None)),
                 "shift_slot_label": _shift_slot_label(getattr(item, "shift_slot", None)),
@@ -236,10 +236,16 @@ def _serialize_shift_schedule_template(template: ShiftScheduleTemplate) -> dict:
                 "interval": {
                     "id": int(item.interval.id),
                     "title": item.interval.title,
-                    "start_time": item.interval.start_time.strftime("%H:%M") if item.interval and item.interval.start_time else None,
-                    "end_time": item.interval.end_time.strftime("%H:%M") if item.interval and item.interval.end_time else None,
+                    "start_time": item.interval.start_time.strftime("%H:%M")
+                    if item.interval and item.interval.start_time
+                    else None,
+                    "end_time": item.interval.end_time.strftime("%H:%M")
+                    if item.interval and item.interval.end_time
+                    else None,
                     "is_active": bool(item.interval.is_active) if item.interval else False,
-                } if getattr(item, "interval", None) is not None else None,
+                }
+                if getattr(item, "interval", None) is not None
+                else None,
             }
             for item in items
         ],
@@ -319,7 +325,9 @@ def update_shift_schedule_template(
 
     if payload.title is not None:
         title = _normalize_shift_schedule_template_title(payload.title)
-        _ensure_shift_schedule_template_title_unique(db, venue_id=venue_id, title=title, exclude_template_id=template_id)
+        _ensure_shift_schedule_template_title_unique(
+            db, venue_id=venue_id, title=title, exclude_template_id=template_id
+        )
         obj.title = title
     payload_fields_set = getattr(payload, "model_fields_set", None)
     if payload_fields_set is None:
@@ -330,14 +338,17 @@ def update_shift_schedule_template(
         obj.is_active = bool(payload.is_active)
     if payload.items is not None:
         if not _venue_night_shifts_enabled(db, venue_id=venue_id):
-            has_stored_night_items = db.execute(
-                select(ShiftScheduleTemplateItem.id)
-                .where(
-                    ShiftScheduleTemplateItem.template_id == int(obj.id),
-                    ShiftScheduleTemplateItem.shift_slot == "NIGHT",
-                )
-                .limit(1)
-            ).scalar_one_or_none() is not None
+            has_stored_night_items = (
+                db.execute(
+                    select(ShiftScheduleTemplateItem.id)
+                    .where(
+                        ShiftScheduleTemplateItem.template_id == int(obj.id),
+                        ShiftScheduleTemplateItem.shift_slot == "NIGHT",
+                    )
+                    .limit(1)
+                ).scalar_one_or_none()
+                is not None
+            )
             if has_stored_night_items:
                 raise HTTPException(
                     status_code=409,
@@ -392,7 +403,9 @@ def apply_shift_schedule_template(
 
     # Validate that all intervals still belong to this venue and are active before generation.
     validation_payload = [
-        ShiftScheduleTemplateItemIn(weekday=int(item.weekday), interval_id=int(item.interval_id), shift_slot=item.shift_slot)
+        ShiftScheduleTemplateItemIn(
+            weekday=int(item.weekday), interval_id=int(item.interval_id), shift_slot=item.shift_slot
+        )
         for item in items
     ]
     normalized_items = _normalize_shift_schedule_template_items(
@@ -405,13 +418,17 @@ def apply_shift_schedule_template(
     for item in normalized_items:
         items_by_weekday.setdefault(int(item["weekday"]), []).append(item)
 
-    existing_month_shifts = db.execute(
-        select(Shift).where(
-            Shift.venue_id == venue_id,
-            Shift.date >= month_start,
-            Shift.date < month_end_exclusive,
+    existing_month_shifts = (
+        db.execute(
+            select(Shift).where(
+                Shift.venue_id == venue_id,
+                Shift.date >= month_start,
+                Shift.date < month_end_exclusive,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     existing_active_dates = {shift.date for shift in existing_month_shifts if bool(shift.is_active)}
     existing_by_key = {
         (shift.date, int(shift.interval_id), normalize_shift_slot(getattr(shift, "shift_slot", None))): shift
@@ -478,16 +495,16 @@ def apply_shift_schedule_template(
         current += timedelta(days=1)
 
     if archived_count > 0:
-        changed_dates.update(shift.date for shift in existing_month_shifts if month_start <= shift.date < month_end_exclusive)
+        changed_dates.update(
+            shift.date for shift in existing_month_shifts if month_start <= shift.date < month_end_exclusive
+        )
 
     if changed_dates:
         _rebuild_closed_report_tip_allocations_for_keys(
             db,
             venue_id=venue_id,
             report_keys={
-                (changed_date, shift_slot)
-                for changed_date in changed_dates
-                for shift_slot in ("DAY", "NIGHT")
+                (changed_date, shift_slot) for changed_date in changed_dates for shift_slot in ("DAY", "NIGHT")
             },
         )
         _recalculate_payroll_for_dates(

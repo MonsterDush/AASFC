@@ -108,8 +108,8 @@ def list_adjustments(
                 "id": r.id,
                 "type": r.type,
                 "date": r.date.isoformat(),
-            "status": getattr(r, "status", "DRAFT"),
-            "closed_at": r.closed_at.isoformat() if getattr(r, "closed_at", None) else None,
+                "status": getattr(r, "status", "DRAFT"),
+                "closed_at": r.closed_at.isoformat() if getattr(r, "closed_at", None) else None,
                 "amount": r.amount,
                 "reason": r.reason,
                 "member_user_id": r.member_user_id,
@@ -128,7 +128,6 @@ def list_adjustments(
             for r in rows
         ]
     }
-
 
 
 # ---------- Adjustments helpers ----------
@@ -181,14 +180,14 @@ def create_adjustment(
     db.refresh(obj)
     return {"id": obj.id}
 
+
 class AdjustmentUpdateIn(BaseModel):
-    type: Optional[str] = None          # "penalty" | "writeoff" | "bonus"
+    type: Optional[str] = None  # "penalty" | "writeoff" | "bonus"
     member_user_id: Optional[int] = None
     date: Optional[dt.date] = None
     amount: Optional[int] = None
     reason: Optional[str] = None
     is_active: Optional[bool] = None
-
 
 
 @router.patch("/{venue_id}/adjustments/{adjustment_id}")
@@ -302,7 +301,8 @@ def create_dispute(
         raise HTTPException(status_code=422, detail="Message is required")
 
     dis = db.execute(
-        select(AdjustmentDispute).where(
+        select(AdjustmentDispute)
+        .where(
             AdjustmentDispute.venue_id == venue_id,
             AdjustmentDispute.adjustment_id == adj.id,
             AdjustmentDispute.is_active.is_(True),
@@ -345,6 +345,7 @@ def create_dispute(
     db.commit()
     return {"ok": True, "dispute_id": dis.id}
 
+
 @router.get("/{venue_id}/adjustments/{adj_type}/{adj_id}/dispute")
 def get_dispute_thread(
     venue_id: int,
@@ -371,24 +372,30 @@ def get_dispute_thread(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     dis = db.execute(
-        select(AdjustmentDispute).where(
+        select(AdjustmentDispute)
+        .where(
             AdjustmentDispute.venue_id == venue_id,
             AdjustmentDispute.adjustment_id == adj.id,
             AdjustmentDispute.is_active.is_(True),
-        ).order_by(AdjustmentDispute.id.desc())
+        )
+        .order_by(AdjustmentDispute.id.desc())
     ).scalar_one_or_none()
 
     if dis is None:
         return {"dispute": None, "comments": []}
 
-    comments = db.execute(
-        select(AdjustmentDisputeComment)
-        .where(
-            AdjustmentDisputeComment.dispute_id == dis.id,
-            AdjustmentDisputeComment.is_active.is_(True),
+    comments = (
+        db.execute(
+            select(AdjustmentDisputeComment)
+            .where(
+                AdjustmentDisputeComment.dispute_id == dis.id,
+                AdjustmentDisputeComment.is_active.is_(True),
+            )
+            .order_by(AdjustmentDisputeComment.created_at.asc(), AdjustmentDisputeComment.id.asc())
         )
-        .order_by(AdjustmentDisputeComment.created_at.asc(), AdjustmentDisputeComment.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return {
         "dispute": {
@@ -513,10 +520,14 @@ def list_disputes(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_adjustments_manager(db, venue_id=venue_id, user=user)
 
-    stmt = select(AdjustmentDispute, Adjustment).join(Adjustment, Adjustment.id == AdjustmentDispute.adjustment_id).where(
-        AdjustmentDispute.venue_id == venue_id,
-        AdjustmentDispute.is_active.is_(True),
-        Adjustment.is_active.is_(True),
+    stmt = (
+        select(AdjustmentDispute, Adjustment)
+        .join(Adjustment, Adjustment.id == AdjustmentDispute.adjustment_id)
+        .where(
+            AdjustmentDispute.venue_id == venue_id,
+            AdjustmentDispute.is_active.is_(True),
+            Adjustment.is_active.is_(True),
+        )
     )
 
     if status:

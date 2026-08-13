@@ -176,12 +176,12 @@ def summarize_permission_codes(codes: Iterable[str] | None) -> dict:
     groups: dict[str, dict] = {}
     for code in normalized:
         perm = PERMISSION_DEF_BY_CODE.get(code)
-        raw_group = str(getattr(perm, 'group', 'OTHER') or 'OTHER').upper()
+        raw_group = str(getattr(perm, "group", "OTHER") or "OTHER").upper()
         meta = PERMISSION_GROUP_META.get(raw_group, {"key": raw_group.lower(), "title": raw_group.title()})
-        bucket = groups.setdefault(meta['key'], {"key": meta['key'], "title": meta['title'], "count": 0, "codes": []})
-        bucket['count'] += 1
-        bucket['codes'].append(code)
-    group_items = sorted(groups.values(), key=lambda item: (item['title'], item['key']))
+        bucket = groups.setdefault(meta["key"], {"key": meta["key"], "title": meta["title"], "count": 0, "codes": []})
+        bucket["count"] += 1
+        bucket["codes"].append(code)
+    group_items = sorted(groups.values(), key=lambda item: (item["title"], item["key"]))
     summary_labels = [f"{item['title']} · {item['count']}" for item in group_items]
     return {
         "permission_count": len(normalized),
@@ -191,51 +191,63 @@ def summarize_permission_codes(codes: Iterable[str] | None) -> dict:
 
 
 def serialize_template(row: PositionPermissionTemplate) -> dict:
-    codes = parse_permission_codes(getattr(row, 'permission_codes_json', None))
+    codes = parse_permission_codes(getattr(row, "permission_codes_json", None))
     summary = summarize_permission_codes(codes)
     return {
         "id": int(row.id),
-        "code": str(getattr(row, 'code', '') or '').strip(),
-        "title": str(row.title or '').strip(),
-        "description": str(row.description or '').strip() or None,
+        "code": str(getattr(row, "code", "") or "").strip(),
+        "title": str(row.title or "").strip(),
+        "description": str(row.description or "").strip() or None,
         "permission_codes": codes,
         "permission_summary": summary,
-        "sort_order": int(getattr(row, 'sort_order', 0) or 0),
-        "is_active": bool(getattr(row, 'is_active', True)),
-        "is_system": bool(getattr(row, 'is_system', False)),
-        "scope": str(getattr(row, 'scope', 'GLOBAL') or 'GLOBAL').upper(),
-        "created_by_user_id": int(row.created_by_user_id) if getattr(row, 'created_by_user_id', None) is not None else None,
-        "updated_by_user_id": int(row.updated_by_user_id) if getattr(row, 'updated_by_user_id', None) is not None else None,
-        "created_at": row.created_at.isoformat() if getattr(row, 'created_at', None) else None,
-        "updated_at": row.updated_at.isoformat() if getattr(row, 'updated_at', None) else None,
+        "sort_order": int(getattr(row, "sort_order", 0) or 0),
+        "is_active": bool(getattr(row, "is_active", True)),
+        "is_system": bool(getattr(row, "is_system", False)),
+        "scope": str(getattr(row, "scope", "GLOBAL") or "GLOBAL").upper(),
+        "created_by_user_id": int(row.created_by_user_id)
+        if getattr(row, "created_by_user_id", None) is not None
+        else None,
+        "updated_by_user_id": int(row.updated_by_user_id)
+        if getattr(row, "updated_by_user_id", None) is not None
+        else None,
+        "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else None,
+        "updated_at": row.updated_at.isoformat() if getattr(row, "updated_at", None) else None,
     }
 
 
-def ensure_default_templates(db: Session, *, actor_user_id: int | None = None, reactivate: bool = False) -> dict[str, int]:
-    existing_rows = db.execute(
-        select(PositionPermissionTemplate).where(PositionPermissionTemplate.scope == 'GLOBAL')
-    ).scalars().all()
-    by_code = {str(row.code or '').strip().lower(): row for row in existing_rows if str(getattr(row, 'code', '') or '').strip()}
+def ensure_default_templates(
+    db: Session, *, actor_user_id: int | None = None, reactivate: bool = False
+) -> dict[str, int]:
+    existing_rows = (
+        db.execute(select(PositionPermissionTemplate).where(PositionPermissionTemplate.scope == "GLOBAL"))
+        .scalars()
+        .all()
+    )
+    by_code = {
+        str(row.code or "").strip().lower(): row for row in existing_rows if str(getattr(row, "code", "") or "").strip()
+    }
     created = 0
     updated = 0
     for item in DEFAULT_POSITION_PERMISSION_TEMPLATES:
         row = by_code.get(item.code.lower())
         normalized_codes = normalize_known_permission_codes(db, item.permission_codes)
         if row is None:
-            db.add(PositionPermissionTemplate(
-                code=item.code,
-                title=item.title,
-                description=item.description,
-                permission_codes_json=normalized_codes,
-                sort_order=item.sort_order,
-                is_active=True,
-                is_system=True,
-                scope='GLOBAL',
-                created_by_user_id=actor_user_id,
-                updated_by_user_id=actor_user_id,
-                created_at=utcnow(),
-                updated_at=utcnow(),
-            ))
+            db.add(
+                PositionPermissionTemplate(
+                    code=item.code,
+                    title=item.title,
+                    description=item.description,
+                    permission_codes_json=normalized_codes,
+                    sort_order=item.sort_order,
+                    is_active=True,
+                    is_system=True,
+                    scope="GLOBAL",
+                    created_by_user_id=actor_user_id,
+                    updated_by_user_id=actor_user_id,
+                    created_at=utcnow(),
+                    updated_at=utcnow(),
+                )
+            )
             created += 1
             continue
         changed = False

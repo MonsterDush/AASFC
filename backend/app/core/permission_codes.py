@@ -75,9 +75,7 @@ def normalize_known_permission_codes(db: Session, codes: Iterable[object] | None
         return []
 
     active = set(
-        db.execute(
-            select(Permission.code).where(Permission.code.in_(cleaned), Permission.is_active.is_(True))
-        )
+        db.execute(select(Permission.code).where(Permission.code.in_(cleaned), Permission.is_active.is_(True)))
         .scalars()
         .all()
     )

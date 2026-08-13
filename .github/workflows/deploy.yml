@@ -69,46 +69,11 @@ jobs:
       - name: Compile Python
         run: python -m compileall -q backend/app bot_service
 
-      - name: Lint Python and check critical formatting
+      - name: Lint and format-check Python
         run: |
           python -m ruff check --select E9,F63,F7,F82 backend/app backend/test bot_service tools
           python -m ruff check backend/app backend/test bot_service tools
-          python -m ruff check \
-            backend/app/auth/jwt_tokens.py \
-            backend/app/auth/passwords.py \
-            backend/app/core/permission_policy.py \
-            backend/app/services/billing/access.py \
-            backend/app/services/billing/state.py \
-            backend/app/services/finance/recognition.py \
-            backend/app/services/financial_privacy.py \
-            backend/app/services/payroll/calculator.py \
-            backend/app/services/security_rate_limits.py \
-            backend/app/services/signed_links.py \
-            backend/test/test_auth_security_primitives.py \
-            backend/test/test_financial_privacy.py \
-            backend/test/test_permission_policy.py \
-            backend/test/test_security_rate_limits.py \
-            backend/test/test_signed_links.py \
-            tools/check_critical_coverage.py \
-            tools/check_repository_hygiene.py
-          python -m ruff format --check \
-            backend/app/auth/jwt_tokens.py \
-            backend/app/auth/passwords.py \
-            backend/app/core/permission_policy.py \
-            backend/app/services/billing/access.py \
-            backend/app/services/billing/state.py \
-            backend/app/services/finance/recognition.py \
-            backend/app/services/financial_privacy.py \
-            backend/app/services/payroll/calculator.py \
-            backend/app/services/security_rate_limits.py \
-            backend/app/services/signed_links.py \
-            backend/test/test_auth_security_primitives.py \
-            backend/test/test_financial_privacy.py \
-            backend/test/test_permission_policy.py \
-            backend/test/test_security_rate_limits.py \
-            backend/test/test_signed_links.py \
-            tools/check_critical_coverage.py \
-            tools/check_repository_hygiene.py
+          python -m ruff format --check backend/app backend/test bot_service tools
 
       - name: Check repository hygiene and shell syntax
         run: |

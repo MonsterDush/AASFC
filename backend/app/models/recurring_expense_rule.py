@@ -11,10 +11,16 @@ from app.core.db import Base
 class RecurringExpenseRule(Base):
     __tablename__ = "recurring_expense_rules"
     __table_args__ = (
-        CheckConstraint("day_of_month >= 1 AND day_of_month <= 31", name="ck_recurring_expense_rules_day_of_month_range"),
+        CheckConstraint(
+            "day_of_month >= 1 AND day_of_month <= 31", name="ck_recurring_expense_rules_day_of_month_range"
+        ),
         CheckConstraint("spread_months >= 1", name="ck_recurring_expense_rules_spread_months_positive"),
-        CheckConstraint("amount_minor IS NULL OR amount_minor >= 0", name="ck_recurring_expense_rules_amount_minor_non_negative"),
-        CheckConstraint("percent_bps IS NULL OR percent_bps >= 0", name="ck_recurring_expense_rules_percent_bps_non_negative"),
+        CheckConstraint(
+            "amount_minor IS NULL OR amount_minor >= 0", name="ck_recurring_expense_rules_amount_minor_non_negative"
+        ),
+        CheckConstraint(
+            "percent_bps IS NULL OR percent_bps >= 0", name="ck_recurring_expense_rules_percent_bps_non_negative"
+        ),
         CheckConstraint("shift_slot IN ('TOTAL', 'DAY', 'NIGHT')", name="ck_recurring_expense_rules_shift_slot_valid"),
     )
 

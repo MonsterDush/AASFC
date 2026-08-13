@@ -58,18 +58,18 @@ def _telegram_browser_bot_username() -> str:
     Set TG_BROWSER_LOGIN_BOT_USERNAME (preferred) or TG_LOGIN_WIDGET_BOT_USERNAME
     in backend .env.
     """
-    return str(
-        settings.TG_BROWSER_LOGIN_BOT_USERNAME
-        or settings.TG_LOGIN_WIDGET_BOT_USERNAME
-        or ""
-    ).strip().lstrip("@")
+    return (
+        str(settings.TG_BROWSER_LOGIN_BOT_USERNAME or settings.TG_LOGIN_WIDGET_BOT_USERNAME or "").strip().lstrip("@")
+    )
 
 
 def _telegram_mini_app_url(*, startapp: str = "auth") -> tuple[str, str]:
     bot_username = _telegram_browser_bot_username()
     if not bot_username:
         raise HTTPException(status_code=503, detail="Telegram Mini App bot is not configured")
-    safe_startapp = "".join(ch for ch in str(startapp or "auth").strip() if ch.isalnum() or ch in {"_", "-"})[:64] or "auth"
+    safe_startapp = (
+        "".join(ch for ch in str(startapp or "auth").strip() if ch.isalnum() or ch in {"_", "-"})[:64] or "auth"
+    )
     return bot_username, f"https://t.me/{bot_username}?startapp={safe_startapp}"
 
 
@@ -128,6 +128,7 @@ def _browser_login_status_payload(session: TelegramBrowserAuthSession) -> Telegr
 # treated as confirmation: Telegram sends /start <token> to our webhook, backend
 # marks the session COMPLETED, and the browser polling endpoint finalizes login.
 
+
 def _telegram_user_from_update(value: dict | None) -> tuple[int, str | None, str, str]:
     if not isinstance(value, dict):
         raise HTTPException(status_code=400, detail="Telegram user payload is missing")
@@ -144,7 +145,6 @@ def _telegram_user_from_update(value: dict | None) -> tuple[int, str | None, str
 
 
 def _complete_browser_login_session(
-
     db: Session,
     *,
     session_token: str,
@@ -259,7 +259,7 @@ def _handle_browser_login_start_message(db: Session, *, text: str, from_user: di
         tg_user_id, tg_username, first_name, last_name = _telegram_user_from_update(from_user)
 
         if start_arg.startswith(_browser_login_prefix()):
-            session_token = start_arg[len(_browser_login_prefix()):].strip().lower()
+            session_token = start_arg[len(_browser_login_prefix()) :].strip().lower()
             _complete_browser_login_session(
                 db,
                 session_token=session_token,
@@ -271,7 +271,7 @@ def _handle_browser_login_start_message(db: Session, *, text: str, from_user: di
             return
 
         if start_arg.startswith(_browser_link_prefix()):
-            session_token = start_arg[len(_browser_link_prefix()):].strip().lower()
+            session_token = start_arg[len(_browser_link_prefix()) :].strip().lower()
             _complete_browser_link_session(
                 db,
                 session_token=session_token,
@@ -334,6 +334,7 @@ def _handle_browser_login_callback(db: Session, *, callback_query: dict) -> None
     except Exception:
         db.rollback()
         _LOG.exception("telegram browser callback auto-confirm failed")
+
 
 @router.get("/telegram/miniapp-link", response_model=TelegramMiniAppLinkOut)
 def telegram_miniapp_link(startapp: str = Query(default="auth", max_length=64)):
@@ -454,7 +455,9 @@ async def telegram_browser_webhook(
 
 
 @router.post("/telegram", status_code=status.HTTP_204_NO_CONTENT)
-def auth_telegram(payload: TelegramAuthIn, response: Response, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def auth_telegram(
+    payload: TelegramAuthIn, response: Response, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
+):
     try:
         data = verify_init_data(payload.initData, settings.TG_BOT_TOKEN)
     except TelegramInitDataError as e:
@@ -537,6 +540,7 @@ def auth_telegram_widget(payload: TelegramWidgetAuthIn, response: Response, db: 
     accept_invites_for_user(db, user_id=user.id, tg_username=user.tg_username)
     _write_access_cookie(response, user=user)
     return
+
 
 @link_router.post("/link/telegram/browser/start", response_model=TelegramBrowserAuthStartOut)
 def start_telegram_browser_link(

@@ -43,5 +43,4 @@ class AdjustmentDispute(Base):
     )
 
 
-
 Index("ix_adj_disputes_venue_adjustment", AdjustmentDispute.venue_id, AdjustmentDispute.adjustment_id)

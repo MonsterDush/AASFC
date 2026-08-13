@@ -45,9 +45,18 @@ def get_robokassa_refund_config() -> RobokassaRefundConfig:
         password3=str(getattr(settings, "ROBOKASSA_PASSWORD3", "") or "").strip(),
         hash_algorithm=_normalize_hash_algorithm(base_cfg.hash_algorithm),
         jwt_algorithm=jwt_algorithm,
-        refund_api_url=str(getattr(settings, "ROBOKASSA_REFUND_API_URL", "") or "https://services.robokassa.ru/RefundService/Refund/Create").strip(),
-        refund_state_url=str(getattr(settings, "ROBOKASSA_REFUND_STATE_URL", "") or "https://services.robokassa.ru/RefundService/Refund/GetState").strip(),
-        opstate_url=str(getattr(settings, "ROBOKASSA_OPSTATE_URL", "") or "https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpStateExt").strip(),
+        refund_api_url=str(
+            getattr(settings, "ROBOKASSA_REFUND_API_URL", "")
+            or "https://services.robokassa.ru/RefundService/Refund/Create"
+        ).strip(),
+        refund_state_url=str(
+            getattr(settings, "ROBOKASSA_REFUND_STATE_URL", "")
+            or "https://services.robokassa.ru/RefundService/Refund/GetState"
+        ).strip(),
+        opstate_url=str(
+            getattr(settings, "ROBOKASSA_OPSTATE_URL", "")
+            or "https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpStateExt"
+        ).strip(),
         timeout_seconds=timeout_seconds,
         test_mode=base_cfg.test_mode,
     )
@@ -110,7 +119,7 @@ def fetch_operation_info(*, invoice_id: str | int) -> dict[str, Any]:
     response.raise_for_status()
     raw = response.text
     root = ET.fromstring(raw)
-    ns = {"ns": root.tag[root.tag.find("{")+1:root.tag.find("}")] if root.tag.startswith("{") else ""}
+    ns = {"ns": root.tag[root.tag.find("{") + 1 : root.tag.find("}")] if root.tag.startswith("{") else ""}
 
     def _find(path: str) -> str | None:
         node = root.find(path, ns) if ns["ns"] else root.find(path.replace("ns:", ""))

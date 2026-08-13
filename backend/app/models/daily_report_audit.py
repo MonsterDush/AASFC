@@ -14,7 +14,9 @@ class DailyReportAudit(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    report_id: Mapped[int] = mapped_column(ForeignKey("daily_reports.id", ondelete="CASCADE"), index=True, nullable=False)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("daily_reports.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)

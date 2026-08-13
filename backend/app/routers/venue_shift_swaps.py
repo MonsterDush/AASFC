@@ -55,9 +55,7 @@ def _normalize_shift_slot_for_venue(
 ) -> str:
     slot = normalize_shift_slot(shift_slot)
     if slot == "NIGHT":
-        enabled = db.execute(
-            select(Venue.night_shifts_enabled).where(Venue.id == int(venue_id))
-        ).scalar_one_or_none()
+        enabled = db.execute(select(Venue.night_shifts_enabled).where(Venue.id == int(venue_id))).scalar_one_or_none()
         if not enabled:
             raise HTTPException(status_code=400, detail="Night shifts are disabled for this venue")
     return slot
@@ -75,8 +73,10 @@ def _parse_month_bounds(value: str) -> tuple[date, date]:
 def _display_user(user: User | None) -> dict | None:
     if user is None:
         return None
-    display_name = user.short_name or user.full_name or (
-        f"@{user.tg_username}" if user.tg_username else f"Сотрудник #{int(user.id)}"
+    display_name = (
+        user.short_name
+        or user.full_name
+        or (f"@{user.tg_username}" if user.tg_username else f"Сотрудник #{int(user.id)}")
     )
     return {
         "id": int(user.id),
@@ -97,8 +97,7 @@ def _load_active_position(
         select(VenuePosition)
         .join(
             VenueMember,
-            (VenueMember.venue_id == VenuePosition.venue_id)
-            & (VenueMember.user_id == VenuePosition.member_user_id),
+            (VenueMember.venue_id == VenuePosition.venue_id) & (VenueMember.user_id == VenuePosition.member_user_id),
         )
         .where(
             VenuePosition.venue_id == int(venue_id),
@@ -219,9 +218,7 @@ def _load_candidate_or_error(
     )
     if position is None:
         raise HTTPException(status_code=400, detail="Replacement is not an active venue member")
-    interval = db.execute(
-        select(ShiftInterval).where(ShiftInterval.id == int(shift.interval_id))
-    ).scalar_one()
+    interval = db.execute(select(ShiftInterval).where(ShiftInterval.id == int(shift.interval_id))).scalar_one()
     availability = db.execute(
         select(ShiftAvailability.status).where(
             ShiftAvailability.venue_id == int(venue_id),
@@ -231,9 +228,9 @@ def _load_candidate_or_error(
         )
     ).scalar_one_or_none()
     assigned_user_ids = set(
-        db.execute(
-            select(ShiftAssignment.member_user_id).where(ShiftAssignment.shift_id == int(shift.id))
-        ).scalars().all()
+        db.execute(select(ShiftAssignment.member_user_id).where(ShiftAssignment.shift_id == int(shift.id)))
+        .scalars()
+        .all()
     )
     allowed, reason = _candidate_state(
         db,
@@ -267,9 +264,7 @@ def _serialize_swap_request(
         "requester": _display_user(requester),
         "replacement": _display_user(replacement),
         "replacement_user_id": int(request.replacement_user_id) if request.replacement_user_id else None,
-        "replacement_position_id": (
-            int(request.replacement_position_id) if request.replacement_position_id else None
-        ),
+        "replacement_position_id": (int(request.replacement_position_id) if request.replacement_position_id else None),
         "date": shift.date.isoformat(),
         "shift_slot": normalize_shift_slot(shift.shift_slot),
         "created_at": request.created_at.isoformat() if request.created_at else None,
@@ -292,10 +287,14 @@ def list_shift_availability(
     if not manager and member_user_id is not None and int(member_user_id) != int(user.id):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    stmt = select(ShiftAvailability, User).join(
-        User,
-        User.id == ShiftAvailability.member_user_id,
-    ).where(ShiftAvailability.venue_id == int(venue_id))
+    stmt = (
+        select(ShiftAvailability, User)
+        .join(
+            User,
+            User.id == ShiftAvailability.member_user_id,
+        )
+        .where(ShiftAvailability.venue_id == int(venue_id))
+    )
     if target_date is not None:
         stmt = stmt.where(ShiftAvailability.date == target_date)
     elif month:
@@ -314,9 +313,7 @@ def list_shift_availability(
     if effective_user_id is not None:
         stmt = stmt.where(ShiftAvailability.member_user_id == int(effective_user_id))
 
-    rows = db.execute(
-        stmt.order_by(ShiftAvailability.date.asc(), ShiftAvailability.member_user_id.asc())
-    ).all()
+    rows = db.execute(stmt.order_by(ShiftAvailability.date.asc(), ShiftAvailability.member_user_id.asc())).all()
     return {
         "items": [
             {
@@ -420,11 +417,7 @@ def list_shift_swap_candidates(
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     manager = _is_schedule_editor(db, venue_id=venue_id, user=user)
-    effective_requester_id = (
-        int(requester_user_id)
-        if manager and requester_user_id is not None
-        else int(user.id)
-    )
+    effective_requester_id = int(requester_user_id) if manager and requester_user_id is not None else int(user.id)
     row = _load_shift_assignment(
         db,
         venue_id=venue_id,
@@ -435,16 +428,13 @@ def list_shift_swap_candidates(
         raise HTTPException(status_code=404, detail="Shift assignment not found")
     shift, assignment = row
     requester_user_id = int(assignment.member_user_id)
-    interval = db.execute(
-        select(ShiftInterval).where(ShiftInterval.id == int(shift.interval_id))
-    ).scalar_one()
+    interval = db.execute(select(ShiftInterval).where(ShiftInterval.id == int(shift.interval_id))).scalar_one()
     positions = db.execute(
         select(VenuePosition, User)
         .join(User, User.id == VenuePosition.member_user_id)
         .join(
             VenueMember,
-            (VenueMember.venue_id == VenuePosition.venue_id)
-            & (VenueMember.user_id == VenuePosition.member_user_id),
+            (VenueMember.venue_id == VenuePosition.venue_id) & (VenueMember.user_id == VenuePosition.member_user_id),
         )
         .where(
             VenuePosition.venue_id == int(venue_id),
@@ -463,9 +453,9 @@ def list_shift_swap_candidates(
     availability_by_user = {int(row.member_user_id): row.status for row in availability_rows}
     assigned_user_ids = {
         int(value)
-        for value in db.execute(
-            select(ShiftAssignment.member_user_id).where(ShiftAssignment.shift_id == int(shift.id))
-        ).scalars().all()
+        for value in db.execute(select(ShiftAssignment.member_user_id).where(ShiftAssignment.shift_id == int(shift.id)))
+        .scalars()
+        .all()
     }
     items = []
     for position, member in positions:
@@ -587,12 +577,8 @@ def create_shift_swap_request(
         shift_id=int(shift.id),
         assignment_id=int(assignment.id),
         requester_user_id=int(user.id),
-        replacement_user_id=(
-            int(replacement_position.member_user_id) if replacement_position is not None else None
-        ),
-        replacement_position_id=(
-            int(replacement_position.id) if replacement_position is not None else None
-        ),
+        replacement_user_id=(int(replacement_position.member_user_id) if replacement_position is not None else None),
+        replacement_position_id=(int(replacement_position.id) if replacement_position is not None else None),
         comment=_clean_optional_text(payload.comment),
         status="OPEN",
     )

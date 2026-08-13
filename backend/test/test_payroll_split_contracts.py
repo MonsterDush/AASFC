@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from datetime import date
 import hashlib
 import inspect
@@ -117,20 +118,25 @@ class PayrollCalculatorSplitContractTests(TestCase):
 
     def test_modules_remain_bounded_and_facade_reexports_their_contracts(self):
         modules = {
-            "calculator.py": (550, "calculate_payroll_for_month"),
-            "payroll_types.py": (180, "class PayrollPercentDecision"),
-            "component_calculations.py": (580, "def calculate_component_amount_minor"),
-            "percent_calculations.py": (400, "def _build_percent_component_decision"),
-            "metric_loaders.py": (450, "def _load_member_metrics"),
+            "calculator.py": (220, "calculate_payroll_for_month"),
+            "payroll_types.py": (100, "class PayrollPercentDecision"),
+            "component_calculations.py": (375, "def calculate_component_amount_minor"),
+            "percent_calculations.py": (175, "def _build_percent_component_decision"),
+            "metric_loaders.py": (155, "def _load_member_metrics"),
         }
-        for filename, (line_limit, marker) in modules.items():
+        for filename, (statement_limit, marker) in modules.items():
             source = (PAYROLL_DIR / filename).read_text(encoding="utf-8")
-            self.assertLess(len(source.splitlines()), line_limit)
+            statement_count = sum(isinstance(node, ast.stmt) for node in ast.walk(ast.parse(source)))
+            self.assertLess(statement_count, statement_limit)
             self.assertIn(marker, source)
 
         self.assertIs(calculator.PayrollPercentDecision, payroll_types.PayrollPercentDecision)
-        self.assertIs(calculator.calculate_component_amount_minor, component_calculations.calculate_component_amount_minor)
-        self.assertIs(calculator._build_percent_component_decision, percent_calculations._build_percent_component_decision)
+        self.assertIs(
+            calculator.calculate_component_amount_minor, component_calculations.calculate_component_amount_minor
+        )
+        self.assertIs(
+            calculator._build_percent_component_decision, percent_calculations._build_percent_component_decision
+        )
         self.assertIs(calculator._load_member_metrics, metric_loaders._load_member_metrics)
 
 
@@ -257,7 +263,9 @@ class PayrollMonthOrchestratorTests(TestCase):
             patch.object(calculator, "_load_revenue_metrics", return_value=calculator.PayrollRevenueMetrics()),
             patch.object(calculator, "_load_kpi_metrics", return_value=calculator.PayrollKpiMetrics()),
             patch.object(calculator, "_load_venue_plan_metrics", return_value=calculator.PayrollVenuePlanMetrics()),
-            patch.object(calculator, "create_finance_entry", side_effect=lambda **kwargs: finance_entries.append(kwargs)),
+            patch.object(
+                calculator, "create_finance_entry", side_effect=lambda **kwargs: finance_entries.append(kwargs)
+            ),
         ):
             result = calculator.calculate_payroll_for_month(
                 db=db,

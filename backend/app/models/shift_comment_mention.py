@@ -10,9 +10,7 @@ from app.core.db import Base
 
 class ShiftCommentMention(Base):
     __tablename__ = "shift_comment_mentions"
-    __table_args__ = (
-        UniqueConstraint("comment_id", "mentioned_user_id", name="uq_shift_comment_mention_user"),
-    )
+    __table_args__ = (UniqueConstraint("comment_id", "mentioned_user_id", name="uq_shift_comment_mention_user"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     comment_id: Mapped[int] = mapped_column(

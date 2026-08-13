@@ -33,9 +33,7 @@ def require_safe_e2e_database(database_url: str, *, confirmation: str | None) ->
     if host not in LOCAL_DATABASE_HOSTS:
         raise RuntimeError(f"E2E seed only supports a local database host, got: {host or 'empty'}")
     if not any(marker in database_name for marker in ("e2e", "test")):
-        raise RuntimeError(
-            f"E2E database name must contain 'e2e' or 'test', got: {database_name or 'empty'}"
-        )
+        raise RuntimeError(f"E2E database name must contain 'e2e' or 'test', got: {database_name or 'empty'}")
 
 
 def _required_password() -> str:
@@ -64,9 +62,7 @@ def _find_persona_user(db: Session, *, venue_id: int, persona: str) -> User:
 
 def _attach_phone_login(db: Session, *, user: User, phone: str, password: str) -> None:
     normalized_phone = normalize_phone_e164(phone)
-    existing = db.execute(
-        select(AuthIdentity).where(AuthIdentity.phone_e164 == normalized_phone)
-    ).scalar_one_or_none()
+    existing = db.execute(select(AuthIdentity).where(AuthIdentity.phone_e164 == normalized_phone)).scalar_one_or_none()
     if existing is not None and int(existing.user_id) != int(user.id):
         raise RuntimeError(f"Phone {normalized_phone} is already assigned to another E2E user")
     if existing is None:
@@ -121,9 +117,7 @@ def bootstrap_e2e_data(db: Session) -> dict[str, object]:
     if len({owner_phone, staff_phone, admin_phone}) != 3:
         raise RuntimeError("E2E owner, staff and admin phones must differ")
 
-    existing_venues = db.execute(
-        select(Venue).where(Venue.name == venue_name).order_by(Venue.id.asc())
-    ).scalars().all()
+    existing_venues = db.execute(select(Venue).where(Venue.name == venue_name).order_by(Venue.id.asc())).scalars().all()
     if len(existing_venues) > 1:
         raise RuntimeError(f"Multiple E2E venues named {venue_name!r} found")
 

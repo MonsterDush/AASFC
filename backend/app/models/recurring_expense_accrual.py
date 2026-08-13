@@ -14,7 +14,9 @@ class RecurringExpenseAccrual(Base):
     __tablename__ = "recurring_expense_accruals"
     __table_args__ = (
         CheckConstraint("amount_minor >= 0", name="ck_recurring_expense_accruals_amount_non_negative"),
-        CheckConstraint("basis_minor IS NULL OR basis_minor >= 0", name="ck_recurring_expense_accruals_basis_non_negative"),
+        CheckConstraint(
+            "basis_minor IS NULL OR basis_minor >= 0", name="ck_recurring_expense_accruals_basis_non_negative"
+        ),
         UniqueConstraint("rule_id", "accrual_date", name="uq_recurring_expense_accrual_rule_date"),
         Index("ix_recurring_expense_accruals_venue_date", "venue_id", "accrual_date"),
     )

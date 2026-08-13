@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import date
 from unittest import TestCase
 
-from app.services.payroll.day_breakdown import DayAllocationContext, _allocate_minor_by_keys, _component_allocation_for_day
+from app.services.payroll.day_breakdown import (
+    DayAllocationContext,
+    _allocate_minor_by_keys,
+    _component_allocation_for_day,
+)
 
 
 class PayrollDayBreakdownHelpersTests(TestCase):

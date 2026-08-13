@@ -35,7 +35,14 @@ def _build_user_auth_snapshot_map(db: Session, user_ids: list[int]) -> dict[int,
     return out
 
 
-def _display_name(*, short_name: str | None = None, full_name: str | None = None, tg_username: str | None = None, phone: str | None = None, user_id: int | None = None) -> str:
+def _display_name(
+    *,
+    short_name: str | None = None,
+    full_name: str | None = None,
+    tg_username: str | None = None,
+    phone: str | None = None,
+    user_id: int | None = None,
+) -> str:
     if short_name:
         return short_name
     if full_name:
@@ -90,7 +97,9 @@ def _build_pending_invite_target_map(db: Session, invites) -> dict[int, dict]:
     tg_rows = []
     if tg_usernames:
         tg_rows = db.execute(
-            select(User.id, User.tg_user_id, User.tg_username, User.full_name, User.short_name).where(User.tg_username.in_(list(dict.fromkeys(tg_usernames))))
+            select(User.id, User.tg_user_id, User.tg_username, User.full_name, User.short_name).where(
+                User.tg_username.in_(list(dict.fromkeys(tg_usernames)))
+            )
         ).all()
 
     phone_rows = []
@@ -184,18 +193,20 @@ def _build_owner_summary_by_venue(db: Session, venue_ids: list[int]) -> dict[int
 
     for r in pending_rows:
         meta = pending_target_map.get(int(r.id), {"target_status": "WAITING_SIGNUP", "target_user": None})
-        out[int(r.venue_id)]["pending"].append({
-            "id": r.id,
-            "channel": r.invite_channel,
-            "tg_username": r.invited_tg_username,
-            "phone": r.invited_phone_e164,
-            "contact_label": r.invited_contact_label,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "expires_at": r.expires_at.isoformat() if r.expires_at else None,
-            "invite_link": build_invite_link(r.invite_token),
-            "target_status": meta.get("target_status"),
-            "target_user": meta.get("target_user"),
-        })
+        out[int(r.venue_id)]["pending"].append(
+            {
+                "id": r.id,
+                "channel": r.invite_channel,
+                "tg_username": r.invited_tg_username,
+                "phone": r.invited_phone_e164,
+                "contact_label": r.invited_contact_label,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+                "invite_link": build_invite_link(r.invite_token),
+                "target_status": meta.get("target_status"),
+                "target_user": meta.get("target_user"),
+            }
+        )
         if out[int(r.venue_id)]["state"] != "LINKED":
             out[int(r.venue_id)]["state"] = "PENDING"
 
@@ -203,4 +214,3 @@ def _build_owner_summary_by_venue(db: Session, venue_ids: list[int]) -> dict[int
 
 
 # ---------- Routes ----------
-

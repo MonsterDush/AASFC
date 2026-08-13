@@ -21,10 +21,13 @@ DEMO_ALLOWED_MUTATION_PATHS = {
 def build_demo_banner_payload() -> dict:
     return {
         "return_url": (settings.DEMO_RETURN_URL or "https://axelio.ru").strip() or "https://axelio.ru",
-        "primary_cta_url": (settings.DEMO_PRIMARY_CTA_URL or "https://axelio.ru/#contact").strip() or "https://axelio.ru/#contact",
-        "secondary_cta_url": (settings.DEMO_SECONDARY_CTA_URL or "https://axelio.ru/#contact").strip() or "https://axelio.ru/#contact",
+        "primary_cta_url": (settings.DEMO_PRIMARY_CTA_URL or "https://axelio.ru/#contact").strip()
+        or "https://axelio.ru/#contact",
+        "secondary_cta_url": (settings.DEMO_SECONDARY_CTA_URL or "https://axelio.ru/#contact").strip()
+        or "https://axelio.ru/#contact",
         "primary_cta_label": (settings.DEMO_PRIMARY_CTA_LABEL or "Оставить заявку").strip() or "Оставить заявку",
-        "secondary_cta_label": (settings.DEMO_SECONDARY_CTA_LABEL or "Начать пользоваться").strip() or "Начать пользоваться",
+        "secondary_cta_label": (settings.DEMO_SECONDARY_CTA_LABEL or "Начать пользоваться").strip()
+        or "Начать пользоваться",
     }
 
 
@@ -58,8 +61,14 @@ def is_demo_session_for_venue(user: User | None, *, venue_id: int | None, venue:
 
 def build_demo_context_payload(user: User | None, *, venue: Venue | None = None, venue_id: int | None = None) -> dict:
     ctx = get_demo_session_context(user)
-    target_venue_id = int(venue_id if venue_id is not None else (getattr(venue, "id", 0) or 0)) if (venue_id is not None or venue is not None) else None
-    is_demo_venue = bool(getattr(venue, "is_demo", False)) if venue is not None else bool(ctx.is_demo and target_venue_id is None)
+    target_venue_id = (
+        int(venue_id if venue_id is not None else (getattr(venue, "id", 0) or 0))
+        if (venue_id is not None or venue is not None)
+        else None
+    )
+    is_demo_venue = (
+        bool(getattr(venue, "is_demo", False)) if venue is not None else bool(ctx.is_demo and target_venue_id is None)
+    )
     session_matches_venue = bool(ctx.is_demo and ((target_venue_id is None) or (ctx.venue_id == target_venue_id)))
 
     reference_year = ctx.reference_year if session_matches_venue else getattr(venue, "demo_reference_year", None)

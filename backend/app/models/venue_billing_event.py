@@ -18,7 +18,9 @@ class VenueBillingEvent(Base):
     old_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     new_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     meta_json: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
-    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     venue = relationship("Venue")

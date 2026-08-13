@@ -12,7 +12,9 @@ class PaymentMethodTransfer(Base):
     __tablename__ = "payment_method_transfers"
     __table_args__ = (
         CheckConstraint("amount_minor > 0", name="ck_payment_method_transfers_amount_positive"),
-        CheckConstraint("from_payment_method_id <> to_payment_method_id", name="ck_payment_method_transfers_methods_not_equal"),
+        CheckConstraint(
+            "from_payment_method_id <> to_payment_method_id", name="ck_payment_method_transfers_methods_not_equal"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

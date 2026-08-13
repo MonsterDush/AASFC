@@ -56,9 +56,7 @@ def list_shift_intervals(
 
     rows = db.execute(stmt.order_by(ShiftInterval.start_time.asc(), ShiftInterval.id.asc())).scalars().all()
     usage_rows = db.execute(
-        select(Shift.interval_id, func.count(Shift.id))
-        .where(Shift.venue_id == venue_id)
-        .group_by(Shift.interval_id)
+        select(Shift.interval_id, func.count(Shift.id)).where(Shift.venue_id == venue_id).group_by(Shift.interval_id)
     ).all()
     usage_by_interval = {int(interval_id): int(count or 0) for interval_id, count in usage_rows}
     template_usage_rows = db.execute(

@@ -80,9 +80,7 @@ def _has_venue_permission(db: Session, *, venue_id: int, user: User, permission_
 
 
 def _load_report_values(db: Session, *, report_id: int) -> list[DailyReportValue]:
-    return db.execute(
-        select(DailyReportValue).where(DailyReportValue.report_id == report_id)
-    ).scalars().all()
+    return db.execute(select(DailyReportValue).where(DailyReportValue.report_id == report_id)).scalars().all()
 
 
 def _compute_report_totals(*, report: DailyReport, values: list[DailyReportValue], has_departments: bool) -> dict:
@@ -101,7 +99,9 @@ def _compute_report_totals(*, report: DailyReport, values: list[DailyReportValue
 
 def _snapshot_report(db: Session, *, report: DailyReport) -> dict:
     values = _load_report_values(db, report_id=report.id)
-    dept_cnt = int(db.execute(select(func.count(Department.id)).where(Department.venue_id == report.venue_id)).scalar() or 0)
+    dept_cnt = int(
+        db.execute(select(func.count(Department.id)).where(Department.venue_id == report.venue_id)).scalar() or 0
+    )
     has_departments = bool(dept_cnt) or any(v.kind == "DEPT" for v in values)
     totals = _compute_report_totals(report=report, values=values, has_departments=has_departments)
 
@@ -122,7 +122,11 @@ def _snapshot_report(db: Session, *, report: DailyReport) -> dict:
         "comment": report.comment,
         "closed_by_user_id": int(report.closed_by_user_id) if report.closed_by_user_id else None,
         "closed_at": report.closed_at.isoformat() if report.closed_at else None,
-        "totals": {k: int(v) for k, v in totals.items() if k in ("payments_total", "departments_total", "discrepancy", "base_total")},
+        "totals": {
+            k: int(v)
+            for k, v in totals.items()
+            if k in ("payments_total", "departments_total", "discrepancy", "base_total")
+        },
         "payments": _vals("PAYMENT"),
         "departments": _vals("DEPT"),
         "kpis": _vals("KPI"),
@@ -155,14 +159,20 @@ def _build_dynamic_items(
     vals_by_ref = {int(v.ref_id): int(v.value_numeric or 0) for v in report_values if v.kind == value_kind}
     referenced_ids = set(vals_by_ref.keys())
 
-    rows = db.execute(
-        select(model)
-        .where(
-            model.venue_id == venue_id,
-            (model.is_active.is_(True)) | (model.id.in_(referenced_ids)) if referenced_ids else (model.is_active.is_(True)),
+    rows = (
+        db.execute(
+            select(model)
+            .where(
+                model.venue_id == venue_id,
+                (model.is_active.is_(True)) | (model.id.in_(referenced_ids))
+                if referenced_ids
+                else (model.is_active.is_(True)),
+            )
+            .order_by(model.sort_order.asc(), model.id.asc())
         )
-        .order_by(model.sort_order.asc(), model.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     out: list[dict] = []
     for obj in rows:
@@ -197,7 +207,6 @@ def upsert_daily_report(
     tips_enabled = bool(getattr(venue, "tips_enabled", False))
     safe_tips_total = int(payload.tips_total or 0) if tips_enabled else 0
     normalized_shift_slot = normalize_shift_slot(shift_slot)
-
 
     obj = db.execute(
         select(DailyReport).where(
@@ -253,7 +262,9 @@ def upsert_daily_report(
     if payload.payments is not None:
         ids = [int(x.ref_id) for x in payload.payments]
         _validate_ids(PaymentMethod, ids)
-        db.execute(delete(DailyReportValue).where(DailyReportValue.report_id == obj.id, DailyReportValue.kind == "PAYMENT"))
+        db.execute(
+            delete(DailyReportValue).where(DailyReportValue.report_id == obj.id, DailyReportValue.kind == "PAYMENT")
+        )
         for it in payload.payments:
             v = int(it.value or 0)
             if v == 0:
@@ -277,7 +288,9 @@ def upsert_daily_report(
     if payload.departments is not None:
         ids = [int(x.ref_id) for x in payload.departments]
         _validate_ids(Department, ids)
-        db.execute(delete(DailyReportValue).where(DailyReportValue.report_id == obj.id, DailyReportValue.kind == "DEPT"))
+        db.execute(
+            delete(DailyReportValue).where(DailyReportValue.report_id == obj.id, DailyReportValue.kind == "DEPT")
+        )
         dep_total = 0
         for it in payload.departments:
             v = int(it.value or 0)
@@ -335,7 +348,6 @@ def upsert_daily_report(
     }
 
 
-
 @router.get("/{venue_id}/reports")
 def list_daily_reports(
     venue_id: int,
@@ -357,18 +369,24 @@ def list_daily_reports(
         raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
 
     normalized_shift_slot = normalize_shift_slot(shift_slot)
-    rows = db.execute(
-        select(DailyReport)
-        .where(
-            DailyReport.venue_id == venue_id,
-            DailyReport.date >= start,
-            DailyReport.date < end,
-            DailyReport.shift_slot == normalized_shift_slot,
+    rows = (
+        db.execute(
+            select(DailyReport)
+            .where(
+                DailyReport.venue_id == venue_id,
+                DailyReport.date >= start,
+                DailyReport.date < end,
+                DailyReport.shift_slot == normalized_shift_slot,
+            )
+            .order_by(DailyReport.date.asc())
         )
-        .order_by(DailyReport.date.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
-    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user) and _can_show_financial_values_for_user(user)
+    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user) and _can_show_financial_values_for_user(
+        user
+    )
     hidden_meta = financial_visibility_payload(user)
     return [
         {
@@ -409,7 +427,9 @@ def get_daily_report(
     if r is None:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user) and _can_show_financial_values_for_user(user)
+    show_numbers = _has_revenue_view_access(db, venue_id=venue_id, user=user) and _can_show_financial_values_for_user(
+        user
+    )
     hidden_meta = financial_visibility_payload(user)
     values = _load_report_values(db, report_id=r.id)
 
@@ -417,8 +437,12 @@ def get_daily_report(
     has_departments = bool(dept_cnt) or any(v.kind == "DEPT" for v in values)
     totals = _compute_report_totals(report=r, values=values, has_departments=has_departments)
 
-    payments_items = _build_dynamic_items(db, venue_id=venue_id, kind="PAYMENT", report_values=values, show_numbers=show_numbers)
-    departments_items = _build_dynamic_items(db, venue_id=venue_id, kind="DEPT", report_values=values, show_numbers=show_numbers)
+    payments_items = _build_dynamic_items(
+        db, venue_id=venue_id, kind="PAYMENT", report_values=values, show_numbers=show_numbers
+    )
+    departments_items = _build_dynamic_items(
+        db, venue_id=venue_id, kind="DEPT", report_values=values, show_numbers=show_numbers
+    )
     kpi_items = _build_dynamic_items(db, venue_id=venue_id, kind="KPI", report_values=values, show_numbers=show_numbers)
 
     return {
@@ -429,18 +453,15 @@ def get_daily_report(
         "closed_by_user_id": int(r.closed_by_user_id) if getattr(r, "closed_by_user_id", None) else None,
         "closed_at": r.closed_at.isoformat() if getattr(r, "closed_at", None) else None,
         "comment": getattr(r, "comment", None),
-
         # legacy numeric fields (still used by old UI)
         "cash": r.cash if show_numbers else None,
         "cashless": r.cashless if show_numbers else None,
         "revenue_total": r.revenue_total if show_numbers else None,
         "tips_total": r.tips_total if show_numbers else None,
-
         # dynamic values (A2)
         "payments": payments_items,
         "departments": departments_items,
         "kpis": kpi_items,
-
         # computed totals
         "payments_total": totals["payments_total"] if show_numbers else None,
         "departments_total": totals["departments_total"] if show_numbers else None,
@@ -449,10 +470,15 @@ def get_daily_report(
             [
                 {"user_id": int(a.user_id), "amount": int(a.amount), "split_mode": str(a.split_mode)}
                 for a in db.execute(
-                    select(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == r.id).order_by(DailyReportTipAllocation.id.asc())
-                ).scalars().all()
+                    select(DailyReportTipAllocation)
+                    .where(DailyReportTipAllocation.report_id == r.id)
+                    .order_by(DailyReportTipAllocation.id.asc())
+                )
+                .scalars()
+                .all()
             ]
-            if show_numbers else None
+            if show_numbers
+            else None
         ),
         **hidden_meta,
     }
@@ -543,19 +569,21 @@ def _rebuild_closed_report_tip_allocations_for_keys(
     if not normalized_keys:
         return 0
 
-    venue = db.execute(
-        select(Venue).where(Venue.id == int(venue_id))
-    ).scalar_one_or_none()
+    venue = db.execute(select(Venue).where(Venue.id == int(venue_id))).scalar_one_or_none()
     if venue is None:
         return 0
 
-    reports = db.execute(
-        select(DailyReport).where(
-            DailyReport.venue_id == int(venue_id),
-            DailyReport.date.in_(sorted({report_date for report_date, _slot in normalized_keys})),
-            DailyReport.status == "CLOSED",
+    reports = (
+        db.execute(
+            select(DailyReport).where(
+                DailyReport.venue_id == int(venue_id),
+                DailyReport.date.in_(sorted({report_date for report_date, _slot in normalized_keys})),
+                DailyReport.status == "CLOSED",
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     rebuilt = 0
     for report in reports:
@@ -576,12 +604,14 @@ def _sync_recurring_accruals_after_report_reopen(
     report: DailyReport,
 ) -> str:
     other_closed_report_id = db.execute(
-        select(DailyReport.id).where(
+        select(DailyReport.id)
+        .where(
             DailyReport.venue_id == int(report.venue_id),
             DailyReport.date == report.date,
             DailyReport.id != int(report.id),
             DailyReport.status == "CLOSED",
-        ).limit(1)
+        )
+        .limit(1)
     ).scalar_one_or_none()
     if other_closed_report_id is not None:
         sync_daily_recurring_accruals_for_date(
@@ -597,7 +627,6 @@ def _sync_recurring_accruals_after_report_reopen(
         target_date=report.date,
     )
     return "deleted"
-
 
 
 @router.post("/{venue_id}/reports/{report_date}/close")
@@ -666,7 +695,6 @@ def close_daily_report(
     if payload.comment is not None:
         rep.comment = payload.comment
 
-
     _rebuild_report_tip_allocations(db, report=rep, venue=venue)
 
     rep.status = "CLOSED"
@@ -685,9 +713,7 @@ def close_daily_report(
         force=True,
         trigger_reason="report_closed",
     )
-    notification_event_key = (
-        f"report:{int(rep.id)}:closed:{rep.closed_at.isoformat(timespec='microseconds')}"
-    )
+    notification_event_key = f"report:{int(rep.id)}:closed:{rep.closed_at.isoformat(timespec='microseconds')}"
     notification_job_args = {
         "venue_id": venue_id,
         "target_date": report_date,
@@ -779,9 +805,15 @@ def list_daily_report_audit(
     if rep is None:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    rows = db.execute(
-        select(DailyReportAudit).where(DailyReportAudit.report_id == rep.id).order_by(DailyReportAudit.changed_at.desc())
-    ).scalars().all()
+    rows = (
+        db.execute(
+            select(DailyReportAudit)
+            .where(DailyReportAudit.report_id == rep.id)
+            .order_by(DailyReportAudit.changed_at.desc())
+        )
+        .scalars()
+        .all()
+    )
 
     payload = [
         {
@@ -808,16 +840,20 @@ def list_report_attachments(
     _require_report_viewer(db, venue_id=venue_id, user=user)
 
     normalized_shift_slot = normalize_shift_slot(shift_slot)
-    rows = db.execute(
-        select(DailyReportAttachment)
-        .where(
-            DailyReportAttachment.venue_id == venue_id,
-            DailyReportAttachment.report_date == report_date,
-            DailyReportAttachment.shift_slot == normalized_shift_slot,
-            DailyReportAttachment.is_active.is_(True),
+    rows = (
+        db.execute(
+            select(DailyReportAttachment)
+            .where(
+                DailyReportAttachment.venue_id == venue_id,
+                DailyReportAttachment.report_date == report_date,
+                DailyReportAttachment.shift_slot == normalized_shift_slot,
+                DailyReportAttachment.is_active.is_(True),
+            )
+            .order_by(DailyReportAttachment.id.asc())
         )
-        .order_by(DailyReportAttachment.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return {
         "items": [
@@ -864,7 +900,6 @@ def download_report_attachment(
         raise HTTPException(status_code=404, detail="File missing")
 
     return FileResponse(a.storage_path, media_type=a.content_type or "application/octet-stream", filename=a.file_name)
-
 
 
 @router.delete("/{venue_id}/reports/{report_date}/attachments/{attachment_id}")

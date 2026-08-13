@@ -61,17 +61,14 @@ def _effective_routes(router):
 
 def _route_manifest(router) -> list[tuple[list[str], str, str]]:
     return sorted(
-        (sorted(getattr(route, "methods", set())), route.path, route.name)
-        for route in _effective_routes(router)
+        (sorted(getattr(route, "methods", set())), route.path, route.name) for route in _effective_routes(router)
     )
 
 
 class VenueEconomicsRouterContractTests(TestCase):
     def test_all_venue_routes_keep_original_public_manifest(self):
         manifest = _route_manifest(venues.router)
-        digest = hashlib.sha256(
-            json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        ).hexdigest()
+        digest = hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
         self.assertEqual(len(manifest), 164)
         self.assertEqual(digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
@@ -96,10 +93,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_finance_summary.router, 3),
             (venue_finance.router, 32),
         ]
-        venues_manifest = {
-            (tuple(methods), path, name)
-            for methods, path, name in _route_manifest(venues.router)
-        }
+        venues_manifest = {(tuple(methods), path, name) for methods, path, name in _route_manifest(venues.router)}
 
         for split_router, expected_count in expected_counts:
             manifest = _route_manifest(split_router)
@@ -137,10 +131,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_shifts.router, 12),
             (venue_shift_swaps.router, 9),
         ]
-        venues_manifest = {
-            (tuple(methods), path, name)
-            for methods, path, name in _route_manifest(venues.router)
-        }
+        venues_manifest = {(tuple(methods), path, name) for methods, path, name in _route_manifest(venues.router)}
         native_manifest = set()
 
         for split_router, expected_count in native_routers:
@@ -173,14 +164,17 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
             BOOST_SOURCE_DEPARTMENT_DAY_PLAN: {4: {"usage_component_count": 4, "usage_profile_count": 2}},
             BOOST_SOURCE_DEPARTMENT_MONTH_PLAN: {4: {"usage_component_count": 5, "usage_profile_count": 3}},
         }
+
     def test_read_route_checks_access_and_sanitizes_payload(self):
         target_date = date(2026, 7, 18)
         raw_payload = {"date": target_date, "revenue_minor": 900}
         sanitized = {"date": target_date, "revenue_minor": 0}
 
-        with patch.object(venue_economics, "_require_economics_view") as require_view, \
-             patch.object(venue_economics, "get_day_economics", return_value=raw_payload) as get_day, \
-             patch.object(venue_economics, "sanitize_financial_payload_for_user", return_value=sanitized) as sanitize:
+        with (
+            patch.object(venue_economics, "_require_economics_view") as require_view,
+            patch.object(venue_economics, "get_day_economics", return_value=raw_payload) as get_day,
+            patch.object(venue_economics, "sanitize_financial_payload_for_user", return_value=sanitized) as sanitize,
+        ):
             result = venue_economics.get_venue_day_economics(
                 venue_id=5,
                 economics_date=target_date,
@@ -218,9 +212,11 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
             }
         }
 
-        with patch.object(venue_economics, "require_owner_or_super_admin") as require_owner, \
-             patch.object(venue_economics, "upsert_day_economics_plan", return_value=plan) as upsert, \
-             patch.object(venue_economics, "_build_percent_boost_usage_map", return_value=usage_map):
+        with (
+            patch.object(venue_economics, "require_owner_or_super_admin") as require_owner,
+            patch.object(venue_economics, "upsert_day_economics_plan", return_value=plan) as upsert,
+            patch.object(venue_economics, "_build_percent_boost_usage_map", return_value=usage_map),
+        ):
             result = venue_economics.put_venue_day_economics_plan(
                 venue_id=5,
                 payload=payload,
@@ -247,8 +243,10 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
         self.assertEqual(result["usage_profile_count"], 1)
 
     def test_service_validation_error_remains_http_400(self):
-        with patch.object(venue_economics, "_require_economics_view"), \
-             patch.object(venue_economics, "list_department_month_plans", side_effect=ValueError("bad month")):
+        with (
+            patch.object(venue_economics, "_require_economics_view"),
+            patch.object(venue_economics, "list_department_month_plans", side_effect=ValueError("bad month")),
+        ):
             with self.assertRaises(HTTPException) as raised:
                 venue_economics.get_venue_department_month_plans(
                     venue_id=5,
@@ -261,9 +259,11 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
         self.assertEqual(raised.exception.detail, "bad month")
 
     def test_combined_read_guard_keeps_all_three_checks(self):
-        with patch.object(venue_economics, "require_active_member_or_admin") as active, \
-             patch.object(venue_economics, "require_revenue_viewer") as revenue, \
-             patch.object(venue_economics, "require_report_viewer") as reports:
+        with (
+            patch.object(venue_economics, "require_active_member_or_admin") as active,
+            patch.object(venue_economics, "require_revenue_viewer") as revenue,
+            patch.object(venue_economics, "require_report_viewer") as reports,
+        ):
             venue_economics._require_economics_view(self.db, venue_id=9, user=self.user)
 
         active.assert_called_once_with(self.db, venue_id=9, user=self.user)
@@ -328,16 +328,28 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
 
     def test_remaining_read_routes_delegate_and_preserve_usage(self):
         target_date = date(2026, 7, 18)
-        with patch.object(venue_economics, "_require_economics_view"), \
-             patch.object(venue_economics, "_build_percent_boost_usage_map", return_value=self.usage_map), \
-             patch.object(venue_economics, "get_day_economics_plan", return_value={"source": "DATE_OVERRIDE"}), \
-             patch.object(venue_economics, "get_day_economics_month_plan", return_value={"source": "MONTH_TEMPLATE"}), \
-             patch.object(venue_economics, "get_day_economics_plan_override", return_value={"source": "DATE_OVERRIDE"}), \
-             patch.object(venue_economics, "list_day_economics_plan_templates", return_value=[{"weekday": 1}]), \
-             patch.object(venue_economics, "list_department_month_plans", return_value={"month": "2026-07", "items": [{"department_id": 4}]}), \
-             patch.object(venue_economics, "list_department_day_plans", return_value={"date": "2026-07-18", "items": [{"department_id": 4}]}), \
-             patch.object(venue_economics, "get_venue_economics_rules", return_value={"warn_on_draft_expenses": True}), \
-             patch.object(venue_economics, "sanitize_financial_payload_for_user", side_effect=lambda user, payload: payload):
+        with (
+            patch.object(venue_economics, "_require_economics_view"),
+            patch.object(venue_economics, "_build_percent_boost_usage_map", return_value=self.usage_map),
+            patch.object(venue_economics, "get_day_economics_plan", return_value={"source": "DATE_OVERRIDE"}),
+            patch.object(venue_economics, "get_day_economics_month_plan", return_value={"source": "MONTH_TEMPLATE"}),
+            patch.object(venue_economics, "get_day_economics_plan_override", return_value={"source": "DATE_OVERRIDE"}),
+            patch.object(venue_economics, "list_day_economics_plan_templates", return_value=[{"weekday": 1}]),
+            patch.object(
+                venue_economics,
+                "list_department_month_plans",
+                return_value={"month": "2026-07", "items": [{"department_id": 4}]},
+            ),
+            patch.object(
+                venue_economics,
+                "list_department_day_plans",
+                return_value={"date": "2026-07-18", "items": [{"department_id": 4}]},
+            ),
+            patch.object(venue_economics, "get_venue_economics_rules", return_value={"warn_on_draft_expenses": True}),
+            patch.object(
+                venue_economics, "sanitize_financial_payload_for_user", side_effect=lambda user, payload: payload
+            ),
+        ):
             plan = venue_economics.get_venue_day_economics_plan_route(5, target_date, self.db, self.user)
             month_plan = venue_economics.get_venue_day_economics_month_plan_route(5, "2026-07", self.db, self.user)
             override = venue_economics.get_venue_day_economics_plan_override_route(5, target_date, self.db, self.user)
@@ -359,16 +371,32 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
         template_payload = DayEconomicsPlanTemplateIn(revenue_plan_minor=80_000)
         copy_payload = DayEconomicsTemplateCopyIn(source_weekday=1, target_weekdays=[2, 3])
 
-        with patch.object(venue_economics, "require_owner_or_super_admin"), \
-             patch.object(venue_economics, "_build_percent_boost_usage_map", return_value=self.usage_map), \
-             patch.object(venue_economics, "upsert_day_economics_month_plan", return_value={"source": "MONTH_TEMPLATE"}), \
-             patch.object(venue_economics, "copy_day_economics_month_plan_from_previous_month", return_value={"copied": True, "copied_from_month": "2026-06", "plan": {"source": "MONTH_TEMPLATE"}}), \
-             patch.object(venue_economics, "upsert_day_economics_plan_template", return_value={"weekday": 1}) as upsert_template, \
-             patch.object(venue_economics, "copy_day_economics_plan_templates", return_value={"copied_count": 2}) as copy_templates:
-            month_plan = venue_economics.put_venue_day_economics_month_plan(5, month_payload, "2026-07", self.db, self.user)
-            copied_month = venue_economics.post_venue_day_economics_month_plan_copy_previous(5, "2026-07", True, self.db, self.user)
+        with (
+            patch.object(venue_economics, "require_owner_or_super_admin"),
+            patch.object(venue_economics, "_build_percent_boost_usage_map", return_value=self.usage_map),
+            patch.object(venue_economics, "upsert_day_economics_month_plan", return_value={"source": "MONTH_TEMPLATE"}),
+            patch.object(
+                venue_economics,
+                "copy_day_economics_month_plan_from_previous_month",
+                return_value={"copied": True, "copied_from_month": "2026-06", "plan": {"source": "MONTH_TEMPLATE"}},
+            ),
+            patch.object(
+                venue_economics, "upsert_day_economics_plan_template", return_value={"weekday": 1}
+            ) as upsert_template,
+            patch.object(
+                venue_economics, "copy_day_economics_plan_templates", return_value={"copied_count": 2}
+            ) as copy_templates,
+        ):
+            month_plan = venue_economics.put_venue_day_economics_month_plan(
+                5, month_payload, "2026-07", self.db, self.user
+            )
+            copied_month = venue_economics.post_venue_day_economics_month_plan_copy_previous(
+                5, "2026-07", True, self.db, self.user
+            )
             template = venue_economics.put_venue_day_economics_plan_template(5, 1, template_payload, self.db, self.user)
-            copied_templates = venue_economics.post_venue_day_economics_plan_templates_copy(5, copy_payload, self.db, self.user)
+            copied_templates = venue_economics.post_venue_day_economics_plan_templates_copy(
+                5, copy_payload, self.db, self.user
+            )
 
         self.assertEqual(month_plan["month"], "2026-07")
         self.assertEqual(month_plan["usage_component_count"], 3)
@@ -385,20 +413,42 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
         month_result = {"month": "2026-07", "items": [{"department_id": 4}]}
         day_result = {"date": "2026-07-18", "items": [{"department_id": 4}]}
 
-        with patch.object(venue_economics, "require_owner_or_super_admin"), \
-             patch.object(venue_economics, "_build_percent_boost_usage_map", return_value=self.usage_map), \
-             patch.object(venue_economics, "upsert_department_month_plans", return_value=month_result), \
-             patch.object(venue_economics, "autofill_department_month_plans_from_last_month", return_value={"plan": dict(month_result)}), \
-             patch.object(venue_economics, "distribute_department_month_plans_from_venue_plan", return_value={"plan": dict(month_result)}), \
-             patch.object(venue_economics, "upsert_department_day_plans", return_value=day_result), \
-             patch.object(venue_economics, "copy_department_day_plans_from_date", return_value={"plan": dict(day_result)}), \
-             patch.object(venue_economics, "autofill_department_day_plans_from_history", return_value={"plan": dict(day_result)}):
+        with (
+            patch.object(venue_economics, "require_owner_or_super_admin"),
+            patch.object(venue_economics, "_build_percent_boost_usage_map", return_value=self.usage_map),
+            patch.object(venue_economics, "upsert_department_month_plans", return_value=month_result),
+            patch.object(
+                venue_economics,
+                "autofill_department_month_plans_from_last_month",
+                return_value={"plan": dict(month_result)},
+            ),
+            patch.object(
+                venue_economics,
+                "distribute_department_month_plans_from_venue_plan",
+                return_value={"plan": dict(month_result)},
+            ),
+            patch.object(venue_economics, "upsert_department_day_plans", return_value=day_result),
+            patch.object(
+                venue_economics, "copy_department_day_plans_from_date", return_value={"plan": dict(day_result)}
+            ),
+            patch.object(
+                venue_economics, "autofill_department_day_plans_from_history", return_value={"plan": dict(day_result)}
+            ),
+        ):
             month = venue_economics.put_venue_department_month_plans(5, bulk, "2026-07", self.db, self.user)
-            autofilled_month = venue_economics.post_venue_department_month_plans_autofill(5, "2026-07", True, self.db, self.user)
-            distributed_month = venue_economics.post_venue_department_month_plans_distribute(5, "2026-07", True, self.db, self.user)
+            autofilled_month = venue_economics.post_venue_department_month_plans_autofill(
+                5, "2026-07", True, self.db, self.user
+            )
+            distributed_month = venue_economics.post_venue_department_month_plans_distribute(
+                5, "2026-07", True, self.db, self.user
+            )
             day = venue_economics.put_venue_department_day_plans(5, bulk, target_date, self.db, self.user)
-            copied_day = venue_economics.post_venue_department_day_plans_copy_from_date(5, target_date, target_date, True, self.db, self.user)
-            autofilled_day = venue_economics.post_venue_department_day_plans_autofill_from_history(5, target_date, "SAME_WEEKDAY_AVG", True, 4, self.db, self.user)
+            copied_day = venue_economics.post_venue_department_day_plans_copy_from_date(
+                5, target_date, target_date, True, self.db, self.user
+            )
+            autofilled_day = venue_economics.post_venue_department_day_plans_autofill_from_history(
+                5, target_date, "SAME_WEEKDAY_AVG", True, 4, self.db, self.user
+            )
 
         self.assertEqual(month["items"][0]["usage_component_count"], 5)
         self.assertEqual(autofilled_month["plan"]["items"][0]["usage_profile_count"], 3)
@@ -411,8 +461,10 @@ class VenueEconomicsRouterBehaviorTests(TestCase):
     def test_rules_mutation_commits_and_returns_payload(self):
         payload = VenueEconomicsRulesIn(max_expense_ratio_bps=3500, warn_on_draft_expenses=False)
         expected = {"max_expense_ratio_bps": 3500, "warn_on_draft_expenses": False}
-        with patch.object(venue_economics, "require_owner_or_super_admin"), \
-             patch.object(venue_economics, "upsert_venue_economics_rules", return_value=expected) as upsert:
+        with (
+            patch.object(venue_economics, "require_owner_or_super_admin"),
+            patch.object(venue_economics, "upsert_venue_economics_rules", return_value=expected) as upsert,
+        ):
             result = venue_economics.put_venue_day_economics_rules(5, payload, self.db, self.user)
 
         self.assertIs(result, expected)

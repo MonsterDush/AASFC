@@ -250,9 +250,7 @@ class TipAllocationIntegrationTests(TestCase):
         ]
 
         def scalar_result(items):
-            return SimpleNamespace(
-                scalars=lambda: SimpleNamespace(all=lambda: items)
-            )
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: items))
 
         db = SimpleNamespace(
             execute=Mock(
@@ -355,9 +353,7 @@ class TipAllocationIntegrationTests(TestCase):
         ]
 
         def scalar_result(items):
-            return SimpleNamespace(
-                scalars=lambda: SimpleNamespace(all=lambda: items)
-            )
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: items))
 
         db = SimpleNamespace(
             execute=Mock(

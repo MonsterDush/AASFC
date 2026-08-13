@@ -11,14 +11,18 @@ from app.core.db import Base
 class PayProfileAssignment(Base):
     __tablename__ = "pay_profile_assignments"
     __table_args__ = (
-        CheckConstraint("end_date IS NULL OR start_date IS NULL OR end_date >= start_date", name="ck_pay_profile_assignments_dates"),
+        CheckConstraint(
+            "end_date IS NULL OR start_date IS NULL OR end_date >= start_date", name="ck_pay_profile_assignments_dates"
+        ),
         Index("ix_pay_profile_assignments_venue_member_dates", "venue_id", "member_user_id", "start_date", "end_date"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)
-    pay_profile_id: Mapped[int] = mapped_column(ForeignKey("pay_profiles.id", ondelete="CASCADE"), index=True, nullable=False)
+    pay_profile_id: Mapped[int] = mapped_column(
+        ForeignKey("pay_profiles.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     member_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
 
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)

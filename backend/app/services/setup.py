@@ -204,7 +204,9 @@ def _build_default_counts(venue_ids: Iterable[int]) -> dict[int, dict[str, int]]
     }
 
 
-def _apply_grouped_counts(db: Session, counts_map: dict[int, dict[str, int]], *, model: Any, key: str, filters: list[Any]) -> None:
+def _apply_grouped_counts(
+    db: Session, counts_map: dict[int, dict[str, int]], *, model: Any, key: str, filters: list[Any]
+) -> None:
     venue_ids = list(counts_map.keys())
     if not venue_ids:
         return
@@ -224,15 +226,37 @@ def _load_setup_counts_map(db: Session, venue_ids: Iterable[int]) -> dict[int, d
     if not clean_ids:
         return counts_map
 
-    _apply_grouped_counts(db, counts_map, model=PaymentMethod, key="payment_methods_count", filters=[PaymentMethod.is_active.is_(True)])
-    _apply_grouped_counts(db, counts_map, model=Department, key="departments_count", filters=[Department.is_active.is_(True)])
+    _apply_grouped_counts(
+        db, counts_map, model=PaymentMethod, key="payment_methods_count", filters=[PaymentMethod.is_active.is_(True)]
+    )
+    _apply_grouped_counts(
+        db, counts_map, model=Department, key="departments_count", filters=[Department.is_active.is_(True)]
+    )
     _apply_grouped_counts(db, counts_map, model=KpiMetric, key="kpi_count", filters=[KpiMetric.is_active.is_(True)])
-    _apply_grouped_counts(db, counts_map, model=PayProfile, key="pay_profiles_count", filters=[PayProfile.is_active.is_(True)])
-    _apply_grouped_counts(db, counts_map, model=VenuePosition, key="positions_count", filters=[VenuePosition.is_active.is_(True)])
-    _apply_grouped_counts(db, counts_map, model=ShiftInterval, key="shift_intervals_count", filters=[ShiftInterval.is_active.is_(True)])
-    _apply_grouped_counts(db, counts_map, model=ExpenseCategory, key="expense_categories_count", filters=[ExpenseCategory.is_active.is_(True)])
+    _apply_grouped_counts(
+        db, counts_map, model=PayProfile, key="pay_profiles_count", filters=[PayProfile.is_active.is_(True)]
+    )
+    _apply_grouped_counts(
+        db, counts_map, model=VenuePosition, key="positions_count", filters=[VenuePosition.is_active.is_(True)]
+    )
+    _apply_grouped_counts(
+        db, counts_map, model=ShiftInterval, key="shift_intervals_count", filters=[ShiftInterval.is_active.is_(True)]
+    )
+    _apply_grouped_counts(
+        db,
+        counts_map,
+        model=ExpenseCategory,
+        key="expense_categories_count",
+        filters=[ExpenseCategory.is_active.is_(True)],
+    )
     _apply_grouped_counts(db, counts_map, model=Supplier, key="suppliers_count", filters=[Supplier.is_active.is_(True)])
-    _apply_grouped_counts(db, counts_map, model=RecurringExpenseRule, key="recurring_expenses_count", filters=[RecurringExpenseRule.is_active.is_(True)])
+    _apply_grouped_counts(
+        db,
+        counts_map,
+        model=RecurringExpenseRule,
+        key="recurring_expenses_count",
+        filters=[RecurringExpenseRule.is_active.is_(True)],
+    )
     _apply_grouped_counts(
         db,
         counts_map,
@@ -253,7 +277,9 @@ def _load_setup_counts_map(db: Session, venue_ids: Iterable[int]) -> dict[int, d
         ],
     )
     for venue_id, row in counts_map.items():
-        row["team_targets_count"] = int(row.get("team_members_count", 0) or 0) + int(row.get("pending_invites_count", 0) or 0)
+        row["team_targets_count"] = int(row.get("team_members_count", 0) or 0) + int(
+            row.get("pending_invites_count", 0) or 0
+        )
     return counts_map
 
 
@@ -367,15 +393,27 @@ def build_setup_summary_from_data(*, state: Any = None, counts: dict[str, int] |
     else:
         overall_status = SETUP_STATUS_NOT_STARTED
 
-    active_phase = SETUP_PHASE_EXTRA if overall_status in {SETUP_STATUS_PREPARE_DONE, SETUP_STATUS_EXTRA_IN_PROGRESS, SETUP_STATUS_DONE} else SETUP_PHASE_PREPARE
+    active_phase = (
+        SETUP_PHASE_EXTRA
+        if overall_status in {SETUP_STATUS_PREPARE_DONE, SETUP_STATUS_EXTRA_IN_PROGRESS, SETUP_STATUS_DONE}
+        else SETUP_PHASE_PREPARE
+    )
     if explicit_phase in {SETUP_PHASE_PREPARE, SETUP_PHASE_EXTRA}:
         active_phase = explicit_phase if overall_status != SETUP_STATUS_NOT_STARTED else SETUP_PHASE_PREPARE
         if overall_status == SETUP_STATUS_PREPARE_DONE:
             active_phase = SETUP_PHASE_EXTRA
 
     resume_step = None
-    unresolved_prepare = [s for s in steps if s["phase"] == SETUP_PHASE_PREPARE and s["status"] in {STEP_STATUS_AVAILABLE, STEP_STATUS_REQUIRES_ATTENTION}]
-    unresolved_extra = [s for s in steps if s["phase"] == SETUP_PHASE_EXTRA and s["status"] in {STEP_STATUS_AVAILABLE, STEP_STATUS_REQUIRES_ATTENTION}]
+    unresolved_prepare = [
+        s
+        for s in steps
+        if s["phase"] == SETUP_PHASE_PREPARE and s["status"] in {STEP_STATUS_AVAILABLE, STEP_STATUS_REQUIRES_ATTENTION}
+    ]
+    unresolved_extra = [
+        s
+        for s in steps
+        if s["phase"] == SETUP_PHASE_EXTRA and s["status"] in {STEP_STATUS_AVAILABLE, STEP_STATUS_REQUIRES_ATTENTION}
+    ]
     current_step_obj = next((s for s in steps if s["key"] == current_step_key), None)
     if current_step_obj and current_step_obj["status"] in {STEP_STATUS_AVAILABLE, STEP_STATUS_REQUIRES_ATTENTION}:
         resume_step = current_step_obj["key"]
@@ -412,7 +450,9 @@ def build_setup_summary_from_data(*, state: Any = None, counts: dict[str, int] |
 
 
 def build_setup_summary(db: Session, *, venue_id: int, create_missing: bool = False) -> dict[str, Any]:
-    state = get_or_create_setup_state(db, venue_id=venue_id) if create_missing else get_setup_state(db, venue_id=venue_id)
+    state = (
+        get_or_create_setup_state(db, venue_id=venue_id) if create_missing else get_setup_state(db, venue_id=venue_id)
+    )
     counts = _load_setup_counts_map(db, [venue_id]).get(int(venue_id), {})
     summary = build_setup_summary_from_data(state=state, counts=counts)
     if state is not None:
@@ -424,7 +464,9 @@ def build_setup_summary(db: Session, *, venue_id: int, create_missing: bool = Fa
     return summary
 
 
-def build_setup_summary_map(db: Session, venue_ids: Iterable[int], *, create_missing: bool = False) -> dict[int, dict[str, Any]]:
+def build_setup_summary_map(
+    db: Session, venue_ids: Iterable[int], *, create_missing: bool = False
+) -> dict[int, dict[str, Any]]:
     clean_ids = [int(x) for x in dict.fromkeys(int(v) for v in venue_ids)]
     counts_map = _load_setup_counts_map(db, clean_ids)
     states_by_venue: dict[int, VenueSetupState] = {}
@@ -438,7 +480,9 @@ def build_setup_summary_map(db: Session, venue_ids: Iterable[int], *, create_mis
             states_by_venue = {int(row.venue_id): row for row in rows}
     out: dict[int, dict[str, Any]] = {}
     for venue_id in clean_ids:
-        summary = build_setup_summary_from_data(state=states_by_venue.get(int(venue_id)), counts=counts_map.get(int(venue_id), {}))
+        summary = build_setup_summary_from_data(
+            state=states_by_venue.get(int(venue_id)), counts=counts_map.get(int(venue_id), {})
+        )
         state = states_by_venue.get(int(venue_id))
         summary["venue_id"] = int(venue_id)
         summary["state_id"] = int(state.id) if state is not None else None
@@ -531,7 +575,9 @@ def _step_has_required_data(summary: dict[str, Any], step_key: str) -> bool:
     return bool(step.get("data_ready")) or not bool(step.get("requires_data"))
 
 
-def complete_setup_step(db: Session, *, venue_id: int, step_key: str, seen_by_user: User | None = None) -> dict[str, Any]:
+def complete_setup_step(
+    db: Session, *, venue_id: int, step_key: str, seen_by_user: User | None = None
+) -> dict[str, Any]:
     key = _ensure_known_step(step_key)
     state = get_or_create_setup_state(db, venue_id=venue_id)
     preview = build_setup_summary(db, venue_id=venue_id, create_missing=False)

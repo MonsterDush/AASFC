@@ -163,11 +163,14 @@ def _merge_counts(target: dict[str, int], additions: dict[str, int]) -> None:
 def _require_safe_target_venue(db: Session, venue: Venue) -> None:
     if bool(getattr(venue, "is_demo", False)):
         return
-    non_demo_members = int(db.execute(
-        select(func.count(VenueMember.id))
-        .join(User, User.id == VenueMember.user_id)
-        .where(VenueMember.venue_id == int(venue.id), User.is_demo_user.is_(False))
-    ).scalar() or 0)
+    non_demo_members = int(
+        db.execute(
+            select(func.count(VenueMember.id))
+            .join(User, User.id == VenueMember.user_id)
+            .where(VenueMember.venue_id == int(venue.id), User.is_demo_user.is_(False))
+        ).scalar()
+        or 0
+    )
     has_live_content = any(
         int(db.execute(select(func.count(model.id)).where(model.venue_id == int(venue.id))).scalar() or 0) > 0
         for model in [Shift, DailyReport, Expense, PayrollRun]
@@ -178,7 +181,9 @@ def _require_safe_target_venue(db: Session, venue: Venue) -> None:
         )
 
 
-def _ensure_venue(db: Session, *, venue_id: int | None, venue_name: str, reference_year: int, reference_month: int, make_public: bool) -> Venue:
+def _ensure_venue(
+    db: Session, *, venue_id: int | None, venue_name: str, reference_year: int, reference_month: int, make_public: bool
+) -> Venue:
     venue: Venue | None = None
     if venue_id is not None:
         venue = db.execute(select(Venue).where(Venue.id == int(venue_id))).scalar_one_or_none()
@@ -343,12 +348,14 @@ def _create_user(db: Session, spec: dict, *, existing_user: User | None = None) 
 
 
 def _create_member_and_position(db: Session, *, venue: Venue, user: User, spec: dict) -> VenuePosition | None:
-    db.add(VenueMember(
-        venue_id=int(venue.id),
-        user_id=int(user.id),
-        venue_role=str(spec.get("venue_role") or "STAFF").upper(),
-        is_active=True,
-    ))
+    db.add(
+        VenueMember(
+            venue_id=int(venue.id),
+            user_id=int(user.id),
+            venue_role=str(spec.get("venue_role") or "STAFF").upper(),
+            is_active=True,
+        )
+    )
     position_title = spec.get("position_title")
     if not position_title:
         return None
@@ -392,9 +399,19 @@ def _create_dictionaries(db: Session, *, venue: Venue) -> dict:
         ExpenseCategory(venue_id=int(venue.id), code="marketing", title="Маркетинг", sort_order=50, is_active=True),
     ]
     suppliers = [
-        Supplier(venue_id=int(venue.id), title="Hookah Trade", contact="@hookah_trade_demo", sort_order=10, is_active=True),
-        Supplier(venue_id=int(venue.id), title="Metro Cash & Carry", contact="+7 800 700-10-77", sort_order=20, is_active=True),
-        Supplier(venue_id=int(venue.id), title="Local Partner", contact="@axelio_partner", sort_order=30, is_active=True),
+        Supplier(
+            venue_id=int(venue.id), title="Hookah Trade", contact="@hookah_trade_demo", sort_order=10, is_active=True
+        ),
+        Supplier(
+            venue_id=int(venue.id),
+            title="Metro Cash & Carry",
+            contact="+7 800 700-10-77",
+            sort_order=20,
+            is_active=True,
+        ),
+        Supplier(
+            venue_id=int(venue.id), title="Local Partner", contact="@axelio_partner", sort_order=30, is_active=True
+        ),
     ]
     for item in [*departments, *payment_methods, *kpis, *categories, *suppliers]:
         db.add(item)
@@ -409,8 +426,12 @@ def _create_dictionaries(db: Session, *, venue: Venue) -> dict:
 
 
 def _create_intervals(db: Session, *, venue: Venue) -> dict[str, ShiftInterval]:
-    opening = ShiftInterval(venue_id=int(venue.id), title="День", start_time=time(12, 0), end_time=time(18, 0), is_active=True)
-    evening = ShiftInterval(venue_id=int(venue.id), title="Прайм-тайм", start_time=time(18, 0), end_time=time(23, 45), is_active=True)
+    opening = ShiftInterval(
+        venue_id=int(venue.id), title="День", start_time=time(12, 0), end_time=time(18, 0), is_active=True
+    )
+    evening = ShiftInterval(
+        venue_id=int(venue.id), title="Прайм-тайм", start_time=time(18, 0), end_time=time(23, 45), is_active=True
+    )
     db.add_all([opening, evening])
     db.flush()
     return {"opening": opening, "evening": evening}
@@ -447,8 +468,20 @@ def _create_schedule(
     created_comments = 0
 
     for idx, day in enumerate(_month_iter(reference_year, reference_month)):
-        opening_shift = Shift(venue_id=int(venue.id), date=day, interval_id=int(intervals["opening"].id), created_by_user_id=int(owner_user.id), is_active=True)
-        evening_shift = Shift(venue_id=int(venue.id), date=day, interval_id=int(intervals["evening"].id), created_by_user_id=int(owner_user.id), is_active=True)
+        opening_shift = Shift(
+            venue_id=int(venue.id),
+            date=day,
+            interval_id=int(intervals["opening"].id),
+            created_by_user_id=int(owner_user.id),
+            is_active=True,
+        )
+        evening_shift = Shift(
+            venue_id=int(venue.id),
+            date=day,
+            interval_id=int(intervals["evening"].id),
+            created_by_user_id=int(owner_user.id),
+            is_active=True,
+        )
         db.add_all([opening_shift, evening_shift])
         db.flush()
         created_shifts += 2
@@ -477,11 +510,13 @@ def _create_schedule(
                 pos = positions_by_key.get(key)
                 if pos is None:
                     continue
-                db.add(ShiftAssignment(
-                    shift_id=int(shift_obj.id),
-                    member_user_id=int(users_by_key[key].id),
-                    venue_position_id=int(pos.id),
-                ))
+                db.add(
+                    ShiftAssignment(
+                        shift_id=int(shift_obj.id),
+                        member_user_id=int(users_by_key[key].id),
+                        venue_position_id=int(pos.id),
+                    )
+                )
                 created_assignments += 1
 
         shift_note = None
@@ -490,17 +525,21 @@ def _create_schedule(
         elif day.day in {14, 15}:
             shift_note = "Пиковая посадка в середине месяца: готовим две VIP-комнаты и держим запас по топовым вкусам."
         elif day.day in {22, 28}:
-            shift_note = "Акцент на сервис: проверить посадку, подготовить welcome-комплименты и сделать фотоотчёт по залу."
+            shift_note = (
+                "Акцент на сервис: проверить посадку, подготовить welcome-комплименты и сделать фотоотчёт по залу."
+            )
         elif day.day == 3:
             shift_note = "Старт месяца: проверить остатки табака, угля и ритейла перед вечерней волной."
 
         if shift_note:
-            db.add(ShiftComment(
-                shift_id=int(evening_shift.id),
-                author_user_id=int(users_by_key["anna_admin"].id),
-                text=shift_note,
-                created_at=datetime.combine(day, time(hour=9), tzinfo=timezone.utc),
-            ))
+            db.add(
+                ShiftComment(
+                    shift_id=int(evening_shift.id),
+                    author_user_id=int(users_by_key["anna_admin"].id),
+                    text=shift_note,
+                    created_at=datetime.combine(day, time(hour=9), tzinfo=timezone.utc),
+                )
+            )
             created_comments += 1
 
     db.flush()
@@ -531,7 +570,15 @@ def _minor_to_report_units(amount_minor: int) -> int:
     return int(round(int(amount_minor or 0) / 100))
 
 
-def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference_month: int, users_by_key: dict[str, User], dictionaries: dict) -> dict[str, int]:
+def _create_reports(
+    db: Session,
+    *,
+    venue: Venue,
+    reference_year: int,
+    reference_month: int,
+    users_by_key: dict[str, User],
+    dictionaries: dict,
+) -> dict[str, int]:
     pm = dictionaries["payment_methods"]
     dept = dictionaries["departments"]
     kpis = dictionaries["kpis"]
@@ -588,7 +635,9 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
         elif day.day in {14, 15}:
             comment = "Пиковая посадка в середине месяца: высокий оборот по кальянам и СБП, усиленный состав на вечер."
 
-        tips_total = _minor_to_report_units(_scale_minor(360000 + (idx % 4) * 65000 + (120000 if is_peak_day else 0), season_factor))
+        tips_total = _minor_to_report_units(
+            _scale_minor(360000 + (idx % 4) * 65000 + (120000 if is_peak_day else 0), season_factor)
+        )
         report = DailyReport(
             venue_id=int(venue.id),
             date=day,
@@ -617,9 +666,26 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
             ("DEPT", int(dept["hookah"].id), hookah_value),
             ("DEPT", int(dept["bar"].id), bar_value),
             ("DEPT", int(dept["kitchen"].id), kitchen_value),
-            ("KPI", int(kpis["upsale"].id), max(1, int(round((11 + (idx % 7) + (2 if is_peak_day else 0)) * season_factor)))),
-            ("KPI", int(kpis["vip"].id), max(1, int(round((2 + (1 if day.weekday() in {4, 5} else 0) + (1 if is_peak_day else 0)) * season_factor)))),
-            ("KPI", int(kpis["retail"].id), _minor_to_report_units(_scale_minor(85000 + (idx % 6) * 12000 + (25000 if is_peak_day else 0), season_factor))),
+            (
+                "KPI",
+                int(kpis["upsale"].id),
+                max(1, int(round((11 + (idx % 7) + (2 if is_peak_day else 0)) * season_factor))),
+            ),
+            (
+                "KPI",
+                int(kpis["vip"].id),
+                max(
+                    1,
+                    int(round((2 + (1 if day.weekday() in {4, 5} else 0) + (1 if is_peak_day else 0)) * season_factor)),
+                ),
+            ),
+            (
+                "KPI",
+                int(kpis["retail"].id),
+                _minor_to_report_units(
+                    _scale_minor(85000 + (idx % 6) * 12000 + (25000 if is_peak_day else 0), season_factor)
+                ),
+            ),
         ]
         report_values: list[DailyReportValue] = []
         for kind, ref_id, value in values:
@@ -635,30 +701,38 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
             values=report_values,
         )
 
-        tip_receivers = ["staff_persona", "kirill_hookah", "maria_bar"] if day.weekday() in {4, 5} else ["staff_persona", "aleksey_waiter"]
+        tip_receivers = (
+            ["staff_persona", "kirill_hookah", "maria_bar"]
+            if day.weekday() in {4, 5}
+            else ["staff_persona", "aleksey_waiter"]
+        )
         share = tips_total // len(tip_receivers)
         remainder = tips_total % len(tip_receivers)
         for t_idx, key in enumerate(tip_receivers):
-            db.add(DailyReportTipAllocation(
-                report_id=int(report.id),
-                user_id=int(users_by_key[key].id),
-                amount=int(share + (remainder if t_idx == 0 else 0)),
-                split_mode="EQUAL",
-                meta_json={"demo": True},
-            ))
+            db.add(
+                DailyReportTipAllocation(
+                    report_id=int(report.id),
+                    user_id=int(users_by_key[key].id),
+                    amount=int(share + (remainder if t_idx == 0 else 0)),
+                    split_mode="EQUAL",
+                    meta_json={"demo": True},
+                )
+            )
             created_tips += 1
 
         if day.day in {5, 12, 27}:
-            db.add(DailyReportAudit(
-                report_id=int(report.id),
-                user_id=int(owner_user.id),
-                changed_at=datetime.combine(day, time(23, 40), tzinfo=timezone.utc),
-                diff_json={
-                    "status": "CLOSED",
-                    "comment": comment,
-                    "note": "Демо-аудит: пример истории изменений после закрытия смены",
-                },
-            ))
+            db.add(
+                DailyReportAudit(
+                    report_id=int(report.id),
+                    user_id=int(owner_user.id),
+                    changed_at=datetime.combine(day, time(23, 40), tzinfo=timezone.utc),
+                    diff_json={
+                        "status": "CLOSED",
+                        "comment": comment,
+                        "note": "Демо-аудит: пример истории изменений после закрытия смены",
+                    },
+                )
+            )
             created_audits += 1
 
     db.flush()
@@ -671,7 +745,15 @@ def _create_reports(db: Session, *, venue: Venue, reference_year: int, reference
     }
 
 
-def _create_expenses(db: Session, *, venue: Venue, dictionaries: dict, users_by_key: dict[str, User], reference_year: int, reference_month: int) -> dict[str, int]:
+def _create_expenses(
+    db: Session,
+    *,
+    venue: Venue,
+    dictionaries: dict,
+    users_by_key: dict[str, User],
+    reference_year: int,
+    reference_month: int,
+) -> dict[str, int]:
     categories = dictionaries["categories"]
     suppliers = dictionaries["suppliers"]
     payment_methods = dictionaries["payment_methods"]
@@ -680,14 +762,70 @@ def _create_expenses(db: Session, *, venue: Venue, dictionaries: dict, users_by_
     variable_cost_factor = 0.55 + (0.45 * season_factor)
     month_title = MONTH_NAMES_ACCUSATIVE[int(reference_month)]
     items = [
-        ("rent", "Metro Cash & Carry", 13500000, date(reference_year, reference_month, 5), 1, f"Аренда помещения за {month_title}"),
-        ("tobacco", "Hookah Trade", _scale_minor(5200000, variable_cost_factor), date(reference_year, reference_month, 3), 2, "Стартовая закупка табака, угля и чаш перед пиковыми выходными"),
-        ("barstock", "Metro Cash & Carry", _scale_minor(2850000, variable_cost_factor), date(reference_year, reference_month, 7), 1, "Барная закупка: лимонады, пюре, лёд и стекло"),
-        ("supplies", "Local Partner", _scale_minor(980000, variable_cost_factor), date(reference_year, reference_month, 10), 1, "Хозтовары, расходники и уборка после первых пиковых дней"),
-        ("marketing", "Local Partner", _scale_minor(1800000, variable_cost_factor), date(reference_year, reference_month, 12), 3, "Таргет и блогеры под пятничные и праздничные посадки"),
-        ("tobacco", "Hookah Trade", _scale_minor(3450000, variable_cost_factor), date(reference_year, reference_month, 17), 2, "Дозакупка премиум-линеек и самых ходовых вкусов"),
-        ("barstock", "Metro Cash & Carry", _scale_minor(1620000, variable_cost_factor), date(reference_year, reference_month, 21), 1, "Дозакупка фруктов, напитков и сиропов под конец месяца"),
-        ("supplies", "Local Partner", _scale_minor(760000, variable_cost_factor), date(reference_year, reference_month, 25), 1, "Текстиль, аромасвечи и расходники для VIP-комнат"),
+        (
+            "rent",
+            "Metro Cash & Carry",
+            13500000,
+            date(reference_year, reference_month, 5),
+            1,
+            f"Аренда помещения за {month_title}",
+        ),
+        (
+            "tobacco",
+            "Hookah Trade",
+            _scale_minor(5200000, variable_cost_factor),
+            date(reference_year, reference_month, 3),
+            2,
+            "Стартовая закупка табака, угля и чаш перед пиковыми выходными",
+        ),
+        (
+            "barstock",
+            "Metro Cash & Carry",
+            _scale_minor(2850000, variable_cost_factor),
+            date(reference_year, reference_month, 7),
+            1,
+            "Барная закупка: лимонады, пюре, лёд и стекло",
+        ),
+        (
+            "supplies",
+            "Local Partner",
+            _scale_minor(980000, variable_cost_factor),
+            date(reference_year, reference_month, 10),
+            1,
+            "Хозтовары, расходники и уборка после первых пиковых дней",
+        ),
+        (
+            "marketing",
+            "Local Partner",
+            _scale_minor(1800000, variable_cost_factor),
+            date(reference_year, reference_month, 12),
+            3,
+            "Таргет и блогеры под пятничные и праздничные посадки",
+        ),
+        (
+            "tobacco",
+            "Hookah Trade",
+            _scale_minor(3450000, variable_cost_factor),
+            date(reference_year, reference_month, 17),
+            2,
+            "Дозакупка премиум-линеек и самых ходовых вкусов",
+        ),
+        (
+            "barstock",
+            "Metro Cash & Carry",
+            _scale_minor(1620000, variable_cost_factor),
+            date(reference_year, reference_month, 21),
+            1,
+            "Дозакупка фруктов, напитков и сиропов под конец месяца",
+        ),
+        (
+            "supplies",
+            "Local Partner",
+            _scale_minor(760000, variable_cost_factor),
+            date(reference_year, reference_month, 25),
+            1,
+            "Текстиль, аромасвечи и расходники для VIP-комнат",
+        ),
     ]
     created = 0
     for category_code, supplier_title, amount_minor, expense_date, spread_months, comment in items:
@@ -714,10 +852,33 @@ def _create_expenses(db: Session, *, venue: Venue, dictionaries: dict, users_by_
     return {"expenses": created}
 
 
-def _create_pay_profiles(db: Session, *, venue: Venue, dictionaries: dict, users_by_key: dict[str, User], reference_year: int, reference_month: int) -> dict[str, int]:
-    hookah_profile = PayProfile(venue_id=int(venue.id), title="Кальянный мастер", description="Почасовая ставка + % от выручки кальянного зала + KPI за допродажи", is_active=True)
-    admin_profile = PayProfile(venue_id=int(venue.id), title="Администратор", description="Фикс за месяц + оплата за смены старшего состава", is_active=True)
-    bar_profile = PayProfile(venue_id=int(venue.id), title="Бар и зал", description="Почасовая ставка + фикс за смену для бара и сервиса", is_active=True)
+def _create_pay_profiles(
+    db: Session,
+    *,
+    venue: Venue,
+    dictionaries: dict,
+    users_by_key: dict[str, User],
+    reference_year: int,
+    reference_month: int,
+) -> dict[str, int]:
+    hookah_profile = PayProfile(
+        venue_id=int(venue.id),
+        title="Кальянный мастер",
+        description="Почасовая ставка + % от выручки кальянного зала + KPI за допродажи",
+        is_active=True,
+    )
+    admin_profile = PayProfile(
+        venue_id=int(venue.id),
+        title="Администратор",
+        description="Фикс за месяц + оплата за смены старшего состава",
+        is_active=True,
+    )
+    bar_profile = PayProfile(
+        venue_id=int(venue.id),
+        title="Бар и зал",
+        description="Почасовая ставка + фикс за смену для бара и сервиса",
+        is_active=True,
+    )
     db.add_all([hookah_profile, admin_profile, bar_profile])
     db.flush()
 
@@ -725,13 +886,73 @@ def _create_pay_profiles(db: Session, *, venue: Venue, dictionaries: dict, users
     kpi_upsale = dictionaries["kpis"]["upsale"]
 
     components = [
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(hookah_profile.id), component_type="SALARY_HOURLY", title="Почасовая ставка", rate_minor=52000, is_active=True, sort_order=10),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(hookah_profile.id), component_type="PERCENT_DEPARTMENT_REVENUE", title="% от кальянного зала", percent_bps=340, department_id=int(hookah_dept.id), base_scope="WORKED_DATES", is_active=True, sort_order=20),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(hookah_profile.id), component_type="KPI_BONUS", title="Бонус за допродажи", amount_minor=420000, kpi_metric_id=int(kpi_upsale.id), threshold_value=13, is_active=True, sort_order=30),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(admin_profile.id), component_type="SALARY_FIXED_MONTH", title="Фикс за месяц", amount_minor=6900000, is_active=True, sort_order=10),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(admin_profile.id), component_type="SALARY_PER_SHIFT", title="Смена администратора", amount_minor=220000, is_active=True, sort_order=20),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(bar_profile.id), component_type="SALARY_HOURLY", title="Почасовая ставка", rate_minor=35000, is_active=True, sort_order=10),
-        PayComponent(venue_id=int(venue.id), pay_profile_id=int(bar_profile.id), component_type="SALARY_PER_SHIFT", title="Фикс за смену", amount_minor=100000, is_active=True, sort_order=20),
+        PayComponent(
+            venue_id=int(venue.id),
+            pay_profile_id=int(hookah_profile.id),
+            component_type="SALARY_HOURLY",
+            title="Почасовая ставка",
+            rate_minor=52000,
+            is_active=True,
+            sort_order=10,
+        ),
+        PayComponent(
+            venue_id=int(venue.id),
+            pay_profile_id=int(hookah_profile.id),
+            component_type="PERCENT_DEPARTMENT_REVENUE",
+            title="% от кальянного зала",
+            percent_bps=340,
+            department_id=int(hookah_dept.id),
+            base_scope="WORKED_DATES",
+            is_active=True,
+            sort_order=20,
+        ),
+        PayComponent(
+            venue_id=int(venue.id),
+            pay_profile_id=int(hookah_profile.id),
+            component_type="KPI_BONUS",
+            title="Бонус за допродажи",
+            amount_minor=420000,
+            kpi_metric_id=int(kpi_upsale.id),
+            threshold_value=13,
+            is_active=True,
+            sort_order=30,
+        ),
+        PayComponent(
+            venue_id=int(venue.id),
+            pay_profile_id=int(admin_profile.id),
+            component_type="SALARY_FIXED_MONTH",
+            title="Фикс за месяц",
+            amount_minor=6900000,
+            is_active=True,
+            sort_order=10,
+        ),
+        PayComponent(
+            venue_id=int(venue.id),
+            pay_profile_id=int(admin_profile.id),
+            component_type="SALARY_PER_SHIFT",
+            title="Смена администратора",
+            amount_minor=220000,
+            is_active=True,
+            sort_order=20,
+        ),
+        PayComponent(
+            venue_id=int(venue.id),
+            pay_profile_id=int(bar_profile.id),
+            component_type="SALARY_HOURLY",
+            title="Почасовая ставка",
+            rate_minor=35000,
+            is_active=True,
+            sort_order=10,
+        ),
+        PayComponent(
+            venue_id=int(venue.id),
+            pay_profile_id=int(bar_profile.id),
+            component_type="SALARY_PER_SHIFT",
+            title="Фикс за смену",
+            amount_minor=100000,
+            is_active=True,
+            sort_order=20,
+        ),
     ]
     db.add_all(components)
     db.flush()
@@ -751,14 +972,16 @@ def _create_pay_profiles(db: Session, *, venue: Venue, dictionaries: dict, users
             continue
         user = users_by_key[spec["key"]]
         profile = profile_by_key[profile_key]
-        db.add(PayProfileAssignment(
-            venue_id=int(venue.id),
-            pay_profile_id=int(profile.id),
-            member_user_id=int(user.id),
-            start_date=month_start,
-            end_date=None,
-            is_active=True,
-        ))
+        db.add(
+            PayProfileAssignment(
+                venue_id=int(venue.id),
+                pay_profile_id=int(profile.id),
+                member_user_id=int(user.id),
+                start_date=month_start,
+                end_date=None,
+                is_active=True,
+            )
+        )
         created_assignments += 1
     db.flush()
     return {
@@ -768,27 +991,49 @@ def _create_pay_profiles(db: Session, *, venue: Venue, dictionaries: dict, users
     }
 
 
-def _create_adjustments(db: Session, *, venue: Venue, users_by_key: dict[str, User], owner_user: User, reference_year: int, reference_month: int) -> dict[str, int]:
+def _create_adjustments(
+    db: Session,
+    *,
+    venue: Venue,
+    users_by_key: dict[str, User],
+    owner_user: User,
+    reference_year: int,
+    reference_month: int,
+) -> dict[str, int]:
     items = [
-        ("bonus", "staff_persona", date(reference_year, reference_month, 6), 140000, "Лучшие допродажи недели по кальянному залу"),
+        (
+            "bonus",
+            "staff_persona",
+            date(reference_year, reference_month, 6),
+            140000,
+            "Лучшие допродажи недели по кальянному залу",
+        ),
         ("penalty", "aleksey_waiter", date(reference_year, reference_month, 11), 60000, "Опоздание на вечернюю смену"),
         ("writeoff", None, date(reference_year, reference_month, 19), 95000, "Списание инвентаря после инвентаризации"),
-        ("bonus", "anna_admin", date(reference_year, reference_month, 28), 180000, "Высокая оценка сервиса и сильная координация вечерних смен"),
+        (
+            "bonus",
+            "anna_admin",
+            date(reference_year, reference_month, 28),
+            180000,
+            "Высокая оценка сервиса и сильная координация вечерних смен",
+        ),
     ]
     for adj_type, member_key, adj_date, amount, reason in items:
-        db.add(Adjustment(
-            venue_id=int(venue.id),
-            type=adj_type,
-            member_user_id=int(users_by_key[member_key].id) if member_key else None,
-            date=adj_date,
-            amount=int(amount),
-            reason=reason,
-            is_active=True,
-            created_by_user_id=int(owner_user.id),
-            created_at=datetime.combine(adj_date, time(12, 0), tzinfo=timezone.utc),
-            updated_by_user_id=int(owner_user.id),
-            updated_at=datetime.combine(adj_date, time(12, 10), tzinfo=timezone.utc),
-        ))
+        db.add(
+            Adjustment(
+                venue_id=int(venue.id),
+                type=adj_type,
+                member_user_id=int(users_by_key[member_key].id) if member_key else None,
+                date=adj_date,
+                amount=int(amount),
+                reason=reason,
+                is_active=True,
+                created_by_user_id=int(owner_user.id),
+                created_at=datetime.combine(adj_date, time(12, 0), tzinfo=timezone.utc),
+                updated_by_user_id=int(owner_user.id),
+                updated_at=datetime.combine(adj_date, time(12, 10), tzinfo=timezone.utc),
+            )
+        )
     db.flush()
     return {"adjustments": len(items)}
 
@@ -862,15 +1107,19 @@ def bootstrap_demo_venue(
     )
 
     existing_users_by_username: dict[str, User] = {}
-    existing_demo_users = db.execute(
-        select(User)
-        .join(VenueMember, VenueMember.user_id == User.id)
-        .where(
-            VenueMember.venue_id == int(venue.id),
-            User.is_demo_user.is_(True),
+    existing_demo_users = (
+        db.execute(
+            select(User)
+            .join(VenueMember, VenueMember.user_id == User.id)
+            .where(
+                VenueMember.venue_id == int(venue.id),
+                User.is_demo_user.is_(True),
+            )
+            .order_by(User.id.asc())
         )
-        .order_by(User.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for existing_user in existing_demo_users:
         username = str(existing_user.tg_username or "").strip()
         if username:
@@ -906,50 +1155,64 @@ def bootstrap_demo_venue(
 
     intervals = _create_intervals(db, venue=venue)
     counts["shift_intervals"] = len(intervals)
-    counts.update(_create_pay_profiles(
-        db,
-        venue=venue,
-        dictionaries=dictionaries,
-        users_by_key=users_by_key,
-        reference_year=int(period_start_year),
-        reference_month=int(period_start_month),
-    ))
+    counts.update(
+        _create_pay_profiles(
+            db,
+            venue=venue,
+            dictionaries=dictionaries,
+            users_by_key=users_by_key,
+            reference_year=int(period_start_year),
+            reference_month=int(period_start_month),
+        )
+    )
 
     for year, month in periods:
-        _merge_counts(counts, _create_schedule(
-            db,
-            venue=venue,
-            reference_year=int(year),
-            reference_month=int(month),
-            users_by_key=users_by_key,
-            positions_by_key=positions_by_key,
-            owner_user=users_by_key["owner"],
-            intervals=intervals,
-        ))
-        _merge_counts(counts, _create_reports(
-            db,
-            venue=venue,
-            reference_year=int(year),
-            reference_month=int(month),
-            users_by_key=users_by_key,
-            dictionaries=dictionaries,
-        ))
-        _merge_counts(counts, _create_expenses(
-            db,
-            venue=venue,
-            dictionaries=dictionaries,
-            users_by_key=users_by_key,
-            reference_year=int(year),
-            reference_month=int(month),
-        ))
-        _merge_counts(counts, _create_adjustments(
-            db,
-            venue=venue,
-            users_by_key=users_by_key,
-            owner_user=users_by_key["owner"],
-            reference_year=int(year),
-            reference_month=int(month),
-        ))
+        _merge_counts(
+            counts,
+            _create_schedule(
+                db,
+                venue=venue,
+                reference_year=int(year),
+                reference_month=int(month),
+                users_by_key=users_by_key,
+                positions_by_key=positions_by_key,
+                owner_user=users_by_key["owner"],
+                intervals=intervals,
+            ),
+        )
+        _merge_counts(
+            counts,
+            _create_reports(
+                db,
+                venue=venue,
+                reference_year=int(year),
+                reference_month=int(month),
+                users_by_key=users_by_key,
+                dictionaries=dictionaries,
+            ),
+        )
+        _merge_counts(
+            counts,
+            _create_expenses(
+                db,
+                venue=venue,
+                dictionaries=dictionaries,
+                users_by_key=users_by_key,
+                reference_year=int(year),
+                reference_month=int(month),
+            ),
+        )
+        _merge_counts(
+            counts,
+            _create_adjustments(
+                db,
+                venue=venue,
+                users_by_key=users_by_key,
+                owner_user=users_by_key["owner"],
+                reference_year=int(year),
+                reference_month=int(month),
+            ),
+        )
     counts.update(_configure_billing(db, venue=venue, owner_user=users_by_key["owner"]))
 
     db.flush()

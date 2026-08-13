@@ -29,7 +29,9 @@ class VenueBillingTransaction(Base):
     provider_payload_json: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
 
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

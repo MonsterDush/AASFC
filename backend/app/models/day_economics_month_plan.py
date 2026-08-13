@@ -10,9 +10,7 @@ from app.core.db import Base
 
 class DayEconomicsMonthPlan(Base):
     __tablename__ = "day_economics_month_plans"
-    __table_args__ = (
-        UniqueConstraint("venue_id", "month_start", name="uq_day_economics_month_plans_venue_month"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", "month_start", name="uq_day_economics_month_plans_venue_month"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)
