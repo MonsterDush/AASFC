@@ -102,6 +102,20 @@ def _database_gauges(db: Session) -> list[str]:
         lines.append(_sample("axelio_notification_jobs", float(counts.get(status, 0)), _labels(status=status)))
 
     since = datetime.now(timezone.utc) - timedelta(hours=24)
+    failed_jobs_24h = db.execute(
+        select(func.count(NotificationJob.id)).where(
+            NotificationJob.status == "failed",
+            NotificationJob.updated_at >= since,
+        )
+    ).scalar_one()
+    lines.append(
+        _sample(
+            "axelio_notification_jobs",
+            float(failed_jobs_24h or 0),
+            _labels(status="failed_recent_24h"),
+        )
+    )
+
     failed_payments = db.execute(
         select(func.count(VenueBillingTransaction.id)).where(
             VenueBillingTransaction.type == "PAYMENT",

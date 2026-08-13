@@ -26,7 +26,10 @@ def build_snapshot() -> dict[str, int]:
             )
         ).scalar_one()
         failed_jobs = db.execute(
-            select(func.count(NotificationJob.id)).where(NotificationJob.status == "failed")
+            select(func.count(NotificationJob.id)).where(
+                NotificationJob.status == "failed",
+                NotificationJob.updated_at >= now - timedelta(hours=24),
+            )
         ).scalar_one()
         stale_jobs = db.execute(
             select(func.count(NotificationJob.id)).where(
@@ -43,7 +46,7 @@ def build_snapshot() -> dict[str, int]:
     return {
         "failed_payments_24h": int(failed_payments or 0),
         "open_reconciliation_high": int(open_reconciliation or 0),
-        "failed_notification_jobs": int(failed_jobs or 0),
+        "failed_notification_jobs_24h": int(failed_jobs or 0),
         "stale_notification_jobs": int(stale_jobs or 0),
     }
 

@@ -28,6 +28,10 @@ minutes and checks:
 - open high/critical billing reconciliation issues;
 - failed or stale notification jobs.
 
+Terminal notification failures remain visible in the database and metrics for
+forensics. Pager-style alerts use a rolling 24-hour window so a resolved
+historical delivery failure does not keep production permanently red.
+
 Alerts are deduplicated by the current failure set. A separate recovery message
 is sent after all checks return to green.
 
