@@ -8,7 +8,6 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 "backend/app/main.py" = ["E402"]
-"backend/app/services/payroll/calculator.py" = ["F401"]
 
 [tool.ruff.format]
 quote-style = "double"

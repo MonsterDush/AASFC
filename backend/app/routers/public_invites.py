@@ -7,7 +7,7 @@ from app.auth.deps import get_current_user
 from app.core.db import get_db
 from app.models.user import User
 from app.models.venue_invite import VenueInvite
-from app.services.invites import accept_invite_by_token, build_public_invite_payload, get_invite_by_token
+from app.services.invites import accept_invite_by_token, build_public_invite_payload
 
 router = APIRouter(prefix="/public/invites", tags=["public-invites"])
 

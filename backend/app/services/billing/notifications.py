@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.notification_delivery_log import NotificationDeliveryLog
 from app.models.user import User
 from app.models.venue import Venue
 from app.models.venue_member import VenueMember

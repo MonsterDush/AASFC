@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from sqlalchemy import select, delete, update, func, inspect
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.tg import normalize_tg_username
 from app.models.user import User
 from app.models.venue_member import VenueMember
 from app.models.venue_invite import VenueInvite
 from app.models.auth_identity import AuthIdentity
-from app.services.invites import build_invite_link, create_venue_invite, normalize_phone_e164
+from app.services.invites import build_invite_link, normalize_phone_e164
 
 
 def _build_user_auth_snapshot_map(db: Session, user_ids: list[int]) -> dict[int, dict]:

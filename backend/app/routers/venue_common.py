@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.services.payroll.calculator import (
-    PAY_COMPONENT_TYPES,
     BASE_SCOPE_FULL_PERIOD,
     BASE_SCOPE_WORKED_DATES,
     BOOST_RECALC_EXCESS_ONLY,
@@ -19,13 +18,9 @@ from app.services.payroll.calculator import (
     MINIMUM_GUARANTEE_DAY,
     MINIMUM_GUARANTEE_MONTH,
     MINIMUM_GUARANTEE_SHIFT,
-    calculate_payroll_for_month,
-    parse_month_start,
 )
 from app.services.financial_privacy import (
     FINANCIAL_VALUES_HIDDEN_MESSAGE,
-    financial_visibility_payload,
-    sanitize_financial_payload_for_user,
     should_hide_financial_values_for_user,
 )
 from app.models.user import User

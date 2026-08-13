@@ -22,13 +22,12 @@ from app.schemas.venue_payroll import (
     PayrollPaymentDraftGenerateIn,
     PayrollPaymentSettingsIn,
 )
+from app.routers.venue_pay_profile_support import _require_payroll_calculate, _require_payroll_view
 from app.routers.venue_payroll_support import (
     _build_venue_payroll_period_payload,
     _create_payroll_recalculation_log,
     _load_payroll_payload,
     _payroll_recalculation_logs_table_exists,
-    _require_payroll_calculate,
-    _require_payroll_view,
     _serialize_payroll_recalculation_log,
 )
 
