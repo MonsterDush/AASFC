@@ -1,68 +1,29 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, date, time, timedelta
+from datetime import datetime, date, timedelta
 import json
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
-from sqlalchemy import select, delete, update, func, inspect
+from sqlalchemy import select, inspect
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
-from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.services.payroll.calculator import (
-    PAY_COMPONENT_TYPES,
-    BASE_SCOPE_FULL_PERIOD,
-    BASE_SCOPE_WORKED_DATES,
-    BOOST_RECALC_EXCESS_ONLY,
-    BOOST_RECALC_REPLACE_ALL,
-    BOOST_SOURCE_DEPARTMENT_DAY_PLAN,
-    BOOST_SOURCE_DEPARTMENT_MONTH_PLAN,
-    BOOST_SOURCE_KPI_METRIC,
-    BOOST_SOURCE_NONE,
-    BOOST_SOURCE_VENUE_DAY_PLAN,
-    BOOST_SOURCE_VENUE_MONTH_PLAN,
-    MINIMUM_GUARANTEE_DAY,
-    MINIMUM_GUARANTEE_MONTH,
-    MINIMUM_GUARANTEE_SHIFT,
     calculate_payroll_for_month,
     parse_month_start,
 )
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.payroll.adjustments import load_member_payroll_adjustments
-from app.routers.venue_access import (
-    _has_revenue_view_access,
-    _is_active_member_or_admin,
-    _is_owner_or_super_admin,
-    _is_report_viewer,
-    _require_active_member_or_admin,
-    _require_owner_or_super_admin,
-    _require_report_viewer,
-    _require_revenue_viewer,
-)
 from app.models.user import User
-from app.models.venue_setup_state import VenueSetupState
 from app.models.shift import Shift
 from app.models.shift_assignment import ShiftAssignment
 from app.models.daily_report import DailyReport
 from app.models.adjustment import Adjustment
-from app.models.department import Department
 from app.models.pay_profile import PayProfile
-from app.models.pay_profile_assignment import PayProfileAssignment
-from app.models.pay_component import PayComponent
 from app.models.payroll_run import PayrollRun
 from app.models.payroll_line import PayrollLine
 from app.models.payroll_recalculation_log import PayrollRecalculationLog
-from app.auth.venue_permissions import require_venue_permission, has_venue_permission
 
-from app.routers.venue_common import (
-    BASE_SCOPE_TITLES,
-    BOOST_RECALC_TITLES,
-    BOOST_SOURCE_TITLES,
-    MINIMUM_GUARANTEE_SCOPE_TITLES,
-)
 
 from app.routers.venue_pay_profile_support import (
     _parse_json_text,
-    _require_payroll_calculate,
-    _require_payroll_view,
 )
 
 

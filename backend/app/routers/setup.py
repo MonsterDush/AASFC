@@ -14,8 +14,6 @@ from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.services.billing.access import BILLING_ACCESS_FULL, get_user_billing_access
 from app.services.setup import (
-    SETUP_PHASE_EXTRA,
-    SETUP_PHASE_PREPARE,
     build_setup_summary,
     complete_setup_step,
     finish_extra_setup,

@@ -24,8 +24,6 @@ from app.models.venue import Venue
 from app.routers.venue_access import (
     is_owner_or_super_admin as _is_owner_or_super_admin,
     require_active_member_or_admin as _require_active_member_or_admin,
-    require_report_viewer as _require_report_viewer,
-    require_revenue_viewer as _require_revenue_viewer,
 )
 from app.routers.venue_catalogs import _get_payment_method_or_404
 from app.routers.venue_common import (

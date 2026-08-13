@@ -17,7 +17,6 @@ from app.services.demo.session import (
     DEMO_KIND_PUBLIC,
     DEMO_KIND_TEMPLATE,
     build_demo_auth_start_url,
-    build_demo_start_url,
     build_frontend_route_url,
     get_demo_template_venue,
     get_public_demo_venue,

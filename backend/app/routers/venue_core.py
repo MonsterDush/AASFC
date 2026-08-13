@@ -1,95 +1,66 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, date, time, timedelta
-import logging
-import os
-import calendar
-import json
-import hashlib
-import re
-import uuid
+# Split venue routers still consume a compatibility import surface from this
+# module. Redundant aliases below make those re-exports explicit to Ruff.
+from datetime import datetime, timezone, date as date, timedelta as timedelta
+import os as os
+import calendar as calendar
+import json as json
+import re as re
+import uuid as uuid
 
-from typing import Optional, List
-from io import BytesIO
-from urllib.parse import quote
+from typing import Optional as Optional
+from io import BytesIO as BytesIO
+from urllib.parse import quote as quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from pydantic import BaseModel, Field
-from sqlalchemy import select, delete, update, func, inspect
+from fastapi import APIRouter, BackgroundTasks as BackgroundTasks, Depends, HTTPException, Query, Request as Request, status as status, UploadFile as UploadFile, File as File
+from fastapi.responses import FileResponse as FileResponse, RedirectResponse as RedirectResponse, StreamingResponse as StreamingResponse
+from pydantic import BaseModel as BaseModel, Field as Field
+from sqlalchemy import select, delete, update as update, func, inspect
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_user, get_current_user_optional
+from app.auth.deps import get_current_user, get_current_user_optional as get_current_user_optional
 from app.auth.guards import require_super_admin
-from app.core.db import SessionLocal, get_db
-from app.core.config import settings
-from app.core.tg import normalize_tg_username
-from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
-from app.core.permissions_registry import PERMISSIONS
-from app.services import tg_notify
-from app.services.notification_logs import (
-    log_notification_attempt,
-    lock_notification_idempotency_key,
-    notification_delivery_exists,
-    notification_dedupe_scope,
-)
+from app.core.db import get_db
+from app.core.config import settings as settings
+from app.core.tg import normalize_tg_username as normalize_tg_username
 from app.services.xlsx_export import (
-    build_expenses_xlsx,
-    build_monthly_summary_xlsx,
-    build_payroll_xlsx,
-    build_revenue_csv,
-    build_revenue_xlsx,
+    build_expenses_xlsx as build_expenses_xlsx,
+    build_monthly_summary_xlsx as build_monthly_summary_xlsx,
+    build_payroll_xlsx as build_payroll_xlsx,
+    build_revenue_csv as build_revenue_csv,
+    build_revenue_xlsx as build_revenue_xlsx,
 )
-from app.services.signed_links import make_signed_token, verify_signed_token
-from app.services.finance.expenses import list_expense_allocations
-from app.services.finance.revenue import rebuild_revenue_entries_for_report, delete_revenue_entries_for_report, compute_revenue_summary
-from app.services.finance.summary import get_monthly_finance_summary
+from app.services.signed_links import make_signed_token as make_signed_token, verify_signed_token as verify_signed_token
+from app.services.finance.expenses import list_expense_allocations as list_expense_allocations
+from app.services.finance.revenue import rebuild_revenue_entries_for_report as rebuild_revenue_entries_for_report, delete_revenue_entries_for_report as delete_revenue_entries_for_report, compute_revenue_summary as compute_revenue_summary
+from app.services.finance.summary import get_monthly_finance_summary as get_monthly_finance_summary
 from app.services.finance.recurring_expenses import (
-    delete_daily_recurring_accruals_for_date,
-    sync_daily_recurring_accruals_for_date,
+    delete_daily_recurring_accruals_for_date as delete_daily_recurring_accruals_for_date,
+    sync_daily_recurring_accruals_for_date as sync_daily_recurring_accruals_for_date,
 )
 from app.services.payroll.calculator import (
-    PAY_COMPONENT_TYPES,
-    BASE_SCOPE_FULL_PERIOD,
-    BASE_SCOPE_WORKED_DATES,
-    BOOST_RECALC_EXCESS_ONLY,
-    BOOST_RECALC_REPLACE_ALL,
-    BOOST_SOURCE_DEPARTMENT_DAY_PLAN,
-    BOOST_SOURCE_DEPARTMENT_MONTH_PLAN,
-    BOOST_SOURCE_KPI_METRIC,
-    BOOST_SOURCE_NONE,
-    BOOST_SOURCE_VENUE_DAY_PLAN,
-    BOOST_SOURCE_VENUE_MONTH_PLAN,
-    MINIMUM_GUARANTEE_DAY,
-    MINIMUM_GUARANTEE_MONTH,
-    MINIMUM_GUARANTEE_SHIFT,
-    calculate_payroll_for_month,
-    parse_month_start,
+    PAY_COMPONENT_TYPES as PAY_COMPONENT_TYPES,
+    MINIMUM_GUARANTEE_MONTH as MINIMUM_GUARANTEE_MONTH,
+    calculate_payroll_for_month as calculate_payroll_for_month,
+    parse_month_start as parse_month_start,
 )
-from app.services.payroll.day_breakdown import build_member_day_breakdown
-from app.services.payroll.period_summary import resolve_salary_period
-from app.services.tips import build_equal_tip_allocations, build_weighted_by_position_tip_allocations
-from app.services.shifts import normalize_shift_slot
+from app.services.payroll.period_summary import resolve_salary_period as resolve_salary_period
+from app.services.tips import build_equal_tip_allocations as build_equal_tip_allocations, build_weighted_by_position_tip_allocations as build_weighted_by_position_tip_allocations
+from app.services.shifts import normalize_shift_slot as normalize_shift_slot
 from app.services.financial_privacy import (
-    FINANCIAL_VALUES_HIDDEN_MESSAGE,
-    financial_visibility_payload,
-    sanitize_financial_payload_for_user,
-    should_hide_financial_values_for_user,
+    financial_visibility_payload as financial_visibility_payload,
+    sanitize_financial_payload_for_user as sanitize_financial_payload_for_user,
 )
 from app.routers.venue_access import (
-    _has_revenue_view_access,
-    _is_active_member_or_admin,
+    _has_revenue_view_access as _has_revenue_view_access,
     _is_owner_or_super_admin,
-    _is_report_viewer,
     _require_active_member_or_admin,
     _require_owner_or_super_admin,
-    _require_report_viewer,
-    _require_revenue_viewer,
+    _require_report_viewer as _require_report_viewer,
+    _require_revenue_viewer as _require_revenue_viewer,
 )
-from app.routers.venue_economics import router as venue_economics_router
-from app.routers.venue_catalogs import router as venue_catalogs_router
-from app.routers.venue_finance import router as venue_finance_router
 
 
 from app.models.user import User
@@ -97,7 +68,6 @@ from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.models.venue_invite import VenueInvite
 from app.models.venue_position import VenuePosition
-from app.models.venue_setup_state import VenueSetupState
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift
 from app.models.shift_comment import ShiftComment
@@ -112,7 +82,6 @@ from app.models.daily_report_value import DailyReportValue
 from app.models.daily_report_audit import DailyReportAudit
 from app.models.daily_report_tip_allocation import DailyReportTipAllocation
 from app.models.notification_delivery_log import NotificationDeliveryLog
-from app.models.notification_job import NotificationJob
 from app.models.adjustment import Adjustment
 from app.models.adjustment_dispute import AdjustmentDispute
 from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
@@ -122,7 +91,6 @@ from app.models.kpi_metric import KpiMetric
 from app.models.expense_category import ExpenseCategory
 from app.models.supplier import Supplier
 from app.models.expense import Expense
-from app.models.expense_attachment import ExpenseAttachment
 from app.models.expense_allocation import ExpenseAllocation
 from app.models.finance_entry import FinanceEntry
 from app.models.balance_adjustment import BalanceAdjustment
@@ -130,8 +98,7 @@ from app.models.payment_method_transfer import PaymentMethodTransfer
 from app.models.recurring_expense_rule import RecurringExpenseRule
 from app.models.recurring_expense_rule_payment_method import RecurringExpenseRulePaymentMethod
 from app.models.recurring_expense_accrual import RecurringExpenseAccrual
-from app.models.permission import Permission
-from app.models.auth_identity import AuthIdentity
+from app.models.auth_identity import AuthIdentity as AuthIdentity
 from app.models.pay_profile import PayProfile
 from app.models.pay_profile_assignment import PayProfileAssignment
 from app.models.pay_component import PayComponent
@@ -149,18 +116,15 @@ from app.models.department_month_plan import DepartmentMonthPlan
 from app.models.department_day_plan import DepartmentDayPlan
 from app.models.venue_economics_rule import VenueEconomicsRule
 
-from app.auth.venue_permissions import require_venue_permission, has_venue_permission
+from app.auth.venue_permissions import require_venue_permission
 
 from app.services.venues import create_venue
-from app.services.invites import build_invite_link, create_venue_invite, normalize_phone_e164
+from app.services.invites import build_invite_link, create_venue_invite as create_venue_invite, normalize_phone_e164 as normalize_phone_e164
 from app.services.setup import build_setup_summary, build_setup_summary_map
 from app.services.billing import (
-    BILLING_ACCESS_FULL,
     can_grant_self_service_trial,
     get_user_billing_access,
-    get_venue_billing_snapshot,
     grant_self_service_trial,
-    list_billing_transactions,
     send_super_admin_billing_alert_once,
 )
 from app.routers.venue_common import _require_super_admin_or_moderator

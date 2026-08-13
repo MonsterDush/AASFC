@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, date, time, timedelta
+from datetime import datetime, date
 import json
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
-from sqlalchemy import select, delete, update, func, inspect
+from fastapi import HTTPException
+from sqlalchemy import select
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
 from app.services.payroll.calculator import (
-    PAY_COMPONENT_TYPES,
     BASE_SCOPE_FULL_PERIOD,
     BASE_SCOPE_WORKED_DATES,
     BOOST_RECALC_EXCESS_ONLY,
@@ -22,36 +21,17 @@ from app.services.payroll.calculator import (
     MINIMUM_GUARANTEE_DAY,
     MINIMUM_GUARANTEE_MONTH,
     MINIMUM_GUARANTEE_SHIFT,
-    KPI_CALCULATION_FIXED,
-    KPI_CALCULATION_PERCENT,
-    calculate_payroll_for_month,
-    parse_month_start,
 )
-from app.services.payroll.day_breakdown import build_member_day_breakdown
+from app.services.payroll.payroll_types import KPI_CALCULATION_FIXED, KPI_CALCULATION_PERCENT
 from app.routers.venue_access import (
-    _has_revenue_view_access,
-    _is_active_member_or_admin,
     _is_owner_or_super_admin,
-    _is_report_viewer,
-    _require_active_member_or_admin,
-    _require_owner_or_super_admin,
-    _require_report_viewer,
-    _require_revenue_viewer,
 )
 from app.models.user import User
-from app.models.venue_setup_state import VenueSetupState
-from app.models.shift import Shift
-from app.models.shift_assignment import ShiftAssignment
-from app.models.daily_report import DailyReport
-from app.models.adjustment import Adjustment
 from app.models.department import Department
 from app.models.pay_profile import PayProfile
 from app.models.pay_profile_assignment import PayProfileAssignment
 from app.models.pay_component import PayComponent
-from app.models.payroll_run import PayrollRun
-from app.models.payroll_line import PayrollLine
-from app.models.payroll_recalculation_log import PayrollRecalculationLog
-from app.auth.venue_permissions import require_venue_permission, has_venue_permission
+from app.auth.venue_permissions import require_venue_permission
 
 from app.routers.venue_common import (
     BASE_SCOPE_TITLES,

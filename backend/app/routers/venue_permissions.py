@@ -1,18 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
-from sqlalchemy import select, delete, update, func, inspect
-import sqlalchemy as sa
+from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.routers.venue_access import (
-    _has_revenue_view_access,
-    _is_active_member_or_admin,
     _is_owner_or_super_admin,
-    _is_report_viewer,
-    _require_active_member_or_admin,
-    _require_owner_or_super_admin,
-    _require_report_viewer,
-    _require_revenue_viewer,
 )
 from app.models.user import User
 from app.models.venue_member import VenueMember
