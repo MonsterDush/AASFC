@@ -7,7 +7,8 @@ set -euo pipefail
 : "${BOT_SERVICE:?Set BOT_SERVICE}"
 : "${SHIFT_TIMER:?Set SHIFT_TIMER}"
 : "${NOTIFY_TIMER:?Set NOTIFY_TIMER}"
-: "${TG_BOT_TOKEN:?Set TG_BOT_TOKEN}"
+: "${BOT_SERVICE_URL:?Set BOT_SERVICE_URL}"
+: "${BOT_SERVICE_SECRET:?Set BOT_SERVICE_SECRET}"
 
 state_dir="${MONITORING_STATE_DIR:-/var/lib/axelio-monitoring}"
 backup_dir="${BACKUP_DIR:-/var/backups/axelio/prod}"
@@ -115,11 +116,32 @@ send_alert() {
     return 1
   }
   for chat_id in ${normalized_ids}; do
-    curl --fail --silent --show-error --max-time 15 \
-      --request POST \
-      --data-urlencode "chat_id=${chat_id}" \
-      --data-urlencode "text=${message}" \
-      "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" >/dev/null
+    if ! (
+      cd "${repo_dir}/backend"
+      AXELIO_ALERT_CHAT_ID="${chat_id}" \
+      AXELIO_ALERT_MESSAGE="${message}" \
+      "${python_bin}" - <<'PY'
+import os
+import sys
+
+from app.services.tg_notify import notify_result
+
+result = notify_result(
+    int(os.environ["AXELIO_ALERT_CHAT_ID"]),
+    os.environ["AXELIO_ALERT_MESSAGE"],
+)
+if not result.get("ok"):
+    error = str(result.get("error") or "unknown error")[:300]
+    print(
+        f"Bot service delivery failed: status={result.get('status_code')} "
+        f"retryable={result.get('retryable')} error={error}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
+    ); then
+      return 1
+    fi
   done
 }
 

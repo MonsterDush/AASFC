@@ -90,7 +90,9 @@ class MonitoringContractTests(TestCase):
             "open_reconciliation_high",
             "failed_notification_jobs_24h",
             "stale_notification_jobs",
-            "sendMessage",
+            "BOT_SERVICE_URL",
+            "BOT_SERVICE_SECRET",
+            "notify_result",
             "production recovered",
         ):
             self.assertIn(contract, monitor)
@@ -106,6 +108,9 @@ class MonitoringContractTests(TestCase):
             "last-alert.txt",
             "Failed notification job diagnostics",
             "payload and recipients omitted",
+            "BOT_SERVICE_URL",
+            "BOT_SERVICE_SECRET",
+            "notify_result",
             "test alert",
             "production recovered",
             "observability-drill-last-success.timestamp",
