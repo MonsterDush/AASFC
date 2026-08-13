@@ -16,6 +16,7 @@ from app.models.shift_interval import ShiftInterval
 from app.models.user import User
 from app.models.venue import Venue
 from app.models.venue_member import VenueMember
+from app.core.i18n import user_locale
 from app.routers.venue_common import (
     _NOTIFICATION_JOB_MAX_ATTEMPTS,
     _NOTIFICATION_JOB_STATUS_PENDING,
@@ -106,7 +107,11 @@ def _shift_comment_link(*, venue_id: int, shift: Shift, comment_id: int) -> str:
     )
 
 
-def _shift_date_label(shift: Shift, interval: ShiftInterval) -> str:
+def _shift_date_label(shift: Shift, interval: ShiftInterval, *, locale: str = "ru") -> str:
+    if locale == "en":
+        start_time = interval.start_time.strftime("%H:%M")
+        slot_label = "Night" if normalize_shift_slot(getattr(shift, "shift_slot", None)) == "NIGHT" else "Day"
+        return f"{shift.date.strftime('%B')} {shift.date.day} · {slot_label} · {start_time}"
     month = _RU_MONTHS_GENITIVE.get(int(shift.date.month), str(shift.date.month))
     start_time = interval.start_time.strftime("%H:%M")
     slot_label = "Ночь" if normalize_shift_slot(getattr(shift, "shift_slot", None)) == "NIGHT" else "День"
@@ -192,7 +197,6 @@ def _send_shift_comment_notifications(db: Session, *, venue_id: int, comment_id:
         return
 
     author_name = _display_user_name(author)
-    date_label = _shift_date_label(shift, interval)
     comment_text = _comment_preview(comment.text)
     link = _shift_comment_link(venue_id=venue_id, shift=shift, comment_id=int(comment.id))
     seen_chat_ids: set[int] = set()
@@ -211,7 +215,17 @@ def _send_shift_comment_notifications(db: Session, *, venue_id: int, comment_id:
         seen_chat_ids.add(chat_id)
 
         reasons = item["reasons"]
-        if "reply" in reasons and "mention" in reasons:
+        locale = user_locale(recipient)
+        date_label = _shift_date_label(shift, interval, locale=locale)
+        if locale == "en" and "reply" in reasons and "mention" in reasons:
+            title = "You were mentioned in a shift comment reply"
+        elif locale == "en" and "reply" in reasons:
+            title = "Someone replied to your shift comment"
+        elif locale == "en" and "mention" in reasons:
+            title = "You were mentioned in a shift comment"
+        elif locale == "en":
+            title = "New comment on your shift"
+        elif "reply" in reasons and "mention" in reasons:
             title = "Вас упомянули в ответе к смене"
         elif "reply" in reasons:
             title = "Вам ответили в комментариях к смене"
@@ -219,7 +233,11 @@ def _send_shift_comment_notifications(db: Session, *, venue_id: int, comment_id:
             title = "Вас упомянули в комментарии к смене"
         else:
             title = "Новый комментарий к вашей смене"
-        text = f"{title} в «{venue.name}»\n{date_label}\nОт: {author_name}\n\n{comment_text}"
+        text = (
+            f'{title} at "{venue.name}"\n{date_label}\nFrom: {author_name}\n\n{comment_text}'
+            if locale == "en"
+            else f"{title} в «{venue.name}»\n{date_label}\nОт: {author_name}\n\n{comment_text}"
+        )
 
         ok, retryable_error = _deliver_user_notification(
             db,
@@ -229,7 +247,7 @@ def _send_shift_comment_notifications(db: Session, *, venue_id: int, comment_id:
             idempotency_key=f"shift_comment:{int(comment.id)}:{notification_dedupe_scope(recipient)}",
             text=text,
             url=link,
-            button_text="Открыть комментарий",
+            button_text="Open comment" if locale == "en" else "Открыть комментарий",
             shift_id=int(shift.id),
             shift_assignment_id=item.get("assignment_id"),
         )

@@ -6,7 +6,18 @@
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/settings.css?v=20260725-polish5" />
-  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
+  <script src="/page-loader.js?v=20260813-i18n5"></script>
   <title>Axelio · Настройки</title>
 </head>
 <body class="settings-page">
@@ -60,7 +71,7 @@
         <span class="settings-card__eyebrow">Интерфейс</span>
         <b>Язык интерфейса</b>
       </div>
-      <div class="muted mt-6">Выберите язык интерфейса. Не волнуйтесь, это не повлияет на язык Telegram.</div>
+      <div class="muted mt-6">Выбранный язык используется в интерфейсе и уведомлениях Axelio в Telegram.</div>
       <div class="settings-actions mt-10">
         <button class="btn" id="langRu">Русский</button>
         <button class="btn" id="langEn">English</button>
@@ -191,7 +202,7 @@
       getStoredDemoUiState,
       isDemoReadonlyUi,
       getDemoMonthLabel,
-    } from "/app.js?v=20260726-navmore1";
+    } from "/app.js?v=20260813-i18n1";
 
     applyTelegramTheme();
     mountCommonUI("settings");
@@ -226,8 +237,19 @@
       hint.textContent = lang === "en" ? "Current language: English" : "Текущий язык: Русский";
     };
     paintLang();
-    document.getElementById("langRu").onclick = () => { setLang("ru"); location.reload(); };
-    document.getElementById("langEn").onclick = () => { setLang("en"); location.reload(); };
+    async function selectLanguage(locale) {
+      setLang(locale);
+      try {
+        await api("/me/profile", { method: "PATCH", body: { preferred_locale: locale } });
+      } catch {
+        // Local preference still applies for public pages and temporary API failures.
+      }
+      const target = new URL(location.href);
+      target.searchParams.delete("lang");
+      location.assign(target.toString());
+    }
+    document.getElementById("langRu").onclick = () => { void selectLanguage("ru"); };
+    document.getElementById("langEn").onclick = () => { void selectLanguage("en"); };
 
     const themeSel = document.getElementById("themeSelect");
     const themeHint = document.getElementById("themeHint");

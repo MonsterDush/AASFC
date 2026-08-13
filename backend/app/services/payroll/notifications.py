@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.venue_permissions import has_venue_permission
+from app.core.i18n import user_locale
 from app.models import Expense, PayrollPaymentSettings, User, Venue, VenueMember
 from app.services import tg_notify
 from app.services.notification_logs import (
@@ -45,7 +46,19 @@ def build_payroll_draft_ready_text(
     venue_name: str,
     window: PayrollPaymentWindow,
     amount_minor: int,
+    locale: str = "ru",
 ) -> str:
+    if locale == "en":
+        return "\n".join(
+            (
+                "💼 Payroll calculated",
+                venue_name,
+                f"Period: {_format_date(window.period_start)}–{_format_date(window.period_end)}",
+                f"Amount due: {_format_money_minor(amount_minor)}",
+                f"Payment date: {_format_date(window.payment_date)}",
+                "An expense draft was created. Review and confirm it before payment.",
+            )
+        )
     return "\n".join(
         (
             "💼 ФОТ рассчитан",
@@ -63,24 +76,46 @@ def build_employee_payroll_period_text(
     venue_name: str,
     window: PayrollPaymentWindow,
     summary: dict,
+    locale: str = "ru",
 ) -> str:
     totals = summary.get("totals") or {}
     items = summary.get("items") or []
     shifts_count = sum(int(item.get("days_count") or 0) for item in items)
-    lines = [
-        "💰 Начисления за расчётный период",
-        venue_name,
-        f"Период: {_format_date(window.period_start)}–{_format_date(window.period_end)}",
-        f"Начислено: {_format_money_minor(totals.get('net_minor'))}",
-        f"Смен: {shifts_count}",
-    ]
+    if locale == "en":
+        lines = [
+            "💰 Pay for the period",
+            venue_name,
+            f"Period: {_format_date(window.period_start)}–{_format_date(window.period_end)}",
+            f"Accrued: {_format_money_minor(totals.get('net_minor'))}",
+            f"Shifts: {shifts_count}",
+        ]
+    else:
+        lines = [
+            "💰 Начисления за расчётный период",
+            venue_name,
+            f"Период: {_format_date(window.period_start)}–{_format_date(window.period_end)}",
+            f"Начислено: {_format_money_minor(totals.get('net_minor'))}",
+            f"Смен: {shifts_count}",
+        ]
     bonuses_minor = int(totals.get("bonuses_minor") or 0)
     penalties_minor = int(totals.get("penalties_minor") or 0)
     if bonuses_minor:
-        lines.append(f"Премии: +{_format_money_minor(bonuses_minor)}")
+        lines.append(
+            f"Bonuses: +{_format_money_minor(bonuses_minor)}"
+            if locale == "en"
+            else f"Премии: +{_format_money_minor(bonuses_minor)}"
+        )
     if penalties_minor:
-        lines.append(f"Штрафы и списания: −{_format_money_minor(penalties_minor)}")
-    lines.append(f"Выплата запланирована на {_format_date(window.payment_date)}.")
+        lines.append(
+            f"Adjustments and deductions: −{_format_money_minor(penalties_minor)}"
+            if locale == "en"
+            else f"Штрафы и списания: −{_format_money_minor(penalties_minor)}"
+        )
+    lines.append(
+        f"Payment is scheduled for {_format_date(window.payment_date)}."
+        if locale == "en"
+        else f"Выплата запланирована на {_format_date(window.payment_date)}."
+    )
     return "\n".join(lines)
 
 
@@ -89,7 +124,18 @@ def build_due_draft_expenses_text(
     venue_name: str,
     draft_count: int,
     amount_minor: int,
+    locale: str = "ru",
 ) -> str:
+    if locale == "en":
+        return "\n".join(
+            (
+                "🧾 Expense drafts await confirmation",
+                venue_name,
+                f"Expenses: {int(draft_count)}",
+                f"Total: {_format_money_minor(amount_minor)}",
+                "Review them and confirm the paid expenses.",
+            )
+        )
     return "\n".join(
         (
             "🧾 Черновые расходы ждут подтверждения",
@@ -201,13 +247,15 @@ def send_payroll_window_notifications(
         statuses="DRAFT",
         expense_kind="PAYROLL",
     )
-    manager_text = build_payroll_draft_ready_text(
-        venue_name=venue_name,
-        window=window,
-        amount_minor=amount_minor,
-    )
     managers_sent = 0
     for recipient in list_expense_notification_recipients(db, venue_id=venue_id):
+        locale = user_locale(recipient)
+        manager_text = build_payroll_draft_ready_text(
+            venue_name=venue_name,
+            window=window,
+            amount_minor=amount_minor,
+            locale=locale,
+        )
         managers_sent += int(
             _send_once(
                 db,
@@ -217,7 +265,7 @@ def send_payroll_window_notifications(
                 venue_id=venue_id,
                 text=manager_text,
                 url=manager_url,
-                button_text="Открыть черновик",
+                button_text="Open draft" if locale == "en" else "Открыть черновик",
             )
         )
 
@@ -244,6 +292,7 @@ def send_payroll_window_notifications(
                 venue_name=venue_name,
                 window=window,
                 summary=summary,
+                locale=user_locale(recipient),
             )
             employees_sent += int(
                 _send_once(
@@ -254,7 +303,7 @@ def send_payroll_window_notifications(
                     venue_id=venue_id,
                     text=employee_text,
                     url=salary_url,
-                    button_text="Открыть начисления",
+                    button_text="Open pay details" if user_locale(recipient) == "en" else "Открыть начисления",
                 )
             )
 
@@ -278,11 +327,7 @@ def send_due_draft_expense_reminders_once(db: Session, *, today: date) -> int:
     sent = 0
     for venue_id, draft_count, amount_minor in rows:
         venue_id_int = int(venue_id)
-        text = build_due_draft_expenses_text(
-            venue_name=_venue_name(db, venue_id=venue_id_int),
-            draft_count=int(draft_count or 0),
-            amount_minor=int(amount_minor or 0),
-        )
+        venue_name = _venue_name(db, venue_id=venue_id_int)
         url = _frontend_url(
             "/owner-expenses.html",
             venue_id=venue_id_int,
@@ -290,6 +335,13 @@ def send_due_draft_expense_reminders_once(db: Session, *, today: date) -> int:
             statuses="DRAFT",
         )
         for recipient in list_expense_notification_recipients(db, venue_id=venue_id_int):
+            locale = user_locale(recipient)
+            text = build_due_draft_expenses_text(
+                venue_name=venue_name,
+                draft_count=int(draft_count or 0),
+                amount_minor=int(amount_minor or 0),
+                locale=locale,
+            )
             sent += int(
                 _send_once(
                     db,
@@ -299,7 +351,7 @@ def send_due_draft_expense_reminders_once(db: Session, *, today: date) -> int:
                     venue_id=venue_id_int,
                     text=text,
                     url=url,
-                    button_text="Открыть черновики",
+                    button_text="Open drafts" if locale == "en" else "Открыть черновики",
                 )
             )
     return sent

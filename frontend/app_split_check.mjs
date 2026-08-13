@@ -68,10 +68,10 @@ const apiCallManifest = Array.from(
   facadeSources.join("\n").matchAll(/\bapi\(\s*(`[^`]+`|"[^"]+"|'[^']+')/g),
   (match) => match[1],
 ).sort();
-assert.equal(apiCallManifest.length, 69);
+assert.equal(apiCallManifest.length, 71);
 assert.equal(
   crypto.createHash("sha256").update(JSON.stringify(apiCallManifest)).digest("hex"),
-  "0ea66d6c9457738dd523073a40681fd4293c1de711c0d5a8a78675e3e0daff8c",
+  "730e3df884e8c91c60f11cea3827462192303fd73f2e6cb04b95bbceec9da097",
 );
 
 const authCalls = [];
@@ -158,7 +158,7 @@ function sourceFiles(directory) {
 let consumerCount = 0;
 for (const filePath of sourceFiles(frontendDir)) {
   const source = fs.readFileSync(filePath, "utf8");
-  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20260726-navmore1["']/g)) {
+  for (const match of source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*["']\/app\.js\?v=20260813-i18n1["']/g)) {
     consumerCount += 1;
     const imported = match[1].split(",").map((entry) => entry.trim().split(/\s+as\s+/)[0]).filter(Boolean);
     for (const name of imported) assert.ok(EXPECTED_EXPORTS.includes(name), `${path.basename(filePath)} imports missing ${name}`);

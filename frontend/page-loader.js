@@ -29,8 +29,8 @@
     overlay.innerHTML = `
       <div class="page-loader__panel">
         <div class="page-loader__spinner" aria-hidden="true"></div>
-        <div class="page-loader__title">Загружаем страницу</div>
-        <div class="page-loader__hint">Собираем данные и доступные действия</div>
+        <div class="page-loader__title">${document.documentElement.lang === "en" ? "Loading page" : "Загружаем страницу"}</div>
+        <div class="page-loader__hint">${document.documentElement.lang === "en" ? "Preparing data and available actions" : "Собираем данные и доступные действия"}</div>
       </div>
     `;
     document.body.appendChild(overlay);

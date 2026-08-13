@@ -338,8 +338,12 @@ assert.equal(htmlPageFiles.length, 50, "every frontend HTML page must use the gl
 for (const fileName of htmlPageFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.ok(
-    source.includes('<script src="/page-loader.js?v=20260802-navbuttons1"></script>'),
+    source.includes('<script src="/page-loader.js?v=20260813-i18n5"></script>'),
     `${fileName} page loader cache key is stale`,
+  );
+  assert.ok(
+    source.includes('<script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>'),
+    `${fileName} i18n bootstrap is missing`,
   );
   assert.ok(
     source.includes(`href="/styles.css?v=${globalStyleCacheKey}"`),

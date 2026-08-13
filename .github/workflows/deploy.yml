@@ -120,7 +120,9 @@ jobs:
             xargs -0 -n1 node --check
 
       - name: Enforce frontend performance budgets
-        run: pnpm test:budgets
+        run: |
+          pnpm test:budgets
+          pnpm test:i18n
 
       - name: Run frontend contracts
         run: |

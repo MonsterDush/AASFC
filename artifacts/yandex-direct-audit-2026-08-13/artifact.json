@@ -1,0 +1,408 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Яндекс Директ Axelio: проверка 13 августа",
+    "description": "Проверка бюджета, целей и качества поискового трафика кампании 713475854.",
+    "generatedAt": "2026-08-13T15:52:50+03:00",
+    "sources": [
+      {
+        "id": "direct_performance",
+        "label": "Яндекс Директ — кампания и группы 713475854, 11–13 августа 2026 года",
+        "href": "https://direct.yandex.ru/dna/grid/groups?campaigns-ids=713475854",
+        "query": {
+          "engine": "SQLite",
+          "language": "SQL",
+          "description": "Воспроизводимый снимок проверенных вручную строк интерфейса Яндекс Директа.",
+          "executed_at": "2026-08-13T15:52:50+03:00",
+          "filters": ["Кампания 713475854", "11–13 августа 2026 года"],
+          "metric_definitions": ["CTR = клики / показы", "CPC = расход / клики", "Конверсии = достижения выбранных целей, атрибутированные кампании"],
+          "sql": "WITH groups(group_name, group_id, spend_rub, impressions, clicks, conversions, cpc_rub, ctr, bounce_rate) AS (\n  VALUES\n    ('Базовые задачи', '5784724145', 661.41, 286, 21, 0, 31.50, 0.0734, 0.7857),\n    ('Управление заведением | Основной спрос', '5784685243', 355.70, 121, 7, 0, 50.81, 0.0579, 0.4286),\n    ('Другие сервисы', '5784726269', 0.00, 2, 0, 0, NULL, 0.0000, NULL)\n)\nSELECT * FROM groups;"
+        }
+      },
+      {
+        "id": "direct_queries",
+        "label": "Яндекс Директ — поисковые запросы с кликами, 11–13 августа 2026 года",
+        "href": "https://direct.yandex.ru/dna/reports/library/search-queries?campaignIds=713475854&from=2026-08-11&to=2026-08-13",
+        "query": {
+          "engine": "SQLite",
+          "language": "SQL",
+          "description": "Воспроизводимый снимок проверенных вручную поисковых запросов с кликами.",
+          "executed_at": "2026-08-13T15:45:00+03:00",
+          "filters": ["Кампания 713475854", "11–13 августа 2026 года", "Клики больше нуля"],
+          "sql": "WITH queries(query_text, spend_rub, impressions, clicks, conversions) AS (\n  VALUES\n    ('график смен онлайн', 152.49, 38, 4, 0),\n    ('онлайн график работы', 45.78, 3, 1, 0),\n    ('онлайн график смен', 41.55, 5, 1, 0),\n    ('график работы онлайн', 29.87, 5, 1, 0),\n    ('калькулятор сотрудника приложение для сотрудника', 27.82, 2, 1, 0),\n    ('заполнить график работы онлайн', 27.47, 1, 1, 0),\n    ('график 2 на 2', 23.44, 1, 1, 0),\n    ('график 2 2 онлайн', 20.33, 1, 1, 0),\n    ('график 3 2 в месяц с 10ю выходными', 14.91, 1, 1, 0),\n    ('график 3 3 онлайн', 10.31, 1, 1, 0)\n)\nSELECT * FROM queries;"
+        }
+      },
+      {
+        "id": "direct_settings",
+        "label": "Яндекс Директ — бюджет, стратегия и ценности целей кампании 713475854",
+        "href": "https://direct.yandex.ru/dna/campaigns-edit/?campaigns-ids=713475854",
+        "query": {
+          "engine": "SQLite",
+          "language": "SQL",
+          "description": "Воспроизводимый снимок проверенных вручную настроек кампании.",
+          "executed_at": "2026-08-13T15:40:00+03:00",
+          "sql": "WITH campaign_settings(campaign_id, weekly_budget_rub, strategy, counter_id, signup_value_rub, venue_value_rub, payment_value_rub) AS (\n  VALUES (713475854, 4000, 'Максимум кликов с ручными ставками', 108617620, 200, 750, 2990)\n)\nSELECT * FROM campaign_settings;"
+        }
+      },
+      {
+        "id": "metrika_goals",
+        "label": "Яндекс Метрика — список целей счётчика Axelio 108617620",
+        "href": "https://metrika.yandex.ru/settings?id=108617620"
+      }
+    ],
+    "cards": [
+      {
+        "id": "spend_card",
+        "description": "Расход кампании с момента запуска 11 августа.",
+        "dataset": "summary",
+        "sourceId": "direct_performance",
+        "metrics": [
+          { "label": "Расход", "field": "spend", "format": "currency" }
+        ]
+      },
+      {
+        "id": "impressions_card",
+        "description": "Количество показов рекламы.",
+        "dataset": "summary",
+        "sourceId": "direct_performance",
+        "metrics": [
+          { "label": "Показы", "field": "impressions", "format": "number" }
+        ]
+      },
+      {
+        "id": "clicks_card",
+        "description": "Количество переходов по объявлениям.",
+        "dataset": "summary",
+        "sourceId": "direct_performance",
+        "metrics": [
+          { "label": "Клики", "field": "clicks", "format": "number" }
+        ]
+      },
+      {
+        "id": "conversions_card",
+        "description": "Достижения трёх целей, атрибутированные рекламе.",
+        "dataset": "summary",
+        "sourceId": "direct_performance",
+        "metrics": [
+          { "label": "Конверсии", "field": "conversions", "format": "number" }
+        ]
+      },
+      {
+        "id": "budget_card",
+        "description": "Текущий недельный бюджет кампании.",
+        "dataset": "summary",
+        "sourceId": "direct_settings",
+        "metrics": [
+          { "label": "Бюджет в неделю", "field": "weekly_budget", "format": "currency" }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "query_spend_chart",
+        "title": "Расход по запросам вокруг составления графика",
+        "subtitle": "Запросы с кликами, 11–13 августа 2026 года; конверсий по ним не зафиксировано",
+        "showDescription": true,
+        "question": "Какие фактические запросы уже показывают слишком широкий пользовательский интерес?",
+        "rationale": "Горизонтальные столбцы позволяют сравнить расходы по длинным текстовым запросам.",
+        "type": "horizontalBar",
+        "dataset": "schedule_queries",
+        "sourceId": "direct_queries",
+        "encodings": {
+          "x": {
+            "field": "query",
+            "type": "nominal",
+            "label": "Поисковый запрос"
+          },
+          "y": {
+            "field": "spend",
+            "type": "quantitative",
+            "format": "currency",
+            "label": "Расход"
+          },
+          "tooltip": [
+            { "field": "clicks", "type": "quantitative", "label": "Клики" },
+            { "field": "impressions", "type": "quantitative", "label": "Показы" },
+            { "field": "group", "type": "nominal", "label": "Группа" }
+          ]
+        },
+        "valueFormat": "currency",
+        "layout": "full",
+        "maxRows": 10,
+        "compatibleTypes": ["horizontalBar", "bar", "leaderboard"]
+      }
+    ],
+    "tables": [
+      {
+        "id": "groups_table",
+        "title": "Результаты по группам",
+        "subtitle": "С момента запуска 11 августа по 13 августа 2026 года",
+        "showDescription": true,
+        "dataset": "groups",
+        "defaultSort": { "field": "spend", "direction": "desc" },
+        "density": "spacious",
+        "sourceId": "direct_performance",
+        "layout": "full",
+        "columns": [
+          { "field": "group", "label": "Группа", "type": "text" },
+          { "field": "spend", "label": "Расход", "format": "currency" },
+          { "field": "impressions", "label": "Показы", "format": "number" },
+          { "field": "clicks", "label": "Клики", "format": "number" },
+          { "field": "ctr", "label": "CTR", "format": "percent" },
+          { "field": "cpc", "label": "CPC", "format": "currency" },
+          { "field": "bounce_rate", "label": "Отказы", "format": "percent" },
+          { "field": "conversions", "label": "Конверсии", "format": "number" }
+        ]
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Яндекс Директ Axelio: проверка 13 августа"
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\n- **Настройки сохранены корректно.** Бюджет составляет 4 000 ₽ в неделю; цели «Самостоятельная регистрация», «Первое заведение и пробный доступ» и «Оплата подписки» привязаны со значениями 200 ₽, 750 ₽ и 2 990 ₽.\n- **Расширять список слов сейчас не нужно.** За первые дни кампания получила 409 показов и 28 кликов, но рекламных конверсий пока нет.\n- **Часть трафика уже можно признать слишком широкой.** Группа «Базовые задачи» забрала 65% расхода и 75% кликов, а доля отказов достигла 78,6%.\n- **Рекомендация:** сначала убрать запросы про составление графиков и сузить автотаргетинг, затем накопить хотя бы 50–100 квалифицированных кликов."
+      },
+      {
+        "id": "headline_metrics",
+        "type": "metric-strip",
+        "cardIds": [
+          "spend_card",
+          "impressions_card",
+          "clicks_card",
+          "conversions_card",
+          "budget_card"
+        ]
+      },
+      {
+        "id": "settings_findings",
+        "type": "markdown",
+        "body": "## Бюджет и цели настроены, но алгоритму пока не на чем учиться\n\n**Текущая конфигурация:** 4 000 ₽ в неделю, стратегия «Максимум кликов с ручными ставками», счётчик Метрики 108617620 и три целевых действия. Новая цель «Оплата подписки» существует в Метрике и корректно отображается в Директе.\n\nЦенности 200 → 750 → 2 990 ₽ логично отражают движение пользователя по воронке. Но при нуле рекламных конверсий они пока не дают алгоритму обучающего сигнала. Значение 2 990 ₽ уместно, если это реальная сумма первого платежа; если это тариф или пожизненная ценность клиента, экономический смысл цели стоит уточнить.\n\nВажно: 4 000 ₽ в неделю — это примерно 17,3 тыс. ₽ в среднем месяце, а не прежние 4 000 ₽ в месяц."
+      },
+      {
+        "id": "traffic_findings",
+        "type": "markdown",
+        "body": "## Трафик есть, но большая часть пока недостаточно целевая\n\n**Группа «Базовые задачи» расходует бюджет быстрее остальных, но даёт самую слабую вовлечённость.** На неё приходится 661 ₽ расхода, 21 из 28 кликов и 78,6% отказов. Основная группа получила только 7 кликов, но её доля отказов заметно ниже — 42,9%.\n\nГруппа «Другие сервисы» после прохождения модерации набрала только 2 показа и 0 кликов. Делать вывод о запросах iiko, r_keeper, Quick Resto, Saby Presto и Restik пока невозможно."
+      },
+      {
+        "id": "groups_evidence",
+        "type": "table",
+        "tableId": "groups_table"
+      },
+      {
+        "id": "query_findings",
+        "type": "markdown",
+        "body": "## Запросы про составление графиков забирают клики без результата\n\n**Фактические запросы показывают смешанный пользовательский интерес:** люди ищут калькуляторы и шаблоны графиков 2/2, 3/3 и заполнение расписания онлайн. Это не тот же самый запрос, что управление сменами, финансами и сотрудниками заведения.\n\nПоказанные ниже запросы уже израсходовали 394 ₽ и дали 13 кликов без конверсий — около 39% текущего расхода кампании и 46% всех кликов."
+      },
+      {
+        "id": "query_evidence",
+        "type": "chart",
+        "chartId": "query_spend_chart"
+      },
+      {
+        "id": "query_interpretation",
+        "type": "markdown",
+        "body": "### Как это интерпретировать\n\nОбщий объём данных ещё мал для оценки конверсии продукта, но уже достаточен для исключения запросов с очевидно другим намерением. Продолжать покупать тот же трафик только ради большей выборки нецелесообразно."
+      },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "body": "## Что изменить сейчас\n\n1. **Не добавлять новые широкие слова.** Сначала очистить текущий трафик.\n2. **Приостановить фразы «график смен онлайн» и «график работы онлайн»** либо вынести их в отдельный эксперимент с очень низкой ставкой.\n3. **Отключить категорию «Узкие запросы» автотаргетинга** в группе «Базовые задачи», оставив только целевые запросы.\n4. **Добавить минус-слова:** `2/2`, `2 на 2`, `3/3`, `калькулятор`, `заполнить`, `составить`, `шаблон`, `табель`.\n5. **Основную группу пока оставить**, но после следующих 15–20 кликов проверить запросы и цену перехода повторно.\n6. **Группу конкурентов не оценивать до набора хотя бы 5–10 кликов** или 50–100 показов после модерации."
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## Что ещё нужно решить\n\n- Бюджет 4 000 ₽ в неделю установлен намеренно или всё-таки нужен лимит около 4 000 ₽ в месяц?\n- 2 990 ₽ — фактическая сумма первого платежа или условная ценность подписчика?\n- После очистки трафика: получим ли мы 50–100 квалифицированных кликов и хотя бы 3–5 регистраций? Только тогда будет смысл сравнивать конверсию групп и обсуждать автоматическую стратегию по целям."
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Ограничения проверки\n\nКампания запущена 11 августа, поэтому наблюдаемое окно составляет лишь несколько дней. Ноль конверсий на 28 кликах сам по себе ещё не доказывает отсутствие спроса. Вывод об изменении слов основан не только на конверсии, а на сочетании фактических поисковых формулировок, высокой доли отказов и концентрации расхода в слишком широкой группе."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-13T15:52:50+03:00",
+    "status": "ready",
+    "datasets": {
+      "summary": [
+        {
+          "spend": 1017.11,
+          "impressions": 409,
+          "clicks": 28,
+          "conversions": 0,
+          "cpc": 36.33,
+          "ctr": 0.0685,
+          "bounce_rate": 0.6667,
+          "weekly_budget": 4000,
+          "monthly_budget_equivalent": 17333.33
+        }
+      ],
+      "groups": [
+        {
+          "group": "Базовые задачи",
+          "group_id": "5784724145",
+          "spend": 661.41,
+          "impressions": 286,
+          "clicks": 21,
+          "conversions": 0,
+          "cpc": 31.5,
+          "ctr": 0.0734,
+          "bounce_rate": 0.7857
+        },
+        {
+          "group": "Управление заведением | Основной спрос",
+          "group_id": "5784685243",
+          "spend": 355.7,
+          "impressions": 121,
+          "clicks": 7,
+          "conversions": 0,
+          "cpc": 50.81,
+          "ctr": 0.0579,
+          "bounce_rate": 0.4286
+        },
+        {
+          "group": "Другие сервисы",
+          "group_id": "5784726269",
+          "spend": 0,
+          "impressions": 2,
+          "clicks": 0,
+          "conversions": 0,
+          "cpc": null,
+          "ctr": 0,
+          "bounce_rate": null
+        }
+      ],
+      "schedule_queries": [
+        {
+          "query": "график смен онлайн",
+          "spend": 152.49,
+          "impressions": 38,
+          "clicks": 4,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Пословное",
+          "source_kind": "Ключевая фраза"
+        },
+        {
+          "query": "онлайн график работы",
+          "spend": 45.78,
+          "impressions": 3,
+          "clicks": 1,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Пословное",
+          "source_kind": "Ключевая фраза"
+        },
+        {
+          "query": "онлайн график смен",
+          "spend": 41.55,
+          "impressions": 5,
+          "clicks": 1,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Пословное",
+          "source_kind": "Ключевая фраза"
+        },
+        {
+          "query": "график работы онлайн",
+          "spend": 29.87,
+          "impressions": 5,
+          "clicks": 1,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Пословное",
+          "source_kind": "Ключевая фраза"
+        },
+        {
+          "query": "калькулятор сотрудника приложение для сотрудника",
+          "spend": 27.82,
+          "impressions": 2,
+          "clicks": 1,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Автотаргетинг",
+          "source_kind": "Автотаргетинг"
+        },
+        {
+          "query": "заполнить график работы онлайн",
+          "spend": 27.47,
+          "impressions": 1,
+          "clicks": 1,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Автотаргетинг",
+          "source_kind": "Автотаргетинг"
+        },
+        {
+          "query": "график 2 на 2",
+          "spend": 23.44,
+          "impressions": 1,
+          "clicks": 1,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Автотаргетинг",
+          "source_kind": "Автотаргетинг"
+        },
+        {
+          "query": "график 2 2 онлайн",
+          "spend": 20.33,
+          "impressions": 1,
+          "clicks": 1,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Автотаргетинг",
+          "source_kind": "Автотаргетинг"
+        },
+        {
+          "query": "график 3 2 в месяц с 10ю выходными",
+          "spend": 14.91,
+          "impressions": 1,
+          "clicks": 1,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Автотаргетинг",
+          "source_kind": "Автотаргетинг"
+        },
+        {
+          "query": "график 3 3 онлайн",
+          "spend": 10.31,
+          "impressions": 1,
+          "clicks": 1,
+          "conversions": 0,
+          "group": "Базовые задачи",
+          "match_type": "Автотаргетинг",
+          "source_kind": "Автотаргетинг"
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "direct_performance",
+      "label": "Яндекс Директ — кампания и группы 713475854",
+      "href": "https://direct.yandex.ru/dna/grid/groups?campaigns-ids=713475854"
+    },
+    {
+      "id": "direct_queries",
+      "label": "Яндекс Директ — отчёт по поисковым запросам",
+      "href": "https://direct.yandex.ru/dna/reports/library/search-queries?campaignIds=713475854&from=2026-08-11&to=2026-08-13"
+    },
+    {
+      "id": "direct_settings",
+      "label": "Яндекс Директ — настройки кампании 713475854",
+      "href": "https://direct.yandex.ru/dna/campaigns-edit/?campaigns-ids=713475854"
+    },
+    {
+      "id": "metrika_goals",
+      "label": "Яндекс Метрика — цели счётчика 108617620",
+      "href": "https://metrika.yandex.ru/settings?id=108617620"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ class User(Base):
     # Профиль
     full_name: Mapped[str | None] = mapped_column(String(128), nullable=True)  # ФИО
     short_name: Mapped[str | None] = mapped_column(String(64), nullable=True)  # Краткое имя (для UI)
+    preferred_locale: Mapped[str | None] = mapped_column(String(8), nullable=True)
 
     # храним строкой, а в коде валидируем enum-ом
     system_role: Mapped[str] = mapped_column(String(32), default="NONE", nullable=False)

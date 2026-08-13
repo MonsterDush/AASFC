@@ -13,6 +13,7 @@ from app.auth.deps import get_current_user, get_current_user_optional
 from app.auth.venue_permissions import require_venue_permission
 from app.core.config import settings
 from app.core.db import get_db
+from app.core.i18n import user_locale
 from app.models.balance_adjustment import BalanceAdjustment
 from app.models.department import Department
 from app.models.daily_report import DailyReport
@@ -706,6 +707,7 @@ def export_finance_entries(
         _require_active_member_or_admin(db, venue_id=venue_id, user=user)
         _require_finance_ledger_view(db, venue_id=venue_id, user=user)
         _require_financial_values_export_allowed(user)
+        export_user = user
 
     period = _resolve_ledger_period(month=month, date_from=date_from, date_to=date_to)
     if period is None:
@@ -746,6 +748,7 @@ def export_finance_entries(
         period_end=period_end,
         rows=rows,
         filters=filters,
+        locale=user_locale(export_user),
     )
     filename = f"finance_ledger_{venue_id}_{period_start.isoformat()}_{period_end.isoformat()}.xlsx"
     return StreamingResponse(

@@ -68,6 +68,7 @@ from app.routers.venue_payroll_support import (
     _build_venue_payroll_period_payload,
     _load_payroll_payload,
 )
+from app.core.i18n import user_locale
 
 
 router = APIRouter()
@@ -435,6 +436,7 @@ def _build_revenue_export_response(
     db: Session,
     user: User | None = None,
     base_url: str | None = None,
+    locale: str | None = None,
 ):
     """Build streaming export response.
 
@@ -447,6 +449,7 @@ def _build_revenue_export_response(
         _require_revenue_exporter(db, venue_id=venue_id, user=user)
         _require_financial_values_export_allowed(user)
 
+    export_locale = locale or user_locale(user)
     summary = _compute_revenue_summary(
         venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db
     )
@@ -464,6 +467,7 @@ def _build_revenue_export_response(
             rows=summary["rows"],
             total=int(summary["total"]),
             closed_reports=int(summary["closed_reports"]),
+            locale=export_locale,
         )
         filename = f"revenue_{safe_venue}_{period_label}_{mode_label}.csv"
         return StreamingResponse(
@@ -489,6 +493,7 @@ def _build_revenue_export_response(
         closed_reports=int(summary["closed_reports"]),
         report_rows=report_rows,
         value_rows=value_rows,
+        locale=export_locale,
     )
     filename = f"revenue_{safe_venue}_{period_label}_{mode_label}.xlsx"
     return StreamingResponse(
@@ -589,7 +594,8 @@ def export_revenue(
         date_to = date.fromisoformat(date_to_raw) if date_to_raw else None
         mode = str(payload.get("mode") or mode or "DEPARTMENTS").upper().strip()
         fmt = str(payload.get("fmt") or fmt or "xlsx").lower().strip()
-        _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
+        signed_user = _load_user_for_signed_export(db, payload)
+        _require_financial_values_export_allowed(signed_user)
 
         return _build_revenue_export_response(
             venue_id=venue_id,
@@ -601,6 +607,7 @@ def export_revenue(
             db=db,
             user=None,
             base_url=str(request.base_url).rstrip("/"),
+            locale=user_locale(signed_user),
         )
 
     if user is None:
@@ -629,11 +636,13 @@ def _build_expenses_export_response(
     db: Session,
     user: User | None = None,
     base_url: str | None = None,
+    locale: str | None = None,
 ):
     if user is not None:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
         _require_financial_values_export_allowed(user)
 
+    export_locale = locale or user_locale(user)
     period_label = month or datetime.utcnow().strftime("%Y-%m")
     venue_name = _load_export_venue_name(db, venue_id=venue_id)
     safe_venue = _safe_export_venue_slug(venue_name, venue_id)
@@ -653,6 +662,7 @@ def _build_expenses_export_response(
         venue_name=venue_name,
         rows=rows,
         total_minor=total_minor,
+        locale=export_locale,
     )
     filename = f"expenses_{safe_venue}_{period_label}.xlsx"
     return StreamingResponse(
@@ -736,7 +746,8 @@ def export_expenses(
         supplier_id = int(payload.get("supplier_id")) if payload.get("supplier_id") is not None else None
         statuses = payload.get("statuses") or None
         expense_kind = payload.get("expense_kind") or None
-        _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
+        signed_user = _load_user_for_signed_export(db, payload)
+        _require_financial_values_export_allowed(signed_user)
         return _build_expenses_export_response(
             venue_id=venue_id,
             month=month,
@@ -747,6 +758,7 @@ def export_expenses(
             db=db,
             user=None,
             base_url=str(request.base_url).rstrip("/"),
+            locale=user_locale(signed_user),
         )
 
     if user is None:
@@ -773,6 +785,7 @@ def _build_monthly_summary_export_response(
     date_to: date | None = None,
     db: Session,
     user: User | None = None,
+    locale: str | None = None,
 ):
     if user is not None:
         _require_active_member_or_admin(db, venue_id=venue_id, user=user)
@@ -780,6 +793,7 @@ def _build_monthly_summary_export_response(
         _require_report_viewer(db, venue_id=venue_id, user=user)
         _require_financial_values_export_allowed(user)
 
+    export_locale = locale or user_locale(user)
     venue_name = _load_export_venue_name(db, venue_id=venue_id)
     safe_venue = _safe_export_venue_slug(venue_name, venue_id)
     payments_summary = get_monthly_finance_summary(
@@ -808,6 +822,7 @@ def _build_monthly_summary_export_response(
         venue_name=venue_name,
         payments_summary=payments_summary,
         departments_summary=departments_summary,
+        locale=export_locale,
     )
     filename = f"summary_{safe_venue}_{period_label}.xlsx"
     return StreamingResponse(
@@ -882,9 +897,16 @@ def export_monthly_summary(
         raw_date_to = payload.get("date_to") or None
         date_from = date.fromisoformat(raw_date_from) if raw_date_from else None
         date_to = date.fromisoformat(raw_date_to) if raw_date_to else None
-        _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
+        signed_user = _load_user_for_signed_export(db, payload)
+        _require_financial_values_export_allowed(signed_user)
         return _build_monthly_summary_export_response(
-            venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=None
+            venue_id=venue_id,
+            month=month,
+            date_from=date_from,
+            date_to=date_to,
+            db=db,
+            user=None,
+            locale=user_locale(signed_user),
         )
 
     if user is None:
@@ -902,11 +924,13 @@ def _build_payroll_export_response(
     date_to: date | None = None,
     db: Session,
     user: User | None = None,
+    locale: str | None = None,
 ):
     if user is not None:
         _require_payroll_view(db, venue_id=venue_id, user=user)
         _require_financial_values_export_allowed(user)
 
+    export_locale = locale or user_locale(user)
     try:
         period_start, period_end, period_meta = resolve_salary_period(month=month, date_from=date_from, date_to=date_to)
     except ValueError as exc:
@@ -931,7 +955,12 @@ def _build_payroll_export_response(
         period_label = f"{period_start.isoformat()} — {period_end.isoformat()}"
         filename_period = f"{period_start.isoformat()}_{period_end.isoformat()}"
 
-    xlsx_bytes = build_payroll_xlsx(period_label=period_label, venue_name=venue_name, payload=payload)
+    xlsx_bytes = build_payroll_xlsx(
+        period_label=period_label,
+        venue_name=venue_name,
+        payload=payload,
+        locale=export_locale,
+    )
     filename = f"payroll_{safe_venue}_{filename_period}.xlsx"
     return StreamingResponse(
         BytesIO(xlsx_bytes),
@@ -1005,9 +1034,16 @@ def export_payroll(
         raw_date_to = payload.get("date_to") or None
         date_from = date.fromisoformat(raw_date_from) if raw_date_from else None
         date_to = date.fromisoformat(raw_date_to) if raw_date_to else None
-        _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
+        signed_user = _load_user_for_signed_export(db, payload)
+        _require_financial_values_export_allowed(signed_user)
         return _build_payroll_export_response(
-            venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=None
+            venue_id=venue_id,
+            month=month,
+            date_from=date_from,
+            date_to=date_to,
+            db=db,
+            user=None,
+            locale=user_locale(signed_user),
         )
 
     if user is None:
