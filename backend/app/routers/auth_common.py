@@ -15,6 +15,7 @@ from app.auth.phone_auth import (
     upsert_telegram_identity,
 )
 from app.core.db import SessionLocal
+from app.core.i18n import localized, user_locale
 from app.core.request_ip import resolve_client_ip
 from app.models import NotificationDeliveryLog, User
 from app.services import tg_notify
@@ -132,7 +133,14 @@ def _phone_link_profile_url() -> str:
     return f"{settings.frontend_base_url()}/profile.html"
 
 
-def _phone_link_reminder_text() -> str:
+def _phone_link_reminder_text(locale: str = "ru") -> str:
+    if locale == "en":
+        return (
+            "To avoid losing access to Axelio, link your phone number and set a password. "
+            "You will then be able to sign in through a browser even if Telegram Mini App "
+            "is temporarily unavailable.\n\n"
+            "Open your profile and link a phone number under Sign-in methods."
+        )
     return (
         "Чтобы не потерять доступ к Axelio, рекомендуем привязать номер телефона "
         "и задать пароль. Так вы сможете входить в аккаунт через браузер, даже если "
@@ -203,7 +211,8 @@ def _send_phone_link_reminder_if_due(user_id: int) -> None:
             if notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent")):
                 return
 
-            text = _phone_link_reminder_text()
+            locale = user_locale(user)
+            text = _phone_link_reminder_text(locale)
             delivery_log = NotificationDeliveryLog(
                 notification_type=_PHONE_LINK_REMINDER_TYPE,
                 status="pending",
@@ -221,7 +230,7 @@ def _send_phone_link_reminder_if_due(user_id: int) -> None:
                 chat_id=int(user.tg_user_id),
                 text=text,
                 url=_phone_link_profile_url(),
-                button_text="Открыть профиль",
+                button_text=localized(locale, ru="Открыть профиль", en="Open profile"),
             )
             ok = bool(result.get("ok"))
             delivery_log.status = "sent" if ok else "failed"

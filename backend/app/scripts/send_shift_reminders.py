@@ -22,6 +22,7 @@ except Exception:  # pragma: no cover
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
+from app.core.i18n import user_locale
 from app.models import Shift, ShiftInterval, ShiftAssignment, User, Venue
 from app.services import tg_notify
 from app.services.notification_logs import (
@@ -68,6 +69,12 @@ def format_date_ru(d) -> str:
     return f"{d.day} {RU_MONTHS_GEN.get(d.month, str(d.month))}"
 
 
+def format_date(d, *, locale: str = "ru") -> str:
+    if locale == "en":
+        return d.strftime("%B %-d")
+    return format_date_ru(d)
+
+
 def _fmt_time(t) -> str:
     try:
         return t.strftime("%H:%M")
@@ -86,8 +93,15 @@ def _shift_start_naive(shift_date: date, start_time: time) -> datetime:
     return datetime.combine(shift_date, start_time)
 
 
-def _build_shift_reminder_text(*, shift, interval, venue) -> str:
+def _build_shift_reminder_text(*, shift, interval, venue, locale: str = "ru") -> str:
     shift_slot = normalize_shift_slot(getattr(shift, "shift_slot", None))
+    if locale == "en":
+        shift_kind = "night shift" if shift_slot == "NIGHT" else "day shift"
+        return (
+            f"Reminder: you have a {shift_kind} on {format_date(shift.date, locale=locale)} "
+            f"at {_fmt_time(interval.start_time)} "
+            f'at "{venue.name}"'
+        )
     shift_kind = "ночная смена" if shift_slot == "NIGHT" else "дневная смена"
     return (
         f"Напоминаем, что у Вас {shift_kind} {format_date_ru(shift.date)} "
@@ -163,7 +177,12 @@ def main() -> int:
                 continue
 
             shift_slot = normalize_shift_slot(getattr(sh, "shift_slot", None))
-            text = _build_shift_reminder_text(shift=sh, interval=interval, venue=venue)
+            text = _build_shift_reminder_text(
+                shift=sh,
+                interval=interval,
+                venue=venue,
+                locale=user_locale(user),
+            )
             chat_id = int(FORCE_CHAT_ID) if FORCE_CHAT_ID else int(user.tg_user_id)
             dedupe_scope = f"force:{chat_id}" if FORCE_CHAT_ID else notification_dedupe_scope(user)
             idempotency_key = (

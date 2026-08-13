@@ -113,6 +113,7 @@ export function isAuthPage() {
 
 export function buildAuthUrl(next = "", reason = "") {
   const url = new URL(AUTH_PAGE, location.origin);
+  url.searchParams.set("lang", getLang());
   const normalizedNext = String(next || "").trim();
   if (normalizedNext && !/\/auth\.html(\?|$)/i.test(normalizedNext)) {
     url.searchParams.set("next", normalizedNext);
@@ -1073,6 +1074,11 @@ export async function api(path, opts = {}) {
   const method = String(opts.method || "GET").toUpperCase();
   const hasBody = body !== undefined && body !== null;
   const shouldSetJsonContentType = !isForm && hasBody && method !== "GET" && method !== "HEAD";
+  const requestHeaders = {
+    "Accept-Language": getLang() === "en" ? "en" : "ru",
+    ...(shouldSetJsonContentType ? { "Content-Type": "application/json" } : {}),
+    ...(opts.headers || {}),
+  };
 
   const handle401 = opts.handle401 !== false;
   const timeoutMs = Number(opts.timeoutMs || 0) > 0 ? Number(opts.timeoutMs) : 0;
@@ -1107,10 +1113,7 @@ export async function api(path, opts = {}) {
       body,
       signal,
       credentials: "include",
-      headers: {
-        ...(shouldSetJsonContentType ? { "Content-Type": "application/json" } : {}),
-        ...(opts.headers || {}),
-      },
+      headers: requestHeaders,
     });
   } catch (e) {
     if (timeoutId) clearTimeout(timeoutId);
@@ -1135,14 +1138,20 @@ export async function api(path, opts = {}) {
 
   if (!r.ok) {
     const errorCode = String(data?.error_code || data?.code || "").trim().toUpperCase();
-    const err = new Error(errorCode === DEMO_READONLY_ERROR_CODE ? (data?.detail || "Это пробный режим. Изменения здесь недоступны.") : `HTTP ${r.status} ${r.statusText}: ${extractErrorMessage(data)}`);
+    const rawMessage = errorCode === DEMO_READONLY_ERROR_CODE
+      ? (data?.detail || "Это пробный режим. Изменения здесь недоступны.")
+      : extractErrorMessage(data);
+    const localizedMessage = window.AxelioI18n?.translateText
+      ? await window.AxelioI18n.translateText(rawMessage, { report: false })
+      : rawMessage;
+    const err = new Error(errorCode === DEMO_READONLY_ERROR_CODE ? localizedMessage : `HTTP ${r.status} ${r.statusText}: ${localizedMessage}`);
     err.status = r.status;
     err.data = data;
     err.url = r.url;
     err.code = errorCode || err.code;
 
     if (errorCode === DEMO_READONLY_ERROR_CODE && !opts.skipDemoReadonlyToast) {
-      toast(data?.detail || "Это пробный режим. Изменения здесь недоступны.", "warn");
+      toast(localizedMessage, "warn");
     }
 
     if (r.status === 401 && handle401) {
@@ -1182,6 +1191,7 @@ export async function downloadFile(path, { filenameFallback = "download", opts =
     headers: {
       "Cache-Control": "no-cache",
       Pragma: "no-cache",
+      "Accept-Language": getLang() === "en" ? "en" : "ru",
       ...(opts.headers || {}),
     },
   });
@@ -1192,7 +1202,11 @@ export async function downloadFile(path, { filenameFallback = "download", opts =
       const text = await r.text();
       try { data = text ? JSON.parse(text) : null; } catch { data = text; }
     } catch {}
-    const err = new Error(`HTTP ${r.status} ${r.statusText}: ${extractErrorMessage(data)}`);
+    const rawMessage = extractErrorMessage(data);
+    const localizedMessage = window.AxelioI18n?.translateText
+      ? await window.AxelioI18n.translateText(rawMessage, { report: false })
+      : rawMessage;
+    const err = new Error(`HTTP ${r.status} ${r.statusText}: ${localizedMessage}`);
     err.status = r.status;
     err.data = data;
     err.url = r.url;

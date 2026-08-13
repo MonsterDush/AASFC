@@ -15,7 +15,7 @@
       setActiveVenueId,
       wa,
       toast,
-    } from "/app.js?v=20260726-navmore1";
+    } from "/app.js?v=20260813-i18n1";
 
     applyTelegramTheme();
     mountCommonUI("settings");
@@ -33,8 +33,19 @@
       hint.textContent = lang === "en" ? "Current language: English" : "Текущий язык: Русский";
     };
     paintLang();
-    document.getElementById("langRu").onclick = () => { setLang("ru"); location.reload(); };
-    document.getElementById("langEn").onclick = () => { setLang("en"); location.reload(); };
+    async function selectLanguage(locale) {
+      setLang(locale);
+      try {
+        await api("/me/profile", { method: "PATCH", body: { preferred_locale: locale } });
+      } catch {
+        // Local preference still applies for public pages and temporary API failures.
+      }
+      const target = new URL(location.href);
+      target.searchParams.delete("lang");
+      location.assign(target.toString());
+    }
+    document.getElementById("langRu").onclick = () => { void selectLanguage("ru"); };
+    document.getElementById("langEn").onclick = () => { void selectLanguage("en"); };
 
     const themeSel = document.getElementById("themeSelect");
     const themeHint = document.getElementById("themeHint");

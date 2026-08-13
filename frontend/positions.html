@@ -6,7 +6,18 @@
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/positions.css?v=20260725-polish3" />
-  <script src="/page-loader.js?v=20260802-navbuttons1"></script>
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
+  <script src="/page-loader.js?v=20260813-i18n5"></script>
   <title>Axelio · Должности</title>
 </head>
 <body class="positions-page">

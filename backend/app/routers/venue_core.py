@@ -211,7 +211,11 @@ def create_venue_self_service(
                     f"Новое self-service заведение в Axelio: «{venue.name}». "
                     f"Владелец: {username}. Выдан пробный доступ на 3 дня."
                 ),
+                text_en=(
+                    f"New self-service venue in Axelio: “{venue.name}”. Owner: {username}. A 3-day trial was granted."
+                ),
                 button_text="Открыть биллинг",
+                button_text_en="Open billing",
             )
             db.commit()
         except Exception:

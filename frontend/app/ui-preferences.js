@@ -42,11 +42,22 @@ export function createUiPreferences() {
   };
 
   function getLang() {
-    try { return localStorage.getItem(LS_LANG) || "ru"; } catch { return "ru"; }
+    try {
+      if (window.AxelioI18n?.getLocale) return window.AxelioI18n.getLocale();
+      const stored = localStorage.getItem(LS_LANG);
+      const detected = String(stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+      return detected.startsWith("en") ? "en" : "ru";
+    } catch {
+      return "ru";
+    }
   }
 
   function setLang(lang) {
-    try { localStorage.setItem(LS_LANG, lang); } catch {}
+    const normalized = lang === "en" ? "en" : "ru";
+    if (window.AxelioI18n?.setLocale) return window.AxelioI18n.setLocale(normalized);
+    try { localStorage.setItem(LS_LANG, normalized); } catch {}
+    document.documentElement.lang = normalized;
+    return normalized;
   }
 
   function t(key) {

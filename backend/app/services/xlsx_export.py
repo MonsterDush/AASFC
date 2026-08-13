@@ -17,6 +17,182 @@ INTEGER_FORMAT = "#,##0"
 DATETIME_FORMAT = "yyyy-mm-dd hh:mm"
 DATE_FORMAT = "yyyy-mm-dd"
 
+_EXPORT_EXACT_EN = {
+    "Агрегация": "Breakdown",
+    "Аллокации": "Allocations",
+    "База расчёта": "Calculation base",
+    "База, ₽": "Base, ₽",
+    "Баланс, ₽": "Balance, ₽",
+    "Балансы оплат": "Payment balances",
+    "Бонус ступени, ₽": "Tier bonus, ₽",
+    "В месяце экспорта": "In export month",
+    "Вид движения": "Transaction type",
+    "Все": "All",
+    "Возврат": "Refund",
+    "Всего затрат, ₽": "Total costs, ₽",
+    "Выручка": "Revenue",
+    "Выручка итого, ₽": "Total revenue, ₽",
+    "Выручка по департаментам": "Revenue by department",
+    "Выручка по оплатам": "Revenue by payment method",
+    "Выручка по способам оплат": "Revenue by payment method",
+    "Выручка, ₽": "Revenue, ₽",
+    "Да": "Yes",
+    "Дата": "Date",
+    "Дата расхода": "Expense date",
+    "Движение по способам оплат": "Payment method movements",
+    "Департамент": "Department",
+    "Департамент условия": "Condition department",
+    "Департаменты": "Departments",
+    "Департаменты итого, ₽": "Department total, ₽",
+    "Детали": "Details",
+    "Детализация компонентов": "Component breakdown",
+    "Дней": "Days",
+    "Документы": "Documents",
+    "Заведение": "Venue",
+    "Закрыт": "Closed",
+    "Закрыто": "Closed",
+    "Закрытые отчёты за период": "Closed reports for the period",
+    "Закрытых отчётов": "Closed reports",
+    "Записей": "Records",
+    "Значение": "Value",
+    "Значения": "Values",
+    "Значения отчётов": "Report values",
+    "ИТОГО": "TOTAL",
+    "Источник": "Source",
+    "ID источника": "Source ID",
+    "ID проводки": "Ledger entry ID",
+    "Итого, ₽": "Total, ₽",
+    "Категория": "Category",
+    "Кем закрыт": "Closed by",
+    "Код": "Code",
+    "Комментарий": "Comment",
+    "Компонент": "Component",
+    "Корректировка": "Adjustment",
+    "Корректировка баланса": "Balance adjustment",
+    "Максимум, ₽": "Maximum, ₽",
+    "Маржинальность, %": "Margin, %",
+    "Месяц признания": "Recognition month",
+    "Месяцев распределения": "Allocation months",
+    "Мин. гарантия": "Minimum guarantee",
+    "Мин. гарантия, ₽": "Minimum guarantee, ₽",
+    "Название": "Name",
+    "Направление": "Direction",
+    "Начисления": "Payroll",
+    "Нет": "No",
+    "Обнаружено": "Detected",
+    "Обновлено": "Updated",
+    "Обычный %, %": "Standard rate, %",
+    "Операции": "Transactions",
+    "Описание": "Description",
+    "Оплаты": "Payments",
+    "Оплаты итого, ₽": "Payment total, ₽",
+    "Оплачено через": "Paid via",
+    "Отработано дней": "Days worked",
+    "Отчёт смены": "Shift report",
+    "Отчёты": "Reports",
+    "Перевод": "Transfer",
+    "Перевод между оплатами": "Transfer between payment methods",
+    "Период": "Period",
+    "Период c": "Period from",
+    "Период до": "Period to",
+    "Повышенный %, %": "Boosted rate, %",
+    "Полная сумма документов, ₽": "Full document amount, ₽",
+    "Полная сумма, ₽": "Full amount, ₽",
+    "Последний перерасчёт": "Latest recalculation",
+    "Последний раз": "Last seen",
+    "Поставщик": "Supplier",
+    "Поступления, ₽": "Income, ₽",
+    "Посуточная детализация процентных компонентов": "Daily percentage-component breakdown",
+    "Потолок": "Cap",
+    "Прибыль, ₽": "Profit, ₽",
+    "Признано в месяце, ₽": "Recognized in month, ₽",
+    "Применённый %, %": "Applied rate, %",
+    "Приход": "Income",
+    "Приход, ₽": "Income, ₽",
+    "Причина перерасчёта": "Recalculation reason",
+    "Профиль": "Profile",
+    "Проценты по дням": "Daily percentages",
+    "Разбор": "Breakdown",
+    "Распределение по месяцам": "Monthly allocation",
+    "Рассчитано": "Calculated",
+    "Расход": "Expense",
+    "Расходы без ФОТ, ₽": "Expenses excluding payroll, ₽",
+    "Расходы по категориям": "Expenses by category",
+    "Расхождение, ₽": "Difference, ₽",
+    "Расчёт начислений": "Payroll calculation",
+    "Режим": "Mode",
+    "Режим агрегации": "Aggregation mode",
+    "Сверка": "Reconciliation",
+    "Сводка": "Summary",
+    "Сгенерировано на месяц": "Generated for month",
+    "Слот": "Shift",
+    "Смена": "Shift",
+    "Смены": "Shifts",
+    "Создано": "Created",
+    "Сотрудник": "Employee",
+    "Списание": "Expense",
+    "Списание, ₽": "Expense, ₽",
+    "Списания, ₽": "Expenses, ₽",
+    "Список расходов": "Expense list",
+    "Способ оплаты": "Payment method",
+    "Сработавшая ступень": "Applied tier",
+    "Статус": "Status",
+    "Статья": "Item",
+    "Строк начислений": "Payroll lines",
+    "Строки начислений": "Payroll lines",
+    "Сумма": "Amount",
+    "Сумма со знаком, ₽": "Signed amount, ₽",
+    "Сумма, ₽": "Amount, ₽",
+    "Тип": "Type",
+    "Тип оплаты": "Payment method",
+    "Условие": "Condition",
+    "ФОТ": "Payroll",
+    "ФОТ, ₽": "Payroll, ₽",
+    "Факт KPI": "KPI actual",
+    "Факт, ₽": "Actual, ₽",
+    "Цель KPI": "KPI target",
+    "Цель, ₽": "Target, ₽",
+    "Чаевые, ₽": "Tips, ₽",
+    "Часы": "Hours",
+    "Черновики на сумму, ₽": "Draft amount, ₽",
+    "Черновиков расходов": "Draft expenses",
+    "Чистый поток, ₽": "Net cash flow, ₽",
+    "Эффективный режим": "Effective mode",
+}
+
+_EXPORT_FRAGMENT_EN = {
+    "Агрегация выручки · ": "Revenue breakdown · ",
+    "Выручка · ": "Revenue · ",
+    "Начисления · ": "Payroll · ",
+    "Расходы · ": "Expenses · ",
+    "Сводка · ": "Summary · ",
+    "Файл ": "File ",
+    "Финансовые движения · ": "Financial transactions · ",
+    "Подписка": "Subscription",
+    "Реестр billing-операций": "Billing transaction register",
+}
+
+
+def _translate_export_text(value: Any, *, locale: str) -> Any:
+    if locale != "en" or not isinstance(value, str):
+        return value
+    if value in _EXPORT_EXACT_EN:
+        return _EXPORT_EXACT_EN[value]
+    translated = value
+    for source, target in _EXPORT_FRAGMENT_EN.items():
+        translated = translated.replace(source, target)
+    return translated
+
+
+def _new_workbook(locale: str) -> Workbook:
+    wb = Workbook()
+    wb._axelio_locale = "en" if locale == "en" else "ru"  # type: ignore[attr-defined]
+    return wb
+
+
+def _worksheet_locale(ws) -> str:
+    return str(getattr(ws.parent, "_axelio_locale", "ru"))
+
 
 def _auto_width(ws, col_idx: int, values: Iterable[Any], min_w: int = 8, max_w: int = 60) -> None:
     mx = 0
@@ -37,7 +213,7 @@ def _minor_to_major(value: Any) -> float:
 
 
 def _write_title(ws, title: str) -> None:
-    ws.append([title])
+    ws.append([_translate_export_text(title, locale=_worksheet_locale(ws))])
     ws[1][0].font = TITLE_FONT
     ws[1][0].alignment = Alignment(vertical="top", wrap_text=True)
     ws.append([])
@@ -72,8 +248,14 @@ def _xlsx_cell_hyperlink(value: Any) -> str | None:
 
 
 def _write_key_values(ws, rows: list[tuple[str, Any]]) -> None:
+    locale = _worksheet_locale(ws)
     for key, value in rows:
-        ws.append([_excel_safe_value(key), _excel_safe_value(value)])
+        ws.append(
+            [
+                _excel_safe_value(_translate_export_text(key, locale=locale)),
+                _excel_safe_value(_translate_export_text(value, locale=locale)),
+            ]
+        )
     if rows:
         for row in ws.iter_rows(min_row=3, max_row=2 + len(rows), min_col=1, max_col=2):
             row[0].font = HEADER_FONT
@@ -92,7 +274,8 @@ def _write_table(
     datetime_cols: set[int] | None = None,
     date_cols: set[int] | None = None,
 ) -> None:
-    ws.append(headers)
+    locale = _worksheet_locale(ws)
+    ws.append([_translate_export_text(header, locale=locale) for header in headers])
     header_row = ws.max_row
     for cell in ws[header_row]:
         cell.font = HEADER_FONT
@@ -144,6 +327,10 @@ def _apply_auto_width(ws) -> None:
 
 
 def _finalize_workbook(wb: Workbook) -> bytes:
+    locale = str(getattr(wb, "_axelio_locale", "ru"))
+    if locale == "en":
+        for ws in wb.worksheets:
+            ws.title = str(_translate_export_text(ws.title, locale=locale))[:31]
     out = BytesIO()
     wb.save(out)
     return out.getvalue()
@@ -174,6 +361,7 @@ def build_finance_ledger_xlsx(
     period_end: date,
     rows: list[dict[str, Any]],
     filters: list[tuple[str, Any]] | None = None,
+    locale: str = "ru",
 ) -> bytes:
     direction_labels = {"INCOME": "Приход", "EXPENSE": "Списание"}
     kind_labels = {
@@ -192,6 +380,9 @@ def build_finance_ledger_xlsx(
         "payment_method_transfer": "Перевод между оплатами",
         "balance_adjustment": "Корректировка баланса",
     }
+    direction_labels = {key: _translate_export_text(value, locale=locale) for key, value in direction_labels.items()}
+    kind_labels = {key: _translate_export_text(value, locale=locale) for key, value in kind_labels.items()}
+    source_labels = {key: _translate_export_text(value, locale=locale) for key, value in source_labels.items()}
     income_minor = sum(
         int(row.get("amount_minor") or 0) for row in rows if str(row.get("direction") or "").upper() == "INCOME"
     )
@@ -199,7 +390,7 @@ def build_finance_ledger_xlsx(
         int(row.get("amount_minor") or 0) for row in rows if str(row.get("direction") or "").upper() == "EXPENSE"
     )
 
-    wb = Workbook()
+    wb = _new_workbook(locale)
     ws = wb.active
     ws.title = "Операции"
     ws.sheet_view.showGridLines = False
@@ -281,12 +472,18 @@ def build_revenue_xlsx(
     closed_reports: int,
     report_rows: list[dict[str, Any]] | None = None,
     value_rows: list[dict[str, Any]] | None = None,
+    locale: str = "ru",
 ) -> bytes:
-    wb = Workbook()
+    wb = _new_workbook(locale)
     ws = wb.active
     ws.title = "Сводка"
 
-    mode_title = "Оплаты" if str(mode).upper() == "PAYMENTS" else "Департаменты"
+    mode_title = str(
+        _translate_export_text(
+            "Оплаты" if str(mode).upper() == "PAYMENTS" else "Департаменты",
+            locale=locale,
+        )
+    )
     _write_title(ws, f"Выручка · {venue_name}")
     _write_key_values(
         ws,
@@ -383,6 +580,7 @@ def build_revenue_csv(
     total: int,
     closed_reports: int,
     delimiter: str = ";",
+    locale: str = "ru",
 ) -> str:
     lines: list[list[str]] = []
     lines.append(["venue", venue_name])
@@ -390,10 +588,15 @@ def build_revenue_csv(
     lines.append(["mode", mode])
     lines.append(["closed_reports", str(closed_reports)])
     lines.append([])
-    lines.append(["Категория", "Сумма"])
+    lines.append(
+        [
+            str(_translate_export_text("Категория", locale=locale)),
+            str(_translate_export_text("Сумма", locale=locale)),
+        ]
+    )
     for r in rows:
         lines.append([str(r.get("title") or "—"), str(int(r.get("amount") or 0))])
-    lines.append(["ИТОГО", str(int(total))])
+    lines.append([str(_translate_export_text("ИТОГО", locale=locale)), str(int(total))])
 
     def esc(s: str) -> str:
         s = str(s)
@@ -408,8 +611,9 @@ def build_expenses_xlsx(
     venue_name: str,
     rows: list[dict[str, Any]],
     total_minor: int,
+    locale: str = "ru",
 ) -> bytes:
-    wb = Workbook()
+    wb = _new_workbook(locale)
     ws = wb.active
     ws.title = "Сводка"
     _write_title(ws, f"Расходы · {venue_name}")
@@ -459,7 +663,11 @@ def build_expenses_xlsx(
                 attachment_cells.append("")
                 continue
             url = file_item.get("download_url") or file_item.get("export_url") or file_item.get("url")
-            label = file_item.get("file_name") or file_item.get("name") or f"Файл {idx + 1}"
+            label = (
+                file_item.get("file_name")
+                or file_item.get("name")
+                or _translate_export_text(f"Файл {idx + 1}", locale=locale)
+            )
             attachment_cells.append({"text": label, "hyperlink": url} if url else label)
 
         doc_rows.append(
@@ -505,7 +713,10 @@ def build_expenses_xlsx(
                     category_title,
                     alloc.get("month"),
                     _minor_to_major(alloc.get("amount_minor")),
-                    "Да" if alloc.get("month") == f"{month}-01" else "Нет",
+                    _translate_export_text(
+                        "Да" if alloc.get("month") == f"{month}-01" else "Нет",
+                        locale=locale,
+                    ),
                 ]
             )
     _write_table(
@@ -528,8 +739,9 @@ def build_monthly_summary_xlsx(
     venue_name: str,
     payments_summary: dict[str, Any],
     departments_summary: dict[str, Any],
+    locale: str = "ru",
 ) -> bytes:
-    wb = Workbook()
+    wb = _new_workbook(locale)
     ws = wb.active
     ws.title = "Сводка"
     period_label = month or ""
@@ -627,8 +839,9 @@ def build_payroll_xlsx(
     period_label: str,
     venue_name: str,
     payload: dict[str, Any],
+    locale: str = "ru",
 ) -> bytes:
-    wb = Workbook()
+    wb = _new_workbook(locale)
     ws = wb.active
     ws.title = "Сводка"
     run = payload.get("run") or {}
@@ -746,9 +959,9 @@ def build_payroll_xlsx(
                     comp.get("department_title"),
                     comp.get("boost_department_title"),
                     comp.get("boost_kpi_metric_title") or comp.get("kpi_metric_title"),
-                    "Да" if comp.get("boost_applied") else "Нет",
-                    "Да" if comp.get("minimum_applied") else "Нет",
-                    "Да" if comp.get("maximum_applied") else "Нет",
+                    _translate_export_text("Да" if comp.get("boost_applied") else "Нет", locale=locale),
+                    _translate_export_text("Да" if comp.get("minimum_applied") else "Нет", locale=locale),
+                    _translate_export_text("Да" if comp.get("maximum_applied") else "Нет", locale=locale),
                     matched_step.get("threshold_value"),
                     matched_step.get("bonus_minor") / 100.0 if matched_step.get("bonus_minor") is not None else None,
                 ]
@@ -776,7 +989,7 @@ def build_payroll_xlsx(
                         _minor_to_major(day_row.get("amount_minor"))
                         if day_row.get("amount_minor") is not None
                         else None,
-                        "Да" if day_row.get("boost_applied") else "Нет",
+                        _translate_export_text("Да" if day_row.get("boost_applied") else "Нет", locale=locale),
                         boost_mode_effective,
                     ]
                 )
@@ -844,9 +1057,13 @@ def build_payroll_xlsx(
 
 
 def build_billing_transactions_xlsx(
-    *, title: str, rows: list[dict[str, Any]], filters: list[tuple[str, Any]] | None = None
+    *,
+    title: str,
+    rows: list[dict[str, Any]],
+    filters: list[tuple[str, Any]] | None = None,
+    locale: str = "ru",
 ) -> bytes:
-    wb = Workbook()
+    wb = _new_workbook(locale)
     ws = wb.active
     ws.title = "Операции"
     _write_title(ws, title)
@@ -894,9 +1111,13 @@ def build_billing_transactions_xlsx(
 
 
 def build_billing_reconciliation_xlsx(
-    *, title: str, rows: list[dict[str, Any]], filters: list[tuple[str, Any]] | None = None
+    *,
+    title: str,
+    rows: list[dict[str, Any]],
+    filters: list[tuple[str, Any]] | None = None,
+    locale: str = "ru",
 ) -> bytes:
-    wb = Workbook()
+    wb = _new_workbook(locale)
     ws = wb.active
     ws.title = "Сверка"
     _write_title(ws, title)

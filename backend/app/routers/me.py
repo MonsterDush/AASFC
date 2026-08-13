@@ -16,6 +16,7 @@ from app.core.roles_registry import VENUE_ROLE_TO_DEFAULT_ROLE
 from app.core.permissions_registry import PERMISSIONS as PERMISSIONS_REGISTRY
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes, unique_permission_codes
 from app.core.permission_policy import expand_permission_codes, get_default_permission_codes_for_role
+from app.core.i18n import normalize_locale
 from app.models import (
     User,
     Venue,
@@ -54,6 +55,17 @@ router = APIRouter(tags=["me"])
 class ProfileUpdateIn(BaseModel):
     full_name: str | None = Field(default=None, max_length=128)
     short_name: str | None = Field(default=None, max_length=64)
+    preferred_locale: str | None = Field(default=None, max_length=8)
+
+    @field_validator("preferred_locale")
+    @classmethod
+    def validate_preferred_locale(cls, value: str | None):
+        if value is None:
+            return value
+        normalized = normalize_locale(value, default=None)
+        if normalized is None:
+            raise ValueError("preferred_locale must be one of: ru, en")
+        return normalized
 
 
 class NotificationSettingsIn(BaseModel):
@@ -170,6 +182,7 @@ def me(
         "tg_username": user.tg_username,
         "full_name": user.full_name,
         "short_name": user.short_name,
+        "preferred_locale": user.preferred_locale,
         "system_role": user.system_role,
         "notify_enabled": user.notify_enabled,
         "notify_adjustments": user.notify_adjustments,
@@ -216,6 +229,7 @@ def get_profile(user: User = Depends(get_current_user), db: Session = Depends(ge
         "tg_username": user.tg_username,
         "full_name": user.full_name,
         "short_name": user.short_name,
+        "preferred_locale": user.preferred_locale,
         "phone": get_user_phone(db, user_id=user.id),
         "auth_methods": get_user_auth_methods(db, user_id=user.id),
         "has_password": has_password(user),
@@ -236,6 +250,8 @@ def update_profile(
     if payload.short_name is not None:
         v = payload.short_name.strip()
         user.short_name = v or None
+    if payload.preferred_locale is not None:
+        user.preferred_locale = normalize_locale(payload.preferred_locale, default=None)
     db.commit()
     return {"ok": True}
 

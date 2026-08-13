@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import get_current_user
 from app.core.config import settings
 from app.core.db import get_db
+from app.core.i18n import user_locale
 from app.models.user import User
 from app.models.venue import Venue
 from app.models.venue_billing_event import VenueBillingEvent
@@ -428,7 +429,10 @@ def export_venue_billing_transactions(
             headers={"Content-Disposition": f'attachment; filename="billing_{int(venue_id)}.csv"'},
         )
     xlsx = build_billing_transactions_xlsx(
-        title=f"Axelio · Подписка · {venue.name}", rows=rows, filters=[("Заведение", venue.name)]
+        title=f"Axelio · Подписка · {venue.name}",
+        rows=rows,
+        filters=[("Заведение", venue.name)],
+        locale=user_locale(user),
     )
     return StreamingResponse(
         BytesIO(xlsx),
@@ -551,7 +555,9 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
             notification_type="payment_success",
             event_key=str(tx.id),
             text=f"Оплата по заведению «{venue_name}» подтверждена. Доступ продлён до {paid_until}.",
+            text_en=f"Payment for venue “{venue_name}” is confirmed. Access is extended until {paid_until}.",
             button_text="Открыть заведение",
+            button_text_en="Open venue",
         )
         db.commit()
     return PlainTextResponse(f"OK{invoice_id}")

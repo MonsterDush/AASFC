@@ -18,7 +18,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260726-navmore1";
+} from "/app.js?v=20260813-i18n1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,

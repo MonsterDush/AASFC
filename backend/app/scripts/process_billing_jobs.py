@@ -65,6 +65,10 @@ def main() -> int:
                         f"Проблема биллинга: checkout по заведению #{int(event.venue_id)} истёк без оплаты. "
                         f"Проверьте pending-платежи и историю операций."
                     ),
+                    text_en=(
+                        f"Billing issue: checkout for venue #{int(event.venue_id)} expired without payment. "
+                        "Check pending payments and transaction history."
+                    ),
                 )
             if sent_admin_alerts:
                 db.commit()
@@ -84,6 +88,10 @@ def main() -> int:
                     venue_id=int(refund_tx.venue_id),
                     text=(
                         f"Проблема биллинга: не удалось проверить статус возврата по заведению #{int(refund_tx.venue_id)} "
+                        f"(refund tx #{int(refund_tx.id)}): {exc}"
+                    ),
+                    text_en=(
+                        f"Billing issue: unable to check the refund status for venue #{int(refund_tx.venue_id)} "
                         f"(refund tx #{int(refund_tx.id)}): {exc}"
                     ),
                 )
@@ -109,7 +117,11 @@ def main() -> int:
                     text=(
                         f"Возврат по заведению «{venue_name}» выполнен. Сумма: {int(refund_tx.amount_minor or 0) / 100:.2f} ₽."
                     ),
+                    text_en=(
+                        f"The refund for venue “{venue_name}” is complete. Amount: {int(refund_tx.amount_minor or 0) / 100:.2f} ₽."
+                    ),
                     button_text="Открыть подписку",
+                    button_text_en="Open subscription",
                 )
                 db.commit()
 
@@ -134,7 +146,12 @@ def main() -> int:
                             f"По заведению «{venue_name}» закончился оплаченный период. "
                             f"Льготный период действует до {_fmt_date(snapshot.grace_until)}."
                         ),
+                        text_en=(
+                            f"The paid period for venue “{venue_name}” has ended. "
+                            f"The grace period lasts until {_fmt_date(snapshot.grace_until)}."
+                        ),
                         button_text="Продлить доступ",
+                        button_text_en="Renew access",
                     )
                 elif snapshot.status == "SUSPENDED":
                     sent_notifications += send_owner_billing_notification_once(
@@ -146,7 +163,12 @@ def main() -> int:
                             f"По заведению «{venue_name}» закончился льготный период. "
                             f"Рабочий доступ ограничен до продления оплаты."
                         ),
+                        text_en=(
+                            f"The grace period for venue “{venue_name}” has ended. "
+                            "Workspace access is restricted until payment is renewed."
+                        ),
                         button_text="Продлить доступ",
+                        button_text_en="Renew access",
                     )
 
             days_to_paid_end = _days_until(snapshot.paid_until, now)
@@ -158,6 +180,12 @@ def main() -> int:
                     1: "завтра",
                     0: "сегодня",
                 }[int(days_to_paid_end)]
+                label_en = {
+                    7: "in 7 days",
+                    3: "in 3 days",
+                    1: "tomorrow",
+                    0: "today",
+                }[int(days_to_paid_end)]
                 sent_notifications += send_owner_billing_notification_once(
                     db,
                     venue_id=int(state.venue_id),
@@ -167,7 +195,12 @@ def main() -> int:
                         f"Оплата по заведению «{venue_name}» заканчивается {label}. "
                         f"Текущий срок — до {_fmt_date(snapshot.paid_until)}."
                     ),
+                    text_en=(
+                        f"Payment for venue “{venue_name}” expires {label_en}. "
+                        f"The current paid period ends on {_fmt_date(snapshot.paid_until)}."
+                    ),
                     button_text="Продлить доступ",
+                    button_text_en="Renew access",
                 )
 
             days_to_grace_end = _days_until(snapshot.grace_until, now)
@@ -183,7 +216,12 @@ def main() -> int:
                         f"Сегодня последний день льготного периода по заведению «{venue_name}». "
                         f"После {_fmt_date(snapshot.grace_until)} доступ будет ограничен."
                     ),
+                    text_en=(
+                        f"Today is the last day of the grace period for venue “{venue_name}”. "
+                        f"Access will be restricted after {_fmt_date(snapshot.grace_until)}."
+                    ),
                     button_text="Продлить доступ",
+                    button_text_en="Renew access",
                 )
 
             db.commit()
@@ -204,6 +242,10 @@ def main() -> int:
                 text=(
                     f"Проблема биллинга: за последние 24 часа накопилось {len(failed_24h)} failed checkout. "
                     f"Проверьте раздел биллинга и сверку."
+                ),
+                text_en=(
+                    f"Billing issue: {len(failed_24h)} failed checkouts were recorded in the last 24 hours. "
+                    "Check billing and reconciliation."
                 ),
             )
             if sent_admin_alerts:

@@ -49,7 +49,8 @@ class PageLoaderContractTests(TestCase):
         self.assertEqual(len(html_pages), 50)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
-            self.assertIn("/page-loader.js?v=20260802-navbuttons1", source, path.name)
+            self.assertIn("/page-loader.js?v=20260813-i18n5", source, path.name)
+            self.assertIn("/i18n-bootstrap.js?v=20260813-i18n5", source, path.name)
             self.assertIn(f"/styles.css?v={style_cache_key}", source, path.name)
 
         self.assertLess(len(loader.splitlines()), 180)
@@ -646,7 +647,7 @@ class AppFacadeSplitContractTests(TestCase):
             self.assertIn(f"/app/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
-        consumer_pattern = re.compile(r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260726-navmore1[\"']")
+        consumer_pattern = re.compile(r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260813-i18n1[\"']")
         consumer_count = 0
         for path in FRONTEND.rglob("*"):
             if path.suffix not in {".js", ".mjs", ".html"}:
