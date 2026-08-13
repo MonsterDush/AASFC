@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status, UploadFile, File
-from sqlalchemy import select, delete, update, func, inspect
+from fastapi import HTTPException
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from app.models.shift_interval import ShiftInterval
 from app.models.shift import Shift

@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from app.routers.venue_adjustments import router as adjustments_router
 from app.routers.venue_catalogs import router as catalogs_router
 from app.routers.venue_core import router as core_router
-from app.routers.venue_economics_notifications import process_pending_notification_jobs_once
 from app.routers.venue_economics import router as economics_router
 from app.routers.venue_finance import router as finance_router
 from app.routers.venue_membership import router as membership_router

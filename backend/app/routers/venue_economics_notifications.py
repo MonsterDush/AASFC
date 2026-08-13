@@ -1,48 +1,32 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, date, time, timedelta
-import os
+from datetime import datetime, timezone, date, timedelta
 import json
 import hashlib
-from urllib.parse import quote
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, UploadFile, File
-from sqlalchemy import select, delete, update, func, inspect
+from sqlalchemy import select
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
-from app.core.db import SessionLocal, get_db
+from app.core.db import SessionLocal
 from app.services import tg_notify
 from app.services.notification_logs import (
     log_notification_attempt,
     lock_notification_idempotency_key,
     notification_delivery_exists,
-    notification_dedupe_scope,
 )
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.finance.day_economics import get_day_economics
 from app.routers.venue_access import (
     _has_revenue_view_access,
-    _is_active_member_or_admin,
-    _is_owner_or_super_admin,
     _is_report_viewer,
-    _require_active_member_or_admin,
-    _require_owner_or_super_admin,
-    _require_report_viewer,
-    _require_revenue_viewer,
 )
 from app.models.user import User
-from app.models.venue import Venue
 from app.models.venue_member import VenueMember
-from app.models.venue_position import VenuePosition
 from app.models.shift import Shift
 from app.models.shift_assignment import ShiftAssignment
 from app.models.daily_report import DailyReport
 from app.models.daily_report_tip_allocation import DailyReportTipAllocation
 from app.models.notification_job import NotificationJob
 from app.models.adjustment import Adjustment
-from app.models.adjustment_dispute import AdjustmentDispute
-from app.models.adjustment_dispute_comment import AdjustmentDisputeComment
-from app.auth.venue_permissions import require_venue_permission, has_venue_permission
-from app.settings import settings
 
 from app.routers.venue_common import (
     _NOTIFICATION_JOB_MAX_ATTEMPTS,
@@ -61,7 +45,6 @@ from app.routers.venue_common import (
     _NOTIFICATION_JOB_TYPE_SHIFT_SWAP,
     log,
 )
-from app.routers.venue_permissions import _has_adjustments_manage_access
 
 from app.routers.venue_adjustment_notifications import (
     _send_adjustment_assigned_notification,

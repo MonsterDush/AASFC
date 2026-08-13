@@ -32,7 +32,6 @@ from app.models import (
     User,
     Venue,
     VenueBillingEvent,
-    VenueBillingState,
     VenueBillingTransaction,
     VenueMember,
     VenuePosition,

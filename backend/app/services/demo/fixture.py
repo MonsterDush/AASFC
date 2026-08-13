@@ -35,7 +35,6 @@ from app.models import (
     ExpenseRecognitionEntry,
     FinanceEntry,
     KpiMetric,
-    NotificationDeliveryLog,
     PayComponent,
     PayProfile,
     PayProfileAssignment,

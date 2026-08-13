@@ -63,10 +63,10 @@ from app.routers.venue_expenses import (
 from app.routers.venue_permissions import (
     _require_revenue_exporter,
 )
+from app.routers.venue_pay_profile_support import _require_payroll_view
 from app.routers.venue_payroll_support import (
     _build_venue_payroll_period_payload,
     _load_payroll_payload,
-    _require_payroll_view,
 )
 
 

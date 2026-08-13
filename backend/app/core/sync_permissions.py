@@ -1,5 +1,4 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
 from app.core.permission_policy import role_has_built_in_default

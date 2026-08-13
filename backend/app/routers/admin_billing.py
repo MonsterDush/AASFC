@@ -35,7 +35,6 @@ from app.services.billing import (
     get_refundable_payment_transaction,
     get_reserved_refund_amount_for_payment,
     get_robokassa_refund_config,
-    list_billing_events,
     list_billing_reconciliation_issues,
     list_billing_transactions,
     list_billing_transactions_global,

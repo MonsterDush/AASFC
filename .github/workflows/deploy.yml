@@ -72,9 +72,7 @@ jobs:
       - name: Lint Python and check critical formatting
         run: |
           python -m ruff check --select E9,F63,F7,F82 backend/app backend/test bot_service tools
-          # F401 is tracked separately because some legacy modules expose
-          # public imports. All other configured Ruff rules are global.
-          python -m ruff check --ignore F401 backend/app backend/test bot_service tools
+          python -m ruff check backend/app backend/test bot_service tools
           python -m ruff check \
             backend/app/auth/jwt_tokens.py \
             backend/app/auth/passwords.py \
