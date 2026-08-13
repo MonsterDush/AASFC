@@ -107,6 +107,9 @@ if [[ -n "${rclone_remote}" ]]; then
   rclone copyto "${encrypted_path}" "${remote_base}/daily/${base_name}"
   rclone copyto "${encrypted_path}.sha256" "${remote_base}/daily/${base_name}.sha256"
   rclone copyto "${encrypted_path}.metadata" "${remote_base}/daily/${base_name}.metadata"
+  rclone check "${daily_dir}" "${remote_base}/daily" \
+    --include "/${base_name}" \
+    --one-way
   if [[ "$(date -u +%u)" == "7" ]]; then
     rclone copyto "${weekly_dir}/${base_name}" "${remote_base}/weekly/${base_name}"
     rclone copyto "${weekly_dir}/${base_name}.sha256" "${remote_base}/weekly/${base_name}.sha256"

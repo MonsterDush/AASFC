@@ -55,6 +55,8 @@ class BackupContractTests(TestCase):
         self.assertGreaterEqual(backup.count("pg_restore --list"), 2)
         self.assertIn("BACKUP_REQUIRE_OFFSITE", backup)
         self.assertIn("rclone copyto", backup)
+        self.assertIn("rclone check", backup)
+        self.assertIn('--include "/${base_name}"', backup)
         self.assertIn("-mtime +7 -delete", backup)
         self.assertIn("-mtime +28 -delete", backup)
 
@@ -66,6 +68,18 @@ class BackupContractTests(TestCase):
         self.assertIn("alembic_bin", restore)
         self.assertIn("source_count", restore)
         self.assertIn("restored_count", restore)
+
+    def test_production_drill_restores_fresh_snapshot_and_records_rpo_rto(self):
+        workflow = (REPO_DIR / ".github/workflows/production-drill.yml").read_text(encoding="utf-8")
+        drill = (REPO_DIR / "ops/backup/production-restore-drill.sh").read_text(encoding="utf-8")
+
+        self.assertIn("workflow_dispatch", workflow)
+        self.assertIn("name: production", workflow)
+        self.assertIn("_restore_drill", drill)
+        self.assertIn('REPO_DIR="${APP_ROOT}/repo"', drill)
+        self.assertIn("actual_rpo_seconds", drill)
+        self.assertIn("actual_rto_seconds", drill)
+        self.assertIn("critical_table_counts=matched", drill)
 
 
 if __name__ == "__main__":

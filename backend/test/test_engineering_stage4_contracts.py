@@ -92,6 +92,19 @@ class MonitoringContractTests(TestCase):
         ):
             self.assertIn(contract, monitor)
 
+    def test_production_observability_drill_checks_metrics_monitor_and_alert_delivery(self):
+        drill = (REPO_DIR / "ops/monitoring/observability-drill.sh").read_text(encoding="utf-8")
+
+        for contract in (
+            "METRICS_TOKEN",
+            "axelio_build_info",
+            "axelio-monitor-prod.service",
+            "test alert",
+            "production recovered",
+            "observability-drill-last-success.timestamp",
+        ):
+            self.assertIn(contract, drill)
+
 
 class FrontendAssuranceContractTests(TestCase):
     def test_ci_enforces_accessibility_and_performance_budgets(self):

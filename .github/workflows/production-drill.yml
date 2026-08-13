@@ -1,0 +1,72 @@
+name: Production assurance drill
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Production drill to execute
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - restore
+          - observability
+
+jobs:
+  production_drill:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: production-assurance-drill
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://app.axelio.ru
+    steps:
+      - name: Check secrets presence
+        run: |
+          test -n "${{ secrets.SSH_HOST }}" || { echo "SSH_HOST is empty"; exit 1; }
+          test -n "${{ secrets.SSH_USER }}" || { echo "SSH_USER is empty"; exit 1; }
+          test -n "${{ secrets.SSH_KEY }}" || { echo "SSH_KEY is empty"; exit 1; }
+          test -n "${{ secrets.SSH_PORT }}" || { echo "SSH_PORT is empty"; exit 1; }
+
+      - name: Restore production snapshot and verify observability
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          PROD_APP_ROOT: /var/www/axelio/prod
+          DRILL_MODE: ${{ inputs.mode }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: RELEASE_SHA,PROD_APP_ROOT,DRILL_MODE
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+            REPO_DIR="${PROD_APP_ROOT}/repo"
+            DRILL_TOOL_DIR="${PROD_APP_ROOT}/.drill-tools/${RELEASE_SHA}"
+
+            git -C "${REPO_DIR}" fetch --prune origin
+            git -C "${REPO_DIR}" cat-file -e "${RELEASE_SHA}^{commit}"
+            git -C "${REPO_DIR}" merge-base --is-ancestor "${RELEASE_SHA}" origin/main
+            install -d -m 0700 "${DRILL_TOOL_DIR}"
+            for source in \
+              ops/production-assurance-drill.sh \
+              ops/backup/postgres-backup.sh \
+              ops/backup/restore-drill.sh \
+              ops/backup/production-restore-drill.sh \
+              ops/monitoring/observability-drill.sh; do
+              target="${DRILL_TOOL_DIR}/${source##*/}"
+              git -C "${REPO_DIR}" show "${RELEASE_SHA}:${source}" >"${target}"
+              chmod 0700 "${target}"
+            done
+
+            sudo PROD_APP_ROOT="${PROD_APP_ROOT}" \
+              RELEASE_SHA="${RELEASE_SHA}" \
+              DRILL_MODE="${DRILL_MODE}" \
+              DRILL_TOOL_DIR="${DRILL_TOOL_DIR}" \
+              "${DRILL_TOOL_DIR}/production-assurance-drill.sh"
