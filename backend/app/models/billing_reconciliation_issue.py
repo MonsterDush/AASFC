@@ -14,8 +14,12 @@ class BillingReconciliationIssue(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"), nullable=False, index=True)
-    transaction_id: Mapped[int | None] = mapped_column(ForeignKey("venue_billing_transaction.id", ondelete="SET NULL"), nullable=True, index=True)
-    event_id: Mapped[int | None] = mapped_column(ForeignKey("venue_billing_event.id", ondelete="SET NULL"), nullable=True, index=True)
+    transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("venue_billing_transaction.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    event_id: Mapped[int | None] = mapped_column(
+        ForeignKey("venue_billing_event.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     issue_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     severity: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
@@ -26,10 +30,14 @@ class BillingReconciliationIssue(Base):
     details_json: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
     resolution_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    first_detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    first_detected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    resolved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    resolved_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     venue = relationship("Venue")
     transaction = relationship("VenueBillingTransaction")

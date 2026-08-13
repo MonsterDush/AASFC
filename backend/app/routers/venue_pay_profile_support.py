@@ -41,13 +41,13 @@ from app.routers.venue_common import (
 )
 from app.routers.venue_membership_support import _build_user_auth_snapshot_map, _display_name
 
+
 def _parse_position_permission_codes(raw: str | None) -> list[str]:
     return parse_permission_codes(raw)
 
 
 def _normalize_permission_codes(db: Session, codes: list[str] | None) -> list[str]:
     return normalize_known_permission_codes(db, codes)
-
 
 
 def _require_pay_profiles_view(db: Session, *, venue_id: int, user: User) -> None:
@@ -60,12 +60,10 @@ def _require_pay_profiles_view(db: Session, *, venue_id: int, user: User) -> Non
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAY_PROFILES_MANAGE")
 
 
-
 def _require_pay_profiles_manage(db: Session, *, venue_id: int, user: User) -> None:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAY_PROFILES_MANAGE")
-
 
 
 def _require_payroll_view(db: Session, *, venue_id: int, user: User) -> None:
@@ -78,12 +76,10 @@ def _require_payroll_view(db: Session, *, venue_id: int, user: User) -> None:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYROLL_CALCULATE")
 
 
-
 def _require_payroll_calculate(db: Session, *, venue_id: int, user: User) -> None:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         return
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAYROLL_CALCULATE")
-
 
 
 def _parse_json_text(raw: str | None):
@@ -95,7 +91,6 @@ def _parse_json_text(raw: str | None):
         return None
 
 
-
 def _get_pay_profile_or_404(db: Session, *, venue_id: int, profile_id: int) -> PayProfile:
     obj = db.execute(
         select(PayProfile).where(PayProfile.id == profile_id, PayProfile.venue_id == venue_id)
@@ -103,7 +98,6 @@ def _get_pay_profile_or_404(db: Session, *, venue_id: int, profile_id: int) -> P
     if obj is None:
         raise HTTPException(status_code=404, detail="Pay profile not found")
     return obj
-
 
 
 def _get_pay_profile_assignment_or_404(db: Session, *, venue_id: int, assignment_id: int) -> PayProfileAssignment:
@@ -116,9 +110,6 @@ def _get_pay_profile_assignment_or_404(db: Session, *, venue_id: int, assignment
     if obj is None:
         raise HTTPException(status_code=404, detail="Pay profile assignment not found")
     return obj
-
-
-
 
 
 def _get_member_active_pay_profile_assignment(
@@ -140,7 +131,11 @@ def _get_member_active_pay_profile_assignment(
             sa.or_(PayProfileAssignment.start_date.is_(None), PayProfileAssignment.start_date <= target_date),
             sa.or_(PayProfileAssignment.end_date.is_(None), PayProfileAssignment.end_date >= target_date),
         )
-        .order_by(PayProfileAssignment.start_date.desc().nullslast(), PayProfileAssignment.updated_at.desc().nullslast(), PayProfileAssignment.id.desc())
+        .order_by(
+            PayProfileAssignment.start_date.desc().nullslast(),
+            PayProfileAssignment.updated_at.desc().nullslast(),
+            PayProfileAssignment.id.desc(),
+        )
     ).first()
     if row is None:
         return None, None
@@ -164,7 +159,11 @@ def _sync_member_pay_profile_assignment(
     if target_profile_id is not None:
         target_profile = _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=target_profile_id)
 
-    if target_profile_id is not None and current_assignment is not None and int(current_assignment.pay_profile_id) == target_profile_id:
+    if (
+        target_profile_id is not None
+        and current_assignment is not None
+        and int(current_assignment.pay_profile_id) == target_profile_id
+    ):
         return current_assignment, current_profile
 
     if current_assignment is not None:
@@ -204,9 +203,6 @@ def _get_pay_component_or_404(db: Session, *, venue_id: int, component_id: int) 
     if obj is None:
         raise HTTPException(status_code=404, detail="Pay component not found")
     return obj
-
-
-
 
 
 def _normalize_int_ids(value: object) -> list[int]:
@@ -284,12 +280,13 @@ def _ensure_department_ids_in_venue(db: Session, *, venue_id: int, ids: list[int
                 Department.venue_id == int(venue_id),
                 Department.id.in_(normalized),
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     missing = [dep_id for dep_id in normalized if dep_id not in found]
     if missing:
         raise HTTPException(status_code=400, detail=f"{detail}: {', '.join(str(dep_id) for dep_id in missing)}")
-
 
 
 def _effective_component_base_scope(component: PayComponent) -> str:
@@ -322,6 +319,7 @@ def _effective_component_boost_recalc_mode(component: PayComponent) -> str:
         return BOOST_RECALC_EXCESS_ONLY
     return BOOST_RECALC_REPLACE_ALL
 
+
 def _serialize_pay_component(component: PayComponent) -> dict:
     department = getattr(component, "department", None)
     department_ids = _component_department_ids(component)
@@ -343,7 +341,9 @@ def _serialize_pay_component(component: PayComponent) -> dict:
         "department_id": component.department_id,
         "department_ids": department_ids,
         "department_title": department.title if department is not None else None,
-        "department_titles": [department.title] if department is not None and int(component.department_id or 0) in department_ids else [],
+        "department_titles": [department.title]
+        if department is not None and int(component.department_id or 0) in department_ids
+        else [],
         "kpi_metric_id": component.kpi_metric_id,
         "kpi_metric_title": kpi_metric.title if kpi_metric is not None else None,
         "threshold_value": component.threshold_value,
@@ -357,26 +357,33 @@ def _serialize_pay_component(component: PayComponent) -> dict:
         "boost_percent_bps": component.boost_percent_bps,
         "boost_source_type": component.boost_source_type,
         "effective_boost_source_type": effective_boost_source_type,
-        "effective_boost_source_title": BOOST_SOURCE_TITLES.get(effective_boost_source_type, effective_boost_source_type),
+        "effective_boost_source_title": BOOST_SOURCE_TITLES.get(
+            effective_boost_source_type, effective_boost_source_type
+        ),
         "boost_recalc_mode": component.boost_recalc_mode,
         "effective_boost_recalc_mode": effective_boost_recalc_mode,
-        "effective_boost_recalc_mode_title": BOOST_RECALC_TITLES.get(effective_boost_recalc_mode, effective_boost_recalc_mode),
+        "effective_boost_recalc_mode_title": BOOST_RECALC_TITLES.get(
+            effective_boost_recalc_mode, effective_boost_recalc_mode
+        ),
         "boost_department_id": component.boost_department_id,
         "boost_department_ids": boost_department_ids,
         "boost_department_title": boost_department.title if boost_department is not None else None,
-        "boost_department_titles": [boost_department.title] if boost_department is not None and int(component.boost_department_id or 0) in boost_department_ids else [],
+        "boost_department_titles": [boost_department.title]
+        if boost_department is not None and int(component.boost_department_id or 0) in boost_department_ids
+        else [],
         "boost_kpi_metric_id": component.boost_kpi_metric_id,
         "boost_kpi_metric_title": boost_kpi_metric.title if boost_kpi_metric is not None else None,
         "boost_threshold_value": component.boost_threshold_value,
         "minimum_guarantee_minor": component.minimum_guarantee_minor,
         "minimum_guarantee_scope": component.minimum_guarantee_scope,
         "effective_minimum_guarantee_scope": _normalize_minimum_guarantee_scope(component.minimum_guarantee_scope),
-        "effective_minimum_guarantee_scope_title": MINIMUM_GUARANTEE_SCOPE_TITLES.get(_normalize_minimum_guarantee_scope(component.minimum_guarantee_scope), "за месяц"),
+        "effective_minimum_guarantee_scope_title": MINIMUM_GUARANTEE_SCOPE_TITLES.get(
+            _normalize_minimum_guarantee_scope(component.minimum_guarantee_scope), "за месяц"
+        ),
         "maximum_cap_minor": component.maximum_cap_minor,
         "sort_order": int(component.sort_order or 0),
         "is_active": bool(component.is_active),
     }
-
 
 
 def _validate_pay_component_fields(
@@ -409,18 +416,35 @@ def _validate_pay_component_fields(
     component_type = str(component_type or "").strip().upper()
     normalized_base_scope = str(base_scope or "").strip().upper() if base_scope is not None else None
     normalized_kpi_calculation_mode = str(kpi_calculation_mode or KPI_CALCULATION_FIXED).strip().upper()
-    normalized_boost_source_type = str(boost_source_type or "").strip().upper() if boost_source_type is not None else BOOST_SOURCE_NONE
-    normalized_boost_recalc_mode = str(boost_recalc_mode or "").strip().upper() if boost_recalc_mode is not None else BOOST_RECALC_REPLACE_ALL
+    normalized_boost_source_type = (
+        str(boost_source_type or "").strip().upper() if boost_source_type is not None else BOOST_SOURCE_NONE
+    )
+    normalized_boost_recalc_mode = (
+        str(boost_recalc_mode or "").strip().upper() if boost_recalc_mode is not None else BOOST_RECALC_REPLACE_ALL
+    )
     is_percent_component = component_type in {"PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"}
     normalized_department_ids = _normalize_int_ids(department_ids)
     normalized_boost_department_ids = _normalize_int_ids(boost_department_ids)
     raw_minimum_scope = str(minimum_guarantee_scope or "").strip().upper()
     if component_type == "MINIMUM_PAYOUT":
-        if minimum_guarantee_scope is not None and raw_minimum_scope not in {MINIMUM_GUARANTEE_MONTH, MINIMUM_GUARANTEE_SHIFT, MINIMUM_GUARANTEE_DAY}:
-            raise HTTPException(status_code=400, detail="minimum_guarantee_scope must be MONTH or SHIFT for MINIMUM_PAYOUT")
-    elif minimum_guarantee_scope is not None and raw_minimum_scope not in {MINIMUM_GUARANTEE_MONTH, MINIMUM_GUARANTEE_DAY}:
+        if minimum_guarantee_scope is not None and raw_minimum_scope not in {
+            MINIMUM_GUARANTEE_MONTH,
+            MINIMUM_GUARANTEE_SHIFT,
+            MINIMUM_GUARANTEE_DAY,
+        }:
+            raise HTTPException(
+                status_code=400, detail="minimum_guarantee_scope must be MONTH or SHIFT for MINIMUM_PAYOUT"
+            )
+    elif minimum_guarantee_scope is not None and raw_minimum_scope not in {
+        MINIMUM_GUARANTEE_MONTH,
+        MINIMUM_GUARANTEE_DAY,
+    }:
         raise HTTPException(status_code=400, detail="minimum_guarantee_scope must be MONTH or DAY")
-    if minimum_guarantee_minor is not None and maximum_cap_minor is not None and minimum_guarantee_minor > maximum_cap_minor:
+    if (
+        minimum_guarantee_minor is not None
+        and maximum_cap_minor is not None
+        and minimum_guarantee_minor > maximum_cap_minor
+    ):
         raise HTTPException(status_code=400, detail="minimum_guarantee_minor must be <= maximum_cap_minor")
     if component_type == "SALARY_FIXED_MONTH":
         if amount_minor is None:
@@ -449,9 +473,14 @@ def _validate_pay_component_fields(
         if percent_bps is None:
             raise HTTPException(status_code=400, detail="percent_bps is required for PERCENT_DEPARTMENT_REVENUE")
         if department_id is None and not normalized_department_ids:
-            raise HTTPException(status_code=400, detail="department_id or department_ids is required for PERCENT_DEPARTMENT_REVENUE")
+            raise HTTPException(
+                status_code=400, detail="department_id or department_ids is required for PERCENT_DEPARTMENT_REVENUE"
+            )
     if is_percent_component:
-        if normalized_base_scope is not None and normalized_base_scope not in {BASE_SCOPE_FULL_PERIOD, BASE_SCOPE_WORKED_DATES}:
+        if normalized_base_scope is not None and normalized_base_scope not in {
+            BASE_SCOPE_FULL_PERIOD,
+            BASE_SCOPE_WORKED_DATES,
+        }:
             raise HTTPException(status_code=400, detail="base_scope must be FULL_PERIOD or WORKED_DATES")
         if boost_enabled:
             if boost_percent_bps is None:
@@ -475,8 +504,15 @@ def _validate_pay_component_fields(
                     raise HTTPException(status_code=400, detail="boost_threshold_value is required for KPI boost")
                 if normalized_boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY:
                     raise HTTPException(status_code=400, detail="EXCESS_ONLY is not supported for KPI boost")
-            if normalized_boost_source_type in {BOOST_SOURCE_DEPARTMENT_MONTH_PLAN, BOOST_SOURCE_DEPARTMENT_DAY_PLAN} and boost_department_id is None and not normalized_boost_department_ids:
-                raise HTTPException(status_code=400, detail="boost_department_id or boost_department_ids is required for department plan boost")
+            if (
+                normalized_boost_source_type in {BOOST_SOURCE_DEPARTMENT_MONTH_PLAN, BOOST_SOURCE_DEPARTMENT_DAY_PLAN}
+                and boost_department_id is None
+                and not normalized_boost_department_ids
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="boost_department_id or boost_department_ids is required for department plan boost",
+                )
         return
     if component_type == "KPI_BONUS":
         if kpi_metric_id is None:
@@ -502,6 +538,7 @@ def _validate_pay_component_fields(
         if amount_minor is None:
             raise HTTPException(status_code=400, detail="amount_minor is required for KPI_BONUS without steps_json")
         return
+
 
 def _serialize_pay_profile_assignment(
     assignment: PayProfileAssignment,
@@ -538,10 +575,9 @@ def _serialize_pay_profile_assignment(
     }
 
 
-
-
-
-def _serialize_pay_profile(profile: PayProfile, *, components_count: int | None = None, assignments_count: int | None = None) -> dict:
+def _serialize_pay_profile(
+    profile: PayProfile, *, components_count: int | None = None, assignments_count: int | None = None
+) -> dict:
     payload = {
         "id": int(profile.id),
         "venue_id": int(profile.venue_id),
@@ -558,14 +594,17 @@ def _serialize_pay_profile(profile: PayProfile, *, components_count: int | None 
     return payload
 
 
-
 def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> dict:
     profile = _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
-    components = db.execute(
-        select(PayComponent)
-        .where(PayComponent.venue_id == venue_id, PayComponent.pay_profile_id == profile_id)
-        .order_by(PayComponent.sort_order.asc(), PayComponent.id.asc())
-    ).scalars().all()
+    components = (
+        db.execute(
+            select(PayComponent)
+            .where(PayComponent.venue_id == venue_id, PayComponent.pay_profile_id == profile_id)
+            .order_by(PayComponent.sort_order.asc(), PayComponent.id.asc())
+        )
+        .scalars()
+        .all()
+    )
     assignment_rows = db.execute(
         select(PayProfileAssignment, User)
         .join(User, User.id == PayProfileAssignment.member_user_id)
@@ -573,7 +612,11 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
             PayProfileAssignment.venue_id == venue_id,
             PayProfileAssignment.pay_profile_id == profile_id,
         )
-        .order_by(PayProfileAssignment.is_active.desc(), PayProfileAssignment.start_date.desc(), PayProfileAssignment.id.desc())
+        .order_by(
+            PayProfileAssignment.is_active.desc(),
+            PayProfileAssignment.start_date.desc(),
+            PayProfileAssignment.id.desc(),
+        )
     ).all()
     member_auth_map = _build_user_auth_snapshot_map(db, [int(member.id) for _assignment, member in assignment_rows])
     payload = _serialize_pay_profile(profile)

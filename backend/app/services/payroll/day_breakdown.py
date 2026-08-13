@@ -155,8 +155,7 @@ def _sum_department_weights_by_date(
     weights: dict[date, int] = {}
     for day in ordered_dates:
         weights[day] = sum(
-            int(department_revenue_by_date_minor.get(int(dep_id), {}).get(day, 0) or 0)
-            for dep_id in department_ids
+            int(department_revenue_by_date_minor.get(int(dep_id), {}).get(day, 0) or 0) for dep_id in department_ids
         )
     return weights
 
@@ -190,7 +189,9 @@ def _next_month_start(month_start: date) -> date:
     return date(month_start.year, month_start.month + 1, 1)
 
 
-def _allocate_minor_by_keys(total_minor: int, ordered_keys: list[date], weights_by_key: dict[date, int] | None = None) -> dict[date, int]:
+def _allocate_minor_by_keys(
+    total_minor: int, ordered_keys: list[date], weights_by_key: dict[date, int] | None = None
+) -> dict[date, int]:
     keys = list(ordered_keys or [])
     if not keys:
         return {}
@@ -299,7 +300,12 @@ def _load_day_allocation_context(
     revenue_by_date_minor = {row.date: int(row.revenue_total or 0) * 100 for row in report_rows}
 
     value_rows = db.execute(
-        select(DailyReport.date, DailyReportValue.kind, DailyReportValue.ref_id, func.coalesce(func.sum(DailyReportValue.value_numeric), 0))
+        select(
+            DailyReport.date,
+            DailyReportValue.kind,
+            DailyReportValue.ref_id,
+            func.coalesce(func.sum(DailyReportValue.value_numeric), 0),
+        )
         .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
         .where(
             DailyReport.venue_id == int(venue_id),
@@ -352,7 +358,9 @@ def _component_allocation_for_day(
     if component_type == "SALARY_FIXED_MONTH":
         if not month_dates or target_date not in month_dates:
             return None
-        allocation = _allocate_minor_by_keys(month_component_amount_minor, sorted(month_dates), {day: 1 for day in month_dates})
+        allocation = _allocate_minor_by_keys(
+            month_component_amount_minor, sorted(month_dates), {day: 1 for day in month_dates}
+        )
         amount_minor = int(allocation.get(target_date, 0))
         if amount_minor == 0:
             return None
@@ -411,7 +419,12 @@ def _component_allocation_for_day(
             amount_minor = int(day_snapshot.get("amount_minor") or 0)
             if amount_minor == 0:
                 return None
-            percent_bps = int(day_snapshot.get("percent_bps") or component.get("percent_bps") or component.get("source_percent_bps") or 0)
+            percent_bps = int(
+                day_snapshot.get("percent_bps")
+                or component.get("percent_bps")
+                or component.get("source_percent_bps")
+                or 0
+            )
             actual_minor = day_snapshot.get("actual_amount_minor")
             target_minor = day_snapshot.get("target_amount_minor")
             base_text = f"база {_fmt_money_minor(day_snapshot.get('base_amount_minor'))}"
@@ -472,7 +485,12 @@ def _component_allocation_for_day(
             amount_minor = int(day_snapshot.get("amount_minor") or 0)
             if amount_minor == 0:
                 return None
-            percent_bps = int(day_snapshot.get("percent_bps") or component.get("percent_bps") or component.get("source_percent_bps") or 0)
+            percent_bps = int(
+                day_snapshot.get("percent_bps")
+                or component.get("percent_bps")
+                or component.get("source_percent_bps")
+                or 0
+            )
             actual_minor = day_snapshot.get("actual_amount_minor")
             target_minor = day_snapshot.get("target_amount_minor")
             base_text = f"база {_fmt_money_minor(day_snapshot.get('base_amount_minor'))}"
@@ -486,7 +504,9 @@ def _component_allocation_for_day(
             if day_snapshot.get("minimum_applied"):
                 formula_text += f" · дневная минималка {_fmt_money_minor(day_snapshot.get('amount_minor'))}"
         else:
-            weights = _sum_department_weights_by_date(context.department_revenue_by_date_minor, department_ids, ordered_dates)
+            weights = _sum_department_weights_by_date(
+                context.department_revenue_by_date_minor, department_ids, ordered_dates
+            )
             base_text = f"{_fmt_money_minor(weights.get(target_date, 0))} из {_fmt_money_minor(sum(weights.values()))}"
             percent_bps = component.get("percent_bps") or component.get("source_percent_bps")
             if percent_bps not in (None, ""):
@@ -524,11 +544,11 @@ def _component_allocation_for_day(
             "is_estimated": False,
         }
     elif component_type == "MINIMUM_PAYOUT":
-        scope = str(
-            component.get("minimum_payout_scope")
-            or component.get("minimum_guarantee_scope")
-            or "MONTH"
-        ).strip().upper()
+        scope = (
+            str(component.get("minimum_payout_scope") or component.get("minimum_guarantee_scope") or "MONTH")
+            .strip()
+            .upper()
+        )
         if scope in {"SHIFT", "DAY"}:
             shift_rows = [row for row in (component.get("shift_rows") or []) if isinstance(row, dict)]
             if shift_rows:
@@ -536,10 +556,16 @@ def _component_allocation_for_day(
                 amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_rows)
                 if amount_minor == 0:
                     return None
-                source_amount_minor = component.get("source_amount_minor") or component.get("minimum_target_minor") or month_component_amount_minor
+                source_amount_minor = (
+                    component.get("source_amount_minor")
+                    or component.get("minimum_target_minor")
+                    or month_component_amount_minor
+                )
                 applied_count = sum(1 for row in day_rows if row.get("minimum_applied"))
                 base_text = f"{applied_count} смен с доплатой из {len(day_rows)} за сутки"
-                formula_text = f"Доплата до минимума {_fmt_money_minor(int(source_amount_minor or 0))} по каждой смене отдельно"
+                formula_text = (
+                    f"Доплата до минимума {_fmt_money_minor(int(source_amount_minor or 0))} по каждой смене отдельно"
+                )
                 title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
                 return {
                     "category": "earning",
@@ -555,12 +581,20 @@ def _component_allocation_for_day(
                 }
             weights = {day: int(context.shifts_by_date.get(day, 0)) for day in ordered_dates}
             base_text = f"{int(context.shifts_by_date.get(target_date, 0))} смен из {sum(weights.values())}"
-            source_amount_minor = component.get("source_amount_minor") or component.get("minimum_target_minor") or month_component_amount_minor
+            source_amount_minor = (
+                component.get("source_amount_minor")
+                or component.get("minimum_target_minor")
+                or month_component_amount_minor
+            )
             formula_text = f"Доплата до минимума {_fmt_money_minor(int(source_amount_minor or 0))} за смену"
         else:
             weights = {day: 1 for day in ordered_dates}
             base_text = f"1 день из {len(ordered_dates)}"
-            target_minor = component.get("minimum_target_minor") or component.get("source_amount_minor") or month_component_amount_minor
+            target_minor = (
+                component.get("minimum_target_minor")
+                or component.get("source_amount_minor")
+                or month_component_amount_minor
+            )
             formula_text = f"Доплата до месячного минимума {_fmt_money_minor(int(target_minor or 0))}"
     elif component_type == "KPI_BONUS":
         metric_id = int(component.get("kpi_metric_id") or 0)
@@ -655,7 +689,7 @@ def build_member_day_breakdown(
         ).scalar_one_or_none()
     metrics = breakdown.get("metrics") if isinstance(breakdown.get("metrics"), dict) else {}
     worked_dates = []
-    for raw_day in (metrics.get("worked_dates") or []):
+    for raw_day in metrics.get("worked_dates") or []:
         try:
             worked_dates.append(date.fromisoformat(str(raw_day)))
         except Exception:
@@ -676,7 +710,7 @@ def build_member_day_breakdown(
     # Keep TOTAL fully detailed; for a single slot expose slot-specific context/tips
     # without duplicating a full monthly component into both DAY and NIGHT.
     if slot == "TOTAL":
-        for component in (breakdown.get("components") or []):
+        for component in breakdown.get("components") or []:
             if not isinstance(component, dict):
                 continue
             item = _component_allocation_for_day(component=component, target_date=target_date, context=context)
@@ -763,7 +797,9 @@ def build_member_day_breakdown(
     earnings_minor = sum(int(item.get("amount_minor") or 0) for item in items if item.get("category") == "earning")
     tips_minor = sum(int(item.get("amount_minor") or 0) for item in items if item.get("category") == "tip")
     bonuses_minor = sum(int(item.get("amount_minor") or 0) for item in items if item.get("category") == "bonus")
-    penalties_minor = -sum(int(item.get("amount_minor") or 0) for item in items if item.get("category") in {"penalty", "writeoff"})
+    penalties_minor = -sum(
+        int(item.get("amount_minor") or 0) for item in items if item.get("category") in {"penalty", "writeoff"}
+    )
     total_minor = earnings_minor + bonuses_minor - penalties_minor
 
     day_minutes = int(context.minutes_by_date.get(target_date, 0))
@@ -786,7 +822,10 @@ def build_member_day_breakdown(
         },
         "member": {
             "user_id": int(member.id) if member is not None else int(member_user_id),
-            "name": getattr(member, "short_name", None) or getattr(member, "full_name", None) or getattr(member, "tg_username", None) or f"user #{member_user_id}",
+            "name": getattr(member, "short_name", None)
+            or getattr(member, "full_name", None)
+            or getattr(member, "tg_username", None)
+            or f"user #{member_user_id}",
             "venue_role": getattr(vm, "venue_role", None) if vm is not None else None,
         },
         "date": target_date.isoformat(),
@@ -805,11 +844,17 @@ def build_member_day_breakdown(
             "revenue_minor": day_revenue_minor,
             "slot_payroll_detail_available": slot == "TOTAL",
             "slot_adjustments_available": slot == "TOTAL",
-            "slot_note": ("Детализация оклада/процентов и ручные корректировки доступны в Итого" if slot in {"DAY", "NIGHT"} else None),
+            "slot_note": (
+                "Детализация оклада/процентов и ручные корректировки доступны в Итого"
+                if slot in {"DAY", "NIGHT"}
+                else None
+            ),
             "has_payroll_line": payroll_line is not None,
             "payroll_line_id": int(payroll_line.id) if payroll_line is not None else None,
             "pay_profile_title": breakdown.get("pay_profile_title") if breakdown else None,
-            "calculated_at": payroll_run.calculated_at.isoformat() if payroll_run is not None and getattr(payroll_run, "calculated_at", None) else None,
+            "calculated_at": payroll_run.calculated_at.isoformat()
+            if payroll_run is not None and getattr(payroll_run, "calculated_at", None)
+            else None,
             "latest_recalculation": _serialize_recalculation_log(latest_recalculation),
         },
         "items": items,

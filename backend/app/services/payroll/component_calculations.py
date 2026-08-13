@@ -225,10 +225,8 @@ def calculate_component_amount_minor(
     return 0
 
 
-
 def _round_percent_amount(base_amount_minor: int, percent_bps: int) -> int:
     return int((int(base_amount_minor) * int(percent_bps) + 5000) // 10000)
-
 
 
 def _normalize_int_ids(value: object) -> list[int]:
@@ -266,7 +264,9 @@ def _component_department_ids(component: PayComponent) -> list[int]:
     return ids
 
 
-def _component_boost_department_ids(component: PayComponent, *, fallback_department_ids: list[int] | None = None) -> list[int]:
+def _component_boost_department_ids(
+    component: PayComponent, *, fallback_department_ids: list[int] | None = None
+) -> list[int]:
     ids = _normalize_int_ids(getattr(component, "boost_department_ids_json", None))
     legacy_id = int(getattr(component, "boost_department_id", 0) or 0)
     if legacy_id > 0 and legacy_id not in ids:
@@ -297,7 +297,9 @@ def _sum_department_revenue_minor(revenue_metrics: PayrollRevenueMetrics, depart
     return int(sum(int(revenue_metrics.department_revenue_minor.get(int(dep_id), 0) or 0) for dep_id in department_ids))
 
 
-def _sum_department_revenue_by_date_minor(revenue_metrics: PayrollRevenueMetrics, department_ids: list[int]) -> dict[date, int]:
+def _sum_department_revenue_by_date_minor(
+    revenue_metrics: PayrollRevenueMetrics, department_ids: list[int]
+) -> dict[date, int]:
     out: dict[date, int] = {}
     for dep_id in department_ids:
         for day, amount in revenue_metrics.department_revenue_by_date_minor.get(int(dep_id), {}).items():
@@ -311,18 +313,23 @@ def _sum_optional_targets(values: list[int | None]) -> int | None:
     return int(sum(int(value or 0) for value in values))
 
 
-def _sum_department_month_target_minor(venue_plan_metrics: PayrollVenuePlanMetrics, department_ids: list[int]) -> int | None:
-    return _sum_optional_targets([
-        venue_plan_metrics.department_month_revenue_target_minor.get(int(dep_id))
-        for dep_id in department_ids
-    ])
+def _sum_department_month_target_minor(
+    venue_plan_metrics: PayrollVenuePlanMetrics, department_ids: list[int]
+) -> int | None:
+    return _sum_optional_targets(
+        [venue_plan_metrics.department_month_revenue_target_minor.get(int(dep_id)) for dep_id in department_ids]
+    )
 
 
-def _sum_department_day_target_minor(venue_plan_metrics: PayrollVenuePlanMetrics, department_ids: list[int], target_date: date) -> int | None:
-    return _sum_optional_targets([
-        venue_plan_metrics.department_day_revenue_target_by_date_minor.get(int(dep_id), {}).get(target_date)
-        for dep_id in department_ids
-    ])
+def _sum_department_day_target_minor(
+    venue_plan_metrics: PayrollVenuePlanMetrics, department_ids: list[int], target_date: date
+) -> int | None:
+    return _sum_optional_targets(
+        [
+            venue_plan_metrics.department_day_revenue_target_by_date_minor.get(int(dep_id), {}).get(target_date)
+            for dep_id in department_ids
+        ]
+    )
 
 
 def _minimum_guarantee_scope(component: PayComponent) -> str:
@@ -425,8 +432,7 @@ def _split_date_amounts_to_shifts(
             continue
         ids = [int(shift.shift_id) for shift in shifts]
         weights = {
-            int(shift.shift_id): (max(1, int(shift.minutes or 0)) if weight_by_minutes else 1)
-            for shift in shifts
+            int(shift.shift_id): (max(1, int(shift.minutes or 0)) if weight_by_minutes else 1) for shift in shifts
         }
         out.update(_allocate_minor_by_keys(int(total_minor or 0), ids, weights))
     return out

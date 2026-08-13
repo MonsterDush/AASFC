@@ -78,19 +78,23 @@ def _hash_code(*, phone_e164: str, code: str) -> str:
 
 def generate_code() -> str:
     length = max(4, min(int(settings.PHONE_AUTH_CODE_LENGTH or 6), 8))
-    return ''.join(random.SystemRandom().choice('0123456789') for _ in range(length))
+    return "".join(random.SystemRandom().choice("0123456789") for _ in range(length))
 
 
 def expire_stale_challenges(db: Session, *, phone_e164: str) -> None:
     now = utcnow()
-    rows = db.execute(
-        select(PhoneOtpChallenge)
-        .where(
-            PhoneOtpChallenge.phone_e164 == phone_e164,
-            PhoneOtpChallenge.status == OTP_STATUS_PENDING,
+    rows = (
+        db.execute(
+            select(PhoneOtpChallenge)
+            .where(
+                PhoneOtpChallenge.phone_e164 == phone_e164,
+                PhoneOtpChallenge.status == OTP_STATUS_PENDING,
+            )
+            .order_by(PhoneOtpChallenge.id.desc())
         )
-        .order_by(PhoneOtpChallenge.id.desc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for row in rows:
         if row.expires_at <= now:
             row.status = OTP_STATUS_EXPIRED
@@ -133,7 +137,11 @@ def _enforce_request_limits(db: Session, *, phone_e164: str, channel: str) -> No
             .order_by(PhoneOtpChallenge.id.desc())
         ).scalar_one_or_none()
         if recent is not None:
-            detail = "Запрос на звонок уже отправлен. Подождите немного и попробуйте снова." if normalized_channel == OTP_CHANNEL_CALL else "Код уже отправлен. Подождите немного и попробуйте снова."
+            detail = (
+                "Запрос на звонок уже отправлен. Подождите немного и попробуйте снова."
+                if normalized_channel == OTP_CHANNEL_CALL
+                else "Код уже отправлен. Подождите немного и попробуйте снова."
+            )
             raise HTTPException(status_code=429, detail=detail)
 
     max_sends_per_day = int(settings.PHONE_AUTH_MAX_SENDS_PER_DAY or 0)
@@ -147,7 +155,11 @@ def _enforce_request_limits(db: Session, *, phone_e164: str, channel: str) -> No
             )
         ).scalar_one()
         if int(sent_today or 0) >= max_sends_per_day:
-            detail = "Превышен дневной лимит подтверждений звонком" if normalized_channel == OTP_CHANNEL_CALL else "Превышен дневной лимит отправки кодов"
+            detail = (
+                "Превышен дневной лимит подтверждений звонком"
+                if normalized_channel == OTP_CHANNEL_CALL
+                else "Превышен дневной лимит отправки кодов"
+            )
             raise HTTPException(status_code=429, detail=detail)
 
     burst_window_seconds = int(settings.PHONE_AUTH_BURST_WINDOW_SECONDS or 0)
@@ -155,20 +167,28 @@ def _enforce_request_limits(db: Session, *, phone_e164: str, channel: str) -> No
     block_seconds = int(settings.PHONE_AUTH_BLOCK_SECONDS or 0)
     if burst_window_seconds > 0 and burst_limit > 0 and block_seconds > 0:
         window_from = now - timedelta(seconds=burst_window_seconds)
-        recent_rows = db.execute(
-            select(PhoneOtpChallenge)
-            .where(
-                PhoneOtpChallenge.phone_e164 == phone_e164,
-                PhoneOtpChallenge.verification_channel == normalized_channel,
-                PhoneOtpChallenge.sent_at >= window_from,
+        recent_rows = (
+            db.execute(
+                select(PhoneOtpChallenge)
+                .where(
+                    PhoneOtpChallenge.phone_e164 == phone_e164,
+                    PhoneOtpChallenge.verification_channel == normalized_channel,
+                    PhoneOtpChallenge.sent_at >= window_from,
+                )
+                .order_by(PhoneOtpChallenge.sent_at.desc(), PhoneOtpChallenge.id.desc())
             )
-            .order_by(PhoneOtpChallenge.sent_at.desc(), PhoneOtpChallenge.id.desc())
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if len(recent_rows) >= burst_limit:
             newest = recent_rows[0]
             block_until = newest.sent_at + timedelta(seconds=block_seconds)
             if block_until > now:
-                detail = "Слишком много подтверждений звонком за короткое время. Попробуйте позже." if normalized_channel == OTP_CHANNEL_CALL else "Слишком много SMS за короткое время. Попробуйте позже."
+                detail = (
+                    "Слишком много подтверждений звонком за короткое время. Попробуйте позже."
+                    if normalized_channel == OTP_CHANNEL_CALL
+                    else "Слишком много SMS за короткое время. Попробуйте позже."
+                )
                 raise HTTPException(status_code=429, detail=detail)
 
 
@@ -217,7 +237,9 @@ def get_challenge_by_id(
     phone_e164: str | None = None,
     purpose: str | Iterable[str] | None = None,
 ) -> PhoneOtpChallenge:
-    challenge = db.execute(select(PhoneOtpChallenge).where(PhoneOtpChallenge.id == int(challenge_id))).scalar_one_or_none()
+    challenge = db.execute(
+        select(PhoneOtpChallenge).where(PhoneOtpChallenge.id == int(challenge_id))
+    ).scalar_one_or_none()
     if challenge is None:
         raise HTTPException(status_code=404, detail="Подтверждение не найдено")
 
@@ -351,12 +373,16 @@ def link_phone_identity_to_user(db: Session, *, user: User, phone_e164: str) -> 
     if existing is not None and existing.user_id != user.id:
         raise HTTPException(status_code=409, detail="Этот номер уже привязан к другой учётной записи")
 
-    user_phone_rows = db.execute(
-        select(AuthIdentity).where(
-            AuthIdentity.user_id == user.id,
-            AuthIdentity.provider == PHONE_PROVIDER_PHONE,
+    user_phone_rows = (
+        db.execute(
+            select(AuthIdentity).where(
+                AuthIdentity.user_id == user.id,
+                AuthIdentity.provider == PHONE_PROVIDER_PHONE,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for row in user_phone_rows:
         row.is_verified = False
 
@@ -439,11 +465,15 @@ def get_user_phone(db: Session, *, user_id: int) -> str | None:
 
 
 def get_user_auth_methods(db: Session, *, user_id: int) -> list[str]:
-    rows = db.execute(
-        select(AuthIdentity.provider)
-        .where(AuthIdentity.user_id == user_id, AuthIdentity.is_verified.is_(True))
-        .order_by(AuthIdentity.id.asc())
-    ).scalars().all()
+    rows = (
+        db.execute(
+            select(AuthIdentity.provider)
+            .where(AuthIdentity.user_id == user_id, AuthIdentity.is_verified.is_(True))
+            .order_by(AuthIdentity.id.asc())
+        )
+        .scalars()
+        .all()
+    )
     out: list[str] = []
     for row in rows:
         val = str(row or "").strip().lower()

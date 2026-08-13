@@ -12,9 +12,7 @@ from app.services.finance.ledger import create_finance_entry, delete_finance_ent
 
 def load_report_values(*, db: Session, report_id: int) -> list[DailyReportValue]:
     return list(
-        db.execute(
-            select(DailyReportValue).where(DailyReportValue.report_id == int(report_id))
-        ).scalars().all()
+        db.execute(select(DailyReportValue).where(DailyReportValue.report_id == int(report_id))).scalars().all()
     )
 
 
@@ -72,7 +70,9 @@ def build_report_revenue_plan(*, report: DailyReport, values: list[DailyReportVa
     ]
 
 
-def rebuild_revenue_entries_for_report(*, db: Session, report: DailyReport, values: list[DailyReportValue] | None = None) -> int:
+def rebuild_revenue_entries_for_report(
+    *, db: Session, report: DailyReport, values: list[DailyReportValue] | None = None
+) -> int:
     if report.id is None:
         raise ValueError("Report must be flushed before revenue rebuild")
 
@@ -183,9 +183,7 @@ def compute_revenue_summary(
         .subquery()
     )
 
-    closed_reports = int(
-        db.execute(select(func.count()).select_from(closed_reports_subq)).scalar() or 0
-    )
+    closed_reports = int(db.execute(select(func.count()).select_from(closed_reports_subq)).scalar() or 0)
 
     rows = db.execute(
         select(

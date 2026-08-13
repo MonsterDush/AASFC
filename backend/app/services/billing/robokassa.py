@@ -45,8 +45,16 @@ def _normalize_hash_algorithm(value: str | None) -> str:
 def get_robokassa_config() -> RobokassaConfig:
     api_base = settings.api_base_url()
     test_mode = bool(settings.ROBOKASSA_TEST_MODE)
-    password1 = settings.ROBOKASSA_TEST_PASSWORD1 if test_mode and settings.ROBOKASSA_TEST_PASSWORD1 else settings.ROBOKASSA_PASSWORD1
-    password2 = settings.ROBOKASSA_TEST_PASSWORD2 if test_mode and settings.ROBOKASSA_TEST_PASSWORD2 else settings.ROBOKASSA_PASSWORD2
+    password1 = (
+        settings.ROBOKASSA_TEST_PASSWORD1
+        if test_mode and settings.ROBOKASSA_TEST_PASSWORD1
+        else settings.ROBOKASSA_PASSWORD1
+    )
+    password2 = (
+        settings.ROBOKASSA_TEST_PASSWORD2
+        if test_mode and settings.ROBOKASSA_TEST_PASSWORD2
+        else settings.ROBOKASSA_PASSWORD2
+    )
     payment_url = (settings.ROBOKASSA_PAYMENT_URL or "").strip() or "https://auth.robokassa.ru/Merchant/Index.aspx"
     return RobokassaConfig(
         merchant_login=(settings.ROBOKASSA_MERCHANT_LOGIN or "").strip(),
@@ -209,17 +217,21 @@ def build_checkout_url(
         ("ResultURL", result_url),
     ]
     if use_return_url2:
-        params.extend([
-            ("SuccessUrl2", success_url),
-            ("SuccessUrl2Method", str(success_url2_method or "GET").upper()),
-            ("FailUrl2", fail_url),
-            ("FailUrl2Method", str(fail_url2_method or "GET").upper()),
-        ])
+        params.extend(
+            [
+                ("SuccessUrl2", success_url),
+                ("SuccessUrl2Method", str(success_url2_method or "GET").upper()),
+                ("FailUrl2", fail_url),
+                ("FailUrl2Method", str(fail_url2_method or "GET").upper()),
+            ]
+        )
     else:
-        params.extend([
-            ("SuccessURL", success_url),
-            ("FailURL", fail_url),
-        ])
+        params.extend(
+            [
+                ("SuccessURL", success_url),
+                ("FailURL", fail_url),
+            ]
+        )
     formatted_expiration_date = _format_expiration_date(expiration_date)
     if formatted_expiration_date:
         params.append(("ExpirationDate", formatted_expiration_date))

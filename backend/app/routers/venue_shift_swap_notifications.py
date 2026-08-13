@@ -93,20 +93,23 @@ def _shift_label(shift: Shift, interval: ShiftInterval) -> str:
 
 
 def _manager_recipients(db: Session, *, venue_id: int) -> list[User]:
-    members = db.execute(
-        select(User)
-        .join(VenueMember, VenueMember.user_id == User.id)
-        .where(
-            VenueMember.venue_id == int(venue_id),
-            VenueMember.is_active.is_(True),
+    members = (
+        db.execute(
+            select(User)
+            .join(VenueMember, VenueMember.user_id == User.id)
+            .where(
+                VenueMember.venue_id == int(venue_id),
+                VenueMember.is_active.is_(True),
+            )
+            .order_by(User.id.asc())
         )
-        .order_by(User.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         candidate
         for candidate in members
-        if getattr(candidate, "tg_user_id", None)
-        and _is_schedule_editor(db, venue_id=venue_id, user=candidate)
+        if getattr(candidate, "tg_user_id", None) and _is_schedule_editor(db, venue_id=venue_id, user=candidate)
     ]
 
 
@@ -137,11 +140,7 @@ def _send_shift_swap_notifications(
 
     recipients: dict[int, tuple[User, str, str]] = {}
     if event in {"created", "cancelled"}:
-        title = (
-            "Новый запрос на обмен сменой"
-            if event == "created"
-            else "Запрос на обмен сменой отменён"
-        )
+        title = "Новый запрос на обмен сменой" if event == "created" else "Запрос на обмен сменой отменён"
         for manager in _manager_recipients(db, venue_id=int(venue.id)):
             if int(manager.id) == int(requester.id):
                 continue
@@ -157,21 +156,13 @@ def _send_shift_swap_notifications(
         approved = event == "approved"
         title = "Обмен сменой подтверждён" if approved else "Обмен сменой отклонён"
         manager_note = str(request.manager_comment or "").strip()
-        requester_text = (
-            f"{title}\n"
-            f"Заведение: {venue.name}\n"
-            f"Смена: {shift_label}\n"
-            f"Замена: {replacement_name}"
-        )
+        requester_text = f"{title}\nЗаведение: {venue.name}\nСмена: {shift_label}\nЗамена: {replacement_name}"
         if manager_note:
             requester_text += f"\nКомментарий: {manager_note}"
         recipients[int(requester.id)] = (requester, requester_text, "Открыть график")
         if approved and replacement is not None:
             replacement_text = (
-                f"Вам передали смену\n"
-                f"Заведение: {venue.name}\n"
-                f"Смена: {shift_label}\n"
-                f"От сотрудника: {requester_name}"
+                f"Вам передали смену\nЗаведение: {venue.name}\nСмена: {shift_label}\nОт сотрудника: {requester_name}"
             )
             recipients[int(replacement.id)] = (
                 replacement,

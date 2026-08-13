@@ -77,10 +77,14 @@ def create_invite(
 
         existing_user = db.query(User).filter(User.tg_username == username).one_or_none()
         if existing_user:
-            mem = db.query(VenueMember).filter(
-                VenueMember.venue_id == venue_id,
-                VenueMember.user_id == existing_user.id,
-            ).one_or_none()
+            mem = (
+                db.query(VenueMember)
+                .filter(
+                    VenueMember.venue_id == venue_id,
+                    VenueMember.user_id == existing_user.id,
+                )
+                .one_or_none()
+            )
 
             if mem:
                 if str(mem.venue_role or "").upper() == "OWNER" and not can_manage_owner_members:
@@ -92,13 +96,17 @@ def create_invite(
 
             db.commit()
             auth_map = _build_user_auth_snapshot_map(db, [existing_user.id])
-            member_row = type("MemberRow", (), {
-                "id": existing_user.id,
-                "tg_user_id": existing_user.tg_user_id,
-                "tg_username": existing_user.tg_username,
-                "full_name": existing_user.full_name,
-                "short_name": existing_user.short_name,
-            })()
+            member_row = type(
+                "MemberRow",
+                (),
+                {
+                    "id": existing_user.id,
+                    "tg_user_id": existing_user.tg_user_id,
+                    "tg_username": existing_user.tg_username,
+                    "full_name": existing_user.full_name,
+                    "short_name": existing_user.short_name,
+                },
+            )()
             return {
                 "ok": True,
                 "mode": "member_added",
@@ -138,10 +146,14 @@ def create_invite(
             existing_user = db.execute(select(User).where(User.id == phone_ident.user_id)).scalar_one_or_none()
 
         if existing_user:
-            mem = db.query(VenueMember).filter(
-                VenueMember.venue_id == venue_id,
-                VenueMember.user_id == existing_user.id,
-            ).one_or_none()
+            mem = (
+                db.query(VenueMember)
+                .filter(
+                    VenueMember.venue_id == venue_id,
+                    VenueMember.user_id == existing_user.id,
+                )
+                .one_or_none()
+            )
             if mem:
                 if str(mem.venue_role or "").upper() == "OWNER" and not can_manage_owner_members:
                     raise HTTPException(status_code=403, detail="Недостаточно прав для изменения владельца")
@@ -152,13 +164,17 @@ def create_invite(
 
             db.commit()
             auth_map = _build_user_auth_snapshot_map(db, [existing_user.id])
-            member_row = type("MemberRow", (), {
-                "id": existing_user.id,
-                "tg_user_id": existing_user.tg_user_id,
-                "tg_username": existing_user.tg_username,
-                "full_name": existing_user.full_name,
-                "short_name": existing_user.short_name,
-            })()
+            member_row = type(
+                "MemberRow",
+                (),
+                {
+                    "id": existing_user.id,
+                    "tg_user_id": existing_user.tg_user_id,
+                    "tg_username": existing_user.tg_username,
+                    "full_name": existing_user.full_name,
+                    "short_name": existing_user.short_name,
+                },
+            )()
             return {
                 "ok": True,
                 "mode": "member_added",
@@ -184,7 +200,9 @@ def create_invite(
 
     db.commit()
     db.refresh(inv)
-    invite_meta = _build_pending_invite_target_map(db, [inv]).get(int(inv.id), {"target_status": "WAITING_SIGNUP", "target_user": None})
+    invite_meta = _build_pending_invite_target_map(db, [inv]).get(
+        int(inv.id), {"target_status": "WAITING_SIGNUP", "target_user": None}
+    )
     return {
         "ok": True,
         "mode": "invited",
@@ -211,10 +229,14 @@ def set_invite_default_position(
     if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_ASSIGN")
 
-    inv = db.query(VenueInvite).filter(
-        VenueInvite.id == invite_id,
-        VenueInvite.venue_id == venue_id,
-    ).one_or_none()
+    inv = (
+        db.query(VenueInvite)
+        .filter(
+            VenueInvite.id == invite_id,
+            VenueInvite.venue_id == venue_id,
+        )
+        .one_or_none()
+    )
     if not inv or not inv.is_active or inv.accepted_user_id is not None:
         raise HTTPException(status_code=404, detail="Invite not found")
 
@@ -297,15 +319,19 @@ def remove_member(
 
     vm.is_active = False
 
-    affected_shift_dates = db.execute(
-        select(Shift.date)
-        .join(ShiftAssignment, ShiftAssignment.shift_id == Shift.id)
-        .where(
-            Shift.venue_id == venue_id,
-            ShiftAssignment.member_user_id == member_user_id,
+    affected_shift_dates = (
+        db.execute(
+            select(Shift.date)
+            .join(ShiftAssignment, ShiftAssignment.shift_id == Shift.id)
+            .where(
+                Shift.venue_id == venue_id,
+                ShiftAssignment.member_user_id == member_user_id,
+            )
+            .distinct()
         )
-        .distinct()
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     # Deactivate member's position (if exists) and remove their assignments in this venue
     venue_shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
@@ -336,6 +362,7 @@ def remove_member(
 
     db.commit()
     return {"ok": True}
+
 
 @router.post("/{venue_id}/leave", status_code=204)
 def leave_venue(
@@ -382,15 +409,19 @@ def leave_venue(
     membership.is_active = False
     db.add(membership)
 
-    affected_shift_dates = db.execute(
-        select(Shift.date)
-        .join(ShiftAssignment, ShiftAssignment.shift_id == Shift.id)
-        .where(
-            Shift.venue_id == venue_id,
-            ShiftAssignment.member_user_id == current_user.id,
+    affected_shift_dates = (
+        db.execute(
+            select(Shift.date)
+            .join(ShiftAssignment, ShiftAssignment.shift_id == Shift.id)
+            .where(
+                Shift.venue_id == venue_id,
+                ShiftAssignment.member_user_id == current_user.id,
+            )
+            .distinct()
         )
-        .distinct()
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     # Deactivate user's position (if exists) and remove their assignments in this venue
     venue_shift_ids = select(Shift.id).where(Shift.venue_id == venue_id)
@@ -422,5 +453,6 @@ def leave_venue(
     db.commit()
 
     return None
+
 
 # ---------- Schedule templates: weekly patterns for month generation ----------

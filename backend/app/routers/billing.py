@@ -148,7 +148,10 @@ def get_venue_billing(
     txs = list_billing_transactions(db, venue_id=int(venue_id), limit=20)
     events = list_billing_events(db, venue_id=int(venue_id), limit=20)
     robo_cfg = get_robokassa_config()
-    latest_pending = next((tx for tx in txs if str(tx.status or "").upper() == "PENDING" and str(tx.type or "").upper() == "PAYMENT"), None)
+    latest_pending = next(
+        (tx for tx in txs if str(tx.status or "").upper() == "PENDING" and str(tx.type or "").upper() == "PAYMENT"),
+        None,
+    )
     checkout_expires_at = get_checkout_expires_at(latest_pending)
     promo_redemption = get_venue_promo_redemption(db, venue_id=int(venue_id))
 
@@ -202,7 +205,9 @@ def preview_venue_billing_promocode(
 
     state = get_or_create_billing_state(db, venue_id=int(venue_id))
     try:
-        preview = compute_promo_preview(db, venue_id=int(venue_id), code=code, base_price_minor=int(state.price_minor or 0))
+        preview = compute_promo_preview(
+            db, venue_id=int(venue_id), code=code, base_price_minor=int(state.price_minor or 0)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -237,7 +242,9 @@ def create_venue_billing_checkout(
     requested_days_added = 30
     if promo_code:
         try:
-            promo_preview = compute_promo_preview(db, venue_id=int(venue_id), code=promo_code, base_price_minor=int(state.price_minor or 0))
+            promo_preview = compute_promo_preview(
+                db, venue_id=int(venue_id), code=promo_code, base_price_minor=int(state.price_minor or 0)
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         promo_payload = _serialize_promo_preview(promo_preview)
@@ -273,8 +280,17 @@ def create_venue_billing_checkout(
     if not robo_cfg.is_enabled:
         raise HTTPException(status_code=503, detail="Robokassa is not configured")
 
-    latest_pending = next((tx for tx in list_billing_transactions(db, venue_id=int(venue_id), limit=20) if str(tx.status or "").upper() == "PENDING" and str(tx.type or "").upper() == "PAYMENT"), None)
-    should_replace_existing = latest_pending is not None and not _checkout_matches_request(latest_pending, promo_payload=promo_payload, amount_minor=requested_amount_minor)
+    latest_pending = next(
+        (
+            tx
+            for tx in list_billing_transactions(db, venue_id=int(venue_id), limit=20)
+            if str(tx.status or "").upper() == "PENDING" and str(tx.type or "").upper() == "PAYMENT"
+        ),
+        None,
+    )
+    should_replace_existing = latest_pending is not None and not _checkout_matches_request(
+        latest_pending, promo_payload=promo_payload, amount_minor=requested_amount_minor
+    )
     tx = create_checkout_transaction(
         db,
         venue_id=int(venue_id),
@@ -311,14 +327,16 @@ def create_venue_billing_checkout(
         use_return_url2=bool(getattr(settings, "ROBOKASSA_USE_RETURN_URL2", False)),
     )
     payload = dict(tx.provider_payload_json or {})
-    payload.update({
-        "out_sum": out_sum,
-        "venue_name": venue.name,
-        "checkout_url": checkout_url,
-        "extra_params": extra_params,
-        "test_mode": robo_cfg.test_mode,
-        "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
-    })
+    payload.update(
+        {
+            "out_sum": out_sum,
+            "venue_name": venue.name,
+            "checkout_url": checkout_url,
+            "extra_params": extra_params,
+            "test_mode": robo_cfg.test_mode,
+            "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
+        }
+    )
     tx.provider_payload_json = payload
     db.commit()
     db.refresh(tx)
@@ -370,13 +388,53 @@ def export_venue_billing_transactions(
     if fmt_norm == "csv":
         out = StringIO()
         writer = csv.writer(out)
-        writer.writerow(["created_at", "venue_name", "status", "type", "source", "amount_major", "days_added", "period_from", "period_until", "provider_invoice_id", "provider_payment_id", "comment"])
+        writer.writerow(
+            [
+                "created_at",
+                "venue_name",
+                "status",
+                "type",
+                "source",
+                "amount_major",
+                "days_added",
+                "period_from",
+                "period_until",
+                "provider_invoice_id",
+                "provider_payment_id",
+                "comment",
+            ]
+        )
         for row in rows:
-            writer.writerow([row.get("created_at"), row.get("venue_name"), row.get("status"), row.get("type"), row.get("source"), row.get("amount_major"), row.get("days_added"), row.get("period_from"), row.get("period_until"), row.get("provider_invoice_id"), row.get("provider_payment_id"), row.get("comment")])
+            writer.writerow(
+                [
+                    row.get("created_at"),
+                    row.get("venue_name"),
+                    row.get("status"),
+                    row.get("type"),
+                    row.get("source"),
+                    row.get("amount_major"),
+                    row.get("days_added"),
+                    row.get("period_from"),
+                    row.get("period_until"),
+                    row.get("provider_invoice_id"),
+                    row.get("provider_payment_id"),
+                    row.get("comment"),
+                ]
+            )
         data = out.getvalue().encode("utf-8-sig")
-        return StreamingResponse(BytesIO(data), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="billing_{int(venue_id)}.csv"'})
-    xlsx = build_billing_transactions_xlsx(title=f"Axelio · Подписка · {venue.name}", rows=rows, filters=[("Заведение", venue.name)])
-    return StreamingResponse(BytesIO(xlsx), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f'attachment; filename="billing_{int(venue_id)}.xlsx"'})
+        return StreamingResponse(
+            BytesIO(data),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="billing_{int(venue_id)}.csv"'},
+        )
+    xlsx = build_billing_transactions_xlsx(
+        title=f"Axelio · Подписка · {venue.name}", rows=rows, filters=[("Заведение", venue.name)]
+    )
+    return StreamingResponse(
+        BytesIO(xlsx),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="billing_{int(venue_id)}.xlsx"'},
+    )
 
 
 async def _extract_callback_params(request: Request) -> dict[str, str]:
@@ -390,7 +448,9 @@ async def _extract_callback_params(request: Request) -> dict[str, str]:
     return params
 
 
-def _frontend_payment_redirect(*, venue_id: int, invoice_id: str | None, payment_status: str, reason: str | None = None) -> str:
+def _frontend_payment_redirect(
+    *, venue_id: int, invoice_id: str | None, payment_status: str, reason: str | None = None
+) -> str:
     base = f"{settings.frontend_base_url()}/app-venue.html"
     query = {
         "venue_id": str(int(venue_id)),
@@ -443,7 +503,9 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
         state, tx, event, applied = apply_checkout_payment_success(
             db,
             transaction=tx,
-            provider_payment_id=str(params.get("OpKey") or params.get("PaymentMethod") or tx.provider_payment_id or invoice_id),
+            provider_payment_id=str(
+                params.get("OpKey") or params.get("PaymentMethod") or tx.provider_payment_id or invoice_id
+            ),
             provider_payload_json={
                 "result_params": params,
                 "op_key": str(params.get("OpKey") or "").strip() or None,
@@ -464,19 +526,24 @@ async def robokassa_result(request: Request, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=400, detail="Amount mismatch")
     if not applied:
-        db.add(VenueBillingEvent(
-            venue_id=int(tx.venue_id),
-            event_type="ROBOKASSA_RESULT_DUPLICATE",
-            old_status=None,
-            new_status=None,
-            meta_json={"transaction_id": int(tx.id), "invoice_id": invoice_id},
-            created_by_user_id=tx.created_by_user_id,
-            created_at=datetime.now(timezone.utc),
-        ))
+        db.add(
+            VenueBillingEvent(
+                venue_id=int(tx.venue_id),
+                event_type="ROBOKASSA_RESULT_DUPLICATE",
+                old_status=None,
+                new_status=None,
+                meta_json={"transaction_id": int(tx.id), "invoice_id": invoice_id},
+                created_by_user_id=tx.created_by_user_id,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
     sync_billing_reconciliation_issues(db, venue_id=int(tx.venue_id))
     db.commit()
     if applied:
-        venue_name = db.execute(select(Venue.name).where(Venue.id == int(tx.venue_id))).scalar_one_or_none() or f"Заведение #{int(tx.venue_id)}"
+        venue_name = (
+            db.execute(select(Venue.name).where(Venue.id == int(tx.venue_id))).scalar_one_or_none()
+            or f"Заведение #{int(tx.venue_id)}"
+        )
         paid_until = state.paid_until.strftime("%d.%m.%Y") if state.paid_until else "—"
         send_owner_billing_notification_once(
             db,
@@ -497,7 +564,9 @@ async def robokassa_success(request: Request, db: Session = Depends(get_db)):
     tx = get_billing_transaction_by_invoice_id(db, invoice_id=invoice_id) if invoice_id else None
     venue_id = int(tx.venue_id) if tx is not None else int(params.get("Shp_venueId") or 0)
     if venue_id <= 0:
-        return RedirectResponse(url=f"{settings.frontend_base_url()}/app-venues.html?billing_payment=success", status_code=302)
+        return RedirectResponse(
+            url=f"{settings.frontend_base_url()}/app-venues.html?billing_payment=success", status_code=302
+        )
 
     payment_status = "processing"
     robo_cfg = get_robokassa_config()
@@ -516,7 +585,10 @@ async def robokassa_success(request: Request, db: Session = Depends(get_db)):
                 extra_params=extra_params,
             ):
                 payment_status = "processing"
-    return RedirectResponse(url=_frontend_payment_redirect(venue_id=venue_id, invoice_id=invoice_id, payment_status=payment_status), status_code=302)
+    return RedirectResponse(
+        url=_frontend_payment_redirect(venue_id=venue_id, invoice_id=invoice_id, payment_status=payment_status),
+        status_code=302,
+    )
 
 
 @public_router.api_route("/billing/robokassa/fail", methods=["GET", "POST"])
@@ -536,5 +608,10 @@ async def robokassa_fail(request: Request, db: Session = Depends(get_db)):
         )
         db.commit()
     if venue_id <= 0:
-        return RedirectResponse(url=f"{settings.frontend_base_url()}/app-venues.html?billing_payment=failed", status_code=302)
-    return RedirectResponse(url=_frontend_payment_redirect(venue_id=venue_id, invoice_id=invoice_id, payment_status="failed"), status_code=302)
+        return RedirectResponse(
+            url=f"{settings.frontend_base_url()}/app-venues.html?billing_payment=failed", status_code=302
+        )
+    return RedirectResponse(
+        url=_frontend_payment_redirect(venue_id=venue_id, invoice_id=invoice_id, payment_status="failed"),
+        status_code=302,
+    )

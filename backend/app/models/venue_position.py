@@ -13,9 +13,7 @@ class VenuePosition(Base):
     """
 
     __tablename__ = "venue_positions"
-    __table_args__ = (
-        UniqueConstraint("venue_id", "member_user_id", name="uq_venue_position_member"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", "member_user_id", name="uq_venue_position_member"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 

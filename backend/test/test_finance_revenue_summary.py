@@ -75,12 +75,17 @@ class FinanceRevenueServiceTests(TestCase):
         def fake_sum(db, *, venue_id, period_start, period_end, direction, kind):
             return amounts[(direction, kind)]
 
-        with patch("app.services.finance.summary._backfill_missing_expense_recognition", return_value=0), \
-             patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=500000), \
-             patch("app.services.finance.summary._sum_amount", side_effect=fake_sum), \
-             patch("app.services.finance.summary._sum_expense_recognition_minor", return_value=120000), \
-             patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=80000), \
-             patch("app.services.finance.summary._expense_document_stats_for_period", return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0}):
+        with (
+            patch("app.services.finance.summary._backfill_missing_expense_recognition", return_value=0),
+            patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=500000),
+            patch("app.services.finance.summary._sum_amount", side_effect=fake_sum),
+            patch("app.services.finance.summary._sum_expense_recognition_minor", return_value=120000),
+            patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=80000),
+            patch(
+                "app.services.finance.summary._expense_document_stats_for_period",
+                return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0},
+            ),
+        ):
             summary = get_finance_summary(db=object(), venue_id=5, month="2026-03")
 
         self.assertEqual(summary["revenue_minor"], 500000)
@@ -96,35 +101,54 @@ class FinanceRevenueServiceTests(TestCase):
                 return 501200
             return 0
 
-        with patch("app.services.finance.summary._backfill_missing_expense_recognition", return_value=0), \
-             patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=500000), \
-             patch("app.services.finance.summary._sum_amount", side_effect=fake_sum), \
-             patch("app.services.finance.summary._sum_expense_recognition_minor", return_value=0), \
-             patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=0), \
-             patch("app.services.finance.summary._expense_document_stats_for_period", return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0}):
+        with (
+            patch("app.services.finance.summary._backfill_missing_expense_recognition", return_value=0),
+            patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=500000),
+            patch("app.services.finance.summary._sum_amount", side_effect=fake_sum),
+            patch("app.services.finance.summary._sum_expense_recognition_minor", return_value=0),
+            patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=0),
+            patch(
+                "app.services.finance.summary._expense_document_stats_for_period",
+                return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0},
+            ),
+        ):
             summary = get_finance_summary(db=object(), venue_id=5, month="2026-03")
 
         self.assertEqual(summary["revenue_minor"], 500000)
         self.assertEqual(summary["profit_minor"], 500000)
 
     def test_get_monthly_finance_summary_adds_breakdowns(self):
-        with patch("app.services.finance.summary.get_finance_summary", return_value={
-            "month": "2026-03",
-            "period_start": date(2026, 3, 1),
-            "period_end": date(2026, 3, 31),
-            "revenue_minor": 500000,
-            "expense_minor": 170000,
-            "payroll_minor": 0,
-            "adjustments_minor": 0,
-            "refunds_minor": 0,
-            "profit_minor": 330000,
-            "margin_bps": 6600,
-        }), patch("app.services.finance.summary._group_revenue_breakdown", return_value=[
-            {"title": "Наличные", "code": "cash", "subtitle": None, "amount_minor": 300000},
-            {"title": "Карта", "code": "card", "subtitle": None, "amount_minor": 200000},
-        ]), patch("app.services.finance.summary._group_expense_categories", return_value=[
-            {"title": "Аренда", "code": "rent", "subtitle": None, "amount_minor": 120000},
-        ]), patch("app.services.finance.summary._group_payment_method_balances", return_value=[]):
+        with (
+            patch(
+                "app.services.finance.summary.get_finance_summary",
+                return_value={
+                    "month": "2026-03",
+                    "period_start": date(2026, 3, 1),
+                    "period_end": date(2026, 3, 31),
+                    "revenue_minor": 500000,
+                    "expense_minor": 170000,
+                    "payroll_minor": 0,
+                    "adjustments_minor": 0,
+                    "refunds_minor": 0,
+                    "profit_minor": 330000,
+                    "margin_bps": 6600,
+                },
+            ),
+            patch(
+                "app.services.finance.summary._group_revenue_breakdown",
+                return_value=[
+                    {"title": "Наличные", "code": "cash", "subtitle": None, "amount_minor": 300000},
+                    {"title": "Карта", "code": "card", "subtitle": None, "amount_minor": 200000},
+                ],
+            ),
+            patch(
+                "app.services.finance.summary._group_expense_categories",
+                return_value=[
+                    {"title": "Аренда", "code": "rent", "subtitle": None, "amount_minor": 120000},
+                ],
+            ),
+            patch("app.services.finance.summary._group_payment_method_balances", return_value=[]),
+        ):
             summary = get_monthly_finance_summary(db=object(), venue_id=5, month="2026-03", income_mode="PAYMENTS")
 
         self.assertEqual(summary["income_mode"], "PAYMENTS")
@@ -132,18 +156,26 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertEqual(summary["expense_categories"][0]["title"], "Аренда")
 
     def test_get_monthly_finance_summary_supports_date_range(self):
-        with patch("app.services.finance.summary.get_finance_summary", return_value={
-            "month": None,
-            "period_start": date(2026, 3, 10),
-            "period_end": date(2026, 3, 15),
-            "revenue_minor": 250000,
-            "expense_minor": 60000,
-            "payroll_minor": 40000,
-            "adjustments_minor": 0,
-            "refunds_minor": 0,
-            "profit_minor": 150000,
-            "margin_bps": 6000,
-        }) as get_base, patch("app.services.finance.summary._group_revenue_breakdown", return_value=[]), patch("app.services.finance.summary._group_expense_categories", return_value=[]), patch("app.services.finance.summary._group_payment_method_balances", return_value=[]):
+        with (
+            patch(
+                "app.services.finance.summary.get_finance_summary",
+                return_value={
+                    "month": None,
+                    "period_start": date(2026, 3, 10),
+                    "period_end": date(2026, 3, 15),
+                    "revenue_minor": 250000,
+                    "expense_minor": 60000,
+                    "payroll_minor": 40000,
+                    "adjustments_minor": 0,
+                    "refunds_minor": 0,
+                    "profit_minor": 150000,
+                    "margin_bps": 6000,
+                },
+            ) as get_base,
+            patch("app.services.finance.summary._group_revenue_breakdown", return_value=[]),
+            patch("app.services.finance.summary._group_expense_categories", return_value=[]),
+            patch("app.services.finance.summary._group_payment_method_balances", return_value=[]),
+        ):
             summary = get_monthly_finance_summary(
                 db=object(),
                 venue_id=5,
@@ -160,15 +192,30 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertEqual(get_base.call_args.kwargs["date_to"], date(2026, 3, 15))
 
     def test_get_day_finance_summary_includes_point_and_recurring(self):
-        with patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=100000), \
-             patch("app.services.finance.summary._group_daily_point_expenses", return_value=[{"title": "Закупка", "code": "supply", "subtitle": "Разовые расходы дня", "amount_minor": 15000}]), \
-             patch("app.services.finance.summary._group_daily_recurring_expenses", return_value=[{"title": "Эквайринг", "code": "fee", "subtitle": "Комиссия", "amount_minor": 2500}]), \
-             patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=0), \
-             patch("app.services.finance.summary._sum_amount", return_value=0), \
-             patch("app.services.finance.summary._group_revenue_breakdown", return_value=[]), \
-             patch("app.services.finance.summary._group_payment_method_balances", return_value=[]), \
-             patch("app.services.finance.summary._expense_document_stats_for_period", return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0}):
-            summary = get_day_finance_summary(db=object(), venue_id=5, target_date=date(2026, 3, 12), income_mode="PAYMENTS")
+        with (
+            patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=100000),
+            patch(
+                "app.services.finance.summary._group_daily_point_expenses",
+                return_value=[
+                    {"title": "Закупка", "code": "supply", "subtitle": "Разовые расходы дня", "amount_minor": 15000}
+                ],
+            ),
+            patch(
+                "app.services.finance.summary._group_daily_recurring_expenses",
+                return_value=[{"title": "Эквайринг", "code": "fee", "subtitle": "Комиссия", "amount_minor": 2500}],
+            ),
+            patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=0),
+            patch("app.services.finance.summary._sum_amount", return_value=0),
+            patch("app.services.finance.summary._group_revenue_breakdown", return_value=[]),
+            patch("app.services.finance.summary._group_payment_method_balances", return_value=[]),
+            patch(
+                "app.services.finance.summary._expense_document_stats_for_period",
+                return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0},
+            ),
+        ):
+            summary = get_day_finance_summary(
+                db=object(), venue_id=5, target_date=date(2026, 3, 12), income_mode="PAYMENTS"
+            )
 
         self.assertEqual(summary["expense_minor"], 17500)
         self.assertEqual(summary["point_expense_minor"], 15000)
@@ -176,14 +223,25 @@ class FinanceRevenueServiceTests(TestCase):
         self.assertEqual(summary["profit_minor"], 82500)
 
     def test_slot_finance_summary_includes_allocated_costs_and_profit(self):
-        with patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=100000), \
-             patch("app.services.finance.summary._group_daily_point_expenses", return_value=[{"title": "Закупка", "amount_minor": 15000}]), \
-             patch("app.services.finance.summary._group_daily_recurring_expenses", return_value=[{"title": "Аренда", "amount_minor": 5000}]), \
-             patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=25000), \
-             patch("app.services.finance.summary._sum_amount", return_value=0), \
-             patch("app.services.finance.summary._expense_document_stats_for_period", return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0}), \
-             patch("app.services.finance.summary._group_revenue_breakdown", return_value=[]), \
-             patch("app.services.finance.summary._group_payment_method_balances", return_value=[]):
+        with (
+            patch("app.services.finance.summary._sum_closed_report_revenue_minor", return_value=100000),
+            patch(
+                "app.services.finance.summary._group_daily_point_expenses",
+                return_value=[{"title": "Закупка", "amount_minor": 15000}],
+            ),
+            patch(
+                "app.services.finance.summary._group_daily_recurring_expenses",
+                return_value=[{"title": "Аренда", "amount_minor": 5000}],
+            ),
+            patch("app.services.finance.summary._sum_payroll_minor_for_period", return_value=25000),
+            patch("app.services.finance.summary._sum_amount", return_value=0),
+            patch(
+                "app.services.finance.summary._expense_document_stats_for_period",
+                return_value={"draft_expense_count": 0, "draft_expense_total_minor": 0},
+            ),
+            patch("app.services.finance.summary._group_revenue_breakdown", return_value=[]),
+            patch("app.services.finance.summary._group_payment_method_balances", return_value=[]),
+        ):
             summary = get_day_finance_summary(
                 db=object(),
                 venue_id=5,

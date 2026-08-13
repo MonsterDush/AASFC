@@ -48,7 +48,9 @@ def _serialize_payroll_recalculation_log(row: PayrollRecalculationLog | None) ->
         "id": int(row.id),
         "period_month": row.period_month.strftime("%Y-%m") if getattr(row, "period_month", None) else None,
         "trigger_reason": str(row.trigger_reason or ""),
-        "triggered_by_user_id": int(row.triggered_by_user_id) if getattr(row, "triggered_by_user_id", None) is not None else None,
+        "triggered_by_user_id": int(row.triggered_by_user_id)
+        if getattr(row, "triggered_by_user_id", None) is not None
+        else None,
         "created_at": row.created_at.isoformat() if getattr(row, "created_at", None) else None,
         "target_dates": target_dates,
     }
@@ -71,7 +73,9 @@ def _create_payroll_recalculation_log(
         period_month=period_month,
         triggered_by_user_id=int(triggered_by_user_id) if triggered_by_user_id is not None else None,
         trigger_reason=str(trigger_reason or "system"),
-        target_dates_json=json.dumps(sorted({day.isoformat() for day in (target_dates or []) if isinstance(day, date)}), ensure_ascii=False),
+        target_dates_json=json.dumps(
+            sorted({day.isoformat() for day in (target_dates or []) if isinstance(day, date)}), ensure_ascii=False
+        ),
         details_json=json.dumps(details or {}, ensure_ascii=False),
         created_at=datetime.utcnow(),
     )
@@ -80,7 +84,9 @@ def _create_payroll_recalculation_log(
     return obj
 
 
-def _latest_payroll_recalculation_log(db: Session, *, venue_id: int, period_month: date) -> PayrollRecalculationLog | None:
+def _latest_payroll_recalculation_log(
+    db: Session, *, venue_id: int, period_month: date
+) -> PayrollRecalculationLog | None:
     if not _payroll_recalculation_logs_table_exists(db):
         return None
     return db.execute(
@@ -96,11 +102,13 @@ def _latest_payroll_recalculation_log(db: Session, *, venue_id: int, period_mont
 
 def _has_closed_report_for_date(db: Session, *, venue_id: int, target_date: date) -> bool:
     report_id = db.execute(
-        select(DailyReport.id).where(
+        select(DailyReport.id)
+        .where(
             DailyReport.venue_id == int(venue_id),
             DailyReport.date == target_date,
             DailyReport.status == "CLOSED",
-        ).limit(1)
+        )
+        .limit(1)
     ).scalar_one_or_none()
     return report_id is not None
 
@@ -148,7 +156,11 @@ def _recalculate_payroll_for_dates(
 
 def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
     month_start = parse_month_start(month)
-    month_end = (date(month_start.year + 1, 1, 1) if month_start.month == 12 else date(month_start.year, month_start.month + 1, 1)) - timedelta(days=1)
+    month_end = (
+        date(month_start.year + 1, 1, 1)
+        if month_start.month == 12
+        else date(month_start.year, month_start.month + 1, 1)
+    ) - timedelta(days=1)
     latest_recalculation = _latest_payroll_recalculation_log(db, venue_id=int(venue_id), period_month=month_start)
     run = db.execute(
         select(PayrollRun).where(
@@ -244,7 +256,14 @@ def _load_payroll_payload(db: Session, *, venue_id: int, month: str) -> dict:
             }
         )
 
-    lines.sort(key=lambda item: (str((item.get("member") or {}).get("short_name") or (item.get("member") or {}).get("full_name") or "").lower(), int(item.get("member_user_id") or 0)))
+    lines.sort(
+        key=lambda item: (
+            str(
+                (item.get("member") or {}).get("short_name") or (item.get("member") or {}).get("full_name") or ""
+            ).lower(),
+            int(item.get("member_user_id") or 0),
+        )
+    )
     total_amount_minor = sum(int(item.get("amount_minor") or 0) for item in lines)
 
     return {
@@ -279,7 +298,9 @@ def _month_starts_between(period_start: date, period_end: date) -> list[date]:
     return months
 
 
-def _latest_payroll_recalculation_for_period(db: Session, *, venue_id: int, period_start: date, period_end: date) -> dict | None:
+def _latest_payroll_recalculation_for_period(
+    db: Session, *, venue_id: int, period_start: date, period_end: date
+) -> dict | None:
     months = _month_starts_between(period_start, period_end)
     if not months or not _payroll_recalculation_logs_table_exists(db):
         return None
@@ -364,9 +385,7 @@ def _build_venue_payroll_period_payload(
     )
 
     member_ids = sorted(member_dates.keys())
-    members = db.execute(
-        select(User).where(User.id.in_(member_ids))
-    ).scalars().all() if member_ids else []
+    members = db.execute(select(User).where(User.id.in_(member_ids))).scalars().all() if member_ids else []
     members_by_id = {int(member.id): member for member in members}
 
     lines: list[dict] = []
@@ -416,7 +435,7 @@ def _build_venue_payroll_period_payload(
             pay_profile_title = str(context.get("pay_profile_title") or "").strip()
             if pay_profile_title:
                 pay_profile_titles.append(pay_profile_title)
-            for item in (day_breakdown.get("items") or []):
+            for item in day_breakdown.get("items") or []:
                 if not isinstance(item, dict):
                     continue
                 key = (
@@ -496,7 +515,12 @@ def _build_venue_payroll_period_payload(
         lines.append(line_payload)
         total_amount_minor += int(total_minor)
 
-    lines.sort(key=lambda item: ((str(item.get("member", {}).get("short_name") or item.get("member", {}).get("full_name") or "").lower()), int(item.get("member_user_id") or 0)))
+    lines.sort(
+        key=lambda item: (
+            (str(item.get("member", {}).get("short_name") or item.get("member", {}).get("full_name") or "").lower()),
+            int(item.get("member_user_id") or 0),
+        )
+    )
 
     return {
         **period_meta,

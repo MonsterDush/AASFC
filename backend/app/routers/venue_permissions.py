@@ -24,19 +24,21 @@ def _require_staff_manage_or_owner_or_super_admin(db: Session, *, venue_id: int,
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
-
-
 def _is_shift_comments_allowed(db: Session, *, venue_id: int, shift_id: int, user: User) -> bool:
     # Admins
     if user.system_role in ("SUPER_ADMIN", "MODERATOR", "STAFF", "OWNER"):
         return True
 
     # Venue members (owner/staff)
-    m = db.query(VenueMember).filter(
-        VenueMember.venue_id == venue_id,
-        VenueMember.user_id == user.id,
-        VenueMember.is_active.is_(True),
-    ).one_or_none()
+    m = (
+        db.query(VenueMember)
+        .filter(
+            VenueMember.venue_id == venue_id,
+            VenueMember.user_id == user.id,
+            VenueMember.is_active.is_(True),
+        )
+        .one_or_none()
+    )
     if m is not None:
         return True
 
@@ -75,6 +77,7 @@ def _is_schedule_editor(db: Session, *, venue_id: int, user: User) -> bool:
     except HTTPException:
         return False
 
+
 def _require_schedule_editor(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_schedule_editor(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -109,6 +112,7 @@ def _is_adjustments_viewer(db: Session, *, venue_id: int, user: User) -> bool:
     except HTTPException:
         return False
 
+
 def _require_adjustments_viewer(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_adjustments_viewer(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -123,13 +127,16 @@ def _is_adjustments_manager(db: Session, *, venue_id: int, user: User) -> bool:
     except HTTPException:
         return False
 
+
 def _require_adjustments_manager(db: Session, *, venue_id: int, user: User) -> None:
     if not _is_adjustments_manager(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _has_adjustments_manage_access(db: Session, *, venue_id: int, user: User) -> bool:
-    return _is_owner_or_super_admin(db, venue_id=venue_id, user=user) or _is_adjustments_manager(db, venue_id=venue_id, user=user)
+    return _is_owner_or_super_admin(db, venue_id=venue_id, user=user) or _is_adjustments_manager(
+        db, venue_id=venue_id, user=user
+    )
 
 
 def _require_dispute_resolver(db: Session, *, venue_id: int, user: User) -> None:
@@ -140,6 +147,7 @@ def _require_dispute_resolver(db: Session, *, venue_id: int, user: User) -> None
         return
     except HTTPException:
         raise HTTPException(status_code=403, detail="Forbidden")
+
 
 def _has_revenue_export_access(db: Session, *, venue_id: int, user: User) -> bool:
     if _is_owner_or_super_admin(db, venue_id=venue_id, user=user):

@@ -77,9 +77,7 @@ def _month_boundary() -> tuple[date, date]:
 
 def _load_fixture_people(db):
     venue_name = str(os.getenv("E2E_VENUE_NAME") or DEFAULT_VENUE_NAME).strip()
-    venue = db.execute(
-        select(Venue).where(Venue.name == venue_name).order_by(Venue.id.asc())
-    ).scalar_one_or_none()
+    venue = db.execute(select(Venue).where(Venue.name == venue_name).order_by(Venue.id.asc())).scalar_one_or_none()
     _assert(venue is not None, "E2E venue is missing; run the seed first")
 
     owner = db.execute(
@@ -99,8 +97,7 @@ def _load_fixture_people(db):
         .join(VenueMember, VenueMember.user_id == User.id)
         .join(
             VenuePosition,
-            (VenuePosition.member_user_id == User.id)
-            & (VenuePosition.venue_id == int(venue.id)),
+            (VenuePosition.member_user_id == User.id) & (VenuePosition.venue_id == int(venue.id)),
         )
         .where(
             VenueMember.venue_id == int(venue.id),
@@ -117,11 +114,7 @@ def _load_fixture_people(db):
 def _assert_database_constraints(db) -> None:
     inspector = inspect(db.get_bind())
     for table_name, constraint_name in CHECK_CONSTRAINTS.items():
-        names = {
-            str(item.get("name"))
-            for item in inspector.get_check_constraints(table_name)
-            if item.get("name")
-        }
+        names = {str(item.get("name")) for item in inspector.get_check_constraints(table_name) if item.get("name")}
         _assert(
             constraint_name in names,
             f"{constraint_name} is missing from {table_name}",
@@ -234,16 +227,22 @@ def _prepare_common_expense_allocation(
 
     rebuild_expense_allocations_for_expense(db=db, expense=expense)
     db.commit()
-    rows = db.execute(
-        select(ExpenseRecognitionEntry)
-        .where(ExpenseRecognitionEntry.expense_id == int(expense.id))
-        .order_by(
-            ExpenseRecognitionEntry.recognition_date.asc(),
-            ExpenseRecognitionEntry.shift_slot.asc(),
+    rows = (
+        db.execute(
+            select(ExpenseRecognitionEntry)
+            .where(ExpenseRecognitionEntry.expense_id == int(expense.id))
+            .order_by(
+                ExpenseRecognitionEntry.recognition_date.asc(),
+                ExpenseRecognitionEntry.shift_slot.asc(),
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     _assert(len(rows) == recognition_count, "Common expense was not split into all month shift slots")
-    _assert(sum(int(row.amount_minor or 0) for row in rows) == amount_minor, "Shift expense split changed the monthly total")
+    _assert(
+        sum(int(row.amount_minor or 0) for row in rows) == amount_minor, "Shift expense split changed the monthly total"
+    )
     _assert(
         {str(row.shift_slot) for row in rows} == {"DAY", "NIGHT"},
         "Common expense recognition is missing DAY or NIGHT",
@@ -271,9 +270,7 @@ def _build_and_assert_xlsx(
     workbook = load_workbook(BytesIO(workbook_bytes), read_only=True)
     report_sheet = workbook["Отчёты"]
     matching_rows = [
-        row
-        for row in report_sheet.iter_rows(min_row=4, values_only=True)
-        if int(row[2] or 0) == int(report_id)
+        row for row in report_sheet.iter_rows(min_row=4, values_only=True) if int(row[2] or 0) == int(report_id)
     ]
     _assert(len(matching_rows) == 1, "Night report is missing from the XLSX report sheet")
     _assert(matching_rows[0][1] == "NIGHT", "XLSX lost the NIGHT slot")
@@ -422,7 +419,9 @@ def verify_night_shift_boundary() -> dict[str, object]:
                     ExpenseRecognitionEntry.shift_slot == "NIGHT",
                     Expense.status == "CONFIRMED",
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         _assert(night_expense_minor > 0, "Common expense has no NIGHT share")
         _assert(
@@ -458,21 +457,22 @@ def verify_night_shift_boundary() -> dict[str, object]:
             "Night tips were not allocated to the assigned staff member",
         )
 
-        notification_jobs = db.execute(
-            select(NotificationJob)
-            .where(NotificationJob.payload_json.contains(boundary_date.isoformat()))
-            .order_by(NotificationJob.id.asc())
-        ).scalars().all()
+        notification_jobs = (
+            db.execute(
+                select(NotificationJob)
+                .where(NotificationJob.payload_json.contains(boundary_date.isoformat()))
+                .order_by(NotificationJob.id.asc())
+            )
+            .scalars()
+            .all()
+        )
         matching_jobs = []
         for job in notification_jobs:
             try:
                 payload = json.loads(job.payload_json or "{}")
             except Exception:
                 continue
-            if (
-                payload.get("target_date") == boundary_date.isoformat()
-                and payload.get("shift_slot") == "NIGHT"
-            ):
+            if payload.get("target_date") == boundary_date.isoformat() and payload.get("shift_slot") == "NIGHT":
                 matching_jobs.append(job)
         _assert(len(matching_jobs) >= 3, "Night close did not enqueue all three notification jobs")
 
@@ -482,12 +482,9 @@ def verify_night_shift_boundary() -> dict[str, object]:
             period_start=boundary_date,
             period_end=boundary_date,
         )
-        matching_report_rows = [
-            item for item in report_rows if int(item["report_id"]) == report_id
-        ]
+        matching_report_rows = [item for item in report_rows if int(item["report_id"]) == report_id]
         _assert(
-            len(matching_report_rows) == 1
-            and matching_report_rows[0]["shift_slot"] == "NIGHT",
+            len(matching_report_rows) == 1 and matching_report_rows[0]["shift_slot"] == "NIGHT",
             "Revenue export details lost the night report",
         )
         xlsx_size = _build_and_assert_xlsx(
@@ -516,14 +513,14 @@ def verify_night_shift_boundary() -> dict[str, object]:
                     FinanceEntry.source_type == "daily_report",
                     FinanceEntry.source_id == report_id,
                 )
-            ).scalars().first()
+            )
+            .scalars()
+            .first()
             is not None
         )
         _assert(revenue_entry_count == 0, "Reopen left a revenue ledger entry")
         tip_allocation = db.execute(
-            select(DailyReportTipAllocation.id).where(
-                DailyReportTipAllocation.report_id == report_id
-            )
+            select(DailyReportTipAllocation.id).where(DailyReportTipAllocation.report_id == report_id)
         ).scalar_one_or_none()
         _assert(tip_allocation is None, "Reopen left a night tip allocation")
 

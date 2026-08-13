@@ -11,9 +11,7 @@ from app.core.db import Base
 
 class PositionPermissionTemplate(Base):
     __tablename__ = "position_permission_templates"
-    __table_args__ = (
-        UniqueConstraint("code", name="uq_position_permission_templates_code"),
-    )
+    __table_args__ = (UniqueConstraint("code", name="uq_position_permission_templates_code"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(80), nullable=False, index=True)

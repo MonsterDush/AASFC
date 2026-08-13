@@ -161,9 +161,11 @@ class TelegramWebhookProcessorTests(IsolatedAsyncioTestCase):
         callback = {"data": "browser_login:token", "from": telegram_user}
         callback_request = SimpleNamespace(json=AsyncMock(return_value={"callback_query": callback}))
 
-        with patch.object(auth_telegram.settings, "TG_WEBHOOK_SECRET_TOKEN", ""), \
-             patch.object(auth_telegram, "_handle_browser_login_start_message") as handle_message, \
-             patch.object(auth_telegram, "_handle_browser_login_callback") as handle_callback:
+        with (
+            patch.object(auth_telegram.settings, "TG_WEBHOOK_SECRET_TOKEN", ""),
+            patch.object(auth_telegram, "_handle_browser_login_start_message") as handle_message,
+            patch.object(auth_telegram, "_handle_browser_login_callback") as handle_callback,
+        ):
             await auth_telegram.process_telegram_browser_webhook_request(
                 message_request,
                 x_telegram_bot_api_secret_token=None,

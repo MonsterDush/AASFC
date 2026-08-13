@@ -67,29 +67,47 @@ def list_pay_profiles(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_pay_profiles_view(db, venue_id=venue_id, user=user)
 
-    stmt = select(PayProfile).where(PayProfile.venue_id == venue_id).order_by(PayProfile.is_active.desc(), PayProfile.title.asc(), PayProfile.id.asc())
+    stmt = (
+        select(PayProfile)
+        .where(PayProfile.venue_id == venue_id)
+        .order_by(PayProfile.is_active.desc(), PayProfile.title.asc(), PayProfile.id.asc())
+    )
     if not include_inactive:
         stmt = stmt.where(PayProfile.is_active.is_(True))
     profiles = db.execute(stmt).scalars().all()
     profile_ids = [int(profile.id) for profile in profiles]
 
-    components_counts = {
-        int(profile_id): int(count or 0)
-        for profile_id, count in db.execute(
-            select(PayComponent.pay_profile_id, func.count(PayComponent.id))
-            .where(PayComponent.venue_id == venue_id, PayComponent.pay_profile_id.in_(profile_ids) if profile_ids else sa.true())
-            .group_by(PayComponent.pay_profile_id)
-        ).all()
-    } if profile_ids else {}
+    components_counts = (
+        {
+            int(profile_id): int(count or 0)
+            for profile_id, count in db.execute(
+                select(PayComponent.pay_profile_id, func.count(PayComponent.id))
+                .where(
+                    PayComponent.venue_id == venue_id,
+                    PayComponent.pay_profile_id.in_(profile_ids) if profile_ids else sa.true(),
+                )
+                .group_by(PayComponent.pay_profile_id)
+            ).all()
+        }
+        if profile_ids
+        else {}
+    )
 
-    assignments_counts = {
-        int(profile_id): int(count or 0)
-        for profile_id, count in db.execute(
-            select(PayProfileAssignment.pay_profile_id, func.count(PayProfileAssignment.id))
-            .where(PayProfileAssignment.venue_id == venue_id, PayProfileAssignment.pay_profile_id.in_(profile_ids) if profile_ids else sa.true())
-            .group_by(PayProfileAssignment.pay_profile_id)
-        ).all()
-    } if profile_ids else {}
+    assignments_counts = (
+        {
+            int(profile_id): int(count or 0)
+            for profile_id, count in db.execute(
+                select(PayProfileAssignment.pay_profile_id, func.count(PayProfileAssignment.id))
+                .where(
+                    PayProfileAssignment.venue_id == venue_id,
+                    PayProfileAssignment.pay_profile_id.in_(profile_ids) if profile_ids else sa.true(),
+                )
+                .group_by(PayProfileAssignment.pay_profile_id)
+            ).all()
+        }
+        if profile_ids
+        else {}
+    )
 
     return [
         _serialize_pay_profile(
@@ -148,12 +166,12 @@ def update_pay_profile(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
 
     profile = _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
-    fields_set = getattr(payload, 'model_fields_set', getattr(payload, '__fields_set__', set()))
-    if 'title' in fields_set and payload.title is not None:
+    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    if "title" in fields_set and payload.title is not None:
         profile.title = payload.title.strip()
-    if 'description' in fields_set:
+    if "description" in fields_set:
         profile.description = payload.description or None
-    if 'is_active' in fields_set and payload.is_active is not None:
+    if "is_active" in fields_set and payload.is_active is not None:
         profile.is_active = payload.is_active
     profile.updated_at = datetime.utcnow()
     db.commit()
@@ -171,9 +189,13 @@ def delete_pay_profile(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
 
     profile = _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
-    used = db.execute(select(PayrollLine.id).where(PayrollLine.pay_profile_id == profile_id).limit(1)).scalar_one_or_none()
+    used = db.execute(
+        select(PayrollLine.id).where(PayrollLine.pay_profile_id == profile_id).limit(1)
+    ).scalar_one_or_none()
     if used is not None:
-        raise HTTPException(status_code=400, detail="Pay profile is already used in payroll runs. Archive it instead of deleting.")
+        raise HTTPException(
+            status_code=400, detail="Pay profile is already used in payroll runs. Archive it instead of deleting."
+        )
 
     db.delete(profile)
     db.commit()
@@ -236,16 +258,16 @@ def update_pay_profile_assignment(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
 
     assignment = _get_pay_profile_assignment_or_404(db, venue_id=venue_id, assignment_id=assignment_id)
-    fields_set = getattr(payload, 'model_fields_set', getattr(payload, '__fields_set__', set()))
-    new_start_date = payload.start_date if 'start_date' in fields_set else assignment.start_date
-    new_end_date = payload.end_date if 'end_date' in fields_set else assignment.end_date
+    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    new_start_date = payload.start_date if "start_date" in fields_set else assignment.start_date
+    new_end_date = payload.end_date if "end_date" in fields_set else assignment.end_date
     if new_start_date and new_end_date and new_end_date < new_start_date:
         raise HTTPException(status_code=400, detail="end_date must be >= start_date")
-    if 'start_date' in fields_set:
+    if "start_date" in fields_set:
         assignment.start_date = payload.start_date
-    if 'end_date' in fields_set:
+    if "end_date" in fields_set:
         assignment.end_date = payload.end_date
-    if 'is_active' in fields_set and payload.is_active is not None:
+    if "is_active" in fields_set and payload.is_active is not None:
         assignment.is_active = payload.is_active
     assignment.updated_at = datetime.utcnow()
     db.commit()
@@ -291,25 +313,35 @@ def create_pay_component(
         raise HTTPException(status_code=400, detail="Unsupported pay component type")
 
     if payload.department_id is not None:
-        dep = db.execute(select(Department.id).where(Department.id == payload.department_id, Department.venue_id == venue_id)).scalar_one_or_none()
+        dep = db.execute(
+            select(Department.id).where(Department.id == payload.department_id, Department.venue_id == venue_id)
+        ).scalar_one_or_none()
         if dep is None:
             raise HTTPException(status_code=400, detail="Department not found in venue")
     kpi_metric_unit = None
     if payload.kpi_metric_id is not None:
-        kpi = db.execute(select(KpiMetric).where(KpiMetric.id == payload.kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
+        kpi = db.execute(
+            select(KpiMetric).where(KpiMetric.id == payload.kpi_metric_id, KpiMetric.venue_id == venue_id)
+        ).scalar_one_or_none()
         if kpi is None:
             raise HTTPException(status_code=400, detail="KPI metric not found in venue")
         kpi_metric_unit = kpi.unit
     if payload.boost_department_id is not None:
-        dep = db.execute(select(Department.id).where(Department.id == payload.boost_department_id, Department.venue_id == venue_id)).scalar_one_or_none()
+        dep = db.execute(
+            select(Department.id).where(Department.id == payload.boost_department_id, Department.venue_id == venue_id)
+        ).scalar_one_or_none()
         if dep is None:
             raise HTTPException(status_code=400, detail="Boost department not found in venue")
     department_ids = _normalize_int_ids(payload.department_ids)
     boost_department_ids = _normalize_int_ids(payload.boost_department_ids)
     _ensure_department_ids_in_venue(db, venue_id=venue_id, ids=department_ids, detail="Departments not found in venue")
-    _ensure_department_ids_in_venue(db, venue_id=venue_id, ids=boost_department_ids, detail="Boost departments not found in venue")
+    _ensure_department_ids_in_venue(
+        db, venue_id=venue_id, ids=boost_department_ids, detail="Boost departments not found in venue"
+    )
     if payload.boost_kpi_metric_id is not None:
-        kpi = db.execute(select(KpiMetric.id).where(KpiMetric.id == payload.boost_kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
+        kpi = db.execute(
+            select(KpiMetric.id).where(KpiMetric.id == payload.boost_kpi_metric_id, KpiMetric.venue_id == venue_id)
+        ).scalar_one_or_none()
         if kpi is None:
             raise HTTPException(status_code=400, detail="Boost KPI metric not found in venue")
     _validate_pay_component_fields(
@@ -354,11 +386,11 @@ def create_pay_component(
         steps_json=json.dumps(payload.steps_json, ensure_ascii=False) if payload.steps_json is not None else None,
         kpi_calculation_mode=(payload.kpi_calculation_mode or "FIXED").strip().upper(),
         salary_accrual_day=payload.salary_accrual_day,
-        base_scope=(payload.base_scope or '').strip().upper() or None,
+        base_scope=(payload.base_scope or "").strip().upper() or None,
         boost_enabled=bool(payload.boost_enabled),
         boost_percent_bps=payload.boost_percent_bps,
-        boost_source_type=(payload.boost_source_type or '').strip().upper() or None,
-        boost_recalc_mode=(payload.boost_recalc_mode or '').strip().upper() or None,
+        boost_source_type=(payload.boost_source_type or "").strip().upper() or None,
+        boost_recalc_mode=(payload.boost_recalc_mode or "").strip().upper() or None,
         boost_department_id=payload.boost_department_id or (boost_department_ids[0] if boost_department_ids else None),
         boost_department_ids_json=_dump_int_ids(boost_department_ids),
         boost_kpi_metric_id=payload.boost_kpi_metric_id,
@@ -391,103 +423,123 @@ def update_pay_component(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
 
     component = _get_pay_component_or_404(db, venue_id=venue_id, component_id=component_id)
-    fields_set = getattr(payload, 'model_fields_set', getattr(payload, '__fields_set__', set()))
-    if 'component_type' in fields_set and payload.component_type is not None:
+    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    if "component_type" in fields_set and payload.component_type is not None:
         new_component_type = payload.component_type.strip().upper()
         if new_component_type not in PAY_COMPONENT_TYPES:
             raise HTTPException(status_code=400, detail="Unsupported pay component type")
         component.component_type = new_component_type
-    if 'title' in fields_set and payload.title is not None:
+    if "title" in fields_set and payload.title is not None:
         component.title = payload.title.strip()
-    if 'amount_minor' in fields_set:
+    if "amount_minor" in fields_set:
         component.amount_minor = payload.amount_minor
-    if 'rate_minor' in fields_set:
+    if "rate_minor" in fields_set:
         component.rate_minor = payload.rate_minor
-    if 'percent_bps' in fields_set:
+    if "percent_bps" in fields_set:
         component.percent_bps = payload.percent_bps
-    if 'kpi_calculation_mode' in fields_set and payload.kpi_calculation_mode is not None:
+    if "kpi_calculation_mode" in fields_set and payload.kpi_calculation_mode is not None:
         component.kpi_calculation_mode = payload.kpi_calculation_mode.strip().upper()
-    if 'salary_accrual_day' in fields_set:
+    if "salary_accrual_day" in fields_set:
         component.salary_accrual_day = payload.salary_accrual_day
-    if 'department_id' in fields_set:
+    if "department_id" in fields_set:
         if payload.department_id is None:
             component.department_id = None
         else:
-            dep = db.execute(select(Department.id).where(Department.id == payload.department_id, Department.venue_id == venue_id)).scalar_one_or_none()
+            dep = db.execute(
+                select(Department.id).where(Department.id == payload.department_id, Department.venue_id == venue_id)
+            ).scalar_one_or_none()
             if dep is None:
                 raise HTTPException(status_code=400, detail="Department not found in venue")
             component.department_id = payload.department_id
-    if 'department_ids' in fields_set:
+    if "department_ids" in fields_set:
         department_ids_payload = _normalize_int_ids(payload.department_ids)
-        _ensure_department_ids_in_venue(db, venue_id=venue_id, ids=department_ids_payload, detail="Departments not found in venue")
+        _ensure_department_ids_in_venue(
+            db, venue_id=venue_id, ids=department_ids_payload, detail="Departments not found in venue"
+        )
         component.department_ids_json = _dump_int_ids(department_ids_payload)
-        if 'department_id' not in fields_set:
+        if "department_id" not in fields_set:
             component.department_id = department_ids_payload[0] if department_ids_payload else None
-    if 'kpi_metric_id' in fields_set:
+    if "kpi_metric_id" in fields_set:
         if payload.kpi_metric_id is None:
             component.kpi_metric_id = None
         else:
-            kpi = db.execute(select(KpiMetric.id).where(KpiMetric.id == payload.kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
+            kpi = db.execute(
+                select(KpiMetric.id).where(KpiMetric.id == payload.kpi_metric_id, KpiMetric.venue_id == venue_id)
+            ).scalar_one_or_none()
             if kpi is None:
                 raise HTTPException(status_code=400, detail="KPI metric not found in venue")
             component.kpi_metric_id = payload.kpi_metric_id
-    if 'boost_department_id' in fields_set:
+    if "boost_department_id" in fields_set:
         if payload.boost_department_id is None:
             component.boost_department_id = None
         else:
-            dep = db.execute(select(Department.id).where(Department.id == payload.boost_department_id, Department.venue_id == venue_id)).scalar_one_or_none()
+            dep = db.execute(
+                select(Department.id).where(
+                    Department.id == payload.boost_department_id, Department.venue_id == venue_id
+                )
+            ).scalar_one_or_none()
             if dep is None:
                 raise HTTPException(status_code=400, detail="Boost department not found in venue")
             component.boost_department_id = payload.boost_department_id
-    if 'boost_department_ids' in fields_set:
+    if "boost_department_ids" in fields_set:
         boost_department_ids_payload = _normalize_int_ids(payload.boost_department_ids)
-        _ensure_department_ids_in_venue(db, venue_id=venue_id, ids=boost_department_ids_payload, detail="Boost departments not found in venue")
+        _ensure_department_ids_in_venue(
+            db, venue_id=venue_id, ids=boost_department_ids_payload, detail="Boost departments not found in venue"
+        )
         component.boost_department_ids_json = _dump_int_ids(boost_department_ids_payload)
-        if 'boost_department_id' not in fields_set:
+        if "boost_department_id" not in fields_set:
             component.boost_department_id = boost_department_ids_payload[0] if boost_department_ids_payload else None
-    if 'boost_kpi_metric_id' in fields_set:
+    if "boost_kpi_metric_id" in fields_set:
         if payload.boost_kpi_metric_id is None:
             component.boost_kpi_metric_id = None
         else:
-            kpi = db.execute(select(KpiMetric.id).where(KpiMetric.id == payload.boost_kpi_metric_id, KpiMetric.venue_id == venue_id)).scalar_one_or_none()
+            kpi = db.execute(
+                select(KpiMetric.id).where(KpiMetric.id == payload.boost_kpi_metric_id, KpiMetric.venue_id == venue_id)
+            ).scalar_one_or_none()
             if kpi is None:
                 raise HTTPException(status_code=400, detail="Boost KPI metric not found in venue")
             component.boost_kpi_metric_id = payload.boost_kpi_metric_id
-    if 'threshold_value' in fields_set:
+    if "threshold_value" in fields_set:
         component.threshold_value = payload.threshold_value
-    if 'steps_json' in fields_set:
-        component.steps_json = json.dumps(payload.steps_json, ensure_ascii=False) if payload.steps_json is not None else None
-    if 'base_scope' in fields_set:
-        component.base_scope = (payload.base_scope or '').strip().upper() or None
-    if 'boost_enabled' in fields_set:
+    if "steps_json" in fields_set:
+        component.steps_json = (
+            json.dumps(payload.steps_json, ensure_ascii=False) if payload.steps_json is not None else None
+        )
+    if "base_scope" in fields_set:
+        component.base_scope = (payload.base_scope or "").strip().upper() or None
+    if "boost_enabled" in fields_set:
         component.boost_enabled = bool(payload.boost_enabled)
-    if 'boost_percent_bps' in fields_set:
+    if "boost_percent_bps" in fields_set:
         component.boost_percent_bps = payload.boost_percent_bps
-    if 'boost_source_type' in fields_set:
-        component.boost_source_type = (payload.boost_source_type or '').strip().upper() or None
-    if 'boost_recalc_mode' in fields_set:
-        component.boost_recalc_mode = (payload.boost_recalc_mode or '').strip().upper() or None
-    if 'boost_threshold_value' in fields_set:
+    if "boost_source_type" in fields_set:
+        component.boost_source_type = (payload.boost_source_type or "").strip().upper() or None
+    if "boost_recalc_mode" in fields_set:
+        component.boost_recalc_mode = (payload.boost_recalc_mode or "").strip().upper() or None
+    if "boost_threshold_value" in fields_set:
         component.boost_threshold_value = payload.boost_threshold_value
-    if 'minimum_guarantee_minor' in fields_set:
+    if "minimum_guarantee_minor" in fields_set:
         component.minimum_guarantee_minor = payload.minimum_guarantee_minor
-        if payload.minimum_guarantee_minor is None and 'minimum_guarantee_scope' not in fields_set:
+        if payload.minimum_guarantee_minor is None and "minimum_guarantee_scope" not in fields_set:
             component.minimum_guarantee_scope = None
-    if 'minimum_guarantee_scope' in fields_set:
+    if "minimum_guarantee_scope" in fields_set:
         component.minimum_guarantee_scope = (
             _normalize_minimum_guarantee_scope(payload.minimum_guarantee_scope)
-            if str(component.component_type or "").strip().upper() == "MINIMUM_PAYOUT" or component.minimum_guarantee_minor is not None
+            if str(component.component_type or "").strip().upper() == "MINIMUM_PAYOUT"
+            or component.minimum_guarantee_minor is not None
             else None
         )
-    elif str(component.component_type or "").strip().upper() == "MINIMUM_PAYOUT" and not component.minimum_guarantee_scope:
+    elif (
+        str(component.component_type or "").strip().upper() == "MINIMUM_PAYOUT"
+        and not component.minimum_guarantee_scope
+    ):
         component.minimum_guarantee_scope = MINIMUM_GUARANTEE_MONTH
     elif component.minimum_guarantee_minor is not None and not component.minimum_guarantee_scope:
         component.minimum_guarantee_scope = MINIMUM_GUARANTEE_MONTH
-    if 'maximum_cap_minor' in fields_set:
+    if "maximum_cap_minor" in fields_set:
         component.maximum_cap_minor = payload.maximum_cap_minor
-    if 'sort_order' in fields_set and payload.sort_order is not None:
+    if "sort_order" in fields_set and payload.sort_order is not None:
         component.sort_order = payload.sort_order
-    if 'is_active' in fields_set and payload.is_active is not None:
+    if "is_active" in fields_set and payload.is_active is not None:
         component.is_active = payload.is_active
     kpi_metric_unit = None
     if component.kpi_metric_id is not None:

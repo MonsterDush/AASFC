@@ -90,12 +90,14 @@ class DemoBootstrapForeignKeyTests(unittest.TestCase):
             template = Venue(name="DEMO template")
             db.add(template)
             db.flush()
-            db.add(VenueMember(
-                venue_id=int(template.id),
-                user_id=shared_user_id,
-                venue_role="STAFF",
-                is_active=True,
-            ))
+            db.add(
+                VenueMember(
+                    venue_id=int(template.id),
+                    user_id=shared_user_id,
+                    venue_role="STAFF",
+                    is_active=True,
+                )
+            )
             db.commit()
 
             bootstrap_demo_venue(
@@ -113,9 +115,7 @@ class DemoBootstrapForeignKeyTests(unittest.TestCase):
                 10,
             )
             self.assertEqual(
-                db.execute(
-                    select(func.count(VenueMember.id)).where(VenueMember.user_id == shared_user_id)
-                ).scalar(),
+                db.execute(select(func.count(VenueMember.id)).where(VenueMember.user_id == shared_user_id)).scalar(),
                 2,
             )
 

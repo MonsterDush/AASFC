@@ -26,7 +26,9 @@ class Venue(Base):
 
     # NEW: tips settings (B2+)
     tips_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    tips_split_mode: Mapped[str] = mapped_column(String(24), nullable=False, default="EQUAL")  # EQUAL | WEIGHTED_BY_POSITION
+    tips_split_mode: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="EQUAL"
+    )  # EQUAL | WEIGHTED_BY_POSITION
     tips_weights: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     members = relationship("VenueMember", back_populates="venue")

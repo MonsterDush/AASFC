@@ -10,9 +10,7 @@ from app.core.db import Base
 
 class KpiMetric(Base):
     __tablename__ = "kpi_metrics"
-    __table_args__ = (
-        UniqueConstraint("venue_id", "code", name="uq_kpi_metrics_venue_code"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", "code", name="uq_kpi_metrics_venue_code"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)

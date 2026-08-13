@@ -10,9 +10,7 @@ class ShiftInterval(Base):
     """Reusable time interval for shifts inside a venue (e.g. 12:00-20:00)."""
 
     __tablename__ = "shift_intervals"
-    __table_args__ = (
-        UniqueConstraint("venue_id", "title", name="uq_shift_intervals_title"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", "title", name="uq_shift_intervals_title"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 

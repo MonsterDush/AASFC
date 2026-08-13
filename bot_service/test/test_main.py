@@ -14,12 +14,14 @@ from bot_service import main
 
 class TelegramHelpersTests(TestCase):
     def test_payload_is_encoded_for_telegram_form_api(self):
-        encoded = main._telegram_payload_to_form_bytes({
-            "chat_id": 42,
-            "disable_notification": True,
-            "reply_markup": {"inline_keyboard": []},
-            "empty": None,
-        })
+        encoded = main._telegram_payload_to_form_bytes(
+            {
+                "chat_id": 42,
+                "disable_notification": True,
+                "reply_markup": {"inline_keyboard": []},
+                "empty": None,
+            }
+        )
 
         parsed = urllib.parse.parse_qs(encoded.decode("utf-8"))
         self.assertEqual(parsed["chat_id"], ["42"])
@@ -55,9 +57,11 @@ class TelegramHelpersTests(TestCase):
         urllib_result = {"ok": False, "retryable": True, "error": "timeout"}
         curl_result = {"ok": True, "retryable": False}
 
-        with patch.dict("os.environ", {"TELEGRAM_API_TRANSPORT": "urllib", "TELEGRAM_API_CURL_FALLBACK": "1"}), \
-             patch.object(main, "_telegram_api_post_urllib", return_value=urllib_result) as urllib_post, \
-             patch.object(main, "_telegram_api_post_curl", return_value=curl_result) as curl_post:
+        with (
+            patch.dict("os.environ", {"TELEGRAM_API_TRANSPORT": "urllib", "TELEGRAM_API_CURL_FALLBACK": "1"}),
+            patch.object(main, "_telegram_api_post_urllib", return_value=urllib_result) as urllib_post,
+            patch.object(main, "_telegram_api_post_curl", return_value=curl_result) as curl_post,
+        ):
             result = main._telegram_api_post("token", "sendMessage", {"chat_id": 1})
 
         self.assertIs(result, curl_result)
@@ -67,9 +71,11 @@ class TelegramHelpersTests(TestCase):
     def test_transport_can_return_urllib_failure_without_fallback(self):
         urllib_result = {"ok": False, "retryable": True, "error": "timeout"}
 
-        with patch.dict("os.environ", {"TELEGRAM_API_TRANSPORT": "urllib", "TELEGRAM_API_CURL_FALLBACK": "0"}), \
-             patch.object(main, "_telegram_api_post_urllib", return_value=urllib_result), \
-             patch.object(main, "_telegram_api_post_curl") as curl_post:
+        with (
+            patch.dict("os.environ", {"TELEGRAM_API_TRANSPORT": "urllib", "TELEGRAM_API_CURL_FALLBACK": "0"}),
+            patch.object(main, "_telegram_api_post_urllib", return_value=urllib_result),
+            patch.object(main, "_telegram_api_post_curl") as curl_post,
+        ):
             result = main._telegram_api_post("token", "sendMessage", {})
 
         self.assertIs(result, urllib_result)
@@ -81,11 +87,17 @@ class TelegramHelpersTests(TestCase):
             stdout=b'{"ok":true,"result":{"message_id":8}}',
             stderr=b"",
         )
-        with patch.dict("os.environ", {
-            "TELEGRAM_FORCE_IPV4": "1",
-            "TELEGRAM_API_TIMEOUT_SECONDS": "4",
-            "TELEGRAM_API_CONNECT_TIMEOUT_SECONDS": "2",
-        }), patch.object(main.subprocess, "run", return_value=process) as run:
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "TELEGRAM_FORCE_IPV4": "1",
+                    "TELEGRAM_API_TIMEOUT_SECONDS": "4",
+                    "TELEGRAM_API_CONNECT_TIMEOUT_SECONDS": "2",
+                },
+            ),
+            patch.object(main.subprocess, "run", return_value=process) as run,
+        ):
             result = main._telegram_api_post_curl("token", "sendMessage", {"chat_id": 7})
 
         self.assertTrue(result["ok"])
@@ -107,8 +119,10 @@ class TelegramHelpersTests(TestCase):
 
     def test_ipv4_resolver_is_forced_only_for_telegram(self):
         resolver = Mock(return_value=[("resolved",)])
-        with patch.object(main, "_ORIGINAL_GETADDRINFO", resolver), \
-             patch.dict("os.environ", {"TELEGRAM_FORCE_IPV4": "1"}):
+        with (
+            patch.object(main, "_ORIGINAL_GETADDRINFO", resolver),
+            patch.dict("os.environ", {"TELEGRAM_FORCE_IPV4": "1"}),
+        ):
             main._telegram_ipv4_getaddrinfo("api.telegram.org", 443)
             main._telegram_ipv4_getaddrinfo("example.test", 443)
 
@@ -124,8 +138,7 @@ class BotServiceEndpointTests(TestCase):
         request = SimpleNamespace(headers={"X-Bot-Secret": "wrong"})
         payload = main.TelegramApiIn(method="sendMessage", payload={})
 
-        with patch.object(main, "BOT_SERVICE_SECRET", "expected"), \
-             patch.object(main, "TG_BOT_TOKEN", "token"):
+        with patch.object(main, "BOT_SERVICE_SECRET", "expected"), patch.object(main, "TG_BOT_TOKEN", "token"):
             with self.assertRaises(HTTPException) as raised:
                 main.telegram_api_proxy(payload, request)
 
@@ -146,22 +159,28 @@ class BotServiceEndpointTests(TestCase):
         payload = main.TelegramApiIn(method="sendMessage", payload={"chat_id": 7})
         expected = {"ok": True}
 
-        with patch.object(main, "BOT_SERVICE_SECRET", "expected"), \
-             patch.object(main, "TG_BOT_TOKEN", "token"), \
-             patch.object(main, "_telegram_api_post", return_value=expected) as telegram_post:
+        with (
+            patch.object(main, "BOT_SERVICE_SECRET", "expected"),
+            patch.object(main, "TG_BOT_TOKEN", "token"),
+            patch.object(main, "_telegram_api_post", return_value=expected) as telegram_post,
+        ):
             result = main.telegram_api_proxy(payload, request)
 
         self.assertIs(result, expected)
         telegram_post.assert_called_once_with("token", "sendMessage", {"chat_id": 7})
 
     def test_background_forwarder_logs_non_success_and_exceptions(self):
-        with patch.object(main, "_forward_telegram_update_to_backend", return_value=(503, "unavailable")), \
-             patch.object(main.log, "error") as log_error:
+        with (
+            patch.object(main, "_forward_telegram_update_to_backend", return_value=(503, "unavailable")),
+            patch.object(main.log, "error") as log_error,
+        ):
             main._forward_telegram_update_to_backend_background(b"{}")
         log_error.assert_called_once()
 
-        with patch.object(main, "_forward_telegram_update_to_backend", side_effect=RuntimeError("boom")), \
-             patch.object(main.log, "exception") as log_exception:
+        with (
+            patch.object(main, "_forward_telegram_update_to_backend", side_effect=RuntimeError("boom")),
+            patch.object(main.log, "exception") as log_exception,
+        ):
             main._forward_telegram_update_to_backend_background(b"{}")
         log_exception.assert_called_once()
 

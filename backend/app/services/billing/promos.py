@@ -51,7 +51,9 @@ def normalize_promo_code(value: str | None) -> str:
     return str(value or "").strip().upper()
 
 
-def validate_promo_payload(*, kind: str, percent_value: int | None, amount_minor: int | None, free_days: int | None) -> tuple[str, int | None, int | None, int | None]:
+def validate_promo_payload(
+    *, kind: str, percent_value: int | None, amount_minor: int | None, free_days: int | None
+) -> tuple[str, int | None, int | None, int | None]:
     kind_norm = str(kind or "").strip().upper()
     if kind_norm not in {PROMO_KIND_PERCENT, PROMO_KIND_FIXED_MINOR, PROMO_KIND_FREE_DAYS}:
         raise ValueError("Unsupported promo kind")
@@ -104,13 +106,17 @@ def serialize_promo_redemption(redemption: BillingPromoRedemption | None) -> dic
         "id": int(redemption.id),
         "promo_code_id": int(redemption.promo_code_id),
         "venue_id": int(redemption.venue_id),
-        "billing_transaction_id": int(redemption.billing_transaction_id) if redemption.billing_transaction_id is not None else None,
+        "billing_transaction_id": int(redemption.billing_transaction_id)
+        if redemption.billing_transaction_id is not None
+        else None,
         "promo_code_value": redemption.promo_code_value,
         "discount_minor": int(redemption.discount_minor or 0),
         "free_days_added": int(redemption.free_days_added) if redemption.free_days_added is not None else None,
         "created_at": redemption.created_at.isoformat() if redemption.created_at else None,
         "promo": serialize_promo_code(promo, usage_count=1) if promo is not None else None,
-        "snapshot": redemption.snapshot_json if isinstance(redemption.snapshot_json, dict) else (redemption.snapshot_json or {}),
+        "snapshot": redemption.snapshot_json
+        if isinstance(redemption.snapshot_json, dict)
+        else (redemption.snapshot_json or {}),
     }
 
 
@@ -313,7 +319,9 @@ def create_promo_redemption(
 ) -> BillingPromoRedemption:
     existing = get_venue_promo_redemption(db, venue_id=int(venue_id))
     if existing is not None:
-        if billing_transaction_id is not None and int(existing.billing_transaction_id or 0) == int(billing_transaction_id):
+        if billing_transaction_id is not None and int(existing.billing_transaction_id or 0) == int(
+            billing_transaction_id
+        ):
             return existing
         raise ValueError(f"Для этого заведения уже использован промокод {existing.promo_code_value}")
     redemption = BillingPromoRedemption(
@@ -322,7 +330,9 @@ def create_promo_redemption(
         billing_transaction_id=int(billing_transaction_id) if billing_transaction_id is not None else None,
         promo_code_value=promo.code,
         discount_minor=int(promo_payload.get("discount_minor") or 0),
-        free_days_added=int(promo_payload.get("days_added") or 0) if promo.kind == PROMO_KIND_FREE_DAYS else (int(promo_payload.get("free_days_value") or 0) or None),
+        free_days_added=int(promo_payload.get("days_added") or 0)
+        if promo.kind == PROMO_KIND_FREE_DAYS
+        else (int(promo_payload.get("free_days_value") or 0) or None),
         snapshot_json=promo_payload,
         created_at=utcnow(),
     )
@@ -331,7 +341,9 @@ def create_promo_redemption(
     return redemption
 
 
-def finalize_transaction_promo_redemption(db: Session, *, transaction: VenueBillingTransaction) -> BillingPromoRedemption | None:
+def finalize_transaction_promo_redemption(
+    db: Session, *, transaction: VenueBillingTransaction
+) -> BillingPromoRedemption | None:
     promo_payload = extract_transaction_promo_payload(transaction)
     if not promo_payload:
         return None

@@ -12,8 +12,8 @@ def rebuild_balance_adjustment_entries(*, db: Session, adjustment: BalanceAdjust
 
     delete_finance_entries_for_source(db=db, source_type="balance_adjustment", source_id=int(adjustment.id))
 
-    status = str(getattr(adjustment, 'status', 'CONFIRMED') or 'CONFIRMED').upper()
-    if status != 'CONFIRMED':
+    status = str(getattr(adjustment, "status", "CONFIRMED") or "CONFIRMED").upper()
+    if status != "CONFIRMED":
         return 0
 
     delta_minor = int(adjustment.delta_minor or 0)
@@ -25,20 +25,20 @@ def rebuild_balance_adjustment_entries(*, db: Session, adjustment: BalanceAdjust
         venue_id=int(adjustment.venue_id),
         entry_date=adjustment.adjustment_date,
         amount_minor=abs(delta_minor),
-        direction='INCOME' if delta_minor > 0 else 'EXPENSE',
-        kind='BALANCE_ADJUSTMENT',
-        source_type='balance_adjustment',
+        direction="INCOME" if delta_minor > 0 else "EXPENSE",
+        kind="BALANCE_ADJUSTMENT",
+        source_type="balance_adjustment",
         source_id=int(adjustment.id),
         payment_method_id=int(adjustment.payment_method_id),
         meta_json={
-            'adjustment_date': adjustment.adjustment_date.isoformat(),
-            'reason': adjustment.reason,
-            'comment': adjustment.comment,
-            'delta_minor': delta_minor,
+            "adjustment_date": adjustment.adjustment_date.isoformat(),
+            "reason": adjustment.reason,
+            "comment": adjustment.comment,
+            "delta_minor": delta_minor,
         },
     )
     return 1
 
 
 def delete_balance_adjustment_entries(*, db: Session, adjustment_id: int) -> int:
-    return delete_finance_entries_for_source(db=db, source_type='balance_adjustment', source_id=int(adjustment_id))
+    return delete_finance_entries_for_source(db=db, source_type="balance_adjustment", source_id=int(adjustment_id))

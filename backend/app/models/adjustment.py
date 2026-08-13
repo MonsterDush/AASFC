@@ -35,5 +35,3 @@ class Adjustment(Base):
     member_user = relationship("User", foreign_keys=[member_user_id])
     created_by_user = relationship("User", foreign_keys=[created_by_user_id])
     updated_by_user = relationship("User", foreign_keys=[updated_by_user_id])
-
-

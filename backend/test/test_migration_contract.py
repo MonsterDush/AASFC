@@ -33,7 +33,9 @@ class MigrationContractTests(unittest.TestCase):
 
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "f1a2b3c4d5e7")
-        source = (BACKEND_DIR / "alembic" / "versions" / "4a7c9e2b6d10_add_shift_comment_mentions_and_replies.py").read_text(encoding="utf-8")
+        source = (
+            BACKEND_DIR / "alembic" / "versions" / "4a7c9e2b6d10_add_shift_comment_mentions_and_replies.py"
+        ).read_text(encoding="utf-8")
         self.assertIn('"parent_comment_id"', source)
         self.assertIn('"shift_comment_mentions"', source)
         self.assertIn('"uq_shift_comment_mention_user"', source)
@@ -47,12 +49,9 @@ class MigrationContractTests(unittest.TestCase):
 
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "6c9e1a4b7d22")
-        source = (
-            BACKEND_DIR
-            / "alembic"
-            / "versions"
-            / "7d0f2b6c8e33_add_shift_availability_and_swaps.py"
-        ).read_text(encoding="utf-8")
+        source = (BACKEND_DIR / "alembic" / "versions" / "7d0f2b6c8e33_add_shift_availability_and_swaps.py").read_text(
+            encoding="utf-8"
+        )
         self.assertIn('"shift_availabilities"', source)
         self.assertIn('"shift_swap_requests"', source)
         self.assertIn('"uq_shift_availability_member_date_slot"', source)
@@ -69,10 +68,7 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "7d0f2b6c8e33")
         source = (
-            BACKEND_DIR
-            / "alembic"
-            / "versions"
-            / "8b4d1e7a9c20_extend_kpi_bonus_and_salary_accrual.py"
+            BACKEND_DIR / "alembic" / "versions" / "8b4d1e7a9c20_extend_kpi_bonus_and_salary_accrual.py"
         ).read_text(encoding="utf-8")
         self.assertIn('"kpi_calculation_mode"', source)
         self.assertIn('"salary_accrual_day"', source)
@@ -86,12 +82,9 @@ class MigrationContractTests(unittest.TestCase):
 
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "8b4d1e7a9c20")
-        source = (
-            BACKEND_DIR
-            / "alembic"
-            / "versions"
-            / "9c2e4f6a8b10_payroll_payment_schedule.py"
-        ).read_text(encoding="utf-8")
+        source = (BACKEND_DIR / "alembic" / "versions" / "9c2e4f6a8b10_payroll_payment_schedule.py").read_text(
+            encoding="utf-8"
+        )
         self.assertIn('"payroll_payment_settings"', source)
         self.assertIn('"expense_kind"', source)
         self.assertIn('"payroll_payout_key"', source)

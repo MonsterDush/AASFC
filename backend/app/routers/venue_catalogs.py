@@ -95,13 +95,16 @@ def _build_kpi_usage_map(db: Session, *, venue_id: int) -> dict[int, dict]:
         key = int(metric_id or 0)
         if key <= 0:
             continue
-        bucket = result.setdefault(key, {
-            "usage_component_count": 0,
-            "usage_bonus_component_count": 0,
-            "usage_boost_component_count": 0,
-            "usage_bonus_profile_count": 0,
-            "usage_boost_profile_count": 0,
-        })
+        bucket = result.setdefault(
+            key,
+            {
+                "usage_component_count": 0,
+                "usage_bonus_component_count": 0,
+                "usage_boost_component_count": 0,
+                "usage_bonus_profile_count": 0,
+                "usage_boost_profile_count": 0,
+            },
+        )
         bucket["usage_component_count"] += int(component_count or 0)
         bucket["usage_bonus_component_count"] += int(component_count or 0)
         bucket["usage_bonus_profile_count"] += int(profile_count or 0)
@@ -128,13 +131,16 @@ def _build_kpi_usage_map(db: Session, *, venue_id: int) -> dict[int, dict]:
         key = int(metric_id or 0)
         if key <= 0:
             continue
-        bucket = result.setdefault(key, {
-            "usage_component_count": 0,
-            "usage_bonus_component_count": 0,
-            "usage_boost_component_count": 0,
-            "usage_bonus_profile_count": 0,
-            "usage_boost_profile_count": 0,
-        })
+        bucket = result.setdefault(
+            key,
+            {
+                "usage_component_count": 0,
+                "usage_bonus_component_count": 0,
+                "usage_boost_component_count": 0,
+                "usage_bonus_profile_count": 0,
+                "usage_boost_profile_count": 0,
+            },
+        )
         bucket["usage_component_count"] += int(component_count or 0)
         bucket["usage_boost_component_count"] += int(component_count or 0)
         bucket["usage_boost_profile_count"] += int(profile_count or 0)
@@ -361,13 +367,16 @@ def list_kpi_metrics(
             "unit": r.unit,
             "is_active": bool(r.is_active),
             "sort_order": int(r.sort_order or 0),
-            **usage_by_metric.get(int(r.id), {
-                "usage_component_count": 0,
-                "usage_bonus_component_count": 0,
-                "usage_boost_component_count": 0,
-                "usage_bonus_profile_count": 0,
-                "usage_boost_profile_count": 0,
-            }),
+            **usage_by_metric.get(
+                int(r.id),
+                {
+                    "usage_component_count": 0,
+                    "usage_bonus_component_count": 0,
+                    "usage_boost_component_count": 0,
+                    "usage_bonus_profile_count": 0,
+                    "usage_boost_profile_count": 0,
+                },
+            ),
         }
         for r in rows
     ]
@@ -593,6 +602,3 @@ def update_supplier(
         db.rollback()
         raise HTTPException(status_code=409, detail="Supplier title already exists")
     return {"ok": True}
-
-
-

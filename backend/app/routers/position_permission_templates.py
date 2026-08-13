@@ -50,7 +50,7 @@ def _utcnow() -> datetime:
 
 
 def _normalize_code(raw: str | None, *, fallback_title: str | None = None) -> str:
-    value = str(raw or '').strip().lower()
+    value = str(raw or "").strip().lower()
     if not value and fallback_title:
         value = str(fallback_title).strip().lower()
     out = []
@@ -58,26 +58,26 @@ def _normalize_code(raw: str | None, *, fallback_title: str | None = None) -> st
         if ch.isalnum():
             out.append(ch)
         else:
-            out.append('-')
-    code = ''.join(out).strip('-')
-    while '--' in code:
-        code = code.replace('--', '-')
-    return code[:80] or 'template'
+            out.append("-")
+    code = "".join(out).strip("-")
+    while "--" in code:
+        code = code.replace("--", "-")
+    return code[:80] or "template"
 
 
 def _load_row(db: Session, template_id: int) -> PositionPermissionTemplate:
     row = db.execute(
         select(PositionPermissionTemplate).where(
             PositionPermissionTemplate.id == int(template_id),
-            PositionPermissionTemplate.scope == 'GLOBAL',
+            PositionPermissionTemplate.scope == "GLOBAL",
         )
     ).scalar_one_or_none()
     if row is None:
-        raise HTTPException(status_code=404, detail='Template not found')
+        raise HTTPException(status_code=404, detail="Template not found")
     return row
 
 
-@public_router.get('/position-permission-templates')
+@public_router.get("/position-permission-templates")
 def list_position_permission_templates(
     include_inactive: bool = Query(False),
     db: Session = Depends(get_db),
@@ -86,14 +86,18 @@ def list_position_permission_templates(
     del user
     ensure_default_templates(db)
     db.commit()
-    stmt = select(PositionPermissionTemplate).where(PositionPermissionTemplate.scope == 'GLOBAL')
+    stmt = select(PositionPermissionTemplate).where(PositionPermissionTemplate.scope == "GLOBAL")
     if not include_inactive:
         stmt = stmt.where(PositionPermissionTemplate.is_active.is_(True))
-    rows = db.execute(stmt.order_by(PositionPermissionTemplate.sort_order.asc(), PositionPermissionTemplate.id.asc())).scalars().all()
-    return {'items': [serialize_template(row) for row in rows]}
+    rows = (
+        db.execute(stmt.order_by(PositionPermissionTemplate.sort_order.asc(), PositionPermissionTemplate.id.asc()))
+        .scalars()
+        .all()
+    )
+    return {"items": [serialize_template(row) for row in rows]}
 
 
-@router.get('/position-permission-templates')
+@router.get("/position-permission-templates")
 def admin_list_position_permission_templates(
     include_inactive: bool = Query(True),
     db: Session = Depends(get_db),
@@ -101,14 +105,18 @@ def admin_list_position_permission_templates(
 ):
     ensure_default_templates(db, actor_user_id=int(user.id))
     db.commit()
-    stmt = select(PositionPermissionTemplate).where(PositionPermissionTemplate.scope == 'GLOBAL')
+    stmt = select(PositionPermissionTemplate).where(PositionPermissionTemplate.scope == "GLOBAL")
     if not include_inactive:
         stmt = stmt.where(PositionPermissionTemplate.is_active.is_(True))
-    rows = db.execute(stmt.order_by(PositionPermissionTemplate.sort_order.asc(), PositionPermissionTemplate.id.asc())).scalars().all()
-    return {'items': [serialize_template(row) for row in rows]}
+    rows = (
+        db.execute(stmt.order_by(PositionPermissionTemplate.sort_order.asc(), PositionPermissionTemplate.id.asc()))
+        .scalars()
+        .all()
+    )
+    return {"items": [serialize_template(row) for row in rows]}
 
 
-@router.post('/position-permission-templates/seed-defaults')
+@router.post("/position-permission-templates/seed-defaults")
 def admin_seed_position_permission_templates(
     payload: SeedDefaultsIn,
     db: Session = Depends(get_db),
@@ -116,15 +124,19 @@ def admin_seed_position_permission_templates(
 ):
     result = ensure_default_templates(db, actor_user_id=int(user.id), reactivate=bool(payload.reactivate))
     db.commit()
-    rows = db.execute(
-        select(PositionPermissionTemplate)
-        .where(PositionPermissionTemplate.scope == 'GLOBAL')
-        .order_by(PositionPermissionTemplate.sort_order.asc(), PositionPermissionTemplate.id.asc())
-    ).scalars().all()
-    return {**result, 'items': [serialize_template(row) for row in rows]}
+    rows = (
+        db.execute(
+            select(PositionPermissionTemplate)
+            .where(PositionPermissionTemplate.scope == "GLOBAL")
+            .order_by(PositionPermissionTemplate.sort_order.asc(), PositionPermissionTemplate.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    return {**result, "items": [serialize_template(row) for row in rows]}
 
 
-@router.post('/position-permission-templates')
+@router.post("/position-permission-templates")
 def admin_create_position_permission_template(
     payload: TemplateCreateIn,
     db: Session = Depends(get_db),
@@ -134,20 +146,20 @@ def admin_create_position_permission_template(
     existing = db.execute(
         select(PositionPermissionTemplate).where(
             PositionPermissionTemplate.code == code,
-            PositionPermissionTemplate.scope == 'GLOBAL',
+            PositionPermissionTemplate.scope == "GLOBAL",
         )
     ).scalar_one_or_none()
     if existing is not None:
-        raise HTTPException(status_code=409, detail='Template code already exists')
+        raise HTTPException(status_code=409, detail="Template code already exists")
     row = PositionPermissionTemplate(
         code=code,
         title=payload.title.strip(),
-        description=(payload.description or '').strip() or None,
+        description=(payload.description or "").strip() or None,
         permission_codes_json=normalize_known_permission_codes(db, payload.permission_codes or []),
         sort_order=int(payload.sort_order) if payload.sort_order is not None else next_sort_order(db),
         is_active=bool(payload.is_active),
         is_system=False,
-        scope='GLOBAL',
+        scope="GLOBAL",
         created_by_user_id=int(user.id),
         updated_by_user_id=int(user.id),
         created_at=_utcnow(),
@@ -159,7 +171,7 @@ def admin_create_position_permission_template(
     return serialize_template(row)
 
 
-@router.patch('/position-permission-templates/{template_id}')
+@router.patch("/position-permission-templates/{template_id}")
 def admin_update_position_permission_template(
     template_id: int,
     payload: TemplateUpdateIn,
@@ -167,28 +179,28 @@ def admin_update_position_permission_template(
     user: User = Depends(require_super_admin),
 ):
     row = _load_row(db, template_id)
-    fields_set = getattr(payload, 'model_fields_set', getattr(payload, '__fields_set__', set()))
-    if 'code' in fields_set and payload.code is not None:
+    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    if "code" in fields_set and payload.code is not None:
         code = _normalize_code(payload.code, fallback_title=row.title)
         existing = db.execute(
             select(PositionPermissionTemplate).where(
                 PositionPermissionTemplate.code == code,
-                PositionPermissionTemplate.scope == 'GLOBAL',
+                PositionPermissionTemplate.scope == "GLOBAL",
                 PositionPermissionTemplate.id != row.id,
             )
         ).scalar_one_or_none()
         if existing is not None:
-            raise HTTPException(status_code=409, detail='Template code already exists')
+            raise HTTPException(status_code=409, detail="Template code already exists")
         row.code = code
-    if 'title' in fields_set and payload.title is not None:
+    if "title" in fields_set and payload.title is not None:
         row.title = payload.title.strip()
-    if 'description' in fields_set:
-        row.description = (payload.description or '').strip() or None
-    if 'permission_codes' in fields_set and payload.permission_codes is not None:
+    if "description" in fields_set:
+        row.description = (payload.description or "").strip() or None
+    if "permission_codes" in fields_set and payload.permission_codes is not None:
         row.permission_codes_json = normalize_known_permission_codes(db, payload.permission_codes or [])
-    if 'sort_order' in fields_set and payload.sort_order is not None:
+    if "sort_order" in fields_set and payload.sort_order is not None:
         row.sort_order = int(payload.sort_order)
-    if 'is_active' in fields_set and payload.is_active is not None:
+    if "is_active" in fields_set and payload.is_active is not None:
         row.is_active = bool(payload.is_active)
     row.updated_by_user_id = int(user.id)
     row.updated_at = _utcnow()
@@ -197,7 +209,7 @@ def admin_update_position_permission_template(
     return serialize_template(row)
 
 
-@router.post('/position-permission-templates/{template_id}/archive')
+@router.post("/position-permission-templates/{template_id}/archive")
 def admin_archive_position_permission_template(
     template_id: int,
     payload: TemplateArchiveIn,

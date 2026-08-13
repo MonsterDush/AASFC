@@ -168,7 +168,9 @@ def serialize_payment_settings(settings: PayrollPaymentSettings | None) -> dict:
         "configured": settings is not None,
         "id": int(settings.id) if settings is not None and settings.id is not None else None,
         "venue_id": int(settings.venue_id) if settings is not None else None,
-        "payment_method_id": int(settings.payment_method_id) if settings is not None and settings.payment_method_id is not None else None,
+        "payment_method_id": int(settings.payment_method_id)
+        if settings is not None and settings.payment_method_id is not None
+        else None,
         "payment_method": (
             {
                 "id": int(settings.payment_method.id),
@@ -190,7 +192,9 @@ def serialize_payment_settings(settings: PayrollPaymentSettings | None) -> dict:
     }
 
 
-def payment_windows_for_settings(settings: PayrollPaymentSettings, *, schedule_month: date) -> list[PayrollPaymentWindow]:
+def payment_windows_for_settings(
+    settings: PayrollPaymentSettings, *, schedule_month: date
+) -> list[PayrollPaymentWindow]:
     return build_payment_windows(
         schedule_month=schedule_month,
         cadence=settings.cadence,
@@ -272,9 +276,7 @@ def generate_payroll_draft_expenses(
     for window in windows:
         amount_minor = _window_amount_minor(db, venue_id=venue_id, window=window)
         payout_key = f"payroll:{venue_id}:{window.payout_key_suffix}"
-        existing = db.execute(
-            select(Expense).where(Expense.payroll_payout_key == payout_key)
-        ).scalar_one_or_none()
+        existing = db.execute(select(Expense).where(Expense.payroll_payout_key == payout_key)).scalar_one_or_none()
         payroll_run = _run_for_window(db, venue_id=venue_id, window=window)
         if payroll_run is not None:
             legacy_run_ids.add(int(payroll_run.id))

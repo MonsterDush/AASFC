@@ -27,8 +27,7 @@ class PageLoaderContractTests(TestCase):
             "overlays-documents.css",
         )
         styles = "".join(
-            (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
-            for file_name in core_style_files
+            (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8") for file_name in core_style_files
         )
         html_pages = sorted(FRONTEND.glob("*.html"))
 
@@ -37,8 +36,7 @@ class PageLoaderContractTests(TestCase):
             sorted(core_style_files),
         )
         expected_imports = [
-            f'@import url("/styles/core/{file_name}?v={style_cache_key}");'
-            for file_name in core_style_files
+            f'@import url("/styles/core/{file_name}?v={style_cache_key}");' for file_name in core_style_files
         ]
         self.assertEqual(
             re.findall(r'@import url\("[^"]+"\);', styles_manifest),
@@ -51,8 +49,8 @@ class PageLoaderContractTests(TestCase):
         self.assertEqual(len(html_pages), 50)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
-            self.assertIn('/page-loader.js?v=20260802-navbuttons1', source, path.name)
-            self.assertIn(f'/styles.css?v={style_cache_key}', source, path.name)
+            self.assertIn("/page-loader.js?v=20260802-navbuttons1", source, path.name)
+            self.assertIn(f"/styles.css?v={style_cache_key}", source, path.name)
 
         self.assertLess(len(loader.splitlines()), 180)
         self.assertIn("window.fetch = function", loader)
@@ -87,25 +85,25 @@ class MetrikaConversionContractTests(TestCase):
         venues = (FRONTEND / "app-venues.html").read_text(encoding="utf-8")
         venue = (FRONTEND / "app-venue.html").read_text(encoding="utf-8")
 
-        self.assertIn('const COUNTER_ID = 108617620', metrika)
+        self.assertIn("const COUNTER_ID = 108617620", metrika)
         self.assertIn('new Set(["app.axelio.ru"])', metrika)
         self.assertIn("if (!enabled) return", metrika)
         self.assertIn('window.ym(COUNTER_ID, "reachGoal", normalizedGoal', metrika)
-        self.assertIn('/metrika.js?v=20260811-direct1', auth)
-        self.assertIn('/metrika.js?v=20260811-direct1', venues)
-        self.assertIn('/metrika.js?v=20260812-payment1', venue)
+        self.assertIn("/metrika.js?v=20260811-direct1", auth)
+        self.assertIn("/metrika.js?v=20260811-direct1", venues)
+        self.assertIn("/metrika.js?v=20260812-payment1", venue)
         self.assertIn('axelioTrackMetrikaGoal?.("signup_success")', auth)
         self.assertIn('axelioTrackMetrikaGoal?.("trial_venue_created")', venues)
         self.assertIn('const SUBSCRIPTION_PAYMENT_GOAL = "subscription_first_payment_success"', venue)
         self.assertIn('String(tx?.status || "").toUpperCase() !== "SUCCEEDED"', venue)
         self.assertIn('String(tx?.source || "").toUpperCase() !== "ROBOKASSA"', venue)
-        self.assertIn('await window.axelioTrackMetrikaGoal?.(SUBSCRIPTION_PAYMENT_GOAL)', venue)
+        self.assertIn("await window.axelioTrackMetrikaGoal?.(SUBSCRIPTION_PAYMENT_GOAL)", venue)
         self.assertLess(
             auth.index("await setPasswordAfterPhoneVerify("),
             auth.index('await window.axelioTrackMetrikaGoal?.("signup_success")'),
         )
         self.assertLess(
-            venues.index('if (result?.trial_granted)'),
+            venues.index("if (result?.trial_granted)"),
             venues.index('await window.axelioTrackMetrikaGoal?.("trial_venue_created")'),
         )
         self.assertLess(
@@ -139,7 +137,7 @@ class PrimaryPageUiPolishContractTests(TestCase):
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
             cache_key = "20260810-financepolish1" if html_name == "owner-summary.html" else "20260723-polish2"
-            self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
+            self.assertIn(f"/{style_path}?v={cache_key}", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
@@ -204,7 +202,9 @@ class WorkflowPageUiPolishContractTests(TestCase):
         self.assertIn('class="owner-expenses-page"', expenses_html)
         self.assertIn('class="expense-catalog-grid"', expenses_html)
         self.assertIn('class="expense-catalog-card__actions"', expenses_html)
-        self.assertLess(expenses_html.index('id="openExpenseCategoriesBtn"'), expenses_html.index('id="addCategoryBtn"'))
+        self.assertLess(
+            expenses_html.index('id="openExpenseCategoriesBtn"'), expenses_html.index('id="addCategoryBtn"')
+        )
         self.assertLess(expenses_html.index('id="openSuppliersBtn"'), expenses_html.index('id="addSupplierBtn"'))
 
         summary_script = (FRONTEND / "owner-summary.js").read_text(encoding="utf-8")
@@ -217,7 +217,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
             source = path.read_text(encoding="utf-8")
             self.assertNotRegex(source, r'<a\s+class="[^"]*btn subtle', str(path.relative_to(FRONTEND)))
         loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
-        self.assertIn('button[data-nav-button]', loader)
+        self.assertIn("button[data-nav-button]", loader)
 
         ledger_html = (FRONTEND / "owner-finance-ledger.html").read_text(encoding="utf-8")
         ledger_script = (FRONTEND / "owner-finance-ledger.js").read_text(encoding="utf-8")
@@ -261,7 +261,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             self.assertIn("finance-comparison-disclosure", html, html_name)
             self.assertIn('data-compare="none"', html, html_name)
-            self.assertNotRegex(html, r'<details[^>]+finance-comparison-disclosure[^>]+open', html_name)
+            self.assertNotRegex(html, r"<details[^>]+finance-comparison-disclosure[^>]+open", html_name)
 
         summary_html = (FRONTEND / "owner-summary.html").read_text(encoding="utf-8")
         finance_styles = (FRONTEND / "styles/pages/finance-pages.css").read_text(encoding="utf-8")
@@ -308,7 +308,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         for html_name, (style_path, cache_key, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
+            self.assertIn(f"/{style_path}?v={cache_key}", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
@@ -335,17 +335,17 @@ class WorkflowPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            self.assertIn(f'/{style_path}?v=20260725-polish5', html, html_name)
+            self.assertIn(f"/{style_path}?v=20260725-polish5", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         tip_settings_html = (FRONTEND / "owner-tip-settings.html").read_text(encoding="utf-8")
         tip_settings_js = (FRONTEND / "owner-tip-settings.js").read_text(encoding="utf-8")
-        self.assertIn('/owner-tip-settings.js?v=20260729-tips1', tip_settings_html)
+        self.assertIn("/owner-tip-settings.js?v=20260729-tips1", tip_settings_html)
         self.assertIn('id="rulesNote"', tip_settings_html)
         self.assertIn("renderRulesNote", tip_settings_js)
         self.assertIn("Promise.allSettled", tip_settings_js)
-        self.assertIn('el.save.disabled = true', tip_settings_js)
+        self.assertIn("el.save.disabled = true", tip_settings_js)
 
     def test_staff_finance_pages_keep_responsive_visual_states_and_routes(self):
         contracts = {
@@ -377,7 +377,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
             cache_key = "20260728-responsive1" if html_name == "staff-report.html" else "20260726-polish6"
-            self.assertIn(f'/{style_path}?v={cache_key}', html, html_name)
+            self.assertIn(f"/{style_path}?v={cache_key}", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
@@ -465,7 +465,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            self.assertIn(f'/{style_path}?v=20260726-polish9', html, html_name)
+            self.assertIn(f"/{style_path}?v=20260726-polish9", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
@@ -615,17 +615,19 @@ class AppFacadeSplitContractTests(TestCase):
                 exported.update(name.strip() for name in block.split(",") if name.strip())
 
         self.assertEqual(len(exported), 112)
-        self.assertTrue({
-            "api",
-            "ensureLogin",
-            "mountNav",
-            "getMe",
-            "getMyVenuePermissions",
-            "getDepartments",
-            "getPayProfiles",
-            "calculatePayroll",
-            "trackDemoEvent",
-        }.issubset(exported))
+        self.assertTrue(
+            {
+                "api",
+                "ensureLogin",
+                "mountNav",
+                "getMe",
+                "getMyVenuePermissions",
+                "getDepartments",
+                "getPayProfiles",
+                "calculatePayroll",
+                "trackDemoEvent",
+            }.issubset(exported)
+        )
         self.assertLess(len(main.splitlines()), 1_800)
 
         modules = {
@@ -644,9 +646,7 @@ class AppFacadeSplitContractTests(TestCase):
             self.assertIn(f"/app/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
-        consumer_pattern = re.compile(
-            r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260726-navmore1[\"']"
-        )
+        consumer_pattern = re.compile(r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260726-navmore1[\"']")
         consumer_count = 0
         for path in FRONTEND.rglob("*"):
             if path.suffix not in {".js", ".mjs", ".html"}:
@@ -654,11 +654,7 @@ class AppFacadeSplitContractTests(TestCase):
             source = path.read_text(encoding="utf-8")
             for match in consumer_pattern.finditer(source):
                 consumer_count += 1
-                imported = {
-                    entry.strip().split(" as ", 1)[0]
-                    for entry in match.group(1).split(",")
-                    if entry.strip()
-                }
+                imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
         self.assertEqual(consumer_count, 51)
 
@@ -690,10 +686,7 @@ class FunctionalFrontendRegressionContractTests(TestCase):
 
     def test_get_requests_do_not_force_cors_preflight_headers(self):
         source = (FRONTEND / "app.js").read_text(encoding="utf-8")
-        api_source = source[
-            source.index("export async function api"):
-            source.index("function parseDownloadFilename")
-        ]
+        api_source = source[source.index("export async function api") : source.index("function parseDownloadFilename")]
 
         self.assertIn('const method = String(opts.method || "GET").toUpperCase();', api_source)
         self.assertIn("const shouldSetJsonContentType = !isForm && hasBody", api_source)
@@ -773,9 +766,17 @@ class OwnerSetupSplitContractTests(TestCase):
             "pay-profile-editor.js": ("createPayProfileSetupController", "mountPayProfilesEditor", "20260729-payroll1"),
             "position-editor.js": ("createPositionSetupController", "mountPositionsEditor", "20260720-unified10"),
             "invite-editor.js": ("createInviteSetupController", "mountInvitesEditor", "20260720-unified10"),
-            "shift-interval-editor.js": ("createShiftIntervalSetupController", "mountShiftIntervalsEditor", "20260729-overnight1"),
+            "shift-interval-editor.js": (
+                "createShiftIntervalSetupController",
+                "mountShiftIntervalsEditor",
+                "20260729-overnight1",
+            ),
             "supplier-editor.js": ("createSupplierSetupController", "mountSuppliersEditor", "20260720-unified10"),
-            "recurring-expense-editor.js": ("createRecurringExpenseSetupController", "mountRecurringExpensesEditor", "20260729-slotecon1"),
+            "recurring-expense-editor.js": (
+                "createRecurringExpenseSetupController",
+                "mountRecurringExpensesEditor",
+                "20260729-slotecon1",
+            ),
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
@@ -785,15 +786,12 @@ class OwnerSetupSplitContractTests(TestCase):
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertIn('<progress class="setup-progressbar"', main)
         self.assertIn('isSetupDone(state.setup) ? "Настройка завершена"', main)
-        resume_helper = main[
-            main.index("function getPhaseResumeStep"):
-            main.index("function renderOverview")
-        ]
-        self.assertNotIn('visible.find(({ ui }) => !ui.locked)', resume_helper)
+        resume_helper = main[main.index("function getPhaseResumeStep") : main.index("function renderOverview")]
+        self.assertNotIn("visible.find(({ ui }) => !ui.locked)", resume_helper)
         for filename, (factory, mount_method, version) in controllers.items():
             source = (FRONTEND / "owner-setup" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500)
-            self.assertIn(f'/owner-setup/{filename}?v={version}', main)
+            self.assertIn(f"/owner-setup/{filename}?v={version}", main)
             self.assertNotRegex(source, r"(?:<style\b|\sstyle\s*=|\.style\b)")
             self.assertIn(f"export function {factory}", source)
             self.assertIn(mount_method, source)
@@ -808,7 +806,7 @@ class OwnerSetupSplitContractTests(TestCase):
         }
         for step_key, mount_method in step_dispatch.items():
             step_anchor = main.index(f'currentStep.key === "{step_key}"')
-            self.assertIn(mount_method, main[step_anchor:step_anchor + 220])
+            self.assertIn(mount_method, main[step_anchor : step_anchor + 220])
 
         pay_profile_factory = main.index("createPayProfileSetupController(editorContext)")
         shared_profiles = main.index("editorContext.loadInlinePayProfiles = loadInlinePayProfiles")
@@ -918,12 +916,8 @@ class OwnerPayProfileSplitContractTests(TestCase):
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
-            cache_key = (
-                "20260723-functional1"
-                if filename == "assignment-controller.js"
-                else "20260729-payroll1"
-            )
-            self.assertIn(f'/owner-pay-profile/{filename}?v={cache_key}', main)
+            cache_key = "20260723-functional1" if filename == "assignment-controller.js" else "20260729-payroll1"
+            self.assertIn(f"/owner-pay-profile/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
         controller_contracts = {
@@ -980,7 +974,7 @@ class PositionsSplitContractTests(TestCase):
                 if filename == "position-editor.js"
                 else "20260720-unified6"
             )
-            self.assertIn(f'/positions/{filename}?v={cache_key}', main)
+            self.assertIn(f"/positions/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
         editor = (FRONTEND / "positions" / "position-editor.js").read_text(encoding="utf-8")

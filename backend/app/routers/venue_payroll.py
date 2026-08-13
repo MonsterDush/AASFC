@@ -111,7 +111,11 @@ def update_payroll_payment_settings(
 
     cadence = str(payload.cadence or "MONTHLY").upper()
     try:
-        rules = normalize_monthly_rules([item.model_dump() for item in payload.monthly_rules]) if cadence == "MONTHLY" else []
+        rules = (
+            normalize_monthly_rules([item.model_dump() for item in payload.monthly_rules])
+            if cadence == "MONTHLY"
+            else []
+        )
         build_payment_windows(
             schedule_month=date.today().replace(day=1),
             cadence=cadence,
@@ -132,9 +136,7 @@ def update_payroll_payment_settings(
     settings.monthly_rules_json = json.dumps(rules, ensure_ascii=False) if cadence == "MONTHLY" else None
     settings.is_active = bool(payload.is_active)
     settings.updated_at = datetime.utcnow()
-    payroll_run_ids = db.execute(
-        select(PayrollRun.id).where(PayrollRun.venue_id == int(venue_id))
-    ).all()
+    payroll_run_ids = db.execute(select(PayrollRun.id).where(PayrollRun.venue_id == int(venue_id))).all()
     for (payroll_run_id,) in payroll_run_ids:
         delete_finance_entries_for_source(
             db=db,
@@ -272,15 +274,19 @@ def get_payroll_recalculation_log(
     if not _payroll_recalculation_logs_table_exists(db):
         rows = []
     else:
-        rows = db.execute(
-            select(PayrollRecalculationLog)
-            .where(
-                PayrollRecalculationLog.venue_id == int(venue_id),
-                PayrollRecalculationLog.period_month == month_start,
+        rows = (
+            db.execute(
+                select(PayrollRecalculationLog)
+                .where(
+                    PayrollRecalculationLog.venue_id == int(venue_id),
+                    PayrollRecalculationLog.period_month == month_start,
+                )
+                .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
+                .limit(int(limit))
             )
-            .order_by(PayrollRecalculationLog.created_at.desc(), PayrollRecalculationLog.id.desc())
-            .limit(int(limit))
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     return {
         "month": month,

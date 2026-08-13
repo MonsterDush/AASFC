@@ -13,7 +13,18 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Venue, VenueBillingState
 from app.models.venue_billing_transaction import VenueBillingTransaction
-from app.services.billing import expire_stale_pending_checkouts, get_billing_health_summary, get_billing_snapshot_for_state, get_refund_request_state, list_pending_external_refund_transactions, send_owner_billing_notification_once, send_super_admin_billing_alert_once, sync_billing_reconciliation_issues, sync_billing_state, sync_external_refund_transaction_state
+from app.services.billing import (
+    expire_stale_pending_checkouts,
+    get_billing_health_summary,
+    get_billing_snapshot_for_state,
+    get_refund_request_state,
+    list_pending_external_refund_transactions,
+    send_owner_billing_notification_once,
+    send_super_admin_billing_alert_once,
+    sync_billing_reconciliation_issues,
+    sync_billing_state,
+    sync_external_refund_transaction_state,
+)
 
 
 def _utc_now() -> datetime:
@@ -86,7 +97,10 @@ def main() -> int:
             )
             db.commit()
             if refund_event is not None and str(refund_tx.status or "").upper() == "SUCCEEDED":
-                venue_name = db.execute(select(Venue.name).where(Venue.id == int(refund_tx.venue_id))).scalar_one_or_none() or f"Заведение #{int(refund_tx.venue_id)}"
+                venue_name = (
+                    db.execute(select(Venue.name).where(Venue.id == int(refund_tx.venue_id))).scalar_one_or_none()
+                    or f"Заведение #{int(refund_tx.venue_id)}"
+                )
                 sent_notifications += send_owner_billing_notification_once(
                     db,
                     venue_id=int(refund_tx.venue_id),
@@ -162,7 +176,9 @@ def main() -> int:
                     db,
                     venue_id=int(state.venue_id),
                     notification_type="grace_ends_today",
-                    event_key=str(snapshot.grace_until.date().isoformat()) if snapshot.grace_until else str(now.date().isoformat()),
+                    event_key=str(snapshot.grace_until.date().isoformat())
+                    if snapshot.grace_until
+                    else str(now.date().isoformat()),
                     text=(
                         f"Сегодня последний день льготного периода по заведению «{venue_name}». "
                         f"После {_fmt_date(snapshot.grace_until)} доступ будет ограничен."
@@ -197,7 +213,9 @@ def main() -> int:
         db.commit()
         get_billing_health_summary(db)
 
-    print(f"changed_states={changed_states} sent_notifications={sent_notifications} expired_checkouts={expired_checkouts} sent_admin_alerts={sent_admin_alerts}")
+    print(
+        f"changed_states={changed_states} sent_notifications={sent_notifications} expired_checkouts={expired_checkouts} sent_admin_alerts={sent_admin_alerts}"
+    )
     return 0
 
 

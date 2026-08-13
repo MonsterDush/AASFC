@@ -43,7 +43,9 @@ class VenueAccessTests(TestCase):
         membership = SimpleNamespace(venue_role="OWNER")
         db = _DbStub(membership)
 
-        with patch.object(venue_access, "get_user_billing_access", return_value={"billing_access_mode": BILLING_ACCESS_FULL}):
+        with patch.object(
+            venue_access, "get_user_billing_access", return_value={"billing_access_mode": BILLING_ACCESS_FULL}
+        ):
             self.assertTrue(venue_access.is_owner_or_super_admin(db, venue_id=5, user=owner))
         with patch.object(venue_access, "get_user_billing_access", return_value={"billing_access_mode": "DENIED"}):
             self.assertFalse(venue_access.is_owner_or_super_admin(db, venue_id=5, user=owner))
@@ -53,10 +55,14 @@ class VenueAccessTests(TestCase):
         membership = SimpleNamespace(venue_role="STAFF")
         db = _DbStub(membership)
 
-        with patch.object(venue_access, "get_user_billing_access", return_value={
-            "billing_access_mode": "DENIED",
-            "billing_restricted_reason": "subscription expired",
-        }):
+        with patch.object(
+            venue_access,
+            "get_user_billing_access",
+            return_value={
+                "billing_access_mode": "DENIED",
+                "billing_restricted_reason": "subscription expired",
+            },
+        ):
             with self.assertRaises(HTTPException) as raised:
                 venue_access.require_active_member_or_admin(db, venue_id=5, user=user)
 
@@ -68,7 +74,9 @@ class VenueAccessTests(TestCase):
         membership = SimpleNamespace(venue_role="STAFF")
         db = _DbStub(membership)
 
-        with patch.object(venue_access, "get_user_billing_access", return_value={"billing_access_mode": BILLING_ACCESS_FULL}):
+        with patch.object(
+            venue_access, "get_user_billing_access", return_value={"billing_access_mode": BILLING_ACCESS_FULL}
+        ):
             self.assertTrue(venue_access.is_active_member_or_admin(db, venue_id=5, user=user))
             self.assertIsNone(venue_access.require_active_member_or_admin(db, venue_id=5, user=user))
 
@@ -85,8 +93,12 @@ class VenueAccessTests(TestCase):
         user = SimpleNamespace(id=7, system_role="NONE")
         denied = HTTPException(status_code=403, detail="Forbidden")
 
-        with patch.object(venue_access, "is_owner_or_super_admin", return_value=False), \
-             patch.object(venue_access, "require_venue_permission", side_effect=[denied, denied, None]) as require_permission:
+        with (
+            patch.object(venue_access, "is_owner_or_super_admin", return_value=False),
+            patch.object(
+                venue_access, "require_venue_permission", side_effect=[denied, denied, None]
+            ) as require_permission,
+        ):
             self.assertTrue(venue_access.is_report_viewer(SimpleNamespace(), venue_id=5, user=user))
 
         self.assertEqual(require_permission.call_count, 3)
@@ -94,8 +106,10 @@ class VenueAccessTests(TestCase):
 
     def test_revenue_viewer_denies_user_without_owner_or_permission_access(self):
         user = SimpleNamespace(id=7, system_role="NONE")
-        with patch.object(venue_access, "is_owner_or_super_admin", return_value=False), \
-             patch.object(venue_access, "require_venue_permission", side_effect=HTTPException(status_code=403)):
+        with (
+            patch.object(venue_access, "is_owner_or_super_admin", return_value=False),
+            patch.object(venue_access, "require_venue_permission", side_effect=HTTPException(status_code=403)),
+        ):
             with self.assertRaises(HTTPException) as raised:
                 venue_access.require_revenue_viewer(SimpleNamespace(), venue_id=5, user=user)
 

@@ -103,11 +103,18 @@ class ExpensesTests(TestCase):
         db = _FakeSession(responses=[_AllResult([(expense, category, None, None)])])
         user = SimpleNamespace(id=101, system_role="NONE")
         allocations = [
-            SimpleNamespace(id=1, expense_id=15, venue_id=3, month=date(2026, 2, 1), amount_minor=6000, created_at=datetime.utcnow()),
-            SimpleNamespace(id=2, expense_id=15, venue_id=3, month=date(2026, 3, 1), amount_minor=6345, created_at=datetime.utcnow()),
+            SimpleNamespace(
+                id=1, expense_id=15, venue_id=3, month=date(2026, 2, 1), amount_minor=6000, created_at=datetime.utcnow()
+            ),
+            SimpleNamespace(
+                id=2, expense_id=15, venue_id=3, month=date(2026, 3, 1), amount_minor=6345, created_at=datetime.utcnow()
+            ),
         ]
 
-        with patch.object(venue_expenses, "require_venue_permission", return_value=None), patch.object(venue_expenses, "list_expense_allocations", return_value=allocations):
+        with (
+            patch.object(venue_expenses, "require_venue_permission", return_value=None),
+            patch.object(venue_expenses, "list_expense_allocations", return_value=allocations),
+        ):
             result = venue_expenses.list_expenses(
                 venue_id=1,
                 month="2026-03",
@@ -143,7 +150,9 @@ class ExpensesTests(TestCase):
             created_at=None,
             updated_at=None,
         )
-        allocations = [SimpleNamespace(id=1, expense_id=15, venue_id=3, month=date(2026, 3, 1), amount_minor=6172, created_at=None)]
+        allocations = [
+            SimpleNamespace(id=1, expense_id=15, venue_id=3, month=date(2026, 3, 1), amount_minor=6172, created_at=None)
+        ]
 
         payload = venue_expenses._serialize_expense(expense, category, supplier, None, allocations)
 

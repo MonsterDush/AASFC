@@ -62,19 +62,27 @@ def _build_percent_component_snapshot(component: PayComponent, decision: Payroll
         "boost_actual_value": int(decision.boost_actual_value) if decision.boost_actual_value is not None else None,
         "department_ids": [int(item) for item in (decision.department_ids or [])],
         "department_titles": [str(item) for item in (decision.department_titles or [])],
-        "boost_department_id": int(getattr(component, "boost_department_id", 0) or 0) if getattr(component, "boost_department_id", None) is not None else None,
+        "boost_department_id": int(getattr(component, "boost_department_id", 0) or 0)
+        if getattr(component, "boost_department_id", None) is not None
+        else None,
         "boost_department_ids": [int(item) for item in (decision.boost_department_ids or [])],
         "boost_department_title": getattr(getattr(component, "boost_department", None), "title", None),
         "boost_department_titles": [str(item) for item in (decision.boost_department_titles or [])],
         "boost_kpi_metric_id": int(decision.boost_kpi_metric_id) if decision.boost_kpi_metric_id is not None else None,
         "boost_kpi_metric_title": getattr(getattr(component, "boost_kpi_metric", None), "title", None),
-        "minimum_guarantee_minor": int(decision.minimum_guarantee_minor) if decision.minimum_guarantee_minor is not None else None,
+        "minimum_guarantee_minor": int(decision.minimum_guarantee_minor)
+        if decision.minimum_guarantee_minor is not None
+        else None,
         "minimum_guarantee_scope": decision.minimum_guarantee_scope,
-        "minimum_guarantee_scope_title": "за день" if decision.minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY else "за месяц",
+        "minimum_guarantee_scope_title": "за день"
+        if decision.minimum_guarantee_scope == MINIMUM_GUARANTEE_DAY
+        else "за месяц",
         "maximum_cap_minor": int(decision.maximum_cap_minor) if decision.maximum_cap_minor is not None else None,
         "minimum_applied": bool(decision.minimum_applied),
         "maximum_applied": bool(decision.maximum_applied),
-        "department_id": int(getattr(component, "department_id", 0) or 0) if getattr(component, "department_id", None) is not None else None,
+        "department_id": int(getattr(component, "department_id", 0) or 0)
+        if getattr(component, "department_id", None) is not None
+        else None,
         "department_title": getattr(getattr(component, "department", None), "title", None),
         "day_rows": [dict(row) for row in (decision.day_rows or [])],
     }
@@ -126,16 +134,24 @@ def _build_percent_component_decision(
 
     base_scope = _component_base_scope(component)
     regular_percent_bps = int(component.percent_bps or 0)
-    boost_percent_bps = int(component.boost_percent_bps or 0) if getattr(component, "boost_percent_bps", None) is not None else None
+    boost_percent_bps = (
+        int(component.boost_percent_bps or 0) if getattr(component, "boost_percent_bps", None) is not None else None
+    )
     boost_source_type = _component_boost_source_type(component)
     boost_source_title = BOOST_SOURCE_TITLES.get(boost_source_type, boost_source_type or BOOST_SOURCE_NONE)
     boost_recalc_mode = _component_boost_recalc_mode(component)
     department_ids = _component_department_ids(component)
     boost_department_ids = _component_boost_department_ids(component, fallback_department_ids=department_ids)
     boost_recalc_mode_effective = boost_recalc_mode
-    minimum_guarantee_minor = int(component.minimum_guarantee_minor or 0) if getattr(component, "minimum_guarantee_minor", None) is not None else None
+    minimum_guarantee_minor = (
+        int(component.minimum_guarantee_minor or 0)
+        if getattr(component, "minimum_guarantee_minor", None) is not None
+        else None
+    )
     minimum_guarantee_scope = _minimum_guarantee_scope(component)
-    maximum_cap_minor = int(component.maximum_cap_minor or 0) if getattr(component, "maximum_cap_minor", None) is not None else None
+    maximum_cap_minor = (
+        int(component.maximum_cap_minor or 0) if getattr(component, "maximum_cap_minor", None) is not None else None
+    )
 
     if component_type == "PERCENT_TOTAL_REVENUE":
         source_by_date = revenue_metrics.total_revenue_by_date_minor
@@ -144,12 +160,12 @@ def _build_percent_component_decision(
 
     if base_scope == BASE_SCOPE_WORKED_DATES:
         base_by_date = {
-            day: int(source_by_date.get(day) or 0)
-            for day in sorted(metrics.worked_dates)
-            if day in source_by_date
+            day: int(source_by_date.get(day) or 0) for day in sorted(metrics.worked_dates) if day in source_by_date
         }
     else:
-        base_by_date = {day: int(amount or 0) for day, amount in sorted(source_by_date.items(), key=lambda item: item[0])}
+        base_by_date = {
+            day: int(amount or 0) for day, amount in sorted(source_by_date.items(), key=lambda item: item[0])
+        }
 
     base_amount_minor = int(sum(int(amount or 0) for amount in base_by_date.values()))
     regular_amount_minor = _round_percent_amount(base_amount_minor, regular_percent_bps)
@@ -177,9 +193,17 @@ def _build_percent_component_decision(
             boost_applied = boost_target_minor is not None and boost_actual_minor >= boost_target_minor
             if boost_applied:
                 excess_supported = component_type == "PERCENT_TOTAL_REVENUE" and base_scope == BASE_SCOPE_FULL_PERIOD
-                if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and excess_supported and boost_target_minor is not None:
-                    regular_part = _round_percent_amount(min(base_amount_minor, boost_target_minor), regular_percent_bps)
-                    boost_part = _round_percent_amount(max(base_amount_minor - boost_target_minor, 0), int(boost_percent_bps or 0))
+                if (
+                    boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY
+                    and excess_supported
+                    and boost_target_minor is not None
+                ):
+                    regular_part = _round_percent_amount(
+                        min(base_amount_minor, boost_target_minor), regular_percent_bps
+                    )
+                    boost_part = _round_percent_amount(
+                        max(base_amount_minor - boost_target_minor, 0), int(boost_percent_bps or 0)
+                    )
                     amount_minor = int(regular_part + boost_part)
                 else:
                     if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and not excess_supported:
@@ -199,9 +223,17 @@ def _build_percent_component_decision(
                 if day_boost_applied:
                     applied_days_count += 1
                     day_percent_bps = int(boost_percent_bps or 0)
-                    if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and excess_supported and target_day_minor is not None:
-                        regular_part = _round_percent_amount(min(base_day_minor, int(target_day_minor)), regular_percent_bps)
-                        boost_part = _round_percent_amount(max(base_day_minor - int(target_day_minor), 0), int(boost_percent_bps or 0))
+                    if (
+                        boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY
+                        and excess_supported
+                        and target_day_minor is not None
+                    ):
+                        regular_part = _round_percent_amount(
+                            min(base_day_minor, int(target_day_minor)), regular_percent_bps
+                        )
+                        boost_part = _round_percent_amount(
+                            max(base_day_minor - int(target_day_minor), 0), int(boost_percent_bps or 0)
+                        )
                         day_amount_minor = int(regular_part + boost_part)
                     else:
                         if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and not excess_supported:
@@ -229,10 +261,20 @@ def _build_percent_component_decision(
             boost_actual_minor = _sum_department_revenue_minor(revenue_metrics, boost_department_ids)
             boost_applied = boost_target_minor is not None and boost_actual_minor >= boost_target_minor
             if boost_applied:
-                excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and set(department_ids) == set(boost_department_ids)
-                if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and excess_supported and boost_target_minor is not None:
-                    regular_part = _round_percent_amount(min(base_amount_minor, boost_target_minor), regular_percent_bps)
-                    boost_part = _round_percent_amount(max(base_amount_minor - boost_target_minor, 0), int(boost_percent_bps or 0))
+                excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and set(department_ids) == set(
+                    boost_department_ids
+                )
+                if (
+                    boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY
+                    and excess_supported
+                    and boost_target_minor is not None
+                ):
+                    regular_part = _round_percent_amount(
+                        min(base_amount_minor, boost_target_minor), regular_percent_bps
+                    )
+                    boost_part = _round_percent_amount(
+                        max(base_amount_minor - boost_target_minor, 0), int(boost_percent_bps or 0)
+                    )
                     amount_minor = int(regular_part + boost_part)
                 else:
                     if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and not excess_supported:
@@ -242,7 +284,9 @@ def _build_percent_component_decision(
 
         elif boost_source_type == BOOST_SOURCE_DEPARTMENT_DAY_PLAN:
             day_actuals_by_date = _sum_department_revenue_by_date_minor(revenue_metrics, boost_department_ids)
-            excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and set(department_ids) == set(boost_department_ids)
+            excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and set(department_ids) == set(
+                boost_department_ids
+            )
             amount_minor = 0
             applied_days_count = 0
             for day, base_day_minor in sorted(base_by_date.items(), key=lambda item: item[0]):
@@ -253,9 +297,17 @@ def _build_percent_component_decision(
                 if day_boost_applied:
                     applied_days_count += 1
                     day_percent_bps = int(boost_percent_bps or 0)
-                    if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and excess_supported and target_day_minor is not None:
-                        regular_part = _round_percent_amount(min(base_day_minor, int(target_day_minor)), regular_percent_bps)
-                        boost_part = _round_percent_amount(max(base_day_minor - int(target_day_minor), 0), int(boost_percent_bps or 0))
+                    if (
+                        boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY
+                        and excess_supported
+                        and target_day_minor is not None
+                    ):
+                        regular_part = _round_percent_amount(
+                            min(base_day_minor, int(target_day_minor)), regular_percent_bps
+                        )
+                        boost_part = _round_percent_amount(
+                            max(base_day_minor - int(target_day_minor), 0), int(boost_percent_bps or 0)
+                        )
                         day_amount_minor = int(regular_part + boost_part)
                     else:
                         if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY and not excess_supported:
@@ -279,9 +331,19 @@ def _build_percent_component_decision(
             boost_actual_value = int(applied_days_count)
 
         elif boost_source_type == BOOST_SOURCE_KPI_METRIC:
-            boost_kpi_metric_id = int(component.boost_kpi_metric_id or 0) if getattr(component, "boost_kpi_metric_id", None) is not None else 0
-            boost_target_value = int(component.boost_threshold_value or 0) if getattr(component, "boost_threshold_value", None) is not None else None
-            boost_actual_value = int(kpi_metrics.totals_by_metric_id.get(boost_kpi_metric_id, 0)) if boost_kpi_metric_id else 0
+            boost_kpi_metric_id = (
+                int(component.boost_kpi_metric_id or 0)
+                if getattr(component, "boost_kpi_metric_id", None) is not None
+                else 0
+            )
+            boost_target_value = (
+                int(component.boost_threshold_value or 0)
+                if getattr(component, "boost_threshold_value", None) is not None
+                else None
+            )
+            boost_actual_value = (
+                int(kpi_metrics.totals_by_metric_id.get(boost_kpi_metric_id, 0)) if boost_kpi_metric_id else 0
+            )
             boost_applied = bool(boost_target_value is not None and boost_actual_value >= boost_target_value)
             if boost_recalc_mode == BOOST_RECALC_EXCESS_ONLY:
                 boost_recalc_mode_effective = BOOST_RECALC_REPLACE_ALL
@@ -327,13 +389,17 @@ def _build_percent_component_decision(
         boost_source_title=boost_source_title,
         boost_recalc_mode=boost_recalc_mode,
         boost_recalc_mode_effective=boost_recalc_mode_effective,
-        boost_recalc_mode_title=BOOST_RECALC_TITLES.get(boost_recalc_mode_effective, BOOST_RECALC_TITLES[BOOST_RECALC_REPLACE_ALL]),
+        boost_recalc_mode_title=BOOST_RECALC_TITLES.get(
+            boost_recalc_mode_effective, BOOST_RECALC_TITLES[BOOST_RECALC_REPLACE_ALL]
+        ),
         boost_percent_bps=boost_percent_bps,
         boost_target_minor=boost_target_minor,
         boost_actual_minor=boost_actual_minor,
         boost_target_value=boost_target_value,
         boost_actual_value=boost_actual_value,
-        boost_kpi_metric_id=int(component.boost_kpi_metric_id) if getattr(component, "boost_kpi_metric_id", None) is not None else None,
+        boost_kpi_metric_id=int(component.boost_kpi_metric_id)
+        if getattr(component, "boost_kpi_metric_id", None) is not None
+        else None,
         department_ids=[int(item) for item in department_ids],
         department_titles=_department_titles_for_ids(component, department_ids),
         boost_department_ids=[int(item) for item in boost_department_ids],

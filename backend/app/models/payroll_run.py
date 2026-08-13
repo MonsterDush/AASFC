@@ -10,9 +10,7 @@ from app.core.db import Base
 
 class PayrollRun(Base):
     __tablename__ = "payroll_runs"
-    __table_args__ = (
-        UniqueConstraint("venue_id", "period_month", name="uq_payroll_runs_venue_period_month"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", "period_month", name="uq_payroll_runs_venue_period_month"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 

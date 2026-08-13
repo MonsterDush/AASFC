@@ -10,9 +10,7 @@ from app.core.db import Base
 
 class DayEconomicsPlanTemplate(Base):
     __tablename__ = "day_economics_plan_templates"
-    __table_args__ = (
-        UniqueConstraint("venue_id", "weekday", name="uq_day_economics_plan_templates_venue_weekday"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", "weekday", name="uq_day_economics_plan_templates_venue_weekday"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)

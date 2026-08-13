@@ -43,9 +43,18 @@ WINDOW_MINUTES = int(os.getenv("REMINDER_WINDOW_MINUTES", "15"))  # early window
 LATE_GRACE_MINUTES = int(os.getenv("SHIFT_REMINDER_LATE_GRACE_MINUTES", "1440"))
 
 RU_MONTHS_GEN = {
-    1: "января", 2: "февраля", 3: "марта", 4: "апреля",
-    5: "мая", 6: "июня", 7: "июля", 8: "августа",
-    9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+    1: "января",
+    2: "февраля",
+    3: "марта",
+    4: "апреля",
+    5: "мая",
+    6: "июня",
+    7: "июля",
+    8: "августа",
+    9: "сентября",
+    10: "октября",
+    11: "ноября",
+    12: "декабря",
 }
 
 # For manual testing:
@@ -83,7 +92,7 @@ def _build_shift_reminder_text(*, shift, interval, venue) -> str:
     return (
         f"Напоминаем, что у Вас {shift_kind} {format_date_ru(shift.date)} "
         f"в {_fmt_time(interval.start_time)} "
-        f"в заведении \"{venue.name}\""
+        f'в заведении "{venue.name}"'
     )
 
 
@@ -172,7 +181,7 @@ def main() -> int:
             if DRY_RUN:
                 print(
                     f"DRY_RUN match: chat_id={chat_id} user_id={user.id} shift_id={sh.id} "
-                    f"start={start_dt} lead_hours={lead_hours} slot={shift_slot} venue=\"{venue.name}\""
+                    f'start={start_dt} lead_hours={lead_hours} slot={shift_slot} venue="{venue.name}"'
                 )
                 continue
 

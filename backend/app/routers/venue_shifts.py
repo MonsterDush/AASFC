@@ -67,7 +67,6 @@ from app.routers.venue_reports import (
 from app.routers.venue_schedule_templates import _normalize_shift_slot_for_venue, _shift_slot_label
 
 
-
 router = APIRouter()
 
 
@@ -159,7 +158,6 @@ def _build_staff_shifts_deep_link_path(
         params.append(("unstaffed", "1"))
     query = "&".join(f"{quote(key)}={quote(value)}" for key, value in params)
     return f"/staff-shifts.html?{query}"
-
 
 
 def _build_staff_shifts_share_token(
@@ -270,19 +268,25 @@ def get_shifts_export_metadata(
             raise HTTPException(status_code=400, detail="month is required for month export metadata")
         period_start, period_end = _month_period_bounds(month)
 
-    normalized_shift_slot = _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=shift_slot) if shift_slot else None
+    normalized_shift_slot = (
+        _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=shift_slot) if shift_slot else None
+    )
 
     normalized_interval_ids = sorted({int(item) for item in (interval_ids or []) if int(item) > 0})
     interval_titles: list[str] = []
     if normalized_interval_ids:
-        interval_rows = db.execute(
-            select(ShiftInterval)
-            .where(
-                ShiftInterval.venue_id == venue_id,
-                ShiftInterval.id.in_(normalized_interval_ids),
+        interval_rows = (
+            db.execute(
+                select(ShiftInterval)
+                .where(
+                    ShiftInterval.venue_id == venue_id,
+                    ShiftInterval.id.in_(normalized_interval_ids),
+                )
+                .order_by(ShiftInterval.start_time.asc(), ShiftInterval.id.asc())
             )
-            .order_by(ShiftInterval.start_time.asc(), ShiftInterval.id.asc())
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         interval_titles = [str(row.title or "").strip() for row in interval_rows if str(row.title or "").strip()]
         normalized_interval_ids = [int(row.id) for row in interval_rows]
 
@@ -358,7 +362,9 @@ def list_shifts(
     """
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
 
-    normalized_shift_slot = _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=shift_slot) if shift_slot else None
+    normalized_shift_slot = (
+        _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=shift_slot) if shift_slot else None
+    )
 
     stmt = select(Shift).where(Shift.venue_id == venue_id, Shift.is_active.is_(True))
     if normalized_shift_slot is not None:
@@ -388,11 +394,7 @@ def list_shifts(
         if date_to:
             stmt = stmt.where(Shift.date <= date_to)
 
-    assignment_exists = sa.exists(
-        select(1)
-        .select_from(ShiftAssignment)
-        .where(ShiftAssignment.shift_id == Shift.id)
-    )
+    assignment_exists = sa.exists(select(1).select_from(ShiftAssignment).where(ShiftAssignment.shift_id == Shift.id))
     if staffing_state == "staffed":
         stmt = stmt.where(assignment_exists)
     elif staffing_state == "unstaffed":
@@ -409,10 +411,7 @@ def list_shifts(
         if normalized_shift_slot is not None:
             report_stmt = report_stmt.where(DailyReport.shift_slot == normalized_shift_slot)
         rrows = db.execute(report_stmt).scalars().all()
-        report_by_date_slot = {
-            (r.date, normalize_shift_slot(getattr(r, "shift_slot", None))): r
-            for r in rrows
-        }
+        report_by_date_slot = {(r.date, normalize_shift_slot(getattr(r, "shift_slot", None))): r for r in rrows}
 
     show_revenue = _has_revenue_view_access(db, venue_id=venue_id, user=user)
 
@@ -494,9 +493,7 @@ def list_shifts(
         my_tip_by_report_id = {int(row.report_id): int(row.amount or 0) for row in tip_rows}
 
     def report_for_shift(shift: Shift) -> DailyReport | None:
-        return report_by_date_slot.get(
-            (shift.date, normalize_shift_slot(getattr(shift, "shift_slot", None)))
-        )
+        return report_by_date_slot.get((shift.date, normalize_shift_slot(getattr(shift, "shift_slot", None))))
 
     return [
         {
@@ -510,19 +507,13 @@ def list_shifts(
             "assignments": assignments_by_shift.get(s.id, []),
             "report_exists": bool(report_for_shift(s)),
             "report_closed": bool(
-                report_for_shift(s)
-                and str(getattr(report_for_shift(s), "status", "") or "").upper() == "CLOSED"
+                report_for_shift(s) and str(getattr(report_for_shift(s), "status", "") or "").upper() == "CLOSED"
             ),
-            "revenue_total": (
-                report_for_shift(s).revenue_total
-                if (show_revenue and report_for_shift(s))
-                else None
-            ),
+            "revenue_total": (report_for_shift(s).revenue_total if (show_revenue and report_for_shift(s)) else None),
             "my_salary": (
                 (
                     my_assignment_by_shift.get(s.id)["rate"]
-                    + (my_assignment_by_shift.get(s.id)["percent"] / 100.0)
-                    * report_for_shift(s).revenue_total
+                    + (my_assignment_by_shift.get(s.id)["percent"] / 100.0) * report_for_shift(s).revenue_total
                 )
                 if (report_for_shift(s) and my_assignment_by_shift.get(s.id))
                 else None
@@ -590,9 +581,7 @@ def update_shift(
 ):
     _require_schedule_editor(db, venue_id=venue_id, user=user)
 
-    obj = db.execute(
-        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)
-    ).scalar_one_or_none()
+    obj = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)).scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Shift not found")
 
@@ -601,7 +590,9 @@ def update_shift(
     date_changed = payload.date is not None and payload.date != obj.date
     interval_changed = payload.interval_id is not None and payload.interval_id != obj.interval_id
     active_changed = payload.is_active is not None and payload.is_active != obj.is_active
-    slot_changed = payload.shift_slot is not None and normalize_shift_slot(payload.shift_slot) != normalize_shift_slot(getattr(obj, "shift_slot", None))
+    slot_changed = payload.shift_slot is not None and normalize_shift_slot(payload.shift_slot) != normalize_shift_slot(
+        getattr(obj, "shift_slot", None)
+    )
     normalized_payload_slot: str | None = None
     if payload.shift_slot is not None:
         normalized_payload_slot = _normalize_shift_slot_for_venue(
@@ -640,9 +631,7 @@ def update_shift(
         # If shift start time changed - allow reminders to be re-sent.
         if date_changed or interval_changed or slot_changed:
             db.execute(
-                update(ShiftAssignment)
-                .where(ShiftAssignment.shift_id == shift_id)
-                .values(reminder_sent_at=None)
+                update(ShiftAssignment).where(ShiftAssignment.shift_id == shift_id).values(reminder_sent_at=None)
             )
         if date_changed or interval_changed or slot_changed or active_changed:
             if date_changed or slot_changed or active_changed:
@@ -684,9 +673,7 @@ def delete_shift(
 ):
     _require_schedule_editor(db, venue_id=venue_id, user=user)
 
-    obj = db.execute(
-        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)
-    ).scalar_one_or_none()
+    obj = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)).scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Shift not found")
 
@@ -721,6 +708,7 @@ def delete_shift(
     )
     db.commit()
     return {"ok": True}
+
 
 @router.get("/{venue_id}/shifts/{shift_id}")
 def get_shift(
@@ -873,7 +861,9 @@ def remove_shift_assignment(
     _require_schedule_editor(db, venue_id=venue_id, user=user)
 
     a = db.execute(
-        select(ShiftAssignment).join(Shift, Shift.id == ShiftAssignment.shift_id).where(
+        select(ShiftAssignment)
+        .join(Shift, Shift.id == ShiftAssignment.shift_id)
+        .where(
             ShiftAssignment.shift_id == shift_id,
             ShiftAssignment.member_user_id == member_user_id,
             Shift.venue_id == venue_id,
@@ -883,9 +873,7 @@ def remove_shift_assignment(
     if a is None:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
-    shift_row = db.execute(
-        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)
-    ).scalar_one_or_none()
+    shift_row = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id)).scalar_one_or_none()
     db.execute(
         update(ShiftSwapRequest)
         .where(
@@ -907,8 +895,7 @@ def remove_shift_assignment(
             select(DailyReport).where(
                 DailyReport.venue_id == venue_id,
                 DailyReport.date == shift_date,
-                DailyReport.shift_slot
-                == normalize_shift_slot(getattr(shift_row, "shift_slot", None)),
+                DailyReport.shift_slot == normalize_shift_slot(getattr(shift_row, "shift_slot", None)),
                 DailyReport.status == "CLOSED",
             )
         ).scalar_one_or_none()
@@ -925,7 +912,6 @@ def remove_shift_assignment(
         )
     db.commit()
     return {"ok": True}
-
 
 
 _MAX_SHIFT_COMMENT_MENTIONS = 20
@@ -962,7 +948,9 @@ def _normalize_shift_comment_mention_ids(values: list[int] | None) -> list[int]:
         seen.add(value)
         normalized.append(value)
     if len(normalized) > _MAX_SHIFT_COMMENT_MENTIONS:
-        raise HTTPException(status_code=400, detail=f"Можно упомянуть не более {_MAX_SHIFT_COMMENT_MENTIONS} сотрудников")
+        raise HTTPException(
+            status_code=400, detail=f"Можно упомянуть не более {_MAX_SHIFT_COMMENT_MENTIONS} сотрудников"
+        )
     return normalized
 
 
@@ -1086,7 +1074,9 @@ def list_shift_comments(
 ):
     _require_shift_comments_allowed(db, venue_id=venue_id, shift_id=shift_id, user=user)
 
-    shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
+    shift = db.execute(
+        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))
+    ).scalar_one_or_none()
     if shift is None:
         raise HTTPException(status_code=404, detail="Shift not found")
 
@@ -1133,7 +1123,9 @@ def add_shift_comment(
 ):
     _require_shift_comments_allowed(db, venue_id=venue_id, shift_id=shift_id, user=user)
 
-    shift = db.execute(select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))).scalar_one_or_none()
+    shift = db.execute(
+        select(Shift).where(Shift.id == shift_id, Shift.venue_id == venue_id, Shift.is_active.is_(True))
+    ).scalar_one_or_none()
     if shift is None:
         raise HTTPException(status_code=404, detail="Shift not found")
 
@@ -1170,7 +1162,9 @@ def add_shift_comment(
         if not _shift_comment_has_mention_token(text, mentionable_users[mentioned_user_id])
     ]
     if missing_tokens:
-        raise HTTPException(status_code=400, detail="Упоминание удалено из текста; выберите сотрудника через подсказку ещё раз")
+        raise HTTPException(
+            status_code=400, detail="Упоминание удалено из текста; выберите сотрудника через подсказку ещё раз"
+        )
 
     c = ShiftComment(
         shift_id=shift_id,

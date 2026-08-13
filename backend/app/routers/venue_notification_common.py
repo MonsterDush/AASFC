@@ -19,7 +19,6 @@ from app.auth.venue_permissions import has_venue_permission
 from app.settings import settings
 
 
-
 class NotificationDeliveryError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool):
         super().__init__(message)
@@ -31,18 +30,22 @@ _ADJ_TYPE_LABELS = {
     "en": {"penalty": "Penalty", "writeoff": "Write-off", "bonus": "Bonus", "tip": "Tips"},
 }
 
+
 def _ui_lang() -> str:
     # Minimal v1: default RU. Later we can store per-user language in DB and use it here.
     return (os.getenv("DEFAULT_UI_LANG") or "ru").lower()
+
 
 def _adj_type_label(adj_type: str, lang: str | None = None) -> str:
     lt = (lang or _ui_lang() or "ru").lower()
     mp = _ADJ_TYPE_LABELS.get(lt) or _ADJ_TYPE_LABELS.get("ru", {})
     return mp.get(adj_type, adj_type)
 
+
 def _venue_name(db: Session, venue_id: int) -> str:
     v = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
-    return (v.name if v else "Axelio")
+    return v.name if v else "Axelio"
+
 
 def _should_notify_user(u: User, kind: str) -> bool:
     """Best-effort per-user notification gate.
@@ -66,7 +69,6 @@ def _should_notify_user(u: User, kind: str) -> bool:
     if kind == "soft_alerts":
         return bool(getattr(u, "notify_soft_alerts", True))
     return True
-
 
 
 def _frontend_base_url() -> str:
@@ -123,28 +125,36 @@ def _display_user_name(user: User | None) -> str:
 
 
 def _collect_adjustment_manager_recipients(db: Session, *, venue_id: int) -> list[User]:
-    owners = db.execute(
-        select(User)
-        .join(VenueMember, VenueMember.user_id == User.id)
-        .where(
-            VenueMember.venue_id == int(venue_id),
-            VenueMember.is_active.is_(True),
-            VenueMember.venue_role == "OWNER",
-            User.tg_user_id.is_not(None),
+    owners = (
+        db.execute(
+            select(User)
+            .join(VenueMember, VenueMember.user_id == User.id)
+            .where(
+                VenueMember.venue_id == int(venue_id),
+                VenueMember.is_active.is_(True),
+                VenueMember.venue_role == "OWNER",
+                User.tg_user_id.is_not(None),
+            )
+            .order_by(User.id.asc())
         )
-        .order_by(User.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
-    mgr_rows = db.execute(
-        select(User)
-        .join(VenuePosition, VenuePosition.member_user_id == User.id)
-        .where(
-            VenuePosition.venue_id == int(venue_id),
-            VenuePosition.is_active.is_(True),
-            User.tg_user_id.is_not(None),
+    mgr_rows = (
+        db.execute(
+            select(User)
+            .join(VenuePosition, VenuePosition.member_user_id == User.id)
+            .where(
+                VenuePosition.venue_id == int(venue_id),
+                VenuePosition.is_active.is_(True),
+                User.tg_user_id.is_not(None),
+            )
+            .order_by(User.id.asc())
         )
-        .order_by(User.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     uniq: dict[int, User] = {int(u.id): u for u in owners if getattr(u, "tg_user_id", None) is not None}
     for candidate in mgr_rows:

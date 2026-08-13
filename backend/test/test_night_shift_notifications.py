@@ -74,12 +74,16 @@ class NightShiftNotificationJobTests(TestCase):
         self.assertEqual(result, [11, 12])
         self.assertEqual(db.execute.call_count, 2)
         assignment_sql = str(
-            db.execute.call_args_list[0].args[0].compile(
+            db.execute.call_args_list[0]
+            .args[0]
+            .compile(
                 compile_kwargs={"literal_binds": True},
             )
         )
         tips_sql = str(
-            db.execute.call_args_list[1].args[0].compile(
+            db.execute.call_args_list[1]
+            .args[0]
+            .compile(
                 compile_kwargs={"literal_binds": True},
             )
         )

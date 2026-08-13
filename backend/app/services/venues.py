@@ -46,9 +46,7 @@ def create_venue(
         if user is None:
             raise ValueError("Owner user not found")
         mem = (
-            db.query(VenueMember)
-            .filter(VenueMember.venue_id == venue.id, VenueMember.user_id == user.id)
-            .one_or_none()
+            db.query(VenueMember).filter(VenueMember.venue_id == venue.id, VenueMember.user_id == user.id).one_or_none()
         )
         if mem:
             mem.venue_role = "OWNER"

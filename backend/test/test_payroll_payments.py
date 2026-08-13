@@ -118,6 +118,7 @@ class PayrollAdjustmentTests(TestCase):
         self.assertEqual(by_date[date(2026, 7, 5)], 110_000)
         self.assertEqual(by_date[date(2026, 7, 6)], -10_000)
 
+
 class PayrollExpenseLedgerTests(TestCase):
     def test_confirmed_payroll_expense_creates_payroll_ledger_only(self):
         expense = SimpleNamespace(
@@ -183,14 +184,23 @@ class PayrollNotificationTests(TestCase):
 
     def test_weekly_window_notifies_managers_and_all_active_employees(self):
         manager = SimpleNamespace(id=1, tg_user_id=101)
-        employees = [SimpleNamespace(id=2, tg_user_id=102, notify_salary=True), SimpleNamespace(id=3, tg_user_id=103, notify_salary=True)]
+        employees = [
+            SimpleNamespace(id=2, tg_user_id=102, notify_salary=True),
+            SimpleNamespace(id=3, tg_user_id=103, notify_salary=True),
+        ]
         settings_row = SimpleNamespace(venue_id=7, cadence="WEEKLY")
 
         with (
             patch.object(payroll_notifications, "_venue_name", return_value="Тестовый бар"),
             patch.object(payroll_notifications, "list_expense_notification_recipients", return_value=[manager]),
-            patch.object(payroll_notifications, "_active_venue_users", return_value=[(item, "STAFF") for item in employees]),
-            patch.object(payroll_notifications, "build_member_period_summary", return_value={"items": [], "totals": {"net_minor": 0}}),
+            patch.object(
+                payroll_notifications, "_active_venue_users", return_value=[(item, "STAFF") for item in employees]
+            ),
+            patch.object(
+                payroll_notifications,
+                "build_member_period_summary",
+                return_value={"items": [], "totals": {"net_minor": 0}},
+            ),
             patch.object(payroll_notifications, "_send_once", return_value=True) as send_once,
         ):
             result = payroll_notifications.send_payroll_window_notifications(

@@ -64,7 +64,9 @@ def _extract_codes_from_preset(preset: dict) -> list[str]:
     return _parse_codes_raw(raw)
 
 
-def _sync_default_pay_profile_assignment(db: Session, *, venue_id: int, user_id: int, pay_profile_id: int | None) -> None:
+def _sync_default_pay_profile_assignment(
+    db: Session, *, venue_id: int, user_id: int, pay_profile_id: int | None
+) -> None:
     if pay_profile_id is None:
         return
     profile = db.execute(
@@ -76,12 +78,16 @@ def _sync_default_pay_profile_assignment(db: Session, *, venue_id: int, user_id:
     if profile is None:
         return
 
-    rows = db.execute(
-        select(PayProfileAssignment).where(
-            PayProfileAssignment.venue_id == int(venue_id),
-            PayProfileAssignment.member_user_id == int(user_id),
+    rows = (
+        db.execute(
+            select(PayProfileAssignment).where(
+                PayProfileAssignment.venue_id == int(venue_id),
+                PayProfileAssignment.member_user_id == int(user_id),
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     now_dt = datetime.utcnow()
     active_same = None
@@ -175,14 +181,14 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         pay_profile_id = int(pay_profile_id_raw) if pay_profile_id_raw not in (None, "", 0, "0") else None
     except Exception:
         pay_profile_id = None
-    _sync_default_pay_profile_assignment(db, venue_id=int(inv.venue_id), user_id=int(user_id), pay_profile_id=pay_profile_id)
+    _sync_default_pay_profile_assignment(
+        db, venue_id=int(inv.venue_id), user_id=int(user_id), pay_profile_id=pay_profile_id
+    )
 
 
 def _accept_invite_record(db: Session, *, inv: VenueInvite, user_id: int, accepted_via: str | None = None) -> None:
     mem = (
-        db.query(VenueMember)
-        .filter(VenueMember.venue_id == inv.venue_id, VenueMember.user_id == user_id)
-        .one_or_none()
+        db.query(VenueMember).filter(VenueMember.venue_id == inv.venue_id, VenueMember.user_id == user_id).one_or_none()
     )
     if mem:
         mem.venue_role = inv.venue_role
@@ -260,15 +266,13 @@ def create_venue_invite(
         inv.created_by_user_id = created_by_user_id
         inv.invited_tg_username = username
         inv.invited_phone_e164 = phone
-        inv.invited_contact_label = (str(contact_label or "").strip() or None)
+        inv.invited_contact_label = str(contact_label or "").strip() or None
         inv.invite_channel = channel
         if not inv.invite_token:
             inv.invite_token = _ensure_unique_token(db)
 
     db.flush()
     return inv
-
-
 
 
 def accept_phone_invites_for_user(db: Session, *, user_id: int, phone_e164: str | None) -> int:
@@ -296,6 +300,7 @@ def accept_phone_invites_for_user(db: Session, *, user_id: int, phone_e164: str 
         db.commit()
 
     return accepted
+
 
 def accept_invites_for_user(db: Session, *, user_id: int, tg_username: str) -> int:
     if not tg_username:

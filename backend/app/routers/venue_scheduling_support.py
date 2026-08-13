@@ -57,4 +57,3 @@ def _count_interval_template_usage(db: Session, *, venue_id: int, interval_id: i
         ).scalar_one()
         or 0
     )
-

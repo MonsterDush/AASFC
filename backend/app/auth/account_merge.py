@@ -156,12 +156,20 @@ def _copy_notification_settings(*, target_user: User, source_user: User) -> None
 
 
 def _merge_auth_identities(db: Session, *, target_user: User, source_user: User) -> None:
-    target_rows = db.execute(
-        select(AuthIdentity).where(AuthIdentity.user_id == int(target_user.id)).order_by(AuthIdentity.id.asc())
-    ).scalars().all()
-    source_rows = db.execute(
-        select(AuthIdentity).where(AuthIdentity.user_id == int(source_user.id)).order_by(AuthIdentity.id.asc())
-    ).scalars().all()
+    target_rows = (
+        db.execute(
+            select(AuthIdentity).where(AuthIdentity.user_id == int(target_user.id)).order_by(AuthIdentity.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    source_rows = (
+        db.execute(
+            select(AuthIdentity).where(AuthIdentity.user_id == int(source_user.id)).order_by(AuthIdentity.id.asc())
+        )
+        .scalars()
+        .all()
+    )
     target_by_provider = {str(row.provider or "").upper(): row for row in target_rows}
 
     for row in source_rows:
@@ -184,12 +192,16 @@ def _merge_auth_identities(db: Session, *, target_user: User, source_user: User)
 
 
 def _merge_venue_members(db: Session, *, target_user: User, source_user: User) -> None:
-    target_rows = db.execute(
-        select(VenueMember).where(VenueMember.user_id == int(target_user.id)).order_by(VenueMember.id.asc())
-    ).scalars().all()
-    source_rows = db.execute(
-        select(VenueMember).where(VenueMember.user_id == int(source_user.id)).order_by(VenueMember.id.asc())
-    ).scalars().all()
+    target_rows = (
+        db.execute(select(VenueMember).where(VenueMember.user_id == int(target_user.id)).order_by(VenueMember.id.asc()))
+        .scalars()
+        .all()
+    )
+    source_rows = (
+        db.execute(select(VenueMember).where(VenueMember.user_id == int(source_user.id)).order_by(VenueMember.id.asc()))
+        .scalars()
+        .all()
+    )
     by_venue = {int(row.venue_id): row for row in target_rows}
 
     for row in source_rows:
@@ -206,12 +218,24 @@ def _merge_venue_members(db: Session, *, target_user: User, source_user: User) -
 
 
 def _merge_venue_positions(db: Session, *, target_user: User, source_user: User) -> dict[int, int]:
-    target_rows = db.execute(
-        select(VenuePosition).where(VenuePosition.member_user_id == int(target_user.id)).order_by(VenuePosition.id.asc())
-    ).scalars().all()
-    source_rows = db.execute(
-        select(VenuePosition).where(VenuePosition.member_user_id == int(source_user.id)).order_by(VenuePosition.id.asc())
-    ).scalars().all()
+    target_rows = (
+        db.execute(
+            select(VenuePosition)
+            .where(VenuePosition.member_user_id == int(target_user.id))
+            .order_by(VenuePosition.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    source_rows = (
+        db.execute(
+            select(VenuePosition)
+            .where(VenuePosition.member_user_id == int(source_user.id))
+            .order_by(VenuePosition.id.asc())
+        )
+        .scalars()
+        .all()
+    )
 
     by_venue = {int(row.venue_id): row for row in target_rows}
     position_map: dict[int, int] = {int(row.id): int(row.id) for row in target_rows}
@@ -238,16 +262,16 @@ def _merge_venue_positions(db: Session, *, target_user: User, source_user: User)
         )
         existing.permission_codes = json.dumps(merged_codes, ensure_ascii=False) if merged_codes else None
         position_map[int(row.id)] = int(existing.id)
-        assignment_rows = db.execute(
-            select(ShiftAssignment).where(ShiftAssignment.venue_position_id == int(row.id))
-        ).scalars().all()
+        assignment_rows = (
+            db.execute(select(ShiftAssignment).where(ShiftAssignment.venue_position_id == int(row.id))).scalars().all()
+        )
         for assignment in assignment_rows:
             assignment.venue_position_id = int(existing.id)
-        swap_rows = db.execute(
-            select(ShiftSwapRequest).where(
-                ShiftSwapRequest.replacement_position_id == int(row.id)
-            )
-        ).scalars().all()
+        swap_rows = (
+            db.execute(select(ShiftSwapRequest).where(ShiftSwapRequest.replacement_position_id == int(row.id)))
+            .scalars()
+            .all()
+        )
         for swap_request in swap_rows:
             swap_request.replacement_position_id = int(existing.id)
         db.delete(row)
@@ -263,12 +287,24 @@ def _merge_shift_assignments(
     source_user: User,
     position_map: dict[int, int],
 ) -> None:
-    target_rows = db.execute(
-        select(ShiftAssignment).where(ShiftAssignment.member_user_id == int(target_user.id)).order_by(ShiftAssignment.id.asc())
-    ).scalars().all()
-    source_rows = db.execute(
-        select(ShiftAssignment).where(ShiftAssignment.member_user_id == int(source_user.id)).order_by(ShiftAssignment.id.asc())
-    ).scalars().all()
+    target_rows = (
+        db.execute(
+            select(ShiftAssignment)
+            .where(ShiftAssignment.member_user_id == int(target_user.id))
+            .order_by(ShiftAssignment.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    source_rows = (
+        db.execute(
+            select(ShiftAssignment)
+            .where(ShiftAssignment.member_user_id == int(source_user.id))
+            .order_by(ShiftAssignment.id.asc())
+        )
+        .scalars()
+        .all()
+    )
     by_shift = {int(row.shift_id): row for row in target_rows}
 
     for row in source_rows:
@@ -295,20 +331,25 @@ def _merge_shift_availabilities(
     target_user: User,
     source_user: User,
 ) -> None:
-    target_rows = db.execute(
-        select(ShiftAvailability)
-        .where(ShiftAvailability.member_user_id == int(target_user.id))
-        .order_by(ShiftAvailability.id.asc())
-    ).scalars().all()
-    source_rows = db.execute(
-        select(ShiftAvailability)
-        .where(ShiftAvailability.member_user_id == int(source_user.id))
-        .order_by(ShiftAvailability.id.asc())
-    ).scalars().all()
-    target_keys = {
-        (int(row.venue_id), row.date, str(row.shift_slot)): row
-        for row in target_rows
-    }
+    target_rows = (
+        db.execute(
+            select(ShiftAvailability)
+            .where(ShiftAvailability.member_user_id == int(target_user.id))
+            .order_by(ShiftAvailability.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    source_rows = (
+        db.execute(
+            select(ShiftAvailability)
+            .where(ShiftAvailability.member_user_id == int(source_user.id))
+            .order_by(ShiftAvailability.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    target_keys = {(int(row.venue_id), row.date, str(row.shift_slot)): row for row in target_rows}
     for row in source_rows:
         key = (int(row.venue_id), row.date, str(row.shift_slot))
         existing = target_keys.get(key)
@@ -328,22 +369,23 @@ def _merge_shift_swap_refs(
     target_user: User,
     source_user: User,
 ) -> None:
-    rows = db.execute(
-        select(ShiftSwapRequest).where(
-            (ShiftSwapRequest.requester_user_id == int(source_user.id))
-            | (ShiftSwapRequest.replacement_user_id == int(source_user.id))
+    rows = (
+        db.execute(
+            select(ShiftSwapRequest).where(
+                (ShiftSwapRequest.requester_user_id == int(source_user.id))
+                | (ShiftSwapRequest.replacement_user_id == int(source_user.id))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for row in rows:
         requester_id = (
-            int(target_user.id)
-            if int(row.requester_user_id) == int(source_user.id)
-            else int(row.requester_user_id)
+            int(target_user.id) if int(row.requester_user_id) == int(source_user.id) else int(row.requester_user_id)
         )
         replacement_id = (
             int(target_user.id)
-            if row.replacement_user_id is not None
-            and int(row.replacement_user_id) == int(source_user.id)
+            if row.replacement_user_id is not None and int(row.replacement_user_id) == int(source_user.id)
             else row.replacement_user_id
         )
         row.requester_user_id = requester_id
@@ -356,17 +398,26 @@ def _merge_shift_swap_refs(
 
 
 def _merge_pay_profile_assignments(db: Session, *, target_user: User, source_user: User) -> None:
-    target_rows = db.execute(
-        select(PayProfileAssignment).where(PayProfileAssignment.member_user_id == int(target_user.id)).order_by(PayProfileAssignment.id.asc())
-    ).scalars().all()
-    source_rows = db.execute(
-        select(PayProfileAssignment).where(PayProfileAssignment.member_user_id == int(source_user.id)).order_by(PayProfileAssignment.id.asc())
-    ).scalars().all()
+    target_rows = (
+        db.execute(
+            select(PayProfileAssignment)
+            .where(PayProfileAssignment.member_user_id == int(target_user.id))
+            .order_by(PayProfileAssignment.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    source_rows = (
+        db.execute(
+            select(PayProfileAssignment)
+            .where(PayProfileAssignment.member_user_id == int(source_user.id))
+            .order_by(PayProfileAssignment.id.asc())
+        )
+        .scalars()
+        .all()
+    )
 
-    keys = {
-        _pay_profile_assignment_key(row)
-        for row in target_rows
-    }
+    keys = {_pay_profile_assignment_key(row) for row in target_rows}
     for row in source_rows:
         key = _pay_profile_assignment_key(row)
         if key in keys:
@@ -379,12 +430,24 @@ def _merge_pay_profile_assignments(db: Session, *, target_user: User, source_use
 
 
 def _merge_tip_allocations(db: Session, *, target_user: User, source_user: User) -> None:
-    target_rows = db.execute(
-        select(DailyReportTipAllocation).where(DailyReportTipAllocation.user_id == int(target_user.id)).order_by(DailyReportTipAllocation.id.asc())
-    ).scalars().all()
-    source_rows = db.execute(
-        select(DailyReportTipAllocation).where(DailyReportTipAllocation.user_id == int(source_user.id)).order_by(DailyReportTipAllocation.id.asc())
-    ).scalars().all()
+    target_rows = (
+        db.execute(
+            select(DailyReportTipAllocation)
+            .where(DailyReportTipAllocation.user_id == int(target_user.id))
+            .order_by(DailyReportTipAllocation.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    source_rows = (
+        db.execute(
+            select(DailyReportTipAllocation)
+            .where(DailyReportTipAllocation.user_id == int(source_user.id))
+            .order_by(DailyReportTipAllocation.id.asc())
+        )
+        .scalars()
+        .all()
+    )
     by_report = {int(row.report_id): row for row in target_rows}
 
     for row in source_rows:
@@ -404,12 +467,20 @@ def _merge_tip_allocations(db: Session, *, target_user: User, source_user: User)
 
 
 def _merge_payroll_lines(db: Session, *, target_user: User, source_user: User) -> None:
-    target_rows = db.execute(
-        select(PayrollLine).where(PayrollLine.member_user_id == int(target_user.id)).order_by(PayrollLine.id.asc())
-    ).scalars().all()
-    source_rows = db.execute(
-        select(PayrollLine).where(PayrollLine.member_user_id == int(source_user.id)).order_by(PayrollLine.id.asc())
-    ).scalars().all()
+    target_rows = (
+        db.execute(
+            select(PayrollLine).where(PayrollLine.member_user_id == int(target_user.id)).order_by(PayrollLine.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    source_rows = (
+        db.execute(
+            select(PayrollLine).where(PayrollLine.member_user_id == int(source_user.id)).order_by(PayrollLine.id.asc())
+        )
+        .scalars()
+        .all()
+    )
     by_run = {int(row.payroll_run_id): row for row in target_rows}
     affected_runs: set[int] = set()
 
@@ -433,8 +504,9 @@ def _merge_payroll_lines(db: Session, *, target_user: User, source_user: User) -
 
     for run_id in affected_runs:
         lines_count, total_amount_minor = db.execute(
-            select(func.count(PayrollLine.id), func.coalesce(func.sum(PayrollLine.amount_minor), 0))
-            .where(PayrollLine.payroll_run_id == int(run_id))
+            select(func.count(PayrollLine.id), func.coalesce(func.sum(PayrollLine.amount_minor), 0)).where(
+                PayrollLine.payroll_run_id == int(run_id)
+            )
         ).one()
         run = db.execute(select(PayrollRun).where(PayrollRun.id == int(run_id))).scalar_one_or_none()
         if run is None:

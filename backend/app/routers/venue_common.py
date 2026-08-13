@@ -49,6 +49,8 @@ def _load_user_for_signed_export(db: Session, payload: dict) -> User | None:
         return db.get(User, int(user_id))
     except Exception:
         return None
+
+
 log = logging.getLogger("axelio.day_economics_notifications")
 
 _NOTIFICATION_JOB_TYPE_DAY_ECONOMICS_SUMMARY = "day_economics_summary"
