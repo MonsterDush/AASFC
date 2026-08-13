@@ -75,7 +75,7 @@
       </div>
       <div class="muted mt-6">По умолчанию — как в системе. Можно принудительно выбрать светлую или тёмную.</div>
       <div class="settings-actions mt-10">
-        <select id="themeSelect" class="input minw-240">
+        <select id="themeSelect" class="input minw-240" aria-label="Тема интерфейса">
           <option value="system">Системная</option>
           <option value="light">Светлая</option>
           <option value="dark">Тёмная</option>
@@ -440,7 +440,7 @@
             </div>
             <div class="mt-8">
               <div class="muted small mb-6">За сколько предупреждать</div>
-              <select id="shiftLeadHours" class="input minw-240" ${(locked || !enabled || !shifts) ? "disabled" : ""}>
+              <select id="shiftLeadHours" class="input minw-240" aria-label="Время напоминания о смене" ${(locked || !enabled || !shifts) ? "disabled" : ""}>
                 ${leadOptions.map((value) => `<option value="${value}" ${Number(value) === leadHours ? "selected" : ""}>За ${value} ${Number(value) === 1 ? "час" : (Number(value) < 5 ? "часа" : "часов")}</option>`).join("")}
               </select>
             </div>
@@ -481,7 +481,7 @@
 
             <div class="mt-10">
               <div class="muted small mb-6">Детализация сообщений</div>
-              <select id="notificationDetailLevel" class="input minw-240" ${(locked || !enabled) ? "disabled" : ""}>
+              <select id="notificationDetailLevel" class="input minw-240" aria-label="Детализация уведомлений" ${(locked || !enabled) ? "disabled" : ""}>
                 ${detailOptions.map((value) => `<option value="${value}" ${String(value) === detailLevel ? "selected" : ""}>${detailLabel(String(value))}</option>`).join("")}
               </select>
             </div>

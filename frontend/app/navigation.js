@@ -367,6 +367,7 @@ export function createNavigation(context) {
 
     const sel = document.createElement("select");
     sel.className = "input min-w240";
+    sel.setAttribute("aria-label", t("venue"));
 
     if (!venues.length) {
       const opt = document.createElement("option");

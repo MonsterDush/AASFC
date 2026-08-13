@@ -632,11 +632,15 @@ class AppFacadeSplitContractTests(TestCase):
             "auth-actions.js": "createAuthActions",
             "venue-api.js": "createVenueApi",
             "navigation.js": "createNavigation",
+            "ui-preferences.js": "createUiPreferences",
         }
         for filename, factory in modules.items():
             source = (FRONTEND / "app" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500)
-            cache_key = "20260726-navmore1" if filename == "navigation.js" else "20260719-split1"
+            cache_key = {
+                "navigation.js": "20260726-navmore1",
+                "ui-preferences.js": "20260813-assurance2",
+            }.get(filename, "20260719-split1")
             self.assertIn(f"/app/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
@@ -663,7 +667,7 @@ class FunctionalFrontendRegressionContractTests(TestCase):
     def test_mobile_bottom_nav_collapses_secondary_links_into_accessible_more_menu(self):
         navigation = (FRONTEND / "app" / "navigation.js").read_text(encoding="utf-8")
         styles = (FRONTEND / "styles" / "core" / "cards-lists.css").read_text(encoding="utf-8")
-        app = (FRONTEND / "app.js").read_text(encoding="utf-8")
+        preferences = (FRONTEND / "app" / "ui-preferences.js").read_text(encoding="utf-8")
 
         for token in (
             "const mobilePrimaryLinkCount = 3",
@@ -675,8 +679,8 @@ class FunctionalFrontendRegressionContractTests(TestCase):
         ):
             self.assertIn(token, navigation)
 
-        self.assertIn('more: "Ещё"', app)
-        self.assertIn('more: "More"', app)
+        self.assertIn('more: "Ещё"', preferences)
+        self.assertIn('more: "More"', preferences)
         self.assertIn(".nav .wrap #nav > .nav-overflow-link{display:none}", styles)
         self.assertIn(".nav-more__menu[hidden]{display:none}", styles)
         self.assertIn(".nav-more__menu{", styles)

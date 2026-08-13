@@ -25,6 +25,26 @@ import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
 import { createStaffShiftExportController } from "/staff-shifts/export-controller.js?v=20260719-split1";
 import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260729-overnight1";
 import { createStaffShiftCommentController } from "/staff-shifts/comment-controller.js?v=20260728-comments1";
+import {
+  WEEKDAYS,
+  addDays,
+  cmpDateStr,
+  displayPerson,
+  escapeHtml,
+  intervalSortKey,
+  isoInRange,
+  isPastDay,
+  normalizeList,
+  pad2,
+  pickShortName,
+  shortNameOrLogin,
+  startOfWeek,
+  timeToMin,
+  toHHMM,
+  weekTitle,
+  ym,
+  ymd,
+} from "/staff-shifts/helpers.js?v=20260813-assurance2";
 
 window.onerror = function (msg, src, line, col, err) {
   const text = `JS ошибка: ${msg}\n${src || ""}:${line || 0}:${col || 0}`;
@@ -235,30 +255,6 @@ function openLegendModal() {
 el.btnLegend?.addEventListener("click", openLegendModal);
 
 
-function toHHMM(timeStr) {
-  if (!timeStr) return "";
-  const s = String(timeStr);
-  return s.slice(0, 5);
-}
-
-function shortNameOrLogin(u) {
-  const first = (u?.first_name || "").trim();
-  const last = (u?.last_name || "").trim();
-  const name = (first + " " + last).trim();
-  const login = (u?.tg_username || u?.username || "").trim();
-  return name || (login ? "@" + login.replace(/^@/, "") : "Без имени");
-}
-
-function pad2(n) { return String(n).padStart(2, "0"); }
-function ym(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
-function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
-function addDays(d, days) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  x.setDate(x.getDate() + days);
-  return x;
-}
-
 function filtersStorageKey() {
   return `${LS_FILTERS_PREFIX}.${venueId || "unknown"}`;
 }
@@ -322,44 +318,6 @@ function venueShiftFiltersQuery() {
   return p;
 }
 
-function startOfWeek(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  const jsDow = x.getDay(); // 0..6 (Sun..Sat)
-  const mondayBased = (jsDow + 6) % 7; // 0..6 (Mon..Sun)
-  x.setDate(x.getDate() - mondayBased);
-  return x;
-}
-
-function weekTitle(ws) {
-  const we = addDays(ws, 6);
-  const a = `${pad2(ws.getDate())}.${pad2(ws.getMonth() + 1)}`;
-  const b = `${pad2(we.getDate())}.${pad2(we.getMonth() + 1)}.${we.getFullYear()}`;
-  return `${a}–${b}`;
-}
-
-function isoInRange(iso, fromISO, toISO) {
-  // for YYYY-MM-DD (lexicographic works)
-  return String(iso) >= String(fromISO) && String(iso) <= String(toISO);
-}
-
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
-function dateOnly(d) {
-  const x = new Date(d);
-  x.setHours(0,0,0,0);
-  return x;
-}
-function cmpDateStr(dateStr) {
-  const today = dateOnly(new Date());
-  const d = dateOnly(new Date(dateStr));
-  if (d.getTime() === today.getTime()) return 0;
-  return d.getTime() < today.getTime() ? -1 : 1;
-}
-function isPastDay(isoDate) {
-  return cmpDateStr(isoDate) === -1;
-}
-
 // ------------------------------
 // Interval colors (Theme G)
 // One interval -> one stable color (per venue), persisted in localStorage.
@@ -381,18 +339,6 @@ const INTERVAL_COLORS = [
 ];
 
 let intervalColorMap = {}; // intervalId -> hex
-
-function timeToMinutes(hhmm) {
-  const m = String(hhmm || "").match(/^(\d{2}):(\d{2})/);
-  if (!m) return 9999;
-  return (Number(m[1]) * 60) + Number(m[2]);
-}
-
-function intervalSortKey(i) {
-  const st = i?.start_time || "";
-  const et = i?.end_time || "";
-  return [timeToMinutes(st), timeToMinutes(et), String(i?.id ?? "")].join("|");
-}
 
 function buildIntervalColorMap() {
   if (!venueId) return;
@@ -456,54 +402,6 @@ function dotStyleForShift(shift, dateStr, { empty = false } = {}) {
   const c = isPastDay(dateStr) ? "var(--dotPast)" : colorForInterval(shiftIntervalId(shift));
   if (empty) return `background:transparent;border:1px solid ${c};box-shadow:none;`;
   return `background:${c};`;
-}
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[c]));
-}
-
-function pickShortName(obj) {
-  const sn = (obj?.short_name || obj?.member?.short_name || obj?.user?.short_name || "").trim();
-  if (sn) return sn;
-  const fn = (obj?.full_name || obj?.member?.full_name || obj?.user?.full_name || "").trim();
-  if (fn) return fn.split(/\s+/)[0];
-  const un = (obj?.tg_username || obj?.member_username || obj?.user_username || obj?.user?.tg_username || obj?.username || "").trim();
-  if (un) return un.replace(/^@/, "");
-  const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
-  return uid ? "Сотрудник" : "—";
-}
-
-function fioInitials(fullName) {
-  const s = (fullName || "").trim();
-  if (!s) return "";
-  const p = s.split(/\s+/).filter(Boolean);
-  if (p.length === 1) return p[0];
-  const surname = p[0];
-  const initials = p.slice(1).map(x => x[0] ? x[0].toUpperCase() + "." : "").join("");
-  return `${surname} ${initials}`.trim();
-}
-
-function displayPerson(obj) {
-  const fn = (obj?.full_name || obj?.member?.full_name || "").trim();
-  const fi = fioInitials(fn);
-  if (fi) return fi;
-  const sn = (obj?.short_name || obj?.member?.short_name || "").trim();
-  if (sn) return sn;
-  const un = (obj?.tg_username || obj?.member?.tg_username || "").trim();
-  if (un) return un.startsWith("@") ? un : `@${un}`;
-  const uid = obj?.member_user_id ?? obj?.user_id ?? obj?.user?.id;
-  return uid ? "Сотрудник" : "—";
-}
-
-function normalizeList(out) {
-  if (!out) return [];
-  if (Array.isArray(out)) return out;
-  for (const k of ["items", "data", "results", "intervals", "positions", "shifts"]) {
-    if (Array.isArray(out[k])) return out[k];
-  }
-  return [];
 }
 
 let me = null;
@@ -588,13 +486,6 @@ function shiftStartHHMM(s) {
   const i = s.interval || s.shift_interval || {};
   const st = i.start_time || s.start_time || s.start || s.time_start || "";
   return toHHMM(st);
-}
-
-function timeToMin(hhmm) {
-  const s = String(hhmm || "").trim();
-  const m = /^([0-2]\d):([0-5]\d)$/.exec(s);
-  if (!m) return 1e9;
-  return (parseInt(m[1], 10) * 60) + parseInt(m[2], 10);
 }
 
 function shiftStartMinutes(s) {

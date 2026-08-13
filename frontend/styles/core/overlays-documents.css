@@ -264,7 +264,7 @@
 /* Staff schedule: closed shifts are shown by status, not money amount */
 .cal-line--done,
 .shift-done-badge {
-  color: #16a34a;
+  color: var(--statusSuccessText);
   font-weight: 700;
 }
 

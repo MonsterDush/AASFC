@@ -21,7 +21,8 @@
   will-change:transform;
 }
 .cal-cell:active{transform:scale(.995)}
-.cal-cell--out{opacity:.45}
+.cal-cell--out{background:color-mix(in srgb,var(--surface2) 58%,var(--bg));border-color:color-mix(in srgb,var(--border) 72%,var(--bg))}
+.cal-cell--out .cal-daynum{color:var(--textSoft)}
 
 .cal-cell--selected{
   box-shadow:0 0 0 2px var(--accent) inset, 0 10px 24px rgba(0,0,0,.08);
@@ -451,5 +452,4 @@
 .paybar__seg.cash{background:var(--accentA45)}
 .paybar__seg.cashless{background:var(--accentA22)}
   :root:not([data-theme="light"]) .paybar__seg.cashless{background:rgba(60,120,200,.28)}
-
 

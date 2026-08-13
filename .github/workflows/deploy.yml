@@ -117,6 +117,7 @@ jobs:
             tools/migration-smoke.sh \
             ops/backup/postgres-backup.sh \
             ops/backup/restore-drill.sh \
+            ops/monitoring/health-check.sh \
             ops/deploy/post-deploy-smoke.sh \
             ops/deploy/production-readiness.sh \
             ops/deploy/release.sh
@@ -147,6 +148,9 @@ jobs:
         run: |
           git ls-files -z 'frontend/*.js' 'frontend/**/*.js' 'frontend/*.mjs' 'frontend/**/*.mjs' 'tools/*.mjs' |
             xargs -0 -n1 node --check
+
+      - name: Enforce frontend performance budgets
+        run: pnpm test:budgets
 
       - name: Run frontend contracts
         run: |

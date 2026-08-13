@@ -26,6 +26,7 @@ from app.auth.phone_auth import (
 )
 from app.core.db import get_db
 from app.core.request_ip import resolve_client_ip
+from app.core.metrics import record_auth_failure, record_rate_limit_block
 from app.models import User
 from app.services.invites import accept_phone_invites_for_user
 from app.services.security_rate_limits import (
@@ -79,6 +80,7 @@ def _raise_login_rate_limit(decisions: list[RateLimitDecision]) -> None:
     blocked = [decision for decision in decisions if not decision.allowed]
     if not blocked:
         return
+    record_rate_limit_block("password-login")
     retry_after = max(decision.retry_after_seconds for decision in blocked)
     raise HTTPException(
         status_code=429,
@@ -301,6 +303,7 @@ def password_login(payload: PasswordLoginIn, request: Request, response: Respons
 
     user = find_user_by_phone(db, phone_e164=phone_e164)
     if user is None or not verify_password(payload.password, user.password_hash):
+        record_auth_failure("password")
         decisions = [
             register_rate_limit_failure(
                 db,

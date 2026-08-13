@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     LOG_JSON: bool = True
     SENTRY_DSN: str = ""
     SENTRY_TRACES_SAMPLE_RATE: float = 0.0
+    METRICS_TOKEN: str = ""
+    MONITORING_STATE_DIR: str = "/var/lib/axelio-monitoring"
+    AXELIO_ALERT_TG_CHAT_IDS: str = ""
 
     # Database
     database_url: str

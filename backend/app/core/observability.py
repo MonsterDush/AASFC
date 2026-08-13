@@ -13,9 +13,12 @@ from typing import Any, Awaitable, Callable
 import sentry_sdk
 from fastapi import Request
 from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import Response
 
 from app.core.config import settings
+from app.core.metrics import observe_request as observe_request_metric
+from app.core.metrics import record_database_error
 
 
 _REQUEST_ID = contextvars.ContextVar("axelio_request_id", default="-")
@@ -158,7 +161,9 @@ async def observe_request(
         status_code = int(response.status_code)
         response.headers["X-Request-ID"] = request_id
         return response
-    except Exception:
+    except Exception as error:
+        if isinstance(error, SQLAlchemyError):
+            record_database_error("request")
         logging.getLogger("axelio.request").exception(
             "request_failed",
             extra={
@@ -172,6 +177,12 @@ async def observe_request(
         raise
     finally:
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        observe_request_metric(
+            method=request.method,
+            route=_request_route(request),
+            status_code=status_code,
+            duration_seconds=duration_ms / 1000.0,
+        )
         logging.getLogger("axelio.request").info(
             "request_complete",
             extra={

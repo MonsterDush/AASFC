@@ -47,6 +47,7 @@ const moduleContracts = [
   ["auth-actions.js", "createAuthActions", ["loginWithTelegramWidget", "verifyPhoneCode", "logout", "linkTelegramAccount"]],
   ["venue-api.js", "createVenueApi", ["getActiveVenueId", "getMe", "getDepartments", "calculatePayroll", "bootPage"]],
   ["navigation.js", "createNavigation", ["renderVenueSwitcher", "getVenueById", "can", "mountNav", "mountVenueMenu"]],
+  ["ui-preferences.js", "createUiPreferences", ["getLang", "wa", "applyTheme", "applyTelegramTheme"]],
 ];
 const importedModules = {};
 const facadeSources = [mainSource];
@@ -55,7 +56,9 @@ for (const [fileName, factoryName] of moduleContracts) {
   const source = fs.readFileSync(filePath, "utf8");
   facadeSources.push(source);
   assert.ok(source.split("\n").length < 500, `${fileName} is too large`);
-  const cacheKey = fileName === "navigation.js" ? "20260726-navmore1" : "20260719-split1";
+  const cacheKey = fileName === "navigation.js"
+    ? "20260726-navmore1"
+    : (fileName === "ui-preferences.js" ? "20260813-assurance2" : "20260719-split1");
   assert.match(mainSource, new RegExp(`/app/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
   importedModules[fileName] = await import(pathToFileURL(filePath));
   assert.equal(typeof importedModules[fileName][factoryName], "function");
