@@ -45,7 +45,8 @@ lint and formatting,  branch coverage, PostgreSQL migration round-trip,
 dependency audits, frontend contracts, browser E2E, encrypted backup/restore,
 and source/per-page performance budgets. Production releases also require
 Sentry, encrypted offsite backup, Telegram alert recipients, post-deploy smoke,
-and automatic rollback on activation failure.
+automatic rollback on activation failure, and a dispatchable production
+restore/observability drill with recorded RPO and RTO.
 
 Operational and contributor references:
 

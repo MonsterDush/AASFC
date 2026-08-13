@@ -117,7 +117,10 @@ jobs:
             tools/migration-smoke.sh \
             ops/backup/postgres-backup.sh \
             ops/backup/restore-drill.sh \
+            ops/backup/production-restore-drill.sh \
             ops/monitoring/health-check.sh \
+            ops/monitoring/observability-drill.sh \
+            ops/production-assurance-drill.sh \
             ops/nginx/activate-performance.sh \
             ops/deploy/post-deploy-smoke.sh \
             ops/deploy/production-readiness.sh \
@@ -127,7 +130,7 @@ jobs:
         working-directory: backend
         run: |
           python -m coverage run --branch --source=app -m unittest discover -s test -v
-          python -m coverage report --show-missing --fail-under=41
+          python -m coverage report --show-missing --fail-under=42
           python ../tools/check_critical_coverage.py
 
       - name: Run bot tests
