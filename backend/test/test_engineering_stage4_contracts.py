@@ -89,6 +89,7 @@ class FrontendAssuranceContractTests(TestCase):
         self.assertIn("Enforce frontend performance budgets", workflow)
         self.assertIn("axe.run", browser)
         self.assertIn('["critical", "serious"]', browser)
+        self.assertIn('budgetKey.replace(/^max([A-Z])/', browser)
         for page in (
             "auth",
             "owner-summary",

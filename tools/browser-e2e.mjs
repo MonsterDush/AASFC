@@ -166,7 +166,8 @@ async function assertPageQuality(page, budgetName) {
   assert.ok(budget, `Missing performance budget for ${budgetName}`);
   await settlePage(page);
   const performance = await measurePerformance(page);
-  for (const [metric, maximum] of Object.entries(budget)) {
+  for (const [budgetKey, maximum] of Object.entries(budget)) {
+    const metric = budgetKey.replace(/^max([A-Z])/, (_match, letter) => letter.toLowerCase());
     assert.ok(
       performance[metric] <= maximum,
       `${budgetName}: ${metric} ${performance[metric]} exceeds budget ${maximum}`,
