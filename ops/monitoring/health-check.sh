@@ -115,7 +115,9 @@ send_alert() {
     return 1
   }
   for chat_id in ${normalized_ids}; do
-    curl --fail --silent --show-error --max-time 15 \
+    curl --fail --silent --show-error --ipv4 \
+      --connect-timeout 5 --max-time 15 \
+      --retry 2 --retry-delay 2 --retry-all-errors \
       --request POST \
       --data-urlencode "chat_id=${chat_id}" \
       --data-urlencode "text=${message}" \

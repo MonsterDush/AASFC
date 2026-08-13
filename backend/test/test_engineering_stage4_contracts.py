@@ -91,6 +91,8 @@ class MonitoringContractTests(TestCase):
             "failed_notification_jobs_24h",
             "stale_notification_jobs",
             "sendMessage",
+            "--ipv4",
+            "--retry-all-errors",
             "production recovered",
         ):
             self.assertIn(contract, monitor)
@@ -106,6 +108,8 @@ class MonitoringContractTests(TestCase):
             "last-alert.txt",
             "Failed notification job diagnostics",
             "payload and recipients omitted",
+            "--ipv4",
+            "--retry-all-errors",
             "test alert",
             "production recovered",
             "observability-drill-last-success.timestamp",
