@@ -33,6 +33,8 @@ class DeploymentContractTests(TestCase):
         readiness = (REPO_DIR / "ops/deploy/production-readiness.sh").read_text(encoding="utf-8")
 
         self.assertIn("SENTRY_DSN", readiness)
+        self.assertIn("BOT_SERVICE_URL", readiness)
+        self.assertIn("BOT_SERVICE_SECRET", readiness)
         self.assertIn("BACKUP_ENCRYPTION_PASSWORD", readiness)
         self.assertIn("BACKUP_RCLONE_REMOTE", readiness)
         self.assertIn("BACKUP_REQUIRE_OFFSITE=true", readiness)

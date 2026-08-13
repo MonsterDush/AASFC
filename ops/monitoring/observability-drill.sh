@@ -4,7 +4,8 @@ set -Eeuo pipefail
 : "${APP_ROOT:?Set APP_ROOT}"
 : "${API_BASE_URL:?Set API_BASE_URL}"
 : "${API_SERVICE:?Set API_SERVICE}"
-: "${TG_BOT_TOKEN:?Set TG_BOT_TOKEN}"
+: "${BOT_SERVICE_URL:?Set BOT_SERVICE_URL}"
+: "${BOT_SERVICE_SECRET:?Set BOT_SERVICE_SECRET}"
 
 [[ "${EUID}" -eq 0 ]] || {
   echo "Observability drill must run as root" >&2
@@ -20,6 +21,8 @@ set -Eeuo pipefail
 }
 
 env_file="${APP_ROOT}/repo/backend/.env"
+python_bin="${APP_ROOT}/venv/bin/python"
+repo_dir="${APP_ROOT}/repo"
 state_dir="${MONITORING_STATE_DIR:-/var/lib/axelio-monitoring}"
 chat_ids="${AXELIO_ALERT_TG_CHAT_IDS:-${SUPER_ADMIN_TG_USER_IDS:-}}"
 metrics_token="${METRICS_TOKEN:-}"
@@ -119,13 +122,32 @@ send_message() {
   local normalized_ids
   normalized_ids="$(printf '%s' "${chat_ids}" | tr ',;' '  ')"
   for chat_id in ${normalized_ids}; do
-    curl --fail --silent --show-error --ipv4 \
-      --connect-timeout 5 --max-time 15 \
-      --retry 2 --retry-delay 2 --retry-all-errors \
-      --request POST \
-      --data-urlencode "chat_id=${chat_id}" \
-      --data-urlencode "text=${message}" \
-      "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" >/dev/null
+    if ! (
+      cd "${repo_dir}/backend"
+      AXELIO_ALERT_CHAT_ID="${chat_id}" \
+      AXELIO_ALERT_MESSAGE="${message}" \
+      "${python_bin}" - <<'PY'
+import os
+import sys
+
+from app.services.tg_notify import notify_result
+
+result = notify_result(
+    int(os.environ["AXELIO_ALERT_CHAT_ID"]),
+    os.environ["AXELIO_ALERT_MESSAGE"],
+)
+if not result.get("ok"):
+    error = str(result.get("error") or "unknown error")[:300]
+    print(
+        f"Bot service delivery failed: status={result.get('status_code')} "
+        f"retryable={result.get('retryable')} error={error}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
+    ); then
+      return 1
+    fi
   done
 }
 

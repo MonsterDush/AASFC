@@ -12,11 +12,16 @@ IDs to `/var/www/axelio/prod/repo/backend/.env`:
 ```dotenv
 METRICS_TOKEN=replace-with-a-long-random-secret
 AXELIO_ALERT_TG_CHAT_IDS=123456789
+BOT_SERVICE_URL=https://bot-internal.example.com
+BOT_SERVICE_SECRET=replace-with-a-shared-high-entropy-secret
 ```
 
 `SUPER_ADMIN_TG_USER_IDS` is accepted as an alert-recipient fallback. A
-production-readiness run fails if neither recipient setting is present. Do not
-paste the real token or IDs into Git, CI logs, or support messages.
+production-readiness run fails if neither recipient setting is present or the
+separate bot-service transport is not configured. The application VPS never
+contacts Telegram directly: alerts go through the authenticated bot service on
+the Telegram VPS. Do not paste the real secret or IDs into Git, CI logs, or
+support messages.
 
 The release installs and enables `axelio-monitor-prod.timer`. It runs every five
 minutes and checks:

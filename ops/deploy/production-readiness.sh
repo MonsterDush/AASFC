@@ -57,6 +57,14 @@ has_nonempty_setting "${backend_env}" SENTRY_DSN || {
   echo "SENTRY_DSN is missing from the production backend environment" >&2
   exit 1
 }
+has_nonempty_setting "${backend_env}" BOT_SERVICE_URL || {
+  echo "BOT_SERVICE_URL is missing from the production backend environment" >&2
+  exit 1
+}
+has_nonempty_setting "${backend_env}" BOT_SERVICE_SECRET || {
+  echo "BOT_SERVICE_SECRET is missing from the production backend environment" >&2
+  exit 1
+}
 if ! has_nonempty_setting "${backend_env}" AXELIO_ALERT_TG_CHAT_IDS && \
    ! has_nonempty_setting "${backend_env}" SUPER_ADMIN_TG_USER_IDS; then
   echo "AXELIO_ALERT_TG_CHAT_IDS or SUPER_ADMIN_TG_USER_IDS is required for production alerts" >&2
