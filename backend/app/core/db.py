@@ -25,4 +25,4 @@ def get_db():
 
 
 # Ensure model modules are imported so SQLAlchemy can resolve relationships
-import app.models  # noqa: F401
+import app.models  # noqa: E402,F401

@@ -29,6 +29,7 @@ the `quality` job in `.github/workflows/deploy.yml`.
 
 ```bash
 python -m ruff check --select E9,F63,F7,F82 backend/app backend/test bot_service tools
+python -m ruff check --ignore F401 backend/app backend/test bot_service tools
 python tools/check_repository_hygiene.py
 pnpm test:budgets
 
@@ -37,6 +38,11 @@ python -m coverage run --branch --source=app -m unittest discover -s test -v
 cd ../bot_service
 python -m unittest discover -s test -v
 ```
+
+The repository-wide lint gate covers all configured Ruff rules except `F401`.
+Legacy unused imports are removed in reviewed batches because some modules also
+act as public import surfaces. Critical modules additionally pass the full lint
+and formatting list in the workflow.
 
 Do not weaken a coverage, accessibility, security, dependency, or performance
 gate merely to make CI green. Fix the regression, or document and review a

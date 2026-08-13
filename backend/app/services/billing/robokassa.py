@@ -44,7 +44,6 @@ def _normalize_hash_algorithm(value: str | None) -> str:
 
 def get_robokassa_config() -> RobokassaConfig:
     api_base = settings.api_base_url()
-    frontend_base = settings.frontend_base_url()
     test_mode = bool(settings.ROBOKASSA_TEST_MODE)
     password1 = settings.ROBOKASSA_TEST_PASSWORD1 if test_mode and settings.ROBOKASSA_TEST_PASSWORD1 else settings.ROBOKASSA_PASSWORD1
     password2 = settings.ROBOKASSA_TEST_PASSWORD2 if test_mode and settings.ROBOKASSA_TEST_PASSWORD2 else settings.ROBOKASSA_PASSWORD2

@@ -60,13 +60,13 @@ def _is_shift_comments_allowed(db: Session, *, venue_id: int, shift_id: int, use
         return True
 
     # Fallback: assigned to this shift
-    sa = db.execute(
+    assignment = db.execute(
         select(ShiftAssignment).where(
             ShiftAssignment.shift_id == shift_id,
             ShiftAssignment.member_user_id == user.id,
         )
     ).scalar_one_or_none()
-    return bool(sa)
+    return bool(assignment)
 
 
 def _require_shift_comments_allowed(db: Session, *, venue_id: int, shift_id: int, user: User) -> None:
@@ -162,4 +162,3 @@ def _has_revenue_export_access(db: Session, *, venue_id: int, user: User) -> boo
 def _require_revenue_exporter(db: Session, *, venue_id: int, user: User) -> None:
     if not _has_revenue_export_access(db, venue_id=venue_id, user=user):
         raise HTTPException(status_code=403, detail="Forbidden")
-
