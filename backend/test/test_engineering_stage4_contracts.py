@@ -33,7 +33,9 @@ class MetricsTests(TestCase):
         reconciliation = MagicMock()
         reconciliation.scalar_one.return_value = 4
         db = MagicMock()
-        db.execute.side_effect = [rows, failed_payments, reconciliation]
+        failed_jobs = MagicMock()
+        failed_jobs.scalar_one.return_value = 1
+        db.execute.side_effect = [rows, failed_jobs, failed_payments, reconciliation]
 
         metrics.observe_request(method="post", route="/auth/login", status_code=401, duration_seconds=0.3)
         metrics.record_auth_failure()
@@ -45,6 +47,7 @@ class MetricsTests(TestCase):
             'axelio_http_requests_total{method="POST",route="/auth/login",status_class="4xx"} 1',
             "axelio_http_request_duration_seconds_bucket",
             'axelio_notification_jobs{status="failed"} 1',
+            'axelio_notification_jobs{status="failed_recent_24h"} 1',
             "axelio_failed_payments_24h 3",
             "axelio_open_reconciliation_issues 4",
             "axelio_backup_last_success_timestamp_seconds 123",
@@ -85,7 +88,7 @@ class MonitoringContractTests(TestCase):
             "production backup is stale",
             "failed_payments_24h",
             "open_reconciliation_high",
-            "failed_notification_jobs",
+            "failed_notification_jobs_24h",
             "stale_notification_jobs",
             "sendMessage",
             "production recovered",

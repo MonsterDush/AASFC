@@ -91,12 +91,12 @@ if snapshot="$(cd "${repo_dir}/backend" && "${python_bin}" -m app.scripts.operat
     "${python_bin}" - "${snapshot}" <<'PY'
 import json, sys
 value = json.loads(sys.argv[1])
-print(value["failed_payments_24h"], value["open_reconciliation_high"], value["failed_notification_jobs"], value["stale_notification_jobs"])
+print(value["failed_payments_24h"], value["open_reconciliation_high"], value["failed_notification_jobs_24h"], value["stale_notification_jobs"])
 PY
   )
   (( failed_payments < failed_payment_threshold )) || failures+=("failed payments in 24h: ${failed_payments}")
   (( open_reconciliation == 0 )) || failures+=("open high reconciliation issues: ${open_reconciliation}")
-  (( failed_jobs == 0 )) || failures+=("failed notification jobs: ${failed_jobs}")
+  (( failed_jobs == 0 )) || failures+=("failed notification jobs in 24h: ${failed_jobs}")
   (( stale_jobs == 0 )) || failures+=("stale notification jobs: ${stale_jobs}")
 else
   failures+=("operational database snapshot failed")

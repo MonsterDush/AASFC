@@ -27,10 +27,10 @@ groups:
         labels: { severity: critical }
         annotations: { summary: "Axelio encrypted backup is missing or older than 26 hours" }
       - alert: AxelioNotificationJobsFailed
-        expr: axelio_notification_jobs{status="failed"} > 0
+        expr: axelio_notification_jobs{status="failed_recent_24h"} > 0
         for: 5m
         labels: { severity: warning }
-        annotations: { summary: "Axelio notification jobs have terminal failures" }
+        annotations: { summary: "Axelio notification jobs gained terminal failures during the last 24 hours" }
       - alert: AxelioPaymentFailuresGrowing
         expr: axelio_failed_payments_24h >= 5
         for: 10m
