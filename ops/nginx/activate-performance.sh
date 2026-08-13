@@ -8,6 +8,7 @@ performance_include="${AXELIO_PERFORMANCE_INCLUDE:-/etc/nginx/snippets/axelio-pe
 backup_root="${NGINX_BACKUP_ROOT:-/var/backups/axelio/nginx}"
 nginx_bin="${NGINX_BIN:-nginx}"
 dry_run="${NGINX_ACTIVATE_DRY_RUN:-false}"
+nginx_scope="${AXELIO_NGINX_SCOPE:-production}"
 
 resolve_path() {
   if command -v realpath >/dev/null 2>&1; then
@@ -48,6 +49,14 @@ command -v "${nginx_bin}" >/dev/null 2>&1 || {
   echo "NGINX_ACTIVATE_DRY_RUN must be true or false" >&2
   exit 2
 }
+case "${nginx_scope}" in
+  production) domain_pattern='(app|api)\.axelio\.ru' ;;
+  development) domain_pattern='(app|api)-dev\.axelio\.ru' ;;
+  *)
+    echo "AXELIO_NGINX_SCOPE must be production or development" >&2
+    exit 2
+    ;;
+esac
 
 allowed_root="$(resolve_path "${allowed_root}")"
 targets=()
@@ -62,7 +71,7 @@ while IFS= read -r -d '' candidate; do
       exit 1
       ;;
   esac
-  grep -Eq 'server_name[[:space:]][^;]*(app\.axelio\.ru|api\.axelio\.ru)([[:space:]]|;)' "${target}" || continue
+  grep -Eq "server_name[[:space:]][^;]*${domain_pattern}([[:space:]]|;)" "${target}" || continue
   [[ "$(count_include "${target}" "${security_include}")" -gt 0 ]] || continue
 
   duplicate=false
@@ -81,7 +90,7 @@ while IFS= read -r -d '' candidate; do
 done < <(find "${sites_root}" -maxdepth 1 \( -type f -o -type l \) -print0)
 
 [[ "${target_count}" -gt 0 ]] || {
-  echo "No active production Axelio Nginx config with the security snippet was found" >&2
+  echo "No active ${nginx_scope} Axelio Nginx config with the security snippet was found" >&2
   exit 1
 }
 

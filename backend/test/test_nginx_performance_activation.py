@@ -40,7 +40,13 @@ class NginxPerformanceActivationTests(TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def environment(self, nginx_bin: str, *, dry_run: bool = False) -> dict[str, str]:
+    def environment(
+        self,
+        nginx_bin: str,
+        *,
+        dry_run: bool = False,
+        scope: str = "production",
+    ) -> dict[str, str]:
         environment = {
             **os.environ,
             "NGINX_SITES_ROOT": str(self.enabled),
@@ -49,6 +55,7 @@ class NginxPerformanceActivationTests(TestCase):
             "AXELIO_PERFORMANCE_INCLUDE": str(self.performance),
             "NGINX_BACKUP_ROOT": str(self.backups),
             "NGINX_BIN": nginx_bin,
+            "AXELIO_NGINX_SCOPE": scope,
         }
         if dry_run:
             environment["NGINX_ACTIVATE_DRY_RUN"] = "true"
@@ -60,12 +67,13 @@ class NginxPerformanceActivationTests(TestCase):
         *,
         check: bool = True,
         dry_run: bool = False,
+        scope: str = "production",
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [str(ACTIVATOR)],
             check=check,
             capture_output=True,
-            env=self.environment(nginx_bin, dry_run=dry_run),
+            env=self.environment(nginx_bin, dry_run=dry_run, scope=scope),
             text=True,
         )
 
@@ -101,6 +109,24 @@ class NginxPerformanceActivationTests(TestCase):
         self.assertEqual(self.config.read_text(encoding="utf-8"), self.original)
         self.assertFalse(self.backups.exists())
         self.assertIn("activation is ready for 1 config file", result.stdout)
+
+    def test_development_scope_activates_only_dev_config(self):
+        true_bin = shutil.which("true")
+        self.assertIsNotNone(true_bin)
+        dev_config = self.available / "axelio-dev"
+        dev_config.write_text(
+            "server {\n"
+            "    server_name app-dev.axelio.ru api-dev.axelio.ru;\n"
+            f"    include {self.security};\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        (self.enabled / "axelio-dev").symlink_to(dev_config)
+
+        self.run_activator(str(true_bin), scope="development")
+
+        self.assertEqual(self.config.read_text(encoding="utf-8"), self.original)
+        self.assertIn(f"include {self.performance};", dev_config.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

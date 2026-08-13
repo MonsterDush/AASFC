@@ -281,7 +281,8 @@ jobs:
               RELEASE_SHA="${RELEASE_SHA}" \
               BACKUP_SCRIPT="${READINESS_TOOL_DIR}/postgres-backup.sh" \
               "${READINESS_TOOL_DIR}/production-readiness.sh"
-            sudo NGINX_ACTIVATE_DRY_RUN=true \
+            sudo AXELIO_NGINX_SCOPE=production \
+              NGINX_ACTIVATE_DRY_RUN=true \
               "${READINESS_TOOL_DIR}/activate-nginx-performance.sh"
 
   deploy:

@@ -142,10 +142,13 @@ install_monitoring_units() {
 }
 
 activate_nginx_performance() {
-  [[ "${ENV_NAME}" == "prod" ]] || return 0
   local activator="${repo_dir}/ops/nginx/activate-performance.sh"
+  local nginx_scope="development"
   [[ -x "${activator}" ]] || return 0
-  sudo "${activator}"
+  if [[ "${ENV_NAME}" == "prod" ]]; then
+    nginx_scope="production"
+  fi
+  sudo env AXELIO_NGINX_SCOPE="${nginx_scope}" "${activator}"
 }
 
 checkout_release() {

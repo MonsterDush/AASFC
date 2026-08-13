@@ -15,11 +15,12 @@ sudo install -D -m 0644 \
   /etc/nginx/snippets/axelio-performance.conf
 ```
 
-The first production release runs `activate-performance.sh`. It only edits
-active configuration files that contain `app.axelio.ru` or `api.axelio.ru` and
-already use the tracked security snippet. Before editing it creates a backup
-under `/var/backups/axelio/nginx`, refuses partial/ambiguous activation, and
-restores the original files if `nginx -t` fails.
+The first release in each environment runs `activate-performance.sh`. It only
+edits active configuration files for that release scope (`app/api.axelio.ru`
+in production or `app-dev/api-dev.axelio.ru` in development) that already use the
+tracked security snippet. Before editing it creates a backup under
+`/var/backups/axelio/nginx`, refuses partial/ambiguous activation, and restores
+the original files if `nginx -t` fails.
 
 The resulting lines inside every matched Axelio `server` block are:
 
