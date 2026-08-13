@@ -99,6 +99,7 @@ class MonitoringContractTests(TestCase):
             "METRICS_TOKEN",
             "axelio_build_info",
             "axelio-monitor-prod.service",
+            "journalctl -u axelio-monitor-prod.service",
             "test alert",
             "production recovered",
             "observability-drill-last-success.timestamp",
