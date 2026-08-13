@@ -41,7 +41,7 @@ class MetricsTests(TestCase):
             rendered = metrics.render_prometheus(db)
 
         for contract in (
-            'axelio_build_info{environment="development"',
+            f'axelio_build_info{{environment="{metrics.settings.APP_ENV}"',
             'axelio_http_requests_total{method="POST",route="/auth/login",status_class="4xx"} 1',
             "axelio_http_request_duration_seconds_bucket",
             'axelio_notification_jobs{status="failed"} 1',
