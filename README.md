@@ -40,8 +40,9 @@ uncaught JavaScript errors, and page performance budgets.
 
 ## Engineering guarantees
 
-Every pull request and push to `develop` or `main` runs compilation, targeted
-lint and formatting,  branch coverage, PostgreSQL migration round-trip,
+Every pull request and push to `develop` or `main` runs compilation,
+repository-wide correctness lint, critical-module formatting, branch coverage,
+PostgreSQL migration round-trip,
 dependency audits, frontend contracts, browser E2E, encrypted backup/restore,
 and source/per-page performance budgets. Production releases also require
 Sentry, encrypted offsite backup, Telegram alert recipients, post-deploy smoke,

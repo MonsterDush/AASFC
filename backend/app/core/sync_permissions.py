@@ -49,12 +49,6 @@ def sync_permissions() -> None:
 
         # --- defaults matrix rows ---
         # создаём отсутствующие строки (role, permission_code) со значением false
-        existing_defaults = set(
-            db.execute(
-                select(RolePermissionDefault.role, RolePermissionDefault.permission_code)
-            ).all()
-        )
-
         defaults_created = 0
         defaults_updated = 0
         existing_default_rows = {

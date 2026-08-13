@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
@@ -43,8 +44,6 @@ from app.services.financial_privacy import financial_visibility_payload, sanitiz
 
 
 router = APIRouter(tags=["me"])
-
-from pydantic import BaseModel, Field, field_validator
 
 class ProfileUpdateIn(BaseModel):
     full_name: str | None = Field(default=None, max_length=128)

@@ -140,17 +140,17 @@ def _build_dynamic_items(
     if kind == "PAYMENT":
         model = PaymentMethod
         value_kind = "PAYMENT"
-        extra = lambda obj: {}
     elif kind == "DEPT":
         model = Department
         value_kind = "DEPT"
-        extra = lambda obj: {}
     elif kind == "KPI":
         model = KpiMetric
         value_kind = "KPI"
-        extra = lambda obj: {"unit": getattr(obj, "unit", None)}
     else:
         raise ValueError("Bad kind")
+
+    def extra(obj) -> dict:
+        return {"unit": getattr(obj, "unit", None)} if kind == "KPI" else {}
 
     vals_by_ref = {int(v.ref_id): int(v.value_numeric or 0) for v in report_values if v.kind == value_kind}
     referenced_ids = set(vals_by_ref.keys())

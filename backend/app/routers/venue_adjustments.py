@@ -1,3 +1,5 @@
+import datetime as dt
+
 from fastapi import APIRouter
 
 from app.routers.venue_core import (
@@ -18,7 +20,6 @@ from app.routers.venue_core import (
     get_current_user,
     get_db,
     select,
-    status,
     timedelta,
     timezone,
 )
@@ -179,8 +180,6 @@ def create_adjustment(
     db.commit()
     db.refresh(obj)
     return {"id": obj.id}
-
-import datetime as dt
 
 class AdjustmentUpdateIn(BaseModel):
     type: Optional[str] = None          # "penalty" | "writeoff" | "bonus"
@@ -528,7 +527,8 @@ def list_disputes(
     if month:
         try:
             y, m = month.split("-")
-            y = int(y); m = int(m)
+            y = int(y)
+            m = int(m)
             start = date(y, m, 1)
             end = date(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1)
             stmt = stmt.where(Adjustment.date >= start, Adjustment.date < end)

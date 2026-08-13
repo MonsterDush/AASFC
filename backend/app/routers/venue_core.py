@@ -163,10 +163,6 @@ from app.services.billing import (
     list_billing_transactions,
     send_super_admin_billing_alert_once,
 )
-from app.settings import settings
-
-router = APIRouter(prefix="/venues", tags=["venues"])
-
 from app.routers.venue_common import _require_super_admin_or_moderator
 from app.routers.venue_membership_support import (
     _build_owner_summary_by_venue,
@@ -181,6 +177,8 @@ from app.schemas.venue_core import (
     VenueSettingsPatchIn,
     VenueUpdateIn,
 )
+
+router = APIRouter(prefix="/venues", tags=["venues"])
 
 
 @router.post("/self-service")
@@ -394,12 +392,8 @@ def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
     shift_comment_ids = select(ShiftComment.id).where(ShiftComment.shift_id.in_(shift_ids))
     shift_schedule_template_ids = select(ShiftScheduleTemplate.id).where(ShiftScheduleTemplate.venue_id == venue_id)
     report_ids = select(DailyReport.id).where(DailyReport.venue_id == venue_id)
-    adjustment_ids = select(Adjustment.id).where(Adjustment.venue_id == venue_id)
     dispute_ids = select(AdjustmentDispute.id).where(AdjustmentDispute.venue_id == venue_id)
-    expense_ids = select(Expense.id).where(Expense.venue_id == venue_id)
     recurring_rule_ids = select(RecurringExpenseRule.id).where(RecurringExpenseRule.venue_id == venue_id)
-    pay_profile_ids = select(PayProfile.id).where(PayProfile.venue_id == venue_id)
-    payroll_run_ids = select(PayrollRun.id).where(PayrollRun.venue_id == venue_id)
 
     counts: dict[str, int] = {}
 
