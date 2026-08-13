@@ -43,7 +43,9 @@ def _enqueue_adjustment_assigned_job(db: Session, *, venue_id: int, adjustment_i
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_ASSIGNED,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
+            NotificationJob.status.in_(
+                [_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]
+            ),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()
@@ -81,7 +83,9 @@ def _enqueue_adjustment_dispute_event_job(
         .where(
             NotificationJob.job_type == _NOTIFICATION_JOB_TYPE_ADJUSTMENT_DISPUTE_EVENT,
             NotificationJob.idempotency_key == idempotency_key,
-            NotificationJob.status.in_([_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]),
+            NotificationJob.status.in_(
+                [_NOTIFICATION_JOB_STATUS_PENDING, _NOTIFICATION_JOB_STATUS_PROCESSING, _NOTIFICATION_JOB_STATUS_SENT]
+            ),
         )
         .order_by(NotificationJob.id.desc())
     ).scalar_one_or_none()

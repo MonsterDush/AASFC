@@ -85,7 +85,9 @@ def parse_position_percent_map(tips_weights: Any) -> dict[str, dict[str, Any]]:
     return out
 
 
-def build_equal_tip_allocations(*, report_id: int, tips_total: int, assigned_user_ids: Iterable[int | None]) -> list[DailyReportTipAllocation]:
+def build_equal_tip_allocations(
+    *, report_id: int, tips_total: int, assigned_user_ids: Iterable[int | None]
+) -> list[DailyReportTipAllocation]:
     """Build equal tip allocations for unique assigned users.
 
     The remainder is distributed one-by-one to the first users in stable sorted order.

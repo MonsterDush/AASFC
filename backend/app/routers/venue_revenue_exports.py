@@ -111,7 +111,6 @@ def _parse_month_yyyy_mm(month: str) -> tuple[date, date]:
         raise HTTPException(status_code=400, detail="Bad month format, expected YYYY-MM")
 
 
-
 def _resolve_period(month: str | None, date_from: date | None, date_to: date | None) -> tuple[date, date]:
     """Resolve requested period.
 
@@ -138,6 +137,8 @@ def _resolve_period(month: str | None, date_from: date | None, date_to: date | N
     today = date.today()
     last_day = calendar.monthrange(today.year, today.month)[1]
     return date(today.year, today.month, 1), date(today.year, today.month, last_day)
+
+
 def _revenue_kind_and_catalog(mode: str):
     mm = (mode or "").upper().strip()
     if mm == "PAYMENTS":
@@ -195,7 +196,9 @@ def _safe_export_venue_slug(venue_name: str, venue_id: int) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "_", venue_name).strip("_") or f"venue_{venue_id}"
 
 
-def _build_revenue_export_details(*, db: Session, venue_id: int, period_start: date, period_end: date) -> tuple[list[dict], list[dict]]:
+def _build_revenue_export_details(
+    *, db: Session, venue_id: int, period_start: date, period_end: date
+) -> tuple[list[dict], list[dict]]:
     report_rows = db.execute(
         select(DailyReport, User)
         .outerjoin(User, User.id == DailyReport.closed_by_user_id)
@@ -217,20 +220,30 @@ def _build_revenue_export_details(*, db: Session, venue_id: int, period_start: d
                 select(DailyReportValue)
                 .where(DailyReportValue.report_id.in_(report_ids))
                 .order_by(DailyReportValue.report_id.asc(), DailyReportValue.kind.asc(), DailyReportValue.ref_id.asc())
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
 
     payment_map = {
         int(row[0]): {"code": row[1], "title": row[2]}
-        for row in db.execute(select(PaymentMethod.id, PaymentMethod.code, PaymentMethod.title).where(PaymentMethod.venue_id == int(venue_id))).all()
+        for row in db.execute(
+            select(PaymentMethod.id, PaymentMethod.code, PaymentMethod.title).where(
+                PaymentMethod.venue_id == int(venue_id)
+            )
+        ).all()
     }
     department_map = {
         int(row[0]): {"code": row[1], "title": row[2]}
-        for row in db.execute(select(Department.id, Department.code, Department.title).where(Department.venue_id == int(venue_id))).all()
+        for row in db.execute(
+            select(Department.id, Department.code, Department.title).where(Department.venue_id == int(venue_id))
+        ).all()
     }
     kpi_map = {
         int(row[0]): {"code": row[1], "title": row[2]}
-        for row in db.execute(select(KpiMetric.id, KpiMetric.code, KpiMetric.title).where(KpiMetric.venue_id == int(venue_id))).all()
+        for row in db.execute(
+            select(KpiMetric.id, KpiMetric.code, KpiMetric.title).where(KpiMetric.venue_id == int(venue_id))
+        ).all()
     }
     catalog_by_kind = {
         "PAYMENT": payment_map,
@@ -248,10 +261,16 @@ def _build_revenue_export_details(*, db: Session, venue_id: int, period_start: d
         report_values = values_by_report.get(int(report.id), [])
         payments_total_minor = sum(int(v.value_numeric or 0) for v in report_values if v.kind == "PAYMENT") * 100
         departments_total_minor = sum(int(v.value_numeric or 0) for v in report_values if v.kind == "DEPT") * 100
-        discrepancy_minor = payments_total_minor - departments_total_minor if payments_total_minor and departments_total_minor else 0
+        discrepancy_minor = (
+            payments_total_minor - departments_total_minor if payments_total_minor and departments_total_minor else 0
+        )
         closed_by_label = None
         if closed_by is not None:
-            closed_by_label = closed_by.short_name or closed_by.full_name or (f"@{closed_by.tg_username}" if closed_by.tg_username else f"user #{closed_by.id}")
+            closed_by_label = (
+                closed_by.short_name
+                or closed_by.full_name
+                or (f"@{closed_by.tg_username}" if closed_by.tg_username else f"user #{closed_by.id}")
+            )
 
         details_rows.append(
             {
@@ -319,9 +338,17 @@ def _load_expenses_for_export(
         period_end = recognized_month.replace(day=last_day)
         stmt = stmt.outerjoin(ExpenseAllocation, ExpenseAllocation.expense_id == Expense.id).where(
             (ExpenseAllocation.month == recognized_month)
-            | ((Expense.expense_kind == 'PAYROLL') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
-            | ((Expense.status != 'CONFIRMED') & (Expense.generated_for_month == recognized_month))
-            | ((Expense.status != 'CONFIRMED') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
+            | (
+                (Expense.expense_kind == "PAYROLL")
+                & (Expense.expense_date >= period_start)
+                & (Expense.expense_date <= period_end)
+            )
+            | ((Expense.status != "CONFIRMED") & (Expense.generated_for_month == recognized_month))
+            | (
+                (Expense.status != "CONFIRMED")
+                & (Expense.expense_date >= period_start)
+                & (Expense.expense_date <= period_end)
+            )
         )
 
     if category_id is not None:
@@ -334,25 +361,38 @@ def _load_expenses_for_export(
     rows = db.execute(stmt.distinct().order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
     status_filter = _parse_expense_statuses_filter(statuses)
     if status_filter:
-        rows = [row for row in rows if str(getattr(row[0], 'status', 'DRAFT') or 'DRAFT').upper() in status_filter]
+        rows = [row for row in rows if str(getattr(row[0], "status", "DRAFT") or "DRAFT").upper() in status_filter]
 
     payload_rows: list[dict] = []
     for expense, category, supplier, payment_method in rows:
         allocations = list_expense_allocations(db=db, expense_id=expense.id)
-        recognized_allocations = [a for a in allocations if recognized_month is not None and a.month == recognized_month]
+        recognized_allocations = [
+            a for a in allocations if recognized_month is not None and a.month == recognized_month
+        ]
         payload = _serialize_expense(expense, category, supplier, payment_method, allocations)
         if base_url:
             for attachment_payload in payload.get("attachments") or []:
                 try:
                     attachment_id = int(attachment_payload.get("id") or 0)
-                    attachment_obj = next((a for a in getattr(expense, "attachments", []) if int(getattr(a, "id", 0) or 0) == attachment_id), None)
+                    attachment_obj = next(
+                        (
+                            a
+                            for a in getattr(expense, "attachments", [])
+                            if int(getattr(a, "id", 0) or 0) == attachment_id
+                        ),
+                        None,
+                    )
                     if attachment_obj is None:
-                        attachment_obj = _get_expense_attachment_or_404(db, venue_id=venue_id, expense_id=int(expense.id), attachment_id=attachment_id)
+                        attachment_obj = _get_expense_attachment_or_404(
+                            db, venue_id=venue_id, expense_id=int(expense.id), attachment_id=attachment_id
+                        )
                     attachment_payload["download_url"] = _expense_attachment_signed_url(base_url, attachment_obj)
                 except Exception:
                     pass
         payload["recognized_allocations"] = [_serialize_expense_allocation(a) for a in recognized_allocations]
-        payload["recognized_amount_minor_for_month"] = int(sum(int(a.amount_minor or 0) for a in recognized_allocations))
+        payload["recognized_amount_minor_for_month"] = int(
+            sum(int(a.amount_minor or 0) for a in recognized_allocations)
+        )
         payload_rows.append(payload)
     return payload_rows
 
@@ -384,9 +424,18 @@ def get_revenue_summary(
     return sanitize_financial_payload_for_user(user, summary)
 
 
-
-
-def _build_revenue_export_response(*, venue_id: int, month: str | None, date_from: date | None, date_to: date | None, mode: str, fmt: str, db: Session, user: User | None = None, base_url: str | None = None):
+def _build_revenue_export_response(
+    *,
+    venue_id: int,
+    month: str | None,
+    date_from: date | None,
+    date_to: date | None,
+    mode: str,
+    fmt: str,
+    db: Session,
+    user: User | None = None,
+    base_url: str | None = None,
+):
     """Build streaming export response.
 
     If user is provided, permissions are checked before export.
@@ -398,7 +447,9 @@ def _build_revenue_export_response(*, venue_id: int, month: str | None, date_fro
         _require_revenue_exporter(db, venue_id=venue_id, user=user)
         _require_financial_values_export_allowed(user)
 
-    summary = _compute_revenue_summary(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db)
+    summary = _compute_revenue_summary(
+        venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, mode=mode, db=db
+    )
     venue_name = _load_export_venue_name(db, venue_id=venue_id)
 
     mode_label = "payments" if summary["mode"] == "PAYMENTS" else "departments"
@@ -419,10 +470,7 @@ def _build_revenue_export_response(*, venue_id: int, month: str | None, date_fro
             BytesIO(content.encode("utf-8-sig")),
             media_type="text/csv; charset=utf-8",
             headers={
-                "Content-Disposition": (
-                    f'attachment; filename="{filename}"; '
-                    f"filename*=UTF-8''{quote(filename)}"
-                )
+                "Content-Disposition": (f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}")
             },
         )
 
@@ -446,12 +494,7 @@ def _build_revenue_export_response(*, venue_id: int, month: str | None, date_fro
     return StreamingResponse(
         BytesIO(xlsx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": (
-                f'attachment; filename="{filename}"; '
-                f"filename*=UTF-8''{quote(filename)}"
-            )
-        },
+        headers={"Content-Disposition": (f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}")},
     )
 
 
@@ -506,7 +549,7 @@ def get_revenue_export_link(
     return {
         "export_path": export_path,
         "export_link": f"{base}{export_path}",
-        "expires_in": int(getattr(settings, 'EXPORT_LINK_TTL_SECONDS', 600) or 600),
+        "expires_in": int(getattr(settings, "EXPORT_LINK_TTL_SECONDS", 600) or 600),
     }
 
 
@@ -575,8 +618,18 @@ def export_revenue(
     )
 
 
-
-def _build_expenses_export_response(*, venue_id: int, month: str | None, category_id: int | None, supplier_id: int | None, statuses: str | None, expense_kind: str | None = None, db: Session, user: User | None = None, base_url: str | None = None):
+def _build_expenses_export_response(
+    *,
+    venue_id: int,
+    month: str | None,
+    category_id: int | None,
+    supplier_id: int | None,
+    statuses: str | None,
+    expense_kind: str | None = None,
+    db: Session,
+    user: User | None = None,
+    base_url: str | None = None,
+):
     if user is not None:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
         _require_financial_values_export_allowed(user)
@@ -605,12 +658,7 @@ def _build_expenses_export_response(*, venue_id: int, month: str | None, categor
     return StreamingResponse(
         BytesIO(xlsx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": (
-                f'attachment; filename="{filename}"; '
-                f"filename*=UTF-8''{quote(filename)}"
-            )
-        },
+        headers={"Content-Disposition": (f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}")},
     )
 
 
@@ -628,16 +676,18 @@ def get_expenses_export_link(
 ):
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
     _require_financial_values_export_allowed(user)
-    token = make_signed_token({
-        "action": "expenses_export",
-        "venue_id": int(venue_id),
-        "month": month or None,
-        "category_id": int(category_id) if category_id is not None else None,
-        "supplier_id": int(supplier_id) if supplier_id is not None else None,
-        "statuses": statuses or None,
-        "expense_kind": expense_kind or None,
-        "user_id": int(user.id),
-    })
+    token = make_signed_token(
+        {
+            "action": "expenses_export",
+            "venue_id": int(venue_id),
+            "month": month or None,
+            "category_id": int(category_id) if category_id is not None else None,
+            "supplier_id": int(supplier_id) if supplier_id is not None else None,
+            "statuses": statuses or None,
+            "expense_kind": expense_kind or None,
+            "user_id": int(user.id),
+        }
+    )
 
     q = []
     if month:
@@ -657,7 +707,7 @@ def get_expenses_export_link(
     return {
         "export_path": export_path,
         "export_link": f"{base}{export_path}",
-        "expires_in": int(getattr(settings, 'EXPORT_LINK_TTL_SECONDS', 600) or 600),
+        "expires_in": int(getattr(settings, "EXPORT_LINK_TTL_SECONDS", 600) or 600),
     }
 
 
@@ -738,7 +788,7 @@ def _build_monthly_summary_export_response(
         month=month,
         date_from=date_from,
         date_to=date_to,
-        income_mode='PAYMENTS',
+        income_mode="PAYMENTS",
     )
     departments_summary = get_monthly_finance_summary(
         db=db,
@@ -746,7 +796,7 @@ def _build_monthly_summary_export_response(
         month=month,
         date_from=date_from,
         date_to=date_to,
-        income_mode='DEPARTMENTS',
+        income_mode="DEPARTMENTS",
     )
     period_start = payments_summary.get("period_start")
     period_end = payments_summary.get("period_end")
@@ -763,12 +813,7 @@ def _build_monthly_summary_export_response(
     return StreamingResponse(
         BytesIO(xlsx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": (
-                f'attachment; filename="{filename}"; '
-                f"filename*=UTF-8''{quote(filename)}"
-            )
-        },
+        headers={"Content-Disposition": (f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}")},
     )
 
 
@@ -786,14 +831,16 @@ def get_monthly_summary_export_link(
     _require_revenue_viewer(db, venue_id=venue_id, user=user)
     _require_report_viewer(db, venue_id=venue_id, user=user)
     _require_financial_values_export_allowed(user)
-    token = make_signed_token({
-        "action": "monthly_summary_export",
-        "venue_id": int(venue_id),
-        "month": month or None,
-        "date_from": date_from.isoformat() if date_from else None,
-        "date_to": date_to.isoformat() if date_to else None,
-        "user_id": int(user.id),
-    })
+    token = make_signed_token(
+        {
+            "action": "monthly_summary_export",
+            "venue_id": int(venue_id),
+            "month": month or None,
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+            "user_id": int(user.id),
+        }
+    )
     q = []
     if month:
         q.append(f"month={quote(month)}")
@@ -807,7 +854,7 @@ def get_monthly_summary_export_link(
     return {
         "export_path": export_path,
         "export_link": f"{base}{export_path}",
-        "expires_in": int(getattr(settings, 'EXPORT_LINK_TTL_SECONDS', 600) or 600),
+        "expires_in": int(getattr(settings, "EXPORT_LINK_TTL_SECONDS", 600) or 600),
     }
 
 
@@ -826,7 +873,9 @@ def export_monthly_summary(
             payload = verify_signed_token(token)
         except Exception:
             raise HTTPException(status_code=401, detail="Invalid export token")
-        if str(payload.get("action") or "") != "monthly_summary_export" or int(payload.get("venue_id") or 0) != int(venue_id):
+        if str(payload.get("action") or "") != "monthly_summary_export" or int(payload.get("venue_id") or 0) != int(
+            venue_id
+        ):
             raise HTTPException(status_code=401, detail="Invalid export token")
         month = payload.get("month") or None
         raw_date_from = payload.get("date_from") or None
@@ -834,11 +883,15 @@ def export_monthly_summary(
         date_from = date.fromisoformat(raw_date_from) if raw_date_from else None
         date_to = date.fromisoformat(raw_date_to) if raw_date_to else None
         _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
-        return _build_monthly_summary_export_response(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=None)
+        return _build_monthly_summary_export_response(
+            venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=None
+        )
 
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return _build_monthly_summary_export_response(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=user)
+    return _build_monthly_summary_export_response(
+        venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=user
+    )
 
 
 def _build_payroll_export_response(
@@ -883,12 +936,7 @@ def _build_payroll_export_response(
     return StreamingResponse(
         BytesIO(xlsx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": (
-                f'attachment; filename="{filename}"; '
-                f"filename*=UTF-8''{quote(filename)}"
-            )
-        },
+        headers={"Content-Disposition": (f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}")},
     )
 
 
@@ -908,14 +956,16 @@ def get_payroll_export_link(
         resolve_salary_period(month=month, date_from=date_from, date_to=date_to)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    token = make_signed_token({
-        "action": "payroll_export",
-        "venue_id": int(venue_id),
-        "month": month or None,
-        "date_from": date_from.isoformat() if date_from else None,
-        "date_to": date_to.isoformat() if date_to else None,
-        "user_id": int(user.id),
-    })
+    token = make_signed_token(
+        {
+            "action": "payroll_export",
+            "venue_id": int(venue_id),
+            "month": month or None,
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+            "user_id": int(user.id),
+        }
+    )
     q: list[str] = []
     if month:
         q.append(f"month={quote(month)}")
@@ -929,7 +979,7 @@ def get_payroll_export_link(
     return {
         "export_path": export_path,
         "export_link": f"{base}{export_path}",
-        "expires_in": int(getattr(settings, 'EXPORT_LINK_TTL_SECONDS', 600) or 600),
+        "expires_in": int(getattr(settings, "EXPORT_LINK_TTL_SECONDS", 600) or 600),
     }
 
 
@@ -956,8 +1006,12 @@ def export_payroll(
         date_from = date.fromisoformat(raw_date_from) if raw_date_from else None
         date_to = date.fromisoformat(raw_date_to) if raw_date_to else None
         _require_financial_values_export_allowed(_load_user_for_signed_export(db, payload))
-        return _build_payroll_export_response(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=None)
+        return _build_payroll_export_response(
+            venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=None
+        )
 
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return _build_payroll_export_response(venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=user)
+    return _build_payroll_export_response(
+        venue_id=venue_id, month=month, date_from=date_from, date_to=date_to, db=db, user=user
+    )

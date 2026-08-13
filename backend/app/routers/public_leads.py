@@ -28,13 +28,23 @@ class PublicLeadIn(BaseModel):
     submittedAt: str | None = Field(default=None, max_length=64)
     publicSiteKey: str | None = Field(default=None, max_length=120)
 
-    @field_validator("name", "phone", "venue", "message", "source", "page", "userAgent", "submittedAt", "publicSiteKey", mode="before")
+    @field_validator(
+        "name",
+        "phone",
+        "venue",
+        "message",
+        "source",
+        "page",
+        "userAgent",
+        "submittedAt",
+        "publicSiteKey",
+        mode="before",
+    )
     @classmethod
     def _strip_values(cls, value):
         if value is None:
             return None
         return str(value).strip()
-
 
 
 def _mask_key(value: str | None) -> str | None:
@@ -46,20 +56,15 @@ def _mask_key(value: str | None) -> str | None:
     return raw[:3] + "***" + raw[-2:]
 
 
-
 def _collect_super_admin_chat_ids(db: Session) -> list[int]:
     ids = set(int(x) for x in settings.super_admin_ids())
     rows = (
-        db.query(User.tg_user_id)
-        .filter(User.system_role == "SUPER_ADMIN")
-        .filter(User.tg_user_id.is_not(None))
-        .all()
+        db.query(User.tg_user_id).filter(User.system_role == "SUPER_ADMIN").filter(User.tg_user_id.is_not(None)).all()
     )
     for (tg_user_id,) in rows:
         if tg_user_id:
             ids.add(int(tg_user_id))
     return sorted(ids)
-
 
 
 def _format_lead_message(payload: PublicLeadIn, request: Request) -> str:

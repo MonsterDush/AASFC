@@ -108,17 +108,23 @@ class TelegramNotificationRegressionTests(TestCase):
                 button_text="Открыть",
             ),
             {
-                "inline_keyboard": [[{
-                    "text": "Открыть",
-                    "web_app": {"url": "https://app.axelio.example/staff-adjustments.html"},
-                }]],
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "Открыть",
+                            "web_app": {"url": "https://app.axelio.example/staff-adjustments.html"},
+                        }
+                    ]
+                ],
             },
         )
 
     def test_existing_delivery_is_an_idempotent_success(self):
         recipient = SimpleNamespace(id=11, tg_user_id=416573580)
-        with patch.object(venue_notification_common, "lock_notification_idempotency_key"), \
-             patch.object(venue_notification_common, "notification_delivery_exists", return_value=True):
+        with (
+            patch.object(venue_notification_common, "lock_notification_idempotency_key"),
+            patch.object(venue_notification_common, "notification_delivery_exists", return_value=True),
+        ):
             result = venue_notification_common._deliver_user_notification(
                 SimpleNamespace(),
                 notification_type="adjustment_assigned",

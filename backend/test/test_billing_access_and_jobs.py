@@ -43,8 +43,10 @@ class BillingAccessTests(TestCase):
         fake_db = _FakeSession(member_role=None)
         user = SimpleNamespace(id=10, system_role="NONE")
 
-        with patch.object(me, "get_venue_billing_snapshot") as get_snapshot, \
-             patch.object(me, "build_setup_summary") as build_summary:
+        with (
+            patch.object(me, "get_venue_billing_snapshot") as get_snapshot,
+            patch.object(me, "build_setup_summary") as build_summary,
+        ):
             with self.assertRaises(HTTPException) as raised:
                 me.my_venue_permissions(venue_id=999_999, db=fake_db, user=user)
 
@@ -63,7 +65,10 @@ class BillingAccessTests(TestCase):
             grace_until=now + timedelta(days=2),
             status="ACTIVE",
         )
-        with patch.object(access, "get_or_create_billing_state", return_value=state), patch.object(access, "utcnow", return_value=now):
+        with (
+            patch.object(access, "get_or_create_billing_state", return_value=state),
+            patch.object(access, "utcnow", return_value=now),
+        ):
             payload = access.get_user_billing_access(fake_db, venue_id=55, user=user, membership_role="OWNER")
         self.assertEqual(payload["billing_status"], "GRACE")
         self.assertEqual(payload["billing_access_mode"], access.BILLING_ACCESS_READONLY)
@@ -78,7 +83,10 @@ class BillingAccessTests(TestCase):
             grace_until=now + timedelta(days=1),
             status="ACTIVE",
         )
-        with patch.object(access, "get_or_create_billing_state", return_value=state), patch.object(access, "utcnow", return_value=now):
+        with (
+            patch.object(access, "get_or_create_billing_state", return_value=state),
+            patch.object(access, "utcnow", return_value=now),
+        ):
             payload = access.get_user_billing_access(fake_db, venue_id=99, user=user, membership_role="STAFF")
         self.assertEqual(payload["billing_status"], "GRACE")
         self.assertEqual(payload["billing_access_mode"], access.BILLING_ACCESS_DENIED)
@@ -99,10 +107,13 @@ class BillingAccessTests(TestCase):
             status="EXPIRED",
             provider="TRIAL",
         )
-        with patch.object(access, "get_or_create_billing_state", return_value=state), patch.object(
-            access,
-            "utcnow",
-            return_value=now,
+        with (
+            patch.object(access, "get_or_create_billing_state", return_value=state),
+            patch.object(
+                access,
+                "utcnow",
+                return_value=now,
+            ),
         ):
             payload = access.get_user_billing_access(fake_db, venue_id=99, user=user, membership_role="STAFF")
 
@@ -166,7 +177,10 @@ class BillingJobsTests(TestCase):
         )
         target_paid_until = now - timedelta(days=10)
 
-        with patch.object(manager, "utcnow", return_value=now), patch.object(manager, "get_or_create_billing_state", return_value=state):
+        with (
+            patch.object(manager, "utcnow", return_value=now),
+            patch.object(manager, "get_or_create_billing_state", return_value=state),
+        ):
             state_after, tx, event = manager.set_venue_billing_paid_until(
                 fake_db,
                 venue_id=123,

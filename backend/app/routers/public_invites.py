@@ -37,10 +37,5 @@ def accept_public_invite(token: str, db: Session = Depends(get_db), user: User =
             raise HTTPException(status_code=404, detail=detail)
         raise HTTPException(status_code=400, detail=detail)
 
-    inv = (
-        db.query(VenueInvite)
-        .options(joinedload(VenueInvite.venue))
-        .filter(VenueInvite.id == inv.id)
-        .one()
-    )
+    inv = db.query(VenueInvite).options(joinedload(VenueInvite.venue)).filter(VenueInvite.id == inv.id).one()
     return {"ok": True, "invite": build_public_invite_payload(inv), "venue_id": inv.venue_id}

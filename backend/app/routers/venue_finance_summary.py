@@ -154,7 +154,6 @@ def get_venue_day_finance_summary(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-
 @router.get("/{venue_id}/finance/summary", response_model=FinanceSummaryOut)
 def get_venue_finance_summary(
     venue_id: int,

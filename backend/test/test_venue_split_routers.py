@@ -43,29 +43,41 @@ class VenueFinanceSummaryRouterTests(TestCase):
         user = SimpleNamespace(id=17)
         target_date = date(2026, 7, 18)
 
-        with patch.object(venue_finance_summary, "_require_active_member_or_admin") as active, \
-             patch.object(venue_finance_summary, "_require_revenue_viewer") as revenue, \
-             patch.object(venue_finance_summary, "_require_report_viewer") as reports, \
-             patch.object(venue_finance_summary, "_finance_summary_access", return_value={
-                 "can_view_revenue": True,
-                 "can_view_expenses": True,
-                 "can_view_payroll": True,
-                 "can_view_profit": True,
-             }), \
-             patch.object(venue_finance_summary, "_restrict_finance_summary_payload", side_effect=lambda payload, access: payload), \
-             patch.object(venue_finance_summary, "get_monthly_finance_summary", return_value={"kind": "monthly"}), \
-             patch.object(venue_finance_summary, "get_day_finance_summary", return_value={"kind": "daily"}), \
-             patch.object(venue_finance_summary, "get_finance_summary", return_value={"kind": "finance"}) as finance_summary, \
-             patch.object(venue_finance_summary, "sanitize_financial_payload_for_user", side_effect=lambda current_user, payload: payload):
+        with (
+            patch.object(venue_finance_summary, "_require_active_member_or_admin") as active,
+            patch.object(venue_finance_summary, "_require_revenue_viewer") as revenue,
+            patch.object(venue_finance_summary, "_require_report_viewer") as reports,
+            patch.object(
+                venue_finance_summary,
+                "_finance_summary_access",
+                return_value={
+                    "can_view_revenue": True,
+                    "can_view_expenses": True,
+                    "can_view_payroll": True,
+                    "can_view_profit": True,
+                },
+            ),
+            patch.object(
+                venue_finance_summary, "_restrict_finance_summary_payload", side_effect=lambda payload, access: payload
+            ),
+            patch.object(venue_finance_summary, "get_monthly_finance_summary", return_value={"kind": "monthly"}),
+            patch.object(venue_finance_summary, "get_day_finance_summary", return_value={"kind": "daily"}),
+            patch.object(
+                venue_finance_summary, "get_finance_summary", return_value={"kind": "finance"}
+            ) as finance_summary,
+            patch.object(
+                venue_finance_summary,
+                "sanitize_financial_payload_for_user",
+                side_effect=lambda current_user, payload: payload,
+            ),
+        ):
             monthly = venue_finance_summary.get_venue_monthly_finance_summary(
                 5, "2026-07", None, None, "PAYMENTS", db, user
             )
             daily = venue_finance_summary.get_venue_day_finance_summary(
                 5, target_date, "DEPARTMENTS", db, user, "NIGHT"
             )
-            finance = venue_finance_summary.get_venue_finance_summary(
-                5, "2026-07", None, None, db, user
-            )
+            finance = venue_finance_summary.get_venue_finance_summary(5, "2026-07", None, None, db, user)
 
         self.assertEqual(monthly, {"kind": "monthly"})
         self.assertEqual(daily, {"kind": "daily"})
@@ -90,28 +102,33 @@ class VenueFinanceSummaryRouterTests(TestCase):
             "expense_ratio_bps": 2400,
             "payroll_ratio_bps": 1600,
             "total_cost_ratio_bps": 4000,
-            "daily_series": [{
-                "date": date(2026, 7, 18),
-                "revenue_minor": 500_000,
-                "expense_minor": 120_000,
-                "payroll_minor": 80_000,
-                "total_cost_minor": 200_000,
-                "adjustments_minor": 10_000,
-                "refunds_minor": -5_000,
-                "profit_minor": 305_000,
-            }],
+            "daily_series": [
+                {
+                    "date": date(2026, 7, 18),
+                    "revenue_minor": 500_000,
+                    "expense_minor": 120_000,
+                    "payroll_minor": 80_000,
+                    "total_cost_minor": 200_000,
+                    "adjustments_minor": 10_000,
+                    "refunds_minor": -5_000,
+                    "profit_minor": 305_000,
+                }
+            ],
             "cost_structure": [
                 {"key": "expense:1", "title": "Закупка", "amount_minor": 120_000},
                 {"key": "payroll", "title": "ФОТ", "amount_minor": 80_000},
             ],
         }
 
-        restricted = venue_finance_summary._restrict_finance_summary_payload(payload, {
-            "can_view_revenue": True,
-            "can_view_expenses": False,
-            "can_view_payroll": False,
-            "can_view_profit": False,
-        })
+        restricted = venue_finance_summary._restrict_finance_summary_payload(
+            payload,
+            {
+                "can_view_revenue": True,
+                "can_view_expenses": False,
+                "can_view_payroll": False,
+                "can_view_profit": False,
+            },
+        )
 
         self.assertEqual(restricted["revenue_minor"], 500_000)
         self.assertIsNone(restricted["expense_minor"])
@@ -123,12 +140,14 @@ class VenueFinanceSummaryRouterTests(TestCase):
         self.assertEqual(restricted["cost_structure"], [])
 
     def test_finance_summary_access_supports_expense_only_without_exposing_profit(self):
-        with patch.object(venue_finance_summary, "_is_owner_or_super_admin", return_value=False), \
-             patch.object(
-                 venue_finance_summary,
-                 "has_venue_permission",
-                 side_effect=lambda db, *, venue_id, user, permission_code: permission_code == "EXPENSE_VIEW",
-             ):
+        with (
+            patch.object(venue_finance_summary, "_is_owner_or_super_admin", return_value=False),
+            patch.object(
+                venue_finance_summary,
+                "has_venue_permission",
+                side_effect=lambda db, *, venue_id, user, permission_code: permission_code == "EXPENSE_VIEW",
+            ),
+        ):
             access = venue_finance_summary._finance_summary_access(
                 SimpleNamespace(),
                 venue_id=5,
@@ -147,9 +166,13 @@ class VenueLedgerRouterTests(TestCase):
         adjustment_db = SimpleNamespace(execute=Mock(return_value=SimpleNamespace(all=lambda: [])))
         transfer_db = SimpleNamespace(execute=Mock(return_value=SimpleNamespace(all=lambda: [])))
 
-        with patch.object(venue_ledger, "_require_active_member_or_admin"), \
-             patch.object(venue_ledger, "_require_finance_ledger_view"), \
-             patch.object(venue_ledger, "sanitize_financial_payload_for_user", side_effect=lambda current_user, payload: payload):
+        with (
+            patch.object(venue_ledger, "_require_active_member_or_admin"),
+            patch.object(venue_ledger, "_require_finance_ledger_view"),
+            patch.object(
+                venue_ledger, "sanitize_financial_payload_for_user", side_effect=lambda current_user, payload: payload
+            ),
+        ):
             self.assertEqual(
                 venue_ledger.list_balance_adjustments(
                     5,
@@ -215,9 +238,7 @@ class VenueLedgerRouterTests(TestCase):
             ),
             (date(2026, 6, 15), date(2026, 6, 21)),
         )
-        self.assertIsNone(
-            venue_ledger._resolve_ledger_period(month=None, date_from=None, date_to=None)
-        )
+        self.assertIsNone(venue_ledger._resolve_ledger_period(month=None, date_from=None, date_to=None))
 
     def test_ledger_period_rejects_mixed_month_and_dates(self):
         with self.assertRaises(HTTPException) as raised:
@@ -284,12 +305,16 @@ class VenuePayrollRouterTests(TestCase):
         user = SimpleNamespace(id=17)
         payload = PayrollCalculateIn(month="2026-07")
 
-        with patch.object(venue_payroll, "_require_active_member_or_admin"), \
-             patch.object(venue_payroll, "_require_payroll_calculate"), \
-             patch.object(venue_payroll, "calculate_payroll_for_month") as calculate, \
-             patch.object(venue_payroll, "_create_payroll_recalculation_log") as create_log, \
-             patch.object(venue_payroll, "_load_payroll_payload", return_value={"month": "2026-07"}), \
-             patch.object(venue_payroll, "sanitize_financial_payload_for_user", side_effect=lambda current_user, result: result):
+        with (
+            patch.object(venue_payroll, "_require_active_member_or_admin"),
+            patch.object(venue_payroll, "_require_payroll_calculate"),
+            patch.object(venue_payroll, "calculate_payroll_for_month") as calculate,
+            patch.object(venue_payroll, "_create_payroll_recalculation_log") as create_log,
+            patch.object(venue_payroll, "_load_payroll_payload", return_value={"month": "2026-07"}),
+            patch.object(
+                venue_payroll, "sanitize_financial_payload_for_user", side_effect=lambda current_user, result: result
+            ),
+        ):
             result = venue_payroll.calculate_payroll(5, payload, db, user)
 
         self.assertEqual(result, {"month": "2026-07"})
@@ -327,14 +352,20 @@ class VenuePeopleRouterTests(TestCase):
         db = SimpleNamespace()
         user = SimpleNamespace(id=17)
 
-        with patch.object(venue_positions, "_require_active_member_or_admin"), \
-             patch.object(venue_positions, "_is_owner_or_super_admin", return_value=True), \
-             patch.object(venue_positions, "_load_position_presets_from_setup", return_value=[{"code": "bar"}]) as load_presets:
+        with (
+            patch.object(venue_positions, "_require_active_member_or_admin"),
+            patch.object(venue_positions, "_is_owner_or_super_admin", return_value=True),
+            patch.object(
+                venue_positions, "_load_position_presets_from_setup", return_value=[{"code": "bar"}]
+            ) as load_presets,
+        ):
             presets = venue_positions.list_position_presets(5, False, db, user)
 
-        with patch.object(venue_pay_profiles, "_require_active_member_or_admin"), \
-             patch.object(venue_pay_profiles, "_require_pay_profiles_view"), \
-             patch.object(venue_pay_profiles, "_load_pay_profile_detail", return_value={"id": 3}) as load_profile:
+        with (
+            patch.object(venue_pay_profiles, "_require_active_member_or_admin"),
+            patch.object(venue_pay_profiles, "_require_pay_profiles_view"),
+            patch.object(venue_pay_profiles, "_load_pay_profile_detail", return_value={"id": 3}) as load_profile,
+        ):
             profile = venue_pay_profiles.get_pay_profile(5, 3, db, user)
 
         self.assertEqual(presets, {"items": [{"code": "bar"}]})
@@ -344,8 +375,10 @@ class VenuePeopleRouterTests(TestCase):
 
     def test_invite_route_rejects_unknown_role_before_database_work(self):
         payload = InviteCreateIn(tg_username="staff", venue_role="UNKNOWN")
-        with patch.object(venue_membership, "_require_staff_manage_or_owner_or_super_admin"), \
-             patch.object(venue_membership, "_is_owner_or_super_admin", return_value=True):
+        with (
+            patch.object(venue_membership, "_require_staff_manage_or_owner_or_super_admin"),
+            patch.object(venue_membership, "_is_owner_or_super_admin", return_value=True),
+        ):
             with self.assertRaises(HTTPException) as raised:
                 venue_membership.create_invite(5, payload, SimpleNamespace(), SimpleNamespace(id=17))
         self.assertEqual(raised.exception.status_code, 400)
@@ -353,8 +386,10 @@ class VenuePeopleRouterTests(TestCase):
 
 class VenueAdjustmentAndScheduleRouterTests(TestCase):
     def test_adjustments_reject_mixed_period_filters(self):
-        with patch.object(venue_adjustments, "_require_active_member_or_admin"), \
-             patch.object(venue_adjustments, "_require_adjustments_viewer"):
+        with (
+            patch.object(venue_adjustments, "_require_active_member_or_admin"),
+            patch.object(venue_adjustments, "_require_adjustments_viewer"),
+        ):
             with self.assertRaises(HTTPException) as raised:
                 venue_adjustments.list_adjustments(
                     5,
@@ -414,12 +449,14 @@ class VenueAdjustmentAndScheduleRouterTests(TestCase):
                 mentioned_user_ids=[2],
                 reply_to_comment_id=int(parent.id),
             )
-            with patch.object(venue_shifts, "_require_shift_comments_allowed"), \
-                 patch.object(
-                     venue_shifts,
-                     "_load_shift_comment_mentionable_members",
-                     return_value=[(mentioned, "STAFF", "Администратор")],
-                 ):
+            with (
+                patch.object(venue_shifts, "_require_shift_comments_allowed"),
+                patch.object(
+                    venue_shifts,
+                    "_load_shift_comment_mentionable_members",
+                    return_value=[(mentioned, "STAFF", "Администратор")],
+                ),
+            ):
                 result = venue_shifts.add_shift_comment(
                     5,
                     10,
@@ -429,15 +466,11 @@ class VenueAdjustmentAndScheduleRouterTests(TestCase):
                     author,
                 )
 
-            saved = db.execute(
-                select(ShiftComment).where(ShiftComment.id == int(result["id"]))
-            ).scalar_one()
+            saved = db.execute(select(ShiftComment).where(ShiftComment.id == int(result["id"]))).scalar_one()
             mention = db.execute(
                 select(ShiftCommentMention).where(ShiftCommentMention.comment_id == int(saved.id))
             ).scalar_one()
-            job = db.execute(
-                select(NotificationJob).where(NotificationJob.job_type == "shift_comment")
-            ).scalar_one()
+            job = db.execute(select(NotificationJob).where(NotificationJob.job_type == "shift_comment")).scalar_one()
 
             self.assertEqual(saved.parent_comment_id, int(parent.id))
             self.assertEqual(mention.mentioned_user_id, 2)
@@ -491,18 +524,22 @@ class VenueAdjustmentAndScheduleRouterTests(TestCase):
             delivered.append(kwargs)
             return True, False
 
-        with patch.object(
-            venue_shift_notifications,
-            "_deliver_user_notification",
-            side_effect=capture_delivery,
-        ), patch.object(
-            venue_shift_notifications,
-            "_frontend_base_url",
-            return_value="https://app.example.test",
-        ), patch.object(
-            venue_shift_notifications,
-            "_is_shift_comments_allowed",
-            return_value=True,
+        with (
+            patch.object(
+                venue_shift_notifications,
+                "_deliver_user_notification",
+                side_effect=capture_delivery,
+            ),
+            patch.object(
+                venue_shift_notifications,
+                "_frontend_base_url",
+                return_value="https://app.example.test",
+            ),
+            patch.object(
+                venue_shift_notifications,
+                "_is_shift_comments_allowed",
+                return_value=True,
+            ),
         ):
             venue_shift_notifications._send_shift_comment_notifications(
                 db,

@@ -15,10 +15,14 @@ class PayComponent(Base):
             "component_type in ('SALARY_FIXED_MONTH','SALARY_HOURLY','SALARY_PER_SHIFT','PERCENT_TOTAL_REVENUE','PERCENT_DEPARTMENT_REVENUE','KPI_BONUS','MINIMUM_PAYOUT')",
             name="ck_pay_components_type",
         ),
-        CheckConstraint("amount_minor IS NULL OR amount_minor >= 0", name="ck_pay_components_amount_minor_non_negative"),
+        CheckConstraint(
+            "amount_minor IS NULL OR amount_minor >= 0", name="ck_pay_components_amount_minor_non_negative"
+        ),
         CheckConstraint("rate_minor IS NULL OR rate_minor >= 0", name="ck_pay_components_rate_minor_non_negative"),
         CheckConstraint("percent_bps IS NULL OR percent_bps >= 0", name="ck_pay_components_percent_bps_non_negative"),
-        CheckConstraint("threshold_value IS NULL OR threshold_value >= 0", name="ck_pay_components_threshold_value_non_negative"),
+        CheckConstraint(
+            "threshold_value IS NULL OR threshold_value >= 0", name="ck_pay_components_threshold_value_non_negative"
+        ),
         CheckConstraint(
             "kpi_calculation_mode in ('FIXED','PERCENT')",
             name="ck_pay_components_kpi_calculation_mode",
@@ -27,18 +31,34 @@ class PayComponent(Base):
             "salary_accrual_day IS NULL OR (salary_accrual_day >= 1 AND salary_accrual_day <= 31)",
             name="ck_pay_components_salary_accrual_day",
         ),
-        CheckConstraint("boost_percent_bps IS NULL OR boost_percent_bps >= 0", name="ck_pay_components_boost_percent_bps_non_negative"),
-        CheckConstraint("boost_threshold_value IS NULL OR boost_threshold_value >= 0", name="ck_pay_components_boost_threshold_value_non_negative"),
-        CheckConstraint("minimum_guarantee_minor IS NULL OR minimum_guarantee_minor >= 0", name="ck_pay_components_minimum_guarantee_non_negative"),
-        CheckConstraint("maximum_cap_minor IS NULL OR maximum_cap_minor >= 0", name="ck_pay_components_maximum_cap_non_negative"),
-        CheckConstraint("minimum_guarantee_scope IS NULL OR minimum_guarantee_scope in ('MONTH','DAY','SHIFT')", name="ck_pay_components_minimum_guarantee_scope"),
+        CheckConstraint(
+            "boost_percent_bps IS NULL OR boost_percent_bps >= 0",
+            name="ck_pay_components_boost_percent_bps_non_negative",
+        ),
+        CheckConstraint(
+            "boost_threshold_value IS NULL OR boost_threshold_value >= 0",
+            name="ck_pay_components_boost_threshold_value_non_negative",
+        ),
+        CheckConstraint(
+            "minimum_guarantee_minor IS NULL OR minimum_guarantee_minor >= 0",
+            name="ck_pay_components_minimum_guarantee_non_negative",
+        ),
+        CheckConstraint(
+            "maximum_cap_minor IS NULL OR maximum_cap_minor >= 0", name="ck_pay_components_maximum_cap_non_negative"
+        ),
+        CheckConstraint(
+            "minimum_guarantee_scope IS NULL OR minimum_guarantee_scope in ('MONTH','DAY','SHIFT')",
+            name="ck_pay_components_minimum_guarantee_scope",
+        ),
         CheckConstraint("sort_order >= 0", name="ck_pay_components_sort_order_non_negative"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)
-    pay_profile_id: Mapped[int] = mapped_column(ForeignKey("pay_profiles.id", ondelete="CASCADE"), index=True, nullable=False)
+    pay_profile_id: Mapped[int] = mapped_column(
+        ForeignKey("pay_profiles.id", ondelete="CASCADE"), index=True, nullable=False
+    )
 
     component_type: Mapped[str] = mapped_column(String(40), nullable=False)
     title: Mapped[str] = mapped_column(String(120), nullable=False)

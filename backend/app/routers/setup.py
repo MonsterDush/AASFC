@@ -41,7 +41,6 @@ class SetupVenueNameIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
 
-
 def _require_setup_owner_or_admin(db: Session, *, venue_id: int, user: User) -> None:
     if user.system_role in {"SUPER_ADMIN", "MODERATOR"}:
         return

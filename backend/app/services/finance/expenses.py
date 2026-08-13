@@ -24,7 +24,9 @@ def _add_months(value: date, months: int) -> date:
     return date(year, month, 1)
 
 
-def build_expense_allocation_plan(*, amount_minor: int, expense_date: date, spread_months: int) -> list[tuple[date, int]]:
+def build_expense_allocation_plan(
+    *, amount_minor: int, expense_date: date, spread_months: int
+) -> list[tuple[date, int]]:
     if not isinstance(amount_minor, int):
         raise ValueError("amount_minor must be int and must store kopecks")
     if amount_minor < 0:
@@ -53,8 +55,8 @@ def rebuild_expense_allocations_for_expense(*, db: Session, expense: Expense) ->
     delete_finance_entries_for_source(db=db, source_type="payroll_expense", source_id=int(expense.id))
     delete_expense_recognition_entries_for_expense(db=db, expense_id=int(expense.id))
 
-    expense_status = str(getattr(expense, 'status', 'CONFIRMED') or 'CONFIRMED').upper()
-    if expense_status != 'CONFIRMED':
+    expense_status = str(getattr(expense, "status", "CONFIRMED") or "CONFIRMED").upper()
+    if expense_status != "CONFIRMED":
         return []
 
     expense_kind = str(getattr(expense, "expense_kind", "OPERATING") or "OPERATING").upper()
@@ -72,9 +74,15 @@ def rebuild_expense_allocations_for_expense(*, db: Session, expense: Expense) ->
             meta_json={
                 "expense_id": int(expense.id),
                 "payment_method_id": int(expense.payment_method_id) if expense.payment_method_id is not None else None,
-                "payroll_run_id": int(expense.payroll_run_id) if getattr(expense, "payroll_run_id", None) is not None else None,
-                "period_start": expense.payroll_period_start.isoformat() if getattr(expense, "payroll_period_start", None) else None,
-                "period_end": expense.payroll_period_end.isoformat() if getattr(expense, "payroll_period_end", None) else None,
+                "payroll_run_id": int(expense.payroll_run_id)
+                if getattr(expense, "payroll_run_id", None) is not None
+                else None,
+                "period_start": expense.payroll_period_start.isoformat()
+                if getattr(expense, "payroll_period_start", None)
+                else None,
+                "period_end": expense.payroll_period_end.isoformat()
+                if getattr(expense, "payroll_period_end", None)
+                else None,
                 "payout_key": getattr(expense, "payroll_payout_key", None),
             },
         )
@@ -138,20 +146,23 @@ def list_expense_allocations(*, db: Session, expense_id: int) -> list[ExpenseAll
     )
 
 
-
 def backfill_missing_expense_recognition_entries(*, db: Session, venue_id: int) -> dict:
-    rows = db.execute(
-        select(Expense)
-        .outerjoin(ExpenseRecognitionEntry, ExpenseRecognitionEntry.expense_id == Expense.id)
-        .where(
-            Expense.venue_id == int(venue_id),
-            Expense.status == 'CONFIRMED',
-            Expense.expense_kind == 'OPERATING',
-            Expense.recurring_rule_id.is_(None),
-            ExpenseRecognitionEntry.id.is_(None),
+    rows = (
+        db.execute(
+            select(Expense)
+            .outerjoin(ExpenseRecognitionEntry, ExpenseRecognitionEntry.expense_id == Expense.id)
+            .where(
+                Expense.venue_id == int(venue_id),
+                Expense.status == "CONFIRMED",
+                Expense.expense_kind == "OPERATING",
+                Expense.recurring_rule_id.is_(None),
+                ExpenseRecognitionEntry.id.is_(None),
+            )
+            .order_by(Expense.id.asc())
         )
-        .order_by(Expense.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     rebuilt = 0
     for expense in rows:
@@ -170,5 +181,5 @@ def backfill_missing_expense_recognition_entries(*, db: Session, venue_id: int) 
     if rebuilt:
         db.commit()
     return {
-        'rebuilt': rebuilt,
+        "rebuilt": rebuilt,
     }

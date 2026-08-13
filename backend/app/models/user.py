@@ -12,7 +12,7 @@ class User(Base):
     tg_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Профиль
-    full_name: Mapped[str | None] = mapped_column(String(128), nullable=True)   # ФИО
+    full_name: Mapped[str | None] = mapped_column(String(128), nullable=True)  # ФИО
     short_name: Mapped[str | None] = mapped_column(String(64), nullable=True)  # Краткое имя (для UI)
 
     # храним строкой, а в коде валидируем enum-ом

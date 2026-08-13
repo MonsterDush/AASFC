@@ -10,9 +10,7 @@ from app.core.db import Base
 
 class VenueEconomicsRule(Base):
     __tablename__ = "venue_economics_rules"
-    __table_args__ = (
-        UniqueConstraint("venue_id", name="uq_venue_economics_rules_venue"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", name="uq_venue_economics_rules_venue"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)

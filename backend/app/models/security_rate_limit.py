@@ -10,9 +10,7 @@ from app.core.db import Base
 
 class SecurityRateLimit(Base):
     __tablename__ = "security_rate_limits"
-    __table_args__ = (
-        UniqueConstraint("scope", "subject_hash", name="uq_security_rate_limits_scope_subject"),
-    )
+    __table_args__ = (UniqueConstraint("scope", "subject_hash", name="uq_security_rate_limits_scope_subject"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     scope: Mapped[str] = mapped_column(String(64), nullable=False, index=True)

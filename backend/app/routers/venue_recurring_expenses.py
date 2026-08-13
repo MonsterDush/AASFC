@@ -75,18 +75,27 @@ def _serialize_recurring_expense_rule(
         "created_at": rule.created_at.isoformat() if rule.created_at else None,
         "updated_at": rule.updated_at.isoformat() if rule.updated_at else None,
         "category": {
-            "id": cat.id, "code": cat.code, "title": cat.title,
-        } if cat is not None else None,
+            "id": cat.id,
+            "code": cat.code,
+            "title": cat.title,
+        }
+        if cat is not None
+        else None,
         "supplier": {
-            "id": sup.id, "title": sup.title, "contact": sup.contact,
-        } if sup is not None else None,
+            "id": sup.id,
+            "title": sup.title,
+            "contact": sup.contact,
+        }
+        if sup is not None
+        else None,
         "payment_method": {
-            "id": pm.id, "code": pm.code, "title": pm.title,
-        } if pm is not None else None,
-        "basis_payment_methods": [
-            {"id": item.id, "code": item.code, "title": item.title}
-            for item in basis
-        ],
+            "id": pm.id,
+            "code": pm.code,
+            "title": pm.title,
+        }
+        if pm is not None
+        else None,
+        "basis_payment_methods": [{"id": item.id, "code": item.code, "title": item.title} for item in basis],
         "payment_method_ids": [int(item.id) for item in basis],
     }
 
@@ -120,23 +129,39 @@ def list_recurring_expense_rules(
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
     _require_recurring_expenses_view(db, venue_id=venue_id, user=user)
 
-    rows = db.execute(
-        select(RecurringExpenseRule)
-        .where(RecurringExpenseRule.venue_id == venue_id)
-        .order_by(RecurringExpenseRule.is_active.desc(), RecurringExpenseRule.title.asc(), RecurringExpenseRule.id.asc())
-    ).scalars().all()
+    rows = (
+        db.execute(
+            select(RecurringExpenseRule)
+            .where(RecurringExpenseRule.venue_id == venue_id)
+            .order_by(
+                RecurringExpenseRule.is_active.desc(), RecurringExpenseRule.title.asc(), RecurringExpenseRule.id.asc()
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     out = []
     for rule in rows:
         category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=rule.category_id)
-        supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=rule.supplier_id) if rule.supplier_id else None
-        payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=rule.payment_method_id) if rule.payment_method_id else None
+        supplier = (
+            _get_supplier_or_404(db, venue_id=venue_id, supplier_id=rule.supplier_id) if rule.supplier_id else None
+        )
+        payment_method = (
+            _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=rule.payment_method_id)
+            if rule.payment_method_id
+            else None
+        )
         basis_ids = list_rule_payment_method_ids(db=db, rule_id=rule.id)
         basis_payment_methods = []
         if basis_ids:
-            basis_payment_methods = db.execute(
-                select(PaymentMethod).where(PaymentMethod.id.in_(basis_ids)).order_by(PaymentMethod.title.asc())
-            ).scalars().all()
+            basis_payment_methods = (
+                db.execute(
+                    select(PaymentMethod).where(PaymentMethod.id.in_(basis_ids)).order_by(PaymentMethod.title.asc())
+                )
+                .scalars()
+                .all()
+            )
         out.append(_serialize_recurring_expense_rule(rule, category, supplier, payment_method, basis_payment_methods))
     return out
 
@@ -190,8 +215,22 @@ def create_recurring_expense_rule(
     db.refresh(rule)
     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=rule.category_id)
     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=rule.supplier_id) if rule.supplier_id else None
-    payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=rule.payment_method_id) if rule.payment_method_id else None
-    basis_payment_methods = db.execute(select(PaymentMethod).where(PaymentMethod.id.in_(payload.payment_method_ids)).order_by(PaymentMethod.title.asc())).scalars().all() if payload.payment_method_ids else []
+    payment_method = (
+        _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=rule.payment_method_id)
+        if rule.payment_method_id
+        else None
+    )
+    basis_payment_methods = (
+        db.execute(
+            select(PaymentMethod)
+            .where(PaymentMethod.id.in_(payload.payment_method_ids))
+            .order_by(PaymentMethod.title.asc())
+        )
+        .scalars()
+        .all()
+        if payload.payment_method_ids
+        else []
+    )
     return _serialize_recurring_expense_rule(rule, category, supplier, payment_method, basis_payment_methods)
 
 
@@ -205,7 +244,9 @@ def update_recurring_expense_rule(
 ):
     _require_recurring_expenses_manage(db, venue_id=venue_id, user=user)
     rule = db.execute(
-        select(RecurringExpenseRule).where(RecurringExpenseRule.id == rule_id, RecurringExpenseRule.venue_id == venue_id)
+        select(RecurringExpenseRule).where(
+            RecurringExpenseRule.id == rule_id, RecurringExpenseRule.venue_id == venue_id
+        )
     ).scalar_one_or_none()
     if rule is None:
         raise HTTPException(status_code=404, detail="Recurring expense rule not found")
@@ -267,9 +308,19 @@ def update_recurring_expense_rule(
     db.refresh(rule)
     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=rule.category_id)
     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=rule.supplier_id) if rule.supplier_id else None
-    payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=rule.payment_method_id) if rule.payment_method_id else None
+    payment_method = (
+        _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=rule.payment_method_id)
+        if rule.payment_method_id
+        else None
+    )
     basis_ids = list_rule_payment_method_ids(db=db, rule_id=rule.id)
-    basis_payment_methods = db.execute(select(PaymentMethod).where(PaymentMethod.id.in_(basis_ids)).order_by(PaymentMethod.title.asc())).scalars().all() if basis_ids else []
+    basis_payment_methods = (
+        db.execute(select(PaymentMethod).where(PaymentMethod.id.in_(basis_ids)).order_by(PaymentMethod.title.asc()))
+        .scalars()
+        .all()
+        if basis_ids
+        else []
+    )
     return _serialize_recurring_expense_rule(rule, category, supplier, payment_method, basis_payment_methods)
 
 
@@ -282,7 +333,9 @@ def delete_recurring_expense_rule(
 ):
     _require_recurring_expenses_manage(db, venue_id=venue_id, user=user)
     rule = db.execute(
-        select(RecurringExpenseRule).where(RecurringExpenseRule.id == rule_id, RecurringExpenseRule.venue_id == venue_id)
+        select(RecurringExpenseRule).where(
+            RecurringExpenseRule.id == rule_id, RecurringExpenseRule.venue_id == venue_id
+        )
     ).scalar_one_or_none()
     if rule is None:
         raise HTTPException(status_code=404, detail="Recurring expense rule not found")
@@ -320,16 +373,32 @@ def generate_recurring_expense_drafts(
     created_payload = []
     for expense in result["created"]:
         category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=expense.category_id)
-        supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=expense.supplier_id) if expense.supplier_id else None
-        payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=expense.payment_method_id) if expense.payment_method_id else None
+        supplier = (
+            _get_supplier_or_404(db, venue_id=venue_id, supplier_id=expense.supplier_id)
+            if expense.supplier_id
+            else None
+        )
+        payment_method = (
+            _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=expense.payment_method_id)
+            if expense.payment_method_id
+            else None
+        )
         allocations = list_expense_allocations(db=db, expense_id=expense.id)
         created_payload.append(_serialize_expense(expense, category, supplier, payment_method, allocations))
 
     updated_payload = []
     for expense in result.get("updated", []):
         category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=expense.category_id)
-        supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=expense.supplier_id) if expense.supplier_id else None
-        payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=expense.payment_method_id) if expense.payment_method_id else None
+        supplier = (
+            _get_supplier_or_404(db, venue_id=venue_id, supplier_id=expense.supplier_id)
+            if expense.supplier_id
+            else None
+        )
+        payment_method = (
+            _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=expense.payment_method_id)
+            if expense.payment_method_id
+            else None
+        )
         allocations = list_expense_allocations(db=db, expense_id=expense.id)
         updated_payload.append(_serialize_expense(expense, category, supplier, payment_method, allocations))
 
@@ -343,5 +412,3 @@ def generate_recurring_expense_drafts(
         "updated": updated_payload,
         "skipped": result["skipped"],
     }
-
-

@@ -6,9 +6,7 @@ from app.core.db import Base
 
 class VenueMember(Base):
     __tablename__ = "venue_members"
-    __table_args__ = (
-        UniqueConstraint("venue_id", "user_id", name="uq_venue_member"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", "user_id", name="uq_venue_member"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 

@@ -31,9 +31,6 @@ class DailyReportCloseIn(BaseModel):
     comment: str | None = None
 
 
-
-
-
 class AdjustmentCreateIn(BaseModel):
     type: str = Field(..., description="penalty|writeoff|bonus")
     date: date
@@ -45,8 +42,10 @@ class AdjustmentCreateIn(BaseModel):
 class DisputeCreateIn(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
 
+
 class DisputeCommentIn(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
+
 
 class DisputeStatusIn(BaseModel):
     status: str = Field(..., min_length=4, max_length=20)  # OPEN | CLOSED

@@ -17,7 +17,9 @@ class DailyReportValue(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    report_id: Mapped[int] = mapped_column(ForeignKey("daily_reports.id", ondelete="CASCADE"), index=True, nullable=False)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("daily_reports.id", ondelete="CASCADE"), index=True, nullable=False
+    )
 
     # PAYMENT | DEPT | KPI
     kind: Mapped[str] = mapped_column(String(12), nullable=False)

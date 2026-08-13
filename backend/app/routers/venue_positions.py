@@ -66,13 +66,17 @@ def list_position_presets(
 @router.get("/{venue_id}/positions")
 def list_positions(
     venue_id: int,
-    include_inactive: bool = Query(False, description="If true, return inactive members/positions too (requires manage)."),
+    include_inactive: bool = Query(
+        False, description="If true, return inactive members/positions too (requires manage)."
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     _require_active_member_or_admin(db, venue_id=venue_id, user=user)
 
-    allowed = _is_owner_or_super_admin(db, venue_id=venue_id, user=user) or _is_schedule_editor(db, venue_id=venue_id, user=user)
+    allowed = _is_owner_or_super_admin(db, venue_id=venue_id, user=user) or _is_schedule_editor(
+        db, venue_id=venue_id, user=user
+    )
     if not allowed:
         for code in ("POSITIONS_VIEW", "POSITIONS_MANAGE", "SHIFTS_VIEW", "SHIFTS_MANAGE"):
             try:
@@ -114,8 +118,7 @@ def list_positions(
         .join(User, User.id == VenuePosition.member_user_id)
         .join(
             VenueMember,
-            (VenueMember.venue_id == VenuePosition.venue_id)
-            & (VenueMember.user_id == VenuePosition.member_user_id),
+            (VenueMember.venue_id == VenuePosition.venue_id) & (VenueMember.user_id == VenuePosition.member_user_id),
         )
         .where(VenuePosition.venue_id == venue_id)
         .order_by(VenuePosition.id.desc())
@@ -128,28 +131,32 @@ def list_positions(
 
     items = []
     for r in rows:
-        assignment, profile = _get_member_active_pay_profile_assignment(db, venue_id=venue_id, member_user_id=int(r.member_user_id), on_date=date.today())
-        items.append({
-            "id": r.id,
-            "title": r.title,
-            "member_user_id": r.member_user_id,
-            "rate": r.rate,
-            "percent": r.percent,
-            "pay_profile_id": int(profile.id) if profile is not None else None,
-            "pay_profile_title": profile.title if profile is not None else None,
-            "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
-            "permission_codes": _parse_position_permission_codes(getattr(r, "permission_codes", None)),
-            "is_active": bool(r.is_active),
-            "member": {
-                "user_id": r.member_user_id,
-                "tg_user_id": r.tg_user_id,
-                "tg_username": r.tg_username,
-                "full_name": r.full_name,
-                "short_name": r.short_name,
-                "venue_role": r.venue_role,
-                "is_active": bool(r.member_is_active),
-            },
-        })
+        assignment, profile = _get_member_active_pay_profile_assignment(
+            db, venue_id=venue_id, member_user_id=int(r.member_user_id), on_date=date.today()
+        )
+        items.append(
+            {
+                "id": r.id,
+                "title": r.title,
+                "member_user_id": r.member_user_id,
+                "rate": r.rate,
+                "percent": r.percent,
+                "pay_profile_id": int(profile.id) if profile is not None else None,
+                "pay_profile_title": profile.title if profile is not None else None,
+                "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
+                "permission_codes": _parse_position_permission_codes(getattr(r, "permission_codes", None)),
+                "is_active": bool(r.is_active),
+                "member": {
+                    "user_id": r.member_user_id,
+                    "tg_user_id": r.tg_user_id,
+                    "tg_username": r.tg_username,
+                    "full_name": r.full_name,
+                    "short_name": r.short_name,
+                    "venue_role": r.venue_role,
+                    "is_active": bool(r.member_is_active),
+                },
+            }
+        )
     return items
 
 
@@ -212,7 +219,12 @@ def create_position(
         )
         db.commit()
         db.refresh(pos)
-        return {"id": pos.id, "pay_profile_id": int(profile.id) if profile is not None else None, "pay_profile_title": profile.title if profile is not None else None, "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None}
+        return {
+            "id": pos.id,
+            "pay_profile_id": int(profile.id) if profile is not None else None,
+            "pay_profile_title": profile.title if profile is not None else None,
+            "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
+        }
 
     # update-in-place
     existing.title = payload.title.strip()
@@ -229,7 +241,13 @@ def create_position(
     )
 
     db.commit()
-    return {"id": existing.id, "mode": "updated", "pay_profile_id": int(profile.id) if profile is not None else None, "pay_profile_title": profile.title if profile is not None else None, "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None}
+    return {
+        "id": existing.id,
+        "mode": "updated",
+        "pay_profile_id": int(profile.id) if profile is not None else None,
+        "pay_profile_title": profile.title if profile is not None else None,
+        "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
+    }
 
 
 @router.patch("/{venue_id}/positions/{position_id}")
@@ -318,7 +336,9 @@ def update_position(
             pay_profile_id=payload.pay_profile_id,
         )
     else:
-        assignment, profile = _get_member_active_pay_profile_assignment(db, venue_id=venue_id, member_user_id=pos.member_user_id, on_date=date.today())
+        assignment, profile = _get_member_active_pay_profile_assignment(
+            db, venue_id=venue_id, member_user_id=pos.member_user_id, on_date=date.today()
+        )
 
     db.commit()
     db.refresh(pos)

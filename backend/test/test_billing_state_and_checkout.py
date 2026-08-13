@@ -91,7 +91,10 @@ class BillingManagerTests(TestCase):
             updated_at=now,
         )
 
-        with patch.object(manager, "utcnow", return_value=now), patch.object(manager, "get_or_create_billing_state", return_value=billing_state):
+        with (
+            patch.object(manager, "utcnow", return_value=now),
+            patch.object(manager, "get_or_create_billing_state", return_value=billing_state),
+        ):
             state_obj, tx, event = manager.extend_venue_billing(
                 fake_db,
                 venue_id=55,
@@ -134,7 +137,10 @@ class BillingManagerTests(TestCase):
         )
         tx.id = 123
 
-        with patch.object(manager, "utcnow", return_value=now), patch.object(manager, "get_or_create_billing_state", return_value=billing_state):
+        with (
+            patch.object(manager, "utcnow", return_value=now),
+            patch.object(manager, "get_or_create_billing_state", return_value=billing_state),
+        ):
             state_after_first, tx_after_first, event_first, applied_first = manager.apply_checkout_payment_success(
                 fake_db,
                 transaction=tx,

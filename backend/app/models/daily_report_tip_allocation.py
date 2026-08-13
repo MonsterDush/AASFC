@@ -11,13 +11,13 @@ from app.core.db import Base
 
 class DailyReportTipAllocation(Base):
     __tablename__ = "daily_report_tip_allocations"
-    __table_args__ = (
-        UniqueConstraint("report_id", "user_id", name="uq_tip_alloc_report_user"),
-    )
+    __table_args__ = (UniqueConstraint("report_id", "user_id", name="uq_tip_alloc_report_user"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    report_id: Mapped[int] = mapped_column(ForeignKey("daily_reports.id", ondelete="CASCADE"), index=True, nullable=False)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("daily_reports.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
 
     # Money in integer units (same convention as daily_reports.tips_total)

@@ -10,9 +10,7 @@ from app.core.db import Base
 
 class Department(Base):
     __tablename__ = "departments"
-    __table_args__ = (
-        UniqueConstraint("venue_id", "code", name="uq_departments_venue_code"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", "code", name="uq_departments_venue_code"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True, nullable=False)

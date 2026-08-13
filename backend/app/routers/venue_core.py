@@ -13,8 +13,22 @@ from typing import Optional as Optional
 from io import BytesIO as BytesIO
 from urllib.parse import quote as quote
 
-from fastapi import APIRouter, BackgroundTasks as BackgroundTasks, Depends, HTTPException, Query, Request as Request, status as status, UploadFile as UploadFile, File as File
-from fastapi.responses import FileResponse as FileResponse, RedirectResponse as RedirectResponse, StreamingResponse as StreamingResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks as BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request as Request,
+    status as status,
+    UploadFile as UploadFile,
+    File as File,
+)
+from fastapi.responses import (
+    FileResponse as FileResponse,
+    RedirectResponse as RedirectResponse,
+    StreamingResponse as StreamingResponse,
+)
 from pydantic import BaseModel as BaseModel, Field as Field
 from sqlalchemy import select, delete, update as update, func, inspect
 import sqlalchemy as sa
@@ -34,7 +48,11 @@ from app.services.xlsx_export import (
 )
 from app.services.signed_links import make_signed_token as make_signed_token, verify_signed_token as verify_signed_token
 from app.services.finance.expenses import list_expense_allocations as list_expense_allocations
-from app.services.finance.revenue import rebuild_revenue_entries_for_report as rebuild_revenue_entries_for_report, delete_revenue_entries_for_report as delete_revenue_entries_for_report, compute_revenue_summary as compute_revenue_summary
+from app.services.finance.revenue import (
+    rebuild_revenue_entries_for_report as rebuild_revenue_entries_for_report,
+    delete_revenue_entries_for_report as delete_revenue_entries_for_report,
+    compute_revenue_summary as compute_revenue_summary,
+)
 from app.services.finance.summary import get_monthly_finance_summary as get_monthly_finance_summary
 from app.services.finance.recurring_expenses import (
     delete_daily_recurring_accruals_for_date as delete_daily_recurring_accruals_for_date,
@@ -47,7 +65,10 @@ from app.services.payroll.calculator import (
     parse_month_start as parse_month_start,
 )
 from app.services.payroll.period_summary import resolve_salary_period as resolve_salary_period
-from app.services.tips import build_equal_tip_allocations as build_equal_tip_allocations, build_weighted_by_position_tip_allocations as build_weighted_by_position_tip_allocations
+from app.services.tips import (
+    build_equal_tip_allocations as build_equal_tip_allocations,
+    build_weighted_by_position_tip_allocations as build_weighted_by_position_tip_allocations,
+)
 from app.services.shifts import normalize_shift_slot as normalize_shift_slot
 from app.services.financial_privacy import (
     financial_visibility_payload as financial_visibility_payload,
@@ -119,7 +140,11 @@ from app.models.venue_economics_rule import VenueEconomicsRule
 from app.auth.venue_permissions import require_venue_permission
 
 from app.services.venues import create_venue
-from app.services.invites import build_invite_link, create_venue_invite as create_venue_invite, normalize_phone_e164 as normalize_phone_e164
+from app.services.invites import (
+    build_invite_link,
+    create_venue_invite as create_venue_invite,
+    normalize_phone_e164 as normalize_phone_e164,
+)
 from app.services.setup import build_setup_summary, build_setup_summary_map
 from app.services.billing import (
     can_grant_self_service_trial,
@@ -243,7 +268,9 @@ def create_venue_admin_only(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    owner_summary = _build_owner_summary_by_venue(db, [venue.id]).get(venue.id, {"state": "UNASSIGNED", "owners": [], "pending": []})
+    owner_summary = _build_owner_summary_by_venue(db, [venue.id]).get(
+        venue.id, {"state": "UNASSIGNED", "owners": [], "pending": []}
+    )
     owner_pending_invite = owner_summary["pending"][0] if owner_summary.get("pending") else None
     owner_linked = owner_summary["owners"][0] if owner_summary.get("owners") else None
     setup_summary = build_setup_summary(db, venue_id=venue.id, create_missing=False)
@@ -369,68 +396,196 @@ def _build_venue_delete_check_payload(db: Session, venue: Venue) -> dict:
 
     add_count("venue_members", VenueMember, select(func.count(VenueMember.id)).where(VenueMember.venue_id == venue_id))
     add_count("venue_invites", VenueInvite, select(func.count(VenueInvite.id)).where(VenueInvite.venue_id == venue_id))
-    add_count("venue_positions", VenuePosition, select(func.count(VenuePosition.id)).where(VenuePosition.venue_id == venue_id))
+    add_count(
+        "venue_positions", VenuePosition, select(func.count(VenuePosition.id)).where(VenuePosition.venue_id == venue_id)
+    )
 
-    add_count("shift_intervals", ShiftInterval, select(func.count(ShiftInterval.id)).where(ShiftInterval.venue_id == venue_id))
-    add_count("shift_schedule_templates", ShiftScheduleTemplate, select(func.count(ShiftScheduleTemplate.id)).where(ShiftScheduleTemplate.venue_id == venue_id))
-    add_count("shift_schedule_template_items", ShiftScheduleTemplateItem, select(func.count(ShiftScheduleTemplateItem.id)).where(ShiftScheduleTemplateItem.template_id.in_(shift_schedule_template_ids)))
+    add_count(
+        "shift_intervals", ShiftInterval, select(func.count(ShiftInterval.id)).where(ShiftInterval.venue_id == venue_id)
+    )
+    add_count(
+        "shift_schedule_templates",
+        ShiftScheduleTemplate,
+        select(func.count(ShiftScheduleTemplate.id)).where(ShiftScheduleTemplate.venue_id == venue_id),
+    )
+    add_count(
+        "shift_schedule_template_items",
+        ShiftScheduleTemplateItem,
+        select(func.count(ShiftScheduleTemplateItem.id)).where(
+            ShiftScheduleTemplateItem.template_id.in_(shift_schedule_template_ids)
+        ),
+    )
     add_count("shifts", Shift, select(func.count(Shift.id)).where(Shift.venue_id == venue_id))
-    add_count("shift_assignments", ShiftAssignment, select(func.count(ShiftAssignment.id)).where(ShiftAssignment.shift_id.in_(shift_ids)))
-    add_count("shift_availabilities", ShiftAvailability, select(func.count(ShiftAvailability.id)).where(ShiftAvailability.venue_id == venue_id))
-    add_count("shift_swap_requests", ShiftSwapRequest, select(func.count(ShiftSwapRequest.id)).where(ShiftSwapRequest.venue_id == venue_id))
-    add_count("shift_comment_mentions", ShiftCommentMention, select(func.count(ShiftCommentMention.id)).where(ShiftCommentMention.comment_id.in_(shift_comment_ids)))
-    add_count("shift_comments", ShiftComment, select(func.count(ShiftComment.id)).where(ShiftComment.shift_id.in_(shift_ids)))
+    add_count(
+        "shift_assignments",
+        ShiftAssignment,
+        select(func.count(ShiftAssignment.id)).where(ShiftAssignment.shift_id.in_(shift_ids)),
+    )
+    add_count(
+        "shift_availabilities",
+        ShiftAvailability,
+        select(func.count(ShiftAvailability.id)).where(ShiftAvailability.venue_id == venue_id),
+    )
+    add_count(
+        "shift_swap_requests",
+        ShiftSwapRequest,
+        select(func.count(ShiftSwapRequest.id)).where(ShiftSwapRequest.venue_id == venue_id),
+    )
+    add_count(
+        "shift_comment_mentions",
+        ShiftCommentMention,
+        select(func.count(ShiftCommentMention.id)).where(ShiftCommentMention.comment_id.in_(shift_comment_ids)),
+    )
+    add_count(
+        "shift_comments", ShiftComment, select(func.count(ShiftComment.id)).where(ShiftComment.shift_id.in_(shift_ids))
+    )
 
     add_count("daily_reports", DailyReport, select(func.count(DailyReport.id)).where(DailyReport.venue_id == venue_id))
-    add_count("daily_report_attachments", DailyReportAttachment, select(func.count(DailyReportAttachment.id)).where(DailyReportAttachment.venue_id == venue_id))
-    add_count("daily_report_values", DailyReportValue, select(func.count(DailyReportValue.id)).where(DailyReportValue.report_id.in_(report_ids)))
-    add_count("daily_report_audits", DailyReportAudit, select(func.count(DailyReportAudit.id)).where(DailyReportAudit.report_id.in_(report_ids)))
-    add_count("daily_report_tip_allocations", DailyReportTipAllocation, select(func.count(DailyReportTipAllocation.id)).where(DailyReportTipAllocation.report_id.in_(report_ids)))
+    add_count(
+        "daily_report_attachments",
+        DailyReportAttachment,
+        select(func.count(DailyReportAttachment.id)).where(DailyReportAttachment.venue_id == venue_id),
+    )
+    add_count(
+        "daily_report_values",
+        DailyReportValue,
+        select(func.count(DailyReportValue.id)).where(DailyReportValue.report_id.in_(report_ids)),
+    )
+    add_count(
+        "daily_report_audits",
+        DailyReportAudit,
+        select(func.count(DailyReportAudit.id)).where(DailyReportAudit.report_id.in_(report_ids)),
+    )
+    add_count(
+        "daily_report_tip_allocations",
+        DailyReportTipAllocation,
+        select(func.count(DailyReportTipAllocation.id)).where(DailyReportTipAllocation.report_id.in_(report_ids)),
+    )
 
     add_count("adjustments", Adjustment, select(func.count(Adjustment.id)).where(Adjustment.venue_id == venue_id))
-    add_count("adjustment_disputes", AdjustmentDispute, select(func.count(AdjustmentDispute.id)).where(AdjustmentDispute.venue_id == venue_id))
-    add_count("adjustment_dispute_comments", AdjustmentDisputeComment, select(func.count(AdjustmentDisputeComment.id)).where(AdjustmentDisputeComment.dispute_id.in_(dispute_ids)))
+    add_count(
+        "adjustment_disputes",
+        AdjustmentDispute,
+        select(func.count(AdjustmentDispute.id)).where(AdjustmentDispute.venue_id == venue_id),
+    )
+    add_count(
+        "adjustment_dispute_comments",
+        AdjustmentDisputeComment,
+        select(func.count(AdjustmentDisputeComment.id)).where(AdjustmentDisputeComment.dispute_id.in_(dispute_ids)),
+    )
     add_count("penalties", Penalty, select(func.count(Penalty.id)).where(Penalty.venue_id == venue_id))
     add_count("bonuses", Bonus, select(func.count(Bonus.id)).where(Bonus.venue_id == venue_id))
     add_count("writeoffs", Writeoff, select(func.count(Writeoff.id)).where(Writeoff.venue_id == venue_id))
 
     add_count("departments", Department, select(func.count(Department.id)).where(Department.venue_id == venue_id))
-    add_count("payment_methods", PaymentMethod, select(func.count(PaymentMethod.id)).where(PaymentMethod.venue_id == venue_id))
+    add_count(
+        "payment_methods", PaymentMethod, select(func.count(PaymentMethod.id)).where(PaymentMethod.venue_id == venue_id)
+    )
     add_count("kpi_metrics", KpiMetric, select(func.count(KpiMetric.id)).where(KpiMetric.venue_id == venue_id))
-    add_count("expense_categories", ExpenseCategory, select(func.count(ExpenseCategory.id)).where(ExpenseCategory.venue_id == venue_id))
+    add_count(
+        "expense_categories",
+        ExpenseCategory,
+        select(func.count(ExpenseCategory.id)).where(ExpenseCategory.venue_id == venue_id),
+    )
     add_count("suppliers", Supplier, select(func.count(Supplier.id)).where(Supplier.venue_id == venue_id))
 
     add_count("expenses", Expense, select(func.count(Expense.id)).where(Expense.venue_id == venue_id))
-    add_count("expense_allocations", ExpenseAllocation, select(func.count(ExpenseAllocation.id)).where(ExpenseAllocation.venue_id == venue_id))
-    add_count("expense_recognition_entries", ExpenseRecognitionEntry, select(func.count(ExpenseRecognitionEntry.id)).where(ExpenseRecognitionEntry.venue_id == venue_id))
-    add_count("finance_entries", FinanceEntry, select(func.count(FinanceEntry.id)).where(FinanceEntry.venue_id == venue_id))
-    add_count("balance_adjustments", BalanceAdjustment, select(func.count(BalanceAdjustment.id)).where(BalanceAdjustment.venue_id == venue_id))
-    add_count("payment_method_transfers", PaymentMethodTransfer, select(func.count(PaymentMethodTransfer.id)).where(PaymentMethodTransfer.venue_id == venue_id))
-    add_count("recurring_expense_rules", RecurringExpenseRule, select(func.count(RecurringExpenseRule.id)).where(RecurringExpenseRule.venue_id == venue_id))
-    add_count("recurring_expense_rule_payment_methods", RecurringExpenseRulePaymentMethod, select(func.count(RecurringExpenseRulePaymentMethod.rule_id)).where(RecurringExpenseRulePaymentMethod.rule_id.in_(recurring_rule_ids)))
-    add_count("recurring_expense_accruals", RecurringExpenseAccrual, select(func.count(RecurringExpenseAccrual.id)).where(RecurringExpenseAccrual.venue_id == venue_id))
+    add_count(
+        "expense_allocations",
+        ExpenseAllocation,
+        select(func.count(ExpenseAllocation.id)).where(ExpenseAllocation.venue_id == venue_id),
+    )
+    add_count(
+        "expense_recognition_entries",
+        ExpenseRecognitionEntry,
+        select(func.count(ExpenseRecognitionEntry.id)).where(ExpenseRecognitionEntry.venue_id == venue_id),
+    )
+    add_count(
+        "finance_entries", FinanceEntry, select(func.count(FinanceEntry.id)).where(FinanceEntry.venue_id == venue_id)
+    )
+    add_count(
+        "balance_adjustments",
+        BalanceAdjustment,
+        select(func.count(BalanceAdjustment.id)).where(BalanceAdjustment.venue_id == venue_id),
+    )
+    add_count(
+        "payment_method_transfers",
+        PaymentMethodTransfer,
+        select(func.count(PaymentMethodTransfer.id)).where(PaymentMethodTransfer.venue_id == venue_id),
+    )
+    add_count(
+        "recurring_expense_rules",
+        RecurringExpenseRule,
+        select(func.count(RecurringExpenseRule.id)).where(RecurringExpenseRule.venue_id == venue_id),
+    )
+    add_count(
+        "recurring_expense_rule_payment_methods",
+        RecurringExpenseRulePaymentMethod,
+        select(func.count(RecurringExpenseRulePaymentMethod.rule_id)).where(
+            RecurringExpenseRulePaymentMethod.rule_id.in_(recurring_rule_ids)
+        ),
+    )
+    add_count(
+        "recurring_expense_accruals",
+        RecurringExpenseAccrual,
+        select(func.count(RecurringExpenseAccrual.id)).where(RecurringExpenseAccrual.venue_id == venue_id),
+    )
 
-    add_count("day_economics_plans", DayEconomicsPlan, select(func.count(DayEconomicsPlan.id)).where(DayEconomicsPlan.venue_id == venue_id))
-    add_count("day_economics_month_plans", DayEconomicsMonthPlan, select(func.count(DayEconomicsMonthPlan.id)).where(DayEconomicsMonthPlan.venue_id == venue_id))
-    add_count("day_economics_plan_templates", DayEconomicsPlanTemplate, select(func.count(DayEconomicsPlanTemplate.id)).where(DayEconomicsPlanTemplate.venue_id == venue_id))
-    add_count("department_day_plans", DepartmentDayPlan, select(func.count(DepartmentDayPlan.id)).where(DepartmentDayPlan.venue_id == venue_id))
-    add_count("department_month_plans", DepartmentMonthPlan, select(func.count(DepartmentMonthPlan.id)).where(DepartmentMonthPlan.venue_id == venue_id))
-    add_count("venue_economics_rules", VenueEconomicsRule, select(func.count(VenueEconomicsRule.id)).where(VenueEconomicsRule.venue_id == venue_id))
+    add_count(
+        "day_economics_plans",
+        DayEconomicsPlan,
+        select(func.count(DayEconomicsPlan.id)).where(DayEconomicsPlan.venue_id == venue_id),
+    )
+    add_count(
+        "day_economics_month_plans",
+        DayEconomicsMonthPlan,
+        select(func.count(DayEconomicsMonthPlan.id)).where(DayEconomicsMonthPlan.venue_id == venue_id),
+    )
+    add_count(
+        "day_economics_plan_templates",
+        DayEconomicsPlanTemplate,
+        select(func.count(DayEconomicsPlanTemplate.id)).where(DayEconomicsPlanTemplate.venue_id == venue_id),
+    )
+    add_count(
+        "department_day_plans",
+        DepartmentDayPlan,
+        select(func.count(DepartmentDayPlan.id)).where(DepartmentDayPlan.venue_id == venue_id),
+    )
+    add_count(
+        "department_month_plans",
+        DepartmentMonthPlan,
+        select(func.count(DepartmentMonthPlan.id)).where(DepartmentMonthPlan.venue_id == venue_id),
+    )
+    add_count(
+        "venue_economics_rules",
+        VenueEconomicsRule,
+        select(func.count(VenueEconomicsRule.id)).where(VenueEconomicsRule.venue_id == venue_id),
+    )
 
     add_count("pay_profiles", PayProfile, select(func.count(PayProfile.id)).where(PayProfile.venue_id == venue_id))
-    add_count("pay_components", PayComponent, select(func.count(PayComponent.id)).where(PayComponent.venue_id == venue_id))
-    add_count("pay_profile_assignments", PayProfileAssignment, select(func.count(PayProfileAssignment.id)).where(PayProfileAssignment.venue_id == venue_id))
+    add_count(
+        "pay_components", PayComponent, select(func.count(PayComponent.id)).where(PayComponent.venue_id == venue_id)
+    )
+    add_count(
+        "pay_profile_assignments",
+        PayProfileAssignment,
+        select(func.count(PayProfileAssignment.id)).where(PayProfileAssignment.venue_id == venue_id),
+    )
     add_count("payroll_runs", PayrollRun, select(func.count(PayrollRun.id)).where(PayrollRun.venue_id == venue_id))
     add_count("payroll_lines", PayrollLine, select(func.count(PayrollLine.id)).where(PayrollLine.venue_id == venue_id))
-    add_count("payroll_recalculation_logs", PayrollRecalculationLog, select(func.count(PayrollRecalculationLog.id)).where(PayrollRecalculationLog.venue_id == venue_id))
+    add_count(
+        "payroll_recalculation_logs",
+        PayrollRecalculationLog,
+        select(func.count(PayrollRecalculationLog.id)).where(PayrollRecalculationLog.venue_id == venue_id),
+    )
 
-    add_count("notification_delivery_logs", NotificationDeliveryLog, select(func.count(NotificationDeliveryLog.id)).where(NotificationDeliveryLog.venue_id == venue_id))
+    add_count(
+        "notification_delivery_logs",
+        NotificationDeliveryLog,
+        select(func.count(NotificationDeliveryLog.id)).where(NotificationDeliveryLog.venue_id == venue_id),
+    )
 
-    non_zero = [
-        {"key": key, "count": value}
-        for key, value in counts.items()
-        if int(value or 0) > 0
-    ]
+    non_zero = [{"key": key, "count": value} for key, value in counts.items() if int(value or 0) > 0]
     non_zero.sort(key=lambda item: (-item["count"], item["key"]))
 
     return {
@@ -552,34 +707,66 @@ def delete_venue(
     deleted: dict[str, int] = {}
 
     try:
-        deleted["shift_comment_mentions"] = _safe_delete_where(db, ShiftCommentMention, ShiftCommentMention.comment_id.in_(shift_comment_ids))
+        deleted["shift_comment_mentions"] = _safe_delete_where(
+            db, ShiftCommentMention, ShiftCommentMention.comment_id.in_(shift_comment_ids)
+        )
         deleted["shift_comments"] = _safe_delete_where(db, ShiftComment, ShiftComment.shift_id.in_(shift_ids))
         deleted["shift_swap_requests"] = _safe_delete_where(db, ShiftSwapRequest, ShiftSwapRequest.venue_id == venue_id)
         deleted["shift_assignments"] = _safe_delete_where(db, ShiftAssignment, ShiftAssignment.shift_id.in_(shift_ids))
-        deleted["shift_availabilities"] = _safe_delete_where(db, ShiftAvailability, ShiftAvailability.venue_id == venue_id)
+        deleted["shift_availabilities"] = _safe_delete_where(
+            db, ShiftAvailability, ShiftAvailability.venue_id == venue_id
+        )
 
-        deleted["daily_report_tip_allocations"] = _safe_delete_where(db, DailyReportTipAllocation, DailyReportTipAllocation.report_id.in_(report_ids))
-        deleted["daily_report_values"] = _safe_delete_where(db, DailyReportValue, DailyReportValue.report_id.in_(report_ids))
-        deleted["daily_report_audits"] = _safe_delete_where(db, DailyReportAudit, DailyReportAudit.report_id.in_(report_ids))
-        deleted["daily_report_attachments"] = _safe_delete_where(db, DailyReportAttachment, DailyReportAttachment.venue_id == venue_id)
+        deleted["daily_report_tip_allocations"] = _safe_delete_where(
+            db, DailyReportTipAllocation, DailyReportTipAllocation.report_id.in_(report_ids)
+        )
+        deleted["daily_report_values"] = _safe_delete_where(
+            db, DailyReportValue, DailyReportValue.report_id.in_(report_ids)
+        )
+        deleted["daily_report_audits"] = _safe_delete_where(
+            db, DailyReportAudit, DailyReportAudit.report_id.in_(report_ids)
+        )
+        deleted["daily_report_attachments"] = _safe_delete_where(
+            db, DailyReportAttachment, DailyReportAttachment.venue_id == venue_id
+        )
 
-        deleted["adjustment_dispute_comments"] = _safe_delete_where(db, AdjustmentDisputeComment, AdjustmentDisputeComment.dispute_id.in_(dispute_ids))
-        deleted["adjustment_disputes"] = _safe_delete_where(db, AdjustmentDispute, AdjustmentDispute.venue_id == venue_id)
+        deleted["adjustment_dispute_comments"] = _safe_delete_where(
+            db, AdjustmentDisputeComment, AdjustmentDisputeComment.dispute_id.in_(dispute_ids)
+        )
+        deleted["adjustment_disputes"] = _safe_delete_where(
+            db, AdjustmentDispute, AdjustmentDispute.venue_id == venue_id
+        )
 
-        deleted["expense_allocations"] = _safe_delete_where(db, ExpenseAllocation, ExpenseAllocation.venue_id == venue_id)
-        deleted["expense_recognition_entries"] = _safe_delete_where(db, ExpenseRecognitionEntry, ExpenseRecognitionEntry.venue_id == venue_id)
-        deleted["recurring_expense_rule_payment_methods"] = _safe_delete_where(db, RecurringExpenseRulePaymentMethod, RecurringExpenseRulePaymentMethod.rule_id.in_(recurring_rule_ids))
-        deleted["recurring_expense_accruals"] = _safe_delete_where(db, RecurringExpenseAccrual, RecurringExpenseAccrual.venue_id == venue_id)
+        deleted["expense_allocations"] = _safe_delete_where(
+            db, ExpenseAllocation, ExpenseAllocation.venue_id == venue_id
+        )
+        deleted["expense_recognition_entries"] = _safe_delete_where(
+            db, ExpenseRecognitionEntry, ExpenseRecognitionEntry.venue_id == venue_id
+        )
+        deleted["recurring_expense_rule_payment_methods"] = _safe_delete_where(
+            db, RecurringExpenseRulePaymentMethod, RecurringExpenseRulePaymentMethod.rule_id.in_(recurring_rule_ids)
+        )
+        deleted["recurring_expense_accruals"] = _safe_delete_where(
+            db, RecurringExpenseAccrual, RecurringExpenseAccrual.venue_id == venue_id
+        )
 
         deleted["payroll_lines"] = _safe_delete_where(db, PayrollLine, PayrollLine.venue_id == venue_id)
-        deleted["pay_profile_assignments"] = _safe_delete_where(db, PayProfileAssignment, PayProfileAssignment.venue_id == venue_id)
+        deleted["pay_profile_assignments"] = _safe_delete_where(
+            db, PayProfileAssignment, PayProfileAssignment.venue_id == venue_id
+        )
         deleted["pay_components"] = _safe_delete_where(db, PayComponent, PayComponent.venue_id == venue_id)
 
-        deleted["notification_delivery_logs"] = _safe_delete_where(db, NotificationDeliveryLog, NotificationDeliveryLog.venue_id == venue_id)
+        deleted["notification_delivery_logs"] = _safe_delete_where(
+            db, NotificationDeliveryLog, NotificationDeliveryLog.venue_id == venue_id
+        )
 
         deleted["shifts"] = _safe_delete_where(db, Shift, Shift.venue_id == venue_id)
-        deleted["shift_schedule_template_items"] = _safe_delete_where(db, ShiftScheduleTemplateItem, ShiftScheduleTemplateItem.template_id.in_(shift_schedule_template_ids))
-        deleted["shift_schedule_templates"] = _safe_delete_where(db, ShiftScheduleTemplate, ShiftScheduleTemplate.venue_id == venue_id)
+        deleted["shift_schedule_template_items"] = _safe_delete_where(
+            db, ShiftScheduleTemplateItem, ShiftScheduleTemplateItem.template_id.in_(shift_schedule_template_ids)
+        )
+        deleted["shift_schedule_templates"] = _safe_delete_where(
+            db, ShiftScheduleTemplate, ShiftScheduleTemplate.venue_id == venue_id
+        )
         deleted["shift_intervals"] = _safe_delete_where(db, ShiftInterval, ShiftInterval.venue_id == venue_id)
 
         deleted["daily_reports"] = _safe_delete_where(db, DailyReport, DailyReport.venue_id == venue_id)
@@ -590,19 +777,37 @@ def delete_venue(
         deleted["writeoffs"] = _safe_delete_where(db, Writeoff, Writeoff.venue_id == venue_id)
 
         deleted["finance_entries"] = _safe_delete_where(db, FinanceEntry, FinanceEntry.venue_id == venue_id)
-        deleted["balance_adjustments"] = _safe_delete_where(db, BalanceAdjustment, BalanceAdjustment.venue_id == venue_id)
-        deleted["payment_method_transfers"] = _safe_delete_where(db, PaymentMethodTransfer, PaymentMethodTransfer.venue_id == venue_id)
+        deleted["balance_adjustments"] = _safe_delete_where(
+            db, BalanceAdjustment, BalanceAdjustment.venue_id == venue_id
+        )
+        deleted["payment_method_transfers"] = _safe_delete_where(
+            db, PaymentMethodTransfer, PaymentMethodTransfer.venue_id == venue_id
+        )
         deleted["expenses"] = _safe_delete_where(db, Expense, Expense.venue_id == venue_id)
-        deleted["recurring_expense_rules"] = _safe_delete_where(db, RecurringExpenseRule, RecurringExpenseRule.venue_id == venue_id)
+        deleted["recurring_expense_rules"] = _safe_delete_where(
+            db, RecurringExpenseRule, RecurringExpenseRule.venue_id == venue_id
+        )
 
         deleted["day_economics_plans"] = _safe_delete_where(db, DayEconomicsPlan, DayEconomicsPlan.venue_id == venue_id)
-        deleted["day_economics_month_plans"] = _safe_delete_where(db, DayEconomicsMonthPlan, DayEconomicsMonthPlan.venue_id == venue_id)
-        deleted["day_economics_plan_templates"] = _safe_delete_where(db, DayEconomicsPlanTemplate, DayEconomicsPlanTemplate.venue_id == venue_id)
-        deleted["department_day_plans"] = _safe_delete_where(db, DepartmentDayPlan, DepartmentDayPlan.venue_id == venue_id)
-        deleted["department_month_plans"] = _safe_delete_where(db, DepartmentMonthPlan, DepartmentMonthPlan.venue_id == venue_id)
-        deleted["venue_economics_rules"] = _safe_delete_where(db, VenueEconomicsRule, VenueEconomicsRule.venue_id == venue_id)
+        deleted["day_economics_month_plans"] = _safe_delete_where(
+            db, DayEconomicsMonthPlan, DayEconomicsMonthPlan.venue_id == venue_id
+        )
+        deleted["day_economics_plan_templates"] = _safe_delete_where(
+            db, DayEconomicsPlanTemplate, DayEconomicsPlanTemplate.venue_id == venue_id
+        )
+        deleted["department_day_plans"] = _safe_delete_where(
+            db, DepartmentDayPlan, DepartmentDayPlan.venue_id == venue_id
+        )
+        deleted["department_month_plans"] = _safe_delete_where(
+            db, DepartmentMonthPlan, DepartmentMonthPlan.venue_id == venue_id
+        )
+        deleted["venue_economics_rules"] = _safe_delete_where(
+            db, VenueEconomicsRule, VenueEconomicsRule.venue_id == venue_id
+        )
 
-        deleted["payroll_recalculation_logs"] = _safe_delete_where(db, PayrollRecalculationLog, PayrollRecalculationLog.venue_id == venue_id)
+        deleted["payroll_recalculation_logs"] = _safe_delete_where(
+            db, PayrollRecalculationLog, PayrollRecalculationLog.venue_id == venue_id
+        )
         deleted["payroll_runs"] = _safe_delete_where(db, PayrollRun, PayrollRun.venue_id == venue_id)
         deleted["pay_profiles"] = _safe_delete_where(db, PayProfile, PayProfile.venue_id == venue_id)
 
@@ -628,9 +833,7 @@ def delete_venue(
     except sa.exc.IntegrityError:
         db.rollback()
         current_check = _build_venue_delete_check_payload(db, venue)
-        blockers = ", ".join(
-            f"{item['key']}={item['count']}" for item in current_check.get("non_zero_groups", [])[:6]
-        )
+        blockers = ", ".join(f"{item['key']}={item['count']}" for item in current_check.get("non_zero_groups", [])[:6])
         raise HTTPException(
             status_code=409,
             detail=(
@@ -726,13 +929,11 @@ def get_members(
     }
 
 
-
 # ---------- Venue settings ----------
 
+
 def _night_shift_disable_blockers(db: Session, *, venue_id: int) -> dict[str, int]:
-    template_ids = select(ShiftScheduleTemplate.id).where(
-        ShiftScheduleTemplate.venue_id == int(venue_id)
-    )
+    template_ids = select(ShiftScheduleTemplate.id).where(ShiftScheduleTemplate.venue_id == int(venue_id))
     return {
         "active_shifts": int(
             db.execute(
@@ -772,9 +973,7 @@ def _night_shift_disable_blocker_detail(blockers: dict[str, int]) -> str:
         ("template_items", "ночных элементов шаблонов"),
     )
     parts = [
-        f"{label} — {int(blockers.get(key, 0) or 0)}"
-        for key, label in labels
-        if int(blockers.get(key, 0) or 0) > 0
+        f"{label} — {int(blockers.get(key, 0) or 0)}" for key, label in labels if int(blockers.get(key, 0) or 0) > 0
     ]
     return (
         "Нельзя отключить ночные смены, пока существуют ночные данные: "

@@ -36,7 +36,12 @@ from app.models import (
 )
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.payroll.period_summary import build_member_period_summary, resolve_salary_period
-from app.services.billing.access import BILLING_ACCESS_DENIED, BILLING_ACCESS_FULL, get_user_billing_access, get_venue_billing_snapshot
+from app.services.billing.access import (
+    BILLING_ACCESS_DENIED,
+    BILLING_ACCESS_FULL,
+    get_user_billing_access,
+    get_venue_billing_snapshot,
+)
 from app.services.demo.access import build_demo_banner_payload, build_demo_context_payload
 from app.services.setup import build_setup_summary, build_setup_summary_map
 from app.services.shifts.slots import normalize_shift_slot
@@ -45,12 +50,10 @@ from app.services.financial_privacy import financial_visibility_payload, sanitiz
 
 router = APIRouter(tags=["me"])
 
+
 class ProfileUpdateIn(BaseModel):
     full_name: str | None = Field(default=None, max_length=128)
     short_name: str | None = Field(default=None, max_length=64)
-
-
-
 
 
 class NotificationSettingsIn(BaseModel):
@@ -91,8 +94,6 @@ class ManualTipCreateIn(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
-
-
 def _notification_settings_meta(user: User) -> dict:
     telegram_linked = bool(getattr(user, "tg_user_id", None))
     disabled_reason = None
@@ -108,8 +109,6 @@ def _notification_settings_meta(user: User) -> dict:
     }
 
 
-
-
 def _serialize_billing_access_payload(access: dict) -> dict:
     return {
         "billing_status": access.get("billing_status"),
@@ -121,8 +120,6 @@ def _serialize_billing_access_payload(access: dict) -> dict:
         "is_trial": bool(access.get("is_trial")),
         "trial_until": access.get("trial_until").isoformat() if access.get("trial_until") else None,
     }
-
-
 
 
 def _serialize_setup_payload(summary: dict | None) -> dict:
@@ -137,6 +134,7 @@ def _serialize_setup_payload(summary: dict | None) -> dict:
         "setup_prepare_done": bool(summary.get("prepare_done")),
         "setup_extra_done": bool(summary.get("extra_done")),
     }
+
 
 def _serialize_demo_payload(user: User | None, *, venue: Venue | None = None, venue_id: int | None = None) -> dict:
     payload = build_demo_context_payload(user, venue=venue, venue_id=venue_id)
@@ -159,6 +157,7 @@ def _notification_settings_payload(user: User) -> dict:
         "notification_detail_level_options": ["short", "standard", "detailed"],
         **_notification_settings_meta(user),
     }
+
 
 @router.get("/me")
 def me(
@@ -207,7 +206,6 @@ def my_permissions_catalog(user: User = Depends(get_current_user)):
             for p in PERMISSIONS_REGISTRY
         ]
     }
-
 
 
 @router.get("/me/profile")
@@ -308,20 +306,22 @@ def get_notification_history(
     for row in rows:
         log_entry = row[0]
         venue_name = row[1]
-        items.append({
-            "id": int(log_entry.id),
-            "notification_type": log_entry.notification_type,
-            "status": log_entry.status,
-            "venue_id": log_entry.venue_id,
-            "venue_name": venue_name,
-            "shift_id": log_entry.shift_id,
-            "shift_assignment_id": log_entry.shift_assignment_id,
-            "planned_at": log_entry.planned_at.isoformat() if log_entry.planned_at else None,
-            "sent_at": log_entry.sent_at.isoformat() if log_entry.sent_at else None,
-            "idempotency_key": log_entry.idempotency_key,
-            "error_text": log_entry.error_text,
-            "payload_preview": log_entry.payload_preview,
-        })
+        items.append(
+            {
+                "id": int(log_entry.id),
+                "notification_type": log_entry.notification_type,
+                "status": log_entry.status,
+                "venue_id": log_entry.venue_id,
+                "venue_name": venue_name,
+                "shift_id": log_entry.shift_id,
+                "shift_assignment_id": log_entry.shift_assignment_id,
+                "planned_at": log_entry.planned_at.isoformat() if log_entry.planned_at else None,
+                "sent_at": log_entry.sent_at.isoformat() if log_entry.sent_at else None,
+                "idempotency_key": log_entry.idempotency_key,
+                "error_text": log_entry.error_text,
+                "payload_preview": log_entry.payload_preview,
+            }
+        )
 
     return {
         "items": items,
@@ -337,7 +337,16 @@ def my_venues(
     user: User = Depends(get_current_user),
 ):
     rows = db.execute(
-        select(Venue.id, Venue.name, Venue.is_archived, Venue.archived_at, Venue.is_demo, Venue.demo_reference_year, Venue.demo_reference_month, VenueMember.venue_role)
+        select(
+            Venue.id,
+            Venue.name,
+            Venue.is_archived,
+            Venue.archived_at,
+            Venue.is_demo,
+            Venue.demo_reference_year,
+            Venue.demo_reference_month,
+            VenueMember.venue_role,
+        )
         .join(VenueMember, VenueMember.venue_id == Venue.id)
         .where(
             VenueMember.user_id == user.id,
@@ -350,8 +359,7 @@ def my_venues(
     position_codes_by_venue: dict[int, set[str]] = {}
     if venue_ids:
         position_rows = db.execute(
-            select(VenuePosition.venue_id, VenuePosition.permission_codes)
-            .where(
+            select(VenuePosition.venue_id, VenuePosition.permission_codes).where(
                 VenuePosition.member_user_id == user.id,
                 VenuePosition.is_active.is_(True),
                 VenuePosition.venue_id.in_(venue_ids),
@@ -418,19 +426,21 @@ def my_venues(
                 else f"/staff-shifts.html?venue_id={venue_id}"
             )
 
-        items.append({
-            "id": venue_id,
-            "name": r.name,
-            "my_role": r.venue_role,
-            "is_archived": is_archived,
-            "archived_at": r.archived_at.isoformat() if r.archived_at else None,
-            "can_open_venue": can_open_venue or billing_access_mode == "BILLING_READONLY",
-            "open_target": open_target,
-            **_serialize_billing_access_payload(billing_access),
-            **_serialize_setup_payload(setup_summary_map.get(venue_id)),
-            **financial_visibility_payload(user),
-            **demo_payload,
-        })
+        items.append(
+            {
+                "id": venue_id,
+                "name": r.name,
+                "my_role": r.venue_role,
+                "is_archived": is_archived,
+                "archived_at": r.archived_at.isoformat() if r.archived_at else None,
+                "can_open_venue": can_open_venue or billing_access_mode == "BILLING_READONLY",
+                "open_target": open_target,
+                **_serialize_billing_access_payload(billing_access),
+                **_serialize_setup_payload(setup_summary_map.get(venue_id)),
+                **financial_visibility_payload(user),
+                **demo_payload,
+            }
+        )
 
     return items
 
@@ -556,8 +566,12 @@ def my_venue_permissions(
         denied_payload = {
             "billing_status": system_billing_snapshot.status,
             "billing_access_mode": BILLING_ACCESS_DENIED,
-            "paid_until": system_billing_snapshot.paid_until.isoformat() if system_billing_snapshot.paid_until else None,
-            "grace_until": system_billing_snapshot.grace_until.isoformat() if system_billing_snapshot.grace_until else None,
+            "paid_until": system_billing_snapshot.paid_until.isoformat()
+            if system_billing_snapshot.paid_until
+            else None,
+            "grace_until": system_billing_snapshot.grace_until.isoformat()
+            if system_billing_snapshot.grace_until
+            else None,
             "billing_restricted_reason": system_billing_snapshot.restricted_reason,
         }
         return {
@@ -775,13 +789,17 @@ def my_shifts_across_venues(
         return []
 
     keys = {(r.venue_id, r.shift_date, normalize_shift_slot(r.shift_slot)) for r in rows}
-    reports = db.execute(
-        select(DailyReport).where(
-            DailyReport.venue_id.in_({k[0] for k in keys}),
-            DailyReport.date.in_({k[1] for k in keys}),
-            DailyReport.shift_slot.in_({k[2] for k in keys}),
+    reports = (
+        db.execute(
+            select(DailyReport).where(
+                DailyReport.venue_id.in_({k[0] for k in keys}),
+                DailyReport.date.in_({k[1] for k in keys}),
+                DailyReport.shift_slot.in_({k[2] for k in keys}),
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     report_by_key = {(r.venue_id, r.date, normalize_shift_slot(getattr(r, "shift_slot", None))): r for r in reports}
     report_ids = sorted({int(report.id) for report in reports})
     my_tip_by_report_id: dict[int, int] = {}
@@ -792,10 +810,7 @@ def my_shifts_across_venues(
                 DailyReportTipAllocation.user_id == int(user.id),
             )
         ).all()
-        my_tip_by_report_id = {
-            int(row.report_id): int(row.amount or 0)
-            for row in tip_rows
-        }
+        my_tip_by_report_id = {int(row.report_id): int(row.amount or 0) for row in tip_rows}
 
     out = []
     for r in rows:
@@ -830,11 +845,7 @@ def my_shifts_across_venues(
                 "report_exists": bool(rep),
                 "report_closed": bool(report_closed),
                 "my_salary": my_salary,
-                "my_tips_share": (
-                    my_tip_by_report_id.get(int(rep.id), 0)
-                    if rep is not None
-                    else 0
-                ),
+                "my_tips_share": (my_tip_by_report_id.get(int(rep.id), 0) if rep is not None else 0),
                 "revenue_total": revenue_total,
             }
         )
@@ -985,7 +996,8 @@ def my_salary_summary(
 
     response = {
         "items": payload.get("items") or [],
-        "totals": payload.get("totals") or {
+        "totals": payload.get("totals")
+        or {
             "earned": 0,
             "tips": 0,
             "bonuses": 0,

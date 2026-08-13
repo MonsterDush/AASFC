@@ -242,11 +242,14 @@ def build_finance_reconciliation(
         kind="PAYROLL",
     )
     full_months = _is_complete_calendar_month_range(period_start, period_end)
-    payment_settings_enabled = db.execute(
-        select(PayrollPaymentSettings.id).where(
-            PayrollPaymentSettings.venue_id == int(venue_id),
-        )
-    ).scalar_one_or_none() is not None
+    payment_settings_enabled = (
+        db.execute(
+            select(PayrollPaymentSettings.id).where(
+                PayrollPaymentSettings.venue_id == int(venue_id),
+            )
+        ).scalar_one_or_none()
+        is not None
+    )
     payroll_expected: dict[int, dict] = {}
     payroll_issues: list[dict] = []
     payroll_source_type = "payroll_expense" if payment_settings_enabled else "payroll_run"
@@ -346,7 +349,11 @@ def build_finance_reconciliation(
             "status": (
                 "WARNING"
                 if payroll_issues
-                or (not payment_settings_enabled and full_months and payroll_total != int(summary.get("payroll_minor") or 0))
+                or (
+                    not payment_settings_enabled
+                    and full_months
+                    and payroll_total != int(summary.get("payroll_minor") or 0)
+                )
                 else "INFO"
                 if not payment_settings_enabled and not full_months
                 else "OK"
@@ -368,8 +375,7 @@ def build_finance_reconciliation(
             "note": (
                 "Начисления отражаются в сводке, а подтверждённые выплаты сверяются с проводками выбранного способа оплаты."
                 if payment_settings_enabled
-                else
-                "За полный месяц сверяются начисления и проводки ФОТ."
+                else "За полный месяц сверяются начисления и проводки ФОТ."
                 if full_months
                 else "Для части месяца ФОТ распределяется по дням, а проводка создаётся на месяц; прямое сравнение отключено."
             ),

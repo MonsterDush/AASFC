@@ -87,8 +87,10 @@ class NightShiftRecurringExpenseRegressionTests(TestCase):
             date=date(2026, 7, 29),
         )
 
-        with patch.object(venue_reports, "sync_daily_recurring_accruals_for_date") as sync, \
-             patch.object(venue_reports, "delete_daily_recurring_accruals_for_date") as delete:
+        with (
+            patch.object(venue_reports, "sync_daily_recurring_accruals_for_date") as sync,
+            patch.object(venue_reports, "delete_daily_recurring_accruals_for_date") as delete,
+        ):
             result = venue_reports._sync_recurring_accruals_after_report_reopen(
                 db,
                 report=report,
@@ -111,8 +113,10 @@ class NightShiftRecurringExpenseRegressionTests(TestCase):
             date=date(2026, 7, 29),
         )
 
-        with patch.object(venue_reports, "sync_daily_recurring_accruals_for_date") as sync, \
-             patch.object(venue_reports, "delete_daily_recurring_accruals_for_date") as delete:
+        with (
+            patch.object(venue_reports, "sync_daily_recurring_accruals_for_date") as sync,
+            patch.object(venue_reports, "delete_daily_recurring_accruals_for_date") as delete,
+        ):
             result = venue_reports._sync_recurring_accruals_after_report_reopen(
                 db,
                 report=report,
@@ -262,10 +266,12 @@ class NightShiftTipAllocationRegressionTests(TestCase):
         db.execute.side_effect = [shift_result, Mock()]
         user = SimpleNamespace(id=17)
 
-        with patch.object(venue_shifts, "_require_schedule_editor"), \
-             patch.object(venue_shifts, "_normalize_shift_slot_for_venue", return_value="NIGHT"), \
-             patch.object(venue_shifts, "_rebuild_closed_report_tip_allocations_for_keys") as rebuild, \
-             patch.object(venue_shifts, "_recalculate_payroll_for_dates"):
+        with (
+            patch.object(venue_shifts, "_require_schedule_editor"),
+            patch.object(venue_shifts, "_normalize_shift_slot_for_venue", return_value="NIGHT"),
+            patch.object(venue_shifts, "_rebuild_closed_report_tip_allocations_for_keys") as rebuild,
+            patch.object(venue_shifts, "_recalculate_payroll_for_dates"),
+        ):
             result = venue_shifts.update_shift(
                 venue_id=5,
                 shift_id=10,
@@ -286,9 +292,7 @@ class NightShiftTipAllocationRegressionTests(TestCase):
         db.commit.assert_called_once()
 
     def test_template_apply_rebuilds_tips_before_payroll(self):
-        source = inspect.getsource(
-            venue_schedule_templates.apply_shift_schedule_template
-        )
+        source = inspect.getsource(venue_schedule_templates.apply_shift_schedule_template)
         self.assertLess(
             source.index("_rebuild_closed_report_tip_allocations_for_keys"),
             source.index("_recalculate_payroll_for_dates"),
@@ -310,17 +314,19 @@ class NightShiftDisableRegressionTests(TestCase):
         db.execute.return_value = venue_result
         user = SimpleNamespace(id=17)
 
-        with patch.object(venue_core, "_require_active_member_or_admin"), \
-             patch.object(venue_core, "_is_owner_or_super_admin", return_value=True), \
-             patch.object(
-                 venue_core,
-                 "_night_shift_disable_blockers",
-                 return_value={
-                     "active_shifts": 2,
-                     "reports": 1,
-                     "template_items": 3,
-                 },
-             ):
+        with (
+            patch.object(venue_core, "_require_active_member_or_admin"),
+            patch.object(venue_core, "_is_owner_or_super_admin", return_value=True),
+            patch.object(
+                venue_core,
+                "_night_shift_disable_blockers",
+                return_value={
+                    "active_shifts": 2,
+                    "reports": 1,
+                    "template_items": 3,
+                },
+            ),
+        ):
             with self.assertRaises(HTTPException) as raised:
                 venue_core.patch_venue_settings(
                     venue_id=5,
@@ -348,17 +354,19 @@ class NightShiftDisableRegressionTests(TestCase):
         db.execute.return_value = venue_result
         user = SimpleNamespace(id=17)
 
-        with patch.object(venue_core, "_require_active_member_or_admin"), \
-             patch.object(venue_core, "_is_owner_or_super_admin", return_value=True), \
-             patch.object(
-                 venue_core,
-                 "_night_shift_disable_blockers",
-                 return_value={
-                     "active_shifts": 0,
-                     "reports": 0,
-                     "template_items": 0,
-                 },
-             ):
+        with (
+            patch.object(venue_core, "_require_active_member_or_admin"),
+            patch.object(venue_core, "_is_owner_or_super_admin", return_value=True),
+            patch.object(
+                venue_core,
+                "_night_shift_disable_blockers",
+                return_value={
+                    "active_shifts": 0,
+                    "reports": 0,
+                    "template_items": 0,
+                },
+            ),
+        ):
             result = venue_core.patch_venue_settings(
                 venue_id=5,
                 payload=VenueSettingsPatchIn(night_shifts_enabled=False),
@@ -383,17 +391,19 @@ class NightShiftDisableRegressionTests(TestCase):
         db.execute.return_value = night_item_result
         user = SimpleNamespace(id=17)
 
-        with patch.object(venue_schedule_templates, "_require_schedule_editor"), \
-             patch.object(
-                 venue_schedule_templates,
-                 "_get_shift_schedule_template_or_404",
-                 return_value=template,
-             ), \
-             patch.object(
-                 venue_schedule_templates,
-                 "_venue_night_shifts_enabled",
-                 return_value=False,
-             ):
+        with (
+            patch.object(venue_schedule_templates, "_require_schedule_editor"),
+            patch.object(
+                venue_schedule_templates,
+                "_get_shift_schedule_template_or_404",
+                return_value=template,
+            ),
+            patch.object(
+                venue_schedule_templates,
+                "_venue_night_shifts_enabled",
+                return_value=False,
+            ),
+        ):
             with self.assertRaises(HTTPException) as raised:
                 venue_schedule_templates.update_shift_schedule_template(
                     venue_id=5,
@@ -422,15 +432,17 @@ class NightShiftDisableRegressionTests(TestCase):
         db.execute.return_value = shift_result
         user = SimpleNamespace(id=17)
 
-        with patch.object(venue_shifts, "_require_schedule_editor"), \
-             patch.object(
-                 venue_shifts,
-                 "_normalize_shift_slot_for_venue",
-                 side_effect=HTTPException(
-                     status_code=400,
-                     detail="Night shifts are disabled for this venue",
-                 ),
-             ) as normalize_for_venue:
+        with (
+            patch.object(venue_shifts, "_require_schedule_editor"),
+            patch.object(
+                venue_shifts,
+                "_normalize_shift_slot_for_venue",
+                side_effect=HTTPException(
+                    status_code=400,
+                    detail="Night shifts are disabled for this venue",
+                ),
+            ) as normalize_for_venue,
+        ):
             with self.assertRaises(HTTPException) as raised:
                 venue_shifts.update_shift(
                     venue_id=5,

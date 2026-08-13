@@ -104,10 +104,13 @@ class ShiftSwapWorkflowTests(TestCase):
     def test_availability_upsert_updates_the_same_member_date_slot(self):
         with Session(self.engine) as db:
             requester, _, _, shift, _ = self._seed(db)
-            with patch.object(venue_shift_swaps, "_require_active_member_or_admin"), patch.object(
-                venue_shift_swaps,
-                "_normalize_shift_slot_for_venue",
-                return_value="NIGHT",
+            with (
+                patch.object(venue_shift_swaps, "_require_active_member_or_admin"),
+                patch.object(
+                    venue_shift_swaps,
+                    "_normalize_shift_slot_for_venue",
+                    return_value="NIGHT",
+                ),
             ):
                 first = venue_shift_swaps.upsert_shift_availability(
                     5,
@@ -136,16 +139,21 @@ class ShiftSwapWorkflowTests(TestCase):
         with Session(self.engine) as db:
             requester, replacement, manager, shift, assignment = self._seed(db)
             background_tasks = BackgroundTasks()
-            with patch.object(venue_shift_swaps, "_require_active_member_or_admin"), patch.object(
-                venue_shift_swaps,
-                "_enqueue_shift_swap_job",
-            ), patch.object(
-                venue_shift_swaps,
-                "_require_schedule_editor",
-            ), patch.object(
-                venue_shift_swaps,
-                "_recalculate_payroll_for_dates",
-            ) as recalculate:
+            with (
+                patch.object(venue_shift_swaps, "_require_active_member_or_admin"),
+                patch.object(
+                    venue_shift_swaps,
+                    "_enqueue_shift_swap_job",
+                ),
+                patch.object(
+                    venue_shift_swaps,
+                    "_require_schedule_editor",
+                ),
+                patch.object(
+                    venue_shift_swaps,
+                    "_recalculate_payroll_for_dates",
+                ) as recalculate,
+            ):
                 created = venue_shift_swaps.create_shift_swap_request(
                     5,
                     int(shift.id),

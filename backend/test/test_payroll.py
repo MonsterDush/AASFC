@@ -58,17 +58,31 @@ class PayrollCalculationHelpersTests(TestCase):
         self.assertEqual(amount_minor, 224000)
 
     def test_calculate_component_amount_minor_for_percent_total_revenue(self):
-        component = SimpleNamespace(component_type="PERCENT_TOTAL_REVENUE", percent_bps=750, amount_minor=None, rate_minor=None)
-        amount_minor = calculate_component_amount_minor(component, minutes_total=0, shifts_count=0, total_revenue_minor=1234567)
+        component = SimpleNamespace(
+            component_type="PERCENT_TOTAL_REVENUE", percent_bps=750, amount_minor=None, rate_minor=None
+        )
+        amount_minor = calculate_component_amount_minor(
+            component, minutes_total=0, shifts_count=0, total_revenue_minor=1234567
+        )
         self.assertEqual(amount_minor, 92593)
 
     def test_calculate_component_amount_minor_for_percent_department_revenue(self):
-        component = SimpleNamespace(component_type="PERCENT_DEPARTMENT_REVENUE", percent_bps=1250, department_id=3, amount_minor=None, rate_minor=None)
-        amount_minor = calculate_component_amount_minor(component, minutes_total=0, shifts_count=0, department_revenue_minor=800000)
+        component = SimpleNamespace(
+            component_type="PERCENT_DEPARTMENT_REVENUE",
+            percent_bps=1250,
+            department_id=3,
+            amount_minor=None,
+            rate_minor=None,
+        )
+        amount_minor = calculate_component_amount_minor(
+            component, minutes_total=0, shifts_count=0, department_revenue_minor=800000
+        )
         self.assertEqual(amount_minor, 100000)
 
     def test_calculate_kpi_bonus_with_threshold(self):
-        component = SimpleNamespace(component_type="KPI_BONUS", amount_minor=150000, threshold_value=20, steps_json=None)
+        component = SimpleNamespace(
+            component_type="KPI_BONUS", amount_minor=150000, threshold_value=20, steps_json=None
+        )
         decision = calculate_kpi_bonus(component, kpi_metric_value=24)
         self.assertEqual(decision.amount_minor, 150000)
         self.assertEqual(decision.metric_value, 24)
@@ -76,7 +90,9 @@ class PayrollCalculationHelpersTests(TestCase):
         self.assertIsNone(decision.matched_step)
 
     def test_calculate_kpi_bonus_below_threshold(self):
-        component = SimpleNamespace(component_type="KPI_BONUS", amount_minor=150000, threshold_value=20, steps_json=None)
+        component = SimpleNamespace(
+            component_type="KPI_BONUS", amount_minor=150000, threshold_value=20, steps_json=None
+        )
         decision = calculate_kpi_bonus(component, kpi_metric_value=19)
         self.assertEqual(decision.amount_minor, 0)
 
@@ -251,7 +267,12 @@ class PayrollPercentDecisionTests(TestCase):
             metrics=PayrollMemberMetrics(worked_dates={__import__("datetime").date(2026, 3, 2)}),
             revenue_metrics=PayrollRevenueMetrics(
                 department_revenue_minor={3: 900000},
-                department_revenue_by_date_minor={3: {__import__("datetime").date(2026, 3, 2): 300000, __import__("datetime").date(2026, 3, 3): 600000}},
+                department_revenue_by_date_minor={
+                    3: {
+                        __import__("datetime").date(2026, 3, 2): 300000,
+                        __import__("datetime").date(2026, 3, 3): 600000,
+                    }
+                },
             ),
             kpi_metrics=PayrollKpiMetrics(),
             venue_plan_metrics=PayrollVenuePlanMetrics(),

@@ -141,14 +141,14 @@ def _list_active_expense_attachments(db: Session, *, venue_id: int, expense_id: 
                 ExpenseAttachment.is_active.is_(True),
             )
             .order_by(ExpenseAttachment.id.asc())
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 
 def _get_expense_or_404(db: Session, *, venue_id: int, expense_id: int) -> Expense:
-    obj = db.execute(
-        select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)
-    ).scalar_one_or_none()
+    obj = db.execute(select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)).scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Expense not found")
 
@@ -157,10 +157,20 @@ def _get_expense_or_404(db: Session, *, venue_id: int, expense_id: int) -> Expen
 
 _EXPENSE_ATTACHMENT_ALLOWED_EXTENSIONS = {
     ".pdf",
-    ".jpg", ".jpeg", ".png", ".webp", ".heic",
-    ".doc", ".docx", ".xls", ".xlsx", ".csv",
-    ".txt", ".rtf",
-    ".zip", ".rar",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".heic",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".csv",
+    ".txt",
+    ".rtf",
+    ".zip",
+    ".rar",
 }
 _EXPENSE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024
 
@@ -195,10 +205,14 @@ def _serialize_expense(
         "shift_slot": str(getattr(expense, "shift_slot", "TOTAL") or "TOTAL").upper(),
         "generated_for_month": expense.generated_for_month.isoformat() if expense.generated_for_month else None,
         "spread_months": int(expense.spread_months or 1),
-        "status": str(getattr(expense, 'status', 'CONFIRMED') or 'CONFIRMED').upper(),
+        "status": str(getattr(expense, "status", "CONFIRMED") or "CONFIRMED").upper(),
         "expense_kind": str(getattr(expense, "expense_kind", "OPERATING") or "OPERATING").upper(),
-        "payroll_period_start": expense.payroll_period_start.isoformat() if getattr(expense, "payroll_period_start", None) else None,
-        "payroll_period_end": expense.payroll_period_end.isoformat() if getattr(expense, "payroll_period_end", None) else None,
+        "payroll_period_start": expense.payroll_period_start.isoformat()
+        if getattr(expense, "payroll_period_start", None)
+        else None,
+        "payroll_period_end": expense.payroll_period_end.isoformat()
+        if getattr(expense, "payroll_period_end", None)
+        else None,
         "payroll_payout_key": getattr(expense, "payroll_payout_key", None),
         "comment": expense.comment,
         "created_by_user_id": expense.created_by_user_id,
@@ -208,17 +222,23 @@ def _serialize_expense(
             "id": cat.id,
             "code": cat.code,
             "title": cat.title,
-        } if cat is not None else None,
+        }
+        if cat is not None
+        else None,
         "supplier": {
             "id": sup.id,
             "title": sup.title,
             "contact": sup.contact,
-        } if sup is not None else None,
+        }
+        if sup is not None
+        else None,
         "payment_method": {
             "id": pm.id,
             "code": pm.code,
             "title": pm.title,
-        } if pm is not None else None,
+        }
+        if pm is not None
+        else None,
         "allocations": [_serialize_expense_allocation(a) for a in allocs],
         "attachments": [_serialize_expense_attachment(a) for a in attachments],
         "attachments_count": len(attachments),
@@ -229,38 +249,42 @@ def _parse_expense_statuses_filter(statuses: str | None) -> list[str] | None:
     if statuses is None:
         return None
     normalized = []
-    for raw in str(statuses).split(','):
+    for raw in str(statuses).split(","):
         value = raw.strip().upper()
         if not value:
             continue
-        if value not in {'DRAFT', 'CONFIRMED', 'CANCELLED'}:
-            raise HTTPException(status_code=400, detail='Bad status filter, expected DRAFT, CONFIRMED, CANCELLED')
+        if value not in {"DRAFT", "CONFIRMED", "CANCELLED"}:
+            raise HTTPException(status_code=400, detail="Bad status filter, expected DRAFT, CONFIRMED, CANCELLED")
         if value not in normalized:
             normalized.append(value)
     return normalized or None
 
 
-def _collect_expense_status_stats(*, rows: list[tuple[Expense, ExpenseCategory, Supplier | None, PaymentMethod | None]], statuses: list[str] | None = None) -> dict:
-    counts: dict[str, int] = {'DRAFT': 0, 'CONFIRMED': 0, 'CANCELLED': 0}
-    totals: dict[str, int] = {'DRAFT': 0, 'CONFIRMED': 0, 'CANCELLED': 0}
+def _collect_expense_status_stats(
+    *,
+    rows: list[tuple[Expense, ExpenseCategory, Supplier | None, PaymentMethod | None]],
+    statuses: list[str] | None = None,
+) -> dict:
+    counts: dict[str, int] = {"DRAFT": 0, "CONFIRMED": 0, "CANCELLED": 0}
+    totals: dict[str, int] = {"DRAFT": 0, "CONFIRMED": 0, "CANCELLED": 0}
     filtered_count = 0
     filtered_total = 0
     for expense, *_ in rows:
-        status = str(getattr(expense, 'status', 'DRAFT') or 'DRAFT').upper()
+        status = str(getattr(expense, "status", "DRAFT") or "DRAFT").upper()
         counts[status] = counts.get(status, 0) + 1
-        totals[status] = totals.get(status, 0) + int(getattr(expense, 'amount_minor', 0) or 0)
+        totals[status] = totals.get(status, 0) + int(getattr(expense, "amount_minor", 0) or 0)
         if statuses is None or status in statuses:
             filtered_count += 1
-            filtered_total += int(getattr(expense, 'amount_minor', 0) or 0)
+            filtered_total += int(getattr(expense, "amount_minor", 0) or 0)
     return {
-        'count': filtered_count,
-        'total_minor': filtered_total,
-        'draft_count': counts.get('DRAFT', 0),
-        'draft_total_minor': totals.get('DRAFT', 0),
-        'confirmed_count': counts.get('CONFIRMED', 0),
-        'confirmed_total_minor': totals.get('CONFIRMED', 0),
-        'cancelled_count': counts.get('CANCELLED', 0),
-        'cancelled_total_minor': totals.get('CANCELLED', 0),
+        "count": filtered_count,
+        "total_minor": filtered_total,
+        "draft_count": counts.get("DRAFT", 0),
+        "draft_total_minor": totals.get("DRAFT", 0),
+        "confirmed_count": counts.get("CONFIRMED", 0),
+        "confirmed_total_minor": totals.get("CONFIRMED", 0),
+        "cancelled_count": counts.get("CANCELLED", 0),
+        "cancelled_total_minor": totals.get("CANCELLED", 0),
     }
 
 
@@ -272,7 +296,7 @@ def get_expense_period_summary(
     date_to: date | None = Query(default=None),
     category_id: int | None = Query(default=None),
     supplier_id: int | None = Query(default=None),
-    statuses: str | None = Query(default=None, description='Comma-separated statuses: DRAFT,CONFIRMED,CANCELLED'),
+    statuses: str | None = Query(default=None, description="Comma-separated statuses: DRAFT,CONFIRMED,CANCELLED"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -288,12 +312,15 @@ def get_expense_period_summary(
 
     status_filter = _parse_expense_statuses_filter(statuses)
     if status_filter is not None and "CONFIRMED" not in status_filter:
-        return sanitize_financial_payload_for_user(user, {
-            "period_start": period_start.isoformat(),
-            "period_end": period_end.isoformat(),
-            "total_minor": 0,
-            "expense_count": 0,
-        })
+        return sanitize_financial_payload_for_user(
+            user,
+            {
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "total_minor": 0,
+                "expense_count": 0,
+            },
+        )
 
     stmt = (
         select(
@@ -315,12 +342,15 @@ def get_expense_period_summary(
         stmt = stmt.where(Expense.supplier_id == int(supplier_id))
 
     total_minor, expense_count = db.execute(stmt).one()
-    return sanitize_financial_payload_for_user(user, {
-        "period_start": period_start.isoformat(),
-        "period_end": period_end.isoformat(),
-        "total_minor": int(total_minor or 0),
-        "expense_count": int(expense_count or 0),
-    })
+    return sanitize_financial_payload_for_user(
+        user,
+        {
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "total_minor": int(total_minor or 0),
+            "expense_count": int(expense_count or 0),
+        },
+    )
 
 
 @router.get("/{venue_id}/expenses")
@@ -329,20 +359,20 @@ def list_expenses(
     month: str | None = Query(default=None),
     category_id: int | None = Query(default=None),
     supplier_id: int | None = Query(default=None),
-    statuses: str | None = Query(default=None, description='Comma-separated statuses: DRAFT,CONFIRMED,CANCELLED'),
+    statuses: str | None = Query(default=None, description="Comma-separated statuses: DRAFT,CONFIRMED,CANCELLED"),
     expense_kind: str | None = Query(default=None, pattern="^(OPERATING|PAYROLL)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
 
-    stmt = select(Expense, ExpenseCategory, Supplier, PaymentMethod).join(
-        ExpenseCategory, ExpenseCategory.id == Expense.category_id
-    ).outerjoin(
-        Supplier, Supplier.id == Expense.supplier_id
-    ).outerjoin(
-        PaymentMethod, PaymentMethod.id == Expense.payment_method_id
-    ).where(Expense.venue_id == venue_id)
+    stmt = (
+        select(Expense, ExpenseCategory, Supplier, PaymentMethod)
+        .join(ExpenseCategory, ExpenseCategory.id == Expense.category_id)
+        .outerjoin(Supplier, Supplier.id == Expense.supplier_id)
+        .outerjoin(PaymentMethod, PaymentMethod.id == Expense.payment_method_id)
+        .where(Expense.venue_id == venue_id)
+    )
 
     recognized_month = None
     period_start = None
@@ -357,9 +387,17 @@ def list_expenses(
         period_end = recognized_month.replace(day=last_day)
         stmt = stmt.outerjoin(ExpenseAllocation, ExpenseAllocation.expense_id == Expense.id).where(
             (ExpenseAllocation.month == recognized_month)
-            | ((Expense.expense_kind == 'PAYROLL') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
-            | ((Expense.status != 'CONFIRMED') & (Expense.generated_for_month == recognized_month))
-            | ((Expense.status != 'CONFIRMED') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
+            | (
+                (Expense.expense_kind == "PAYROLL")
+                & (Expense.expense_date >= period_start)
+                & (Expense.expense_date <= period_end)
+            )
+            | ((Expense.status != "CONFIRMED") & (Expense.generated_for_month == recognized_month))
+            | (
+                (Expense.status != "CONFIRMED")
+                & (Expense.expense_date >= period_start)
+                & (Expense.expense_date <= period_end)
+            )
         )
 
     if category_id is not None:
@@ -372,14 +410,18 @@ def list_expenses(
     rows = db.execute(stmt.distinct().order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
     status_filter = _parse_expense_statuses_filter(statuses)
     if status_filter:
-        rows = [row for row in rows if str(getattr(row[0], 'status', 'DRAFT') or 'DRAFT').upper() in status_filter]
+        rows = [row for row in rows if str(getattr(row[0], "status", "DRAFT") or "DRAFT").upper() in status_filter]
     result = []
     for expense, category, supplier, payment_method in rows:
         allocations = list_expense_allocations(db=db, expense_id=expense.id)
-        recognized_allocations = [a for a in allocations if recognized_month is not None and a.month == recognized_month]
+        recognized_allocations = [
+            a for a in allocations if recognized_month is not None and a.month == recognized_month
+        ]
         payload = _serialize_expense(expense, category, supplier, payment_method, allocations)
         payload["recognized_allocations"] = [_serialize_expense_allocation(a) for a in recognized_allocations]
-        payload["recognized_amount_minor_for_month"] = int(sum(int(a.amount_minor or 0) for a in recognized_allocations))
+        payload["recognized_amount_minor_for_month"] = int(
+            sum(int(a.amount_minor or 0) for a in recognized_allocations)
+        )
         result.append(payload)
     return sanitize_financial_payload_for_user(user, result)
 
@@ -390,20 +432,20 @@ def get_expense_stats(
     month: str | None = Query(default=None),
     category_id: int | None = Query(default=None),
     supplier_id: int | None = Query(default=None),
-    statuses: str | None = Query(default=None, description='Comma-separated statuses: DRAFT,CONFIRMED,CANCELLED'),
+    statuses: str | None = Query(default=None, description="Comma-separated statuses: DRAFT,CONFIRMED,CANCELLED"),
     expense_kind: str | None = Query(default=None, pattern="^(OPERATING|PAYROLL)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
 
-    stmt = select(Expense, ExpenseCategory, Supplier, PaymentMethod).join(
-        ExpenseCategory, ExpenseCategory.id == Expense.category_id
-    ).outerjoin(
-        Supplier, Supplier.id == Expense.supplier_id
-    ).outerjoin(
-        PaymentMethod, PaymentMethod.id == Expense.payment_method_id
-    ).where(Expense.venue_id == venue_id)
+    stmt = (
+        select(Expense, ExpenseCategory, Supplier, PaymentMethod)
+        .join(ExpenseCategory, ExpenseCategory.id == Expense.category_id)
+        .outerjoin(Supplier, Supplier.id == Expense.supplier_id)
+        .outerjoin(PaymentMethod, PaymentMethod.id == Expense.payment_method_id)
+        .where(Expense.venue_id == venue_id)
+    )
 
     recognized_month = None
     period_start = None
@@ -418,9 +460,17 @@ def get_expense_stats(
         period_end = recognized_month.replace(day=last_day)
         stmt = stmt.outerjoin(ExpenseAllocation, ExpenseAllocation.expense_id == Expense.id).where(
             (ExpenseAllocation.month == recognized_month)
-            | ((Expense.expense_kind == 'PAYROLL') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
-            | ((Expense.status != 'CONFIRMED') & (Expense.generated_for_month == recognized_month))
-            | ((Expense.status != 'CONFIRMED') & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
+            | (
+                (Expense.expense_kind == "PAYROLL")
+                & (Expense.expense_date >= period_start)
+                & (Expense.expense_date <= period_end)
+            )
+            | ((Expense.status != "CONFIRMED") & (Expense.generated_for_month == recognized_month))
+            | (
+                (Expense.status != "CONFIRMED")
+                & (Expense.expense_date >= period_start)
+                & (Expense.expense_date <= period_end)
+            )
         )
 
     if category_id is not None:
@@ -433,11 +483,14 @@ def get_expense_stats(
     rows = db.execute(stmt.distinct().order_by(Expense.expense_date.desc(), Expense.id.desc())).all()
     status_filter = _parse_expense_statuses_filter(statuses)
     stats = _collect_expense_status_stats(rows=rows, statuses=status_filter)
-    return sanitize_financial_payload_for_user(user, {
-        'month': recognized_month.isoformat() if recognized_month is not None else None,
-        'statuses': status_filter or ['DRAFT', 'CONFIRMED', 'CANCELLED'],
-        **stats,
-    })
+    return sanitize_financial_payload_for_user(
+        user,
+        {
+            "month": recognized_month.isoformat() if recognized_month is not None else None,
+            "statuses": status_filter or ["DRAFT", "CONFIRMED", "CANCELLED"],
+            **stats,
+        },
+    )
 
 
 @router.post("/{venue_id}/expenses")
@@ -463,7 +516,7 @@ def create_expense(
         expense_date=payload.expense_date,
         shift_slot=str(payload.shift_slot or "TOTAL").upper(),
         spread_months=int(payload.spread_months or 1),
-        status=str(payload.status or 'DRAFT').upper(),
+        status=str(payload.status or "DRAFT").upper(),
         comment=(payload.comment or None),
         created_by_user_id=user.id,
         created_at=datetime.utcnow(),
@@ -475,7 +528,11 @@ def create_expense(
     db.refresh(obj)
     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
-    payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.payment_method_id) if obj.payment_method_id else None
+    payment_method = (
+        _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.payment_method_id)
+        if obj.payment_method_id
+        else None
+    )
     return _serialize_expense(obj, category, supplier, payment_method, allocations)
 
 
@@ -488,9 +545,7 @@ def update_expense(
     user: User = Depends(get_current_user),
 ):
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
-    obj = db.execute(
-        select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)
-    ).scalar_one_or_none()
+    obj = db.execute(select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)).scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Expense not found")
 
@@ -537,7 +592,7 @@ def update_expense(
     if payload.comment is not None:
         obj.comment = payload.comment or None
     if payload.status is not None:
-        obj.status = str(payload.status or 'DRAFT').upper()
+        obj.status = str(payload.status or "DRAFT").upper()
     obj.updated_at = datetime.utcnow()
 
     allocations = rebuild_expense_allocations_for_expense(db=db, expense=obj)
@@ -545,7 +600,11 @@ def update_expense(
     db.refresh(obj)
     category = _get_expense_category_or_404(db, venue_id=venue_id, category_id=obj.category_id)
     supplier = _get_supplier_or_404(db, venue_id=venue_id, supplier_id=obj.supplier_id) if obj.supplier_id else None
-    payment_method = _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.payment_method_id) if obj.payment_method_id else None
+    payment_method = (
+        _get_payment_method_or_404(db, venue_id=venue_id, payment_method_id=obj.payment_method_id)
+        if obj.payment_method_id
+        else None
+    )
     return _serialize_expense(obj, category, supplier, payment_method, allocations)
 
 
@@ -557,9 +616,7 @@ def delete_expense(
     user: User = Depends(get_current_user),
 ):
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
-    obj = db.execute(
-        select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)
-    ).scalar_one_or_none()
+    obj = db.execute(select(Expense).where(Expense.id == expense_id, Expense.venue_id == venue_id)).scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Expense not found")
     delete_expense_allocations_for_expense(db=db, expense_id=obj.id)
@@ -592,12 +649,14 @@ def get_expense_attachment_download_link(
 ):
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
     _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
-    attachment = _get_expense_attachment_or_404(db, venue_id=venue_id, expense_id=expense_id, attachment_id=attachment_id)
+    attachment = _get_expense_attachment_or_404(
+        db, venue_id=venue_id, expense_id=expense_id, attachment_id=attachment_id
+    )
     url = _expense_attachment_signed_url(str(request.base_url).rstrip("/"), attachment)
     return {
         "download_link": url,
         "preview_link": url,
-        "expires_in": int(getattr(settings, 'EXPORT_LINK_TTL_SECONDS', 600) or 600),
+        "expires_in": int(getattr(settings, "EXPORT_LINK_TTL_SECONDS", 600) or 600),
         "file": _serialize_expense_attachment(attachment),
     }
 
@@ -618,7 +677,9 @@ def download_expense_attachment(
             raise HTTPException(status_code=401, detail="Not authenticated")
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_VIEW")
     _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
-    attachment = _get_expense_attachment_or_404(db, venue_id=venue_id, expense_id=expense_id, attachment_id=attachment_id)
+    attachment = _get_expense_attachment_or_404(
+        db, venue_id=venue_id, expense_id=expense_id, attachment_id=attachment_id
+    )
     return _expense_attachment_file_response(attachment)
 
 

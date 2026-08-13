@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.user import User
 from app.services import tg_notify
-from app.services.notification_logs import lock_notification_idempotency_key, log_notification_attempt, notification_delivery_exists, notification_dedupe_scope
+from app.services.notification_logs import (
+    lock_notification_idempotency_key,
+    log_notification_attempt,
+    notification_delivery_exists,
+    notification_dedupe_scope,
+)
 
 
 def _utc_now() -> datetime:
@@ -24,11 +29,7 @@ def admin_billing_open_url(*, venue_id: int | None = None) -> str:
 
 
 def list_super_admin_notification_recipients(db: Session) -> list[User]:
-    stmt = (
-        select(User)
-        .where(User.system_role == "SUPER_ADMIN")
-        .order_by(User.id.asc())
-    )
+    stmt = select(User).where(User.system_role == "SUPER_ADMIN").order_by(User.id.asc())
     recipients = list(db.execute(stmt).scalars().all())
 
     configured_ids = set(int(x) for x in settings.super_admin_ids())
@@ -36,11 +37,11 @@ def list_super_admin_notification_recipients(db: Session) -> list[User]:
         return recipients
 
     seen = {int(u.id) for u in recipients}
-    extra = db.execute(
-        select(User)
-        .where(User.tg_user_id.in_(list(configured_ids)))
-        .order_by(User.id.asc())
-    ).scalars().all()
+    extra = (
+        db.execute(select(User).where(User.tg_user_id.in_(list(configured_ids))).order_by(User.id.asc()))
+        .scalars()
+        .all()
+    )
     for user in extra:
         if int(user.id) in seen:
             continue
@@ -51,7 +52,6 @@ def list_super_admin_notification_recipients(db: Session) -> list[User]:
 
 def _delivery_exists(db: Session, *, idempotency_key: str) -> bool:
     return notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent"))
-
 
 
 def send_super_admin_billing_alert_once(

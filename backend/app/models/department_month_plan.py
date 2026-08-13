@@ -11,7 +11,9 @@ from app.core.db import Base
 class DepartmentMonthPlan(Base):
     __tablename__ = "department_month_plans"
     __table_args__ = (
-        UniqueConstraint("venue_id", "department_id", "month_start", name="uq_department_month_plans_venue_department_month"),
+        UniqueConstraint(
+            "venue_id", "department_id", "month_start", name="uq_department_month_plans_venue_department_month"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

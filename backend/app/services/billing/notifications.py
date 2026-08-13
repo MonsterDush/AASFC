@@ -11,7 +11,12 @@ from app.models.user import User
 from app.models.venue import Venue
 from app.models.venue_member import VenueMember
 from app.services import tg_notify
-from app.services.notification_logs import lock_notification_idempotency_key, log_notification_attempt, notification_delivery_exists, notification_dedupe_scope
+from app.services.notification_logs import (
+    lock_notification_idempotency_key,
+    log_notification_attempt,
+    notification_delivery_exists,
+    notification_dedupe_scope,
+)
 
 
 def billing_open_url(*, venue_id: int) -> str:
@@ -43,7 +48,6 @@ def venue_label(db: Session, *, venue_id: int) -> str:
 
 def _delivery_exists(db: Session, *, idempotency_key: str) -> bool:
     return notification_delivery_exists(db, idempotency_key=idempotency_key, statuses=("pending", "sent"))
-
 
 
 def send_owner_billing_notification_once(

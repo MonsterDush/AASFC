@@ -129,7 +129,11 @@ class SmsRuProvider(SmsProvider):
             method=method.upper(),
         )
         if method.upper() == "GET":
-            req = Request(f"{url}?{urlencode(payload)}", headers={"Content-Type": "application/x-www-form-urlencoded"}, method="GET")
+            req = Request(
+                f"{url}?{urlencode(payload)}",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                method="GET",
+            )
 
         try:
             with urlopen(req, timeout=float(settings.SMS_RU_TIMEOUT_SECONDS or 10)) as resp:
@@ -209,7 +213,9 @@ class SmsRuProvider(SmsProvider):
             "phone": self._phone_digits(phone_e164),
             "json": 1,
         }
-        data = self._request_json(str(settings.SMS_RU_CALL_ADD_URL or "https://sms.ru/callcheck/add"), payload, method="POST")
+        data = self._request_json(
+            str(settings.SMS_RU_CALL_ADD_URL or "https://sms.ru/callcheck/add"), payload, method="POST"
+        )
 
         status_code = int(data.get("status_code") or 0)
         status_text = str(data.get("status_text") or data.get("status") or "").strip()
@@ -239,7 +245,9 @@ class SmsRuProvider(SmsProvider):
             "check_id": str(check_id or "").strip(),
             "json": 1,
         }
-        data = self._request_json(str(settings.SMS_RU_CALL_STATUS_URL or "https://sms.ru/callcheck/status"), payload, method="GET")
+        data = self._request_json(
+            str(settings.SMS_RU_CALL_STATUS_URL or "https://sms.ru/callcheck/status"), payload, method="GET"
+        )
 
         status_code = int(data.get("status_code") or 0)
         status_text = str(data.get("status_text") or data.get("status") or "").strip()

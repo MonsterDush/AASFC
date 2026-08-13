@@ -227,12 +227,16 @@ def _serialize_issue(issue: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _derive_reconciliation_issues(db: Session, *, venue_id: int | None = None, q: str | None = None) -> list[dict[str, Any]]:
+def _derive_reconciliation_issues(
+    db: Session, *, venue_id: int | None = None, q: str | None = None
+) -> list[dict[str, Any]]:
     now = _utc_now()
     issues: list[dict[str, Any]] = []
 
     tx_rows = db.execute(
-        _billing_tx_stmt(venue_id=venue_id, q=q).order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc()).limit(500)
+        _billing_tx_stmt(venue_id=venue_id, q=q)
+        .order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
+        .limit(500)
     ).all()
     for tx, venue_name in tx_rows:
         status = str(tx.status or "").upper()
@@ -247,85 +251,102 @@ def _derive_reconciliation_issues(db: Session, *, venue_id: int | None = None, q
             except Exception:
                 expires_at = None
         if tx_type_upper == "PAYMENT" and status == "PENDING" and expires_at and expires_at <= now:
-            issues.append({
-                "severity": "warning",
-                "issue_code": "STALE_PENDING_CHECKOUT",
-                "message": "Checkout создан, но оплата не завершена вовремя.",
-                "venue_id": int(tx.venue_id),
-                "venue_name": venue_name,
-                "transaction_id": int(tx.id),
-                "event_id": None,
-                "created_at": expires_at,
-            })
+            issues.append(
+                {
+                    "severity": "warning",
+                    "issue_code": "STALE_PENDING_CHECKOUT",
+                    "message": "Checkout создан, но оплата не завершена вовремя.",
+                    "venue_id": int(tx.venue_id),
+                    "venue_name": venue_name,
+                    "transaction_id": int(tx.id),
+                    "event_id": None,
+                    "created_at": expires_at,
+                }
+            )
         if tx_type_upper == "PAYMENT" and status == "SUCCEEDED" and not tx.period_until:
-            issues.append({
-                "severity": "critical",
-                "issue_code": "SUCCEEDED_NOT_APPLIED",
-                "message": "Оплата отмечена успешной, но период продления не записан.",
-                "venue_id": int(tx.venue_id),
-                "venue_name": venue_name,
-                "transaction_id": int(tx.id),
-                "event_id": None,
-                "created_at": created,
-            })
+            issues.append(
+                {
+                    "severity": "critical",
+                    "issue_code": "SUCCEEDED_NOT_APPLIED",
+                    "message": "Оплата отмечена успешной, но период продления не записан.",
+                    "venue_id": int(tx.venue_id),
+                    "venue_name": venue_name,
+                    "transaction_id": int(tx.id),
+                    "event_id": None,
+                    "created_at": created,
+                }
+            )
         if tx_type_upper == "PAYMENT" and status == "FAILED":
-            issues.append({
-                "severity": "info",
-                "issue_code": "FAILED_PAYMENT",
-                "message": tx.comment or "Платёж завершился ошибкой.",
-                "venue_id": int(tx.venue_id),
-                "venue_name": venue_name,
-                "transaction_id": int(tx.id),
-                "event_id": None,
-                "created_at": created,
-            })
+            issues.append(
+                {
+                    "severity": "info",
+                    "issue_code": "FAILED_PAYMENT",
+                    "message": tx.comment or "Платёж завершился ошибкой.",
+                    "venue_id": int(tx.venue_id),
+                    "venue_name": venue_name,
+                    "transaction_id": int(tx.id),
+                    "event_id": None,
+                    "created_at": created,
+                }
+            )
 
     event_rows = db.execute(
-        _billing_event_stmt(venue_id=venue_id, q=q).order_by(VenueBillingEvent.created_at.desc(), VenueBillingEvent.id.desc()).limit(500)
+        _billing_event_stmt(venue_id=venue_id, q=q)
+        .order_by(VenueBillingEvent.created_at.desc(), VenueBillingEvent.id.desc())
+        .limit(500)
     ).all()
     for event, venue_name in event_rows:
         event_type = str(event.event_type or "").upper()
         meta = event.meta_json if isinstance(event.meta_json, dict) else {}
         if event_type == "ROBOKASSA_RESULT_SIGNATURE_INVALID":
-            issues.append({
-                "severity": "critical",
-                "issue_code": "INVALID_SIGNATURE",
-                "message": "Robokassa callback пришёл с неверной подписью.",
-                "venue_id": int(event.venue_id),
-                "venue_name": venue_name,
-                "transaction_id": meta.get("transaction_id"),
-                "event_id": int(event.id),
-                "created_at": event.created_at,
-            })
+            issues.append(
+                {
+                    "severity": "critical",
+                    "issue_code": "INVALID_SIGNATURE",
+                    "message": "Robokassa callback пришёл с неверной подписью.",
+                    "venue_id": int(event.venue_id),
+                    "venue_name": venue_name,
+                    "transaction_id": meta.get("transaction_id"),
+                    "event_id": int(event.id),
+                    "created_at": event.created_at,
+                }
+            )
         elif event_type == "ROBOKASSA_AMOUNT_MISMATCH":
-            issues.append({
-                "severity": "critical",
-                "issue_code": "AMOUNT_MISMATCH",
-                "message": "Сумма callback не совпала с суммой транзакции.",
-                "venue_id": int(event.venue_id),
-                "venue_name": venue_name,
-                "transaction_id": meta.get("transaction_id"),
-                "event_id": int(event.id),
-                "created_at": event.created_at,
-            })
+            issues.append(
+                {
+                    "severity": "critical",
+                    "issue_code": "AMOUNT_MISMATCH",
+                    "message": "Сумма callback не совпала с суммой транзакции.",
+                    "venue_id": int(event.venue_id),
+                    "venue_name": venue_name,
+                    "transaction_id": meta.get("transaction_id"),
+                    "event_id": int(event.id),
+                    "created_at": event.created_at,
+                }
+            )
         elif event_type == "ROBOKASSA_RESULT_DUPLICATE":
-            issues.append({
-                "severity": "warning",
-                "issue_code": "DUPLICATE_CALLBACK",
-                "message": "Robokassa прислала повторный callback по уже обработанному счёту.",
-                "venue_id": int(event.venue_id),
-                "venue_name": venue_name,
-                "transaction_id": meta.get("transaction_id"),
-                "event_id": int(event.id),
-                "created_at": event.created_at,
-            })
+            issues.append(
+                {
+                    "severity": "warning",
+                    "issue_code": "DUPLICATE_CALLBACK",
+                    "message": "Robokassa прислала повторный callback по уже обработанному счёту.",
+                    "venue_id": int(event.venue_id),
+                    "venue_name": venue_name,
+                    "transaction_id": meta.get("transaction_id"),
+                    "event_id": int(event.id),
+                    "created_at": event.created_at,
+                }
+            )
 
-    issues.sort(key=lambda item: (_ensure_aware(item.get("created_at")) or now), reverse=True)
+    issues.sort(key=lambda item: _ensure_aware(item.get("created_at")) or now, reverse=True)
     return issues
 
 
 def _safe_filename(value: str) -> str:
-    return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(value or "billing")).strip("_") or "billing"
+    return (
+        "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(value or "billing")).strip("_")
+        or "billing"
+    )
 
 
 @router.get("/billing/summary")
@@ -360,13 +381,17 @@ def get_admin_billing_summary(
         if snapshot.paid_until and snapshot.paid_until >= now and snapshot.paid_until <= now + timedelta(days=7):
             due_soon_count += 1
 
-    tx_rows = db.execute(
-        select(VenueBillingTransaction).where(
-            VenueBillingTransaction.status == "SUCCEEDED",
-            VenueBillingTransaction.created_at >= month_start,
-            VenueBillingTransaction.created_at < month_end,
+    tx_rows = (
+        db.execute(
+            select(VenueBillingTransaction).where(
+                VenueBillingTransaction.status == "SUCCEEDED",
+                VenueBillingTransaction.created_at >= month_start,
+                VenueBillingTransaction.created_at < month_end,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     receipts_minor = sum(int(tx.amount_minor or 0) for tx in tx_rows if str(tx.type or "").upper() != "REFUND")
     refunds_minor = sum(int(tx.amount_minor or 0) for tx in tx_rows if str(tx.type or "").upper() == "REFUND")
 
@@ -387,8 +412,6 @@ def get_admin_billing_summary(
             "month_end": month_end.isoformat(),
         },
     }
-
-
 
 
 @router.get("/billing/promocodes")
@@ -515,19 +538,23 @@ def get_admin_billing_venues(
         txs = list_billing_transactions(db, venue_id=int(venue.id), limit=3)
         last_tx = txs[0] if txs else None
         owner = owner_map.get(int(venue.id)) or {}
-        result.append({
-            "venue_id": int(venue.id),
-            "venue_name": venue.name,
-            "is_archived": bool(venue.is_archived),
-            "owner": owner,
-            "status": effective_status,
-            "paid_until": snapshot.paid_until.isoformat() if snapshot.paid_until else None,
-            "grace_until": snapshot.grace_until.isoformat() if snapshot.grace_until else None,
-            "last_payment_at": state.last_payment_at.isoformat() if state.last_payment_at else None,
-            "next_payment_due_at": state.next_payment_due_at.isoformat() if state.next_payment_due_at else None,
-            "last_extension_source": last_tx.source if last_tx else None,
-            "last_extension_transaction": _serialize_transaction(last_tx, venue_name=venue.name) if last_tx else None,
-        })
+        result.append(
+            {
+                "venue_id": int(venue.id),
+                "venue_name": venue.name,
+                "is_archived": bool(venue.is_archived),
+                "owner": owner,
+                "status": effective_status,
+                "paid_until": snapshot.paid_until.isoformat() if snapshot.paid_until else None,
+                "grace_until": snapshot.grace_until.isoformat() if snapshot.grace_until else None,
+                "last_payment_at": state.last_payment_at.isoformat() if state.last_payment_at else None,
+                "next_payment_due_at": state.next_payment_due_at.isoformat() if state.next_payment_due_at else None,
+                "last_extension_source": last_tx.source if last_tx else None,
+                "last_extension_transaction": _serialize_transaction(last_tx, venue_name=venue.name)
+                if last_tx
+                else None,
+            }
+        )
 
     def _date_value(value):
         if value is None:
@@ -553,7 +580,7 @@ def get_admin_billing_venues(
 
     total = len(result)
     offset = (int(page) - 1) * int(page_size)
-    paged = result[offset: offset + int(page_size)]
+    paged = result[offset : offset + int(page_size)]
 
     return {
         "items": paged,
@@ -609,7 +636,9 @@ def get_admin_billing_reconciliation(
 ):
     sync_billing_reconciliation_issues(db, venue_id=venue_id)
     db.commit()
-    items, total = list_billing_reconciliation_issues(db, venue_id=venue_id, search=q, status=status, page=page, page_size=page_size)
+    items, total = list_billing_reconciliation_issues(
+        db, venue_id=venue_id, search=q, status=status, page=page, page_size=page_size
+    )
     return {
         "items": items,
         "count": len(items),
@@ -641,22 +670,80 @@ def export_admin_billing_transactions(
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    rows, _ = list_billing_transactions_global(db, venue_id=venue_id, status=status, tx_type=tx_type, source=source, page=1, page_size=500)
-    venue_map = {int(v.id): v.name for v in db.execute(select(Venue).where(Venue.id.in_([int(tx.venue_id) for tx in rows] or [-1]))).scalars().all()}
-    items = [_serialize_transaction(tx, venue_name=venue_map.get(int(tx.venue_id))) for tx in rows if not q or q.strip().lower() in str(venue_map.get(int(tx.venue_id), "")).lower() or q.strip().lower() in str(tx.comment or "").lower() or q.strip().lower() in str(tx.provider_invoice_id or "").lower()]
-    filters = [("Venue ID", venue_id or "Все"), ("Status", status or "Все"), ("Type", tx_type or "Все"), ("Source", source or "Все"), ("Search", q or "—")]
+    rows, _ = list_billing_transactions_global(
+        db, venue_id=venue_id, status=status, tx_type=tx_type, source=source, page=1, page_size=500
+    )
+    venue_map = {
+        int(v.id): v.name
+        for v in db.execute(select(Venue).where(Venue.id.in_([int(tx.venue_id) for tx in rows] or [-1])))
+        .scalars()
+        .all()
+    }
+    items = [
+        _serialize_transaction(tx, venue_name=venue_map.get(int(tx.venue_id)))
+        for tx in rows
+        if not q
+        or q.strip().lower() in str(venue_map.get(int(tx.venue_id), "")).lower()
+        or q.strip().lower() in str(tx.comment or "").lower()
+        or q.strip().lower() in str(tx.provider_invoice_id or "").lower()
+    ]
+    filters = [
+        ("Venue ID", venue_id or "Все"),
+        ("Status", status or "Все"),
+        ("Type", tx_type or "Все"),
+        ("Source", source or "Все"),
+        ("Search", q or "—"),
+    ]
     fmt_norm = str(fmt or "xlsx").lower().strip()
     if fmt_norm == "csv":
         out = StringIO()
         writer = csv.writer(out)
-        writer.writerow(["created_at", "venue_name", "status", "type", "source", "amount_minor", "days_added", "period_from", "period_until", "provider_invoice_id", "provider_payment_id", "comment"])
+        writer.writerow(
+            [
+                "created_at",
+                "venue_name",
+                "status",
+                "type",
+                "source",
+                "amount_minor",
+                "days_added",
+                "period_from",
+                "period_until",
+                "provider_invoice_id",
+                "provider_payment_id",
+                "comment",
+            ]
+        )
         for row in items:
-            writer.writerow([row.get("created_at"), row.get("venue_name"), row.get("status"), row.get("type"), row.get("source"), row.get("amount_minor"), row.get("days_added"), row.get("period_from"), row.get("period_until"), row.get("provider_invoice_id"), row.get("provider_payment_id"), row.get("comment")])
+            writer.writerow(
+                [
+                    row.get("created_at"),
+                    row.get("venue_name"),
+                    row.get("status"),
+                    row.get("type"),
+                    row.get("source"),
+                    row.get("amount_minor"),
+                    row.get("days_added"),
+                    row.get("period_from"),
+                    row.get("period_until"),
+                    row.get("provider_invoice_id"),
+                    row.get("provider_payment_id"),
+                    row.get("comment"),
+                ]
+            )
         data = out.getvalue().encode("utf-8-sig")
         filename = "billing_transactions.csv"
-        return StreamingResponse(BytesIO(data), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        return StreamingResponse(
+            BytesIO(data),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     xlsx = build_billing_transactions_xlsx(title="Axelio · Реестр billing-операций", rows=items, filters=filters)
-    return StreamingResponse(BytesIO(xlsx), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="billing_transactions.xlsx"'})
+    return StreamingResponse(
+        BytesIO(xlsx),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="billing_transactions.xlsx"'},
+    )
 
 
 @router.get("/billing/reconciliation/export")
@@ -670,19 +757,57 @@ def export_admin_billing_reconciliation(
 ):
     sync_billing_reconciliation_issues(db, venue_id=venue_id)
     db.commit()
-    issues, _ = list_billing_reconciliation_issues(db, venue_id=venue_id, search=q, status=status, page=1, page_size=1000)
+    issues, _ = list_billing_reconciliation_issues(
+        db, venue_id=venue_id, search=q, status=status, page=1, page_size=1000
+    )
     filters = [("Venue ID", venue_id or "Все"), ("Status", status or "Все"), ("Search", q or "—")]
     fmt_norm = str(fmt or "xlsx").lower().strip()
     if fmt_norm == "csv":
         out = StringIO()
         writer = csv.writer(out)
-        writer.writerow(["created_at", "last_seen_at", "resolved_at", "status", "severity", "issue_code", "venue_name", "transaction_id", "event_id", "message", "resolution_comment"])
+        writer.writerow(
+            [
+                "created_at",
+                "last_seen_at",
+                "resolved_at",
+                "status",
+                "severity",
+                "issue_code",
+                "venue_name",
+                "transaction_id",
+                "event_id",
+                "message",
+                "resolution_comment",
+            ]
+        )
         for row in issues:
-            writer.writerow([row.get("created_at") or row.get("first_detected_at"), row.get("last_seen_at"), row.get("resolved_at"), row.get("status"), row.get("severity"), row.get("issue_code"), row.get("venue_name"), row.get("transaction_id"), row.get("event_id"), row.get("message"), row.get("resolution_comment")])
+            writer.writerow(
+                [
+                    row.get("created_at") or row.get("first_detected_at"),
+                    row.get("last_seen_at"),
+                    row.get("resolved_at"),
+                    row.get("status"),
+                    row.get("severity"),
+                    row.get("issue_code"),
+                    row.get("venue_name"),
+                    row.get("transaction_id"),
+                    row.get("event_id"),
+                    row.get("message"),
+                    row.get("resolution_comment"),
+                ]
+            )
         data = out.getvalue().encode("utf-8-sig")
-        return StreamingResponse(BytesIO(data), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="billing_reconciliation.csv"'})
+        return StreamingResponse(
+            BytesIO(data),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="billing_reconciliation.csv"'},
+        )
     xlsx = build_billing_reconciliation_xlsx(title="Axelio · Billing reconciliation", rows=issues, filters=filters)
-    return StreamingResponse(BytesIO(xlsx), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="billing_reconciliation.xlsx"'})
+    return StreamingResponse(
+        BytesIO(xlsx),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="billing_reconciliation.xlsx"'},
+    )
 
 
 @router.post("/billing/reconciliation/{issue_id}/resolve")
@@ -692,7 +817,9 @@ def resolve_billing_reconciliation_issue(
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    issue = set_billing_reconciliation_issue_status(db, issue_id=int(issue_id), new_status="RESOLVED", acted_by_user_id=int(user.id), comment=payload.comment)
+    issue = set_billing_reconciliation_issue_status(
+        db, issue_id=int(issue_id), new_status="RESOLVED", acted_by_user_id=int(user.id), comment=payload.comment
+    )
     db.commit()
     return {"ok": True, "issue_id": int(issue.id), "status": issue.status}
 
@@ -704,7 +831,9 @@ def ignore_billing_reconciliation_issue(
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    issue = set_billing_reconciliation_issue_status(db, issue_id=int(issue_id), new_status="IGNORED", acted_by_user_id=int(user.id), comment=payload.comment)
+    issue = set_billing_reconciliation_issue_status(
+        db, issue_id=int(issue_id), new_status="IGNORED", acted_by_user_id=int(user.id), comment=payload.comment
+    )
     db.commit()
     return {"ok": True, "issue_id": int(issue.id), "status": issue.status}
 
@@ -716,7 +845,9 @@ def reopen_billing_reconciliation_issue(
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
-    issue = set_billing_reconciliation_issue_status(db, issue_id=int(issue_id), new_status="OPEN", acted_by_user_id=int(user.id), comment=payload.comment)
+    issue = set_billing_reconciliation_issue_status(
+        db, issue_id=int(issue_id), new_status="OPEN", acted_by_user_id=int(user.id), comment=payload.comment
+    )
     db.commit()
     return {"ok": True, "issue_id": int(issue.id), "status": issue.status}
 
@@ -845,39 +976,53 @@ def create_admin_billing_refund(
         raise HTTPException(status_code=404, detail="Venue not found")
     refund_cfg = get_robokassa_refund_config()
     if not refund_cfg.is_enabled:
-        raise HTTPException(status_code=503, detail="Robokassa refund API is not configured or unavailable in test mode")
+        raise HTTPException(
+            status_code=503, detail="Robokassa refund API is not configured or unavailable in test mode"
+        )
 
     state = get_or_create_billing_state(db, venue_id=int(venue_id))
     amount_minor = int(payload.amount_minor if payload.amount_minor is not None else (state.price_minor or 0))
     if amount_minor <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
-    target_payment_tx = get_refundable_payment_transaction(db, venue_id=int(venue_id), requested_amount_minor=amount_minor)
+    target_payment_tx = get_refundable_payment_transaction(
+        db, venue_id=int(venue_id), requested_amount_minor=amount_minor
+    )
     if target_payment_tx is None:
         raise HTTPException(status_code=400, detail="No successful Robokassa payment is available for refund")
 
-    target_payload = target_payment_tx.provider_payload_json if isinstance(target_payment_tx.provider_payload_json, dict) else {}
+    target_payload = (
+        target_payment_tx.provider_payload_json if isinstance(target_payment_tx.provider_payload_json, dict) else {}
+    )
     op_key = str(target_payment_tx.provider_payment_id or target_payload.get("op_key") or "").strip()
     if not op_key:
         try:
-            op_state = fetch_operation_info(invoice_id=str(target_payment_tx.provider_invoice_id or target_payment_tx.id))
+            op_state = fetch_operation_info(
+                invoice_id=str(target_payment_tx.provider_invoice_id or target_payment_tx.id)
+            )
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Failed to fetch Robokassa operation info: {exc}")
         op_key = str(op_state.get("op_key") or "").strip()
         if not op_key:
             raise HTTPException(status_code=400, detail="Robokassa OpKey is missing for this payment")
         target_payload = dict(target_payload)
-        target_payload.update({
-            "op_key": op_key,
-            "op_state": op_state,
-        })
+        target_payload.update(
+            {
+                "op_key": op_key,
+                "op_state": op_state,
+            }
+        )
         target_payment_tx.provider_payment_id = op_key
         target_payment_tx.provider_payload_json = target_payload
         db.flush()
 
     try:
         reserved_minor = get_reserved_refund_amount_for_payment(db, payment_transaction_id=int(target_payment_tx.id))
-        refund_amount_for_api = None if reserved_minor == 0 and int(amount_minor) == int(target_payment_tx.amount_minor or 0) else amount_minor
+        refund_amount_for_api = (
+            None
+            if reserved_minor == 0 and int(amount_minor) == int(target_payment_tx.amount_minor or 0)
+            else amount_minor
+        )
         refund_result = create_refund_request(op_key=op_key, refund_amount_minor=refund_amount_for_api)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Robokassa refund request failed: {exc}")
@@ -901,10 +1046,12 @@ def create_admin_billing_refund(
         comment=payload.comment,
     )
     refund_payload = dict(tx.provider_payload_json or {})
-    refund_payload.update({
-        "refund_create_result": refund_result,
-        "revoke_access_hint": bool(payload.revoke_access_hint),
-    })
+    refund_payload.update(
+        {
+            "refund_create_result": refund_result,
+            "revoke_access_hint": bool(payload.revoke_access_hint),
+        }
+    )
     tx.provider_payload_json = refund_payload
     db.commit()
 

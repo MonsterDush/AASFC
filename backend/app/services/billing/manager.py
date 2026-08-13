@@ -158,9 +158,8 @@ def user_has_owned_real_venue(db: Session, *, user_id: int) -> bool:
 
 
 def can_grant_self_service_trial(db: Session, *, user_id: int) -> bool:
-    return (
-        not has_user_used_self_service_trial(db, user_id=int(user_id))
-        and not user_has_owned_real_venue(db, user_id=int(user_id))
+    return not has_user_used_self_service_trial(db, user_id=int(user_id)) and not user_has_owned_real_venue(
+        db, user_id=int(user_id)
     )
 
 
@@ -573,7 +572,6 @@ def create_refund_transaction(
     return tx, event
 
 
-
 def create_checkout_transaction(
     db: Session,
     *,
@@ -603,9 +601,9 @@ def create_checkout_transaction(
     state = get_or_create_billing_state(db, venue_id=int(venue_id))
     checkout_expires_at = _pending_checkout_expires_at(created_at=now)
     base_payload = {
-            "checkout_created_at": now.isoformat(),
-            "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
-        }
+        "checkout_created_at": now.isoformat(),
+        "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
+    }
     if isinstance(provider_payload_json, dict):
         base_payload.update(provider_payload_json)
     tx = VenueBillingTransaction(
@@ -613,7 +611,9 @@ def create_checkout_transaction(
         source=str(provider or DEFAULT_BILLING_PROVIDER).upper(),
         type="PAYMENT",
         status="PENDING",
-        amount_minor=int(amount_minor if amount_minor is not None else (state.price_minor or DEFAULT_BILLING_PRICE_MINOR)),
+        amount_minor=int(
+            amount_minor if amount_minor is not None else (state.price_minor or DEFAULT_BILLING_PRICE_MINOR)
+        ),
         days_added=max(1, int(days_added or DEFAULT_BILLING_DAYS)),
         period_from=None,
         period_until=None,
@@ -635,12 +635,16 @@ def create_checkout_transaction(
 
 def expire_stale_pending_checkouts(db: Session, *, now: datetime | None = None) -> tuple[int, list[VenueBillingEvent]]:
     current = _ensure_aware(now) or utcnow()
-    txs = db.execute(
-        select(VenueBillingTransaction).where(
-            VenueBillingTransaction.type == "PAYMENT",
-            VenueBillingTransaction.status == "PENDING",
+    txs = (
+        db.execute(
+            select(VenueBillingTransaction).where(
+                VenueBillingTransaction.type == "PAYMENT",
+                VenueBillingTransaction.status == "PENDING",
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     expired_count = 0
     events: list[VenueBillingEvent] = []
     for tx in txs:
@@ -713,7 +717,9 @@ def apply_checkout_payment_success(
 
     event = VenueBillingEvent(
         venue_id=int(tx.venue_id),
-        event_type="PROMO_PAYMENT_SUCCEEDED" if str(tx.source or "").upper() == "PROMOCODE" else "ROBOKASSA_PAYMENT_SUCCEEDED",
+        event_type="PROMO_PAYMENT_SUCCEEDED"
+        if str(tx.source or "").upper() == "PROMOCODE"
+        else "ROBOKASSA_PAYMENT_SUCCEEDED",
         old_status=old_status,
         new_status=BILLING_STATUS_ACTIVE,
         meta_json={
@@ -781,18 +787,20 @@ def _refund_target_payment_tx_id(tx: VenueBillingTransaction) -> int | None:
         return None
 
 
-
-
 def get_reserved_refund_amount_for_payment(
     db: Session,
     *,
     payment_transaction_id: int,
 ) -> int:
-    refund_txs = list(db.execute(
-        select(VenueBillingTransaction).where(
-            VenueBillingTransaction.type == "REFUND",
+    refund_txs = list(
+        db.execute(
+            select(VenueBillingTransaction).where(
+                VenueBillingTransaction.type == "REFUND",
+            )
         )
-    ).scalars().all())
+        .scalars()
+        .all()
+    )
     total = 0
     for refund_tx in refund_txs:
         if _refund_target_payment_tx_id(refund_tx) != int(payment_transaction_id):
@@ -801,26 +809,38 @@ def get_reserved_refund_amount_for_payment(
             continue
         total += int(refund_tx.amount_minor or 0)
     return total
+
+
 def get_refundable_payment_transaction(
     db: Session,
     *,
     venue_id: int,
     requested_amount_minor: int,
 ) -> VenueBillingTransaction | None:
-    payment_txs = list(db.execute(
-        select(VenueBillingTransaction).where(
-            VenueBillingTransaction.venue_id == int(venue_id),
-            VenueBillingTransaction.type == "PAYMENT",
-            VenueBillingTransaction.status == "SUCCEEDED",
-            VenueBillingTransaction.source == "ROBOKASSA",
-        ).order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
-    ).scalars().all())
+    payment_txs = list(
+        db.execute(
+            select(VenueBillingTransaction)
+            .where(
+                VenueBillingTransaction.venue_id == int(venue_id),
+                VenueBillingTransaction.type == "PAYMENT",
+                VenueBillingTransaction.status == "SUCCEEDED",
+                VenueBillingTransaction.source == "ROBOKASSA",
+            )
+            .order_by(VenueBillingTransaction.created_at.desc(), VenueBillingTransaction.id.desc())
+        )
+        .scalars()
+        .all()
+    )
     if not payment_txs:
         return None
     requested = max(0, int(requested_amount_minor or 0))
     for payment_tx in payment_txs:
         op_key = str(payment_tx.provider_payment_id or "").strip()
-        remaining = max(0, int(payment_tx.amount_minor or 0) - get_reserved_refund_amount_for_payment(db, payment_transaction_id=int(payment_tx.id)))
+        remaining = max(
+            0,
+            int(payment_tx.amount_minor or 0)
+            - get_reserved_refund_amount_for_payment(db, payment_transaction_id=int(payment_tx.id)),
+        )
         if requested > remaining:
             continue
         if op_key:

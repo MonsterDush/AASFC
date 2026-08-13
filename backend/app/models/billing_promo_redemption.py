@@ -11,14 +11,16 @@ from app.core.db import Base
 
 class BillingPromoRedemption(Base):
     __tablename__ = "billing_promo_redemption"
-    __table_args__ = (
-        UniqueConstraint("venue_id", name="uq_billing_promo_redemption_venue_id"),
-    )
+    __table_args__ = (UniqueConstraint("venue_id", name="uq_billing_promo_redemption_venue_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    promo_code_id: Mapped[int] = mapped_column(ForeignKey("billing_promo_code.id", ondelete="RESTRICT"), nullable=False, index=True)
+    promo_code_id: Mapped[int] = mapped_column(
+        ForeignKey("billing_promo_code.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"), nullable=False, index=True)
-    billing_transaction_id: Mapped[int | None] = mapped_column(ForeignKey("venue_billing_transaction.id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
+    billing_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("venue_billing_transaction.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+    )
 
     promo_code_value: Mapped[str] = mapped_column(String(64), nullable=False)
     discount_minor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

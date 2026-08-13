@@ -93,7 +93,9 @@ def _load_venue_plan_metrics(
     }
     department_day_targets: dict[int, dict[date, int | None]] = {}
     for row in db.execute(
-        select(DepartmentDayPlan.department_id, DepartmentDayPlan.target_date, DepartmentDayPlan.revenue_plan_minor).where(
+        select(
+            DepartmentDayPlan.department_id, DepartmentDayPlan.target_date, DepartmentDayPlan.revenue_plan_minor
+        ).where(
             DepartmentDayPlan.venue_id == int(venue_id),
             DepartmentDayPlan.target_date >= month_start,
             DepartmentDayPlan.target_date < month_end_excl,
@@ -121,12 +123,16 @@ def _assignment_overlaps_month(*, assignment: PayProfileAssignment, month_start:
     return True
 
 
-def _pick_latest_assignments(assignments: list[tuple[PayProfileAssignment, PayProfile, User]], *, month_start: date, month_end_excl: date) -> list[tuple[PayProfileAssignment, PayProfile, User]]:
+def _pick_latest_assignments(
+    assignments: list[tuple[PayProfileAssignment, PayProfile, User]], *, month_start: date, month_end_excl: date
+) -> list[tuple[PayProfileAssignment, PayProfile, User]]:
     selected: dict[int, tuple[date, int, tuple[PayProfileAssignment, PayProfile, User]]] = {}
     for assignment, profile, member_user in assignments:
         if not profile.is_active:
             continue
-        if not _assignment_overlaps_month(assignment=assignment, month_start=month_start, month_end_excl=month_end_excl):
+        if not _assignment_overlaps_month(
+            assignment=assignment, month_start=month_start, month_end_excl=month_end_excl
+        ):
             continue
         key = (assignment.start_date or date.min, int(assignment.id or 0))
         current = selected.get(int(assignment.member_user_id))
@@ -138,14 +144,18 @@ def _pick_latest_assignments(assignments: list[tuple[PayProfileAssignment, PayPr
 def _load_profile_components(db: Session, *, profile_ids: list[int]) -> dict[int, list[PayComponent]]:
     if not profile_ids:
         return {}
-    rows = db.execute(
-        select(PayComponent)
-        .where(
-            PayComponent.pay_profile_id.in_(profile_ids),
-            PayComponent.is_active.is_(True),
+    rows = (
+        db.execute(
+            select(PayComponent)
+            .where(
+                PayComponent.pay_profile_id.in_(profile_ids),
+                PayComponent.is_active.is_(True),
+            )
+            .order_by(PayComponent.pay_profile_id.asc(), PayComponent.sort_order.asc(), PayComponent.id.asc())
         )
-        .order_by(PayComponent.pay_profile_id.asc(), PayComponent.sort_order.asc(), PayComponent.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     all_department_ids: set[int] = set()
     for component in rows:
         all_department_ids.update(_component_department_ids(component))
@@ -167,8 +177,7 @@ def _load_profile_components(db: Session, *, profile_ids: list[int]) -> dict[int
 
 def _load_closed_report_dates(db: Session, *, venue_id: int, month_start: date, month_end_excl: date) -> set[date]:
     rows = db.execute(
-        select(DailyReport.date)
-        .where(
+        select(DailyReport.date).where(
             DailyReport.venue_id == int(venue_id),
             DailyReport.status == "CLOSED",
             DailyReport.date >= month_start,
@@ -178,10 +187,11 @@ def _load_closed_report_dates(db: Session, *, venue_id: int, month_start: date, 
     return {row[0] for row in rows if row and row[0] is not None}
 
 
-def _load_closed_report_slots_by_date(db: Session, *, venue_id: int, month_start: date, month_end_excl: date) -> dict[date, set[str]]:
+def _load_closed_report_slots_by_date(
+    db: Session, *, venue_id: int, month_start: date, month_end_excl: date
+) -> dict[date, set[str]]:
     rows = db.execute(
-        select(DailyReport.date, DailyReport.shift_slot)
-        .where(
+        select(DailyReport.date, DailyReport.shift_slot).where(
             DailyReport.venue_id == int(venue_id),
             DailyReport.status == "CLOSED",
             DailyReport.date >= month_start,
@@ -196,13 +206,16 @@ def _load_closed_report_slots_by_date(db: Session, *, venue_id: int, month_start
     return out
 
 
-
-def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month_end_excl: date, member_user_ids: list[int]) -> dict[int, PayrollMemberMetrics]:
+def _load_member_metrics(
+    db: Session, *, venue_id: int, month_start: date, month_end_excl: date, member_user_ids: list[int]
+) -> dict[int, PayrollMemberMetrics]:
     if not member_user_ids:
         return {}
 
     out: dict[int, PayrollMemberMetrics] = {int(uid): PayrollMemberMetrics() for uid in member_user_ids}
-    closed_slots_by_date = _load_closed_report_slots_by_date(db, venue_id=venue_id, month_start=month_start, month_end_excl=month_end_excl)
+    closed_slots_by_date = _load_closed_report_slots_by_date(
+        db, venue_id=venue_id, month_start=month_start, month_end_excl=month_end_excl
+    )
     if not closed_slots_by_date:
         return out
     closed_dates = set(closed_slots_by_date.keys())
@@ -257,19 +270,23 @@ def _load_member_metrics(db: Session, *, venue_id: int, month_start: date, month
     return out
 
 
-
-def _load_revenue_metrics(db: Session, *, venue_id: int, month_start: date, month_end_excl: date) -> PayrollRevenueMetrics:
-    total_revenue_minor = int(
-        db.execute(
-            select(func.coalesce(func.sum(DailyReport.revenue_total), 0)).where(
-                DailyReport.venue_id == int(venue_id),
-                DailyReport.status == "CLOSED",
-                DailyReport.date >= month_start,
-                DailyReport.date < month_end_excl,
-            )
-        ).scalar()
-        or 0
-    ) * 100
+def _load_revenue_metrics(
+    db: Session, *, venue_id: int, month_start: date, month_end_excl: date
+) -> PayrollRevenueMetrics:
+    total_revenue_minor = (
+        int(
+            db.execute(
+                select(func.coalesce(func.sum(DailyReport.revenue_total), 0)).where(
+                    DailyReport.venue_id == int(venue_id),
+                    DailyReport.status == "CLOSED",
+                    DailyReport.date >= month_start,
+                    DailyReport.date < month_end_excl,
+                )
+            ).scalar()
+            or 0
+        )
+        * 100
+    )
 
     total_daily_rows = db.execute(
         select(
@@ -285,9 +302,7 @@ def _load_revenue_metrics(db: Session, *, venue_id: int, month_start: date, mont
         .group_by(DailyReport.date)
     ).all()
     total_revenue_by_date_minor: dict[date, int] = {
-        row.report_date: int(row.amount or 0) * 100
-        for row in total_daily_rows
-        if row and row.report_date is not None
+        row.report_date: int(row.amount or 0) * 100 for row in total_daily_rows if row and row.report_date is not None
     }
 
     dept_rows = db.execute(
@@ -339,7 +354,6 @@ def _load_revenue_metrics(db: Session, *, venue_id: int, month_start: date, mont
         department_revenue_minor=department_revenue_minor,
         department_revenue_by_date_minor=department_revenue_by_date_minor,
     )
-
 
 
 def _load_kpi_metrics(db: Session, *, venue_id: int, month_start: date, month_end_excl: date) -> PayrollKpiMetrics:
@@ -398,10 +412,7 @@ def _sum_kpi_for_worked_shifts(
     metrics: PayrollMemberMetrics,
 ) -> int:
     values = kpi_metrics.values_by_metric_date_slot.get(int(metric_id), {})
-    report_keys = {
-        (shift.shift_date, normalize_shift_slot(shift.shift_slot))
-        for shift in metrics.worked_shifts
-    }
+    report_keys = {(shift.shift_date, normalize_shift_slot(shift.shift_slot)) for shift in metrics.worked_shifts}
     return int(sum(int(values.get(key, 0) or 0) for key in report_keys))
 
 

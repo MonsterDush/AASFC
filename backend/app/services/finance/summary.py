@@ -53,7 +53,6 @@ def resolve_finance_period(month: str | None, date_from: date | None, date_to: d
     return date(today.year, today.month, 1), date(today.year, today.month, last_day)
 
 
-
 def _normalize_summary_shift_slot(value: str | None) -> str | None:
     slot = str(value or "TOTAL").strip().upper()
     if slot in {"DAY", "NIGHT"}:
@@ -69,10 +68,9 @@ def _recognition_scope_filters(shift_slot: str | None) -> list:
     slot = _normalize_summary_shift_slot(shift_slot)
     return [ExpenseRecognitionEntry.shift_slot == slot] if slot is not None else []
 
+
 def _active_finance_shift_slots(db: Session, *, venue_id: int) -> list[str]:
-    night_enabled = db.execute(
-        select(Venue.night_shifts_enabled).where(Venue.id == int(venue_id))
-    ).scalar_one_or_none()
+    night_enabled = db.execute(select(Venue.night_shifts_enabled).where(Venue.id == int(venue_id))).scalar_one_or_none()
     return ["DAY", "NIGHT"] if bool(night_enabled) else ["DAY"]
 
 
@@ -102,16 +100,11 @@ def _sum_amount(
     )
     if slot is None:
         return int(
-            db.execute(
-                select(func.coalesce(func.sum(FinanceEntry.amount_minor), 0)).where(*base_filters)
-            ).scalar()
-            or 0
+            db.execute(select(func.coalesce(func.sum(FinanceEntry.amount_minor), 0)).where(*base_filters)).scalar() or 0
         )
 
     slots = _active_finance_shift_slots(db, venue_id=venue_id)
-    rows = db.execute(
-        select(FinanceEntry.amount_minor, FinanceEntry.meta_json).where(*base_filters)
-    ).all()
+    rows = db.execute(select(FinanceEntry.amount_minor, FinanceEntry.meta_json).where(*base_filters)).all()
     total_minor = 0
     for amount_minor, meta_json in rows:
         entry_slot = str((meta_json or {}).get("shift_slot") or "TOTAL").strip().upper()
@@ -128,7 +121,11 @@ def _sum_amount(
 
 
 def _month_dates(month_start: date) -> list[date]:
-    next_month = date(month_start.year + 1, 1, 1) if month_start.month == 12 else date(month_start.year, month_start.month + 1, 1)
+    next_month = (
+        date(month_start.year + 1, 1, 1)
+        if month_start.month == 12
+        else date(month_start.year, month_start.month + 1, 1)
+    )
     days: list[date] = []
     cursor = month_start
     while cursor < next_month:
@@ -180,11 +177,8 @@ def _sum_daily_payroll_allocated_minor(
             breakdown = json.loads(breakdown_json)
         except Exception:
             continue
-        metrics = breakdown.get('metrics') or {}
-        shift_allocations = [
-            item for item in (breakdown.get('shift_allocations') or [])
-            if isinstance(item, dict)
-        ]
+        metrics = breakdown.get("metrics") or {}
+        shift_allocations = [item for item in (breakdown.get("shift_allocations") or []) if isinstance(item, dict)]
         if shift_allocations:
             for allocation in shift_allocations:
                 if str(allocation.get("date") or "") != target_date_iso:
@@ -195,18 +189,20 @@ def _sum_daily_payroll_allocated_minor(
                 total_minor += int(allocation.get("amount_minor") or 0)
             continue
 
-        worked_dates = [str(day) for day in (metrics.get('worked_dates') or []) if day]
+        worked_dates = [str(day) for day in (metrics.get("worked_dates") or []) if day]
         worked_dates_sorted = sorted(set(worked_dates))
-        components = [item for item in (breakdown.get('components') or []) if isinstance(item, dict)]
+        components = [item for item in (breakdown.get("components") or []) if isinstance(item, dict)]
 
         if components:
             for component in components:
-                component_amount_minor = int(component.get('amount_minor') or 0)
+                component_amount_minor = int(component.get("amount_minor") or 0)
                 if component_amount_minor <= 0:
                     continue
-                component_type = str(component.get('component_type') or '').strip().upper()
-                if component_type == 'SALARY_FIXED_MONTH':
-                    day_amount_minor = _split_amount_for_index(component_amount_minor, len(days_in_month), month_day_index)
+                component_type = str(component.get("component_type") or "").strip().upper()
+                if component_type == "SALARY_FIXED_MONTH":
+                    day_amount_minor = _split_amount_for_index(
+                        component_amount_minor, len(days_in_month), month_day_index
+                    )
                     total_minor += (
                         day_amount_minor
                         if slot is None
@@ -279,8 +275,8 @@ def _sum_payroll_minor_for_period(
         venue_id=venue_id,
         period_start=period_start,
         period_end=period_end,
-        direction='EXPENSE',
-        kind='PAYROLL',
+        direction="EXPENSE",
+        kind="PAYROLL",
         shift_slot=shift_slot,
     )
 
@@ -327,7 +323,7 @@ def _sum_closed_report_revenue_minor(
 ) -> int:
     stmt = select(func.coalesce(func.sum(DailyReport.revenue_total), 0)).where(
         DailyReport.venue_id == int(venue_id),
-        DailyReport.status == 'CLOSED',
+        DailyReport.status == "CLOSED",
         DailyReport.date >= period_start,
         DailyReport.date <= period_end,
     )
@@ -338,16 +334,20 @@ def _sum_closed_report_revenue_minor(
 
 
 def _backfill_missing_expense_recognition(db: Session, *, venue_id: int) -> int:
-    missing = db.execute(
-        select(Expense)
-        .where(
-            Expense.venue_id == int(venue_id),
-            Expense.status == 'CONFIRMED',
-            Expense.expense_kind == 'OPERATING',
-            Expense.id.not_in(select(ExpenseRecognitionEntry.expense_id)),
+    missing = (
+        db.execute(
+            select(Expense)
+            .where(
+                Expense.venue_id == int(venue_id),
+                Expense.status == "CONFIRMED",
+                Expense.expense_kind == "OPERATING",
+                Expense.id.not_in(select(ExpenseRecognitionEntry.expense_id)),
+            )
+            .order_by(Expense.id.asc())
         )
-        .order_by(Expense.id.asc())
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not missing:
         return 0
     for expense in missing:
@@ -359,7 +359,7 @@ def _backfill_missing_expense_recognition(db: Session, *, venue_id: int) -> int:
 def _closed_reports_subquery(*, venue_id: int, period_start: date, period_end: date, shift_slot: str | None = None):
     stmt = select(DailyReport.id).where(
         DailyReport.venue_id == int(venue_id),
-        DailyReport.status == 'CLOSED',
+        DailyReport.status == "CLOSED",
         DailyReport.date >= period_start,
         DailyReport.date <= period_end,
     )
@@ -378,10 +378,12 @@ def _group_revenue_breakdown(
     income_mode: str,
     shift_slot: str | None = None,
 ) -> list[dict]:
-    mode = str(income_mode or 'PAYMENTS').upper()
-    kind = 'DEPT' if mode == 'DEPARTMENTS' else 'PAYMENT'
-    Catalog = Department if mode == 'DEPARTMENTS' else PaymentMethod
-    closed_reports = _closed_reports_subquery(venue_id=venue_id, period_start=period_start, period_end=period_end, shift_slot=shift_slot)
+    mode = str(income_mode or "PAYMENTS").upper()
+    kind = "DEPT" if mode == "DEPARTMENTS" else "PAYMENT"
+    Catalog = Department if mode == "DEPARTMENTS" else PaymentMethod
+    closed_reports = _closed_reports_subquery(
+        venue_id=venue_id, period_start=period_start, period_end=period_end, shift_slot=shift_slot
+    )
     rows = db.execute(
         select(DailyReportValue.ref_id, func.coalesce(func.sum(DailyReportValue.value_numeric), 0))
         .where(
@@ -391,7 +393,7 @@ def _group_revenue_breakdown(
         .group_by(DailyReportValue.ref_id)
     ).all()
     catalog_rows = db.execute(
-        select(Catalog.id, getattr(Catalog, 'code', None), Catalog.title).where(Catalog.venue_id == int(venue_id))
+        select(Catalog.id, getattr(Catalog, "code", None), Catalog.title).where(Catalog.venue_id == int(venue_id))
     ).all()
     catalog_map = {int(row[0]): row for row in catalog_rows}
     out: list[dict] = []
@@ -401,14 +403,14 @@ def _group_revenue_breakdown(
         catalog = catalog_map.get(ref_id)
         out.append(
             {
-                'ref_id': ref_id,
-                'code': catalog[1] if catalog else None,
-                'title': catalog[2] if catalog else f'ID {ref_id}',
-                'subtitle': None,
-                'amount_minor': amount_minor,
+                "ref_id": ref_id,
+                "code": catalog[1] if catalog else None,
+                "title": catalog[2] if catalog else f"ID {ref_id}",
+                "subtitle": None,
+                "amount_minor": amount_minor,
             }
         )
-    out.sort(key=lambda item: (-int(item['amount_minor']), str(item['title'])))
+    out.sort(key=lambda item: (-int(item["amount_minor"]), str(item["title"])))
     return out
 
 
@@ -422,7 +424,7 @@ def _sum_expense_recognition_minor(db: Session, *, venue_id: int, period_start: 
                 ExpenseRecognitionEntry.venue_id == int(venue_id),
                 ExpenseRecognitionEntry.recognition_date >= period_start,
                 ExpenseRecognitionEntry.recognition_date <= period_end,
-                Expense.status == 'CONFIRMED',
+                Expense.status == "CONFIRMED",
             )
         ).scalar()
         or 0
@@ -436,15 +438,19 @@ def _expense_document_stats_for_period(db: Session, *, venue_id: int, period_sta
         .where(
             Expense.venue_id == int(venue_id),
             (Expense.generated_for_month == month_start)
-            | ((Expense.generated_for_month.is_(None)) & (Expense.expense_date >= period_start) & (Expense.expense_date <= period_end))
+            | (
+                (Expense.generated_for_month.is_(None))
+                & (Expense.expense_date >= period_start)
+                & (Expense.expense_date <= period_end)
+            ),
         )
         .order_by(Expense.id.asc())
     )
     rows = db.execute(stmt).all()
-    draft_rows = [row for row in rows if str(row[1] or 'DRAFT').upper() == 'DRAFT']
+    draft_rows = [row for row in rows if str(row[1] or "DRAFT").upper() == "DRAFT"]
     return {
-        'draft_expense_count': len(draft_rows),
-        'draft_expense_total_minor': int(sum(int(row[2] or 0) for row in draft_rows)),
+        "draft_expense_count": len(draft_rows),
+        "draft_expense_total_minor": int(sum(int(row[2] or 0) for row in draft_rows)),
     }
 
 
@@ -463,22 +469,22 @@ def _group_expense_categories(db: Session, *, venue_id: int, period_start: date,
             ExpenseRecognitionEntry.venue_id == int(venue_id),
             ExpenseRecognitionEntry.recognition_date >= period_start,
             ExpenseRecognitionEntry.recognition_date <= period_end,
-            Expense.status == 'CONFIRMED',
+            Expense.status == "CONFIRMED",
         )
         .group_by(ExpenseCategory.id, ExpenseCategory.code, ExpenseCategory.title)
     ).all()
 
     out = [
         {
-            'category_id': int(row[0]),
-            'code': row[1],
-            'title': row[2],
-            'subtitle': None,
-            'amount_minor': int(row[3] or 0),
+            "category_id": int(row[0]),
+            "code": row[1],
+            "title": row[2],
+            "subtitle": None,
+            "amount_minor": int(row[3] or 0),
         }
         for row in rows
     ]
-    out.sort(key=lambda item: (-int(item['amount_minor']), str(item['title'])))
+    out.sort(key=lambda item: (-int(item["amount_minor"]), str(item["title"])))
     return out
 
 
@@ -503,19 +509,21 @@ def _group_daily_recurring_expenses(
         .where(
             ExpenseRecognitionEntry.venue_id == int(venue_id),
             ExpenseRecognitionEntry.recognition_date == target_date,
-            Expense.status == 'CONFIRMED',
+            Expense.status == "CONFIRMED",
             Expense.recurring_rule_id.is_not(None),
             *_recognition_scope_filters(shift_slot),
         )
         .group_by(RecurringExpenseRule.title, ExpenseCategory.code, ExpenseCategory.title)
-        .order_by(func.coalesce(func.sum(ExpenseRecognitionEntry.amount_minor), 0).desc(), RecurringExpenseRule.title.asc())
+        .order_by(
+            func.coalesce(func.sum(ExpenseRecognitionEntry.amount_minor), 0).desc(), RecurringExpenseRule.title.asc()
+        )
     ).all()
     return [
         {
-            'title': row[0],
-            'code': row[1],
-            'subtitle': row[2],
-            'amount_minor': int(row[3] or 0),
+            "title": row[0],
+            "code": row[1],
+            "subtitle": row[2],
+            "amount_minor": int(row[3] or 0),
         }
         for row in rows
     ]
@@ -537,8 +545,8 @@ def _sum_closed_report_payment_minor(
         .join(DailyReport, DailyReport.id == DailyReportValue.report_id)
         .where(
             DailyReport.venue_id == int(venue_id),
-            DailyReport.status == 'CLOSED',
-            DailyReportValue.kind == 'PAYMENT',
+            DailyReport.status == "CLOSED",
+            DailyReportValue.kind == "PAYMENT",
         )
     )
     if period_start is not None:
@@ -568,7 +576,7 @@ def _sum_non_revenue_payment_entries(
         FinanceEntry.venue_id == int(venue_id),
         FinanceEntry.payment_method_id == int(payment_method_id),
         FinanceEntry.direction == str(direction).upper(),
-        FinanceEntry.kind != 'REVENUE',
+        FinanceEntry.kind != "REVENUE",
     )
     if period_start is not None:
         stmt = stmt.where(FinanceEntry.entry_date >= period_start)
@@ -618,7 +626,7 @@ def _group_payment_method_balances(
                 db,
                 venue_id=venue_id,
                 payment_method_id=payment_method_id,
-                direction='INCOME',
+                direction="INCOME",
                 period_start=period_start,
                 period_end=period_end,
             )
@@ -626,14 +634,14 @@ def _group_payment_method_balances(
                 db,
                 venue_id=venue_id,
                 payment_method_id=payment_method_id,
-                direction='INCOME',
+                direction="INCOME",
                 period_end=period_end,
             )
             outflow_minor = _sum_non_revenue_payment_entries(
                 db,
                 venue_id=venue_id,
                 payment_method_id=payment_method_id,
-                direction='EXPENSE',
+                direction="EXPENSE",
                 period_start=period_start,
                 period_end=period_end,
             )
@@ -641,7 +649,7 @@ def _group_payment_method_balances(
                 db,
                 venue_id=venue_id,
                 payment_method_id=payment_method_id,
-                direction='EXPENSE',
+                direction="EXPENSE",
                 period_end=period_end,
             )
         inflow_minor = revenue_inflow_minor + other_income_minor
@@ -651,12 +659,12 @@ def _group_payment_method_balances(
             continue
         out.append(
             {
-                'payment_method_id': payment_method_id,
-                'code': row[1],
-                'title': row[2],
-                'inflow_minor': inflow_minor,
-                'outflow_minor': outflow_minor,
-                'balance_minor': balance_minor,
+                "payment_method_id": payment_method_id,
+                "code": row[1],
+                "title": row[2],
+                "inflow_minor": inflow_minor,
+                "outflow_minor": outflow_minor,
+                "balance_minor": balance_minor,
             }
         )
     return out
@@ -682,7 +690,7 @@ def _group_daily_point_expenses(
         .where(
             ExpenseRecognitionEntry.venue_id == int(venue_id),
             ExpenseRecognitionEntry.recognition_date == target_date,
-            Expense.status == 'CONFIRMED',
+            Expense.status == "CONFIRMED",
             Expense.recurring_rule_id.is_(None),
             *_recognition_scope_filters(shift_slot),
         )
@@ -691,11 +699,11 @@ def _group_daily_point_expenses(
     ).all()
     return [
         {
-            'category_id': int(row[0]),
-            'code': row[1],
-            'title': row[2],
-            'subtitle': 'Разовые расходы дня',
-            'amount_minor': int(row[3] or 0),
+            "category_id": int(row[0]),
+            "code": row[1],
+            "title": row[2],
+            "subtitle": "Разовые расходы дня",
+            "amount_minor": int(row[3] or 0),
         }
         for row in rows
     ]
@@ -712,7 +720,7 @@ def _group_closed_report_revenue_daily_minor(
         select(DailyReport.date, func.coalesce(func.sum(DailyReport.revenue_total), 0))
         .where(
             DailyReport.venue_id == int(venue_id),
-            DailyReport.status == 'CLOSED',
+            DailyReport.status == "CLOSED",
             DailyReport.date >= period_start,
             DailyReport.date <= period_end,
         )
@@ -739,7 +747,7 @@ def _group_expense_recognition_daily_minor(
             ExpenseRecognitionEntry.venue_id == int(venue_id),
             ExpenseRecognitionEntry.recognition_date >= period_start,
             ExpenseRecognitionEntry.recognition_date <= period_end,
-            Expense.status == 'CONFIRMED',
+            Expense.status == "CONFIRMED",
         )
         .group_by(ExpenseRecognitionEntry.recognition_date)
     ).all()
@@ -787,15 +795,15 @@ def _group_adjustments_refunds_daily_minor(
             FinanceEntry.venue_id == int(venue_id),
             FinanceEntry.entry_date >= period_start,
             FinanceEntry.entry_date <= period_end,
-            FinanceEntry.kind.in_(['ADJUSTMENT', 'REFUND']),
+            FinanceEntry.kind.in_(["ADJUSTMENT", "REFUND"]),
         )
         .group_by(FinanceEntry.entry_date, FinanceEntry.direction, FinanceEntry.kind)
     ).all()
     adjustments: dict[date, int] = {}
     refunds: dict[date, int] = {}
     for entry_date, direction, kind, amount_minor in rows:
-        sign = 1 if str(direction or '').upper() == 'INCOME' else -1
-        target = adjustments if str(kind or '').upper() == 'ADJUSTMENT' else refunds
+        sign = 1 if str(direction or "").upper() == "INCOME" else -1
+        target = adjustments if str(kind or "").upper() == "ADJUSTMENT" else refunds
         target[entry_date] = int(target.get(entry_date, 0)) + sign * int(amount_minor or 0)
     return adjustments, refunds
 
@@ -819,16 +827,18 @@ def _build_finance_daily_series(
         adjustments_minor = int(adjustments_by_date.get(day, 0) or 0)
         refunds_minor = int(refunds_by_date.get(day, 0) or 0)
         total_cost_minor = expense_minor + payroll_minor
-        out.append({
-            'date': day,
-            'revenue_minor': revenue_minor,
-            'expense_minor': expense_minor,
-            'payroll_minor': payroll_minor,
-            'total_cost_minor': total_cost_minor,
-            'adjustments_minor': adjustments_minor,
-            'refunds_minor': refunds_minor,
-            'profit_minor': revenue_minor - total_cost_minor + adjustments_minor + refunds_minor,
-        })
+        out.append(
+            {
+                "date": day,
+                "revenue_minor": revenue_minor,
+                "expense_minor": expense_minor,
+                "payroll_minor": payroll_minor,
+                "total_cost_minor": total_cost_minor,
+                "adjustments_minor": adjustments_minor,
+                "refunds_minor": refunds_minor,
+                "profit_minor": revenue_minor - total_cost_minor + adjustments_minor + refunds_minor,
+            }
+        )
         day += timedelta(days=1)
     return out
 
@@ -836,18 +846,18 @@ def _build_finance_daily_series(
 def _build_cost_structure(*, expense_categories: list[dict], expense_minor: int, payroll_minor: int) -> list[dict]:
     rows = [
         {
-            'key': f"expense:{int(item.get('category_id') or 0)}",
-            'title': str(item.get('title') or 'Расходы'),
-            'amount_minor': int(item.get('amount_minor') or 0),
+            "key": f"expense:{int(item.get('category_id') or 0)}",
+            "title": str(item.get("title") or "Расходы"),
+            "amount_minor": int(item.get("amount_minor") or 0),
         }
         for item in expense_categories
-        if int(item.get('amount_minor') or 0) > 0
+        if int(item.get("amount_minor") or 0) > 0
     ]
     if not rows and int(expense_minor or 0) > 0:
-        rows.append({'key': 'expense:other', 'title': 'Прочие расходы', 'amount_minor': int(expense_minor)})
+        rows.append({"key": "expense:other", "title": "Прочие расходы", "amount_minor": int(expense_minor)})
     if int(payroll_minor or 0) > 0:
-        rows.append({'key': 'payroll', 'title': 'ФОТ', 'amount_minor': int(payroll_minor)})
-    rows.sort(key=lambda item: (-int(item['amount_minor']), str(item['title'])))
+        rows.append({"key": "payroll", "title": "ФОТ", "amount_minor": int(payroll_minor)})
+    rows.sort(key=lambda item: (-int(item["amount_minor"]), str(item["title"])))
     return rows
 
 
@@ -873,7 +883,9 @@ def get_finance_summary(
         period_start=period_start,
         period_end=period_end,
     )
-    expense_minor = _sum_expense_recognition_minor(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
+    expense_minor = _sum_expense_recognition_minor(
+        db, venue_id=venue_id, period_start=period_start, period_end=period_end
+    )
     payroll_by_date = None
     if include_series:
         payroll_by_date = _group_daily_payroll_allocated_minor(
@@ -889,50 +901,48 @@ def get_finance_summary(
         period_end=period_end,
         daily_amounts=payroll_by_date,
     )
-    adjustment_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='ADJUSTMENT')
-    adjustment_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='ADJUSTMENT')
-    refund_income_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='INCOME', kind='REFUND')
-    refund_expense_minor = _sum_amount(db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction='EXPENSE', kind='REFUND')
+    adjustment_expense_minor = _sum_amount(
+        db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="EXPENSE", kind="ADJUSTMENT"
+    )
+    adjustment_income_minor = _sum_amount(
+        db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="INCOME", kind="ADJUSTMENT"
+    )
+    refund_income_minor = _sum_amount(
+        db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="INCOME", kind="REFUND"
+    )
+    refund_expense_minor = _sum_amount(
+        db, venue_id=venue_id, period_start=period_start, period_end=period_end, direction="EXPENSE", kind="REFUND"
+    )
 
     adjustments_minor = adjustment_income_minor - adjustment_expense_minor
     refunds_minor = refund_income_minor - refund_expense_minor
     total_cost_minor = expense_minor + payroll_minor
     profit_minor = revenue_minor - expense_minor - payroll_minor + adjustments_minor + refunds_minor
     margin_bps = int((profit_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
-    expense_ratio_bps = (
-        int((expense_minor * 10000) / revenue_minor)
-        if revenue_minor > 0
-        else None
-    )
-    payroll_ratio_bps = (
-        int((payroll_minor * 10000) / revenue_minor)
-        if revenue_minor > 0
-        else None
-    )
-    total_cost_ratio_bps = (
-        int((total_cost_minor * 10000) / revenue_minor)
-        if revenue_minor > 0
-        else None
-    )
+    expense_ratio_bps = int((expense_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    payroll_ratio_bps = int((payroll_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    total_cost_ratio_bps = int((total_cost_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
 
-    draft_stats = _expense_document_stats_for_period(db, venue_id=venue_id, period_start=period_start, period_end=period_end)
+    draft_stats = _expense_document_stats_for_period(
+        db, venue_id=venue_id, period_start=period_start, period_end=period_end
+    )
     payload = {
-        'month': month,
-        'period_start': period_start,
-        'period_end': period_end,
-        'revenue_minor': revenue_minor,
-        'expense_minor': expense_minor,
-        'expense_without_payroll_minor': expense_minor,
-        'payroll_minor': payroll_minor,
-        'payroll_expense_minor': payroll_minor,
-        'total_cost_minor': total_cost_minor,
-        'adjustments_minor': adjustments_minor,
-        'refunds_minor': refunds_minor,
-        'profit_minor': profit_minor,
-        'margin_bps': margin_bps,
-        'expense_ratio_bps': expense_ratio_bps,
-        'payroll_ratio_bps': payroll_ratio_bps,
-        'total_cost_ratio_bps': total_cost_ratio_bps,
+        "month": month,
+        "period_start": period_start,
+        "period_end": period_end,
+        "revenue_minor": revenue_minor,
+        "expense_minor": expense_minor,
+        "expense_without_payroll_minor": expense_minor,
+        "payroll_minor": payroll_minor,
+        "payroll_expense_minor": payroll_minor,
+        "total_cost_minor": total_cost_minor,
+        "adjustments_minor": adjustments_minor,
+        "refunds_minor": refunds_minor,
+        "profit_minor": profit_minor,
+        "margin_bps": margin_bps,
+        "expense_ratio_bps": expense_ratio_bps,
+        "payroll_ratio_bps": payroll_ratio_bps,
+        "total_cost_ratio_bps": total_cost_ratio_bps,
         **draft_stats,
     }
     if not include_series:
@@ -958,8 +968,8 @@ def get_finance_summary(
             venue_id=venue_id,
             period_start=period_start,
             period_end=period_end,
-            direction='EXPENSE',
-            kind='PAYROLL',
+            direction="EXPENSE",
+            kind="PAYROLL",
         )
     adjustments_by_date, refunds_by_date = _group_adjustments_refunds_daily_minor(
         db,
@@ -973,7 +983,7 @@ def get_finance_summary(
         period_start=period_start,
         period_end=period_end,
     )
-    payload['daily_series'] = _build_finance_daily_series(
+    payload["daily_series"] = _build_finance_daily_series(
         period_start=period_start,
         period_end=period_end,
         revenue_by_date=revenue_by_date,
@@ -982,7 +992,7 @@ def get_finance_summary(
         adjustments_by_date=adjustments_by_date,
         refunds_by_date=refunds_by_date,
     )
-    payload['cost_structure'] = _build_cost_structure(
+    payload["cost_structure"] = _build_cost_structure(
         expense_categories=expense_categories,
         expense_minor=expense_minor,
         payroll_minor=payroll_minor,
@@ -997,20 +1007,26 @@ def get_monthly_finance_summary(
     month: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    income_mode: str = 'PAYMENTS',
+    income_mode: str = "PAYMENTS",
 ) -> dict:
     period_start, period_end = resolve_finance_period(month=month, date_from=date_from, date_to=date_to)
     base = get_finance_summary(db=db, venue_id=venue_id, month=month, date_from=date_from, date_to=date_to)
-    mode = str(income_mode or 'PAYMENTS').upper()
-    if mode not in {'PAYMENTS', 'DEPARTMENTS'}:
-        raise ValueError('Bad income_mode, expected PAYMENTS or DEPARTMENTS')
+    mode = str(income_mode or "PAYMENTS").upper()
+    if mode not in {"PAYMENTS", "DEPARTMENTS"}:
+        raise ValueError("Bad income_mode, expected PAYMENTS or DEPARTMENTS")
     return {
         **base,
-        'month': month or None,
-        'income_mode': mode,
-        'revenue_breakdown': _group_revenue_breakdown(db, venue_id=venue_id, period_start=period_start, period_end=period_end, income_mode=mode),
-        'expense_categories': _group_expense_categories(db, venue_id=venue_id, period_start=period_start, period_end=period_end),
-        'payment_method_balances': _group_payment_method_balances(db, venue_id=venue_id, period_start=period_start, period_end=period_end),
+        "month": month or None,
+        "income_mode": mode,
+        "revenue_breakdown": _group_revenue_breakdown(
+            db, venue_id=venue_id, period_start=period_start, period_end=period_end, income_mode=mode
+        ),
+        "expense_categories": _group_expense_categories(
+            db, venue_id=venue_id, period_start=period_start, period_end=period_end
+        ),
+        "payment_method_balances": _group_payment_method_balances(
+            db, venue_id=venue_id, period_start=period_start, period_end=period_end
+        ),
     }
 
 
@@ -1019,14 +1035,14 @@ def get_day_finance_summary(
     db: Session,
     venue_id: int,
     target_date: date,
-    income_mode: str = 'PAYMENTS',
+    income_mode: str = "PAYMENTS",
     shift_slot: str | None = None,
 ) -> dict:
     period_start = target_date
     period_end = target_date
-    mode = str(income_mode or 'PAYMENTS').upper()
-    if mode not in {'PAYMENTS', 'DEPARTMENTS'}:
-        raise ValueError('Bad income_mode, expected PAYMENTS or DEPARTMENTS')
+    mode = str(income_mode or "PAYMENTS").upper()
+    if mode not in {"PAYMENTS", "DEPARTMENTS"}:
+        raise ValueError("Bad income_mode, expected PAYMENTS or DEPARTMENTS")
 
     slot = _normalize_summary_shift_slot(shift_slot)
 
@@ -1043,14 +1059,14 @@ def get_day_finance_summary(
         target_date=target_date,
         shift_slot=slot,
     )
-    point_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in point_expenses))
+    point_expense_minor = int(sum(int(item["amount_minor"] or 0) for item in point_expenses))
     recurring_expenses = _group_daily_recurring_expenses(
         db,
         venue_id=venue_id,
         target_date=target_date,
         shift_slot=slot,
     )
-    recurring_expense_minor = int(sum(int(item['amount_minor'] or 0) for item in recurring_expenses))
+    recurring_expense_minor = int(sum(int(item["amount_minor"] or 0) for item in recurring_expenses))
     payroll_minor = _sum_payroll_minor_for_period(
         db,
         venue_id=venue_id,
@@ -1063,8 +1079,8 @@ def get_day_finance_summary(
         venue_id=venue_id,
         period_start=period_start,
         period_end=period_end,
-        direction='EXPENSE',
-        kind='ADJUSTMENT',
+        direction="EXPENSE",
+        kind="ADJUSTMENT",
         shift_slot=slot,
     )
     adjustment_income_minor = _sum_amount(
@@ -1072,8 +1088,8 @@ def get_day_finance_summary(
         venue_id=venue_id,
         period_start=period_start,
         period_end=period_end,
-        direction='INCOME',
-        kind='ADJUSTMENT',
+        direction="INCOME",
+        kind="ADJUSTMENT",
         shift_slot=slot,
     )
     refund_income_minor = _sum_amount(
@@ -1081,8 +1097,8 @@ def get_day_finance_summary(
         venue_id=venue_id,
         period_start=period_start,
         period_end=period_end,
-        direction='INCOME',
-        kind='REFUND',
+        direction="INCOME",
+        kind="REFUND",
         shift_slot=slot,
     )
     refund_expense_minor = _sum_amount(
@@ -1090,8 +1106,8 @@ def get_day_finance_summary(
         venue_id=venue_id,
         period_start=period_start,
         period_end=period_end,
-        direction='EXPENSE',
-        kind='REFUND',
+        direction="EXPENSE",
+        kind="REFUND",
         shift_slot=slot,
     )
     adjustments_minor = adjustment_income_minor - adjustment_expense_minor
@@ -1099,26 +1115,10 @@ def get_day_finance_summary(
     expense_minor = point_expense_minor + recurring_expense_minor
     total_cost_minor = expense_minor + payroll_minor
     profit_minor = revenue_minor - expense_minor - payroll_minor + adjustments_minor + refunds_minor
-    margin_bps = (
-        int((profit_minor * 10000) / revenue_minor)
-        if revenue_minor > 0
-        else None
-    )
-    expense_ratio_bps = (
-        int((expense_minor * 10000) / revenue_minor)
-        if revenue_minor > 0
-        else None
-    )
-    payroll_ratio_bps = (
-        int((payroll_minor * 10000) / revenue_minor)
-        if revenue_minor > 0
-        else None
-    )
-    total_cost_ratio_bps = (
-        int((total_cost_minor * 10000) / revenue_minor)
-        if revenue_minor > 0
-        else None
-    )
+    margin_bps = int((profit_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    expense_ratio_bps = int((expense_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    payroll_ratio_bps = int((payroll_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
+    total_cost_ratio_bps = int((total_cost_minor * 10000) / revenue_minor) if revenue_minor > 0 else None
 
     draft_stats = _expense_document_stats_for_period(
         db,
@@ -1127,32 +1127,36 @@ def get_day_finance_summary(
         period_end=target_date,
     )
     return {
-        'date': target_date,
-        'month': target_date.strftime('%Y-%m'),
-        'period_start': period_start,
-        'period_end': period_end,
-        'revenue_minor': revenue_minor,
-        'expense_minor': expense_minor,
-        'expense_without_payroll_minor': expense_minor,
-        'payroll_minor': payroll_minor,
-        'payroll_expense_minor': payroll_minor,
-        'total_cost_minor': total_cost_minor,
-        'adjustments_minor': adjustments_minor,
-        'refunds_minor': refunds_minor,
-        'profit_minor': profit_minor,
-        'margin_bps': margin_bps,
-        'expense_ratio_bps': expense_ratio_bps,
-        'payroll_ratio_bps': payroll_ratio_bps,
-        'total_cost_ratio_bps': total_cost_ratio_bps,
-        'income_mode': mode,
-        'shift_slot': slot or 'TOTAL',
-        'slot_costs_available': True,
-        'slot_profit_available': True,
-        'revenue_breakdown': _group_revenue_breakdown(db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode=mode, shift_slot=slot),
-        'point_expenses': point_expenses,
-        'point_expense_minor': point_expense_minor,
-        'recurring_expenses': recurring_expenses,
-        'recurring_expense_minor': recurring_expense_minor,
-        'payment_method_balances': _group_payment_method_balances(db, venue_id=venue_id, period_start=target_date, period_end=target_date, shift_slot=slot),
+        "date": target_date,
+        "month": target_date.strftime("%Y-%m"),
+        "period_start": period_start,
+        "period_end": period_end,
+        "revenue_minor": revenue_minor,
+        "expense_minor": expense_minor,
+        "expense_without_payroll_minor": expense_minor,
+        "payroll_minor": payroll_minor,
+        "payroll_expense_minor": payroll_minor,
+        "total_cost_minor": total_cost_minor,
+        "adjustments_minor": adjustments_minor,
+        "refunds_minor": refunds_minor,
+        "profit_minor": profit_minor,
+        "margin_bps": margin_bps,
+        "expense_ratio_bps": expense_ratio_bps,
+        "payroll_ratio_bps": payroll_ratio_bps,
+        "total_cost_ratio_bps": total_cost_ratio_bps,
+        "income_mode": mode,
+        "shift_slot": slot or "TOTAL",
+        "slot_costs_available": True,
+        "slot_profit_available": True,
+        "revenue_breakdown": _group_revenue_breakdown(
+            db, venue_id=venue_id, period_start=target_date, period_end=target_date, income_mode=mode, shift_slot=slot
+        ),
+        "point_expenses": point_expenses,
+        "point_expense_minor": point_expense_minor,
+        "recurring_expenses": recurring_expenses,
+        "recurring_expense_minor": recurring_expense_minor,
+        "payment_method_balances": _group_payment_method_balances(
+            db, venue_id=venue_id, period_start=target_date, period_end=target_date, shift_slot=slot
+        ),
         **draft_stats,
     }

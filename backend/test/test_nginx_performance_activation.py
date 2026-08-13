@@ -28,12 +28,7 @@ class NginxPerformanceActivationTests(TestCase):
         self.security.write_text("add_header X-Test enabled;\n", encoding="utf-8")
         self.performance.write_text("gzip on;\n", encoding="utf-8")
         self.config = self.available / "axelio"
-        self.original = (
-            "server {\n"
-            "    server_name app.axelio.ru api.axelio.ru;\n"
-            f"    include {self.security};\n"
-            "}\n"
-        )
+        self.original = f"server {{\n    server_name app.axelio.ru api.axelio.ru;\n    include {self.security};\n}}\n"
         self.config.write_text(self.original, encoding="utf-8")
         (self.enabled / "axelio").symlink_to(self.config)
 
@@ -115,10 +110,7 @@ class NginxPerformanceActivationTests(TestCase):
         self.assertIsNotNone(true_bin)
         dev_config = self.available / "axelio-dev"
         dev_config.write_text(
-            "server {\n"
-            "    server_name app-dev.axelio.ru api-dev.axelio.ru;\n"
-            f"    include {self.security};\n"
-            "}\n",
+            f"server {{\n    server_name app-dev.axelio.ru api-dev.axelio.ru;\n    include {self.security};\n}}\n",
             encoding="utf-8",
         )
         (self.enabled / "axelio-dev").symlink_to(dev_config)

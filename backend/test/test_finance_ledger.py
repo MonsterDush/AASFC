@@ -140,20 +140,25 @@ class FinanceLedgerTests(TestCase):
             )
 
     def test_reconciliation_uses_source_basis_for_expenses(self):
-        db = _ReconciliationSession([
-            [("daily_report", 10, 10_000, 1)],
-            [(10, date(2026, 7, 3), 100)],
-            [("expense", 20, 5_000, 1)],
-            [(20, date(2026, 7, 4), 5_000)],
-            [("payroll_run", 30, 7_000, 1)],
-            [],
-            [(30, date(2026, 7, 1), 7_000)],
-        ])
-        with patch("app.services.finance.reconciliation.get_finance_summary", return_value={
-            "revenue_minor": 10_000,
-            "expense_without_payroll_minor": 3_000,
-            "payroll_minor": 7_000,
-        }):
+        db = _ReconciliationSession(
+            [
+                [("daily_report", 10, 10_000, 1)],
+                [(10, date(2026, 7, 3), 100)],
+                [("expense", 20, 5_000, 1)],
+                [(20, date(2026, 7, 4), 5_000)],
+                [("payroll_run", 30, 7_000, 1)],
+                [],
+                [(30, date(2026, 7, 1), 7_000)],
+            ]
+        )
+        with patch(
+            "app.services.finance.reconciliation.get_finance_summary",
+            return_value={
+                "revenue_minor": 10_000,
+                "expense_without_payroll_minor": 3_000,
+                "payroll_minor": 7_000,
+            },
+        ):
             payload = build_finance_reconciliation(db=db, venue_id=5, month="2026-07")
 
         self.assertEqual(payload["status"], "OK")
@@ -166,19 +171,24 @@ class FinanceLedgerTests(TestCase):
         self.assertTrue(checks["payroll"]["comparable_to_summary"])
 
     def test_reconciliation_reports_problem_sources_without_false_partial_payroll_warning(self):
-        db = _ReconciliationSession([
-            [("daily_report", 10, 9_000, 1)],
-            [(10, date(2026, 7, 10), 100)],
-            [],
-            [(20, date(2026, 7, 12), 5_000)],
-            [],
-            [],
-        ])
-        with patch("app.services.finance.reconciliation.get_finance_summary", return_value={
-            "revenue_minor": 10_000,
-            "expense_without_payroll_minor": 5_000,
-            "payroll_minor": 2_000,
-        }):
+        db = _ReconciliationSession(
+            [
+                [("daily_report", 10, 9_000, 1)],
+                [(10, date(2026, 7, 10), 100)],
+                [],
+                [(20, date(2026, 7, 12), 5_000)],
+                [],
+                [],
+            ]
+        )
+        with patch(
+            "app.services.finance.reconciliation.get_finance_summary",
+            return_value={
+                "revenue_minor": 10_000,
+                "expense_without_payroll_minor": 5_000,
+                "payroll_minor": 2_000,
+            },
+        ):
             payload = build_finance_reconciliation(
                 db=db,
                 venue_id=5,
@@ -194,20 +204,25 @@ class FinanceLedgerTests(TestCase):
         self.assertFalse(checks["payroll"]["comparable_to_summary"])
 
     def test_reconciliation_compares_configured_payroll_payouts_instead_of_accruals(self):
-        db = _ReconciliationSession([
-            [],
-            [],
-            [],
-            [],
-            [("payroll_expense", 40, 7_000, 1)],
-            [(1,)],
-            [(40, date(2026, 7, 20), 7_000)],
-        ])
-        with patch("app.services.finance.reconciliation.get_finance_summary", return_value={
-            "revenue_minor": 0,
-            "expense_without_payroll_minor": 0,
-            "payroll_minor": 9_000,
-        }):
+        db = _ReconciliationSession(
+            [
+                [],
+                [],
+                [],
+                [],
+                [("payroll_expense", 40, 7_000, 1)],
+                [(1,)],
+                [(40, date(2026, 7, 20), 7_000)],
+            ]
+        )
+        with patch(
+            "app.services.finance.reconciliation.get_finance_summary",
+            return_value={
+                "revenue_minor": 0,
+                "expense_without_payroll_minor": 0,
+                "payroll_minor": 9_000,
+            },
+        ):
             payload = build_finance_reconciliation(db=db, venue_id=5, month="2026-07")
 
         checks = {item["key"]: item for item in payload["checks"]}
@@ -222,27 +237,25 @@ class FinanceLedgerTests(TestCase):
             period_start=date(2026, 7, 1),
             period_end=date(2026, 7, 31),
             filters=[("Направление", "Приход")],
-            rows=[{
-                "id": 8,
-                "entry_date": "2026-07-03",
-                "amount_minor": 12_345,
-                "direction": "INCOME",
-                "kind": "REVENUE",
-                "source_type": "daily_report",
-                "source_id": 10,
-                "payment_method": {"title": "Карта"},
-                "department": None,
-                "meta_json": {"shift_slot": "NIGHT"},
-                "created_at": "2026-07-03T04:30:00+03:00",
-            }],
+            rows=[
+                {
+                    "id": 8,
+                    "entry_date": "2026-07-03",
+                    "amount_minor": 12_345,
+                    "direction": "INCOME",
+                    "kind": "REVENUE",
+                    "source_type": "daily_report",
+                    "source_id": 10,
+                    "payment_method": {"title": "Карта"},
+                    "department": None,
+                    "meta_json": {"shift_slot": "NIGHT"},
+                    "created_at": "2026-07-03T04:30:00+03:00",
+                }
+            ],
         )
         workbook = load_workbook(BytesIO(data), data_only=False)
         worksheet = workbook["Операции"]
-        header_row = next(
-            row[0].row
-            for row in worksheet.iter_rows()
-            if row[0].value == "Дата"
-        )
+        header_row = next(row[0].row for row in worksheet.iter_rows() if row[0].value == "Дата")
         self.assertEqual(worksheet.cell(header_row + 1, 1).value.date(), date(2026, 7, 3))
         self.assertEqual(worksheet.cell(header_row + 1, 4).value, 123.45)
         self.assertEqual(worksheet.cell(header_row + 1, 4).number_format, "#,##0.00")
@@ -293,11 +306,13 @@ class FinanceLedgerTests(TestCase):
         self.assertIn("OFFSET 50", sql)
 
     def test_finance_entry_analytics_returns_compact_metrics_series_and_structure(self):
-        db = _CaptureSession([
-            [(150_000, 40_000, 5)],
-            [(date(2026, 7, 3), 100_000, 25_000, 3), (date(2026, 7, 4), 50_000, 15_000, 2)],
-            [("INCOME", "REVENUE", 150_000, 2), ("EXPENSE", "EXPENSE", 40_000, 3)],
-        ])
+        db = _CaptureSession(
+            [
+                [(150_000, 40_000, 5)],
+                [(date(2026, 7, 3), 100_000, 25_000, 3), (date(2026, 7, 4), 50_000, 15_000, 2)],
+                [("INCOME", "REVENUE", 150_000, 2), ("EXPENSE", "EXPENSE", 40_000, 3)],
+            ]
+        )
 
         payload = _load_finance_entry_analytics(
             db,
@@ -311,16 +326,22 @@ class FinanceLedgerTests(TestCase):
             source_type=None,
         )
 
-        self.assertEqual(payload["metrics"], {
-            "income_minor": 150_000,
-            "expense_minor": 40_000,
-            "net_minor": 110_000,
-            "count": 5,
-        })
+        self.assertEqual(
+            payload["metrics"],
+            {
+                "income_minor": 150_000,
+                "expense_minor": 40_000,
+                "net_minor": 110_000,
+                "count": 5,
+            },
+        )
         self.assertEqual(payload["daily_series"][0]["count"], 3)
-        self.assertEqual(payload["structure"][1], {
-            "direction": "EXPENSE",
-            "kind": "EXPENSE",
-            "amount_minor": 40_000,
-            "count": 3,
-        })
+        self.assertEqual(
+            payload["structure"][1],
+            {
+                "direction": "EXPENSE",
+                "kind": "EXPENSE",
+                "amount_minor": 40_000,
+                "count": 3,
+            },
+        )

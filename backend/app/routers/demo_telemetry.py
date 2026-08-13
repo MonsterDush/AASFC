@@ -10,7 +10,7 @@ from app.models import User
 from app.services.demo.access import get_demo_session_or_none
 from app.services.demo.analytics import record_demo_event
 
-router = APIRouter(prefix='/demo', tags=['demo-telemetry'])
+router = APIRouter(prefix="/demo", tags=["demo-telemetry"])
 
 
 class DemoEventIn(BaseModel):
@@ -20,7 +20,7 @@ class DemoEventIn(BaseModel):
     meta: dict | None = None
 
 
-@router.post('/event')
+@router.post("/event")
 def create_demo_event(
     payload: DemoEventIn,
     db: Session = Depends(get_db),
@@ -28,7 +28,7 @@ def create_demo_event(
 ):
     demo_ctx = get_demo_session_or_none(user)
     if demo_ctx is None:
-        raise HTTPException(status_code=403, detail='DEMO-сессия не активна')
+        raise HTTPException(status_code=403, detail="DEMO-сессия не активна")
     event = record_demo_event(
         db,
         event_name=payload.event_name,
@@ -39,6 +39,6 @@ def create_demo_event(
     )
     db.commit()
     return {
-        'ok': True,
-        'event_id': int(event.id) if event is not None else None,
+        "ok": True,
+        "event_id": int(event.id) if event is not None else None,
     }

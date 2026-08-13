@@ -219,12 +219,7 @@ def _send_shift_comment_notifications(db: Session, *, venue_id: int, comment_id:
             title = "Вас упомянули в комментарии к смене"
         else:
             title = "Новый комментарий к вашей смене"
-        text = (
-            f'{title} в «{venue.name}»\n'
-            f"{date_label}\n"
-            f"От: {author_name}\n\n"
-            f"{comment_text}"
-        )
+        text = f"{title} в «{venue.name}»\n{date_label}\nОт: {author_name}\n\n{comment_text}"
 
         ok, retryable_error = _deliver_user_notification(
             db,

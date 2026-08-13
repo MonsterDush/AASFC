@@ -9,8 +9,8 @@ from app.models.role_permission_default import RolePermissionDefault
 
 
 def sync_permissions() -> None:
-    with SessionLocal() as db:  
-        '''type:session'''
+    with SessionLocal() as db:
+        """type:session"""
         # --- permissions ---
         existing_perms = {p.code: p for p in db.scalars(select(Permission)).all()}
 
@@ -51,8 +51,7 @@ def sync_permissions() -> None:
         defaults_created = 0
         defaults_updated = 0
         existing_default_rows = {
-            (row.role, row.permission_code): row
-            for row in db.scalars(select(RolePermissionDefault)).all()
+            (row.role, row.permission_code): row for row in db.scalars(select(RolePermissionDefault)).all()
         }
         for role in DEFAULT_ROLES:
             for perm in PERMISSIONS:
