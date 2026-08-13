@@ -72,7 +72,12 @@ grep -q '^axelio_build_info' "${metrics_snapshot}" || {
   exit 1
 }
 
-systemctl start axelio-monitor-prod.service
+if ! systemctl start axelio-monitor-prod.service; then
+  echo "Production monitor failed during observability drill" >&2
+  systemctl status axelio-monitor-prod.service --no-pager >&2 || true
+  journalctl -u axelio-monitor-prod.service -n 100 --no-pager >&2 || true
+  exit 1
+fi
 systemctl is-active --quiet axelio-monitor-prod.timer
 
 send_message() {
