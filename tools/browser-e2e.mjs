@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 
@@ -9,6 +11,11 @@ const ownerPhone = process.env.E2E_OWNER_PHONE || "+79990000001";
 const staffPhone = process.env.E2E_STAFF_PHONE || "+79990000002";
 const password = process.env.E2E_PASSWORD || "AxelioE2E123!";
 const venueName = process.env.E2E_VENUE_NAME || "Axelio E2E Lounge";
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const axeSource = fs.readFileSync(path.join(repoRoot, "node_modules/axe-core/axe.min.js"), "utf8");
+const performanceBudgets = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tools/performance-budgets.json"), "utf8"),
+);
 
 
 function browserExecutable() {
@@ -76,11 +83,12 @@ async function apiJson(page, path, options = {}) {
 }
 
 
-async function login(page, { phone, role }) {
+async function login(page, { phone, role, auditAuth = false }) {
   const nextPath = "/app-venues.html";
   await page.goto(`${frontendBase}/auth.html?next=${encodeURIComponent(nextPath)}`, {
     waitUntil: "domcontentloaded",
   });
+  if (auditAuth) await assertPageQuality(page, "auth");
   await page.locator("#loginPhoneInput").fill(phone);
   await page.locator("#loginPasswordInput").fill(password);
   await page.locator("#btnPasswordLogin").click();
@@ -111,12 +119,72 @@ async function assertNoHorizontalOverflow(page, label) {
 }
 
 
+async function settlePage(page) {
+  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  await page.waitForFunction(() => !document.documentElement.classList.contains("page-loading"), null, {
+    timeout: 10_000,
+  }).catch(() => {});
+}
+
+
+async function assertAccessibility(page, label) {
+  await page.addScriptTag({ content: axeSource });
+  const violations = await page.evaluate(async () => {
+    const result = await window.axe.run(document, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] },
+      resultTypes: ["violations"],
+    });
+    return result.violations
+      .filter((violation) => ["critical", "serious"].includes(violation.impact))
+      .map((violation) => ({
+        id: violation.id,
+        impact: violation.impact,
+        nodes: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")),
+      }));
+  });
+  assert.deepEqual(violations, [], `${label}: critical or serious WCAG violations`);
+}
+
+
+async function measurePerformance(page) {
+  return page.evaluate(() => {
+    const resources = performance.getEntriesByType("resource");
+    return {
+      readyMs: Math.round(performance.now()),
+      requests: resources.length + 1,
+      transferBytes: Math.round(
+        resources.reduce((total, entry) => total + (entry.transferSize || entry.encodedBodySize || 0), 0),
+      ),
+      domNodes: document.getElementsByTagName("*").length,
+    };
+  });
+}
+
+
+async function assertPageQuality(page, budgetName) {
+  const budget = performanceBudgets.pages[budgetName];
+  assert.ok(budget, `Missing performance budget for ${budgetName}`);
+  await settlePage(page);
+  const performance = await measurePerformance(page);
+  for (const [budgetKey, maximum] of Object.entries(budget)) {
+    const metric = budgetKey.replace(/^max([A-Z])/, (_match, letter) => letter.toLowerCase());
+    assert.ok(
+      performance[metric] <= maximum,
+      `${budgetName}: ${metric} ${performance[metric]} exceeds budget ${maximum}`,
+    );
+  }
+  const dimensions = await assertNoHorizontalOverflow(page, budgetName);
+  await assertAccessibility(page, budgetName);
+  return { ...performance, dimensions };
+}
+
+
 async function ownerScenario(browser) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   const assertDiagnostics = attachDiagnostics(page, "owner");
   try {
-    const venueId = await login(page, { phone: ownerPhone, role: "OWNER" });
+    const venueId = await login(page, { phone: ownerPhone, role: "OWNER", auditAuth: true });
     await page.goto(`${frontendBase}/owner-summary.html?venue_id=${venueId}`, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => {
       const value = document.querySelector("#summaryRevenue");
@@ -127,9 +195,24 @@ async function ownerScenario(browser) {
       text: element.textContent.trim(),
     }));
     assert.ok(state.hidden, `owner: summary error state is visible: ${state.text}`);
-    const dimensions = await assertNoHorizontalOverflow(page, "owner desktop");
+    const summary = await assertPageQuality(page, "owner-summary");
+
+    await page.goto(`${frontendBase}/owner-expenses.html?venue_id=${venueId}`, { waitUntil: "domcontentloaded" });
+    await page.locator("#expensesState").waitFor({ state: "visible", timeout: 20_000 });
+    const expenses = await assertPageQuality(page, "owner-expenses");
+
+    await page.goto(`${frontendBase}/owner-payroll.html?venue_id=${venueId}`, { waitUntil: "domcontentloaded" });
+    await page.locator("#linesList").waitFor({ state: "visible", timeout: 20_000 });
+    await page.waitForFunction(() => document.querySelector("#linesList")?.getAttribute("aria-busy") === "false", null, {
+      timeout: 20_000,
+    });
+    const payroll = await assertPageQuality(page, "owner-payroll");
+
+    await page.goto(`${frontendBase}/settings.html?venue_id=${venueId}`, { waitUntil: "domcontentloaded" });
+    await page.locator("main").waitFor({ state: "visible", timeout: 20_000 });
+    const settings = await assertPageQuality(page, "owner-settings");
     assertDiagnostics();
-    return { venueId, dimensions };
+    return { venueId, summary, expenses, payroll, settings };
   } finally {
     await context.close();
   }
@@ -150,9 +233,9 @@ async function staffScenario(browser) {
     );
     const label = (await page.locator("#monthLabel").textContent())?.trim();
     assert.ok(label && label !== "…", "staff: month label must be rendered");
-    const dimensions = await assertNoHorizontalOverflow(page, "staff desktop");
+    const quality = await assertPageQuality(page, "staff-shifts");
     assertDiagnostics();
-    return { venueId, calendarCells: 42, dimensions };
+    return { venueId, calendarCells: 42, quality };
   } finally {
     await context.close();
   }
@@ -185,9 +268,9 @@ async function demoScenario(browser) {
     assert.equal(blockedMutation.status, 403, "public demo: mutations must remain read-only");
     assert.equal(blockedMutation.body?.error_code, "DEMO_READONLY");
 
-    const dimensions = await assertNoHorizontalOverflow(page, "public demo mobile");
+    const quality = await assertPageQuality(page, "public-demo");
     assertDiagnostics();
-    return { venueId, calendarCells: 42, mutationStatus: 403, dimensions };
+    return { venueId, calendarCells: 42, mutationStatus: 403, quality };
   } finally {
     await context.close();
   }

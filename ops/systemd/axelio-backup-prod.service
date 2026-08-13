@@ -8,6 +8,7 @@ Type=oneshot
 WorkingDirectory=/var/www/axelio/prod/repo
 Environment=BACKUP_DIR=/var/backups/axelio/prod
 Environment=BACKUP_REQUIRE_OFFSITE=true
+Environment=MONITORING_STATE_DIR=/var/lib/axelio-monitoring
 EnvironmentFile=/var/www/axelio/prod/repo/backend/.env
 EnvironmentFile=/etc/axelio/backup-prod.env
 ExecStart=/var/www/axelio/prod/repo/ops/backup/postgres-backup.sh
@@ -17,7 +18,7 @@ PrivateTmp=true
 NoNewPrivileges=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/var/backups/axelio/prod
+ReadWritePaths=/var/backups/axelio/prod /var/lib/axelio-monitoring
 
 [Install]
 WantedBy=multi-user.target

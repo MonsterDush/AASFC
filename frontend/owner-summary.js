@@ -579,7 +579,7 @@ function renderSummaryTrend(summary, comparisonSummary = null) {
       <span>${escapeHtml(fmtCompactMoneyMinor(geometry.minValue))}</span>
     </div>
     <div class="summary-trend-visual">
-      <svg class="summary-trend-svg${denseClass}" viewBox="0 0 720 200" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(comparisonPoints.length
+      <svg class="summary-trend-svg${denseClass}" viewBox="0 0 720 200" preserveAspectRatio="none" role="group" aria-label="${escapeHtml(comparisonPoints.length
         ? `${metricTitle} по порядковым дням текущего и сравниваемого периода`
         : `${metricTitle} по дням выбранного периода`)}">
         ${gridLines}${zeroLine}${marks}${hitTargets}

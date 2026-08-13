@@ -9,6 +9,7 @@ backup_dir="${BACKUP_DIR%/}"
 require_offsite="${BACKUP_REQUIRE_OFFSITE:-true}"
 rclone_remote="${BACKUP_RCLONE_REMOTE:-}"
 release="${RELEASE_VERSION:-unknown}"
+monitoring_state_dir="${MONITORING_STATE_DIR:-}"
 database_url="${DATABASE_URL/postgresql+psycopg:/postgresql:}"
 database_url="${database_url/postgresql+psycopg2:/postgresql:}"
 
@@ -115,5 +116,20 @@ fi
 
 find "${daily_dir}" -type f -mtime +7 -delete
 find "${weekly_dir}" -type f -mtime +28 -delete
+
+if [[ -n "${monitoring_state_dir}" ]]; then
+  case "${monitoring_state_dir}" in
+    /var/lib/axelio-monitoring | /tmp/axelio-monitoring-*) ;;
+    *)
+      echo "Unsupported MONITORING_STATE_DIR: ${monitoring_state_dir}" >&2
+      exit 2
+      ;;
+  esac
+  install -d -m 0755 "${monitoring_state_dir}"
+  timestamp_tmp="$(mktemp "${monitoring_state_dir}/.backup-success.XXXXXX")"
+  printf '%s\n' "$(date +%s)" >"${timestamp_tmp}"
+  chmod 0644 "${timestamp_tmp}"
+  mv "${timestamp_tmp}" "${monitoring_state_dir}/backup-last-success.timestamp"
+fi
 
 printf '%s\n' "${encrypted_path}"

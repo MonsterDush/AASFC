@@ -1,0 +1,28 @@
+[Unit]
+Description=Axelio production health and business guardrails
+After=network-online.target axelio-api-prod.service axelio-bot-prod.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/axelio/prod/repo
+EnvironmentFile=/var/www/axelio/prod/repo/backend/.env
+Environment=APP_ROOT=/var/www/axelio/prod
+Environment=API_BASE_URL=https://api.axelio.ru
+Environment=API_SERVICE=axelio-api-prod
+Environment=BOT_SERVICE=axelio-bot-prod
+Environment=SHIFT_TIMER=axelio-shift-reminders-prod.timer
+Environment=NOTIFY_TIMER=axelio-notification-jobs-prod.timer
+Environment=BACKUP_DIR=/var/backups/axelio/prod
+Environment=MONITORING_STATE_DIR=/var/lib/axelio-monitoring
+ExecStart=/var/www/axelio/prod/repo/ops/monitoring/health-check.sh
+User=root
+Group=root
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/axelio-monitoring
+
+[Install]
+WantedBy=multi-user.target

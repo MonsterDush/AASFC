@@ -1,0 +1,48 @@
+groups:
+  - name: axelio-production
+    rules:
+      - alert: AxelioApiUnavailable
+        expr: up{job="axelio-api-prod"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Axelio production API is unavailable" }
+      - alert: AxelioHighFiveXxRate
+        expr: sum(rate(axelio_http_requests_total{status_class="5xx"}[5m])) / clamp_min(sum(rate(axelio_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "Axelio 5xx ratio is above 5%" }
+      - alert: AxelioHighP95Latency
+        expr: histogram_quantile(0.95, sum by (le) (rate(axelio_http_request_duration_seconds_bucket[10m]))) > 2.5
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Axelio API p95 latency is above 2.5 seconds" }
+      - alert: AxelioDatabaseErrors
+        expr: increase(axelio_database_errors_total[5m]) > 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Axelio database errors detected" }
+      - alert: AxelioBackupMissingOrStale
+        expr: axelio_backup_last_success_timestamp_seconds == 0 or time() - axelio_backup_last_success_timestamp_seconds > 93600
+        for: 10m
+        labels: { severity: critical }
+        annotations: { summary: "Axelio encrypted backup is missing or older than 26 hours" }
+      - alert: AxelioNotificationJobsFailed
+        expr: axelio_notification_jobs{status="failed"} > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Axelio notification jobs have terminal failures" }
+      - alert: AxelioPaymentFailuresGrowing
+        expr: axelio_failed_payments_24h >= 5
+        for: 10m
+        labels: { severity: critical }
+        annotations: { summary: "Axelio has at least five failed payments in 24 hours" }
+      - alert: AxelioReconciliationIssuesOpen
+        expr: axelio_open_reconciliation_issues > 0
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Axelio has open billing reconciliation issues" }
+      - alert: AxelioLoginRateLimitsGrowing
+        expr: increase(axelio_rate_limit_blocks_total[10m]) > 20
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Axelio login rate-limit blocks increased sharply" }

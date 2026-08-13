@@ -9,15 +9,17 @@ const mainPath = path.join(frontendDir, "staff-shifts.js");
 const modulePath = path.join(frontendDir, "staff-shifts", "export-controller.js");
 const calendarModulePath = path.join(frontendDir, "staff-shifts", "calendar-controller.js");
 const commentModulePath = path.join(frontendDir, "staff-shifts", "comment-controller.js");
+const helpersModulePath = path.join(frontendDir, "staff-shifts", "helpers.js");
 const htmlPath = path.join(frontendDir, "staff-shifts.html");
 const stylesPath = path.join(frontendDir, "styles", "pages", "staff-shifts.css");
 const mainSource = fs.readFileSync(mainPath, "utf8");
 const moduleSource = fs.readFileSync(modulePath, "utf8");
 const calendarModuleSource = fs.readFileSync(calendarModulePath, "utf8");
 const commentModuleSource = fs.readFileSync(commentModulePath, "utf8");
+const helpersModuleSource = fs.readFileSync(helpersModulePath, "utf8");
 const htmlSource = fs.readFileSync(htmlPath, "utf8");
 const stylesSource = fs.readFileSync(stylesPath, "utf8");
-const combinedSource = [mainSource, calendarModuleSource, commentModuleSource, moduleSource].join("\n");
+const combinedSource = [mainSource, calendarModuleSource, commentModuleSource, helpersModuleSource, moduleSource].join("\n");
 
 const apiCallManifest = Array.from(
   combinedSource.matchAll(/\b(?:api|startupApi)\(\s*(`[^`]+`|"[^"]+"|'[^']+')/g),
@@ -33,13 +35,16 @@ assert.equal(manifestHash(apiCallManifest), "e36d841fea322b74293b11c64ec20dc5c95
 assert.equal(domBindingManifest.length, 55);
 assert.equal(manifestHash(domBindingManifest), "ac35bc61a168dd228accbecf9a0424425cb15abe9a88eeecfb44671f68ab101a");
 
-assert.ok(mainSource.split("\n").length < 2_100, "staff-shifts.js should remain an orchestration module");
+assert.ok(mainSource.split("\n").length < 1_900, "staff-shifts.js should remain an orchestration module");
 assert.ok(moduleSource.split("\n").length < 900, "schedule export controller is too large");
 assert.ok(calendarModuleSource.split("\n").length < 850, "calendar controller is too large");
 assert.ok(commentModuleSource.split("\n").length < 700, "comment controller is too large");
+assert.ok(helpersModuleSource.split("\n").length < 220, "staff shifts helpers are too large");
 assert.match(mainSource, /\/staff-shifts\/export-controller\.js\?v=20260719-split1/);
 assert.match(mainSource, /\/staff-shifts\/calendar-controller\.js\?v=20260729-overnight1/);
 assert.match(mainSource, /\/staff-shifts\/comment-controller\.js\?v=20260728-comments1/);
+assert.match(mainSource, /\/staff-shifts\/helpers\.js\?v=20260813-assurance2/);
+assert.match(mainSource, /import\s*\{[\s\S]*?\bfioInitials\b[\s\S]*?\}\s*from\s*["']\/staff-shifts\/helpers\.js\?v=20260813-assurance2["']/);
 assert.match(htmlSource, /staff-shifts\.js\?v=20260811-assurance1/);
 assert.match(htmlSource, /styles\/pages\/staff-shifts\.css\?v=20260811-assurance1/);
 assert.match(stylesSource, /\.staff-shifts-shell\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
@@ -62,6 +67,11 @@ const controller = module.createStaffShiftExportController(context);
 for (const methodName of ["openExportModal", "refreshExportPreview", "downloadExportImage"]) {
   assert.equal(typeof controller[methodName], "function", `${methodName} is not exposed`);
 }
+
+const helpersModule = await import(pathToFileURL(helpersModulePath));
+assert.equal(helpersModule.weekTitle(new Date(2031, 6, 7)), "07.07–13.07.2031");
+assert.equal(helpersModule.timeToMin("23:45"), 1425);
+assert.equal(helpersModule.escapeHtml('<a data-x="1">'), "&lt;a data-x=&quot;1&quot;&gt;");
 
 const commentModule = await import(pathToFileURL(commentModulePath));
 assert.equal(typeof commentModule.createStaffShiftCommentController, "function");

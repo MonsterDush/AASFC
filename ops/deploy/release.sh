@@ -117,6 +117,17 @@ install_backup_units() {
   sudo systemctl enable --now axelio-backup-prod.timer
 }
 
+install_monitoring_units() {
+  [[ "${ENV_NAME}" == "prod" ]] || return 0
+  sudo install -D -m 0644 \
+    "${repo_dir}/ops/systemd/axelio-monitor-prod.service" \
+    /etc/systemd/system/axelio-monitor-prod.service
+  sudo install -D -m 0644 \
+    "${repo_dir}/ops/systemd/axelio-monitor-prod.timer" \
+    /etc/systemd/system/axelio-monitor-prod.timer
+  sudo install -d -m 0755 /var/lib/axelio-monitoring
+}
+
 checkout_release() {
   local target_sha="$1"
   git -C "${repo_dir}" checkout "${BRANCH}"
@@ -149,17 +160,27 @@ restart_services() {
   sudo install -D -m 0644 \
     "${repo_dir}/ops/nginx/axelio-security-headers.conf" \
     /etc/nginx/snippets/axelio-security-headers.conf
+  sudo install -D -m 0644 \
+    "${repo_dir}/ops/nginx/axelio-performance.conf" \
+    /etc/nginx/snippets/axelio-performance.conf
+  install_monitoring_units
   sudo nginx -t
   sudo systemctl daemon-reload
   sudo systemctl restart "${API_SERVICE}"
   sudo systemctl restart "${BOT_SERVICE}"
   sudo systemctl restart "${SHIFT_TIMER}"
   sudo systemctl restart "${NOTIFY_TIMER}"
+  if [[ "${ENV_NAME}" == "prod" ]]; then
+    sudo systemctl enable --now axelio-monitor-prod.timer
+  fi
   sudo systemctl reload nginx
   sudo systemctl is-active --quiet "${API_SERVICE}"
   sudo systemctl is-active --quiet "${BOT_SERVICE}"
   sudo systemctl is-active --quiet "${SHIFT_TIMER}"
   sudo systemctl is-active --quiet "${NOTIFY_TIMER}"
+  if [[ "${ENV_NAME}" == "prod" ]]; then
+    sudo systemctl is-active --quiet axelio-monitor-prod.timer
+  fi
 }
 
 smoke_release() {
@@ -171,6 +192,11 @@ smoke_release() {
     PYTHON_BIN="${venv_bin}/python" \
     ALLOW_LEGACY_HEALTH="${allow_legacy}" \
     "${smoke_script}"
+  if [[ "${ENV_NAME}" == "prod" ]]; then
+    sudo install -d -m 0755 /var/lib/axelio-monitoring
+    printf '%s\n' "$(date +%s)" | sudo tee /var/lib/axelio-monitoring/deploy-smoke-last-success.timestamp >/dev/null
+    sudo chmod 0644 /var/lib/axelio-monitoring/deploy-smoke-last-success.timestamp
+  fi
 }
 
 write_release_metadata() {

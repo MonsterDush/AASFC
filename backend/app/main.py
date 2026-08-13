@@ -1,12 +1,14 @@
 from fastapi import Depends, FastAPI, Header, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy import text
 
 from app.auth.jwt_tokens import JwtConfig, decode_access_token
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.observability import configure_logging, init_error_tracking, observe_request
+from app.core.metrics import render_prometheus
+from app.core.request_ip import resolve_client_ip
 from app.core.security_headers import apply_security_headers
 from app.services.demo import build_demo_readonly_error_payload, is_demo_session_payload, should_block_demo_request
 from sqlalchemy.orm import Session
@@ -143,6 +145,19 @@ def readiness(db: Session = Depends(get_db)):
         "environment": str(settings.APP_ENV or "development"),
         "release": settings.release_version(),
     }
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics(request: Request, db: Session = Depends(get_db)):
+    client_ip = resolve_client_ip(request)
+    configured_token = str(settings.METRICS_TOKEN or "").strip()
+    supplied_token = str(request.headers.get("X-Metrics-Token") or "").strip()
+    authorization = str(request.headers.get("Authorization") or "").strip()
+    bearer_token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    is_loopback = client_ip in {"127.0.0.1", "::1"}
+    if not is_loopback and (not configured_token or configured_token not in {supplied_token, bearer_token}):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return PlainTextResponse(render_prometheus(db), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/version")

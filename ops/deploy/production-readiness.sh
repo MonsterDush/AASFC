@@ -57,6 +57,11 @@ has_nonempty_setting "${backend_env}" SENTRY_DSN || {
   echo "SENTRY_DSN is missing from the production backend environment" >&2
   exit 1
 }
+if ! has_nonempty_setting "${backend_env}" AXELIO_ALERT_TG_CHAT_IDS && \
+   ! has_nonempty_setting "${backend_env}" SUPER_ADMIN_TG_USER_IDS; then
+  echo "AXELIO_ALERT_TG_CHAT_IDS or SUPER_ADMIN_TG_USER_IDS is required for production alerts" >&2
+  exit 1
+fi
 has_nonempty_setting "${backup_env}" BACKUP_ENCRYPTION_PASSWORD || {
   echo "BACKUP_ENCRYPTION_PASSWORD is missing from the production backup environment" >&2
   exit 1

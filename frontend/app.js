@@ -3,7 +3,11 @@ import { normalizePermList, permSetFromResponse, roleUpper, hasPerm, hasAnyPerm,
 import { createAuthActions } from "/app/auth-actions.js?v=20260719-split1";
 import { createVenueApi } from "/app/venue-api.js?v=20260719-split1";
 import { createNavigation } from "/app/navigation.js?v=20260726-navmore1";
+import { createUiPreferences } from "/app/ui-preferences.js?v=20260813-assurance2";
 import { enableDemoMetrika, disableDemoMetrika } from "/app/demo-metrika.js";
+
+const uiPreferences = createUiPreferences();
+export const { getLang, setLang, t, wa, looksLikeTelegramWebApp, ensureTelegramWebAppLoaded, cacheSystemRole, getCachedSystemRole, isSuperAdminCached, getThemePref, setThemePref, applyTheme, applyTelegramTheme } = uiPreferences;
 
 function normalizeBaseUrl(value) {
   const raw = String(value || "").trim();
@@ -420,8 +424,8 @@ function buildDemoBannerMarkup(state) {
     <div class="demo-banner__bar" role="region" aria-label="Пробный режим Axelio">
       <span class="demo-banner__pill demo-banner__pill--brand">Пробный режим Axelio</span>
       <div class="demo-banner__seg" role="tablist" aria-label="Режим просмотра">
-        <button type="button" class="demo-banner__segbtn ${persona === "OWNER" ? "is-active" : ""}" data-demo-persona="OWNER">Владелец</button>
-        <button type="button" class="demo-banner__segbtn ${persona === "STAFF" ? "is-active" : ""}" data-demo-persona="STAFF">Персонал</button>
+        <button type="button" role="tab" aria-selected="${persona === "OWNER" ? "true" : "false"}" class="demo-banner__segbtn ${persona === "OWNER" ? "is-active" : ""}" data-demo-persona="OWNER">Владелец</button>
+        <button type="button" role="tab" aria-selected="${persona === "STAFF" ? "true" : "false"}" class="demo-banner__segbtn ${persona === "STAFF" ? "is-active" : ""}" data-demo-persona="STAFF">Персонал</button>
       </div>
       <span class="demo-banner__pill demo-banner__pill--muted">${monthLabel}</span>
       <button type="button" class="demo-banner__link" data-demo-tour-open="1">Экскурсия</button>
@@ -943,239 +947,6 @@ function bootstrapDemoTour() {
 bootstrapDemoTour();
 
 
-
-// ------------------------------
-// i18n (RU/EN) MVP
-// ------------------------------
-const LS_LANG = "axelio.lang";
-const DICT = {
-  ru: {
-    venue: "Заведение",
-    manage_venues: "Управление заведениями",
-    leave_venue: "Выйти из заведения",
-    settings: "Настройки",
-    more: "Ещё",
-    adjustments: "Штрафы",
-    shifts: "График",
-    salary: "Зарплаты",
-    report: "Отчёты",
-    finance: "Финансы",
-    overview: "Обзор",
-    revenue: "Выручка",
-    summary: "Сводка",
-    expenses: "Расходы",
-    admin_venues: "Заведения",
-    admin_invites: "Инвайты",
-  },
-  en: {
-    venue: "Venue",
-    manage_venues: "Manage venues",
-    leave_venue: "Leave venue",
-    settings: "Settings",
-    more: "More",
-    adjustments: "Adjustments",
-    shifts: "Schedule",
-    salary: "Salary",
-    report: "Reports",
-    finance: "Finance",
-    overview: "Overview",
-    revenue: "Revenue",
-    summary: "Summary",
-    expenses: "Expenses",
-    admin_venues: "Venues",
-    admin_invites: "Invites",
-  },
-};
-
-export function getLang() {
-  try { return localStorage.getItem(LS_LANG) || "ru"; } catch { return "ru"; }
-}
-
-export function setLang(lang) {
-  try { localStorage.setItem(LS_LANG, lang); } catch {}
-}
-
-export function t(key) {
-  const lang = getLang();
-  return (DICT[lang] && DICT[lang][key]) || (DICT.ru && DICT.ru[key]) || key;
-}
-
-export function wa() {
-  return window.Telegram?.WebApp || null;
-}
-
-export function looksLikeTelegramWebApp() {
-  try {
-    if (wa()) return true;
-    if (typeof window.TelegramWebviewProxy !== "undefined") return true;
-    if (typeof window.TelegramGameProxy !== "undefined") return true;
-    const raw = `${location.search || ""}&${location.hash || ""}`;
-    if (/tgWebApp(Data|Version|Platform|ThemeParams|StartParam|BotInline)/i.test(raw)) return true;
-    const ua = String(navigator.userAgent || "");
-    if (/Telegram/i.test(ua)) return true;
-  } catch {}
-  return false;
-}
-
-export async function ensureTelegramWebAppLoaded({ timeoutMs = 2500 } = {}) {
-  if (wa()) return wa();
-  try {
-    const loader = window.AxelioTelegramLoader;
-    if (loader && typeof loader.load === "function") {
-      return await loader.load({ timeoutMs });
-    }
-  } catch {}
-
-  if (!looksLikeTelegramWebApp()) return null;
-
-  return await new Promise((resolve) => {
-    let settled = false;
-    let timer = null;
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      resolve(value || wa() || null);
-    };
-    const existing = document.querySelector('script[data-axelio-telegram="external"]');
-    if (existing) {
-      const poll = () => {
-        if (wa()) return finish(wa());
-        if (!settled) setTimeout(poll, 60);
-      };
-      poll();
-    } else {
-      const s = document.createElement("script");
-      s.async = true;
-      s.src = "https://telegram.org/js/telegram-web-app.js";
-      s.setAttribute("data-axelio-telegram", "external");
-      s.onload = () => finish(wa());
-      s.onerror = () => finish(null);
-      document.head.appendChild(s);
-    }
-    timer = setTimeout(() => finish(null), Math.max(300, Number(timeoutMs) || 2500));
-  });
-}
-
-// ------------------------------
-// Theme (system / light / dark / hookahplace)
-// ------------------------------
-const LS_THEME = "axelio.theme"; // 'system' | 'light' | 'dark' | 'hookahplace'
-const LS_SYS_ROLE = "axelio.system_role"; // cached from /me (used for gated features)
-
-export function cacheSystemRole(role) {
-  const v = String(role || "").toUpperCase();
-  try {
-    if (v) localStorage.setItem(LS_SYS_ROLE, v);
-    else localStorage.removeItem(LS_SYS_ROLE);
-  } catch {}
-}
-
-export function getCachedSystemRole() {
-  try { return String(localStorage.getItem(LS_SYS_ROLE) || "").toUpperCase(); } catch { return ""; }
-}
-
-export function isSuperAdminCached() {
-  return getCachedSystemRole() === "SUPER_ADMIN";
-}
-
-export function getThemePref() {
-  try {
-    const v = (localStorage.getItem(LS_THEME) || "system").trim();
-    const allowed = (v === "light" || v === "dark" || v === "system" || v === "hookahplace");
-    if (!allowed) return "system";
-
-    // Gate experimental themes by system role
-    if (v === "hookahplace" && !isSuperAdminCached()) return "system";
-
-    return v;
-  } catch {
-    return "system";
-  }
-}
-
-export function setThemePref(pref) {
-  let v = (pref === "light" || pref === "dark" || pref === "system" || pref === "hookahplace")
-    ? pref
-    : "system";
-
-  if (v === "hookahplace" && !isSuperAdminCached()) v = "system";
-
-  try { localStorage.setItem(LS_THEME, v); } catch {}
-}
-
-function ensureThemeMeta() {
-  let m = document.querySelector('meta[name="theme-color"]');
-  if (!m) {
-    m = document.createElement("meta");
-    m.setAttribute("name", "theme-color");
-    document.head.appendChild(m);
-  }
-  return m;
-}
-
-function syncThemeColorMeta() {
-  try {
-    const m = ensureThemeMeta();
-    const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
-    // theme-color expects a solid color. Our themes keep --bg as a color (not a gradient).
-    if (bg) m.setAttribute("content", bg);
-  } catch {}
-}
-
-export function applyTheme() {
-  const pref = getThemePref();
-  const root = document.documentElement;
-
-  // If user explicitly chose a theme, force it via data-theme.
-  // If system: remove override and let CSS media query handle it.
-  if (pref === "light" || pref === "dark" || pref === "hookahplace") {
-    root.setAttribute("data-theme", pref);
-  } else {
-    root.removeAttribute("data-theme");
-  }
-
-  // keep mobile browser UI in sync (address bar color)
-  requestAnimationFrame(syncThemeColorMeta);
-
-  // react to system changes only when pref=system
-  try {
-    if (!root.__themeMqlBound) {
-      const mql = window.matchMedia?.("(prefers-color-scheme: dark)");
-      if (mql && typeof mql.addEventListener === "function") {
-        mql.addEventListener("change", () => {
-          if (getThemePref() === "system") requestAnimationFrame(syncThemeColorMeta);
-        });
-      }
-      root.__themeMqlBound = true;
-    }
-  } catch {}
-}
-
-export function applyTelegramTheme() {
-  // Our app theme (system/light/dark). Telegram themeParams are not used here,
-  // because we want a stable brand theme + user override.
-  applyTheme();
-
-  const w = wa();
-  const el = document.querySelector("[data-userpill]");
-  if (!w) {
-    if (el) el.textContent = "не в Telegram";
-    if (looksLikeTelegramWebApp()) {
-      ensureTelegramWebAppLoaded({ timeoutMs: 1800 }).then((loaded) => {
-        if (!loaded) return;
-        try { applyTelegramTheme(); } catch {}
-      }).catch(() => {});
-    }
-    return;
-  }
-
-  w.ready();
-
-  const u = w.initDataUnsafe?.user;
-  if (el) el.textContent = u ? `@${u.username || "без_username"}` : "неизвестно";
-  // userpill is hidden globally for a cleaner, unified topbar.
-}
 
 export function toast(msg, type = "info") {
   const text = String(msg ?? "").trim();
