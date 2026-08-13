@@ -15,7 +15,13 @@ sudo install -D -m 0644 \
   /etc/nginx/snippets/axelio-performance.conf
 ```
 
-Add this line inside every Axelio `server` block:
+The first production release runs `activate-performance.sh`. It only edits
+active configuration files that contain `app.axelio.ru` or `api.axelio.ru` and
+already use the tracked security snippet. Before editing it creates a backup
+under `/var/backups/axelio/nginx`, refuses partial/ambiguous activation, and
+restores the original files if `nginx -t` fails.
+
+The resulting lines inside every matched Axelio `server` block are:
 
 ```nginx
 include /etc/nginx/snippets/axelio-security-headers.conf;
@@ -39,7 +45,8 @@ The frontend CSP allows framing only by Telegram Web. Do not add
 `X-Frame-Options: DENY` to app responses: Telegram web clients load Mini Apps
 in an iframe. FastAPI keeps `X-Frame-Options: DENY` for API responses.
 
-Do not replace an unknown server configuration automatically. Adding the
-`include` lines are a one-time reviewed operations change; afterward the
-tracked snippets are the canonical source for both dev and production, and
-every deploy validates Nginx before reloading it.
+Do not replace an unknown server configuration automatically. The activator
+uses the existing Axelio security include as its reviewed insertion marker;
+configs without that marker are deliberately left untouched. After the first
+activation, the tracked snippets are the canonical source and every deploy
+validates Nginx before reloading it.

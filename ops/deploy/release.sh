@@ -141,6 +141,13 @@ install_monitoring_units() {
   sudo install -d -m 0755 /var/lib/axelio-monitoring
 }
 
+activate_nginx_performance() {
+  [[ "${ENV_NAME}" == "prod" ]] || return 0
+  local activator="${repo_dir}/ops/nginx/activate-performance.sh"
+  [[ -x "${activator}" ]] || return 0
+  sudo "${activator}"
+}
+
 checkout_release() {
   local target_sha="$1"
   git -C "${repo_dir}" checkout "${BRANCH}"
@@ -178,6 +185,7 @@ restart_services() {
       "${repo_dir}/ops/nginx/axelio-performance.conf" \
       /etc/nginx/snippets/axelio-performance.conf
   fi
+  activate_nginx_performance
   install_monitoring_units
   sudo nginx -t
   sudo systemctl daemon-reload
