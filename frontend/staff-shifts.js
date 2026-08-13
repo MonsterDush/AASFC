@@ -31,6 +31,7 @@ import {
   cmpDateStr,
   displayPerson,
   escapeHtml,
+  fioInitials,
   intervalSortKey,
   isoInRange,
   isPastDay,

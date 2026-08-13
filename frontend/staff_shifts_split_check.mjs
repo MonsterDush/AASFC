@@ -44,6 +44,7 @@ assert.match(mainSource, /\/staff-shifts\/export-controller\.js\?v=20260719-spli
 assert.match(mainSource, /\/staff-shifts\/calendar-controller\.js\?v=20260729-overnight1/);
 assert.match(mainSource, /\/staff-shifts\/comment-controller\.js\?v=20260728-comments1/);
 assert.match(mainSource, /\/staff-shifts\/helpers\.js\?v=20260813-assurance2/);
+assert.match(mainSource, /import\s*\{[\s\S]*?\bfioInitials\b[\s\S]*?\}\s*from\s*["']\/staff-shifts\/helpers\.js\?v=20260813-assurance2["']/);
 assert.match(htmlSource, /staff-shifts\.js\?v=20260811-assurance1/);
 assert.match(htmlSource, /styles\/pages\/staff-shifts\.css\?v=20260811-assurance1/);
 assert.match(stylesSource, /\.staff-shifts-shell\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
