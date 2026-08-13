@@ -101,6 +101,8 @@ class MonitoringContractTests(TestCase):
             "axelio-monitor-prod.service",
             "journalctl -u axelio-monitor-prod.service",
             "last-alert.txt",
+            "Failed notification job diagnostics",
+            "payload and recipients omitted",
             "test alert",
             "production recovered",
             "observability-drill-last-success.timestamp",

@@ -78,6 +78,36 @@ if ! systemctl start axelio-monitor-prod.service; then
     echo "Production monitor guardrails:" >&2
     sed 's/^/  - /' "${state_dir}/last-alert.txt" >&2
   fi
+  (
+    cd "${APP_ROOT}/repo/backend"
+    "${APP_ROOT}/venv/bin/python" - <<'PY'
+import json
+
+from sqlalchemy import select
+
+from app.core.db import SessionLocal
+from app.models import NotificationJob
+
+with SessionLocal() as db:
+    jobs = db.execute(
+        select(NotificationJob)
+        .where(NotificationJob.status == "failed")
+        .order_by(NotificationJob.updated_at.desc(), NotificationJob.id.desc())
+        .limit(20)
+    ).scalars().all()
+
+print("Failed notification job diagnostics (payload and recipients omitted):")
+for job in jobs:
+    print(json.dumps({
+        "id": int(job.id),
+        "job_type": str(job.job_type),
+        "attempts": int(job.attempts or 0),
+        "max_attempts": int(job.max_attempts or 0),
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        "last_error": str(job.last_error or "")[:500],
+    }, ensure_ascii=True, sort_keys=True))
+PY
+  ) >&2 || true
   systemctl status axelio-monitor-prod.service --no-pager >&2 || true
   journalctl -u axelio-monitor-prod.service -n 100 --no-pager >&2 || true
   exit 1
