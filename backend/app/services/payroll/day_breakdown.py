@@ -390,6 +390,26 @@ def _component_allocation_for_day(
     ordered_dates = sorted(worked_dates)
 
     if component_type == "SALARY_HOURLY":
+        shift_rows = [row for row in (component.get("shift_rows") or []) if isinstance(row, dict)]
+        day_shift_rows = [row for row in shift_rows if str(row.get("date") or "") == target_date.isoformat()]
+        if day_shift_rows:
+            amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_shift_rows)
+            applied_rates = sorted({int(row.get("applied_rate_minor") or 0) for row in day_shift_rows})
+            base_text = f"{_fmt_hours(context.minutes_by_date.get(target_date, 0))} · {len(day_shift_rows)} смен"
+            formula_text = " + ".join(f"{_fmt_money_minor(rate)}/ч" for rate in applied_rates)
+            title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
+            return {
+                "category": "earning",
+                "source": "payroll_component",
+                "component_type": component_type,
+                "title": title,
+                "base_text": base_text,
+                "formula_text": f"Ставка по дню недели: {formula_text}",
+                "amount_minor": int(amount_minor),
+                "month_component_amount_minor": month_component_amount_minor,
+                "month_share_ratio": None,
+                "is_estimated": False,
+            }
         weights = {day: int(context.minutes_by_date.get(day, 0)) for day in ordered_dates}
         base_text = f"{_fmt_hours(context.minutes_by_date.get(target_date, 0))} из {_fmt_hours(sum(weights.values()))}"
         rate_minor = component.get("source_rate_minor")
@@ -399,6 +419,26 @@ def _component_allocation_for_day(
             else "Распределено по минутам дня внутри месячного hourly-компонента"
         )
     elif component_type == "SALARY_PER_SHIFT":
+        shift_rows = [row for row in (component.get("shift_rows") or []) if isinstance(row, dict)]
+        day_shift_rows = [row for row in shift_rows if str(row.get("date") or "") == target_date.isoformat()]
+        if day_shift_rows:
+            amount_minor = sum(int(row.get("amount_minor") or 0) for row in day_shift_rows)
+            applied_rates = sorted({int(row.get("applied_rate_minor") or 0) for row in day_shift_rows})
+            base_text = f"{len(day_shift_rows)} смен за сутки"
+            formula_text = " + ".join(f"{_fmt_money_minor(rate)}/смена" for rate in applied_rates)
+            title = str(component.get("title") or _COMPONENT_TITLES.get(component_type) or "Компонент").strip()
+            return {
+                "category": "earning",
+                "source": "payroll_component",
+                "component_type": component_type,
+                "title": title,
+                "base_text": base_text,
+                "formula_text": f"Ставка по дню недели: {formula_text}",
+                "amount_minor": int(amount_minor),
+                "month_component_amount_minor": month_component_amount_minor,
+                "month_share_ratio": None,
+                "is_estimated": False,
+            }
         weights = {day: int(context.shifts_by_date.get(day, 0)) for day in ordered_dates}
         base_text = f"{int(context.shifts_by_date.get(target_date, 0))} смен из {sum(weights.values())}"
         source_amount_minor = component.get("source_amount_minor")

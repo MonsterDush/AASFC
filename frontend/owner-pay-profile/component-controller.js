@@ -39,6 +39,23 @@ function setVisible(element, visible) {
   element?.classList.toggle("hidden", !visible);
 }
 
+function readWeekdayRates({ validate = false } = {}) {
+  const rows = [];
+  for (const checkbox of document.querySelectorAll("[data-weekday-enabled]")) {
+    if (!checkbox.checked) continue;
+    const weekday = Number(checkbox.dataset.weekdayEnabled);
+    const input = document.querySelector(`[data-weekday-rate="${weekday}"]`);
+    const raw = String(input?.value || "").trim();
+    const rateMinor = parseMoneyRubToMinor(raw);
+    if (!raw || rateMinor === null) {
+      if (validate) return false;
+      continue;
+    }
+    rows.push({ weekday, rate_minor: rateMinor });
+  }
+  return rows;
+}
+
 function syncComponentSummary() {
   const box = document.getElementById('f_live_summary');
   if (!box) return;
@@ -62,6 +79,7 @@ function syncComponentSummary() {
   const kpiMetric = findKpiMetricById(document.getElementById('f_kpi_metric_id')?.value);
   const kpiCalculationMode = String(document.getElementById('f_kpi_calculation_mode')?.value || 'FIXED').toUpperCase();
   const salaryAccrualDay = String(document.getElementById('f_salary_accrual_day')?.value || '').trim();
+  const weekdayRates = readWeekdayRates();
   const thresholdValue = String(document.getElementById('f_threshold_value')?.value || '').trim();
   const boostThresholdValue = String(document.getElementById('f_boost_threshold_value')?.value || '').trim();
   let heading = titleRaw || typeTitle;
@@ -91,6 +109,10 @@ function syncComponentSummary() {
       if (percentBps != null) bits.push(`${fmtPercentBps(percentBps)} от KPI`);
       bits.push('по закрытым сменам сотрудника');
     }
+  }
+  if ((type === 'SALARY_HOURLY' || type === 'SALARY_PER_SHIFT') && weekdayRates.length) {
+    const weekdayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+    bits.push(`отдельные ставки: ${weekdayRates.map((row) => weekdayNames[row.weekday]).join(", ")}`);
   }
   box.innerHTML = `
     <div class="pay-config-summary__eyebrow">Как будет работать компонент</div>
@@ -206,6 +228,7 @@ function syncComponentFields() {
   const rateWrap = document.getElementById("f_rate_wrap");
   const percentWrap = document.getElementById("f_percent_wrap");
   const salaryAccrualDayWrap = document.getElementById("f_salary_accrual_day_wrap");
+  const weekdayRatesSection = document.getElementById("f_weekday_rates_section");
   const departmentWrap = document.getElementById("f_department_wrap");
   const departmentHint = document.getElementById("f_department_hint");
   const baseScopeWrap = document.getElementById("f_base_scope_wrap");
@@ -256,12 +279,14 @@ function syncComponentFields() {
     minimumScopeSelect.value = "MONTH";
   }
 
-  [amountWrap, rateWrap, percentWrap, salaryAccrualDayWrap, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostDepartmentWrap, boostDepartmentHint, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, minScopeWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, kpiCalculationModeWrap, thresholdWrap, useStepsWrap, stepsWrap, stepsHint, percentSection, boostSection, limitsSection, simSection, kpiSection, boostDetails].forEach((el) => {
+  [amountWrap, rateWrap, percentWrap, salaryAccrualDayWrap, weekdayRatesSection, departmentWrap, departmentHint, baseScopeWrap, boostEnabledWrap, boostPercentWrap, boostSourceWrap, boostDepartmentWrap, boostDepartmentHint, boostRecalcWrap, boostKpiMetricWrap, boostThresholdWrap, minWrap, minScopeWrap, maxWrap, percentHelp, simWrap, kpiMetricWrap, kpiMetricHint, kpiCalculationModeWrap, thresholdWrap, useStepsWrap, stepsWrap, stepsHint, percentSection, boostSection, limitsSection, simSection, kpiSection, boostDetails].forEach((el) => {
     setVisible(el, false);
   });
 
   if (type === "SALARY_HOURLY") {
     setVisible(rateWrap, true);
+    setVisible(weekdayRatesSection, true);
+    document.querySelectorAll("[data-weekday-unit]").forEach((element) => { element.textContent = "₽ / час"; });
     if (rateLabel) rateLabel.textContent = "Ставка, ₽ / час";
     syncComponentSummary();
     return syncComponentSimulator();
@@ -269,6 +294,10 @@ function syncComponentFields() {
 
   if (type === "SALARY_FIXED_MONTH" || type === "SALARY_PER_SHIFT" || type === "MINIMUM_PAYOUT") {
     setVisible(amountWrap, true);
+    setVisible(weekdayRatesSection, type === "SALARY_PER_SHIFT");
+    if (type === "SALARY_PER_SHIFT") {
+      document.querySelectorAll("[data-weekday-unit]").forEach((element) => { element.textContent = "₽ / смена"; });
+    }
     setVisible(salaryAccrualDayWrap, type === "SALARY_FIXED_MONTH");
     if (type === "MINIMUM_PAYOUT") {
       setVisible(limitsSection, true);
@@ -351,6 +380,26 @@ function openComponentEditor({ mode, item = null }) {
   document.getElementById("f_kpi_calculation_mode")?.addEventListener("change", syncComponentFields);
   document.getElementById("f_salary_accrual_day")?.addEventListener("change", syncComponentSummary);
   document.getElementById("f_boost_kpi_metric_id")?.addEventListener("change", syncComponentFields);
+  document.querySelectorAll("[data-weekday-enabled]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      const weekday = Number(checkbox.dataset.weekdayEnabled);
+      const input = document.querySelector(`[data-weekday-rate="${weekday}"]`);
+      if (input) {
+        input.disabled = !checkbox.checked;
+        if (checkbox.checked && !String(input.value || "").trim()) {
+          const type = String(document.getElementById("f_component_type")?.value || "").toUpperCase();
+          const baseInput = type === "SALARY_HOURLY"
+            ? document.getElementById("f_rate_minor")
+            : document.getElementById("f_amount_minor");
+          input.value = String(baseInput?.value || "");
+        }
+      }
+      syncComponentSummary();
+    });
+  });
+  document.querySelectorAll("[data-weekday-rate]").forEach((input) => {
+    input.addEventListener("input", syncComponentSummary);
+  });
   ["f_title","f_amount_minor","f_rate_minor","f_percent","f_boost_percent","f_threshold_value","f_boost_threshold_value","f_minimum_guarantee_minor","f_maximum_cap_minor","f_sim_base_rub","f_sim_target","f_sim_actual"].forEach((id) => {
     document.getElementById(id)?.addEventListener("input", () => { syncComponentSummary(); syncComponentSimulator(); syncComponentConfigHint(); });
   });
@@ -395,6 +444,7 @@ function openComponentEditor({ mode, item = null }) {
       title,
       amount_minor: null,
       rate_minor: null,
+      weekday_rates: [],
       percent_bps: null,
       department_id: null,
       department_ids: null,
@@ -429,6 +479,12 @@ function openComponentEditor({ mode, item = null }) {
         toast("Некорректная почасовая ставка", "warn");
         return;
       }
+      const weekdayRates = readWeekdayRates({ validate: true });
+      if (weekdayRates === false) {
+        toast("Заполни ставку для каждого выбранного дня", "warn");
+        return;
+      }
+      payload.weekday_rates = weekdayRates;
     } else if (componentType === "SALARY_FIXED_MONTH" || componentType === "SALARY_PER_SHIFT" || componentType === "MINIMUM_PAYOUT") {
       if (!amountMinorRaw) {
         toast("Укажи сумму в рублях", "warn");
@@ -438,6 +494,14 @@ function openComponentEditor({ mode, item = null }) {
       if (payload.amount_minor === null) {
         toast("Некорректная сумма", "warn");
         return;
+      }
+      if (componentType === "SALARY_PER_SHIFT") {
+        const weekdayRates = readWeekdayRates({ validate: true });
+        if (weekdayRates === false) {
+          toast("Заполни ставку для каждого выбранного дня", "warn");
+          return;
+        }
+        payload.weekday_rates = weekdayRates;
       }
       if (componentType === "MINIMUM_PAYOUT") {
         payload.minimum_guarantee_scope = minGuaranteeScope === "SHIFT" || minGuaranteeScope === "DAY" ? "SHIFT" : "MONTH";

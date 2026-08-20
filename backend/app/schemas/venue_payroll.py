@@ -68,11 +68,17 @@ class PayProfileAssignmentUpdateIn(BaseModel):
     is_active: bool | None = None
 
 
+class PayComponentWeekdayRateIn(BaseModel):
+    weekday: int = Field(..., ge=0, le=6)
+    rate_minor: int = Field(..., ge=0)
+
+
 class PayComponentCreateIn(BaseModel):
     component_type: str = Field(..., min_length=1, max_length=40)
     title: str = Field(..., min_length=1, max_length=120)
     amount_minor: int | None = Field(default=None, ge=0)
     rate_minor: int | None = Field(default=None, ge=0)
+    weekday_rates: list[PayComponentWeekdayRateIn] | None = Field(default=None, max_length=7)
     percent_bps: int | None = Field(default=None, ge=0)
     department_id: int | None = Field(default=None, gt=0)
     department_ids: list[int] | None = None
@@ -102,6 +108,7 @@ class PayComponentUpdateIn(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     amount_minor: int | None = Field(default=None, ge=0)
     rate_minor: int | None = Field(default=None, ge=0)
+    weekday_rates: list[PayComponentWeekdayRateIn] | None = Field(default=None, max_length=7)
     percent_bps: int | None = Field(default=None, ge=0)
     department_id: int | None = Field(default=None, gt=0)
     department_ids: list[int] | None = None

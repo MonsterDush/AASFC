@@ -23,6 +23,10 @@ from app.services.payroll.calculator import (
     MINIMUM_GUARANTEE_SHIFT,
 )
 from app.services.payroll.payroll_types import KPI_CALCULATION_FIXED, KPI_CALCULATION_PERCENT
+from app.services.payroll.weekday_rates import (
+    WEEKDAY_RATE_COMPONENT_TYPES,
+    normalize_weekday_rates,
+)
 from app.routers.venue_access import (
     _is_owner_or_super_admin,
 )
@@ -253,6 +257,34 @@ def _component_boost_department_ids(component: PayComponent) -> list[int]:
     return ids
 
 
+def _component_weekday_rates(component: PayComponent) -> list[dict]:
+    return normalize_weekday_rates(getattr(component, "weekday_rates_json", None))
+
+
+def _validate_weekday_rates(component_type: str, value: object) -> list[dict]:
+    raw_items = list(value or []) if isinstance(value, list) else []
+    weekdays: list[int] = []
+    for raw_item in raw_items:
+        if hasattr(raw_item, "model_dump"):
+            item = raw_item.model_dump()
+        elif hasattr(raw_item, "dict"):
+            item = raw_item.dict()
+        else:
+            item = raw_item
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="weekday_rates must be a list of weekday rates")
+        weekdays.append(int(item.get("weekday")))
+    if len(weekdays) != len(set(weekdays)):
+        raise HTTPException(status_code=400, detail="weekday_rates must contain each weekday at most once")
+    normalized = normalize_weekday_rates(raw_items)
+    if normalized and str(component_type or "").strip().upper() not in WEEKDAY_RATE_COMPONENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="weekday_rates are supported only for SALARY_HOURLY and SALARY_PER_SHIFT",
+        )
+    return normalized
+
+
 def _department_titles_for_ids(db_departments: list[Department] | None, ids: list[int]) -> list[str]:
     if not ids:
         return []
@@ -337,6 +369,7 @@ def _serialize_pay_component(component: PayComponent) -> dict:
         "title": component.title,
         "amount_minor": component.amount_minor,
         "rate_minor": component.rate_minor,
+        "weekday_rates": _component_weekday_rates(component),
         "percent_bps": component.percent_bps,
         "department_id": component.department_id,
         "department_ids": department_ids,
@@ -412,6 +445,7 @@ def _validate_pay_component_fields(
     minimum_guarantee_minor: int | None = None,
     minimum_guarantee_scope: str | None = None,
     maximum_cap_minor: int | None = None,
+    weekday_rates: list[dict] | None = None,
 ) -> None:
     component_type = str(component_type or "").strip().upper()
     normalized_base_scope = str(base_scope or "").strip().upper() if base_scope is not None else None
@@ -426,6 +460,7 @@ def _validate_pay_component_fields(
     normalized_department_ids = _normalize_int_ids(department_ids)
     normalized_boost_department_ids = _normalize_int_ids(boost_department_ids)
     raw_minimum_scope = str(minimum_guarantee_scope or "").strip().upper()
+    _validate_weekday_rates(component_type, weekday_rates)
     if component_type == "MINIMUM_PAYOUT":
         if minimum_guarantee_scope is not None and raw_minimum_scope not in {
             MINIMUM_GUARANTEE_MONTH,

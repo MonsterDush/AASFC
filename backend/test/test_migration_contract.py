@@ -11,17 +11,17 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 class MigrationContractTests(unittest.TestCase):
-    def test_user_locale_is_the_single_current_head(self):
+    def test_weekday_pay_rates_is_the_single_current_head(self):
         config = Config(str(BACKEND_DIR / "alembic.ini"))
         config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
         scripts = ScriptDirectory.from_config(config)
 
         heads = scripts.get_heads()
-        revision = scripts.get_revision("b7d9e1f3a5c8")
+        revision = scripts.get_revision("c8e1f4a7b2d9")
 
-        self.assertEqual(heads, ["b7d9e1f3a5c8"])
+        self.assertEqual(heads, ["c8e1f4a7b2d9"])
         self.assertIsNotNone(revision)
-        self.assertEqual(revision.down_revision, "a4d8e2f6c1b3")
+        self.assertEqual(revision.down_revision, "b7d9e1f3a5c8")
 
     def test_daily_reports_waits_for_venue_positions_table(self):
         config = Config(str(BACKEND_DIR / "alembic.ini"))

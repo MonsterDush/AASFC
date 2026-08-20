@@ -27,6 +27,7 @@ from app.services.payroll.calculator import (
     interval_duration_minutes,
     parse_month_start,
 )
+from app.services.payroll.weekday_rates import calculate_weekday_rate_amount_minor
 
 
 class PayrollCalculationHelpersTests(TestCase):
@@ -56,6 +57,49 @@ class PayrollCalculationHelpersTests(TestCase):
         component = SimpleNamespace(component_type="SALARY_PER_SHIFT", amount_minor=32000, rate_minor=None)
         amount_minor = calculate_component_amount_minor(component, minutes_total=0, shifts_count=7)
         self.assertEqual(amount_minor, 224000)
+
+    def test_hourly_weekday_rates_override_only_selected_days(self):
+        shifts = [
+            PayrollWorkedShift(shift_id=1, shift_date=date(2026, 8, 17), shift_slot="DAY", minutes=480),
+            PayrollWorkedShift(shift_id=2, shift_date=date(2026, 8, 18), shift_slot="DAY", minutes=480),
+        ]
+        component = SimpleNamespace(
+            component_type="SALARY_HOURLY",
+            amount_minor=None,
+            rate_minor=50_000,
+            weekday_rates_json='[{"weekday": 0, "rate_minor": 65000}]',
+        )
+
+        amount_minor = calculate_weekday_rate_amount_minor(component, shifts)
+
+        self.assertEqual(amount_minor, 920_000)
+
+    def test_per_shift_weekday_rates_are_used_in_shift_allocations(self):
+        shifts = [
+            PayrollWorkedShift(shift_id=10, shift_date=date(2026, 8, 21), shift_slot="DAY", minutes=480),
+            PayrollWorkedShift(shift_id=11, shift_date=date(2026, 8, 22), shift_slot="DAY", minutes=480),
+            PayrollWorkedShift(shift_id=12, shift_date=date(2026, 8, 23), shift_slot="DAY", minutes=480),
+        ]
+        metrics = PayrollMemberMetrics(minutes_total=1440, shifts_count=3, worked_shifts=shifts)
+        component = SimpleNamespace(
+            component_type="SALARY_PER_SHIFT",
+            amount_minor=200_000,
+            rate_minor=None,
+            weekday_rates_json='[{"weekday": 5, "rate_minor": 300000}, {"weekday": 6, "rate_minor": 350000}]',
+        )
+
+        amount_minor = calculate_weekday_rate_amount_minor(component, shifts)
+        allocations = _component_shift_allocations(
+            component=component,
+            amount_minor=amount_minor,
+            metrics=metrics,
+            month_start=date(2026, 8, 1),
+            month_end_excl=date(2026, 9, 1),
+            revenue_metrics=PayrollRevenueMetrics(),
+        )
+
+        self.assertEqual(amount_minor, 850_000)
+        self.assertEqual(allocations, {10: 200_000, 11: 300_000, 12: 350_000})
 
     def test_calculate_component_amount_minor_for_percent_total_revenue(self):
         component = SimpleNamespace(
@@ -202,6 +246,39 @@ class PayrollCalculationHelpersTests(TestCase):
 
 
 class PayComponentValidationTests(TestCase):
+    def test_weekday_rates_are_supported_only_for_hourly_and_per_shift_components(self):
+        _validate_pay_component_fields(
+            component_type="SALARY_HOURLY",
+            amount_minor=None,
+            rate_minor=50_000,
+            percent_bps=None,
+            department_id=None,
+            weekday_rates=[{"weekday": 5, "rate_minor": 65_000}],
+        )
+        with self.assertRaises(HTTPException):
+            _validate_pay_component_fields(
+                component_type="SALARY_FIXED_MONTH",
+                amount_minor=5_000_000,
+                rate_minor=None,
+                percent_bps=None,
+                department_id=None,
+                weekday_rates=[{"weekday": 5, "rate_minor": 65_000}],
+            )
+
+    def test_weekday_rates_reject_duplicate_weekdays(self):
+        with self.assertRaises(HTTPException):
+            _validate_pay_component_fields(
+                component_type="SALARY_PER_SHIFT",
+                amount_minor=200_000,
+                rate_minor=None,
+                percent_bps=None,
+                department_id=None,
+                weekday_rates=[
+                    {"weekday": 5, "rate_minor": 300_000},
+                    {"weekday": 5, "rate_minor": 350_000},
+                ],
+            )
+
     def test_percentage_kpi_requires_ruble_metric(self):
         with self.assertRaises(HTTPException) as ctx:
             _validate_pay_component_fields(

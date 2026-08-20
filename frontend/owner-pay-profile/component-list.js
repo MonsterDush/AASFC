@@ -26,12 +26,16 @@ function componentStepsPreview(item) {
 
 function componentSubtitle(item) {
   const type = String(item?.component_type || "").toUpperCase();
+  const weekdayRates = Array.isArray(item?.weekday_rates) ? item.weekday_rates : [];
+  const weekdaySuffix = weekdayRates.length
+    ? ` · по дням: ${weekdayRates.map((row) => ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"][Number(row?.weekday)]).filter(Boolean).join(", ")}`
+    : "";
   if (type === "SALARY_FIXED_MONTH") {
     const accrualDay = item.salary_accrual_day ? ` · начисление ${item.salary_accrual_day}-го числа` : "";
     return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)}${accrualDay}`;
   }
-  if (type === "SALARY_HOURLY") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.rate_minor)} / час`;
-  if (type === "SALARY_PER_SHIFT") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)} / смена`;
+  if (type === "SALARY_HOURLY") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.rate_minor)} / час${weekdaySuffix}`;
+  if (type === "SALARY_PER_SHIFT") return `${COMPONENT_LABELS[type]} · ${fmtMoneyMinor(item.amount_minor)} / смена${weekdaySuffix}`;
   if (type === "MINIMUM_PAYOUT") return `${COMPONENT_LABELS[type]} · до ${fmtMoneyMinor(item.amount_minor)} / месяц`;
   if (type === "PERCENT_TOTAL_REVENUE") return `${COMPONENT_LABELS[type]} · ${formatPercentConfig(item)}`;
   if (type === "PERCENT_DEPARTMENT_REVENUE") {
