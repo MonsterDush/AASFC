@@ -393,8 +393,13 @@ class WorkflowPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            cache_key = "20260728-responsive1" if html_name == "staff-report.html" else "20260726-polish6"
-            self.assertIn(f"/{style_path}?v={cache_key}", html, html_name)
+            if html_name == "staff-report.html":
+                asset_version = "20260728-responsive1"
+            elif html_name == "staff-salary.html":
+                asset_version = "20260820-assurance1"
+            else:
+                asset_version = "20260726-polish6"
+            self.assertIn(f"/{style_path}?v={asset_version}", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 

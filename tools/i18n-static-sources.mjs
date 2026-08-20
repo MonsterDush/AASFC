@@ -11,8 +11,9 @@ const BACKEND_APP_DIR = path.join(REPO_DIR, "backend", "app");
 const CYRILLIC_RE = /[А-Яа-яЁё]/;
 const ATTRIBUTE_RE =
   /(?:placeholder|title|aria-label|alt)\s*=\s*["']([^"']+)["']/g;
-const TEXT_RE = />([^<>]+)</g;
-const SCRIPT_RE = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi;
+const HTML_TOKEN_RE =
+  /<!--[\s\S]*?-->|<![^>]*>|<\s*(\/?)\s*([A-Za-z][\w:-]*)\b[^>]*>/g;
+const RAW_TEXT_TAGS = new Set(["script", "style"]);
 
 function normalizeSource(value) {
   return String(value || "")
@@ -27,6 +28,29 @@ function addSource(target, value, file) {
   target.get(source).add(file);
 }
 
+function collectHtmlTextAndAttributeSources(target, raw, file) {
+  const rawTextStack = [];
+  let cursor = 0;
+  for (const match of raw.matchAll(HTML_TOKEN_RE)) {
+    if (rawTextStack.length === 0) {
+      addSource(target, raw.slice(cursor, match.index), file);
+    }
+    const closing = match[1] === "/";
+    const tagName = String(match[2] || "").toLowerCase();
+    if (rawTextStack.length > 0) {
+      if (closing && tagName === rawTextStack.at(-1)) rawTextStack.pop();
+    } else if (RAW_TEXT_TAGS.has(tagName)) {
+      if (!closing && !/\/\s*>$/.test(match[0])) rawTextStack.push(tagName);
+    } else if (!closing) {
+      for (const attribute of match[0].matchAll(ATTRIBUTE_RE)) {
+        addSource(target, attribute[1], file);
+      }
+    }
+    cursor = match.index + match[0].length;
+  }
+  if (rawTextStack.length === 0) addSource(target, raw.slice(cursor), file);
+}
+
 export function collectStaticHtmlSources() {
   const sources = new Map();
   const files = fs
@@ -35,13 +59,7 @@ export function collectStaticHtmlSources() {
     .sort();
   for (const file of files) {
     const raw = fs.readFileSync(path.join(FRONTEND_DIR, file), "utf8");
-    const html = raw
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(/<style[\s\S]*?<\/style>/gi, "");
-    for (const match of html.matchAll(TEXT_RE))
-      addSource(sources, match[1], file);
-    for (const match of html.matchAll(ATTRIBUTE_RE))
-      addSource(sources, match[1], file);
+    collectHtmlTextAndAttributeSources(sources, raw, file);
   }
   return sources;
 }
@@ -57,6 +75,24 @@ function addCodeLiteralSources(target, code, file) {
       .replace(/[\s),\]]+$/, "")
       .trim();
     addSource(target, source, file);
+  }
+}
+
+function collectInlineScriptSources(target, raw, file) {
+  let scriptStart = null;
+  for (const match of raw.matchAll(HTML_TOKEN_RE)) {
+    const closing = match[1] === "/";
+    const tagName = String(match[2] || "").toLowerCase();
+    if (scriptStart === null) {
+      if (tagName === "script" && !closing && !/\/\s*>$/.test(match[0])) {
+        scriptStart = match.index + match[0].length;
+      }
+      continue;
+    }
+    if (tagName === "script" && closing) {
+      addCodeLiteralSources(target, raw.slice(scriptStart, match.index), file);
+      scriptStart = null;
+    }
   }
 }
 
@@ -93,8 +129,7 @@ export function collectFrontendSources() {
     }
     if (!filePath.endsWith(".html")) continue;
     const html = fs.readFileSync(filePath, "utf8");
-    for (const match of html.matchAll(SCRIPT_RE))
-      addCodeLiteralSources(sources, match[1], relative);
+    collectInlineScriptSources(sources, html, relative);
   }
   return sources;
 }

@@ -39,7 +39,9 @@ For the PostgreSQL-backed browser scenarios, copy `.env.e2e.example` to
 `tools/e2e-local.sh browser`. The browser gate covers 12 owner, staff, and
 public-demo scenarios at both 1440x900 and 375x812, critical/serious WCAG
 violations, responsive overflow, API 5xx, uncaught JavaScript errors, and page
-performance budgets.
+performance budgets. A separate isolated owner/admin coverage tour exercises
+the remaining read surfaces and representative create, update, export, and
+delete workflows before the fixture is rebuilt.
 
 ## Engineering guarantees
 

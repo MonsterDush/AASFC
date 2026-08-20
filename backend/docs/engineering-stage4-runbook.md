@@ -117,6 +117,9 @@ owner/staff authentication, owner venue list, summary, expenses, payroll,
 settings, positions and day economics, staff shifts and salary, and public
 read-only demo. Any critical or serious WCAG 2.0/2.1/2.2 A/AA violation fails
 CI. It also fails on uncaught browser errors, API 5xx, or horizontal overflow.
+After the viewport matrix, the same gate runs an isolated owner/admin coverage
+tour across the remaining read pages and representative API mutations and
+exports. Reset the E2E fixture before repeating that tour locally.
 
 `tools/performance-budgets.json` is the reviewed source of asset and page limits.
 The static gate caps individual JavaScript, CSS, and HTML files. Browser E2E
