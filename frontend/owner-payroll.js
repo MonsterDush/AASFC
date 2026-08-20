@@ -230,6 +230,12 @@ function breakdownComponentMeta(component) {
   if (type === "SALARY_FIXED_MONTH" && component?.salary_accrual_day) {
     return `${label} · начисление ${component.salary_accrual_day}-го числа`;
   }
+  if (type === "SALARY_HOURLY") {
+    return `${label} · ${fmtMoneyMinor(component?.source_rate_minor || 0)} / час`;
+  }
+  if (type === "SALARY_PER_SHIFT") {
+    return `${label} · ${fmtMoneyMinor(component?.source_amount_minor || 0)} / смена`;
+  }
   return label;
 }
 
@@ -250,6 +256,7 @@ function breakdownBadges(component) {
   if (snap?.maximum_applied) badges.push(`<span class="payroll-chip payroll-chip--warn">потолок</span>`);
   if (Array.isArray(snap?.day_rows) && snap.day_rows.length) badges.push(`<span class="payroll-chip payroll-chip--muted">по дням</span>`);
   if (Array.isArray(snap?.shift_rows) && snap.shift_rows.length) badges.push(`<span class="payroll-chip payroll-chip--muted">по сменам</span>`);
+  if (Array.isArray(snap?.weekday_rates) && snap.weekday_rates.length) badges.push(`<span class="payroll-chip payroll-chip--ok">ставки по дням недели</span>`);
   return badges.length ? `<div class="payroll-breakdown__badges">${badges.join('')}</div>` : '';
 }
 
@@ -280,6 +287,15 @@ function breakdownKv(component) {
     if (component?.metric_value != null) push('Факт KPI', String(component.metric_value));
     if (component?.threshold_value != null) push('Порог', String(component.threshold_value));
   }
+  if (type === 'SALARY_HOURLY' || type === 'SALARY_PER_SHIFT') {
+    const unit = type === 'SALARY_HOURLY' ? '/ час' : '/ смена';
+    const baseMinor = type === 'SALARY_HOURLY' ? component?.source_rate_minor : component?.source_amount_minor;
+    if (baseMinor != null) push('Базовая ставка', `${fmtMoneyMinor(baseMinor)} ${unit}`);
+    const weekdayRates = Array.isArray(component?.weekday_rates) ? component.weekday_rates : [];
+    if (weekdayRates.length) {
+      push('Исключения по дням', weekdayRates.map((row) => `${row.weekday_title}: ${fmtMoneyMinor(row.rate_minor)} ${unit}`).join(' · '));
+    }
+  }
   if (type === 'MINIMUM_PAYOUT') {
     if (component?.source_amount_minor != null) push('Правило', `${fmtMoneyMinor(component.source_amount_minor)} ${minimumScopeLabel(component)}`);
     if (component?.minimum_target_minor != null) push('Цель минимума', fmtMoneyMinor(component.minimum_target_minor));
@@ -308,8 +324,12 @@ function breakdownExplain(component) {
     if (component?.matched_step?.threshold_value != null) return 'Сработала подходящая ступень KPI-бонуса.';
     return 'Фиксированный бонус за выполнение KPI.';
   }
-  if (type === 'SALARY_HOURLY') return 'Компонент посчитан по фактически отработанным часам.';
-  if (type === 'SALARY_PER_SHIFT') return 'Компонент посчитан по количеству смен в периоде.';
+  if (type === 'SALARY_HOURLY') return Array.isArray(component?.weekday_rates) && component.weekday_rates.length
+    ? 'Компонент посчитан по фактически отработанным часам и ставке дня недели.'
+    : 'Компонент посчитан по фактически отработанным часам.';
+  if (type === 'SALARY_PER_SHIFT') return Array.isArray(component?.weekday_rates) && component.weekday_rates.length
+    ? 'Для каждой смены применена ставка соответствующего дня недели.'
+    : 'Компонент посчитан по количеству смен в периоде.';
   if (type === 'SALARY_FIXED_MONTH') return 'Фиксированная часть за период.';
   if (type === 'MINIMUM_PAYOUT') {
     const snap = componentSnapshot(component);
@@ -344,6 +364,9 @@ function breakdownShiftRows(component) {
     const meta = [];
     if (row?.minimum_target_minor != null) meta.push(`минимум ${fmtMoneyMinor(row.minimum_target_minor)}`);
     if (row?.amount_before_minimum_minor != null) meta.push(`было ${fmtMoneyMinor(row.amount_before_minimum_minor)}`);
+    if (row?.weekday_title) meta.push(row.weekday_title);
+    if (row?.applied_rate_minor != null) meta.push(`ставка ${fmtMoneyMinor(row.applied_rate_minor)}`);
+    if (row?.weekday_override_applied) meta.push('ставка дня ✓');
     if (row?.minutes != null) meta.push(`${Math.round(Number(row.minutes || 0) / 60 * 100) / 100} ч`);
     if (row?.shift_slot) meta.push(String(row.shift_slot).toLowerCase());
     if (row?.minimum_applied) meta.push('доплата ✓');

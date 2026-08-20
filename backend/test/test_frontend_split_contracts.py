@@ -399,7 +399,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         entrypoints = {
-            "staff-salary.html": "/staff-salary.js?v=20260729-salarybars1",
+            "staff-salary.html": "/staff-salary.js?v=20260820-weekdayrates1",
             "staff-adjustments.html": "/staff-adjustments.js?v=20260726-navmore1",
             "staff-report.html": "/staff-report.js?v=20260802-ledgerdrill1",
         }
@@ -482,14 +482,17 @@ class WorkflowPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            self.assertIn(f"/{style_path}?v=20260726-polish9", html, html_name)
+            cache_key = (
+                "20260820-weekdayrates1" if style_path == "styles/pages/owner-pay-profile.css" else "20260726-polish9"
+            )
+            self.assertIn(f"/{style_path}?v={cache_key}", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         entrypoints = {
             "app-adjustments.html": "/app-adjustments.js?v=20260726-navmore1",
             "owner-pay-profiles.html": "/owner-pay-profiles.js?v=20260726-navmore1",
-            "owner-pay-profile.html": "/owner-pay-profile.js?v=20260729-payroll1",
+            "owner-pay-profile.html": "/owner-pay-profile.js?v=20260820-weekdayrates1",
         }
         for html_name, entrypoint in entrypoints.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
@@ -510,7 +513,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
 
         self.assertIn("/styles/pages/owner-payroll.css?v=20260802-payrollpayments1", html)
-        self.assertIn("/owner-payroll.js?v=20260802-payrollpayments1", html)
+        self.assertIn("/owner-payroll.js?v=20260820-weekdayrates1", html)
         self.assertIn('class="owner-payroll-page"', html)
         self.assertIn("payroll-bootstrap", html)
         for contract in (
@@ -929,11 +932,11 @@ class OwnerPayProfileSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 450)
-        self.assertIn("owner-pay-profile.js?v=20260729-payroll1", html)
+        self.assertIn("owner-pay-profile.js?v=20260820-weekdayrates1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
-            cache_key = "20260723-functional1" if filename == "assignment-controller.js" else "20260729-payroll1"
+            cache_key = "20260723-functional1" if filename == "assignment-controller.js" else "20260820-weekdayrates1"
             self.assertIn(f"/owner-pay-profile/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
@@ -947,6 +950,17 @@ class OwnerPayProfileSplitContractTests(TestCase):
             for method in methods:
                 self.assertIn(method, source)
                 self.assertIn(method, main)
+
+        component_form = (FRONTEND / "owner-pay-profile" / "component-form.js").read_text(encoding="utf-8")
+        component_controller = (FRONTEND / "owner-pay-profile" / "component-controller.js").read_text(encoding="utf-8")
+        component_list = (FRONTEND / "owner-pay-profile" / "component-list.js").read_text(encoding="utf-8")
+        styles = (FRONTEND / "styles/pages/owner-pay-profile.css").read_text(encoding="utf-8")
+        for contract in ("f_weekday_rates_section", "data-weekday-enabled", "data-weekday-rate"):
+            self.assertIn(contract, component_form)
+        self.assertIn("weekday_rates: []", component_controller)
+        self.assertIn("readWeekdayRates", component_controller)
+        self.assertIn("weekday_rates", component_list)
+        self.assertIn(".weekday-rate-row", styles)
 
         api_ownership = {
             "component-controller.js": ("createPayComponent", "updatePayComponent"),

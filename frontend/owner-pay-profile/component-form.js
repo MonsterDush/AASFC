@@ -28,6 +28,16 @@ function kpiMetricOptionLabel(metric) {
   return `${metric?.title || 'KPI'} · ${unit}${kpiMetricUsageSuffix(metric)}`;
 }
 
+const WEEKDAYS = [
+  [0, "Понедельник"],
+  [1, "Вторник"],
+  [2, "Среда"],
+  [3, "Четверг"],
+  [4, "Пятница"],
+  [5, "Суббота"],
+  [6, "Воскресенье"],
+];
+
 function componentForm({ mode, item }) {
   const it = item || {};
   const type = String(it.component_type || "SALARY_FIXED_MONTH").toUpperCase();
@@ -47,6 +57,26 @@ function componentForm({ mode, item }) {
   const salaryAccrualDayOptions = Array.from({ length: 31 }, (_, index) => index + 1)
     .map((day) => `<option value="${day}" ${salaryAccrualDay === day ? "selected" : ""}>${day}-е число</option>`)
     .join("");
+  const weekdayRates = new Map(
+    (Array.isArray(it.weekday_rates) ? it.weekday_rates : [])
+      .map((row) => [Number(row?.weekday), row?.rate_minor]),
+  );
+  const weekdayRatesMarkup = WEEKDAYS.map(([weekday, title]) => {
+    const enabled = weekdayRates.has(weekday);
+    return `
+      <div class="weekday-rate-row" data-weekday-row="${weekday}">
+        <label class="chk weekday-rate-toggle">
+          <input type="checkbox" data-weekday-enabled="${weekday}" ${enabled ? "checked" : ""} />
+          <span>${esc(title)}</span>
+        </label>
+        <label class="weekday-rate-value">
+          <span class="sr-only">Ставка для дня ${esc(title)}</span>
+          <input inputmode="decimal" data-weekday-rate="${weekday}" placeholder="Базовая ставка" value="${esc(enabled ? moneyInputFromMinor(weekdayRates.get(weekday)) : "")}" ${enabled ? "" : "disabled"} />
+          <span class="weekday-rate-unit" data-weekday-unit>₽</span>
+        </label>
+      </div>
+    `;
+  }).join("");
   return `
     <div class="finance-form mt-8">
       <div class="form-section">
@@ -104,6 +134,16 @@ function componentForm({ mode, item }) {
           </label>
         </div>
         <div id="f_live_summary" class="pay-config-summary"></div>
+      </div>
+
+      <div class="form-section" id="f_weekday_rates_section">
+        <div class="form-section__head">
+          <div class="form-section__title">Ставки по дням недели</div>
+          <div class="form-section__subtitle">Необязательно. Включи нужные дни — в остальные дни будет действовать базовая ставка.</div>
+        </div>
+        <div class="weekday-rate-list">
+          ${weekdayRatesMarkup}
+        </div>
       </div>
 
       <div class="form-section" id="f_percent_section">

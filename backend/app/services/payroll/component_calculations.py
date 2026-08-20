@@ -19,6 +19,7 @@ from .payroll_types import (
     PayrollVenuePlanMetrics,
     PayrollWorkedShift,
 )
+from .weekday_rates import salary_shift_rows
 
 
 def _kpi_calculation_mode(component: PayComponent) -> str:
@@ -472,10 +473,16 @@ def _component_shift_allocations(
     shift_ids = [int(shift.shift_id) for shift in shifts]
 
     if component_type == "SALARY_HOURLY":
+        variable_rows = salary_shift_rows(component, shifts)
+        if variable_rows:
+            return {int(row["shift_id"]): int(row["amount_minor"]) for row in variable_rows}
         weights = {int(shift.shift_id): max(1, int(shift.minutes or 0)) for shift in shifts}
         return _allocate_minor_by_keys(int(amount_minor), shift_ids, weights)
 
     if component_type == "SALARY_PER_SHIFT":
+        variable_rows = salary_shift_rows(component, shifts)
+        if variable_rows:
+            return {int(row["shift_id"]): int(row["amount_minor"]) for row in variable_rows}
         weights = {int(shift.shift_id): 1 for shift in shifts}
         return _allocate_minor_by_keys(int(amount_minor), shift_ids, weights)
 

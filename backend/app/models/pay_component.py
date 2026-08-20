@@ -66,6 +66,7 @@ class PayComponent(Base):
     amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rate_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     percent_bps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weekday_rates_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), nullable=True)
     department_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)

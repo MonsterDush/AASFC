@@ -1003,10 +1003,12 @@ function breakdownMetaHtml(c) {
     return `<div class="muted small mt-4">Доплата до минимума: ${esc(rule)}</div>`;
   }
   if (type === "SALARY_HOURLY") {
-    return `<div class="muted small mt-4">Часы: ${esc(c.hours_total ?? 0)}</div>`;
+    const days = Array.isArray(c?.weekday_rates) ? c.weekday_rates.map((row) => row.weekday_title).filter(Boolean) : [];
+    return `<div class="muted small mt-4">Часы: ${esc(c.hours_total ?? 0)}${days.length ? ` · ставки по дням: ${esc(days.join(", "))}` : ""}</div>`;
   }
   if (type === "SALARY_PER_SHIFT") {
-    return `<div class="muted small mt-4">Смен: ${esc(c.shifts_count ?? 0)}</div>`;
+    const days = Array.isArray(c?.weekday_rates) ? c.weekday_rates.map((row) => row.weekday_title).filter(Boolean) : [];
+    return `<div class="muted small mt-4">Смен: ${esc(c.shifts_count ?? 0)}${days.length ? ` · ставки по дням: ${esc(days.join(", "))}` : ""}</div>`;
   }
   if (type === "SALARY_FIXED_MONTH" && c?.salary_accrual_day) {
     return `<div class="muted small mt-4">Оклад распределяется по месяцу · начисление ${esc(c.salary_accrual_day)}-го числа</div>`;
@@ -1023,6 +1025,7 @@ function breakdownBadgesHtml(c) {
   if (snap?.maximum_applied) badges.push(`<span class="payroll-chip payroll-chip--warn">потолок</span>`);
   if (Array.isArray(snap?.day_rows) && snap.day_rows.length) badges.push(`<span class="payroll-chip payroll-chip--muted">по дням</span>`);
   if (Array.isArray(snap?.shift_rows) && snap.shift_rows.length) badges.push(`<span class="payroll-chip payroll-chip--muted">по сменам</span>`);
+  if (Array.isArray(snap?.weekday_rates) && snap.weekday_rates.length) badges.push(`<span class="payroll-chip payroll-chip--ok">ставки по дням недели</span>`);
   return badges.length ? `<div class="payroll-breakdown__badges">${badges.join('')}</div>` : '';
 }
 
@@ -1034,6 +1037,13 @@ function breakdownKvHtml(c) {
     rows.push(`<div class="payroll-breakdown__kv-item"><span class="payroll-breakdown__kv-label">${esc(label)}</span><span class="payroll-breakdown__kv-value">${esc(value)}</span></div>`);
   };
   const type = String(c?.component_type || '').toUpperCase();
+  if (type === 'SALARY_HOURLY' || type === 'SALARY_PER_SHIFT') {
+    const unit = type === 'SALARY_HOURLY' ? '/ час' : '/ смена';
+    const baseMinor = type === 'SALARY_HOURLY' ? c?.source_rate_minor : c?.source_amount_minor;
+    if (baseMinor != null) push('Базовая ставка', `${formatMoneyMinor(baseMinor)} ${unit}`);
+    const weekdayRates = Array.isArray(c?.weekday_rates) ? c.weekday_rates : [];
+    if (weekdayRates.length) push('Исключения по дням', weekdayRates.map((row) => `${row.weekday_title}: ${formatMoneyMinor(row.rate_minor)} ${unit}`).join(' · '));
+  }
   if (type === 'MINIMUM_PAYOUT') {
     if (snap.source_amount_minor != null || c.source_amount_minor != null) push('Правило', `${formatMoneyMinor(snap.source_amount_minor ?? c.source_amount_minor)} ${minimumScopeLabel(snap || c)}`);
     if (snap.minimum_target_minor != null || c.minimum_target_minor != null) push('Цель минимума', formatMoneyMinor(snap.minimum_target_minor ?? c.minimum_target_minor));
@@ -1075,8 +1085,12 @@ function breakdownExplain(component) {
     if (component?.matched_step?.threshold_value != null) return 'Сработала подходящая ступень KPI-бонуса.';
     return 'Фиксированный бонус за выполнение KPI.';
   }
-  if (type === 'SALARY_HOURLY') return 'Компонент посчитан по фактически отработанным часам.';
-  if (type === 'SALARY_PER_SHIFT') return 'Компонент посчитан по количеству смен в периоде.';
+  if (type === 'SALARY_HOURLY') return Array.isArray(component?.weekday_rates) && component.weekday_rates.length
+    ? 'Компонент посчитан по фактически отработанным часам и ставке дня недели.'
+    : 'Компонент посчитан по фактически отработанным часам.';
+  if (type === 'SALARY_PER_SHIFT') return Array.isArray(component?.weekday_rates) && component.weekday_rates.length
+    ? 'Для каждой смены применена ставка соответствующего дня недели.'
+    : 'Компонент посчитан по количеству смен в периоде.';
   if (type === 'SALARY_FIXED_MONTH') return 'Фиксированная часть за период.';
   if (type === 'MINIMUM_PAYOUT') {
     const snap = componentSnapshot(component);
@@ -1111,6 +1125,9 @@ function breakdownShiftRowsHtml(c) {
     const meta = [];
     if (row?.minimum_target_minor != null) meta.push(`минимум ${formatMoneyMinor(row.minimum_target_minor)}`);
     if (row?.amount_before_minimum_minor != null) meta.push(`было ${formatMoneyMinor(row.amount_before_minimum_minor)}`);
+    if (row?.weekday_title) meta.push(row.weekday_title);
+    if (row?.applied_rate_minor != null) meta.push(`ставка ${formatMoneyMinor(row.applied_rate_minor)}`);
+    if (row?.weekday_override_applied) meta.push('ставка дня ✓');
     if (row?.minutes != null) meta.push(`${Math.round(Number(row.minutes || 0) / 60 * 100) / 100} ч`);
     if (row?.shift_slot) meta.push(String(row.shift_slot).toLowerCase());
     if (row?.minimum_applied) meta.push('доплата ✓');

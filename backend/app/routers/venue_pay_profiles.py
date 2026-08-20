@@ -35,7 +35,9 @@ from app.schemas.venue_payroll import (
 from app.routers.venue_pay_profile_support import (
     _component_boost_department_ids,
     _component_department_ids,
+    _component_weekday_rates,
     _dump_int_ids,
+    _validate_weekday_rates,
     _ensure_department_ids_in_venue,
     _get_pay_component_or_404,
     _get_pay_profile_assignment_or_404,
@@ -51,6 +53,7 @@ from app.routers.venue_pay_profile_support import (
     _serialize_pay_profile_assignment,
     _validate_pay_component_fields,
 )
+from app.services.payroll.weekday_rates import dump_weekday_rates
 from app.routers.venue_membership_support import _build_user_auth_snapshot_map
 
 
@@ -334,6 +337,7 @@ def create_pay_component(
             raise HTTPException(status_code=400, detail="Boost department not found in venue")
     department_ids = _normalize_int_ids(payload.department_ids)
     boost_department_ids = _normalize_int_ids(payload.boost_department_ids)
+    weekday_rates = _validate_weekday_rates(component_type, payload.weekday_rates)
     _ensure_department_ids_in_venue(db, venue_id=venue_id, ids=department_ids, detail="Departments not found in venue")
     _ensure_department_ids_in_venue(
         db, venue_id=venue_id, ids=boost_department_ids, detail="Boost departments not found in venue"
@@ -369,6 +373,7 @@ def create_pay_component(
         minimum_guarantee_minor=payload.minimum_guarantee_minor,
         minimum_guarantee_scope=payload.minimum_guarantee_scope,
         maximum_cap_minor=payload.maximum_cap_minor,
+        weekday_rates=weekday_rates,
     )
 
     component = PayComponent(
@@ -378,6 +383,7 @@ def create_pay_component(
         title=payload.title.strip(),
         amount_minor=payload.amount_minor,
         rate_minor=payload.rate_minor,
+        weekday_rates_json=dump_weekday_rates(weekday_rates),
         percent_bps=payload.percent_bps,
         department_id=payload.department_id or (department_ids[0] if department_ids else None),
         department_ids_json=_dump_int_ids(department_ids),
@@ -435,6 +441,11 @@ def update_pay_component(
         component.amount_minor = payload.amount_minor
     if "rate_minor" in fields_set:
         component.rate_minor = payload.rate_minor
+    if "weekday_rates" in fields_set:
+        weekday_rates_payload = _validate_weekday_rates(component.component_type, payload.weekday_rates)
+        component.weekday_rates_json = dump_weekday_rates(weekday_rates_payload)
+    elif "component_type" in fields_set and component.component_type not in {"SALARY_HOURLY", "SALARY_PER_SHIFT"}:
+        component.weekday_rates_json = None
     if "percent_bps" in fields_set:
         component.percent_bps = payload.percent_bps
     if "kpi_calculation_mode" in fields_set and payload.kpi_calculation_mode is not None:
@@ -576,6 +587,7 @@ def update_pay_component(
         minimum_guarantee_minor=component.minimum_guarantee_minor,
         minimum_guarantee_scope=component.minimum_guarantee_scope,
         maximum_cap_minor=component.maximum_cap_minor,
+        weekday_rates=_component_weekday_rates(component),
     )
     component.updated_at = datetime.utcnow()
     db.commit()
