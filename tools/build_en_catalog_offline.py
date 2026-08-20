@@ -145,6 +145,47 @@ PUBLIC_COPY_OVERRIDES = {
 }
 
 SOURCE_OVERRIDES.update(PUBLIC_COPY_OVERRIDES)
+SOURCE_OVERRIDES.update(
+    {
+        "Активно": "Active",
+        "Аренда": "Rent",
+        "Вперёд": "Next",
+        "Выплата ФОТ": "Payroll payment",
+        "Выплаты ФОТ": "Payroll payments",
+        "Главный экран оставляет только ключевые метрики. Детальные разделы ниже открываются отдельно.": "The overview shows only the key metrics. Open the sections below for details.",
+        "Готово": "Done",
+        "Динамика выручки, затрат и прибыли": "Revenue, costs, and profit over time",
+        "Для просмотра ФОТ нужны права на начисления.": "Payroll permission is required to view this data.",
+        "Для части месяца ФОТ распределяется по дням, а проводка создаётся на месяц": "For a partial month, payroll is allocated by day while the ledger entry covers the whole month",
+        "За полный месяц сверяются начисления и проводки ФОТ.": "For a full month, payroll accruals are reconciled with ledger entries.",
+        "Затраты от выручки": "Total costs as % of revenue",
+        "Заведение в архиве": "Archived venue",
+        "Заведение сейчас в архиве. Доступно только владельцу.": "This venue is archived and available only to its owner.",
+        "Закрытые отчёты, подтверждённые расходы и ФОТ": "Closed reports, confirmed expenses, and payroll",
+        "Легенда графика": "Chart legend",
+        "Маржинальность": "Profit margin",
+        "Маржинальность, %": "Profit margin, %",
+        "На сайт": "Website",
+        "Начать пользоваться": "Get started",
+        "Оставить заявку": "Contact us",
+        "Открыть экономику дня": "Open daily performance",
+        "Основная сумма по закрытым отчётам за выбранный период.": "Revenue from closed reports in the selected period.",
+        "Перейти к деталям": "View details",
+        "Порядковый день": "Day number",
+        "Прибыль": "Profit",
+        "Прибыль дня": "Daily profit",
+        "Прибыль месяца": "Monthly profit",
+        "Подтверждённые расходы и распределённый ФОТ": "Confirmed expenses and allocated payroll",
+        "Расходы / выручка": "Expenses / revenue",
+        "Расходы без ФОТ": "Expenses excluding payroll",
+        "Расходы от выручки": "Expenses as % of revenue",
+        "Сравниваемый период": "Comparison period",
+        "Текущий период": "Current period",
+        "к прошлому месяцу": "vs previous month",
+        "п.п.": "pp",
+        "подтверждённые расходы и распределённый ФОТ": "Confirmed expenses and allocated payroll",
+    }
+)
 
 GLOSSARY_REPLACEMENTS = (
     ("Establishments", "Venues"),
@@ -184,6 +225,12 @@ GLOSSARY_REPLACEMENTS = (
     ("FOOT", "Payroll"),
     ("FOT", "Payroll"),
     ("PHOTO", "Payroll"),
+    ("PayrollA", "Payroll"),
+    ("PHOT", "Payroll"),
+    ("Payrolls", "Payroll"),
+    ("Marginality", "Profit margin"),
+    ("Profits", "Profit"),
+    ("Itogo", "Total"),
 )
 
 
@@ -300,6 +347,18 @@ def refine_translation(source: str, translation: str) -> str:
     refined = str(translation or "").strip()
     for old, new in GLOSSARY_REPLACEMENTS:
         refined = refined.replace(old, new)
+    if re.search(r"завед", source, re.IGNORECASE):
+        venue_terms = re.compile(
+            r"\b(place|places|facility|facilities|building|buildings|location|locations)\b",
+            re.IGNORECASE,
+        )
+
+        def replace_venue_term(match: re.Match[str]) -> str:
+            plural = match.group(0).lower().endswith(("s", "ies"))
+            replacement = "venues" if plural else "venue"
+            return replacement.capitalize() if match.group(0)[0].isupper() else replacement
+
+        refined = venue_terms.sub(replace_venue_term, refined)
     if "₽" in source:
         refined = re.sub(r"[А-Яа-яЁё]+", "", refined)
         refined = re.sub(r"\s+", " ", refined).strip()

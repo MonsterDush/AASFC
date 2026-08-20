@@ -17,7 +17,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 import { canViewRevenue, hasFinanceLedgerViewAccess, isOwnerRole, permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js?v=20260503-finprivacy1";
 import { normalizeIsoRange, resolveAutoComparison } from "/app/period-comparison.js?v=20260802-financeux2";
 import {
@@ -33,7 +33,7 @@ function fmtMoneyMinor(minor) {
   const kopecks = Number(minor || 0);
   const rub = kopecks / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
   } catch {
     return rub.toFixed(2) + " ₽";
   }
@@ -44,7 +44,7 @@ function fmtPercentBps(bps) {
   if (bps === null || bps === undefined) return "—";
   const pct = Number(bps || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(pct) + "%";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(pct) + "%";
   } catch {
     return pct.toFixed(2) + "%";
   }
@@ -62,10 +62,10 @@ function escapeHtml(value) {
 function fmtCompactMoneyMinor(minor) {
   const rubles = Number(minor || 0) / 100;
   const absolute = Math.abs(rubles);
-  const format = (value, suffix) => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: value >= 10 ? 0 : 1 }).format(value)}${suffix}`;
+  const format = (value, suffix) => `${new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: value >= 10 ? 0 : 1 }).format(value)}${suffix}`;
   if (absolute >= 1_000_000) return `${rubles < 0 ? "−" : ""}${format(absolute / 1_000_000, " млн")}`;
   if (absolute >= 1_000) return `${rubles < 0 ? "−" : ""}${format(absolute / 1_000, " тыс")}`;
-  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(rubles)}`;
+  return `${new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: 0 }).format(rubles)}`;
 }
 
 function fmtShortDate(value) {
@@ -77,7 +77,7 @@ function fmtLongDate(value) {
   const [year, month, day] = String(value || "").split("-");
   if (!year || !month || !day) return String(value || "");
   try {
-    return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+    return new Intl.DateTimeFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
       .format(new Date(Date.UTC(Number(year), Number(month) - 1, Number(day))));
   } catch {
     return `${day}.${month}.${year}`;
@@ -305,7 +305,7 @@ function fmtSignedMoneyMinor(value) {
 function fmtSignedNumber(value, digits = 1) {
   const number = Number(value || 0);
   const sign = number > 0 ? "+" : number < 0 ? "−" : "";
-  return `${sign}${Math.abs(number).toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  return `${sign}${Math.abs(number).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
 function renderMetricDelta(id, currentValue, previousValue, { type = "money", caption = "", goodWhen = "neutral" } = {}) {

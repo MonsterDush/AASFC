@@ -9,7 +9,7 @@ import {
   setActiveVenueId,
   getStoredDemoUiState,
   coerceDemoMonth,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 
 import { canManageAdjustments, hasReportAccess, permSetFromResponse, roleUpper } from "/permissions.js";
 
@@ -106,7 +106,7 @@ function ym(d) {
 
 function monthTitle(d) {
   const dt = new Date(d);
-  const m = dt.toLocaleString("ru-RU", { month: "long" });
+  const m = dt.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long" });
   const y = dt.getFullYear();
   return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${y}`;
 }

@@ -16,8 +16,8 @@
       } catch {}
     })();
   </script>
-  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
-  <script src="/page-loader.js?v=20260813-i18n5"></script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>
+  <script src="/page-loader.js?v=20260820-i18n6"></script>
   <title>Axelio · Настройки</title>
 </head>
 <body class="settings-page">
@@ -202,7 +202,7 @@
       getStoredDemoUiState,
       isDemoReadonlyUi,
       getDemoMonthLabel,
-    } from "/app.js?v=20260813-i18n1";
+    } from "/app.js?v=20260820-i18nmetrika1";
 
     applyTelegramTheme();
     mountCommonUI("settings");
@@ -239,10 +239,12 @@
     paintLang();
     async function selectLanguage(locale) {
       setLang(locale);
-      try {
-        await api("/me/profile", { method: "PATCH", body: { preferred_locale: locale } });
-      } catch {
-        // Local preference still applies for public pages and temporary API failures.
+      if (!demoReadonly) {
+        try {
+          await api("/me/profile", { method: "PATCH", body: { preferred_locale: locale } });
+        } catch {
+          // Local preference still applies for public pages and temporary API failures.
+        }
       }
       const target = new URL(location.href);
       target.searchParams.delete("lang");
@@ -377,7 +379,7 @@
     function formatDateTime(value) {
       if (!value) return "—";
       try {
-        return new Intl.DateTimeFormat("ru-RU", {
+        return new Intl.DateTimeFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), {
           day: "2-digit",
           month: "2-digit",
           year: "numeric",

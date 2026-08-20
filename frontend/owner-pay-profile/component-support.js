@@ -38,7 +38,7 @@ const MINIMUM_GUARANTEE_SCOPE_LABELS = {
 function fmtMoneyMinor(minor) {
   const value = Number(minor || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " ₽";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " ₽";
   } catch {
     return value.toFixed(2) + " ₽";
   }
@@ -47,7 +47,7 @@ function fmtMoneyMinor(minor) {
 function fmtPercentBps(bps) {
   const value = Number(bps || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + "%";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + "%";
   } catch {
     return value.toFixed(2) + "%";
   }

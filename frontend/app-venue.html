@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <script defer src="/metrika.js?v=20260812-payment1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
   <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260723-polish2" />
   <script>
@@ -17,8 +16,8 @@
       } catch {}
     })();
   </script>
-  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
-  <script src="/page-loader.js?v=20260813-i18n5"></script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>
+  <script src="/page-loader.js?v=20260820-i18n6"></script>
   <title>Axelio · Заведение</title>
 </head>
 <body>
@@ -211,7 +210,7 @@
   </div>
 
   <script type="module">
-    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20260813-i18n1";
+    import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, confirmModal, setActiveVenueId, mountNav, leaveVenue, getVenueById, getMyVenuePermissions, getVenueSettings, updateVenueSettings, getMe, openModal, isDemoUiMode, getDemoMonthLabel, mountDemoPageTour } from "/app.js?v=20260820-i18nmetrika1";
     import { canManageAdjustments as hasAdjustmentsManageAccess, canViewAdjustments as hasAdjustmentsViewAccess, canViewRevenue as hasRevenueViewAccess, getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, hasReportAccess, isBillingReadonly, isOwnerRole, isSetupDone, isSetupPrepareDone, isSysAdminRole, permSetFromResponse, roleUpper, hasPerm } from "/permissions.js?v=20260409-setup5";
 
     applyTelegramTheme();
@@ -400,19 +399,19 @@ const titleEl = document.getElementById("title");
           if (!value) return "—";
           const d = new Date(value);
           if (Number.isNaN(d.getTime())) return String(value);
-          return d.toLocaleDateString("ru-RU");
+          return d.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"));
         }
 
         function formatDateTime(value) {
           if (!value) return "—";
           const d = new Date(value);
           if (Number.isNaN(d.getTime())) return String(value);
-          return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+          return d.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
         }
 
         function formatMinor(amountMinor) {
           const num = Number(amountMinor || 0) / 100;
-          return `${num.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`;
+          return `${num.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`;
         }
 
         function billingTxSourceLabel(value) {
@@ -566,15 +565,10 @@ const titleEl = document.getElementById("title");
           }
         }
 
-        const SUBSCRIPTION_PAYMENT_GOAL = "subscription_first_payment_success";
         const BILLING_PAYMENT_PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
         function billingPaymentPendingStorageKey() {
-          return `axelio.metrika.pending_subscription_payment.${String(venueId || "")}`;
-        }
-
-        function billingPaymentTrackedStorageKey(invoiceId) {
-          return `axelio.metrika.goal.${SUBSCRIPTION_PAYMENT_GOAL}.${String(invoiceId || "")}`;
+          return `axelio.billing.pending_subscription_payment.${String(venueId || "")}`;
         }
 
         function rememberPendingBillingPayment(invoiceId) {
@@ -617,45 +611,7 @@ const titleEl = document.getElementById("title");
           return txs.find((tx) => String(tx?.provider_invoice_id || "").trim() === normalized) || null;
         }
 
-        function isFirstSuccessfulPaidSubscription(invoiceId, info = billingInfo) {
-          const tx = findBillingPaymentTransaction(invoiceId, info);
-          if (!tx) return false;
-          if (String(tx?.type || "").toUpperCase() !== "PAYMENT") return false;
-          if (String(tx?.status || "").toUpperCase() !== "SUCCEEDED") return false;
-          if (String(tx?.source || "").toUpperCase() !== "ROBOKASSA") return false;
-          if (Number(tx?.amount_minor || 0) <= 0) return false;
-
-          const successfulPaidTransactions = (Array.isArray(info?.transactions) ? info.transactions : []).filter((item) =>
-            String(item?.type || "").toUpperCase() === "PAYMENT" &&
-            String(item?.status || "").toUpperCase() === "SUCCEEDED" &&
-            String(item?.source || "").toUpperCase() === "ROBOKASSA" &&
-            Number(item?.amount_minor || 0) > 0
-          );
-          return successfulPaidTransactions.length === 1;
-        }
-
-        async function trackFirstSubscriptionPaymentIfConfirmed(invoiceId) {
-          const normalized = String(invoiceId || "").trim();
-          if (!normalized || !isFirstSuccessfulPaidSubscription(normalized, billingInfo)) return false;
-
-          const trackedKey = billingPaymentTrackedStorageKey(normalized);
-          try {
-            if (localStorage.getItem(trackedKey) === "1") {
-              forgetPendingBillingPayment();
-              return true;
-            }
-          } catch {}
-
-          const tracked = await window.axelioTrackMetrikaGoal?.(SUBSCRIPTION_PAYMENT_GOAL);
-          if (tracked) {
-            try { localStorage.setItem(trackedKey, "1"); } catch {}
-            forgetPendingBillingPayment();
-            return true;
-          }
-          return false;
-        }
-
-        async function refreshBillingForPaymentTracking() {
+        async function refreshBillingAfterPayment() {
           billingInfo = await api(`/venues/${venueId}/billing`);
           billingStatus = String(billingInfo?.status || billingStatus || "ACTIVE").toUpperCase();
           billingAccessMode = String(billingInfo?.billing_access_mode || billingAccessMode || "FULL").toUpperCase();
@@ -670,7 +626,7 @@ const titleEl = document.getElementById("title");
           for (let attempt = 0; attempt < attempts; attempt += 1) {
             if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1250));
             try {
-              await refreshBillingForPaymentTracking();
+              await refreshBillingAfterPayment();
               const tx = findBillingPaymentTransaction(normalized, billingInfo);
               const status = String(tx?.status || "").toUpperCase();
               if (status === "SUCCEEDED" || status === "FAILED" || status === "CANCELED") return tx;
@@ -707,7 +663,7 @@ const titleEl = document.getElementById("title");
           }
 
           if (status === "SUCCEEDED") {
-            await trackFirstSubscriptionPaymentIfConfirmed(invoiceId);
+            forgetPendingBillingPayment();
             if (billingPaymentHint) toast("Оплата подтверждена.", "ok");
             clearBillingPaymentHintFromUrl();
             return;
@@ -720,9 +676,8 @@ const titleEl = document.getElementById("title");
             return;
           }
 
-          // Robokassa ResultURL иногда приходит позже возврата пользователя.
-          // Оставляем invoice в localStorage: при следующем открытии заведения
-          // подтверждённая оплата будет проверена и цель отправится один раз.
+          // Robokassa ResultURL can arrive after the user returns. Keep the
+          // invoice in localStorage so the next visit checks it again.
           if (billingPaymentHint) {
             toast("Платёж ещё обрабатывается. Статус обновится автоматически при следующем открытии заведения.", "warn");
             clearBillingPaymentHintFromUrl();

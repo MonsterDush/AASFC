@@ -11,7 +11,7 @@ import {
   coerceDemoMonth,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 
 import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
@@ -79,7 +79,7 @@ function monthTitle(d) {
 function fmtMoney(n) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const v = Math.round(Number(n || 0));
-  return v.toLocaleString("ru-RU");
+  return v.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"));
 }
 
 function esc(s) {

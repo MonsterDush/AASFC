@@ -12,7 +12,7 @@ import {
   closeModal,
   coerceDemoMonth,
   applyDemoReadonlyCaps,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
 
 let access = { canView: false, canManage: false };
@@ -54,7 +54,7 @@ function expenseStatusLabel(status) {
 function fmtMinor(minor) {
   const rub = Number(minor || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
   } catch {
     return rub.toFixed(2) + " ₽";
   }

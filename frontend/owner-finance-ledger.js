@@ -13,7 +13,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,
@@ -34,7 +34,7 @@ function fmtMoneyMinor(minor) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const rub = Number(minor || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
   } catch {
     return rub.toFixed(2) + " ₽";
   }
@@ -408,7 +408,7 @@ function fmtCompactMoneyMinor(value) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const rub = Number(value || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }).format(rub) + " ₽";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { notation: "compact", maximumFractionDigits: 1 }).format(rub) + " ₽";
   } catch {
     return fmtMoneyMinor(value);
   }
@@ -436,7 +436,7 @@ function renderMetricDelta(id, currentValue, previousValue, { type = "money", go
     return;
   }
   const percent = (delta / Math.abs(previous)) * 100;
-  const percentLabel = `${percent > 0 ? "+" : percent < 0 ? "−" : ""}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
+  const percentLabel = `${percent > 0 ? "+" : percent < 0 ? "−" : ""}${Math.abs(percent).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: 1 })}%`;
   const deltaLabel = type === "money" ? ` · ${fmtSignedMoneyMinor(delta)}` : "";
   element.textContent = `${percentLabel}${deltaLabel} ${caption}`.trim();
 }
@@ -496,7 +496,7 @@ function formatEntryDate(value) {
   const parts = String(value || "").split("-").map(Number);
   if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return String(value || "—");
   try {
-    return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+    return new Intl.DateTimeFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
       .format(new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])));
   } catch {
     return String(value || "—");
@@ -507,7 +507,7 @@ function formatMonthLabel(value) {
   const match = /^(\d{4})-(\d{2})$/.exec(String(value || ""));
   if (!match) return String(value || "—");
   try {
-    return new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" })
+    return new Intl.DateTimeFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long", year: "numeric", timeZone: "UTC" })
       .format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1)));
   } catch {
     return String(value || "—");
@@ -837,7 +837,7 @@ function renderOperationsSummary() {
   const dayPoint = (Array.isArray(state.analytics?.daily_series) ? state.analytics.daily_series : [])
     .find((point) => point?.date === state.operationsDay);
   const visibleTotal = state.operationsDay ? Number(dayPoint?.count || 0) : total;
-  setText("ledgerOperationsCount", visibleTotal ? `${visibleTotal.toLocaleString("ru-RU")} записей` : "Показать");
+  setText("ledgerOperationsCount", visibleTotal ? `${visibleTotal.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"))} записей` : "Показать");
 }
 
 async function loadOperations({ reset = false } = {}) {

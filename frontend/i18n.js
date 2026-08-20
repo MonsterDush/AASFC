@@ -2,6 +2,7 @@ const STORAGE_KEY = "axelio.lang";
 const SUPPORTED_LOCALES = new Set(["ru", "en"]);
 const DEFAULT_LOCALE = "ru";
 const TRANSLATABLE_ATTRIBUTES = ["placeholder", "title", "aria-label", "alt"];
+const NON_TRANSLATABLE_SELECTOR = "script, style, noscript, template, [data-i18n-ignore]";
 
 let catalogPromise = null;
 let fragmentCatalogPromise = null;
@@ -77,7 +78,7 @@ export function formatCurrency(value, { currency = "RUB", minor = false, ...opti
 
 async function loadCatalog() {
   if (!catalogPromise) {
-    catalogPromise = fetch("/locales/en.json?v=20260813-i18n5", { cache: "no-cache" })
+    catalogPromise = fetch("/locales/en.json?v=20260820-i18n6", { cache: "no-cache" })
       .then((response) => {
         if (!response.ok) throw new Error(`English catalog failed: HTTP ${response.status}`);
         return response.json();
@@ -171,7 +172,7 @@ function translateValue(value, catalog, fragments, context) {
 }
 
 function translateElement(element, catalog, fragments) {
-  if (!(element instanceof Element) || element.closest("[data-i18n-ignore]")) return;
+  if (!(element instanceof Element) || element.closest(NON_TRANSLATABLE_SELECTOR)) return;
 
   for (const attribute of TRANSLATABLE_ATTRIBUTES) {
     if (!element.hasAttribute(attribute)) continue;
@@ -202,7 +203,11 @@ function translateElement(element, catalog, fragments) {
 }
 
 async function translateTree(root = document) {
-  if (getLocale() !== "en" || applying) return;
+  if (getLocale() !== "en") return;
+  if (applying) {
+    scheduleTranslation();
+    return;
+  }
   applying = true;
   try {
     const catalog = await loadCatalog();
@@ -216,6 +221,14 @@ async function translateTree(root = document) {
   }
 }
 
+function scheduleTranslation() {
+  if (getLocale() !== "en" || scheduledTranslation !== null) return;
+  scheduledTranslation = window.setTimeout(() => {
+    scheduledTranslation = null;
+    void translateTree(document);
+  }, 0);
+}
+
 export async function applyLocale(root = document) {
   const locale = getLocale();
   document.documentElement.lang = locale;
@@ -225,31 +238,9 @@ export async function applyLocale(root = document) {
 
 export function observeLocale() {
   if (observer || typeof MutationObserver === "undefined") return;
-  observer = new MutationObserver((mutations) => {
+  observer = new MutationObserver(() => {
     if (getLocale() !== "en") return;
-    if (applying) {
-      clearTimeout(scheduledTranslation);
-      scheduledTranslation = window.setTimeout(() => void translateTree(document), 0);
-      return;
-    }
-    for (const mutation of mutations) {
-      if (mutation.type === "characterData") {
-        const parent = mutation.target.parentElement;
-        if (parent) void translateTree(parent);
-        continue;
-      }
-      if (mutation.type === "attributes") {
-        void translateTree(mutation.target);
-        continue;
-      }
-      for (const node of mutation.addedNodes) {
-        if (node instanceof Element) {
-          void translateTree(node);
-        } else if (node.nodeType === Node.TEXT_NODE && node.parentElement) {
-          void translateTree(node.parentElement);
-        }
-      }
-    }
+    scheduleTranslation();
   });
   observer.observe(document.documentElement, {
     childList: true,

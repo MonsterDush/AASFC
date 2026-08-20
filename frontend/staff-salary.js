@@ -14,7 +14,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 
 import { hasReportAccess, permSetFromResponse, roleUpper, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 
@@ -380,20 +380,20 @@ function syncUrl() {
 }
 
 function monthTitle(d) {
-  const m = d.toLocaleString("ru-RU", { month: "long" });
+  const m = d.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long" });
   return `${m[0].toUpperCase()}${m.slice(1)} ${d.getFullYear()}`;
 }
 function formatMoney(x) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const n = Number(x);
   if (!Number.isFinite(n)) return "0";
-  return Math.round(n).toLocaleString("ru-RU");
+  return Math.round(n).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"));
 }
 function formatMoneyMinor(x) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const n = Number(x || 0) / 100;
   if (!Number.isFinite(n)) return "0,00";
-  return n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function esc(s){
   return String(s ?? "")
@@ -708,7 +708,7 @@ function renderSummary() {
     hint = "Сводка собрана за выбранный период по дневной детализации начислений.";
   }
   if (latest?.trigger_reason) {
-    const suffix = latest?.created_at ? ` · ${new Date(latest.created_at).toLocaleString("ru-RU")}` : "";
+    const suffix = latest?.created_at ? ` · ${new Date(latest.created_at).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"))}` : "";
     hint = `${hint} ${recalcReasonLabel(latest.trigger_reason)}${suffix}.`;
   }
   if (el.sourceHint) el.sourceHint.textContent = hint;
@@ -907,11 +907,11 @@ function renderDayBreakdownModal(d, breakdown) {
           : (state === "slot_empty" ? `Нет данных по слоту: ${salaryShiftSlotLabel(breakdown?.shift_slot)}` : "Начислений не найдено"))));
   const shiftsCount = Number(context?.shifts_count || d?.shifts?.length || 0);
   const hoursTotal = Number(context?.hours_total || 0);
-  const hoursText = Number.isFinite(hoursTotal) ? hoursTotal.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : "0";
+  const hoursText = Number.isFinite(hoursTotal) ? hoursTotal.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : "0";
   const fallbackShifts = (d?.shifts || []).length ? `<div class="muted small mt-10">Смен за день: ${esc((d.shifts || []).map((s) => s.interval?.title || s.interval_title || "Смена").join(", "))}</div>` : "";
   const latest = context?.latest_recalculation || null;
   const recalcHtml = latest?.trigger_reason
-    ? `<div class="muted small mt-10">${esc(recalcReasonLabel(latest.trigger_reason))}${latest?.created_at ? ` · ${esc(new Date(latest.created_at).toLocaleString("ru-RU"))}` : ""}</div>`
+    ? `<div class="muted small mt-10">${esc(recalcReasonLabel(latest.trigger_reason))}${latest?.created_at ? ` · ${esc(new Date(latest.created_at).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU")))}` : ""}</div>`
     : "";
   const slotNote = String(context?.slot_note || "").trim();
   const slotNoteHtml = slotNote ? `<div class="muted small mt-10">${esc(slotNote)}</div>` : "";
