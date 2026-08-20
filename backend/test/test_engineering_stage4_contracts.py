@@ -66,6 +66,7 @@ class MonitoringContractTests(TestCase):
         self.assertIn("backup-last-success.timestamp", backup)
         self.assertIn("AXELIO_ALERT_TG_CHAT_IDS", readiness)
         self.assertIn("SUPER_ADMIN_TG_USER_IDS", readiness)
+        self.assertIn("Environment=RCLONE_CONFIG=/etc/axelio/rclone.conf", readiness)
         self.assertIn("activate_nginx_performance", release)
 
         workflow = (REPO_DIR / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
@@ -116,6 +117,11 @@ class MonitoringContractTests(TestCase):
             "observability-drill-last-success.timestamp",
         ):
             self.assertIn(contract, drill)
+
+    def test_production_assurance_drill_uses_the_managed_rclone_config(self):
+        drill = (REPO_DIR / "ops/production-assurance-drill.sh").read_text(encoding="utf-8")
+
+        self.assertIn("Environment=RCLONE_CONFIG=/etc/axelio/rclone.conf", drill)
 
 
 class FrontendAssuranceContractTests(TestCase):

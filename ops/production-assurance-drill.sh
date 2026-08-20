@@ -36,6 +36,7 @@ if [[ "${phase}" == "orchestrate" ]]; then
     --property="WorkingDirectory=${PROD_APP_ROOT}/repo" \
     --property="EnvironmentFile=${PROD_APP_ROOT}/repo/backend/.env" \
     --property=EnvironmentFile=/etc/axelio/backup-prod.env \
+    --property=Environment=RCLONE_CONFIG=/etc/axelio/rclone.conf \
     --property="Environment=PROD_APP_ROOT=${PROD_APP_ROOT}" \
     --property="Environment=RELEASE_SHA=${RELEASE_SHA}" \
     --property="Environment=DRILL_TOOL_DIR=${DRILL_TOOL_DIR}" \
