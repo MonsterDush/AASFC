@@ -28,6 +28,7 @@ ci_actor="${CI_ACTOR:-manual}"
 ci_run_url="${CI_RUN_URL:-manual}"
 activation_started=0
 previous_sha=""
+release_started_epoch="$(date +%s)"
 
 validate_inputs() {
   [[ "${APP_ROOT}" == /var/www/axelio/dev || "${APP_ROOT}" == /var/www/axelio/prod ]] || {
@@ -99,6 +100,38 @@ configure_release_env() {
   fi
 }
 
+configure_frontend_runtime() {
+  local runtime_config="${repo_dir}/frontend/runtime-config.json"
+  "${venv_bin}/python" - "${env_file}" "${runtime_config}" "${ENV_NAME}" <<'PY'
+import json
+import os
+import sys
+
+from dotenv import dotenv_values
+
+env_path, output_path, environment = sys.argv[1:]
+values = dotenv_values(env_path)
+release = str(values.get("RELEASE_VERSION") or os.environ.get("RELEASE_SHA") or "local")
+dsn = str(values.get("SENTRY_BROWSER_DSN") or values.get("SENTRY_DSN") or "")
+try:
+    sample_rate = float(values.get("SENTRY_BROWSER_TRACES_SAMPLE_RATE") or 0)
+except (TypeError, ValueError):
+    sample_rate = 0.0
+sample_rate = sample_rate if 0.0 <= sample_rate <= 1.0 else 0.0
+payload = {
+    "environment": "production" if environment == "prod" else "development",
+    "release": release,
+    "sentryBrowserDsn": dsn,
+    "sentryBrowserTracesSampleRate": sample_rate,
+}
+temporary = f"{output_path}.tmp"
+with open(temporary, "w", encoding="utf-8") as target:
+    json.dump(payload, target, ensure_ascii=False, separators=(",", ":"))
+    target.write("\n")
+os.replace(temporary, output_path)
+PY
+}
+
 install_backup_units() {
   [[ "${ENV_NAME}" == "prod" ]] || return 0
   sudo install -D -m 0644 \
@@ -157,6 +190,7 @@ checkout_release() {
   git -C "${repo_dir}" reset --hard "${target_sha}"
   git -C "${repo_dir}" clean -fd
   configure_release_env "${target_sha}"
+  configure_frontend_runtime
 }
 
 install_dependencies() {
@@ -187,6 +221,11 @@ restart_services() {
     sudo install -D -m 0644 \
       "${repo_dir}/ops/nginx/axelio-performance.conf" \
       /etc/nginx/snippets/axelio-performance.conf
+  fi
+  if [[ -f "${repo_dir}/ops/nginx/axelio-cache-map.conf" ]]; then
+    sudo install -D -m 0644 \
+      "${repo_dir}/ops/nginx/axelio-cache-map.conf" \
+      /etc/nginx/conf.d/axelio-cache-map.conf
   fi
   activate_nginx_performance
   install_monitoring_units
@@ -234,7 +273,35 @@ write_release_metadata() {
   local prior_sha="$2"
   local action="$3"
   local migration_head
-  migration_head="$(cd "${backend_dir}" && "${venv_bin}/alembic" current | awk 'NR == 1 {print $1}')"
+  local elapsed_seconds
+
+  # During an application-only rollback the database can intentionally remain
+  # on a newer, backwards-compatible migration. In that case the checked-out
+  # Alembic tree cannot resolve the database revision, so read the revision
+  # table directly instead of failing after a successful smoke check.
+  if ! migration_head="$(
+    cd "${backend_dir}"
+    "${venv_bin}/alembic" current 2>/dev/null | awk 'NR == 1 {print $1}'
+  )" || [[ -z "${migration_head}" ]]; then
+    migration_head="$(
+      cd "${backend_dir}"
+      "${venv_bin}/python" - <<'PY'
+from sqlalchemy import create_engine, text
+
+from app.core.config import settings
+
+engine = create_engine(settings.database_url)
+try:
+    with engine.connect() as connection:
+        revisions = connection.execute(text("SELECT version_num FROM alembic_version ORDER BY version_num")).scalars()
+        print(",".join(str(revision) for revision in revisions))
+finally:
+    engine.dispose()
+PY
+    )"
+  fi
+  [[ -n "${migration_head}" ]] || migration_head="unknown"
+  elapsed_seconds="$(( $(date +%s) - release_started_epoch ))"
   mkdir -p "${state_dir}"
   {
     printf 'release=%s\n' "${target_sha}"
@@ -246,6 +313,7 @@ write_release_metadata() {
     printf 'initiator=%s\n' "${ci_actor//$'\n'/}"
     printf 'ci_run=%s\n' "${ci_run_url//$'\n'/}"
     printf 'migration_head=%s\n' "${migration_head}"
+    printf 'duration_seconds=%s\n' "${elapsed_seconds}"
   } >"${state_dir}/${target_sha}.metadata"
   printf '%s\n' "${prior_sha}" >"${state_dir}/previous.sha"
   printf '%s\n' "${target_sha}" >"${state_dir}/current.sha"
@@ -306,7 +374,7 @@ if [[ "${mode}" == "deploy" ]]; then
   activation_started=1
   activate_release "${release_sha}" true false
   write_release_metadata "${release_sha}" "${previous_sha}" deploy
-  echo "Deployed ${BRANCH} ${release_sha} -> ${ENV_NAME}"
+  echo "Deployed ${BRANCH} ${release_sha} -> ${ENV_NAME} in $(( $(date +%s) - release_started_epoch ))s"
 else
   target_sha="${release_sha:-${2:-}}"
   if [[ -z "${target_sha}" && -f "${state_dir}/previous.sha" ]]; then
@@ -320,5 +388,5 @@ else
   previous_sha="$(git -C "${repo_dir}" rev-parse HEAD)"
   activate_release "${target_sha}" false true
   write_release_metadata "${target_sha}" "${previous_sha}" manual-rollback
-  echo "Rolled ${ENV_NAME} back from ${previous_sha} to ${target_sha}"
+  echo "Rolled ${ENV_NAME} back from ${previous_sha} to ${target_sha} in $(( $(date +%s) - release_started_epoch ))s"
 fi

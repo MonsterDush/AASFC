@@ -61,7 +61,15 @@ for attempt in $(seq 1 "${attempts}"); do
     check_release_payload "${body_path}" && \
     grep -qi '^x-request-id:' "${headers_path}" && \
     curl --fail --silent --show-error --max-time 10 \
-      --output /dev/null "${frontend_base}/auth.html"; then
+      --output /dev/null "${frontend_base}/auth.html" && \
+    curl --fail --silent --show-error --max-time 10 \
+      --dump-header "${headers_path}" \
+      --output /dev/null "${frontend_base}/page-loader.js?v=${EXPECTED_RELEASE}" && \
+    grep -Eqi '^cache-control:[[:space:]]*public, max-age=31536000, immutable' "${headers_path}" && \
+    curl --fail --silent --show-error --max-time 10 \
+      --dump-header "${headers_path}" \
+      --output /dev/null "${frontend_base}/runtime-config.json" && \
+    grep -Eqi '^cache-control:[[:space:]]*no-store' "${headers_path}"; then
     echo "post-deploy smoke: release ${EXPECTED_RELEASE} is ready"
     exit 0
   fi

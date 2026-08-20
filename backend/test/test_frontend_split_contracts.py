@@ -49,7 +49,7 @@ class PageLoaderContractTests(TestCase):
         self.assertEqual(len(html_pages), 50)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
-            self.assertIn("/page-loader.js?v=20260820-i18n6", source, path.name)
+            self.assertIn("/page-loader.js?v=20260820-assurance1", source, path.name)
             self.assertIn("/i18n-bootstrap.js?v=20260820-i18n6", source, path.name)
             self.assertIn(f"/styles.css?v={style_cache_key}", source, path.name)
 
@@ -393,13 +393,18 @@ class WorkflowPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            cache_key = "20260728-responsive1" if html_name == "staff-report.html" else "20260726-polish6"
-            self.assertIn(f"/{style_path}?v={cache_key}", html, html_name)
+            if html_name == "staff-report.html":
+                asset_version = "20260728-responsive1"
+            elif html_name == "staff-salary.html":
+                asset_version = "20260820-assurance1"
+            else:
+                asset_version = "20260726-polish6"
+            self.assertIn(f"/{style_path}?v={asset_version}", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         entrypoints = {
-            "staff-salary.html": "/staff-salary.js?v=20260820-weekdayrates1",
+            "staff-salary.html": "/staff-salary.js?v=20260820-assurance1",
             "staff-adjustments.html": "/staff-adjustments.js?v=20260726-navmore1",
             "staff-report.html": "/staff-report.js?v=20260802-ledgerdrill1",
         }

@@ -627,7 +627,7 @@ async function loadMonthAll() {
     const tips = Number(v?.tips ?? 0);
     const bonuses = Number(v?.bonuses ?? 0);
     const penalties = Number(v?.penalties ?? 0);
-    const net = Number(v?.net ?? (earned + bonuses - penalties) ?? 0);
+    const net = Number(v?.net ?? (earned + bonuses - penalties));
     const state = String(v?.period_state || "empty");
     const latest = v?.latest_recalculation?.trigger_reason ? `<div class="muted small mt-8">${esc(recalcReasonLabel(v.latest_recalculation.trigger_reason))}</div>` : "";
     if (state === "empty") {
@@ -677,7 +677,7 @@ function renderSummary() {
   const tips = Number(monthSummaryItem?.tips ?? 0);
   const bonuses = Number(monthSummaryItem?.bonuses ?? 0);
   const penalties = Number(monthSummaryItem?.penalties ?? 0);
-  const total = Number(monthSummaryItem?.net ?? (earned + bonuses - penalties) ?? 0);
+  const total = Number(monthSummaryItem?.net ?? (earned + bonuses - penalties));
   const latest = monthSummaryItem?.latest_recalculation || null;
   const hasAny = state !== "empty" || earned !== 0 || tips !== 0 || bonuses !== 0 || penalties !== 0 || total !== 0;
 

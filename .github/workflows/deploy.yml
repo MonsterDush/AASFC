@@ -39,6 +39,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository history for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -75,6 +82,9 @@ jobs:
           python -m ruff check backend/app backend/test bot_service tools
           python -m ruff format --check backend/app backend/test bot_service tools
 
+      - name: Static application security test
+        run: python -m bandit -q -r backend/app bot_service -x backend/test -ll
+
       - name: Check repository hygiene and shell syntax
         run: |
           python tools/check_repository_hygiene.py
@@ -95,9 +105,9 @@ jobs:
       - name: Run backend tests with branch coverage gate
         working-directory: backend
         run: |
-          python -m coverage run --branch --source=app -m unittest discover -s test -v
-          python -m coverage report --show-missing --fail-under=42
-          python ../tools/check_critical_coverage.py
+          python -m coverage run --branch --source=app --data-file=.coverage.unit \
+            -m unittest discover -s test -v
+          python -m coverage report --data-file=.coverage.unit --show-missing
 
       - name: Run bot tests
         working-directory: bot_service
@@ -118,6 +128,28 @@ jobs:
         run: |
           git ls-files -z 'frontend/*.js' 'frontend/**/*.js' 'frontend/*.mjs' 'frontend/**/*.mjs' 'tools/*.mjs' |
             xargs -0 -n1 node --check
+
+      - name: Lint, format and type-check frontend
+        run: pnpm test:frontend-quality
+
+      - name: Build browser error tracking and source maps
+        run: |
+          pnpm build:error-tracking
+          git diff --exit-code -- frontend/assets/error-tracking
+
+      - name: Upload browser source maps to Sentry
+        if: github.event_name == 'push'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_RELEASE: axelio@${{ github.sha }}
+        run: |
+          if [[ -z "${SENTRY_AUTH_TOKEN}" || -z "${SENTRY_ORG}" || -z "${SENTRY_PROJECT}" ]]; then
+            echo "Sentry source map secrets are not configured" >&2
+            exit 1
+          fi
+          pnpm sentry:sourcemaps
 
       - name: Enforce frontend performance budgets
         run: |
@@ -156,21 +188,31 @@ jobs:
           set -euo pipefail
           (
             cd backend
-            python -m app.core.sync_permissions
-            python -m app.scripts.seed_position_permission_templates
-            python -m app.scripts.bootstrap_e2e_data
-            python -m app.scripts.bootstrap_demo_data \
+            python -m coverage run --branch --source=app --data-file=.coverage.e2e \
+              -m app.core.sync_permissions
+            python -m coverage run --branch --source=app --data-file=.coverage.e2e --append \
+              -m app.scripts.seed_position_permission_templates
+            python -m coverage run --branch --source=app --data-file=.coverage.e2e --append \
+              -m app.scripts.bootstrap_e2e_data
+            python -m coverage run --branch --source=app --data-file=.coverage.e2e --append \
+              -m app.scripts.bootstrap_demo_data \
               --make-public \
               --venue-name "Axelio CI Public Demo"
           )
 
-          (cd backend && exec python -m uvicorn app.main:app --host 127.0.0.1 --port 9001) \
+          (cd backend && exec python -m coverage run --branch --source=app \
+            --data-file=.coverage.e2e --append --save-signal=USR1 \
+            -m uvicorn app.main:app --host 127.0.0.1 --port 9001) \
             >"${RUNNER_TEMP}/axelio-api.log" 2>&1 &
           api_pid=$!
           python -m http.server 8765 --bind 127.0.0.1 --directory frontend \
             >"${RUNNER_TEMP}/axelio-frontend.log" 2>&1 &
           frontend_pid=$!
           cleanup() {
+            if kill -0 "${api_pid}" 2>/dev/null; then
+              kill -USR1 "${api_pid}" 2>/dev/null || true
+              sleep 1
+            fi
             kill "${api_pid}" "${frontend_pid}" 2>/dev/null || true
           }
           trap cleanup EXIT
@@ -189,6 +231,15 @@ jobs:
           done
 
           pnpm test:browser
+          kill -USR1 "${api_pid}"
+          sleep 1
+
+      - name: Enforce combined unit and browser branch coverage
+        working-directory: backend
+        run: |
+          python -m coverage combine --keep .coverage.unit .coverage.e2e
+          python -m coverage report --show-missing --fail-under=60
+          python ../tools/check_critical_coverage.py
 
       - name: Encrypted PostgreSQL backup and restore drill
         env:

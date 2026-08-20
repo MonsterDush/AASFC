@@ -13,6 +13,7 @@ from app.core.request_ip import resolve_client_ip
 from app.models.user import User
 from app.services import tg_notify
 from app.services.security_rate_limits import RateLimitPolicy, consume_rate_limit
+from app.services.turnstile import verify_turnstile_token
 
 router = APIRouter(prefix="/public/leads", tags=["public-leads"])
 
@@ -27,6 +28,7 @@ class PublicLeadIn(BaseModel):
     userAgent: str | None = Field(default=None, max_length=500)
     submittedAt: str | None = Field(default=None, max_length=64)
     publicSiteKey: str | None = Field(default=None, max_length=120)
+    captchaToken: str | None = Field(default=None, max_length=2048)
 
     @field_validator(
         "name",
@@ -38,6 +40,7 @@ class PublicLeadIn(BaseModel):
         "userAgent",
         "submittedAt",
         "publicSiteKey",
+        "captchaToken",
         mode="before",
     )
     @classmethod
@@ -93,10 +96,11 @@ def _format_lead_message(payload: PublicLeadIn, request: Request) -> str:
 
 @router.post("")
 def create_public_lead(payload: PublicLeadIn, request: Request, db: Session = Depends(get_db)):
+    client_ip = resolve_client_ip(request)
     decision = consume_rate_limit(
         db,
         scope="public-lead-ip",
-        subject=resolve_client_ip(request),
+        subject=client_ip,
         policy=RateLimitPolicy(
             limit=int(settings.PUBLIC_LEAD_IP_LIMIT or 5),
             window_seconds=int(settings.PUBLIC_LEAD_RATE_WINDOW_SECONDS or 3600),
@@ -115,6 +119,12 @@ def create_public_lead(payload: PublicLeadIn, request: Request, db: Session = De
     if expected_key and payload.publicSiteKey != expected_key:
         db.commit()
         raise HTTPException(status_code=401, detail="bad public site key")
+
+    captcha = verify_turnstile_token(token=payload.captchaToken, remote_ip=client_ip)
+    if not captcha.success:
+        db.commit()
+        status_code = 503 if captcha.reason in {"not_configured", "verification_unavailable"} else 400
+        raise HTTPException(status_code=status_code, detail="Не удалось подтвердить, что запрос отправил человек.")
 
     chat_ids = _collect_super_admin_chat_ids(db)
     db.commit()

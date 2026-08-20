@@ -9,3 +9,4 @@ axelio_pgdata/
 htmlcov/
 artifacts/ui-audit-*/
 node_modules/
+.pnpm-store/

@@ -142,6 +142,21 @@ class ProductionSecurityConfigurationTests(TestCase):
         with self.assertRaisesRegex(ValueError, "between 0 and 1"):
             self._settings(SENTRY_TRACES_SAMPLE_RATE=1.5)
 
+    def test_production_captcha_requires_site_and_secret_keys_when_enabled(self):
+        with self.assertRaisesRegex(ValueError, "TURNSTILE_SITE_KEY"):
+            self._settings(PUBLIC_LEAD_CAPTCHA_REQUIRED=True)
+        with self.assertRaisesRegex(ValueError, "TURNSTILE_SECRET_KEY"):
+            self._settings(
+                PUBLIC_LEAD_CAPTCHA_REQUIRED=True,
+                TURNSTILE_SITE_KEY="public-site-key",
+            )
+        configured = self._settings(
+            PUBLIC_LEAD_CAPTCHA_REQUIRED=True,
+            TURNSTILE_SITE_KEY="public-site-key",
+            TURNSTILE_SECRET_KEY="private-secret-key",
+        )
+        self.assertEqual(configured.turnstile_allowed_hostnames(), {"axelio.ru", "www.axelio.ru"})
+
     def test_production_disables_openapi_surfaces(self):
         with patch.object(main.settings, "APP_ENV", "production"):
             self.assertEqual(
@@ -209,5 +224,24 @@ class SecurityRateLimitRouterTests(TestCase):
                 public_leads.create_public_lead(payload, request, db)
         self.assertEqual(raised.exception.status_code, 429)
         self.assertEqual(raised.exception.headers["Retry-After"], "60")
+        notify.assert_not_called()
+        db.commit.assert_called_once()
+
+    def test_public_lead_captcha_failure_prevents_notification(self):
+        request = SimpleNamespace(client=SimpleNamespace(host="198.51.100.3"), headers={})
+        db = MagicMock()
+        payload = public_leads.PublicLeadIn(name="Тест", phone="+79990000001", captchaToken="bad-token")
+        with (
+            patch.object(public_leads, "consume_rate_limit", return_value=RateLimitDecision(True, 0, 1)),
+            patch.object(
+                public_leads,
+                "verify_turnstile_token",
+                return_value=SimpleNamespace(success=False, reason="challenge_failed"),
+            ),
+            patch.object(public_leads.tg_notify, "notify_result") as notify,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                public_leads.create_public_lead(payload, request, db)
+        self.assertEqual(raised.exception.status_code, 400)
         notify.assert_not_called()
         db.commit.assert_called_once()
