@@ -123,6 +123,7 @@ jobs:
         run: |
           pnpm test:budgets
           pnpm test:i18n
+          pnpm test:metrika
 
       - name: Run frontend contracts
         run: |

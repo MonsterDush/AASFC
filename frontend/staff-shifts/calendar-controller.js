@@ -328,7 +328,7 @@ export function createStaffShiftCalendarController(context) {
 
   function monthTitle(d) {
     const dt = new Date(d);
-    const month = dt.toLocaleString("ru-RU", { month: "long" });
+    const month = dt.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long" });
     const year = dt.getFullYear();
     const s = `${month} ${year}`;
     return s.charAt(0).toUpperCase() + s.slice(1);

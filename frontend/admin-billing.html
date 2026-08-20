@@ -16,8 +16,8 @@
       } catch {}
     })();
   </script>
-  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
-  <script src="/page-loader.js?v=20260813-i18n5"></script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>
+  <script src="/page-loader.js?v=20260820-i18n6"></script>
   <title>Axelio · Админ · Биллинг</title>
 </head>
 <body class="admin-billing-page">
@@ -185,16 +185,16 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, openModal } from "/app.js?v=20260813-i18n1";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, openModal } from "/app.js?v=20260820-i18nmetrika1";
 
   applyTelegramTheme();
   mountCommonUI("admin-billing");
   await mountNav({ activeTab: "admin-billing" });
 
   function esc(s){ return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;"); }
-  function formatDate(value){ if (!value) return "—"; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString("ru-RU"); }
-  function formatDateTime(value){ if (!value) return "—"; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString("ru-RU"); }
-  function formatMinor(value){ return `${(Number(value || 0) / 100).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`; }
+  function formatDate(value){ if (!value) return "—"; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU")); }
+  function formatDateTime(value){ if (!value) return "—"; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU")); }
+  function formatMinor(value){ return `${(Number(value || 0) / 100).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ₽`; }
   function txSourceLabel(value){ const v = String(value || '').toUpperCase(); if (v === 'MANUAL_ADMIN') return 'Ручное действие'; if (v === 'ROBOKASSA') return 'Robokassa'; if (v === 'PROMOCODE') return 'Промокод'; return v || '—'; }
   function txTypeLabel(value){ const v = String(value || '').toUpperCase(); return ({ PAYMENT:'Оплата', EXTEND:'Продление', SET_PAID_UNTIL:'Установка paid until', REFUND:'Возврат', PROMO_GRANT:'Промокод' }[v]) || v || '—'; }
   function txStatusLabel(value){ const v = String(value || '').toUpperCase(); return ({ SUCCEEDED:'Успешно', PENDING:'Ожидает', FAILED:'Ошибка', CANCELED:'Отменено' }[v]) || v || '—'; }

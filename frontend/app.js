@@ -4,7 +4,7 @@ import { createAuthActions } from "/app/auth-actions.js?v=20260719-split1";
 import { createVenueApi } from "/app/venue-api.js?v=20260719-split1";
 import { createNavigation } from "/app/navigation.js?v=20260726-navmore1";
 import { createUiPreferences } from "/app/ui-preferences.js?v=20260813-assurance2";
-import { enableDemoMetrika, disableDemoMetrika } from "/app/demo-metrika.js";
+import { enableDemoMetrika, disableDemoMetrika, trackDemoMetrikaEvent } from "/app/demo-metrika.js?v=20260820-demo1";
 
 const uiPreferences = createUiPreferences();
 export const { getLang, setLang, t, wa, looksLikeTelegramWebApp, ensureTelegramWebAppLoaded, cacheSystemRole, getCachedSystemRole, isSuperAdminCached, getThemePref, setThemePref, applyTheme, applyTelegramTheme } = uiPreferences;
@@ -140,7 +140,7 @@ function formatDemoMonthLabel(year, month) {
   if (!Number.isFinite(y) || !Number.isFinite(m) || y <= 0 || m <= 0 || m > 12) return "Демо-данные";
   const date = new Date(Date.UTC(y, m - 1, 1));
   try {
-    const label = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" }).format(date);
+    const label = new Intl.DateTimeFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long", year: "numeric", timeZone: "UTC" }).format(date);
     return label.charAt(0).toUpperCase() + label.slice(1);
   } catch {
     return `${String(m).padStart(2, "0")}.${y}`;
@@ -529,19 +529,11 @@ function bootstrapStoredDemoBanner() {
 
 bootstrapStoredDemoBanner();
 
-const initialDemoState = getStoredDemoUiState();
-
-if (initialDemoState?.demo_mode) {
-  enableDemoMetrika();
-}
-
 window.addEventListener("axelio:demo-state-changed", (event) => {
-  const state = event?.detail?.demo_mode
-    ? event.detail
-    : getStoredDemoUiState();
+  const state = event?.detail?.demo_mode ? event.detail : null;
 
   if (state?.demo_mode) {
-    enableDemoMetrika();
+    enableDemoMetrika(state);
 
     mountDemoBanner(state);
     maybeTrackDemoPageView(state);
@@ -651,6 +643,11 @@ function currentPageMatchesTourStep(step) {
 }
 
 async function postDemoTelemetry(eventName, payload = {}) {
+  trackDemoMetrikaEvent(eventName, {
+    ...payload,
+    persona: payload.persona || getStoredDemoUiState()?.demo_persona || null,
+    page_path: payload.page_path || currentAppPath(),
+  });
   try {
     await api("/demo/event", {
       method: "POST",
