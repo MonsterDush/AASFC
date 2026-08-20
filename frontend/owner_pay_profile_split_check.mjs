@@ -58,10 +58,10 @@ const listenerManifest = Array.from(
 
 assert.equal(apiCallManifest.length, 20);
 assert.equal(manifestHash(apiCallManifest), "740b80bd7e581f6142f8e4a9eeb14d332016a8f1ef3c1d10773d4a9d6ccfa98f");
-assert.equal(domBindingManifest.length, 174);
-assert.equal(manifestHash(domBindingManifest), "e89bbd8b138d1fbdb695917495ce8506f8982af29dd1c3d7a1fa7fbc97cd3917");
-assert.equal(listenerManifest.length, 28);
-assert.equal(manifestHash(listenerManifest), "3b77f46b97004d8b5b09a551f6d561b3a303bee527e876486507d47ae2ec5b29");
+assert.equal(domBindingManifest.length, 178);
+assert.equal(manifestHash(domBindingManifest), "b1779dbd7acf49c2baec3b960ac335af99a96c025ab6876bc0cf4b30715aca7a");
+assert.equal(listenerManifest.length, 30);
+assert.equal(manifestHash(listenerManifest), "3089ec1b764360bbea18ec46fe4f45468a58b404b2c605196d0d0d23d6671e11");
 
 assert.ok(mainSource.split("\n").length < 450, "owner-pay-profile.js should remain an orchestration module");
 const sizeLimits = {
@@ -73,10 +73,10 @@ const sizeLimits = {
 };
 for (const [fileName, limit] of Object.entries(sizeLimits)) {
   assert.ok(moduleSources[fileName].split("\n").length < limit, `${fileName} is too large`);
-  const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260729-payroll1";
+  const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260820-weekdayrates1";
   assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /owner-pay-profile\.js\?v=20260729-payroll1/);
+assert.match(htmlSource, /owner-pay-profile\.js\?v=20260820-weekdayrates1/);
 
 const state = {
   can: { view: true, manage: true },
@@ -129,11 +129,18 @@ for (const fieldId of [
   "f_boost_enabled",
   "f_kpi_metric_id",
   "f_steps_rows",
+  "f_weekday_rates_section",
   "btnSave",
 ]) {
   assert.ok(formHtml.includes(`id="${fieldId}"`), `${fieldId} is missing from the component form`);
 }
 assert.match(formHtml, /option value="2" selected>Кухня<\/option>/);
+const hourlyFormHtml = componentForm({
+  mode: "edit",
+  item: { component_type: "SALARY_HOURLY", rate_minor: 50000, weekday_rates: [{ weekday: 5, rate_minor: 65000 }], is_active: true },
+});
+assert.match(hourlyFormHtml, /data-weekday-enabled="5" checked/);
+assert.match(hourlyFormHtml, /data-weekday-rate="5"[^>]*value="650"/);
 
 const componentControllerModule = await import(pathToFileURL(path.join(moduleDir, "component-controller.js")));
 const componentController = componentControllerModule.createPayComponentController({

@@ -53,6 +53,7 @@ from .component_calculations import (
     next_month_start,
     parse_month_start,
 )
+from .weekday_rates import calculate_weekday_rate_amount_minor, component_weekday_rates, salary_shift_rows
 from .metric_loaders import (
     _assignment_overlaps_month as _assignment_overlaps_month,
     _load_closed_report_dates as _load_closed_report_dates,
@@ -230,6 +231,8 @@ def calculate_payroll_for_month(
                     venue_plan_metrics=venue_plan_metrics,
                 )
                 amount_minor = int(percent_decision.amount_minor)
+            elif component_type in {"SALARY_HOURLY", "SALARY_PER_SHIFT"} and component_weekday_rates(component):
+                amount_minor = calculate_weekday_rate_amount_minor(component, metrics.worked_shifts)
             else:
                 amount_minor = calculate_component_amount_minor(
                     component,
@@ -257,6 +260,11 @@ def calculate_payroll_for_month(
                     if getattr(component, "salary_accrual_day", None) is not None
                     else None
                 )
+            if component_type in {"SALARY_HOURLY", "SALARY_PER_SHIFT"}:
+                weekday_rates = component_weekday_rates(component)
+                if weekday_rates:
+                    breakdown_item["weekday_rates"] = weekday_rates
+                    breakdown_item["shift_rows"] = salary_shift_rows(component, metrics.worked_shifts)
             if component_type == "PERCENT_TOTAL_REVENUE" and percent_decision is not None:
                 breakdown_item["percent_bps"] = int(percent_decision.applied_percent_bps)
                 breakdown_item["regular_percent_bps"] = int(percent_decision.regular_percent_bps)

@@ -29,6 +29,13 @@
 .pay-profile-section-list .listrow:last-child{border-bottom:0}
 .pay-profile-links{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px}
 .pay-form-check-bottom{margin-top:auto}
+.weekday-rate-list{display:grid;gap:8px}
+.weekday-rate-row{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(190px,1.2fr);align-items:center;gap:12px;padding:9px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surfaceTintSoft)}
+.weekday-rate-toggle{margin:0}
+.weekday-rate-value{position:relative;display:block!important;min-width:0}
+.weekday-rate-value input{padding-right:92px}
+.weekday-rate-value input:disabled{opacity:.55;cursor:not-allowed}
+.weekday-rate-unit{position:absolute;right:11px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none}
 
 @media (max-width:900px){
   .pay-profile-detail-grid{grid-template-columns:1fr}
@@ -44,6 +51,7 @@
   .pay-profile-links .btn{width:100%}
   .pay-profile-modal-actions{display:grid;grid-template-columns:1fr}
   .pay-profile-modal-actions .btn{width:100%}
+  .weekday-rate-row{grid-template-columns:1fr;gap:8px}
 }
 
 @media (max-width:420px){

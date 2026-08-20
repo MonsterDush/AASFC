@@ -4237,5 +4237,21 @@
   "январь": "January",
   "января": "January",
   "ё:": "yo:",
-  "← Назад": "← Back"
+  "← Назад": "← Back",
+  "отдельные ставки:": "separate rates:",
+  "Заполни ставку для каждого выбранного дня": "Enter a rate for every selected day",
+  "Ставка для дня": "Rate for",
+  "Базовая ставка": "Base rate",
+  "Ставки по дням недели": "Weekday rates",
+  "Необязательно. Включи нужные дни — в остальные дни будет действовать базовая ставка.": "Optional. Enable the days that need a different rate; the base rate applies on all other days.",
+  "по дням:": "by day:",
+  "ставки по дням недели": "weekday rates",
+  "Исключения по дням": "Day-specific rates",
+  "Компонент посчитан по фактически отработанным часам и ставке дня недели.": "The component is calculated from actual hours using the rate for each weekday.",
+  "Для каждой смены применена ставка соответствующего дня недели.": "Each shift uses the rate configured for its weekday.",
+  "ставка": "rate",
+  "ставка дня ✓": "weekday rate ✓",
+  "ставки по дням:": "rates by day:",
+  "Ставка по дню недели:": "Weekday rate:",
+  "смен за сутки": "shifts that day"
 }
