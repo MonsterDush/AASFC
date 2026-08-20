@@ -112,10 +112,11 @@ test in the incident note.
 
 ## 5. Accessibility and performance gates
 
-`tools/browser-e2e.mjs` runs axe-core on authentication, owner summary,
-expenses, payroll, settings, staff shifts, and public demo pages. Any critical
-or serious WCAG 2.0/2.1/2.2 A/AA violation fails CI. It also fails on uncaught
-browser errors, API 5xx, or horizontal overflow.
+`tools/browser-e2e.mjs` runs the same 12 scenarios at 1440x900 and 375x812:
+owner/staff authentication, owner venue list, summary, expenses, payroll,
+settings, positions and day economics, staff shifts and salary, and public
+read-only demo. Any critical or serious WCAG 2.0/2.1/2.2 A/AA violation fails
+CI. It also fails on uncaught browser errors, API 5xx, or horizontal overflow.
 
 `tools/performance-budgets.json` is the reviewed source of asset and page limits.
 The static gate caps individual JavaScript, CSS, and HTML files. Browser E2E

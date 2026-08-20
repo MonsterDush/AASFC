@@ -141,7 +141,7 @@ def _localized_alert_copy(alert: dict, *, locale: str) -> tuple[str, str]:
 
 def _notification_event_token(value: str | None) -> str:
     raw = str(value or "legacy").strip() or "legacy"
-    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
 
 def _soft_alert_signature(alerts: list[dict]) -> str:
@@ -152,7 +152,11 @@ def _soft_alert_signature(alerts: list[dict]) -> str:
         if code:
             normalized.append(f"{severity}:{code}")
     normalized.sort()
-    return hashlib.sha1("|".join(normalized).encode("utf-8")).hexdigest()[:16] if normalized else "none"
+    return (
+        hashlib.sha1("|".join(normalized).encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+        if normalized
+        else "none"
+    )
 
 
 def _select_soft_alerts_for_notification(economics: dict) -> list[dict]:

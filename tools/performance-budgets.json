@@ -2,15 +2,77 @@
   "assets": {
     "maxJavaScriptBytes": 80000,
     "maxStylesheetBytes": 65000,
-    "maxHtmlBytes": 80000
+    "maxHtmlBytes": 80000,
+    "maxBytesByPath": {
+      "frontend/assets/error-tracking/index.js": 90000
+    }
   },
   "pages": {
-    "auth": { "maxReadyMs": 2500, "maxRequests": 50, "maxTransferBytes": 900000, "maxDomNodes": 900 },
-    "owner-summary": { "maxReadyMs": 5000, "maxRequests": 65, "maxTransferBytes": 1800000, "maxDomNodes": 2200 },
-    "owner-expenses": { "maxReadyMs": 5000, "maxRequests": 70, "maxTransferBytes": 1800000, "maxDomNodes": 2200 },
-    "owner-payroll": { "maxReadyMs": 5000, "maxRequests": 65, "maxTransferBytes": 1800000, "maxDomNodes": 2600 },
-    "owner-settings": { "maxReadyMs": 5000, "maxRequests": 65, "maxTransferBytes": 1800000, "maxDomNodes": 2200 },
-    "staff-shifts": { "maxReadyMs": 5000, "maxRequests": 65, "maxTransferBytes": 1800000, "maxDomNodes": 2600 },
-    "public-demo": { "maxReadyMs": 5000, "maxRequests": 65, "maxTransferBytes": 1800000, "maxDomNodes": 2600 }
+    "auth": {
+      "maxReadyMs": 2500,
+      "maxRequests": 50,
+      "maxTransferBytes": 900000,
+      "maxDomNodes": 900
+    },
+    "owner-venues": {
+      "maxReadyMs": 5000,
+      "maxRequests": 65,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2200
+    },
+    "owner-summary": {
+      "maxReadyMs": 5000,
+      "maxRequests": 65,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2200
+    },
+    "owner-expenses": {
+      "maxReadyMs": 5000,
+      "maxRequests": 70,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2200
+    },
+    "owner-payroll": {
+      "maxReadyMs": 5000,
+      "maxRequests": 65,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2600
+    },
+    "owner-settings": {
+      "maxReadyMs": 5000,
+      "maxRequests": 65,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2200
+    },
+    "owner-positions": {
+      "maxReadyMs": 5000,
+      "maxRequests": 65,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2200
+    },
+    "owner-day-economics": {
+      "maxReadyMs": 5000,
+      "maxRequests": 70,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2600
+    },
+    "staff-shifts": {
+      "maxReadyMs": 5000,
+      "maxRequests": 65,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2600
+    },
+    "staff-salary": {
+      "maxReadyMs": 5000,
+      "maxRequests": 65,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2600
+    },
+    "public-demo": {
+      "maxReadyMs": 5000,
+      "maxRequests": 65,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 2600
+    }
   }
 }

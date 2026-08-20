@@ -7,7 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import sqltypes
 
@@ -700,10 +700,10 @@ def _reseed_fixture_sequences(db: Session, plans: list[FixtureTablePlan]) -> Non
         if not pk_cols:
             continue
         pk = pk_cols[0]
+        max_value = int(db.execute(select(func.max(pk))).scalar() or 1)
         db.execute(
-            text(
-                f"SELECT setval(pg_get_serial_sequence('{table.name}', '{pk.name}'), COALESCE((SELECT MAX({pk.name}) FROM {table.name}), 1), true)"
-            )
+            text("SELECT setval(pg_get_serial_sequence(:table_name, :pk_name), :max_value, true)"),
+            {"table_name": table.fullname, "pk_name": pk.name, "max_value": max_value},
         )
 
 

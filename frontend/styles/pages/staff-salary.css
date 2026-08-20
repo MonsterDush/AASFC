@@ -26,6 +26,7 @@
 .salary-summary-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}
 .salary-payroll-action{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .salary-chart-card .chart{min-width:0;margin-top:12px;overflow-x:auto}
+.staff-salary-page .chart__bars .bar{flex-basis:24px;min-width:24px;min-height:24px}
 .salary-days-card{grid-column:1/-1}
 .salary-days-list{display:grid;gap:8px;margin-top:12px}
 .salary-day-row{padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}

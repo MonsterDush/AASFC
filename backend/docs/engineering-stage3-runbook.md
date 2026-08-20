@@ -50,6 +50,12 @@ user data are removed before sending an event.
 Production configuration validation fails when `SENTRY_DSN` is empty. Start
 with a small trace sample and adjust it only after observing event volume.
 
+Browser error tracking uses `SENTRY_BROWSER_DSN` (falling back to `SENTRY_DSN`)
+and `SENTRY_BROWSER_TRACES_SAMPLE_RATE`. Source-map upload additionally requires
+the protected GitHub secrets `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and
+`SENTRY_PROJECT`; a push is blocked when they are absent. See
+`engineering-assurance.md` for the build, scrubbing, and release contract.
+
 ## Encrypted offsite backup setup
 
 Install PostgreSQL client tools, OpenSSL, and rclone on the VPS. Configure an
@@ -129,7 +135,8 @@ The smoke requires:
 - `/health/ready` with a working database connection;
 - the expected release SHA;
 - an `X-Request-ID` response header;
-- a reachable `auth.html` frontend page.
+- a reachable `auth.html` frontend page;
+- immutable cache headers on a versioned JavaScript asset.
 
 ## Rollback
 

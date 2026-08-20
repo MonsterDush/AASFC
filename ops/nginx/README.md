@@ -13,6 +13,9 @@ sudo install -D -m 0644 \
 sudo install -D -m 0644 \
   /var/www/axelio/prod/repo/ops/nginx/axelio-performance.conf \
   /etc/nginx/snippets/axelio-performance.conf
+sudo install -D -m 0644 \
+  /var/www/axelio/prod/repo/ops/nginx/axelio-cache-map.conf \
+  /etc/nginx/conf.d/axelio-cache-map.conf
 ```
 
 The first release in each environment runs `activate-performance.sh`. It only
@@ -40,7 +43,13 @@ curl -sSI https://api.axelio.ru/health | grep -Ei \
   'strict-transport-security|content-security-policy|x-frame-options|x-content-type-options|referrer-policy|permissions-policy'
 curl --compressed -sS -D - -o /dev/null https://app.axelio.ru/app.js | \
   grep -Ei 'content-encoding: gzip|etag:'
+curl -sSI 'https://app.axelio.ru/app.js?v=release-sha' | \
+  grep -Ei '^cache-control: public, max-age=31536000, immutable'
 ```
+
+`runtime-config.json` is explicitly `no-store`. HTML, API responses, and
+unversioned assets keep their existing revalidation behavior; only static file
+extensions carrying a non-empty `v` query parameter are immutable.
 
 The frontend CSP allows framing by Telegram Web and the explicitly listed
 Yandex Metrica viewers used for Session Replay and behavior maps. Do not add

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     LOG_JSON: bool = True
     SENTRY_DSN: str = ""
     SENTRY_TRACES_SAMPLE_RATE: float = 0.0
+    SENTRY_BROWSER_DSN: str = ""
+    SENTRY_BROWSER_TRACES_SAMPLE_RATE: float = 0.0
     METRICS_TOKEN: str = ""
     MONITORING_STATE_DIR: str = "/var/lib/axelio-monitoring"
     AXELIO_ALERT_TG_CHAT_IDS: str = ""
@@ -34,6 +36,12 @@ class Settings(BaseSettings):
     PUBLIC_LEAD_IP_LIMIT: int = 5
     PUBLIC_LEAD_RATE_WINDOW_SECONDS: int = 60 * 60
     PUBLIC_LEAD_BLOCK_SECONDS: int = 60 * 60
+    PUBLIC_LEAD_CAPTCHA_REQUIRED: bool = False
+    TURNSTILE_SITE_KEY: str = ""
+    TURNSTILE_SECRET_KEY: str = ""
+    TURNSTILE_EXPECTED_ACTION: str = "public_lead"
+    TURNSTILE_ALLOWED_HOSTNAMES: str = "axelio.ru,www.axelio.ru"
+    TURNSTILE_TIMEOUT_SECONDS: float = 5.0
 
     # JWT (cookie-based auth)
     JWT_SECRET: str
@@ -129,6 +137,8 @@ class Settings(BaseSettings):
     def validate_production_security(self):
         if not 0.0 <= float(self.SENTRY_TRACES_SAMPLE_RATE) <= 1.0:
             raise ValueError("SENTRY_TRACES_SAMPLE_RATE must be between 0 and 1")
+        if not 0.0 <= float(self.SENTRY_BROWSER_TRACES_SAMPLE_RATE) <= 1.0:
+            raise ValueError("SENTRY_BROWSER_TRACES_SAMPLE_RATE must be between 0 and 1")
         if self.is_production():
             provider = str(self.PHONE_AUTH_PROVIDER or "").strip().lower()
             if provider == "debug":
@@ -139,6 +149,11 @@ class Settings(BaseSettings):
                 raise ValueError("COOKIE_SECURE=false is forbidden in production")
             if not str(self.SENTRY_DSN or "").strip():
                 raise ValueError("SENTRY_DSN is required in production")
+            if self.PUBLIC_LEAD_CAPTCHA_REQUIRED:
+                if not str(self.TURNSTILE_SITE_KEY or "").strip():
+                    raise ValueError("TURNSTILE_SITE_KEY is required when public lead CAPTCHA is enabled")
+                if not str(self.TURNSTILE_SECRET_KEY or "").strip():
+                    raise ValueError("TURNSTILE_SECRET_KEY is required when public lead CAPTCHA is enabled")
         return self
 
     def is_production(self) -> bool:
@@ -150,6 +165,14 @@ class Settings(BaseSettings):
     def trusted_proxy_ips(self) -> set[str]:
         raw = str(self.TRUSTED_PROXY_IPS or "")
         return {item.strip() for item in raw.replace(";", ",").replace("\n", ",").split(",") if item.strip()}
+
+    def turnstile_allowed_hostnames(self) -> set[str]:
+        raw = str(self.TURNSTILE_ALLOWED_HOSTNAMES or "")
+        return {
+            item.strip().lower().rstrip(".")
+            for item in raw.replace(";", ",").replace("\n", ",").split(",")
+            if item.strip()
+        }
 
     def frontend_base_url(self) -> str:
         raw = (self.FRONTEND_BASE_URL or self.APP_BASE_URL or "").strip().rstrip("/")

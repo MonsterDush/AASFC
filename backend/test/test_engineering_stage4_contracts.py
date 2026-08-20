@@ -155,14 +155,57 @@ class FrontendAssuranceContractTests(TestCase):
         self.assertIn("budgetKey.replace(/^max([A-Z])/", browser)
         for page in (
             "auth",
+            "owner-venues",
             "owner-summary",
             "owner-expenses",
             "owner-payroll",
             "owner-settings",
+            "owner-positions",
+            "owner-day-economics",
             "staff-shifts",
+            "staff-salary",
             "public-demo",
         ):
             self.assertIn(f'"{page}"', budgets)
+
+        self.assertIn("scenarioCount: 12", browser)
+        self.assertIn('{ name: "desktop", width: 1440, height: 900 }', browser)
+        self.assertIn('{ name: "mobile", width: 375, height: 812 }', browser)
+        for scenario in (
+            "owner-auth",
+            "owner-venues",
+            "owner-summary",
+            "owner-expenses",
+            "owner-payroll",
+            "owner-settings",
+            "owner-positions",
+            "owner-day-economics",
+            "staff-auth",
+            "staff-shifts",
+            "staff-salary",
+            "public-demo-readonly",
+        ):
+            self.assertIn(f'"{scenario}"', browser)
+
+        self.assertIn("--data-file=.coverage.unit", workflow)
+        self.assertIn("--data-file=.coverage.e2e", workflow)
+        self.assertIn("coverage combine --keep", workflow)
+        self.assertIn("--fail-under=60", workflow)
+
+    def test_versioned_static_assets_are_immutable_and_smoke_checked(self):
+        cache_map = (REPO_DIR / "ops/nginx/axelio-cache-map.conf").read_text(encoding="utf-8")
+        performance = (REPO_DIR / "ops/nginx/axelio-performance.conf").read_text(encoding="utf-8")
+        release = (REPO_DIR / "ops/deploy/release.sh").read_text(encoding="utf-8")
+        smoke = (REPO_DIR / "ops/deploy/post-deploy-smoke.sh").read_text(encoding="utf-8")
+
+        self.assertIn("max-age=31536000, immutable", cache_map)
+        self.assertIn("$arg_v", cache_map)
+        self.assertIn("$axelio_versioned_cache_control", performance)
+        self.assertIn("/etc/nginx/conf.d/axelio-cache-map.conf", release)
+        self.assertIn("page-loader.js?v=${EXPECTED_RELEASE}", smoke)
+        self.assertIn("max-age=31536000, immutable", smoke)
+        self.assertIn("runtime-config.json", smoke)
+        self.assertIn("no-store", smoke)
 
     def test_largest_frontend_facades_delegate_to_bounded_modules(self):
         app = (REPO_DIR / "frontend/app.js").read_text(encoding="utf-8")
@@ -185,6 +228,8 @@ class DocumentationContractTests(TestCase):
             "backend/docs/architecture.md",
             "backend/docs/engineering-stage3-runbook.md",
             "backend/docs/engineering-stage4-runbook.md",
+            "backend/docs/engineering-assurance.md",
+            "backend/docs/production-rollback-drill-2026-08-20.md",
         ):
             path = REPO_DIR / relative
             self.assertTrue(path.is_file(), relative)

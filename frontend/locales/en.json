@@ -1581,6 +1581,7 @@
   "Не удалось подготовить привязку Telegram": "Could not prepare a binding Telegram",
   "Не удалось подготовить экспорт": "It was not possible to prepare exports",
   "Не удалось поделиться": "I couldn't share",
+  "Не удалось подтвердить, что запрос отправил человек.": "We couldn't verify that the request was submitted by a person.",
   "Не удалось подтянуть авторизацию. Открой через Telegram Mini App и обнови страницу.": "Failed to tighten the authorization. Open through Telegram Mini App and update the page.",
   "Не удалось показать подписку": "Failed to show a subscription",
   "Не удалось получить список заведений": "It was not possible to obtain a list of venues",

@@ -197,6 +197,13 @@ class BotServiceEndpointTests(TestCase):
         self.assertEqual(request.data, b'{"update_id":1}')
         self.assertEqual(request.get_header("X-telegram-bot-api-secret-token"), "secret")
 
+    def test_backend_forwarder_allows_https_and_loopback_http_only(self):
+        self.assertEqual(main._validated_backend_url("https://api.example/"), "https://api.example")
+        self.assertEqual(main._validated_backend_url("http://127.0.0.1:9001"), "http://127.0.0.1:9001")
+        for url in ("http://api.example", "ftp://api.example", "https://user:secret@api.example"):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                main._validated_backend_url(url)
+
     def test_webhook_schedules_background_forwarding(self):
         class BackgroundTasksStub:
             def __init__(self):

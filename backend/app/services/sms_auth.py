@@ -5,7 +5,7 @@ import logging
 import re
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 from fastapi import HTTPException
@@ -121,6 +121,9 @@ class SmsRuProvider(SmsProvider):
         return api_id
 
     def _request_json(self, url: str, payload: dict[str, object], *, method: str = "POST") -> dict:
+        parsed_url = urlsplit(str(url or "").strip())
+        if parsed_url.scheme.lower() != "https" or not parsed_url.hostname or parsed_url.username:
+            raise RuntimeError("SMS provider URL must be an HTTPS URL without embedded credentials")
         body = urlencode(payload).encode("utf-8")
         req = Request(
             url,
@@ -136,7 +139,8 @@ class SmsRuProvider(SmsProvider):
             )
 
         try:
-            with urlopen(req, timeout=float(settings.SMS_RU_TIMEOUT_SECONDS or 10)) as resp:
+            # URL is restricted above to a configured HTTPS origin.
+            with urlopen(req, timeout=float(settings.SMS_RU_TIMEOUT_SECONDS or 10)) as resp:  # nosec B310
                 raw = resp.read().decode("utf-8", errors="replace")
         except HTTPError as exc:
             log.exception("SMS.ru HTTP error")

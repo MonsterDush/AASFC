@@ -49,7 +49,7 @@ class PageLoaderContractTests(TestCase):
         self.assertEqual(len(html_pages), 50)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
-            self.assertIn("/page-loader.js?v=20260820-i18n6", source, path.name)
+            self.assertIn("/page-loader.js?v=20260820-assurance1", source, path.name)
             self.assertIn("/i18n-bootstrap.js?v=20260820-i18n6", source, path.name)
             self.assertIn(f"/styles.css?v={style_cache_key}", source, path.name)
 
@@ -399,7 +399,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
 
         entrypoints = {
-            "staff-salary.html": "/staff-salary.js?v=20260820-weekdayrates1",
+            "staff-salary.html": "/staff-salary.js?v=20260820-assurance1",
             "staff-adjustments.html": "/staff-adjustments.js?v=20260726-navmore1",
             "staff-report.html": "/staff-report.js?v=20260802-ledgerdrill1",
         }

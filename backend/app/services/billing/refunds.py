@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-import xml.etree.ElementTree as ET
 from typing import Any
 
+from defusedxml import ElementTree as ET
 import jwt
 import requests
 
