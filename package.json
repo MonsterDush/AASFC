@@ -6,14 +6,29 @@
     "node": ">=22"
   },
   "scripts": {
+    "build:error-tracking": "node tools/build-error-tracking.mjs && sentry-cli sourcemaps inject frontend/assets/error-tracking",
+    "format:check": "prettier --check package.json eslint.config.js tsconfig.frontend.json frontend/error-tracking-entry.js frontend/page-loader.js tools/*.mjs",
+    "lint:frontend": "eslint frontend tools --ext .js,.mjs",
+    "sentry:sourcemaps": "sentry-cli sourcemaps upload --validate --url-prefix '~/assets/error-tracking' frontend/assets/error-tracking",
     "test:budgets": "node tools/check-performance-budgets.mjs",
     "test:browser": "node tools/browser-e2e.mjs",
+    "test:error-tracking": "pnpm build:error-tracking && git diff --exit-code -- frontend/assets/error-tracking",
+    "test:frontend-quality": "pnpm lint:frontend && pnpm format:check && pnpm typecheck",
     "test:i18n": "node tools/check-i18n-coverage.mjs",
-    "test:metrika": "node frontend/demo_metrika_check.mjs"
+    "test:metrika": "node frontend/demo_metrika_check.mjs",
+    "typecheck": "tsc -p tsconfig.frontend.json"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@sentry/browser": "10.70.0",
+    "@sentry/cli": "3.6.2",
     "axe-core": "4.13.0",
-    "playwright-core": "1.62.0"
+    "esbuild": "0.28.2",
+    "eslint": "10.8.1",
+    "globals": "17.11.0",
+    "playwright-core": "1.62.0",
+    "prettier": "3.9.6",
+    "typescript": "7.0.2"
   },
   "packageManager": "pnpm@11.16.0"
 }

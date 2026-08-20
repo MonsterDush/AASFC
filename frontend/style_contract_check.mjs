@@ -130,7 +130,7 @@ const pageStyleCacheKeyOverrides = new Map([
   ["staff-adjustments.html", "20260726-polish6"],
   ["staff-finance.html", "20260726-polish6"],
   ["staff-report.html", "20260728-responsive1"],
-  ["staff-salary.html", "20260726-polish6"],
+  ["staff-salary.html", "20260820-assurance1"],
   ["staff-shifts.html", "20260811-assurance1"],
 ]);
 const inlineFreePages = [
@@ -338,7 +338,7 @@ assert.equal(htmlPageFiles.length, 50, "every frontend HTML page must use the gl
 for (const fileName of htmlPageFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.ok(
-    source.includes('<script src="/page-loader.js?v=20260820-i18n6"></script>'),
+    source.includes('<script src="/page-loader.js?v=20260820-assurance1"></script>'),
     `${fileName} page loader cache key is stale`,
   );
   assert.ok(

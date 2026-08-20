@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import date, time
 
 from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -9,7 +9,17 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
 from app.core.db import Base
-from app.models import User, Venue, VenueMember
+from app.models import (
+    ShiftInterval,
+    Shift,
+    ShiftAssignment,
+    ShiftScheduleTemplate,
+    ShiftScheduleTemplateItem,
+    ShiftSwapRequest,
+    User,
+    Venue,
+    VenueMember,
+)
 from app.services.demo.bootstrap import (
     _daily_base_minor,
     _history_periods,
@@ -58,6 +68,88 @@ class DemoBootstrapSeasonalityTests(unittest.TestCase):
 
 
 class DemoBootstrapForeignKeyTests(unittest.TestCase):
+    def test_rebuild_deletes_schedule_template_items_before_intervals(self):
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+
+        @event.listens_for(engine, "connect")
+        def _enable_foreign_keys(dbapi_connection, _connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+        Base.metadata.create_all(engine)
+        with Session(engine) as db:
+            first = bootstrap_demo_venue(
+                db,
+                reference_year=2026,
+                reference_month=3,
+                history_months=1,
+                make_public=True,
+            )
+            interval = ShiftInterval(
+                venue_id=int(first.venue_id),
+                title="E2E reset interval",
+                start_time=time(10, 0),
+                end_time=time(18, 0),
+                is_active=True,
+            )
+            template = ShiftScheduleTemplate(
+                venue_id=int(first.venue_id),
+                title="E2E reset template",
+                is_active=True,
+            )
+            db.add_all([interval, template])
+            db.flush()
+            db.add(
+                ShiftScheduleTemplateItem(
+                    template_id=int(template.id),
+                    weekday=0,
+                    interval_id=int(interval.id),
+                    shift_slot="DAY",
+                    sort_order=0,
+                )
+            )
+            assignment = db.execute(
+                select(ShiftAssignment)
+                .join(Shift, Shift.id == ShiftAssignment.shift_id)
+                .where(Shift.venue_id == int(first.venue_id))
+                .limit(1)
+            ).scalar_one()
+            db.add(
+                ShiftSwapRequest(
+                    venue_id=int(first.venue_id),
+                    shift_id=int(assignment.shift_id),
+                    assignment_id=int(assignment.id),
+                    requester_user_id=int(assignment.member_user_id),
+                    status="CANCELLED",
+                    comment="fixture reset regression",
+                )
+            )
+            db.commit()
+            db.expunge_all()
+
+            bootstrap_demo_venue(
+                db,
+                venue_id=int(first.venue_id),
+                reference_year=2026,
+                reference_month=3,
+                history_months=1,
+                make_public=True,
+            )
+            db.commit()
+
+            self.assertIsNone(
+                db.execute(
+                    select(ShiftScheduleTemplate).where(ShiftScheduleTemplate.title == "E2E reset template")
+                ).scalar_one_or_none()
+            )
+            self.assertEqual(
+                db.execute(
+                    select(func.count(ShiftSwapRequest.id)).where(ShiftSwapRequest.venue_id == int(first.venue_id))
+                ).scalar_one(),
+                0,
+            )
+
     def test_rebuild_reuses_users_that_are_linked_to_another_venue(self):
         engine = create_engine("sqlite+pysqlite:///:memory:")
 

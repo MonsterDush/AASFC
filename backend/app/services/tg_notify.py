@@ -20,6 +20,15 @@ def _bot_service_secret() -> str | None:
     return os.getenv("BOT_SERVICE_SECRET")
 
 
+def _validated_bot_service_url(value: str) -> str:
+    candidate = str(value or "").strip().rstrip("/")
+    parsed = urlparse(candidate)
+    is_loopback_http = parsed.scheme.lower() == "http" and parsed.hostname in {"127.0.0.1", "::1", "localhost"}
+    if not parsed.hostname or parsed.username or (parsed.scheme.lower() != "https" and not is_loopback_http):
+        raise ValueError("BOT_SERVICE_URL must use HTTPS, except for a loopback HTTP address")
+    return candidate
+
+
 def _normalize_error_message(body_text: str | None) -> str | None:
     if not body_text:
         return None
@@ -70,6 +79,11 @@ def _send_via_bot_service(
             "error": "BOT_SERVICE_URL is not configured",
         }
 
+    try:
+        service_url = _validated_bot_service_url(svc_url)
+    except ValueError as exc:
+        return {"ok": False, "retryable": False, "status_code": None, "error": str(exc)}
+
     timeout_seconds = max(float(os.getenv("BOT_SERVICE_TIMEOUT_SECONDS", "5") or 5), 1.0)
     payload: dict[str, Any] = {
         "chat_id": int(chat_id),
@@ -90,7 +104,7 @@ def _send_via_bot_service(
         ensure_ascii=False,
     ).encode("utf-8")
     req = urllib.request.Request(
-        svc_url.rstrip("/") + "/internal/telegram/api",
+        service_url + "/internal/telegram/api",
         data=request_body,
         method="POST",
         headers={
@@ -101,7 +115,8 @@ def _send_via_bot_service(
 
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            # The target was restricted above to HTTPS or a loopback-only HTTP address.
+            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:  # nosec B310
                 body = resp.read().decode("utf-8", errors="ignore")
                 js = json.loads(body) if body else {}
                 result = {

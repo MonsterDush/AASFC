@@ -7,7 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import sqltypes
 
@@ -52,6 +52,9 @@ from app.models import (
     ShiftComment,
     ShiftCommentMention,
     ShiftInterval,
+    ShiftScheduleTemplate,
+    ShiftScheduleTemplateItem,
+    ShiftSwapRequest,
     Supplier,
     User,
     Venue,
@@ -243,6 +246,9 @@ def _collect_live_context(db: Session, venue_id: int) -> dict[str, Any]:
 
     ctx["venue_position_ids"] = load_ids(VenuePosition.__table__, VenuePosition.__table__.c.venue_id == int(venue_id))
     ctx["shift_interval_ids"] = load_ids(ShiftInterval.__table__, ShiftInterval.__table__.c.venue_id == int(venue_id))
+    ctx["shift_schedule_template_ids"] = load_ids(
+        ShiftScheduleTemplate.__table__, ShiftScheduleTemplate.__table__.c.venue_id == int(venue_id)
+    )
     ctx["shift_ids"] = load_ids(shift_tbl, shift_tbl.c.venue_id == int(venue_id))
     ctx["shift_assignment_ids"] = load_ids(
         ShiftAssignment.__table__, _in_ids(ShiftAssignment.__table__.c.shift_id, ctx["shift_ids"])
@@ -338,6 +344,18 @@ def _fixture_table_plans() -> list[FixtureTablePlan]:
             lambda c, t: t.c.venue_id == c["venue_id"],
         ),
         FixtureTablePlan(
+            "shift_schedule_templates",
+            ShiftScheduleTemplate,
+            lambda c, t: t.c.venue_id == c["venue_id"],
+            lambda c, t: t.c.venue_id == c["venue_id"],
+        ),
+        FixtureTablePlan(
+            "shift_schedule_template_items",
+            ShiftScheduleTemplateItem,
+            lambda c, t: _in_ids(t.c.template_id, c["shift_schedule_template_ids"]),
+            lambda c, t: _in_ids(t.c.template_id, c["shift_schedule_template_ids"]),
+        ),
+        FixtureTablePlan(
             "shifts", Shift, lambda c, t: t.c.venue_id == c["venue_id"], lambda c, t: t.c.venue_id == c["venue_id"]
         ),
         FixtureTablePlan(
@@ -345,6 +363,12 @@ def _fixture_table_plans() -> list[FixtureTablePlan]:
             ShiftAssignment,
             lambda c, t: _in_ids(t.c.shift_id, c["shift_ids"]),
             lambda c, t: _in_ids(t.c.shift_id, c["shift_ids"]),
+        ),
+        FixtureTablePlan(
+            "shift_swap_requests",
+            ShiftSwapRequest,
+            lambda c, t: t.c.venue_id == c["venue_id"],
+            lambda c, t: t.c.venue_id == c["venue_id"],
         ),
         FixtureTablePlan(
             "shift_comments",
@@ -700,10 +724,10 @@ def _reseed_fixture_sequences(db: Session, plans: list[FixtureTablePlan]) -> Non
         if not pk_cols:
             continue
         pk = pk_cols[0]
+        max_value = int(db.execute(select(func.max(pk))).scalar() or 1)
         db.execute(
-            text(
-                f"SELECT setval(pg_get_serial_sequence('{table.name}', '{pk.name}'), COALESCE((SELECT MAX({pk.name}) FROM {table.name}), 1), true)"
-            )
+            text("SELECT setval(pg_get_serial_sequence(:table_name, :pk_name), :max_value, true)"),
+            {"table_name": table.fullname, "pk_name": pk.name, "max_value": max_value},
         )
 
 

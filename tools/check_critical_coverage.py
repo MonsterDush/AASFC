@@ -12,11 +12,11 @@ THRESHOLDS = {
     "app/auth/jwt_tokens.py": 95.0,
     "app/auth/passwords.py": 90.0,
     "app/core/permission_policy.py": 100.0,
-    "app/services/billing/access.py": 70.0,
+    "app/services/billing/access.py": 75.0,
     "app/services/billing/state.py": 90.0,
     "app/services/finance/recognition.py": 85.0,
     "app/services/financial_privacy.py": 100.0,
-    "app/services/payroll/calculator.py": 65.0,
+    "app/services/payroll/calculator.py": 75.0,
     "app/services/security_rate_limits.py": 90.0,
     "app/services/signed_links.py": 100.0,
 }

@@ -21,6 +21,8 @@ A change is ready when:
    `tools/performance-budgets.json`; budget increases require a written reason.
 6. New operational failure modes have a metric, alert, or runbook response.
 7. Public behavior, configuration, and on-call procedures are documented.
+8. Tracked files satisfy `tools/check_repository_hygiene.py`; source files stay
+   at or below 512 KiB and other files at or below 2 MiB.
 
 ## Required checks
 
@@ -32,6 +34,8 @@ python -m ruff check --select E9,F63,F7,F82 backend/app backend/test bot_service
 python -m ruff check backend/app backend/test bot_service tools
 python -m ruff format --check backend/app backend/test bot_service tools
 python tools/check_repository_hygiene.py
+python -m bandit -q -r backend/app bot_service -x backend/test -ll
+pnpm test:frontend-quality
 pnpm test:budgets
 
 cd backend

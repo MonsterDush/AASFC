@@ -153,7 +153,7 @@ def _build_dynamic_items(
     else:
         raise ValueError("Bad kind")
 
-    def extra(obj) -> dict:
+    def row_metadata(obj) -> dict:
         return {"unit": getattr(obj, "unit", None)} if kind == "KPI" else {}
 
     vals_by_ref = {int(v.ref_id): int(v.value_numeric or 0) for v in report_values if v.kind == value_kind}
@@ -184,7 +184,7 @@ def _build_dynamic_items(
                 "is_active": bool(getattr(obj, "is_active", True)),
                 "sort_order": int(getattr(obj, "sort_order", 0) or 0),
                 "value": (int(vals_by_ref.get(int(obj.id), 0)) if show_numbers else None),
-                **extra(obj),
+                **row_metadata(obj),
             }
         )
     return out

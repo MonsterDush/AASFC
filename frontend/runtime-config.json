@@ -1,0 +1,6 @@
+{
+  "environment": "development",
+  "release": "local",
+  "sentryBrowserDsn": "",
+  "sentryBrowserTracesSampleRate": 0
+}

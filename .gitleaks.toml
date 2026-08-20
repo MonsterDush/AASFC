@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Static cache-version fixtures and an OpenAPI integrity digest are not credentials"
+regexTarget = "line"
+regexes = [
+  '''(?i)\b(?:cache_key|style_cache_key|globalStyleCacheKey)\s*=''',
+]
+
+[[allowlists]]
+description = "Named SHA-256 digest used to detect OpenAPI contract drift"
+regexTarget = "match"
+regexes = ['''EXPECTED_AUTH_OPENAPI_SHA256''']

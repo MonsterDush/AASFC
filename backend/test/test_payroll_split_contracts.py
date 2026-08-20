@@ -288,3 +288,112 @@ class PayrollMonthOrchestratorTests(TestCase):
         self.assertEqual(finance_entries[0]["source_type"], "payroll_run")
         self.assertEqual(finance_entries[0]["source_id"], 101)
         self.assertGreaterEqual(db.flush_count, 3)
+
+    def test_month_recalculation_records_percent_decision_and_minimum_top_up(self):
+        db = self._Session()
+        existing_run = PayrollRun(
+            id=101,
+            venue_id=7,
+            period_month=date(2026, 3, 1),
+            calculated_by_user_id=1,
+            total_amount_minor=0,
+            lines_count=0,
+        )
+        assignment = SimpleNamespace(member_user_id=17)
+        profile = SimpleNamespace(id=3, title="Revenue profile")
+        member = SimpleNamespace(id=17, short_name="Alex", full_name=None, tg_username=None)
+        percent_component = SimpleNamespace(
+            id=5,
+            component_type="PERCENT_TOTAL_REVENUE",
+            title="Revenue share",
+            amount_minor=None,
+            rate_minor=None,
+            percent_bps=1_000,
+            kpi_metric_id=None,
+            department_id=None,
+            department_ids_json=None,
+            boost_department_id=None,
+            boost_department=None,
+            boost_kpi_metric=None,
+        )
+        minimum_component = SimpleNamespace(
+            id=6,
+            component_type="MINIMUM_PAYOUT",
+            title="Monthly minimum",
+            amount_minor=200_000,
+        )
+        worked_shift = calculator.PayrollWorkedShift(
+            shift_id=11,
+            shift_date=date(2026, 3, 2),
+            shift_slot="DAY",
+            minutes=480,
+        )
+        metrics = calculator.PayrollMemberMetrics(
+            minutes_total=480,
+            shifts_count=1,
+            worked_dates={date(2026, 3, 2)},
+            worked_shifts=[worked_shift],
+        )
+        decision = calculator.PayrollPercentDecision(
+            amount_minor=100_000,
+            base_amount_minor=1_000_000,
+            base_scope=calculator.BASE_SCOPE_FULL_PERIOD,
+            regular_percent_bps=1_000,
+            applied_percent_bps=1_000,
+            regular_amount_minor=100_000,
+            boost_enabled=False,
+            boost_applied=False,
+            boost_source_type="NONE",
+            boost_source_title="No boost",
+            boost_recalc_mode="REPLACE_ALL",
+            boost_recalc_mode_effective="REPLACE_ALL",
+            boost_recalc_mode_title="Replace all",
+            minimum_guarantee_minor=80_000,
+            minimum_guarantee_scope=calculator.MINIMUM_GUARANTEE_MONTH,
+            day_rows=[{"date": "2026-03-02", "amount_minor": 100_000}],
+        )
+        db.results = [
+            self._Result(scalar_one_or_none=existing_run),
+            self._Result(),
+            self._Result(rows=[(assignment, profile, member)]),
+            self._Result(scalar_one_or_none=1),
+        ]
+
+        with (
+            patch.object(calculator, "delete_finance_entries_for_source"),
+            patch.object(calculator, "_pick_latest_assignments", return_value=[(assignment, profile, member)]),
+            patch.object(
+                calculator,
+                "_load_profile_components",
+                return_value={3: [percent_component, minimum_component]},
+            ),
+            patch.object(calculator, "_load_member_metrics", return_value={17: metrics}),
+            patch.object(
+                calculator,
+                "_load_revenue_metrics",
+                return_value=calculator.PayrollRevenueMetrics(total_revenue_minor=1_000_000),
+            ),
+            patch.object(calculator, "_load_kpi_metrics", return_value=calculator.PayrollKpiMetrics()),
+            patch.object(calculator, "_load_venue_plan_metrics", return_value=calculator.PayrollVenuePlanMetrics()),
+            patch.object(calculator, "_build_percent_component_decision", return_value=decision),
+            patch.object(calculator, "_build_percent_component_snapshot", return_value={"auditable": True}),
+            patch.object(calculator, "_component_shift_allocations", return_value={11: 50_000}),
+            patch.object(calculator, "_minimum_payout_scope", return_value=calculator.MINIMUM_GUARANTEE_MONTH),
+            patch.object(calculator, "_minimum_payout_target_minor", return_value=200_000),
+        ):
+            result = calculator.calculate_payroll_for_month(
+                db=db,
+                venue_id=7,
+                month="2026-03",
+                calculated_by_user_id=99,
+            )
+
+        self.assertEqual(result.run.total_amount_minor, 200_000)
+        self.assertEqual(result.run.calculated_by_user_id, 99)
+        breakdown = json.loads(result.lines[0].breakdown_json)
+        percent_row, minimum_row = breakdown["components"]
+        self.assertEqual(percent_row["base_amount_minor"], 1_000_000)
+        self.assertEqual(percent_row["calculation_snapshot"], {"auditable": True})
+        self.assertEqual(minimum_row["amount_minor"], 100_000)
+        self.assertTrue(minimum_row["minimum_applied"])
+        self.assertEqual(breakdown["shift_allocations"][0]["amount_minor"], 200_000)

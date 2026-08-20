@@ -48,6 +48,15 @@ app = FastAPI(title="Axelio Bot Service")
 log = logging.getLogger("axelio-bot")
 
 
+def _validated_backend_url(value: str) -> str:
+    candidate = str(value or "").strip().rstrip("/")
+    parsed = urllib.parse.urlsplit(candidate)
+    is_loopback_http = parsed.scheme.lower() == "http" and parsed.hostname in {"127.0.0.1", "::1", "localhost"}
+    if not parsed.hostname or parsed.username or (parsed.scheme.lower() != "https" and not is_loopback_http):
+        raise ValueError("BACKEND_INTERNAL_URL must use HTTPS, except for a loopback HTTP address")
+    return candidate
+
+
 class TelegramApiIn(BaseModel):
     method: str = Field(..., min_length=1, max_length=80)
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -181,7 +190,8 @@ def _telegram_api_post_urllib(token: str, method: str, payload: dict[str, Any]) 
     last_error = None
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=7) as resp:
+            # api_url is constructed with a fixed HTTPS Telegram API origin.
+            with urllib.request.urlopen(req, timeout=7) as resp:  # nosec B310
                 body = resp.read().decode("utf-8", errors="ignore")
                 result = _parse_telegram_api_response(method, int(resp.status), body)
                 if result.get("ok"):
@@ -221,13 +231,14 @@ def _telegram_api_post(token: str, method: str, payload: dict[str, Any]) -> dict
 
 
 def _forward_telegram_update_to_backend(raw_body: bytes, *, secret_token: str | None = None) -> tuple[int, str]:
-    target_url = f"{BACKEND_INTERNAL_URL}/auth/telegram/browser/webhook"
+    target_url = f"{_validated_backend_url(BACKEND_INTERNAL_URL)}/auth/telegram/browser/webhook"
     headers = {"Content-Type": "application/json"}
     if secret_token:
         headers["X-Telegram-Bot-Api-Secret-Token"] = secret_token
     req = urllib.request.Request(target_url, data=raw_body, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        # The target was restricted above to HTTPS or a loopback-only HTTP address.
+        with urllib.request.urlopen(req, timeout=8) as resp:  # nosec B310
             body = resp.read().decode("utf-8", errors="ignore")
             return int(resp.status), body
     except urllib.error.HTTPError as e:

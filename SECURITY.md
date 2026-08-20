@@ -34,7 +34,12 @@ run the production smoke and rollback checks.
   into local tests.
 - Rotate a secret immediately if it appears in a commit, CI log, chat, or
   artifact; deleting the visible value is not sufficient.
+- Gitleaks scans repository history, Bandit and CodeQL scan application code,
+  and dependency audits block known high-risk packages in CI.
+- Public lead CAPTCHA fails closed when required, and browser error tracking
+  scrubs credentials, request data, cookies, and user context before delivery.
 
 See `backend/docs/engineering-stage3-runbook.md` for rollback, backup restore,
 and Sentry evidence, and `backend/docs/engineering-stage4-runbook.md` for alerts
-and operational triage.
+and operational triage. Current gate configuration and required CAPTCHA/Sentry
+settings are in `backend/docs/engineering-assurance.md`.

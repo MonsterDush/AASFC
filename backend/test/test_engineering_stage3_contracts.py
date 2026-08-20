@@ -47,6 +47,16 @@ class DeploymentContractTests(TestCase):
         self.assertIn("name: ${{ inputs.environment }}", workflow)
         self.assertIn('"${DEPLOY_TOOL_DIR}/release.sh" rollback', workflow)
 
+    def test_rollback_metadata_survives_a_newer_database_revision_and_records_rto(self):
+        release = (REPO_DIR / "ops/deploy/release.sh").read_text(encoding="utf-8")
+        evidence = (REPO_DIR / "backend/docs/production-rollback-drill-2026-08-20.md").read_text(encoding="utf-8")
+
+        self.assertIn("SELECT version_num FROM alembic_version", release)
+        self.assertIn("duration_seconds", release)
+        self.assertIn("32379273355", evidence)
+        self.assertIn("32379473585", evidence)
+        self.assertIn("approximately 11 seconds", evidence)
+
 
 class BackupContractTests(TestCase):
     def test_backup_is_encrypted_verified_offsite_and_retained(self):
