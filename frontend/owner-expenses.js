@@ -19,7 +19,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 import {
   formatComparisonRange,
   normalizeIsoRange,
@@ -108,7 +108,7 @@ function fmtMinor(minor) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const rub = Number(minor || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
   } catch {
     return rub.toFixed(2) + " ₽";
   }
@@ -134,7 +134,7 @@ function relativeExpenseDelta(currentValue, previousValue) {
   const percent = delta / Math.abs(previous) * 100;
   const sign = percent > 0 ? "+" : percent < 0 ? "−" : "";
   return {
-    text: `${sign}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% · ${fmtSignedMinor(delta)}`,
+    text: `${sign}${Math.abs(percent).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: 1 })}% · ${fmtSignedMinor(delta)}`,
     tone,
   };
 }

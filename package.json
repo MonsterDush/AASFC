@@ -8,7 +8,8 @@
   "scripts": {
     "test:budgets": "node tools/check-performance-budgets.mjs",
     "test:browser": "node tools/browser-e2e.mjs",
-    "test:i18n": "node tools/check-i18n-coverage.mjs"
+    "test:i18n": "node tools/check-i18n-coverage.mjs",
+    "test:metrika": "node frontend/demo_metrika_check.mjs"
   },
   "devDependencies": {
     "axe-core": "4.13.0",

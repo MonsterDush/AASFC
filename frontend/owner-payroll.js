@@ -18,7 +18,7 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
   trackDemoEvent,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,
@@ -104,7 +104,7 @@ function formatDateRu(iso) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return String(iso || "—");
   const d = new Date(`${iso}T00:00:00`);
   try {
-    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+    return d.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day: "numeric", month: "long", year: "numeric" });
   } catch {
     return iso;
   }
@@ -114,7 +114,7 @@ function fmtMoneyMinor(minor) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const value = Number(minor || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " ₽";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " ₽";
   } catch {
     return value.toFixed(2) + " ₽";
   }
@@ -168,7 +168,7 @@ const COMPONENT_LABELS = {
 function fmtPercentBps(bps) {
   const value = Number(bps || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + "%";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + "%";
   } catch {
     return value.toFixed(2) + "%";
   }
@@ -954,8 +954,8 @@ function recalculationText(latestRecalc, runCalculatedAt) {
   };
   const dt = runCalculatedAt ? new Date(runCalculatedAt) : null;
   const baseText = dt && !Number.isNaN(dt.getTime())
-    ? `обновлено ${dt.toLocaleString("ru-RU")}`
-    : (latestRecalc?.created_at ? `обновлено ${new Date(latestRecalc.created_at).toLocaleString("ru-RU")}` : "есть перерасчёт");
+    ? `обновлено ${dt.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"))}`
+    : (latestRecalc?.created_at ? `обновлено ${new Date(latestRecalc.created_at).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"))}` : "есть перерасчёт");
   const reason = String(latestRecalc?.trigger_reason || "");
   return reason ? `${baseText} · ${reasonMap[reason] || "автоперерасчёт"}` : baseText;
 }
@@ -1216,14 +1216,14 @@ function payrollDeltaView(currentValue, previousValue, { money = false, goodWhen
   const tone = good ? "is-good" : bad ? "is-bad" : "is-neutral";
   const absolute = money
     ? `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${fmtMoneyMinor(Math.abs(delta))}`
-    : `${delta > 0 ? "+" : ""}${delta.toLocaleString("ru-RU")}`;
+    : `${delta > 0 ? "+" : ""}${delta.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"))}`;
   if (previous === 0) {
     return { text: current === 0 ? "Без изменений" : `Нет базы · ${absolute}`, tone };
   }
   const percent = delta / Math.abs(previous) * 100;
   const sign = percent > 0 ? "+" : percent < 0 ? "−" : "";
   return {
-    text: `${sign}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% · ${absolute}`,
+    text: `${sign}${Math.abs(percent).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: 1 })}% · ${absolute}`,
     tone,
   };
 }

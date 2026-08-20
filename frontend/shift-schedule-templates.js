@@ -10,7 +10,7 @@ import {
   getMe,
   getMyVenuePermissions,
   getVenueSettings,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
 import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
@@ -108,7 +108,7 @@ function monthTitle(value) {
   const [y, m] = raw.split("-").map((x) => Number(x));
   if (!Number.isInteger(y) || !Number.isInteger(m)) return raw || "месяц";
   try {
-    return new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" }).format(new Date(y, m - 1, 1));
+    return new Intl.DateTimeFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month: "long", year: "numeric" }).format(new Date(y, m - 1, 1));
   } catch {
     return raw;
   }

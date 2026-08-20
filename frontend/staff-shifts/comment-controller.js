@@ -21,8 +21,8 @@ export function findMentionQuery(input) {
 
 
 export function containsMentionToken(text, token) {
-  const source = String(text || "").toLocaleLowerCase("ru-RU");
-  const needle = String(token || "").trim().toLocaleLowerCase("ru-RU");
+  const source = String(text || "").toLocaleLowerCase((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"));
+  const needle = String(token || "").trim().toLocaleLowerCase((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"));
   if (!needle) return false;
   const isWordCharacter = (value) => Boolean(value) && /[\p{L}\p{N}_]/u.test(value);
   let fromIndex = 0;
@@ -114,7 +114,7 @@ export function createStaffShiftCommentController(context) {
   function formatCommentDate(value) {
     const date = value ? new Date(value) : null;
     return date && !Number.isNaN(date.getTime())
-      ? date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+      ? date.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
       : "";
   }
 
@@ -211,7 +211,7 @@ export function createStaffShiftCommentController(context) {
   }
 
   function normalizeForSearch(value) {
-    return String(value || "").trim().toLocaleLowerCase("ru-RU");
+    return String(value || "").trim().toLocaleLowerCase((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"));
   }
 
   function matchesMentionQuery(member, query) {

@@ -16,8 +16,8 @@
       } catch {}
     })();
   </script>
-  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
-  <script src="/page-loader.js?v=20260813-i18n5"></script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>
+  <script src="/page-loader.js?v=20260820-i18n6"></script>
   <title>Axelio · Подписка</title>
 </head>
 <body class="owner-subscription-page">
@@ -93,7 +93,7 @@
   <div id="toast" class="toast"><div class="toast__text"></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, downloadFile } from '/app.js?v=20260813-i18n1';
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, downloadFile } from '/app.js?v=20260820-i18nmetrika1';
   import { getBillingAccessMode, getBillingStatus, isOwnerRole, isSysAdminRole, roleUpper } from '/permissions.js?v=20260331-billing2';
 
   applyTelegramTheme();
@@ -114,9 +114,9 @@
   const backBtn = document.getElementById('backBtn');
 
   function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
-  function formatDate(value){ if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString('ru-RU'); }
-  function formatDateTime(value){ if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString('ru-RU'); }
-  function formatMinor(value){ return `${(Number(value || 0)/100).toLocaleString('ru-RU', {minimumFractionDigits:0, maximumFractionDigits:0})} ₽`; }
+  function formatDate(value){ if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU")); }
+  function formatDateTime(value){ if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU")); }
+  function formatMinor(value){ return `${(Number(value || 0)/100).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), {minimumFractionDigits:0, maximumFractionDigits:0})} ₽`; }
   function txTypeLabel(v){ return ({ PAYMENT:'Оплата', EXTEND:'Продление', SET_PAID_UNTIL:'Установка paid until', REFUND:'Возврат' }[String(v || '').toUpperCase()]) || String(v || '—'); }
   function txStatusLabel(v){ return ({ SUCCEEDED:'Успешно', PENDING:'В обработке', FAILED:'Ошибка', CANCELED:'Отменено' }[String(v || '').toUpperCase()]) || String(v || '—'); }
   function txStatusClass(v){

@@ -13,7 +13,7 @@ import {
   getStoredDemoUiState,
   isDemoUiMode,
   getDemoMonthLabel,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,
@@ -85,7 +85,7 @@ function setVisible(element, visible) {
 function fmtMoney(n) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const x = Math.round(Number(n || 0));
-  try { return new Intl.NumberFormat("ru-RU").format(x) + " ₽"; } catch { return String(x) + " ₽"; }
+  try { return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU")).format(x) + " ₽"; } catch { return String(x) + " ₽"; }
 }
 
 function fmtMoneyMinor(minor) {
@@ -96,13 +96,13 @@ function fmtCompactMoneyMinor(minor) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const value = Number(minor || 0) / 100;
   const absolute = Math.abs(value);
-  if (absolute >= 1_000_000) return `${(value / 1_000_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млн`;
-  if (absolute >= 1_000) return `${(value / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} тыс.`;
+  if (absolute >= 1_000_000) return `${(value / 1_000_000).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: 1 })} млн`;
+  if (absolute >= 1_000) return `${(value / 1_000).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: 0 })} тыс.`;
   return fmtMoney(value);
 }
 
 function fmtPercentBps(bps) {
-  return `${(Number(bps || 0) / 100).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
+  return `${(Number(bps || 0) / 100).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: 1 })}%`;
 }
 
 function fmtShortDate(iso) {
@@ -113,7 +113,7 @@ function fmtShortDate(iso) {
 function fmtLongDate(iso) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return String(iso || "—");
   try {
-    return new Date(`${iso}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+    return new Date(`${iso}T00:00:00`).toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day: "numeric", month: "long", year: "numeric" });
   } catch {
     return String(iso);
   }
@@ -141,7 +141,7 @@ function relativeDelta(currentValue, previousValue, { goodWhen = "up" } = {}) {
   const percent = delta / Math.abs(previous) * 100;
   const sign = percent > 0 ? "+" : percent < 0 ? "−" : "";
   return {
-    text: `${sign}${Math.abs(percent).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% · ${fmtSignedMoney(delta)}`,
+    text: `${sign}${Math.abs(percent).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: 1 })}% · ${fmtSignedMoney(delta)}`,
     tone,
   };
 }

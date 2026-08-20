@@ -16,9 +16,8 @@
       } catch {}
     })();
   </script>
-  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
-  <script src="/page-loader.js?v=20260813-i18n5"></script>
-  <script defer src="/metrika.js?v=20260811-direct1"></script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>
+  <script src="/page-loader.js?v=20260820-i18n6"></script>
   <title>Axelio · Мои заведения</title>
 </head>
 <body>
@@ -65,7 +64,7 @@
   </div>
 
   <script type="module">
-import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountNav } from "/app.js?v=20260813-i18n1";
+import { applyTelegramTheme, ensureLogin, api, toast, mountCommonUI, setActiveVenueId, mountNav } from "/app.js?v=20260820-i18nmetrika1";
 import { getBillingAccessMode, getBillingStatus, getSetupActionLabel, getSetupProgress, getSetupResumeStep, getSetupStatus, isOwnerRole, isSetupDone, isSetupPrepareDone } from "/permissions.js?v=20260409-setup5";
 
 applyTelegramTheme();
@@ -125,7 +124,6 @@ async function submitCreateVenue(){
     if (result?.id) setActiveVenueId(result.id);
     if (result?.trial_granted) {
       toast("Заведение создано. Пробный доступ на 3 дня включён.");
-      await window.axelioTrackMetrikaGoal?.("trial_venue_created");
     } else {
       toast("Заведение создано. Для работы нужно продлить доступ.");
     }
@@ -181,7 +179,7 @@ function formatDateTime(value){
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString("ru-RU");
+  return d.toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"));
 }
 
 function billingChip(v){

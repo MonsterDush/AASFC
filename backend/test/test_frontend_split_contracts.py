@@ -49,8 +49,8 @@ class PageLoaderContractTests(TestCase):
         self.assertEqual(len(html_pages), 50)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
-            self.assertIn("/page-loader.js?v=20260813-i18n5", source, path.name)
-            self.assertIn("/i18n-bootstrap.js?v=20260813-i18n5", source, path.name)
+            self.assertIn("/page-loader.js?v=20260820-i18n6", source, path.name)
+            self.assertIn("/i18n-bootstrap.js?v=20260820-i18n6", source, path.name)
             self.assertIn(f"/styles.css?v={style_cache_key}", source, path.name)
 
         self.assertLess(len(loader.splitlines()), 180)
@@ -79,38 +79,54 @@ class PageLoaderContractTests(TestCase):
             self.assertIn(responsive_contract, styles)
 
 
-class MetrikaConversionContractTests(TestCase):
-    def test_self_service_signup_and_trial_creation_emit_production_goals(self):
-        metrika = (FRONTEND / "metrika.js").read_text(encoding="utf-8")
+class DemoMetrikaContractTests(TestCase):
+    def test_metrika_is_initialized_only_after_authoritative_demo_state(self):
+        metrika = (FRONTEND / "app" / "demo-metrika.js").read_text(encoding="utf-8")
+        app = (FRONTEND / "app.js").read_text(encoding="utf-8")
         auth = (FRONTEND / "auth.html").read_text(encoding="utf-8")
         venues = (FRONTEND / "app-venues.html").read_text(encoding="utf-8")
         venue = (FRONTEND / "app-venue.html").read_text(encoding="utf-8")
 
-        self.assertIn("const COUNTER_ID = 108617620", metrika)
+        self.assertIn("const METRIKA_ID = 108617620", metrika)
         self.assertIn('new Set(["app.axelio.ru"])', metrika)
-        self.assertIn("if (!enabled) return", metrika)
-        self.assertIn('window.ym(COUNTER_ID, "reachGoal", normalizedGoal', metrika)
-        self.assertIn("/metrika.js?v=20260811-direct1", auth)
-        self.assertIn("/metrika.js?v=20260811-direct1", venues)
-        self.assertIn("/metrika.js?v=20260812-payment1", venue)
-        self.assertIn('axelioTrackMetrikaGoal?.("signup_success")', auth)
-        self.assertIn('axelioTrackMetrikaGoal?.("trial_venue_created")', venues)
-        self.assertIn('const SUBSCRIPTION_PAYMENT_GOAL = "subscription_first_payment_success"', venue)
-        self.assertIn('String(tx?.status || "").toUpperCase() !== "SUCCEEDED"', venue)
-        self.assertIn('String(tx?.source || "").toUpperCase() !== "ROBOKASSA"', venue)
-        self.assertIn("await window.axelioTrackMetrikaGoal?.(SUBSCRIPTION_PAYMENT_GOAL)", venue)
-        self.assertLess(
-            auth.index("await setPasswordAfterPhoneVerify("),
-            auth.index('await window.axelioTrackMetrikaGoal?.("signup_success")'),
-        )
-        self.assertLess(
-            venues.index("if (result?.trial_granted)"),
-            venues.index('await window.axelioTrackMetrikaGoal?.("trial_venue_created")'),
-        )
-        self.assertLess(
-            venues.index('await window.axelioTrackMetrikaGoal?.("trial_venue_created")'),
-            venues.index("location.href = target"),
-        )
+        self.assertIn("state?.demo_mode === true", metrika)
+        self.assertIn("defer: true", metrika)
+        self.assertIn("webvisor: true", metrika)
+        self.assertIn('window.ym(METRIKA_ID, "hit", url', metrika)
+        self.assertIn('window.ym(METRIKA_ID, "reachGoal", `demo_${normalizedEvent}`', metrika)
+        self.assertIn("enableDemoMetrika(state)", app)
+        self.assertNotIn("initialDemoState", app)
+        for page in (auth, venues, venue):
+            self.assertNotIn("/metrika.js", page)
+
+    def test_demo_locale_is_never_persisted_to_the_shared_demo_account(self):
+        venue_api = (FRONTEND / "app" / "venue-api.js").read_text(encoding="utf-8")
+        settings = (FRONTEND / "settings.html").read_text(encoding="utf-8")
+
+        demo_branch = venue_api[
+            venue_api.index("if (demoState?.demo_mode)") : venue_api.index(
+                "} else if", venue_api.index("if (demoState?.demo_mode)")
+            )
+        ]
+        self.assertNotIn("/me/profile", demo_branch)
+        self.assertIn("if (!demoReadonly)", settings)
+
+    def test_i18n_observer_batches_dynamic_content_and_ignores_code(self):
+        i18n = (FRONTEND / "i18n.js").read_text(encoding="utf-8")
+
+        self.assertIn("script, style, noscript, template, [data-i18n-ignore]", i18n)
+        self.assertIn("observer = new MutationObserver(() => {", i18n)
+        self.assertIn("scheduleTranslation();", i18n)
+
+    def test_frontend_csp_allows_metrika_session_replay(self):
+        csp = (PROJECT_ROOT / "ops" / "nginx" / "axelio-security-headers.conf").read_text(encoding="utf-8")
+
+        self.assertIn("https://yastatic.net", csp)
+        self.assertIn("https://mc.webvisor.com", csp)
+        self.assertIn("wss://mc.yandex.ru", csp)
+        self.assertIn("child-src blob: https://mc.yandex.ru", csp)
+        self.assertIn("frame-src blob: https://mc.yandex.ru", csp)
+        self.assertIn("https://metrika.yandex.ru", csp)
 
 
 class PrimaryPageUiPolishContractTests(TestCase):
@@ -647,7 +663,7 @@ class AppFacadeSplitContractTests(TestCase):
             self.assertIn(f"/app/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
-        consumer_pattern = re.compile(r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260813-i18n1[\"']")
+        consumer_pattern = re.compile(r"import\s*\{([\s\S]*?)\}\s*from\s*[\"']/app\.js\?v=20260820-i18nmetrika1[\"']")
         consumer_count = 0
         for path in FRONTEND.rglob("*"):
             if path.suffix not in {".js", ".mjs", ".html"}:

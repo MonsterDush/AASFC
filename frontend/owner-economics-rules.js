@@ -9,7 +9,7 @@ import {
   getMyVenuePermissions,
   api,
   toast,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 import { roleUpper } from "/permissions.js";
 
 const state = { access: { canManage: false } };
@@ -26,7 +26,7 @@ function fmtMoneyMinor(minor) {
   if (minor === null || minor === undefined || minor === "") return "—";
   const rub = Number(minor || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(rub) + " ₽";
   } catch {
     return `${rub.toFixed(2)} ₽`;
   }
@@ -36,7 +36,7 @@ function fmtPercentBps(bps) {
   if (bps === null || bps === undefined || bps === "") return "—";
   const pct = Number(bps || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(pct) + "%";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(pct) + "%";
   } catch {
     return `${pct.toFixed(2)}%`;
   }

@@ -17,7 +17,7 @@ import {
   getStoredDemoUiState,
   getDemoMonthLabel,
   mountDemoPageTour,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
 import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
@@ -888,7 +888,7 @@ function fmtMoney(n) {
   if (n === null || n === undefined) return "—";
   const v = Math.round(Number(n));
   if (!isFinite(v)) return "—";
-  return v.toLocaleString("ru-RU");
+  return v.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"));
 }
 
 function shiftDonePrefix(item) {

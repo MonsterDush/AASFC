@@ -29,7 +29,7 @@ import {
   updatePayComponent,
   deletePayComponent,
   patchInviteDefaultPosition,
-} from "/app.js?v=20260813-i18n1";
+} from "/app.js?v=20260820-i18nmetrika1";
 
 import {
   roleUpper,
@@ -80,7 +80,7 @@ const COMPONENT_LABELS = {
 function fmtMoneyMinor(minor) {
   const value = Number(minor || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " ₽";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " ₽";
   } catch {
     return value.toFixed(2) + " ₽";
   }
@@ -89,7 +89,7 @@ function fmtMoneyMinor(minor) {
 function fmtPercentBps(bps) {
   const value = Number(bps || 0) / 100;
   try {
-    return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + "%";
+    return new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + "%";
   } catch {
     return value.toFixed(2) + "%";
   }
@@ -547,7 +547,7 @@ function fmtDateTime(value) {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function roleLabel(value) {

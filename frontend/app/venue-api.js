@@ -42,13 +42,16 @@ export function createVenueApi(context) {
 
   async function getMe({ timeoutMs = 8000 } = {}) {
     const me = await withTimeout(api("/me"), timeoutMs, "ME_TIMEOUT");
+    const demoState = storeDemoUiState(me);
     const profileLocale = String(me?.preferred_locale || "").toLowerCase();
     const currentLocale = window.AxelioI18n?.getLocale?.();
     const requestedLocale = String(new URLSearchParams(location.search).get("lang") || "")
       .trim()
       .toLowerCase()
       .split(/[-_]/, 1)[0];
-    if (["ru", "en"].includes(requestedLocale)) {
+    if (demoState?.demo_mode) {
+      me.preferred_locale = ["ru", "en"].includes(requestedLocale) ? requestedLocale : currentLocale;
+    } else if (["ru", "en"].includes(requestedLocale)) {
       me.preferred_locale = requestedLocale;
       if (profileLocale !== requestedLocale) {
         void api("/me/profile", {
@@ -70,7 +73,6 @@ export function createVenueApi(context) {
         body: { preferred_locale: currentLocale },
       }).catch(() => {});
     }
-    const demoState = storeDemoUiState(me);
     if (demoState?.demo_mode) { mountDemoBanner(demoState); maybeTrackDemoPageView(demoState); }
     else removeDemoBanner();
     return me;

@@ -42,9 +42,11 @@ curl --compressed -sS -D - -o /dev/null https://app.axelio.ru/app.js | \
   grep -Ei 'content-encoding: gzip|etag:'
 ```
 
-The frontend CSP allows framing only by Telegram Web. Do not add
+The frontend CSP allows framing by Telegram Web and the explicitly listed
+Yandex Metrica viewers used for Session Replay and behavior maps. Do not add
 `X-Frame-Options: DENY` to app responses: Telegram web clients load Mini Apps
-in an iframe. FastAPI keeps `X-Frame-Options: DENY` for API responses.
+in an iframe, while Metrica needs its documented frame and WebSocket sources.
+FastAPI keeps `X-Frame-Options: DENY` for API responses.
 
 Do not replace an unknown server configuration automatically. The activator
 uses the existing Axelio security include as its reviewed insertion marker;

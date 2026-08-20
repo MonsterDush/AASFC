@@ -16,8 +16,8 @@
       } catch {}
     })();
   </script>
-  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
-  <script src="/page-loader.js?v=20260813-i18n5"></script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>
+  <script src="/page-loader.js?v=20260820-i18n6"></script>
   <title>Axelio · Админ · DEMO</title>
 </head>
 <body class="admin-demo-page">
@@ -135,7 +135,7 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour, cacheSystemRole } from "/app.js?v=20260813-i18n1";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, API_BASE, resetDemoTour, cacheSystemRole } from "/app.js?v=20260820-i18nmetrika1";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");
@@ -179,7 +179,7 @@
   const resetStaffTourBtn = document.getElementById('resetStaffTourBtn');
 
   function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
-  function monthLabel(year, month){ const y=Number(year||0), m=Number(month||0); if(!y||!m) return '—'; return new Date(y, Math.max(0,m-1), 1).toLocaleDateString('ru-RU', { month:'long', year:'numeric' }); }
+  function monthLabel(year, month){ const y=Number(year||0), m=Number(month||0); if(!y||!m) return '—'; return new Date(y, Math.max(0,m-1), 1).toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { month:'long', year:'numeric' }); }
   function boolBadge(v, yes='Да', no='Нет'){ return v ? yes : no; }
   function compactJson(v){ try { return JSON.stringify(v ?? {}, null, 2); } catch { return String(v ?? ''); } }
 

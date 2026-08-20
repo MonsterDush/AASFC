@@ -15,9 +15,8 @@
       } catch {}
     })();
   </script>
-  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
-  <script src="/page-loader.js?v=20260813-i18n5"></script>
-  <script defer src="/metrika.js?v=20260811-direct1"></script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>
+  <script src="/page-loader.js?v=20260820-i18n6"></script>
   <title>Axelio · Авторизация</title>
 </head>
 <body class="auth-page">
@@ -134,7 +133,7 @@
       api,
       toast,
       mountLogo,
-    } from "/app.js?v=20260813-i18n1";
+    } from "/app.js?v=20260820-i18nmetrika1";
 
     applyTelegramTheme();
     mountLogo();
@@ -464,7 +463,6 @@
         toast("Пароль обновлён", "ok");
       } else {
         await setPasswordAfterPhoneVerify(phone, smsCode, password, callVerified ? callChallengeId : null);
-        await window.axelioTrackMetrikaGoal?.("signup_success");
         toast("Номер подтверждён, пароль сохранён", "ok");
       }
       clearCallTimers();

@@ -16,8 +16,8 @@
       } catch {}
     })();
   </script>
-  <script type="module" src="/i18n-bootstrap.js?v=20260813-i18n5"></script>
-  <script src="/page-loader.js?v=20260813-i18n5"></script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>
+  <script src="/page-loader.js?v=20260820-i18n6"></script>
   <title>Axelio · DEMO аналитика</title>
 </head>
 <body class="admin-demo-analytics-page">
@@ -140,7 +140,7 @@
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
 
 <script type="module">
-  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, cacheSystemRole } from "/app.js?v=20260813-i18n1";
+  import { applyTelegramTheme, mountCommonUI, ensureLogin, api, toast, mountNav, cacheSystemRole } from "/app.js?v=20260820-i18nmetrika1";
 
   applyTelegramTheme();
   mountCommonUI("admin-demo");
@@ -192,12 +192,12 @@
   function pct(v){ return v == null ? "—" : `${Number(v).toFixed(1)}%`; }
   function compactDate(iso){
     if (!iso) return "—";
-    try { return new Date(iso).toLocaleString("ru-RU", { dateStyle:"short", timeStyle:"short" }); }
+    try { return new Date(iso).toLocaleString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { dateStyle:"short", timeStyle:"short" }); }
     catch { return String(iso); }
   }
   function dateLabel(iso){
     if (!iso) return "—";
-    try { return new Date(`${iso}T00:00:00Z`).toLocaleDateString("ru-RU", { day:"2-digit", month:"short" }); }
+    try { return new Date(`${iso}T00:00:00Z`).toLocaleDateString((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { day:"2-digit", month:"short" }); }
     catch { return String(iso); }
   }
   function monthLabel(value){ const idx = Number(value || 1) - 1; return monthNames[idx] || String(value); }
