@@ -97,6 +97,7 @@ systemd-run \
   --property="WorkingDirectory=${PROD_APP_ROOT}/repo" \
   --property="EnvironmentFile=${backend_env}" \
   --property="EnvironmentFile=${backup_env}" \
+  --property=Environment=RCLONE_CONFIG=/etc/axelio/rclone.conf \
   --property="Environment=BACKUP_DIR=${backup_dir}" \
   --property=Environment=BACKUP_REQUIRE_OFFSITE=true \
   --property="Environment=RELEASE_VERSION=${RELEASE_SHA}" \
