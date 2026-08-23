@@ -282,9 +282,13 @@ def telegram_api_proxy(payload: TelegramApiIn, request: Request):
         raise HTTPException(status_code=400, detail="Unsupported Telegram API method")
     result = _telegram_api_post(TG_BOT_TOKEN, method, payload.payload or {})
     if not result.get("ok"):
-        sanitized = dict(result)
-        sanitized["error"] = "Telegram request failed"
-        return sanitized
+        return {
+            "ok": False,
+            "retryable": bool(result.get("retryable")),
+            "status_code": result.get("status_code"),
+            "error": "Telegram request failed",
+            "result": None,
+        }
     return result
 
 
