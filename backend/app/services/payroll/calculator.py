@@ -85,6 +85,7 @@ from .payroll_types import (
     MINIMUM_GUARANTEE_MONTH as MINIMUM_GUARANTEE_MONTH,
     MINIMUM_GUARANTEE_SHIFT,
     KPI_CALCULATION_PERCENT,
+    KPI_CALCULATION_PER_UNIT,
     PAY_COMPONENT_TYPES as PAY_COMPONENT_TYPES,
     PayrollCalculationResult,
     PayrollKpiBonusDecision as PayrollKpiBonusDecision,
@@ -212,7 +213,10 @@ def calculate_payroll_for_month(
                     )
             kpi_metric_value = 0
             if component.kpi_metric_id is not None:
-                if component_type == "KPI_BONUS" and _kpi_calculation_mode(component) == KPI_CALCULATION_PERCENT:
+                if component_type == "KPI_BONUS" and _kpi_calculation_mode(component) in {
+                    KPI_CALCULATION_PERCENT,
+                    KPI_CALCULATION_PER_UNIT,
+                }:
                     kpi_metric_value = _sum_kpi_for_worked_shifts(
                         kpi_metrics,
                         metric_id=int(component.kpi_metric_id),
@@ -384,8 +388,18 @@ def calculate_payroll_for_month(
                 breakdown_item["kpi_calculation_mode"] = kpi_decision.calculation_mode
                 breakdown_item["percent_bps"] = kpi_decision.percent_bps
                 breakdown_item["base_amount_minor"] = kpi_decision.base_amount_minor
-                if kpi_decision.calculation_mode == KPI_CALCULATION_PERCENT:
+                if kpi_decision.calculation_mode in {KPI_CALCULATION_PERCENT, KPI_CALCULATION_PER_UNIT}:
                     breakdown_item["scope_title"] = "по закрытым сменам сотрудника"
+                    metric_values = kpi_metrics.values_by_metric_date_slot.get(int(component.kpi_metric_id or 0), {})
+                    report_keys = {
+                        (shift.shift_date, str(shift.shift_slot or "DAY").strip().upper())
+                        for shift in metrics.worked_shifts
+                    }
+                    values_by_date_slot: dict[str, dict[str, int]] = {}
+                    for report_date, report_slot in report_keys:
+                        date_values = values_by_date_slot.setdefault(report_date.isoformat(), {})
+                        date_values[report_slot] = int(metric_values.get((report_date, report_slot), 0) or 0)
+                    breakdown_item["metric_values_by_date_slot"] = values_by_date_slot
             breakdown_items.append(breakdown_item)
             shift_allocations = _component_shift_allocations(
                 component=component,

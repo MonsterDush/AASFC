@@ -222,8 +222,12 @@ function breakdownComponentMeta(component) {
     const metricValue = component?.metric_value != null ? ` · факт ${component.metric_value}` : "";
     const thresholdValue = component?.threshold_value != null ? ` · порог ${component.threshold_value}` : "";
     const matchedStep = component?.matched_step?.threshold_value != null ? ` · ступень ${component.matchedStep?.threshold_value}` : "";
-    if (String(component?.kpi_calculation_mode || "FIXED").toUpperCase() === "PERCENT") {
+    const calculationMode = String(component?.kpi_calculation_mode || "FIXED").toUpperCase();
+    if (calculationMode === "PERCENT") {
       return `${label}${metricTitle}${metricValue} · ${fmtPercentBps(component?.percent_bps || 0)} от KPI${thresholdValue} · по закрытым сменам`;
+    }
+    if (calculationMode === "PER_UNIT") {
+      return `${label}${metricTitle}${metricValue} · ${fmtMoneyMinor(component?.source_rate_minor || 0)} за единицу${thresholdValue} · по закрытым сменам`;
     }
     return `${label}${metricTitle}${metricValue}${thresholdValue}${matchedStep}`;
   }
@@ -286,6 +290,9 @@ function breakdownKv(component) {
     if (component?.kpi_metric_title) push('KPI', component.kpi_metric_title);
     if (component?.metric_value != null) push('Факт KPI', String(component.metric_value));
     if (component?.threshold_value != null) push('Порог', String(component.threshold_value));
+    if (String(component?.kpi_calculation_mode || '').toUpperCase() === 'PER_UNIT') {
+      push('Ставка за единицу', fmtMoneyMinor(component?.source_rate_minor || 0));
+    }
   }
   if (type === 'SALARY_HOURLY' || type === 'SALARY_PER_SHIFT') {
     const unit = type === 'SALARY_HOURLY' ? '/ час' : '/ смена';
@@ -321,6 +328,9 @@ function breakdownExplain(component) {
     return parts.join(' ');
   }
   if (type === 'KPI_BONUS') {
+    if (String(component?.kpi_calculation_mode || '').toUpperCase() === 'PER_UNIT') {
+      return 'Бонус = ставка за единицу × факт KPI по закрытым сменам сотрудника.';
+    }
     if (component?.matched_step?.threshold_value != null) return 'Сработала подходящая ступень KPI-бонуса.';
     return 'Фиксированный бонус за выполнение KPI.';
   }

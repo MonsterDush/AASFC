@@ -73,10 +73,10 @@ const sizeLimits = {
 };
 for (const [fileName, limit] of Object.entries(sizeLimits)) {
   assert.ok(moduleSources[fileName].split("\n").length < limit, `${fileName} is too large`);
-  const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260820-weekdayrates1";
+  const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260823-kpiperunit1";
   assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /owner-pay-profile\.js\?v=20260820-weekdayrates1/);
+assert.match(htmlSource, /owner-pay-profile\.js\?v=20260823-kpiperunit1/);
 
 const state = {
   can: { view: true, manage: true },
@@ -135,6 +135,7 @@ for (const fieldId of [
   assert.ok(formHtml.includes(`id="${fieldId}"`), `${fieldId} is missing from the component form`);
 }
 assert.match(formHtml, /option value="2" selected>Кухня<\/option>/);
+assert.match(formHtml, /option value="PER_UNIT"/);
 const hourlyFormHtml = componentForm({
   mode: "edit",
   item: { component_type: "SALARY_HOURLY", rate_minor: 50000, weekday_rates: [{ weekday: 5, rate_minor: 65000 }], is_active: true },

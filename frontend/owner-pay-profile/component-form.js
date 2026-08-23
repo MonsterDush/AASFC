@@ -279,7 +279,7 @@ function componentForm({ mode, item }) {
       <div class="form-section" id="f_kpi_section">
         <div class="form-section__head">
           <div class="form-section__title">KPI-бонус</div>
-          <div class="form-section__subtitle">Для бонуса можно использовать фиксированную сумму или ступени по мере роста значения KPI.</div>
+          <div class="form-section__subtitle">Используй фикс, ступени, процент от KPI в ₽ или сумму за каждую единицу количественного KPI.</div>
         </div>
         <div class="form-section__grid">
           ${hasKpiMetrics ? `
@@ -300,6 +300,7 @@ function componentForm({ mode, item }) {
             <select id="f_kpi_calculation_mode">
               <option value="FIXED" ${kpiCalculationMode === "FIXED" ? "selected" : ""}>Фиксированная сумма / ступени</option>
               <option value="PERCENT" ${kpiCalculationMode === "PERCENT" ? "selected" : ""}>Процент от значения KPI</option>
+              <option value="PER_UNIT" ${kpiCalculationMode === "PER_UNIT" ? "selected" : ""}>Сумма за каждую единицу KPI</option>
             </select>
           </label>
           <label id="f_threshold_wrap">
@@ -321,7 +322,7 @@ function componentForm({ mode, item }) {
           </div>
           <div id="f_steps_rows">${stepsRowsMarkup(it.steps)}</div>
         </div>
-        <div id="f_steps_hint" class="form-inline-note">В фиксированном режиме можно использовать обычный порог или ступени. Процентный режим доступен для KPI в рублях и считается по закрытым сменам сотрудника.</div>
+        <div id="f_steps_hint" class="form-inline-note">FIXED — фикс или ступени. PERCENT — только KPI в ₽. PER_UNIT — только количественный KPI (QTY), ставка умножается на факт по закрытым сменам сотрудника.</div>
       </div>
     </div>
 
