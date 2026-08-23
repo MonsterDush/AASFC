@@ -235,7 +235,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
             self.assertNotRegex(source, r'<a\s+class="[^"]*btn subtle', str(path.relative_to(FRONTEND)))
         loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
         self.assertIn("button[data-nav-button]", loader)
-        self.assertIn('typeof button.href === "string"', loader)
+        self.assertIn('Reflect.get(button, "href")', loader)
 
         ledger_html = (FRONTEND / "owner-finance-ledger.html").read_text(encoding="utf-8")
         ledger_script = (FRONTEND / "owner-finance-ledger.js").read_text(encoding="utf-8")
