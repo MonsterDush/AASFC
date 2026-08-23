@@ -167,8 +167,14 @@
     const isSmsEnabled = () => Boolean(phoneAuthConfig?.sms_enabled);
 
     function getSafeNext() {
-      if (!next || /\/auth\.html(\?|$)/i.test(next)) return "/";
-      return next;
+      try {
+        const target = new URL(String(next || "/"), location.origin);
+        if (target.origin !== location.origin || !["http:", "https:"].includes(target.protocol)) return "/";
+        if (/\/auth\.html$/i.test(target.pathname || "")) return "/";
+        return `${target.pathname || "/"}${target.search || ""}${target.hash || ""}`;
+      } catch {
+        return "/";
+      }
     }
 
     function buildTelegramMiniAppUrl(botUsername) {

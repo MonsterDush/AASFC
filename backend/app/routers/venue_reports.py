@@ -1,4 +1,7 @@
 from fastapi import APIRouter
+from pathlib import Path
+
+from app.core.upload_storage import confined_upload_storage_path, ensure_upload_root, new_upload_storage_path
 
 from app.routers.venue_core import (
     BackgroundTasks,
@@ -44,7 +47,6 @@ from app.routers.venue_core import (
     select,
     sync_daily_recurring_accruals_for_date,
     normalize_shift_slot,
-    uuid,
 )
 from app.routers.venue_common import (
     _can_show_financial_values_for_user,
@@ -57,6 +59,8 @@ from app.routers.venue_permissions import (
     _is_report_maker,
     _require_report_maker,
 )
+
+
 from app.routers.venue_payroll_support import (
     _recalculate_payroll_for_dates,
 )
@@ -66,6 +70,9 @@ from app.routers.venue_economics_notifications import (
     _enqueue_soft_alerts_job,
     process_pending_notification_jobs_once,
 )
+
+
+_REPORT_UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads" / "reports"
 
 
 router = APIRouter()
@@ -896,10 +903,16 @@ def download_report_attachment(
     ).scalar_one_or_none()
     if a is None:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    if not os.path.exists(a.storage_path):
+    try:
+        storage_path = confined_upload_storage_path(_REPORT_UPLOAD_ROOT, a.storage_path)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="File missing")
+    if not storage_path.exists():
         raise HTTPException(status_code=404, detail="File missing")
 
-    return FileResponse(a.storage_path, media_type=a.content_type or "application/octet-stream", filename=a.file_name)
+    return FileResponse(
+        str(storage_path), media_type=a.content_type or "application/octet-stream", filename=a.file_name
+    )
 
 
 @router.delete("/{venue_id}/reports/{report_date}/attachments/{attachment_id}")
@@ -933,8 +946,9 @@ def delete_report_attachment(
 
     # best-effort remove file
     try:
-        if a.storage_path and os.path.exists(a.storage_path):
-            os.remove(a.storage_path)
+        storage_path = confined_upload_storage_path(_REPORT_UPLOAD_ROOT, a.storage_path)
+        if storage_path.exists():
+            storage_path.unlink()
     except Exception:
         pass
 
@@ -976,8 +990,7 @@ def upload_report_attachments(
         db.add(rep)
         db.commit()
 
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "reports"))
-    os.makedirs(base_dir, exist_ok=True)
+    base_dir = ensure_upload_root(_REPORT_UPLOAD_ROOT)
 
     allowed_ext = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
     max_bytes = 12 * 1024 * 1024  # 12MB per file
@@ -994,12 +1007,8 @@ def upload_report_attachments(
         if f.content_type and not str(f.content_type).startswith("image/"):
             raise HTTPException(status_code=415, detail=f"Unsupported content_type: {f.content_type}")
 
-        uid = uuid.uuid4().hex
-        dst = os.path.join(
-            base_dir,
-            f"{venue_id}_{report_date.isoformat()}_{normalized_shift_slot}_{uid}_{safe_name}",
-        )
-        with open(dst, "wb") as out:
+        dst = new_upload_storage_path(base_dir)
+        with dst.open("wb") as out:
             total = 0
             while True:
                 chunk = f.file.read(1024 * 1024)
@@ -1009,7 +1018,7 @@ def upload_report_attachments(
                 if total > max_bytes:
                     try:
                         out.close()
-                        os.remove(dst)
+                        dst.unlink()
                     except Exception:
                         pass
                     raise HTTPException(status_code=413, detail="File too large (max 12MB)")
@@ -1021,7 +1030,7 @@ def upload_report_attachments(
             shift_slot=normalized_shift_slot,
             file_name=safe_name,
             content_type=f.content_type,
-            storage_path=dst,
+            storage_path=str(dst),
             uploaded_by_user_id=user.id,
             is_active=True,
         )

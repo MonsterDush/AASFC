@@ -114,10 +114,24 @@ class DemoFixtureResetResult:
 
 
 def _resolve_fixture_path(fixture_path: str | None = None) -> Path:
-    raw = str(fixture_path or getattr(settings, "DEMO_FIXTURE_PATH", "") or DEFAULT_DEMO_FIXTURE_PATH).strip()
+    configured = str(getattr(settings, "DEMO_FIXTURE_PATH", "") or DEFAULT_DEMO_FIXTURE_PATH).strip()
+    raw = str(fixture_path or configured).strip()
     path = Path(raw)
     if not path.is_absolute():
         path = (BACKEND_ROOT / path).resolve()
+    else:
+        path = path.resolve()
+
+    # Runtime configuration is trusted and may intentionally point at a mounted
+    # path outside the checkout. Explicit overrides originate from maintenance
+    # CLI commands and must stay inside the backend tree.
+    if fixture_path is not None:
+        try:
+            path.relative_to(BACKEND_ROOT)
+        except ValueError as exc:
+            raise ValueError("Custom DEMO fixture path must stay inside the backend directory") from exc
+    if path.suffix.lower() != ".json":
+        raise ValueError("DEMO fixture path must use the .json extension")
     return path
 
 
@@ -738,8 +752,8 @@ def get_demo_fixture_status(db: Session, *, fixture_path: str | None = None) -> 
     if exists:
         try:
             meta = json.loads(path.read_text(encoding="utf-8")).get("meta", {}) or {}
-        except Exception as exc:
-            meta = {"error": str(exc)}
+        except Exception:
+            meta = {"error": "Fixture JSON could not be parsed"}
 
     venue = (
         db.execute(

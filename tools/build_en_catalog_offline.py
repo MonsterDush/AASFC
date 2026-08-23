@@ -10,7 +10,6 @@ FRONTEND_DIR = REPO_DIR / "frontend"
 BACKEND_APP_DIR = REPO_DIR / "backend" / "app"
 CATALOG_PATH = FRONTEND_DIR / "locales" / "en.json"
 TRANSLATABLE_ATTRIBUTES = {"placeholder", "title", "aria-label", "alt"}
-SCRIPT_RE = re.compile(r"<script(?:\s[^>]*)?>([\s\S]*?)</script>", re.IGNORECASE)
 SOURCE_OVERRIDES = {
     "2 990 ₽ за 30 дней для одного заведения": "RUB 2,990 for 30 days for one venue",
     "Axelio · Админ · Заведения": "Axelio · Admin · Venues",
@@ -272,6 +271,33 @@ class StaticTextParser(HTMLParser):
             self.add(data)
 
 
+class ScriptContentParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.scripts: list[str] = []
+        self._script_depth = 0
+        self._chunks: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "script":
+            return
+        self._script_depth += 1
+        if self._script_depth == 1:
+            self._chunks = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() != "script" or not self._script_depth:
+            return
+        self._script_depth -= 1
+        if self._script_depth == 0:
+            self.scripts.append("".join(self._chunks))
+            self._chunks = []
+
+    def handle_data(self, data: str) -> None:
+        if self._script_depth:
+            self._chunks.append(data)
+
+
 def collect_code_sources(code: str) -> set[str]:
     sources: set[str] = set()
     for chunk in re.split(r"""["'`<>{}\n\r;]""", code):
@@ -295,7 +321,9 @@ def collect_sources() -> list[str]:
         parser = StaticTextParser()
         parser.feed(raw)
         sources.update(parser.sources)
-        for script in SCRIPT_RE.findall(raw):
+        script_parser = ScriptContentParser()
+        script_parser.feed(raw)
+        for script in script_parser.scripts:
             sources.update(collect_code_sources(script))
     for file in sorted(FRONTEND_DIR.rglob("*.js")):
         if file.name in {"i18n.js", "i18n-bootstrap.js"}:
