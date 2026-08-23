@@ -170,7 +170,6 @@
       return finished;
     },
   };
-
   overlayTimer = setTimeout(ensureOverlay, OVERLAY_DELAY_MS);
   hardTimer = setTimeout(() => finish("timeout"), HARD_TIMEOUT_MS);
   if (domReady) onDomReady();
