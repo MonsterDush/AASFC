@@ -45,8 +45,12 @@ function componentSubtitle(item) {
   if (type === "KPI_BONUS") {
     const metricTitle = kpiMetricTitleFor(item);
     const threshold = item.threshold_value != null ? ` · порог ${item.threshold_value}` : "";
-    if (String(item.kpi_calculation_mode || "FIXED").toUpperCase() === "PERCENT") {
+    const calculationMode = String(item.kpi_calculation_mode || "FIXED").toUpperCase();
+    if (calculationMode === "PERCENT") {
       return `${COMPONENT_LABELS[type]}${metricTitle ? ` · ${metricTitle}` : ""} · ${support.fmtPercentBps(item.percent_bps)} от KPI${threshold} · по закрытым сменам сотрудника`;
+    }
+    if (calculationMode === "PER_UNIT") {
+      return `${COMPONENT_LABELS[type]}${metricTitle ? ` · ${metricTitle}` : ""} · ${fmtMoneyMinor(item.rate_minor)} за единицу${threshold} · по закрытым сменам сотрудника`;
     }
     const stepsCount = Array.isArray(item.steps) && item.steps.length ? ` · ступеней: ${item.steps.length}` : "";
     return `${COMPONENT_LABELS[type]}${metricTitle ? ` · ${metricTitle}` : ""}${threshold}${stepsCount}${item.amount_minor != null ? ` · ${fmtMoneyMinor(item.amount_minor)}` : ""}`;

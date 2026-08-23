@@ -22,7 +22,11 @@ from app.services.payroll.calculator import (
     MINIMUM_GUARANTEE_MONTH,
     MINIMUM_GUARANTEE_SHIFT,
 )
-from app.services.payroll.payroll_types import KPI_CALCULATION_FIXED, KPI_CALCULATION_PERCENT
+from app.services.payroll.payroll_types import (
+    KPI_CALCULATION_FIXED,
+    KPI_CALCULATION_PERCENT,
+    KPI_CALCULATION_PER_UNIT,
+)
 from app.services.payroll.weekday_rates import (
     WEEKDAY_RATE_COMPONENT_TYPES,
     normalize_weekday_rates,
@@ -552,8 +556,12 @@ def _validate_pay_component_fields(
     if component_type == "KPI_BONUS":
         if kpi_metric_id is None:
             raise HTTPException(status_code=400, detail="kpi_metric_id is required for KPI_BONUS")
-        if normalized_kpi_calculation_mode not in {KPI_CALCULATION_FIXED, KPI_CALCULATION_PERCENT}:
-            raise HTTPException(status_code=400, detail="kpi_calculation_mode must be FIXED or PERCENT")
+        if normalized_kpi_calculation_mode not in {
+            KPI_CALCULATION_FIXED,
+            KPI_CALCULATION_PERCENT,
+            KPI_CALCULATION_PER_UNIT,
+        }:
+            raise HTTPException(status_code=400, detail="kpi_calculation_mode must be FIXED, PERCENT or PER_UNIT")
         if normalized_kpi_calculation_mode == KPI_CALCULATION_PERCENT:
             if str(kpi_metric_unit or "").strip().upper() != "RUB":
                 raise HTTPException(status_code=400, detail="PERCENT KPI bonus requires a KPI metric with RUB unit")
@@ -561,6 +569,14 @@ def _validate_pay_component_fields(
                 raise HTTPException(status_code=400, detail="percent_bps is required for percentage KPI_BONUS")
             if steps_json:
                 raise HTTPException(status_code=400, detail="steps_json is not supported for percentage KPI_BONUS")
+            return
+        if normalized_kpi_calculation_mode == KPI_CALCULATION_PER_UNIT:
+            if str(kpi_metric_unit or "").strip().upper() != "QTY":
+                raise HTTPException(status_code=400, detail="PER_UNIT KPI bonus requires a KPI metric with QTY unit")
+            if rate_minor is None:
+                raise HTTPException(status_code=400, detail="rate_minor is required for PER_UNIT KPI_BONUS")
+            if steps_json:
+                raise HTTPException(status_code=400, detail="steps_json is not supported for PER_UNIT KPI_BONUS")
             return
         has_steps = False
         if isinstance(steps_json, list):

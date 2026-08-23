@@ -992,9 +992,13 @@ function breakdownMetaHtml(c) {
   }
   if (type === "KPI_BONUS") {
     const threshold = c?.threshold_value ?? "—";
-    if (String(c?.kpi_calculation_mode || "FIXED").toUpperCase() === "PERCENT") {
+    const calculationMode = String(c?.kpi_calculation_mode || "FIXED").toUpperCase();
+    if (calculationMode === "PERCENT") {
       const percent = (Number(c?.percent_bps || 0) / 100).toFixed(2);
       return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || "показатель")} · факт по вашим закрытым сменам: ${esc(c.metric_value ?? 0)} ₽ · ${esc(percent)}%</div>`;
+    }
+    if (calculationMode === "PER_UNIT") {
+      return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || "показатель")} · факт по вашим закрытым сменам: ${esc(c.metric_value ?? 0)} · ${esc(formatMoneyMinor(c?.source_rate_minor || 0))} ₽ за единицу</div>`;
     }
     return `<div class="muted small mt-4">KPI: ${esc(c.kpi_metric_title || "показатель")} · факт: ${esc(c.metric_value ?? 0)} · порог: ${esc(threshold)}</div>`;
   }
@@ -1050,6 +1054,9 @@ function breakdownKvHtml(c) {
     if (snap.amount_before_minimum_minor != null || c.amount_before_minimum_minor != null) push('Было начислено', formatMoneyMinor(snap.amount_before_minimum_minor ?? c.amount_before_minimum_minor));
     if (snap.minimum_applied_shifts_count != null || c.minimum_applied_shifts_count != null) push('Смен с доплатой', `${snap.minimum_applied_shifts_count ?? c.minimum_applied_shifts_count} из ${snap.shifts_count ?? c.shifts_count ?? 0}`);
   }
+  if (type === 'KPI_BONUS' && String(c?.kpi_calculation_mode || '').toUpperCase() === 'PER_UNIT') {
+    push('Ставка за единицу', `${formatMoneyMinor(c?.source_rate_minor || 0)} ₽`);
+  }
   if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
     push('База', formatMoneyMinor(snap.base_amount_minor || c.base_amount_minor || 0));
     if (snap.base_scope_title || c.base_scope_title) push('База расчёта', snap.base_scope_title || c.base_scope_title);
@@ -1082,6 +1089,9 @@ function breakdownExplain(component) {
     return parts.join(' ');
   }
   if (type === 'KPI_BONUS') {
+    if (String(component?.kpi_calculation_mode || '').toUpperCase() === 'PER_UNIT') {
+      return 'Бонус = ставка за единицу × факт KPI по вашим закрытым сменам.';
+    }
     if (component?.matched_step?.threshold_value != null) return 'Сработала подходящая ступень KPI-бонуса.';
     return 'Фиксированный бонус за выполнение KPI.';
   }

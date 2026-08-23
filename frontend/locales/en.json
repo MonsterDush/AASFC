@@ -4255,5 +4255,16 @@
   "ставка дня ✓": "weekday rate ✓",
   "ставки по дням:": "rates by day:",
   "Ставка по дню недели:": "Weekday rate:",
-  "смен за сутки": "shifts that day"
+  "смен за сутки": "shifts that day",
+  "за единицу": "per unit",
+  "Ставка за единицу, ₽": "Rate per unit, RUB",
+  "Ставку за единицу можно использовать только для количественного KPI (QTY": "Per-unit rate can only be used with a quantity KPI (QTY",
+  "Укажи ставку за единицу KPI в рублях": "Enter the KPI rate per unit in RUB",
+  "Используй фикс, ступени, процент от KPI в ₽ или сумму за каждую единицу количественного KPI.": "Use a fixed bonus, tiers, a percentage of a monetary KPI, or an amount for each unit of a quantity KPI.",
+  "Сумма за каждую единицу KPI": "Amount for each KPI unit",
+  "фикс или ступени. PERCENT — только KPI в ₽. PER_UNIT — только количественный KPI (QTY), ставка умножается на факт по закрытым сменам сотрудника.": "fixed amount or tiers. PERCENT is only for monetary KPIs. PER_UNIT is only for quantity KPIs (QTY); the rate is multiplied by the actual value from the employee's closed shifts.",
+  "Ставка за единицу": "Rate per unit",
+  "Бонус = ставка за единицу × факт KPI по закрытым сменам сотрудника.": "Bonus = rate per unit × actual KPI value from the employee's closed shifts.",
+  "Бонус = ставка за единицу × факт KPI по вашим закрытым сменам.": "Bonus = rate per unit × actual KPI value from your closed shifts.",
+  "ед.": "units"
 }
