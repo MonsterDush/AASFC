@@ -105,10 +105,9 @@ function syncComponentSummary() {
   } else if (type === 'KPI_BONUS') {
     if (kpiMetric?.title) bits.push(kpiMetric.title);
     if (thresholdValue) bits.push(`порог ${thresholdValue}`);
-    if (kpiCalculationMode === 'PERCENT') {
-      if (percentBps != null) bits.push(`${fmtPercentBps(percentBps)} от KPI`);
-      bits.push('по закрытым сменам сотрудника');
-    }
+    if (kpiCalculationMode === 'PERCENT' && percentBps != null) bits.push(`${fmtPercentBps(percentBps)} от KPI`);
+    if (kpiCalculationMode === 'PER_UNIT' && rateMinor != null) bits.push(`${fmtMoneyMinor(rateMinor)} за единицу`);
+    if (["PERCENT", "PER_UNIT"].includes(kpiCalculationMode)) bits.push('по закрытым сменам сотрудника');
   }
   if ((type === 'SALARY_HOURLY' || type === 'SALARY_PER_SHIFT') && weekdayRates.length) {
     const weekdayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -339,16 +338,18 @@ function syncComponentFields() {
 
   if (type === "KPI_BONUS") {
     [kpiSection, kpiMetricWrap, kpiMetricHint, kpiCalculationModeWrap, thresholdWrap, stepsHint].forEach((element) => setVisible(element, true));
-    if (thresholdLabel) {
-      thresholdLabel.textContent = kpiCalculationMode === "PERCENT"
-        ? `Минимальное значение KPI, необязательно${selectedBonusMetric ? ` (${String(selectedBonusMetric.unit || 'QTY').toUpperCase()})` : ''}`
-        : `Порог KPI${selectedBonusMetric ? ` (${String(selectedBonusMetric.unit || 'QTY').toUpperCase()})` : ''}`;
-    }
+    const scopedKpiMode = ["PERCENT", "PER_UNIT"].includes(kpiCalculationMode);
+    if (thresholdLabel) thresholdLabel.textContent = scopedKpiMode
+      ? `Минимальное значение KPI, необязательно${selectedBonusMetric ? ` (${String(selectedBonusMetric.unit || 'QTY').toUpperCase()})` : ''}`
+      : `Порог KPI${selectedBonusMetric ? ` (${String(selectedBonusMetric.unit || 'QTY').toUpperCase()})` : ''}`;
     setVisible(useStepsWrap, kpiCalculationMode === "FIXED");
     setVisible(stepsWrap, kpiCalculationMode === "FIXED" && useSteps);
     if (kpiCalculationMode === "PERCENT") {
       setVisible(percentWrap, true);
       if (percentLabel) percentLabel.textContent = "Процент от значения KPI";
+    } else if (kpiCalculationMode === "PER_UNIT") {
+      setVisible(rateWrap, true);
+      if (rateLabel) rateLabel.textContent = "Ставка за единицу, ₽";
     } else if (!useSteps) {
       setVisible(amountWrap, true);
       if (amountLabel) amountLabel.textContent = "Бонус, ₽";
@@ -584,20 +585,17 @@ function openComponentEditor({ mode, item = null }) {
         return;
       }
       payload.kpi_metric_id = Number(kpiMetricRaw);
-      payload.kpi_calculation_mode = kpiCalculationMode === "PERCENT" ? "PERCENT" : "FIXED";
+      payload.kpi_calculation_mode = ["PERCENT", "PER_UNIT"].includes(kpiCalculationMode) ? kpiCalculationMode : "FIXED";
       if (thresholdRaw) payload.threshold_value = Number(thresholdRaw);
+      const selectedMetric = findKpiMetricById(payload.kpi_metric_id);
       if (payload.kpi_calculation_mode === "PERCENT") {
-        const selectedMetric = findKpiMetricById(payload.kpi_metric_id);
-        if (selectedMetric && String(selectedMetric.unit || "").toUpperCase() !== "RUB") {
-          toast("Процент можно считать только от KPI с единицей ₽", "warn");
-          return;
-        }
-        const percentBps = parsePercentInputToBps(percentRaw);
-        if (percentBps === null) {
-          toast("Укажи процент от KPI, например 5", "warn");
-          return;
-        }
-        payload.percent_bps = percentBps;
+        if (selectedMetric && String(selectedMetric.unit || "").toUpperCase() !== "RUB") { toast("Процент можно считать только от KPI с единицей ₽", "warn"); return; }
+        payload.percent_bps = parsePercentInputToBps(percentRaw);
+        if (payload.percent_bps === null) { toast("Укажи процент от KPI, например 5", "warn"); return; }
+      } else if (payload.kpi_calculation_mode === "PER_UNIT") {
+        if (selectedMetric && String(selectedMetric.unit || "").toUpperCase() !== "QTY") { toast("Ставку за единицу можно использовать только для количественного KPI (QTY)", "warn"); return; }
+        payload.rate_minor = parseMoneyRubToMinor(rateMinorRaw);
+        if (payload.rate_minor === null) { toast("Укажи ставку за единицу KPI в рублях", "warn"); return; }
       } else if (useSteps) {
         const parsedSteps = readStepsBuilder();
         if (parsedSteps === false) {

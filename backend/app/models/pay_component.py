@@ -24,7 +24,7 @@ class PayComponent(Base):
             "threshold_value IS NULL OR threshold_value >= 0", name="ck_pay_components_threshold_value_non_negative"
         ),
         CheckConstraint(
-            "kpi_calculation_mode in ('FIXED','PERCENT')",
+            "kpi_calculation_mode in ('FIXED','PERCENT','PER_UNIT')",
             name="ck_pay_components_kpi_calculation_mode",
         ),
         CheckConstraint(

@@ -11,6 +11,7 @@ from .payroll_types import (
     MINIMUM_GUARANTEE_SHIFT,
     KPI_CALCULATION_FIXED,
     KPI_CALCULATION_PERCENT,
+    KPI_CALCULATION_PER_UNIT,
     PAY_COMPONENT_TYPES,
     PayrollKpiBonusDecision,
     PayrollMemberMetrics,
@@ -24,7 +25,9 @@ from .weekday_rates import salary_shift_rows
 
 def _kpi_calculation_mode(component: PayComponent) -> str:
     raw = str(getattr(component, "kpi_calculation_mode", "") or "").strip().upper()
-    return KPI_CALCULATION_PERCENT if raw == KPI_CALCULATION_PERCENT else KPI_CALCULATION_FIXED
+    if raw in {KPI_CALCULATION_PERCENT, KPI_CALCULATION_PER_UNIT}:
+        return raw
+    return KPI_CALCULATION_FIXED
 
 
 def parse_month_start(month: str) -> date:
@@ -147,6 +150,22 @@ def calculate_kpi_bonus(
             calculation_mode=calculation_mode,
             percent_bps=percent_bps,
             base_amount_minor=base_amount_minor,
+        )
+
+    if calculation_mode == KPI_CALCULATION_PER_UNIT:
+        rate_minor = int(getattr(component, "rate_minor", 0) or 0)
+        amount_minor = (
+            max(0, metric_value) * rate_minor
+            if threshold_value is None or metric_value >= threshold_value
+            else 0
+        )
+        return PayrollKpiBonusDecision(
+            amount_minor=int(amount_minor),
+            metric_value=metric_value,
+            threshold_value=threshold_value,
+            matched_step=None,
+            steps=[],
+            calculation_mode=calculation_mode,
         )
 
     steps = _parse_steps_json(getattr(component, "steps_json", None))
@@ -511,7 +530,10 @@ def _component_shift_allocations(
             date_amounts = _allocate_minor_by_keys(int(amount_minor), worked_dates, date_weights)
         return _split_date_amounts_to_shifts(metrics, date_amounts, weight_by_minutes=False)
 
-    if component_type == "KPI_BONUS" and _kpi_calculation_mode(component) == KPI_CALCULATION_PERCENT:
+    if component_type == "KPI_BONUS" and _kpi_calculation_mode(component) in {
+        KPI_CALCULATION_PERCENT,
+        KPI_CALCULATION_PER_UNIT,
+    }:
         metric_id = int(getattr(component, "kpi_metric_id", 0) or 0)
         metric_values = (kpi_values_by_metric_date_slot or {}).get(metric_id, {})
         shifts_by_report: dict[tuple[date, str], list[int]] = {}

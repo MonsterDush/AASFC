@@ -7,6 +7,7 @@ from unittest import TestCase
 from fastapi import HTTPException
 
 from app.routers.venue_pay_profile_support import _validate_pay_component_fields
+from app.services.payroll.day_breakdown import DayAllocationContext, _component_allocation_for_day
 from app.services.payroll.calculator import (
     BASE_SCOPE_FULL_PERIOD,
     BASE_SCOPE_WORKED_DATES,
@@ -193,6 +194,29 @@ class PayrollCalculationHelpersTests(TestCase):
         decision = calculate_kpi_bonus(component, kpi_metric_value=49_999)
         self.assertEqual(decision.amount_minor, 0)
 
+    def test_per_unit_kpi_bonus_multiplies_quantity_by_rate(self):
+        component = SimpleNamespace(
+            component_type="KPI_BONUS",
+            kpi_calculation_mode="PER_UNIT",
+            rate_minor=22_000,
+            threshold_value=None,
+            steps_json=None,
+        )
+        decision = calculate_kpi_bonus(component, kpi_metric_value=2)
+        self.assertEqual(decision.amount_minor, 44_000)
+        self.assertEqual(decision.calculation_mode, "PER_UNIT")
+
+    def test_per_unit_kpi_bonus_respects_optional_threshold(self):
+        component = SimpleNamespace(
+            component_type="KPI_BONUS",
+            kpi_calculation_mode="PER_UNIT",
+            rate_minor=22_000,
+            threshold_value=3,
+            steps_json=None,
+        )
+        self.assertEqual(calculate_kpi_bonus(component, kpi_metric_value=2).amount_minor, 0)
+        self.assertEqual(calculate_kpi_bonus(component, kpi_metric_value=3).amount_minor, 66_000)
+
     def test_percentage_kpi_uses_only_unique_worked_report_slots(self):
         d1 = date(2026, 7, 10)
         metrics = PayrollMemberMetrics(
@@ -243,6 +267,56 @@ class PayrollCalculationHelpersTests(TestCase):
             },
         )
         self.assertEqual(allocations, {1: 500_000, 2: 200_000})
+
+    def test_per_unit_kpi_shift_allocation_follows_report_values(self):
+        d1 = date(2026, 7, 10)
+        metrics = PayrollMemberMetrics(
+            worked_shifts=[
+                PayrollWorkedShift(shift_id=1, shift_date=d1, shift_slot="DAY", minutes=480),
+                PayrollWorkedShift(shift_id=2, shift_date=d1, shift_slot="NIGHT", minutes=480),
+            ]
+        )
+        component = SimpleNamespace(component_type="KPI_BONUS", kpi_calculation_mode="PER_UNIT", kpi_metric_id=9)
+        allocations = _component_shift_allocations(
+            component=component,
+            amount_minor=66_000,
+            metrics=metrics,
+            month_start=date(2026, 7, 1),
+            month_end_excl=date(2026, 8, 1),
+            revenue_metrics=PayrollRevenueMetrics(),
+            kpi_values_by_metric_date_slot={9: {(d1, "DAY"): 2, (d1, "NIGHT"): 1}},
+        )
+        self.assertEqual(allocations, {1: 44_000, 2: 22_000})
+
+    def test_per_unit_kpi_day_breakdown_uses_employee_scoped_values(self):
+        d1, d2 = date(2026, 7, 10), date(2026, 7, 11)
+        context = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[d1, d2],
+            worked_dates=[d1, d2],
+            minutes_by_date={d1: 480, d2: 480},
+            shifts_by_date={d1: 1, d2: 1},
+            revenue_by_date_minor={},
+            department_revenue_by_date_minor={},
+            kpi_by_date={9: {d1: 10, d2: 10}},
+        )
+        component = {
+            "component_type": "KPI_BONUS",
+            "title": "Допродажи",
+            "amount_minor": 66_000,
+            "kpi_metric_id": 9,
+            "kpi_metric_title": "Допродажи",
+            "kpi_calculation_mode": "PER_UNIT",
+            "source_rate_minor": 22_000,
+            "metric_values_by_date_slot": {
+                d1.isoformat(): {"DAY": 1},
+                d2.isoformat(): {"DAY": 2},
+            },
+        }
+        row = _component_allocation_for_day(component=component, target_date=d1, context=context)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["amount_minor"], 22_000)
+        self.assertIn("220 ₽ × 1 ед.", row["formula_text"])
 
 
 class PayComponentValidationTests(TestCase):
@@ -304,6 +378,32 @@ class PayComponentValidationTests(TestCase):
             kpi_calculation_mode="PERCENT",
             kpi_metric_unit="RUB",
         )
+
+    def test_per_unit_kpi_accepts_qty_metric_and_rate(self):
+        _validate_pay_component_fields(
+            component_type="KPI_BONUS",
+            amount_minor=None,
+            rate_minor=22_000,
+            percent_bps=None,
+            department_id=None,
+            kpi_metric_id=9,
+            kpi_calculation_mode="PER_UNIT",
+            kpi_metric_unit="QTY",
+        )
+
+    def test_per_unit_kpi_rejects_wrong_unit_or_missing_rate(self):
+        for unit, rate_minor in (("RUB", 22_000), ("QTY", None)):
+            with self.subTest(unit=unit, rate_minor=rate_minor), self.assertRaises(HTTPException):
+                _validate_pay_component_fields(
+                    component_type="KPI_BONUS",
+                    amount_minor=None,
+                    rate_minor=rate_minor,
+                    percent_bps=None,
+                    department_id=None,
+                    kpi_metric_id=9,
+                    kpi_calculation_mode="PER_UNIT",
+                    kpi_metric_unit=unit,
+                )
 
     def test_salary_accrual_day_is_only_metadata_for_fixed_month(self):
         _validate_pay_component_fields(

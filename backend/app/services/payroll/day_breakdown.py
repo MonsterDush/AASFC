@@ -638,8 +638,19 @@ def _component_allocation_for_day(
             formula_text = f"Доплата до месячного минимума {_fmt_money_minor(int(target_minor or 0))}"
     elif component_type == "KPI_BONUS":
         metric_id = int(component.get("kpi_metric_id") or 0)
-        metric_weights = context.kpi_by_date.get(metric_id, {})
-        weights = {day: int(metric_weights.get(day, 0)) for day in ordered_dates}
+        scoped_values = component.get("metric_values_by_date_slot")
+        if isinstance(scoped_values, dict):
+            metric_weights = {}
+            for day in ordered_dates:
+                day_values = scoped_values.get(day.isoformat(), {})
+                if context.shift_slot in {"DAY", "NIGHT"}:
+                    value = day_values.get(context.shift_slot, 0) if isinstance(day_values, dict) else 0
+                else:
+                    value = sum(int(item or 0) for item in day_values.values()) if isinstance(day_values, dict) else 0
+                metric_weights[day] = max(0, int(value or 0))
+        else:
+            metric_weights = context.kpi_by_date.get(metric_id, {})
+        weights = {day: max(0, int(metric_weights.get(day, 0) or 0)) for day in ordered_dates}
         metric_title = str(component.get("kpi_metric_title") or "KPI").strip()
         base_text = f"{int(metric_weights.get(target_date, 0) or 0)} из {sum(weights.values())}"
         calculation_mode = str(component.get("kpi_calculation_mode") or "FIXED").strip().upper()
@@ -647,6 +658,11 @@ def _component_allocation_for_day(
         if calculation_mode == "PERCENT":
             percent_bps = int(component.get("percent_bps") or component.get("source_percent_bps") or 0)
             formula_text = f"{percent_bps / 100:.2f}% от {metric_title} по закрытым сменам сотрудника"
+        elif calculation_mode == "PER_UNIT":
+            rate_minor = int(component.get("source_rate_minor") or 0)
+            formula_text = (
+                f"{_fmt_money_minor(rate_minor)} × {int(metric_weights.get(target_date, 0) or 0)} ед. {metric_title}"
+            )
         elif matched_step:
             formula_text = f"{metric_title}: сработала ступень ≥ {int(matched_step.get('threshold_value') or 0)}"
         else:
