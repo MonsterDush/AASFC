@@ -367,6 +367,30 @@ function resolveDemoSwitchNextPath(targetPersona, state = null) {
   return current;
 }
 
+function escapeDemoHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function safeDemoNavigationUrl(value, fallback = "https://axelio.ru") {
+  if (!isBrowser()) return String(fallback || "https://axelio.ru");
+  const parseAllowed = (candidate) => {
+    try {
+      const target = new URL(String(candidate || ""), location.origin);
+      const isCurrentOrigin = target.origin === location.origin && ["http:", "https:"].includes(target.protocol);
+      const isPublicSite = target.protocol === "https:" && ["axelio.ru", "www.axelio.ru"].includes(target.hostname.toLowerCase());
+      return isCurrentOrigin || isPublicSite ? target.href : null;
+    } catch {
+      return null;
+    }
+  };
+  return parseAllowed(value) || parseAllowed(fallback) || "https://axelio.ru/";
+}
+
 async function switchDemoPersona(targetPersona, buttonEl = null) {
   const currentState = getStoredDemoUiState();
   const persona = String(targetPersona || "OWNER").toUpperCase();
@@ -379,7 +403,7 @@ async function switchDemoPersona(targetPersona, buttonEl = null) {
       skipDemoReadonlyToast: true,
     });
     storeDemoUiState(out);
-    location.href = out?.redirect_url || nextPath || "/";
+    location.href = safeDemoNavigationUrl(out?.redirect_url, nextPath || "/");
   } catch (e) {
     toast(e?.data?.detail || e?.message || "Не удалось переключить DEMO-режим", "err");
   } finally {
@@ -391,10 +415,10 @@ async function exitDemoMode(buttonEl = null) {
   if (buttonEl) buttonEl.disabled = true;
   try {
     const currentState = getStoredDemoUiState();
-    const fallbackReturnUrl = currentState?.demo_banner?.return_url || "https://axelio.ru";
+    const fallbackReturnUrl = safeDemoNavigationUrl(currentState?.demo_banner?.return_url, "https://axelio.ru");
     const out = await api("/auth/demo/exit", { method: "POST", skipDemoReadonlyToast: true });
     clearDemoUiState();
-    location.href = out?.redirect_url || fallbackReturnUrl;
+    location.href = safeDemoNavigationUrl(out?.redirect_url, fallbackReturnUrl);
   } catch (e) {
     toast(e?.data?.detail || e?.message || "Не удалось выйти из DEMO", "err");
   } finally {
@@ -403,7 +427,7 @@ async function exitDemoMode(buttonEl = null) {
 }
 
 async function exitDemoModeToUrl(targetUrl, { buttonEl = null, fallbackUrl = null } = {}) {
-  const safeTargetUrl = String(targetUrl || "").trim() || String(fallbackUrl || "https://axelio.ru").trim() || "https://axelio.ru";
+  const safeTargetUrl = safeDemoNavigationUrl(targetUrl, fallbackUrl || "https://axelio.ru");
   if (buttonEl) buttonEl.disabled = true;
   try {
     await api("/auth/demo/exit", { method: "POST", skipDemoReadonlyToast: true });
@@ -418,9 +442,12 @@ function buildDemoBannerMarkup(state) {
   const persona = String(state?.demo_persona || "OWNER").toUpperCase();
   const banner = state?.demo_banner || {};
   const monthLabel = state?.demo_month_label || formatDemoMonthLabel(state?.demo_reference_year, state?.demo_reference_month);
-  const returnUrl = String(banner.return_url || "https://axelio.ru");
-  const primaryUrl = String(banner.primary_cta_url || "https://axelio.ru/#contact");
-  const secondaryUrl = String(banner.secondary_cta_url || "https://axelio.ru/#contact");
+  const returnUrl = safeDemoNavigationUrl(banner.return_url, "https://axelio.ru");
+  const primaryUrl = safeDemoNavigationUrl(banner.primary_cta_url, "https://axelio.ru/#contact");
+  const secondaryUrl = safeDemoNavigationUrl(banner.secondary_cta_url, "https://axelio.ru/#contact");
+  const returnUrlAttr = escapeDemoHtml(returnUrl);
+  const primaryUrlAttr = escapeDemoHtml(primaryUrl);
+  const secondaryUrlAttr = escapeDemoHtml(secondaryUrl);
   return `
     <div class="demo-banner__bar" role="region" aria-label="Пробный режим Axelio">
       <span class="demo-banner__pill demo-banner__pill--brand">Пробный режим Axelio</span>
@@ -428,11 +455,11 @@ function buildDemoBannerMarkup(state) {
         <button type="button" role="tab" aria-selected="${persona === "OWNER" ? "true" : "false"}" class="demo-banner__segbtn ${persona === "OWNER" ? "is-active" : ""}" data-demo-persona="OWNER">Владелец</button>
         <button type="button" role="tab" aria-selected="${persona === "STAFF" ? "true" : "false"}" class="demo-banner__segbtn ${persona === "STAFF" ? "is-active" : ""}" data-demo-persona="STAFF">Персонал</button>
       </div>
-      <span class="demo-banner__pill demo-banner__pill--muted">${monthLabel}</span>
+      <span class="demo-banner__pill demo-banner__pill--muted">${escapeDemoHtml(monthLabel)}</span>
       <button type="button" class="demo-banner__link" data-demo-tour-open="1">Экскурсия</button>
-      <a class="demo-banner__link" href="${returnUrl}" data-demo-cta="site" data-demo-exit-link="1" data-demo-url="${returnUrl}">На сайт</a>
-      <a class="demo-banner__link demo-banner__link--primary" href="${primaryUrl}" data-demo-cta="primary" data-demo-exit-link="1" data-demo-url="${primaryUrl}">${String(banner.primary_cta_label || "Оставить заявку")}</a>
-      <a class="demo-banner__link" href="${secondaryUrl}" data-demo-cta="secondary" data-demo-exit-link="1" data-demo-url="${secondaryUrl}">${String(banner.secondary_cta_label || "Начать пользоваться")}</a>
+      <a class="demo-banner__link" href="${returnUrlAttr}" data-demo-cta="site" data-demo-exit-link="1" data-demo-url="${returnUrlAttr}">На сайт</a>
+      <a class="demo-banner__link demo-banner__link--primary" href="${primaryUrlAttr}" data-demo-cta="primary" data-demo-exit-link="1" data-demo-url="${primaryUrlAttr}">${escapeDemoHtml(banner.primary_cta_label || "Оставить заявку")}</a>
+      <a class="demo-banner__link" href="${secondaryUrlAttr}" data-demo-cta="secondary" data-demo-exit-link="1" data-demo-url="${secondaryUrlAttr}">${escapeDemoHtml(banner.secondary_cta_label || "Начать пользоваться")}</a>
     </div>`;
 }
 

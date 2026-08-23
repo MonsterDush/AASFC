@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -26,13 +26,15 @@ router = APIRouter(prefix="/admin/demo", tags=["admin-demo"])
 
 
 class DemoExportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     venue_id: int | None = Field(default=None, ge=1)
-    fixture_path: str | None = Field(default=None, max_length=500)
 
 
 class DemoResetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     venue_id: int | None = Field(default=None, ge=1)
-    fixture_path: str | None = Field(default=None, max_length=500)
 
 
 class DemoEnableIn(BaseModel):
@@ -46,6 +48,8 @@ class DemoDisableIn(BaseModel):
 
 
 class DemoBootstrapIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     venue_id: int | None = Field(default=None, ge=1)
     venue_name: str | None = Field(default=None, max_length=200)
     reference_year: int | None = Field(default=None, ge=2020, le=2100)
@@ -53,7 +57,6 @@ class DemoBootstrapIn(BaseModel):
     history_months: int = Field(default=1, ge=1, le=24)
     make_public: bool = True
     export_fixture_after: bool = True
-    fixture_path: str | None = Field(default=None, max_length=500)
 
 
 class DemoPublishTemplateIn(BaseModel):
@@ -156,7 +159,7 @@ def admin_demo_export_fixture(
         target_venue_id = int(template_venue.id) if template_venue else 0
     if not target_venue_id:
         raise HTTPException(status_code=400, detail="Сначала укажи venue_id или настрой DEMO venue")
-    result = export_demo_fixture(db, venue_id=target_venue_id, fixture_path=payload.fixture_path)
+    result = export_demo_fixture(db, venue_id=target_venue_id)
     db.commit()
     return {
         "ok": True,
@@ -173,11 +176,11 @@ def admin_demo_reset_fixture(
     payload: DemoResetIn, db: Session = Depends(get_db), user: User = Depends(require_super_admin)
 ):
     try:
-        result = reset_demo_fixture(db, fixture_path=payload.fixture_path, venue_id=payload.venue_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        result = reset_demo_fixture(db, venue_id=payload.venue_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="DEMO fixture not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid DEMO fixture")
     db.commit()
     return {
         "ok": True,
@@ -312,10 +315,10 @@ def admin_demo_bootstrap(
             history_months=int(payload.history_months),
             make_public=bool(payload.make_public),
             export_fixture_after=bool(payload.export_fixture_after),
-            export_fixture_path=payload.fixture_path,
+            export_fixture_path=None,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid DEMO bootstrap parameters")
     db.commit()
     return {
         "ok": True,

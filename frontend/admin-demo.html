@@ -55,7 +55,7 @@
         <div class="demo-admin-form mt-12">
           <label class="field"><span class="muted">Venue ID</span><input id="venueId" type="number" min="1" placeholder="ID demo venue" /></label>
           <label class="field"><span class="muted">Название DEMO venue</span><input id="venueName" type="text" placeholder="Axelio DEMO · Hookah Lounge" /></label>
-          <label class="field"><span class="muted">Файл fixture</span><input id="fixturePath" type="text" placeholder="app/demo/demo_fixture.json" /></label>
+          <div class="field"><span class="muted">Файл fixture</span><b>Путь задаётся только в конфигурации сервера</b></div>
           <label class="field"><span class="muted">Reference year</span><input id="referenceYear" type="number" min="2020" max="2100" placeholder="2026" /></label>
           <label class="field"><span class="muted">Reference month</span><input id="referenceMonth" type="number" min="1" max="12" placeholder="3" /></label>
           <label class="field"><span class="muted">Публичный DEMO</span><select id="makePublicSel"><option value="1">Да</option><option value="0">Нет</option></select></label>
@@ -157,7 +157,6 @@
   const refreshBtn = document.getElementById('refreshBtn');
   const venueIdEl = document.getElementById('venueId');
   const venueNameEl = document.getElementById('venueName');
-  const fixturePathEl = document.getElementById('fixturePath');
   const referenceYearEl = document.getElementById('referenceYear');
   const referenceMonthEl = document.getElementById('referenceMonth');
   const makePublicSel = document.getElementById('makePublicSel');
@@ -208,7 +207,6 @@
     if (venue && !venueNameEl.value && venue.name) venueNameEl.value = venue.name;
     if (venue && !referenceYearEl.value && venue.demo_reference_year) referenceYearEl.value = venue.demo_reference_year;
     if (venue && !referenceMonthEl.value && venue.demo_reference_month) referenceMonthEl.value = venue.demo_reference_month;
-    if (!fixturePathEl.value && data?.fixture_path) fixturePathEl.value = data.fixture_path;
 
     kpis.innerHTML = `
       <div class="demo-admin-kpi"><div class="muted">Public DEMO</div><b>${boolBadge(data?.enabled, 'Включено', 'Выключено')}</b></div>
@@ -259,11 +257,10 @@
   function currentPayload(){
     const venueId = Number(venueIdEl.value || 0) || null;
     const venueName = venueNameEl.value.trim() || null;
-    const fixturePath = fixturePathEl.value.trim() || null;
     const referenceYear = Number(referenceYearEl.value || 0) || null;
     const referenceMonth = Number(referenceMonthEl.value || 0) || null;
     const makePublic = String(makePublicSel?.value || '1') === '1';
-    return { venueId, venueName, fixturePath, referenceYear, referenceMonth, makePublic };
+    return { venueId, venueName, referenceYear, referenceMonth, makePublic };
   }
 
   refreshBtn.addEventListener('click', loadStatus);
@@ -281,7 +278,6 @@
         reference_month: p.referenceMonth,
         make_public: p.makePublic,
         export_fixture_after: true,
-        fixture_path: p.fixturePath,
       }),
       headers: { 'Content-Type': 'application/json' },
     });
@@ -331,10 +327,10 @@
     const p = currentPayload();
     const out = await api('/admin/demo/export-fixture', {
       method: 'POST',
-      body: JSON.stringify({ venue_id: p.venueId, fixture_path: p.fixturePath }),
+      body: JSON.stringify({ venue_id: p.venueId }),
       headers: { 'Content-Type': 'application/json' },
     });
-    toast(`Fixture сохранён: ${out?.fixture_path || p.fixturePath || 'готово'}`);
+    toast(`Fixture сохранён: ${out?.fixture_path || 'готово'}`);
     await loadStatus();
   });
 
@@ -343,7 +339,7 @@
     if (!confirm('Сбросить DEMO из fixture? Текущие demo-данные будут перезаписаны.')) return;
     const out = await api('/admin/demo/reset', {
       method: 'POST',
-      body: JSON.stringify({ venue_id: p.venueId, fixture_path: p.fixturePath }),
+      body: JSON.stringify({ venue_id: p.venueId }),
       headers: { 'Content-Type': 'application/json' },
     });
     toast(`DEMO восстановлен из fixture (${out?.venue_name || 'ok'})`);
