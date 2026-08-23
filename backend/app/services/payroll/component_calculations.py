@@ -155,9 +155,7 @@ def calculate_kpi_bonus(
     if calculation_mode == KPI_CALCULATION_PER_UNIT:
         rate_minor = int(getattr(component, "rate_minor", 0) or 0)
         amount_minor = (
-            max(0, metric_value) * rate_minor
-            if threshold_value is None or metric_value >= threshold_value
-            else 0
+            max(0, metric_value) * rate_minor if threshold_value is None or metric_value >= threshold_value else 0
         )
         return PayrollKpiBonusDecision(
             amount_minor=int(amount_minor),
