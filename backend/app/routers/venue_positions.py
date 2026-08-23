@@ -81,7 +81,7 @@ def list_positions(
         for code in ("POSITIONS_VIEW", "POSITIONS_MANAGE", "SHIFTS_VIEW", "SHIFTS_MANAGE"):
             try:
                 require_venue_permission(db, venue_id=venue_id, user=user, permission_code=code)
-                allowed = True 
+                allowed = True
                 break
             except HTTPException:
                 pass
