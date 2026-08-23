@@ -120,7 +120,10 @@
     const button = eventTarget?.closest("button[data-nav-button]");
     if (!(button instanceof HTMLButtonElement)) return;
     if (button.disabled) return;
-    const target = button.dataset.href || button.getAttribute("href");
+    const target =
+      button.dataset.href ||
+      button.getAttribute("href") ||
+      (typeof button.href === "string" ? button.href : "");
     if (!target || target === "#") return;
     event.preventDefault();
     window.location.assign(String(target));
