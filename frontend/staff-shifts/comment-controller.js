@@ -346,7 +346,9 @@ export function createStaffShiftCommentController(context) {
 
     const scrollToComment = (commentId, highlight = false) => {
       if (!commentId) return;
-      const target = document.querySelector(`[data-comment-id="${String(commentId).replace(/"/g, '\\"')}"]`);
+      const normalizedCommentId = String(commentId);
+      const target = Array.from(document.querySelectorAll("[data-comment-id]"))
+        .find((candidate) => candidate.getAttribute("data-comment-id") === normalizedCommentId);
       if (!target) return;
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       if (highlight) {

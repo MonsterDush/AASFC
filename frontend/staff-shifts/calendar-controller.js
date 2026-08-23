@@ -138,8 +138,9 @@ export function createStaffShiftCalendarController(context) {
 
     // update selected style
     document.querySelectorAll('.cal-cell--selected').forEach(x => x.classList.remove('cal-cell--selected'));
-    const esc = (window.CSS && CSS.escape) ? CSS.escape(String(dateStr)) : String(dateStr).replace(/"/g, "\"");
-    const cell = document.querySelector(`.cal-cell[data-date="${esc}"]`);
+    const normalizedDate = String(dateStr);
+    const cell = Array.from(document.querySelectorAll('.cal-cell[data-date]'))
+      .find((candidate) => candidate.getAttribute('data-date') === normalizedDate);
     if (cell) cell.classList.add('cal-cell--selected');
 
 

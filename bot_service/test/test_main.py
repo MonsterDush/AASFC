@@ -103,8 +103,26 @@ class TelegramHelpersTests(TestCase):
         self.assertTrue(result["ok"])
         command = run.call_args.args[0]
         self.assertIn("-4", command)
-        self.assertIn("https://api.telegram.org/bottoken/sendMessage", command)
+        api_url = "https://api.telegram.org/bottoken/sendMessage"
+        self.assertIn(api_url, command)
+        self.assertEqual(command[command.index(api_url) - 1], "--")
         self.assertEqual(run.call_args.kwargs["input"], b"chat_id=7")
+
+    def test_transport_rejects_unapproved_api_method(self):
+        for transport in (main._telegram_api_post_curl, main._telegram_api_post_urllib):
+            with self.subTest(transport=transport.__name__), self.assertRaises(ValueError):
+                transport("token", "getFile/../../admin", {})
+
+    def test_transport_does_not_return_exception_details(self):
+        with (
+            patch.dict("os.environ", {"TELEGRAM_FORCE_IPV4": "0"}),
+            patch.object(main.subprocess, "run", side_effect=RuntimeError("private stack detail")),
+            patch.object(main.log, "exception"),
+        ):
+            result = main._telegram_api_post_curl("token", "sendMessage", {})
+
+        self.assertEqual(result["error"], "Telegram transport failed")
+        self.assertNotIn("private", result["error"])
 
     def test_urllib_transport_parses_success(self):
         response = MagicMock()
@@ -168,6 +186,16 @@ class BotServiceEndpointTests(TestCase):
 
         self.assertIs(result, expected)
         telegram_post.assert_called_once_with("token", "sendMessage", {"chat_id": 7})
+
+    def test_proxy_rejects_unapproved_method(self):
+        request = SimpleNamespace(headers={"X-Bot-Secret": "expected"})
+        payload = main.TelegramApiIn(method="deleteWebhook", payload={})
+
+        with patch.object(main, "BOT_SERVICE_SECRET", "expected"), patch.object(main, "TG_BOT_TOKEN", "token"):
+            with self.assertRaises(HTTPException) as raised:
+                main.telegram_api_proxy(payload, request)
+
+        self.assertEqual(raised.exception.status_code, 400)
 
     def test_background_forwarder_logs_non_success_and_exceptions(self):
         with (

@@ -47,6 +47,8 @@ if getattr(socket.getaddrinfo, "__name__", "") != "_telegram_ipv4_getaddrinfo":
 app = FastAPI(title="Axelio Bot Service")
 log = logging.getLogger("axelio-bot")
 
+ALLOWED_TELEGRAM_API_METHODS = frozenset({"sendMessage"})
+
 
 def _validated_backend_url(value: str) -> str:
     candidate = str(value or "").strip().rstrip("/")
@@ -60,6 +62,15 @@ def _validated_backend_url(value: str) -> str:
 class TelegramApiIn(BaseModel):
     method: str = Field(..., min_length=1, max_length=80)
     payload: dict[str, Any] = Field(default_factory=dict)
+
+
+def _validated_telegram_method(value: str) -> str:
+    method = str(value or "").strip()
+    if method not in ALLOWED_TELEGRAM_API_METHODS:
+        raise ValueError("unsupported Telegram API method")
+    # Return the trusted literal instead of propagating caller-controlled text
+    # into curl/urllib URL construction.
+    return "sendMessage"
 
 
 def _normalize_telegram_error(status_code: int | None, body_text: str | None) -> tuple[bool, str | None]:
@@ -121,6 +132,7 @@ def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) ->
     On the current VPS curl -4 reaches api.telegram.org reliably while Python urllib
     may hang on the same endpoint. This transport is the default production path.
     """
+    method = _validated_telegram_method(method)
     api_url = f"https://api.telegram.org/bot{token}/{method}"
     data = _telegram_payload_to_form_bytes(payload)
     timeout_seconds = max(int(float(os.getenv("TELEGRAM_API_TIMEOUT_SECONDS", "10") or 10)), 3)
@@ -139,6 +151,7 @@ def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) ->
         "Content-Type: application/x-www-form-urlencoded",
         "--data-binary",
         "@-",
+        "--",
         api_url,
     ]
     if force_ipv4:
@@ -167,8 +180,9 @@ def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) ->
                 if stderr and not result.get("error"):
                     result["error"] = stderr[:300]
                 return result
-        except Exception as e:
-            last_error = str(e)
+        except Exception:
+            log.exception("telegram curl transport failed: method=%s", method)
+            last_error = "Telegram transport failed"
             if attempt == 2:
                 return {"ok": False, "retryable": True, "status_code": None, "error": last_error, "result": None}
         time.sleep(min(0.5 * (attempt + 1), 1.5))
@@ -183,6 +197,7 @@ def _telegram_api_post_curl(token: str, method: str, payload: dict[str, Any]) ->
 
 
 def _telegram_api_post_urllib(token: str, method: str, payload: dict[str, Any]) -> dict:
+    method = _validated_telegram_method(method)
     api_url = f"https://api.telegram.org/bot{token}/{method}"
     data = _telegram_payload_to_form_bytes(payload)
     req = urllib.request.Request(api_url, data=data, method="POST")
@@ -205,8 +220,9 @@ def _telegram_api_post_urllib(token: str, method: str, payload: dict[str, Any]) 
             last_error = result.get("error") or str(e)
             if attempt == 2 or not result.get("retryable"):
                 return result
-        except Exception as e:
-            last_error = str(e)
+        except Exception:
+            log.exception("telegram urllib transport failed: method=%s", method)
+            last_error = "Telegram transport failed"
             if attempt == 2:
                 return {"ok": False, "retryable": True, "status_code": None, "error": last_error, "result": None}
         time.sleep(min(0.35 * (attempt + 1), 1.0))
@@ -260,7 +276,11 @@ def telegram_api_proxy(payload: TelegramApiIn, request: Request):
     if not TG_BOT_TOKEN:
         raise HTTPException(status_code=500, detail="TG_BOT_TOKEN is not configured")
 
-    return _telegram_api_post(TG_BOT_TOKEN, payload.method, payload.payload or {})
+    try:
+        method = _validated_telegram_method(payload.method)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unsupported Telegram API method")
+    return _telegram_api_post(TG_BOT_TOKEN, method, payload.payload or {})
 
 
 def _forward_telegram_update_to_backend_background(raw_body: bytes, *, secret_token: str | None = None) -> None:

@@ -3389,6 +3389,7 @@
   "ФОТ, ₽": "FILE, RUB",
   "Файл": "File",
   "Файл fixture": "File fixture",
+  "Путь задаётся только в конфигурации сервера": "The path is set only in the server configuration",
   "Файл слишком большой: максимум 20 МБ": "File too large: maximum 20 MB",
   "Файл удалён": "File deleted",
   "Файлов нет": "No files",

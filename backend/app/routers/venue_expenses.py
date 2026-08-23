@@ -3,9 +3,9 @@ from __future__ import annotations
 import calendar
 from datetime import date, datetime
 import os
+from pathlib import Path
 import re
 from urllib.parse import quote
-import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import get_current_user, get_current_user_optional
 from app.auth.venue_permissions import require_venue_permission
 from app.core.db import get_db
+from app.core.upload_storage import confined_upload_storage_path, ensure_upload_root, new_upload_storage_path
 from app.models.expense import Expense
 from app.models.expense_allocation import ExpenseAllocation
 from app.models.expense_attachment import ExpenseAttachment
@@ -41,6 +42,8 @@ from app.settings import settings
 
 
 router = APIRouter()
+
+_EXPENSE_UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads" / "expenses"
 
 
 def _serialize_expense_allocation(allocation: ExpenseAllocation) -> dict:
@@ -122,10 +125,14 @@ def _verify_expense_attachment_token(token: str | None, *, venue_id: int, expens
 
 
 def _expense_attachment_file_response(attachment: ExpenseAttachment) -> FileResponse:
-    if not attachment.storage_path or not os.path.exists(attachment.storage_path):
+    try:
+        storage_path = confined_upload_storage_path(_EXPENSE_UPLOAD_ROOT, attachment.storage_path)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="File missing")
+    if not storage_path.exists():
         raise HTTPException(status_code=404, detail="File missing")
     return FileResponse(
-        attachment.storage_path,
+        str(storage_path),
         media_type=attachment.content_type or "application/octet-stream",
         filename=attachment.file_name,
     )
@@ -706,8 +713,9 @@ def delete_expense_attachment(
     attachment.is_active = False
     db.commit()
     try:
-        if attachment.storage_path and os.path.exists(attachment.storage_path):
-            os.remove(attachment.storage_path)
+        storage_path = confined_upload_storage_path(_EXPENSE_UPLOAD_ROOT, attachment.storage_path)
+        if storage_path.exists():
+            storage_path.unlink()
     except Exception:
         pass
     return {"ok": True}
@@ -724,8 +732,7 @@ def upload_expense_attachments(
     require_venue_permission(db, venue_id=venue_id, user=user, permission_code="EXPENSE_ADD")
     _get_expense_or_404(db, venue_id=venue_id, expense_id=expense_id)
 
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "expenses"))
-    os.makedirs(base_dir, exist_ok=True)
+    base_dir = ensure_upload_root(_EXPENSE_UPLOAD_ROOT)
 
     created: list[ExpenseAttachment] = []
     for upload in files:
@@ -736,11 +743,10 @@ def upload_expense_attachments(
         if ext not in _EXPENSE_ATTACHMENT_ALLOWED_EXTENSIONS:
             raise HTTPException(status_code=415, detail=f"Неподдерживаемый формат файла: {ext or 'без расширения'}")
 
-        uid = uuid.uuid4().hex
-        dst = os.path.join(base_dir, f"{venue_id}_{expense_id}_{uid}_{safe_name}")
+        dst = new_upload_storage_path(base_dir)
         total = 0
         try:
-            with open(dst, "wb") as out:
+            with dst.open("wb") as out:
                 while True:
                     chunk = upload.file.read(1024 * 1024)
                     if not chunk:
@@ -751,8 +757,8 @@ def upload_expense_attachments(
                     out.write(chunk)
         except HTTPException:
             try:
-                if os.path.exists(dst):
-                    os.remove(dst)
+                if dst.exists():
+                    dst.unlink()
             except Exception:
                 pass
             raise
@@ -763,7 +769,7 @@ def upload_expense_attachments(
             file_name=safe_name,
             content_type=upload.content_type,
             file_size=total,
-            storage_path=dst,
+            storage_path=str(dst),
             uploaded_by_user_id=user.id,
             is_active=True,
             created_at=datetime.utcnow(),

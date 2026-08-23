@@ -1220,7 +1220,8 @@ async function saveOwnAvailability(dateStr, shiftSlot, status) {
 }
 
 function renderStaffAvailability(exchange, dateStr, shift, ownAvailability) {
-  const shiftId = shift.id ?? shift.shift_id;
+  const shiftId = Number(shift.id ?? shift.shift_id);
+  if (!Number.isSafeInteger(shiftId) || shiftId <= 0) return;
   const current = ownAvailability?.status || "";
   const disabled = isPastDay(dateStr) || shiftIsClosed(shift);
   exchange.insertAdjacentHTML("beforeend", `
