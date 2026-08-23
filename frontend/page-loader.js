@@ -118,9 +118,12 @@
   document.addEventListener("click", (event) => {
     const eventTarget = event.target instanceof Element ? event.target : null;
     const button = eventTarget?.closest("button[data-nav-button]");
-    if (!(button instanceof HTMLButtonElement)) return;
-    if (button.disabled) return;
-    const target = button.dataset.href || button.getAttribute("href");
+    if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+    const propertyHref = Reflect.get(button, "href");
+    const target =
+      button.dataset.href ||
+      button.getAttribute("href") ||
+      (typeof propertyHref === "string" ? propertyHref : "");
     if (!target || target === "#") return;
     event.preventDefault();
     window.location.assign(String(target));
@@ -167,7 +170,6 @@
       return finished;
     },
   };
-
   overlayTimer = setTimeout(ensureOverlay, OVERLAY_DELAY_MS);
   hardTimer = setTimeout(() => finish("timeout"), HARD_TIMEOUT_MS);
   if (domReady) onDomReady();

@@ -338,7 +338,7 @@ assert.equal(htmlPageFiles.length, 50, "every frontend HTML page must use the gl
 for (const fileName of htmlPageFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.ok(
-    source.includes('<script src="/page-loader.js?v=20260820-assurance1"></script>'),
+    source.includes('<script src="/page-loader.js?v=20260823-navfix1"></script>'),
     `${fileName} page loader cache key is stale`,
   );
   assert.ok(
