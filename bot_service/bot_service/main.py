@@ -280,7 +280,12 @@ def telegram_api_proxy(payload: TelegramApiIn, request: Request):
         method = _validated_telegram_method(payload.method)
     except ValueError:
         raise HTTPException(status_code=400, detail="Unsupported Telegram API method")
-    return _telegram_api_post(TG_BOT_TOKEN, method, payload.payload or {})
+    result = _telegram_api_post(TG_BOT_TOKEN, method, payload.payload or {})
+    if not result.get("ok"):
+        sanitized = dict(result)
+        sanitized["error"] = "Telegram request failed"
+        return sanitized
+    return result
 
 
 def _forward_telegram_update_to_backend_background(raw_body: bytes, *, secret_token: str | None = None) -> None:
