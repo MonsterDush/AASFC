@@ -49,7 +49,7 @@ class PageLoaderContractTests(TestCase):
         self.assertEqual(len(html_pages), 50)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
-            self.assertIn("/page-loader.js?v=20260820-assurance1", source, path.name)
+            self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
             self.assertIn("/i18n-bootstrap.js?v=20260820-i18n6", source, path.name)
             self.assertIn(f"/styles.css?v={style_cache_key}", source, path.name)
 
@@ -235,6 +235,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
             self.assertNotRegex(source, r'<a\s+class="[^"]*btn subtle', str(path.relative_to(FRONTEND)))
         loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
         self.assertIn("button[data-nav-button]", loader)
+        self.assertIn('typeof button.href === "string"', loader)
 
         ledger_html = (FRONTEND / "owner-finance-ledger.html").read_text(encoding="utf-8")
         ledger_script = (FRONTEND / "owner-finance-ledger.js").read_text(encoding="utf-8")
