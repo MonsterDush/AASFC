@@ -44,7 +44,6 @@ jobs:
           ENV_NAME: ${{ inputs.environment == 'production' && 'prod' || 'dev' }}
           API_SERVICE: ${{ inputs.environment == 'production' && 'axelio-api-prod' || 'axelio-api-dev' }}
           BOT_SERVICE: ${{ inputs.environment == 'production' && 'axelio-bot-prod' || 'axelio-bot-dev' }}
-          SHIFT_TIMER: ${{ inputs.environment == 'production' && 'axelio-shift-reminders-prod.timer' || 'axelio-shift-reminders-dev.timer' }}
           NOTIFY_TIMER: ${{ inputs.environment == 'production' && 'axelio-notification-jobs-prod.timer' || 'axelio-notification-jobs-dev.timer' }}
           API_BASE_URL: ${{ inputs.environment == 'production' && 'https://api.axelio.ru' || 'https://api-dev.axelio.ru' }}
           FRONTEND_BASE_URL: ${{ inputs.environment == 'production' && 'https://app.axelio.ru' || 'https://app-dev.axelio.ru' }}
@@ -53,7 +52,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: RELEASE_SHA,CI_ACTOR,CI_RUN_URL,APP_ROOT,BRANCH,ENV_NAME,API_SERVICE,BOT_SERVICE,SHIFT_TIMER,NOTIFY_TIMER,API_BASE_URL,FRONTEND_BASE_URL
+          envs: RELEASE_SHA,CI_ACTOR,CI_RUN_URL,APP_ROOT,BRANCH,ENV_NAME,API_SERVICE,BOT_SERVICE,NOTIFY_TIMER,API_BASE_URL,FRONTEND_BASE_URL
           script: |
             set -euo pipefail
             REPO_DIR="${APP_ROOT}/repo"

@@ -26,7 +26,7 @@ support messages.
 The release installs and enables `axelio-monitor-prod.timer`. It runs every five
 minutes and checks:
 
-- API and bot services plus shift, notification, and backup timers;
+- API and bot services plus notification and backup timers;
 - `/health/ready`, database readiness, and API latency;
 - encrypted backup existence, age, checksum, and metadata;
 - failed payments during 24 hours;
@@ -39,6 +39,14 @@ historical delivery failure does not keep production permanently red.
 
 Alerts are deduplicated by the current failure set. A separate recovery message
 is sent after all checks return to green.
+
+`axelio-notification-jobs-prod.timer` is the single production scheduler for
+application notifications. Its runner processes the durable notification queue,
+payroll draft generation, draft-expense reminders, and shift reminders. The
+legacy `axelio-shift-reminders-prod.timer` must remain disabled; release tooling
+stops and disables it after deploying a consolidated runner. The equivalent dev
+timer follows the same rule. Billing, monitoring, and backup timers remain
+separate because they own independent operational workloads.
 
 Run the GitHub Actions workflow `Production assurance drill` in
 `observability` mode after changing metrics or alerts and at least quarterly.

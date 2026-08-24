@@ -56,6 +56,24 @@ class MetricsTests(TestCase):
 
 
 class MonitoringContractTests(TestCase):
+    def test_notification_runner_is_the_single_shift_reminder_scheduler(self):
+        deploy = (REPO_DIR / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
+        rollback = (REPO_DIR / ".github/workflows/rollback.yml").read_text(encoding="utf-8")
+        release = (REPO_DIR / "ops/deploy/release.sh").read_text(encoding="utf-8")
+        monitor = (REPO_DIR / "ops/monitoring/health-check.sh").read_text(encoding="utf-8")
+        monitor_unit = (REPO_DIR / "ops/systemd/axelio-monitor-prod.service").read_text(encoding="utf-8")
+        runner = (REPO_DIR / "backend/app/scripts/process_notification_jobs.py").read_text(encoding="utf-8")
+
+        for source in (deploy, rollback, monitor, monitor_unit):
+            self.assertNotIn("SHIFT_TIMER", source)
+        self.assertNotIn(': "${SHIFT_TIMER:', release)
+        self.assertNotIn('restart "${SHIFT_TIMER}"', release)
+        self.assertIn(': "${NOTIFY_TIMER:?Set NOTIFY_TIMER}"', release)
+        self.assertIn('systemctl restart "${NOTIFY_TIMER}"', release)
+        self.assertIn('disable --now "${legacy_shift_timer}"', release)
+        self.assertIn("OWNS_SHIFT_REMINDERS = True", runner)
+        self.assertIn("send_shift_reminders_once()", runner)
+
     def test_release_installs_monitor_and_records_backup_and_smoke_success(self):
         release = (REPO_DIR / "ops/deploy/release.sh").read_text(encoding="utf-8")
         backup = (REPO_DIR / "ops/backup/postgres-backup.sh").read_text(encoding="utf-8")
