@@ -20,6 +20,10 @@ from app.services.payroll.notifications import send_due_draft_expense_reminders_
 
 log = logging.getLogger(__name__)
 
+# Deployment tooling uses this explicit contract to decide whether the legacy
+# shift-reminder timer must be disabled for the checked-out release.
+OWNS_SHIFT_REMINDERS = True
+
 
 def main() -> int:
     payroll_payment_drafts = 0

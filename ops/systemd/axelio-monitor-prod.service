@@ -11,7 +11,6 @@ Environment=APP_ROOT=/var/www/axelio/prod
 Environment=API_BASE_URL=https://api.axelio.ru
 Environment=API_SERVICE=axelio-api-prod
 Environment=BOT_SERVICE=axelio-bot-prod
-Environment=SHIFT_TIMER=axelio-shift-reminders-prod.timer
 Environment=NOTIFY_TIMER=axelio-notification-jobs-prod.timer
 Environment=BACKUP_DIR=/var/backups/axelio/prod
 Environment=MONITORING_STATE_DIR=/var/lib/axelio-monitoring

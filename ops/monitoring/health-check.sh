@@ -5,7 +5,6 @@ set -euo pipefail
 : "${API_BASE_URL:?Set API_BASE_URL}"
 : "${API_SERVICE:?Set API_SERVICE}"
 : "${BOT_SERVICE:?Set BOT_SERVICE}"
-: "${SHIFT_TIMER:?Set SHIFT_TIMER}"
 : "${NOTIFY_TIMER:?Set NOTIFY_TIMER}"
 : "${BOT_SERVICE_URL:?Set BOT_SERVICE_URL}"
 : "${BOT_SERVICE_SECRET:?Set BOT_SERVICE_SECRET}"
@@ -40,7 +39,6 @@ check_active() {
 
 check_active "${API_SERVICE}"
 check_active "${BOT_SERVICE}"
-check_active "${SHIFT_TIMER}"
 check_active "${NOTIFY_TIMER}"
 check_active "axelio-backup-prod.timer"
 

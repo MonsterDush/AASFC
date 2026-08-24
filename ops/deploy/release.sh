@@ -12,7 +12,6 @@ fi
 : "${ENV_NAME:?Set ENV_NAME}"
 : "${API_SERVICE:?Set API_SERVICE}"
 : "${BOT_SERVICE:?Set BOT_SERVICE}"
-: "${SHIFT_TIMER:?Set SHIFT_TIMER}"
 : "${NOTIFY_TIMER:?Set NOTIFY_TIMER}"
 : "${API_BASE_URL:?Set API_BASE_URL}"
 : "${FRONTEND_BASE_URL:?Set FRONTEND_BASE_URL}"
@@ -45,7 +44,6 @@ validate_inputs() {
   }
   [[ "${API_SERVICE}" =~ ^axelio-api-(dev|prod)$ ]]
   [[ "${BOT_SERVICE}" =~ ^axelio-bot-(dev|prod)$ ]]
-  [[ "${SHIFT_TIMER}" =~ ^axelio-shift-reminders-(dev|prod)\.timer$ ]]
   [[ "${NOTIFY_TIMER}" =~ ^axelio-notification-jobs-(dev|prod)\.timer$ ]]
   [[ -d "${repo_dir}/.git" ]] || {
     echo "Missing repository: ${repo_dir}" >&2
@@ -213,6 +211,26 @@ run_migrations() {
   )
 }
 
+notification_runner_owns_shift_reminders() {
+  grep -Eq '^OWNS_SHIFT_REMINDERS[[:space:]]*=[[:space:]]*True$' \
+    "${backend_dir}/app/scripts/process_notification_jobs.py"
+}
+
+configure_notification_timers() {
+  local legacy_shift_timer="axelio-shift-reminders-${ENV_NAME}.timer"
+
+  sudo systemctl restart "${NOTIFY_TIMER}"
+  if notification_runner_owns_shift_reminders; then
+    # Shift reminders are part of process_notification_jobs. Keeping the old
+    # timer active would create a second scheduler for the same delivery window.
+    sudo systemctl disable --now "${legacy_shift_timer}" >/dev/null 2>&1 || true
+  else
+    # Preserve rollback compatibility for releases from before the scheduler
+    # consolidation. The current release always takes the branch above.
+    sudo systemctl enable --now "${legacy_shift_timer}"
+  fi
+}
+
 restart_services() {
   sudo install -D -m 0644 \
     "${repo_dir}/ops/nginx/axelio-security-headers.conf" \
@@ -233,8 +251,7 @@ restart_services() {
   sudo systemctl daemon-reload
   sudo systemctl restart "${API_SERVICE}"
   sudo systemctl restart "${BOT_SERVICE}"
-  sudo systemctl restart "${SHIFT_TIMER}"
-  sudo systemctl restart "${NOTIFY_TIMER}"
+  configure_notification_timers
   if [[ "${ENV_NAME}" == "prod" ]]; then
     if has_monitoring_sources; then
       sudo systemctl enable --now axelio-monitor-prod.timer
@@ -245,7 +262,6 @@ restart_services() {
   sudo systemctl reload nginx
   sudo systemctl is-active --quiet "${API_SERVICE}"
   sudo systemctl is-active --quiet "${BOT_SERVICE}"
-  sudo systemctl is-active --quiet "${SHIFT_TIMER}"
   sudo systemctl is-active --quiet "${NOTIFY_TIMER}"
   if [[ "${ENV_NAME}" == "prod" ]] && has_monitoring_sources; then
     sudo systemctl is-active --quiet axelio-monitor-prod.timer
