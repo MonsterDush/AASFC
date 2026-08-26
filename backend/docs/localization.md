@@ -5,6 +5,10 @@ the canonical authoring language; the browser applies the English catalog at
 runtime. User-created content such as venue names, comments, category titles,
 and employee names is not intentionally translated.
 
+Known system defaults shown inside editable fields may be localized for display.
+If the user leaves that localized value unchanged, Axelio preserves the original
+stored value instead of writing the translated label back to the database.
+
 ## Locale selection
 
 The browser resolves the locale in this order:
