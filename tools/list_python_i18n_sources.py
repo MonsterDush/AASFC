@@ -53,11 +53,7 @@ def docstring_nodes(tree: ast.AST) -> set[int]:
 
 def collect_file(file_path: Path) -> list[tuple[str, str]]:
     tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
-    parent_by_id = {
-        id(child): node
-        for node in ast.walk(tree)
-        for child in ast.iter_child_nodes(node)
-    }
+    parent_by_id = {id(child): node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     ignored_docstrings = docstring_nodes(tree)
     relative = str(file_path.relative_to(REPO_DIR))
     result: list[tuple[str, str]] = []
@@ -65,11 +61,7 @@ def collect_file(file_path: Path) -> list[tuple[str, str]]:
         if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
             continue
         parent = parent_by_id.get(id(node))
-        if (
-            id(node) in ignored_docstrings
-            or isinstance(parent, ast.JoinedStr)
-            or is_regex_pattern(node, parent)
-        ):
+        if id(node) in ignored_docstrings or isinstance(parent, ast.JoinedStr) or is_regex_pattern(node, parent):
             continue
         result.append((node.value, relative))
     for node in ast.walk(tree):

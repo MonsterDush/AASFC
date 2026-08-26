@@ -506,10 +506,7 @@ def main() -> None:
     catalog = {source: refine_translation(source, catalog[source]) for source in sources}
     ordered = dict(sorted(catalog.items(), key=lambda item: item[0]))
     CATALOG_PATH.write_text(json.dumps(ordered, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(
-        f"English catalog: {len(ordered)} entries "
-        f"({len(missing)} added, {len(machine_missing)} machine-translated)"
-    )
+    print(f"English catalog: {len(ordered)} entries ({len(missing)} added, {len(machine_missing)} machine-translated)")
 
 
 if __name__ == "__main__":
