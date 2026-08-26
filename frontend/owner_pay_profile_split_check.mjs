@@ -58,8 +58,8 @@ const listenerManifest = Array.from(
 
 assert.equal(apiCallManifest.length, 20);
 assert.equal(manifestHash(apiCallManifest), "740b80bd7e581f6142f8e4a9eeb14d332016a8f1ef3c1d10773d4a9d6ccfa98f");
-assert.equal(domBindingManifest.length, 178);
-assert.equal(manifestHash(domBindingManifest), "b1779dbd7acf49c2baec3b960ac335af99a96c025ab6876bc0cf4b30715aca7a");
+assert.equal(domBindingManifest.length, 179);
+assert.equal(manifestHash(domBindingManifest), "0e1c5f22a96a1952763313ac1f00932af93d059594c6be1308f4f0d0aa0c19ff");
 assert.equal(listenerManifest.length, 30);
 assert.equal(manifestHash(listenerManifest), "3089ec1b764360bbea18ec46fe4f45468a58b404b2c605196d0d0d23d6671e11");
 
@@ -73,10 +73,10 @@ const sizeLimits = {
 };
 for (const [fileName, limit] of Object.entries(sizeLimits)) {
   assert.ok(moduleSources[fileName].split("\n").length < limit, `${fileName} is too large`);
-  const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260823-kpiperunit1";
+  const cacheKey = fileName === "assignment-controller.js" ? "20260723-functional1" : "20260826-i18nvalue1";
   assert.match(mainSource, new RegExp(`/owner-pay-profile/${fileName.replace(".", "\\.")}\\?v=${cacheKey}`));
 }
-assert.match(htmlSource, /owner-pay-profile\.js\?v=20260823-kpiperunit1/);
+assert.match(htmlSource, /owner-pay-profile\.js\?v=20260826-i18nvalue1/);
 
 const state = {
   can: { view: true, manage: true },
