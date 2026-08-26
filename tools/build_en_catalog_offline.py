@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -9,6 +10,7 @@ REPO_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = REPO_DIR / "frontend"
 BACKEND_APP_DIR = REPO_DIR / "backend" / "app"
 CATALOG_PATH = FRONTEND_DIR / "locales" / "en.json"
+CURATED_OVERRIDES_PATH = REPO_DIR / "tools" / "i18n-en-curated-overrides.json"
 TRANSLATABLE_ATTRIBUTES = {"placeholder", "title", "aria-label", "alt"}
 SOURCE_OVERRIDES = {
     "2 990 ₽ за 30 дней для одного заведения": "RUB 2,990 for 30 days for one venue",
@@ -144,6 +146,7 @@ PUBLIC_COPY_OVERRIDES = {
 }
 
 SOURCE_OVERRIDES.update(PUBLIC_COPY_OVERRIDES)
+SOURCE_OVERRIDES.update(json.loads(CURATED_OVERRIDES_PATH.read_text(encoding="utf-8")))
 SOURCE_OVERRIDES.update(
     {
         "Активно": "Active",
@@ -223,6 +226,7 @@ GLOSSARY_REPLACEMENTS = (
     ("totally", "total"),
     ("FOOT", "Payroll"),
     ("FOT", "Payroll"),
+    ("POT", "Payroll"),
     ("PHOTO", "Payroll"),
     ("PayrollA", "Payroll"),
     ("PHOT", "Payroll"),
@@ -239,6 +243,13 @@ def normalize_source(value: str) -> str:
 
 def has_cyrillic(value: str) -> bool:
     return any("а" <= char.lower() <= "я" or char.lower() == "ё" for char in value)
+
+
+def replace_term(value: str, pattern: str, replacement: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        return replacement.capitalize() if match.group(0)[:1].isupper() else replacement
+
+    return re.sub(pattern, repl, value, flags=re.IGNORECASE)
 
 
 class StaticTextParser(HTMLParser):
@@ -315,25 +326,14 @@ def collect_code_sources(code: str) -> set[str]:
 
 
 def collect_sources() -> list[str]:
-    sources: set[str] = set()
-    for file in sorted(FRONTEND_DIR.glob("*.html")):
-        raw = file.read_text(encoding="utf-8")
-        parser = StaticTextParser()
-        parser.feed(raw)
-        sources.update(parser.sources)
-        script_parser = ScriptContentParser()
-        script_parser.feed(raw)
-        for script in script_parser.scripts:
-            sources.update(collect_code_sources(script))
-    for file in sorted(FRONTEND_DIR.rglob("*.js")):
-        if file.name in {"i18n.js", "i18n-bootstrap.js"}:
-            continue
-        sources.update(collect_code_sources(file.read_text(encoding="utf-8")))
-    for file in sorted(BACKEND_APP_DIR.rglob("*.py")):
-        raw = file.read_text(encoding="utf-8")
-        for match in re.finditer(r"""(?:^|[^\w])(?:[rubf]{0,3})(["'])([^\n]*?)\1""", raw, re.IGNORECASE | re.MULTILINE):
-            sources.update(collect_code_sources(match.group(2)))
-    return sorted(sources)
+    result = subprocess.run(
+        ["node", str(REPO_DIR / "tools" / "list-i18n-sources.mjs")],
+        cwd=REPO_DIR,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(result.stdout)
 
 
 def translate_missing_sources(sources: list[str]) -> dict[str, str]:
@@ -377,7 +377,7 @@ def refine_translation(source: str, translation: str) -> str:
         refined = refined.replace(old, new)
     if re.search(r"завед", source, re.IGNORECASE):
         venue_terms = re.compile(
-            r"\b(place|places|facility|facilities|building|buildings|location|locations)\b",
+            r"\b(place|places|facility|facilities|building|buildings|location|locations|house|houses)\b",
             re.IGNORECASE,
         )
 
@@ -387,6 +387,98 @@ def refine_translation(source: str, translation: str) -> str:
             return replacement.capitalize() if match.group(0)[0].isupper() else replacement
 
         refined = venue_terms.sub(replace_venue_term, refined)
+    if re.search(r"ставк", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bbet\b", "rate")
+    if re.search(r"процент", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\binterest rates?\b", "percentages")
+        refined = replace_term(refined, r"\binterest\b", "percentage")
+    if re.search(r"фикс", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bshift fix\b", "fixed pay per shift")
+        refined = replace_term(refined, r"\bfix(?:ed)? for (?:a )?shift\b", "fixed pay per shift")
+        refined = replace_term(refined, r"\bfix per shift\b", "fixed pay per shift")
+    if re.search(r"истори", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bstory\b", "history")
+    if re.search(r"шаблон", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bpatterns\b", "templates")
+        refined = replace_term(refined, r"\bpattern\b", "template")
+    if re.search(r"должност", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bposts\b", "roles")
+        refined = replace_term(refined, r"\bpost\b", "role")
+        refined = replace_term(refined, r"\bpositions\b", "roles")
+        refined = replace_term(refined, r"\bposition\b", "role")
+        refined = replace_term(refined, r"\bappointments\b", "assignments")
+        refined = replace_term(refined, r"\bappointment\b", "assignment")
+        refined = replace_term(refined, r"\bappointed\b", "assigned")
+        refined = replace_term(refined, r"\bappointing\b", "assigning")
+        refined = replace_term(refined, r"\bappoint\b", "assign")
+    if re.search(r"назнач", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bappointments\b", "assignments")
+        refined = replace_term(refined, r"\bappointment\b", "assignment")
+        refined = replace_term(refined, r"\bappointed\b", "assigned")
+        refined = replace_term(refined, r"\bappointing\b", "assigning")
+        refined = replace_term(refined, r"\bappoint\b", "assign")
+    if re.search(r"мастер", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bconfiguration master\b", "setup wizard")
+        refined = replace_term(refined, r"\bmaster(?: of settings)?\b", "setup wizard")
+    if re.search(r"начисл", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bcharges\b", "accruals")
+        refined = replace_term(refined, r"\bcharge\b", "accrual")
+    if re.search(r"расход", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bcosts\b", "expenses")
+        refined = replace_term(refined, r"\bcost\b", "expense")
+    if re.search(r"норматив", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\b(?:regulations|norms)\b", "targets")
+        refined = replace_term(refined, r"\b(?:regulation|norm)\b", "target")
+    if re.search(r"экономик\w* дня", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\b(?:the )?economy of the day\b", "daily performance")
+        refined = replace_term(refined, r"\bdaily economy\b", "daily performance")
+    if re.search(r"экономик", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\beconomics\b", "performance")
+    if re.search(r"привяз", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bbinding\b", "linking")
+        refined = replace_term(refined, r"\btied\b", "linked")
+        refined = replace_term(refined, r"\btie\b", "link")
+    if re.search(r"авторизац", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bauthorization\b", "authentication")
+    if re.search(r"сотрудник", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\bstaffers?\b", "employee")
+        refined = replace_term(refined, r"\bofficers?\b", "employee")
+    if re.search(r"прав", source, re.IGNORECASE):
+        refined = replace_term(refined, r"\b(?:access )?rights\b", "permissions")
+        refined = replace_term(refined, r"\bright\b", "permission")
+        refined = replace_term(refined, r"\bentitlements\b", "permissions")
+        refined = replace_term(refined, r"\bentitlement\b", "permission")
+    if re.search(r"сохран", source, re.IGNORECASE):
+        refined = re.sub(r"\bpreservation\b", "saving", refined, flags=re.IGNORECASE)
+        refined = re.sub(r"\bmaintain(?:ed|ing)?\b", "save", refined, flags=re.IGNORECASE)
+        refined = re.sub(r"\bretain(?:ed|ing)?\b", "save", refined, flags=re.IGNORECASE)
+    if source.startswith("Не удалось"):
+        failure_prefixes = (
+            r"^I was unable to\s+",
+            r"^I (?:could not|couldn't|couldn’t|failed to)\s+",
+            r"^We were unable to\s+",
+            r"^We (?:could not|couldn't|couldn’t|failed to)\s+",
+            r"^It was not possible to\s+",
+            r"^(?:Could not|Couldn't|Couldn’t|Unable to|Failure to)\s+",
+        )
+        for prefix in failure_prefixes:
+            refined = re.sub(prefix, "Failed to ", refined, flags=re.IGNORECASE)
+        if "загруз" in source.lower():
+            refined = re.sub(r"\b(?:download|upload)\b", "load", refined, flags=re.IGNORECASE)
+        if "сохран" in source.lower():
+            refined = re.sub(r"\b(?:maintain|retain|keep)\b", "save", refined, flags=re.IGNORECASE)
+        if "удал" in source.lower():
+            refined = re.sub(r"\bremove\b", "delete", refined, flags=re.IGNORECASE)
+        if "отрис" in source.lower():
+            refined = re.sub(r"\bdraw\b", "render", refined, flags=re.IGNORECASE)
+        if "привяз" in source.lower() or "подтянуть авторизац" in source.lower():
+            refined = re.sub(r"\b(?:tie|binding|tighten)\b", "link", refined, flags=re.IGNORECASE)
+        if not refined.lower().startswith("failed"):
+            refined = f"Failed: {refined}"
+    refined = re.sub(r"\bthe Payroll\b", "payroll", refined)
+    refined = re.sub(r"\ban venue\b", "a venue", refined, flags=re.IGNORECASE)
+    refined = re.sub(r"\bcan not\b", "cannot", refined, flags=re.IGNORECASE)
+    refined = re.sub(r"\s+n$", "", refined)
     if "₽" in source:
         refined = re.sub(r"[А-Яа-яЁё]+", "", refined)
         refined = re.sub(r"\s+", " ", refined).strip()
@@ -407,12 +499,14 @@ def main() -> None:
     sources = collect_sources()
     catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     missing = [source for source in sources if not str(catalog.get(source) or "").strip()]
-    if missing:
-        catalog.update(translate_missing_sources(missing))
-    catalog = {source: refine_translation(source, translation) for source, translation in catalog.items()}
+    catalog.update({source: SOURCE_OVERRIDES[source] for source in missing if source in SOURCE_OVERRIDES})
+    machine_missing = [source for source in missing if source not in SOURCE_OVERRIDES]
+    if machine_missing:
+        catalog.update(translate_missing_sources(machine_missing))
+    catalog = {source: refine_translation(source, catalog[source]) for source in sources}
     ordered = dict(sorted(catalog.items(), key=lambda item: item[0]))
     CATALOG_PATH.write_text(json.dumps(ordered, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"English catalog: {len(ordered)} entries ({len(missing)} added)")
+    print(f"English catalog: {len(ordered)} entries ({len(missing)} added, {len(machine_missing)} machine-translated)")
 
 
 if __name__ == "__main__":

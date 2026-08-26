@@ -133,6 +133,7 @@ async function login(page, { phone, role, auditAuth = false }) {
   await page.waitForURL((url) => url.pathname === nextPath, {
     timeout: 20_000,
   });
+  await page.waitForLoadState("domcontentloaded");
 
   const me = await apiJson(page, "/me");
   assert.equal(me.status, 200, `${role}: /me must succeed`);
@@ -160,6 +161,7 @@ async function loginAdmin(page) {
   await page.waitForURL((url) => url.pathname === nextPath, {
     timeout: 20_000,
   });
+  await page.waitForLoadState("domcontentloaded");
   const me = await apiJson(page, "/me");
   assert.equal(me.status, 200, "SUPER_ADMIN: /me must succeed");
   assert.equal(

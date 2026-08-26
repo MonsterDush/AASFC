@@ -3,6 +3,10 @@ const SUPPORTED_LOCALES = new Set(["ru", "en"]);
 const DEFAULT_LOCALE = "ru";
 const TRANSLATABLE_ATTRIBUTES = ["placeholder", "title", "aria-label", "alt"];
 const NON_TRANSLATABLE_SELECTOR = "script, style, noscript, template, [data-i18n-ignore]";
+const SHORT_FRAGMENT_SOURCES = new Set([
+  "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс",
+  "мин", "ч", "шт", "шт.", "ед.", "дн.", "мес.", "п.п.", "тыс", "млн", "ФОТ",
+]);
 
 let catalogPromise = null;
 let fragmentCatalogPromise = null;
@@ -78,7 +82,7 @@ export function formatCurrency(value, { currency = "RUB", minor = false, ...opti
 
 async function loadCatalog() {
   if (!catalogPromise) {
-    catalogPromise = fetch("/locales/en.json?v=20260820-i18n6", { cache: "no-cache" })
+    catalogPromise = fetch("/locales/en.json?v=20260826-i18n12", { cache: "no-cache" })
       .then((response) => {
         if (!response.ok) throw new Error(`English catalog failed: HTTP ${response.status}`);
         return response.json();
@@ -104,7 +108,10 @@ export async function translateText(value, { report = true } = {}) {
 async function loadFragmentCatalog() {
   if (!fragmentCatalogPromise) {
     fragmentCatalogPromise = loadCatalog().then((catalog) => Object.entries(catalog)
-      .filter(([source, translated]) => source.length >= 4 && source !== translated && /[А-Яа-яЁё]/.test(source))
+      .filter(([source, translated]) =>
+        (source.length >= 4 || SHORT_FRAGMENT_SOURCES.has(source)) &&
+        source !== translated &&
+        /[А-Яа-яЁё]/.test(source))
       .sort(([left], [right]) => right.length - left.length));
   }
   return fragmentCatalogPromise;
@@ -134,6 +141,31 @@ function hasWordBoundary(value, start, length) {
   return !/[А-Яа-яЁё]/.test(before) && !/[А-Яа-яЁё]/.test(after);
 }
 
+function englishOrdinal(value) {
+  const number = Number(value);
+  const modulo100 = number % 100;
+  if (modulo100 >= 11 && modulo100 <= 13) return `${number}th`;
+  return `${number}${{ 1: "st", 2: "nd", 3: "rd" }[number % 10] || "th"}`;
+}
+
+function translateDynamicPatterns(value) {
+  return String(value || "")
+    .replace(
+      /\bначисление\s+(\d{1,2})-(?:го|е) числ(?:о|а)/gi,
+      (_match, day) => `accrues on the ${englishOrdinal(day)}`,
+    )
+    .replace(
+      /\b(\d{1,2})-(?:го|е) числ(?:о|а)/g,
+      (_match, day) => englishOrdinal(day),
+    );
+}
+
+function applyEnglishConventions(value) {
+  return String(value || "")
+    .replace(/(\d[\d\s.,]*)\s*₽/g, (_match, amount) => `RUB ${amount.trim()}`)
+    .replace(/₽/g, "RUB");
+}
+
 function translateFragments(value, fragments) {
   let translated = value;
   for (const [source, replacement] of fragments) {
@@ -161,8 +193,12 @@ function translateValue(value, catalog, fragments, context) {
   const { leading, text, trailing } = splitWhitespace(value);
   if (!text) return value;
   const translated = catalog[text];
-  if (typeof translated === "string" && translated) return `${leading}${translated}${trailing}`;
-  const fragmentTranslation = translateFragments(text, fragments);
+  if (typeof translated === "string" && translated) {
+    return `${leading}${applyEnglishConventions(translated)}${trailing}`;
+  }
+  const fragmentTranslation = applyEnglishConventions(
+    translateFragments(translateDynamicPatterns(text), fragments),
+  );
   if (fragmentTranslation !== text) {
     if (/[А-Яа-яЁё]/.test(fragmentTranslation)) reportMissing(fragmentTranslation, context);
     return `${leading}${fragmentTranslation}${trailing}`;

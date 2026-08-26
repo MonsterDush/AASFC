@@ -11,7 +11,7 @@ import {
 
 const frontendDir = path.dirname(fileURLToPath(import.meta.url));
 const stylesPath = path.join(frontendDir, "styles.css");
-const globalStyleCacheKey = "20260802-navbuttons1";
+const globalStyleVersion = "20260825-i18nmodal2";
 const coreStyleFiles = [
   "tokens.css",
   "base-layout.css",
@@ -172,13 +172,13 @@ const inlineFreeEntrypoints = new Map([
   ["owner-expenses.html", "/owner-expenses.js?v=20260810-financepolish1"],
   ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20260802-financeux2"],
   ["owner-kpi.html", "/owner-kpi.js?v=20260726-navmore1"],
-  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260823-kpiperunit1"],
+  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260826-i18nvalue1"],
   ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20260726-navmore1"],
   ["owner-payroll.html", "/owner-payroll.js?v=20260823-kpiperunit1"],
   ["owner-payment-methods.html", "/owner-payment-methods.js?v=20260726-navmore1"],
   ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260726-navmore1"],
   ["owner-setup.html", "/owner-setup.js?v=20260810-setup1"],
-  ["owner-summary.html", "/owner-summary.js?v=20260810-financepolish1"],
+  ["owner-summary.html", "/owner-summary.js?v=20260825-i18nsummary1"],
   ["owner-suppliers.html", "/owner-suppliers.js?v=20260726-navmore1"],
   ["owner-turnover.html", "/owner-turnover.js?v=20260802-financeux2"],
   ["shift-intervals.html", "/shift-intervals.js?v=20260729-overnight1"],
@@ -301,7 +301,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   manifestImports,
-  coreStyleFiles.map((fileName) => `/styles/core/${fileName}?v=${globalStyleCacheKey}`),
+  coreStyleFiles.map((fileName) => `/styles/core/${fileName}?v=${globalStyleVersion}`),
   "styles.css core import order or cache key changed",
 );
 assert.equal(
@@ -342,11 +342,11 @@ for (const fileName of htmlPageFiles) {
     `${fileName} page loader cache key is stale`,
   );
   assert.ok(
-    source.includes('<script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>'),
+    source.includes('<script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>'),
     `${fileName} i18n bootstrap is missing`,
   );
   assert.ok(
-    source.includes(`href="/styles.css?v=${globalStyleCacheKey}"`),
+    source.includes(`href="/styles.css?v=${globalStyleVersion}"`),
     `${fileName} global stylesheet cache key is stale`,
   );
 }
@@ -707,7 +707,7 @@ const approvedInlineStyleCount = Array.from(allowedInlineStyleAttributes.values(
 assert.equal(inlineStyleCount, approvedInlineStyleCount, "dynamic inline style count changed");
 assert.equal(embeddedStyleBlockCount, 0, "embedded style blocks are forbidden");
 assert.equal(embeddedStyleLineCount, 0, "embedded style lines are forbidden");
-assert.deepEqual([...cssHrefVariants], [`/styles.css?v=${globalStyleCacheKey}`]);
+assert.deepEqual([...cssHrefVariants], [`/styles.css?v=${globalStyleVersion}`]);
 assert.equal(formatShiftIntervalRange("12:00", "20:00"), "12:00–20:00");
 assert.equal(formatShiftIntervalRange("22:00", "04:00"), "22:00–04:00 (+1 день)");
 assert.equal(formatShiftIntervalRange("04:00", "04:00"), "04:00–04:00 (+1 день)");

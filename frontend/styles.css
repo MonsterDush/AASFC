@@ -4,13 +4,13 @@
  * Import order is part of the cascade contract. Keep new rules in the narrowest
  * matching module and update style_contract_check.mjs when adding a module.
  */
-@import url("/styles/core/tokens.css?v=20260802-navbuttons1");
-@import url("/styles/core/base-layout.css?v=20260802-navbuttons1");
-@import url("/styles/core/controls.css?v=20260802-navbuttons1");
-@import url("/styles/core/cards-lists.css?v=20260802-navbuttons1");
-@import url("/styles/core/calendar-core.css?v=20260802-navbuttons1");
-@import url("/styles/core/utilities.css?v=20260802-navbuttons1");
-@import url("/styles/core/calendar-reports.css?v=20260802-navbuttons1");
-@import url("/styles/core/finance-components.css?v=20260802-navbuttons1");
-@import url("/styles/core/shared-layout.css?v=20260802-navbuttons1");
-@import url("/styles/core/overlays-documents.css?v=20260802-navbuttons1");
+@import url("/styles/core/tokens.css?v=20260825-i18nmodal2");
+@import url("/styles/core/base-layout.css?v=20260825-i18nmodal2");
+@import url("/styles/core/controls.css?v=20260825-i18nmodal2");
+@import url("/styles/core/cards-lists.css?v=20260825-i18nmodal2");
+@import url("/styles/core/calendar-core.css?v=20260825-i18nmodal2");
+@import url("/styles/core/utilities.css?v=20260825-i18nmodal2");
+@import url("/styles/core/calendar-reports.css?v=20260825-i18nmodal2");
+@import url("/styles/core/finance-components.css?v=20260825-i18nmodal2");
+@import url("/styles/core/shared-layout.css?v=20260825-i18nmodal2");
+@import url("/styles/core/overlays-documents.css?v=20260825-i18nmodal2");
