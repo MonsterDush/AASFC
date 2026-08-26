@@ -28,6 +28,10 @@ import {
 
 let financialValuesHidden = false;
 
+function isEnglishLocale() {
+  return globalThis.window?.AxelioI18n?.getLocale?.() === "en";
+}
+
 function fmtMoneyMinor(minor) {
   if (financialValuesHidden) return FINANCIAL_VALUES_HIDDEN_LABEL;
   const kopecks = Number(minor || 0);
@@ -63,8 +67,8 @@ function fmtCompactMoneyMinor(minor) {
   const rubles = Number(minor || 0) / 100;
   const absolute = Math.abs(rubles);
   const format = (value, suffix) => `${new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: value >= 10 ? 0 : 1 }).format(value)}${suffix}`;
-  if (absolute >= 1_000_000) return `${rubles < 0 ? "−" : ""}${format(absolute / 1_000_000, " млн")}`;
-  if (absolute >= 1_000) return `${rubles < 0 ? "−" : ""}${format(absolute / 1_000, " тыс")}`;
+  if (absolute >= 1_000_000) return `${rubles < 0 ? "−" : ""}${format(absolute / 1_000_000, isEnglishLocale() ? "M" : " млн")}`;
+  if (absolute >= 1_000) return `${rubles < 0 ? "−" : ""}${format(absolute / 1_000, isEnglishLocale() ? "K" : " тыс")}`;
   return `${new Intl.NumberFormat((globalThis.window?.AxelioI18n?.localeTag?.() || "ru-RU"), { maximumFractionDigits: 0 }).format(rubles)}`;
 }
 
@@ -435,12 +439,13 @@ function availableTrendMetrics() {
 }
 
 function trendMetricTitle(metric) {
-  if (metric === "profit") return "Прибыль";
+  if (metric === "profit") return isEnglishLocale() ? "Profit" : "Прибыль";
   if (metric === "cost") {
-    if (financeAccess.canViewExpenses && financeAccess.canViewPayroll) return "Затраты";
-    return financeAccess.canViewExpenses ? "Расходы" : "ФОТ";
+    if (financeAccess.canViewExpenses && financeAccess.canViewPayroll) return isEnglishLocale() ? "Costs" : "Затраты";
+    if (financeAccess.canViewExpenses) return isEnglishLocale() ? "Expenses" : "Расходы";
+    return isEnglishLocale() ? "Payroll" : "ФОТ";
   }
-  return "Выручка";
+  return isEnglishLocale() ? "Revenue" : "Выручка";
 }
 
 function syncTrendMetricControls() {
@@ -511,7 +516,7 @@ function renderSummaryTrend(summary, comparisonSummary = null) {
   const comparisonText = comparisonSummary?.period_start && comparisonSummary?.period_end
     ? `${comparisonSummary.period_start} — ${comparisonSummary.period_end}`
     : "";
-  title.textContent = `Динамика: ${metricTitle.toLowerCase()}`;
+  title.textContent = `${isEnglishLocale() ? "Trend" : "Динамика"}: ${metricTitle.toLowerCase()}`;
   subtitle.textContent = comparisonPoints.length
     ? `${periodText} против ${comparisonText} — сопоставление по порядковому дню`
     : `${periodText} — по дням`;
@@ -663,7 +668,8 @@ function renderSummaryCostStructure(summary) {
     const rowClass = row.key === "payroll" ? " summary-cost-row--payroll" : "";
     const drilldown = buildDrilldown(row);
     const tag = drilldown ? "a" : "div";
-    const href = drilldown ? ` href="${escapeHtml(drilldown)}" aria-label="Открыть детализацию: ${escapeHtml(row.title)}"` : "";
+    const detailsLabel = isEnglishLocale() ? "Open details" : "Открыть детализацию";
+    const href = drilldown ? ` href="${escapeHtml(drilldown)}" aria-label="${detailsLabel}: ${escapeHtml(row.title)}"` : "";
     return `<${tag} class="summary-cost-row${rowClass}"${href}>
       <div class="summary-cost-head">
         <span class="summary-cost-label">${escapeHtml(row.title)}</span>

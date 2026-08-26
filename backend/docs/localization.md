@@ -23,6 +23,7 @@ send `Accept-Language`.
 
 - Runtime: `frontend/i18n.js` and `frontend/i18n-bootstrap.js`.
 - English catalog: `frontend/locales/en.json`.
+- Human-reviewed terminology and customer-facing copy: `tools/i18n-en-curated-overrides.json`.
 - Source collector: `tools/i18n-static-sources.mjs`.
 - Coverage gate: `pnpm test:i18n`.
 - Offline catalog builder: `tools/build_en_catalog_offline.py`.
@@ -30,8 +31,11 @@ send `Accept-Language`.
 After adding or changing Russian interface copy, update the English catalog and
 run `pnpm test:i18n`. The builder uses an installed Argos Translate RU-to-EN
 model only for missing strings. Existing entries are preserved and the curated
-terminology overrides are reapplied on every run. Review customer-facing,
-financial, and legal text manually before release.
+terminology overrides are reapplied on every run. `pnpm test:i18n` checks both
+catalog coverage and semantic quality rules for weekdays, rates, percentages,
+fixed pay, loading, saving, and failure messages. Review customer-facing,
+financial, and legal text manually before release and add approved wording to
+the curated overrides file.
 
 ## Backend channels
 

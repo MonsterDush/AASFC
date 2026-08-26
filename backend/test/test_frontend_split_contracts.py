@@ -13,7 +13,7 @@ class PageLoaderContractTests(TestCase):
     def test_all_pages_share_the_fetch_and_dom_aware_loader(self):
         loader = (FRONTEND / "page-loader.js").read_text(encoding="utf-8")
         styles_manifest = (FRONTEND / "styles.css").read_text(encoding="utf-8")
-        style_cache_key = "20260802-navbuttons1"
+        style_version = "20260825-i18nmodal2"
         core_style_files = (
             "tokens.css",
             "base-layout.css",
@@ -36,7 +36,7 @@ class PageLoaderContractTests(TestCase):
             sorted(core_style_files),
         )
         expected_imports = [
-            f'@import url("/styles/core/{file_name}?v={style_cache_key}");' for file_name in core_style_files
+            f'@import url("/styles/core/{file_name}?v={style_version}");' for file_name in core_style_files
         ]
         self.assertEqual(
             re.findall(r'@import url\("[^"]+"\);', styles_manifest),
@@ -50,8 +50,8 @@ class PageLoaderContractTests(TestCase):
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
-            self.assertIn("/i18n-bootstrap.js?v=20260820-i18n6", source, path.name)
-            self.assertIn(f"/styles.css?v={style_cache_key}", source, path.name)
+            self.assertIn("/i18n-bootstrap.js?v=20260826-i18n12", source, path.name)
+            self.assertIn(f"/styles.css?v={style_version}", source, path.name)
 
         self.assertLess(len(loader.splitlines()), 180)
         self.assertIn("window.fetch = function", loader)
@@ -117,6 +117,13 @@ class DemoMetrikaContractTests(TestCase):
         self.assertIn("script, style, noscript, template, [data-i18n-ignore]", i18n)
         self.assertIn("observer = new MutationObserver(() => {", i18n)
         self.assertIn("scheduleTranslation();", i18n)
+        self.assertIn('"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"', i18n)
+        self.assertIn('"мин", "ч", "шт", "шт.", "ед.", "дн.", "мес.", "п.п."', i18n)
+        self.assertIn("source.length >= 4 || SHORT_FRAGMENT_SOURCES.has(source)", i18n)
+        self.assertIn(r"/\b(\d{1,2})-(?:го|е) числ(?:о|а)/g", i18n)
+        self.assertIn("accrues on the ${englishOrdinal(day)}", i18n)
+        self.assertIn('replace(/₽/g, "RUB")', i18n)
+        self.assertIn('1: "st", 2: "nd", 3: "rd"', i18n)
 
     def test_frontend_csp_allows_metrika_session_replay(self):
         csp = (PROJECT_ROOT / "ops" / "nginx" / "axelio-security-headers.conf").read_text(encoding="utf-8")
@@ -498,7 +505,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         entrypoints = {
             "app-adjustments.html": "/app-adjustments.js?v=20260726-navmore1",
             "owner-pay-profiles.html": "/owner-pay-profiles.js?v=20260726-navmore1",
-            "owner-pay-profile.html": "/owner-pay-profile.js?v=20260823-kpiperunit1",
+            "owner-pay-profile.html": "/owner-pay-profile.js?v=20260826-i18nvalue1",
         }
         for html_name, entrypoint in entrypoints.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
@@ -938,11 +945,11 @@ class OwnerPayProfileSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 450)
-        self.assertIn("owner-pay-profile.js?v=20260823-kpiperunit1", html)
+        self.assertIn("owner-pay-profile.js?v=20260826-i18nvalue1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
-            cache_key = "20260723-functional1" if filename == "assignment-controller.js" else "20260823-kpiperunit1"
+            cache_key = "20260723-functional1" if filename == "assignment-controller.js" else "20260826-i18nvalue1"
             self.assertIn(f"/owner-pay-profile/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
 
@@ -959,12 +966,17 @@ class OwnerPayProfileSplitContractTests(TestCase):
 
         component_form = (FRONTEND / "owner-pay-profile" / "component-form.js").read_text(encoding="utf-8")
         component_controller = (FRONTEND / "owner-pay-profile" / "component-controller.js").read_text(encoding="utf-8")
+        component_support = (FRONTEND / "owner-pay-profile" / "component-support.js").read_text(encoding="utf-8")
         component_list = (FRONTEND / "owner-pay-profile" / "component-list.js").read_text(encoding="utf-8")
         styles = (FRONTEND / "styles/pages/owner-pay-profile.css").read_text(encoding="utf-8")
         for contract in ("f_weekday_rates_section", "data-weekday-enabled", "data-weekday-rate"):
             self.assertIn(contract, component_form)
         self.assertIn("weekday_rates: []", component_controller)
         self.assertIn("readWeekdayRates", component_controller)
+        self.assertIn("localizePreservedInputValue", component_controller)
+        self.assertIn("preservedInputValue", component_controller)
+        self.assertIn("i18nSourceValue", component_support)
+        self.assertIn("i18nDisplayValue", component_support)
         self.assertIn("weekday_rates", component_list)
         self.assertIn(".weekday-rate-row", styles)
 

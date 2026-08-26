@@ -15,6 +15,8 @@ const {
   COMPONENT_LABELS,
   fmtMoneyMinor,
   fmtPercentBps,
+  localizePreservedInputValue,
+  preservedInputValue,
   parseMoneyRubToMinor,
   parsePercentInputToBps,
   selectedIdsFromField,
@@ -407,10 +409,14 @@ function openComponentEditor({ mode, item = null }) {
   wireStepsBuilder();
   syncComponentFields();
   syncComponentSummary();
+  void localizePreservedInputValue(document.getElementById("f_title")).then(() => {
+    syncComponentSummary();
+    syncComponentSimulator();
+  });
   document.getElementById("btnCancel")?.addEventListener("click", closeEditModal);
   document.getElementById("btnSave")?.addEventListener("click", async () => {
     const componentType = String(document.getElementById("f_component_type")?.value || "").toUpperCase();
-    const title = String(document.getElementById("f_title")?.value || "").trim();
+    const title = preservedInputValue(document.getElementById("f_title"));
     const amountMinorRaw = String(document.getElementById("f_amount_minor")?.value || "").trim();
     const rateMinorRaw = String(document.getElementById("f_rate_minor")?.value || "").trim();
     const percentRaw = String(document.getElementById("f_percent")?.value || "").trim();
