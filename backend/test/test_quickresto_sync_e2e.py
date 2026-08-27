@@ -120,6 +120,20 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             db.add_all([*payment_methods.values(), *departments])
             db.flush()
 
+            empty_report = DailyReport(
+                venue_id=venue_id,
+                date=TARGET_DATE,
+                shift_slot="DAY",
+                cash=0,
+                cashless=0,
+                revenue_total=0,
+                tips_total=0,
+                status="DRAFT",
+                created_by_user_id=user_id,
+            )
+            db.add(empty_report)
+            db.flush()
+
             connection = QuickRestoConnection(
                 venue_id=venue_id,
                 cloud="fixture",
@@ -163,7 +177,8 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             )
             self.assertEqual(first.status, "SUCCEEDED")
             self.assertEqual(first.shifts_imported, 3)
-            self.assertEqual(first.reports_created, 1)
+            self.assertEqual(first.reports_created, 0)
+            self.assertEqual(first.reports_updated, 1)
             self.assertEqual(first.summary_json["conflicts"], [])
 
             report = db.execute(
@@ -173,6 +188,7 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                     DailyReport.shift_slot == "DAY",
                 )
             ).scalar_one()
+            self.assertEqual(report.id, empty_report.id)
             self.assertEqual(report.status, "DRAFT")
             self.assertEqual(report.revenue_total, 23_900)
             self.assertEqual(report.cash, 6_600)

@@ -293,6 +293,17 @@ def _report_matches(db: Session, report: DailyReport, aggregate: dict[str, Any])
     )
 
 
+def _report_is_empty_draft(db: Session, report: DailyReport) -> bool:
+    return (
+        str(report.status or "").upper() == "DRAFT"
+        and int(report.revenue_total or 0) == 0
+        and int(report.cash or 0) == 0
+        and int(report.cashless or 0) == 0
+        and not _report_values(db, report.id, "PAYMENT")
+        and not _report_values(db, report.id, "DEPT")
+    )
+
+
 def _replace_report_values(db: Session, report: DailyReport, aggregate: dict[str, Any]) -> None:
     db.execute(
         delete(DailyReportValue).where(
@@ -357,8 +368,10 @@ def _upsert_draft_report(
         db.add(report)
         db.flush()
         created = True
-    elif source is None and not _report_matches(db, report, aggregate):
-        raise QuickRestoDataError(f"Axelio report {report.id} already exists and is not an exact QuickResto draft")
+    elif source is None and not (_report_matches(db, report, aggregate) or _report_is_empty_draft(db, report)):
+        raise QuickRestoDataError(
+            f"Axelio report {report.id} already exists and is neither empty nor an exact QuickResto draft"
+        )
 
     if source is not None and int(source.daily_report_id) != int(report.id):
         raise QuickRestoDataError("QuickResto report source points to another Axelio report")
