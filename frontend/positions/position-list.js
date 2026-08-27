@@ -77,9 +77,9 @@ function renderPositions() {
       <div class="position-group__head">
         <div class="position-group__title">
           <b>${esc(title)}</b>
-          <span class="position-count">${employeeCountLabel(arr.length)}</span>
+          <span class="position-count">${employeeCountLabel(arr.filter((p) => Number(p.member_user_id || 0) > 0).length)}</span>
         </div>
-        ${auth.canManage ? `<button class="btn" data-add-same>+ Добавить сотрудника</button>` : ``}
+        ${auth.canManage && auth.canAssign ? `<button class="btn" data-add-same>+ Добавить сотрудника</button>` : ``}
       </div>
       <div class="position-member-list" data-rows></div>
     `;
@@ -111,7 +111,8 @@ function renderPositions() {
 
     for (const p of arr) {
       const m = memberById.get(String(p.member_user_id || ""));
-      const who = m ? memberLabel(m) : (p.member_user_id ? "Сотрудник" : "—");
+      const hasMember = Number(p.member_user_id || 0) > 0;
+      const who = m ? memberLabel(m) : (hasMember ? "Сотрудник" : "Сотрудники ещё не назначены");
 
       const row = document.createElement("div");
       row.className = "position-member-row";
@@ -127,7 +128,7 @@ function renderPositions() {
         </div>
         <div class="position-member-row__actions">
           ${auth.canManage ? `<button class="btn" data-edit>Изменить</button>` : (auth.canManagePerms ? `<button class="btn" data-perms>Права</button>` : ``)}
-          ${auth.canManage ? `<button class="btn danger" data-del>Архивировать</button>` : ``}
+          ${auth.canManage ? `<button class="btn danger" data-del>${hasMember ? "Убрать" : "Архивировать"}</button>` : ``}
         </div>
       `;
 
@@ -140,16 +141,18 @@ function renderPositions() {
       const btnDel = row.querySelector("[data-del]");
       if (btnDel) btnDel.onclick = async () => {
         const ok = await confirmModal({
-          title: "Архивировать должность?",
-          text: `Удалить должность «${title}» для сотрудника?`,
-          confirmText: "В архив",
+          title: hasMember ? "Убрать сотрудника с должности?" : "Архивировать должность?",
+          text: hasMember
+            ? `Сотрудник будет снят с должности «${title}», а сама должность останется доступной.`
+            : `Должность «${title}» будет перенесена в архив.`,
+          confirmText: hasMember ? "Убрать" : "В архив",
           danger: true,
         });
         if (!ok) return;
 
         try {
           await deleteVenuePosition(state.venueId, p.id);
-          toast("Должность архивирована", "ok");
+          toast(hasMember ? "Сотрудник снят с должности" : "Должность архивирована", "ok");
           await load();
         } catch (e) {
           toast("Ошибка удаления: " + (e?.message || e), "err");

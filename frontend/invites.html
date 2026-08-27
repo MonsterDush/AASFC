@@ -360,10 +360,26 @@
               <div class="mt-6">${authChips(m.auth_methods || [])}</div>
             </div>
             <div class="invite-actions">
+              <button class="btn${canInviteOwners ? '' : ' hidden'}" data-edit-note>Изменить заметку</button>
               <button class="btn danger${canRemoveMember ? '' : ' hidden'}" data-remove>Удалить</button>
             </div>
           </div>
         `;
+        const editNoteBtn = row.querySelector('[data-edit-note]');
+        if (editNoteBtn) editNoteBtn.onclick = async () => {
+          const next = prompt('Имя или заметка, видимые только владельцу', m.owner_note || '');
+          if (next === null) return;
+          try {
+            await api(`/venues/${venueId}/members/${m.user_id}/owner-note`, {
+              method: 'PATCH',
+              body: { owner_note: next.trim() || null },
+            });
+            toast('Заметка сохранена', 'ok');
+            await loadMembers();
+          } catch (e) {
+            toast('Ошибка сохранения заметки: ' + e.message, 'err');
+          }
+        };
         const removeBtn = row.querySelector('[data-remove]');
         if (removeBtn) removeBtn.onclick = async () => {
           const ok = confirm(`Удалить ${display} из заведения?`);

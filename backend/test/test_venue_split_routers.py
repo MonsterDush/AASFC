@@ -312,6 +312,11 @@ class VenuePayrollRouterTests(TestCase):
             patch.object(venue_payroll, "_create_payroll_recalculation_log") as create_log,
             patch.object(venue_payroll, "_load_payroll_payload", return_value={"month": "2026-07"}),
             patch.object(
+                venue_payroll,
+                "_apply_payroll_member_display_names",
+                side_effect=lambda db, venue_id, user, payload: payload,
+            ),
+            patch.object(
                 venue_payroll, "sanitize_financial_payload_for_user", side_effect=lambda current_user, result: result
             ),
         ):
@@ -456,6 +461,7 @@ class VenueAdjustmentAndScheduleRouterTests(TestCase):
                     "_load_shift_comment_mentionable_members",
                     return_value=[(mentioned, "STAFF", "Администратор")],
                 ),
+                patch.object(venue_shifts, "load_owner_notes", return_value={}),
             ):
                 result = venue_shifts.add_shift_comment(
                     5,

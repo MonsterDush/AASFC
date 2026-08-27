@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 class PositionCreateIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
-    member_user_id: int = Field(..., gt=0)
+    member_user_id: int | None = Field(default=None, gt=0)
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
     pay_profile_id: int | None = Field(default=None, gt=0)

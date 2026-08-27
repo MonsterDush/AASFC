@@ -69,6 +69,7 @@ from app.routers.venue_payroll_support import (
     _load_payroll_payload,
 )
 from app.core.i18n import user_locale
+from app.services.venue_member_names import apply_payroll_owner_display_names
 
 
 router = APIRouter()
@@ -955,6 +956,9 @@ def _build_payroll_export_response(
         period_label = f"{period_start.isoformat()} — {period_end.isoformat()}"
         filename_period = f"{period_start.isoformat()}_{period_end.isoformat()}"
 
+    if user is not None:
+        payload = apply_payroll_owner_display_names(db, venue_id=venue_id, viewer=user, payload=payload)
+
     xlsx_bytes = build_payroll_xlsx(
         period_label=period_label,
         venue_name=venue_name,
@@ -1042,7 +1046,7 @@ def export_payroll(
             date_from=date_from,
             date_to=date_to,
             db=db,
-            user=None,
+            user=signed_user,
             locale=user_locale(signed_user),
         )
 

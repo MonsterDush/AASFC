@@ -18,6 +18,7 @@ from app.models.venue_member import VenueMember
 from app.models.venue_position import VenuePosition
 from app.models.pay_profile import PayProfile
 from app.models.pay_profile_assignment import PayProfileAssignment
+from app.services.venue_member_names import normalize_owner_note
 
 
 def _norm_code(x) -> str:
@@ -150,14 +151,23 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
     if not isinstance(preset, dict) or not preset.get("title"):
         return
 
-    existing_pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == inv.venue_id,
-            VenuePosition.member_user_id == user_id,
+    title = str(preset.get("title")).strip()
+    existing_pos = (
+        db.execute(
+            select(VenuePosition)
+            .where(
+                VenuePosition.venue_id == inv.venue_id,
+                VenuePosition.member_user_id.is_(None),
+                VenuePosition.title == title,
+                VenuePosition.is_active.is_(True),
+            )
+            .order_by(VenuePosition.id.asc())
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .first()
+    )
     data = {
-        "title": str(preset.get("title")).strip(),
+        "title": title,
         "rate": int(preset.get("rate") or 0),
         "percent": int(preset.get("percent") or 0),
         "permission_codes": json.dumps(_extract_codes_from_preset(preset) or []),
@@ -165,14 +175,14 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
     }
 
     if existing_pos is None:
-        db.add(
-            VenuePosition(
-                venue_id=inv.venue_id,
-                member_user_id=user_id,
-                **data,
-            )
+        existing_pos = VenuePosition(
+            venue_id=inv.venue_id,
+            member_user_id=user_id,
+            **data,
         )
+        db.add(existing_pos)
     else:
+        existing_pos.member_user_id = user_id
         for k, v in data.items():
             setattr(existing_pos, k, v)
 
@@ -181,6 +191,7 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         pay_profile_id = int(pay_profile_id_raw) if pay_profile_id_raw not in (None, "", 0, "0") else None
     except Exception:
         pay_profile_id = None
+    existing_pos.pay_profile_id = pay_profile_id
     _sync_default_pay_profile_assignment(
         db, venue_id=int(inv.venue_id), user_id=int(user_id), pay_profile_id=pay_profile_id
     )
@@ -193,6 +204,8 @@ def _accept_invite_record(db: Session, *, inv: VenueInvite, user_id: int, accept
     if mem:
         mem.venue_role = inv.venue_role
         mem.is_active = True
+        if normalize_owner_note(inv.invited_contact_label):
+            mem.owner_note = normalize_owner_note(inv.invited_contact_label)
     else:
         db.add(
             VenueMember(
@@ -200,6 +213,7 @@ def _accept_invite_record(db: Session, *, inv: VenueInvite, user_id: int, accept
                 user_id=user_id,
                 venue_role=inv.venue_role,
                 is_active=True,
+                owner_note=normalize_owner_note(inv.invited_contact_label),
             )
         )
 

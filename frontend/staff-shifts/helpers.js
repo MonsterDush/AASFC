@@ -88,6 +88,8 @@ export function escapeHtml(value) {
 }
 
 export function pickShortName(value) {
+  const displayName = (value?.display_name || value?.member?.display_name || value?.user?.display_name || "").trim();
+  if (displayName) return displayName;
   const shortName = (value?.short_name || value?.member?.short_name || value?.user?.short_name || "").trim();
   if (shortName) return shortName;
   const fullName = (value?.full_name || value?.member?.full_name || value?.user?.full_name || "").trim();
@@ -108,6 +110,8 @@ export function fioInitials(fullName) {
 }
 
 export function displayPerson(value) {
+  const displayName = (value?.display_name || value?.member?.display_name || "").trim();
+  if (displayName) return displayName;
   const fullName = (value?.full_name || value?.member?.full_name || "").trim();
   const initials = fioInitials(fullName);
   if (initials) return initials;

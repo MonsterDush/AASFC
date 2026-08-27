@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.routers.venue_core import (
     Depends,
     HTTPException,
+    PayProfile,
     Query,
     Session,
     User,
@@ -10,7 +11,6 @@ from app.routers.venue_core import (
     VenuePosition,
     _is_owner_or_super_admin,
     _require_active_member_or_admin,
-    date,
     get_current_user,
     get_db,
     json,
@@ -26,14 +26,13 @@ from app.routers.venue_permissions import (
     _is_schedule_editor,
 )
 from app.routers.venue_pay_profile_support import (
-    _get_member_active_pay_profile_assignment,
     _normalize_permission_codes,
     _parse_position_permission_codes,
-    _sync_member_pay_profile_assignment,
 )
 from app.routers.venue_position_support import (
     _load_position_presets_from_setup,
 )
+from app.services.venue_member_names import load_owner_notes, owner_display_name
 
 
 router = APIRouter()
@@ -104,6 +103,7 @@ def list_positions(
             VenuePosition.id,
             VenuePosition.title,
             VenuePosition.member_user_id,
+            VenuePosition.pay_profile_id,
             VenuePosition.rate,
             VenuePosition.percent,
             VenuePosition.permission_codes,
@@ -114,26 +114,36 @@ def list_positions(
             User.short_name,
             VenueMember.venue_role,
             VenueMember.is_active.label("member_is_active"),
+            PayProfile.title.label("pay_profile_title"),
         )
-        .join(User, User.id == VenuePosition.member_user_id)
-        .join(
+        .outerjoin(User, User.id == VenuePosition.member_user_id)
+        .outerjoin(
             VenueMember,
             (VenueMember.venue_id == VenuePosition.venue_id) & (VenueMember.user_id == VenuePosition.member_user_id),
         )
+        .outerjoin(PayProfile, PayProfile.id == VenuePosition.pay_profile_id)
         .where(VenuePosition.venue_id == venue_id)
         .order_by(VenuePosition.id.desc())
     )
 
     if not include_inactive:
-        stmt = stmt.where(VenuePosition.is_active.is_(True), VenueMember.is_active.is_(True))
+        stmt = stmt.where(
+            VenuePosition.is_active.is_(True),
+            (VenuePosition.member_user_id.is_(None)) | VenueMember.is_active.is_(True),
+        )
 
     rows = db.execute(stmt).all()
 
+    owner_notes = load_owner_notes(
+        db,
+        venue_id=venue_id,
+        viewer=user,
+        member_user_ids=[int(r.member_user_id) for r in rows if r.member_user_id is not None],
+    )
     items = []
     for r in rows:
-        assignment, profile = _get_member_active_pay_profile_assignment(
-            db, venue_id=venue_id, member_user_id=int(r.member_user_id), on_date=date.today()
-        )
+        member_user_id = int(r.member_user_id) if r.member_user_id is not None else None
+        owner_note = owner_notes.get(member_user_id) if member_user_id is not None else None
         items.append(
             {
                 "id": r.id,
@@ -141,19 +151,29 @@ def list_positions(
                 "member_user_id": r.member_user_id,
                 "rate": r.rate,
                 "percent": r.percent,
-                "pay_profile_id": int(profile.id) if profile is not None else None,
-                "pay_profile_title": profile.title if profile is not None else None,
-                "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
+                "pay_profile_id": int(r.pay_profile_id) if r.pay_profile_id is not None else None,
+                "pay_profile_title": r.pay_profile_title,
+                "pay_profile_assignment_id": None,
                 "permission_codes": _parse_position_permission_codes(getattr(r, "permission_codes", None)),
                 "is_active": bool(r.is_active),
                 "member": {
-                    "user_id": r.member_user_id,
+                    "user_id": member_user_id,
                     "tg_user_id": r.tg_user_id,
                     "tg_username": r.tg_username,
                     "full_name": r.full_name,
                     "short_name": r.short_name,
                     "venue_role": r.venue_role,
-                    "is_active": bool(r.member_is_active),
+                    "display_name": owner_display_name(
+                        owner_note=owner_note,
+                        short_name=r.short_name,
+                        full_name=r.full_name,
+                        tg_username=r.tg_username,
+                        user_id=member_user_id,
+                    )
+                    if member_user_id is not None
+                    else None,
+                    "owner_note": owner_note,
+                    "is_active": bool(r.member_is_active) if member_user_id is not None else False,
                 },
             }
         )
@@ -178,75 +198,64 @@ def create_position(
     codes_provided = payload.permission_codes is not None
     norm_codes = _normalize_permission_codes(db, payload.permission_codes or []) if codes_provided else []
 
-    # validate member exists in this venue (active)
-    vm = db.execute(
-        select(VenueMember).where(
-            VenueMember.venue_id == venue_id,
-            VenueMember.user_id == payload.member_user_id,
-            VenueMember.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    if vm is None:
-        raise HTTPException(status_code=400, detail="Member not found in venue")
-
-    existing = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == payload.member_user_id,
-        )
-    ).scalar_one_or_none()
+    if payload.member_user_id is not None:
+        if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+            require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_ASSIGN")
+        vm = db.execute(
+            select(VenueMember).where(
+                VenueMember.venue_id == venue_id,
+                VenueMember.user_id == payload.member_user_id,
+                VenueMember.is_active.is_(True),
+            )
+        ).scalar_one_or_none()
+        if vm is None:
+            raise HTTPException(status_code=400, detail="Member not found in venue")
 
     if payload.pay_profile_id is not None and not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAY_PROFILES_MANAGE")
+    profile = None
+    if payload.pay_profile_id is not None:
+        profile = db.execute(
+            select(PayProfile).where(PayProfile.id == payload.pay_profile_id, PayProfile.venue_id == venue_id)
+        ).scalar_one_or_none()
+        if profile is None:
+            raise HTTPException(status_code=400, detail="Pay profile not found in venue")
 
-    if existing is None:
-        pos = VenuePosition(
-            venue_id=venue_id,
-            member_user_id=payload.member_user_id,
-            title=payload.title.strip(),
-            rate=payload.rate,
-            percent=payload.percent,
-            permission_codes=json.dumps(norm_codes),
-            is_active=payload.is_active,
+    title = payload.title.strip()
+    pos = None
+    if payload.member_user_id is not None:
+        pos = (
+            db.execute(
+                select(VenuePosition)
+                .where(
+                    VenuePosition.venue_id == venue_id,
+                    VenuePosition.member_user_id.is_(None),
+                    VenuePosition.is_active.is_(True),
+                    VenuePosition.title == title,
+                )
+                .order_by(VenuePosition.id.asc())
+            )
+            .scalars()
+            .first()
         )
+    if pos is None:
+        pos = VenuePosition(venue_id=venue_id)
         db.add(pos)
-        db.flush()
-        assignment, profile = _sync_member_pay_profile_assignment(
-            db,
-            venue_id=venue_id,
-            member_user_id=payload.member_user_id,
-            pay_profile_id=payload.pay_profile_id,
-        )
-        db.commit()
-        db.refresh(pos)
-        return {
-            "id": pos.id,
-            "pay_profile_id": int(profile.id) if profile is not None else None,
-            "pay_profile_title": profile.title if profile is not None else None,
-            "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
-        }
-
-    # update-in-place
-    existing.title = payload.title.strip()
-    existing.rate = payload.rate
-    existing.percent = payload.percent
-    if codes_provided:
-        existing.permission_codes = json.dumps(norm_codes)
-    existing.is_active = payload.is_active
-    assignment, profile = _sync_member_pay_profile_assignment(
-        db,
-        venue_id=venue_id,
-        member_user_id=payload.member_user_id,
-        pay_profile_id=payload.pay_profile_id,
-    )
-
+    pos.member_user_id = payload.member_user_id
+    pos.title = title
+    pos.rate = payload.rate
+    pos.percent = payload.percent
+    pos.pay_profile_id = payload.pay_profile_id
+    pos.permission_codes = json.dumps(norm_codes) if codes_provided else json.dumps([])
+    pos.is_active = payload.is_active
     db.commit()
+    db.refresh(pos)
     return {
-        "id": existing.id,
-        "mode": "updated",
+        "id": pos.id,
+        "mode": "assigned_empty" if payload.member_user_id is not None else "created_empty",
         "pay_profile_id": int(profile.id) if profile is not None else None,
         "pay_profile_title": profile.title if profile is not None else None,
-        "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
+        "pay_profile_assignment_id": None,
     }
 
 
@@ -271,30 +280,23 @@ def update_position(
     if pos is None:
         raise HTTPException(status_code=404, detail="Position not found")
 
-    # Changing member assignment is a separate permission
-    if payload.member_user_id is not None and payload.member_user_id != pos.member_user_id:
+    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+
+    # Changing or clearing member assignment is a separate permission.
+    if "member_user_id" in fields_set and payload.member_user_id != pos.member_user_id:
         if not is_owner:
             require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITIONS_ASSIGN")
 
-        # validate member exists
-        vm = db.execute(
-            select(VenueMember).where(
-                VenueMember.venue_id == venue_id,
-                VenueMember.user_id == payload.member_user_id,
-                VenueMember.is_active.is_(True),
-            )
-        ).scalar_one_or_none()
-        if vm is None:
-            raise HTTPException(status_code=400, detail="Member not found in venue")
-
-        clash = db.execute(
-            select(VenuePosition).where(
-                VenuePosition.venue_id == venue_id,
-                VenuePosition.member_user_id == payload.member_user_id,
-            )
-        ).scalar_one_or_none()
-        if clash is not None and clash.id != pos.id:
-            raise HTTPException(status_code=409, detail="Position for this member already exists")
+        if payload.member_user_id is not None:
+            vm = db.execute(
+                select(VenueMember).where(
+                    VenueMember.venue_id == venue_id,
+                    VenueMember.user_id == payload.member_user_id,
+                    VenueMember.is_active.is_(True),
+                )
+            ).scalar_one_or_none()
+            if vm is None:
+                raise HTTPException(status_code=400, detail="Member not found in venue")
 
         pos.member_user_id = payload.member_user_id
 
@@ -323,22 +325,19 @@ def update_position(
     if perms_changed:
         pos.permission_codes = json.dumps(norm_codes or [])
 
-    assignment = None
     profile = None
-    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
     if "pay_profile_id" in fields_set:
         if not is_owner:
             require_venue_permission(db, venue_id=venue_id, user=user, permission_code="PAY_PROFILES_MANAGE")
-        assignment, profile = _sync_member_pay_profile_assignment(
-            db,
-            venue_id=venue_id,
-            member_user_id=pos.member_user_id,
-            pay_profile_id=payload.pay_profile_id,
-        )
-    else:
-        assignment, profile = _get_member_active_pay_profile_assignment(
-            db, venue_id=venue_id, member_user_id=pos.member_user_id, on_date=date.today()
-        )
+        if payload.pay_profile_id is not None:
+            profile = db.execute(
+                select(PayProfile).where(PayProfile.id == payload.pay_profile_id, PayProfile.venue_id == venue_id)
+            ).scalar_one_or_none()
+            if profile is None:
+                raise HTTPException(status_code=400, detail="Pay profile not found in venue")
+        pos.pay_profile_id = payload.pay_profile_id
+    elif pos.pay_profile_id is not None:
+        profile = db.execute(select(PayProfile).where(PayProfile.id == pos.pay_profile_id)).scalar_one_or_none()
 
     db.commit()
     db.refresh(pos)
@@ -350,9 +349,9 @@ def update_position(
         "member_user_id": pos.member_user_id,
         "rate": pos.rate,
         "percent": pos.percent,
-        "pay_profile_id": int(profile.id) if profile is not None else None,
+        "pay_profile_id": int(pos.pay_profile_id) if pos.pay_profile_id is not None else None,
         "pay_profile_title": profile.title if profile is not None else None,
-        "pay_profile_assignment_id": int(assignment.id) if assignment is not None else None,
+        "pay_profile_assignment_id": None,
         "permission_codes": _parse_position_permission_codes(getattr(pos, "permission_codes", None)),
         "is_active": bool(pos.is_active),
     }
@@ -375,6 +374,39 @@ def delete_position(
     if pos is None:
         raise HTTPException(status_code=404, detail="Position not found")
 
-    pos.is_active = False
+    mode = "archived"
+    if pos.member_user_id is not None:
+        sibling = (
+            db.execute(
+                select(VenuePosition.id).where(
+                    VenuePosition.venue_id == venue_id,
+                    VenuePosition.id != pos.id,
+                    VenuePosition.title == pos.title,
+                    VenuePosition.is_active.is_(True),
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if sibling is None:
+            db.add(
+                VenuePosition(
+                    venue_id=pos.venue_id,
+                    member_user_id=None,
+                    pay_profile_id=pos.pay_profile_id,
+                    title=pos.title,
+                    rate=pos.rate,
+                    percent=pos.percent,
+                    permission_codes=pos.permission_codes,
+                    is_active=True,
+                )
+            )
+            pos.is_active = False
+            mode = "member_detached_position_kept"
+        else:
+            pos.is_active = False
+            mode = "member_detached"
+    else:
+        pos.is_active = False
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "mode": mode}

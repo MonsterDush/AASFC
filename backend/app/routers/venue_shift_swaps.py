@@ -30,6 +30,7 @@ from app.schemas.venue_shifts import (
     ShiftSwapDecisionIn,
 )
 from app.services.shifts.slots import normalize_shift_slot
+from app.services.venue_member_names import load_owner_notes, owner_display_name
 
 
 router = APIRouter()
@@ -92,8 +93,9 @@ def _load_active_position(
     *,
     venue_id: int,
     member_user_id: int,
+    preferred_title: str | None = None,
 ) -> VenuePosition | None:
-    return db.execute(
+    stmt = (
         select(VenuePosition)
         .join(
             VenueMember,
@@ -105,7 +107,15 @@ def _load_active_position(
             VenuePosition.is_active.is_(True),
             VenueMember.is_active.is_(True),
         )
-    ).scalar_one_or_none()
+    )
+    if preferred_title:
+        stmt = stmt.order_by(
+            (VenuePosition.title == str(preferred_title)).desc(),
+            VenuePosition.id.asc(),
+        )
+    else:
+        stmt = stmt.order_by(VenuePosition.id.asc())
+    return db.execute(stmt).scalars().first()
 
 
 def _load_shift_assignment(
@@ -211,10 +221,19 @@ def _load_candidate_or_error(
     requester_user_id: int,
     replacement_user_id: int,
 ) -> VenuePosition:
+    requester_position_title = db.execute(
+        select(VenuePosition.title)
+        .join(ShiftAssignment, ShiftAssignment.venue_position_id == VenuePosition.id)
+        .where(
+            ShiftAssignment.shift_id == int(shift.id),
+            ShiftAssignment.member_user_id == int(requester_user_id),
+        )
+    ).scalar_one_or_none()
     position = _load_active_position(
         db,
         venue_id=venue_id,
         member_user_id=replacement_user_id,
+        preferred_title=requester_position_title,
     )
     if position is None:
         raise HTTPException(status_code=400, detail="Replacement is not an active venue member")
@@ -428,6 +447,9 @@ def list_shift_swap_candidates(
         raise HTTPException(status_code=404, detail="Shift assignment not found")
     shift, assignment = row
     requester_user_id = int(assignment.member_user_id)
+    requester_position_title = db.execute(
+        select(VenuePosition.title).where(VenuePosition.id == int(assignment.venue_position_id))
+    ).scalar_one_or_none()
     interval = db.execute(select(ShiftInterval).where(ShiftInterval.id == int(shift.interval_id))).scalar_one()
     positions = db.execute(
         select(VenuePosition, User)
@@ -441,8 +463,20 @@ def list_shift_swap_candidates(
             VenuePosition.is_active.is_(True),
             VenueMember.is_active.is_(True),
         )
-        .order_by(User.short_name.asc(), User.full_name.asc(), User.id.asc())
+        .order_by(
+            User.short_name.asc(),
+            User.full_name.asc(),
+            User.id.asc(),
+            (VenuePosition.title == requester_position_title).desc(),
+            VenuePosition.id.asc(),
+        )
     ).all()
+    owner_notes = load_owner_notes(
+        db,
+        venue_id=venue_id,
+        viewer=user,
+        member_user_ids=[int(position.member_user_id) for position, _member in positions],
+    )
     availability_rows = db.execute(
         select(ShiftAvailability.member_user_id, ShiftAvailability.status).where(
             ShiftAvailability.venue_id == int(venue_id),
@@ -458,7 +492,12 @@ def list_shift_swap_candidates(
         .all()
     }
     items = []
+    seen_member_ids: set[int] = set()
     for position, member in positions:
+        member_user_id = int(position.member_user_id)
+        if member_user_id in seen_member_ids:
+            continue
+        seen_member_ids.add(member_user_id)
         allowed, reason = _candidate_state(
             db,
             shift=shift,
@@ -468,12 +507,20 @@ def list_shift_swap_candidates(
             availability_by_user=availability_by_user,
             assigned_user_ids=assigned_user_ids,
         )
-        if int(position.member_user_id) == requester_user_id:
+        if member_user_id == requester_user_id:
             continue
+        member_payload = _display_user(member)
+        member_payload["display_name"] = owner_display_name(
+            owner_note=owner_notes.get(member_user_id),
+            short_name=member.short_name,
+            full_name=member.full_name,
+            tg_username=member.tg_username,
+            user_id=member_user_id,
+        )
         items.append(
             {
-                "member": _display_user(member),
-                "member_user_id": int(position.member_user_id),
+                "member": member_payload,
+                "member_user_id": member_user_id,
                 "venue_position_id": int(position.id),
                 "position_title": position.title,
                 "availability": availability_by_user.get(int(position.member_user_id)),

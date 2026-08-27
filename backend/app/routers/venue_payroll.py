@@ -30,9 +30,20 @@ from app.routers.venue_payroll_support import (
     _payroll_recalculation_logs_table_exists,
     _serialize_payroll_recalculation_log,
 )
+from app.services.venue_member_names import apply_payroll_owner_display_names
 
 
 router = APIRouter()
+
+
+def _apply_payroll_member_display_names(
+    db: Session,
+    *,
+    venue_id: int,
+    user: User,
+    payload: dict,
+) -> dict:
+    return apply_payroll_owner_display_names(db, venue_id=venue_id, viewer=user, payload=payload)
 
 
 def _payment_window_payload(window) -> dict:
@@ -223,7 +234,9 @@ def calculate_payroll(
         raise HTTPException(status_code=400, detail=str(exc))
 
     db.commit()
-    return sanitize_financial_payload_for_user(user, _load_payroll_payload(db, venue_id=venue_id, month=payload.month))
+    result = _load_payroll_payload(db, venue_id=venue_id, month=payload.month)
+    result = _apply_payroll_member_display_names(db, venue_id=venue_id, user=user, payload=result)
+    return sanitize_financial_payload_for_user(user, result)
 
 
 @router.get("/{venue_id}/payroll")
@@ -250,6 +263,7 @@ def get_payroll(
                 period_end=period_end,
                 period_meta=period_meta,
             )
+        payload = _apply_payroll_member_display_names(db, venue_id=venue_id, user=user, payload=payload)
         return sanitize_financial_payload_for_user(user, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

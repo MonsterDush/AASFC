@@ -89,16 +89,22 @@ def require_venue_permission(
             _raise_billing_forbidden(access)
         return
 
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
+    positions = (
+        db.execute(
+            select(VenuePosition).where(
+                VenuePosition.venue_id == venue_id,
+                VenuePosition.member_user_id == user.id,
+                VenuePosition.is_active.is_(True),
+            )
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .all()
+    )
 
-    raw_perm = getattr(pos, "permission_codes", None) if pos is not None else None
-    pos_codes = expand_permission_codes(parse_permission_codes(raw_perm)) if pos is not None else set()
+    position_codes = {
+        code for position in positions for code in parse_permission_codes(getattr(position, "permission_codes", None))
+    }
+    pos_codes = expand_permission_codes(position_codes)
     allowed = requested_code in pos_codes
 
     if not allowed:
