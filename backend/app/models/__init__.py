@@ -65,6 +65,12 @@ from .billing_promo_code import BillingPromoCode
 from .billing_promo_redemption import BillingPromoRedemption
 from .demo_event import DemoEvent
 from .security_rate_limit import SecurityRateLimit
+from .quickresto_connection import QuickRestoConnection
+from .quickresto_payment_mapping import QuickRestoPaymentMapping
+from .quickresto_department_mapping import QuickRestoDepartmentMapping
+from .quickresto_sync_run import QuickRestoSyncRun
+from .quickresto_shift_import import QuickRestoShiftImport
+from .quickresto_report_import import QuickRestoReportImport
 
 __all__ = [
     "SystemRole",
@@ -136,4 +142,10 @@ __all__ = [
     "BillingPromoRedemption",
     "DemoEvent",
     "SecurityRateLimit",
+    "QuickRestoConnection",
+    "QuickRestoPaymentMapping",
+    "QuickRestoDepartmentMapping",
+    "QuickRestoSyncRun",
+    "QuickRestoShiftImport",
+    "QuickRestoReportImport",
 ]

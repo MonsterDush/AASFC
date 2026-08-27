@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Axelio QuickResto synchronization every 10 minutes (development)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=axelio-quickresto-sync-dev.service
+
+[Install]
+WantedBy=timers.target

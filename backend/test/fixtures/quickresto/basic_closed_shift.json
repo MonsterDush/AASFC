@@ -1,0 +1,110 @@
+{
+  "payment_types": [
+    {"id": 1, "name": "Наличные", "operationType": "fiscal", "paymentMechanismWeb": "cash"},
+    {"id": 2, "name": "Безналичные", "operationType": "fiscal", "paymentMechanismWeb": "pos"},
+    {"id": 3, "name": "Бонусы", "operationType": "nonfiscal", "paymentMechanismWeb": "bonus"},
+    {
+      "id": 4,
+      "name": "Онлайн-эквайринг (предзаказы)",
+      "operationType": "fiscal",
+      "paymentMechanismWeb": "online"
+    }
+  ],
+  "dish_categories": [
+    {"id": 6, "name": "Кальянный бар", "itemTitle": "Кальянный бар"},
+    {"id": 7, "name": "Бар", "itemTitle": "Бар"}
+  ],
+  "shift": {
+    "id": 1,
+    "frontId": "fixture-closed-shift-1",
+    "status": "CLOSED",
+    "shiftNumber": 1,
+    "ordersCount": 2,
+    "totalCash": 4600.0,
+    "totalCard": 2300.0,
+    "totalBonuses": 0.0,
+    "totalReturnCash": 0.0,
+    "totalReturnCard": 0.0,
+    "totalReturnBonuses": 0.0,
+    "salePlace": {"id": 1, "title": "Место реализации 1"},
+    "tableScheme": {"id": 1, "name": "Заведение 1"}
+  },
+  "orders": [
+    {
+      "id": 1,
+      "shiftId": "fixture-closed-shift-1",
+      "returned": false,
+      "frontTotalPrice": 4600.0,
+      "payments": [
+        {
+          "id": 1,
+          "amount": 4600.0,
+          "paymentType": {
+            "id": 1,
+            "name": "Наличные",
+            "operationType": "fiscal",
+            "paymentMechanismWeb": "cash"
+          }
+        }
+      ],
+      "orderItemList": [
+        {
+          "id": 1,
+          "amount": 2.0,
+          "price": 2000.0,
+          "totalPrice": 4000.0,
+          "totalAbsoluteDiscount": 0.0,
+          "totalAbsoluteCharge": 0.0,
+          "product": {"id": 5, "name": "Кальян", "parentId": 6}
+        },
+        {
+          "id": 2,
+          "amount": 2.0,
+          "price": 300.0,
+          "totalPrice": 600.0,
+          "totalAbsoluteDiscount": 0.0,
+          "totalAbsoluteCharge": 0.0,
+          "product": {"id": 8, "name": "Coca Cola", "parentId": 7}
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "shiftId": "fixture-closed-shift-1",
+      "returned": false,
+      "frontTotalPrice": 2300.0,
+      "payments": [
+        {
+          "id": 2,
+          "amount": 2300.0,
+          "paymentType": {
+            "id": 2,
+            "name": "Безналичные",
+            "operationType": "fiscal",
+            "paymentMechanismWeb": "pos"
+          }
+        }
+      ],
+      "orderItemList": [
+        {
+          "id": 3,
+          "amount": 1.0,
+          "price": 2000.0,
+          "totalPrice": 2000.0,
+          "totalAbsoluteDiscount": 0.0,
+          "totalAbsoluteCharge": 0.0,
+          "product": {"id": 5, "name": "Кальян", "parentId": 6}
+        },
+        {
+          "id": 4,
+          "amount": 1.0,
+          "price": 300.0,
+          "totalPrice": 300.0,
+          "totalAbsoluteDiscount": 0.0,
+          "totalAbsoluteCharge": 0.0,
+          "product": {"id": 8, "name": "Coca Cola", "parentId": 7}
+        }
+      ]
+    }
+  ]
+}

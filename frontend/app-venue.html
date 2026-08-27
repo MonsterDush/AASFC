@@ -175,6 +175,18 @@
         </div>
       </div>
 
+      <div class="itemcard mt-12 section-card venue-settings-card hidden" id="integrationsCard">
+        <div class="section-card__head">
+          <div class="section-card__title">
+            <b>Интеграции</b>
+            <div class="muted">Автоматическое заполнение отчетов из учетных систем.</div>
+          </div>
+        </div>
+        <div class="action-grid action-grid--adaptive mt-12">
+          <a class="btn" id="openQuickResto" href="#">QuickResto</a>
+        </div>
+      </div>
+
       <div class="itemcard mt-12 section-card hidden venue-billing-card" id="billingCard"></div>
 
       <div class="itemcard mt-12 section-card venue-members-card" id="membersCard">
@@ -938,7 +950,7 @@ const titleEl = document.getElementById("title");
           canViewPayProfiles = false;
           canViewPayroll = false;
 
-          [sectionsCard, financeCard, referencesCard, tipsCard, membersCard].forEach((element) => setVisible(element, false));
+          [sectionsCard, financeCard, referencesCard, tipsCard, integrationsCard, membersCard].forEach((element) => setVisible(element, false));
           [btnRename, btnArchive, btnUnarchive, btnLeave, btnDelete, openSetup].forEach((element) => setVisible(element, false));
           if (setupTopNotice) setupTopNotice.classList.add("hidden");
 
@@ -983,6 +995,8 @@ const titleEl = document.getElementById("title");
         const financeCard = document.getElementById("financeCard");
         const referencesCard = document.getElementById("referencesCard");
         const tipsCard = document.getElementById("tipsSettingsCard");
+        const integrationsCard = document.getElementById("integrationsCard");
+        const openQuickResto = document.getElementById("openQuickResto");
 
         // Rename is available to owner/admin, archive/delete actions — only to superadmin/moderator.
         const canAdminVenue = (isOwner || isAdmin) && !demoReadonly;
@@ -1023,6 +1037,7 @@ openAdjustments.href = canManageAdjustments
           if (openEconomicsRules) openEconomicsRules.href = `/owner-economics-rules.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openExpenses) openExpenses.href = `/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openTipsDistribution) openTipsDistribution.href = `/owner-tip-settings.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openQuickResto) openQuickResto.href = `/owner-quickresto.html?venue_id=${encodeURIComponent(venueId)}`;
 
           if (openDepartments) openDepartments.href = `/owner-departments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openPaymentMethods) openPaymentMethods.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(venueId)}`;
@@ -1046,6 +1061,7 @@ openAdjustments.href = canManageAdjustments
           setVisible(openPayroll, canViewPayroll);
           setVisible(openDayEconomics, canViewRevenue || canViewExpenses);
           setVisible(openExpenses, canViewExpenses);
+          setVisible(integrationsCard, (isOwner || isAdmin) && !demoReadonly);
 
           if (financeCard) {
             const showFinance = [openAdjustments, openSummary, openPayProfiles, openPayroll, openDayEconomics, openExpenses, openEconomicsPlans, openEconomicsRules].some(isVisible);

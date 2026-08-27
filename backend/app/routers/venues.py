@@ -15,6 +15,7 @@ from app.routers.venue_schedule_templates import router as schedule_templates_ro
 from app.routers.venue_shift_intervals import router as shift_intervals_router
 from app.routers.venue_shifts import router as shifts_router
 from app.routers.venue_shift_swaps import router as shift_swaps_router
+from app.routers.venue_quickresto import router as quickresto_router
 
 
 router = APIRouter()
@@ -33,3 +34,4 @@ router.include_router(shift_swaps_router, prefix="/venues", tags=["venues"])
 router.include_router(catalogs_router, prefix="/venues", tags=["venues"])
 router.include_router(finance_router, prefix="/venues", tags=["venues"])
 router.include_router(economics_router, prefix="/venues", tags=["venues"])
+router.include_router(quickresto_router, prefix="/venues", tags=["integrations"])
