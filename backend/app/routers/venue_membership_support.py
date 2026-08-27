@@ -8,6 +8,7 @@ from app.models.venue_member import VenueMember
 from app.models.venue_invite import VenueInvite
 from app.models.auth_identity import AuthIdentity
 from app.services.invites import build_invite_link, normalize_phone_e164
+from app.services.venue_member_names import base_member_display_name, normalize_owner_note
 
 
 def _build_user_auth_snapshot_map(db: Session, user_ids: list[int]) -> dict[int, dict]:
@@ -43,23 +44,20 @@ def _display_name(
     phone: str | None = None,
     user_id: int | None = None,
 ) -> str:
-    if short_name:
-        return short_name
-    if full_name:
-        return full_name
-    if tg_username:
-        return f"@{tg_username}"
-    if phone:
-        return phone
-    if user_id:
-        return f"user #{user_id}"
-    return "—"
+    return base_member_display_name(
+        short_name=short_name,
+        full_name=full_name,
+        tg_username=tg_username,
+        phone=phone,
+        user_id=user_id,
+    )
 
 
-def _serialize_user_brief(row, auth_map: dict[int, dict]) -> dict:
+def _serialize_user_brief(row, auth_map: dict[int, dict], *, owner_note: str | None = None) -> dict:
     snap = auth_map.get(int(row.id), {"phone": None, "auth_methods": []})
     phone = snap.get("phone")
     methods = list(snap.get("auth_methods") or [])
+    private_note = normalize_owner_note(owner_note)
     return {
         "user_id": row.id,
         "tg_user_id": getattr(row, "tg_user_id", None),
@@ -70,7 +68,9 @@ def _serialize_user_brief(row, auth_map: dict[int, dict]) -> dict:
         "auth_methods": methods,
         "has_phone_auth": "phone" in methods,
         "has_telegram_auth": "telegram" in methods,
-        "display_name": _display_name(
+        "owner_note": private_note,
+        "display_name": private_note
+        or _display_name(
             short_name=getattr(row, "short_name", None),
             full_name=getattr(row, "full_name", None),
             tg_username=getattr(row, "tg_username", None),

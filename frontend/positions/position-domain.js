@@ -11,6 +11,8 @@ function fioInitials(fullName) {
 }
 
 function memberNiceName(m) {
+  const displayName = (m?.display_name || "").trim();
+  if (displayName) return displayName;
   const shortName = (m?.short_name || "").trim();
   if (shortName) return shortName;
   const fi = fioInitials(m?.full_name);

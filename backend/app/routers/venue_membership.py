@@ -30,6 +30,7 @@ from app.routers.venue_core import (
 from app.schemas.venue_core import (
     InviteCreateIn,
     InviteDefaultPositionPatchIn,
+    MemberOwnerNotePatchIn,
 )
 from app.routers.venue_permissions import (
     _require_staff_manage_or_owner_or_super_admin,
@@ -42,9 +43,54 @@ from app.routers.venue_membership_support import (
 from app.routers.venue_payroll_support import (
     _recalculate_payroll_for_dates,
 )
+from app.services.venue_member_names import normalize_owner_note, owner_display_name
 
 
 router = APIRouter()
+
+
+def _detach_member_positions(db: Session, *, venue_id: int, member_user_id: int) -> None:
+    positions = (
+        db.execute(
+            select(VenuePosition)
+            .where(
+                VenuePosition.venue_id == int(venue_id),
+                VenuePosition.member_user_id == int(member_user_id),
+                VenuePosition.is_active.is_(True),
+            )
+            .order_by(VenuePosition.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    by_title: dict[str, list[VenuePosition]] = {}
+    for position in positions:
+        by_title.setdefault(str(position.title or "").strip(), []).append(position)
+
+    for title, member_positions in by_title.items():
+        member_position_ids = [int(position.id) for position in member_positions]
+        sibling_id = (
+            db.execute(
+                select(VenuePosition.id)
+                .where(
+                    VenuePosition.venue_id == int(venue_id),
+                    VenuePosition.title == title,
+                    VenuePosition.is_active.is_(True),
+                    VenuePosition.id.not_in(member_position_ids),
+                )
+                .order_by(VenuePosition.id.asc())
+            )
+            .scalars()
+            .first()
+        )
+        if sibling_id is None and member_positions:
+            keeper, *duplicates = member_positions
+            keeper.member_user_id = None
+            for duplicate in duplicates:
+                duplicate.is_active = False
+        else:
+            for position in member_positions:
+                position.is_active = False
 
 
 @router.post("/{venue_id}/invites")
@@ -91,8 +137,17 @@ def create_invite(
                     raise HTTPException(status_code=403, detail="Недостаточно прав для изменения владельца")
                 mem.venue_role = role
                 mem.is_active = True
+                mem.owner_note = normalize_owner_note(payload.contact_label)
             else:
-                db.add(VenueMember(venue_id=venue_id, user_id=existing_user.id, venue_role=role, is_active=True))
+                db.add(
+                    VenueMember(
+                        venue_id=venue_id,
+                        user_id=existing_user.id,
+                        venue_role=role,
+                        is_active=True,
+                        owner_note=normalize_owner_note(payload.contact_label),
+                    )
+                )
 
             db.commit()
             auth_map = _build_user_auth_snapshot_map(db, [existing_user.id])
@@ -112,7 +167,9 @@ def create_invite(
                 "mode": "member_added",
                 "channel": channel,
                 "member": {
-                    **_serialize_user_brief(member_row, auth_map),
+                    **_serialize_user_brief(
+                        member_row, auth_map, owner_note=normalize_owner_note(payload.contact_label)
+                    ),
                     "venue_role": role,
                 },
             }
@@ -159,8 +216,17 @@ def create_invite(
                     raise HTTPException(status_code=403, detail="Недостаточно прав для изменения владельца")
                 mem.venue_role = role
                 mem.is_active = True
+                mem.owner_note = normalize_owner_note(payload.contact_label)
             else:
-                db.add(VenueMember(venue_id=venue_id, user_id=existing_user.id, venue_role=role, is_active=True))
+                db.add(
+                    VenueMember(
+                        venue_id=venue_id,
+                        user_id=existing_user.id,
+                        venue_role=role,
+                        is_active=True,
+                        owner_note=normalize_owner_note(payload.contact_label),
+                    )
+                )
 
             db.commit()
             auth_map = _build_user_auth_snapshot_map(db, [existing_user.id])
@@ -180,7 +246,9 @@ def create_invite(
                 "mode": "member_added",
                 "channel": channel,
                 "member": {
-                    **_serialize_user_brief(member_row, auth_map),
+                    **_serialize_user_brief(
+                        member_row, auth_map, owner_note=normalize_owner_note(payload.contact_label)
+                    ),
                     "venue_role": role,
                 },
             }
@@ -212,6 +280,45 @@ def create_invite(
         "token": inv.invite_token,
         "target_status": invite_meta.get("target_status", "WAITING_SIGNUP"),
         "target_user": invite_meta.get("target_user"),
+    }
+
+
+@router.patch("/{venue_id}/members/{member_user_id}/owner-note")
+def update_member_owner_note(
+    venue_id: int,
+    member_user_id: int,
+    payload: MemberOwnerNotePatchIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_active_member_or_admin(db, venue_id=venue_id, user=user)
+    if not _is_owner_or_super_admin(db, venue_id=venue_id, user=user):
+        raise HTTPException(status_code=403, detail="Only the venue owner can edit this note")
+
+    membership = db.execute(
+        select(VenueMember).where(
+            VenueMember.venue_id == venue_id,
+            VenueMember.user_id == member_user_id,
+            VenueMember.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if membership is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    membership.owner_note = normalize_owner_note(payload.owner_note)
+    member = db.execute(select(User).where(User.id == member_user_id)).scalar_one()
+    db.commit()
+    return {
+        "ok": True,
+        "member_user_id": int(member_user_id),
+        "owner_note": membership.owner_note,
+        "display_name": owner_display_name(
+            owner_note=membership.owner_note,
+            short_name=member.short_name,
+            full_name=member.full_name,
+            tg_username=member.tg_username,
+            user_id=member.id,
+        ),
     }
 
 
@@ -344,13 +451,7 @@ def remove_member(
         )
     )
 
-    # Remove member's position (if exists)
-    db.execute(
-        delete(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == member_user_id,
-        )
-    )
+    _detach_member_positions(db, venue_id=venue_id, member_user_id=member_user_id)
 
     _recalculate_payroll_for_dates(
         db,
@@ -434,13 +535,7 @@ def leave_venue(
         )
     )
 
-    # Remove user's position (if exists)
-    db.execute(
-        delete(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == current_user.id,
-        )
-    )
+    _detach_member_positions(db, venue_id=venue_id, member_user_id=current_user.id)
 
     _recalculate_payroll_for_dates(
         db,

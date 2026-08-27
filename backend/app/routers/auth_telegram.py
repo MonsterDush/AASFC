@@ -593,6 +593,7 @@ def telegram_browser_link_status(
 @link_router.post("/link/telegram/browser/finalize", response_model=AuthStateOut)
 def finalize_telegram_browser_link(
     payload: TelegramBrowserAuthFinalizeIn,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -614,12 +615,14 @@ def finalize_telegram_browser_link(
         session.finalized_at = _utcnow()
     db.commit()
     db.refresh(linked_user)
+    _write_access_cookie(response, user=linked_user)
     return _auth_state(db, user=linked_user)
 
 
 @link_router.post("/link/telegram", response_model=AuthStateOut)
 def link_telegram_account(
     payload: LinkTelegramIn,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -662,4 +665,5 @@ def link_telegram_account(
     db.commit()
     db.refresh(user)
     accept_invites_for_user(db, user_id=user.id, tg_username=user.tg_username)
+    _write_access_cookie(response, user=user)
     return _auth_state(db, user=user)

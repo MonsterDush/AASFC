@@ -43,14 +43,18 @@ def _is_shift_comments_allowed(db: Session, *, venue_id: int, shift_id: int, use
         return True
 
     # Position-based staff (common case in current MVP)
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
+    positions = (
+        db.execute(
+            select(VenuePosition).where(
+                VenuePosition.venue_id == venue_id,
+                VenuePosition.member_user_id == user.id,
+                VenuePosition.is_active.is_(True),
+            )
         )
-    ).scalar_one_or_none()
-    if pos is not None:
+        .scalars()
+        .all()
+    )
+    if positions:
         return True
 
     # Fallback: assigned to this shift
