@@ -14,7 +14,7 @@
     "test:browser": "node tools/browser-e2e.mjs",
     "test:error-tracking": "pnpm build:error-tracking && git diff --exit-code -- frontend/assets/error-tracking",
     "test:frontend-quality": "pnpm lint:frontend && pnpm format:check && pnpm typecheck",
-    "test:i18n": "node tools/check-i18n-coverage.mjs",
+    "test:i18n": "node tools/check-i18n-coverage.mjs && node tools/check-i18n-quality.mjs",
     "test:metrika": "node frontend/demo_metrika_check.mjs",
     "typecheck": "tsc -p tsconfig.frontend.json"
   },

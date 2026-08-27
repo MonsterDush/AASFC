@@ -487,6 +487,5 @@ def verify_link_phone_code(
     db.commit()
     db.refresh(user)
     accept_phone_invites_for_user(db, user_id=user.id, phone_e164=phone_e164)
-    if payload.new_password:
-        _write_access_cookie(response, user=user)
+    _write_access_cookie(response, user=user)
     return _auth_state(db, user=user)

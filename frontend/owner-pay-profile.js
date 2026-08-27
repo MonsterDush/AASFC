@@ -22,10 +22,10 @@ import {
   applyDemoReadonlyCaps,
 } from "/app.js?v=20260820-i18nmetrika1";
 import { permSetFromResponse, roleUpper, hasPerm } from "/permissions.js";
-import { createPayComponentSupport } from "/owner-pay-profile/component-support.js?v=20260823-kpiperunit1";
-import { createPayComponentFormRenderer } from "/owner-pay-profile/component-form.js?v=20260823-kpiperunit1";
-import { createPayComponentController } from "/owner-pay-profile/component-controller.js?v=20260823-kpiperunit1";
-import { createPayComponentList } from "/owner-pay-profile/component-list.js?v=20260823-kpiperunit1";
+import { createPayComponentSupport } from "/owner-pay-profile/component-support.js?v=20260826-i18nvalue1";
+import { createPayComponentFormRenderer } from "/owner-pay-profile/component-form.js?v=20260826-i18nvalue1";
+import { createPayComponentController } from "/owner-pay-profile/component-controller.js?v=20260826-i18nvalue1";
+import { createPayComponentList } from "/owner-pay-profile/component-list.js?v=20260826-i18nvalue1";
 import { createPayAssignmentController } from "/owner-pay-profile/assignment-controller.js?v=20260723-functional1";
 
 const root = document.getElementById("root");

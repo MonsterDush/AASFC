@@ -182,6 +182,36 @@ class PayrollNotificationTests(TestCase):
         self.assertIn("Премии: +300 ₽", employee_text)
         self.assertIn("Штрафы и списания: −100 ₽", employee_text)
 
+    def test_expense_notifications_require_expense_view_permission(self):
+        allowed = SimpleNamespace(id=1, tg_user_id=101)
+        blocked = SimpleNamespace(id=2, tg_user_id=102)
+
+        with (
+            patch.object(
+                payroll_notifications,
+                "_active_venue_users",
+                return_value=[(allowed, "STAFF"), (blocked, "STAFF")],
+            ),
+            patch.object(
+                payroll_notifications,
+                "has_venue_permission",
+                side_effect=lambda _db, *, user, permission_code, **_kwargs: (
+                    user.id == allowed.id and permission_code == "EXPENSE_VIEW"
+                ),
+            ) as has_permission,
+        ):
+            recipients = payroll_notifications.list_expense_notification_recipients(
+                SimpleNamespace(),
+                venue_id=7,
+            )
+
+        self.assertEqual(recipients, [allowed])
+        self.assertEqual(has_permission.call_count, 2)
+        self.assertEqual(
+            {call.kwargs["permission_code"] for call in has_permission.call_args_list},
+            {"EXPENSE_VIEW"},
+        )
+
     def test_weekly_window_notifies_managers_and_all_active_employees(self):
         manager = SimpleNamespace(id=1, tg_user_id=101)
         employees = [

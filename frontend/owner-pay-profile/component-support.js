@@ -53,6 +53,26 @@ function fmtPercentBps(bps) {
   }
 }
 
+async function localizePreservedInputValue(input) {
+  const source = String(input?.value || "");
+  const translate = globalThis.window?.AxelioI18n?.translateText;
+  if (!input || !source || typeof translate !== "function") return;
+  const translated = String(await translate(source, { report: false }) || "");
+  if (!input.isConnected || input.value !== source || !translated || translated === source) return;
+  input.dataset.i18nSourceValue = source;
+  input.dataset.i18nDisplayValue = translated;
+  input.value = translated;
+}
+
+function preservedInputValue(input) {
+  const current = String(input?.value || "").trim();
+  const displayed = String(input?.dataset?.i18nDisplayValue || "").trim();
+  if (displayed && current === displayed) {
+    return String(input?.dataset?.i18nSourceValue || "").trim();
+  }
+  return current;
+}
+
 function percentInputFromBps(bps) {
   const value = Number(bps || 0) / 100;
   return Number.isFinite(value) ? String(value).replace(/\.0+$/, "") : "";
@@ -449,6 +469,8 @@ return {
   COMPONENT_LABELS,
   fmtMoneyMinor,
   fmtPercentBps,
+  localizePreservedInputValue,
+  preservedInputValue,
   percentInputFromBps,
   moneyInputFromMinor,
   parseMoneyRubToMinor,

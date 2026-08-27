@@ -56,9 +56,9 @@ function renderPositionForm({ mode, position }) {
   const canEditPerms = auth.canManagePerms;
   const canChangeMember = auth.canAssign && mode === "edit";
 
-  const membersOptions = state.members
+  const membersOptions = ['<option value="">— без сотрудника —</option>', ...state.members
     .map((m) => `<option value="${esc(String(m.user_id))}">${esc(memberLabel(m))}</option>`)
-    .join("");
+  ].join("");
 
   const hint = titles.length
     ? "Начни вводить — будут подсказки (например: Бармен, Официант…)"
@@ -133,7 +133,7 @@ function renderPositionForm({ mode, position }) {
 
       <div>
         <div class="muted mb-6">Сотрудник</div>
-        <select id="f_member" ${((mode === "edit") && !canChangeMember) || !auth.canManage ? "disabled" : ""}>${membersOptions}</select>
+        <select id="f_member" ${!auth.canAssign || ((mode === "edit") && !canChangeMember) || !auth.canManage ? "disabled" : ""}>${membersOptions}</select>
       </div>
 
       <div>
@@ -168,7 +168,7 @@ function renderPositionForm({ mode, position }) {
       <button class="btn" id="btnCancelPos">Отмена</button>
       ${
         (mode === "edit" && auth.canManage)
-          ? `<button class="btn danger position-form-tail" id="btnDeletePos">Архивировать</button>`
+          ? `<button class="btn danger position-form-tail" id="btnDeletePos">${p.member_user_id ? "Убрать сотрудника" : "Архивировать"}</button>`
           : `<span class="muted position-form-tail">Можно назначать несколько людей на одну должность</span>`
       }
     </div>
@@ -182,11 +182,12 @@ function collectPayload(base = {}) {
   const payProfileEl = document.getElementById("f_pay_profile");
 
   const title = (titleEl && !titleEl.disabled) ? (titleEl.value || "").trim() : String(base.title || "").trim();
-  const member_user_id = (memberEl && !memberEl.disabled) ? Number(memberEl.value) : Number(base.member_user_id);
+  const memberValue = (memberEl && !memberEl.disabled) ? memberEl.value : (base.member_user_id ?? "");
+  const member_user_id = memberValue ? Number(memberValue) : null;
   const pay_profile_id = (payProfileEl && !payProfileEl.disabled) ? (payProfileEl.value ? Number(payProfileEl.value) : null) : (base.pay_profile_id ? Number(base.pay_profile_id) : null);
 
   if (!title) throw new Error("Укажите название должности");
-  if (!Number.isFinite(member_user_id) || member_user_id <= 0) throw new Error("Выберите сотрудника");
+  if (member_user_id !== null && (!Number.isFinite(member_user_id) || member_user_id <= 0)) throw new Error("Выберите сотрудника");
   if (pay_profile_id !== null && (!Number.isFinite(pay_profile_id) || pay_profile_id <= 0)) throw new Error("Выберите корректный профиль зарплаты");
 
   // New permissions list (permission codes)
@@ -369,9 +370,9 @@ async function openCreateModal({ title = "", hint = "", position = null } = {}) 
     }),
   });
 
-  // дефолтный выбор сотрудника
+  // Должность можно сохранить пустой и назначить сотрудника позже.
   const sel = document.getElementById("f_member");
-  if (sel && sel.options.length) sel.value = sel.options[0].value;
+  if (sel) sel.value = "";
   wirePositionFormUx();
 
   document.getElementById("btnSavePos")?.addEventListener("click", async () => {
@@ -432,17 +433,20 @@ async function openEditModal(p, modeOverride = null) {
   });
 
   document.getElementById("btnDeletePos")?.addEventListener("click", async () => {
+    const hasMember = Number(p.member_user_id || 0) > 0;
     const ok = await confirmModal({
-      title: "Архивировать должность?",
-      text: `Удалить должность «${p.title || ""}» для сотрудника?`,
-      confirmText: "В архив",
+      title: hasMember ? "Убрать сотрудника с должности?" : "Архивировать должность?",
+      text: hasMember
+        ? `Сотрудник будет снят с должности «${p.title || ""}», а сама должность останется доступной.`
+        : `Должность «${p.title || ""}» будет перенесена в архив.`,
+      confirmText: hasMember ? "Убрать" : "В архив",
       danger: true,
     });
     if (!ok) return;
 
     try {
       await deleteVenuePosition(state.venueId, p.id);
-      toast("Должность архивирована", "ok");
+      toast(hasMember ? "Сотрудник снят с должности" : "Должность архивирована", "ok");
       closePosModal();
       await load();
     } catch (e) {

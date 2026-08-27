@@ -255,9 +255,18 @@ class PayrollMonthOrchestratorTests(TestCase):
             kpi_metric_id=None,
         )
         finance_entries = []
+        context = SimpleNamespace(
+            assignment=assignment,
+            profile=profile,
+            member_user=member,
+            metrics=calculator.PayrollMemberMetrics(),
+            position_ids=set(),
+            position_titles=set(),
+        )
 
         with (
             patch.object(calculator, "_pick_latest_assignments", return_value=[(assignment, profile, member)]),
+            patch.object(calculator, "load_position_payroll_contexts", return_value=[context]),
             patch.object(calculator, "_load_profile_components", return_value={3: [component]}),
             patch.object(calculator, "_load_member_metrics", return_value={17: calculator.PayrollMemberMetrics()}),
             patch.object(calculator, "_load_revenue_metrics", return_value=calculator.PayrollRevenueMetrics()),
@@ -358,10 +367,19 @@ class PayrollMonthOrchestratorTests(TestCase):
             self._Result(rows=[(assignment, profile, member)]),
             self._Result(scalar_one_or_none=1),
         ]
+        context = SimpleNamespace(
+            assignment=assignment,
+            profile=profile,
+            member_user=member,
+            metrics=metrics,
+            position_ids={9},
+            position_titles={"Administrator"},
+        )
 
         with (
             patch.object(calculator, "delete_finance_entries_for_source"),
             patch.object(calculator, "_pick_latest_assignments", return_value=[(assignment, profile, member)]),
+            patch.object(calculator, "load_position_payroll_contexts", return_value=[context]),
             patch.object(
                 calculator,
                 "_load_profile_components",

@@ -65,6 +65,7 @@ from app.routers.venue_reports import (
     _rebuild_report_tip_allocations,
 )
 from app.routers.venue_schedule_templates import _normalize_shift_slot_for_venue, _shift_slot_label
+from app.services.venue_member_names import load_owner_notes, owner_display_name
 
 
 router = APIRouter()
@@ -441,7 +442,14 @@ def list_shifts(
             .where(ShiftAssignment.shift_id.in_(shift_ids))
             .order_by(ShiftAssignment.id.asc())
         ).all()
+        owner_notes = load_owner_notes(
+            db,
+            venue_id=venue_id,
+            viewer=user,
+            member_user_ids=[int(row.member_user_id) for row in arows],
+        )
         for r in arows:
+            owner_note = owner_notes.get(int(r.member_user_id))
             assignments_by_shift.setdefault(r.shift_id, []).append(
                 {
                     "member_user_id": r.member_user_id,
@@ -450,6 +458,14 @@ def list_shifts(
                     "tg_username": r.tg_username,
                     "full_name": r.full_name,
                     "short_name": r.short_name,
+                    "owner_note": owner_note,
+                    "display_name": owner_display_name(
+                        owner_note=owner_note,
+                        short_name=r.short_name,
+                        full_name=r.full_name,
+                        tg_username=r.tg_username,
+                        user_id=r.member_user_id,
+                    ),
                 }
             )
 
@@ -742,6 +758,12 @@ def get_shift(
         .where(ShiftAssignment.shift_id == obj.id)
         .order_by(User.id.asc())
     ).all()
+    owner_notes = load_owner_notes(
+        db,
+        venue_id=venue_id,
+        viewer=user,
+        member_user_ids=[int(row.member_user_id) for row in assigns],
+    )
 
     return {
         "id": obj.id,
@@ -761,7 +783,21 @@ def get_shift(
                 "id": r.id,
                 "member_user_id": r.member_user_id,
                 "venue_position_id": r.venue_position_id,
-                "member": {"user_id": r.member_user_id, "tg_user_id": r.tg_user_id, "tg_username": r.tg_username},
+                "member": {
+                    "user_id": r.member_user_id,
+                    "tg_user_id": r.tg_user_id,
+                    "tg_username": r.tg_username,
+                    "full_name": r.full_name,
+                    "short_name": r.short_name,
+                    "owner_note": owner_notes.get(int(r.member_user_id)),
+                    "display_name": owner_display_name(
+                        owner_note=owner_notes.get(int(r.member_user_id)),
+                        short_name=r.short_name,
+                        full_name=r.full_name,
+                        tg_username=r.tg_username,
+                        user_id=r.member_user_id,
+                    ),
+                },
                 "position_title": r.position_title,
             }
             for r in assigns
@@ -793,6 +829,8 @@ def add_shift_assignment(
         select(VenuePosition).where(
             VenuePosition.id == payload.venue_position_id,
             VenuePosition.venue_id == venue_id,
+            VenuePosition.is_active.is_(True),
+            VenuePosition.member_user_id.is_not(None),
         )
     ).scalar_one_or_none()
     if pos is None:
@@ -816,7 +854,31 @@ def add_shift_assignment(
         )
     ).scalar_one_or_none()
     if existing is not None:
-        return {"id": existing.id, "mode": "exists"}
+        if int(existing.venue_position_id) == int(pos.id):
+            return {"id": existing.id, "mode": "exists"}
+        existing.venue_position_id = int(pos.id)
+        existing.reminder_sent_at = None
+        closed_report = db.execute(
+            select(DailyReport).where(
+                DailyReport.venue_id == venue_id,
+                DailyReport.date == shift.date,
+                DailyReport.shift_slot == normalize_shift_slot(getattr(shift, "shift_slot", None)),
+                DailyReport.status == "CLOSED",
+            )
+        ).scalar_one_or_none()
+        if closed_report is not None:
+            venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
+            if venue is not None:
+                _rebuild_report_tip_allocations(db, report=closed_report, venue=venue)
+        _recalculate_payroll_for_dates(
+            db,
+            venue_id=venue_id,
+            target_dates=[shift.date],
+            calculated_by_user_id=user.id,
+            trigger_reason="shift_assignment_position_changed",
+        )
+        db.commit()
+        return {"id": existing.id, "mode": "position_updated", "venue_position_id": int(pos.id)}
 
     a = ShiftAssignment(
         shift_id=shift_id,
@@ -928,13 +990,19 @@ def _shift_comment_user_display_name(user: User) -> str:
     return str(value or f"Сотрудник #{int(user.id)}").strip()
 
 
-def _shift_comment_user_brief(user: User) -> dict:
+def _shift_comment_user_brief(user: User, *, owner_note: str | None = None) -> dict:
     return {
         "id": int(user.id),
         "tg_username": user.tg_username,
         "full_name": user.full_name,
         "short_name": user.short_name,
-        "display_name": _shift_comment_user_display_name(user),
+        "display_name": owner_display_name(
+            owner_note=owner_note,
+            short_name=user.short_name,
+            full_name=user.full_name,
+            tg_username=user.tg_username,
+            user_id=user.id,
+        ),
     }
 
 
@@ -995,7 +1063,15 @@ def _load_shift_comment_mentionable_members(
     )
     if exclude_user_id is not None:
         stmt = stmt.where(User.id != int(exclude_user_id))
-    return list(db.execute(stmt).all())
+    grouped: dict[int, tuple[User, str, set[str]]] = {}
+    for member, venue_role, position_title in db.execute(stmt).all():
+        item = grouped.setdefault(int(member.id), (member, venue_role, set()))
+        if position_title:
+            item[2].add(str(position_title))
+    return [
+        (member, venue_role, ", ".join(sorted(titles, key=str.casefold)) or None)
+        for member, venue_role, titles in grouped.values()
+    ]
 
 
 def _serialize_shift_comment(
@@ -1004,25 +1080,33 @@ def _serialize_shift_comment(
     *,
     mention_users: list[User] | None = None,
     parent: tuple[ShiftComment, User] | None = None,
+    owner_notes: dict[int, str] | None = None,
 ) -> dict:
+    private_notes = owner_notes or {}
     reply_to = None
     if parent is not None:
         parent_comment, parent_author = parent
         reply_to = {
             "id": int(parent_comment.id),
             "text": parent_comment.text,
-            "author": _shift_comment_user_brief(parent_author),
+            "author": _shift_comment_user_brief(parent_author, owner_note=private_notes.get(int(parent_author.id))),
         }
     return {
         "id": int(comment.id),
         "shift_id": int(comment.shift_id),
         "text": comment.text,
         "created_at": comment.created_at.isoformat(),
-        "author": _shift_comment_user_brief(author),
+        "author": _shift_comment_user_brief(author, owner_note=private_notes.get(int(author.id))),
         "mentions": [
             {
                 "user_id": int(mentioned_user.id),
-                "display_name": _shift_comment_user_display_name(mentioned_user),
+                "display_name": owner_display_name(
+                    owner_note=private_notes.get(int(mentioned_user.id)),
+                    short_name=mentioned_user.short_name,
+                    full_name=mentioned_user.full_name,
+                    tg_username=mentioned_user.tg_username,
+                    user_id=mentioned_user.id,
+                ),
             }
             for mentioned_user in (mention_users or [])
         ],
@@ -1101,12 +1185,21 @@ def list_shift_comments(
             mentions_by_comment.setdefault(int(mention.comment_id), []).append(mentioned_user)
 
     rows_by_id = {int(comment.id): (comment, author) for comment, author in comment_rows}
+    visible_user_ids = {int(author.id) for _comment, author in comment_rows}
+    visible_user_ids.update(int(member.id) for members in mentions_by_comment.values() for member in members)
+    owner_notes = load_owner_notes(
+        db,
+        venue_id=venue_id,
+        viewer=user,
+        member_user_ids=visible_user_ids,
+    )
     return [
         _serialize_shift_comment(
             comment,
             author,
             mention_users=mentions_by_comment.get(int(comment.id), []),
             parent=rows_by_id.get(int(comment.parent_comment_id)) if comment.parent_comment_id is not None else None,
+            owner_notes=owner_notes,
         )
         for comment, author in comment_rows
     ]
@@ -1192,4 +1285,14 @@ def add_shift_comment(
         user,
         mention_users=mention_users,
         parent=parent,
+        owner_notes=load_owner_notes(
+            db,
+            venue_id=venue_id,
+            viewer=user,
+            member_user_ids=[
+                int(user.id),
+                *[int(member.id) for member in mention_users],
+                *([int(parent[1].id)] if parent is not None else []),
+            ],
+        ),
     )

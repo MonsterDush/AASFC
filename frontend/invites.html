@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260802-navbuttons1" />
+  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
   <link rel="stylesheet" href="/styles/pages/invites.css?v=20260725-polish4" />
   <script>
     (() => {
@@ -16,7 +16,7 @@
       } catch {}
     })();
   </script>
-  <script type="module" src="/i18n-bootstrap.js?v=20260820-i18n6"></script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>
   <script src="/page-loader.js?v=20260823-navfix1"></script>
   <title>Axelio · Приглашения</title>
 </head>
@@ -360,10 +360,26 @@
               <div class="mt-6">${authChips(m.auth_methods || [])}</div>
             </div>
             <div class="invite-actions">
+              <button class="btn${canInviteOwners ? '' : ' hidden'}" data-edit-note>Изменить заметку</button>
               <button class="btn danger${canRemoveMember ? '' : ' hidden'}" data-remove>Удалить</button>
             </div>
           </div>
         `;
+        const editNoteBtn = row.querySelector('[data-edit-note]');
+        if (editNoteBtn) editNoteBtn.onclick = async () => {
+          const next = prompt('Имя или заметка, видимые только владельцу', m.owner_note || '');
+          if (next === null) return;
+          try {
+            await api(`/venues/${venueId}/members/${m.user_id}/owner-note`, {
+              method: 'PATCH',
+              body: { owner_note: next.trim() || null },
+            });
+            toast('Заметка сохранена', 'ok');
+            await loadMembers();
+          } catch (e) {
+            toast('Ошибка сохранения заметки: ' + e.message, 'err');
+          }
+        };
         const removeBtn = row.querySelector('[data-remove]');
         if (removeBtn) removeBtn.onclick = async () => {
           const ok = confirm(`Удалить ${display} из заведения?`);

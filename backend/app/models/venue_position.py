@@ -1,24 +1,25 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 
 
 class VenuePosition(Base):
-    """Job position (role) of a specific member within a specific venue.
+    """Job position assignment within a venue.
 
-    Notes (MVP):
-    - We keep a single row per (venue_id, member_user_id) and update it in place.
-    - is_active allows temporarily disabling a position without removing the row.
+    A row may be empty (``member_user_id`` is NULL), which keeps a position
+    available after its last employee is detached. Multiple active rows may
+    point to the same member so one employee can hold several positions.
     """
 
     __tablename__ = "venue_positions"
-    __table_args__ = (UniqueConstraint("venue_id", "member_user_id", name="uq_venue_position_member"),)
-
     id: Mapped[int] = mapped_column(primary_key=True)
 
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True)
-    member_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    member_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    pay_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pay_profiles.id", ondelete="SET NULL"), index=True, nullable=True
+    )
 
     title: Mapped[str] = mapped_column(String(100), nullable=False)
 
@@ -34,3 +35,4 @@ class VenuePosition(Base):
 
     venue = relationship("Venue")
     member_user = relationship("User")
+    pay_profile = relationship("PayProfile")

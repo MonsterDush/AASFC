@@ -139,6 +139,9 @@ function fioInitials(fullName) {
 function memberName(member) {
   if (!member) return "—";
 
+  const displayName = (member.display_name || "").trim();
+  if (displayName) return displayName;
+
   const shortName = (member.short_name || "").trim();
   if (shortName) return shortName;
 

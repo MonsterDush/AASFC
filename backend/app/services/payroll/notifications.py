@@ -210,21 +210,12 @@ def _active_venue_users(db: Session, *, venue_id: int) -> list[tuple[User, str]]
 
 def list_expense_notification_recipients(db: Session, *, venue_id: int) -> list[User]:
     recipients: list[User] = []
-    for user, venue_role in _active_venue_users(db, venue_id=venue_id):
-        if (
-            venue_role == "OWNER"
-            or has_venue_permission(
-                db,
-                venue_id=int(venue_id),
-                user=user,
-                permission_code="EXPENSE_ADD",
-            )
-            or has_venue_permission(
-                db,
-                venue_id=int(venue_id),
-                user=user,
-                permission_code="PAYROLL_VIEW",
-            )
+    for user, _venue_role in _active_venue_users(db, venue_id=venue_id):
+        if has_venue_permission(
+            db,
+            venue_id=int(venue_id),
+            user=user,
+            permission_code="EXPENSE_VIEW",
         ):
             recipients.append(user)
     return recipients
