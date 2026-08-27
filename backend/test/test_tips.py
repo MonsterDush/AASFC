@@ -282,6 +282,7 @@ class TipAllocationIntegrationTests(TestCase):
                 "_has_revenue_view_access",
                 return_value=False,
             ),
+            patch.object(venue_shifts, "load_owner_notes", return_value={}),
         ):
             result = venue_shifts.list_shifts(
                 5,

@@ -46,6 +46,10 @@ class InviteDefaultPositionPatchIn(BaseModel):
     default_position: InviteDefaultPositionIn | None = None
 
 
+class MemberOwnerNotePatchIn(BaseModel):
+    owner_note: str | None = Field(default=None, max_length=500)
+
+
 class VenueSettingsOut(BaseModel):
     tips_enabled: bool = False
     night_shifts_enabled: bool = False

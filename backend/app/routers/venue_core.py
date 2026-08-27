@@ -874,8 +874,17 @@ def get_members(
     if not allowed:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    owner_view = _is_owner_or_super_admin(db, venue_id=venue_id, user=user)
     members = (
-        db.query(User.id, User.tg_user_id, User.tg_username, User.full_name, User.short_name, VenueMember.venue_role)
+        db.query(
+            User.id,
+            User.tg_user_id,
+            User.tg_username,
+            User.full_name,
+            User.short_name,
+            VenueMember.venue_role,
+            VenueMember.owner_note,
+        )
         .join(VenueMember, VenueMember.user_id == User.id)
         .filter(VenueMember.venue_id == venue_id, VenueMember.is_active.is_(True))
         .all()
@@ -908,7 +917,7 @@ def get_members(
     return {
         "members": [
             {
-                **_serialize_user_brief(r, member_auth_map),
+                **_serialize_user_brief(r, member_auth_map, owner_note=r.owner_note if owner_view else None),
                 "venue_role": r.venue_role,
             }
             for r in members

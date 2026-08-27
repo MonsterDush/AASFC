@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-import json
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -59,7 +58,7 @@ from .metric_loaders import (
     _load_closed_report_dates as _load_closed_report_dates,
     _load_closed_report_slots_by_date as _load_closed_report_slots_by_date,
     _load_kpi_metrics,
-    _load_member_metrics,
+    _load_member_metrics as _load_member_metrics,
     _load_profile_components,
     _load_revenue_metrics,
     _load_venue_plan_metrics,
@@ -90,7 +89,7 @@ from .payroll_types import (
     PayrollCalculationResult,
     PayrollKpiBonusDecision as PayrollKpiBonusDecision,
     PayrollKpiMetrics as PayrollKpiMetrics,
-    PayrollMemberMetrics,
+    PayrollMemberMetrics as PayrollMemberMetrics,
     PayrollPercentDecision,
     PayrollRevenueMetrics as PayrollRevenueMetrics,
     PayrollVenuePlanMetrics as PayrollVenuePlanMetrics,
@@ -103,6 +102,8 @@ from .percent_calculations import (
     _component_boost_recalc_mode as _component_boost_recalc_mode,
     _component_boost_source_type as _component_boost_source_type,
 )
+from .position_contexts import load_position_payroll_contexts
+from .position_lines import add_position_context_to_aggregate, build_payroll_lines_from_position_aggregates
 
 
 def calculate_payroll_for_month(
@@ -151,16 +152,15 @@ def calculate_payroll_for_month(
         list(assignment_rows), month_start=month_start, month_end_excl=month_end_excl
     )
 
-    member_user_ids = [int(assignment.member_user_id) for assignment, _profile, _user in selected_assignments]
-    profile_ids = sorted({int(profile.id) for _assignment, profile, _user in selected_assignments})
-    components_by_profile = _load_profile_components(db, profile_ids=profile_ids)
-    metrics_by_member = _load_member_metrics(
+    payroll_contexts = load_position_payroll_contexts(
         db,
         venue_id=int(venue_id),
         month_start=month_start,
         month_end_excl=month_end_excl,
-        member_user_ids=member_user_ids,
+        fallback_assignments=selected_assignments,
     )
+    profile_ids = sorted({int(context.profile.id) for context in payroll_contexts})
+    components_by_profile = _load_profile_components(db, profile_ids=profile_ids)
     revenue_metrics = _load_revenue_metrics(
         db,
         venue_id=int(venue_id),
@@ -180,11 +180,11 @@ def calculate_payroll_for_month(
         month_end_excl=month_end_excl,
     )
 
-    lines: list[PayrollLine] = []
-    total_amount_minor = 0
+    line_payloads_by_member: dict[int, dict] = {}
 
-    for assignment, profile, member_user in selected_assignments:
-        metrics = metrics_by_member.get(int(member_user.id), PayrollMemberMetrics())
+    for context in payroll_contexts:
+        profile = context.profile
+        metrics = context.metrics
         components = components_by_profile.get(int(profile.id), [])
         breakdown_items: list[dict] = []
         line_total = 0
@@ -493,42 +493,22 @@ def calculate_payroll_for_month(
             if int(earnings_by_shift_minor.get(int(item.shift_id), 0) or 0) != 0
         ]
 
-        breakdown_payload = {
-            "member_user_id": int(member_user.id),
-            "member_name": member_user.short_name
-            or member_user.full_name
-            or member_user.tg_username
-            or f"user #{member_user.id}",
-            "pay_profile_id": int(profile.id),
-            "pay_profile_title": profile.title,
-            "metrics": {
-                "minutes_total": int(metrics.minutes_total),
-                "hours_total": round(int(metrics.minutes_total) / 60.0, 2),
-                "shifts_count": int(metrics.shifts_count),
-                "worked_dates_count": len(sorted(metrics.worked_dates)),
-                "worked_dates": [day.isoformat() for day in sorted(metrics.worked_dates)],
-            },
-            "revenue_metrics": {
-                "total_revenue_minor": int(revenue_metrics.total_revenue_minor),
-            },
-            "kpi_metrics": {
-                str(metric_id): int(value) for metric_id, value in sorted(kpi_metrics.totals_by_metric_id.items())
-            },
-            "components": breakdown_items,
-            "shift_allocations": shift_allocations,
-        }
-
-        line = PayrollLine(
-            payroll_run_id=int(run.id),
-            venue_id=int(venue_id),
-            member_user_id=int(member_user.id),
-            pay_profile_id=int(profile.id),
-            amount_minor=int(line_total),
-            breakdown_json=json.dumps(breakdown_payload, ensure_ascii=False),
+        add_position_context_to_aggregate(
+            line_payloads_by_member,
+            context=context,
+            line_total=line_total,
+            breakdown_items=breakdown_items,
+            shift_allocations=shift_allocations,
         )
-        db.add(line)
-        lines.append(line)
-        total_amount_minor += int(line_total)
+
+    lines, total_amount_minor = build_payroll_lines_from_position_aggregates(
+        db,
+        payroll_run_id=int(run.id),
+        venue_id=int(venue_id),
+        aggregates=line_payloads_by_member,
+        revenue_metrics=revenue_metrics,
+        kpi_metrics=kpi_metrics,
+    )
 
     db.flush()
 

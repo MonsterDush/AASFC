@@ -484,8 +484,19 @@ def my_venue_members(
         if access.get("billing_access_mode") != BILLING_ACCESS_FULL:
             return {"venue_id": venue_id, "members": []}
 
+    owner_view = bool(
+        user.system_role == "SUPER_ADMIN" or (vm is not None and str(vm.venue_role or "").upper() == "OWNER")
+    )
     rows = db.execute(
-        select(User.id, User.tg_user_id, User.tg_username, User.full_name, User.short_name, VenueMember.venue_role)
+        select(
+            User.id,
+            User.tg_user_id,
+            User.tg_username,
+            User.full_name,
+            User.short_name,
+            VenueMember.venue_role,
+            VenueMember.owner_note,
+        )
         .join(VenueMember, VenueMember.user_id == User.id)
         .where(
             VenueMember.venue_id == venue_id,
@@ -503,6 +514,11 @@ def my_venue_members(
                 "tg_username": r.tg_username,
                 "full_name": r.full_name,
                 "short_name": r.short_name,
+                "owner_note": r.owner_note if owner_view else None,
+                "display_name": (r.owner_note if owner_view and r.owner_note else None)
+                or r.short_name
+                or r.full_name
+                or (f"@{r.tg_username}" if r.tg_username else f"user #{r.id}"),
                 "venue_role": r.venue_role,
             }
             for r in rows
@@ -641,25 +657,45 @@ def my_venue_permissions(
                 ).all()
             )
 
-    pos = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.venue_id == venue_id,
-            VenuePosition.member_user_id == user.id,
-            VenuePosition.is_active.is_(True),
+    positions = (
+        db.execute(
+            select(VenuePosition).where(
+                VenuePosition.venue_id == venue_id,
+                VenuePosition.member_user_id == user.id,
+                VenuePosition.is_active.is_(True),
+            )
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .all()
+    )
 
     position_codes: list[str] = []
     position_obj = None
-    if pos is not None:
-        position_codes = parse_permission_codes(getattr(pos, "permission_codes", None))
+    position_items = []
+    for pos in positions:
+        codes_for_position = parse_permission_codes(getattr(pos, "permission_codes", None))
+        position_codes.extend(codes_for_position)
+        position_items.append(
+            {
+                "id": pos.id,
+                "title": pos.title,
+                "rate": pos.rate,
+                "percent": pos.percent,
+                "pay_profile_id": pos.pay_profile_id,
+                "is_active": bool(pos.is_active),
+                "permission_codes": codes_for_position,
+            }
+        )
+    if position_items:
+        pos = positions[0]
         position_obj = {
             "id": pos.id,
             "title": pos.title,
             "rate": pos.rate,
             "percent": pos.percent,
+            "pay_profile_id": pos.pay_profile_id,
             "is_active": bool(pos.is_active),
-            "permission_codes": position_codes,
+            "permission_codes": parse_permission_codes(getattr(pos, "permission_codes", None)),
         }
 
     merged = unique_permission_codes(codes)
@@ -674,6 +710,7 @@ def my_venue_permissions(
         "role": vm.venue_role,
         "permissions": merged,
         "position": position_obj,
+        "positions": position_items,
         "venue_inactive": venue_inactive,
         "access_denied_reason": None,
         **_serialize_billing_access_payload(billing_access),

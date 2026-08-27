@@ -1106,7 +1106,7 @@ function renderShiftCard(s, allowEdit) {
           <div class="list__row">
             <div class="row row--between ai-center">
               <div class="list__main">
-                <div><b>${escapeHtml(label)}</b>${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
+                <div><b>${escapeHtml(label)}</b>${a.position_title ? `<span class="muted"> · ${escapeHtml(a.position_title)}</span>` : ""}${unameTxt ? `<span class="muted"> · ${escapeHtml(unameTxt)}</span>` : ""}</div>
               </div>
               ${allowEdit ? `<button class="btn danger sm" data-unassign data-shift="${shiftId}" data-user="${a.member_user_id}">Удалить</button>` : ""}
             </div>
@@ -1121,7 +1121,7 @@ function renderShiftCard(s, allowEdit) {
     editorHtml = `
       <div class="row">
         <select class="input shift-assignee-select" data-posselect data-shift="${shiftId}"></select>
-        <button class="btn primary" data-assign data-shift="${shiftId}">Назначить</button>
+        <button class="btn primary" data-assign data-shift="${shiftId}">Назначить / сменить должность</button>
       </div>
     `;
   }
@@ -1544,7 +1544,8 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
 
   if (sel) {
     sel.innerHTML = "";
-    if (!positions.length) {
+    const assignedPositions = positions.filter((position) => positionMemberUserId(position) > 0);
+    if (!assignedPositions.length) {
       const opt = document.createElement("option");
       opt.value = "";
       opt.textContent = "Нет должностей (создай в «Должности»)";
@@ -1552,11 +1553,11 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
       sel.disabled = true;
       if (btnAssign) btnAssign.disabled = true;
     } else {
-      for (const p of positions) {
+      for (const p of assignedPositions) {
         const opt = document.createElement("option");
         opt.value = p.id;
         const mem = p.member || {};
-        const name = fioInitials(mem.full_name) || mem.short_name || (mem.tg_username ? mem.tg_username.replace(/^@/, "") : "");
+        const name = mem.display_name || fioInitials(mem.full_name) || mem.short_name || (mem.tg_username ? mem.tg_username.replace(/^@/, "") : "");
         opt.textContent = `${p.title} · ${name || "—"}`;
         sel.appendChild(opt);
       }

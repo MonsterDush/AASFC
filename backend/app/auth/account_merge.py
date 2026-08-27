@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
-
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.permission_codes import parse_permission_codes, unique_permission_codes
+from app.core.permission_codes import parse_permission_codes
 from app.models import (
     Adjustment,
     AdjustmentDispute,
@@ -212,6 +210,8 @@ def _merge_venue_members(db: Session, *, target_user: User, source_user: User) -
             continue
         existing.is_active = bool(existing.is_active or row.is_active)
         existing.venue_role = _prefer_venue_role(existing.venue_role, row.venue_role)
+        if not getattr(existing, "owner_note", None) and getattr(row, "owner_note", None):
+            existing.owner_note = row.owner_note
         db.delete(row)
 
     db.flush()
@@ -237,30 +237,18 @@ def _merge_venue_positions(db: Session, *, target_user: User, source_user: User)
         .all()
     )
 
-    by_venue = {int(row.venue_id): row for row in target_rows}
     position_map: dict[int, int] = {int(row.id): int(row.id) for row in target_rows}
+    target_by_key: dict[tuple, VenuePosition] = {_venue_position_merge_key(row): row for row in target_rows}
 
     for row in source_rows:
-        existing = by_venue.get(int(row.venue_id))
+        key = _venue_position_merge_key(row)
+        existing = target_by_key.get(key)
         if existing is None:
             row.member_user_id = int(target_user.id)
-            by_venue[int(row.venue_id)] = row
+            target_by_key[key] = row
             position_map[int(row.id)] = int(row.id)
             continue
-
-        if not existing.title and row.title:
-            existing.title = row.title
-        if int(getattr(existing, "rate", 0) or 0) == 0 and int(getattr(row, "rate", 0) or 0) > 0:
-            existing.rate = row.rate
-        if int(getattr(existing, "percent", 0) or 0) == 0 and int(getattr(row, "percent", 0) or 0) > 0:
-            existing.percent = row.percent
         existing.is_active = bool(existing.is_active or row.is_active)
-
-        merged_codes = unique_permission_codes(
-            list(parse_permission_codes(getattr(existing, "permission_codes", None)))
-            + list(parse_permission_codes(getattr(row, "permission_codes", None)))
-        )
-        existing.permission_codes = json.dumps(merged_codes, ensure_ascii=False) if merged_codes else None
         position_map[int(row.id)] = int(existing.id)
         assignment_rows = (
             db.execute(select(ShiftAssignment).where(ShiftAssignment.venue_position_id == int(row.id))).scalars().all()
@@ -278,6 +266,17 @@ def _merge_venue_positions(db: Session, *, target_user: User, source_user: User)
 
     db.flush()
     return position_map
+
+
+def _venue_position_merge_key(row: VenuePosition) -> tuple:
+    return (
+        int(row.venue_id),
+        str(row.title or "").strip().casefold(),
+        int(getattr(row, "rate", 0) or 0),
+        int(getattr(row, "percent", 0) or 0),
+        int(row.pay_profile_id) if getattr(row, "pay_profile_id", None) is not None else None,
+        tuple(sorted(parse_permission_codes(getattr(row, "permission_codes", None)))),
+    )
 
 
 def _merge_shift_assignments(
