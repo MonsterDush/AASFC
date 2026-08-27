@@ -220,6 +220,7 @@ def list_expense_notification_recipients(db: Session, *, venue_id: int) -> list[
             recipients.append(user)
     return recipients
 
+
 def send_payroll_window_notifications(
     db: Session,
     *,
