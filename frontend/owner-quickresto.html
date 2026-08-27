@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260827-qr1" />
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>
+  <script src="/page-loader.js?v=20260823-navfix1"></script>
+  <title>Axelio · QuickResto</title>
+</head>
+<body class="quickresto-page">
+  <div class="container quickresto-shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Интеграция QuickResto</b>
+          <div class="muted">закрытые смены и отчёты</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <main class="quickresto-content">
+      <section class="card section-card quickresto-hero">
+        <div class="quickresto-hero__layout">
+          <div>
+            <div class="quickresto-eyebrow">Интеграции</div>
+            <b id="venueTitle">Заведение</b>
+            <div class="muted small mt-4">Axelio собирает закрытые смены QuickResto в черновики дневных отчётов. Списания не увеличивают выручку.</div>
+          </div>
+          <button class="btn subtle inline" id="backToVenue" type="button" data-nav-button>К заведению</button>
+        </div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <b>Подключение</b>
+            <div class="muted small mt-4" id="connectionStatus">Не настроено</div>
+          </div>
+          <span class="quickresto-status" id="syncStatus">NEVER</span>
+        </div>
+        <div class="quickresto-form mt-12">
+          <label><span>Облако QuickResto</span><input id="cloud" autocomplete="off" placeholder="uk353" /></label>
+          <label><span>API-логин</span><input id="apiLogin" autocomplete="username" placeholder="Оставь пустым, чтобы не менять" /></label>
+          <label><span>API-пароль</span><input id="apiPassword" type="password" autocomplete="new-password" placeholder="Оставь пустым, чтобы не менять" /></label>
+          <label><span>Импортировать начиная с</span><input id="syncFromDate" type="date" /></label>
+          <label><span>Граница бизнес-дня</span><select id="cutoffHour"></select></label>
+        </div>
+        <div class="quickresto-toggles mt-12">
+          <label class="toggle quickresto-toggle">
+            <span class="toggle__label"><span class="toggle__title">Подключение активно</span><span class="toggle__desc">Разрешает ручной импорт и проверку справочников.</span></span>
+            <span class="switch"><input id="isActive" type="checkbox" checked /><span class="slider"></span></span>
+          </label>
+          <label class="toggle quickresto-toggle">
+            <span class="toggle__label"><span class="toggle__title">Автоматическая синхронизация</span><span class="toggle__desc">Проверять новые закрытые смены каждые 10 минут.</span></span>
+            <span class="switch"><input id="autoSync" type="checkbox" /><span class="slider"></span></span>
+          </label>
+        </div>
+        <div class="quickresto-actions mt-12">
+          <button class="btn primary" id="saveConnection">Сохранить подключение</button>
+          <button class="btn" id="discoverMappings">Проверить и получить справочники</button>
+          <button class="btn" id="runSync">Импортировать закрытые смены</button>
+        </div>
+        <div class="muted small mt-8" id="connectionHint" aria-live="polite"></div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <b>Сопоставление оплат</b>
+            <div class="muted small mt-4">Списания QuickResto всегда исключаются из выручки.</div>
+          </div>
+        </div>
+        <div id="paymentMappings" class="quickresto-mapping-list mt-12"></div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <b>Сопоставление групп блюд</b>
+            <div class="muted small mt-4">Группа блюда определяет департамент выручки Axelio.</div>
+          </div>
+          <button class="btn primary" id="saveMappings">Сохранить сопоставления</button>
+        </div>
+        <div id="departmentMappings" class="quickresto-mapping-list mt-12"></div>
+        <div class="muted small mt-8" id="mappingHint" aria-live="polite"></div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <b>Последние запуски</b>
+            <div class="muted small mt-4">История импорта без персональных данных гостей.</div>
+          </div>
+        </div>
+        <div id="runHistory" class="quickresto-history mt-12"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+  <script type="module" src="/owner-quickresto.js?v=20260827-qr1"></script>
+</body>
+</html>

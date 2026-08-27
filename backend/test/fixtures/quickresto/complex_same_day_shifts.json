@@ -1,0 +1,200 @@
+{
+  "report_date": "2026-08-27",
+  "payment_types": [
+    {"id": 1, "name": "Наличные", "operationType": "fiscal", "paymentMechanismWeb": "cash"},
+    {"id": 2, "name": "Безналичные", "operationType": "fiscal", "paymentMechanismWeb": "pos"},
+    {"id": 3, "name": "Бонусы", "operationType": "nonfiscal", "paymentMechanismWeb": "bonus"},
+    {"id": 7, "name": "Все бесплатно!!!", "operationType": "writeoff", "paymentMechanismWeb": "cash", "partialAllowed": false}
+  ],
+  "dish_categories": [
+    {"id": 6, "name": "Кальянный бар"},
+    {"id": 7, "name": "Бар"}
+  ],
+  "shifts": [
+    {
+      "id": 1,
+      "frontId": "fixture-closed-shift-1",
+      "status": "CLOSED",
+      "shiftNumber": 1,
+      "localOpenedTime": "2026-08-27T21:56:24.000Z",
+      "localClosedTime": "2026-08-27T21:57:44.000Z",
+      "ordersCount": 2,
+      "totalCash": 4600.0,
+      "totalCard": 2300.0,
+      "totalBonuses": 0.0,
+      "nonFiscalTotalCash": 0.0,
+      "nonFiscalTotalCard": 0.0,
+      "nonFiscalTotalBonuses": 0.0,
+      "totalReturnCash": 0.0,
+      "totalReturnCard": 0.0,
+      "totalReturnBonuses": 0.0,
+      "nonFiscalTotalReturnCash": 0.0,
+      "nonFiscalTotalReturnCard": 0.0,
+      "nonFiscalTotalReturnBonuses": 0.0,
+      "writeOffTotalCash": 0.0,
+      "writeOffTotalCard": 0.0,
+      "writeOffTotalBonuses": 0.0
+    },
+    {
+      "id": 3,
+      "frontId": "fixture-closed-shift-3",
+      "status": "CLOSED",
+      "shiftNumber": 3,
+      "localOpenedTime": "2026-08-27T22:32:47.000Z",
+      "localClosedTime": "2026-08-27T22:33:15.000Z",
+      "ordersCount": 2,
+      "totalCash": 0.0,
+      "totalCard": 6000.0,
+      "totalBonuses": 0.0,
+      "nonFiscalTotalCash": 0.0,
+      "nonFiscalTotalCard": 0.0,
+      "nonFiscalTotalBonuses": 0.0,
+      "totalReturnCash": 0.0,
+      "totalReturnCard": 0.0,
+      "totalReturnBonuses": 0.0,
+      "nonFiscalTotalReturnCash": 0.0,
+      "nonFiscalTotalReturnCard": 0.0,
+      "nonFiscalTotalReturnBonuses": 0.0,
+      "writeOffTotalCash": 4600.0,
+      "writeOffTotalCard": 0.0,
+      "writeOffTotalBonuses": 0.0
+    },
+    {
+      "id": 2,
+      "frontId": "fixture-closed-shift-2",
+      "status": "CLOSED",
+      "shiftNumber": 2,
+      "localOpenedTime": "2026-08-27T21:57:53.000Z",
+      "localClosedTime": "2026-08-27T22:24:47.000Z",
+      "ordersCount": 4,
+      "totalCash": 2000.0,
+      "totalCard": 8000.0,
+      "totalBonuses": 0.0,
+      "nonFiscalTotalCash": 0.0,
+      "nonFiscalTotalCard": 0.0,
+      "nonFiscalTotalBonuses": 1000.0,
+      "totalReturnCash": 0.0,
+      "totalReturnCard": 0.0,
+      "totalReturnBonuses": 0.0,
+      "nonFiscalTotalReturnCash": 0.0,
+      "nonFiscalTotalReturnCard": 0.0,
+      "nonFiscalTotalReturnBonuses": 0.0,
+      "writeOffTotalCash": 0.0,
+      "writeOffTotalCard": 0.0,
+      "writeOffTotalBonuses": 0.0
+    }
+  ],
+  "orders": [
+    {
+      "id": 1,
+      "shiftId": "fixture-closed-shift-1",
+      "returned": false,
+      "frontTotalPrice": 4600.0,
+      "frontTotalAbsoluteDiscount": 0.0,
+      "payments": [
+        {"amount": 4600.0, "paymentType": {"id": 1, "operationType": "fiscal", "paymentMechanismWeb": "cash"}}
+      ],
+      "orderItemList": [
+        {"amount": 2.0, "totalPrice": 4000.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 5, "name": "Кальян", "parentId": 6}},
+        {"amount": 2.0, "totalPrice": 600.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 8, "name": "Coca Cola", "parentId": 7}}
+      ]
+    },
+    {
+      "id": 2,
+      "shiftId": "fixture-closed-shift-1",
+      "returned": false,
+      "frontTotalPrice": 2300.0,
+      "frontTotalAbsoluteDiscount": 0.0,
+      "payments": [
+        {"amount": 2300.0, "paymentType": {"id": 2, "operationType": "fiscal", "paymentMechanismWeb": "pos"}}
+      ],
+      "orderItemList": [
+        {"amount": 1.0, "totalPrice": 2000.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 5, "name": "Кальян", "parentId": 6}},
+        {"amount": 1.0, "totalPrice": 300.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 8, "name": "Coca Cola", "parentId": 7}}
+      ]
+    },
+    {
+      "id": 3,
+      "shiftId": "fixture-closed-shift-2",
+      "returned": false,
+      "frontTotalPrice": 4000.0,
+      "frontTotalAbsoluteDiscount": 0.0,
+      "payments": [
+        {"amount": 4000.0, "paymentType": {"id": 2, "operationType": "fiscal", "paymentMechanismWeb": "pos"}}
+      ],
+      "orderItemList": [
+        {"amount": 2.0, "totalPrice": 4000.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 5, "name": "Кальян", "parentId": 6}}
+      ]
+    },
+    {
+      "id": 4,
+      "shiftId": "fixture-closed-shift-2",
+      "returned": false,
+      "frontTotalPrice": 2700.0,
+      "frontTotalAbsoluteDiscount": 0.0,
+      "payments": [
+        {"amount": 2700.0, "paymentType": {"id": 2, "operationType": "fiscal", "paymentMechanismWeb": "pos"}}
+      ],
+      "orderItemList": [
+        {"amount": 9.0, "totalPrice": 2700.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 8, "name": "Coca Cola", "parentId": 7}}
+      ]
+    },
+    {
+      "id": 5,
+      "shiftId": "fixture-closed-shift-2",
+      "returned": false,
+      "frontTotalPrice": 1400.0,
+      "frontTotalAbsoluteDiscount": 600.0,
+      "payments": [
+        {"amount": 1000.0, "paymentType": {"id": 1, "operationType": "fiscal", "paymentMechanismWeb": "cash"}},
+        {"amount": 400.0, "paymentType": {"id": 2, "operationType": "fiscal", "paymentMechanismWeb": "pos"}}
+      ],
+      "orderItemList": [
+        {"amount": 1.0, "totalPrice": 2000.0, "totalAbsoluteDiscount": 600.0, "totalAbsoluteCharge": 0.0, "product": {"id": 5, "name": "Кальян", "parentId": 6}}
+      ]
+    },
+    {
+      "id": 6,
+      "shiftId": "fixture-closed-shift-2",
+      "returned": false,
+      "frontTotalPrice": 2900.0,
+      "frontTotalAbsoluteDiscount": 0.0,
+      "payments": [
+        {"amount": 1000.0, "paymentType": {"id": 3, "operationType": "nonfiscal", "paymentMechanismWeb": "bonus"}},
+        {"amount": 1000.0, "paymentType": {"id": 1, "operationType": "fiscal", "paymentMechanismWeb": "cash"}},
+        {"amount": 900.0, "paymentType": {"id": 2, "operationType": "fiscal", "paymentMechanismWeb": "pos"}}
+      ],
+      "orderItemList": [
+        {"amount": 1.0, "totalPrice": 2000.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 5, "name": "Кальян", "parentId": 6}},
+        {"amount": 3.0, "totalPrice": 900.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 8, "name": "Coca Cola", "parentId": 7}}
+      ]
+    },
+    {
+      "id": 7,
+      "shiftId": "fixture-closed-shift-3",
+      "returned": false,
+      "frontTotalPrice": 4600.0,
+      "frontTotalAbsoluteDiscount": 0.0,
+      "payments": [
+        {"amount": 4600.0, "paymentType": {"id": 7, "operationType": "writeoff", "paymentMechanismWeb": "cash"}}
+      ],
+      "orderItemList": [
+        {"amount": 2.0, "totalPrice": 4000.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 5, "name": "Кальян", "parentId": 6}},
+        {"amount": 2.0, "totalPrice": 600.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 8, "name": "Coca Cola", "parentId": 7}}
+      ]
+    },
+    {
+      "id": 8,
+      "shiftId": "fixture-closed-shift-3",
+      "returned": false,
+      "frontTotalPrice": 6000.0,
+      "frontTotalAbsoluteDiscount": 0.0,
+      "payments": [
+        {"amount": 6000.0, "paymentType": {"id": 2, "operationType": "fiscal", "paymentMechanismWeb": "pos"}}
+      ],
+      "orderItemList": [
+        {"amount": 3.0, "totalPrice": 6000.0, "totalAbsoluteDiscount": 0.0, "totalAbsoluteCharge": 0.0, "product": {"id": 5, "name": "Кальян", "parentId": 6}}
+      ]
+    }
+  ]
+}

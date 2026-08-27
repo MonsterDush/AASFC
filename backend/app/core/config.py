@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     EXPORT_LINK_SECRET: str = ""  # if empty, JWT_SECRET is used
     EXPORT_LINK_TTL_SECONDS: int = 60 * 10  # 10 minutes
 
+    # Third-party integration credentials. Falls back to JWT_SECRET with
+    # domain-separated key derivation when an explicit key is not configured.
+    INTEGRATION_ENCRYPTION_KEY: str = ""
+
     # Cookie
     COOKIE_DOMAIN: str = ".axelio.ru"
 

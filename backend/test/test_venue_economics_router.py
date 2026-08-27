@@ -22,6 +22,7 @@ from app.routers import (
     venue_pay_profiles,
     venue_payroll,
     venue_positions,
+    venue_quickresto,
     venue_recurring_expenses,
     venue_reports,
     venue_revenue_exports,
@@ -47,7 +48,7 @@ from app.services.payroll.calculator import (
 )
 
 
-EXPECTED_VENUES_ROUTE_MANIFEST_SHA256 = "76d4766259a569c2620cf622d677491ded02683352b4685e90e92fa153f92eb5"
+EXPECTED_VENUES_ROUTE_MANIFEST_SHA256 = "66df262f7e9557deada0b2f0ef6954ddb660da7de827f49d7086fc1f976a17d6"
 
 
 def _effective_routes(router):
@@ -70,7 +71,7 @@ class VenueEconomicsRouterContractTests(TestCase):
         manifest = _route_manifest(venues.router)
         digest = hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
-        self.assertEqual(len(manifest), 165)
+        self.assertEqual(len(manifest), 171)
         self.assertEqual(digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
 
     def test_extracted_router_owns_all_twenty_economics_routes(self):
@@ -130,6 +131,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_shift_intervals.router, 4),
             (venue_shifts.router, 12),
             (venue_shift_swaps.router, 9),
+            (venue_quickresto.router, 6),
         ]
         venues_manifest = {(tuple(methods), path, name) for methods, path, name in _route_manifest(venues.router)}
         native_manifest = set()
@@ -143,7 +145,7 @@ class VenueEconomicsRouterContractTests(TestCase):
                 self.assertIn(route, venues_manifest)
                 native_manifest.add(route)
 
-        self.assertEqual(len(native_manifest), 98)
+        self.assertEqual(len(native_manifest), 104)
 
 
 class VenueEconomicsRouterBehaviorTests(TestCase):

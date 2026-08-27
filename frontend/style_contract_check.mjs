@@ -334,7 +334,7 @@ assert.ok(stylesManifestSource.split("\n").length < 30, "styles.css manifest une
 assert.ok(appSource.split("\n").length < 1_600, "app.js regained runtime style payloads");
 assert.ok(pageLoaderSource.split("\n").length < 180, "page-loader.js unexpectedly grew");
 
-assert.equal(htmlPageFiles.length, 50, "every frontend HTML page must use the global loader");
+assert.equal(htmlPageFiles.length, 51, "every frontend HTML page must use the global loader");
 for (const fileName of htmlPageFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.ok(

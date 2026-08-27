@@ -46,7 +46,7 @@ class PageLoaderContractTests(TestCase):
             source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500, file_name)
 
-        self.assertEqual(len(html_pages), 50)
+        self.assertEqual(len(html_pages), 51)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
@@ -134,6 +134,30 @@ class DemoMetrikaContractTests(TestCase):
         self.assertIn("child-src blob: https://mc.yandex.ru", csp)
         self.assertIn("frame-src blob: https://mc.yandex.ru", csp)
         self.assertIn("https://metrika.yandex.ru", csp)
+
+
+class QuickRestoIntegrationContractTests(TestCase):
+    def test_owner_only_integration_page_is_linked_and_uses_venue_api(self):
+        venue = (FRONTEND / "app-venue.html").read_text(encoding="utf-8")
+        html = (FRONTEND / "owner-quickresto.html").read_text(encoding="utf-8")
+        script = (FRONTEND / "owner-quickresto.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="integrationsCard"', venue)
+        self.assertIn('id="integrationsCard"', venue[venue.index('class="itemcard') :])
+        self.assertIn("venue-settings-card hidden", venue)
+        self.assertIn("(isOwner || isAdmin) && !demoReadonly", venue)
+        self.assertIn("/owner-quickresto.html?venue_id=", venue)
+        self.assertIn("/styles/pages/owner-quickresto.css", html)
+        self.assertIn("/owner-quickresto.js", html)
+        for endpoint in (
+            "/integrations/quickresto`)",
+            "/integrations/quickresto/discover`",
+            "/integrations/quickresto/mappings`",
+            "/integrations/quickresto/sync`",
+            "/integrations/quickresto/runs?limit=10`",
+        ):
+            self.assertIn(endpoint, script)
+        self.assertIn('el.apiPassword.value = ""', script)
 
 
 class PrimaryPageUiPolishContractTests(TestCase):
@@ -689,7 +713,7 @@ class AppFacadeSplitContractTests(TestCase):
                 consumer_count += 1
                 imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
-        self.assertEqual(consumer_count, 51)
+        self.assertEqual(consumer_count, 52)
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):
