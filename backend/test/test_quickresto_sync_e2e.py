@@ -3,25 +3,36 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import date
 import json
-import os
 from pathlib import Path
 import unittest
 
-from sqlalchemy import select
-from sqlalchemy.engine import make_url
+from sqlalchemy import create_engine, select
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.core.db import SessionLocal
+from app.core.db import Base
 from app.models.daily_report import DailyReport
+from app.models.daily_report_value import DailyReportValue
 from app.models.department import Department
 from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
+from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
 from app.models.quickresto_shift_import import QuickRestoShiftImport
+from app.models.quickresto_sync_run import QuickRestoSyncRun
+from app.models.user import User
+from app.models.venue import Venue
 from app.services.integrations.quickresto_sync import sync_quickresto_connection
 
 
 TARGET_DATE = date(2030, 1, 15)
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_for_sqlite(_type, _compiler, **_kwargs):
+    return "JSON"
 
 
 class FixtureQuickRestoClient:
@@ -49,64 +60,65 @@ class FixtureQuickRestoClient:
         return deepcopy(self.orders_by_id[int(object_id)])
 
 
-@unittest.skipUnless(
-    os.environ.get("AXELIO_QUICKRESTO_E2E") == "1",
-    "set AXELIO_QUICKRESTO_E2E=1 against the isolated local E2E database",
-)
-class QuickRestoSyncE2ETests(unittest.TestCase):
+class QuickRestoSyncIntegrationTests(unittest.TestCase):
     def test_closed_shifts_create_one_report_and_second_sync_is_idempotent(self):
-        url = make_url(settings.database_url)
-        self.assertIn(url.host, {"127.0.0.1", "localhost"})
-        self.assertTrue(str(url.database or "").endswith("_e2e"))
-
         fixture_path = Path(__file__).parent / "fixtures" / "quickresto" / "complex_same_day_shifts.json"
         fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
         shifts = deepcopy(fixture["shifts"])
         for shift in shifts:
             shift["localClosedTime"] = shift["localClosedTime"].replace(fixture["report_date"], TARGET_DATE.isoformat())
 
-        with SessionLocal() as db:
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(
+            engine,
+            tables=[
+                User.__table__,
+                Venue.__table__,
+                PaymentMethod.__table__,
+                Department.__table__,
+                DailyReport.__table__,
+                DailyReportValue.__table__,
+                QuickRestoConnection.__table__,
+                QuickRestoPaymentMapping.__table__,
+                QuickRestoDepartmentMapping.__table__,
+                QuickRestoSyncRun.__table__,
+                QuickRestoShiftImport.__table__,
+                QuickRestoReportImport.__table__,
+            ],
+        )
+        with Session(engine) as db:
             venue_id = 1
             user_id = 1
-            existing_connection = db.execute(
-                select(QuickRestoConnection).where(QuickRestoConnection.venue_id == venue_id)
-            ).scalar_one_or_none()
-            if existing_connection is not None:
-                db.delete(existing_connection)
-                db.commit()
-            existing_report = db.execute(
-                select(DailyReport).where(
-                    DailyReport.venue_id == venue_id,
-                    DailyReport.date == TARGET_DATE,
-                    DailyReport.shift_slot == "DAY",
-                )
-            ).scalar_one_or_none()
-            if existing_report is not None:
-                db.delete(existing_report)
-                db.commit()
-
+            db.add(User(id=user_id, system_role="NONE"))
+            db.add(Venue(id=venue_id, name="QuickResto integration test"))
             payment_methods = {
-                item.code: item
-                for item in db.execute(select(PaymentMethod).where(PaymentMethod.venue_id == venue_id)).scalars()
-            }
-            bonus = payment_methods.get("bonus")
-            if bonus is None:
-                bonus = PaymentMethod(
+                code: PaymentMethod(
                     venue_id=venue_id,
-                    code="bonus",
-                    title="Бонусы",
+                    code=code,
+                    title=title,
                     is_active=True,
-                    sort_order=50,
+                    sort_order=sort_order,
                 )
-                db.add(bonus)
-                db.flush()
-                payment_methods["bonus"] = bonus
-            departments = list(
-                db.execute(
-                    select(Department).where(Department.venue_id == venue_id).order_by(Department.id).limit(2)
-                ).scalars()
-            )
-            self.assertEqual(len(departments), 2)
+                for sort_order, (code, title) in enumerate(
+                    (("cash", "Наличные"), ("cashless", "Эквайринг"), ("bonus", "Бонусы")),
+                    start=1,
+                )
+            }
+            departments = [
+                Department(
+                    venue_id=venue_id,
+                    code=code,
+                    title=title,
+                    is_active=True,
+                    sort_order=sort_order,
+                )
+                for sort_order, (code, title) in enumerate(
+                    (("hookah", "Кальянный зал"), ("bar", "Бар")),
+                    start=1,
+                )
+            ]
+            db.add_all([*payment_methods.values(), *departments])
+            db.flush()
 
             connection = QuickRestoConnection(
                 venue_id=venue_id,
@@ -133,7 +145,7 @@ class QuickRestoSyncE2ETests(unittest.TestCase):
                         "name": payment_methods["cashless"].title,
                         "operationType": "payment",
                     },
-                    {"id": 3, "name": bonus.title, "operationType": "payment"},
+                    {"id": 3, "name": payment_methods["bonus"].title, "operationType": "payment"},
                     {"id": 7, "name": "Все бесплатно!!!", "operationType": "writeoff"},
                 ],
                 departments=[
