@@ -13,9 +13,12 @@ from app.services.integrations.quickresto import (
     QuickRestoError,
 )
 from app.services.integrations.quickresto_normalize import (
+    QuickRestoDataError,
     aggregate_normalized_shifts,
     business_date_for_shift,
     normalize_closed_shift,
+    shift_slot_for_shift,
+    stable_payload_hash,
 )
 
 
@@ -288,6 +291,15 @@ class QuickRestoFixtureContractTests(unittest.TestCase):
         aggregate = aggregate_normalized_shifts(normalized)
 
         self.assertEqual(aggregate["business_date"], "2026-08-27")
+        self.assertEqual(aggregate["shift_slot"], "DAY")
+        normalized_hash_basis = dict(normalized[0])
+        normalized_hash = normalized_hash_basis.pop("payload_hash")
+        normalized_hash_basis.pop("shift_slot")
+        self.assertEqual(normalized_hash, stable_payload_hash(normalized_hash_basis))
+        aggregate_hash_basis = dict(aggregate)
+        aggregate_hash = aggregate_hash_basis.pop("aggregate_hash")
+        aggregate_hash_basis.pop("shift_slot")
+        self.assertEqual(aggregate_hash, stable_payload_hash(aggregate_hash_basis))
         self.assertEqual(aggregate["shift_count"], 3)
         self.assertEqual(aggregate["payments_external"], {"1": 6600, "2": 16300, "3": 1000})
         self.assertEqual(aggregate["departments_external"], {"6": 19400, "7": 4500})
@@ -303,6 +315,7 @@ class QuickRestoFixtureContractTests(unittest.TestCase):
             "version": 9,
             "frontId": shift_id,
             "status": "CLOSED",
+            "localOpenedTime": "2026-08-28T14:00:00.000Z",
             "localClosedTime": "2026-08-28T15:42:13.000Z",
             "totalCash": 21_200.0,
             "totalCard": 5_200.0,
@@ -375,14 +388,73 @@ class QuickRestoFixtureContractTests(unittest.TestCase):
         self.assertEqual(normalized["orders_count"], 2)
         self.assertEqual(normalized["returned_orders_count"], 1)
 
-    def test_business_day_cutoff_can_assign_after_midnight_shift_to_previous_date(self):
+    def test_business_day_uses_opening_time_when_shift_closes_next_day(self):
         shift = {
             "status": "CLOSED",
-            "localClosedTime": "2026-08-28T03:15:00.000Z",
+            "localOpenedTime": "2026-08-26T20:00:00.000Z",
+            "localClosedTime": "2026-08-27T03:15:00.000Z",
         }
 
-        self.assertEqual(business_date_for_shift(shift, cutoff_hour=0).isoformat(), "2026-08-28")
-        self.assertEqual(business_date_for_shift(shift, cutoff_hour=6).isoformat(), "2026-08-27")
+        self.assertEqual(business_date_for_shift(shift, cutoff_hour=0).isoformat(), "2026-08-26")
+
+    def test_business_day_cutoff_keeps_reopened_night_shift_on_original_day(self):
+        shift = {
+            "status": "CLOSED",
+            "localOpenedTime": "2026-08-27T03:15:00.000Z",
+            "localClosedTime": "2026-08-27T11:00:00.000Z",
+        }
+
+        self.assertEqual(business_date_for_shift(shift, cutoff_hour=0).isoformat(), "2026-08-27")
+        self.assertEqual(business_date_for_shift(shift, cutoff_hour=6).isoformat(), "2026-08-26")
+
+    def test_shift_slot_defaults_to_day_when_split_is_disabled(self):
+        for opened_at in (
+            "2026-08-27T00:00:00.000Z",
+            "2026-08-27T03:15:00.000Z",
+            "2026-08-27T23:59:00.000Z",
+        ):
+            with self.subTest(opened_at=opened_at):
+                self.assertEqual(
+                    shift_slot_for_shift(
+                        {"localOpenedTime": opened_at},
+                        cutoff_hour=6,
+                        night_shift_split_enabled=False,
+                        night_shift_start_hour=22,
+                    ),
+                    "DAY",
+                )
+
+    def test_shift_slot_uses_configured_opening_windows(self):
+        cases = (
+            ("2026-08-27T05:59:00.000Z", "NIGHT", "2026-08-26"),
+            ("2026-08-27T06:00:00.000Z", "DAY", "2026-08-27"),
+            ("2026-08-27T21:59:00.000Z", "DAY", "2026-08-27"),
+            ("2026-08-27T22:00:00.000Z", "NIGHT", "2026-08-27"),
+        )
+        for opened_at, expected_slot, expected_date in cases:
+            shift = {"localOpenedTime": opened_at}
+            with self.subTest(opened_at=opened_at):
+                self.assertEqual(
+                    shift_slot_for_shift(
+                        shift,
+                        cutoff_hour=6,
+                        night_shift_split_enabled=True,
+                        night_shift_start_hour=22,
+                    ),
+                    expected_slot,
+                )
+                self.assertEqual(business_date_for_shift(shift, cutoff_hour=6).isoformat(), expected_date)
+
+    def test_aggregate_rejects_day_and_night_rows_together(self):
+        base = {
+            "business_date": "2026-08-27",
+            "external_shift_id": "day",
+            "shift_slot": "DAY",
+        }
+        night = {**base, "external_shift_id": "night", "shift_slot": "NIGHT"}
+
+        with self.assertRaisesRegex(QuickRestoDataError, "day and night"):
+            aggregate_normalized_shifts([base, night])
 
 
 if __name__ == "__main__":

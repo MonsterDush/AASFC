@@ -17,6 +17,14 @@ class QuickRestoConnection(Base):
             name="ck_quickresto_connections_cutoff_hour",
         ),
         CheckConstraint(
+            "night_shift_start_hour >= 0 AND night_shift_start_hour <= 23",
+            name="ck_quickresto_connections_night_start_hour",
+        ),
+        CheckConstraint(
+            "NOT night_shift_split_enabled OR night_shift_start_hour > business_day_cutoff_hour",
+            name="ck_quickresto_connections_night_after_cutoff",
+        ),
+        CheckConstraint(
             "report_import_mode IN ('DRAFT', 'CLOSED')",
             name="ck_quickresto_connections_report_import_mode",
         ),
@@ -33,6 +41,10 @@ class QuickRestoConnection(Base):
         String(16), nullable=False, default="CLOSED", server_default="CLOSED"
     )
     business_day_cutoff_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    night_shift_split_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    night_shift_start_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=22, server_default="22")
     sync_from_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     last_sync_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

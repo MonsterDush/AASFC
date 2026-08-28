@@ -4292,7 +4292,7 @@
   "Интеграция с iiko в разработке": "The iiko integration is in development",
   "Здесь появятся подключение, сопоставление справочников и импорт закрытых кассовых смен.": "Connection settings, catalog mapping, and closed till-shift imports will appear here.",
   "Настройка пока недоступна": "Configuration is not available yet",
-  "Axelio собирает закрытые смены QuickResto в дневные отчёты. Статус нового отчёта выбираете вы, а списания не увеличивают выручку.": "Axelio collects closed QuickResto shifts into daily reports. You choose the status of each new report, and write-offs do not increase revenue.",
+  "Axelio собирает закрытые смены QuickResto в отчёты. Статус нового отчёта выбираете вы, а списания не увеличивают выручку.": "Axelio collects closed QuickResto shifts into reports. You choose the status of each new report, and write-offs do not increase revenue.",
   "К интеграциям": "Back to integrations",
   "После импорта закрытой смены": "After importing a closed shift",
   "Сразу закрывать отчёт": "Close the report immediately",
@@ -4318,5 +4318,11 @@
   "В бэк-офисе QuickResto откройте Предприятие → Настройки → Общие настройки и найдите поля «Логин и пароль для API».": "In the QuickResto back office, open Enterprise → Settings → General settings and find the API login and password fields.",
   "Это не данные для входа в бэк-офис и не логин или пароль кассового терминала.": "These are not your back-office credentials or the till terminal login and password.",
   "Открыть инструкцию QuickResto": "Open the QuickResto guide",
-  "Нужно для заведений, работающих после полуночи. Смены, закрытые раньше выбранного времени, попадут в отчёт за предыдущую дату. Например, при 06:00 закрытие 28 августа в 03:15 попадёт в отчёт за 27 августа; 00:00 означает обычный календарный день.": "Use this for venues operating after midnight. Shifts closed before the selected time will be added to the previous date's report. For example, with 06:00 selected, a shift closed at 03:15 on August 28 will be included in the August 27 report; 00:00 uses the regular calendar day."
+  "Эта граница определяет дату отчёта, а не тип смены. Дата считается по времени открытия кассовой смены: открытая или переоткрытая после полуночи, но раньше границы, смена останется в предыдущем бизнес-дне. Например, при 06:00 открытие 27 августа в 03:15 попадёт в отчёт за 26 августа; 00:00 отключает перенос.": "This cutoff determines the report date, not the shift type. The date is based on when the till shift was opened: if it is opened or reopened after midnight but before the cutoff, it stays in the previous business day. For example, with 06:00 selected, an opening at 03:15 on August 27 is included in the August 26 report; 00:00 disables the adjustment.",
+  "Разделять дневные и ночные смены": "Separate day and night shifts",
+  "Определять тип импортированного отчёта по времени открытия смены. Если выключено, все смены импортируются как дневные.": "Determine the imported report type from the shift opening time. When disabled, every shift is imported as a day shift.",
+  "Интервалы открытия смен": "Shift opening windows",
+  "Начало ночной смены": "Night shift starts",
+  "Смена относится к дневному или ночному отчёту только по времени её открытия в QuickResto. Утренний конец ночного интервала задаёт «Граница бизнес-дня» выше.": "A shift is assigned to the day or night report only by its QuickResto opening time. The morning end of the night window is set by the Business day cutoff above.",
+  "Начало ночной смены должно быть позже границы бизнес-дня.": "The night shift start must be later than the business day cutoff."
 }
