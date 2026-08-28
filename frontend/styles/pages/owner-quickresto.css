@@ -12,6 +12,7 @@
 .quickresto-form label>span{color:var(--muted);font-size:12px;font-weight:800}
 .quickresto-form label:first-child{grid-column:1/-1}
 .quickresto-form :is(input,select){display:block;width:100%;min-width:0;max-width:100%}
+.quickresto-field-help{display:block;color:var(--muted);font-size:11px;line-height:1.45;overflow-wrap:anywhere}
 .quickresto-api-help{grid-column:1/-1;display:grid;gap:5px;min-width:0;padding:12px;border:1px solid var(--accentSoftBorder);border-radius:14px;background:var(--accentSoftBg)}
 .quickresto-api-help b,.quickresto-api-help .muted,.quickresto-api-help .link{overflow-wrap:anywhere}
 .quickresto-api-help .link{justify-self:start;margin-top:2px}
