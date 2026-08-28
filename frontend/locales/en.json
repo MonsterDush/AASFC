@@ -4317,5 +4317,6 @@
   "Где взять API-данные?": "Where can I find the API credentials?",
   "В бэк-офисе QuickResto откройте Предприятие → Настройки → Общие настройки и найдите поля «Логин и пароль для API».": "In the QuickResto back office, open Enterprise → Settings → General settings and find the API login and password fields.",
   "Это не данные для входа в бэк-офис и не логин или пароль кассового терминала.": "These are not your back-office credentials or the till terminal login and password.",
-  "Открыть инструкцию QuickResto": "Open the QuickResto guide"
+  "Открыть инструкцию QuickResto": "Open the QuickResto guide",
+  "Нужно для заведений, работающих после полуночи. Смены, закрытые раньше выбранного времени, попадут в отчёт за предыдущую дату. Например, при 06:00 закрытие 28 августа в 03:15 попадёт в отчёт за 27 августа; 00:00 означает обычный календарный день.": "Use this for venues operating after midnight. Shifts closed before the selected time will be added to the previous date's report. For example, with 06:00 selected, a shift closed at 03:15 on August 28 will be included in the August 27 report; 00:00 uses the regular calendar day."
 }

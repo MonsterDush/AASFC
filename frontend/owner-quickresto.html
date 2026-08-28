@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260828-qr5" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260828-qr6" />
   <script>
     (() => {
       try {
@@ -64,7 +64,11 @@
             <a class="link small" href="https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/" target="_blank" rel="noopener noreferrer">Открыть инструкцию QuickResto <span aria-hidden="true">↗</span></a>
           </aside>
           <label><span>Импортировать начиная с</span><input id="syncFromDate" type="date" /></label>
-          <label><span>Граница бизнес-дня</span><select id="cutoffHour"></select></label>
+          <label>
+            <span>Граница бизнес-дня</span>
+            <select id="cutoffHour" aria-describedby="cutoffHourHelp"></select>
+            <small class="quickresto-field-help" id="cutoffHourHelp">Нужно для заведений, работающих после полуночи. Смены, закрытые раньше выбранного времени, попадут в отчёт за предыдущую дату. Например, при 06:00 закрытие 28 августа в 03:15 попадёт в отчёт за 27 августа; 00:00 означает обычный календарный день.</small>
+          </label>
         </div>
         <div class="quickresto-toggles mt-12">
           <label class="toggle quickresto-toggle">
