@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260828-qr2" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260828-qr3" />
   <script>
     (() => {
       try {
@@ -39,9 +39,9 @@
           <div>
             <div class="quickresto-eyebrow">Интеграции</div>
             <b id="venueTitle">Заведение</b>
-            <div class="muted small mt-4">Axelio собирает закрытые смены QuickResto в закрытые дневные отчёты. Списания не увеличивают выручку.</div>
+            <div class="muted small mt-4">Axelio собирает закрытые смены QuickResto в дневные отчёты. Статус нового отчёта выбираете вы, а списания не увеличивают выручку.</div>
           </div>
-          <button class="btn subtle inline" id="backToVenue" type="button" data-nav-button>К заведению</button>
+          <button class="btn subtle inline" id="backToIntegrations" type="button" data-nav-button>К интеграциям</button>
         </div>
       </section>
 
@@ -70,6 +70,20 @@
             <span class="switch"><input id="autoSync" type="checkbox" /><span class="slider"></span></span>
           </label>
         </div>
+        <fieldset class="quickresto-import-mode mt-12">
+          <legend>После импорта закрытой смены</legend>
+          <div class="quickresto-import-mode__options">
+            <label class="quickresto-import-mode__option">
+              <input id="reportImportClosed" type="radio" name="reportImportMode" value="CLOSED" checked />
+              <span><b>Сразу закрывать отчёт</b><small>Отчёт не требует подтверждения и сразу учитывается в финансах.</small></span>
+            </label>
+            <label class="quickresto-import-mode__option">
+              <input id="reportImportDraft" type="radio" name="reportImportMode" value="DRAFT" />
+              <span><b>Оставлять черновиком</b><small>Отчёт можно проверить и закрыть вручную.</small></span>
+            </label>
+          </div>
+          <div class="muted small mt-8" id="importModeHint"></div>
+        </fieldset>
         <div class="quickresto-actions mt-12">
           <button class="btn primary" id="saveConnection">Сохранить подключение</button>
           <button class="btn" id="discoverMappings">Проверить и получить справочники</button>
@@ -82,7 +96,7 @@
         <div class="section-card__head quickresto-section-head">
           <div>
             <b>Сопоставление оплат</b>
-            <div class="muted small mt-4">Списания QuickResto всегда исключаются из выручки.</div>
+            <div class="muted small mt-4">Axelio сопоставляет одинаковые названия автоматически и создаёт новый способ оплаты, если совпадения нет. Списания всегда исключаются из выручки.</div>
           </div>
         </div>
         <div id="paymentMappings" class="quickresto-mapping-list mt-12"></div>
@@ -92,7 +106,7 @@
         <div class="section-card__head quickresto-section-head">
           <div>
             <b>Сопоставление групп блюд</b>
-            <div class="muted small mt-4">Группа блюда определяет департамент выручки Axelio.</div>
+            <div class="muted small mt-4">Axelio сопоставляет одинаковые названия автоматически, а при отсутствии совпадения создаёт департамент с названием QuickResto.</div>
           </div>
           <button class="btn primary" id="saveMappings">Сохранить сопоставления</button>
         </div>
@@ -114,6 +128,6 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/owner-quickresto.js?v=20260827-qr1"></script>
+  <script type="module" src="/owner-quickresto.js?v=20260828-qr3"></script>
 </body>
 </html>

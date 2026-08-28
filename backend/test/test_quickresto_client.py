@@ -296,6 +296,85 @@ class QuickRestoFixtureContractTests(unittest.TestCase):
         self.assertEqual(aggregate["writeoff_departments_external"], {"6": 4000, "7": 600})
         self.assertEqual(aggregate["discount_total"], 600)
 
+    def test_normalizer_uses_shift_net_counters_without_double_subtracting_return_order(self):
+        shift_id = "shift-with-return"
+        shift = {
+            "id": 4,
+            "version": 9,
+            "frontId": shift_id,
+            "status": "CLOSED",
+            "localClosedTime": "2026-08-28T15:42:13.000Z",
+            "totalCash": 21_200.0,
+            "totalCard": 5_200.0,
+            "totalBonuses": 0.0,
+            "totalReturnCash": 5_200.0,
+            "totalReturnCard": 0.0,
+            "totalReturnBonuses": 0.0,
+            "nonFiscalTotalCash": 0.0,
+            "nonFiscalTotalCard": 0.0,
+            "nonFiscalTotalBonuses": 0.0,
+            "nonFiscalTotalReturnCash": 0.0,
+            "nonFiscalTotalReturnCard": 0.0,
+            "nonFiscalTotalReturnBonuses": 0.0,
+            "writeOffTotalCash": 0.0,
+            "writeOffTotalCard": 0.0,
+            "writeOffTotalBonuses": 0.0,
+            "writeOffTotalReturnCash": 0.0,
+            "writeOffTotalReturnCard": 0.0,
+            "writeOffTotalReturnBonuses": 0.0,
+        }
+
+        def order(
+            order_id: int,
+            *,
+            total: int,
+            payment_type_id: int,
+            departments: list[tuple[int, int]],
+            returned: bool = False,
+        ) -> dict:
+            return {
+                "id": order_id,
+                "shiftId": shift_id,
+                "returned": returned,
+                "frontTotalPrice": float(total),
+                "frontTotalAbsoluteDiscount": 0.0,
+                "payments": [
+                    {
+                        "amount": float(total),
+                        "paymentType": {"id": payment_type_id, "operationType": "fiscal"},
+                    }
+                ],
+                "orderItemList": [
+                    {
+                        "totalPrice": float(value),
+                        "totalAbsoluteDiscount": 0.0,
+                        "totalAbsoluteCharge": 0.0,
+                        "product": {"parentId": department_id},
+                    }
+                    for department_id, value in departments
+                ],
+            }
+
+        orders = [
+            order(11, total=16_000, payment_type_id=1, departments=[(6, 16_000)]),
+            order(10, total=5_200, payment_type_id=2, departments=[(6, 4_000), (7, 1_200)]),
+            order(
+                9,
+                total=5_200,
+                payment_type_id=1,
+                departments=[(6, 4_000), (7, 1_200)],
+                returned=True,
+            ),
+        ]
+
+        normalized = normalize_closed_shift(shift, orders, cutoff_hour=0)
+
+        self.assertEqual(normalized["revenue_total"], 21_200)
+        self.assertEqual(normalized["payments_external"], {"1": 16_000, "2": 5_200})
+        self.assertEqual(normalized["departments_external"], {"6": 20_000, "7": 1_200})
+        self.assertEqual(normalized["orders_count"], 2)
+        self.assertEqual(normalized["returned_orders_count"], 1)
+
     def test_business_day_cutoff_can_assign_after_midnight_shift_to_previous_date(self):
         shift = {
             "status": "CLOSED",

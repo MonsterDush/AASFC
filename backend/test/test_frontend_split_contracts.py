@@ -46,7 +46,7 @@ class PageLoaderContractTests(TestCase):
             source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500, file_name)
 
-        self.assertEqual(len(html_pages), 51)
+        self.assertEqual(len(html_pages), 52)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
@@ -137,21 +137,34 @@ class DemoMetrikaContractTests(TestCase):
 
 
 class QuickRestoIntegrationContractTests(TestCase):
-    def test_owner_only_integration_page_is_linked_and_uses_venue_api(self):
+    def test_owner_only_integration_hub_and_quickresto_page_use_venue_api(self):
         venue = (FRONTEND / "app-venue.html").read_text(encoding="utf-8")
+        hub_html = (FRONTEND / "owner-integrations.html").read_text(encoding="utf-8")
+        hub_script = (FRONTEND / "owner-integrations.js").read_text(encoding="utf-8")
+        hub_styles = (FRONTEND / "styles" / "pages" / "owner-integrations.css").read_text(encoding="utf-8")
         html = (FRONTEND / "owner-quickresto.html").read_text(encoding="utf-8")
         script = (FRONTEND / "owner-quickresto.js").read_text(encoding="utf-8")
         styles = (FRONTEND / "styles" / "pages" / "owner-quickresto.css").read_text(encoding="utf-8")
 
-        self.assertIn('id="integrationsCard"', venue)
-        self.assertIn('id="integrationsCard"', venue[venue.index('class="itemcard') :])
-        self.assertIn("venue-settings-card hidden", venue)
+        self.assertIn('id="openIntegrations"', venue)
+        self.assertIn("venue-integrations-entry hidden", venue)
         self.assertIn("(isOwner || isAdmin) && !demoReadonly", venue)
-        self.assertIn("/owner-quickresto.html?venue_id=", venue)
+        self.assertIn("/owner-integrations.html?venue_id=", venue)
+        self.assertIn("/styles/pages/owner-integrations.css", hub_html)
+        self.assertIn("/owner-integrations.js", hub_html)
+        self.assertIn('role="tablist"', hub_html)
+        self.assertIn('data-provider="quickresto"', hub_html)
+        self.assertIn('data-provider="iiko"', hub_html)
+        self.assertIn("grid-template-columns:repeat(2,minmax(0,1fr))", hub_styles)
+        self.assertIn("/integrations/quickresto`)", hub_script)
+        self.assertIn("/owner-quickresto.html?venue_id=", hub_script)
         self.assertIn("/styles/pages/owner-quickresto.css", html)
         self.assertIn("/owner-quickresto.js", html)
+        self.assertIn('name="reportImportMode"', html)
         self.assertIn('.quickresto-form input[type="date"]', styles)
         self.assertIn("grid-template-columns:minmax(0,1fr)", styles)
+        self.assertIn("report_import_mode: selectedImportMode()", script)
+        self.assertIn("getPaymentMethods(venueId, { includeArchived: false })", script)
         for endpoint in (
             "/integrations/quickresto`)",
             "/integrations/quickresto/discover`",
@@ -187,7 +200,10 @@ class PrimaryPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            cache_key = "20260810-financepolish1" if html_name == "owner-summary.html" else "20260723-polish2"
+            cache_key = {
+                "owner-summary.html": "20260810-financepolish1",
+                "app-venue.html": "20260828-integrations1",
+            }.get(html_name, "20260723-polish2")
             self.assertIn(f"/{style_path}?v={cache_key}", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
@@ -716,7 +732,7 @@ class AppFacadeSplitContractTests(TestCase):
                 consumer_count += 1
                 imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
-        self.assertEqual(consumer_count, 52)
+        self.assertEqual(consumer_count, 53)
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):

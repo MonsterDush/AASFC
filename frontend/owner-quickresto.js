@@ -21,10 +21,10 @@ const venueId = params.get("venue_id") || "";
 if (venueId) setActiveVenueId(venueId);
 
 const el = Object.fromEntries([
-  "title", "venueTitle", "backToVenue", "connectionStatus", "syncStatus", "cloud", "apiLogin",
+  "title", "venueTitle", "backToIntegrations", "connectionStatus", "syncStatus", "cloud", "apiLogin",
   "apiPassword", "syncFromDate", "cutoffHour", "isActive", "autoSync", "saveConnection",
   "discoverMappings", "runSync", "connectionHint", "paymentMappings", "departmentMappings",
-  "saveMappings", "mappingHint", "runHistory",
+  "saveMappings", "mappingHint", "runHistory", "reportImportClosed", "reportImportDraft", "importModeHint",
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = {
@@ -72,6 +72,10 @@ function renderConnection() {
   el.cutoffHour.value = String(connection.business_day_cutoff_hour ?? 0);
   el.isActive.checked = connection.is_active !== false;
   el.autoSync.checked = !!connection.auto_sync_enabled;
+  const importMode = String(connection.report_import_mode || "CLOSED").toUpperCase();
+  el.reportImportClosed.checked = importMode === "CLOSED";
+  el.reportImportDraft.checked = importMode === "DRAFT";
+  renderImportModeHint();
   el.connectionStatus.textContent = state.configured
     ? `Подключено к ${connection.cloud}.quickresto.ru · учетные данные сохранены зашифрованно`
     : "Укажи облако, API-логин и пароль QuickResto.";
@@ -79,6 +83,16 @@ function renderConnection() {
   el.syncStatus.textContent = status;
   el.syncStatus.dataset.status = status;
   if (connection.last_sync_error) el.connectionHint.textContent = connection.last_sync_error;
+}
+
+function selectedImportMode() {
+  return el.reportImportDraft.checked ? "DRAFT" : "CLOSED";
+}
+
+function renderImportModeHint() {
+  el.importModeHint.textContent = selectedImportMode() === "DRAFT"
+    ? "Новые импортированные отчёты останутся в статусе «Черновик». Уже закрытые отчёты не переоткроются."
+    : "Новые импортированные отчёты будут закрыты автоматически и запустят обычные финансовые расчёты.";
 }
 
 function renderMappings() {
@@ -123,7 +137,7 @@ async function load() {
     toast("Сначала выбери заведение", "err");
     return;
   }
-  el.backToVenue.href = `/app-venue.html?venue_id=${encodeURIComponent(venueId)}`;
+  el.backToIntegrations.dataset.href = `/owner-integrations.html?venue_id=${encodeURIComponent(venueId)}`;
   const [venue, integration, paymentMethods, departments] = await Promise.all([
     getVenueById(venueId),
     api(`/venues/${encodeURIComponent(venueId)}/integrations/quickresto`),
@@ -156,6 +170,7 @@ el.saveConnection?.addEventListener("click", async () => {
       api_password: String(el.apiPassword.value || "") || null,
       is_active: !!el.isActive.checked,
       auto_sync_enabled: !!el.autoSync.checked,
+      report_import_mode: selectedImportMode(),
       business_day_cutoff_hour: Number(el.cutoffHour.value || 0),
       sync_from_date: el.syncFromDate.value || null,
     };
@@ -183,9 +198,15 @@ el.discoverMappings?.addEventListener("click", async () => {
   try {
     const result = await api(`/venues/${encodeURIComponent(venueId)}/integrations/quickresto/discover`, { method: "POST" });
     state.mappings = result.mappings;
+    const [paymentMethods, departments] = await Promise.all([
+      getPaymentMethods(venueId, { includeArchived: false }),
+      getDepartments(venueId, { includeArchived: false }),
+    ]);
+    state.paymentMethods = Array.isArray(paymentMethods) ? paymentMethods : [];
+    state.departments = Array.isArray(departments) ? departments : [];
     renderMappings();
     const summary = result.summary || {};
-    el.connectionHint.textContent = `Получено способов оплаты: ${summary.payment_types_seen || 0}; групп блюд: ${summary.departments_seen || 0}.`;
+    el.connectionHint.textContent = `Получено способов оплаты: ${summary.payment_types_seen || 0}; групп блюд: ${summary.departments_seen || 0}. Создано в Axelio: способов оплаты ${summary.payment_methods_created || 0}, департаментов ${summary.departments_created || 0}.`;
     toast("Соединение работает, справочники загружены", "ok");
   } catch (error) {
     el.connectionHint.textContent = errorMessage(error);
@@ -239,7 +260,9 @@ el.runSync?.addEventListener("click", async () => {
     const run = result.run || {};
     el.connectionHint.textContent = run.status === "PARTIAL"
       ? "Импорт завершен частично: проверь сопоставления или существующие отчеты."
-      : "Закрытые смены импортированы в черновики отчетов.";
+      : selectedImportMode() === "DRAFT"
+        ? "Закрытые смены импортированы в черновики отчётов."
+        : "Закрытые смены импортированы и отчёты автоматически закрыты.";
     toast(run.status === "PARTIAL" ? "Импорт требует внимания" : "Импорт завершен", run.status === "PARTIAL" ? "err" : "ok");
     await load();
   } catch (error) {
@@ -249,6 +272,9 @@ el.runSync?.addEventListener("click", async () => {
     setBusy(el.runSync, false);
   }
 });
+
+el.reportImportClosed?.addEventListener("change", renderImportModeHint);
+el.reportImportDraft?.addEventListener("change", renderImportModeHint);
 
 for (let hour = 0; hour < 24; hour += 1) {
   const option = document.createElement("option");

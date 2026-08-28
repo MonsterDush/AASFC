@@ -16,6 +16,15 @@
 .quickresto-form input[type="date"]::-webkit-date-and-time-value{min-width:0}
 .quickresto-toggles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .quickresto-toggle{margin:0;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
+.quickresto-import-mode{min-width:0;margin-inline:0;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
+.quickresto-import-mode legend{padding:0 5px;color:var(--muted);font-size:12px;font-weight:900}
+.quickresto-import-mode__options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.quickresto-import-mode__option{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;min-width:0;padding:11px;border:1px solid var(--border);border-radius:12px;background:var(--card);cursor:pointer}
+.quickresto-import-mode__option:has(input:checked){border-color:var(--accentSoftBorder);background:var(--accentSoftBg);box-shadow:inset 0 0 0 1px var(--accentSoftBorder)}
+.quickresto-import-mode__option input{margin-top:3px;accent-color:var(--accent)}
+.quickresto-import-mode__option span{display:grid;gap:3px;min-width:0}
+.quickresto-import-mode__option b,.quickresto-import-mode__option small{overflow-wrap:anywhere}
+.quickresto-import-mode__option small{color:var(--muted);font-size:11px;line-height:1.4}
 .quickresto-actions{display:flex;flex-wrap:wrap;gap:8px}
 .quickresto-mapping-list,.quickresto-history{display:grid;gap:9px}
 .quickresto-mapping-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);gap:12px;align-items:center;background:var(--card)}
@@ -26,7 +35,7 @@
 .quickresto-run-metrics{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;color:var(--muted);font-size:12px}
 .quickresto-run-error{grid-column:1/-1;color:var(--statusErrorText);font-size:12px}
 @media(max-width:720px){
-  .quickresto-hero__layout,.quickresto-form,.quickresto-toggles,.quickresto-mapping-row,.quickresto-run-row{grid-template-columns:minmax(0,1fr)}
+  .quickresto-hero__layout,.quickresto-form,.quickresto-toggles,.quickresto-import-mode__options,.quickresto-mapping-row,.quickresto-run-row{grid-template-columns:minmax(0,1fr)}
   .quickresto-hero__layout .btn,.quickresto-actions .btn,.quickresto-section-head .btn{width:100%}
   .quickresto-form label:first-child{grid-column:auto}
   .quickresto-run-metrics{justify-content:flex-start}

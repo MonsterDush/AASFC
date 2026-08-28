@@ -87,6 +87,26 @@ def _unique_title_map(items: list[Any]) -> dict[str, Any]:
     return {key: rows[0] for key, rows in grouped.items() if len(rows) == 1}
 
 
+def _catalog_code(prefix: str, external_id: int, used_codes: set[str]) -> str:
+    base = f"quickresto-{prefix}-{external_id}"[:64]
+    candidate = base
+    suffix = 2
+    while candidate in used_codes:
+        marker = f"-{suffix}"
+        candidate = f"{base[: 64 - len(marker)]}{marker}"
+        suffix += 1
+    used_codes.add(candidate)
+    return candidate
+
+
+def _catalog_title(value: str) -> str:
+    return value[:120]
+
+
+def _mapping_title(value: str) -> str:
+    return value[:160]
+
+
 def _object_rows(client: QuickRestoClient, key: str) -> list[dict[str, Any]]:
     module_name, class_name = QUICKRESTO_OBJECT_TYPES[key]
     return client.list_all_objects(module_name=module_name, class_name=class_name)
@@ -115,14 +135,33 @@ def refresh_quickresto_mappings(
 ) -> dict[str, Any]:
     payment_rows = _object_rows(client, "payment_types")
     department_rows = _object_rows(client, "dish_categories")
+    db.execute(
+        select(QuickRestoConnection.id)
+        .where(QuickRestoConnection.id == connection.id)
+        .with_for_update()
+    ).scalar_one()
     internal_payments = (
         db.execute(select(PaymentMethod).where(PaymentMethod.venue_id == connection.venue_id)).scalars().all()
     )
     internal_departments = (
         db.execute(select(Department).where(Department.venue_id == connection.venue_id)).scalars().all()
     )
-    payment_by_title = _unique_title_map(internal_payments)
-    department_by_title = _unique_title_map(internal_departments)
+    active_payments = [item for item in internal_payments if item.is_active]
+    active_departments = [item for item in internal_departments if item.is_active]
+    payment_by_title = _unique_title_map(active_payments)
+    department_by_title = _unique_title_map(active_departments)
+    known_payment_titles = {
+        _normalize_label(item.title) for item in active_payments if _normalize_label(item.title)
+    }
+    known_department_titles = {
+        _normalize_label(item.title) for item in active_departments if _normalize_label(item.title)
+    }
+    used_payment_codes = {str(item.code) for item in internal_payments}
+    used_department_codes = {str(item.code) for item in internal_departments}
+    next_payment_sort = max((int(item.sort_order or 0) for item in internal_payments), default=0) + 1
+    next_department_sort = max((int(item.sort_order or 0) for item in internal_departments), default=0) + 1
+    payment_methods_created = 0
+    departments_created = 0
 
     existing_payments = {
         int(item.external_id): item
@@ -146,12 +185,35 @@ def refresh_quickresto_mappings(
         mechanism = str(row.get("paymentMechanismWeb") or "").strip().lower() or None
         excluded = operation_type == "writeoff"
         mapping = existing_payments.get(external_id)
+        catalog_title = _catalog_title(name)
+        title_key = _normalize_label(catalog_title)
+        auto_match = payment_by_title.get(title_key)
+        needs_payment_target = mapping is None or mapping.payment_method_id is None
+        if (
+            not excluded
+            and needs_payment_target
+            and auto_match is None
+            and title_key not in known_payment_titles
+        ):
+            auto_match = PaymentMethod(
+                venue_id=connection.venue_id,
+                code=_catalog_code("payment", external_id, used_payment_codes),
+                title=catalog_title,
+                is_active=True,
+                sort_order=next_payment_sort,
+            )
+            next_payment_sort += 1
+            db.add(auto_match)
+            db.flush()
+            internal_payments.append(auto_match)
+            known_payment_titles.add(title_key)
+            payment_by_title[title_key] = auto_match
+            payment_methods_created += 1
         if mapping is None:
-            auto_match = payment_by_title.get(_normalize_label(name))
             mapping = QuickRestoPaymentMapping(
                 connection_id=connection.id,
                 external_id=external_id,
-                external_name=name,
+                external_name=_mapping_title(name),
                 operation_type=operation_type,
                 payment_mechanism=mechanism,
                 payment_method_id=None if excluded or auto_match is None else int(auto_match.id),
@@ -161,14 +223,13 @@ def refresh_quickresto_mappings(
             db.add(mapping)
             existing_payments[external_id] = mapping
         else:
-            mapping.external_name = name
+            mapping.external_name = _mapping_title(name)
             mapping.operation_type = operation_type
             mapping.payment_mechanism = mechanism
             mapping.excluded_from_revenue = excluded
             if excluded:
                 mapping.payment_method_id = None
             elif mapping.payment_method_id is None:
-                auto_match = payment_by_title.get(_normalize_label(name))
                 if auto_match is not None:
                     mapping.payment_method_id = int(auto_match.id)
             mapping.updated_at = _utcnow()
@@ -179,21 +240,38 @@ def refresh_quickresto_mappings(
             continue
         name = str(row.get("name") or row.get("itemTitle") or f"#{external_id}").strip()
         mapping = existing_departments.get(external_id)
+        catalog_title = _catalog_title(name)
+        title_key = _normalize_label(catalog_title)
+        auto_match = department_by_title.get(title_key)
+        needs_department_target = mapping is None or mapping.department_id is None
+        if needs_department_target and auto_match is None and title_key not in known_department_titles:
+            auto_match = Department(
+                venue_id=connection.venue_id,
+                code=_catalog_code("department", external_id, used_department_codes),
+                title=catalog_title,
+                is_active=True,
+                sort_order=next_department_sort,
+            )
+            next_department_sort += 1
+            db.add(auto_match)
+            db.flush()
+            internal_departments.append(auto_match)
+            known_department_titles.add(title_key)
+            department_by_title[title_key] = auto_match
+            departments_created += 1
         if mapping is None:
-            auto_match = department_by_title.get(_normalize_label(name))
             mapping = QuickRestoDepartmentMapping(
                 connection_id=connection.id,
                 external_id=external_id,
-                external_name=name,
+                external_name=_mapping_title(name),
                 department_id=int(auto_match.id) if auto_match is not None else None,
                 updated_at=_utcnow(),
             )
             db.add(mapping)
             existing_departments[external_id] = mapping
         else:
-            mapping.external_name = name
+            mapping.external_name = _mapping_title(name)
             if mapping.department_id is None:
-                auto_match = department_by_title.get(_normalize_label(name))
                 if auto_match is not None:
                     mapping.department_id = int(auto_match.id)
             mapping.updated_at = _utcnow()
@@ -202,6 +280,8 @@ def refresh_quickresto_mappings(
     return {
         "payment_types_seen": len(payment_rows),
         "departments_seen": len(department_rows),
+        "payment_methods_created": payment_methods_created,
+        "departments_created": departments_created,
         "unmapped_payment_type_ids": sorted(
             item.external_id
             for item in existing_payments.values()
@@ -285,13 +365,20 @@ def _report_values(db: Session, report_id: int, kind: str) -> dict[int, int]:
     }
 
 
-def _report_matches(db: Session, report: DailyReport, aggregate: dict[str, Any]) -> bool:
+def _aggregate_values(aggregate: dict[str, Any], key: str) -> dict[int, int]:
+    return {int(ref_id): int(value or 0) for ref_id, value in (aggregate.get(key) or {}).items()}
+
+
+def _report_values_match(db: Session, report: DailyReport, aggregate: dict[str, Any]) -> bool:
     return (
-        str(report.status or "").upper() == "DRAFT"
-        and int(report.revenue_total or 0) == int(aggregate["revenue_total"])
-        and _report_values(db, report.id, "PAYMENT") == aggregate["payments_internal"]
-        and _report_values(db, report.id, "DEPT") == aggregate["departments_internal"]
+        int(report.revenue_total or 0) == int(aggregate["revenue_total"])
+        and _report_values(db, report.id, "PAYMENT") == _aggregate_values(aggregate, "payments_internal")
+        and _report_values(db, report.id, "DEPT") == _aggregate_values(aggregate, "departments_internal")
     )
+
+
+def _report_matches(db: Session, report: DailyReport, aggregate: dict[str, Any]) -> bool:
+    return str(report.status or "").upper() == "DRAFT" and _report_values_match(db, report, aggregate)
 
 
 def _report_is_empty_draft(db: Session, report: DailyReport) -> bool:
@@ -387,6 +474,7 @@ def _upsert_draft_report(
     ).scalar_one_or_none()
 
     created = False
+    auto_close = str(connection.report_import_mode or "CLOSED").upper() == "CLOSED"
     if report is None:
         report = DailyReport(
             venue_id=connection.venue_id,
@@ -415,6 +503,8 @@ def _upsert_draft_report(
         raise QuickRestoDataError("QuickResto report source points to another Axelio report")
     if source is not None and source.aggregate_hash == aggregate["aggregate_hash"]:
         if str(report.status or "").upper() == "DRAFT":
+            if not auto_close:
+                return "unchanged", report
             if not _report_matches(db, report, aggregate):
                 raise QuickRestoDataError(
                     f"Axelio report {report.id} was reopened and now differs from its QuickResto import"
@@ -431,8 +521,24 @@ def _upsert_draft_report(
             db.flush()
             return "updated", report
         return "unchanged", report
-    if str(report.status or "").upper() != "DRAFT":
-        raise QuickRestoDataError(f"Axelio report {report.id} is closed and cannot be changed by QuickResto")
+    report_status = str(report.status or "").upper()
+    if report_status == "CLOSED":
+        if not auto_close or source is None or not _report_values_match(db, report, source.summary_json):
+            raise QuickRestoDataError(f"Axelio report {report.id} is closed and cannot be changed by QuickResto")
+        # A venue can close several till shifts on the same business day. If
+        # Axelio already auto-closed the imported report, safely reopen only
+        # its integration-owned values and immediately close it again below.
+        # The aggregate hash in the notification key keeps repeated runs
+        # idempotent while a genuinely new shift produces a fresh event.
+        report.status = "DRAFT"
+        report.closed_by_user_id = None
+        report.closed_at = None
+    elif report_status != "DRAFT":
+        raise QuickRestoDataError(f"Axelio report {report.id} cannot be changed by QuickResto")
+    if source is not None and not _report_matches(db, report, source.summary_json):
+        raise QuickRestoDataError(
+            f"Axelio report {report.id} was edited and cannot be overwritten by a changed QuickResto import"
+        )
 
     _replace_report_values(db, report, aggregate)
     report.revenue_total = int(aggregate["revenue_total"])
@@ -480,13 +586,14 @@ def _upsert_draft_report(
         source.summary_json = aggregate
         source.last_sync_run_id = run.id
         source.updated_at = _utcnow()
-    _close_imported_report(
-        db,
-        connection=connection,
-        report=report,
-        aggregate=aggregate,
-        actor_user_id=actor_user_id,
-    )
+    if auto_close:
+        _close_imported_report(
+            db,
+            connection=connection,
+            report=report,
+            aggregate=aggregate,
+            actor_user_id=actor_user_id,
+        )
     db.flush()
     return "created" if created else "updated", report
 
