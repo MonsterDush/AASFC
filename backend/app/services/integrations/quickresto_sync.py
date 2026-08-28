@@ -149,7 +149,9 @@ def refresh_quickresto_mappings(
     payment_by_title = _unique_title_map(active_payments)
     department_by_title = _unique_title_map(active_departments)
     known_payment_titles = {_normalize_label(item.title) for item in active_payments if _normalize_label(item.title)}
-    known_department_titles = {_normalize_label(item.title) for item in active_departments if _normalize_label(item.title)}
+    known_department_titles = {
+        _normalize_label(item.title) for item in active_departments if _normalize_label(item.title)
+    }
     used_payment_codes = {str(item.code) for item in internal_payments}
     used_department_codes = {str(item.code) for item in internal_departments}
     next_payment_sort = max((int(item.sort_order or 0) for item in internal_payments), default=0) + 1
@@ -183,7 +185,7 @@ def refresh_quickresto_mappings(
         title_key = _normalize_label(catalog_title)
         auto_match = payment_by_title.get(title_key)
         needs_payment_target = mapping is None or mapping.payment_method_id is None
-        if (not excluded and needs_payment_target and auto_match is None and title_key not in known_payment_titles):
+        if not excluded and needs_payment_target and auto_match is None and title_key not in known_payment_titles:
             auto_match = PaymentMethod(
                 venue_id=connection.venue_id,
                 code=_catalog_code("payment", external_id, used_payment_codes),
