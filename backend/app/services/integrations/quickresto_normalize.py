@@ -21,27 +21,49 @@ def _money_int(value: Any, *, field: str) -> int:
     return int(rounded)
 
 
-def _parse_local_datetime(value: Any) -> datetime:
+def _parse_local_datetime(value: Any, *, field: str) -> datetime:
     raw = str(value or "").strip()
     if not raw:
-        raise QuickRestoDataError("Closed QuickResto shift has no localClosedTime")
+        raise QuickRestoDataError(f"Closed QuickResto shift has no {field}")
     if raw.endswith("Z"):
         raw = raw[:-1]
     try:
         return datetime.fromisoformat(raw)
     except ValueError as exc:
-        raise QuickRestoDataError("QuickResto localClosedTime has an invalid format") from exc
+        raise QuickRestoDataError(f"QuickResto {field} has an invalid format") from exc
 
 
 def business_date_for_shift(shift: dict[str, Any], *, cutoff_hour: int) -> date:
     cutoff = int(cutoff_hour)
     if not 0 <= cutoff <= 23:
         raise ValueError("business day cutoff hour must be between 0 and 23")
-    local_closed_at = _parse_local_datetime(shift.get("localClosedTime"))
-    target = local_closed_at.date()
-    if local_closed_at.hour < cutoff:
+    local_opened_at = _parse_local_datetime(shift.get("localOpenedTime"), field="localOpenedTime")
+    target = local_opened_at.date()
+    if local_opened_at.hour < cutoff:
         target -= timedelta(days=1)
     return target
+
+
+def shift_slot_for_shift(
+    shift: dict[str, Any],
+    *,
+    cutoff_hour: int,
+    night_shift_split_enabled: bool = False,
+    night_shift_start_hour: int = 22,
+) -> str:
+    cutoff = int(cutoff_hour)
+    night_start = int(night_shift_start_hour)
+    if not 0 <= cutoff <= 23:
+        raise ValueError("business day cutoff hour must be between 0 and 23")
+    if not 0 <= night_start <= 23:
+        raise ValueError("night shift start hour must be between 0 and 23")
+    if not night_shift_split_enabled:
+        return "DAY"
+    if night_start <= cutoff:
+        raise ValueError("night shift start hour must be greater than business day cutoff hour")
+
+    local_opened_at = _parse_local_datetime(shift.get("localOpenedTime"), field="localOpenedTime")
+    return "NIGHT" if local_opened_at.hour >= night_start or local_opened_at.hour < cutoff else "DAY"
 
 
 def stable_payload_hash(payload: dict[str, Any]) -> str:
@@ -67,6 +89,8 @@ def normalize_closed_shift(
     orders: Iterable[dict[str, Any]],
     *,
     cutoff_hour: int,
+    night_shift_split_enabled: bool = False,
+    night_shift_start_hour: int = 22,
 ) -> dict[str, Any]:
     if str(shift.get("status") or "").upper() != "CLOSED":
         raise QuickRestoDataError("Only closed QuickResto shifts can be imported")
@@ -178,12 +202,18 @@ def normalize_closed_shift(
     if writeoff_total != expected_writeoff:
         raise QuickRestoDataError("QuickResto shift write-offs do not reconcile with its orders")
 
-    local_closed_at = _parse_local_datetime(shift.get("localClosedTime"))
+    local_closed_at = _parse_local_datetime(shift.get("localClosedTime"), field="localClosedTime")
     payload = {
         "external_shift_id": external_shift_id,
         "external_shift_pk": external_shift_pk,
         "source_version": int(shift.get("version") or 0),
         "business_date": business_date_for_shift(shift, cutoff_hour=cutoff_hour).isoformat(),
+        "shift_slot": shift_slot_for_shift(
+            shift,
+            cutoff_hour=cutoff_hour,
+            night_shift_split_enabled=night_shift_split_enabled,
+            night_shift_start_hour=night_shift_start_hour,
+        ),
         "local_closed_at": local_closed_at.isoformat(),
         "payments_external": dict(sorted(payment_totals.items())),
         "departments_external": dict(sorted(department_totals.items())),
@@ -194,7 +224,9 @@ def normalize_closed_shift(
         "orders_count": order_count,
         "returned_orders_count": returned_order_count,
     }
-    payload["payload_hash"] = stable_payload_hash(payload)
+    # Keep the content hash compatible with imports created before shift_slot
+    # was persisted. A slot move is detected explicitly from the report key.
+    payload["payload_hash"] = stable_payload_hash({key: value for key, value in payload.items() if key != "shift_slot"})
     return payload
 
 
@@ -205,6 +237,9 @@ def aggregate_normalized_shifts(shifts: Iterable[dict[str, Any]]) -> dict[str, A
     business_dates = {str(row.get("business_date") or "") for row in rows}
     if len(business_dates) != 1:
         raise QuickRestoDataError("QuickResto shifts from different business dates cannot share a report")
+    shift_slots = {str(row.get("shift_slot") or "DAY").upper() for row in rows}
+    if len(shift_slots) != 1 or not shift_slots.issubset({"DAY", "NIGHT"}):
+        raise QuickRestoDataError("QuickResto day and night shifts cannot share a report")
 
     payments: dict[str, int] = {}
     departments: dict[str, int] = {}
@@ -220,6 +255,7 @@ def aggregate_normalized_shifts(shifts: Iterable[dict[str, Any]]) -> dict[str, A
 
     aggregate = {
         "business_date": next(iter(business_dates)),
+        "shift_slot": next(iter(shift_slots)),
         "external_shift_ids": sorted(str(row["external_shift_id"]) for row in rows),
         "shift_count": len(rows),
         "payments_external": dict(sorted(payments.items())),
@@ -231,5 +267,9 @@ def aggregate_normalized_shifts(shifts: Iterable[dict[str, Any]]) -> dict[str, A
         "orders_count": sum(int(row.get("orders_count") or 0) for row in rows),
         "returned_orders_count": sum(int(row.get("returned_orders_count") or 0) for row in rows),
     }
-    aggregate["aggregate_hash"] = stable_payload_hash(aggregate)
+    # shift_slot is already part of the unique report key. Excluding it keeps
+    # existing DAY imports idempotent across the night-split migration.
+    aggregate["aggregate_hash"] = stable_payload_hash(
+        {key: value for key, value in aggregate.items() if key != "shift_slot"}
+    )
     return aggregate

@@ -14,6 +14,8 @@ class QuickRestoConnectionUpsertIn(BaseModel):
     auto_sync_enabled: bool = False
     report_import_mode: Literal["DRAFT", "CLOSED"] | None = None
     business_day_cutoff_hour: int = Field(default=0, ge=0, le=23)
+    night_shift_split_enabled: bool = False
+    night_shift_start_hour: int = Field(default=22, ge=0, le=23)
     sync_from_date: date | None = None
 
 

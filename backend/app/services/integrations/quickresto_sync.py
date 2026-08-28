@@ -6,10 +6,13 @@ from datetime import date, datetime, timedelta, timezone
 import re
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models.daily_report import DailyReport
+from app.models.daily_report_attachment import DailyReportAttachment
+from app.models.daily_report_audit import DailyReportAudit
+from app.models.daily_report_tip_allocation import DailyReportTipAllocation
 from app.models.daily_report_value import DailyReportValue
 from app.models.department import Department
 from app.models.payment_method import PaymentMethod
@@ -383,6 +386,136 @@ def _report_is_empty_draft(db: Session, report: DailyReport) -> bool:
     )
 
 
+def _legacy_payment_totals(
+    db: Session,
+    *,
+    venue_id: int,
+    aggregate: dict[str, Any],
+) -> tuple[int, int]:
+    payment_methods = {
+        int(item.id): str(item.code or "")
+        for item in db.execute(select(PaymentMethod).where(PaymentMethod.venue_id == venue_id)).scalars()
+    }
+    cash = sum(
+        int(value)
+        for ref_id, value in aggregate["payments_internal"].items()
+        if payment_methods.get(int(ref_id)) == "cash"
+    )
+    cashless = sum(
+        int(value)
+        for ref_id, value in aggregate["payments_internal"].items()
+        if payment_methods.get(int(ref_id)) == "cashless"
+    )
+    return cash, cashless
+
+
+def _remove_empty_imported_report(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    business_date: date,
+    shift_slot: str,
+    actor_user_id: int,
+) -> bool:
+    source = db.execute(
+        select(QuickRestoReportImport).where(
+            QuickRestoReportImport.connection_id == connection.id,
+            QuickRestoReportImport.business_date == business_date,
+            QuickRestoReportImport.shift_slot == shift_slot,
+        )
+    ).scalar_one_or_none()
+    if source is None:
+        return False
+
+    report = db.get(DailyReport, int(source.daily_report_id))
+    if report is None:
+        raise QuickRestoDataError("QuickResto report source points to a missing Axelio report")
+    if (
+        int(report.venue_id) != int(connection.venue_id)
+        or report.date != business_date
+        or str(report.shift_slot or "DAY").upper() != shift_slot
+    ):
+        raise QuickRestoDataError("QuickResto report source points to another Axelio report key")
+    if str(report.status or "").upper() not in {"DRAFT", "CLOSED"}:
+        raise QuickRestoDataError(f"Axelio report {report.id} cannot be regrouped by QuickResto")
+    if not str(report.comment or "").startswith(_INTEGRATION_COMMENT_PREFIX):
+        raise QuickRestoDataError(f"Axelio report {report.id} has a manual comment and cannot be regrouped")
+    if not _report_values_match(db, report, source.summary_json):
+        raise QuickRestoDataError(f"Axelio report {report.id} was edited and cannot be regrouped")
+    expected_cash, expected_cashless = _legacy_payment_totals(
+        db,
+        venue_id=int(connection.venue_id),
+        aggregate=source.summary_json,
+    )
+    if (
+        int(report.cash or 0) != expected_cash
+        or int(report.cashless or 0) != expected_cashless
+        or int(report.tips_total or 0) != 0
+    ):
+        raise QuickRestoDataError(f"Axelio report {report.id} has manual totals and cannot be regrouped")
+    has_manual_values = db.execute(
+        select(DailyReportValue.id)
+        .where(DailyReportValue.report_id == report.id, DailyReportValue.kind == "KPI")
+        .limit(1)
+    ).scalar_one_or_none()
+    has_audit = db.execute(
+        select(DailyReportAudit.id).where(DailyReportAudit.report_id == report.id).limit(1)
+    ).scalar_one_or_none()
+    has_attachment = db.execute(
+        select(DailyReportAttachment.id)
+        .where(
+            DailyReportAttachment.venue_id == connection.venue_id,
+            DailyReportAttachment.report_date == business_date,
+            DailyReportAttachment.shift_slot == shift_slot,
+            DailyReportAttachment.is_active.is_(True),
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    if has_manual_values is not None or has_audit is not None or has_attachment is not None:
+        raise QuickRestoDataError(f"Axelio report {report.id} contains manual data and cannot be regrouped")
+
+    was_closed = str(report.status or "").upper() == "CLOSED"
+    if was_closed:
+        from app.routers.venue_payroll_support import _recalculate_payroll_for_dates
+        from app.routers.venue_reports import _sync_recurring_accruals_after_report_reopen
+        from app.services.finance.revenue import delete_revenue_entries_for_report
+
+        report.status = "DRAFT"
+        report.closed_by_user_id = None
+        report.closed_at = None
+        delete_revenue_entries_for_report(db=db, report_id=int(report.id))
+        db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == report.id))
+        db.flush()
+        _sync_recurring_accruals_after_report_reopen(db, report=report)
+        _recalculate_payroll_for_dates(
+            db,
+            venue_id=int(connection.venue_id),
+            target_dates=[business_date],
+            calculated_by_user_id=int(actor_user_id),
+            force=True,
+            trigger_reason="quickresto_regroup",
+            details={
+                "source": "quickresto",
+                "connection_id": int(connection.id),
+                "removed_report_id": int(report.id),
+            },
+        )
+
+    db.execute(
+        update(QuickRestoShiftImport)
+        .where(QuickRestoShiftImport.daily_report_id == report.id)
+        .values(daily_report_id=None)
+    )
+    db.delete(source)
+    db.execute(delete(DailyReportTipAllocation).where(DailyReportTipAllocation.report_id == report.id))
+    db.execute(delete(DailyReportAudit).where(DailyReportAudit.report_id == report.id))
+    db.execute(delete(DailyReportValue).where(DailyReportValue.report_id == report.id))
+    db.flush()
+    db.delete(report)
+    db.flush()
+    return True
+
+
 def _replace_report_values(db: Session, report: DailyReport, aggregate: dict[str, Any]) -> None:
     db.execute(
         delete(DailyReportValue).where(
@@ -449,18 +582,21 @@ def _upsert_draft_report(
     actor_user_id: int,
 ) -> tuple[str, DailyReport]:
     business_date = date.fromisoformat(str(aggregate["business_date"]))
+    shift_slot = str(aggregate.get("shift_slot") or "DAY").upper()
+    if shift_slot not in {"DAY", "NIGHT"}:
+        raise QuickRestoDataError("QuickResto report has an invalid shift slot")
     report = db.execute(
         select(DailyReport).where(
             DailyReport.venue_id == connection.venue_id,
             DailyReport.date == business_date,
-            DailyReport.shift_slot == "DAY",
+            DailyReport.shift_slot == shift_slot,
         )
     ).scalar_one_or_none()
     source = db.execute(
         select(QuickRestoReportImport).where(
             QuickRestoReportImport.connection_id == connection.id,
             QuickRestoReportImport.business_date == business_date,
-            QuickRestoReportImport.shift_slot == "DAY",
+            QuickRestoReportImport.shift_slot == shift_slot,
         )
     ).scalar_one_or_none()
 
@@ -470,7 +606,7 @@ def _upsert_draft_report(
         report = DailyReport(
             venue_id=connection.venue_id,
             date=business_date,
-            shift_slot="DAY",
+            shift_slot=shift_slot,
             cash=0,
             cashless=0,
             revenue_total=0,
@@ -533,17 +669,10 @@ def _upsert_draft_report(
 
     _replace_report_values(db, report, aggregate)
     report.revenue_total = int(aggregate["revenue_total"])
-    payment_methods = {
-        int(item.id): str(item.code or "")
-        for item in db.execute(select(PaymentMethod).where(PaymentMethod.venue_id == connection.venue_id)).scalars()
-    }
-    report.cash = sum(
-        int(value) for ref_id, value in aggregate["payments_internal"].items() if payment_methods.get(ref_id) == "cash"
-    )
-    report.cashless = sum(
-        int(value)
-        for ref_id, value in aggregate["payments_internal"].items()
-        if payment_methods.get(ref_id) == "cashless"
+    report.cash, report.cashless = _legacy_payment_totals(
+        db,
+        venue_id=int(connection.venue_id),
+        aggregate=aggregate,
     )
     report.updated_by_user_id = actor_user_id
     report.updated_at = _utcnow()
@@ -558,7 +687,7 @@ def _upsert_draft_report(
             connection_id=connection.id,
             daily_report_id=report.id,
             business_date=business_date,
-            shift_slot="DAY",
+            shift_slot=shift_slot,
             aggregate_hash=str(aggregate["aggregate_hash"]),
             shift_count=int(aggregate["shift_count"]),
             writeoff_total=int(aggregate["writeoff_total"]),
@@ -598,6 +727,10 @@ def _perform_sync(
     client: QuickRestoClient,
 ) -> dict[str, Any]:
     mapping_summary = refresh_quickresto_mappings(db, connection=connection, client=client)
+    venue = db.get(Venue, int(connection.venue_id))
+    if venue is None:
+        raise QuickRestoDataError("Axelio venue no longer exists")
+    night_shift_split_enabled = bool(connection.night_shift_split_enabled and venue.night_shifts_enabled)
     shift_rows = _object_rows(client, "shifts")
     order_rows = _object_rows(client, "orders")
     closed_shifts = [row for row in shift_rows if str(row.get("status") or "").upper() == "CLOSED"]
@@ -618,18 +751,20 @@ def _perform_sync(
         detail = _object_detail(client, "orders", object_id)
         order_details_by_shift[str(detail.get("shiftId") or "")].append(detail)
 
-    changed_dates: set[date] = set()
+    changed_keys: set[tuple[date, str]] = set()
+    regrouping_detected = False
     shifts_imported = 0
-    normalized_rows: list[dict[str, Any]] = []
     for shift in closed_shifts:
         shift_id = str(shift.get("frontId") or shift.get("_id") or "")
         normalized = normalize_closed_shift(
             shift,
             order_details_by_shift.get(shift_id, []),
             cutoff_hour=connection.business_day_cutoff_hour,
+            night_shift_split_enabled=night_shift_split_enabled,
+            night_shift_start_hour=connection.night_shift_start_hour,
         )
-        normalized_rows.append(normalized)
         business_date = date.fromisoformat(normalized["business_date"])
+        shift_slot = str(normalized["shift_slot"])
         existing = db.execute(
             select(QuickRestoShiftImport).where(
                 QuickRestoShiftImport.connection_id == connection.id,
@@ -643,6 +778,7 @@ def _perform_sync(
                 external_shift_pk=int(normalized["external_shift_pk"]),
                 source_version=int(normalized["source_version"]),
                 business_date=business_date,
+                shift_slot=shift_slot,
                 local_closed_at=datetime.fromisoformat(normalized["local_closed_at"]),
                 payload_hash=str(normalized["payload_hash"]),
                 normalized_json=normalized,
@@ -651,38 +787,60 @@ def _perform_sync(
             )
             db.add(existing)
             shifts_imported += 1
-            changed_dates.add(business_date)
-        elif existing.payload_hash != normalized["payload_hash"]:
-            changed_dates.add(existing.business_date)
-            changed_dates.add(business_date)
+            changed_keys.add((business_date, shift_slot))
+            continue
+
+        previous_key = (
+            existing.business_date,
+            str(getattr(existing, "shift_slot", None) or "DAY").upper(),
+        )
+        next_key = (business_date, shift_slot)
+        if existing.payload_hash != normalized["payload_hash"] or previous_key != next_key:
+            changed_keys.add(previous_key)
+            changed_keys.add(next_key)
+            if previous_key != next_key:
+                regrouping_detected = True
+                existing.daily_report_id = None
             existing.external_shift_pk = int(normalized["external_shift_pk"])
             existing.source_version = int(normalized["source_version"])
             existing.business_date = business_date
+            existing.shift_slot = shift_slot
             existing.local_closed_at = datetime.fromisoformat(normalized["local_closed_at"])
             existing.payload_hash = str(normalized["payload_hash"])
             existing.normalized_json = normalized
             existing.updated_at = _utcnow()
             shifts_imported += 1
         else:
-            changed_dates.add(business_date)
+            changed_keys.add((business_date, shift_slot))
     db.flush()
 
-    result_counts = {"created": 0, "updated": 0, "unchanged": 0}
+    result_counts = {"created": 0, "updated": 0, "unchanged": 0, "removed": 0}
     conflicts: list[dict[str, str]] = []
     report_ids: list[int] = []
-    for target_date in sorted(changed_dates):
+    for target_date, target_slot in sorted(changed_keys):
         stored_shifts = (
             db.execute(
                 select(QuickRestoShiftImport).where(
                     QuickRestoShiftImport.connection_id == connection.id,
                     QuickRestoShiftImport.business_date == target_date,
+                    QuickRestoShiftImport.shift_slot == target_slot,
                 )
             )
             .scalars()
             .all()
         )
-        aggregate = aggregate_normalized_shifts(item.normalized_json for item in stored_shifts)
         try:
+            if not stored_shifts:
+                if _remove_empty_imported_report(
+                    db,
+                    connection=connection,
+                    business_date=target_date,
+                    shift_slot=target_slot,
+                    actor_user_id=actor_user_id,
+                ):
+                    result_counts["removed"] += 1
+                continue
+            aggregate = aggregate_normalized_shifts(item.normalized_json for item in stored_shifts)
             mapped = _mapped_aggregate(db, connection=connection, aggregate=aggregate)
             outcome, report = _upsert_draft_report(
                 db,
@@ -696,7 +854,18 @@ def _perform_sync(
             for item in stored_shifts:
                 item.daily_report_id = report.id
         except QuickRestoDataError as exc:
-            conflicts.append({"business_date": target_date.isoformat(), "error": str(exc)})
+            if regrouping_detected:
+                raise QuickRestoDataError(
+                    f"QuickResto shifts could not be regrouped safely for "
+                    f"{target_date.isoformat()} {target_slot}: {exc}"
+                ) from exc
+            conflicts.append(
+                {
+                    "business_date": target_date.isoformat(),
+                    "shift_slot": target_slot,
+                    "error": str(exc),
+                }
+            )
 
     return {
         **mapping_summary,
@@ -705,6 +874,7 @@ def _perform_sync(
         "reports_created": result_counts["created"],
         "reports_updated": result_counts["updated"],
         "reports_unchanged": result_counts["unchanged"],
+        "reports_removed": result_counts["removed"],
         "report_ids": sorted(set(report_ids)),
         "conflicts": conflicts,
     }

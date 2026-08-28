@@ -22,9 +22,11 @@ if (venueId) setActiveVenueId(venueId);
 
 const el = Object.fromEntries([
   "title", "venueTitle", "backToIntegrations", "connectionStatus", "syncStatus", "cloud", "apiLogin",
-  "apiPassword", "syncFromDate", "cutoffHour", "isActive", "autoSync", "saveConnection",
-  "discoverMappings", "runSync", "connectionHint", "paymentMappings", "departmentMappings",
-  "saveMappings", "mappingHint", "runHistory", "reportImportClosed", "reportImportDraft", "importModeHint",
+    "apiPassword", "syncFromDate", "cutoffHour", "isActive", "autoSync", "saveConnection",
+    "discoverMappings", "runSync", "connectionHint", "paymentMappings", "departmentMappings",
+    "saveMappings", "mappingHint", "runHistory", "reportImportClosed", "reportImportDraft", "importModeHint",
+    "nightShiftToggleRow", "nightShiftSplit", "nightShiftWindow", "nightShiftStartHour",
+    "nightShiftWindowSummary",
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = {
@@ -34,6 +36,7 @@ const state = {
   paymentMethods: [],
   departments: [],
   runs: [],
+  venueNightShiftsEnabled: false,
 };
 
 const esc = (value) => String(value ?? "")
@@ -72,10 +75,13 @@ function renderConnection() {
   el.cutoffHour.value = String(connection.business_day_cutoff_hour ?? 0);
   el.isActive.checked = connection.is_active !== false;
   el.autoSync.checked = !!connection.auto_sync_enabled;
+  el.nightShiftSplit.checked = state.venueNightShiftsEnabled && !!connection.night_shift_split_enabled;
+  el.nightShiftStartHour.value = String(connection.night_shift_start_hour ?? 22);
   const importMode = String(connection.report_import_mode || "CLOSED").toUpperCase();
   el.reportImportClosed.checked = importMode === "CLOSED";
   el.reportImportDraft.checked = importMode === "DRAFT";
   renderImportModeHint();
+  renderNightShiftSettings();
   el.connectionStatus.textContent = state.configured
     ? `Подключено к ${connection.cloud}.quickresto.ru · учетные данные сохранены зашифрованно`
     : "Укажи облако, API-логин и пароль QuickResto.";
@@ -93,6 +99,37 @@ function renderImportModeHint() {
   el.importModeHint.textContent = selectedImportMode() === "DRAFT"
     ? "Новые импортированные отчёты останутся в статусе «Черновик». Уже закрытые отчёты не переоткроются."
     : "Новые импортированные отчёты будут закрыты автоматически и запустят обычные финансовые расчёты.";
+}
+
+function hourLabel(hour) {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
+function previousMinuteLabel(hour) {
+  return `${String((hour + 23) % 24).padStart(2, "0")}:59`;
+}
+
+function renderNightShiftSettings() {
+  const available = !!state.venueNightShiftsEnabled;
+  el.nightShiftToggleRow.hidden = !available;
+  if (!available) el.nightShiftSplit.checked = false;
+  const enabled = available && !!el.nightShiftSplit.checked;
+  el.nightShiftWindow.hidden = !enabled;
+  el.nightShiftStartHour.disabled = !enabled;
+  if (!enabled) return;
+
+  const cutoff = Number(el.cutoffHour.value || 0);
+  const nightStart = Number(el.nightShiftStartHour.value || 22);
+  if (nightStart <= cutoff) {
+    el.nightShiftWindowSummary.dataset.status = "error";
+    el.nightShiftWindowSummary.textContent = "Начало ночной смены должно быть позже границы бизнес-дня.";
+    return;
+  }
+  el.nightShiftWindowSummary.dataset.status = "ok";
+  el.nightShiftWindowSummary.textContent = [
+    `DAY ${hourLabel(cutoff)}–${previousMinuteLabel(nightStart)}`,
+    `NIGHT ${hourLabel(nightStart)}–${previousMinuteLabel(cutoff)}`,
+  ].join(" · ");
 }
 
 function renderMappings() {
@@ -146,6 +183,11 @@ async function load() {
   ]);
   state.configured = !!integration.configured;
   state.connection = integration.connection;
+  state.venueNightShiftsEnabled = !!(
+    integration.venue_night_shifts_enabled
+    ?? integration.connection?.venue_night_shifts_enabled
+    ?? venue?.night_shifts_enabled
+  );
   state.mappings = integration.mappings || { payments: [], departments: [] };
   state.paymentMethods = Array.isArray(paymentMethods) ? paymentMethods : [];
   state.departments = Array.isArray(departments) ? departments : [];
@@ -172,8 +214,13 @@ el.saveConnection?.addEventListener("click", async () => {
       auto_sync_enabled: !!el.autoSync.checked,
       report_import_mode: selectedImportMode(),
       business_day_cutoff_hour: Number(el.cutoffHour.value || 0),
+      night_shift_split_enabled: state.venueNightShiftsEnabled && !!el.nightShiftSplit.checked,
+      night_shift_start_hour: Number(el.nightShiftStartHour.value || 22),
       sync_from_date: el.syncFromDate.value || null,
     };
+    if (body.night_shift_split_enabled && body.night_shift_start_hour <= body.business_day_cutoff_hour) {
+      throw new Error("Начало ночной смены должно быть позже границы бизнес-дня.");
+    }
     const result = await api(`/venues/${encodeURIComponent(venueId)}/integrations/quickresto`, {
       method: "PUT",
       body,
@@ -275,12 +322,20 @@ el.runSync?.addEventListener("click", async () => {
 
 el.reportImportClosed?.addEventListener("change", renderImportModeHint);
 el.reportImportDraft?.addEventListener("change", renderImportModeHint);
+el.nightShiftSplit?.addEventListener("change", renderNightShiftSettings);
+el.nightShiftStartHour?.addEventListener("change", renderNightShiftSettings);
+el.cutoffHour?.addEventListener("change", renderNightShiftSettings);
 
 for (let hour = 0; hour < 24; hour += 1) {
   const option = document.createElement("option");
   option.value = String(hour);
   option.textContent = hour === 0 ? "00:00 — календарный день" : `${String(hour).padStart(2, "0")}:00`;
   el.cutoffHour.append(option);
+
+  const nightOption = document.createElement("option");
+  nightOption.value = String(hour);
+  nightOption.textContent = `${String(hour).padStart(2, "0")}:00`;
+  el.nightShiftStartHour.append(nightOption);
 }
 
 try {

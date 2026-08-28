@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260828-qr5" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260829-qr7" />
   <script>
     (() => {
       try {
@@ -39,7 +39,7 @@
           <div>
             <div class="quickresto-eyebrow">Интеграции</div>
             <b id="venueTitle">Заведение</b>
-            <div class="muted small mt-4">Axelio собирает закрытые смены QuickResto в дневные отчёты. Статус нового отчёта выбираете вы, а списания не увеличивают выручку.</div>
+            <div class="muted small mt-4">Axelio собирает закрытые смены QuickResto в отчёты. Статус нового отчёта выбираете вы, а списания не увеличивают выручку.</div>
           </div>
           <button class="btn subtle inline" id="backToIntegrations" type="button" data-nav-button>К интеграциям</button>
         </div>
@@ -64,7 +64,11 @@
             <a class="link small" href="https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/" target="_blank" rel="noopener noreferrer">Открыть инструкцию QuickResto <span aria-hidden="true">↗</span></a>
           </aside>
           <label><span>Импортировать начиная с</span><input id="syncFromDate" type="date" /></label>
-          <label><span>Граница бизнес-дня</span><select id="cutoffHour"></select></label>
+          <label>
+            <span>Граница бизнес-дня</span>
+            <select id="cutoffHour" aria-describedby="cutoffHourHelp"></select>
+            <small class="quickresto-field-help" id="cutoffHourHelp">Эта граница определяет дату отчёта, а не тип смены. Дата считается по времени открытия кассовой смены: открытая или переоткрытая после полуночи, но раньше границы, смена останется в предыдущем бизнес-дне. Например, при 06:00 открытие 27 августа в 03:15 попадёт в отчёт за 26 августа; 00:00 отключает перенос.</small>
+          </label>
         </div>
         <div class="quickresto-toggles mt-12">
           <label class="toggle quickresto-toggle">
@@ -75,7 +79,22 @@
             <span class="toggle__label"><span class="toggle__title">Автоматическая синхронизация</span><span class="toggle__desc">Проверять новые закрытые смены каждые 10 минут.</span></span>
             <span class="switch"><input id="autoSync" type="checkbox" /><span class="slider"></span></span>
           </label>
+          <label class="toggle quickresto-toggle" id="nightShiftToggleRow" hidden>
+            <span class="toggle__label"><span class="toggle__title">Разделять дневные и ночные смены</span><span class="toggle__desc">Определять тип импортированного отчёта по времени открытия смены. Если выключено, все смены импортируются как дневные.</span></span>
+            <span class="switch"><input id="nightShiftSplit" type="checkbox" /><span class="slider"></span></span>
+          </label>
         </div>
+        <fieldset class="quickresto-night-window mt-12" id="nightShiftWindow" hidden>
+          <legend>Интервалы открытия смен</legend>
+          <div class="quickresto-night-window__grid">
+            <label>
+              <span>Начало ночной смены</span>
+              <select id="nightShiftStartHour" aria-describedby="nightShiftWindowHelp"></select>
+            </label>
+            <div class="quickresto-window-summary" id="nightShiftWindowSummary" aria-live="polite"></div>
+          </div>
+          <small class="quickresto-field-help" id="nightShiftWindowHelp">Смена относится к дневному или ночному отчёту только по времени её открытия в QuickResto. Утренний конец ночного интервала задаёт «Граница бизнес-дня» выше.</small>
+        </fieldset>
         <fieldset class="quickresto-import-mode mt-12">
           <legend>После импорта закрытой смены</legend>
           <div class="quickresto-import-mode__options">
@@ -134,6 +153,6 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/owner-quickresto.js?v=20260828-qr3"></script>
+  <script type="module" src="/owner-quickresto.js?v=20260829-qr4"></script>
 </body>
 </html>

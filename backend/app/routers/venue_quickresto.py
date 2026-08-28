@@ -14,6 +14,7 @@ from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_sync_run import QuickRestoSyncRun
 from app.models.user import User
+from app.models.venue import Venue
 from app.auth.deps import get_current_user
 from app.routers.venue_access import require_owner_or_super_admin
 from app.schemas.quickresto import QuickRestoConnectionUpsertIn, QuickRestoMappingsUpdateIn
@@ -43,7 +44,11 @@ def _connection_or_404(db: Session, venue_id: int) -> QuickRestoConnection:
     return connection
 
 
-def _serialize_connection(connection: QuickRestoConnection) -> dict:
+def _serialize_connection(
+    connection: QuickRestoConnection,
+    *,
+    venue_night_shifts_enabled: bool,
+) -> dict:
     return {
         "id": int(connection.id),
         "venue_id": int(connection.venue_id),
@@ -53,6 +58,9 @@ def _serialize_connection(connection: QuickRestoConnection) -> dict:
         "auto_sync_enabled": bool(connection.auto_sync_enabled),
         "report_import_mode": str(connection.report_import_mode or "CLOSED").upper(),
         "business_day_cutoff_hour": int(connection.business_day_cutoff_hour or 0),
+        "night_shift_split_enabled": bool(connection.night_shift_split_enabled),
+        "night_shift_start_hour": int(connection.night_shift_start_hour),
+        "venue_night_shifts_enabled": bool(venue_night_shifts_enabled),
         "sync_from_date": connection.sync_from_date.isoformat() if connection.sync_from_date else None,
         "last_sync_started_at": (
             connection.last_sync_started_at.isoformat() if connection.last_sync_started_at else None
@@ -63,6 +71,28 @@ def _serialize_connection(connection: QuickRestoConnection) -> dict:
         "last_sync_status": connection.last_sync_status,
         "last_sync_error": connection.last_sync_error,
     }
+
+
+def _venue_or_404(db: Session, venue_id: int) -> Venue:
+    venue = db.get(Venue, venue_id)
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    return venue
+
+
+def _validate_night_shift_split(payload: QuickRestoConnectionUpsertIn, *, venue: Venue) -> None:
+    if not payload.night_shift_split_enabled:
+        return
+    if not venue.night_shifts_enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="Night shift split requires night shifts to be enabled for the venue",
+        )
+    if payload.night_shift_start_hour <= payload.business_day_cutoff_hour:
+        raise HTTPException(
+            status_code=400,
+            detail="Night shift start hour must be greater than business day cutoff hour",
+        )
 
 
 def _serialize_mappings(db: Session, connection: QuickRestoConnection) -> dict:
@@ -114,14 +144,24 @@ def get_quickresto_connection(
     user: User = Depends(get_current_user),
 ):
     require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    venue = _venue_or_404(db, venue_id)
     connection = db.execute(
         select(QuickRestoConnection).where(QuickRestoConnection.venue_id == venue_id)
     ).scalar_one_or_none()
     if connection is None:
-        return {"configured": False, "connection": None, "mappings": {"payments": [], "departments": []}}
+        return {
+            "configured": False,
+            "venue_night_shifts_enabled": bool(venue.night_shifts_enabled),
+            "connection": None,
+            "mappings": {"payments": [], "departments": []},
+        }
     return {
         "configured": True,
-        "connection": _serialize_connection(connection),
+        "venue_night_shifts_enabled": bool(venue.night_shifts_enabled),
+        "connection": _serialize_connection(
+            connection,
+            venue_night_shifts_enabled=venue.night_shifts_enabled,
+        ),
         "mappings": _serialize_mappings(db, connection),
     }
 
@@ -134,6 +174,8 @@ def put_quickresto_connection(
     user: User = Depends(get_current_user),
 ):
     require_owner_or_super_admin(db, venue_id=venue_id, user=user)
+    venue = _venue_or_404(db, venue_id)
+    _validate_night_shift_split(payload, venue=venue)
     connection = db.execute(
         select(QuickRestoConnection).where(QuickRestoConnection.venue_id == venue_id)
     ).scalar_one_or_none()
@@ -160,6 +202,8 @@ def put_quickresto_connection(
             auto_sync_enabled=payload.auto_sync_enabled,
             report_import_mode=payload.report_import_mode or "CLOSED",
             business_day_cutoff_hour=payload.business_day_cutoff_hour,
+            night_shift_split_enabled=payload.night_shift_split_enabled,
+            night_shift_start_hour=payload.night_shift_start_hour,
             sync_from_date=payload.sync_from_date,
             created_by_user_id=user.id,
             created_at=now,
@@ -174,12 +218,21 @@ def put_quickresto_connection(
         if payload.report_import_mode is not None:
             connection.report_import_mode = payload.report_import_mode
         connection.business_day_cutoff_hour = payload.business_day_cutoff_hour
+        connection.night_shift_split_enabled = payload.night_shift_split_enabled
+        connection.night_shift_start_hour = payload.night_shift_start_hour
         connection.sync_from_date = payload.sync_from_date
         connection.updated_by_user_id = user.id
         connection.updated_at = now
     db.commit()
     db.refresh(connection)
-    return {"ok": True, "connection": _serialize_connection(connection)}
+    return {
+        "ok": True,
+        "venue_night_shifts_enabled": bool(venue.night_shifts_enabled),
+        "connection": _serialize_connection(
+            connection,
+            venue_night_shifts_enabled=venue.night_shifts_enabled,
+        ),
+    }
 
 
 @router.post("/{venue_id}/integrations/quickresto/discover")
