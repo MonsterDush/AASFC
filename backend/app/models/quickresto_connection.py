@@ -16,6 +16,10 @@ class QuickRestoConnection(Base):
             "business_day_cutoff_hour >= 0 AND business_day_cutoff_hour <= 23",
             name="ck_quickresto_connections_cutoff_hour",
         ),
+        CheckConstraint(
+            "report_import_mode IN ('DRAFT', 'CLOSED')",
+            name="ck_quickresto_connections_report_import_mode",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -25,6 +29,9 @@ class QuickRestoConnection(Base):
     api_password_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     auto_sync_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    report_import_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="CLOSED", server_default="CLOSED"
+    )
     business_day_cutoff_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     sync_from_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 

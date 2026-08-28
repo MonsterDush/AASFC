@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -11,6 +12,7 @@ class QuickRestoConnectionUpsertIn(BaseModel):
     api_password: str | None = Field(default=None, min_length=1, max_length=500)
     is_active: bool = True
     auto_sync_enabled: bool = False
+    report_import_mode: Literal["DRAFT", "CLOSED"] | None = None
     business_day_cutoff_hour: int = Field(default=0, ge=0, le=23)
     sync_from_date: date | None = None
 

@@ -90,9 +90,15 @@ def normalize_closed_shift(
         payments = [item for item in (order.get("payments") or []) if isinstance(item, dict)]
         items = [item for item in (order.get("orderItemList") or []) if isinstance(item, dict)]
         returned = bool(order.get("returned"))
-        sign = -1 if returned else 1
         returned_order_count += int(returned)
         order_count += int(not returned)
+
+        # QuickResto exposes a returned OrderInfo as a positive audit copy of
+        # the original receipt. The Shift counters already subtract it through
+        # totalReturn* / writeOffTotalReturn*, so applying a second negative
+        # sign here would understate revenue, payments, and departments.
+        if returned:
+            continue
 
         payment_sum = sum(_money_int(item.get("amount"), field="payment.amount") for item in payments)
         order_total = _money_int(order.get("frontTotalPrice"), field="frontTotalPrice")
@@ -118,22 +124,22 @@ def normalize_closed_shift(
                 raise QuickRestoDataError("QuickResto order item has no dish category id")
             target = writeoff_department_totals if is_writeoff else department_totals
             key = str(department_id)
-            target[key] = target.get(key, 0) + sign * line_net
+            target[key] = target.get(key, 0) + line_net
         if line_total != order_total:
             raise QuickRestoDataError(f"QuickResto order {int(order.get('id') or 0)} items do not match its total")
 
         order_discount = _money_int(order.get("frontTotalAbsoluteDiscount"), field="frontTotalAbsoluteDiscount")
-        discount_total += sign * order_discount
+        discount_total += order_discount
         if is_writeoff:
-            writeoff_total += sign * order_total
+            writeoff_total += order_total
             continue
 
-        revenue_total += sign * order_total
+        revenue_total += order_total
         for payment in payments:
             payment_type_id = _payment_type_id(payment)
             amount = _money_int(payment.get("amount"), field="payment.amount")
             key = str(payment_type_id)
-            payment_totals[key] = payment_totals.get(key, 0) + sign * amount
+            payment_totals[key] = payment_totals.get(key, 0) + amount
 
     expected_revenue = sum(
         _money_int(shift.get(key), field=key)

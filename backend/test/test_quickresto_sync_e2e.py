@@ -62,12 +62,23 @@ class FixtureQuickRestoClient:
 
 
 class QuickRestoSyncIntegrationTests(unittest.TestCase):
-    def test_closed_shifts_auto_close_legacy_draft_and_remain_idempotent(self):
+    def test_closed_shifts_follow_import_mode_auto_create_catalogs_and_remain_idempotent(self):
         fixture_path = Path(__file__).parent / "fixtures" / "quickresto" / "complex_same_day_shifts.json"
         fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
         shifts = deepcopy(fixture["shifts"])
+        orders = deepcopy(fixture["orders"])
         for shift in shifts:
             shift["localClosedTime"] = shift["localClosedTime"].replace(fixture["report_date"], TARGET_DATE.isoformat())
+        returned_order = deepcopy(orders[0])
+        returned_order["id"] = max(int(item["id"]) for item in orders) + 1
+        returned_order["returned"] = True
+        orders.append(returned_order)
+        returned_shift = next(item for item in shifts if item["frontId"] == returned_order["shiftId"])
+        returned_amount = float(returned_order["frontTotalPrice"])
+        returned_shift["totalCash"] = float(returned_shift.get("totalCash") or 0) + returned_amount
+        returned_shift["totalReturnCash"] = float(returned_shift.get("totalReturnCash") or 0) + returned_amount
+        returned_shift["ordersCount"] = int(returned_shift.get("ordersCount") or 0) + 1
+        returned_shift["returnOrdersCount"] = int(returned_shift.get("returnOrdersCount") or 0) + 1
 
         engine = create_engine("sqlite+pysqlite:///:memory:")
         Base.metadata.create_all(
@@ -118,7 +129,37 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                     start=1,
                 )
             ]
-            db.add_all([*payment_methods.values(), *departments])
+            catalog_edge_payments = [
+                PaymentMethod(
+                    venue_id=venue_id,
+                    code="quickresto-payment-9",
+                    title="Резерв кода",
+                    is_active=True,
+                    sort_order=4,
+                ),
+                PaymentMethod(
+                    venue_id=venue_id,
+                    code="archived-qr",
+                    title="Архивный QR",
+                    is_active=False,
+                    sort_order=5,
+                ),
+                PaymentMethod(
+                    venue_id=venue_id,
+                    code="duplicate-qr-1",
+                    title="Дубль QR",
+                    is_active=True,
+                    sort_order=6,
+                ),
+                PaymentMethod(
+                    venue_id=venue_id,
+                    code="duplicate-qr-2",
+                    title="Дубль QR",
+                    is_active=True,
+                    sort_order=7,
+                ),
+            ]
+            db.add_all([*payment_methods.values(), *catalog_edge_payments, *departments])
             db.flush()
 
             empty_report = DailyReport(
@@ -142,6 +183,7 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 api_password_encrypted="v1:unused",
                 is_active=True,
                 auto_sync_enabled=False,
+                report_import_mode="DRAFT",
                 business_day_cutoff_hour=0,
                 sync_from_date=TARGET_DATE,
                 created_by_user_id=user_id,
@@ -149,10 +191,21 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             db.add(connection)
             db.commit()
             db.refresh(connection)
+            manual_mapping = QuickRestoPaymentMapping(
+                connection_id=connection.id,
+                external_id=8,
+                external_name="СБП QR",
+                operation_type="payment",
+                payment_mechanism=None,
+                payment_method_id=payment_methods["bonus"].id,
+                excluded_from_revenue=False,
+            )
+            db.add(manual_mapping)
+            db.commit()
 
             client = FixtureQuickRestoClient(
                 shifts=shifts,
-                orders=fixture["orders"],
+                orders=orders,
                 payment_types=[
                     {"id": 1, "name": payment_methods["cash"].title, "operationType": "payment"},
                     {
@@ -162,10 +215,15 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                     },
                     {"id": 3, "name": payment_methods["bonus"].title, "operationType": "payment"},
                     {"id": 7, "name": "Все бесплатно!!!", "operationType": "writeoff"},
+                    {"id": 8, "name": "СБП QR", "operationType": "payment"},
+                    {"id": 9, "name": "Новая оплата QR", "operationType": "payment"},
+                    {"id": 10, "name": "Архивный QR", "operationType": "payment"},
+                    {"id": 11, "name": "Дубль QR", "operationType": "payment"},
                 ],
                 departments=[
                     {"id": 6, "name": departments[0].title},
                     {"id": 7, "name": departments[1].title},
+                    {"id": 8, "name": "Кухня QR"},
                 ],
             )
 
@@ -194,6 +252,9 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             self.assertEqual(first.reports_created, 0)
             self.assertEqual(first.reports_updated, 1)
             self.assertEqual(first.summary_json["conflicts"], [])
+            self.assertEqual(first.summary_json["payment_methods_created"], 2)
+            self.assertEqual(first.summary_json["departments_created"], 1)
+            self.assertEqual(first.summary_json["unmapped_payment_type_ids"], [11])
 
             report = db.execute(
                 select(DailyReport).where(
@@ -203,9 +264,9 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 )
             ).scalar_one()
             self.assertEqual(report.id, empty_report.id)
-            self.assertEqual(report.status, "CLOSED")
-            self.assertEqual(report.closed_by_user_id, user_id)
-            self.assertIsNotNone(report.closed_at)
+            self.assertEqual(report.status, "DRAFT")
+            self.assertIsNone(report.closed_by_user_id)
+            self.assertIsNone(report.closed_at)
             self.assertEqual(report.revenue_total, 23_900)
             self.assertEqual(report.cash, 6_600)
             self.assertEqual(report.cashless, 16_300)
@@ -224,15 +285,52 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             ).scalar_one()
             self.assertEqual(source.writeoff_total, 4_600)
             self.assertEqual(source.discount_total, 600)
+            self.assertEqual(source.summary_json["returned_orders_count"], 1)
+            created_payment = db.execute(
+                select(PaymentMethod).where(
+                    PaymentMethod.venue_id == venue_id,
+                    PaymentMethod.title == "Новая оплата QR",
+                )
+            ).scalar_one()
+            created_department = db.execute(
+                select(Department).where(
+                    Department.venue_id == venue_id,
+                    Department.title == "Кухня QR",
+                )
+            ).scalar_one()
+            self.assertEqual(created_payment.code, "quickresto-payment-9-2")
+            self.assertEqual(created_department.code, "quickresto-department-8")
+            self.assertEqual(manual_mapping.payment_method_id, payment_methods["bonus"].id)
+            self.assertFalse(
+                db.execute(
+                    select(PaymentMethod).where(
+                        PaymentMethod.venue_id == venue_id,
+                        PaymentMethod.title == "СБП QR",
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            active_archived_title = db.execute(
+                select(PaymentMethod).where(
+                    PaymentMethod.venue_id == venue_id,
+                    PaymentMethod.title == "Архивный QR",
+                    PaymentMethod.is_active.is_(True),
+                )
+            ).scalar_one()
+            self.assertEqual(active_archived_title.code, "quickresto-payment-10")
+            self.assertFalse(
+                db.execute(
+                    select(PaymentMethod).where(
+                        PaymentMethod.venue_id == venue_id,
+                        PaymentMethod.title == "Все бесплатно!!!",
+                    )
+                )
+                .scalars()
+                .all()
+            )
             for mocked_side_effect in mocked_side_effects:
-                self.assertEqual(mocked_side_effect.call_count, 1)
-
-            # Simulate a report imported by the previous integration version,
-            # which stored a matching source but left the report as a draft.
-            report.status = "DRAFT"
-            report.closed_by_user_id = None
-            report.closed_at = None
-            db.commit()
+                self.assertEqual(mocked_side_effect.call_count, 0)
 
             second = sync_quickresto_connection(
                 db,
@@ -244,13 +342,25 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             self.assertEqual(second.status, "SUCCEEDED")
             self.assertEqual(second.shifts_imported, 0)
             self.assertEqual(second.reports_created, 0)
-            self.assertEqual(second.reports_updated, 1)
-            self.assertEqual(second.reports_unchanged, 0)
+            self.assertEqual(second.reports_updated, 0)
+            self.assertEqual(second.reports_unchanged, 1)
+            self.assertEqual(second.summary_json["payment_methods_created"], 0)
+            self.assertEqual(second.summary_json["departments_created"], 0)
             db.refresh(report)
-            self.assertEqual(report.status, "CLOSED")
-            self.assertEqual(report.closed_by_user_id, user_id)
+            self.assertEqual(report.status, "DRAFT")
+            self.assertEqual(
+                len(db.execute(select(PaymentMethod).where(PaymentMethod.venue_id == venue_id)).scalars().all()),
+                9,
+            )
+            self.assertEqual(
+                len(db.execute(select(Department).where(Department.venue_id == venue_id)).scalars().all()),
+                3,
+            )
             for mocked_side_effect in mocked_side_effects:
-                self.assertEqual(mocked_side_effect.call_count, 2)
+                self.assertEqual(mocked_side_effect.call_count, 0)
+
+            connection.report_import_mode = "CLOSED"
+            db.commit()
 
             third = sync_quickresto_connection(
                 db,
@@ -262,8 +372,100 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             self.assertEqual(third.status, "SUCCEEDED")
             self.assertEqual(third.shifts_imported, 0)
             self.assertEqual(third.reports_created, 0)
-            self.assertEqual(third.reports_updated, 0)
-            self.assertEqual(third.reports_unchanged, 1)
+            self.assertEqual(third.reports_updated, 1)
+            self.assertEqual(third.reports_unchanged, 0)
+            db.refresh(report)
+            self.assertEqual(report.status, "CLOSED")
+            self.assertEqual(report.closed_by_user_id, user_id)
+            for mocked_side_effect in mocked_side_effects:
+                self.assertEqual(mocked_side_effect.call_count, 1)
+
+            unchanged_closed = sync_quickresto_connection(
+                db,
+                connection=connection,
+                requested_by_user_id=user_id,
+                trigger="E2E",
+                client=client,
+            )
+            self.assertEqual(unchanged_closed.status, "SUCCEEDED")
+            self.assertEqual(unchanged_closed.reports_unchanged, 1)
+            for mocked_side_effect in mocked_side_effects:
+                self.assertEqual(mocked_side_effect.call_count, 1)
+
+            incremental_shift_id = "fixture-closed-shift-4"
+            incremental_shift = {
+                "id": 4,
+                "frontId": incremental_shift_id,
+                "status": "CLOSED",
+                "shiftNumber": 4,
+                "localOpenedTime": f"{TARGET_DATE.isoformat()}T23:00:00.000Z",
+                "localClosedTime": f"{TARGET_DATE.isoformat()}T23:10:00.000Z",
+                "ordersCount": 1,
+                "totalCash": 1_000.0,
+                "totalCard": 0.0,
+                "totalBonuses": 0.0,
+                "nonFiscalTotalCash": 0.0,
+                "nonFiscalTotalCard": 0.0,
+                "nonFiscalTotalBonuses": 0.0,
+                "totalReturnCash": 0.0,
+                "totalReturnCard": 0.0,
+                "totalReturnBonuses": 0.0,
+                "nonFiscalTotalReturnCash": 0.0,
+                "nonFiscalTotalReturnCard": 0.0,
+                "nonFiscalTotalReturnBonuses": 0.0,
+                "writeOffTotalCash": 0.0,
+                "writeOffTotalCard": 0.0,
+                "writeOffTotalBonuses": 0.0,
+            }
+            incremental_order = {
+                "id": max(client.orders_by_id) + 1,
+                "shiftId": incremental_shift_id,
+                "returned": False,
+                "frontTotalPrice": 1_000.0,
+                "frontTotalAbsoluteDiscount": 0.0,
+                "payments": [
+                    {
+                        "amount": 1_000.0,
+                        "paymentType": {
+                            "id": 1,
+                            "operationType": "fiscal",
+                            "paymentMechanismWeb": "cash",
+                        },
+                    }
+                ],
+                "orderItemList": [
+                    {
+                        "amount": 1.0,
+                        "totalPrice": 1_000.0,
+                        "totalAbsoluteDiscount": 0.0,
+                        "totalAbsoluteCharge": 0.0,
+                        "product": {"id": 9, "name": "Новая позиция", "parentId": 6},
+                    }
+                ],
+            }
+            client.shifts.append(incremental_shift)
+            client.orders.append(incremental_order)
+            client.orders_by_id[int(incremental_order["id"])] = incremental_order
+
+            incrementally_closed = sync_quickresto_connection(
+                db,
+                connection=connection,
+                requested_by_user_id=user_id,
+                trigger="E2E",
+                client=client,
+            )
+            self.assertEqual(incrementally_closed.status, "SUCCEEDED")
+            self.assertEqual(incrementally_closed.shifts_imported, 1)
+            self.assertEqual(incrementally_closed.reports_updated, 1)
+            self.assertEqual(incrementally_closed.summary_json["conflicts"], [])
+            db.refresh(report)
+            self.assertEqual(report.status, "CLOSED")
+            self.assertEqual(report.revenue_total, 24_900)
+            self.assertEqual(report.cash, 7_600)
+            source = db.execute(
+                select(QuickRestoReportImport).where(QuickRestoReportImport.connection_id == connection.id)
+            ).scalar_one()
+            self.assertEqual(source.shift_count, 4)
             for mocked_side_effect in mocked_side_effects:
                 self.assertEqual(mocked_side_effect.call_count, 2)
 
@@ -271,6 +473,15 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             report.closed_by_user_id = None
             report.closed_at = None
             report.revenue_total += 1
+            connection.report_import_mode = "DRAFT"
+            changed_order = next(
+                item
+                for item in client.orders_by_id.values()
+                if item.get("payments")
+                and item["payments"][0].get("paymentType", {}).get("id") == 1
+                and item["payments"][0].get("paymentType", {}).get("operationType") != "writeoff"
+            )
+            changed_order["payments"][0]["paymentType"]["id"] = 2
             db.commit()
             modified = sync_quickresto_connection(
                 db,
@@ -300,3 +511,20 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 ),
                 1,
             )
+
+            report.revenue_total -= 1
+            db.commit()
+            safely_updated = sync_quickresto_connection(
+                db,
+                connection=connection,
+                requested_by_user_id=user_id,
+                trigger="E2E",
+                client=client,
+            )
+            self.assertEqual(safely_updated.status, "SUCCEEDED")
+            self.assertEqual(safely_updated.reports_updated, 1)
+            db.refresh(report)
+            self.assertEqual(report.status, "DRAFT")
+            self.assertEqual(report.revenue_total, 24_900)
+            for mocked_side_effect in mocked_side_effects:
+                self.assertEqual(mocked_side_effect.call_count, 2)

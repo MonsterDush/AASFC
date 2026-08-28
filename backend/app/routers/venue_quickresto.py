@@ -51,6 +51,7 @@ def _serialize_connection(connection: QuickRestoConnection) -> dict:
         "credentials_configured": bool(connection.api_login_encrypted and connection.api_password_encrypted),
         "is_active": bool(connection.is_active),
         "auto_sync_enabled": bool(connection.auto_sync_enabled),
+        "report_import_mode": str(connection.report_import_mode or "CLOSED").upper(),
         "business_day_cutoff_hour": int(connection.business_day_cutoff_hour or 0),
         "sync_from_date": connection.sync_from_date.isoformat() if connection.sync_from_date else None,
         "last_sync_started_at": (
@@ -157,6 +158,7 @@ def put_quickresto_connection(
             api_password_encrypted=encrypted_password,
             is_active=payload.is_active,
             auto_sync_enabled=payload.auto_sync_enabled,
+            report_import_mode=payload.report_import_mode or "CLOSED",
             business_day_cutoff_hour=payload.business_day_cutoff_hour,
             sync_from_date=payload.sync_from_date,
             created_by_user_id=user.id,
@@ -169,6 +171,8 @@ def put_quickresto_connection(
         connection.api_password_encrypted = encrypted_password
         connection.is_active = payload.is_active
         connection.auto_sync_enabled = payload.auto_sync_enabled
+        if payload.report_import_mode is not None:
+            connection.report_import_mode = payload.report_import_mode
         connection.business_day_cutoff_hour = payload.business_day_cutoff_hour
         connection.sync_from_date = payload.sync_from_date
         connection.updated_by_user_id = user.id
