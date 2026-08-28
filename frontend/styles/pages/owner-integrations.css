@@ -24,7 +24,8 @@
 @media(max-width:720px){
   .integrations-hero__layout,.integrations-provider-head,.integrations-feature-grid{grid-template-columns:minmax(0,1fr)}
   .integrations-hero__layout .btn,.integrations-provider-head .btn{width:100%}
-}
-@media(max-width:380px){
-  .integrations-provider-tabs{grid-template-columns:minmax(0,1fr)}
+  .integrations-provider-tabs{gap:5px;padding:4px}
+  .integrations-provider-tab{flex-direction:column;justify-content:center;gap:5px;min-height:64px;padding:9px 6px;text-align:center}
+  .integrations-provider-tab span{font-size:13px;line-height:1.15;white-space:nowrap}
+  .integrations-provider-tab small{max-width:100%;font-size:9px;line-height:1.2;white-space:nowrap}
 }
