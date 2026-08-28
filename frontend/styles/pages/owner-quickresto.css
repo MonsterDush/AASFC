@@ -11,6 +11,9 @@
 .quickresto-form label{display:grid;gap:6px;min-width:0}
 .quickresto-form label>span{color:var(--muted);font-size:12px;font-weight:800}
 .quickresto-form label:first-child{grid-column:1/-1}
+.quickresto-form :is(input,select){display:block;width:100%;min-width:0;max-width:100%}
+.quickresto-form input[type="date"]{min-inline-size:0;max-inline-size:100%;overflow:hidden}
+.quickresto-form input[type="date"]::-webkit-date-and-time-value{min-width:0}
 .quickresto-toggles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .quickresto-toggle{margin:0;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
 .quickresto-actions{display:flex;flex-wrap:wrap;gap:8px}
@@ -23,7 +26,7 @@
 .quickresto-run-metrics{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;color:var(--muted);font-size:12px}
 .quickresto-run-error{grid-column:1/-1;color:var(--statusErrorText);font-size:12px}
 @media(max-width:720px){
-  .quickresto-hero__layout,.quickresto-form,.quickresto-toggles,.quickresto-mapping-row,.quickresto-run-row{grid-template-columns:1fr}
+  .quickresto-hero__layout,.quickresto-form,.quickresto-toggles,.quickresto-mapping-row,.quickresto-run-row{grid-template-columns:minmax(0,1fr)}
   .quickresto-hero__layout .btn,.quickresto-actions .btn,.quickresto-section-head .btn{width:100%}
   .quickresto-form label:first-child{grid-column:auto}
   .quickresto-run-metrics{justify-content:flex-start}

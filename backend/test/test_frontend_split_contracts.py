@@ -141,6 +141,7 @@ class QuickRestoIntegrationContractTests(TestCase):
         venue = (FRONTEND / "app-venue.html").read_text(encoding="utf-8")
         html = (FRONTEND / "owner-quickresto.html").read_text(encoding="utf-8")
         script = (FRONTEND / "owner-quickresto.js").read_text(encoding="utf-8")
+        styles = (FRONTEND / "styles" / "pages" / "owner-quickresto.css").read_text(encoding="utf-8")
 
         self.assertIn('id="integrationsCard"', venue)
         self.assertIn('id="integrationsCard"', venue[venue.index('class="itemcard') :])
@@ -149,6 +150,8 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn("/owner-quickresto.html?venue_id=", venue)
         self.assertIn("/styles/pages/owner-quickresto.css", html)
         self.assertIn("/owner-quickresto.js", html)
+        self.assertIn('.quickresto-form input[type="date"]', styles)
+        self.assertIn("grid-template-columns:minmax(0,1fr)", styles)
         for endpoint in (
             "/integrations/quickresto`)",
             "/integrations/quickresto/discover`",
