@@ -14,6 +14,11 @@
 .quickresto-form :is(input,select){display:block;width:100%;min-width:0;max-width:100%}
 .quickresto-form input[type="date"]{min-inline-size:0;max-inline-size:100%;overflow:hidden}
 .quickresto-form input[type="date"]::-webkit-date-and-time-value{min-width:0}
+@supports(-webkit-touch-callout:none){
+  .quickresto-form input[type="date"]{padding-inline:0}
+  .quickresto-form input[type="date"]::-webkit-date-and-time-value{box-sizing:border-box;width:100%;min-width:0;padding-inline:12px;text-align:left}
+  .quickresto-form input[type="date"]::-webkit-datetime-edit{max-width:100%;min-width:0}
+}
 .quickresto-toggles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .quickresto-toggle{margin:0;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
 .quickresto-import-mode{min-width:0;margin-inline:0;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}

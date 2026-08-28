@@ -116,7 +116,7 @@ const pageStyleCacheKeyOverrides = new Map([
   ["owner-kpi.html", "20260726-polish10"],
   ["owner-payroll.html", "20260802-payrollpayments1"],
   ["owner-payment-methods.html", "20260726-polish10"],
-  ["owner-quickresto.html", "20260828-qr3"],
+  ["owner-quickresto.html", "20260828-qr4"],
   ["owner-pay-profile.html", "20260820-weekdayrates1"],
   ["owner-pay-profiles.html", "20260820-weekdayrates1"],
   ["owner-recurring-expenses.html", "20260723-polish2"],
