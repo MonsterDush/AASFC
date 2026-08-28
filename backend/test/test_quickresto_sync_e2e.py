@@ -307,7 +307,9 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                         PaymentMethod.venue_id == venue_id,
                         PaymentMethod.title == "СБП QR",
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
             active_archived_title = db.execute(
                 select(PaymentMethod).where(
@@ -323,7 +325,9 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                         PaymentMethod.venue_id == venue_id,
                         PaymentMethod.title == "Все бесплатно!!!",
                     )
-                ).scalars().all()
+                )
+                .scalars()
+                .all()
             )
             for mocked_side_effect in mocked_side_effects:
                 self.assertEqual(mocked_side_effect.call_count, 0)
