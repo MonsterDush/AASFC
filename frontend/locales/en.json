@@ -4313,5 +4313,9 @@
   ". Создано в Axelio: способов оплаты": ". Created in Axelio: payment methods",
   ", департаментов": ", departments",
   "Закрытые смены импортированы в черновики отчётов.": "Closed shifts were imported into draft reports.",
-  "Закрытые смены импортированы и отчёты автоматически закрыты.": "Closed shifts were imported and the reports were closed automatically."
+  "Закрытые смены импортированы и отчёты автоматически закрыты.": "Closed shifts were imported and the reports were closed automatically.",
+  "Где взять API-данные?": "Where can I find the API credentials?",
+  "В бэк-офисе QuickResto откройте Предприятие → Настройки → Общие настройки и найдите поля «Логин и пароль для API».": "In the QuickResto back office, open Enterprise → Settings → General settings and find the API login and password fields.",
+  "Это не данные для входа в бэк-офис и не логин или пароль кассового терминала.": "These are not your back-office credentials or the till terminal login and password.",
+  "Открыть инструкцию QuickResto": "Open the QuickResto guide"
 }

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260828-qr4" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260828-qr5" />
   <script>
     (() => {
       try {
@@ -57,6 +57,12 @@
           <label><span>Облако QuickResto</span><input id="cloud" autocomplete="off" placeholder="uk353" /></label>
           <label><span>API-логин</span><input id="apiLogin" autocomplete="username" placeholder="Оставь пустым, чтобы не менять" /></label>
           <label><span>API-пароль</span><input id="apiPassword" type="password" autocomplete="new-password" placeholder="Оставь пустым, чтобы не менять" /></label>
+          <aside class="quickresto-api-help" aria-labelledby="apiCredentialsHelpTitle">
+            <b id="apiCredentialsHelpTitle">Где взять API-данные?</b>
+            <div class="muted small">В бэк-офисе QuickResto откройте Предприятие → Настройки → Общие настройки и найдите поля «Логин и пароль для API».</div>
+            <div class="muted small">Это не данные для входа в бэк-офис и не логин или пароль кассового терминала.</div>
+            <a class="link small" href="https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/" target="_blank" rel="noopener noreferrer">Открыть инструкцию QuickResto <span aria-hidden="true">↗</span></a>
+          </aside>
           <label><span>Импортировать начиная с</span><input id="syncFromDate" type="date" /></label>
           <label><span>Граница бизнес-дня</span><select id="cutoffHour"></select></label>
         </div>
