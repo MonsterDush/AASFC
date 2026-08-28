@@ -4228,7 +4228,7 @@
   "Автоматическое заполнение отчетов из учетных систем.": "Automatically populate reports from accounting systems.",
   "Интеграция QuickResto": "QuickResto integration",
   "закрытые смены и отчёты": "closed shifts and reports",
-  "Axelio собирает закрытые смены QuickResto в черновики дневных отчётов. Списания не увеличивают выручку.": "Axelio collects closed QuickResto shifts into draft daily reports. Write-offs do not increase revenue.",
+  "Axelio собирает закрытые смены QuickResto в закрытые дневные отчёты. Списания не увеличивают выручку.": "Axelio collects closed QuickResto shifts into closed daily reports. Write-offs do not increase revenue.",
   "Подключение": "Connection",
   "Облако QuickResto": "QuickResto cloud",
   "API-логин": "API login",

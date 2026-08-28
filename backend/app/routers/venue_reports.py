@@ -636,6 +636,79 @@ def _sync_recurring_accruals_after_report_reopen(
     return "deleted"
 
 
+def _close_daily_report_record(
+    db: Session,
+    *,
+    report: DailyReport,
+    venue: Venue,
+    actor_user_id: int,
+    comment: str | None = None,
+    trigger_reason: str = "report_closed",
+    notification_event_key: str | None = None,
+    recalculation_details: dict | None = None,
+) -> dict:
+    """Close a report and apply every accounting side effect without committing."""
+    if str(report.status or "").upper() == "CLOSED":
+        return {"status": "CLOSED", "discrepancy": 0, "changed": False}
+
+    if not bool(getattr(venue, "tips_enabled", False)):
+        report.tips_total = 0
+
+    values = _load_report_values(db, report_id=report.id)
+    dept_cnt = int(
+        db.execute(select(func.count(Department.id)).where(Department.venue_id == int(report.venue_id))).scalar() or 0
+    )
+    has_departments = bool(dept_cnt) or any(value.kind == "DEPT" for value in values)
+    totals = _compute_report_totals(report=report, values=values, has_departments=has_departments)
+    discrepancy = int(totals["discrepancy"])
+    if discrepancy != 0 and not str(comment or "").strip():
+        raise ValueError("Comment is required when discrepancy != 0")
+
+    if comment is not None:
+        report.comment = comment
+
+    _rebuild_report_tip_allocations(db, report=report, venue=venue)
+
+    closed_at = datetime.utcnow()
+    report.status = "CLOSED"
+    report.closed_by_user_id = int(actor_user_id)
+    report.closed_at = closed_at
+    report.updated_by_user_id = int(actor_user_id)
+    report.updated_at = closed_at
+
+    rebuild_revenue_entries_for_report(db=db, report=report, values=values)
+    sync_daily_recurring_accruals_for_date(
+        db=db,
+        venue_id=int(report.venue_id),
+        target_date=report.date,
+    )
+    _recalculate_payroll_for_dates(
+        db,
+        venue_id=int(report.venue_id),
+        target_dates=[report.date],
+        calculated_by_user_id=int(actor_user_id),
+        force=True,
+        trigger_reason=str(trigger_reason or "report_closed"),
+        details=recalculation_details or {},
+    )
+
+    notification_event_key = notification_event_key or (
+        f"report:{int(report.id)}:closed:{closed_at.isoformat(timespec='microseconds')}"
+    )
+    normalized_shift_slot = normalize_shift_slot(getattr(report, "shift_slot", None))
+    notification_job_args = {
+        "venue_id": int(report.venue_id),
+        "target_date": report.date,
+        "shift_slot": normalized_shift_slot,
+        "event_key": notification_event_key,
+    }
+    _enqueue_day_economics_summary_job(db, **notification_job_args)
+    _enqueue_salary_day_breakdown_job(db, **notification_job_args)
+    _enqueue_soft_alerts_job(db, **notification_job_args)
+    db.flush()
+    return {"status": "CLOSED", "discrepancy": discrepancy, "changed": True}
+
+
 @router.post("/{venue_id}/reports/{report_date}/close")
 def close_daily_report(
     venue_id: int,
@@ -682,59 +755,24 @@ def close_daily_report(
     venue = db.execute(select(Venue).where(Venue.id == venue_id)).scalar_one_or_none()
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found")
-    if not bool(getattr(venue, "tips_enabled", False)):
-        # when tips are disabled for venue, ignore any stored tips_total
-        rep.tips_total = 0
-
     if rep.status == "CLOSED":
         return {"ok": True, "status": "CLOSED"}
 
-    values = _load_report_values(db, report_id=rep.id)
-    dept_cnt = int(db.execute(select(func.count(Department.id)).where(Department.venue_id == venue_id)).scalar() or 0)
-    has_departments = bool(dept_cnt) or any(v.kind == "DEPT" for v in values)
-    totals = _compute_report_totals(report=rep, values=values, has_departments=has_departments)
-    discrepancy = int(totals["discrepancy"])
-
-    if discrepancy != 0:
-        if not payload.comment or not payload.comment.strip():
-            raise HTTPException(status_code=400, detail="Comment is required when discrepancy != 0")
-
-    if payload.comment is not None:
-        rep.comment = payload.comment
-
-    _rebuild_report_tip_allocations(db, report=rep, venue=venue)
-
-    rep.status = "CLOSED"
-    rep.closed_by_user_id = user.id
-    rep.closed_at = datetime.utcnow()
-    rep.updated_by_user_id = user.id
-    rep.updated_at = datetime.utcnow()
-
-    rebuild_revenue_entries_for_report(db=db, report=rep, values=values)
-    sync_daily_recurring_accruals_for_date(db=db, venue_id=venue_id, target_date=report_date)
-    _recalculate_payroll_for_dates(
-        db,
-        venue_id=venue_id,
-        target_dates=[report_date],
-        calculated_by_user_id=user.id,
-        force=True,
-        trigger_reason="report_closed",
-    )
-    notification_event_key = f"report:{int(rep.id)}:closed:{rep.closed_at.isoformat(timespec='microseconds')}"
-    notification_job_args = {
-        "venue_id": venue_id,
-        "target_date": report_date,
-        "shift_slot": normalized_shift_slot,
-        "event_key": notification_event_key,
-    }
-    _enqueue_day_economics_summary_job(db, **notification_job_args)
-    _enqueue_salary_day_breakdown_job(db, **notification_job_args)
-    _enqueue_soft_alerts_job(db, **notification_job_args)
+    try:
+        close_result = _close_daily_report_record(
+            db,
+            report=rep,
+            venue=venue,
+            actor_user_id=int(user.id),
+            comment=payload.comment,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     db.commit()
     background_tasks.add_task(process_pending_notification_jobs_once, 10)
 
-    return {"ok": True, "status": "CLOSED", "discrepancy": discrepancy}
+    return {"ok": True, "status": "CLOSED", "discrepancy": int(close_result["discrepancy"])}
 
 
 @router.post("/{venue_id}/reports/{report_date}/reopen")

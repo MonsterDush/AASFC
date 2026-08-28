@@ -19,6 +19,7 @@ from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
 from app.models.quickresto_shift_import import QuickRestoShiftImport
 from app.models.quickresto_sync_run import QuickRestoSyncRun
+from app.models.venue import Venue
 from app.services.integrations.credentials import decrypt_credential
 from app.services.integrations.quickresto import (
     QUICKRESTO_OBJECT_TYPES,
@@ -324,6 +325,43 @@ def _replace_report_values(db: Session, report: DailyReport, aggregate: dict[str
                 )
 
 
+def _close_imported_report(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    report: DailyReport,
+    aggregate: dict[str, Any],
+    actor_user_id: int,
+) -> None:
+    # Import locally so the integration service can reuse the exact same
+    # accounting and notification transition as the report API without a
+    # module-import cycle during application startup.
+    from app.routers.venue_reports import _close_daily_report_record
+
+    venue = db.get(Venue, int(connection.venue_id))
+    if venue is None:
+        raise QuickRestoDataError("Axelio venue no longer exists")
+    try:
+        _close_daily_report_record(
+            db,
+            report=report,
+            venue=venue,
+            actor_user_id=int(actor_user_id),
+            comment=report.comment,
+            trigger_reason="quickresto_import",
+            notification_event_key=(
+                f"quickresto:connection:{int(connection.id)}:report:{int(report.id)}:{str(aggregate['aggregate_hash'])}"
+            ),
+            recalculation_details={
+                "source": "quickresto",
+                "connection_id": int(connection.id),
+                "report_id": int(report.id),
+            },
+        )
+    except ValueError as exc:
+        raise QuickRestoDataError(f"QuickResto report could not be closed: {exc}") from exc
+
+
 def _upsert_draft_report(
     db: Session,
     *,
@@ -376,6 +414,22 @@ def _upsert_draft_report(
     if source is not None and int(source.daily_report_id) != int(report.id):
         raise QuickRestoDataError("QuickResto report source points to another Axelio report")
     if source is not None and source.aggregate_hash == aggregate["aggregate_hash"]:
+        if str(report.status or "").upper() == "DRAFT":
+            if not _report_matches(db, report, aggregate):
+                raise QuickRestoDataError(
+                    f"Axelio report {report.id} was reopened and now differs from its QuickResto import"
+                )
+            _close_imported_report(
+                db,
+                connection=connection,
+                report=report,
+                aggregate=aggregate,
+                actor_user_id=actor_user_id,
+            )
+            source.last_sync_run_id = run.id
+            source.updated_at = _utcnow()
+            db.flush()
+            return "updated", report
         return "unchanged", report
     if str(report.status or "").upper() != "DRAFT":
         raise QuickRestoDataError(f"Axelio report {report.id} is closed and cannot be changed by QuickResto")
@@ -426,6 +480,13 @@ def _upsert_draft_report(
         source.summary_json = aggregate
         source.last_sync_run_id = run.id
         source.updated_at = _utcnow()
+    _close_imported_report(
+        db,
+        connection=connection,
+        report=report,
+        aggregate=aggregate,
+        actor_user_id=actor_user_id,
+    )
     db.flush()
     return "created" if created else "updated", report
 
