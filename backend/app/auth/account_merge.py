@@ -15,17 +15,21 @@ from app.models import (
     DailyReportAudit,
     DailyReportTipAllocation,
     Expense,
+    ExpenseAttachment,
     NotificationDeliveryLog,
     PayProfileAssignment,
     PaymentMethodTransfer,
     PayrollLine,
     PayrollRecalculationLog,
     PayrollRun,
+    QuickRestoConnection,
+    QuickRestoSyncRun,
     RecurringExpenseRule,
     Shift,
     ShiftAssignment,
     ShiftAvailability,
     ShiftComment,
+    ShiftScheduleTemplate,
     ShiftSwapRequest,
     User,
     VenueInvite,
@@ -89,15 +93,20 @@ def merge_user_accounts(
     _bulk_reassign_user_ref(db, DailyReportAttachment, "uploaded_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, DailyReportAudit, "user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, Expense, "created_by_user_id", source_user.id, target_user.id)
+    _bulk_reassign_user_ref(db, ExpenseAttachment, "uploaded_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, NotificationDeliveryLog, "user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, PaymentMethodTransfer, "created_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, PayrollRecalculationLog, "triggered_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, PayrollRun, "calculated_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, Penalty, "member_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, Penalty, "created_by_user_id", source_user.id, target_user.id)
+    _bulk_reassign_user_ref(db, QuickRestoConnection, "created_by_user_id", source_user.id, target_user.id)
+    _bulk_reassign_user_ref(db, QuickRestoConnection, "updated_by_user_id", source_user.id, target_user.id)
+    _bulk_reassign_user_ref(db, QuickRestoSyncRun, "requested_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, RecurringExpenseRule, "created_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, Shift, "created_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, ShiftComment, "author_user_id", source_user.id, target_user.id)
+    _bulk_reassign_user_ref(db, ShiftScheduleTemplate, "created_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, ShiftSwapRequest, "decided_by_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, VenueInvite, "accepted_user_id", source_user.id, target_user.id)
     _bulk_reassign_user_ref(db, VenueInvite, "created_by_user_id", source_user.id, target_user.id)
