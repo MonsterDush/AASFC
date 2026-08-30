@@ -362,6 +362,15 @@ def upsert_telegram_identity(db: Session, *, user: User, tg_user_id: int) -> Aut
     return ident
 
 
+def _get_user_provider_identity(db: Session, *, user_id: int, provider: str) -> AuthIdentity | None:
+    return db.execute(
+        select(AuthIdentity).where(
+            AuthIdentity.user_id == int(user_id),
+            AuthIdentity.provider == provider,
+        )
+    ).scalar_one_or_none()
+
+
 def link_phone_identity_to_user(db: Session, *, user: User, phone_e164: str) -> AuthIdentity:
     existing = db.execute(
         select(AuthIdentity).where(
@@ -373,29 +382,17 @@ def link_phone_identity_to_user(db: Session, *, user: User, phone_e164: str) -> 
     if existing is not None and existing.user_id != user.id:
         raise HTTPException(status_code=409, detail="Этот номер уже привязан к другой учётной записи")
 
-    user_phone_rows = (
-        db.execute(
-            select(AuthIdentity).where(
-                AuthIdentity.user_id == user.id,
-                AuthIdentity.provider == PHONE_PROVIDER_PHONE,
-            )
-        )
-        .scalars()
-        .all()
+    user_identity = _get_user_provider_identity(
+        db,
+        user_id=user.id,
+        provider=PHONE_PROVIDER_PHONE,
     )
-    for row in user_phone_rows:
-        row.is_verified = False
 
     if existing is None:
-        existing = AuthIdentity(
-            user_id=user.id,
-            provider=PHONE_PROVIDER_PHONE,
-            phone_e164=phone_e164,
-            is_verified=True,
-        )
+        existing = user_identity
+    if existing is None:
+        existing = AuthIdentity(user_id=user.id, provider=PHONE_PROVIDER_PHONE)
         db.add(existing)
-        db.flush()
-        return existing
 
     existing.user_id = user.id
     existing.phone_e164 = phone_e164
@@ -427,6 +424,12 @@ def link_telegram_identity_to_user(
     if clash_user is not None and clash_user.id != user.id:
         raise HTTPException(status_code=409, detail="Этот Telegram-аккаунт уже используется другой учётной записью")
 
+    user_identity = _get_user_provider_identity(
+        db,
+        user_id=user.id,
+        provider=PHONE_PROVIDER_TELEGRAM,
+    )
+
     user.tg_user_id = tg_user_id
     if tg_username:
         user.tg_username = tg_username
@@ -436,17 +439,13 @@ def link_telegram_identity_to_user(
         user.short_name = default_short_name
 
     if ident is None:
-        ident = AuthIdentity(
-            user_id=user.id,
-            provider=PHONE_PROVIDER_TELEGRAM,
-            provider_user_id=provider_user_id,
-            is_verified=True,
-        )
+        ident = user_identity
+    if ident is None:
+        ident = AuthIdentity(user_id=user.id, provider=PHONE_PROVIDER_TELEGRAM)
         db.add(ident)
-        db.flush()
-        return ident
 
     ident.user_id = user.id
+    ident.provider_user_id = provider_user_id
     ident.is_verified = True
     db.flush()
     return ident

@@ -351,7 +351,7 @@ def _component_allocation_for_day(
     context: DayAllocationContext,
 ) -> dict | None:
     component_type = str(component.get("component_type") or "").strip().upper()
-    worked_dates = list(context.worked_dates or [])
+    worked_dates = _component_worked_dates(component=component, context=context)
     month_dates = list(context.month_dates or [])
     month_component_amount_minor = int(component.get("amount_minor") or 0)
 
@@ -694,6 +694,24 @@ def _component_allocation_for_day(
         "month_share_ratio": None,
         "is_estimated": False,
     }
+
+
+def _component_worked_dates(*, component: dict, context: DayAllocationContext) -> list[date]:
+    context_dates = sorted({day for day in (context.worked_dates or []) if isinstance(day, date)})
+    if "account_merge_worked_dates" not in component:
+        return context_dates
+
+    raw_dates = component.get("account_merge_worked_dates")
+    if not isinstance(raw_dates, list):
+        return []
+
+    component_dates: set[date] = set()
+    for raw_day in raw_dates:
+        try:
+            component_dates.add(date.fromisoformat(str(raw_day)))
+        except (TypeError, ValueError):
+            continue
+    return [day for day in context_dates if day in component_dates]
 
 
 def build_member_day_breakdown(
