@@ -84,6 +84,83 @@ class PayrollDayBreakdownHelpersTests(TestCase):
         self.assertEqual(item["amount_minor"], 5_000)
         self.assertIn("начисление 15-го числа", item["formula_text"])
 
+    def test_account_merge_worked_dates_keep_component_on_its_origin_dates(self):
+        d1 = date(2026, 3, 5)
+        d2 = date(2026, 3, 7)
+        ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[d1, d2],
+            worked_dates=[d1, d2],
+            minutes_by_date={d1: 300, d2: 600},
+            shifts_by_date={d1: 1, d2: 1},
+            revenue_by_date_minor={},
+            department_revenue_by_date_minor={},
+            kpi_by_date={},
+        )
+        component = {
+            "component_type": "SALARY_HOURLY",
+            "title": "Почасовая ставка исходного аккаунта",
+            "amount_minor": 90_000,
+            "account_merge_worked_dates": [d1.isoformat()],
+        }
+
+        origin_day = _component_allocation_for_day(component=component, target_date=d1, context=ctx)
+        other_account_day = _component_allocation_for_day(component=component, target_date=d2, context=ctx)
+
+        self.assertIsNotNone(origin_day)
+        self.assertEqual(origin_day["amount_minor"], 90_000)
+        self.assertIsNone(other_account_day)
+
+    def test_component_without_account_merge_scope_keeps_legacy_allocation(self):
+        d1 = date(2026, 3, 5)
+        d2 = date(2026, 3, 7)
+        ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[d1, d2],
+            worked_dates=[d1, d2],
+            minutes_by_date={d1: 300, d2: 600},
+            shifts_by_date={d1: 1, d2: 1},
+            revenue_by_date_minor={},
+            department_revenue_by_date_minor={},
+            kpi_by_date={},
+        )
+        component = {
+            "component_type": "SALARY_HOURLY",
+            "title": "Обычная почасовая ставка",
+            "amount_minor": 90_000,
+        }
+
+        d1_item = _component_allocation_for_day(component=component, target_date=d1, context=ctx)
+        d2_item = _component_allocation_for_day(component=component, target_date=d2, context=ctx)
+
+        self.assertEqual(d1_item["amount_minor"], 30_000)
+        self.assertEqual(d2_item["amount_minor"], 60_000)
+
+    def test_explicit_empty_account_merge_scope_does_not_use_other_line_dates(self):
+        target_day = date(2026, 3, 5)
+        ctx = DayAllocationContext(
+            shift_slot="TOTAL",
+            month_dates=[target_day],
+            worked_dates=[target_day],
+            minutes_by_date={target_day: 300},
+            shifts_by_date={target_day: 1},
+            revenue_by_date_minor={},
+            department_revenue_by_date_minor={},
+            kpi_by_date={},
+        )
+
+        item = _component_allocation_for_day(
+            component={
+                "component_type": "SALARY_HOURLY",
+                "amount_minor": 90_000,
+                "account_merge_worked_dates": [],
+            },
+            target_date=target_day,
+            context=ctx,
+        )
+
+        self.assertIsNone(item)
+
     def test_percentage_kpi_day_breakdown_explains_shift_scope(self):
         d1 = date(2026, 3, 5)
         ctx = DayAllocationContext(
