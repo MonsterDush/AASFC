@@ -147,6 +147,26 @@ def _split_amount_for_index(amount_minor: int, parts: int, index: int) -> int:
     return sign * (base + (1 if index < remainder else 0))
 
 
+def _component_worked_dates(component: dict, *, fallback: list[str]) -> list[str]:
+    if "account_merge_worked_dates" not in component:
+        return fallback
+    raw_dates = component.get("account_merge_worked_dates")
+    if not isinstance(raw_dates, list):
+        return []
+
+    normalized: list[str] = []
+    for value in raw_dates:
+        if not isinstance(value, str):
+            continue
+        value = value.strip()
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError:
+            continue
+        normalized.append(parsed.isoformat())
+    return sorted(set(normalized))
+
+
 def _sum_daily_payroll_allocated_minor(
     db: Session,
     *,
@@ -213,12 +233,13 @@ def _sum_daily_payroll_allocated_minor(
                         )
                     )
                     continue
-                if target_date_iso not in worked_dates_sorted:
+                component_worked_dates = _component_worked_dates(component, fallback=worked_dates_sorted)
+                if target_date_iso not in component_worked_dates:
                     continue
                 day_amount_minor = _split_amount_for_index(
                     component_amount_minor,
-                    len(worked_dates_sorted),
-                    worked_dates_sorted.index(target_date_iso),
+                    len(component_worked_dates),
+                    component_worked_dates.index(target_date_iso),
                 )
                 total_minor += (
                     day_amount_minor
