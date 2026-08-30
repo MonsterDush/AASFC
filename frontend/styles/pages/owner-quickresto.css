@@ -1,0 +1,62 @@
+.quickresto-shell,.quickresto-content{display:grid;gap:14px}
+.quickresto-hero{border-color:var(--accentSoftBorder);background:linear-gradient(145deg,var(--accentSoftBg),var(--card) 76%)}
+.quickresto-hero__layout{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start}
+.quickresto-hero__layout b{display:block;font-size:20px;line-height:1.25;overflow-wrap:anywhere}
+.quickresto-eyebrow{margin-bottom:5px;color:var(--muted);font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.quickresto-section-head{gap:14px}
+.quickresto-status{padding:5px 9px;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft);font-size:11px;font-weight:900;letter-spacing:.04em}
+.quickresto-status[data-status="SUCCEEDED"]{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBgSoft);color:var(--statusSuccessText)}
+.quickresto-status[data-status="FAILED"],.quickresto-status[data-status="PARTIAL"]{border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft);color:var(--statusErrorText)}
+.quickresto-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.quickresto-form label{display:grid;gap:6px;min-width:0}
+.quickresto-form label>span{color:var(--muted);font-size:12px;font-weight:800}
+.quickresto-form label:first-child{grid-column:1/-1}
+.quickresto-form :is(input,select){display:block;width:100%;min-width:0;max-width:100%}
+.quickresto-field-help{display:block;color:var(--muted);font-size:11px;line-height:1.45;overflow-wrap:anywhere}
+.quickresto-api-help{grid-column:1/-1;display:grid;gap:5px;min-width:0;padding:12px;border:1px solid var(--accentSoftBorder);border-radius:14px;background:var(--accentSoftBg)}
+.quickresto-api-help b,.quickresto-api-help .muted,.quickresto-api-help .link{overflow-wrap:anywhere}
+.quickresto-api-help .link{justify-self:start;margin-top:2px}
+.quickresto-form input[type="date"]{min-inline-size:0;max-inline-size:100%;overflow:hidden}
+.quickresto-form input[type="date"]::-webkit-date-and-time-value{min-width:0}
+@supports(-webkit-touch-callout:none){
+  .quickresto-form input[type="date"]{padding-inline:0}
+  .quickresto-form input[type="date"]::-webkit-date-and-time-value{box-sizing:border-box;width:100%;min-width:0;padding-inline:12px;text-align:left}
+  .quickresto-form input[type="date"]::-webkit-datetime-edit{max-width:100%;min-width:0}
+}
+.quickresto-toggles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.quickresto-toggle{margin:0;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
+.quickresto-toggle[hidden],.quickresto-night-window[hidden]{display:none!important}
+#nightShiftToggleRow{grid-column:1/-1}
+.quickresto-night-window{min-width:0;margin-inline:0;padding:12px;border:1px solid var(--accentSoftBorder);border-radius:14px;background:var(--accentSoftBg)}
+.quickresto-night-window legend{padding:0 5px;color:var(--muted);font-size:12px;font-weight:900}
+.quickresto-night-window__grid{display:grid;grid-template-columns:minmax(180px,.45fr) minmax(0,1fr);gap:12px;align-items:end}
+.quickresto-night-window__grid label{display:grid;gap:6px;min-width:0}
+.quickresto-night-window__grid label>span{color:var(--muted);font-size:12px;font-weight:800}
+.quickresto-night-window select{display:block;width:100%;min-width:0;max-width:100%}
+.quickresto-window-summary{min-width:0;padding:10px 12px;border:1px solid var(--statusSuccessBorder);border-radius:12px;background:var(--statusSuccessBgSoft);color:var(--statusSuccessText);font-size:12px;font-weight:900;overflow-wrap:anywhere}
+.quickresto-window-summary[data-status="error"]{border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft);color:var(--statusErrorText)}
+.quickresto-night-window>.quickresto-field-help{margin-top:8px}
+.quickresto-import-mode{min-width:0;margin-inline:0;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surfaceTintSoft)}
+.quickresto-import-mode legend{padding:0 5px;color:var(--muted);font-size:12px;font-weight:900}
+.quickresto-import-mode__options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.quickresto-import-mode__option{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;min-width:0;padding:11px;border:1px solid var(--border);border-radius:12px;background:var(--card);cursor:pointer}
+.quickresto-import-mode__option:has(input:checked){border-color:var(--accentSoftBorder);background:var(--accentSoftBg);box-shadow:inset 0 0 0 1px var(--accentSoftBorder)}
+.quickresto-import-mode__option input{margin-top:3px;accent-color:var(--accent)}
+.quickresto-import-mode__option span{display:grid;gap:3px;min-width:0}
+.quickresto-import-mode__option b,.quickresto-import-mode__option small{overflow-wrap:anywhere}
+.quickresto-import-mode__option small{color:var(--muted);font-size:11px;line-height:1.4}
+.quickresto-actions{display:flex;flex-wrap:wrap;gap:8px}
+.quickresto-mapping-list,.quickresto-history{display:grid;gap:9px}
+.quickresto-mapping-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);gap:12px;align-items:center;background:var(--card)}
+.quickresto-mapping-row b{overflow-wrap:anywhere}
+.quickresto-excluded{padding:9px 11px;border:1px solid var(--statusWarningBorder);border-radius:12px;background:var(--statusWarningBgSoft);color:var(--statusWarningText);font-size:12px;font-weight:800;text-align:center}
+.quickresto-empty{padding:16px;border:1px dashed var(--border);border-radius:14px;background:var(--surfaceTintSoft);color:var(--muted)}
+.quickresto-run-row{display:grid;grid-template-columns:minmax(160px,.7fr) minmax(0,1fr);gap:10px;align-items:center;background:var(--card)}
+.quickresto-run-metrics{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;color:var(--muted);font-size:12px}
+.quickresto-run-error{grid-column:1/-1;color:var(--statusErrorText);font-size:12px}
+@media(max-width:720px){
+  .quickresto-hero__layout,.quickresto-form,.quickresto-toggles,.quickresto-night-window__grid,.quickresto-import-mode__options,.quickresto-mapping-row,.quickresto-run-row{grid-template-columns:minmax(0,1fr)}
+  .quickresto-hero__layout .btn,.quickresto-actions .btn,.quickresto-section-head .btn{width:100%}
+  .quickresto-form label:first-child{grid-column:auto}
+  .quickresto-run-metrics{justify-content:flex-start}
+}

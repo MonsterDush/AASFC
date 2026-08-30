@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260723-polish2" />
+  <link rel="stylesheet" href="/styles/pages/app-venue.css?v=20260828-integrations1" />
   <script>
     (() => {
       try {
@@ -90,6 +90,10 @@
                 <a class="btn" id="openInvites" href="#">Приглашения</a>
                 <a class="btn" id="openShifts" href="#">График</a>
                 <a class="btn" id="openReports" href="#">Отчёты</a>
+                <a class="btn primary venue-integrations-entry hidden" id="openIntegrations" href="#">
+                  <span><b>Интеграции</b><small>QuickResto · iiko</small></span>
+                  <span aria-hidden="true">→</span>
+                </a>
               </div>
       </div>
 
@@ -983,6 +987,7 @@ const titleEl = document.getElementById("title");
         const financeCard = document.getElementById("financeCard");
         const referencesCard = document.getElementById("referencesCard");
         const tipsCard = document.getElementById("tipsSettingsCard");
+        const openIntegrations = document.getElementById("openIntegrations");
 
         // Rename is available to owner/admin, archive/delete actions — only to superadmin/moderator.
         const canAdminVenue = (isOwner || isAdmin) && !demoReadonly;
@@ -1023,6 +1028,7 @@ openAdjustments.href = canManageAdjustments
           if (openEconomicsRules) openEconomicsRules.href = `/owner-economics-rules.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openExpenses) openExpenses.href = `/owner-expenses.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openTipsDistribution) openTipsDistribution.href = `/owner-tip-settings.html?venue_id=${encodeURIComponent(venueId)}`;
+          if (openIntegrations) openIntegrations.href = `/owner-integrations.html?venue_id=${encodeURIComponent(venueId)}`;
 
           if (openDepartments) openDepartments.href = `/owner-departments.html?venue_id=${encodeURIComponent(venueId)}`;
           if (openPaymentMethods) openPaymentMethods.href = `/owner-payment-methods.html?venue_id=${encodeURIComponent(venueId)}`;
@@ -1046,6 +1052,7 @@ openAdjustments.href = canManageAdjustments
           setVisible(openPayroll, canViewPayroll);
           setVisible(openDayEconomics, canViewRevenue || canViewExpenses);
           setVisible(openExpenses, canViewExpenses);
+          setVisible(openIntegrations, (isOwner || isAdmin) && !demoReadonly);
 
           if (financeCard) {
             const showFinance = [openAdjustments, openSummary, openPayProfiles, openPayroll, openDayEconomics, openExpenses, openEconomicsPlans, openEconomicsRules].some(isVisible);

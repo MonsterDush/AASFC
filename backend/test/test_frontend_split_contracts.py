@@ -46,7 +46,7 @@ class PageLoaderContractTests(TestCase):
             source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500, file_name)
 
-        self.assertEqual(len(html_pages), 50)
+        self.assertEqual(len(html_pages), 52)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
@@ -136,6 +136,67 @@ class DemoMetrikaContractTests(TestCase):
         self.assertIn("https://metrika.yandex.ru", csp)
 
 
+class QuickRestoIntegrationContractTests(TestCase):
+    def test_owner_only_integration_hub_and_quickresto_page_use_venue_api(self):
+        venue = (FRONTEND / "app-venue.html").read_text(encoding="utf-8")
+        hub_html = (FRONTEND / "owner-integrations.html").read_text(encoding="utf-8")
+        hub_script = (FRONTEND / "owner-integrations.js").read_text(encoding="utf-8")
+        hub_styles = (FRONTEND / "styles" / "pages" / "owner-integrations.css").read_text(encoding="utf-8")
+        html = (FRONTEND / "owner-quickresto.html").read_text(encoding="utf-8")
+        script = (FRONTEND / "owner-quickresto.js").read_text(encoding="utf-8")
+        styles = (FRONTEND / "styles" / "pages" / "owner-quickresto.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="openIntegrations"', venue)
+        self.assertIn("venue-integrations-entry hidden", venue)
+        self.assertIn("(isOwner || isAdmin) && !demoReadonly", venue)
+        self.assertIn("/owner-integrations.html?venue_id=", venue)
+        self.assertIn("/styles/pages/owner-integrations.css", hub_html)
+        self.assertIn("/owner-integrations.js", hub_html)
+        self.assertIn("20260828-integrations2", hub_html)
+        self.assertIn(".integrations-provider-tab{flex-direction:column", hub_styles)
+        self.assertIn("white-space:nowrap", hub_styles)
+        self.assertIn('role="tablist"', hub_html)
+        self.assertIn('data-provider="quickresto"', hub_html)
+        self.assertIn('data-provider="iiko"', hub_html)
+        self.assertIn("grid-template-columns:repeat(2,minmax(0,1fr))", hub_styles)
+        self.assertIn("/integrations/quickresto`)", hub_script)
+        self.assertIn("/owner-quickresto.html?venue_id=", hub_script)
+        self.assertIn("/styles/pages/owner-quickresto.css", html)
+        self.assertIn("/owner-quickresto.js", html)
+        self.assertIn('name="reportImportMode"', html)
+        self.assertIn('.quickresto-form input[type="date"]', styles)
+        self.assertIn("padding-inline:0", styles)
+        self.assertIn("::-webkit-date-and-time-value", styles)
+        self.assertIn("box-sizing:border-box", styles)
+        self.assertIn('class="quickresto-api-help"', html)
+        self.assertIn("Предприятие → Настройки → Общие настройки", html)
+        self.assertIn("https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/", html)
+        self.assertIn("20260829-qr7", html)
+        self.assertIn('aria-describedby="cutoffHourHelp"', html)
+        self.assertIn("Эта граница определяет дату отчёта, а не тип смены", html)
+        self.assertIn("при 06:00 открытие 27 августа в 03:15", html)
+        self.assertIn('id="nightShiftToggleRow" hidden', html)
+        self.assertIn('id="nightShiftWindow" hidden', html)
+        self.assertIn("Разделять дневные и ночные смены", html)
+        self.assertIn(".quickresto-field-help", styles)
+        self.assertIn(".quickresto-night-window__grid", styles)
+        self.assertIn("grid-template-columns:minmax(0,1fr)", styles)
+        self.assertIn("report_import_mode: selectedImportMode()", script)
+        self.assertIn("night_shift_split_enabled: state.venueNightShiftsEnabled", script)
+        self.assertIn("night_shift_start_hour:", script)
+        self.assertIn("renderNightShiftSettings", script)
+        self.assertIn("getPaymentMethods(venueId, { includeArchived: false })", script)
+        for endpoint in (
+            "/integrations/quickresto`)",
+            "/integrations/quickresto/discover`",
+            "/integrations/quickresto/mappings`",
+            "/integrations/quickresto/sync`",
+            "/integrations/quickresto/runs?limit=10`",
+        ):
+            self.assertIn(endpoint, script)
+        self.assertIn('el.apiPassword.value = ""', script)
+
+
 class PrimaryPageUiPolishContractTests(TestCase):
     def test_primary_pages_keep_shared_visual_states_and_page_styles(self):
         contracts = {
@@ -160,7 +221,10 @@ class PrimaryPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            cache_key = "20260810-financepolish1" if html_name == "owner-summary.html" else "20260723-polish2"
+            cache_key = {
+                "owner-summary.html": "20260810-financepolish1",
+                "app-venue.html": "20260828-integrations1",
+            }.get(html_name, "20260723-polish2")
             self.assertIn(f"/{style_path}?v={cache_key}", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
@@ -689,7 +753,7 @@ class AppFacadeSplitContractTests(TestCase):
                 consumer_count += 1
                 imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
-        self.assertEqual(consumer_count, 51)
+        self.assertEqual(consumer_count, 53)
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):

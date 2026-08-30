@@ -1,0 +1,14 @@
+[Unit]
+Description=Axelio QuickResto synchronization (development)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/axelio/dev/repo/backend
+EnvironmentFile=/var/www/axelio/dev/repo/backend/.env
+ExecStart=/var/www/axelio/dev/venv/bin/python -m app.scripts.sync_quickresto
+NoNewPrivileges=true
+PrivateTmp=true

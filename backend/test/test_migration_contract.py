@@ -22,17 +22,16 @@ class MigrationContractTests(unittest.TestCase):
         config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
         return config
 
-    def test_multi_positions_owner_notes_is_the_single_current_head(self):
-        config = Config(str(BACKEND_DIR / "alembic.ini"))
-        config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    def test_quickresto_night_split_is_the_single_current_head(self):
+        config = self._config()
         scripts = ScriptDirectory.from_config(config)
 
         heads = scripts.get_heads()
-        revision = scripts.get_revision("d4a9f6c2b8e1")
+        revision = scripts.get_revision("a7c9e1f3b5d7")
 
-        self.assertEqual(heads, ["d4a9f6c2b8e1"])
+        self.assertEqual(heads, ["a7c9e1f3b5d7"])
         self.assertIsNotNone(revision)
-        self.assertEqual(revision.down_revision, "c8e1f4a7b2d9")
+        self.assertEqual(revision.down_revision, "e5f7a9b1c3d5")
 
     def test_daily_reports_waits_for_venue_positions_table(self):
         config = Config(str(BACKEND_DIR / "alembic.ini"))

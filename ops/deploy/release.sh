@@ -231,6 +231,25 @@ configure_notification_timers() {
   fi
 }
 
+has_quickresto_sources() {
+  local service_name="axelio-quickresto-sync-${ENV_NAME}.service"
+  local timer_name="axelio-quickresto-sync-${ENV_NAME}.timer"
+  [[ -f "${repo_dir}/ops/systemd/${service_name}" && -f "${repo_dir}/ops/systemd/${timer_name}" ]]
+}
+
+install_quickresto_units() {
+  local service_name="axelio-quickresto-sync-${ENV_NAME}.service"
+  local timer_name="axelio-quickresto-sync-${ENV_NAME}.timer"
+  if ! has_quickresto_sources; then
+    # A rollback to a release from before this integration must also stop its scheduler.
+    sudo systemctl disable --now "${timer_name}" >/dev/null 2>&1 || true
+    sudo rm -f "/etc/systemd/system/${service_name}" "/etc/systemd/system/${timer_name}"
+    return 0
+  fi
+  sudo install -D -m 0644 "${repo_dir}/ops/systemd/${service_name}" "/etc/systemd/system/${service_name}"
+  sudo install -D -m 0644 "${repo_dir}/ops/systemd/${timer_name}" "/etc/systemd/system/${timer_name}"
+}
+
 restart_services() {
   sudo install -D -m 0644 \
     "${repo_dir}/ops/nginx/axelio-security-headers.conf" \
@@ -247,11 +266,15 @@ restart_services() {
   fi
   activate_nginx_performance
   install_monitoring_units
+  install_quickresto_units
   sudo nginx -t
   sudo systemctl daemon-reload
   sudo systemctl restart "${API_SERVICE}"
   sudo systemctl restart "${BOT_SERVICE}"
   configure_notification_timers
+  if has_quickresto_sources; then
+    sudo systemctl enable --now "axelio-quickresto-sync-${ENV_NAME}.timer"
+  fi
   if [[ "${ENV_NAME}" == "prod" ]]; then
     if has_monitoring_sources; then
       sudo systemctl enable --now axelio-monitor-prod.timer
@@ -263,6 +286,9 @@ restart_services() {
   sudo systemctl is-active --quiet "${API_SERVICE}"
   sudo systemctl is-active --quiet "${BOT_SERVICE}"
   sudo systemctl is-active --quiet "${NOTIFY_TIMER}"
+  if has_quickresto_sources; then
+    sudo systemctl is-active --quiet "axelio-quickresto-sync-${ENV_NAME}.timer"
+  fi
   if [[ "${ENV_NAME}" == "prod" ]] && has_monitoring_sources; then
     sudo systemctl is-active --quiet axelio-monitor-prod.timer
   fi
