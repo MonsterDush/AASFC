@@ -22,16 +22,59 @@ class MigrationContractTests(unittest.TestCase):
         config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
         return config
 
-    def test_quickresto_night_split_is_the_single_current_head(self):
+    def test_quickresto_import_issues_extend_the_single_current_head(self):
         config = self._config()
         scripts = ScriptDirectory.from_config(config)
 
         heads = scripts.get_heads()
-        revision = scripts.get_revision("a7c9e1f3b5d7")
+        revision = scripts.get_revision("b8d4f6a2c1e9")
 
-        self.assertEqual(heads, ["a7c9e1f3b5d7"])
+        self.assertEqual(heads, ["b8d4f6a2c1e9"])
         self.assertIsNotNone(revision)
-        self.assertEqual(revision.down_revision, "e5f7a9b1c3d5")
+        self.assertEqual(revision.down_revision, "a7c9e1f3b5d7")
+
+    def test_quickresto_import_issues_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                for statement in (
+                    "CREATE TABLE users (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE quickresto_sync_runs (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE quickresto_shift_imports (id INTEGER PRIMARY KEY)",
+                ):
+                    connection.exec_driver_sql(statement)
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "a7c9e1f3b5d7")
+                command.upgrade(config, "b8d4f6a2c1e9")
+
+                inspector = sa.inspect(engine)
+                self.assertIn(
+                    "notify_integrations",
+                    {column["name"] for column in inspector.get_columns("users")},
+                )
+                connection_columns = {column["name"] for column in inspector.get_columns("quickresto_connections")}
+                self.assertIn("incremental_cursor_closed_at", connection_columns)
+                self.assertIn("last_full_reconciliation_at", connection_columns)
+                for table_name in (
+                    "quickresto_source_snapshots",
+                    "quickresto_import_issues",
+                    "quickresto_import_issue_shifts",
+                    "quickresto_import_issue_audits",
+                ):
+                    self.assertIn(table_name, inspector.get_table_names())
+
+                command.downgrade(config, "a7c9e1f3b5d7")
+
+            inspector = sa.inspect(engine)
+            self.assertNotIn("quickresto_import_issues", inspector.get_table_names())
+            self.assertNotIn(
+                "notify_integrations",
+                {column["name"] for column in inspector.get_columns("users")},
+            )
 
     def test_daily_reports_waits_for_venue_positions_table(self):
         config = Config(str(BACKEND_DIR / "alembic.ini"))

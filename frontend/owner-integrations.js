@@ -65,6 +65,8 @@ async function load() {
   const venueName = venue?.name || `Заведение ${venueId}`;
   el.title.textContent = `Интеграции · ${venueName}`;
   el.venueTitle.textContent = venueName;
+  const canManage = integration.permissions?.can_manage !== false;
+  el.configureQuickResto.textContent = canManage ? "Настроить QuickResto" : "Открыть QuickResto";
   if (!integration.configured) {
     el.quickrestoTabStatus.textContent = "Не подключено";
     el.quickrestoStatus.textContent = "Не подключено";

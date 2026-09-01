@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest import TestCase
 
 from app.core import permission_policy
+from app.core.permissions_registry import PERMISSIONS
 
 
 class PermissionPolicyTests(TestCase):
@@ -36,6 +37,21 @@ class PermissionPolicyTests(TestCase):
             permission_policy.expand_permission_codes(["PAYROLL_CALCULATE"]),
             {"PAYROLL_CALCULATE", "PAYROLL_VIEW"},
         )
+
+    def test_integrations_manage_implies_integrations_view(self):
+        self.assertEqual(
+            permission_policy.expand_permission_codes(["INTEGRATIONS_MANAGE"]),
+            {
+                "INTEGRATIONS_MANAGE",
+                "INTEGRATIONS_VIEW",
+                "DEPARTMENTS_VIEW",
+                "PAYMENT_METHODS_VIEW",
+            },
+        )
+
+    def test_integration_manage_explicitly_covers_catalog_autocreation(self):
+        permission = next(item for item in PERMISSIONS if item.code == "INTEGRATIONS_MANAGE")
+        self.assertIn("автосоздание справочников", permission.description or "")
 
     def test_manager_defaults_include_report_dependencies(self):
         codes = permission_policy.get_default_permission_codes_for_role("venue_manager")

@@ -337,6 +337,7 @@ def _create_user(db: Session, spec: dict, *, existing_user: User | None = None) 
     user.notify_day_economics = False
     user.notify_salary = False
     user.notify_soft_alerts = False
+    user.notify_integrations = False
     user.shift_reminder_lead_time_hours = 18
     user.notification_detail_level = "standard"
     user.is_demo_user = True

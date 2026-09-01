@@ -20,15 +20,20 @@ from app.models.daily_report_tip_allocation import DailyReportTipAllocation
 from app.models.daily_report_value import DailyReportValue
 from app.models.department import Department
 from app.models.payment_method import PaymentMethod
+from app.models.notification_job import NotificationJob
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_import_issue_audit import QuickRestoImportIssueAudit
+from app.models.quickresto_import_issue_shift import QuickRestoImportIssueShift
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
 from app.models.quickresto_shift_import import QuickRestoShiftImport
 from app.models.quickresto_sync_run import QuickRestoSyncRun
+from app.models.quickresto_source_snapshot import QuickRestoSourceSnapshot
 from app.models.user import User
 from app.models.venue import Venue
-from app.services.integrations.quickresto_sync import QuickRestoSyncError, sync_quickresto_connection
+from app.services.integrations.quickresto_sync import sync_quickresto_connection
 
 
 TARGET_DATE = date(2030, 1, 15)
@@ -100,6 +105,11 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
                 QuickRestoReportImport.__table__,
+                QuickRestoSourceSnapshot.__table__,
+                QuickRestoImportIssue.__table__,
+                QuickRestoImportIssueShift.__table__,
+                QuickRestoImportIssueAudit.__table__,
+                NotificationJob.__table__,
             ],
         )
         with Session(engine) as db:
@@ -608,6 +618,11 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
                 QuickRestoReportImport.__table__,
+                QuickRestoSourceSnapshot.__table__,
+                QuickRestoImportIssue.__table__,
+                QuickRestoImportIssueShift.__table__,
+                QuickRestoImportIssueAudit.__table__,
+                NotificationJob.__table__,
             ],
         )
 
@@ -665,14 +680,18 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 day_report.comment = "Проверено и изменено вручную"
                 connection.night_shift_split_enabled = True
                 db.commit()
-                with self.assertRaisesRegex(QuickRestoSyncError, "manual comment"):
-                    sync_quickresto_connection(
-                        db,
-                        connection=connection,
-                        requested_by_user_id=1,
-                        trigger="E2E",
-                        client=client,
-                    )
+                conflicted = sync_quickresto_connection(
+                    db,
+                    connection=connection,
+                    requested_by_user_id=1,
+                    trigger="E2E",
+                    client=client,
+                )
+                self.assertEqual(conflicted.status, "PARTIAL")
+                self.assertEqual(len(conflicted.summary_json["conflicts"]), 1)
+                issue = db.execute(select(QuickRestoImportIssue)).scalar_one()
+                self.assertEqual(issue.status, "OPEN")
+                self.assertEqual(issue.error_code, "REPORT_CONFLICT")
                 db.expire_all()
                 day_report = db.execute(
                     select(DailyReport).where(
@@ -709,5 +728,7 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             imported_shift = db.execute(select(QuickRestoShiftImport)).scalar_one()
             self.assertEqual(imported_shift.shift_slot, "NIGHT")
             self.assertEqual(imported_shift.daily_report_id, reports[0].id)
+            issue = db.execute(select(QuickRestoImportIssue)).scalar_one()
+            self.assertEqual(issue.status, "RESOLVED")
             delete_revenue.assert_called_once()
             reopen_sync.assert_called_once()

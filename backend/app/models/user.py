@@ -27,6 +27,7 @@ class User(Base):
     notify_day_economics: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_salary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notify_soft_alerts: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notify_integrations: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     shift_reminder_lead_time_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=18)
     notification_detail_level: Mapped[str] = mapped_column(String(16), nullable=False, default="standard")
 

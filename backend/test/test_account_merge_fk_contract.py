@@ -87,6 +87,8 @@ DIRECT_REASSIGN_USER_FKS = {
     "position_permission_templates.updated_by_user_id",
     "quickresto_connections.created_by_user_id",
     "quickresto_connections.updated_by_user_id",
+    "quickresto_import_issue_audits.actor_user_id",
+    "quickresto_import_issues.resolved_by_user_id",
     "quickresto_sync_runs.requested_by_user_id",
     "recurring_expense_rules.created_by_user_id",
     "shift_comments.author_user_id",

@@ -16,6 +16,10 @@ from app.services.notification_logs import (
 )
 from app.services.payroll.day_breakdown import build_member_day_breakdown
 from app.services.finance.day_economics import get_day_economics
+from app.services.integrations.quickresto_notifications import (
+    QUICKRESTO_IMPORT_JOB_TYPE,
+    send_quickresto_import_notifications,
+)
 from app.routers.venue_access import (
     _has_revenue_view_access,
     _is_report_viewer,
@@ -1104,6 +1108,8 @@ def process_pending_notification_jobs_once(limit: int = 10) -> int:
                         request_id=int(payload.get("request_id")),
                         event_kind=str(payload.get("event_kind") or ""),
                     )
+                elif job.job_type == QUICKRESTO_IMPORT_JOB_TYPE:
+                    send_quickresto_import_notifications(db, payload=payload)
                 else:
                     raise ValueError(f"Unsupported notification job type: {job.job_type}")
                 _complete_notification_job(db, job, status=_NOTIFICATION_JOB_STATUS_SENT)

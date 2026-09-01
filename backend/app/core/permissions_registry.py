@@ -35,6 +35,19 @@ PERMISSIONS: list[PermissionDef] = [
     PermissionDef(
         "VENUE_SETTINGS_EDIT", "Venue", "Настройки заведения", "Изменять настройки заведения (например, чаевые)"
     ),
+    # Integrations
+    PermissionDef(
+        "INTEGRATIONS_VIEW",
+        "Integrations",
+        "Интеграции: просмотр",
+        "Просматривать подключения, историю импорта и проблемы синхронизации",
+    ),
+    PermissionDef(
+        "INTEGRATIONS_MANAGE",
+        "Integrations",
+        "Интеграции: управление",
+        "Настраивать подключения, сопоставления и повторный импорт, включая автосоздание справочников",
+    ),
     # Expenses
     PermissionDef("EXPENSE_ADD", "Expenses", "Добавление расходов", "Вносить расход"),
     PermissionDef("EXPENSE_VIEW", "Expenses", "Просмотр расходов", "Видеть список расходов"),

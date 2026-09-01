@@ -50,7 +50,7 @@ def _venue_name(db: Session, venue_id: int) -> str:
 def _should_notify_user(u: User, kind: str) -> bool:
     """Best-effort per-user notification gate.
 
-    kind: 'adjustments' | 'shifts' | 'shift_comments' | 'day_economics' | 'salary' | 'soft_alerts'
+    kind: 'adjustments' | 'shifts' | 'shift_comments' | 'day_economics' | 'salary' | 'soft_alerts' | 'integrations'
     """
     if not u:
         return False
@@ -68,6 +68,8 @@ def _should_notify_user(u: User, kind: str) -> bool:
         return bool(getattr(u, "notify_salary", True))
     if kind == "soft_alerts":
         return bool(getattr(u, "notify_soft_alerts", True))
+    if kind == "integrations":
+        return bool(getattr(u, "notify_integrations", True))
     return True
 
 

@@ -51,6 +51,8 @@ class QuickRestoConnection(Base):
     last_sync_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_sync_status: Mapped[str] = mapped_column(String(24), nullable=False, default="NEVER", server_default="NEVER")
     last_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    incremental_cursor_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_full_reconciliation_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

@@ -30,6 +30,11 @@ _IMPLIED_PERMISSIONS: dict[str, set[str]] = {
     "EXPENSE_ADD": {"EXPENSE_VIEW"},
     "EXPENSE_CATEGORIES_MANAGE": {"EXPENSE_VIEW"},
     "PAYROLL_CALCULATE": {"PAYROLL_VIEW"},
+    "INTEGRATIONS_MANAGE": {"INTEGRATIONS_VIEW"},
+    # The integration screen renders the mapped catalogs next to the remote
+    # dictionaries. A read-only integration manager must therefore be able to
+    # load those names without receiving any catalog mutation permission.
+    "INTEGRATIONS_VIEW": {"DEPARTMENTS_VIEW", "PAYMENT_METHODS_VIEW"},
     "DEPARTMENTS_CREATE": {"DEPARTMENTS_VIEW"},
     "DEPARTMENTS_EDIT": {"DEPARTMENTS_VIEW"},
     "DEPARTMENTS_ARCHIVE": {"DEPARTMENTS_VIEW"},

@@ -18,12 +18,15 @@ from app.models.department import Department
 from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_import_issue_shift import QuickRestoImportIssueShift
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
 from app.models.quickresto_shift_import import QuickRestoShiftImport
 from app.models.quickresto_sync_run import QuickRestoSyncRun
+from app.models.quickresto_source_snapshot import QuickRestoSourceSnapshot
 from app.models.venue import Venue
-from app.services.integrations.credentials import decrypt_credential
+from app.services.integrations.credentials import IntegrationCredentialError, decrypt_credential
 from app.services.integrations.quickresto import (
     QUICKRESTO_OBJECT_TYPES,
     QuickRestoClient,
@@ -35,10 +38,32 @@ from app.services.integrations.quickresto_normalize import (
     aggregate_normalized_shifts,
     business_date_for_shift,
     normalize_closed_shift,
+    shift_slot_for_shift,
+)
+from app.services.integrations.quickresto_issues import (
+    ACTIVE_ISSUE_STATUSES,
+    classify_quickresto_failure,
+    connection_group_key,
+    ignored_issue_matches_snapshots,
+    open_source_snapshot,
+    report_group_key,
+    resolve_group_issue,
+    snapshots_for_group,
+    source_group_key,
+    transition_issue,
+    upsert_import_issue,
+    upsert_source_snapshot,
+)
+from app.services.integrations.quickresto_notifications import enqueue_quickresto_import_notification
+from app.services.integrations.quickresto_snapshot import (
+    QuickRestoSnapshotError,
+    seal_quickresto_source_snapshot,
 )
 
 
 _INTEGRATION_COMMENT_PREFIX = "Импортировано из QuickResto:"
+_SYNC_LEASE_TIMEOUT = timedelta(minutes=30)
+_STALE_SYNC_MESSAGE = "Предыдущий импорт QuickResto не завершился и был автоматически восстановлен."
 
 
 class QuickRestoSyncError(RuntimeError):
@@ -53,6 +78,116 @@ def _ensure_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def quickresto_sync_is_active(
+    connection: QuickRestoConnection,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    if str(connection.last_sync_status or "").upper() != "RUNNING":
+        return False
+    started_at = connection.last_sync_started_at
+    if started_at is None:
+        return False
+    return _ensure_utc(started_at) > (now or _utcnow()) - _SYNC_LEASE_TIMEOUT
+
+
+def reclaim_stale_quickresto_sync_state(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    now: datetime | None = None,
+) -> bool:
+    """Recover runs/issues left RUNNING after a worker process died.
+
+    The caller must hold the connection row lock. A fresh lease is never
+    modified; stale work is made retryable without incrementing attempts.
+    """
+
+    timestamp = now or _utcnow()
+    if quickresto_sync_is_active(connection, now=timestamp):
+        return False
+    cutoff = timestamp - _SYNC_LEASE_TIMEOUT
+    changed = False
+    stale_runs = list(
+        db.execute(
+            select(QuickRestoSyncRun)
+            .where(
+                QuickRestoSyncRun.connection_id == int(connection.id),
+                QuickRestoSyncRun.status == "RUNNING",
+                QuickRestoSyncRun.started_at <= cutoff,
+            )
+            .with_for_update()
+        ).scalars()
+    )
+    for stale_run in stale_runs:
+        stale_run.status = "FAILED"
+        stale_run.finished_at = timestamp
+        stale_run.error_message = _STALE_SYNC_MESSAGE
+        changed = True
+
+    stale_issues = list(
+        db.execute(
+            select(QuickRestoImportIssue)
+            .where(
+                QuickRestoImportIssue.connection_id == int(connection.id),
+                QuickRestoImportIssue.status == "PROCESSING",
+                (
+                    QuickRestoImportIssue.processing_started_at.is_(None)
+                    | (QuickRestoImportIssue.processing_started_at <= cutoff)
+                ),
+            )
+            .with_for_update()
+        ).scalars()
+    )
+    for stale_issue in stale_issues:
+        transition_issue(
+            db,
+            issue=stale_issue,
+            status="OPEN",
+            event_type="PROCESSING_LEASE_EXPIRED",
+            resolution_code="LEASE_EXPIRED",
+            resolution_note=_STALE_SYNC_MESSAGE,
+        )
+        changed = True
+
+    if str(connection.last_sync_status or "").upper() == "RUNNING":
+        connection.last_sync_status = "FAILED"
+        connection.last_sync_completed_at = timestamp
+        connection.last_sync_error = _STALE_SYNC_MESSAGE
+        changed = True
+    if changed:
+        db.flush()
+    return changed
+
+
+def _classify_snapshot_group_failure(exc: BaseException):
+    """Classify one report-group failure and report unexpected defects.
+
+    Expected source/mapping/storage failures are operational states. Unexpected
+    exceptions are still converted into a durable issue for the affected
+    shifts, but also go to Sentry so the underlying defect can be fixed.
+    """
+
+    correlation_id = None
+    if not isinstance(
+        exc,
+        (
+            QuickRestoError,
+            QuickRestoDataError,
+            QuickRestoSnapshotError,
+            IntegrationCredentialError,
+            ValueError,
+        ),
+    ):
+        try:
+            import sentry_sdk
+
+            correlation_id = sentry_sdk.capture_exception(exc)
+        except Exception:
+            correlation_id = None
+    return classify_quickresto_failure(exc, correlation_id=correlation_id)
 
 
 def _record_failed_run(
@@ -75,6 +210,58 @@ def _record_failed_run(
         connection.last_sync_status = "FAILED"
         connection.last_sync_error = message[:1000]
     db.commit()
+
+
+def _enqueue_sync_notification_safely(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    run: QuickRestoSyncRun,
+    issue_count: int,
+    technical_summary: str | None = None,
+    correlation_id: str | None = None,
+    force: bool = False,
+) -> None:
+    """Queue the aggregate result without ever rolling back a completed sync."""
+
+    should_notify = bool(
+        force
+        or str(run.status or "").upper() in {"PARTIAL", "FAILED"}
+        or int(run.shifts_imported or 0) > 0
+        or int(run.reports_created or 0) > 0
+        or int(run.reports_updated or 0) > 0
+    )
+    if not should_notify:
+        return
+    try:
+        enqueue_quickresto_import_notification(
+            db,
+            venue_id=int(connection.venue_id),
+            connection_id=int(connection.id),
+            run_id=int(run.id),
+            status=str(run.status or "FAILED"),
+            shifts_seen=int(run.shifts_seen or 0),
+            shifts_imported=int(run.shifts_imported or 0),
+            reports_created=int(run.reports_created or 0),
+            reports_updated=int(run.reports_updated or 0),
+            reports_unchanged=int(run.reports_unchanged or 0),
+            issue_count=max(int(issue_count or 0), 0),
+            report_import_mode=str(connection.report_import_mode or "CLOSED"),
+            technical_summary=technical_summary,
+            correlation_id=correlation_id,
+        )
+        db.commit()
+    except Exception as exc:
+        # Notification delivery is explicitly outside the accounting
+        # transaction. Record the queueing failure for operators, but never
+        # turn an already committed report import into a failed sync.
+        db.rollback()
+        try:
+            import sentry_sdk
+
+            sentry_sdk.capture_exception(exc)
+        except Exception:
+            pass
 
 
 def _normalize_label(value: Any) -> str:
@@ -718,6 +905,386 @@ def _upsert_draft_report(
     return "created" if created else "updated", report
 
 
+def _remote_closed_at(shift: dict[str, Any]) -> datetime | None:
+    for field in ("closed", "localClosedTime"):
+        raw = str(shift.get(field) or "").strip()
+        if not raw:
+            continue
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        return _ensure_utc(parsed)
+    return None
+
+
+def _list_closed_shift_rows(
+    client: QuickRestoClient,
+    *,
+    closed_since: datetime | None,
+) -> list[dict[str, Any]]:
+    if hasattr(client, "list_closed_shifts"):
+        rows = client.list_closed_shifts(closed_since=closed_since)
+    else:
+        rows = _object_rows(client, "shifts")
+    output = [row for row in rows if str(row.get("status") or "").upper() == "CLOSED"]
+    if closed_since is not None and not hasattr(client, "list_closed_shifts"):
+        output = [row for row in output if (closed_at := _remote_closed_at(row)) is None or closed_at >= closed_since]
+    return output
+
+
+def _list_order_rows_for_shifts(
+    client: QuickRestoClient,
+    *,
+    shift_ids: set[str],
+) -> list[dict[str, Any]]:
+    if not shift_ids:
+        return []
+    if hasattr(client, "list_orders_for_shift_ids"):
+        return client.list_orders_for_shift_ids(shift_ids)
+    return [row for row in _object_rows(client, "orders") if str(row.get("shiftId") or "") in shift_ids]
+
+
+def _stage_quickresto_sources(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    run: QuickRestoSyncRun,
+    venue: Venue,
+    client: QuickRestoClient,
+    force_full: bool,
+) -> tuple[list[QuickRestoSourceSnapshot], bool]:
+    now = _utcnow()
+    last_full = connection.last_full_reconciliation_at
+    full_reconciliation = bool(force_full or last_full is None or _ensure_utc(last_full) <= now - timedelta(days=30))
+    closed_since = None
+    if not full_reconciliation and connection.incremental_cursor_closed_at is not None:
+        closed_since = _ensure_utc(connection.incremental_cursor_closed_at) - timedelta(hours=48)
+    closed_shifts = _list_closed_shift_rows(client, closed_since=closed_since)
+    if connection.sync_from_date is not None:
+        filtered: list[dict[str, Any]] = []
+        for shift in closed_shifts:
+            try:
+                target_date = business_date_for_shift(
+                    shift,
+                    cutoff_hour=connection.business_day_cutoff_hour,
+                )
+            except (QuickRestoDataError, ValueError):
+                # Keep malformed rows visible so they become durable issues.
+                filtered.append(shift)
+                continue
+            if target_date >= connection.sync_from_date:
+                filtered.append(shift)
+        closed_shifts = filtered
+
+    shift_ids = {
+        str(row.get("frontId") or row.get("_id") or "").strip()
+        for row in closed_shifts
+        if str(row.get("frontId") or row.get("_id") or "").strip()
+    }
+    order_rows = _list_order_rows_for_shifts(client, shift_ids=shift_ids)
+    order_details_by_shift: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in order_rows:
+        object_id = int(row.get("id") or 0)
+        if object_id <= 0:
+            raise QuickRestoDataError("QuickResto order identifier is missing")
+        detail = _object_detail(client, "orders", object_id)
+        order_details_by_shift[str(detail.get("shiftId") or "")].append(detail)
+
+    night_split = bool(connection.night_shift_split_enabled and venue.night_shifts_enabled)
+    sealed_rows = []
+    first_snapshot_error: QuickRestoSnapshotError | None = None
+    for index, shift in enumerate(closed_shifts):
+        shift_id = str(shift.get("frontId") or shift.get("_id") or "").strip()
+        try:
+            target_date = business_date_for_shift(
+                shift,
+                cutoff_hour=connection.business_day_cutoff_hour,
+            )
+            target_slot = shift_slot_for_shift(
+                shift,
+                cutoff_hour=connection.business_day_cutoff_hour,
+                night_shift_split_enabled=night_split,
+                night_shift_start_hour=connection.night_shift_start_hour,
+            )
+        except (QuickRestoDataError, ValueError):
+            target_date = None
+            target_slot = None
+        try:
+            sealed_rows.append(
+                seal_quickresto_source_snapshot(
+                    shift=shift,
+                    orders=order_details_by_shift.get(shift_id, []),
+                    business_date=target_date,
+                    shift_slot=target_slot,
+                    source_key=f"row:{index}:pk:{int(shift.get('id') or 0)}",
+                )
+            )
+        except QuickRestoSnapshotError as exc:
+            first_snapshot_error = first_snapshot_error or exc
+
+    if first_snapshot_error is not None:
+        failure = classify_quickresto_failure(first_snapshot_error)
+        upsert_import_issue(
+            db,
+            connection_id=int(connection.id),
+            sync_run_id=int(run.id),
+            group_key=connection_group_key(failure.error_code),
+            business_date=None,
+            shift_slot=None,
+            failure=failure,
+            actor_user_id=int(run.requested_by_user_id) if run.requested_by_user_id else None,
+        )
+        db.commit()
+        raise first_snapshot_error
+
+    snapshots = [
+        upsert_source_snapshot(
+            db,
+            connection_id=int(connection.id),
+            sync_run_id=int(run.id),
+            sealed=sealed,
+            now=now,
+        )
+        for sealed in sealed_rows
+    ]
+    cursor_candidates = [value for shift in closed_shifts if (value := _remote_closed_at(shift)) is not None]
+    if cursor_candidates:
+        newest = max(cursor_candidates)
+        current = connection.incremental_cursor_closed_at
+        if current is None or newest > _ensure_utc(current):
+            connection.incremental_cursor_closed_at = newest
+    if full_reconciliation:
+        connection.last_full_reconciliation_at = now
+    # This commit is intentional: encrypted allowlisted source data must survive
+    # any later normalization or report conflict in the same synchronization.
+    db.commit()
+    db.refresh(run)
+    db.refresh(connection)
+    for row in snapshots:
+        db.refresh(row)
+    return snapshots, full_reconciliation
+
+
+def _upsert_normalized_shift(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    normalized: dict[str, Any],
+) -> tuple[bool, set[tuple[date, str]]]:
+    shift_id = str(normalized["external_shift_id"])
+    target_date = date.fromisoformat(str(normalized["business_date"]))
+    target_slot = str(normalized.get("shift_slot") or "DAY").upper()
+    next_key = (target_date, target_slot)
+    existing = db.execute(
+        select(QuickRestoShiftImport).where(
+            QuickRestoShiftImport.connection_id == connection.id,
+            QuickRestoShiftImport.external_shift_id == shift_id,
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        db.add(
+            QuickRestoShiftImport(
+                connection_id=connection.id,
+                external_shift_id=shift_id,
+                external_shift_pk=int(normalized["external_shift_pk"]),
+                source_version=int(normalized["source_version"]),
+                business_date=target_date,
+                shift_slot=target_slot,
+                local_closed_at=datetime.fromisoformat(str(normalized["local_closed_at"])),
+                payload_hash=str(normalized["payload_hash"]),
+                normalized_json=normalized,
+                first_imported_at=_utcnow(),
+                updated_at=_utcnow(),
+            )
+        )
+        return True, {next_key}
+
+    previous_key = (
+        existing.business_date,
+        str(getattr(existing, "shift_slot", None) or "DAY").upper(),
+    )
+    changed = existing.payload_hash != normalized["payload_hash"] or previous_key != next_key
+    if changed:
+        if previous_key != next_key:
+            existing.daily_report_id = None
+        existing.external_shift_pk = int(normalized["external_shift_pk"])
+        existing.source_version = int(normalized["source_version"])
+        existing.business_date = target_date
+        existing.shift_slot = target_slot
+        existing.local_closed_at = datetime.fromisoformat(str(normalized["local_closed_at"]))
+        existing.payload_hash = str(normalized["payload_hash"])
+        existing.normalized_json = normalized
+        existing.updated_at = _utcnow()
+    return changed, {previous_key, next_key}
+
+
+def _process_snapshot_group(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    run: QuickRestoSyncRun,
+    venue: Venue,
+    actor_user_id: int,
+    snapshots: list[QuickRestoSourceSnapshot],
+) -> dict[str, Any]:
+    night_split = bool(connection.night_shift_split_enabled and venue.night_shifts_enabled)
+    normalized_rows: list[dict[str, Any]] = []
+    failed_fingerprints: set[str] = set()
+    first_error: BaseException | None = None
+    for snapshot in snapshots:
+        try:
+            source = open_source_snapshot(snapshot)
+            normalized_rows.append(
+                normalize_closed_shift(
+                    source["shift"],
+                    source["orders"],
+                    cutoff_hour=connection.business_day_cutoff_hour,
+                    night_shift_split_enabled=night_split,
+                    night_shift_start_hour=connection.night_shift_start_hour,
+                )
+            )
+        except Exception as exc:
+            first_error = first_error or exc
+            failed_fingerprints.add(snapshot.source_fingerprint)
+
+    business_date = snapshots[0].business_date if snapshots else None
+    shift_slot = snapshots[0].shift_slot if snapshots else None
+    group_key = (
+        report_group_key(business_date, shift_slot)
+        if business_date is not None and shift_slot is not None
+        else source_group_key(snapshots[0].source_fingerprint)
+    )
+    if first_error is not None:
+        failure = _classify_snapshot_group_failure(first_error)
+        issue = upsert_import_issue(
+            db,
+            connection_id=int(connection.id),
+            sync_run_id=int(run.id),
+            group_key=group_key,
+            business_date=business_date,
+            shift_slot=shift_slot,
+            failure=failure,
+            snapshots=snapshots,
+            failed_source_fingerprints=failed_fingerprints,
+            actor_user_id=actor_user_id,
+        )
+        return {
+            "shifts_imported": 0,
+            "counts": {"created": 0, "updated": 0, "unchanged": 0, "removed": 0},
+            "report_ids": [],
+            "conflict": {
+                "issue_id": int(issue.id),
+                "business_date": business_date.isoformat() if business_date else None,
+                "shift_slot": shift_slot,
+                "error_code": failure.error_code,
+                "error": failure.user_summary,
+            },
+        }
+
+    local_counts = {"created": 0, "updated": 0, "unchanged": 0, "removed": 0}
+    local_report_ids: list[int] = []
+    imported = 0
+    try:
+        with db.begin_nested():
+            affected_keys: set[tuple[date, str]] = set()
+            for normalized in normalized_rows:
+                changed, keys = _upsert_normalized_shift(
+                    db,
+                    connection=connection,
+                    normalized=normalized,
+                )
+                imported += int(changed)
+                affected_keys.update(keys)
+            db.flush()
+            for target_date, target_slot in sorted(affected_keys):
+                stored_shifts = list(
+                    db.execute(
+                        select(QuickRestoShiftImport).where(
+                            QuickRestoShiftImport.connection_id == connection.id,
+                            QuickRestoShiftImport.business_date == target_date,
+                            QuickRestoShiftImport.shift_slot == target_slot,
+                        )
+                    ).scalars()
+                )
+                if not stored_shifts:
+                    if _remove_empty_imported_report(
+                        db,
+                        connection=connection,
+                        business_date=target_date,
+                        shift_slot=target_slot,
+                        actor_user_id=actor_user_id,
+                    ):
+                        local_counts["removed"] += 1
+                    continue
+                aggregate = aggregate_normalized_shifts(item.normalized_json for item in stored_shifts)
+                mapped = _mapped_aggregate(db, connection=connection, aggregate=aggregate)
+                outcome, report = _upsert_draft_report(
+                    db,
+                    connection=connection,
+                    aggregate=mapped,
+                    run=run,
+                    actor_user_id=actor_user_id,
+                )
+                local_counts[outcome] += 1
+                local_report_ids.append(int(report.id))
+                for item in stored_shifts:
+                    item.daily_report_id = report.id
+    except Exception as exc:
+        failure = _classify_snapshot_group_failure(exc)
+        issue_snapshots = snapshots
+        if business_date is not None and shift_slot is not None:
+            issue_snapshots = (
+                snapshots_for_group(
+                    db,
+                    connection_id=int(connection.id),
+                    business_date=business_date,
+                    shift_slot=shift_slot,
+                )
+                or snapshots
+            )
+        issue = upsert_import_issue(
+            db,
+            connection_id=int(connection.id),
+            sync_run_id=int(run.id),
+            group_key=group_key,
+            business_date=business_date,
+            shift_slot=shift_slot,
+            failure=failure,
+            snapshots=issue_snapshots,
+            failed_source_fingerprints={item.source_fingerprint for item in issue_snapshots},
+            actor_user_id=actor_user_id,
+        )
+        return {
+            "shifts_imported": 0,
+            "counts": {"created": 0, "updated": 0, "unchanged": 0, "removed": 0},
+            "report_ids": [],
+            "conflict": {
+                "issue_id": int(issue.id),
+                "business_date": business_date.isoformat() if business_date else None,
+                "shift_slot": shift_slot,
+                "error_code": failure.error_code,
+                "error": failure.user_summary,
+            },
+        }
+
+    if business_date is not None and shift_slot is not None:
+        resolve_group_issue(
+            db,
+            connection_id=int(connection.id),
+            business_date=business_date,
+            shift_slot=shift_slot,
+            actor_user_id=actor_user_id,
+            sync_run_id=int(run.id),
+        )
+    return {
+        "shifts_imported": imported,
+        "counts": local_counts,
+        "report_ids": local_report_ids,
+        "conflict": None,
+    }
+
+
 def _perform_sync(
     db: Session,
     *,
@@ -725,158 +1292,75 @@ def _perform_sync(
     run: QuickRestoSyncRun,
     actor_user_id: int,
     client: QuickRestoClient,
+    force_full: bool = False,
 ) -> dict[str, Any]:
     mapping_summary = refresh_quickresto_mappings(db, connection=connection, client=client)
     venue = db.get(Venue, int(connection.venue_id))
     if venue is None:
         raise QuickRestoDataError("Axelio venue no longer exists")
-    night_shift_split_enabled = bool(connection.night_shift_split_enabled and venue.night_shifts_enabled)
-    shift_rows = _object_rows(client, "shifts")
-    order_rows = _object_rows(client, "orders")
-    closed_shifts = [row for row in shift_rows if str(row.get("status") or "").upper() == "CLOSED"]
-    if connection.sync_from_date is not None:
-        closed_shifts = [
-            row
-            for row in closed_shifts
-            if business_date_for_shift(row, cutoff_hour=connection.business_day_cutoff_hour)
-            >= connection.sync_from_date
-        ]
-    closed_shift_ids = {str(row.get("frontId") or row.get("_id") or "") for row in closed_shifts}
-    relevant_order_rows = [row for row in order_rows if str(row.get("shiftId") or "") in closed_shift_ids]
-    order_details_by_shift: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in relevant_order_rows:
-        object_id = int(row.get("id") or 0)
-        if object_id <= 0:
-            raise QuickRestoDataError("QuickResto order identifier is missing")
-        detail = _object_detail(client, "orders", object_id)
-        order_details_by_shift[str(detail.get("shiftId") or "")].append(detail)
+    snapshots, full_reconciliation = _stage_quickresto_sources(
+        db,
+        connection=connection,
+        run=run,
+        venue=venue,
+        client=client,
+        force_full=force_full,
+    )
+    grouped: dict[tuple[date | None, str | None, str], list[QuickRestoSourceSnapshot]] = defaultdict(list)
+    for snapshot in snapshots:
+        discriminator = (
+            report_group_key(snapshot.business_date, snapshot.shift_slot)
+            if snapshot.business_date is not None and snapshot.shift_slot is not None
+            else source_group_key(snapshot.source_fingerprint)
+        )
+        grouped[(snapshot.business_date, snapshot.shift_slot, discriminator)].append(snapshot)
 
-    changed_keys: set[tuple[date, str]] = set()
-    regrouping_detected = False
+    totals = {"created": 0, "updated": 0, "unchanged": 0, "removed": 0}
     shifts_imported = 0
-    for shift in closed_shifts:
-        shift_id = str(shift.get("frontId") or shift.get("_id") or "")
-        normalized = normalize_closed_shift(
-            shift,
-            order_details_by_shift.get(shift_id, []),
-            cutoff_hour=connection.business_day_cutoff_hour,
-            night_shift_split_enabled=night_shift_split_enabled,
-            night_shift_start_hour=connection.night_shift_start_hour,
-        )
-        business_date = date.fromisoformat(normalized["business_date"])
-        shift_slot = str(normalized["shift_slot"])
-        existing = db.execute(
-            select(QuickRestoShiftImport).where(
-                QuickRestoShiftImport.connection_id == connection.id,
-                QuickRestoShiftImport.external_shift_id == shift_id,
-            )
-        ).scalar_one_or_none()
-        if existing is None:
-            existing = QuickRestoShiftImport(
-                connection_id=connection.id,
-                external_shift_id=shift_id,
-                external_shift_pk=int(normalized["external_shift_pk"]),
-                source_version=int(normalized["source_version"]),
-                business_date=business_date,
-                shift_slot=shift_slot,
-                local_closed_at=datetime.fromisoformat(normalized["local_closed_at"]),
-                payload_hash=str(normalized["payload_hash"]),
-                normalized_json=normalized,
-                first_imported_at=_utcnow(),
-                updated_at=_utcnow(),
-            )
-            db.add(existing)
-            shifts_imported += 1
-            changed_keys.add((business_date, shift_slot))
-            continue
-
-        previous_key = (
-            existing.business_date,
-            str(getattr(existing, "shift_slot", None) or "DAY").upper(),
-        )
-        next_key = (business_date, shift_slot)
-        if existing.payload_hash != normalized["payload_hash"] or previous_key != next_key:
-            changed_keys.add(previous_key)
-            changed_keys.add(next_key)
-            if previous_key != next_key:
-                regrouping_detected = True
-                existing.daily_report_id = None
-            existing.external_shift_pk = int(normalized["external_shift_pk"])
-            existing.source_version = int(normalized["source_version"])
-            existing.business_date = business_date
-            existing.shift_slot = shift_slot
-            existing.local_closed_at = datetime.fromisoformat(normalized["local_closed_at"])
-            existing.payload_hash = str(normalized["payload_hash"])
-            existing.normalized_json = normalized
-            existing.updated_at = _utcnow()
-            shifts_imported += 1
-        else:
-            changed_keys.add((business_date, shift_slot))
-    db.flush()
-
-    result_counts = {"created": 0, "updated": 0, "unchanged": 0, "removed": 0}
-    conflicts: list[dict[str, str]] = []
     report_ids: list[int] = []
-    for target_date, target_slot in sorted(changed_keys):
-        stored_shifts = (
-            db.execute(
-                select(QuickRestoShiftImport).where(
-                    QuickRestoShiftImport.connection_id == connection.id,
-                    QuickRestoShiftImport.business_date == target_date,
-                    QuickRestoShiftImport.shift_slot == target_slot,
-                )
-            )
-            .scalars()
-            .all()
+    conflicts: list[dict[str, Any]] = []
+    ignored_groups = 0
+    for _key, group_snapshots in sorted(
+        grouped.items(),
+        key=lambda item: (item[0][0] or date.min, item[0][1] or "", item[0][2]),
+    ):
+        if ignored_issue_matches_snapshots(
+            db,
+            connection_id=int(connection.id),
+            group_key=_key[2],
+            snapshots=group_snapshots,
+        ):
+            ignored_groups += 1
+            continue
+        result = _process_snapshot_group(
+            db,
+            connection=connection,
+            run=run,
+            venue=venue,
+            actor_user_id=actor_user_id,
+            snapshots=group_snapshots,
         )
-        try:
-            if not stored_shifts:
-                if _remove_empty_imported_report(
-                    db,
-                    connection=connection,
-                    business_date=target_date,
-                    shift_slot=target_slot,
-                    actor_user_id=actor_user_id,
-                ):
-                    result_counts["removed"] += 1
-                continue
-            aggregate = aggregate_normalized_shifts(item.normalized_json for item in stored_shifts)
-            mapped = _mapped_aggregate(db, connection=connection, aggregate=aggregate)
-            outcome, report = _upsert_draft_report(
-                db,
-                connection=connection,
-                aggregate=mapped,
-                run=run,
-                actor_user_id=actor_user_id,
-            )
-            result_counts[outcome] += 1
-            report_ids.append(int(report.id))
-            for item in stored_shifts:
-                item.daily_report_id = report.id
-        except QuickRestoDataError as exc:
-            if regrouping_detected:
-                raise QuickRestoDataError(
-                    f"QuickResto shifts could not be regrouped safely for "
-                    f"{target_date.isoformat()} {target_slot}: {exc}"
-                ) from exc
-            conflicts.append(
-                {
-                    "business_date": target_date.isoformat(),
-                    "shift_slot": target_slot,
-                    "error": str(exc),
-                }
-            )
+        shifts_imported += int(result["shifts_imported"])
+        for name in totals:
+            totals[name] += int(result["counts"][name])
+        report_ids.extend(result["report_ids"])
+        if result["conflict"] is not None:
+            conflicts.append(result["conflict"])
 
     return {
         **mapping_summary,
-        "shifts_seen": len(closed_shifts),
+        "sync_mode": "FULL_RECONCILIATION" if full_reconciliation else "INCREMENTAL",
+        "source_snapshots_staged": len(snapshots),
+        "shifts_seen": len(snapshots),
         "shifts_imported": shifts_imported,
-        "reports_created": result_counts["created"],
-        "reports_updated": result_counts["updated"],
-        "reports_unchanged": result_counts["unchanged"],
-        "reports_removed": result_counts["removed"],
+        "reports_created": totals["created"],
+        "reports_updated": totals["updated"],
+        "reports_unchanged": totals["unchanged"],
+        "reports_removed": totals["removed"],
         "report_ids": sorted(set(report_ids)),
         "conflicts": conflicts,
+        "issue_count": len(conflicts),
+        "ignored_groups": ignored_groups,
     }
 
 
@@ -887,6 +1371,7 @@ def sync_quickresto_connection(
     requested_by_user_id: int | None,
     trigger: str,
     client: QuickRestoClient | None = None,
+    force_full: bool = False,
 ) -> QuickRestoSyncRun:
     connection_id = int(connection.id)
     locked_connection = db.execute(
@@ -900,13 +1385,10 @@ def sync_quickresto_connection(
         raise QuickRestoSyncError("QuickResto connection no longer exists")
     connection = locked_connection
     now = _utcnow()
-    if (
-        connection.last_sync_status == "RUNNING"
-        and connection.last_sync_started_at is not None
-        and _ensure_utc(connection.last_sync_started_at) > now - timedelta(minutes=30)
-    ):
+    if quickresto_sync_is_active(connection, now=now):
         db.rollback()
         raise QuickRestoSyncError("QuickResto sync is already running")
+    reclaim_stale_quickresto_sync_state(db, connection=connection, now=now)
     if not connection.is_active:
         db.rollback()
         raise QuickRestoSyncError("QuickResto connection is disabled")
@@ -927,10 +1409,10 @@ def sync_quickresto_connection(
     db.refresh(run)
     db.refresh(connection)
 
-    managed_client = client is None
-    active_client = client or build_quickresto_client(connection)
-    context = active_client if managed_client else nullcontext(active_client)
     try:
+        managed_client = client is None
+        active_client = client or build_quickresto_client(connection)
+        context = active_client if managed_client else nullcontext(active_client)
         with context as current_client:
             summary = _perform_sync(
                 db,
@@ -938,6 +1420,7 @@ def sync_quickresto_connection(
                 run=run,
                 actor_user_id=actor_user_id,
                 client=current_client,
+                force_full=force_full,
             )
         finished_at = _utcnow()
         run.status = "PARTIAL" if summary["conflicts"] else "SUCCEEDED"
@@ -952,22 +1435,312 @@ def sync_quickresto_connection(
         connection.last_sync_status = run.status
         connection.last_sync_error = None if run.status == "SUCCEEDED" else "Some report dates need attention"
         db.commit()
+        diagnostic_issue = None
+        if summary["conflicts"]:
+            diagnostic_issue = db.get(QuickRestoImportIssue, int(summary["conflicts"][0]["issue_id"]))
+        _enqueue_sync_notification_safely(
+            db,
+            connection=connection,
+            run=run,
+            issue_count=int(summary.get("issue_count") or 0),
+            technical_summary=diagnostic_issue.technical_summary if diagnostic_issue is not None else None,
+            correlation_id=diagnostic_issue.correlation_id if diagnostic_issue is not None else None,
+        )
         db.refresh(run)
         return run
-    except (QuickRestoError, QuickRestoDataError, QuickRestoSyncError, ValueError) as exc:
+    except (
+        QuickRestoError,
+        QuickRestoDataError,
+        QuickRestoSnapshotError,
+        QuickRestoSyncError,
+        IntegrationCredentialError,
+        ValueError,
+    ) as exc:
+        failure = classify_quickresto_failure(exc)
         _record_failed_run(
             db,
             run_id=run.id,
             connection_id=connection.id,
-            message=str(exc),
+            message=failure.user_summary,
         )
-        raise QuickRestoSyncError(str(exc)) from exc
+        issue = upsert_import_issue(
+            db,
+            connection_id=connection_id,
+            sync_run_id=int(run.id),
+            group_key=connection_group_key(failure.error_code),
+            business_date=None,
+            shift_slot=None,
+            failure=failure,
+            actor_user_id=requested_by_user_id,
+        )
+        db.commit()
+        failed_run = db.get(QuickRestoSyncRun, int(run.id))
+        failed_connection = db.get(QuickRestoConnection, connection_id)
+        if failed_run is not None and failed_connection is not None:
+            _enqueue_sync_notification_safely(
+                db,
+                connection=failed_connection,
+                run=failed_run,
+                issue_count=1,
+                technical_summary=issue.technical_summary,
+                correlation_id=issue.correlation_id,
+                force=True,
+            )
+        raise QuickRestoSyncError(failure.user_summary) from exc
     except Exception as exc:
-        message = "Unexpected QuickResto sync failure"
+        correlation_id = None
+        try:
+            import sentry_sdk
+
+            correlation_id = sentry_sdk.capture_exception(exc)
+        except Exception:
+            correlation_id = None
+        failure = classify_quickresto_failure(exc, correlation_id=correlation_id)
         _record_failed_run(
             db,
             run_id=run.id,
             connection_id=connection.id,
-            message=message,
+            message=failure.user_summary,
         )
-        raise QuickRestoSyncError(message) from exc
+        issue = upsert_import_issue(
+            db,
+            connection_id=connection_id,
+            sync_run_id=int(run.id),
+            group_key=connection_group_key(failure.error_code),
+            business_date=None,
+            shift_slot=None,
+            failure=failure,
+            actor_user_id=requested_by_user_id,
+        )
+        db.commit()
+        failed_run = db.get(QuickRestoSyncRun, int(run.id))
+        failed_connection = db.get(QuickRestoConnection, connection_id)
+        if failed_run is not None and failed_connection is not None:
+            _enqueue_sync_notification_safely(
+                db,
+                connection=failed_connection,
+                run=failed_run,
+                issue_count=1,
+                technical_summary=issue.technical_summary,
+                correlation_id=issue.correlation_id,
+                force=True,
+            )
+        raise QuickRestoSyncError(failure.user_summary) from exc
+
+
+def retry_quickresto_import_issue(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    issue_id: int,
+    requested_by_user_id: int,
+) -> QuickRestoSyncRun:
+    """Retry one durable issue from encrypted snapshots without calling QuickResto."""
+
+    connection_id = int(connection.id)
+    connection = db.execute(
+        select(QuickRestoConnection)
+        .where(QuickRestoConnection.id == connection_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if connection is None:
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto connection no longer exists")
+    now = _utcnow()
+    if quickresto_sync_is_active(connection, now=now):
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto sync is already running")
+    reclaim_stale_quickresto_sync_state(db, connection=connection, now=now)
+    issue = db.execute(
+        select(QuickRestoImportIssue)
+        .where(
+            QuickRestoImportIssue.id == int(issue_id),
+            QuickRestoImportIssue.connection_id == connection_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if issue is None:
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto import issue was not found")
+    if str(issue.status or "").upper() not in {"OPEN", "RETRY_PENDING"}:
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto import issue is not waiting for a retry")
+    if not connection.is_active:
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto connection is disabled")
+
+    snapshots = list(
+        db.execute(
+            select(QuickRestoSourceSnapshot)
+            .join(
+                QuickRestoImportIssueShift,
+                QuickRestoImportIssueShift.source_snapshot_id == QuickRestoSourceSnapshot.id,
+            )
+            .where(
+                QuickRestoImportIssueShift.issue_id == int(issue.id),
+                QuickRestoSourceSnapshot.connection_id == connection_id,
+            )
+            .order_by(
+                QuickRestoSourceSnapshot.local_opened_at.asc(),
+                QuickRestoSourceSnapshot.id.asc(),
+            )
+        ).scalars()
+    )
+    if not snapshots or len(snapshots) != len(issue.shifts):
+        db.rollback()
+        raise QuickRestoSyncError("Сохранённые данные смены уже недоступны. Запустите полную синхронизацию QuickResto.")
+
+    venue = db.get(Venue, int(connection.venue_id))
+    if venue is None:
+        db.rollback()
+        raise QuickRestoSyncError("Axelio venue no longer exists")
+    run = QuickRestoSyncRun(
+        connection_id=connection_id,
+        requested_by_user_id=int(requested_by_user_id),
+        trigger="ISSUE_RETRY",
+        status="RUNNING",
+        started_at=now,
+    )
+    db.add(run)
+    db.flush()
+    transition_issue(
+        db,
+        issue=issue,
+        status="PROCESSING",
+        event_type="USER_RETRY_STARTED",
+        actor_user_id=int(requested_by_user_id),
+        sync_run_id=int(run.id),
+    )
+    connection.last_sync_started_at = now
+    connection.last_sync_status = "RUNNING"
+    connection.last_sync_error = None
+    db.commit()
+    db.refresh(run)
+    db.refresh(connection)
+    for snapshot in snapshots:
+        db.refresh(snapshot)
+
+    try:
+        result = _process_snapshot_group(
+            db,
+            connection=connection,
+            run=run,
+            venue=venue,
+            actor_user_id=int(requested_by_user_id),
+            snapshots=snapshots,
+        )
+        finished_at = _utcnow()
+        conflict = result["conflict"]
+        run.status = "PARTIAL" if conflict is not None else "SUCCEEDED"
+        run.finished_at = finished_at
+        run.shifts_seen = len(snapshots)
+        run.shifts_imported = int(result["shifts_imported"])
+        run.reports_created = int(result["counts"]["created"])
+        run.reports_updated = int(result["counts"]["updated"])
+        run.reports_unchanged = int(result["counts"]["unchanged"])
+        run.error_message = conflict["error"] if conflict is not None else None
+        run.summary_json = {
+            "sync_mode": "STORED_RETRY",
+            "source_snapshots_staged": 0,
+            "shifts_seen": len(snapshots),
+            "shifts_imported": int(result["shifts_imported"]),
+            "reports_created": int(result["counts"]["created"]),
+            "reports_updated": int(result["counts"]["updated"]),
+            "reports_unchanged": int(result["counts"]["unchanged"]),
+            "reports_removed": int(result["counts"]["removed"]),
+            "report_ids": sorted(set(result["report_ids"])),
+            "conflicts": [conflict] if conflict is not None else [],
+            "issue_count": int(conflict is not None),
+            "retried_issue_id": int(issue_id),
+        }
+        if conflict is None:
+            current_issue = db.get(QuickRestoImportIssue, int(issue_id))
+            if current_issue is not None and str(current_issue.status) in ACTIVE_ISSUE_STATUSES:
+                transition_issue(
+                    db,
+                    issue=current_issue,
+                    status="RESOLVED",
+                    event_type="IMPORT_SUCCEEDED",
+                    actor_user_id=int(requested_by_user_id),
+                    sync_run_id=int(run.id),
+                    resolution_code="RETRY_SUCCEEDED",
+                    resolution_note="Сохранённые смены успешно импортированы после повторной обработки.",
+                )
+        connection.last_sync_completed_at = finished_at
+        connection.last_sync_status = run.status
+        connection.last_sync_error = None if conflict is None else conflict["error"]
+        db.commit()
+
+        diagnostic_issue = db.get(
+            QuickRestoImportIssue,
+            int(conflict["issue_id"]) if conflict is not None else int(issue_id),
+        )
+        _enqueue_sync_notification_safely(
+            db,
+            connection=connection,
+            run=run,
+            issue_count=int(conflict is not None),
+            technical_summary=(
+                diagnostic_issue.technical_summary if conflict is not None and diagnostic_issue is not None else None
+            ),
+            correlation_id=(
+                diagnostic_issue.correlation_id if conflict is not None and diagnostic_issue is not None else None
+            ),
+            force=True,
+        )
+        db.refresh(run)
+        return run
+    except Exception as exc:
+        correlation_id = None
+        if not isinstance(
+            exc,
+            (
+                QuickRestoError,
+                QuickRestoDataError,
+                QuickRestoSnapshotError,
+                QuickRestoSyncError,
+                IntegrationCredentialError,
+                ValueError,
+            ),
+        ):
+            try:
+                import sentry_sdk
+
+                correlation_id = sentry_sdk.capture_exception(exc)
+            except Exception:
+                correlation_id = None
+        failure = classify_quickresto_failure(exc, correlation_id=correlation_id)
+        _record_failed_run(
+            db,
+            run_id=int(run.id),
+            connection_id=connection_id,
+            message=failure.user_summary,
+        )
+        failed_issue = upsert_import_issue(
+            db,
+            connection_id=connection_id,
+            sync_run_id=int(run.id),
+            group_key=str(issue.group_key),
+            business_date=issue.business_date,
+            shift_slot=issue.shift_slot,
+            failure=failure,
+            snapshots=snapshots,
+            failed_source_fingerprints={item.source_fingerprint for item in snapshots},
+            actor_user_id=int(requested_by_user_id),
+        )
+        db.commit()
+        failed_run = db.get(QuickRestoSyncRun, int(run.id))
+        failed_connection = db.get(QuickRestoConnection, connection_id)
+        if failed_run is not None and failed_connection is not None:
+            _enqueue_sync_notification_safely(
+                db,
+                connection=failed_connection,
+                run=failed_run,
+                issue_count=1,
+                technical_summary=failed_issue.technical_summary,
+                correlation_id=failed_issue.correlation_id,
+                force=True,
+            )
+        raise QuickRestoSyncError(failure.user_summary) from exc
