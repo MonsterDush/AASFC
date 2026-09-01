@@ -164,6 +164,6 @@ for (const filePath of sourceFiles(frontendDir)) {
     for (const name of imported) assert.ok(EXPECTED_EXPORTS.includes(name), `${path.basename(filePath)} imports missing ${name}`);
   }
 }
-assert.equal(consumerCount, 53);
+assert.equal(consumerCount, 54);
 
 console.log(`app facade contract: ${EXPECTED_EXPORTS.length} exports, ${consumerCount} consumers`);
