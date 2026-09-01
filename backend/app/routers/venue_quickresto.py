@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -12,6 +12,7 @@ from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
+from app.models.quickresto_scope_audit import QuickRestoScopeAudit
 from app.models.quickresto_import_issue import QuickRestoImportIssue
 from app.models.quickresto_sync_run import QuickRestoSyncRun
 from app.models.user import User
@@ -137,9 +138,11 @@ def _serialize_connection(
         "cloud": connection.cloud,
         "external_venue_id": connection.external_venue_id,
         "external_venue_name": connection.external_venue_name,
+        "external_venue_version": connection.external_venue_version,
         "scope_status": str(connection.scope_status or "NEEDS_SELECTION"),
         "scope_generation": int(connection.scope_generation or 1),
         "scope_confirmed_at": (connection.scope_confirmed_at.isoformat() if connection.scope_confirmed_at else None),
+        "scope_confirmed_by_user_id": connection.scope_confirmed_by_user_id,
         "credentials_configured": bool(connection.api_login_encrypted and connection.api_password_encrypted),
         "is_active": bool(connection.is_active),
         "auto_sync_enabled": bool(connection.auto_sync_enabled),
@@ -284,6 +287,63 @@ def _serialize_mappings(db: Session, connection: QuickRestoConnection) -> dict:
     }
 
 
+def _mapping_readiness(db: Session, connection: QuickRestoConnection) -> dict:
+    payments = list(
+        db.execute(
+            select(QuickRestoPaymentMapping).where(QuickRestoPaymentMapping.connection_id == connection.id)
+        ).scalars()
+    )
+    departments = list(
+        db.execute(
+            select(QuickRestoDepartmentMapping).where(QuickRestoDepartmentMapping.connection_id == connection.id)
+        ).scalars()
+    )
+    missing_payments = sorted(
+        int(item.external_id)
+        for item in payments
+        if item.is_available
+        and item.is_applicable
+        and not item.excluded_from_revenue
+        and item.payment_method_id is None
+    )
+    missing_departments = sorted(int(item.external_id) for item in departments if item.department_id is None)
+    discovered = bool(any(item.is_available and item.is_applicable for item in payments) or departments)
+    return {
+        "ready": bool(
+            str(connection.scope_status or "").upper() == "READY"
+            and discovered
+            and not missing_payments
+            and not missing_departments
+        ),
+        "discovered": discovered,
+        "unmapped_payment_type_ids": missing_payments,
+        "unmapped_department_ids": missing_departments,
+    }
+
+
+def _serialize_scope_audits(db: Session, *, connection_id: int, limit: int = 20) -> list[dict]:
+    rows = list(
+        db.execute(
+            select(QuickRestoScopeAudit)
+            .where(QuickRestoScopeAudit.connection_id == int(connection_id))
+            .order_by(QuickRestoScopeAudit.changed_at.desc(), QuickRestoScopeAudit.id.desc())
+            .limit(int(limit))
+        ).scalars()
+    )
+    return [
+        {
+            "id": int(item.id),
+            "actor_user_id": item.actor_user_id,
+            "scope_generation": int(item.scope_generation),
+            "previous_scope": item.previous_scope_json or {},
+            "current_scope": item.current_scope_json or {},
+            "changes": item.changes_json or {},
+            "changed_at": item.changed_at.isoformat() if item.changed_at else None,
+        }
+        for item in rows
+    ]
+
+
 @router.get("/{venue_id}/integrations/quickresto")
 def get_quickresto_connection(
     venue_id: int,
@@ -303,6 +363,13 @@ def get_quickresto_connection(
             "venue_night_shifts_enabled": bool(venue.night_shifts_enabled),
             "connection": None,
             "mappings": {"payments": [], "departments": []},
+            "mapping_readiness": {
+                "ready": False,
+                "discovered": False,
+                "unmapped_payment_type_ids": [],
+                "unmapped_department_ids": [],
+            },
+            "scope_audit": [],
             "catalog": {
                 "scope_status": "NEEDS_SELECTION",
                 "scope_generation": 1,
@@ -324,6 +391,8 @@ def get_quickresto_connection(
             venue_night_shifts_enabled=venue.night_shifts_enabled,
         ),
         "mappings": _serialize_mappings(db, connection),
+        "mapping_readiness": _mapping_readiness(db, connection),
+        "scope_audit": _serialize_scope_audits(db, connection_id=int(connection.id)),
         "catalog": serialize_quickresto_catalog(db, connection=connection),
         "permissions": {"can_view": True, "can_manage": can_manage},
         "active_pos_provider": selected_provider,
@@ -398,8 +467,10 @@ def put_quickresto_connection(
         if cloud_changed:
             connection.external_venue_id = None
             connection.external_venue_name = None
+            connection.external_venue_version = None
             connection.scope_status = "NEEDS_SELECTION"
             connection.scope_confirmed_at = None
+            connection.scope_confirmed_by_user_id = None
             connection.scope_generation = int(connection.scope_generation or 1) + 1
             connection.incremental_cursor_closed_at = None
             connection.last_full_reconciliation_at = None
@@ -489,6 +560,7 @@ def put_quickresto_scope(
             external_venue_id=payload.external_venue_id,
             sale_place_ids=payload.sale_place_ids,
             store_ids=payload.store_ids,
+            actor_user_id=int(user.id),
         )
         with build_quickresto_client(connection) as client:
             mapping_summary = refresh_quickresto_mappings(db, connection=connection, client=client)
@@ -514,6 +586,8 @@ def put_quickresto_scope(
         ),
         "catalog": serialize_quickresto_catalog(db, connection=connection),
         "mappings": _serialize_mappings(db, connection),
+        "mapping_readiness": _mapping_readiness(db, connection),
+        "scope_audit": _serialize_scope_audits(db, connection_id=int(connection.id)),
     }
 
 
@@ -543,6 +617,7 @@ def discover_quickresto_mappings(
         "summary": {**catalog_summary, **summary},
         "catalog": serialize_quickresto_catalog(db, connection=connection),
         "mappings": _serialize_mappings(db, connection),
+        "mapping_readiness": _mapping_readiness(db, connection),
     }
 
 
@@ -599,13 +674,18 @@ def put_quickresto_mappings(
         mapping.department_id = item.department_id
         mapping.updated_at = datetime.utcnow()
     db.commit()
-    return {"ok": True, "mappings": _serialize_mappings(db, connection)}
+    return {
+        "ok": True,
+        "mappings": _serialize_mappings(db, connection),
+        "mapping_readiness": _mapping_readiness(db, connection),
+    }
 
 
 @router.get("/{venue_id}/integrations/quickresto/issues")
 def list_quickresto_issues(
     venue_id: int,
     status: str = Query(default="active", max_length=32),
+    business_date: date | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -615,6 +695,8 @@ def list_quickresto_issues(
     connection = _connection_or_404(db, venue_id)
     normalized_status = str(status or "active").strip().upper()
     filters = [QuickRestoImportIssue.connection_id == int(connection.id)]
+    if business_date is not None:
+        filters.append(QuickRestoImportIssue.business_date == business_date)
     if normalized_status == "ACTIVE":
         filters.append(QuickRestoImportIssue.status.in_(ACTIVE_ISSUE_STATUSES))
     elif normalized_status != "ALL":

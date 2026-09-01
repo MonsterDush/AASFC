@@ -38,6 +38,7 @@ const elementIds = [
   "runSync",
   "runFullSync",
   "connectionHint",
+  "mappingReadinessHint",
   "paymentMappings",
   "departmentMappings",
   "saveMappings",
@@ -62,6 +63,7 @@ const elementIds = [
   "storeOptions",
   "saveScope",
   "scopeHint",
+  "scopeAuditList",
   "issueSection",
   "issueOpenCount",
   "openIssues",
@@ -92,6 +94,8 @@ const state = {
   canManage: true,
   issueOpenCount: 0,
   activePosProvider: null,
+  mappingReadiness: { ready: false, discovered: false, unmapped_payment_type_ids: [], unmapped_department_ids: [] },
+  scopeAudit: [],
 };
 
 const esc = (value) =>
@@ -184,10 +188,18 @@ function renderScopeStores() {
   }
   el.storeOptions.innerHTML = stores
     .map(
-      (store) => `<label class="quickresto-scope-choice">
+      (store) => {
+        const saleIds = Array.isArray(store.source_sale_place_ids) ? store.source_sale_place_ids : [];
+        const cookingIds = Array.isArray(store.source_cooking_place_ids) ? store.source_cooking_place_ids : [];
+        const relation = [
+          saleIds.length ? `точки #${saleIds.join(", #")}` : "",
+          cookingIds.length ? `CookingPlace #${cookingIds.join(", #")}` : "",
+        ].filter(Boolean).join(" · ");
+        return `<label class="quickresto-scope-choice">
         <input type="checkbox" data-store-id="${store.external_id}"${store.is_selected ? " checked" : ""}${state.canManage ? "" : " disabled"} />
-        <span><b>${esc(store.external_name)}</b><small>QuickResto #${store.external_id}</small></span>
-      </label>`,
+        <span><b>${esc(store.external_name)}</b><small>QuickResto #${store.external_id}${relation ? ` · ${esc(relation)}` : ""}</small></span>
+      </label>`;
+      },
     )
     .join("");
 }
@@ -252,6 +264,63 @@ function renderScope({ preserveVenue = false } = {}) {
       "Выберите конкретное заведение и хотя бы одно место реализации.";
   }
   applyPermissions();
+}
+
+function formatDate(value, { withTime = false } = {}) {
+  const source = String(value || "").trim();
+  if (!source) return "—";
+  const date = new Date(source);
+  if (Number.isNaN(date.getTime())) return source;
+  return new Intl.DateTimeFormat(document.documentElement.lang === "en" ? "en-US" : "ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+  }).format(date);
+}
+
+function requiredMappingsReady() {
+  return scopeReady() && state.mappingReadiness?.ready === true;
+}
+
+function renderMappingReadiness() {
+  if (!el.mappingReadinessHint) return;
+  if (!scopeReady()) {
+    el.mappingReadinessHint.textContent = "";
+    return;
+  }
+  if (!state.mappingReadiness?.discovered) {
+    el.mappingReadinessHint.textContent =
+      "Перед импортом получите справочники и завершите обязательные сопоставления.";
+    return;
+  }
+  el.mappingReadinessHint.textContent = state.mappingReadiness?.ready
+    ? "Обязательные сопоставления заполнены — импорт доступен."
+    : "Перед импортом завершите обязательные сопоставления оплат и департаментов.";
+}
+
+function renderScopeAudit() {
+  if (!el.scopeAuditList) return;
+  const rows = Array.isArray(state.scopeAudit) ? state.scopeAudit : [];
+  if (!rows.length) {
+    el.scopeAuditList.innerHTML = `<div class="quickresto-empty">История изменений пока пуста.</div>`;
+    return;
+  }
+  el.scopeAuditList.innerHTML = rows
+    .map((item) => {
+      const changes = item.changes || {};
+      const parts = [
+        (changes.sale_places_added || []).length ? `+ точки: ${(changes.sale_places_added || []).join(", ")}` : "",
+        (changes.sale_places_removed || []).length ? `− точки: ${(changes.sale_places_removed || []).join(", ")}` : "",
+        (changes.stores_added || []).length ? `+ склады: ${(changes.stores_added || []).join(", ")}` : "",
+        (changes.stores_removed || []).length ? `− склады: ${(changes.stores_removed || []).join(", ")}` : "",
+      ].filter(Boolean);
+      return `<div class="itemcard quickresto-scope-audit__row">
+        <div><b>Версия области ${Number(item.scope_generation || 1)}</b><div class="muted small">${esc(formatDate(item.changed_at, { withTime: true }))} · пользователь #${esc(item.actor_user_id || "—")}</div></div>
+        <div class="muted small">${esc(parts.join(" · ") || "Область подтверждена без изменения набора точек.")}</div>
+      </div>`;
+    })
+    .join("");
 }
 
 function selectedImportMode() {
@@ -336,9 +405,11 @@ function applyPermissions() {
   el.saveScope.disabled =
     !state.configured || !(state.catalog?.venues || []).length;
   const ready = scopeReady();
+  const importReady = requiredMappingsReady();
   el.discoverMappings.disabled = !ready;
-  el.runSync.disabled = !ready;
-  el.runFullSync.disabled = !ready;
+  el.runSync.disabled = !importReady;
+  el.runFullSync.disabled = !importReady;
+  renderMappingReadiness();
 }
 
 function renderConnection() {
@@ -501,6 +572,8 @@ async function load() {
     venue?.night_shifts_enabled
   );
   state.mappings = integration.mappings || { payments: [], departments: [] };
+  state.mappingReadiness = integration.mapping_readiness || state.mappingReadiness;
+  state.scopeAudit = integration.scope_audit || [];
   const venueName = venue?.name || `Заведение ${venueId}`;
   el.title.textContent = `QuickResto · ${venueName}`;
   el.venueTitle.textContent = venueName;
@@ -513,6 +586,7 @@ async function load() {
     : [];
   renderConnection();
   renderMappings();
+  renderScopeAudit();
   renderRuns();
 }
 
@@ -637,6 +711,9 @@ el.saveScope?.addEventListener("click", async () => {
     state.connection = result.connection || state.connection;
     state.catalog = result.catalog || state.catalog;
     state.mappings = result.mappings || state.mappings;
+    state.mappingReadiness = result.mapping_readiness || state.mappingReadiness;
+    state.scopeAudit = result.scope_audit || state.scopeAudit;
+    renderScopeAudit();
     await refreshAxelioCatalogs();
     renderConnection();
     renderMappings();
@@ -661,6 +738,9 @@ el.discoverMappings?.addEventListener("click", async () => {
     );
     state.catalog = result.catalog || state.catalog;
     state.mappings = result.mappings || state.mappings;
+    state.mappingReadiness = result.mapping_readiness || state.mappingReadiness;
+    state.scopeAudit = result.scope_audit || state.scopeAudit;
+    renderScopeAudit();
     if (state.connection) state.connection.scope_status = state.catalog.scope_status;
     await refreshAxelioCatalogs();
     renderScope();
@@ -687,6 +767,9 @@ el.saveMappings?.addEventListener("click", async () => {
       { method: "PUT", body: collectMappingsPayload() },
     );
     state.mappings = result.mappings || state.mappings;
+    state.mappingReadiness = result.mapping_readiness || state.mappingReadiness;
+    state.scopeAudit = result.scope_audit || state.scopeAudit;
+    renderScopeAudit();
     renderMappings();
     el.mappingHint.textContent = "Сопоставления сохранены.";
     toast("Сопоставления сохранены", "ok");
@@ -700,7 +783,7 @@ el.saveMappings?.addEventListener("click", async () => {
 });
 
 async function runImport({ full = false, button = el.runSync } = {}) {
-  if (!state.canManage || !scopeReady()) return;
+  if (!state.canManage || !requiredMappingsReady()) return;
   setBusy(button, true, full ? "Сверяем всю историю…" : "Импортируем…");
   el.connectionHint.textContent = "";
   try {

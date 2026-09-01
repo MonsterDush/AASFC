@@ -78,6 +78,7 @@ from .quickresto_source_snapshot import QuickRestoSourceSnapshot
 from .quickresto_import_issue import QuickRestoImportIssue
 from .quickresto_import_issue_shift import QuickRestoImportIssueShift
 from .quickresto_import_issue_audit import QuickRestoImportIssueAudit
+from .quickresto_scope_audit import QuickRestoScopeAudit
 from .venue_pos_integration_selection import VenuePOSIntegrationSelection
 
 __all__ = [
@@ -163,5 +164,6 @@ __all__ = [
     "QuickRestoImportIssue",
     "QuickRestoImportIssueShift",
     "QuickRestoImportIssueAudit",
+    "QuickRestoScopeAudit",
     "VenuePOSIntegrationSelection",
 ]

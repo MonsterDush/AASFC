@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260901-qrscope1" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260901-qrscope2" />
   <script>
     (() => {
       try {
@@ -117,6 +117,7 @@
         </div>
         <div class="quickresto-readonly mt-12" id="readOnlyHint" hidden>Доступ только для просмотра. Изменять настройки и повторять импорт может владелец или администратор заведения.</div>
         <div class="muted small mt-8" id="connectionHint" aria-live="polite"></div>
+        <div class="quickresto-mapping-readiness muted small mt-8" id="mappingReadinessHint" aria-live="polite"></div>
       </section>
 
       <section class="card section-card quickresto-scope" id="scopeSection" data-status="NEEDS_SELECTION">
@@ -153,6 +154,10 @@
           <button class="btn primary" id="saveScope" type="button">Сохранить область импорта</button>
         </div>
         <div class="muted small mt-8" id="scopeHint" aria-live="polite"></div>
+        <details class="quickresto-scope-audit mt-12">
+          <summary>История изменений области импорта</summary>
+          <div class="quickresto-scope-audit__list mt-8" id="scopeAuditList"></div>
+        </details>
       </section>
 
       <section class="card section-card quickresto-issues-link" id="issueSection" data-attention="false">
@@ -201,6 +206,6 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/owner-quickresto.js?v=20260901-qrscope1"></script>
+  <script type="module" src="/owner-quickresto.js?v=20260901-qrscope2"></script>
 </body>
 </html>

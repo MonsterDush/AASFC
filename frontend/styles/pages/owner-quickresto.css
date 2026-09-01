@@ -137,6 +137,12 @@
 .quickresto-issue-processing{padding:11px 12px;border:1px solid var(--accentSoftBorder);border-radius:12px;background:var(--accentSoftBg);font-size:12px;font-weight:800;line-height:1.45}
 .quickresto-issue-action-hint{min-height:17px;margin:0}
 .quickresto-issue-action-hint[data-status="error"]{color:var(--statusErrorText)}
+
+.quickresto-mapping-readiness{min-height:17px}
+.quickresto-scope-audit{border-top:1px solid var(--border);padding-top:10px}
+.quickresto-scope-audit summary{cursor:pointer;font-size:12px;font-weight:900}
+.quickresto-scope-audit__list{display:grid;gap:8px}
+.quickresto-scope-audit__row{display:grid;gap:5px}
 @media(max-width:720px){
   .quickresto-hero__layout,.quickresto-form,.quickresto-toggles,.quickresto-night-window__grid,.quickresto-import-mode__options,.quickresto-scope__content,.quickresto-mapping-row,.quickresto-run-row{grid-template-columns:minmax(0,1fr)}
   .quickresto-hero__layout .btn,.quickresto-actions .btn,.quickresto-section-head .btn{width:100%}

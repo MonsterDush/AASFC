@@ -60,6 +60,7 @@ class QuickRestoSourceSnapshotTests(unittest.TestCase):
                 orders=self._orders(),
                 business_date=date(2030, 1, 15),
                 shift_slot="DAY",
+                scope_store_ids=[402, 401, 402],
             )
 
             self.assertEqual(sealed.encryption_key_version, "v1")
@@ -84,6 +85,7 @@ class QuickRestoSourceSnapshotTests(unittest.TestCase):
             self.assertNotIn("comment", opened["orders"][0])
             self.assertNotIn("name", opened["orders"][0]["payments"][0]["paymentType"])
             self.assertNotIn("name", opened["orders"][0]["orderItemList"][0]["product"])
+            self.assertEqual(opened["scope"]["storeIds"], [401, 402])
 
             with self.assertRaisesRegex(QuickRestoSnapshotError, "integrity"):
                 open_quickresto_source_snapshot(

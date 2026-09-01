@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-integration-issues.css?v=20260901-inlinescope1" />
+  <link rel="stylesheet" href="/styles/pages/owner-integration-issues.css?v=20260901-inlinescope2" />
   <script>
     (() => {
       try {
@@ -62,6 +62,8 @@
               <button class="btn active" id="activeIssues" type="button">Активные</button>
               <button class="btn subtle" id="allIssues" type="button">История</button>
             </div>
+            <label class="integration-issues-filter-field"><span>Интеграция</span><select id="providerFilter"><option value="quickresto">QuickResto</option></select></label>
+            <label class="integration-issues-filter-field"><span>Дата проблемы</span><input id="issueDate" type="date" /></label>
             <button class="btn" id="refreshIssues" type="button">Обновить</button>
           </div>
         </div>
@@ -89,6 +91,6 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/owner-integration-issues.js?v=20260901-inlinescope1"></script>
+  <script type="module" src="/owner-integration-issues.js?v=20260901-inlinescope2"></script>
 </body>
 </html>

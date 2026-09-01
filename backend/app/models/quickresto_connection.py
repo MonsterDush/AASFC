@@ -50,11 +50,15 @@ class QuickRestoConnection(Base):
     api_password_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     external_venue_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     external_venue_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    external_venue_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     scope_status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="NEEDS_SELECTION", server_default="NEEDS_SELECTION"
     )
     scope_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     scope_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scope_confirmed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     auto_sync_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     report_import_mode: Mapped[str] = mapped_column(

@@ -12,6 +12,7 @@ from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_external_venue import QuickRestoExternalVenue
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_sale_place_scope import QuickRestoSalePlaceScope
+from app.models.quickresto_scope_audit import QuickRestoScopeAudit
 from app.models.quickresto_shift_import import QuickRestoShiftImport
 from app.models.quickresto_store_scope import QuickRestoStoreScope
 from app.services.integrations.quickresto import QUICKRESTO_OBJECT_TYPES, QuickRestoClient
@@ -257,6 +258,19 @@ def _rows_with_details(
     return output
 
 
+def selected_store_ids(db: Session, *, connection_id: int) -> set[int]:
+    return {
+        int(value)
+        for value in db.execute(
+            select(QuickRestoStoreScope.external_id).where(
+                QuickRestoStoreScope.connection_id == int(connection_id),
+                QuickRestoStoreScope.is_selected.is_(True),
+                QuickRestoStoreScope.is_available.is_(True),
+            )
+        ).scalars()
+    }
+
+
 def selected_sale_place_ids(db: Session, *, connection_id: int) -> set[int]:
     return {
         int(value)
@@ -373,6 +387,12 @@ def refresh_quickresto_catalog(
         row = existing_sale_places.get(external_id)
         if row is None:
             row = QuickRestoSalePlaceScope(connection_id=connection.id, external_id=external_id)
+            # On the very first setup show discovered points as preselected.
+            # Once a scope has ever been confirmed, new points stay unselected
+            # until the owner explicitly reviews them.
+            row.is_selected = bool(
+                connection.external_venue_id is None and connection.scope_status == "NEEDS_SELECTION"
+            )
             db.add(row)
             existing_sale_places[external_id] = row
         row.external_name = _bounded_title(
@@ -474,6 +494,7 @@ def apply_quickresto_scope(
     external_venue_id: int,
     sale_place_ids: Iterable[int],
     store_ids: Iterable[int],
+    actor_user_id: int | None = None,
 ) -> dict[str, Any]:
     venue_id = int(external_venue_id)
     selected_sale_ids = {int(value) for value in sale_place_ids}
@@ -547,16 +568,21 @@ def apply_quickresto_scope(
         or previous_store_ids != selected_store_ids
         or connection.scope_status != "READY"
     )
+    confirmed_at = _utcnow()
     for row in sale_places:
         row.is_selected = bool(row.is_available and row.external_id in selected_sale_ids)
         if row.is_available and row.external_venue_id == venue_id:
             row.is_confirmed = True
+            row.confirmed_by_user_id = int(actor_user_id) if actor_user_id is not None else None
+            row.confirmed_at = confirmed_at
     for row in stores:
         row.is_selected = bool(row.is_available and row.external_id in selected_store_ids)
     connection.external_venue_id = venue_id
     connection.external_venue_name = venue.external_name
+    connection.external_venue_version = venue.external_version
     connection.scope_status = "READY"
-    connection.scope_confirmed_at = _utcnow()
+    connection.scope_confirmed_at = confirmed_at
+    connection.scope_confirmed_by_user_id = int(actor_user_id) if actor_user_id is not None else None
     if connection.last_sync_error == LEGACY_SCOPE_SELECTION_REQUIRED_MESSAGE:
         connection.last_sync_error = None
     if changed and previous_venue_id is not None:
@@ -564,6 +590,30 @@ def apply_quickresto_scope(
     if changed:
         connection.incremental_cursor_closed_at = None
         connection.last_full_reconciliation_at = None
+        db.add(
+            QuickRestoScopeAudit(
+                connection_id=int(connection.id),
+                actor_user_id=int(actor_user_id) if actor_user_id is not None else None,
+                scope_generation=int(connection.scope_generation or 1),
+                previous_scope_json={
+                    "external_venue_id": int(previous_venue_id) if previous_venue_id is not None else None,
+                    "sale_place_ids": sorted(previous_sale_ids),
+                    "store_ids": sorted(previous_store_ids),
+                },
+                current_scope_json={
+                    "external_venue_id": venue_id,
+                    "sale_place_ids": sorted(selected_sale_ids),
+                    "store_ids": sorted(selected_store_ids),
+                },
+                changes_json={
+                    "sale_places_added": sorted(selected_sale_ids - previous_sale_ids),
+                    "sale_places_removed": sorted(previous_sale_ids - selected_sale_ids),
+                    "stores_added": sorted(selected_store_ids - previous_store_ids),
+                    "stores_removed": sorted(previous_store_ids - selected_store_ids),
+                },
+                changed_at=confirmed_at,
+            )
+        )
     recompute_payment_applicability(db, connection_id=int(connection.id))
     db.flush()
     return {
@@ -629,6 +679,8 @@ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnectio
                 "is_available": bool(row.is_available),
                 "is_selected": bool(row.is_selected),
                 "is_confirmed": bool(row.is_confirmed),
+                "confirmed_by_user_id": row.confirmed_by_user_id,
+                "confirmed_at": row.confirmed_at.isoformat() if row.confirmed_at else None,
             }
             for row in sale_places
         ],
