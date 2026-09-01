@@ -68,6 +68,7 @@ from app.services.integrations.quickresto_scope import (
     payment_type_is_applicable,
     refresh_quickresto_catalog,
     selected_sale_place_ids,
+    selected_store_ids,
 )
 
 
@@ -1016,6 +1017,72 @@ def _list_order_rows_for_shifts(
     return [row for row in _object_rows(client, "orders") if str(row.get("shiftId") or "") in shift_ids]
 
 
+def _sync_previous_scope_mismatch_issue(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    run: QuickRestoSyncRun,
+    mismatch_external_ids: set[str],
+) -> QuickRestoImportIssue | None:
+    group_key = connection_group_key("PREVIOUS_SCOPE_MISMATCH")
+    existing = db.execute(
+        select(QuickRestoImportIssue).where(
+            QuickRestoImportIssue.connection_id == int(connection.id),
+            QuickRestoImportIssue.group_key == group_key,
+        )
+    ).scalar_one_or_none()
+    normalized_ids = sorted(str(value) for value in mismatch_external_ids if str(value))
+    if not normalized_ids:
+        if existing is not None and str(existing.status or "").upper() in ACTIVE_ISSUE_STATUSES:
+            transition_issue(
+                db,
+                issue=existing,
+                status="RESOLVED",
+                event_type="SCOPE_RECONCILED",
+                actor_user_id=int(run.requested_by_user_id) if run.requested_by_user_id else None,
+                sync_run_id=int(run.id),
+                resolution_code="CURRENT_SCOPE_VERIFIED",
+                resolution_note="Историческая сверка не обнаружила смен вне текущей области QuickResto.",
+            )
+        return None
+    existing_ids = []
+    existing_count = 0
+    if existing is not None and isinstance(existing.details_json, dict):
+        existing_ids = sorted(str(value) for value in existing.details_json.get("legacy_external_shift_ids") or ())
+        existing_count = int(existing.details_json.get("legacy_shift_count") or 0)
+    if (
+        existing is not None
+        and str(existing.status or "").upper() == "IGNORED"
+        and existing_count == len(normalized_ids)
+        and existing_ids == normalized_ids[:100]
+    ):
+        return None
+    scope_error = QuickRestoLocationScopeError(
+        error_code="PREVIOUS_SCOPE_MISMATCH",
+        user_summary=(
+            "Ранее импортированные смены не соответствуют текущей области QuickResto. "
+            "Проверьте историю — Axelio не изменяет старые отчёты автоматически."
+        ),
+        technical_summary="Historical QuickResto imports contain shifts outside the confirmed current scope",
+        details={
+            "selected_external_venue_id": int(connection.external_venue_id or 0) or None,
+            "legacy_shift_count": len(normalized_ids),
+            "legacy_external_shift_ids": normalized_ids[:100],
+        },
+    )
+    failure = classify_quickresto_failure(scope_error)
+    return upsert_import_issue(
+        db,
+        connection_id=int(connection.id),
+        sync_run_id=int(run.id),
+        group_key=group_key,
+        business_date=None,
+        shift_slot=None,
+        failure=failure,
+        actor_user_id=int(run.requested_by_user_id) if run.requested_by_user_id else None,
+    )
+
+
 def _stage_quickresto_sources(
     db: Session,
     *,
@@ -1050,6 +1117,19 @@ def _stage_quickresto_sources(
         closed_shifts = filtered
 
     scope_index = load_quickresto_scope_index(db, connection=connection)
+    historical_import_ids = (
+        {
+            str(value)
+            for value in db.execute(
+                select(QuickRestoShiftImport.external_shift_id).where(
+                    QuickRestoShiftImport.connection_id == int(connection.id)
+                )
+            ).scalars()
+        }
+        if full_reconciliation
+        else set()
+    )
+    historical_scope_mismatch_ids: set[str] = set()
     scope_decisions: dict[int, Any] = {}
     scoped_shifts: list[dict[str, Any]] = []
     scope_counts = {
@@ -1061,11 +1141,16 @@ def _stage_quickresto_sources(
     }
     for shift in closed_shifts:
         decision = evaluate_quickresto_shift_scope(shift, scope=scope_index)
+        external_shift_id = str(shift.get("frontId") or shift.get("_id") or "").strip()
         if decision.action == "SKIP_OTHER_VENUE":
             scope_counts["shifts_skipped_other_venue"] += 1
+            if external_shift_id and external_shift_id in historical_import_ids:
+                historical_scope_mismatch_ids.add(external_shift_id)
             continue
         if decision.action == "SKIP_UNSELECTED_SALE_PLACE":
             scope_counts["shifts_skipped_unselected_sale_place"] += 1
+            if external_shift_id and external_shift_id in historical_import_ids:
+                historical_scope_mismatch_ids.add(external_shift_id)
             continue
         object_id = int(shift.get("id") or 0)
         if object_id > 0:
@@ -1075,6 +1160,18 @@ def _stage_quickresto_sources(
             scope_counts["shifts_in_scope"] += 1
         else:
             scope_counts["shifts_blocked_by_scope"] += 1
+    historical_scope_issue = None
+    if full_reconciliation:
+        historical_scope_issue = _sync_previous_scope_mismatch_issue(
+            db,
+            connection=connection,
+            run=run,
+            mismatch_external_ids=historical_scope_mismatch_ids,
+        )
+    scope_counts["historical_scope_mismatch_count"] = len(historical_scope_mismatch_ids)
+    scope_counts["historical_scope_mismatch_issue_id"] = (
+        int(historical_scope_issue.id) if historical_scope_issue is not None else None
+    )
     closed_shifts = scoped_shifts
 
     shift_ids = {
@@ -1092,6 +1189,7 @@ def _stage_quickresto_sources(
         order_details_by_shift[str(detail.get("shiftId") or "")].append(detail)
 
     night_split = bool(connection.night_shift_split_enabled and venue.night_shifts_enabled)
+    snapshot_store_ids = selected_store_ids(db, connection_id=int(connection.id))
     sealed_rows = []
     scope_errors_by_fingerprint: dict[str, Any] = {}
     first_snapshot_error: QuickRestoSnapshotError | None = None
@@ -1118,6 +1216,7 @@ def _stage_quickresto_sources(
                 business_date=target_date,
                 shift_slot=target_slot,
                 source_key=f"row:{index}:pk:{int(shift.get('id') or 0)}",
+                scope_store_ids=snapshot_store_ids,
             )
             sealed_rows.append(sealed)
             decision = scope_decisions.get(int(shift.get("id") or 0))
@@ -1466,6 +1565,19 @@ def _perform_sync(
     shifts_imported = 0
     report_ids: list[int] = []
     conflicts: list[dict[str, Any]] = list(scope_conflicts)
+    historical_issue_id = scope_counts.get("historical_scope_mismatch_issue_id")
+    if historical_issue_id:
+        historical_issue = db.get(QuickRestoImportIssue, int(historical_issue_id))
+        if historical_issue is not None and str(historical_issue.status or "").upper() in ACTIVE_ISSUE_STATUSES:
+            conflicts.append(
+                {
+                    "issue_id": int(historical_issue.id),
+                    "business_date": None,
+                    "shift_slot": None,
+                    "error_code": historical_issue.error_code,
+                    "error": historical_issue.user_summary,
+                }
+            )
     ignored_groups = 0
     for _key, group_snapshots in sorted(
         grouped.items(),

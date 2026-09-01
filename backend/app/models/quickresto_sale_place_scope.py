@@ -28,6 +28,10 @@ class QuickRestoSalePlaceScope(Base):
     default_cooking_place_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     is_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    confirmed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

@@ -28,10 +28,62 @@ class MigrationContractTests(unittest.TestCase):
 
         heads = scripts.get_heads()
         revision = scripts.get_revision("c9e7a5b3d1f0")
+        hardening = scripts.get_revision("d0f8b6c4e2a1")
 
-        self.assertEqual(heads, ["c9e7a5b3d1f0"])
+        self.assertEqual(heads, ["d0f8b6c4e2a1"])
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "b8d4f6a2c1e9")
+        self.assertIsNotNone(hardening)
+        self.assertEqual(hardening.down_revision, "c9e7a5b3d1f0")
+
+    def test_quickresto_scope_hardening_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                for statement in (
+                    "CREATE TABLE users (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY, external_venue_id INTEGER, scope_confirmed_at DATETIME)",
+                    "CREATE TABLE quickresto_external_venues (id INTEGER PRIMARY KEY, connection_id INTEGER NOT NULL, external_id INTEGER NOT NULL, external_version INTEGER)",
+                    "CREATE TABLE quickresto_sale_place_scopes (id INTEGER PRIMARY KEY, connection_id INTEGER NOT NULL, is_confirmed BOOLEAN NOT NULL DEFAULT 0)",
+                ):
+                    connection.exec_driver_sql(statement)
+                connection.exec_driver_sql("INSERT INTO users (id) VALUES (1)")
+                connection.exec_driver_sql(
+                    "INSERT INTO quickresto_connections (id, external_venue_id, scope_confirmed_at) VALUES (1, 101, '2026-09-01')"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO quickresto_external_venues (id, connection_id, external_id, external_version) VALUES (1, 1, 101, 7)"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO quickresto_sale_place_scopes (id, connection_id, is_confirmed) VALUES (1, 1, 1)"
+                )
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "c9e7a5b3d1f0")
+                command.upgrade(config, "d0f8b6c4e2a1")
+                inspector = sa.inspect(engine)
+                connection_columns = {column["name"] for column in inspector.get_columns("quickresto_connections")}
+                sale_columns = {column["name"] for column in inspector.get_columns("quickresto_sale_place_scopes")}
+                self.assertIn("external_venue_version", connection_columns)
+                self.assertIn("scope_confirmed_by_user_id", connection_columns)
+                self.assertIn("confirmed_by_user_id", sale_columns)
+                self.assertIn("confirmed_at", sale_columns)
+                self.assertIn("quickresto_scope_audits", inspector.get_table_names())
+                with engine.connect() as connection:
+                    version = connection.exec_driver_sql(
+                        "SELECT external_venue_version FROM quickresto_connections WHERE id = 1"
+                    ).scalar_one()
+                    self.assertEqual(version, 7)
+                command.downgrade(config, "c9e7a5b3d1f0")
+
+            inspector = sa.inspect(engine)
+            self.assertNotIn("quickresto_scope_audits", inspector.get_table_names())
+            self.assertNotIn(
+                "external_venue_version",
+                {column["name"] for column in inspector.get_columns("quickresto_connections")},
+            )
 
     def test_quickresto_multi_venue_scope_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

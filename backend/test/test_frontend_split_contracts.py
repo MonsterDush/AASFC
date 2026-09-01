@@ -175,11 +175,16 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('class="quickresto-api-help"', html)
         self.assertIn("Предприятие → Настройки → Общие настройки", html)
         self.assertIn("https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/", html)
-        self.assertIn("20260901-qrscope1", html)
+        self.assertIn("20260901-qrscope2", html)
         self.assertIn('id="scopeSection"', html)
         self.assertIn('id="externalVenue"', html)
         self.assertIn('id="salePlaceOptions"', html)
         self.assertIn('id="storeOptions"', html)
+        self.assertIn('id="mappingReadinessHint"', html)
+        self.assertIn('id="scopeAuditList"', html)
+        self.assertIn("requiredMappingsReady", script)
+        self.assertIn("mapping_readiness", script)
+        self.assertIn("source_cooking_place_ids", script)
         self.assertIn("/integrations/quickresto/catalog/refresh", script)
         self.assertIn("/integrations/quickresto/scope", script)
         self.assertIn("owner-integration-issues.html?venue_id=", script)
@@ -216,13 +221,26 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('el.apiPassword.value = ""', script)
         self.assertIn("/styles/pages/owner-integration-issues.css", issues_html)
         self.assertIn("/owner-integration-issues.js", issues_html)
-        self.assertIn("/integrations/quickresto/issues?status=", issues_script)
+        self.assertIn("20260901-inlinescope2", issues_html)
+        self.assertIn('id="providerFilter"', issues_html)
+        self.assertIn('id="issueDate"', issues_html)
+        self.assertIn('query.set("business_date"', issues_script)
+        self.assertIn("PREVIOUS_SCOPE_MISMATCH", issues_script)
+        self.assertIn("/integrations/quickresto/issues?${query}", issues_script)
         self.assertIn("data-save-mappings-retry", issues_script)
         self.assertIn("data-save-scope-retry", issues_script)
         self.assertIn("/integrations/quickresto/catalog/refresh", issues_script)
         self.assertIn("/integrations/quickresto/scope", issues_script)
         self.assertIn("owner-quickresto.html?venue_id=", issues_script)
         self.assertIn(".integration-issue-drawer__panel", issues_styles)
+        self.assertIn(".integration-issues-filter-field", issues_styles)
+        english_catalog = (FRONTEND / "locales" / "en.json").read_text(encoding="utf-8")
+        for source in (
+            "Дата проблемы",
+            "Историческая проверка области",
+            "Обязательные сопоставления заполнены — импорт доступен.",
+        ):
+            self.assertIn(source, english_catalog)
 
 
 class PrimaryPageUiPolishContractTests(TestCase):

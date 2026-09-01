@@ -30,6 +30,8 @@ const ids = [
   "oldestFailedAt",
   "activeIssues",
   "allIssues",
+  "providerFilter",
+  "issueDate",
   "refreshIssues",
   "issueList",
   "issueHint",
@@ -349,6 +351,12 @@ function renderShifts(issue) {
     .join("")}</div>`;
 }
 
+function renderHistoricalScopeMismatch(issue) {
+  if (String(issue?.error_code || "").toUpperCase() !== "PREVIOUS_SCOPE_MISMATCH") return "";
+  const ids = Array.isArray(issue?.details?.legacy_external_shift_ids) ? issue.details.legacy_external_shift_ids : [];
+  return `<section class="integration-issue-resolution"><div><h3>Историческая проверка области</h3><div class="muted small mt-4">Axelio ничего не переписал автоматически. Проверьте старые отчёты вручную перед любыми корректировками.</div></div><dl class="integration-issue-facts"><div><dt>Затронуто ранее импортированных смен</dt><dd>${Number(issue?.details?.legacy_shift_count || issue?.shift_count || 0)}</dd></div></dl>${ids.length ? `<div class="muted small">QuickResto shift ID: ${esc(ids.join(", "))}</div>` : ""}</section>`;
+}
+
 function renderDrawer(issue) {
   state.selectedIssue = issue;
   const status = String(issue.status || "OPEN").toUpperCase();
@@ -372,7 +380,7 @@ function renderDrawer(issue) {
       <div><dt>Код причины</dt><dd>${esc(issue.error_code || "—")}</dd></div>
       <div><dt>Последняя ошибка</dt><dd>${esc(formatDate(issue.last_failed_at, { withTime: true }))}</dd></div>
     </dl>
-    <section class="integration-issue-detail-section"><h3>Смены QuickResto</h3>${renderShifts(issue)}</section>
+    ${String(issue.error_code || "").toUpperCase() === "PREVIOUS_SCOPE_MISMATCH" ? renderHistoricalScopeMismatch(issue) : `<section class="integration-issue-detail-section"><h3>Смены QuickResto</h3>${renderShifts(issue)}</section>`}
     ${renderScopeResolution(issue)}
     ${renderMappingResolution(issue)}
     ${!state.canManage ? `<div class="integration-issue-readonly">Доступ только для просмотра. Решить проблему может владелец или администратор заведения.</div>` : ""}
@@ -467,8 +475,14 @@ async function loadIssues({ append = false } = {}) {
   el.issueHint.textContent = "";
   try {
     const offset = append ? state.items.length : 0;
+    const query = new URLSearchParams({
+      status: state.filter,
+      limit: "100",
+      offset: String(offset),
+    });
+    if (el.issueDate?.value) query.set("business_date", el.issueDate.value);
     const result = await api(
-      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/issues?status=${state.filter}&limit=100&offset=${offset}`,
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/issues?${query}`,
     );
     const items = Array.isArray(result.items) ? result.items : [];
     state.items = append ? [...state.items, ...items] : items;
@@ -713,6 +727,7 @@ async function ignoreIssue(button) {
 async function loadPage() {
   if (!venueId) throw new Error("Сначала выберите заведение");
   if (provider !== "quickresto") throw new Error("Этот источник интеграции пока не поддерживается");
+  if (el.providerFilter) el.providerFilter.value = provider;
   el.backToQuickResto.dataset.href = `/owner-quickresto.html?venue_id=${encodeURIComponent(venueId)}`;
   const [venue, integration, paymentMethods, departments] = await Promise.all([
     getVenueById(venueId),
@@ -741,6 +756,14 @@ el.activeIssues?.addEventListener("click", async () => {
 });
 el.allIssues?.addEventListener("click", async () => {
   state.filter = "all";
+  await loadIssues();
+});
+el.providerFilter?.addEventListener("change", async () => {
+  const nextProvider = String(el.providerFilter.value || "quickresto").toLowerCase();
+  if (nextProvider !== "quickresto") return;
+  await loadIssues();
+});
+el.issueDate?.addEventListener("change", async () => {
   await loadIssues();
 });
 el.refreshIssues?.addEventListener("click", async () => {

@@ -153,10 +153,23 @@ def _sanitize_shift(value: Mapping[str, Any]) -> dict[str, Any]:
     return output
 
 
+def _sanitize_store_ids(values: Iterable[Any]) -> list[int]:
+    output: set[int] = set()
+    for value in values:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            output.add(number)
+    return sorted(output)
+
+
 def sanitize_quickresto_source_snapshot(
     *,
     shift: Mapping[str, Any],
     orders: Iterable[Mapping[str, Any]],
+    scope_store_ids: Iterable[Any] = (),
 ) -> dict[str, Any]:
     """Return the strict allowlisted subset needed to retry one shift import.
 
@@ -172,6 +185,7 @@ def sanitize_quickresto_source_snapshot(
         "schema_version": _SNAPSHOT_SCHEMA_VERSION,
         "shift": _sanitize_shift(shift),
         "orders": sanitized_orders,
+        "scope": {"storeIds": _sanitize_store_ids(scope_store_ids)},
     }
 
 
@@ -242,8 +256,11 @@ def seal_quickresto_source_snapshot(
     business_date: date | None = None,
     shift_slot: str | None = None,
     source_key: str | None = None,
+    scope_store_ids: Iterable[Any] = (),
 ) -> SealedQuickRestoSnapshot:
-    sanitized = sanitize_quickresto_source_snapshot(shift=shift, orders=orders)
+    sanitized = sanitize_quickresto_source_snapshot(
+        shift=shift, orders=orders, scope_store_ids=scope_store_ids
+    )
     serialized, encoded = _canonical_payload(sanitized)
     payload_hash = hashlib.sha256(encoded).hexdigest()
     encrypted = encrypt_integration_payload(serialized)
@@ -300,9 +317,21 @@ def open_quickresto_source_snapshot(
         raise QuickRestoSnapshotError("QuickResto source snapshot schema is unsupported")
     shift = payload.get("shift")
     orders = payload.get("orders")
-    if not isinstance(shift, dict) or not isinstance(orders, list):
+    scope_present = "scope" in payload
+    scope = payload.get("scope") or {}
+    if not isinstance(shift, dict) or not isinstance(orders, list) or not isinstance(scope, dict):
         raise QuickRestoSnapshotError("QuickResto source snapshot has an invalid shape")
-    sanitized = sanitize_quickresto_source_snapshot(shift=shift, orders=orders)
+    store_ids = scope.get("storeIds") or ()
+    if not isinstance(store_ids, (list, tuple)):
+        raise QuickRestoSnapshotError("QuickResto source snapshot has an invalid scope")
+    sanitized = sanitize_quickresto_source_snapshot(
+        shift=shift,
+        orders=orders,
+        scope_store_ids=store_ids,
+    )
+    if not scope_present:
+        # Backward compatibility for encrypted snapshots created before scope.storeIds existed.
+        sanitized.pop("scope", None)
     canonical, _canonical_bytes = _canonical_payload(sanitized)
     if canonical != plaintext:
         raise QuickRestoSnapshotError("QuickResto source snapshot is not canonical")

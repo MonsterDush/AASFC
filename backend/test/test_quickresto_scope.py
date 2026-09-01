@@ -18,6 +18,7 @@ from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
 from app.models.quickresto_external_venue import QuickRestoExternalVenue
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_sale_place_scope import QuickRestoSalePlaceScope
+from app.models.quickresto_scope_audit import QuickRestoScopeAudit
 from app.models.quickresto_shift_import import QuickRestoShiftImport
 from app.models.quickresto_store_scope import QuickRestoStoreScope
 from app.models.user import User
@@ -42,8 +43,8 @@ class CatalogQuickRestoClient:
     def __init__(self) -> None:
         self.rows = {
             "TableScheme": [
-                {"id": 101, "name": "Центр", "address": {"fullAddress": "Москва, Центр"}},
-                {"id": 102, "name": "Север", "address": {"fullAddress": "Москва, Север"}},
+                {"id": 101, "version": 7, "name": "Центр", "address": {"fullAddress": "Москва, Центр"}},
+                {"id": 102, "version": 8, "name": "Север", "address": {"fullAddress": "Москва, Север"}},
             ],
             "SalePlace": [
                 {
@@ -134,6 +135,7 @@ class QuickRestoScopeTests(unittest.TestCase):
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoExternalVenue.__table__,
                 QuickRestoSalePlaceScope.__table__,
+                QuickRestoScopeAudit.__table__,
                 QuickRestoStoreScope.__table__,
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoShiftImport.__table__,
@@ -167,6 +169,8 @@ class QuickRestoScopeTests(unittest.TestCase):
         self.assertEqual(summary["venues_seen"], 2)
         self.assertEqual(summary["sale_places_seen"], 3)
         self.assertEqual(summary["stores_seen"], 3)
+        discovered = serialize_quickresto_catalog(self.db, connection=self.connection)
+        self.assertTrue(all(item["is_selected"] for item in discovered["sale_places"]))
 
         result = apply_quickresto_scope(
             self.db,
@@ -174,8 +178,22 @@ class QuickRestoScopeTests(unittest.TestCase):
             external_venue_id=101,
             sale_place_ids=[201],
             store_ids=[401],
+            actor_user_id=1,
         )
         self.assertTrue(result["changed"])
+        self.assertEqual(self.connection.external_venue_version, 7)
+        self.assertEqual(self.connection.scope_confirmed_by_user_id, 1)
+        confirmed = self.db.execute(
+            select(QuickRestoSalePlaceScope).where(
+                QuickRestoSalePlaceScope.connection_id == self.connection.id,
+                QuickRestoSalePlaceScope.external_id == 201,
+            )
+        ).scalar_one()
+        self.assertEqual(confirmed.confirmed_by_user_id, 1)
+        self.assertIsNotNone(confirmed.confirmed_at)
+        audit = self.db.execute(select(QuickRestoScopeAudit)).scalar_one()
+        self.assertEqual(audit.actor_user_id, 1)
+        self.assertEqual(audit.current_scope_json["external_venue_id"], 101)
         self.assertEqual(result["scope_status"], "READY")
 
         catalog = serialize_quickresto_catalog(self.db, connection=self.connection)
@@ -379,6 +397,47 @@ class QuickRestoScopeTests(unittest.TestCase):
         self.assertEqual(other.action, "SKIP_OTHER_VENUE")
         self.assertEqual(unresolved.error.error_code, "LOCATION_UNRESOLVED")
         self.assertEqual(conflict.error.error_code, "LOCATION_SCOPE_CONFLICT")
+
+    def test_new_sale_place_after_confirmation_stays_unselected_and_requires_review(self):
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201],
+            store_ids=[401],
+            actor_user_id=1,
+        )
+        self.client.rows["SalePlace"].append(
+            {
+                "id": 204,
+                "title": "Центр — новая касса",
+                "tableScheme": {"id": 101},
+                "defaultCookingPlace": {"id": 301},
+            }
+        )
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        catalog = serialize_quickresto_catalog(self.db, connection=self.connection)
+        new_place = next(item for item in catalog["sale_places"] if item["external_id"] == 204)
+        self.assertFalse(new_place["is_selected"])
+        self.assertFalse(new_place["is_confirmed"])
+        scope = QuickRestoScopeIndex(
+            external_venue_id=101,
+            sale_places={
+                int(row.external_id): row
+                for row in self.db.execute(
+                    select(QuickRestoSalePlaceScope).where(
+                        QuickRestoSalePlaceScope.connection_id == self.connection.id
+                    )
+                ).scalars()
+            },
+        )
+        decision = evaluate_quickresto_shift_scope(
+            {"tableScheme": {"id": 101}, "salePlace": {"id": 204}},
+            scope=scope,
+        )
+        self.assertEqual(decision.action, "ISSUE")
+        self.assertEqual(decision.error.error_code, "LOCATION_SCOPE_CHANGED")
 
 
 if __name__ == "__main__":

@@ -522,6 +522,8 @@ def serialize_issue(
             "sale_place_id",
             "opening_sale_place_id",
             "resolved_sale_place_venue_id",
+            "legacy_shift_count",
+            "legacy_external_shift_ids",
         )
         if key in details
     }
@@ -541,7 +543,7 @@ def serialize_issue(
         "updated_at": issue.updated_at.isoformat() if issue.updated_at else None,
         "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
         "resolution_note": issue.resolution_note,
-        "shift_count": len(issue.shifts),
+        "shift_count": max(len(issue.shifts), int(details.get("legacy_shift_count") or 0)),
         "can_retry": status in {"OPEN", "RETRY_PENDING"} and retry_sources_available,
         "can_ignore": status in {"OPEN", "RETRY_PENDING"},
         "details": public_details,
@@ -579,6 +581,14 @@ def issue_counters(db: Session, *, connection_id: int) -> dict[str, Any]:
     )
     return {
         "open_count": len(rows),
-        "affected_shift_count": sum(len(row.shifts) for row in rows),
+        "affected_shift_count": sum(
+            max(
+                len(row.shifts),
+                int(row.details_json.get("legacy_shift_count") or 0)
+                if isinstance(row.details_json, dict)
+                else 0,
+            )
+            for row in rows
+        ),
         "oldest_failed_at": min((row.first_failed_at for row in rows), default=None),
     }
