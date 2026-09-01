@@ -183,7 +183,10 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn(".quickresto-night-window__grid", styles)
         self.assertIn("grid-template-columns:minmax(0,1fr)", styles)
         self.assertIn("report_import_mode: selectedImportMode()", script)
-        self.assertIn("night_shift_split_enabled: state.venueNightShiftsEnabled", script)
+        self.assertRegex(
+            script,
+            r"night_shift_split_enabled:\s*state\.venueNightShiftsEnabled",
+        )
         self.assertIn("night_shift_start_hour:", script)
         self.assertIn("renderNightShiftSettings", script)
         self.assertIn("getPaymentMethods(venueId, { includeArchived: false })", script)
