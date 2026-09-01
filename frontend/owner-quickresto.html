@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260831-qrissues1" />
+  <link rel="stylesheet" href="/styles/pages/owner-quickresto.css?v=20260901-qrscope1" />
   <script>
     (() => {
       try {
@@ -119,17 +119,50 @@
         <div class="muted small mt-8" id="connectionHint" aria-live="polite"></div>
       </section>
 
-      <section class="card section-card quickresto-issues" id="issueSection" aria-labelledby="issueTitle" data-attention="false">
+      <section class="card section-card quickresto-scope" id="scopeSection" data-status="NEEDS_SELECTION">
         <div class="section-card__head quickresto-section-head">
           <div>
-            <div class="quickresto-issues__title" id="issueTitle">Требуют внимания <span class="quickresto-issues__count" id="issueOpenCount" aria-live="polite">0</span></div>
-            <div class="muted small mt-4">Смены, которые не удалось безопасно импортировать. Откройте ошибку, чтобы проверить причину и повторить обработку.</div>
+            <b>Область импорта</b>
+            <div class="muted small mt-4">Выберите конкретное заведение внутри облака QuickResto, его места реализации и связанные склады. Смены других заведений в Axelio не попадут.</div>
           </div>
+          <span class="quickresto-status" id="scopeStatus">Нужно выбрать</span>
         </div>
-        <div id="issueList" class="quickresto-issue-list mt-12" aria-live="polite">
-          <div class="quickresto-empty">Загружаем очередь ошибок…</div>
+        <div class="quickresto-scope__toolbar mt-12">
+          <button class="btn" id="refreshScopeCatalog" type="button">Получить заведения и точки</button>
+          <div class="muted small">Список можно обновить повторно, если в QuickResto добавились новые точки или склады.</div>
         </div>
-        <div class="muted small mt-8" id="issueHint" aria-live="polite"></div>
+        <div class="quickresto-scope__content mt-12" id="scopeContent">
+          <label class="quickresto-scope__venue">
+            <span>Заведение QuickResto</span>
+            <select id="externalVenue"><option value="">— сначала получите список —</option></select>
+          </label>
+          <fieldset class="quickresto-scope__fieldset">
+            <legend>Места реализации</legend>
+            <div class="quickresto-scope__choices" id="salePlaceOptions">
+              <div class="quickresto-empty">Сначала выберите заведение QuickResto.</div>
+            </div>
+          </fieldset>
+          <fieldset class="quickresto-scope__fieldset">
+            <legend>Связанные склады</legend>
+            <div class="quickresto-scope__choices" id="storeOptions">
+              <div class="quickresto-empty">Склады появятся после выбора мест реализации.</div>
+            </div>
+          </fieldset>
+        </div>
+        <div class="quickresto-actions mt-12">
+          <button class="btn primary" id="saveScope" type="button">Сохранить область импорта</button>
+        </div>
+        <div class="muted small mt-8" id="scopeHint" aria-live="polite"></div>
+      </section>
+
+      <section class="card section-card quickresto-issues-link" id="issueSection" data-attention="false">
+        <div class="section-card__head quickresto-section-head">
+          <div>
+            <div class="quickresto-issues__title">Проблемы импорта <span class="quickresto-issues__count" id="issueOpenCount" aria-live="polite">0</span></div>
+            <div class="muted small mt-4">Разбор неопределённых смен и повторный импорт находятся в отдельном рабочем разделе.</div>
+          </div>
+          <a class="btn" id="openIssues" href="#">Открыть центр проблем</a>
+        </div>
       </section>
 
       <section class="card section-card">
@@ -166,22 +199,8 @@
     </main>
   </div>
 
-  <div class="quickresto-issue-drawer" id="issueDrawer" aria-hidden="true">
-    <div class="quickresto-issue-drawer__backdrop" data-issue-close></div>
-    <section class="quickresto-issue-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="issueDrawerTitle" tabindex="-1">
-      <header class="quickresto-issue-drawer__head">
-        <div>
-          <div class="quickresto-eyebrow">Ошибка импорта</div>
-          <h2 id="issueDrawerTitle">Смена QuickResto</h2>
-        </div>
-        <button class="btn subtle inline" type="button" data-issue-close aria-label="Закрыть ошибку импорта">Закрыть</button>
-      </header>
-      <div class="quickresto-issue-drawer__body" id="issueDrawerBody"></div>
-    </section>
-  </div>
-
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/owner-quickresto.js?v=20260831-qrissues1"></script>
+  <script type="module" src="/owner-quickresto.js?v=20260901-qrscope1"></script>
 </body>
 </html>

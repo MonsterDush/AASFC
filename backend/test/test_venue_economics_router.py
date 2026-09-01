@@ -69,10 +69,39 @@ def _route_manifest(router) -> list[tuple[list[str], str, str]]:
 class VenueEconomicsRouterContractTests(TestCase):
     def test_all_venue_routes_keep_original_public_manifest(self):
         manifest = _route_manifest(venues.router)
-        digest = hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+        new_route_names = {
+            "get_quickresto_catalog",
+            "refresh_quickresto_catalog_route",
+            "put_quickresto_scope",
+        }
+        base_manifest = [row for row in manifest if row[2] not in new_route_names]
+        base_digest = hashlib.sha256(
+            json.dumps(base_manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        actual_new_routes = {
+            (tuple(methods), path, name) for methods, path, name in manifest if name in new_route_names
+        }
+        expected_new_routes = {
+            (
+                ("GET",),
+                "/venues/{venue_id}/integrations/quickresto/catalog",
+                "get_quickresto_catalog",
+            ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/quickresto/catalog/refresh",
+                "refresh_quickresto_catalog_route",
+            ),
+            (
+                ("PUT",),
+                "/venues/{venue_id}/integrations/quickresto/scope",
+                "put_quickresto_scope",
+            ),
+        }
 
-        self.assertEqual(len(manifest), 175)
-        self.assertEqual(digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
+        self.assertEqual(len(manifest), 178)
+        self.assertEqual(base_digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
+        self.assertEqual(actual_new_routes, expected_new_routes)
 
     def test_extracted_router_owns_all_twenty_economics_routes(self):
         extracted = _route_manifest(venue_economics.router)
@@ -131,7 +160,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_shift_intervals.router, 4),
             (venue_shifts.router, 12),
             (venue_shift_swaps.router, 9),
-            (venue_quickresto.router, 10),
+            (venue_quickresto.router, 13),
         ]
         venues_manifest = {(tuple(methods), path, name) for methods, path, name in _route_manifest(venues.router)}
         native_manifest = set()
@@ -145,7 +174,7 @@ class VenueEconomicsRouterContractTests(TestCase):
                 self.assertIn(route, venues_manifest)
                 native_manifest.add(route)
 
-        self.assertEqual(len(native_manifest), 108)
+        self.assertEqual(len(native_manifest), 111)
 
 
 class VenueEconomicsRouterBehaviorTests(TestCase):

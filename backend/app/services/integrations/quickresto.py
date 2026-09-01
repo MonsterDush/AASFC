@@ -21,6 +21,22 @@ _RETRY_BACKOFF_SECONDS = (1.0, 2.0, 4.0)
 _MAX_RETRY_AFTER_SECONDS = 60.0
 
 QUICKRESTO_OBJECT_TYPES: dict[str, tuple[str, str]] = {
+    "venues": (
+        "front.tablemanagement",
+        "ru.edgex.quickresto.modules.front.tablemanagement.TableScheme",
+    ),
+    "sale_places": (
+        "warehouse.nomenclature.sale_place",
+        "ru.edgex.quickresto.modules.warehouse.nomenclature.sale_place.SalePlace",
+    ),
+    "cooking_places": (
+        "warehouse.nomenclature.cooking_place",
+        "ru.edgex.quickresto.modules.warehouse.nomenclature.cooking_place.CookingPlace",
+    ),
+    "stores": (
+        "warehouse.store",
+        "ru.edgex.quickresto.modules.warehouse.store.Store",
+    ),
     "payment_types": (
         "core.dictionaries.paymenttypes",
         "ru.edgex.quickresto.modules.core.dictionaries.paymenttypes.PaymentType",

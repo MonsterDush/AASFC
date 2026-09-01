@@ -12,6 +12,11 @@ class QuickRestoConnection(Base):
     __tablename__ = "quickresto_connections"
     __table_args__ = (
         UniqueConstraint("venue_id", name="uq_quickresto_connections_venue"),
+        UniqueConstraint(
+            "cloud",
+            "external_venue_id",
+            name="uq_quickresto_connections_cloud_external_venue",
+        ),
         CheckConstraint(
             "business_day_cutoff_hour >= 0 AND business_day_cutoff_hour <= 23",
             name="ck_quickresto_connections_cutoff_hour",
@@ -28,6 +33,14 @@ class QuickRestoConnection(Base):
             "report_import_mode IN ('DRAFT', 'CLOSED')",
             name="ck_quickresto_connections_report_import_mode",
         ),
+        CheckConstraint(
+            "scope_status IN ('NEEDS_SELECTION', 'READY', 'STALE')",
+            name="ck_quickresto_connections_scope_status",
+        ),
+        CheckConstraint(
+            "scope_generation >= 1",
+            name="ck_quickresto_connections_scope_generation",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -35,6 +48,13 @@ class QuickRestoConnection(Base):
     cloud: Mapped[str] = mapped_column(String(63), nullable=False)
     api_login_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     api_password_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    external_venue_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    external_venue_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    scope_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="NEEDS_SELECTION", server_default="NEEDS_SELECTION"
+    )
+    scope_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    scope_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     auto_sync_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     report_import_mode: Mapped[str] = mapped_column(
@@ -66,3 +86,8 @@ class QuickRestoConnection(Base):
     department_mappings = relationship(
         "QuickRestoDepartmentMapping", back_populates="connection", cascade="all, delete-orphan"
     )
+    external_venues = relationship("QuickRestoExternalVenue", back_populates="connection", cascade="all, delete-orphan")
+    sale_place_scopes = relationship(
+        "QuickRestoSalePlaceScope", back_populates="connection", cascade="all, delete-orphan"
+    )
+    store_scopes = relationship("QuickRestoStoreScope", back_populates="connection", cascade="all, delete-orphan")

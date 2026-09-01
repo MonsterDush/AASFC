@@ -21,6 +21,7 @@ if (venueId) setActiveVenueId(venueId);
 const el = Object.fromEntries([
   "title", "venueTitle", "backToVenue", "quickrestoTab", "iikoTab", "quickrestoPanel", "iikoPanel",
   "quickrestoTabStatus", "quickrestoStatus", "quickrestoDescription", "configureQuickResto", "integrationHint",
+  "openQuickRestoIssues", "quickrestoIssueCount", "iikoDescription",
 ].map((id) => [id, document.getElementById(id)]));
 
 function errorMessage(error) {
@@ -58,6 +59,7 @@ async function load() {
   }
   el.backToVenue.dataset.href = `/app-venue.html?venue_id=${encodeURIComponent(venueId)}`;
   el.configureQuickResto.href = `/owner-quickresto.html?venue_id=${encodeURIComponent(venueId)}`;
+  el.openQuickRestoIssues.href = `/owner-integration-issues.html?venue_id=${encodeURIComponent(venueId)}&provider=quickresto`;
   const [venue, integration] = await Promise.all([
     getVenueById(venueId),
     api(`/venues/${encodeURIComponent(venueId)}/integrations/quickresto`),
@@ -66,6 +68,11 @@ async function load() {
   el.title.textContent = `Интеграции · ${venueName}`;
   el.venueTitle.textContent = venueName;
   const canManage = integration.permissions?.can_manage !== false;
+  const activeProvider = String(integration.active_pos_provider || "").toUpperCase();
+  if (activeProvider === "QUICKRESTO") {
+    el.iikoDescription.textContent =
+      "Сейчас для заведения активна QuickResto. Перед будущим подключением iiko её потребуется отключить.";
+  }
   el.configureQuickResto.textContent = canManage ? "Настроить QuickResto" : "Открыть QuickResto";
   if (!integration.configured) {
     el.quickrestoTabStatus.textContent = "Не подключено";
@@ -73,6 +80,12 @@ async function load() {
     el.quickrestoStatus.dataset.status = "EMPTY";
     return;
   }
+
+  const openIssueCount = Number(integration.issues?.open_count || 0);
+  el.quickrestoIssueCount.textContent = String(openIssueCount);
+  el.openQuickRestoIssues.hidden = false;
+  el.openQuickRestoIssues.classList.remove("hidden");
+  el.openQuickRestoIssues.dataset.attention = String(openIssueCount > 0);
 
   const connection = integration.connection || {};
   const active = connection.is_active !== false;

@@ -35,6 +35,20 @@ class QuickRestoMappingsUpdateIn(BaseModel):
     departments: list[QuickRestoDepartmentMappingIn] = Field(default_factory=list)
 
 
+class QuickRestoScopeUpdateIn(BaseModel):
+    external_venue_id: int = Field(..., gt=0)
+    sale_place_ids: list[int] = Field(..., min_length=1, max_length=500)
+    store_ids: list[int] = Field(default_factory=list, max_length=500)
+
+    @field_validator("sale_place_ids", "store_ids")
+    @classmethod
+    def validate_scope_ids(cls, value: list[int]) -> list[int]:
+        normalized = sorted({int(item) for item in value})
+        if any(item <= 0 for item in normalized):
+            raise ValueError("QuickResto scope identifiers must be positive")
+        return normalized
+
+
 class QuickRestoIssueResolveIn(BaseModel):
     action: Literal["IGNORE"]
     note: str = Field(..., min_length=3, max_length=1000)

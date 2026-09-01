@@ -66,6 +66,7 @@ const extractedPageStyles = new Map([
   ["owner-economics-rules.html", "styles/pages/owner-economics.css"],
   ["owner-expenses.html", "styles/pages/finance-pages.css"],
   ["owner-finance-ledger.html", "styles/pages/finance-pages.css"],
+  ["owner-integration-issues.html", "styles/pages/owner-integration-issues.css"],
   ["owner-integrations.html", "styles/pages/owner-integrations.css"],
   ["owner-kpi.html", "styles/pages/owner-catalogs.css"],
   ["owner-pay-profile.html", "styles/pages/owner-pay-profile.css"],
@@ -112,11 +113,12 @@ const pageStyleCacheKeyOverrides = new Map([
   ["owner-economics-rules.html", "20260726-polish11"],
   ["owner-expenses.html", "20260810-financepolish1"],
   ["owner-finance-ledger.html", "20260802-financeux4"],
-  ["owner-integrations.html", "20260828-integrations2"],
+  ["owner-integration-issues.html", "20260901-inlinescope1"],
+  ["owner-integrations.html", "20260901-issuesentry1"],
   ["owner-kpi.html", "20260726-polish10"],
   ["owner-payroll.html", "20260802-payrollpayments1"],
   ["owner-payment-methods.html", "20260726-polish10"],
-  ["owner-quickresto.html", "20260831-qrissues1"],
+  ["owner-quickresto.html", "20260901-qrscope1"],
   ["owner-pay-profile.html", "20260820-weekdayrates1"],
   ["owner-pay-profiles.html", "20260820-weekdayrates1"],
   ["owner-recurring-expenses.html", "20260723-polish2"],
@@ -151,6 +153,7 @@ const inlineFreePages = [
   "owner-expense-categories.html",
   "owner-expenses.html",
   "owner-finance-ledger.html",
+  "owner-integration-issues.html",
   "owner-integrations.html",
   "owner-kpi.html",
   "owner-pay-profile.html",
@@ -177,13 +180,14 @@ const inlineFreeEntrypoints = new Map([
   ["owner-expense-categories.html", "/owner-expense-categories.js?v=20260726-navmore1"],
   ["owner-expenses.html", "/owner-expenses.js?v=20260810-financepolish1"],
   ["owner-finance-ledger.html", "/owner-finance-ledger.js?v=20260802-financeux2"],
-  ["owner-integrations.html", "/owner-integrations.js?v=20260831-qrissues1"],
+  ["owner-integration-issues.html", "/owner-integration-issues.js?v=20260901-inlinescope1"],
+  ["owner-integrations.html", "/owner-integrations.js?v=20260901-issuesentry1"],
   ["owner-kpi.html", "/owner-kpi.js?v=20260726-navmore1"],
   ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260826-i18nvalue1"],
   ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20260726-navmore1"],
   ["owner-payroll.html", "/owner-payroll.js?v=20260823-kpiperunit1"],
   ["owner-payment-methods.html", "/owner-payment-methods.js?v=20260726-navmore1"],
-  ["owner-quickresto.html", "/owner-quickresto.js?v=20260831-qrissues1"],
+  ["owner-quickresto.html", "/owner-quickresto.js?v=20260901-qrscope1"],
   ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260726-navmore1"],
   ["owner-setup.html", "/owner-setup.js?v=20260810-setup1"],
   ["owner-summary.html", "/owner-summary.js?v=20260825-i18nsummary1"],
@@ -203,6 +207,7 @@ const inlineFreeModules = [
   "owner-expense-categories.js",
   "owner-expenses.js",
   "owner-finance-ledger.js",
+  "owner-integration-issues.js",
   "owner-integrations.js",
   "owner-kpi.js",
   "owner-quickresto.js",
@@ -344,7 +349,7 @@ assert.ok(stylesManifestSource.split("\n").length < 30, "styles.css manifest une
 assert.ok(appSource.split("\n").length < 1_600, "app.js regained runtime style payloads");
 assert.ok(pageLoaderSource.split("\n").length < 180, "page-loader.js unexpectedly grew");
 
-assert.equal(htmlPageFiles.length, 52, "every frontend HTML page must use the global loader");
+assert.equal(htmlPageFiles.length, 53, "every frontend HTML page must use the global loader");
 for (const fileName of htmlPageFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.ok(

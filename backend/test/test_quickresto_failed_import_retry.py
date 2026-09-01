@@ -18,14 +18,17 @@ from app.models.notification_job import NotificationJob
 from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_external_venue import QuickRestoExternalVenue
 from app.models.quickresto_import_issue import QuickRestoImportIssue
 from app.models.quickresto_import_issue_audit import QuickRestoImportIssueAudit
 from app.models.quickresto_import_issue_shift import QuickRestoImportIssueShift
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
+from app.models.quickresto_sale_place_scope import QuickRestoSalePlaceScope
 from app.models.quickresto_shift_import import QuickRestoShiftImport
 from app.models.quickresto_source_snapshot import QuickRestoSourceSnapshot
 from app.models.quickresto_sync_run import QuickRestoSyncRun
+from app.models.quickresto_store_scope import QuickRestoStoreScope
 from app.models.user import User
 from app.models.venue import Venue
 from app.services.integrations import credentials
@@ -62,6 +65,9 @@ class CountingQuickRestoClient:
             "writeOffTotalCash": 0,
             "writeOffTotalCard": 0,
             "writeOffTotalBonuses": 0,
+            "tableScheme": {"id": 501, "name": "Тестовое заведение"},
+            "salePlace": {"id": 601, "title": "Основная касса"},
+            "createTerminalSalePlace": {"id": 601, "title": "Основная касса"},
         }
         self.order = {
             "id": 201,
@@ -91,13 +97,35 @@ class CountingQuickRestoClient:
         del module_name
         self.calls += 1
         if class_name.endswith("PaymentType"):
-            return [{"id": 1, "name": "Карта", "operationType": "payment"}]
+            return [
+                {
+                    "id": 1,
+                    "name": "Карта",
+                    "operationType": "payment",
+                    "allowedSalePlacesWeb": [],
+                }
+            ]
         if class_name.endswith("DishCategory"):
             return [{"id": 6, "name": "Бар"}]
         if class_name.endswith("Shift"):
             return [deepcopy(self.shift)]
         if class_name.endswith("OrderInfo"):
             return [deepcopy(self.order)]
+        if class_name.endswith("TableScheme"):
+            return [{"id": 501, "name": "Тестовое заведение", "address": {}}]
+        if class_name.endswith("SalePlace"):
+            return [
+                {
+                    "id": 601,
+                    "title": "Основная касса",
+                    "tableScheme": {"id": 501},
+                    "defaultCookingPlace": {"id": 701},
+                }
+            ]
+        if class_name.endswith("CookingPlace"):
+            return [{"id": 701, "title": "Основное производство", "store": {"id": 801}}]
+        if class_name.endswith("Store"):
+            return [{"id": 801, "title": "Основной склад"}]
         raise AssertionError(f"Unexpected QuickResto class: {class_name}")
 
     def read_object(self, *, module_name, class_name, object_id):
@@ -120,6 +148,9 @@ class QuickRestoFailedImportRetryTests(unittest.TestCase):
                 DailyReport.__table__,
                 DailyReportValue.__table__,
                 QuickRestoConnection.__table__,
+                QuickRestoExternalVenue.__table__,
+                QuickRestoSalePlaceScope.__table__,
+                QuickRestoStoreScope.__table__,
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoSyncRun.__table__,
@@ -177,8 +208,25 @@ class QuickRestoFailedImportRetryTests(unittest.TestCase):
                 business_day_cutoff_hour=0,
                 sync_from_date=date(2030, 1, 15),
                 created_by_user_id=1,
+                external_venue_id=501,
+                external_venue_name="Тестовое заведение",
+                scope_status="READY",
             )
             db.add(connection)
+            db.flush()
+            db.add(
+                QuickRestoSalePlaceScope(
+                    connection_id=connection.id,
+                    external_id=601,
+                    external_name="Основная касса",
+                    external_venue_id=501,
+                    default_cooking_place_id=701,
+                    is_selected=True,
+                    is_confirmed=True,
+                    is_available=True,
+                    last_seen_at=datetime.now(timezone.utc),
+                )
+            )
             db.commit()
             db.refresh(connection)
 

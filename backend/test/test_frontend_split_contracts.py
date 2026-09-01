@@ -46,7 +46,7 @@ class PageLoaderContractTests(TestCase):
             source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500, file_name)
 
-        self.assertEqual(len(html_pages), 52)
+        self.assertEqual(len(html_pages), 53)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
@@ -145,6 +145,9 @@ class QuickRestoIntegrationContractTests(TestCase):
         html = (FRONTEND / "owner-quickresto.html").read_text(encoding="utf-8")
         script = (FRONTEND / "owner-quickresto.js").read_text(encoding="utf-8")
         styles = (FRONTEND / "styles" / "pages" / "owner-quickresto.css").read_text(encoding="utf-8")
+        issues_html = (FRONTEND / "owner-integration-issues.html").read_text(encoding="utf-8")
+        issues_script = (FRONTEND / "owner-integration-issues.js").read_text(encoding="utf-8")
+        issues_styles = (FRONTEND / "styles" / "pages" / "owner-integration-issues.css").read_text(encoding="utf-8")
 
         self.assertIn('id="openIntegrations"', venue)
         self.assertIn("venue-integrations-entry hidden", venue)
@@ -153,7 +156,7 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn("/owner-integrations.html?venue_id=", venue)
         self.assertIn("/styles/pages/owner-integrations.css", hub_html)
         self.assertIn("/owner-integrations.js", hub_html)
-        self.assertIn("20260828-integrations2", hub_html)
+        self.assertIn("20260901-issuesentry1", hub_html)
         self.assertIn(".integrations-provider-tab{flex-direction:column", hub_styles)
         self.assertIn("white-space:nowrap", hub_styles)
         self.assertIn('role="tablist"', hub_html)
@@ -172,7 +175,19 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('class="quickresto-api-help"', html)
         self.assertIn("Предприятие → Настройки → Общие настройки", html)
         self.assertIn("https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/", html)
-        self.assertIn("20260831-qrissues1", html)
+        self.assertIn("20260901-qrscope1", html)
+        self.assertIn('id="scopeSection"', html)
+        self.assertIn('id="externalVenue"', html)
+        self.assertIn('id="salePlaceOptions"', html)
+        self.assertIn('id="storeOptions"', html)
+        self.assertIn("/integrations/quickresto/catalog/refresh", script)
+        self.assertIn("/integrations/quickresto/scope", script)
+        self.assertIn("owner-integration-issues.html?venue_id=", script)
+        self.assertIn("одновременно может быть активна только одна POS-интеграция", hub_html)
+        self.assertIn("active_pos_provider", hub_script)
+        self.assertIn('id="openQuickRestoIssues"', hub_html)
+        self.assertIn("integration.issues?.open_count", hub_script)
+        self.assertIn("owner-integration-issues.html?venue_id=", hub_script)
         self.assertIn('aria-describedby="cutoffHourHelp"', html)
         self.assertIn("Эта граница определяет дату отчёта, а не тип смены", html)
         self.assertIn("при 06:00 открытие 27 августа в 03:15", html)
@@ -199,6 +214,15 @@ class QuickRestoIntegrationContractTests(TestCase):
         ):
             self.assertIn(endpoint, script)
         self.assertIn('el.apiPassword.value = ""', script)
+        self.assertIn("/styles/pages/owner-integration-issues.css", issues_html)
+        self.assertIn("/owner-integration-issues.js", issues_html)
+        self.assertIn("/integrations/quickresto/issues?status=", issues_script)
+        self.assertIn("data-save-mappings-retry", issues_script)
+        self.assertIn("data-save-scope-retry", issues_script)
+        self.assertIn("/integrations/quickresto/catalog/refresh", issues_script)
+        self.assertIn("/integrations/quickresto/scope", issues_script)
+        self.assertIn("owner-quickresto.html?venue_id=", issues_script)
+        self.assertIn(".integration-issue-drawer__panel", issues_styles)
 
 
 class PrimaryPageUiPolishContractTests(TestCase):
@@ -757,7 +781,7 @@ class AppFacadeSplitContractTests(TestCase):
                 consumer_count += 1
                 imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
-        self.assertEqual(consumer_count, 53)
+        self.assertEqual(consumer_count, 54)
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):

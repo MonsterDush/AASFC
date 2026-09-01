@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/owner-integrations.css?v=20260828-integrations2" />
+  <link rel="stylesheet" href="/styles/pages/owner-integrations.css?v=20260901-issuesentry1" />
   <script>
     (() => {
       try {
@@ -52,6 +52,9 @@
             <div class="muted">Выберите систему, которую хотите подключить или настроить.</div>
           </div>
         </div>
+        <div class="integrations-single-provider mt-12" id="providerRule">
+          Для одного заведения одновременно может быть активна только одна POS-интеграция. Чтобы перейти с QuickResto на iiko или обратно, сначала отключите текущую систему.
+        </div>
         <div class="integrations-provider-tabs mt-12" role="tablist" aria-label="Учётная система">
           <button class="integrations-provider-tab" id="quickrestoTab" type="button" role="tab" aria-selected="true" aria-controls="quickrestoPanel" tabindex="0" data-provider="quickresto">
             <span>QuickResto</span><small id="quickrestoTabStatus">Проверяем…</small>
@@ -67,7 +70,12 @@
               <div class="integrations-provider-name"><b>QuickResto</b><span class="integrations-status" id="quickrestoStatus">Не подключено</span></div>
               <div class="muted small mt-4" id="quickrestoDescription">Импорт закрытых смен, способов оплаты и групп блюд.</div>
             </div>
-            <a class="btn primary" id="configureQuickResto" href="#">Настроить QuickResto</a>
+            <div class="integrations-provider-actions">
+              <a class="btn primary" id="configureQuickResto" href="#">Настроить QuickResto</a>
+              <a class="btn hidden" id="openQuickRestoIssues" href="#" hidden>
+                Проблемы импорта <span class="integrations-issue-count" id="quickrestoIssueCount">0</span>
+              </a>
+            </div>
           </div>
           <div class="integrations-feature-grid mt-12">
             <div class="itemcard"><b>Отчёты</b><div class="muted small mt-4">Автозакрытие или проверка в черновике.</div></div>
@@ -80,7 +88,7 @@
           <div class="integrations-coming-soon">
             <span class="integrations-coming-soon__badge">Скоро</span>
             <b>Интеграция с iiko в разработке</b>
-            <div class="muted small">Здесь появятся подключение, сопоставление справочников и импорт закрытых кассовых смен.</div>
+            <div class="muted small" id="iikoDescription">Здесь появятся подключение, сопоставление справочников и импорт закрытых кассовых смен.</div>
             <button class="btn" type="button" disabled>Настройка пока недоступна</button>
           </div>
         </section>
@@ -91,6 +99,6 @@
 
   <div id="toast" class="toast"><div class="toast__text"></div></div>
   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
-  <script type="module" src="/owner-integrations.js?v=20260831-qrissues1"></script>
+  <script type="module" src="/owner-integrations.js?v=20260901-issuesentry1"></script>
 </body>
 </html>

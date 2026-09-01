@@ -14,14 +14,32 @@ def main() -> int:
     with SessionLocal() as db:
         expired_snapshots_purged = purge_expired_source_snapshots(db)
         db.commit()
-        connection_ids = list(
+        candidate_rows = list(
             db.execute(
-                select(QuickRestoConnection.id).where(
+                select(
+                    QuickRestoConnection.id,
+                    QuickRestoConnection.venue_id,
+                    QuickRestoConnection.scope_status,
+                ).where(
                     QuickRestoConnection.is_active.is_(True),
                     QuickRestoConnection.auto_sync_enabled.is_(True),
                 )
-            ).scalars()
+            )
         )
+        connection_ids = [
+            int(connection_id)
+            for connection_id, _venue_id, scope_status in candidate_rows
+            if str(scope_status or "").upper() == "READY"
+        ]
+        scope_blocked = [
+            {
+                "connection_id": int(connection_id),
+                "venue_id": int(venue_id),
+                "scope_status": str(scope_status or "NEEDS_SELECTION"),
+            }
+            for connection_id, venue_id, scope_status in candidate_rows
+            if str(scope_status or "").upper() != "READY"
+        ]
 
     results: list[dict] = []
     failed = False
@@ -60,6 +78,7 @@ def main() -> int:
         json.dumps(
             {
                 "connections": len(connection_ids),
+                "scope_blocked": scope_blocked,
                 "expired_snapshots_purged": expired_snapshots_purged,
                 "results": results,
             },

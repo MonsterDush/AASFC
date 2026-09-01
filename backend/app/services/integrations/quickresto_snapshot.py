@@ -63,6 +63,8 @@ _ORDER_ITEM_FIELDS = (
     "totalAbsoluteCharge",
 )
 _PRODUCT_FIELDS = ("id", "parentId")
+_LOCATION_REFERENCE_FIELDS = ("id", "version", "name", "title", "itemTitle")
+_SHIFT_LOCATION_FIELDS = ("tableScheme", "salePlace", "createTerminalSalePlace")
 
 
 class QuickRestoSnapshotError(ValueError):
@@ -138,6 +140,19 @@ def _sanitize_order(value: Any) -> dict[str, Any] | None:
     return output
 
 
+def _sanitize_shift(value: Mapping[str, Any]) -> dict[str, Any]:
+    output = _copy_fields(value, _SHIFT_FIELDS, prefix="shift")
+    for field in _SHIFT_LOCATION_FIELDS:
+        reference = value.get(field)
+        if isinstance(reference, Mapping):
+            output[field] = _copy_fields(
+                reference,
+                _LOCATION_REFERENCE_FIELDS,
+                prefix=f"shift.{field}",
+            )
+    return output
+
+
 def sanitize_quickresto_source_snapshot(
     *,
     shift: Mapping[str, Any],
@@ -155,7 +170,7 @@ def sanitize_quickresto_source_snapshot(
     sanitized_orders.sort(key=_canonical_sort_key)
     return {
         "schema_version": _SNAPSHOT_SCHEMA_VERSION,
-        "shift": _copy_fields(shift, _SHIFT_FIELDS, prefix="shift"),
+        "shift": _sanitize_shift(shift),
         "orders": sanitized_orders,
     }
 

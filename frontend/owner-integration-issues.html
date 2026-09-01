@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
+  <link rel="stylesheet" href="/styles/pages/owner-integration-issues.css?v=20260901-inlinescope1" />
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>
+  <script src="/page-loader.js?v=20260823-navfix1"></script>
+  <title>Axelio · Проблемы импорта</title>
+</head>
+<body class="integration-issues-page">
+  <div class="container integration-issues-shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">
+          <b id="title">Проблемы импорта</b>
+          <div class="muted">центр решения ошибок интеграций</div>
+        </div>
+      </div>
+      <div class="userpill" data-userpill>…</div>
+    </div>
+
+    <main class="integration-issues-content">
+      <section class="card section-card integration-issues-hero">
+        <div class="integration-issues-hero__layout">
+          <div>
+            <div class="integration-issues-eyebrow">Интеграции · QuickResto</div>
+            <b id="venueTitle">Заведение</b>
+            <div class="muted small mt-4">Здесь собраны смены, которые Axelio не стал импортировать автоматически из-за неоднозначных или неполных данных.</div>
+          </div>
+          <button class="btn subtle inline" id="backToQuickResto" type="button" data-nav-button>К настройкам QuickResto</button>
+        </div>
+      </section>
+
+      <section class="integration-issues-summary" aria-label="Сводка проблем импорта">
+        <div class="card integration-issues-metric"><span>Активных проблем</span><b id="openCount">0</b></div>
+        <div class="card integration-issues-metric"><span>Затронуто смен</span><b id="affectedShiftCount">0</b></div>
+        <div class="card integration-issues-metric"><span>Самая ранняя ошибка</span><b id="oldestFailedAt">—</b></div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-card__head integration-issues-head">
+          <div>
+            <b>Очередь решения</b>
+            <div class="muted small mt-4">После исправления сопоставлений повторите импорт. Успешно обработанная проблема автоматически исчезнет из активной очереди.</div>
+          </div>
+          <div class="integration-issues-controls">
+            <div class="integration-issues-filter" role="group" aria-label="Фильтр проблем">
+              <button class="btn active" id="activeIssues" type="button">Активные</button>
+              <button class="btn subtle" id="allIssues" type="button">История</button>
+            </div>
+            <button class="btn" id="refreshIssues" type="button">Обновить</button>
+          </div>
+        </div>
+        <div class="integration-issues-list mt-12" id="issueList" aria-live="polite">
+          <div class="integration-issues-empty">Загружаем проблемы импорта…</div>
+        </div>
+        <div class="muted small mt-8" id="issueHint" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="integration-issue-drawer" id="issueDrawer" aria-hidden="true">
+    <div class="integration-issue-drawer__backdrop" data-issue-close></div>
+    <section class="integration-issue-drawer__panel" role="dialog" aria-modal="true" aria-labelledby="issueDrawerTitle" tabindex="-1">
+      <header class="integration-issue-drawer__head">
+        <div>
+          <div class="integration-issues-eyebrow">Проблема импорта</div>
+          <h2 id="issueDrawerTitle">Смена QuickResto</h2>
+        </div>
+        <button class="btn subtle inline" type="button" data-issue-close aria-label="Закрыть проблему импорта">Закрыть</button>
+      </header>
+      <div class="integration-issue-drawer__body" id="issueDrawerBody"></div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast"><div class="toast__text"></div></div>
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+  <script type="module" src="/owner-integration-issues.js?v=20260901-inlinescope1"></script>
+</body>
+</html>
