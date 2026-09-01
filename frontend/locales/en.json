@@ -4558,5 +4558,7 @@
   "Справочник обновлён. Проверьте заведение и точки перед сохранением.": "The catalog has been refreshed. Review the venue and locations before saving.",
   "Выберите заведение и хотя бы одно место реализации.": "Select a venue and at least one sale place.",
   "Область сохранена, смены успешно импортированы": "Scope saved and shifts imported successfully",
-  "После изменения области проблема всё ещё требует внимания.": "The issue still requires attention after changing the scope."
+  "После изменения области проблема всё ещё требует внимания.": "The issue still requires attention after changing the scope.",
+  "После обновления QuickResto требуется выбрать конкретное заведение и места реализации. Автосинхронизация приостановлена до сохранения области импорта.": "After refreshing QuickResto, you must select a specific venue and sale places. Auto-synchronization is paused until the import scope is saved.",
+  "Нельзя менять заведение или места реализации QuickResto после импорта смен; требуется отдельное переподключение": "The QuickResto venue or sale places cannot be changed after shifts have been imported; create a separate reconnection"
 }
