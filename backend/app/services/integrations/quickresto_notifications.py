@@ -217,8 +217,9 @@ def _configured_super_admin_ids() -> set[int]:
 
 
 def _integration_open_url(*, venue_id: int, show_issues: bool = True) -> str:
-    suffix = "&issues=1" if show_issues else ""
-    return f"{_frontend_base_url()}/owner-quickresto.html?venue_id={int(venue_id)}{suffix}"
+    if show_issues:
+        return f"{_frontend_base_url()}/owner-integration-issues.html?venue_id={int(venue_id)}&provider=quickresto"
+    return f"{_frontend_base_url()}/owner-quickresto.html?venue_id={int(venue_id)}"
 
 
 def _business_recipients(db: Session, *, venue_id: int) -> list[User]:

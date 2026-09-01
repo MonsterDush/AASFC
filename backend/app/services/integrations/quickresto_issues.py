@@ -32,6 +32,7 @@ from app.services.integrations.quickresto_snapshot import (
     SealedQuickRestoSnapshot,
     open_quickresto_source_snapshot,
 )
+from app.services.integrations.quickresto_scope import QuickRestoLocationScopeError, QuickRestoScopeError
 
 
 ACTIVE_ISSUE_STATUSES = ("OPEN", "RETRY_PENDING", "PROCESSING")
@@ -95,6 +96,15 @@ def classify_quickresto_failure(
         code = "SOURCE_SNAPSHOT_FAILURE"
         category = "STORAGE"
         user_summary = "Не удалось безопасно сохранить данные смены. Импорт остановлен без потери контроля."
+    elif isinstance(exc, QuickRestoLocationScopeError):
+        code = exc.error_code
+        category = "SCOPE"
+        details.update(exc.details)
+        user_summary = exc.user_summary
+    elif isinstance(exc, QuickRestoScopeError):
+        code = "LOCATION_SCOPE_INVALID"
+        category = "SCOPE"
+        user_summary = "Выбор заведения или мест реализации QuickResto требует обновления."
     elif isinstance(exc, QuickRestoDataError):
         lowered = technical.casefold()
         if "mappings are incomplete" in lowered:
@@ -502,7 +512,17 @@ def serialize_issue(
     details = issue.details_json if isinstance(issue.details_json, dict) else {}
     public_details = {
         key: details[key]
-        for key in ("missing_payment_type_ids", "missing_department_ids", "report_id", "http_status")
+        for key in (
+            "missing_payment_type_ids",
+            "missing_department_ids",
+            "report_id",
+            "http_status",
+            "selected_external_venue_id",
+            "shift_external_venue_id",
+            "sale_place_id",
+            "opening_sale_place_id",
+            "resolved_sale_place_venue_id",
+        )
         if key in details
     }
     retry_sources_available = bool(issue.shifts) and all(item.source_snapshot_id is not None for item in issue.shifts)

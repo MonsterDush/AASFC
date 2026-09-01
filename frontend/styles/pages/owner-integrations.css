@@ -3,6 +3,7 @@
 .integrations-hero__layout{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start}
 .integrations-hero__layout b{display:block;font-size:20px;line-height:1.25;overflow-wrap:anywhere}
 .integrations-eyebrow{margin-bottom:5px;color:var(--muted);font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.integrations-single-provider{padding:11px 12px;border:1px solid var(--statusWarningBorder);border-radius:12px;background:var(--statusWarningBgSoft);color:var(--statusWarningText);font-size:12px;font-weight:800;line-height:1.45}
 .integrations-provider-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:5px;border:1px solid var(--border);border-radius:15px;background:var(--surfaceTintSoft)}
 .integrations-provider-tab{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:11px 13px;border:1px solid transparent;border-radius:11px;background:transparent;color:var(--text);font:inherit;font-weight:900;cursor:pointer}
 .integrations-provider-tab span,.integrations-provider-tab small{min-width:0;overflow-wrap:anywhere}

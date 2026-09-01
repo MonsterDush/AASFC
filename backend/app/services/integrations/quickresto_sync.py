@@ -59,6 +59,16 @@ from app.services.integrations.quickresto_snapshot import (
     QuickRestoSnapshotError,
     seal_quickresto_source_snapshot,
 )
+from app.services.integrations.quickresto_scope import (
+    QuickRestoLocationScopeError,
+    QuickRestoScopeError,
+    ensure_quickresto_scope_ready,
+    evaluate_quickresto_shift_scope,
+    load_quickresto_scope_index,
+    payment_type_is_applicable,
+    refresh_quickresto_catalog,
+    selected_sale_place_ids,
+)
 
 
 _INTEGRATION_COMMENT_PREFIX = "Импортировано из QuickResto:"
@@ -325,6 +335,11 @@ def refresh_quickresto_mappings(
 ) -> dict[str, Any]:
     payment_rows = _object_rows(client, "payment_types")
     department_rows = _object_rows(client, "dish_categories")
+    selected_sale_ids = selected_sale_place_ids(db, connection_id=int(connection.id))
+    scope_filter_enabled = bool(
+        str(getattr(connection, "scope_status", "") or "").upper() == "READY"
+        and getattr(connection, "external_venue_id", None)
+    )
     db.execute(
         select(QuickRestoConnection.id).where(QuickRestoConnection.id == connection.id).with_for_update()
     ).scalar_one()
@@ -361,6 +376,9 @@ def refresh_quickresto_mappings(
             select(QuickRestoDepartmentMapping).where(QuickRestoDepartmentMapping.connection_id == connection.id)
         ).scalars()
     }
+    for mapping in existing_payments.values():
+        mapping.is_available = False
+        mapping.is_applicable = False
 
     for row in payment_rows:
         external_id = int(row.get("id") or 0)
@@ -369,12 +387,27 @@ def refresh_quickresto_mappings(
         name = str(row.get("name") or row.get("itemTitle") or f"#{external_id}").strip()
         operation_type = str(row.get("operationType") or "").strip().lower()
         mechanism = str(row.get("paymentMechanismWeb") or "").strip().lower() or None
+        allowed_sale_place_ids = sorted(
+            {
+                int(item.get("id"))
+                for item in (row.get("allowedSalePlacesWeb") or ())
+                if isinstance(item, dict) and int(item.get("id") or 0) > 0
+            }
+        )
+        applicable = (
+            payment_type_is_applicable(
+                allowed_sale_place_ids=allowed_sale_place_ids,
+                selected_ids=selected_sale_ids,
+            )
+            if scope_filter_enabled
+            else True
+        )
         excluded = operation_type == "writeoff"
         mapping = existing_payments.get(external_id)
         catalog_title = _catalog_title(name)
         title_key = _normalize_label(catalog_title)
         auto_match = payment_by_title.get(title_key)
-        needs_payment_target = mapping is None or mapping.payment_method_id is None
+        needs_payment_target = applicable and (mapping is None or mapping.payment_method_id is None)
         if not excluded and needs_payment_target and auto_match is None and title_key not in known_payment_titles:
             auto_match = PaymentMethod(
                 venue_id=connection.venue_id,
@@ -399,6 +432,10 @@ def refresh_quickresto_mappings(
                 payment_mechanism=mechanism,
                 payment_method_id=None if excluded or auto_match is None else int(auto_match.id),
                 excluded_from_revenue=excluded,
+                is_applicable=applicable,
+                is_available=True,
+                allowed_sale_place_ids_json=allowed_sale_place_ids,
+                last_seen_at=_utcnow(),
                 updated_at=_utcnow(),
             )
             db.add(mapping)
@@ -408,6 +445,10 @@ def refresh_quickresto_mappings(
             mapping.operation_type = operation_type
             mapping.payment_mechanism = mechanism
             mapping.excluded_from_revenue = excluded
+            mapping.is_applicable = applicable
+            mapping.is_available = True
+            mapping.allowed_sale_place_ids_json = allowed_sale_place_ids
+            mapping.last_seen_at = _utcnow()
             if excluded:
                 mapping.payment_method_id = None
             elif mapping.payment_method_id is None:
@@ -459,14 +500,15 @@ def refresh_quickresto_mappings(
 
     db.flush()
     return {
-        "payment_types_seen": len(payment_rows),
+        "payment_types_seen": sum(int(item.is_applicable) for item in existing_payments.values()),
+        "payment_types_available": len(payment_rows),
         "departments_seen": len(department_rows),
         "payment_methods_created": payment_methods_created,
         "departments_created": departments_created,
         "unmapped_payment_type_ids": sorted(
             item.external_id
             for item in existing_payments.values()
-            if not item.excluded_from_revenue and item.payment_method_id is None
+            if item.is_applicable and not item.excluded_from_revenue and item.payment_method_id is None
         ),
         "unmapped_department_ids": sorted(
             item.external_id for item in existing_departments.values() if item.department_id is None
@@ -497,11 +539,19 @@ def _mapped_aggregate(
     departments_internal: dict[int, int] = defaultdict(int)
     missing_payments: list[int] = []
     missing_departments: list[int] = []
+    scope_filter_enabled = bool(
+        str(getattr(connection, "scope_status", "") or "").upper() == "READY"
+        and getattr(connection, "external_venue_id", None)
+    )
     for external_id, value in (aggregate.get("payments_external") or {}).items():
         if not int(value or 0):
             continue
         mapping = payment_mappings.get(str(external_id))
-        if mapping is None or (mapping.payment_method_id is None and not mapping.excluded_from_revenue):
+        if (
+            mapping is None
+            or (scope_filter_enabled and (not mapping.is_available or not mapping.is_applicable))
+            or (mapping.payment_method_id is None and not mapping.excluded_from_revenue)
+        ):
             missing_payments.append(int(external_id))
             continue
         if mapping.excluded_from_revenue:
@@ -953,7 +1003,7 @@ def _stage_quickresto_sources(
     venue: Venue,
     client: QuickRestoClient,
     force_full: bool,
-) -> tuple[list[QuickRestoSourceSnapshot], bool]:
+) -> tuple[list[QuickRestoSourceSnapshot], bool, dict[str, Any], list[dict[str, Any]]]:
     now = _utcnow()
     last_full = connection.last_full_reconciliation_at
     full_reconciliation = bool(force_full or last_full is None or _ensure_utc(last_full) <= now - timedelta(days=30))
@@ -961,6 +1011,7 @@ def _stage_quickresto_sources(
     if not full_reconciliation and connection.incremental_cursor_closed_at is not None:
         closed_since = _ensure_utc(connection.incremental_cursor_closed_at) - timedelta(hours=48)
     closed_shifts = _list_closed_shift_rows(client, closed_since=closed_since)
+    cloud_closed_shifts_seen = len(closed_shifts)
     if connection.sync_from_date is not None:
         filtered: list[dict[str, Any]] = []
         for shift in closed_shifts:
@@ -976,6 +1027,34 @@ def _stage_quickresto_sources(
             if target_date >= connection.sync_from_date:
                 filtered.append(shift)
         closed_shifts = filtered
+
+    scope_index = load_quickresto_scope_index(db, connection=connection)
+    scope_decisions: dict[int, Any] = {}
+    scoped_shifts: list[dict[str, Any]] = []
+    scope_counts = {
+        "cloud_closed_shifts_seen": cloud_closed_shifts_seen,
+        "shifts_in_scope": 0,
+        "shifts_skipped_other_venue": 0,
+        "shifts_skipped_unselected_sale_place": 0,
+        "shifts_blocked_by_scope": 0,
+    }
+    for shift in closed_shifts:
+        decision = evaluate_quickresto_shift_scope(shift, scope=scope_index)
+        if decision.action == "SKIP_OTHER_VENUE":
+            scope_counts["shifts_skipped_other_venue"] += 1
+            continue
+        if decision.action == "SKIP_UNSELECTED_SALE_PLACE":
+            scope_counts["shifts_skipped_unselected_sale_place"] += 1
+            continue
+        object_id = int(shift.get("id") or 0)
+        if object_id > 0:
+            scope_decisions[object_id] = decision
+        scoped_shifts.append(shift)
+        if decision.action == "IMPORT":
+            scope_counts["shifts_in_scope"] += 1
+        else:
+            scope_counts["shifts_blocked_by_scope"] += 1
+    closed_shifts = scoped_shifts
 
     shift_ids = {
         str(row.get("frontId") or row.get("_id") or "").strip()
@@ -993,6 +1072,7 @@ def _stage_quickresto_sources(
 
     night_split = bool(connection.night_shift_split_enabled and venue.night_shifts_enabled)
     sealed_rows = []
+    scope_errors_by_fingerprint: dict[str, Any] = {}
     first_snapshot_error: QuickRestoSnapshotError | None = None
     for index, shift in enumerate(closed_shifts):
         shift_id = str(shift.get("frontId") or shift.get("_id") or "").strip()
@@ -1011,15 +1091,17 @@ def _stage_quickresto_sources(
             target_date = None
             target_slot = None
         try:
-            sealed_rows.append(
-                seal_quickresto_source_snapshot(
-                    shift=shift,
-                    orders=order_details_by_shift.get(shift_id, []),
-                    business_date=target_date,
-                    shift_slot=target_slot,
-                    source_key=f"row:{index}:pk:{int(shift.get('id') or 0)}",
-                )
+            sealed = seal_quickresto_source_snapshot(
+                shift=shift,
+                orders=order_details_by_shift.get(shift_id, []),
+                business_date=target_date,
+                shift_slot=target_slot,
+                source_key=f"row:{index}:pk:{int(shift.get('id') or 0)}",
             )
+            sealed_rows.append(sealed)
+            decision = scope_decisions.get(int(shift.get("id") or 0))
+            if decision is not None and decision.error is not None:
+                scope_errors_by_fingerprint[sealed.source_fingerprint] = decision.error
         except QuickRestoSnapshotError as exc:
             first_snapshot_error = first_snapshot_error or exc
 
@@ -1038,7 +1120,7 @@ def _stage_quickresto_sources(
         db.commit()
         raise first_snapshot_error
 
-    snapshots = [
+    all_snapshots = [
         upsert_source_snapshot(
             db,
             connection_id=int(connection.id),
@@ -1048,6 +1130,33 @@ def _stage_quickresto_sources(
         )
         for sealed in sealed_rows
     ]
+    scope_conflicts: list[dict[str, Any]] = []
+    snapshots: list[QuickRestoSourceSnapshot] = []
+    for snapshot in all_snapshots:
+        scope_error = scope_errors_by_fingerprint.get(snapshot.source_fingerprint)
+        if scope_error is None:
+            snapshots.append(snapshot)
+            continue
+        failure = classify_quickresto_failure(scope_error)
+        issue = upsert_import_issue(
+            db,
+            connection_id=int(connection.id),
+            sync_run_id=int(run.id),
+            group_key=source_group_key(snapshot.source_fingerprint),
+            business_date=snapshot.business_date,
+            shift_slot=snapshot.shift_slot,
+            failure=failure,
+            snapshots=[snapshot],
+            failed_source_fingerprints={snapshot.source_fingerprint},
+            actor_user_id=int(run.requested_by_user_id) if run.requested_by_user_id else None,
+        )
+        scope_conflicts.append(
+            {
+                "issue_id": int(issue.id),
+                "error_code": failure.error_code,
+                "user_summary": failure.user_summary,
+            }
+        )
     cursor_candidates = [value for shift in closed_shifts if (value := _remote_closed_at(shift)) is not None]
     if cursor_candidates:
         newest = max(cursor_candidates)
@@ -1063,7 +1172,7 @@ def _stage_quickresto_sources(
     db.refresh(connection)
     for row in snapshots:
         db.refresh(row)
-    return snapshots, full_reconciliation
+    return snapshots, full_reconciliation, scope_counts, scope_conflicts
 
 
 def _upsert_normalized_shift(
@@ -1129,12 +1238,27 @@ def _process_snapshot_group(
     snapshots: list[QuickRestoSourceSnapshot],
 ) -> dict[str, Any]:
     night_split = bool(connection.night_shift_split_enabled and venue.night_shifts_enabled)
+    scope_index = load_quickresto_scope_index(db, connection=connection)
     normalized_rows: list[dict[str, Any]] = []
     failed_fingerprints: set[str] = set()
     first_error: BaseException | None = None
     for snapshot in snapshots:
         try:
             source = open_source_snapshot(snapshot)
+            scope_decision = evaluate_quickresto_shift_scope(source["shift"], scope=scope_index)
+            if scope_decision.action != "IMPORT":
+                if scope_decision.error is not None:
+                    raise scope_decision.error
+                raise QuickRestoLocationScopeError(
+                    error_code="LOCATION_OUTSIDE_SCOPE",
+                    user_summary="Смена QuickResto не входит в подтверждённую область импорта.",
+                    technical_summary="QuickResto shift is outside the selected venue scope",
+                    details={
+                        "selected_external_venue_id": scope_index.external_venue_id,
+                        "shift_external_venue_id": scope_decision.external_venue_id,
+                        "sale_place_id": scope_decision.sale_place_id,
+                    },
+                )
             normalized_rows.append(
                 normalize_closed_shift(
                     source["shift"],
@@ -1294,11 +1418,13 @@ def _perform_sync(
     client: QuickRestoClient,
     force_full: bool = False,
 ) -> dict[str, Any]:
+    catalog_summary = refresh_quickresto_catalog(db, connection=connection, client=client)
+    ensure_quickresto_scope_ready(connection)
     mapping_summary = refresh_quickresto_mappings(db, connection=connection, client=client)
     venue = db.get(Venue, int(connection.venue_id))
     if venue is None:
         raise QuickRestoDataError("Axelio venue no longer exists")
-    snapshots, full_reconciliation = _stage_quickresto_sources(
+    snapshots, full_reconciliation, scope_counts, scope_conflicts = _stage_quickresto_sources(
         db,
         connection=connection,
         run=run,
@@ -1318,7 +1444,7 @@ def _perform_sync(
     totals = {"created": 0, "updated": 0, "unchanged": 0, "removed": 0}
     shifts_imported = 0
     report_ids: list[int] = []
-    conflicts: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = list(scope_conflicts)
     ignored_groups = 0
     for _key, group_snapshots in sorted(
         grouped.items(),
@@ -1348,10 +1474,12 @@ def _perform_sync(
             conflicts.append(result["conflict"])
 
     return {
+        **catalog_summary,
         **mapping_summary,
+        **scope_counts,
         "sync_mode": "FULL_RECONCILIATION" if full_reconciliation else "INCREMENTAL",
-        "source_snapshots_staged": len(snapshots),
-        "shifts_seen": len(snapshots),
+        "source_snapshots_staged": len(snapshots) + len(scope_conflicts),
+        "shifts_seen": len(snapshots) + len(scope_conflicts),
         "shifts_imported": shifts_imported,
         "reports_created": totals["created"],
         "reports_updated": totals["updated"],
@@ -1392,6 +1520,11 @@ def sync_quickresto_connection(
     if not connection.is_active:
         db.rollback()
         raise QuickRestoSyncError("QuickResto connection is disabled")
+    try:
+        ensure_quickresto_scope_ready(connection)
+    except QuickRestoScopeError as exc:
+        db.rollback()
+        raise QuickRestoSyncError(str(exc)) from exc
 
     actor_user_id = int(requested_by_user_id or connection.created_by_user_id)
     run = QuickRestoSyncRun(

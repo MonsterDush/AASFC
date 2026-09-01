@@ -22,16 +22,57 @@ class MigrationContractTests(unittest.TestCase):
         config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
         return config
 
-    def test_quickresto_import_issues_extend_the_single_current_head(self):
+    def test_quickresto_multi_venue_scope_extends_the_single_current_head(self):
         config = self._config()
         scripts = ScriptDirectory.from_config(config)
 
         heads = scripts.get_heads()
-        revision = scripts.get_revision("b8d4f6a2c1e9")
+        revision = scripts.get_revision("c9e7a5b3d1f0")
 
-        self.assertEqual(heads, ["b8d4f6a2c1e9"])
+        self.assertEqual(heads, ["c9e7a5b3d1f0"])
         self.assertIsNotNone(revision)
-        self.assertEqual(revision.down_revision, "a7c9e1f3b5d7")
+        self.assertEqual(revision.down_revision, "b8d4f6a2c1e9")
+
+    def test_quickresto_multi_venue_scope_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                for statement in (
+                    "CREATE TABLE venues (id INTEGER PRIMARY KEY)",
+                    "CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY, venue_id INTEGER NOT NULL, cloud VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL DEFAULT 1)",
+                    "CREATE TABLE quickresto_payment_mappings (id INTEGER PRIMARY KEY)",
+                ):
+                    connection.exec_driver_sql(statement)
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "b8d4f6a2c1e9")
+                command.upgrade(config, "c9e7a5b3d1f0")
+
+                inspector = sa.inspect(engine)
+                connection_columns = {column["name"] for column in inspector.get_columns("quickresto_connections")}
+                self.assertIn("external_venue_id", connection_columns)
+                self.assertIn("scope_status", connection_columns)
+                payment_columns = {column["name"] for column in inspector.get_columns("quickresto_payment_mappings")}
+                self.assertIn("is_applicable", payment_columns)
+                self.assertIn("allowed_sale_place_ids_json", payment_columns)
+                for table_name in (
+                    "quickresto_external_venues",
+                    "quickresto_sale_place_scopes",
+                    "quickresto_store_scopes",
+                    "venue_pos_integration_selections",
+                ):
+                    self.assertIn(table_name, inspector.get_table_names())
+
+                command.downgrade(config, "b8d4f6a2c1e9")
+
+            inspector = sa.inspect(engine)
+            self.assertNotIn("quickresto_external_venues", inspector.get_table_names())
+            self.assertNotIn(
+                "external_venue_id",
+                {column["name"] for column in inspector.get_columns("quickresto_connections")},
+            )
 
     def test_quickresto_import_issues_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

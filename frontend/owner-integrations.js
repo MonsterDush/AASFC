@@ -21,6 +21,7 @@ if (venueId) setActiveVenueId(venueId);
 const el = Object.fromEntries([
   "title", "venueTitle", "backToVenue", "quickrestoTab", "iikoTab", "quickrestoPanel", "iikoPanel",
   "quickrestoTabStatus", "quickrestoStatus", "quickrestoDescription", "configureQuickResto", "integrationHint",
+  "iikoDescription",
 ].map((id) => [id, document.getElementById(id)]));
 
 function errorMessage(error) {
@@ -66,6 +67,11 @@ async function load() {
   el.title.textContent = `Интеграции · ${venueName}`;
   el.venueTitle.textContent = venueName;
   const canManage = integration.permissions?.can_manage !== false;
+  const activeProvider = String(integration.active_pos_provider || "").toUpperCase();
+  if (activeProvider === "QUICKRESTO") {
+    el.iikoDescription.textContent =
+      "Сейчас для заведения активна QuickResto. Перед будущим подключением iiko её потребуется отключить.";
+  }
   el.configureQuickResto.textContent = canManage ? "Настроить QuickResto" : "Открыть QuickResto";
   if (!integration.configured) {
     el.quickrestoTabStatus.textContent = "Не подключено";

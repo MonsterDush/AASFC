@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -24,6 +24,10 @@ class QuickRestoPaymentMapping(Base):
         ForeignKey("payment_methods.id", ondelete="SET NULL"), nullable=True
     )
     excluded_from_revenue: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    is_applicable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    allowed_sale_place_ids_json: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     connection = relationship("QuickRestoConnection", back_populates="payment_mappings")

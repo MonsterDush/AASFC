@@ -19,6 +19,7 @@ def main() -> int:
                 select(QuickRestoConnection.id).where(
                     QuickRestoConnection.is_active.is_(True),
                     QuickRestoConnection.auto_sync_enabled.is_(True),
+                    QuickRestoConnection.scope_status == "READY",
                 )
             ).scalars()
         )

@@ -22,6 +22,7 @@ from app.schemas.quickresto import (
     QuickRestoConnectionUpsertIn,
     QuickRestoIssueResolveIn,
     QuickRestoMappingsUpdateIn,
+    QuickRestoScopeUpdateIn,
 )
 from app.services.integrations.credentials import (
     IntegrationCredentialError,
@@ -44,9 +45,24 @@ from app.services.integrations.quickresto_issues import (
     serialize_issue,
     transition_issue,
 )
+from app.services.integrations.quickresto_scope import (
+    QuickRestoScopeConflictError,
+    QuickRestoScopeError,
+    apply_quickresto_scope,
+    ensure_quickresto_scope_ready,
+    refresh_quickresto_catalog,
+    serialize_quickresto_catalog,
+)
+from app.services.integrations.pos_provider_selection import (
+    POSProviderSelectionError,
+    acquire_pos_provider,
+    active_pos_provider,
+    release_pos_provider,
+)
 
 
 router = APIRouter()
+QUICKRESTO_PROVIDER = "QUICKRESTO"
 
 
 def _require_quickresto_view(db: Session, *, venue_id: int, user: User) -> None:
@@ -119,6 +135,11 @@ def _serialize_connection(
         "id": int(connection.id),
         "venue_id": int(connection.venue_id),
         "cloud": connection.cloud,
+        "external_venue_id": connection.external_venue_id,
+        "external_venue_name": connection.external_venue_name,
+        "scope_status": str(connection.scope_status or "NEEDS_SELECTION"),
+        "scope_generation": int(connection.scope_generation or 1),
+        "scope_confirmed_at": (connection.scope_confirmed_at.isoformat() if connection.scope_confirmed_at else None),
         "credentials_configured": bool(connection.api_login_encrypted and connection.api_password_encrypted),
         "is_active": bool(connection.is_active),
         "auto_sync_enabled": bool(connection.auto_sync_enabled),
@@ -196,6 +217,13 @@ def _venue_or_404(db: Session, venue_id: int) -> Venue:
     return venue
 
 
+def _venue_for_update_or_404(db: Session, venue_id: int) -> Venue:
+    venue = db.execute(select(Venue).where(Venue.id == venue_id).with_for_update()).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    return venue
+
+
 def _validate_night_shift_split(payload: QuickRestoConnectionUpsertIn, *, venue: Venue) -> None:
     if not payload.night_shift_split_enabled:
         return
@@ -239,6 +267,9 @@ def _serialize_mappings(db: Session, connection: QuickRestoConnection) -> dict:
                 "payment_mechanism": item.payment_mechanism,
                 "payment_method_id": int(item.payment_method_id) if item.payment_method_id else None,
                 "excluded_from_revenue": bool(item.excluded_from_revenue),
+                "is_applicable": bool(item.is_applicable),
+                "is_available": bool(item.is_available),
+                "allowed_sale_place_ids": sorted(int(value) for value in item.allowed_sale_place_ids_json or ()),
             }
             for item in payments
         ],
@@ -265,13 +296,24 @@ def get_quickresto_connection(
         select(QuickRestoConnection).where(QuickRestoConnection.venue_id == venue_id)
     ).scalar_one_or_none()
     can_manage = _can_manage_quickresto(db, venue_id=venue_id, user=user)
+    selected_provider = active_pos_provider(db, venue_id=venue_id)
     if connection is None:
         return {
             "configured": False,
             "venue_night_shifts_enabled": bool(venue.night_shifts_enabled),
             "connection": None,
             "mappings": {"payments": [], "departments": []},
+            "catalog": {
+                "scope_status": "NEEDS_SELECTION",
+                "scope_generation": 1,
+                "selected_external_venue_id": None,
+                "venues": [],
+                "sale_places": [],
+                "stores": [],
+                "payment_types": [],
+            },
             "permissions": {"can_view": True, "can_manage": can_manage},
+            "active_pos_provider": selected_provider,
             "issues": {"open_count": 0, "affected_shift_count": 0, "oldest_failed_at": None},
         }
     return {
@@ -282,7 +324,9 @@ def get_quickresto_connection(
             venue_night_shifts_enabled=venue.night_shifts_enabled,
         ),
         "mappings": _serialize_mappings(db, connection),
+        "catalog": serialize_quickresto_catalog(db, connection=connection),
         "permissions": {"can_view": True, "can_manage": can_manage},
+        "active_pos_provider": selected_provider,
         "issues": _serialized_issue_counters(db, connection_id=int(connection.id)),
     }
 
@@ -295,7 +339,7 @@ def put_quickresto_connection(
     user: User = Depends(get_current_user),
 ):
     _require_quickresto_manage(db, venue_id=venue_id, user=user)
-    venue = _venue_or_404(db, venue_id)
+    venue = _venue_for_update_or_404(db, venue_id)
     _validate_night_shift_split(payload, venue=venue)
     connection = db.execute(
         select(QuickRestoConnection)
@@ -324,6 +368,8 @@ def put_quickresto_connection(
             cloud=config.cloud,
             api_login_encrypted=encrypted_login,
             api_password_encrypted=encrypted_password,
+            scope_status="NEEDS_SELECTION",
+            scope_generation=1,
             is_active=payload.is_active,
             auto_sync_enabled=payload.auto_sync_enabled,
             report_import_mode=payload.report_import_mode or "CLOSED",
@@ -336,6 +382,8 @@ def put_quickresto_connection(
         )
         db.add(connection)
     else:
+        cloud_changed = connection.cloud != config.cloud
+        credentials_changed = bool(payload.api_login or payload.api_password)
         connection.cloud = config.cloud
         connection.api_login_encrypted = encrypted_login
         connection.api_password_encrypted = encrypted_password
@@ -347,8 +395,34 @@ def put_quickresto_connection(
         connection.night_shift_split_enabled = payload.night_shift_split_enabled
         connection.night_shift_start_hour = payload.night_shift_start_hour
         connection.sync_from_date = payload.sync_from_date
+        if cloud_changed:
+            connection.external_venue_id = None
+            connection.external_venue_name = None
+            connection.scope_status = "NEEDS_SELECTION"
+            connection.scope_confirmed_at = None
+            connection.scope_generation = int(connection.scope_generation or 1) + 1
+            connection.incremental_cursor_closed_at = None
+            connection.last_full_reconciliation_at = None
+        elif credentials_changed and connection.scope_status == "READY":
+            connection.scope_status = "STALE"
         connection.updated_by_user_id = user.id
         connection.updated_at = now
+    try:
+        if payload.is_active:
+            acquire_pos_provider(
+                db,
+                venue_id=venue_id,
+                provider=QUICKRESTO_PROVIDER,
+            )
+        else:
+            release_pos_provider(
+                db,
+                venue_id=venue_id,
+                provider=QUICKRESTO_PROVIDER,
+            )
+    except POSProviderSelectionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.commit()
     db.refresh(connection)
     return {
@@ -358,6 +432,88 @@ def put_quickresto_connection(
             connection,
             venue_night_shifts_enabled=venue.night_shifts_enabled,
         ),
+        "active_pos_provider": active_pos_provider(db, venue_id=venue_id),
+    }
+
+
+@router.get("/{venue_id}/integrations/quickresto/catalog")
+def get_quickresto_catalog(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_view(db, venue_id=venue_id, user=user)
+    connection = _connection_or_404(db, venue_id)
+    return {"ok": True, "catalog": serialize_quickresto_catalog(db, connection=connection)}
+
+
+@router.post("/{venue_id}/integrations/quickresto/catalog/refresh")
+def refresh_quickresto_catalog_route(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_manage(db, venue_id=venue_id, user=user)
+    connection = _connection_for_update_or_404(db, venue_id)
+    _require_quickresto_idle(db, connection)
+    try:
+        with build_quickresto_client(connection) as client:
+            summary = refresh_quickresto_catalog(db, connection=connection, client=client)
+        connection.updated_by_user_id = user.id
+        connection.updated_at = datetime.utcnow()
+        db.commit()
+    except (QuickRestoError, IntegrationCredentialError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "summary": summary,
+        "catalog": serialize_quickresto_catalog(db, connection=connection),
+    }
+
+
+@router.put("/{venue_id}/integrations/quickresto/scope")
+def put_quickresto_scope(
+    venue_id: int,
+    payload: QuickRestoScopeUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_manage(db, venue_id=venue_id, user=user)
+    connection = _connection_for_update_or_404(db, venue_id)
+    _require_quickresto_idle(db, connection)
+    try:
+        scope = apply_quickresto_scope(
+            db,
+            connection=connection,
+            external_venue_id=payload.external_venue_id,
+            sale_place_ids=payload.sale_place_ids,
+            store_ids=payload.store_ids,
+        )
+        with build_quickresto_client(connection) as client:
+            mapping_summary = refresh_quickresto_mappings(db, connection=connection, client=client)
+        connection.updated_by_user_id = user.id
+        connection.updated_at = datetime.utcnow()
+        db.commit()
+    except QuickRestoScopeConflictError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except QuickRestoScopeError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (QuickRestoError, IntegrationCredentialError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "scope": scope,
+        "mapping_summary": mapping_summary,
+        "connection": _serialize_connection(
+            connection,
+            venue_night_shifts_enabled=_venue_or_404(db, venue_id).night_shifts_enabled,
+        ),
+        "catalog": serialize_quickresto_catalog(db, connection=connection),
+        "mappings": _serialize_mappings(db, connection),
     }
 
 
@@ -372,12 +528,22 @@ def discover_quickresto_mappings(
     _require_quickresto_idle(db, connection)
     try:
         with build_quickresto_client(connection) as client:
+            catalog_summary = refresh_quickresto_catalog(db, connection=connection, client=client)
+            ensure_quickresto_scope_ready(connection)
             summary = refresh_quickresto_mappings(db, connection=connection, client=client)
         db.commit()
+    except QuickRestoScopeError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (QuickRestoError, IntegrationCredentialError, ValueError) as exc:
         db.rollback()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return {"ok": True, "summary": summary, "mappings": _serialize_mappings(db, connection)}
+    return {
+        "ok": True,
+        "summary": {**catalog_summary, **summary},
+        "catalog": serialize_quickresto_catalog(db, connection=connection),
+        "mappings": _serialize_mappings(db, connection),
+    }
 
 
 @router.put("/{venue_id}/integrations/quickresto/mappings")
@@ -390,6 +556,11 @@ def put_quickresto_mappings(
     _require_quickresto_manage(db, venue_id=venue_id, user=user)
     connection = _connection_for_update_or_404(db, venue_id)
     _require_quickresto_idle(db, connection)
+    try:
+        ensure_quickresto_scope_ready(connection)
+    except QuickRestoScopeError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     valid_payment_ids = set(db.execute(select(PaymentMethod.id).where(PaymentMethod.venue_id == venue_id)).scalars())
     valid_department_ids = set(db.execute(select(Department.id).where(Department.venue_id == venue_id)).scalars())
     payment_mappings = {
@@ -408,6 +579,8 @@ def put_quickresto_mappings(
         mapping = payment_mappings.get(item.external_id)
         if mapping is None:
             raise HTTPException(status_code=400, detail=f"Unknown QuickResto payment type {item.external_id}")
+        if not mapping.is_available or not mapping.is_applicable:
+            raise HTTPException(status_code=400, detail="QuickResto payment type is outside the selected venue scope")
         if item.payment_method_id is not None and item.payment_method_id not in valid_payment_ids:
             raise HTTPException(status_code=400, detail="Payment method does not belong to venue")
         if mapping.operation_type == "writeoff" and not item.excluded_from_revenue:

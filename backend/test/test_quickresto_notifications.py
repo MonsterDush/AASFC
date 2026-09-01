@@ -146,7 +146,10 @@ class QuickRestoNotificationContentTests(TestCase):
     def test_deep_link_opens_quickresto_issues(self):
         with patch.object(quickresto_notifications, "_frontend_base_url", return_value="https://app.test"):
             value = quickresto_notifications._integration_open_url(venue_id=7, show_issues=True)
-        self.assertEqual(value, "https://app.test/owner-quickresto.html?venue_id=7&issues=1")
+        self.assertEqual(
+            value,
+            "https://app.test/owner-integration-issues.html?venue_id=7&provider=quickresto",
+        )
 
 
 class QuickRestoNotificationRecipientTests(TestCase):
@@ -293,7 +296,7 @@ class QuickRestoNotificationDeliveryTests(TestCase):
                 venue_id=7,
                 run_id=13,
                 text="safe aggregate",
-                url="https://app.test/owner-quickresto.html?venue_id=7&issues=1",
+                url="https://app.test/owner-integration-issues.html?venue_id=7&provider=quickresto",
                 button_text="Open",
             )
 
@@ -323,7 +326,7 @@ class QuickRestoNotificationDeliveryTests(TestCase):
                 venue_id=7,
                 run_id=13,
                 text="safe aggregate",
-                url="https://app.test/owner-quickresto.html?venue_id=7&issues=1",
+                url="https://app.test/owner-integration-issues.html?venue_id=7&provider=quickresto",
                 button_text="Open",
             )
 
@@ -364,7 +367,7 @@ class QuickRestoNotificationDeliveryTests(TestCase):
                 venue_id=7,
                 run_id=13,
                 text="safe aggregate",
-                url="https://app.test/owner-quickresto.html?venue_id=7&issues=1",
+                url="https://app.test/owner-integration-issues.html?venue_id=7&provider=quickresto",
                 button_text="Open",
             )
 
@@ -390,7 +393,7 @@ class QuickRestoNotificationDeliveryTests(TestCase):
                 venue_id=7,
                 run_id=13,
                 text="safe technical summary",
-                url="https://app.test/owner-quickresto.html?venue_id=7&issues=1",
+                url="https://app.test/owner-integration-issues.html?venue_id=7&provider=quickresto",
                 button_text="Open",
             )
 
