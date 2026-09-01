@@ -82,10 +82,7 @@ class BillingStateTests(TestCase):
             receipt=receipt,
             extra_params=extra_params,
         )
-        expected_base = (
-            f"demo:2990.000000:123:{quote(receipt, safe='')}:pass1"
-            ":Shp_tx=123:Shp_venueId=77"
-        )
+        expected_base = f"demo:2990.000000:123:{quote(receipt, safe='')}:pass1:Shp_tx=123:Shp_venueId=77"
         expected = hashlib.md5(expected_base.encode("utf-8")).hexdigest()
         self.assertEqual(actual, expected)
 
