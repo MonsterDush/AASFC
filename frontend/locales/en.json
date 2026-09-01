@@ -4577,5 +4577,12 @@
   "Историческая проверка области": "Historical scope review",
   "Затронуто ранее импортированных смен": "Previously imported shifts affected",
   "Axelio ничего не переписал автоматически. Проверьте старые отчёты вручную перед любыми корректировками.": "Axelio did not rewrite anything automatically. Review old reports manually before making any corrections.",
-  "Ранее импортированные смены не соответствуют текущей области QuickResto. Проверьте историю — Axelio не изменяет старые отчёты автоматически.": "Previously imported shifts do not match the current QuickResto scope. Review the history — Axelio does not change old reports automatically."
+  "Ранее импортированные смены не соответствуют текущей области QuickResto. Проверьте историю — Axelio не изменяет старые отчёты автоматически.": "Previously imported shifts do not match the current QuickResto scope. Review the history — Axelio does not change old reports automatically.",
+  "Интеграция": "Integration",
+  "точки #": "locations #",
+  "+ точки:": "+ locations:",
+  "- точки:": "- locations:",
+  "+ склады:": "+ warehouses:",
+  "- склады:": "- warehouses:",
+  "· пользователь #": "· user #"
 }
