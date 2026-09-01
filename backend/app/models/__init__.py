@@ -71,6 +71,10 @@ from .quickresto_department_mapping import QuickRestoDepartmentMapping
 from .quickresto_sync_run import QuickRestoSyncRun
 from .quickresto_shift_import import QuickRestoShiftImport
 from .quickresto_report_import import QuickRestoReportImport
+from .quickresto_source_snapshot import QuickRestoSourceSnapshot
+from .quickresto_import_issue import QuickRestoImportIssue
+from .quickresto_import_issue_shift import QuickRestoImportIssueShift
+from .quickresto_import_issue_audit import QuickRestoImportIssueAudit
 
 __all__ = [
     "SystemRole",
@@ -148,4 +152,8 @@ __all__ = [
     "QuickRestoSyncRun",
     "QuickRestoShiftImport",
     "QuickRestoReportImport",
+    "QuickRestoSourceSnapshot",
+    "QuickRestoImportIssue",
+    "QuickRestoImportIssueShift",
+    "QuickRestoImportIssueAudit",
 ]

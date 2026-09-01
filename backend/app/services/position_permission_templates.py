@@ -107,6 +107,8 @@ DEFAULT_POSITION_PERMISSION_TEMPLATES: tuple[DefaultPositionPermissionTemplate, 
         permission_codes=(
             "VENUE_VIEW",
             "VENUE_SETTINGS_EDIT",
+            "INTEGRATIONS_VIEW",
+            "INTEGRATIONS_MANAGE",
             "STAFF_VIEW",
             "STAFF_MANAGE",
             "POSITIONS_VIEW",
@@ -156,6 +158,7 @@ PERMISSION_GROUP_META = {
     "VENUE": {"key": "venue", "title": "Заведение"},
     "CATALOGS": {"key": "catalogs", "title": "Справочники"},
     "PAYROLL": {"key": "payroll", "title": "Зарплаты"},
+    "INTEGRATIONS": {"key": "integrations", "title": "Интеграции"},
 }
 
 PERMISSION_DEF_BY_CODE = {str(item.code).upper(): item for item in PERMISSIONS}

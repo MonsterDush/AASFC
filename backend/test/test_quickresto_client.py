@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
@@ -44,6 +45,16 @@ class QuickRestoCredentialTests(unittest.TestCase):
         ):
             credentials.decrypt_credential(encrypted)
 
+    def test_source_snapshots_use_a_separate_encryption_domain(self):
+        with patch.object(credentials.settings, "INTEGRATION_ENCRYPTION_KEY", "s" * 48):
+            encrypted = credentials.encrypt_integration_payload('{"shift":"safe"}')
+
+            self.assertTrue(encrypted.startswith("v1:"))
+            self.assertNotIn("safe", encrypted)
+            self.assertEqual(credentials.decrypt_integration_payload(encrypted), '{"shift":"safe"}')
+            with self.assertRaises(credentials.IntegrationCredentialError):
+                credentials.decrypt_credential(encrypted)
+
 
 class QuickRestoClientTests(unittest.TestCase):
     def test_config_accepts_plain_cloud_and_rejects_urls(self):
@@ -61,7 +72,12 @@ class QuickRestoClientTests(unittest.TestCase):
         session = Mock()
         session.headers = {}
         session.get.return_value = response
-        client = QuickRestoClient(QuickRestoConfig(cloud="uk353", login="api-user", password="secret"), session=session)
+        client = QuickRestoClient(
+            QuickRestoConfig(cloud="uk353", login="api-user", password="secret"),
+            session=session,
+            sleep=lambda _seconds: None,
+            jitter=lambda _start, _end: 0.0,
+        )
 
         result = client.list_objects(module_name="front.zreport", class_name="example.Shift", limit=25)
 
@@ -89,7 +105,10 @@ class QuickRestoClientTests(unittest.TestCase):
                 session.headers = {}
                 session.get.return_value = response
                 client = QuickRestoClient(
-                    QuickRestoConfig(cloud="uk353", login="api-user", password="secret"), session=session
+                    QuickRestoConfig(cloud="uk353", login="api-user", password="secret"),
+                    session=session,
+                    sleep=lambda _seconds: None,
+                    jitter=lambda _start, _end: 0.0,
                 )
                 with self.assertRaises(expected_error):
                     client.list_objects(module_name="front.zreport", class_name="example.Shift")
@@ -99,7 +118,12 @@ class QuickRestoClientTests(unittest.TestCase):
         session = Mock()
         session.headers = {}
         session.get.return_value = response
-        client = QuickRestoClient(QuickRestoConfig(cloud="uk353", login="api-user", password="secret"), session=session)
+        client = QuickRestoClient(
+            QuickRestoConfig(cloud="uk353", login="api-user", password="secret"),
+            session=session,
+            sleep=lambda _seconds: None,
+            jitter=lambda _start, _end: 0.0,
+        )
         with self.assertRaisesRegex(QuickRestoError, "invalid JSON"):
             client.list_objects(module_name="front.zreport", class_name="example.Shift")
 
@@ -118,7 +142,12 @@ class QuickRestoClientTests(unittest.TestCase):
         session = Mock()
         session.headers = {}
         session.get.side_effect = __import__("requests").ConnectionError("sensitive request context")
-        client = QuickRestoClient(QuickRestoConfig(cloud="uk353", login="api-user", password="secret"), session=session)
+        client = QuickRestoClient(
+            QuickRestoConfig(cloud="uk353", login="api-user", password="secret"),
+            session=session,
+            sleep=lambda _seconds: None,
+            jitter=lambda _start, _end: 0.0,
+        )
 
         with self.assertRaisesRegex(QuickRestoError, "before receiving a response") as raised:
             client.list_objects(module_name="front.zreport", class_name="example.Shift")
@@ -145,8 +174,136 @@ class QuickRestoClientTests(unittest.TestCase):
         self.assertEqual(session.get.call_args_list[0].kwargs["json"], {"limit": 2, "offset": 0})
         self.assertEqual(session.get.call_args_list[1].kwargs["json"], {"limit": 2, "offset": 2})
 
+    def test_transient_network_and_rate_limit_failures_retry_with_backoff(self):
+        success = Mock(status_code=200, headers={})
+        success.json.return_value = [{"id": 1}]
+        rate_limited = Mock(status_code=429, headers={"Retry-After": "3"})
+        session = Mock()
+        session.headers = {}
+        session.get.side_effect = [__import__("requests").ConnectionError("temporary"), rate_limited, success]
+        slept: list[float] = []
+        client = QuickRestoClient(
+            QuickRestoConfig(cloud="uk353", login="api-user", password="secret"),
+            session=session,
+            sleep=slept.append,
+            jitter=lambda _start, _end: 0.0,
+        )
+
+        self.assertEqual(
+            client.list_objects(module_name="front.zreport", class_name="example.Shift"),
+            [{"id": 1}],
+        )
+        self.assertEqual(session.get.call_count, 3)
+        self.assertEqual(slept, [1.0, 3.0])
+        rate_limited.close.assert_called_once_with()
+
+    def test_non_retryable_http_failure_is_not_retried(self):
+        response = Mock(status_code=400, headers={})
+        session = Mock()
+        session.headers = {}
+        session.get.return_value = response
+        client = QuickRestoClient(
+            QuickRestoConfig(cloud="uk353", login="api-user", password="secret"),
+            session=session,
+            sleep=lambda _seconds: self.fail("400 must not be retried"),
+        )
+
+        with self.assertRaisesRegex(QuickRestoError, "HTTP 400"):
+            client.list_objects(module_name="front.zreport", class_name="example.Shift")
+        session.get.assert_called_once()
+
+    def test_closed_shift_filter_falls_back_when_local_closed_time_proves_it_was_ignored(self):
+        session = Mock()
+        session.headers = {}
+        client = QuickRestoClient(
+            QuickRestoConfig(cloud="uk353", login="api-user", password="secret"),
+            session=session,
+        )
+        old = {
+            "id": 1,
+            "status": "CLOSED",
+            "localClosedTime": "2026-08-01T10:00:00Z",
+        }
+        recent = {
+            "id": 2,
+            "status": "CLOSED",
+            "localClosedTime": "2026-08-30T10:00:00Z",
+        }
+        malformed = {"id": 3, "status": "CLOSED", "localClosedTime": "not-a-date"}
+        with patch.object(client, "list_all_objects", side_effect=[[old], [old, recent, malformed]]) as listing:
+            rows = client.list_closed_shifts(
+                closed_since=datetime(2026, 8, 29, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(rows, [recent, malformed])
+        self.assertEqual(listing.call_count, 2)
+        self.assertIn("filters", listing.call_args_list[0].kwargs)
+        self.assertNotIn("filters", listing.call_args_list[1].kwargs)
+
+    def test_order_filter_falls_back_once_when_cloud_returns_another_shift(self):
+        session = Mock()
+        session.headers = {}
+        client = QuickRestoClient(
+            QuickRestoConfig(cloud="uk353", login="api-user", password="secret"),
+            session=session,
+        )
+        wrong = {"id": 1, "shiftId": "other"}
+        target = {"id": 2, "shiftId": "selected"}
+        with patch.object(client, "list_all_objects", side_effect=[[wrong], [wrong, target]]) as listing:
+            rows = client.list_orders_for_shift_ids({"selected"})
+
+        self.assertEqual(rows, [target])
+        self.assertEqual(listing.call_count, 2)
+
 
 class QuickRestoFixtureContractTests(unittest.TestCase):
+    def test_fractional_rubles_reconcile_in_kopecks_and_round_only_the_report_total(self):
+        normalized = []
+        for index in (1, 2):
+            shift_id = f"fractional-{index}"
+            shift = {
+                "id": index,
+                "frontId": shift_id,
+                "status": "CLOSED",
+                "localOpenedTime": f"2026-08-30T1{index}:00:00.000Z",
+                "localClosedTime": f"2026-08-30T1{index}:30:00.000Z",
+                "totalCash": "0.49",
+            }
+            order = {
+                "id": 100 + index,
+                "shiftId": shift_id,
+                "returned": False,
+                "frontTotalPrice": "0.49",
+                "frontTotalAbsoluteDiscount": "0.00",
+                "payments": [
+                    {
+                        "amount": "0.49",
+                        "paymentType": {"id": 1, "operationType": "fiscal"},
+                    }
+                ],
+                "orderItemList": [
+                    {
+                        "totalPrice": "0.49",
+                        "totalAbsoluteDiscount": "0.00",
+                        "totalAbsoluteCharge": "0.00",
+                        "product": {"id": 10 + index, "parentId": 6},
+                    }
+                ],
+            }
+            normalized.append(normalize_closed_shift(shift, [order], cutoff_hour=0))
+
+        self.assertEqual([row["revenue_total_minor"] for row in normalized], [49, 49])
+        self.assertEqual([row["revenue_total"] for row in normalized], [0, 0])
+
+        aggregate = aggregate_normalized_shifts(normalized)
+
+        self.assertEqual(aggregate["revenue_total_minor"], 98)
+        self.assertEqual(aggregate["revenue_total"], 1)
+        self.assertEqual(aggregate["payments_external"], {"1": 1})
+        self.assertEqual(aggregate["departments_external"], {"6": 1})
+        self.assertEqual(aggregate["rounding_adjustment_minor"], 2)
+        self.assertTrue(aggregate["source_amounts_have_fractional_rubles"])
+
     def test_closed_shift_fixture_reconciles_payments_and_departments(self):
         fixture_path = Path(__file__).parent / "fixtures" / "quickresto" / "basic_closed_shift.json"
         fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
@@ -295,10 +452,16 @@ class QuickRestoFixtureContractTests(unittest.TestCase):
         normalized_hash_basis = dict(normalized[0])
         normalized_hash = normalized_hash_basis.pop("payload_hash")
         normalized_hash_basis.pop("shift_slot")
+        for key in list(normalized_hash_basis):
+            if key.endswith("_minor") or key == "source_money_scale":
+                normalized_hash_basis.pop(key)
         self.assertEqual(normalized_hash, stable_payload_hash(normalized_hash_basis))
         aggregate_hash_basis = dict(aggregate)
         aggregate_hash = aggregate_hash_basis.pop("aggregate_hash")
         aggregate_hash_basis.pop("shift_slot")
+        for key in list(aggregate_hash_basis):
+            if key.endswith("_minor") or key == "source_money_scale":
+                aggregate_hash_basis.pop(key)
         self.assertEqual(aggregate_hash, stable_payload_hash(aggregate_hash_basis))
         self.assertEqual(aggregate["shift_count"], 3)
         self.assertEqual(aggregate["payments_external"], {"1": 6600, "2": 16300, "3": 1000})

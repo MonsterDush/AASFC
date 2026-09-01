@@ -320,7 +320,7 @@ export function collectUserFacingSources() {
   const result = spawnSync(
     process.env.PYTHON || "python3",
     [path.join(REPO_DIR, "tools", "list_python_i18n_sources.py")],
-    { cwd: REPO_DIR, encoding: "utf8" },
+    { cwd: REPO_DIR, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
   );
   if (result.status !== 0) {
     throw new Error(

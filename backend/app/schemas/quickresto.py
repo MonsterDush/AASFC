@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class QuickRestoConnectionUpsertIn(BaseModel):
@@ -33,3 +33,16 @@ class QuickRestoDepartmentMappingIn(BaseModel):
 class QuickRestoMappingsUpdateIn(BaseModel):
     payments: list[QuickRestoPaymentMappingIn] = Field(default_factory=list)
     departments: list[QuickRestoDepartmentMappingIn] = Field(default_factory=list)
+
+
+class QuickRestoIssueResolveIn(BaseModel):
+    action: Literal["IGNORE"]
+    note: str = Field(..., min_length=3, max_length=1000)
+
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, value: str) -> str:
+        normalized = str(value or "").strip()
+        if len(normalized) < 3:
+            raise ValueError("QuickResto issue resolution note must contain at least 3 characters")
+        return normalized

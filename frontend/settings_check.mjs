@@ -149,6 +149,8 @@
       if (code === "salary_day_breakdown") return "Начисления за день";
       if (code === "soft_alerts") return "Мягкий алерт";
       if (code === "adjustments") return "Штрафы и корректировки";
+      if (code === "quickresto_import_business") return "QuickResto: результат импорта";
+      if (code === "quickresto_import_admin") return "QuickResto: техническая ошибка импорта";
       return value || "Уведомление";
     }
 
@@ -217,6 +219,7 @@
       const dayEconomics = !!state.notify_day_economics;
       const salary = !!state.notify_salary;
       const softAlerts = !!state.notify_soft_alerts;
+      const integrations = state.notify_integrations !== false;
       const leadHours = Number(state.shift_reminder_lead_time_hours || 18);
       const detailLevel = String(state.notification_detail_level || "standard");
       const leadOptions = Array.isArray(state.shift_reminder_lead_time_options) ? state.shift_reminder_lead_time_options : [1, 2, 6, 12, 18, 24];
@@ -288,6 +291,15 @@
               ${sw("swSoftAlerts", softAlerts, locked || !enabled)}
             </div>
 
+            <div class="muted mb-6 mt-10 small">Интеграции</div>
+            <div class="toggle">
+              <div class="toggle__label">
+                <div class="toggle__title">Импорт и ошибки интеграций</div>
+                <div class="toggle__desc">Результаты импорта и смены, требующие внимания</div>
+              </div>
+              ${sw("swIntegrations", integrations, locked || !enabled)}
+            </div>
+
             <div class="mt-10">
               <div class="muted small mb-6">Детализация сообщений</div>
               <select id="notificationDetailLevel" class="input minw-240" ${(locked || !enabled) ? "disabled" : ""}>
@@ -311,6 +323,7 @@
       const elDayEconomics = document.getElementById("swDayEconomics");
       const elSalary = document.getElementById("swSalary");
       const elSoftAlerts = document.getElementById("swSoftAlerts");
+      const elIntegrations = document.getElementById("swIntegrations");
       const elLeadHours = document.getElementById("shiftLeadHours");
       const elDetailLevel = document.getElementById("notificationDetailLevel");
       const fieldsWrap = document.getElementById("notifFields");
@@ -326,7 +339,7 @@
       const syncDisabled = () => {
         const on = !!elAll?.checked && !locked;
         if (fieldsWrap) fieldsWrap.classList.toggle("is-dimmed", !on);
-        [elAdj, elShift, elDayEconomics, elSalary, elSoftAlerts, elDetailLevel].forEach((el) => {
+        [elAdj, elShift, elDayEconomics, elSalary, elSoftAlerts, elIntegrations, elDetailLevel].forEach((el) => {
           if (el) el.disabled = !on;
         });
         if (elLeadHours) elLeadHours.disabled = !on || !elShift?.checked;
@@ -349,6 +362,7 @@
             notify_day_economics: !!elDayEconomics?.checked,
             notify_salary: !!elSalary?.checked,
             notify_soft_alerts: !!elSoftAlerts?.checked,
+            notify_integrations: !!elIntegrations?.checked,
             shift_reminder_lead_time_hours: Number(elLeadHours?.value || 18),
             notification_detail_level: String(elDetailLevel?.value || "standard"),
           };

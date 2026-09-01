@@ -76,6 +76,7 @@ class NotificationSettingsIn(BaseModel):
     notify_day_economics: bool | None = None
     notify_salary: bool | None = None
     notify_soft_alerts: bool | None = None
+    notify_integrations: bool | None = None
     shift_reminder_lead_time_hours: int | None = Field(default=None)
     notification_detail_level: str | None = Field(default=None, max_length=16)
 
@@ -163,6 +164,7 @@ def _notification_settings_payload(user: User) -> dict:
         "notify_day_economics": user.notify_day_economics,
         "notify_salary": user.notify_salary,
         "notify_soft_alerts": user.notify_soft_alerts,
+        "notify_integrations": user.notify_integrations,
         "shift_reminder_lead_time_hours": user.shift_reminder_lead_time_hours,
         "notification_detail_level": user.notification_detail_level,
         "shift_reminder_lead_time_options": [1, 2, 6, 12, 18, 24],
@@ -191,6 +193,7 @@ def me(
         "notify_day_economics": user.notify_day_economics,
         "notify_salary": user.notify_salary,
         "notify_soft_alerts": user.notify_soft_alerts,
+        "notify_integrations": user.notify_integrations,
         "shift_reminder_lead_time_hours": user.shift_reminder_lead_time_hours,
         "notification_detail_level": user.notification_detail_level,
         "phone": get_user_phone(db, user_id=user.id),
@@ -281,6 +284,8 @@ def update_notification_settings(
         user.notify_salary = bool(payload.notify_salary)
     if payload.notify_soft_alerts is not None:
         user.notify_soft_alerts = bool(payload.notify_soft_alerts)
+    if payload.notify_integrations is not None:
+        user.notify_integrations = bool(payload.notify_integrations)
     if payload.shift_reminder_lead_time_hours is not None:
         user.shift_reminder_lead_time_hours = int(payload.shift_reminder_lead_time_hours)
     if payload.notification_detail_level is not None:

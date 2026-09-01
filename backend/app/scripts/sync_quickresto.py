@@ -6,11 +6,14 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal
 from app.models.quickresto_connection import QuickRestoConnection
+from app.services.integrations.quickresto_issues import purge_expired_source_snapshots
 from app.services.integrations.quickresto_sync import QuickRestoSyncError, sync_quickresto_connection
 
 
 def main() -> int:
     with SessionLocal() as db:
+        expired_snapshots_purged = purge_expired_source_snapshots(db)
+        db.commit()
         connection_ids = list(
             db.execute(
                 select(QuickRestoConnection.id).where(
@@ -53,7 +56,16 @@ def main() -> int:
                         "error": str(exc),
                     }
                 )
-    print(json.dumps({"connections": len(connection_ids), "results": results}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "connections": len(connection_ids),
+                "expired_snapshots_purged": expired_snapshots_purged,
+                "results": results,
+            },
+            ensure_ascii=False,
+        )
+    )
     return 1 if failed else 0
 
 

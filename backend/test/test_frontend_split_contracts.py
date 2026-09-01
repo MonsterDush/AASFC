@@ -148,7 +148,8 @@ class QuickRestoIntegrationContractTests(TestCase):
 
         self.assertIn('id="openIntegrations"', venue)
         self.assertIn("venue-integrations-entry hidden", venue)
-        self.assertIn("(isOwner || isAdmin) && !demoReadonly", venue)
+        self.assertIn('hasPerm(pset, "INTEGRATIONS_VIEW")', venue)
+        self.assertIn("canViewIntegrations && !demoReadonly", venue)
         self.assertIn("/owner-integrations.html?venue_id=", venue)
         self.assertIn("/styles/pages/owner-integrations.css", hub_html)
         self.assertIn("/owner-integrations.js", hub_html)
@@ -171,7 +172,7 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('class="quickresto-api-help"', html)
         self.assertIn("Предприятие → Настройки → Общие настройки", html)
         self.assertIn("https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/", html)
-        self.assertIn("20260829-qr7", html)
+        self.assertIn("20260831-qrissues1", html)
         self.assertIn('aria-describedby="cutoffHourHelp"', html)
         self.assertIn("Эта граница определяет дату отчёта, а не тип смены", html)
         self.assertIn("при 06:00 открытие 27 августа в 03:15", html)
@@ -190,7 +191,7 @@ class QuickRestoIntegrationContractTests(TestCase):
             "/integrations/quickresto`)",
             "/integrations/quickresto/discover`",
             "/integrations/quickresto/mappings`",
-            "/integrations/quickresto/sync`",
+            "/integrations/quickresto/sync${suffix}`",
             "/integrations/quickresto/runs?limit=10`",
         ):
             self.assertIn(endpoint, script)
