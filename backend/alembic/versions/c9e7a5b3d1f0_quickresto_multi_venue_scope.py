@@ -19,6 +19,11 @@ down_revision: Union[str, Sequence[str], None] = "b8d4f6a2c1e9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+_SCOPE_SELECTION_REQUIRED_MESSAGE = (
+    "После обновления QuickResto требуется выбрать конкретное заведение и места реализации. "
+    "Автосинхронизация приостановлена до сохранения области импорта."
+)
+
 
 def _portable_json_type():
     return sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql")
@@ -85,6 +90,15 @@ def upgrade() -> None:
             "ck_quickresto_connections_scope_generation",
             "scope_generation >= 1",
         )
+
+    op.execute(
+        sa.text(
+            "UPDATE quickresto_connections "
+            "SET last_sync_error = :message "
+            "WHERE is_active = true AND auto_sync_enabled = true "
+            "AND (last_sync_error IS NULL OR last_sync_error = '')"
+        ).bindparams(message=_SCOPE_SELECTION_REQUIRED_MESSAGE)
+    )
 
     op.create_table(
         "quickresto_external_venues",
@@ -202,6 +216,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute(
+        sa.text(
+            "UPDATE quickresto_connections "
+            "SET last_sync_error = NULL "
+            "WHERE last_sync_error = :message"
+        ).bindparams(message=_SCOPE_SELECTION_REQUIRED_MESSAGE)
+    )
+
     with op.batch_alter_table("quickresto_payment_mappings") as batch_op:
         batch_op.drop_column("last_seen_at")
         batch_op.drop_column("allowed_sale_place_ids_json")

@@ -40,10 +40,16 @@ class MigrationContractTests(unittest.TestCase):
             with engine.begin() as connection:
                 for statement in (
                     "CREATE TABLE venues (id INTEGER PRIMARY KEY)",
-                    "CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY, venue_id INTEGER NOT NULL, cloud VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL DEFAULT 1)",
+                    "CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY, venue_id INTEGER NOT NULL, cloud VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL DEFAULT 1, auto_sync_enabled BOOLEAN NOT NULL DEFAULT 0, last_sync_error TEXT)",
                     "CREATE TABLE quickresto_payment_mappings (id INTEGER PRIMARY KEY)",
                 ):
                     connection.exec_driver_sql(statement)
+                connection.exec_driver_sql("INSERT INTO venues (id) VALUES (1)")
+                connection.exec_driver_sql(
+                    "INSERT INTO quickresto_connections "
+                    "(id, venue_id, cloud, is_active, auto_sync_enabled, last_sync_error) "
+                    "VALUES (1, 1, 'legacy', 1, 1, NULL)"
+                )
 
             with patch.object(settings, "database_url", database_url):
                 config = self._config()
@@ -54,6 +60,11 @@ class MigrationContractTests(unittest.TestCase):
                 connection_columns = {column["name"] for column in inspector.get_columns("quickresto_connections")}
                 self.assertIn("external_venue_id", connection_columns)
                 self.assertIn("scope_status", connection_columns)
+                with engine.connect() as connection:
+                    migration_warning = connection.exec_driver_sql(
+                        "SELECT last_sync_error FROM quickresto_connections WHERE id = 1"
+                    ).scalar_one()
+                self.assertIn("Автосинхронизация приостановлена", migration_warning)
                 payment_columns = {column["name"] for column in inspector.get_columns("quickresto_payment_mappings")}
                 self.assertIn("is_applicable", payment_columns)
                 self.assertIn("allowed_sale_place_ids_json", payment_columns)
@@ -68,6 +79,11 @@ class MigrationContractTests(unittest.TestCase):
                 command.downgrade(config, "b8d4f6a2c1e9")
 
             inspector = sa.inspect(engine)
+            with engine.connect() as connection:
+                migration_warning = connection.exec_driver_sql(
+                    "SELECT last_sync_error FROM quickresto_connections WHERE id = 1"
+                ).scalar_one()
+            self.assertIsNone(migration_warning)
             self.assertNotIn("quickresto_external_venues", inspector.get_table_names())
             self.assertNotIn(
                 "external_venue_id",

@@ -17,6 +17,12 @@ from app.models.quickresto_store_scope import QuickRestoStoreScope
 from app.services.integrations.quickresto import QUICKRESTO_OBJECT_TYPES, QuickRestoClient
 
 
+LEGACY_SCOPE_SELECTION_REQUIRED_MESSAGE = (
+    "После обновления QuickResto требуется выбрать конкретное заведение и места реализации. Автос"
+    "инхронизация приостановлена до сохранения области импорта."
+)
+
+
 class QuickRestoScopeError(ValueError):
     """Raised when a QuickResto venue scope is incomplete or invalid."""
 
@@ -519,7 +525,12 @@ def apply_quickresto_scope(
             raise QuickRestoScopeError("Склад не связан с выбранными местами реализации QuickResto")
 
     previous_venue_id = connection.external_venue_id
-    if previous_venue_id is not None and int(previous_venue_id) != venue_id:
+    previous_sale_ids = {int(row.external_id) for row in sale_places if row.is_selected}
+    previous_store_ids = {int(row.external_id) for row in stores if row.is_selected}
+    scope_identity_changed = bool(
+        previous_venue_id is not None and (int(previous_venue_id) != venue_id or previous_sale_ids != selected_sale_ids)
+    )
+    if scope_identity_changed:
         imported_count = int(
             db.execute(
                 select(func.count(QuickRestoShiftImport.id)).where(QuickRestoShiftImport.connection_id == connection.id)
@@ -527,11 +538,9 @@ def apply_quickresto_scope(
         )
         if imported_count:
             raise QuickRestoScopeConflictError(
-                "Нельзя сменить заведение QuickResto после импорта смен; требуется отдельное переподключение"
+                "Нельзя менять заведение или места реализации QuickResto после импорта смен; "
+                "требуется отдельное переподключение"
             )
-
-    previous_sale_ids = {int(row.external_id) for row in sale_places if row.is_selected}
-    previous_store_ids = {int(row.external_id) for row in stores if row.is_selected}
     changed = (
         previous_venue_id != venue_id
         or previous_sale_ids != selected_sale_ids
@@ -548,6 +557,8 @@ def apply_quickresto_scope(
     connection.external_venue_name = venue.external_name
     connection.scope_status = "READY"
     connection.scope_confirmed_at = _utcnow()
+    if connection.last_sync_error == LEGACY_SCOPE_SELECTION_REQUIRED_MESSAGE:
+        connection.last_sync_error = None
     if changed and previous_venue_id is not None:
         connection.scope_generation = int(connection.scope_generation or 1) + 1
     if changed:

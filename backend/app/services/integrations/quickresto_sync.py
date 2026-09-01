@@ -317,6 +317,23 @@ def _object_detail(client: QuickRestoClient, key: str, object_id: int) -> dict[s
     return client.read_object(module_name=module_name, class_name=class_name, object_id=object_id)
 
 
+def _object_rows_with_details(
+    client: QuickRestoClient,
+    key: str,
+    *,
+    required_fields: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    for row in _object_rows(client, key):
+        object_id = int(row.get("id") or 0)
+        if object_id > 0 and any(field not in row for field in required_fields):
+            detail = _object_detail(client, key, object_id)
+            if isinstance(detail, dict):
+                row = detail
+        output.append(row)
+    return output
+
+
 def build_quickresto_client(connection: QuickRestoConnection) -> QuickRestoClient:
     return QuickRestoClient(
         QuickRestoConfig(
@@ -333,7 +350,11 @@ def refresh_quickresto_mappings(
     connection: QuickRestoConnection,
     client: QuickRestoClient,
 ) -> dict[str, Any]:
-    payment_rows = _object_rows(client, "payment_types")
+    payment_rows = _object_rows_with_details(
+        client,
+        "payment_types",
+        required_fields=("allowedSalePlacesWeb",),
+    )
     department_rows = _object_rows(client, "dish_categories")
     selected_sale_ids = selected_sale_place_ids(db, connection_id=int(connection.id))
     scope_filter_enabled = bool(

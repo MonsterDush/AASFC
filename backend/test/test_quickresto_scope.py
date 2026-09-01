@@ -4,15 +4,17 @@ from copy import deepcopy
 from datetime import date, datetime, timezone
 import unittest
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
 from app.core.db import Base
 from app.models.daily_report import DailyReport
+from app.models.department import Department
 from app.models.payment_method import PaymentMethod
 from app.models.quickresto_connection import QuickRestoConnection
+from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
 from app.models.quickresto_external_venue import QuickRestoExternalVenue
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_sale_place_scope import QuickRestoSalePlaceScope
@@ -28,6 +30,7 @@ from app.services.integrations.quickresto_scope import (
     refresh_quickresto_catalog,
     serialize_quickresto_catalog,
 )
+from app.services.integrations.quickresto_sync import refresh_quickresto_mappings
 
 
 @compiles(JSONB, "sqlite")
@@ -105,6 +108,17 @@ class CatalogQuickRestoClient:
         return deepcopy(next(row for row in self.rows[key] if int(row["id"]) == int(object_id)))
 
 
+class SparsePaymentListQuickRestoClient(CatalogQuickRestoClient):
+    def list_all_objects(self, *, module_name, class_name):
+        if class_name.endswith("DishCategory"):
+            return []
+        rows = super().list_all_objects(module_name=module_name, class_name=class_name)
+        if class_name.endswith("PaymentType"):
+            for row in rows:
+                row.pop("allowedSalePlacesWeb", None)
+        return rows
+
+
 class QuickRestoScopeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.engine = create_engine("sqlite+pysqlite:///:memory:")
@@ -113,9 +127,11 @@ class QuickRestoScopeTests(unittest.TestCase):
             tables=[
                 User.__table__,
                 Venue.__table__,
+                Department.__table__,
                 PaymentMethod.__table__,
                 DailyReport.__table__,
                 QuickRestoConnection.__table__,
+                QuickRestoDepartmentMapping.__table__,
                 QuickRestoExternalVenue.__table__,
                 QuickRestoSalePlaceScope.__table__,
                 QuickRestoStoreScope.__table__,
@@ -170,6 +186,40 @@ class QuickRestoScopeTests(unittest.TestCase):
         self.assertEqual(selected_stores, [401])
         self.assertEqual(applicable_payments, [501, 502])
 
+    def test_mapping_refresh_reads_payment_scope_from_object_detail_when_list_is_sparse(self):
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201],
+            store_ids=[401],
+        )
+
+        refresh_quickresto_mappings(
+            self.db,
+            connection=self.connection,
+            client=SparsePaymentListQuickRestoClient(),
+        )
+
+        center_only = self.db.execute(
+            select(QuickRestoPaymentMapping).where(
+                QuickRestoPaymentMapping.connection_id == self.connection.id,
+                QuickRestoPaymentMapping.external_id == 502,
+            )
+        ).scalar_one()
+        north_only = self.db.execute(
+            select(QuickRestoPaymentMapping).where(
+                QuickRestoPaymentMapping.connection_id == self.connection.id,
+                QuickRestoPaymentMapping.external_id == 503,
+            )
+        ).scalar_one()
+
+        self.assertEqual(center_only.allowed_sale_place_ids_json, [201])
+        self.assertTrue(center_only.is_applicable)
+        self.assertEqual(north_only.allowed_sale_place_ids_json, [203])
+        self.assertFalse(north_only.is_applicable)
+
     def test_same_cloud_venue_cannot_be_linked_twice(self):
         refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
         apply_quickresto_scope(
@@ -223,13 +273,45 @@ class QuickRestoScopeTests(unittest.TestCase):
         )
         self.db.flush()
 
-        with self.assertRaisesRegex(QuickRestoScopeConflictError, "Нельзя сменить"):
+        with self.assertRaisesRegex(QuickRestoScopeConflictError, "Нельзя менять"):
             apply_quickresto_scope(
                 self.db,
                 connection=self.connection,
                 external_venue_id=102,
                 sale_place_ids=[203],
                 store_ids=[403],
+            )
+
+    def test_sale_place_scope_cannot_change_after_a_shift_was_imported(self):
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201, 202],
+            store_ids=[401, 402],
+        )
+        self.db.add(
+            QuickRestoShiftImport(
+                connection_id=self.connection.id,
+                external_shift_id="shift-sale-place-scope",
+                external_shift_pk=2,
+                source_version=1,
+                business_date=date(2030, 1, 16),
+                shift_slot="DAY",
+                payload_hash="b" * 64,
+                normalized_json={},
+            )
+        )
+        self.db.flush()
+
+        with self.assertRaisesRegex(QuickRestoScopeConflictError, "места реализации"):
+            apply_quickresto_scope(
+                self.db,
+                connection=self.connection,
+                external_venue_id=101,
+                sale_place_ids=[201],
+                store_ids=[401],
             )
 
     def test_shift_scope_decisions_are_explicit_and_safe(self):
