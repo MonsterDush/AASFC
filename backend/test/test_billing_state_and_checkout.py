@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
+import json
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import app.services.billing.manager as manager
 import app.services.billing.robokassa as robokassa
@@ -48,7 +50,97 @@ class BillingStateTests(TestCase):
         self.assertEqual(snap_suspended.status, state.BILLING_STATUS_SUSPENDED)
         self.assertTrue(snap_suspended.is_overdue)
 
-    def test_build_checkout_url_uses_successurl2_and_failurl2(self):
+    def test_build_receipt_json_contains_service_item(self):
+        receipt = robokassa.build_receipt_json(
+            amount_minor=239233,
+            item_name="Подписка Axelio — доступ на 30 дней",
+            tax="none",
+        )
+        payload = json.loads(receipt)
+        self.assertEqual(len(payload["items"]), 1)
+        item = payload["items"][0]
+        self.assertEqual(item["name"], "Подписка Axelio — доступ на 30 дней")
+        self.assertEqual(item["quantity"], 1)
+        self.assertEqual(item["sum"], 2392.33)
+        self.assertEqual(item["payment_method"], "full_payment")
+        self.assertEqual(item["payment_object"], "service")
+        self.assertEqual(item["tax"], "none")
+
+    def test_checkout_signature_includes_urlencoded_receipt_before_password(self):
+        receipt = robokassa.build_receipt_json(
+            amount_minor=299000,
+            item_name="Подписка Axelio — доступ на 30 дней",
+            tax="none",
+        )
+        extra_params = {"Shp_tx": "123", "Shp_venueId": "77"}
+        actual = robokassa.calculate_checkout_signature(
+            merchant_login="demo",
+            out_sum="2990.000000",
+            invoice_id="123",
+            password1="pass1",
+            algorithm="MD5",
+            receipt=receipt,
+            extra_params=extra_params,
+        )
+        expected_base = (
+            f"demo:2990.000000:123:{quote(receipt, safe='')}:pass1"
+            ":Shp_tx=123:Shp_venueId=77"
+        )
+        expected = hashlib.md5(expected_base.encode("utf-8")).hexdigest()
+        self.assertEqual(actual, expected)
+
+    def test_build_checkout_fields_contains_receipt_and_return_urls(self):
+        receipt = robokassa.build_receipt_json(
+            amount_minor=299000,
+            item_name="Подписка Axelio — доступ на 30 дней",
+            tax="none",
+        )
+        fields = robokassa.build_checkout_fields(
+            merchant_login="demo",
+            out_sum="2990.000000",
+            invoice_id="123",
+            description="Axelio",
+            password1="pass1",
+            algorithm="MD5",
+            result_url="https://api.axelio.ru/billing/robokassa/result",
+            success_url="https://api.axelio.ru/billing/robokassa/success",
+            fail_url="https://api.axelio.ru/billing/robokassa/fail",
+            receipt=receipt,
+            extra_params={"Shp_tx": "123", "Shp_venueId": "77"},
+            test_mode=True,
+            expiration_date="2026-04-02T14:00",
+        )
+        self.assertEqual(fields["Receipt"], receipt)
+        self.assertIn("SuccessUrl2", fields)
+        self.assertIn("FailUrl2", fields)
+        self.assertIn("SuccessUrl2Method", fields)
+        self.assertIn("FailUrl2Method", fields)
+        self.assertNotIn("SuccessURL", fields)
+        self.assertNotIn("FailURL", fields)
+        self.assertEqual(fields["IsTest"], "1")
+        self.assertEqual(fields["ExpirationDate"], "2026-04-02T14:00")
+
+    def test_build_checkout_post_html_posts_raw_receipt(self):
+        receipt = robokassa.build_receipt_json(
+            amount_minor=299000,
+            item_name="Подписка Axelio — доступ на 30 дней",
+            tax="none",
+        )
+        page = robokassa.build_checkout_post_html(
+            payment_url="https://auth.robokassa.ru/Merchant/Index.aspx",
+            fields={"Receipt": receipt, "OutSum": "2990.000000", "InvId": "123"},
+        )
+        self.assertIn('method="post"', page)
+        self.assertIn('name="Receipt"', page)
+        self.assertIn("robokassa-form", page)
+        self.assertNotIn("%257B", page)
+
+    def test_build_checkout_url_remains_backward_compatible(self):
+        receipt = robokassa.build_receipt_json(
+            amount_minor=299000,
+            item_name="Подписка Axelio — доступ на 30 дней",
+            tax="none",
+        )
         url = robokassa.build_checkout_url(
             merchant_login="demo",
             out_sum="2990.000000",
@@ -60,17 +152,15 @@ class BillingStateTests(TestCase):
             result_url="https://api.axelio.ru/billing/robokassa/result",
             success_url="https://api.axelio.ru/billing/robokassa/success",
             fail_url="https://api.axelio.ru/billing/robokassa/fail",
+            receipt=receipt,
             extra_params={"Shp_tx": "123", "Shp_venueId": "77"},
             test_mode=True,
             expiration_date="2026-04-02T14:00",
         )
         query = parse_qs(urlparse(url).query)
+        self.assertEqual(query["Receipt"][0], receipt)
         self.assertIn("SuccessUrl2", query)
         self.assertIn("FailUrl2", query)
-        self.assertIn("SuccessUrl2Method", query)
-        self.assertIn("FailUrl2Method", query)
-        self.assertNotIn("SuccessURL", query)
-        self.assertNotIn("FailURL", query)
         self.assertEqual(query["IsTest"][0], "1")
         self.assertEqual(query["ExpirationDate"][0], "2026-04-02T14:00")
 

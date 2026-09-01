@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     ROBOKASSA_PAYMENT_URL: str = "https://auth.robokassa.ru/Merchant/Index.aspx"
     ROBOKASSA_USE_RETURN_URL2: bool = False
     ROBOKASSA_SEND_EXPIRATION_DATE: bool = False
+    ROBOKASSA_RECEIPT_TAX: str = "none"
     ROBOKASSA_CHECKOUT_TTL_MINUTES: int = 60
     BILLING_ALERT_STALE_PENDING_MINUTES: int = 180
     BILLING_ALERT_FAILED_THRESHOLD_24H: int = 5
