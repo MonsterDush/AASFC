@@ -4581,8 +4581,8 @@
   "Интеграция": "Integration",
   "точки #": "locations #",
   "+ точки:": "+ locations:",
-  "- точки:": "- locations:",
+  "− точки:": "- locations:",
   "+ склады:": "+ warehouses:",
-  "- склады:": "- warehouses:",
+  "− склады:": "- warehouses:",
   "· пользователь #": "· user #"
 }
