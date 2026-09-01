@@ -390,7 +390,9 @@ def refresh_quickresto_catalog(
             # On the very first setup show discovered points as preselected.
             # Once a scope has ever been confirmed, new points stay unselected
             # until the owner explicitly reviews them.
-            row.is_selected = bool(connection.external_venue_id is None and connection.scope_status == "NEEDS_SELECTION")
+            row.is_selected = bool(
+                connection.external_venue_id is None and connection.scope_status == "NEEDS_SELECTION"
+            )
             db.add(row)
             existing_sale_places[external_id] = row
         row.external_name = _bounded_title(

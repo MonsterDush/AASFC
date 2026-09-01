@@ -258,9 +258,7 @@ def seal_quickresto_source_snapshot(
     source_key: str | None = None,
     scope_store_ids: Iterable[Any] = (),
 ) -> SealedQuickRestoSnapshot:
-    sanitized = sanitize_quickresto_source_snapshot(
-        shift=shift, orders=orders, scope_store_ids=scope_store_ids
-    )
+    sanitized = sanitize_quickresto_source_snapshot(shift=shift, orders=orders, scope_store_ids=scope_store_ids)
     serialized, encoded = _canonical_payload(sanitized)
     payload_hash = hashlib.sha256(encoded).hexdigest()
     encrypted = encrypt_integration_payload(serialized)

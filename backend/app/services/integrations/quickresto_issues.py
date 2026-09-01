@@ -584,9 +584,7 @@ def issue_counters(db: Session, *, connection_id: int) -> dict[str, Any]:
         "affected_shift_count": sum(
             max(
                 len(row.shifts),
-                int(row.details_json.get("legacy_shift_count") or 0)
-                if isinstance(row.details_json, dict)
-                else 0,
+                int(row.details_json.get("legacy_shift_count") or 0) if isinstance(row.details_json, dict) else 0,
             )
             for row in rows
         ),

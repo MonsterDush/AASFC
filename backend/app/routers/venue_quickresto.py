@@ -306,12 +306,8 @@ def _mapping_readiness(db: Session, connection: QuickRestoConnection) -> dict:
         and not item.excluded_from_revenue
         and item.payment_method_id is None
     )
-    missing_departments = sorted(
-        int(item.external_id) for item in departments if item.department_id is None
-    )
-    discovered = bool(
-        any(item.is_available and item.is_applicable for item in payments) or departments
-    )
+    missing_departments = sorted(int(item.external_id) for item in departments if item.department_id is None)
+    discovered = bool(any(item.is_available and item.is_applicable for item in payments) or departments)
     return {
         "ready": bool(
             str(connection.scope_status or "").upper() == "READY"

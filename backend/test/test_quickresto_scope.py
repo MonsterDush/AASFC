@@ -426,9 +426,7 @@ class QuickRestoScopeTests(unittest.TestCase):
             sale_places={
                 int(row.external_id): row
                 for row in self.db.execute(
-                    select(QuickRestoSalePlaceScope).where(
-                        QuickRestoSalePlaceScope.connection_id == self.connection.id
-                    )
+                    select(QuickRestoSalePlaceScope).where(QuickRestoSalePlaceScope.connection_id == self.connection.id)
                 ).scalars()
             },
         )
