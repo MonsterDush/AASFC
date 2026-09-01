@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from fastapi.responses import PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,7 +23,9 @@ from app.models.venue_member import VenueMember
 from app.services.billing import (
     apply_checkout_payment_success,
     apply_free_promo_code,
-    build_checkout_url,
+    build_checkout_fields,
+    build_checkout_post_html,
+    build_receipt_json,
     compute_promo_preview,
     create_checkout_transaction,
     extract_transaction_promo_payload,
@@ -304,41 +306,52 @@ def create_venue_billing_checkout(
         replace_existing=should_replace_existing,
     )
     out_sum = format_out_sum(int(tx.amount_minor or 0), test_mode=robo_cfg.test_mode)
+    invoice_id = str(tx.provider_invoice_id or tx.id)
     extra_params = {
         "Shp_venueId": str(int(venue_id)),
         "Shp_tx": str(int(tx.id)),
     }
     checkout_expires_at = get_checkout_expires_at(tx)
     expiration_value = checkout_expires_at if bool(getattr(settings, "ROBOKASSA_SEND_EXPIRATION_DATE", False)) else None
-    checkout_url = build_checkout_url(
+    days_added = max(1, int(tx.days_added or requested_days_added or 30))
+    receipt_json = build_receipt_json(
+        amount_minor=int(tx.amount_minor or 0),
+        item_name=f"Подписка Axelio — доступ на {days_added} дней",
+        tax=robo_cfg.receipt_tax,
+    )
+    checkout_fields = build_checkout_fields(
         merchant_login=robo_cfg.merchant_login,
         out_sum=out_sum,
-        invoice_id=str(tx.provider_invoice_id or tx.id),
-        description=f"Axelio · продление доступа к заведению «{venue.name}» на 30 дней",
+        invoice_id=invoice_id,
+        description=f"Axelio · продление доступа к заведению «{venue.name}» на {days_added} дней",
         password1=robo_cfg.password1,
         algorithm=robo_cfg.hash_algorithm,
-        payment_url=robo_cfg.payment_url,
         result_url=robo_cfg.result_url,
         success_url=robo_cfg.success_url,
         fail_url=robo_cfg.fail_url,
+        receipt=receipt_json,
         extra_params=extra_params,
         test_mode=robo_cfg.test_mode,
         culture="ru",
         expiration_date=expiration_value,
         use_return_url2=bool(getattr(settings, "ROBOKASSA_USE_RETURN_URL2", False)),
     )
-    payload = dict(tx.provider_payload_json or {})
-    payload.update(
+    checkout_url = f"{settings.api_base_url()}/billing/robokassa/pay?{urlencode({'InvId': invoice_id})}"
+    provider_payload = dict(tx.provider_payload_json or {})
+    provider_payload.update(
         {
             "out_sum": out_sum,
             "venue_name": venue.name,
             "checkout_url": checkout_url,
+            "payment_url": robo_cfg.payment_url,
+            "checkout_fields": checkout_fields,
+            "receipt": receipt_json,
             "extra_params": extra_params,
             "test_mode": robo_cfg.test_mode,
             "checkout_expires_at": checkout_expires_at.isoformat() if checkout_expires_at else None,
         }
     )
-    tx.provider_payload_json = payload
+    tx.provider_payload_json = provider_payload
     db.commit()
     db.refresh(tx)
 
@@ -465,6 +478,46 @@ def _frontend_payment_redirect(
     if reason:
         query["billing_reason"] = str(reason)
     return f"{base}?{urlencode(query)}"
+
+
+@public_router.get("/billing/robokassa/pay", response_class=HTMLResponse)
+def robokassa_pay(
+    InvId: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+):
+    invoice_id = str(InvId or "").strip()
+    tx = get_billing_transaction_by_invoice_id(db, invoice_id=invoice_id)
+    if tx is None:
+        raise HTTPException(status_code=404, detail="Billing transaction not found")
+
+    status = str(tx.status or "").upper()
+    if status == "SUCCEEDED":
+        return RedirectResponse(
+            url=_frontend_payment_redirect(
+                venue_id=int(tx.venue_id),
+                invoice_id=invoice_id,
+                payment_status="success",
+            ),
+            status_code=302,
+        )
+    if status != "PENDING":
+        raise HTTPException(status_code=409, detail="Billing transaction is not pending")
+
+    payload = dict(tx.provider_payload_json or {})
+    checkout_fields = payload.get("checkout_fields")
+    if not isinstance(checkout_fields, dict) or not checkout_fields:
+        raise HTTPException(status_code=409, detail="Robokassa checkout payload is missing")
+
+    payment_url = str(payload.get("payment_url") or "").strip()
+    if not payment_url:
+        payment_url = get_robokassa_config().payment_url
+
+    return HTMLResponse(
+        build_checkout_post_html(
+            payment_url=payment_url,
+            fields={str(key): str(value) for key, value in checkout_fields.items()},
+        )
+    )
 
 
 @public_router.api_route("/billing/robokassa/result", methods=["GET", "POST"], response_class=PlainTextResponse)

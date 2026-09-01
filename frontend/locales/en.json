@@ -4428,5 +4428,9 @@
   "🛠 Импорт QuickResto ·": "🛠 QuickResto import ·",
   "Предыдущий импорт QuickResto не завершился и был автоматически восстановлен.": "The previous QuickResto import did not finish and was recovered automatically.",
   "Сохранённые данные смены уже недоступны. Запустите полную синхронизацию QuickResto.": "Stored shift data is no longer available. Run a full QuickResto synchronization.",
-  "Сохранённые смены успешно импортированы после повторной обработки.": "Stored shifts were successfully imported after retrying."
+  "Сохранённые смены успешно импортированы после повторной обработки.": "Stored shifts were successfully imported after retrying.",
+  "Подписка Axelio — доступ на": "Axelio subscription — access for",
+  "» на": "” for",
+  "<!doctype html> <html lang=\"ru\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"> <title>Переход к оплате · Axelio</title> </head> <body> <form id=\"robokassa-form\" method=\"post\" action=\"": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"> <title>Redirecting to payment · Axelio</title> </head> <body> <form id=\"robokassa-form\" method=\"post\" action=\"",
+  "<noscript><button type=\"submit\">Перейти к оплате</button></noscript> </form> <script>document.getElementById(\"robokassa-form\").submit();</script> </body> </html>": "<noscript><button type=\"submit\">Proceed to payment</button></noscript> </form> <script>document.getElementById(\"robokassa-form\").submit();</script> </body> </html>"
 }
