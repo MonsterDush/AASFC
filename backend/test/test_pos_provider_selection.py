@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 
 from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
 from app.core.db import Base
@@ -15,6 +17,11 @@ from app.services.integrations.pos_provider_selection import (
     active_pos_provider,
     release_pos_provider,
 )
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_for_sqlite(_type, _compiler, **_kwargs):
+    return "JSON"
 
 
 class POSProviderSelectionTests(unittest.TestCase):

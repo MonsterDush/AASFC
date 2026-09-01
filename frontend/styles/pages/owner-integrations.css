@@ -12,6 +12,10 @@
 .integrations-provider-tab[aria-selected="true"] small{background:var(--accentSoftBg);color:var(--accent)}
 .integrations-provider-panel{min-width:0;padding:16px;border:1px solid var(--border);border-radius:16px;background:linear-gradient(145deg,var(--surface2),var(--card))}
 .integrations-provider-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start}
+.integrations-provider-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.integrations-provider-actions .btn{white-space:nowrap}
+.integrations-provider-actions [data-attention="true"]{border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft);color:var(--statusErrorText)}
+.integrations-issue-count{display:inline-grid;min-width:20px;height:20px;place-items:center;padding:0 5px;border-radius:999px;background:currentColor;color:var(--card);font-size:10px;line-height:1}
 .integrations-provider-name{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .integrations-provider-name>b{font-size:18px}
 .integrations-status{padding:4px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft);color:var(--muted);font-size:10px;font-weight:900}
@@ -24,7 +28,7 @@
 .integrations-coming-soon__badge{padding:4px 8px;border:1px solid var(--statusWarningBorder);border-radius:999px;background:var(--statusWarningBgSoft);color:var(--statusWarningText);font-size:10px;font-weight:900;text-transform:uppercase}
 @media(max-width:720px){
   .integrations-hero__layout,.integrations-provider-head,.integrations-feature-grid{grid-template-columns:minmax(0,1fr)}
-  .integrations-hero__layout .btn,.integrations-provider-head .btn{width:100%}
+  .integrations-hero__layout .btn,.integrations-provider-actions,.integrations-provider-head .btn{width:100%}
   .integrations-provider-tabs{gap:5px;padding:4px}
   .integrations-provider-tab{flex-direction:column;justify-content:center;gap:5px;min-height:64px;padding:9px 6px;text-align:center}
   .integrations-provider-tab span{font-size:13px;line-height:1.15;white-space:nowrap}

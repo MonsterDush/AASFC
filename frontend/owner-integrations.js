@@ -21,7 +21,7 @@ if (venueId) setActiveVenueId(venueId);
 const el = Object.fromEntries([
   "title", "venueTitle", "backToVenue", "quickrestoTab", "iikoTab", "quickrestoPanel", "iikoPanel",
   "quickrestoTabStatus", "quickrestoStatus", "quickrestoDescription", "configureQuickResto", "integrationHint",
-  "iikoDescription",
+  "openQuickRestoIssues", "quickrestoIssueCount", "iikoDescription",
 ].map((id) => [id, document.getElementById(id)]));
 
 function errorMessage(error) {
@@ -59,6 +59,7 @@ async function load() {
   }
   el.backToVenue.dataset.href = `/app-venue.html?venue_id=${encodeURIComponent(venueId)}`;
   el.configureQuickResto.href = `/owner-quickresto.html?venue_id=${encodeURIComponent(venueId)}`;
+  el.openQuickRestoIssues.href = `/owner-integration-issues.html?venue_id=${encodeURIComponent(venueId)}&provider=quickresto`;
   const [venue, integration] = await Promise.all([
     getVenueById(venueId),
     api(`/venues/${encodeURIComponent(venueId)}/integrations/quickresto`),
@@ -79,6 +80,12 @@ async function load() {
     el.quickrestoStatus.dataset.status = "EMPTY";
     return;
   }
+
+  const openIssueCount = Number(integration.issues?.open_count || 0);
+  el.quickrestoIssueCount.textContent = String(openIssueCount);
+  el.openQuickRestoIssues.hidden = false;
+  el.openQuickRestoIssues.classList.remove("hidden");
+  el.openQuickRestoIssues.dataset.attention = String(openIssueCount > 0);
 
   const connection = integration.connection || {};
   const active = connection.is_active !== false;

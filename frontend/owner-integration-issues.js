@@ -51,6 +51,12 @@ const state = {
   selectedIssueId: null,
   returnFocus: null,
   mappings: { payments: [], departments: [] },
+  catalog: {
+    selected_external_venue_id: null,
+    venues: [],
+    sale_places: [],
+    stores: [],
+  },
   paymentMethods: [],
   departments: [],
 };
@@ -234,20 +240,95 @@ function renderMappingResolution(issue) {
 function renderScopeResolution(issue) {
   if (String(issue.error_category || "").toUpperCase() !== "SCOPE") return "";
   const details = issue.details || {};
+  const catalog = state.catalog || {};
+  const venues = (catalog.venues || []).filter((item) => item.is_available !== false);
+  const salePlaces = (catalog.sale_places || []).filter(
+    (item) => item.is_available !== false,
+  );
+  const stores = (catalog.stores || []).filter((item) => item.is_available !== false);
+  const selectedVenueId = String(catalog.selected_external_venue_id || "");
+  const disabled = state.canManage && issue.can_retry !== false ? "" : " disabled";
   const facts = [
     ["Выбранное заведение", details.selected_external_venue_id],
     ["Заведение смены", details.shift_external_venue_id],
     ["Место реализации", details.sale_place_id],
     ["Точка открытия смены", details.opening_sale_place_id],
+    ["Заведение точки", details.resolved_sale_place_venue_id],
   ]
     .filter(([, value]) => value !== null && value !== undefined)
-    .map(([label, value]) => `<div><dt>${label}</dt><dd>QuickResto #${esc(value)}</dd></div>`)
+    .map(
+      ([label, value]) =>
+        `<div><dt>${esc(label)}</dt><dd>QuickResto #${esc(value)}</dd></div>`,
+    )
+    .join("");
+  const venueOptions = venues
+    .map(
+      (item) =>
+        `<option value="${esc(item.external_id)}"${String(item.external_id) === selectedVenueId ? " selected" : ""}>${esc(item.external_name)}</option>`,
+    )
+    .join("");
+  const salePlaceOptions = salePlaces
+    .map(
+      (item) =>
+        `<label class="integration-issue-scope-choice" data-scope-sale-place-row data-venue-id="${esc(item.external_venue_id)}">
+          <input type="checkbox" value="${esc(item.external_id)}" data-issue-scope-sale-place${item.is_selected ? " checked" : ""}${disabled} />
+          <span><b>${esc(item.external_name)}</b><small>QuickResto #${esc(item.external_id)}</small></span>
+        </label>`,
+    )
+    .join("");
+  const storeOptions = stores
+    .map(
+      (item) =>
+        `<label class="integration-issue-scope-choice" data-scope-store-row data-source-sale-place-ids="${esc((item.source_sale_place_ids || []).join(" "))}">
+          <input type="checkbox" value="${esc(item.external_id)}" data-issue-scope-store${item.is_selected ? " checked" : ""}${disabled} />
+          <span><b>${esc(item.external_name)}</b><small>QuickResto #${esc(item.external_id)}</small></span>
+        </label>`,
+    )
     .join("");
   return `<section class="integration-issue-resolution">
-    <div><h3>Проверьте область импорта</h3><div class="muted small mt-4">QuickResto передал новое, неизвестное или противоречивое место реализации. Обновите список точек, явно подтвердите нужные и вернитесь сюда для повтора.</div></div>
+    <div><h3>Исправьте область импорта</h3><div class="muted small mt-4">Обновите справочник, выберите нужное заведение и точки. После сохранения Axelio сразу повторит импорт проблемных смен.</div></div>
     ${facts ? `<dl class="integration-issue-facts">${facts}</dl>` : ""}
-    <a class="btn primary" href="/owner-quickresto.html?venue_id=${encodeURIComponent(venueId)}#scopeSection">Настроить заведение и точки</a>
+    ${
+      venues.length
+        ? `<div class="integration-issue-scope-editor">
+            <label class="integration-issue-field"><span>Заведение QuickResto</span><select data-issue-scope-venue${disabled}><option value="">— выберите заведение —</option>${venueOptions}</select></label>
+            <fieldset class="integration-issue-scope-group"><legend>Места реализации</legend><div class="integration-issue-scope-choices">${salePlaceOptions || '<div class="muted small">Места реализации не найдены.</div>'}</div></fieldset>
+            <fieldset class="integration-issue-scope-group"><legend>Связанные склады</legend><div class="integration-issue-scope-choices">${storeOptions || '<div class="muted small">Связанные склады не найдены.</div>'}</div></fieldset>
+          </div>`
+        : '<div class="integration-issue-readonly">Справочник QuickResto ещё не загружен. Обновите его, чтобы выбрать заведение и точки.</div>'
+    }
+    ${
+      state.canManage && issue.can_retry !== false
+        ? `<div class="integration-issue-scope-actions">
+            <button class="btn" type="button" data-refresh-scope-catalog>Обновить справочник</button>
+            ${venues.length ? '<button class="btn primary" type="button" data-save-scope-retry>Сохранить область и повторить импорт</button>' : ""}
+          </div>`
+        : ""
+    }
   </section>`;
+}
+
+function syncIssueScopeFields() {
+  const venueField = el.issueDrawerBody.querySelector("[data-issue-scope-venue]");
+  if (!venueField) return;
+  const selectedVenueId = String(venueField.value || "");
+  const selectedSalePlaceIds = new Set();
+  el.issueDrawerBody.querySelectorAll("[data-scope-sale-place-row]").forEach((row) => {
+    const checkbox = row.querySelector("[data-issue-scope-sale-place]");
+    const visible = !!selectedVenueId && String(row.dataset.venueId || "") === selectedVenueId;
+    row.hidden = !visible;
+    if (!visible && checkbox) checkbox.checked = false;
+    if (visible && checkbox?.checked) selectedSalePlaceIds.add(String(checkbox.value));
+  });
+  el.issueDrawerBody.querySelectorAll("[data-scope-store-row]").forEach((row) => {
+    const checkbox = row.querySelector("[data-issue-scope-store]");
+    const sourceIds = new Set(String(row.dataset.sourceSalePlaceIds || "").split(/\s+/).filter(Boolean));
+    const visible =
+      !!selectedVenueId &&
+      (!sourceIds.size || [...sourceIds].some((value) => selectedSalePlaceIds.has(value)));
+    row.hidden = !visible;
+    if (!visible && checkbox) checkbox.checked = false;
+  });
 }
 
 function renderShifts(issue) {
@@ -310,6 +391,7 @@ function renderDrawer(issue) {
         : ""
     }
     <div class="muted small integration-issue-action-hint" id="actionHint" aria-live="polite"></div>`;
+  syncIssueScopeFields();
 }
 
 function actionHint(message, error = false) {
@@ -340,6 +422,20 @@ function closeDrawer() {
   state.selectedIssueId = null;
   if (state.returnFocus?.isConnected) state.returnFocus.focus();
   state.returnFocus = null;
+}
+
+function drawerFocusableElements() {
+  return [
+    ...el.issueDrawer.querySelectorAll(
+      'a[href], button:not([disabled]), select:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ].filter(
+    (item) =>
+      item instanceof HTMLElement &&
+      !item.hidden &&
+      !item.closest("[hidden]") &&
+      item.getClientRects().length > 0,
+  );
 }
 
 async function loadDetail(issueId) {
@@ -500,6 +596,92 @@ async function saveMappingsAndRetry(button) {
   }
 }
 
+async function refreshScopeCatalog(button) {
+  const issue = state.selectedIssue;
+  if (!issue || !state.canManage) return;
+  setBusy(button, true, "Обновляем…");
+  actionHint("");
+  try {
+    const result = await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/catalog/refresh`,
+      { method: "POST" },
+    );
+    state.catalog = result.catalog || state.catalog;
+    renderDrawer(issue);
+    actionHint("Справочник обновлён. Проверьте заведение и точки перед сохранением.");
+  } catch (error) {
+    actionHint(errorMessage(error), true);
+    toast(errorMessage(error), "err");
+  } finally {
+    setBusy(button, false);
+  }
+}
+
+async function saveScopeAndRetry(button) {
+  const issue = state.selectedIssue;
+  if (!issue || !state.canManage) return;
+  const venueField = el.issueDrawerBody.querySelector("[data-issue-scope-venue]");
+  const externalVenueId = Number(venueField?.value || 0);
+  const salePlaceIds = [
+    ...el.issueDrawerBody.querySelectorAll(
+      "[data-scope-sale-place-row]:not([hidden]) [data-issue-scope-sale-place]:checked",
+    ),
+  ].map((field) => Number(field.value));
+  const storeIds = [
+    ...el.issueDrawerBody.querySelectorAll(
+      "[data-scope-store-row]:not([hidden]) [data-issue-scope-store]:checked",
+    ),
+  ].map((field) => Number(field.value));
+  venueField?.removeAttribute("aria-invalid");
+  if (!externalVenueId || !salePlaceIds.length) {
+    venueField?.setAttribute("aria-invalid", "true");
+    actionHint("Выберите заведение и хотя бы одно место реализации.", true);
+    return;
+  }
+  setBusy(button, true, "Сохраняем и повторяем…");
+  actionHint("");
+  try {
+    const scopeResult = await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/scope`,
+      {
+        method: "PUT",
+        body: {
+          external_venue_id: externalVenueId,
+          sale_place_ids: salePlaceIds,
+          store_ids: storeIds,
+        },
+      },
+    );
+    state.catalog = scopeResult.catalog || state.catalog;
+    state.mappings = scopeResult.mappings || state.mappings;
+    const retryResult = await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/issues/${issue.id}/retry`,
+      { method: "POST" },
+    );
+    await loadIssues();
+    if (
+      retryResult.ok &&
+      String(retryResult.run?.status).toUpperCase() === "SUCCEEDED"
+    ) {
+      closeDrawer();
+      toast("Область сохранена, смены успешно импортированы", "ok");
+    } else {
+      renderDrawer(retryResult.issue);
+      actionHint(
+        retryResult.issue?.user_summary ||
+          "После изменения области проблема всё ещё требует внимания.",
+        true,
+      );
+      toast("Импорт всё ещё требует внимания", "err");
+    }
+  } catch (error) {
+    actionHint(errorMessage(error), true);
+    toast(errorMessage(error), "err");
+  } finally {
+    setBusy(button, false);
+  }
+}
+
 async function ignoreIssue(button) {
   const issue = state.selectedIssue;
   const noteField = document.getElementById("resolutionNote");
@@ -544,6 +726,7 @@ async function loadPage() {
   state.configured = !!integration.configured;
   state.canManage = integration.permissions?.can_manage !== false;
   state.mappings = integration.mappings || state.mappings;
+  state.catalog = integration.catalog || state.catalog;
   state.paymentMethods = Array.isArray(paymentMethods) ? paymentMethods : [];
   state.departments = Array.isArray(departments) ? departments : [];
   renderCounters(integration.issues || {});
@@ -577,6 +760,10 @@ el.issueList?.addEventListener("click", (event) => {
 el.issueDrawer?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("[data-issue-close]")) closeDrawer();
+  else if (target?.closest("[data-refresh-scope-catalog]"))
+    void refreshScopeCatalog(target.closest("[data-refresh-scope-catalog]"));
+  else if (target?.closest("[data-save-scope-retry]"))
+    void saveScopeAndRetry(target.closest("[data-save-scope-retry]"));
   else if (target?.closest("[data-save-mappings-retry]"))
     void saveMappingsAndRetry(target.closest("[data-save-mappings-retry]"));
   else if (target?.closest("[data-retry]"))
@@ -589,11 +776,32 @@ el.issueDrawer?.addEventListener("input", (event) => {
   target?.removeAttribute("aria-invalid");
   actionHint("");
 });
+el.issueDrawer?.addEventListener("change", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.matches("[data-issue-scope-venue], [data-issue-scope-sale-place]")) {
+    syncIssueScopeFields();
+    actionHint("");
+  }
+});
 document.addEventListener("keydown", (event) => {
   if (!el.issueDrawer.classList.contains("open")) return;
   if (event.key === "Escape") {
     event.preventDefault();
     closeDrawer();
+    return;
+  }
+  if (event.key === "Tab") {
+    const items = drawerFocusableElements();
+    if (!items.length) return;
+    const first = items[0];
+    const last = items.at(-1);
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 });
 

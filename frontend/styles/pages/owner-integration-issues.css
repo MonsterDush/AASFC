@@ -25,7 +25,8 @@
 .integration-issue-row__meta{display:flex;flex-wrap:wrap;gap:6px 12px;color:var(--muted);font-size:11px}
 .integration-issue-row__arrow{color:var(--muted);font-size:28px;line-height:1}
 .integration-issue-status,.integration-issue-shift__status{display:inline-flex;width:max-content;align-items:center;padding:5px 8px;border:1px solid var(--border);border-radius:999px;background:var(--surfaceTintSoft);color:var(--muted);font-size:11px;font-weight:900;line-height:1.1}
-.integration-issue-status[data-status="OPEN"]{border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft);color:var(--statusErrorText)}
+.integration-issue-status:is([data-status="OPEN"],[data-status="FAILED"]){border-color:var(--statusErrorBorder);background:var(--statusErrorBgSoft);color:var(--statusErrorText)}
+.integration-issue-status:is([data-status="BLOCKED"],[data-status="READY"]){border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft);color:var(--statusWarningText)}
 .integration-issue-status[data-status="RETRY_PENDING"]{border-color:var(--statusWarningBorder);background:var(--statusWarningBgSoft);color:var(--statusWarningText)}
 .integration-issue-status[data-status="PROCESSING"]{border-color:var(--accentSoftBorder);background:var(--accentSoftBg);color:var(--accent)}
 .integration-issue-status[data-status="RESOLVED"]{border-color:var(--statusSuccessBorder);background:var(--statusSuccessBgSoft);color:var(--statusSuccessText)}
@@ -53,6 +54,16 @@
 .integration-issue-shift__summary{font-size:12px;line-height:1.45;overflow-wrap:anywhere}
 .integration-issue-resolution{display:grid;gap:12px;padding:13px;border:1px solid var(--statusWarningBorder);border-radius:14px;background:var(--statusWarningBgSoft)}
 .integration-issue-fields{display:grid;gap:9px}
+.integration-issue-scope-editor{display:grid;gap:12px}
+.integration-issue-scope-group{min-width:0;margin:0;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.integration-issue-scope-group legend{padding:0 5px;font-size:12px;font-weight:900}
+.integration-issue-scope-choices{display:grid;gap:7px}
+.integration-issue-scope-choice{display:flex;align-items:flex-start;gap:9px;min-width:0;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--surfaceTintSoft)}
+.integration-issue-scope-choice input{flex:0 0 auto;margin-top:3px}
+.integration-issue-scope-choice span{display:grid;gap:2px;min-width:0}
+.integration-issue-scope-choice b,.integration-issue-scope-choice small{overflow-wrap:anywhere}
+.integration-issue-scope-choice small{color:var(--muted);font-size:10px}
+.integration-issue-scope-actions{display:flex;flex-wrap:wrap;gap:8px}
 .integration-issue-field{display:grid;gap:6px;min-width:0}
 .integration-issue-field>span{font-size:12px;font-weight:800;overflow-wrap:anywhere}
 .integration-issue-field :is(select,textarea){display:block;width:100%;min-width:0;max-width:100%}
@@ -73,5 +84,6 @@
   .integration-issue-drawer__head{padding:calc(14px + env(safe-area-inset-top)) 14px 12px}
   .integration-issue-drawer__body{padding:14px 14px calc(22px + env(safe-area-inset-bottom))}
   .integration-issue-facts{grid-template-columns:minmax(0,1fr)}
-  .integration-issue-actions .btn,.integration-issue-resolution .btn{width:100%;justify-self:stretch}
+  .integration-issue-actions .btn,.integration-issue-resolution .btn,.integration-issue-scope-actions{width:100%;justify-self:stretch}
+  .integration-issue-scope-actions .btn{width:100%}
 }

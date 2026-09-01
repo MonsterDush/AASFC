@@ -4546,5 +4546,17 @@
   "Смена ссылается на другое заведение QuickResto, но на выбранное место реализации.": "The shift references another QuickResto venue but a selected sale place.",
   "Склад #": "Warehouse #",
   "Тип оплаты #": "Payment type #",
-  "Смена QuickResto не входит в подтверждённую область импорта.": "The QuickResto shift is outside the confirmed import scope."
+  "Смена QuickResto не входит в подтверждённую область импорта.": "The QuickResto shift is outside the confirmed import scope.",
+  "Заведение точки": "Sale place venue",
+  "Исправьте область импорта": "Fix the import scope",
+  "Обновите справочник, выберите нужное заведение и точки. После сохранения Axelio сразу повторит импорт проблемных смен.": "Refresh the catalog and select the correct venue and locations. After saving, Axelio will immediately retry the affected shifts.",
+  "Места реализации не найдены.": "No sale places found.",
+  "Связанные склады не найдены.": "No linked warehouses found.",
+  "Справочник QuickResto ещё не загружен. Обновите его, чтобы выбрать заведение и точки.": "The QuickResto catalog has not been loaded yet. Refresh it to select the venue and locations.",
+  "Обновить справочник": "Refresh catalog",
+  "Сохранить область и повторить импорт": "Save scope and retry import",
+  "Справочник обновлён. Проверьте заведение и точки перед сохранением.": "The catalog has been refreshed. Review the venue and locations before saving.",
+  "Выберите заведение и хотя бы одно место реализации.": "Select a venue and at least one sale place.",
+  "Область сохранена, смены успешно импортированы": "Scope saved and shifts imported successfully",
+  "После изменения области проблема всё ещё требует внимания.": "The issue still requires attention after changing the scope."
 }
