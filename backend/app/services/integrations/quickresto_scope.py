@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.quickresto_connection import QuickRestoConnection
@@ -52,6 +52,8 @@ class QuickRestoShiftScopeDecision:
 class QuickRestoScopeIndex:
     external_venue_id: int
     sale_places: dict[int, QuickRestoSalePlaceScope]
+    selected_sale_place_ids: frozenset[int] | None = None
+    confirmed_sale_place_ids: frozenset[int] | None = None
 
 
 def _utcnow() -> datetime:
@@ -78,17 +80,92 @@ def _nested_id(row: Mapping[str, Any], field: str) -> int | None:
     return _positive_int(value)
 
 
+def pending_quickresto_scope(connection: QuickRestoConnection) -> dict[str, Any] | None:
+    venue_id = _positive_int(getattr(connection, "pending_external_venue_id", None))
+    generation = _positive_int(getattr(connection, "pending_scope_generation", None))
+    if venue_id is None or generation is None:
+        return None
+    requested_at = getattr(connection, "pending_scope_requested_at", None)
+    return {
+        "external_venue_id": venue_id,
+        "sale_place_ids": sorted({int(value) for value in (connection.pending_sale_place_ids_json or ())}),
+        "store_ids": sorted({int(value) for value in (connection.pending_store_ids_json or ())}),
+        "scope_generation": generation,
+        "requested_at": requested_at.isoformat() if requested_at else None,
+        "requested_by_user_id": getattr(connection, "pending_scope_requested_by_user_id", None),
+    }
+
+
+def _clear_pending_quickresto_scope(connection: QuickRestoConnection) -> None:
+    connection.pending_external_venue_id = None
+    connection.pending_sale_place_ids_json = None
+    connection.pending_store_ids_json = None
+    connection.pending_scope_generation = None
+    connection.pending_scope_requested_at = None
+    connection.pending_scope_requested_by_user_id = None
+
+
+def _scope_place_selected(
+    scope: QuickRestoScopeIndex,
+    sale_place_id: int | None,
+    sale_place: QuickRestoSalePlaceScope | None,
+) -> bool:
+    if sale_place_id is None:
+        return False
+    if scope.selected_sale_place_ids is None:
+        return bool(sale_place and sale_place.is_selected)
+    return int(sale_place_id) in scope.selected_sale_place_ids
+
+
+def _scope_place_confirmed(
+    scope: QuickRestoScopeIndex,
+    sale_place_id: int | None,
+    sale_place: QuickRestoSalePlaceScope | None,
+) -> bool:
+    if sale_place_id is None:
+        return False
+    if scope.confirmed_sale_place_ids is None:
+        return bool(sale_place and sale_place.is_confirmed)
+    return int(sale_place_id) in scope.confirmed_sale_place_ids
+
+
 def load_quickresto_scope_index(db: Session, *, connection: QuickRestoConnection) -> QuickRestoScopeIndex:
     ensure_quickresto_scope_ready(connection)
-    rows = db.execute(
-        select(QuickRestoSalePlaceScope).where(
-            QuickRestoSalePlaceScope.connection_id == int(connection.id),
-            QuickRestoSalePlaceScope.is_available.is_(True),
-        )
-    ).scalars()
+    rows = list(
+        db.execute(
+            select(QuickRestoSalePlaceScope).where(
+                QuickRestoSalePlaceScope.connection_id == int(connection.id),
+                QuickRestoSalePlaceScope.is_available.is_(True),
+            )
+        ).scalars()
+    )
     return QuickRestoScopeIndex(
         external_venue_id=int(connection.external_venue_id),
         sale_places={int(row.external_id): row for row in rows},
+        selected_sale_place_ids=frozenset(int(row.external_id) for row in rows if row.is_selected),
+        confirmed_sale_place_ids=frozenset(int(row.external_id) for row in rows if row.is_confirmed),
+    )
+
+
+def load_quickresto_pending_scope_index(db: Session, *, connection: QuickRestoConnection) -> QuickRestoScopeIndex:
+    pending = pending_quickresto_scope(connection)
+    if pending is None or not pending["sale_place_ids"]:
+        raise QuickRestoScopeError("Ожидающая область QuickResto не подготовлена")
+    rows = list(
+        db.execute(
+            select(QuickRestoSalePlaceScope).where(
+                QuickRestoSalePlaceScope.connection_id == int(connection.id),
+                QuickRestoSalePlaceScope.is_available.is_(True),
+            )
+        ).scalars()
+    )
+    return QuickRestoScopeIndex(
+        external_venue_id=int(pending["external_venue_id"]),
+        sale_places={int(row.external_id): row for row in rows},
+        selected_sale_place_ids=frozenset(int(value) for value in pending["sale_place_ids"]),
+        confirmed_sale_place_ids=frozenset(
+            int(row.external_id) for row in rows if int(row.external_venue_id or 0) == int(pending["external_venue_id"])
+        ),
     )
 
 
@@ -136,7 +213,7 @@ def evaluate_quickresto_shift_scope(
             ),
         )
     if direct_venue_id and direct_venue_id != scope.external_venue_id:
-        if sale_place and sale_place.is_selected:
+        if _scope_place_selected(scope, effective_sale_place_id, sale_place):
             return QuickRestoShiftScopeDecision(
                 action="ISSUE",
                 external_venue_id=direct_venue_id,
@@ -184,13 +261,13 @@ def evaluate_quickresto_shift_scope(
             external_venue_id=direct_venue_id or sale_place_venue_id,
             sale_place_id=effective_sale_place_id,
         )
-    if sale_place.is_selected:
+    if _scope_place_selected(scope, effective_sale_place_id, sale_place):
         return QuickRestoShiftScopeDecision(
             action="IMPORT",
             external_venue_id=direct_venue_id or sale_place_venue_id,
             sale_place_id=effective_sale_place_id,
         )
-    if sale_place.is_confirmed:
+    if _scope_place_confirmed(scope, effective_sale_place_id, sale_place):
         return QuickRestoShiftScopeDecision(
             action="SKIP_UNSELECTED_SALE_PLACE",
             external_venue_id=direct_venue_id or sale_place_venue_id,
@@ -517,7 +594,10 @@ def apply_quickresto_scope(
         select(QuickRestoConnection.id).where(
             QuickRestoConnection.id != connection.id,
             QuickRestoConnection.cloud == connection.cloud,
-            QuickRestoConnection.external_venue_id == venue_id,
+            or_(
+                QuickRestoConnection.external_venue_id == venue_id,
+                QuickRestoConnection.pending_external_venue_id == venue_id,
+            ),
         )
     ).scalar_one_or_none()
     if duplicate is not None:
@@ -551,6 +631,7 @@ def apply_quickresto_scope(
     scope_identity_changed = bool(
         previous_venue_id is not None and (int(previous_venue_id) != venue_id or previous_sale_ids != selected_sale_ids)
     )
+    imported_count = 0
     if scope_identity_changed:
         imported_count = int(
             db.execute(
@@ -558,10 +639,62 @@ def apply_quickresto_scope(
             ).scalar_one()
         )
         if imported_count:
-            raise QuickRestoScopeConflictError(
-                "Нельзя менять заведение или места реализации QuickResto после импорта смен; "
-                "требуется отдельное переподключение"
+            requested_at = _utcnow()
+            next_generation = (
+                max(
+                    int(connection.scope_generation or 1),
+                    int(connection.pending_scope_generation or 0),
+                )
+                + 1
             )
+            connection.pending_external_venue_id = venue_id
+            connection.pending_sale_place_ids_json = sorted(selected_sale_ids)
+            connection.pending_store_ids_json = sorted(selected_store_ids)
+            connection.pending_scope_generation = next_generation
+            connection.pending_scope_requested_at = requested_at
+            connection.pending_scope_requested_by_user_id = int(actor_user_id) if actor_user_id is not None else None
+            connection.incremental_cursor_closed_at = None
+            connection.last_full_reconciliation_at = None
+            db.add(
+                QuickRestoScopeAudit(
+                    connection_id=int(connection.id),
+                    actor_user_id=int(actor_user_id) if actor_user_id is not None else None,
+                    scope_generation=next_generation,
+                    previous_scope_json={
+                        "external_venue_id": int(previous_venue_id) if previous_venue_id is not None else None,
+                        "sale_place_ids": sorted(previous_sale_ids),
+                        "store_ids": sorted(previous_store_ids),
+                    },
+                    current_scope_json={
+                        "external_venue_id": venue_id,
+                        "sale_place_ids": sorted(selected_sale_ids),
+                        "store_ids": sorted(selected_store_ids),
+                    },
+                    changes_json={
+                        "state": "PENDING_RECONCILIATION",
+                        "historical_import_count": imported_count,
+                        "sale_places_added": sorted(selected_sale_ids - previous_sale_ids),
+                        "sale_places_removed": sorted(previous_sale_ids - selected_sale_ids),
+                        "stores_added": sorted(selected_store_ids - previous_store_ids),
+                        "stores_removed": sorted(previous_store_ids - selected_store_ids),
+                    },
+                    changed_at=requested_at,
+                )
+            )
+            db.flush()
+            return {
+                "external_venue_id": venue_id,
+                "external_venue_name": venue.external_name,
+                "sale_place_ids": sorted(selected_sale_ids),
+                "store_ids": sorted(selected_store_ids),
+                "scope_status": "PENDING_RECONCILIATION",
+                "scope_generation": next_generation,
+                "active_scope_generation": int(connection.scope_generation or 1),
+                "changed": True,
+                "pending": True,
+                "historical_reconciliation_required": True,
+                "pending_scope": pending_quickresto_scope(connection),
+            }
     changed = (
         previous_venue_id != venue_id
         or previous_sale_ids != selected_sale_ids
@@ -569,6 +702,8 @@ def apply_quickresto_scope(
         or connection.scope_status != "READY"
     )
     confirmed_at = _utcnow()
+    previous_pending_generation = int(connection.pending_scope_generation or 0)
+    _clear_pending_quickresto_scope(connection)
     for row in sale_places:
         row.is_selected = bool(row.is_available and row.external_id in selected_sale_ids)
         if row.is_available and row.external_venue_id == venue_id:
@@ -586,7 +721,13 @@ def apply_quickresto_scope(
     if connection.last_sync_error == LEGACY_SCOPE_SELECTION_REQUIRED_MESSAGE:
         connection.last_sync_error = None
     if changed and previous_venue_id is not None:
-        connection.scope_generation = int(connection.scope_generation or 1) + 1
+        connection.scope_generation = (
+            max(
+                int(connection.scope_generation or 1),
+                previous_pending_generation,
+            )
+            + 1
+        )
     if changed:
         connection.incremental_cursor_closed_at = None
         connection.last_full_reconciliation_at = None
@@ -606,6 +747,7 @@ def apply_quickresto_scope(
                     "store_ids": sorted(selected_store_ids),
                 },
                 changes_json={
+                    "state": "ACTIVE",
                     "sale_places_added": sorted(selected_sale_ids - previous_sale_ids),
                     "sale_places_removed": sorted(previous_sale_ids - selected_sale_ids),
                     "stores_added": sorted(selected_store_ids - previous_store_ids),
@@ -624,6 +766,93 @@ def apply_quickresto_scope(
         "scope_status": connection.scope_status,
         "scope_generation": int(connection.scope_generation or 1),
         "changed": changed,
+        "pending": False,
+        "historical_reconciliation_required": False,
+        "pending_scope": None,
+    }
+
+
+def activate_pending_quickresto_scope(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    actor_user_id: int | None,
+    expected_generation: int,
+) -> dict[str, Any]:
+    pending = pending_quickresto_scope(connection)
+    if pending is None or int(pending["scope_generation"]) != int(expected_generation):
+        raise QuickRestoScopeConflictError("Ожидающая область QuickResto изменилась. Запустите полную сверку заново.")
+    venue_id = int(pending["external_venue_id"])
+    selected_sale_ids = {int(value) for value in pending["sale_place_ids"]}
+    selected_store_ids = {int(value) for value in pending["store_ids"]}
+    venue = db.execute(
+        select(QuickRestoExternalVenue).where(
+            QuickRestoExternalVenue.connection_id == int(connection.id),
+            QuickRestoExternalVenue.external_id == venue_id,
+            QuickRestoExternalVenue.is_available.is_(True),
+        )
+    ).scalar_one_or_none()
+    if venue is None:
+        raise QuickRestoScopeConflictError("Ожидающее заведение QuickResto больше не доступно")
+    duplicate = db.execute(
+        select(QuickRestoConnection.id).where(
+            QuickRestoConnection.id != int(connection.id),
+            QuickRestoConnection.cloud == connection.cloud,
+            QuickRestoConnection.external_venue_id == venue_id,
+        )
+    ).scalar_one_or_none()
+    if duplicate is not None:
+        raise QuickRestoScopeConflictError("Это заведение QuickResto уже подключено к другому заведению Axelio")
+    sale_places = list(
+        db.execute(
+            select(QuickRestoSalePlaceScope).where(QuickRestoSalePlaceScope.connection_id == int(connection.id))
+        ).scalars()
+    )
+    selected_sale_places = {
+        int(row.external_id): row for row in sale_places if int(row.external_id) in selected_sale_ids
+    }
+    if set(selected_sale_places) != selected_sale_ids or any(
+        not row.is_available or int(row.external_venue_id or 0) != venue_id for row in selected_sale_places.values()
+    ):
+        raise QuickRestoScopeConflictError("Ожидаемые места реализации QuickResto больше не соответствуют каталогу")
+    stores = list(
+        db.execute(
+            select(QuickRestoStoreScope).where(QuickRestoStoreScope.connection_id == int(connection.id))
+        ).scalars()
+    )
+    selected_stores = {int(row.external_id): row for row in stores if int(row.external_id) in selected_store_ids}
+    if set(selected_stores) != selected_store_ids or any(not row.is_available for row in selected_stores.values()):
+        raise QuickRestoScopeConflictError("Один из ожидаемых складов QuickResto больше не доступен")
+    confirmed_at = _utcnow()
+    effective_actor = int(actor_user_id) if actor_user_id is not None else pending.get("requested_by_user_id")
+    for row in sale_places:
+        row.is_selected = bool(row.is_available and int(row.external_id) in selected_sale_ids)
+        if row.is_available and int(row.external_venue_id or 0) == venue_id:
+            row.is_confirmed = True
+            row.confirmed_by_user_id = effective_actor
+            row.confirmed_at = confirmed_at
+    for row in stores:
+        row.is_selected = bool(row.is_available and int(row.external_id) in selected_store_ids)
+    connection.external_venue_id = venue_id
+    connection.external_venue_name = venue.external_name
+    connection.external_venue_version = venue.external_version
+    connection.scope_status = "READY"
+    connection.scope_generation = int(expected_generation)
+    connection.scope_confirmed_at = confirmed_at
+    connection.scope_confirmed_by_user_id = effective_actor
+    connection.incremental_cursor_closed_at = None
+    connection.last_full_reconciliation_at = None
+    _clear_pending_quickresto_scope(connection)
+    recompute_payment_applicability(db, connection_id=int(connection.id))
+    db.flush()
+    return {
+        "external_venue_id": venue_id,
+        "external_venue_name": venue.external_name,
+        "sale_place_ids": sorted(selected_sale_ids),
+        "store_ids": sorted(selected_store_ids),
+        "scope_status": connection.scope_status,
+        "scope_generation": int(connection.scope_generation),
+        "pending": False,
     }
 
 
@@ -656,10 +885,12 @@ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnectio
             .order_by(QuickRestoPaymentMapping.external_name, QuickRestoPaymentMapping.external_id)
         ).scalars()
     )
+    pending = pending_quickresto_scope(connection)
     return {
         "scope_status": str(connection.scope_status or "NEEDS_SELECTION"),
         "scope_generation": int(connection.scope_generation or 1),
         "selected_external_venue_id": connection.external_venue_id,
+        "pending_scope": pending,
         "venues": [
             {
                 "external_id": int(row.external_id),
@@ -667,6 +898,7 @@ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnectio
                 "address": row.address_label,
                 "is_available": bool(row.is_available),
                 "is_selected": int(row.external_id) == int(connection.external_venue_id or 0),
+                "is_pending_selected": bool(pending and int(row.external_id) == int(pending["external_venue_id"])),
             }
             for row in venues
         ],
@@ -678,6 +910,9 @@ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnectio
                 "default_cooking_place_id": row.default_cooking_place_id,
                 "is_available": bool(row.is_available),
                 "is_selected": bool(row.is_selected),
+                "is_pending_selected": bool(
+                    pending and int(row.external_id) in {int(value) for value in pending["sale_place_ids"]}
+                ),
                 "is_confirmed": bool(row.is_confirmed),
                 "confirmed_by_user_id": row.confirmed_by_user_id,
                 "confirmed_at": row.confirmed_at.isoformat() if row.confirmed_at else None,
@@ -692,6 +927,9 @@ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnectio
                 "source_cooking_place_ids": sorted(int(value) for value in row.source_cooking_place_ids_json or ()),
                 "is_available": bool(row.is_available),
                 "is_selected": bool(row.is_selected),
+                "is_pending_selected": bool(
+                    pending and int(row.external_id) in {int(value) for value in pending["store_ids"]}
+                ),
             }
             for row in stores
         ],

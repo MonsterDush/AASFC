@@ -196,7 +196,7 @@ function renderScopeStores() {
           cookingIds.length ? `CookingPlace #${cookingIds.join(", #")}` : "",
         ].filter(Boolean).join(" · ");
         return `<label class="quickresto-scope-choice">
-        <input type="checkbox" data-store-id="${store.external_id}"${store.is_selected ? " checked" : ""}${state.canManage ? "" : " disabled"} />
+        <input type="checkbox" data-store-id="${store.external_id}"${(store.is_pending_selected ?? store.is_selected) ? " checked" : ""}${state.canManage ? "" : " disabled"} />
         <span><b>${esc(store.external_name)}</b><small>QuickResto #${store.external_id}${relation ? ` · ${esc(relation)}` : ""}</small></span>
       </label>`;
       },
@@ -215,6 +215,7 @@ function renderScope({ preserveVenue = false } = {}) {
   );
   const selectedVenueId = String(
     (preserveVenue ? el.externalVenue.value : "") ||
+      state.catalog?.pending_scope?.external_venue_id ||
       state.catalog?.selected_external_venue_id ||
       state.connection?.external_venue_id ||
       "",
@@ -241,7 +242,7 @@ function renderScope({ preserveVenue = false } = {}) {
       ? salePlaces
           .map(
             (place) => `<label class="quickresto-scope-choice">
-              <input type="checkbox" data-sale-place-id="${place.external_id}"${place.is_selected ? " checked" : ""}${state.canManage ? "" : " disabled"} />
+              <input type="checkbox" data-sale-place-id="${place.external_id}"${(place.is_pending_selected ?? place.is_selected) ? " checked" : ""}${state.canManage ? "" : " disabled"} />
               <span><b>${esc(place.external_name)}</b><small>Место реализации #${place.external_id}</small></span>
             </label>`,
           )
@@ -257,6 +258,10 @@ function renderScope({ preserveVenue = false } = {}) {
   } else if (status === "STALE") {
     el.scopeHint.textContent =
       "Справочники QuickResto изменились. Проверьте выбор и сохраните область импорта заново.";
+  } else if (state.catalog?.pending_scope) {
+    el.scopeHint.textContent =
+      `Новая область версии ${Number(state.catalog.pending_scope.scope_generation || 0)} ожидает полной исторической сверки. ` +
+      "Текущая область остаётся активной до решений по ранее импортированным сменам.";
   } else if (status === "READY") {
     el.scopeHint.textContent = `Импорт ограничен заведением «${state.connection?.external_venue_name || "QuickResto"}».`;
   } else {
@@ -717,7 +722,30 @@ el.saveScope?.addEventListener("click", async () => {
     await refreshAxelioCatalogs();
     renderConnection();
     renderMappings();
-    toast("Область импорта сохранена", "ok");
+    if (result.scope?.historical_reconciliation_required) {
+      setBusy(el.saveScope, true, "Сверяем историю…");
+      const scan = await api(
+        `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/sync?full=true`,
+        { method: "POST" },
+      );
+      const issueId = Number(scan.run?.summary?.historical_scope_mismatch_issue_id || 0);
+      if (issueId) {
+        toast("Новая область сохранена. Нужно проверить ранее импортированные смены.", "err");
+        location.href =
+          `/owner-integration-issues.html?venue_id=${encodeURIComponent(venueId)}` +
+          `&provider=quickresto&issue_id=${encodeURIComponent(issueId)}`;
+        return;
+      }
+      await load();
+      toast(
+        scan.run?.status === "PARTIAL"
+          ? "Область активирована, но импорт требует внимания"
+          : "Новая область проверена и активирована",
+        scan.run?.status === "PARTIAL" ? "err" : "ok",
+      );
+    } else {
+      toast("Область импорта сохранена", "ok");
+    }
   } catch (error) {
     el.scopeHint.textContent = errorMessage(error);
     toast(errorMessage(error), "err");

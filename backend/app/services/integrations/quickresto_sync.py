@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 import re
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.models.daily_report import DailyReport
@@ -62,10 +62,13 @@ from app.services.integrations.quickresto_snapshot import (
 from app.services.integrations.quickresto_scope import (
     QuickRestoLocationScopeError,
     QuickRestoScopeError,
+    activate_pending_quickresto_scope,
     ensure_quickresto_scope_ready,
     evaluate_quickresto_shift_scope,
+    load_quickresto_pending_scope_index,
     load_quickresto_scope_index,
     payment_type_is_applicable,
+    pending_quickresto_scope,
     refresh_quickresto_catalog,
     selected_sale_place_ids,
     selected_store_ids,
@@ -1017,13 +1020,25 @@ def _list_order_rows_for_shifts(
     return [row for row in _object_rows(client, "orders") if str(row.get("shiftId") or "") in shift_ids]
 
 
+def _scope_resolution_requires_review(scope_generation: int):
+    target_generation = int(scope_generation)
+    return or_(
+        QuickRestoShiftImport.scope_resolution_action.is_(None),
+        QuickRestoShiftImport.scope_resolution_generation.is_(None),
+        QuickRestoShiftImport.scope_resolution_generation != target_generation,
+    )
+
+
 def _sync_previous_scope_mismatch_issue(
     db: Session,
     *,
     connection: QuickRestoConnection,
     run: QuickRestoSyncRun,
     mismatch_external_ids: set[str],
+    scope_generation: int | None = None,
+    selected_external_venue_id: int | None = None,
 ) -> QuickRestoImportIssue | None:
+    target_generation = int(scope_generation or connection.scope_generation or 1)
     group_key = connection_group_key("PREVIOUS_SCOPE_MISMATCH")
     existing = db.execute(
         select(QuickRestoImportIssue).where(
@@ -1045,18 +1060,36 @@ def _sync_previous_scope_mismatch_issue(
                 resolution_note="Историческая сверка не обнаружила смен вне текущей области QuickResto.",
             )
         return None
-    existing_ids = []
-    existing_count = 0
-    if existing is not None and isinstance(existing.details_json, dict):
-        existing_ids = sorted(str(value) for value in existing.details_json.get("legacy_external_shift_ids") or ())
-        existing_count = int(existing.details_json.get("legacy_shift_count") or 0)
-    if (
-        existing is not None
-        and str(existing.status or "").upper() == "IGNORED"
-        and existing_count == len(normalized_ids)
-        and existing_ids == normalized_ids[:100]
-    ):
+    shift_imports = list(
+        db.execute(
+            select(QuickRestoShiftImport)
+            .where(
+                QuickRestoShiftImport.connection_id == int(connection.id),
+                QuickRestoShiftImport.external_shift_id.in_(normalized_ids),
+                _scope_resolution_requires_review(target_generation),
+            )
+            .order_by(
+                QuickRestoShiftImport.business_date.asc(),
+                QuickRestoShiftImport.shift_slot.asc(),
+                QuickRestoShiftImport.id.asc(),
+            )
+        ).scalars()
+    )
+    normalized_ids = [str(item.external_shift_id) for item in shift_imports]
+    if not normalized_ids:
+        if existing is not None and str(existing.status or "").upper() in ACTIVE_ISSUE_STATUSES:
+            transition_issue(
+                db,
+                issue=existing,
+                status="RESOLVED",
+                event_type="SCOPE_RECONCILED",
+                actor_user_id=int(run.requested_by_user_id) if run.requested_by_user_id else None,
+                sync_run_id=int(run.id),
+                resolution_code="HISTORICAL_DECISIONS_RECORDED",
+                resolution_note="Для всех исторических смен уже сохранено явное решение.",
+            )
         return None
+    affected_report_ids = sorted({int(item.daily_report_id) for item in shift_imports if item.daily_report_id})
     scope_error = QuickRestoLocationScopeError(
         error_code="PREVIOUS_SCOPE_MISMATCH",
         user_summary=(
@@ -1065,13 +1098,15 @@ def _sync_previous_scope_mismatch_issue(
         ),
         technical_summary="Historical QuickResto imports contain shifts outside the confirmed current scope",
         details={
-            "selected_external_venue_id": int(connection.external_venue_id or 0) or None,
+            "selected_external_venue_id": selected_external_venue_id or int(connection.external_venue_id or 0) or None,
+            "scope_generation": target_generation,
             "legacy_shift_count": len(normalized_ids),
             "legacy_external_shift_ids": normalized_ids[:100],
+            "affected_report_ids": affected_report_ids,
         },
     )
     failure = classify_quickresto_failure(scope_error)
-    return upsert_import_issue(
+    issue = upsert_import_issue(
         db,
         connection_id=int(connection.id),
         sync_run_id=int(run.id),
@@ -1081,6 +1116,63 @@ def _sync_previous_scope_mismatch_issue(
         failure=failure,
         actor_user_id=int(run.requested_by_user_id) if run.requested_by_user_id else None,
     )
+    now = _utcnow()
+    latest_snapshots: dict[str, QuickRestoSourceSnapshot] = {}
+    snapshots = list(
+        db.execute(
+            select(QuickRestoSourceSnapshot)
+            .where(
+                QuickRestoSourceSnapshot.connection_id == int(connection.id),
+                QuickRestoSourceSnapshot.external_shift_id.in_(normalized_ids),
+            )
+            .order_by(QuickRestoSourceSnapshot.updated_at.desc(), QuickRestoSourceSnapshot.id.desc())
+        ).scalars()
+    )
+    for snapshot in snapshots:
+        latest_snapshots.setdefault(str(snapshot.external_shift_id), snapshot)
+
+    existing_items = {int(item.shift_import_id): item for item in issue.shifts if item.shift_import_id is not None}
+    keep_shift_import_ids: set[int] = set()
+    for shift_import in shift_imports:
+        shift_import_id = int(shift_import.id)
+        keep_shift_import_ids.add(shift_import_id)
+        item = existing_items.get(shift_import_id)
+        if item is None:
+            item = QuickRestoImportIssueShift(
+                source_key=f"historical:{shift_import_id}",
+                created_at=now,
+            )
+            issue.shifts.append(item)
+        snapshot = latest_snapshots.get(str(shift_import.external_shift_id))
+        normalized = shift_import.normalized_json if isinstance(shift_import.normalized_json, dict) else {}
+        raw_opened_at = normalized.get("local_opened_at")
+        local_opened_at = None
+        if raw_opened_at:
+            try:
+                local_opened_at = datetime.fromisoformat(str(raw_opened_at))
+            except ValueError:
+                local_opened_at = None
+        item.source_snapshot_id = int(snapshot.id) if snapshot is not None else None
+        item.shift_import_id = shift_import_id
+        item.external_shift_id = shift_import.external_shift_id
+        item.external_shift_pk = int(shift_import.external_shift_pk)
+        item.source_version = int(shift_import.source_version)
+        item.source_fingerprint = snapshot.source_fingerprint if snapshot is not None else None
+        item.local_opened_at = snapshot.local_opened_at if snapshot is not None else local_opened_at
+        item.local_closed_at = shift_import.local_closed_at
+        item.item_status = "READY"
+        item.error_code = "PREVIOUS_SCOPE_MISMATCH"
+        item.user_summary = (
+            "Выберите, оставить смену в текущем заведении, безопасно перенести её "
+            "в другое подключённое заведение или явно исключить."
+        )
+        item.technical_summary = None
+        item.updated_at = now
+    for item in list(issue.shifts):
+        if item.shift_import_id is None or int(item.shift_import_id) not in keep_shift_import_ids:
+            db.delete(item)
+    db.flush()
+    return issue
 
 
 def _stage_quickresto_sources(
@@ -1093,8 +1185,11 @@ def _stage_quickresto_sources(
     force_full: bool,
 ) -> tuple[list[QuickRestoSourceSnapshot], bool, dict[str, Any], list[dict[str, Any]]]:
     now = _utcnow()
+    pending_scope = pending_quickresto_scope(connection)
     last_full = connection.last_full_reconciliation_at
-    full_reconciliation = bool(force_full or last_full is None or _ensure_utc(last_full) <= now - timedelta(days=30))
+    full_reconciliation = bool(
+        pending_scope or force_full or last_full is None or _ensure_utc(last_full) <= now - timedelta(days=30)
+    )
     closed_since = None
     if not full_reconciliation and connection.incremental_cursor_closed_at is not None:
         closed_since = _ensure_utc(connection.incremental_cursor_closed_at) - timedelta(hours=48)
@@ -1117,19 +1212,66 @@ def _stage_quickresto_sources(
         closed_shifts = filtered
 
     scope_index = load_quickresto_scope_index(db, connection=connection)
-    historical_import_ids = (
-        {
-            str(value)
-            for value in db.execute(
-                select(QuickRestoShiftImport.external_shift_id).where(
-                    QuickRestoShiftImport.connection_id == int(connection.id)
+    historical_scope_index = (
+        load_quickresto_pending_scope_index(db, connection=connection) if pending_scope is not None else scope_index
+    )
+    historical_scope_generation = int(
+        pending_scope["scope_generation"] if pending_scope is not None else connection.scope_generation or 1
+    )
+    historical_imports = (
+        list(
+            db.execute(
+                select(QuickRestoShiftImport).where(
+                    QuickRestoShiftImport.connection_id == int(connection.id),
+                    _scope_resolution_requires_review(historical_scope_generation),
                 )
             ).scalars()
-        }
+        )
         if full_reconciliation
-        else set()
+        else []
     )
+    historical_imports_by_external_id = {str(item.external_shift_id): item for item in historical_imports}
     historical_scope_mismatch_ids: set[str] = set()
+    for item in historical_imports:
+        if (
+            item.scope_resolution_action is not None
+            and int(item.scope_resolution_generation or 0) != historical_scope_generation
+        ):
+            # A decision belongs to the generation in which it was made. A
+            # later scope must explicitly review it again even when the shift
+            # would still be importable under the proposed scope.
+            historical_scope_mismatch_ids.add(str(item.external_shift_id))
+
+    if full_reconciliation:
+        for shift in closed_shifts:
+            external_shift_id = str(shift.get("frontId") or shift.get("_id") or "").strip()
+            if not external_shift_id or external_shift_id not in historical_imports_by_external_id:
+                continue
+            historical_decision = evaluate_quickresto_shift_scope(shift, scope=historical_scope_index)
+            if historical_decision.action != "IMPORT":
+                historical_scope_mismatch_ids.add(external_shift_id)
+
+    historical_scope_issue = None
+    if full_reconciliation:
+        historical_scope_issue = _sync_previous_scope_mismatch_issue(
+            db,
+            connection=connection,
+            run=run,
+            mismatch_external_ids=historical_scope_mismatch_ids,
+            scope_generation=historical_scope_generation,
+            selected_external_venue_id=(int(pending_scope["external_venue_id"]) if pending_scope is not None else None),
+        )
+    pending_scope_activated = False
+    if pending_scope is not None and historical_scope_issue is None:
+        activate_pending_quickresto_scope(
+            db,
+            connection=connection,
+            actor_user_id=int(run.requested_by_user_id) if run.requested_by_user_id else None,
+            expected_generation=historical_scope_generation,
+        )
+        pending_scope_activated = True
+        scope_index = load_quickresto_scope_index(db, connection=connection)
+
     scope_decisions: dict[int, Any] = {}
     scoped_shifts: list[dict[str, Any]] = []
     scope_counts = {
@@ -1138,19 +1280,18 @@ def _stage_quickresto_sources(
         "shifts_skipped_other_venue": 0,
         "shifts_skipped_unselected_sale_place": 0,
         "shifts_blocked_by_scope": 0,
+        "historical_scope_generation": historical_scope_generation,
+        "pending_scope_generation": int(pending_scope["scope_generation"]) if pending_scope is not None else None,
+        "pending_scope_activated": pending_scope_activated,
     }
     for shift in closed_shifts:
         decision = evaluate_quickresto_shift_scope(shift, scope=scope_index)
         external_shift_id = str(shift.get("frontId") or shift.get("_id") or "").strip()
         if decision.action == "SKIP_OTHER_VENUE":
             scope_counts["shifts_skipped_other_venue"] += 1
-            if external_shift_id and external_shift_id in historical_import_ids:
-                historical_scope_mismatch_ids.add(external_shift_id)
             continue
         if decision.action == "SKIP_UNSELECTED_SALE_PLACE":
             scope_counts["shifts_skipped_unselected_sale_place"] += 1
-            if external_shift_id and external_shift_id in historical_import_ids:
-                historical_scope_mismatch_ids.add(external_shift_id)
             continue
         object_id = int(shift.get("id") or 0)
         if object_id > 0:
@@ -1160,14 +1301,6 @@ def _stage_quickresto_sources(
             scope_counts["shifts_in_scope"] += 1
         else:
             scope_counts["shifts_blocked_by_scope"] += 1
-    historical_scope_issue = None
-    if full_reconciliation:
-        historical_scope_issue = _sync_previous_scope_mismatch_issue(
-            db,
-            connection=connection,
-            run=run,
-            mismatch_external_ids=historical_scope_mismatch_ids,
-        )
     scope_counts["historical_scope_mismatch_count"] = len(historical_scope_mismatch_ids)
     scope_counts["historical_scope_mismatch_issue_id"] = (
         int(historical_scope_issue.id) if historical_scope_issue is not None else None
@@ -1333,9 +1466,18 @@ def _upsert_normalized_shift(
         existing.business_date,
         str(getattr(existing, "shift_slot", None) or "DAY").upper(),
     )
-    changed = existing.payload_hash != normalized["payload_hash"] or previous_key != next_key
+    payload_changed = existing.payload_hash != normalized["payload_hash"]
+    key_changed = previous_key != next_key
+    stale_scope_resolution = bool(
+        existing.scope_resolution_action is not None
+        and int(existing.scope_resolution_generation or 0) != int(connection.scope_generation or 1)
+    )
+    scope_resolution_cleared = bool(
+        existing.scope_resolution_action is not None and (payload_changed or key_changed or stale_scope_resolution)
+    )
+    changed = payload_changed or key_changed or stale_scope_resolution
     if changed:
-        if previous_key != next_key:
+        if key_changed:
             existing.daily_report_id = None
         existing.external_shift_pk = int(normalized["external_shift_pk"])
         existing.source_version = int(normalized["source_version"])
@@ -1345,7 +1487,67 @@ def _upsert_normalized_shift(
         existing.payload_hash = str(normalized["payload_hash"])
         existing.normalized_json = normalized
         existing.updated_at = _utcnow()
+        if scope_resolution_cleared:
+            existing.scope_resolution_action = None
+            existing.scope_resolution_generation = None
+            existing.scope_resolved_by_user_id = None
+            existing.scope_resolved_at = None
+            existing.scope_resolution_note = None
     return changed, {previous_key, next_key}
+
+
+def _rebuild_imported_report_keys(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    run: QuickRestoSyncRun,
+    actor_user_id: int,
+    affected_keys: set[tuple[date, str]],
+) -> tuple[dict[str, int], list[int]]:
+    """Rebuild only reports owned by this integration from active shift imports."""
+
+    counts = {"created": 0, "updated": 0, "unchanged": 0, "removed": 0}
+    report_ids: list[int] = []
+    for target_date, target_slot in sorted(affected_keys):
+        stored_shifts = list(
+            db.execute(
+                select(QuickRestoShiftImport).where(
+                    QuickRestoShiftImport.connection_id == connection.id,
+                    QuickRestoShiftImport.business_date == target_date,
+                    QuickRestoShiftImport.shift_slot == target_slot,
+                    or_(
+                        QuickRestoShiftImport.scope_resolution_action.is_(None),
+                        QuickRestoShiftImport.scope_resolution_generation.is_(None),
+                        QuickRestoShiftImport.scope_resolution_generation != int(connection.scope_generation or 1),
+                        ~QuickRestoShiftImport.scope_resolution_action.in_(("EXCLUDE_CURRENT", "MOVE_TO_CONNECTED")),
+                    ),
+                )
+            ).scalars()
+        )
+        if not stored_shifts:
+            if _remove_empty_imported_report(
+                db,
+                connection=connection,
+                business_date=target_date,
+                shift_slot=target_slot,
+                actor_user_id=actor_user_id,
+            ):
+                counts["removed"] += 1
+            continue
+        aggregate = aggregate_normalized_shifts(item.normalized_json for item in stored_shifts)
+        mapped = _mapped_aggregate(db, connection=connection, aggregate=aggregate)
+        outcome, report = _upsert_draft_report(
+            db,
+            connection=connection,
+            aggregate=mapped,
+            run=run,
+            actor_user_id=actor_user_id,
+        )
+        counts[outcome] += 1
+        report_ids.append(int(report.id))
+        for item in stored_shifts:
+            item.daily_report_id = report.id
+    return counts, report_ids
 
 
 def _process_snapshot_group(
@@ -1441,39 +1643,13 @@ def _process_snapshot_group(
                 imported += int(changed)
                 affected_keys.update(keys)
             db.flush()
-            for target_date, target_slot in sorted(affected_keys):
-                stored_shifts = list(
-                    db.execute(
-                        select(QuickRestoShiftImport).where(
-                            QuickRestoShiftImport.connection_id == connection.id,
-                            QuickRestoShiftImport.business_date == target_date,
-                            QuickRestoShiftImport.shift_slot == target_slot,
-                        )
-                    ).scalars()
-                )
-                if not stored_shifts:
-                    if _remove_empty_imported_report(
-                        db,
-                        connection=connection,
-                        business_date=target_date,
-                        shift_slot=target_slot,
-                        actor_user_id=actor_user_id,
-                    ):
-                        local_counts["removed"] += 1
-                    continue
-                aggregate = aggregate_normalized_shifts(item.normalized_json for item in stored_shifts)
-                mapped = _mapped_aggregate(db, connection=connection, aggregate=aggregate)
-                outcome, report = _upsert_draft_report(
-                    db,
-                    connection=connection,
-                    aggregate=mapped,
-                    run=run,
-                    actor_user_id=actor_user_id,
-                )
-                local_counts[outcome] += 1
-                local_report_ids.append(int(report.id))
-                for item in stored_shifts:
-                    item.daily_report_id = report.id
+            local_counts, local_report_ids = _rebuild_imported_report_keys(
+                db,
+                connection=connection,
+                run=run,
+                actor_user_id=actor_user_id,
+                affected_keys=affected_keys,
+            )
     except Exception as exc:
         failure = _classify_snapshot_group_failure(exc)
         issue_snapshots = snapshots
@@ -1623,6 +1799,331 @@ def _perform_sync(
         "issue_count": len(conflicts),
         "ignored_groups": ignored_groups,
     }
+
+
+def reconcile_quickresto_historical_scope_issue(
+    db: Session,
+    *,
+    connection: QuickRestoConnection,
+    issue_id: int,
+    decisions: dict[int, str],
+    note: str,
+    requested_by_user_id: int,
+) -> QuickRestoSyncRun:
+    """Apply explicit keep/exclude decisions and atomically rebuild affected reports."""
+
+    connection_id = int(connection.id)
+    actor_user_id = int(requested_by_user_id)
+    normalized_decisions = {int(key): str(value or "").upper() for key, value in decisions.items()}
+    if not normalized_decisions or any(
+        value not in {"KEEP_CURRENT", "EXCLUDE_CURRENT"} for value in normalized_decisions.values()
+    ):
+        raise QuickRestoSyncError("Для каждой исторической смены выберите допустимое решение")
+
+    connection = db.execute(
+        select(QuickRestoConnection)
+        .where(QuickRestoConnection.id == connection_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if connection is None:
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto connection no longer exists")
+    now = _utcnow()
+    if quickresto_sync_is_active(connection, now=now):
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto sync is already running")
+    reclaim_stale_quickresto_sync_state(db, connection=connection, now=now)
+    if not connection.is_active:
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto connection is disabled")
+
+    issue = db.execute(
+        select(QuickRestoImportIssue)
+        .where(
+            QuickRestoImportIssue.id == int(issue_id),
+            QuickRestoImportIssue.connection_id == connection_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if issue is None:
+        db.rollback()
+        raise QuickRestoSyncError("QuickResto import issue was not found")
+    if str(issue.error_code or "").upper() != "PREVIOUS_SCOPE_MISMATCH":
+        db.rollback()
+        raise QuickRestoSyncError("Эта проблема не относится к исторической области QuickResto")
+    if str(issue.status or "").upper() not in {"OPEN", "RETRY_PENDING"}:
+        db.rollback()
+        raise QuickRestoSyncError("Проблема уже обрабатывается или закрыта")
+    issue_details = issue.details_json if isinstance(issue.details_json, dict) else {}
+    target_generation = int(issue_details.get("scope_generation") or connection.scope_generation or 1)
+    pending_scope = pending_quickresto_scope(connection)
+    if pending_scope is not None:
+        if int(pending_scope["scope_generation"]) != target_generation:
+            db.rollback()
+            raise QuickRestoSyncError(
+                "Ожидающая область QuickResto изменилась. Обновите проблему и выберите решения заново."
+            )
+    elif target_generation != int(connection.scope_generation or 1):
+        db.rollback()
+        raise QuickRestoSyncError("Версия области QuickResto изменилась. Запустите полную сверку заново.")
+
+    issue_items = list(
+        db.execute(
+            select(QuickRestoImportIssueShift)
+            .where(QuickRestoImportIssueShift.issue_id == int(issue.id))
+            .with_for_update()
+        ).scalars()
+    )
+    expected_ids = {int(item.shift_import_id) for item in issue_items if item.shift_import_id is not None}
+    if not expected_ids or len(expected_ids) != len(issue_items):
+        db.rollback()
+        raise QuickRestoSyncError(
+            "Исторические смены не привязаны к сохранённым импортам. Запустите полную синхронизацию."
+        )
+    if set(normalized_decisions) != expected_ids:
+        db.rollback()
+        raise QuickRestoSyncError("Список исторических смен изменился. Обновите проблему и выберите решение заново.")
+
+    shift_imports = list(
+        db.execute(
+            select(QuickRestoShiftImport)
+            .where(
+                QuickRestoShiftImport.connection_id == connection_id,
+                QuickRestoShiftImport.id.in_(sorted(expected_ids)),
+                _scope_resolution_requires_review(target_generation),
+            )
+            .with_for_update()
+        ).scalars()
+    )
+    if len(shift_imports) != len(expected_ids):
+        db.rollback()
+        raise QuickRestoSyncError("По части исторических смен уже принято решение. Обновите страницу.")
+
+    run = QuickRestoSyncRun(
+        connection_id=connection_id,
+        requested_by_user_id=actor_user_id,
+        trigger="SCOPE_RECONCILIATION",
+        status="RUNNING",
+        started_at=now,
+    )
+    db.add(run)
+    db.flush()
+    transition_issue(
+        db,
+        issue=issue,
+        status="PROCESSING",
+        event_type="HISTORICAL_SCOPE_RECONCILIATION_STARTED",
+        actor_user_id=actor_user_id,
+        sync_run_id=int(run.id),
+    )
+    connection.last_sync_started_at = now
+    connection.last_sync_status = "RUNNING"
+    connection.last_sync_error = None
+    db.commit()
+    run_id = int(run.id)
+
+    try:
+        connection = db.execute(
+            select(QuickRestoConnection)
+            .where(QuickRestoConnection.id == connection_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one()
+        issue = db.execute(
+            select(QuickRestoImportIssue)
+            .where(QuickRestoImportIssue.id == int(issue_id))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one()
+        shift_imports = list(
+            db.execute(
+                select(QuickRestoShiftImport)
+                .where(
+                    QuickRestoShiftImport.connection_id == connection_id,
+                    QuickRestoShiftImport.id.in_(sorted(expected_ids)),
+                    _scope_resolution_requires_review(target_generation),
+                )
+                .with_for_update()
+            ).scalars()
+        )
+        if len(shift_imports) != len(expected_ids):
+            raise QuickRestoSyncError("По части исторических смен уже принято решение. Обновите страницу.")
+
+        current_pending_scope = pending_quickresto_scope(connection)
+        pending_scope_activated = False
+        if current_pending_scope is not None:
+            if int(current_pending_scope["scope_generation"]) != target_generation:
+                raise QuickRestoSyncError("Ожидающая область QuickResto изменилась. Обновите проблему.")
+            activate_pending_quickresto_scope(
+                db,
+                connection=connection,
+                actor_user_id=actor_user_id,
+                expected_generation=target_generation,
+            )
+            pending_scope_activated = True
+        elif int(connection.scope_generation or 1) != target_generation:
+            raise QuickRestoSyncError("Версия области QuickResto изменилась. Запустите полную сверку заново.")
+
+        timestamp = _utcnow()
+        affected_keys: set[tuple[date, str]] = set()
+        kept_count = 0
+        excluded_count = 0
+        decision_audit: list[dict[str, Any]] = []
+        for shift_import in shift_imports:
+            action = normalized_decisions[int(shift_import.id)]
+            affected_keys.add((shift_import.business_date, str(shift_import.shift_slot or "DAY").upper()))
+            before_report_id = int(shift_import.daily_report_id) if shift_import.daily_report_id is not None else None
+            shift_import.scope_resolution_action = action
+            shift_import.scope_resolution_generation = target_generation
+            shift_import.scope_resolved_by_user_id = actor_user_id
+            shift_import.scope_resolved_at = timestamp
+            shift_import.scope_resolution_note = str(note).strip()
+            shift_import.updated_at = timestamp
+            if action == "EXCLUDE_CURRENT":
+                excluded_count += 1
+                shift_import.daily_report_id = None
+            else:
+                kept_count += 1
+            decision_audit.append(
+                {
+                    "shift_import_id": int(shift_import.id),
+                    "external_shift_id": str(shift_import.external_shift_id),
+                    "action": action,
+                    "business_date": shift_import.business_date.isoformat(),
+                    "shift_slot": str(shift_import.shift_slot or "DAY").upper(),
+                    "daily_report_id_before": before_report_id,
+                }
+            )
+        db.flush()
+
+        counts, report_ids = _rebuild_imported_report_keys(
+            db,
+            connection=connection,
+            run=run,
+            actor_user_id=actor_user_id,
+            affected_keys=affected_keys,
+        )
+        shift_by_id = {int(item.id): item for item in shift_imports}
+        for row in decision_audit:
+            resolved_shift = shift_by_id[int(row["shift_import_id"])]
+            row["daily_report_id_after"] = (
+                int(resolved_shift.daily_report_id) if resolved_shift.daily_report_id is not None else None
+            )
+        details = dict(issue.details_json) if isinstance(issue.details_json, dict) else {}
+        details.update(
+            {
+                "scope_generation": target_generation,
+                "historical_decisions_kept": kept_count,
+                "historical_decisions_excluded": excluded_count,
+                "reconciled_report_ids": sorted(set(report_ids)),
+            }
+        )
+        issue.details_json = details
+        transition_issue(
+            db,
+            issue=issue,
+            status="RESOLVED",
+            event_type="HISTORICAL_SCOPE_RECONCILED",
+            actor_user_id=actor_user_id,
+            sync_run_id=run_id,
+            resolution_code="SHIFT_DECISIONS_APPLIED",
+            resolution_note=str(note).strip(),
+            audit_metadata={
+                "scope_generation": target_generation,
+                "pending_scope_activated": pending_scope_activated,
+                "decisions": decision_audit,
+                "reconciled_report_ids": sorted(set(report_ids)),
+            },
+        )
+        for item in issue.shifts:
+            action = normalized_decisions.get(int(item.shift_import_id or 0))
+            item.user_summary = (
+                "Смена исключена из текущего заведения; импортированные отчёты пересчитаны."
+                if action == "EXCLUDE_CURRENT"
+                else "Смена подтверждена как историческая часть текущего заведения."
+            )
+
+        finished_at = _utcnow()
+        run.status = "SUCCEEDED"
+        run.finished_at = finished_at
+        run.shifts_seen = len(shift_imports)
+        run.shifts_imported = 0
+        run.reports_created = int(counts["created"])
+        run.reports_updated = int(counts["updated"])
+        run.reports_unchanged = int(counts["unchanged"])
+        run.summary_json = {
+            "sync_mode": "HISTORICAL_SCOPE_RECONCILIATION",
+            "reconciled_issue_id": int(issue_id),
+            "scope_generation": target_generation,
+            "pending_scope_activated": pending_scope_activated,
+            "shifts_seen": len(shift_imports),
+            "shifts_kept": kept_count,
+            "shifts_excluded": excluded_count,
+            "reports_created": int(counts["created"]),
+            "reports_updated": int(counts["updated"]),
+            "reports_unchanged": int(counts["unchanged"]),
+            "reports_removed": int(counts["removed"]),
+            "report_ids": sorted(set(report_ids)),
+            "issue_count": 0,
+        }
+        connection.last_sync_completed_at = finished_at
+        connection.last_sync_status = "SUCCEEDED"
+        connection.last_sync_error = None
+        db.commit()
+        db.refresh(run)
+        _enqueue_sync_notification_safely(
+            db,
+            connection=connection,
+            run=run,
+            issue_count=0,
+            force=True,
+        )
+        db.refresh(run)
+        return run
+    except Exception as exc:
+        correlation_id = None
+        if not isinstance(exc, (QuickRestoDataError, QuickRestoSyncError, ValueError)):
+            try:
+                import sentry_sdk
+
+                correlation_id = sentry_sdk.capture_exception(exc)
+            except Exception:
+                correlation_id = None
+        failure = classify_quickresto_failure(exc, correlation_id=correlation_id)
+        _record_failed_run(
+            db,
+            run_id=run_id,
+            connection_id=connection_id,
+            message=failure.user_summary,
+        )
+        current_issue = db.get(QuickRestoImportIssue, int(issue_id))
+        if current_issue is not None:
+            transition_issue(
+                db,
+                issue=current_issue,
+                status="OPEN",
+                event_type="HISTORICAL_SCOPE_RECONCILIATION_FAILED",
+                actor_user_id=actor_user_id,
+                sync_run_id=run_id,
+                resolution_code=failure.error_code,
+                resolution_note=failure.user_summary,
+            )
+            db.commit()
+        failed_run = db.get(QuickRestoSyncRun, run_id)
+        failed_connection = db.get(QuickRestoConnection, connection_id)
+        if failed_run is not None and failed_connection is not None:
+            _enqueue_sync_notification_safely(
+                db,
+                connection=failed_connection,
+                run=failed_run,
+                issue_count=1,
+                technical_summary=failure.technical_summary,
+                correlation_id=failure.correlation_id,
+                force=True,
+            )
+        raise QuickRestoSyncError(failure.user_summary) from exc
 
 
 def sync_quickresto_connection(

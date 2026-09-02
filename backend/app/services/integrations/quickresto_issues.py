@@ -427,6 +427,7 @@ def transition_issue(
     sync_run_id: int | None = None,
     resolution_code: str | None = None,
     resolution_note: str | None = None,
+    audit_metadata: dict[str, Any] | None = None,
 ) -> None:
     target = str(status or "").upper()
     if target not in {"OPEN", "RETRY_PENDING", "PROCESSING", "RESOLVED", "IGNORED"}:
@@ -468,6 +469,7 @@ def transition_issue(
         sync_run_id=sync_run_id,
         reason_code=resolution_code,
         summary=resolution_note,
+        metadata=audit_metadata,
     )
     db.flush()
 
@@ -524,10 +526,30 @@ def serialize_issue(
             "resolved_sale_place_venue_id",
             "legacy_shift_count",
             "legacy_external_shift_ids",
+            "affected_report_ids",
+            "scope_generation",
+            "historical_decisions_kept",
+            "historical_decisions_excluded",
+            "historical_decisions_moved",
+            "reconciled_report_ids",
         )
         if key in details
     }
     retry_sources_available = bool(issue.shifts) and all(item.source_snapshot_id is not None for item in issue.shifts)
+    is_historical_scope = str(issue.error_code or "").upper() == "PREVIOUS_SCOPE_MISMATCH"
+    historical_scope_generation = int(details.get("scope_generation") or 0)
+    historical_scope_ready = bool(issue.shifts) and all(
+        item.shift_import_id is not None
+        and item.shift_import is not None
+        and (
+            item.shift_import.scope_resolution_action is None
+            or (
+                historical_scope_generation > 0
+                and int(item.shift_import.scope_resolution_generation or 0) != historical_scope_generation
+            )
+        )
+        for item in issue.shifts
+    )
     payload: dict[str, Any] = {
         "id": int(issue.id),
         "status": status,
@@ -544,8 +566,9 @@ def serialize_issue(
         "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
         "resolution_note": issue.resolution_note,
         "shift_count": max(len(issue.shifts), int(details.get("legacy_shift_count") or 0)),
-        "can_retry": status in {"OPEN", "RETRY_PENDING"} and retry_sources_available,
-        "can_ignore": status in {"OPEN", "RETRY_PENDING"},
+        "can_retry": status in {"OPEN", "RETRY_PENDING"} and retry_sources_available and not is_historical_scope,
+        "can_ignore": status in {"OPEN", "RETRY_PENDING"} and not is_historical_scope,
+        "can_reconcile_scope": (is_historical_scope and status in {"OPEN", "RETRY_PENDING"} and historical_scope_ready),
         "details": public_details,
     }
     if include_technical:
@@ -554,8 +577,15 @@ def serialize_issue(
     if include_shifts:
         payload["shifts"] = []
         for item in issue.shifts:
+            shift_import = item.shift_import
+            normalized = (
+                shift_import.normalized_json
+                if shift_import is not None and isinstance(shift_import.normalized_json, dict)
+                else {}
+            )
             shift_payload = {
                 "id": int(item.id),
+                "shift_import_id": int(item.shift_import_id) if item.shift_import_id is not None else None,
                 "external_shift_id": item.external_shift_id,
                 "external_shift_pk": item.external_shift_pk,
                 "source_version": item.source_version,
@@ -563,6 +593,18 @@ def serialize_issue(
                 "user_summary": item.user_summary,
                 "local_opened_at": item.local_opened_at.isoformat() if item.local_opened_at else None,
                 "local_closed_at": item.local_closed_at.isoformat() if item.local_closed_at else None,
+                "business_date": shift_import.business_date.isoformat() if shift_import is not None else None,
+                "shift_slot": shift_import.shift_slot if shift_import is not None else None,
+                "daily_report_id": (
+                    int(shift_import.daily_report_id)
+                    if shift_import is not None and shift_import.daily_report_id is not None
+                    else None
+                ),
+                "revenue_total": int(normalized.get("revenue_total") or 0),
+                "scope_resolution_action": (shift_import.scope_resolution_action if shift_import is not None else None),
+                "scope_resolution_generation": (
+                    shift_import.scope_resolution_generation if shift_import is not None else None
+                ),
             }
             if include_technical:
                 shift_payload["technical_summary"] = item.technical_summary

@@ -2,10 +2,25 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+
+
+_PORTABLE_JSON = JSON().with_variant(JSONB(), "postgresql")
 
 
 class QuickRestoConnection(Base):
@@ -57,6 +72,14 @@ class QuickRestoConnection(Base):
     scope_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     scope_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     scope_confirmed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    pending_external_venue_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    pending_sale_place_ids_json: Mapped[list[int] | None] = mapped_column(_PORTABLE_JSON, nullable=True)
+    pending_store_ids_json: Mapped[list[int] | None] = mapped_column(_PORTABLE_JSON, nullable=True)
+    pending_scope_generation: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pending_scope_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pending_scope_requested_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")

@@ -21,6 +21,8 @@ from app.auth.deps import get_current_user
 from app.auth.venue_permissions import has_venue_permission, require_venue_permission
 from app.schemas.quickresto import (
     QuickRestoConnectionUpsertIn,
+    QuickRestoHistoricalScopeConfirmIn,
+    QuickRestoHistoricalScopePreviewIn,
     QuickRestoIssueResolveIn,
     QuickRestoMappingsUpdateIn,
     QuickRestoScopeUpdateIn,
@@ -40,6 +42,10 @@ from app.services.integrations.quickresto_sync import (
     retry_quickresto_import_issue,
     sync_quickresto_connection,
 )
+from app.services.integrations.quickresto_scope_reconciliation import (
+    confirm_quickresto_historical_scope_reconciliation,
+    preview_quickresto_historical_scope_reconciliation,
+)
 from app.services.integrations.quickresto_issues import (
     ACTIVE_ISSUE_STATUSES,
     issue_counters,
@@ -51,6 +57,7 @@ from app.services.integrations.quickresto_scope import (
     QuickRestoScopeError,
     apply_quickresto_scope,
     ensure_quickresto_scope_ready,
+    pending_quickresto_scope,
     refresh_quickresto_catalog,
     serialize_quickresto_catalog,
 )
@@ -91,6 +98,24 @@ def _can_manage_quickresto(db: Session, *, venue_id: int, user: User) -> bool:
         user=user,
         permission_code="INTEGRATIONS_MANAGE",
     )
+
+
+def _manageable_quickresto_target_venue_ids(
+    db: Session,
+    *,
+    source_connection: QuickRestoConnection,
+    user: User,
+) -> set[int]:
+    venue_ids = set(
+        db.execute(
+            select(QuickRestoConnection.venue_id).where(
+                QuickRestoConnection.id != int(source_connection.id),
+                QuickRestoConnection.cloud == source_connection.cloud,
+                QuickRestoConnection.is_active.is_(True),
+            )
+        ).scalars()
+    )
+    return {venue_id for venue_id in venue_ids if _can_manage_quickresto(db, venue_id=int(venue_id), user=user)}
 
 
 def _is_super_admin(user: User) -> bool:
@@ -143,6 +168,7 @@ def _serialize_connection(
         "scope_generation": int(connection.scope_generation or 1),
         "scope_confirmed_at": (connection.scope_confirmed_at.isoformat() if connection.scope_confirmed_at else None),
         "scope_confirmed_by_user_id": connection.scope_confirmed_by_user_id,
+        "pending_scope": pending_quickresto_scope(connection),
         "credentials_configured": bool(connection.api_login_encrypted and connection.api_password_encrypted),
         "is_active": bool(connection.is_active),
         "auto_sync_enabled": bool(connection.auto_sync_enabled),
@@ -791,6 +817,11 @@ def post_quickresto_issue_resolve(
     )
     if str(issue.status or "").upper() not in {"OPEN", "RETRY_PENDING"}:
         raise HTTPException(status_code=409, detail="QuickResto import issue is not waiting for a resolution")
+    if str(issue.error_code or "").upper() == "PREVIOUS_SCOPE_MISMATCH":
+        raise HTTPException(
+            status_code=409,
+            detail="Historical QuickResto shifts require an explicit keep or exclude decision",
+        )
     transition_issue(
         db,
         issue=issue,
@@ -804,6 +835,73 @@ def post_quickresto_issue_resolve(
     db.refresh(issue)
     return {
         "ok": True,
+        "issue": serialize_issue(
+            issue,
+            include_shifts=True,
+            include_technical=_is_super_admin(user),
+        ),
+    }
+
+
+@router.post("/{venue_id}/integrations/quickresto/issues/{issue_id}/reconcile-scope/preview")
+def post_quickresto_historical_scope_preview(
+    venue_id: int,
+    issue_id: int,
+    payload: QuickRestoHistoricalScopePreviewIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_manage(db, venue_id=venue_id, user=user)
+    connection = _connection_or_404(db, venue_id)
+    try:
+        return preview_quickresto_historical_scope_reconciliation(
+            db,
+            connection=connection,
+            issue_id=issue_id,
+            decisions={int(item.shift_import_id): item.action for item in payload.decisions},
+            note=payload.note,
+            requested_by_user_id=int(user.id),
+            allowed_target_venue_ids=_manageable_quickresto_target_venue_ids(
+                db,
+                source_connection=connection,
+                user=user,
+            ),
+        )
+    except QuickRestoSyncError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{venue_id}/integrations/quickresto/issues/{issue_id}/reconcile-scope")
+def post_quickresto_historical_scope_reconcile(
+    venue_id: int,
+    issue_id: int,
+    payload: QuickRestoHistoricalScopeConfirmIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_manage(db, venue_id=venue_id, user=user)
+    connection = _connection_or_404(db, venue_id)
+    try:
+        run = confirm_quickresto_historical_scope_reconciliation(
+            db,
+            connection=connection,
+            issue_id=issue_id,
+            decisions={int(item.shift_import_id): item.action for item in payload.decisions},
+            note=payload.note,
+            preview_token=payload.preview_token,
+            requested_by_user_id=int(user.id),
+            allowed_target_venue_ids=_manageable_quickresto_target_venue_ids(
+                db,
+                source_connection=connection,
+                user=user,
+            ),
+        )
+    except QuickRestoSyncError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    issue = _issue_or_404(db, connection_id=int(connection.id), issue_id=issue_id)
+    return {
+        "ok": run.status == "SUCCEEDED",
+        "run": _serialize_run(run),
         "issue": serialize_issue(
             issue,
             include_shifts=True,

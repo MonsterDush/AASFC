@@ -268,7 +268,7 @@ class QuickRestoScopeTests(unittest.TestCase):
                 store_ids=[401],
             )
 
-    def test_external_venue_cannot_change_after_a_shift_was_imported(self):
+    def test_external_venue_change_after_import_is_staged_for_reconciliation(self):
         refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
         apply_quickresto_scope(
             self.db,
@@ -291,16 +291,38 @@ class QuickRestoScopeTests(unittest.TestCase):
         )
         self.db.flush()
 
-        with self.assertRaisesRegex(QuickRestoScopeConflictError, "Нельзя менять"):
-            apply_quickresto_scope(
-                self.db,
-                connection=self.connection,
-                external_venue_id=102,
-                sale_place_ids=[203],
-                store_ids=[403],
-            )
+        result = apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=102,
+            sale_place_ids=[203],
+            store_ids=[403],
+        )
 
-    def test_sale_place_scope_cannot_change_after_a_shift_was_imported(self):
+        self.assertTrue(result["pending"])
+        self.assertTrue(result["historical_reconciliation_required"])
+        self.assertEqual(result["scope_status"], "PENDING_RECONCILIATION")
+        self.assertEqual(result["scope_generation"], 2)
+        self.assertEqual(result["active_scope_generation"], 1)
+
+        self.assertEqual(self.connection.external_venue_id, 101)
+        self.assertEqual(self.connection.scope_generation, 1)
+        self.assertEqual(self.connection.pending_external_venue_id, 102)
+        self.assertEqual(self.connection.pending_sale_place_ids_json, [203])
+        self.assertEqual(self.connection.pending_store_ids_json, [403])
+        self.assertEqual(self.connection.pending_scope_generation, 2)
+
+        active_sale_places = set(
+            self.db.execute(
+                select(QuickRestoSalePlaceScope.external_id).where(
+                    QuickRestoSalePlaceScope.connection_id == self.connection.id,
+                    QuickRestoSalePlaceScope.is_selected.is_(True),
+                )
+            ).scalars()
+        )
+        self.assertEqual(active_sale_places, {201})
+
+    def test_sale_place_scope_change_after_import_is_staged_for_reconciliation(self):
         refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
         apply_quickresto_scope(
             self.db,
@@ -323,14 +345,45 @@ class QuickRestoScopeTests(unittest.TestCase):
         )
         self.db.flush()
 
-        with self.assertRaisesRegex(QuickRestoScopeConflictError, "места реализации"):
-            apply_quickresto_scope(
-                self.db,
-                connection=self.connection,
-                external_venue_id=101,
-                sale_place_ids=[201],
-                store_ids=[401],
-            )
+        result = apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201],
+            store_ids=[401],
+        )
+
+        self.assertTrue(result["pending"])
+        self.assertTrue(result["historical_reconciliation_required"])
+        self.assertEqual(result["scope_status"], "PENDING_RECONCILIATION")
+        self.assertEqual(result["scope_generation"], 2)
+        self.assertEqual(result["active_scope_generation"], 1)
+
+        self.assertEqual(self.connection.external_venue_id, 101)
+        self.assertEqual(self.connection.scope_generation, 1)
+        self.assertEqual(self.connection.pending_external_venue_id, 101)
+        self.assertEqual(self.connection.pending_sale_place_ids_json, [201])
+        self.assertEqual(self.connection.pending_store_ids_json, [401])
+        self.assertEqual(self.connection.pending_scope_generation, 2)
+
+        active_sale_places = set(
+            self.db.execute(
+                select(QuickRestoSalePlaceScope.external_id).where(
+                    QuickRestoSalePlaceScope.connection_id == self.connection.id,
+                    QuickRestoSalePlaceScope.is_selected.is_(True),
+                )
+            ).scalars()
+        )
+        active_stores = set(
+            self.db.execute(
+                select(QuickRestoStoreScope.external_id).where(
+                    QuickRestoStoreScope.connection_id == self.connection.id,
+                    QuickRestoStoreScope.is_selected.is_(True),
+                )
+            ).scalars()
+        )
+        self.assertEqual(active_sale_places, {201, 202})
+        self.assertEqual(active_stores, {401, 402})
 
     def test_shift_scope_decisions_are_explicit_and_safe(self):
         now = datetime.now(timezone.utc)

@@ -73,6 +73,8 @@ class VenueEconomicsRouterContractTests(TestCase):
             "get_quickresto_catalog",
             "refresh_quickresto_catalog_route",
             "put_quickresto_scope",
+            "post_quickresto_historical_scope_reconcile",
+            "post_quickresto_historical_scope_preview",
         }
         base_manifest = [row for row in manifest if row[2] not in new_route_names]
         base_digest = hashlib.sha256(
@@ -97,9 +99,19 @@ class VenueEconomicsRouterContractTests(TestCase):
                 "/venues/{venue_id}/integrations/quickresto/scope",
                 "put_quickresto_scope",
             ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/quickresto/issues/{issue_id}/reconcile-scope",
+                "post_quickresto_historical_scope_reconcile",
+            ),
+            (
+                ("POST",),
+                "/venues/{venue_id}/integrations/quickresto/issues/{issue_id}/reconcile-scope/preview",
+                "post_quickresto_historical_scope_preview",
+            ),
         }
 
-        self.assertEqual(len(manifest), 178)
+        self.assertEqual(len(manifest), 180)
         self.assertEqual(base_digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
         self.assertEqual(actual_new_routes, expected_new_routes)
 
@@ -160,7 +172,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_shift_intervals.router, 4),
             (venue_shifts.router, 12),
             (venue_shift_swaps.router, 9),
-            (venue_quickresto.router, 13),
+            (venue_quickresto.router, 15),
         ]
         venues_manifest = {(tuple(methods), path, name) for methods, path, name in _route_manifest(venues.router)}
         native_manifest = set()
@@ -174,7 +186,7 @@ class VenueEconomicsRouterContractTests(TestCase):
                 self.assertIn(route, venues_manifest)
                 native_manifest.add(route)
 
-        self.assertEqual(len(native_manifest), 111)
+        self.assertEqual(len(native_manifest), 113)
 
 
 class VenueEconomicsRouterBehaviorTests(TestCase):
