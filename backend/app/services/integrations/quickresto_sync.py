@@ -1519,9 +1519,7 @@ def _rebuild_imported_report_keys(
                         QuickRestoShiftImport.scope_resolution_action.is_(None),
                         QuickRestoShiftImport.scope_resolution_generation.is_(None),
                         QuickRestoShiftImport.scope_resolution_generation != int(connection.scope_generation or 1),
-                        ~QuickRestoShiftImport.scope_resolution_action.in_(
-                            ("EXCLUDE_CURRENT", "MOVE_TO_CONNECTED")
-                        ),
+                        ~QuickRestoShiftImport.scope_resolution_action.in_(("EXCLUDE_CURRENT", "MOVE_TO_CONNECTED")),
                     ),
                 )
             ).scalars()
