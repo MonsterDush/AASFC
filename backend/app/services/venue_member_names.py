@@ -92,11 +92,7 @@ def load_member_display_names(
         )
     ).all()
 
-    return {
-        int(row.user_id): note
-        for row in rows
-        if (note := normalize_owner_note(getattr(row, "owner_note", None)))
-    }
+    return {int(row.user_id): note for row in rows if (note := normalize_owner_note(getattr(row, "owner_note", None)))}
 
 
 def owner_display_name(

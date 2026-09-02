@@ -149,11 +149,7 @@ def list_positions(
     for r in rows:
         member_user_id = int(r.member_user_id) if r.member_user_id is not None else None
         owner_note = owner_notes.get(member_user_id) if member_user_id is not None else None
-        display_name_override = (
-            member_display_names.get(member_user_id)
-            if member_user_id is not None
-            else None
-        )
+        display_name_override = member_display_names.get(member_user_id) if member_user_id is not None else None
         items.append(
             {
                 "id": r.id,

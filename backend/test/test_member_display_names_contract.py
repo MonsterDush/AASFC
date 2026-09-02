@@ -24,10 +24,7 @@ class MemberDisplayNamesContractTests(TestCase):
                 "is_archived BOOLEAN NOT NULL DEFAULT 0"
                 ")"
             )
-            connection.exec_driver_sql(
-                "INSERT INTO venues (id, name, is_archived) "
-                "VALUES (5, 'Test venue', 0)"
-            )
+            connection.exec_driver_sql("INSERT INTO venues (id, name, is_archived) VALUES (5, 'Test venue', 0)")
 
         User.__table__.create(self.engine)
         VenueMember.__table__.create(self.engine)
