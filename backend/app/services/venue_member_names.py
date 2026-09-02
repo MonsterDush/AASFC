@@ -69,6 +69,32 @@ def load_owner_notes(
     return {int(row.user_id): note for row in rows if (note := normalize_owner_note(getattr(row, "owner_note", None)))}
 
 
+def load_member_display_names(
+    db: Session,
+    *,
+    venue_id: int,
+    member_user_ids: Iterable[int],
+) -> dict[int, str]:
+    """Load venue-local labels used as member display names.
+
+    The label may be used in ``display_name`` for authorized venue viewers.
+    Raw ``owner_note`` visibility remains protected by ``load_owner_notes``.
+    """
+    user_ids = sorted({int(value) for value in member_user_ids if value})
+    if not user_ids:
+        return {}
+
+    rows = db.execute(
+        select(VenueMember.user_id, VenueMember.owner_note).where(
+            VenueMember.venue_id == int(venue_id),
+            VenueMember.user_id.in_(user_ids),
+            VenueMember.is_active.is_(True),
+        )
+    ).all()
+
+    return {int(row.user_id): note for row in rows if (note := normalize_owner_note(getattr(row, "owner_note", None)))}
+
+
 def owner_display_name(
     *,
     owner_note: str | None = None,
