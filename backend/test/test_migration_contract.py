@@ -29,12 +29,51 @@ class MigrationContractTests(unittest.TestCase):
         heads = scripts.get_heads()
         revision = scripts.get_revision("c9e7a5b3d1f0")
         hardening = scripts.get_revision("d0f8b6c4e2a1")
+        reconciliation = scripts.get_revision("e2b4d6f8a1c3")
 
-        self.assertEqual(heads, ["d0f8b6c4e2a1"])
+        self.assertEqual(heads, ["e2b4d6f8a1c3"])
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "b8d4f6a2c1e9")
         self.assertIsNotNone(hardening)
         self.assertEqual(hardening.down_revision, "c9e7a5b3d1f0")
+        self.assertIsNotNone(reconciliation)
+        self.assertEqual(reconciliation.down_revision, "d0f8b6c4e2a1")
+
+    def test_quickresto_historical_scope_resolution_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql(
+                    "CREATE TABLE quickresto_shift_imports (id INTEGER PRIMARY KEY)"
+                )
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "d0f8b6c4e2a1")
+                command.upgrade(config, "e2b4d6f8a1c3")
+
+                inspector = sa.inspect(engine)
+                columns = {column["name"] for column in inspector.get_columns("quickresto_shift_imports")}
+                self.assertTrue(
+                    {
+                        "scope_resolution_action",
+                        "scope_resolution_generation",
+                        "scope_resolved_by_user_id",
+                        "scope_resolved_at",
+                        "scope_resolution_note",
+                    }.issubset(columns)
+                )
+                indexes = {index["name"] for index in inspector.get_indexes("quickresto_shift_imports")}
+                self.assertIn("ix_quickresto_shift_imports_scope_resolution_action", indexes)
+                self.assertIn("ix_quickresto_shift_imports_scope_resolved_by_user_id", indexes)
+
+                command.downgrade(config, "d0f8b6c4e2a1")
+
+            columns = {column["name"] for column in sa.inspect(engine).get_columns("quickresto_shift_imports")}
+            self.assertNotIn("scope_resolution_action", columns)
+            self.assertNotIn("scope_resolved_by_user_id", columns)
 
     def test_quickresto_scope_hardening_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

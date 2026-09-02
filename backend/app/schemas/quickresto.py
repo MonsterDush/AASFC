@@ -60,3 +60,32 @@ class QuickRestoIssueResolveIn(BaseModel):
         if len(normalized) < 3:
             raise ValueError("QuickResto issue resolution note must contain at least 3 characters")
         return normalized
+
+
+class QuickRestoHistoricalShiftDecisionIn(BaseModel):
+    shift_import_id: int = Field(..., gt=0)
+    action: Literal["KEEP_CURRENT", "EXCLUDE_CURRENT"]
+
+
+class QuickRestoHistoricalScopeResolveIn(BaseModel):
+    decisions: list[QuickRestoHistoricalShiftDecisionIn] = Field(..., min_length=1, max_length=5000)
+    note: str = Field(..., min_length=3, max_length=1000)
+
+    @field_validator("decisions")
+    @classmethod
+    def validate_unique_shift_decisions(
+        cls,
+        value: list[QuickRestoHistoricalShiftDecisionIn],
+    ) -> list[QuickRestoHistoricalShiftDecisionIn]:
+        identifiers = [int(item.shift_import_id) for item in value]
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("QuickResto historical shift decisions must be unique")
+        return value
+
+    @field_validator("note")
+    @classmethod
+    def validate_resolution_note(cls, value: str) -> str:
+        normalized = str(value or "").strip()
+        if len(normalized) < 3:
+            raise ValueError("QuickResto scope resolution note must contain at least 3 characters")
+        return normalized

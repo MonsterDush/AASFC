@@ -160,7 +160,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_shift_intervals.router, 4),
             (venue_shifts.router, 12),
             (venue_shift_swaps.router, 9),
-            (venue_quickresto.router, 13),
+            (venue_quickresto.router, 14),
         ]
         venues_manifest = {(tuple(methods), path, name) for methods, path, name in _route_manifest(venues.router)}
         native_manifest = set()

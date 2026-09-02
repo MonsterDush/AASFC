@@ -21,6 +21,7 @@ from app.auth.deps import get_current_user
 from app.auth.venue_permissions import has_venue_permission, require_venue_permission
 from app.schemas.quickresto import (
     QuickRestoConnectionUpsertIn,
+    QuickRestoHistoricalScopeResolveIn,
     QuickRestoIssueResolveIn,
     QuickRestoMappingsUpdateIn,
     QuickRestoScopeUpdateIn,
@@ -35,6 +36,7 @@ from app.services.integrations.quickresto_sync import (
     QuickRestoSyncError,
     build_quickresto_client,
     quickresto_sync_is_active,
+    reconcile_quickresto_historical_scope_issue,
     reclaim_stale_quickresto_sync_state,
     refresh_quickresto_mappings,
     retry_quickresto_import_issue,
@@ -791,6 +793,11 @@ def post_quickresto_issue_resolve(
     )
     if str(issue.status or "").upper() not in {"OPEN", "RETRY_PENDING"}:
         raise HTTPException(status_code=409, detail="QuickResto import issue is not waiting for a resolution")
+    if str(issue.error_code or "").upper() == "PREVIOUS_SCOPE_MISMATCH":
+        raise HTTPException(
+            status_code=409,
+            detail="Historical QuickResto shifts require an explicit keep or exclude decision",
+        )
     transition_issue(
         db,
         issue=issue,
@@ -804,6 +811,39 @@ def post_quickresto_issue_resolve(
     db.refresh(issue)
     return {
         "ok": True,
+        "issue": serialize_issue(
+            issue,
+            include_shifts=True,
+            include_technical=_is_super_admin(user),
+        ),
+    }
+
+
+@router.post("/{venue_id}/integrations/quickresto/issues/{issue_id}/reconcile-scope")
+def post_quickresto_historical_scope_reconcile(
+    venue_id: int,
+    issue_id: int,
+    payload: QuickRestoHistoricalScopeResolveIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_quickresto_manage(db, venue_id=venue_id, user=user)
+    connection = _connection_or_404(db, venue_id)
+    try:
+        run = reconcile_quickresto_historical_scope_issue(
+            db,
+            connection=connection,
+            issue_id=issue_id,
+            decisions={int(item.shift_import_id): item.action for item in payload.decisions},
+            note=payload.note,
+            requested_by_user_id=int(user.id),
+        )
+    except QuickRestoSyncError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    issue = _issue_or_404(db, connection_id=int(connection.id), issue_id=issue_id)
+    return {
+        "ok": run.status == "SUCCEEDED",
+        "run": _serialize_run(run),
         "issue": serialize_issue(
             issue,
             include_shifts=True,
