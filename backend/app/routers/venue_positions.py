@@ -32,7 +32,7 @@ from app.routers.venue_pay_profile_support import (
 from app.routers.venue_position_support import (
     _load_position_presets_from_setup,
 )
-from app.services.venue_member_names import load_owner_notes, owner_display_name
+from app.services.venue_member_names import load_member_display_names, load_owner_notes, owner_display_name
 
 
 router = APIRouter()
@@ -140,10 +140,20 @@ def list_positions(
         viewer=user,
         member_user_ids=[int(r.member_user_id) for r in rows if r.member_user_id is not None],
     )
+    member_display_names = load_member_display_names(
+        db,
+        venue_id=venue_id,
+        member_user_ids=[int(r.member_user_id) for r in rows if r.member_user_id is not None],
+    )
     items = []
     for r in rows:
         member_user_id = int(r.member_user_id) if r.member_user_id is not None else None
         owner_note = owner_notes.get(member_user_id) if member_user_id is not None else None
+        display_name_override = (
+            member_display_names.get(member_user_id)
+            if member_user_id is not None
+            else None
+        )
         items.append(
             {
                 "id": r.id,
@@ -164,7 +174,7 @@ def list_positions(
                     "short_name": r.short_name,
                     "venue_role": r.venue_role,
                     "display_name": owner_display_name(
-                        owner_note=owner_note,
+                        owner_note=display_name_override,
                         short_name=r.short_name,
                         full_name=r.full_name,
                         tg_username=r.tg_username,

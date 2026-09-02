@@ -65,7 +65,7 @@ from app.routers.venue_reports import (
     _rebuild_report_tip_allocations,
 )
 from app.routers.venue_schedule_templates import _normalize_shift_slot_for_venue, _shift_slot_label
-from app.services.venue_member_names import load_owner_notes, owner_display_name
+from app.services.venue_member_names import load_member_display_names, load_owner_notes, owner_display_name
 
 
 router = APIRouter()
@@ -448,8 +448,14 @@ def list_shifts(
             viewer=user,
             member_user_ids=[int(row.member_user_id) for row in arows],
         )
+        member_display_names = load_member_display_names(
+            db,
+            venue_id=venue_id,
+            member_user_ids=[int(row.member_user_id) for row in arows],
+        )
         for r in arows:
             owner_note = owner_notes.get(int(r.member_user_id))
+            display_name_override = member_display_names.get(int(r.member_user_id))
             assignments_by_shift.setdefault(r.shift_id, []).append(
                 {
                     "member_user_id": r.member_user_id,
@@ -460,7 +466,7 @@ def list_shifts(
                     "short_name": r.short_name,
                     "owner_note": owner_note,
                     "display_name": owner_display_name(
-                        owner_note=owner_note,
+                        owner_note=display_name_override,
                         short_name=r.short_name,
                         full_name=r.full_name,
                         tg_username=r.tg_username,
