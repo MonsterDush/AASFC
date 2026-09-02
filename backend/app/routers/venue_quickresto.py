@@ -53,6 +53,7 @@ from app.services.integrations.quickresto_scope import (
     QuickRestoScopeError,
     apply_quickresto_scope,
     ensure_quickresto_scope_ready,
+    pending_quickresto_scope,
     refresh_quickresto_catalog,
     serialize_quickresto_catalog,
 )
@@ -145,6 +146,7 @@ def _serialize_connection(
         "scope_generation": int(connection.scope_generation or 1),
         "scope_confirmed_at": (connection.scope_confirmed_at.isoformat() if connection.scope_confirmed_at else None),
         "scope_confirmed_by_user_id": connection.scope_confirmed_by_user_id,
+        "pending_scope": pending_quickresto_scope(connection),
         "credentials_configured": bool(connection.api_login_encrypted and connection.api_password_encrypted),
         "is_active": bool(connection.is_active),
         "auto_sync_enabled": bool(connection.auto_sync_enabled),

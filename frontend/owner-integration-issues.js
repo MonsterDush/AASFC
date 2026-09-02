@@ -360,11 +360,17 @@ function renderHistoricalScopeMismatch(issue) {
   if (String(issue?.error_code || "").toUpperCase() !== "PREVIOUS_SCOPE_MISMATCH") return "";
   const shifts = Array.isArray(issue?.shifts) ? issue.shifts : [];
   const canReconcile = state.canManage && issue.can_reconcile_scope === true;
+  const targetGeneration = Number(issue?.details?.scope_generation || 0);
   const fields = shifts
     .map((shift, index) => {
       const shiftImportId = Number(shift.shift_import_id || 0);
       const externalId = shift.external_shift_id || shift.external_shift_pk || index + 1;
-      const action = String(shift.scope_resolution_action || "").toUpperCase();
+      const resolvedGeneration = Number(shift.scope_resolution_generation || 0);
+      const previousAction = String(shift.scope_resolution_action || "").toUpperCase();
+      const action = resolvedGeneration === targetGeneration ? previousAction : "";
+      const previousDecision = previousAction && resolvedGeneration && resolvedGeneration !== targetGeneration
+        ? `<div class="muted small">Предыдущее решение: ${previousAction === "EXCLUDE_CURRENT" ? "исключить" : "оставить"} · версия области ${resolvedGeneration}. Для новой версии решение нужно подтвердить заново.</div>`
+        : "";
       const disabled = canReconcile ? "" : " disabled";
       const period = `${formatDate(shift.local_opened_at, { withTime: true })} — ${formatDate(shift.local_closed_at, { withTime: true })}`;
       const reportLabel = shift.daily_report_id
@@ -378,6 +384,7 @@ function renderHistoricalScopeMismatch(issue) {
           <b>${esc(formatRubles(shift.revenue_total))}</b>
         </div>
         <div class="muted small">${esc(period)}</div>
+        ${previousDecision}
         <div class="integration-history-shift__choices">
           <label><input type="radio" name="historical-shift-${shiftImportId}" value="KEEP_CURRENT"${action === "KEEP_CURRENT" ? " checked" : ""}${disabled} /><span><b>Оставить в текущем заведении</b><small>Смена останется в текущем отчёте как подтверждённая история.</small></span></label>
           <label><input type="radio" name="historical-shift-${shiftImportId}" value="EXCLUDE_CURRENT"${action === "EXCLUDE_CURRENT" ? " checked" : ""}${disabled} /><span><b>Исключить из текущего заведения</b><small>Axelio пересчитает только импортированный отчёт. Другое заведение сможет забрать смену своей синхронизацией.</small></span></label>
@@ -391,7 +398,7 @@ function renderHistoricalScopeMismatch(issue) {
       ? `<dl class="integration-issue-facts"><div><dt>Оставлено</dt><dd>${Number(issue.details.historical_decisions_kept || 0)}</dd></div><div><dt>Исключено</dt><dd>${Number(issue.details.historical_decisions_excluded || 0)}</dd></div></dl>`
       : "";
   return `<section class="integration-issue-resolution integration-history-resolution">
-    <div><h3>Историческая проверка области</h3><div class="muted small mt-4">Примите отдельное решение по каждой смене. Все отчёты будут пересчитаны одной операцией: при конфликте или ручных изменениях Axelio отменит её полностью.</div></div>
+    <div><h3>Историческая проверка области${targetGeneration ? ` · версия ${targetGeneration}` : ""}</h3><div class="muted small mt-4">Примите отдельное решение по каждой смене. Решения прошлой версии области не переносятся автоматически. Все отчёты будут пересчитаны одной операцией: при конфликте или ручных изменениях Axelio отменит её полностью.</div></div>
     <dl class="integration-issue-facts"><div><dt>Затронуто ранее импортированных смен</dt><dd>${Number(issue?.details?.legacy_shift_count || issue?.shift_count || 0)}</dd></div></dl>
     ${resolvedFacts}
     ${fields || '<div class="integration-issue-readonly">Список исторических смен ещё не подготовлен. Запустите полную синхронизацию QuickResto.</div>'}
@@ -716,6 +723,19 @@ async function saveScopeAndRetry(button) {
     );
     state.catalog = scopeResult.catalog || state.catalog;
     state.mappings = scopeResult.mappings || state.mappings;
+    if (scopeResult.scope?.historical_reconciliation_required) {
+      const scan = await api(
+        `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/sync?full=true`,
+        { method: "POST" },
+      );
+      const historicalIssueId = Number(scan.run?.summary?.historical_scope_mismatch_issue_id || 0);
+      await loadIssues();
+      if (historicalIssueId) {
+        await openIssue(historicalIssueId);
+        toast("Новая область требует пересмотра ранее импортированных смен", "err");
+        return;
+      }
+    }
     const retryResult = await api(
       `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/issues/${issue.id}/retry`,
       { method: "POST" },

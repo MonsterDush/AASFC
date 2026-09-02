@@ -30,14 +30,52 @@ class MigrationContractTests(unittest.TestCase):
         revision = scripts.get_revision("c9e7a5b3d1f0")
         hardening = scripts.get_revision("d0f8b6c4e2a1")
         reconciliation = scripts.get_revision("e2b4d6f8a1c3")
+        pending_scope = scripts.get_revision("f4c6e8a0b2d5")
 
-        self.assertEqual(heads, ["e2b4d6f8a1c3"])
+        self.assertEqual(heads, ["f4c6e8a0b2d5"])
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "b8d4f6a2c1e9")
         self.assertIsNotNone(hardening)
         self.assertEqual(hardening.down_revision, "c9e7a5b3d1f0")
         self.assertIsNotNone(reconciliation)
         self.assertEqual(reconciliation.down_revision, "d0f8b6c4e2a1")
+        self.assertIsNotNone(pending_scope)
+        self.assertEqual(pending_scope.down_revision, "e2b4d6f8a1c3")
+
+    def test_quickresto_pending_scope_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY)")
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "e2b4d6f8a1c3")
+                command.upgrade(config, "f4c6e8a0b2d5")
+
+                inspector = sa.inspect(engine)
+                columns = {column["name"] for column in inspector.get_columns("quickresto_connections")}
+                self.assertTrue(
+                    {
+                        "pending_external_venue_id",
+                        "pending_sale_place_ids_json",
+                        "pending_store_ids_json",
+                        "pending_scope_generation",
+                        "pending_scope_requested_at",
+                        "pending_scope_requested_by_user_id",
+                    }.issubset(columns)
+                )
+                indexes = {index["name"] for index in inspector.get_indexes("quickresto_connections")}
+                self.assertIn("ix_quickresto_connections_pending_external_venue_id", indexes)
+                self.assertIn("ix_quickresto_connections_pending_scope_requested_by_user_id", indexes)
+
+                command.downgrade(config, "e2b4d6f8a1c3")
+
+            columns = {column["name"] for column in sa.inspect(engine).get_columns("quickresto_connections")}
+            self.assertNotIn("pending_external_venue_id", columns)
+            self.assertNotIn("pending_scope_generation", columns)
 
     def test_quickresto_historical_scope_resolution_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:
@@ -45,9 +83,7 @@ class MigrationContractTests(unittest.TestCase):
             engine = sa.create_engine(database_url)
             with engine.begin() as connection:
                 connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
-                connection.exec_driver_sql(
-                    "CREATE TABLE quickresto_shift_imports (id INTEGER PRIMARY KEY)"
-                )
+                connection.exec_driver_sql("CREATE TABLE quickresto_shift_imports (id INTEGER PRIMARY KEY)")
 
             with patch.object(settings, "database_url", database_url):
                 config = self._config()

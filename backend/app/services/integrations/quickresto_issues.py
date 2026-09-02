@@ -427,6 +427,7 @@ def transition_issue(
     sync_run_id: int | None = None,
     resolution_code: str | None = None,
     resolution_note: str | None = None,
+    audit_metadata: dict[str, Any] | None = None,
 ) -> None:
     target = str(status or "").upper()
     if target not in {"OPEN", "RETRY_PENDING", "PROCESSING", "RESOLVED", "IGNORED"}:
@@ -468,6 +469,7 @@ def transition_issue(
         sync_run_id=sync_run_id,
         reason_code=resolution_code,
         summary=resolution_note,
+        metadata=audit_metadata,
     )
     db.flush()
 
@@ -525,6 +527,7 @@ def serialize_issue(
             "legacy_shift_count",
             "legacy_external_shift_ids",
             "affected_report_ids",
+            "scope_generation",
             "historical_decisions_kept",
             "historical_decisions_excluded",
             "reconciled_report_ids",
@@ -533,10 +536,17 @@ def serialize_issue(
     }
     retry_sources_available = bool(issue.shifts) and all(item.source_snapshot_id is not None for item in issue.shifts)
     is_historical_scope = str(issue.error_code or "").upper() == "PREVIOUS_SCOPE_MISMATCH"
+    historical_scope_generation = int(details.get("scope_generation") or 0)
     historical_scope_ready = bool(issue.shifts) and all(
         item.shift_import_id is not None
         and item.shift_import is not None
-        and item.shift_import.scope_resolution_action is None
+        and (
+            item.shift_import.scope_resolution_action is None
+            or (
+                historical_scope_generation > 0
+                and int(item.shift_import.scope_resolution_generation or 0) != historical_scope_generation
+            )
+        )
         for item in issue.shifts
     )
     payload: dict[str, Any] = {
@@ -557,9 +567,7 @@ def serialize_issue(
         "shift_count": max(len(issue.shifts), int(details.get("legacy_shift_count") or 0)),
         "can_retry": status in {"OPEN", "RETRY_PENDING"} and retry_sources_available and not is_historical_scope,
         "can_ignore": status in {"OPEN", "RETRY_PENDING"} and not is_historical_scope,
-        "can_reconcile_scope": (
-            is_historical_scope and status in {"OPEN", "RETRY_PENDING"} and historical_scope_ready
-        ),
+        "can_reconcile_scope": (is_historical_scope and status in {"OPEN", "RETRY_PENDING"} and historical_scope_ready),
         "details": public_details,
     }
     if include_technical:
@@ -592,9 +600,7 @@ def serialize_issue(
                     else None
                 ),
                 "revenue_total": int(normalized.get("revenue_total") or 0),
-                "scope_resolution_action": (
-                    shift_import.scope_resolution_action if shift_import is not None else None
-                ),
+                "scope_resolution_action": (shift_import.scope_resolution_action if shift_import is not None else None),
                 "scope_resolution_generation": (
                     shift_import.scope_resolution_generation if shift_import is not None else None
                 ),

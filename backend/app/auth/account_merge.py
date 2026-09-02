@@ -91,6 +91,7 @@ _DIRECT_USER_REF_REASSIGNMENTS = (
     (PositionPermissionTemplate, "created_by_user_id"),
     (PositionPermissionTemplate, "updated_by_user_id"),
     (QuickRestoConnection, "created_by_user_id"),
+    (QuickRestoConnection, "pending_scope_requested_by_user_id"),
     (QuickRestoConnection, "scope_confirmed_by_user_id"),
     (QuickRestoConnection, "updated_by_user_id"),
     (QuickRestoImportIssue, "resolved_by_user_id"),

@@ -1,0 +1,1090 @@
+diff --git a/backend/alembic/versions/f4c6e8a0b2d5_quickresto_pending_scope.py b/backend/alembic/versions/f4c6e8a0b2d5_quickresto_pending_scope.py
+new file mode 100644
+--- /dev/null
++++ b/backend/alembic/versions/f4c6e8a0b2d5_quickresto_pending_scope.py
+@@ -0,0 +1,61 @@
++"""stage QuickResto scope changes before historical reconciliation
++
++Revision ID: f4c6e8a0b2d5
++Revises: e2b4d6f8a1c3
++Create Date: 2026-09-02 18:00:00.000000
++"""
++
++from __future__ import annotations
++
++from typing import Sequence, Union
++
++from alembic import op
++import sqlalchemy as sa
++
++
++revision: str = "f4c6e8a0b2d5"
++down_revision: Union[str, Sequence[str], None] = "e2b4d6f8a1c3"
++branch_labels: Union[str, Sequence[str], None] = None
++depends_on: Union[str, Sequence[str], None] = None
++
++
++def upgrade() -> None:
++    with op.batch_alter_table("quickresto_connections") as batch_op:
++        batch_op.add_column(sa.Column("pending_external_venue_id", sa.Integer(), nullable=True))
++        batch_op.add_column(sa.Column("pending_sale_place_ids_json", sa.JSON(), nullable=True))
++        batch_op.add_column(sa.Column("pending_store_ids_json", sa.JSON(), nullable=True))
++        batch_op.add_column(sa.Column("pending_scope_generation", sa.Integer(), nullable=True))
++        batch_op.add_column(sa.Column("pending_scope_requested_at", sa.DateTime(timezone=True), nullable=True))
++        batch_op.add_column(sa.Column("pending_scope_requested_by_user_id", sa.Integer(), nullable=True))
++        batch_op.create_foreign_key(
++            "fk_quickresto_connections_pending_scope_requested_by_user_id_users",
++            "users",
++            ["pending_scope_requested_by_user_id"],
++            ["id"],
++            ondelete="SET NULL",
++        )
++        batch_op.create_index(
++            "ix_quickresto_connections_pending_external_venue_id",
++            ["pending_external_venue_id"],
++        )
++        batch_op.create_index(
++            "ix_quickresto_connections_pending_scope_requested_by_user_id",
++            ["pending_scope_requested_by_user_id"],
++        )
++
++
++def downgrade() -> None:
++    with op.batch_alter_table("quickresto_connections") as batch_op:
++        batch_op.drop_index("ix_quickresto_connections_pending_scope_requested_by_user_id")
++        batch_op.drop_index("ix_quickresto_connections_pending_external_venue_id")
++        batch_op.drop_constraint(
++            "fk_quickresto_connections_pending_scope_requested_by_user_id_users",
++            type_="foreignkey",
++        )
++        batch_op.drop_column("pending_scope_requested_by_user_id")
++        batch_op.drop_column("pending_scope_requested_at")
++        batch_op.drop_column("pending_scope_generation")
++        batch_op.drop_column("pending_store_ids_json")
++        batch_op.drop_column("pending_sale_place_ids_json")
++        batch_op.drop_column("pending_external_venue_id")
++
+diff --git a/backend/app/models/quickresto_connection.py b/backend/app/models/quickresto_connection.py
+--- a/backend/app/models/quickresto_connection.py
++++ b/backend/app/models/quickresto_connection.py
+@@ -2,10 +2,14 @@ from __future__ import annotations
+ 
+ from datetime import date, datetime
+ 
+-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
++from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
++from sqlalchemy.dialects.postgresql import JSONB
+ from sqlalchemy.orm import Mapped, mapped_column, relationship
+ 
+ from app.core.db import Base
+ 
++
++_PORTABLE_JSON = JSON().with_variant(JSONB(), "postgresql")
++
+ 
+ class QuickRestoConnection(Base):
+@@ -57,6 +61,14 @@ class QuickRestoConnection(Base):
+     scope_confirmed_by_user_id: Mapped[int | None] = mapped_column(
+         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+     )
++    pending_external_venue_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
++    pending_sale_place_ids_json: Mapped[list[int] | None] = mapped_column(_PORTABLE_JSON, nullable=True)
++    pending_store_ids_json: Mapped[list[int] | None] = mapped_column(_PORTABLE_JSON, nullable=True)
++    pending_scope_generation: Mapped[int | None] = mapped_column(Integer, nullable=True)
++    pending_scope_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
++    pending_scope_requested_by_user_id: Mapped[int | None] = mapped_column(
++        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
++    )
+     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+     auto_sync_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+     report_import_mode: Mapped[str] = mapped_column(
+diff --git a/backend/app/auth/account_merge.py b/backend/app/auth/account_merge.py
+--- a/backend/app/auth/account_merge.py
++++ b/backend/app/auth/account_merge.py
+@@ -87,5 +87,6 @@ _DIRECT_USER_REF_REASSIGNMENTS = (
+     (PositionPermissionTemplate, "updated_by_user_id"),
+     (QuickRestoConnection, "created_by_user_id"),
++    (QuickRestoConnection, "pending_scope_requested_by_user_id"),
+     (QuickRestoConnection, "scope_confirmed_by_user_id"),
+     (QuickRestoConnection, "updated_by_user_id"),
+     (QuickRestoImportIssue, "resolved_by_user_id"),
+diff --git a/backend/app/services/integrations/quickresto_scope.py b/backend/app/services/integrations/quickresto_scope.py
+--- a/backend/app/services/integrations/quickresto_scope.py
++++ b/backend/app/services/integrations/quickresto_scope.py
+@@ -5,5 +5,5 @@ from dataclasses import dataclass
+ from datetime import datetime, timezone
+ from typing import Any, Iterable, Mapping
+ 
+-from sqlalchemy import func, select
++from sqlalchemy import func, or_, select
+ from sqlalchemy.orm import Session
+@@ -49,3 +49,5 @@ class QuickRestoShiftScopeDecision:
+ class QuickRestoScopeIndex:
+     external_venue_id: int
+     sale_places: dict[int, QuickRestoSalePlaceScope]
++    selected_sale_place_ids: frozenset[int] | None = None
++    confirmed_sale_place_ids: frozenset[int] | None = None
+@@ -75,18 +77,93 @@ def _nested_id(row: Mapping[str, Any], field: str) -> int | None:
+     return _positive_int(value)
+ 
+ 
++def pending_quickresto_scope(connection: QuickRestoConnection) -> dict[str, Any] | None:
++    venue_id = _positive_int(getattr(connection, "pending_external_venue_id", None))
++    generation = _positive_int(getattr(connection, "pending_scope_generation", None))
++    if venue_id is None or generation is None:
++        return None
++    requested_at = getattr(connection, "pending_scope_requested_at", None)
++    return {
++        "external_venue_id": venue_id,
++        "sale_place_ids": sorted({int(value) for value in (connection.pending_sale_place_ids_json or ())}),
++        "store_ids": sorted({int(value) for value in (connection.pending_store_ids_json or ())}),
++        "scope_generation": generation,
++        "requested_at": requested_at.isoformat() if requested_at else None,
++        "requested_by_user_id": getattr(connection, "pending_scope_requested_by_user_id", None),
++    }
++
++
++def _clear_pending_quickresto_scope(connection: QuickRestoConnection) -> None:
++    connection.pending_external_venue_id = None
++    connection.pending_sale_place_ids_json = None
++    connection.pending_store_ids_json = None
++    connection.pending_scope_generation = None
++    connection.pending_scope_requested_at = None
++    connection.pending_scope_requested_by_user_id = None
++
++
++def _scope_place_selected(
++    scope: QuickRestoScopeIndex,
++    sale_place_id: int | None,
++    sale_place: QuickRestoSalePlaceScope | None,
++) -> bool:
++    if sale_place_id is None:
++        return False
++    if scope.selected_sale_place_ids is None:
++        return bool(sale_place and sale_place.is_selected)
++    return int(sale_place_id) in scope.selected_sale_place_ids
++
++
++def _scope_place_confirmed(
++    scope: QuickRestoScopeIndex,
++    sale_place_id: int | None,
++    sale_place: QuickRestoSalePlaceScope | None,
++) -> bool:
++    if sale_place_id is None:
++        return False
++    if scope.confirmed_sale_place_ids is None:
++        return bool(sale_place and sale_place.is_confirmed)
++    return int(sale_place_id) in scope.confirmed_sale_place_ids
++
++
+ def load_quickresto_scope_index(db: Session, *, connection: QuickRestoConnection) -> QuickRestoScopeIndex:
+     ensure_quickresto_scope_ready(connection)
+-    rows = db.execute(
++    rows = list(db.execute(
+         select(QuickRestoSalePlaceScope).where(
+             QuickRestoSalePlaceScope.connection_id == int(connection.id),
+             QuickRestoSalePlaceScope.is_available.is_(True),
+         )
+-    ).scalars()
++    ).scalars())
+     return QuickRestoScopeIndex(
+         external_venue_id=int(connection.external_venue_id),
+         sale_places={int(row.external_id): row for row in rows},
++        selected_sale_place_ids=frozenset(int(row.external_id) for row in rows if row.is_selected),
++        confirmed_sale_place_ids=frozenset(int(row.external_id) for row in rows if row.is_confirmed),
+     )
+ 
+ 
++def load_quickresto_pending_scope_index(db: Session, *, connection: QuickRestoConnection) -> QuickRestoScopeIndex:
++    pending = pending_quickresto_scope(connection)
++    if pending is None or not pending["sale_place_ids"]:
++        raise QuickRestoScopeError("Ожидающая область QuickResto не подготовлена")
++    rows = list(
++        db.execute(
++            select(QuickRestoSalePlaceScope).where(
++                QuickRestoSalePlaceScope.connection_id == int(connection.id),
++                QuickRestoSalePlaceScope.is_available.is_(True),
++            )
++        ).scalars()
++    )
++    return QuickRestoScopeIndex(
++        external_venue_id=int(pending["external_venue_id"]),
++        sale_places={int(row.external_id): row for row in rows},
++        selected_sale_place_ids=frozenset(int(value) for value in pending["sale_place_ids"]),
++        confirmed_sale_place_ids=frozenset(
++            int(row.external_id)
++            for row in rows
++            if int(row.external_venue_id or 0) == int(pending["external_venue_id"])
++        ),
++    )
++
++
+ def evaluate_quickresto_shift_scope(
+@@ -133,4 +210,4 @@ def evaluate_quickresto_shift_scope(
+         )
+     if direct_venue_id and direct_venue_id != scope.external_venue_id:
+-        if sale_place and sale_place.is_selected:
++        if _scope_place_selected(scope, effective_sale_place_id, sale_place):
+             return QuickRestoShiftScopeDecision(
+@@ -183,12 +260,12 @@ def evaluate_quickresto_shift_scope(
+             sale_place_id=effective_sale_place_id,
+         )
+-    if sale_place.is_selected:
++    if _scope_place_selected(scope, effective_sale_place_id, sale_place):
+         return QuickRestoShiftScopeDecision(
+             action="IMPORT",
+             external_venue_id=direct_venue_id or sale_place_venue_id,
+             sale_place_id=effective_sale_place_id,
+         )
+-    if sale_place.is_confirmed:
++    if _scope_place_confirmed(scope, effective_sale_place_id, sale_place):
+         return QuickRestoShiftScopeDecision(
+             action="SKIP_UNSELECTED_SALE_PLACE",
+             external_venue_id=direct_venue_id or sale_place_venue_id,
+@@ -492,9 +569,12 @@ def apply_quickresto_scope(
+     if venue is None:
+         raise QuickRestoScopeError("Выбранное заведение QuickResto отсутствует в актуальном каталоге")
+     duplicate = db.execute(
+         select(QuickRestoConnection.id).where(
+             QuickRestoConnection.id != connection.id,
+             QuickRestoConnection.cloud == connection.cloud,
+-            QuickRestoConnection.external_venue_id == venue_id,
++            or_(
++                QuickRestoConnection.external_venue_id == venue_id,
++                QuickRestoConnection.pending_external_venue_id == venue_id,
++            ),
+         )
+     ).scalar_one_or_none()
+@@ -536,15 +616,67 @@ def apply_quickresto_scope(
+     scope_identity_changed = bool(
+         previous_venue_id is not None and (int(previous_venue_id) != venue_id or previous_sale_ids != selected_sale_ids)
+     )
++    imported_count = 0
+     if scope_identity_changed:
+         imported_count = int(
+             db.execute(
+                 select(func.count(QuickRestoShiftImport.id)).where(QuickRestoShiftImport.connection_id == connection.id)
+             ).scalar_one()
+         )
+         if imported_count:
+-            raise QuickRestoScopeConflictError(
+-                "Нельзя менять заведение или места реализации QuickResto после импорта смен; "
+-                "требуется отдельное переподключение"
++            requested_at = _utcnow()
++            next_generation = max(
++                int(connection.scope_generation or 1),
++                int(connection.pending_scope_generation or 0),
++            ) + 1
++            connection.pending_external_venue_id = venue_id
++            connection.pending_sale_place_ids_json = sorted(selected_sale_ids)
++            connection.pending_store_ids_json = sorted(selected_store_ids)
++            connection.pending_scope_generation = next_generation
++            connection.pending_scope_requested_at = requested_at
++            connection.pending_scope_requested_by_user_id = (
++                int(actor_user_id) if actor_user_id is not None else None
+             )
++            connection.incremental_cursor_closed_at = None
++            connection.last_full_reconciliation_at = None
++            db.add(
++                QuickRestoScopeAudit(
++                    connection_id=int(connection.id),
++                    actor_user_id=int(actor_user_id) if actor_user_id is not None else None,
++                    scope_generation=next_generation,
++                    previous_scope_json={
++                        "external_venue_id": int(previous_venue_id) if previous_venue_id is not None else None,
++                        "sale_place_ids": sorted(previous_sale_ids),
++                        "store_ids": sorted(previous_store_ids),
++                    },
++                    current_scope_json={
++                        "external_venue_id": venue_id,
++                        "sale_place_ids": sorted(selected_sale_ids),
++                        "store_ids": sorted(selected_store_ids),
++                    },
++                    changes_json={
++                        "state": "PENDING_RECONCILIATION",
++                        "historical_import_count": imported_count,
++                        "sale_places_added": sorted(selected_sale_ids - previous_sale_ids),
++                        "sale_places_removed": sorted(previous_sale_ids - selected_sale_ids),
++                        "stores_added": sorted(selected_store_ids - previous_store_ids),
++                        "stores_removed": sorted(previous_store_ids - selected_store_ids),
++                    },
++                    changed_at=requested_at,
++                )
++            )
++            db.flush()
++            return {
++                "external_venue_id": venue_id,
++                "external_venue_name": venue.external_name,
++                "sale_place_ids": sorted(selected_sale_ids),
++                "store_ids": sorted(selected_store_ids),
++                "scope_status": "PENDING_RECONCILIATION",
++                "scope_generation": next_generation,
++                "active_scope_generation": int(connection.scope_generation or 1),
++                "changed": True,
++                "pending": True,
++                "historical_reconciliation_required": True,
++                "pending_scope": pending_quickresto_scope(connection),
++            }
+     changed = (
+@@ -556,4 +688,6 @@ def apply_quickresto_scope(
+         or connection.scope_status != "READY"
+     )
+     confirmed_at = _utcnow()
++    previous_pending_generation = int(connection.pending_scope_generation or 0)
++    _clear_pending_quickresto_scope(connection)
+     for row in sale_places:
+@@ -577,5 +711,8 @@ def apply_quickresto_scope(
+     if connection.last_sync_error == LEGACY_SCOPE_SELECTION_REQUIRED_MESSAGE:
+         connection.last_sync_error = None
+     if changed and previous_venue_id is not None:
+-        connection.scope_generation = int(connection.scope_generation or 1) + 1
++        connection.scope_generation = max(
++            int(connection.scope_generation or 1),
++            previous_pending_generation,
++        ) + 1
+     if changed:
+@@ -604,3 +741,4 @@ def apply_quickresto_scope(
+                 },
+                 changes_json={
++                    "state": "ACTIVE",
+                     "sale_places_added": sorted(selected_sale_ids - previous_sale_ids),
+@@ -623,6 +761,90 @@ def apply_quickresto_scope(
+         "scope_generation": int(connection.scope_generation or 1),
+         "changed": changed,
++        "pending": False,
++        "historical_reconciliation_required": False,
++        "pending_scope": None,
+     }
+ 
+ 
++def activate_pending_quickresto_scope(
++    db: Session,
++    *,
++    connection: QuickRestoConnection,
++    actor_user_id: int | None,
++    expected_generation: int,
++) -> dict[str, Any]:
++    pending = pending_quickresto_scope(connection)
++    if pending is None or int(pending["scope_generation"]) != int(expected_generation):
++        raise QuickRestoScopeConflictError("Ожидающая область QuickResto изменилась. Запустите полную сверку заново.")
++    venue_id = int(pending["external_venue_id"])
++    selected_sale_ids = {int(value) for value in pending["sale_place_ids"]}
++    selected_store_ids = {int(value) for value in pending["store_ids"]}
++    venue = db.execute(
++        select(QuickRestoExternalVenue).where(
++            QuickRestoExternalVenue.connection_id == int(connection.id),
++            QuickRestoExternalVenue.external_id == venue_id,
++            QuickRestoExternalVenue.is_available.is_(True),
++        )
++    ).scalar_one_or_none()
++    if venue is None:
++        raise QuickRestoScopeConflictError("Ожидающее заведение QuickResto больше не доступно")
++    duplicate = db.execute(
++        select(QuickRestoConnection.id).where(
++            QuickRestoConnection.id != int(connection.id),
++            QuickRestoConnection.cloud == connection.cloud,
++            QuickRestoConnection.external_venue_id == venue_id,
++        )
++    ).scalar_one_or_none()
++    if duplicate is not None:
++        raise QuickRestoScopeConflictError("Это заведение QuickResto уже подключено к другому заведению Axelio")
++    sale_places = list(
++        db.execute(
++            select(QuickRestoSalePlaceScope).where(QuickRestoSalePlaceScope.connection_id == int(connection.id))
++        ).scalars()
++    )
++    selected_sale_places = {int(row.external_id): row for row in sale_places if int(row.external_id) in selected_sale_ids}
++    if set(selected_sale_places) != selected_sale_ids or any(
++        not row.is_available or int(row.external_venue_id or 0) != venue_id
++        for row in selected_sale_places.values()
++    ):
++        raise QuickRestoScopeConflictError("Ожидаемые места реализации QuickResto больше не соответствуют каталогу")
++    stores = list(
++        db.execute(select(QuickRestoStoreScope).where(QuickRestoStoreScope.connection_id == int(connection.id))).scalars()
++    )
++    selected_stores = {int(row.external_id): row for row in stores if int(row.external_id) in selected_store_ids}
++    if set(selected_stores) != selected_store_ids or any(not row.is_available for row in selected_stores.values()):
++        raise QuickRestoScopeConflictError("Один из ожидаемых складов QuickResto больше не доступен")
++    confirmed_at = _utcnow()
++    effective_actor = int(actor_user_id) if actor_user_id is not None else pending.get("requested_by_user_id")
++    for row in sale_places:
++        row.is_selected = bool(row.is_available and int(row.external_id) in selected_sale_ids)
++        if row.is_available and int(row.external_venue_id or 0) == venue_id:
++            row.is_confirmed = True
++            row.confirmed_by_user_id = effective_actor
++            row.confirmed_at = confirmed_at
++    for row in stores:
++        row.is_selected = bool(row.is_available and int(row.external_id) in selected_store_ids)
++    connection.external_venue_id = venue_id
++    connection.external_venue_name = venue.external_name
++    connection.external_venue_version = venue.external_version
++    connection.scope_status = "READY"
++    connection.scope_generation = int(expected_generation)
++    connection.scope_confirmed_at = confirmed_at
++    connection.scope_confirmed_by_user_id = effective_actor
++    connection.incremental_cursor_closed_at = None
++    connection.last_full_reconciliation_at = None
++    _clear_pending_quickresto_scope(connection)
++    recompute_payment_applicability(db, connection_id=int(connection.id))
++    db.flush()
++    return {
++        "external_venue_id": venue_id,
++        "external_venue_name": venue.external_name,
++        "sale_place_ids": sorted(selected_sale_ids),
++        "store_ids": sorted(selected_store_ids),
++        "scope_status": connection.scope_status,
++        "scope_generation": int(connection.scope_generation),
++        "pending": False,
++    }
++
++
+ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnection) -> dict[str, Any]:
+@@ -651,8 +873,10 @@ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnection) -> dict[str, Any]:
+             .order_by(QuickRestoPaymentMapping.external_name, QuickRestoPaymentMapping.external_id)
+         ).scalars()
+     )
++    pending = pending_quickresto_scope(connection)
+     return {
+         "scope_status": str(connection.scope_status or "NEEDS_SELECTION"),
+         "scope_generation": int(connection.scope_generation or 1),
+         "selected_external_venue_id": connection.external_venue_id,
++        "pending_scope": pending,
+         "venues": [
+@@ -665,3 +889,6 @@ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnection) -> dict[str, Any]:
+                 "is_available": bool(row.is_available),
+                 "is_selected": int(row.external_id) == int(connection.external_venue_id or 0),
++                "is_pending_selected": bool(
++                    pending and int(row.external_id) == int(pending["external_venue_id"])
++                ),
+             }
+@@ -681,3 +908,6 @@ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnection) -> dict[str, Any]:
+                 "is_available": bool(row.is_available),
+                 "is_selected": bool(row.is_selected),
++                "is_pending_selected": bool(
++                    pending and int(row.external_id) in {int(value) for value in pending["sale_place_ids"]}
++                ),
+                 "is_confirmed": bool(row.is_confirmed),
+@@ -698,3 +928,6 @@ def serialize_quickresto_catalog(db: Session, *, connection: QuickRestoConnection) -> dict[str, Any]:
+                 "is_available": bool(row.is_available),
+                 "is_selected": bool(row.is_selected),
++                "is_pending_selected": bool(
++                    pending and int(row.external_id) in {int(value) for value in pending["store_ids"]}
++                ),
+             }
+diff --git a/backend/app/services/integrations/quickresto_issues.py b/backend/app/services/integrations/quickresto_issues.py
+--- a/backend/app/services/integrations/quickresto_issues.py
++++ b/backend/app/services/integrations/quickresto_issues.py
+@@ -424,4 +424,5 @@ def transition_issue(
+     sync_run_id: int | None = None,
+     resolution_code: str | None = None,
+     resolution_note: str | None = None,
++    audit_metadata: dict[str, Any] | None = None,
+ ) -> None:
+@@ -468,3 +469,4 @@ def transition_issue(
+         reason_code=resolution_code,
+         summary=resolution_note,
++        metadata=audit_metadata,
+     )
+@@ -515,3 +517,4 @@ def serialize_issue(
+             "legacy_external_shift_ids",
+             "affected_report_ids",
++            "scope_generation",
+             "historical_decisions_kept",
+@@ -527,8 +530,15 @@ def serialize_issue(
+     retry_sources_available = bool(issue.shifts) and all(item.source_snapshot_id is not None for item in issue.shifts)
+     is_historical_scope = str(issue.error_code or "").upper() == "PREVIOUS_SCOPE_MISMATCH"
++    historical_scope_generation = int(details.get("scope_generation") or 0)
+     historical_scope_ready = bool(issue.shifts) and all(
+         item.shift_import_id is not None
+         and item.shift_import is not None
+-        and item.shift_import.scope_resolution_action is None
++        and (
++            item.shift_import.scope_resolution_action is None
++            or (
++                historical_scope_generation > 0
++                and int(item.shift_import.scope_resolution_generation or 0) != historical_scope_generation
++            )
++        )
+         for item in issue.shifts
+     )
+diff --git a/backend/app/services/integrations/quickresto_sync.py b/backend/app/services/integrations/quickresto_sync.py
+--- a/backend/app/services/integrations/quickresto_sync.py
++++ b/backend/app/services/integrations/quickresto_sync.py
+@@ -58,7 +58,10 @@ from app.services.integrations.quickresto_scope import (
+     QuickRestoLocationScopeError,
+     QuickRestoScopeError,
++    activate_pending_quickresto_scope,
+     ensure_quickresto_scope_ready,
+     evaluate_quickresto_shift_scope,
++    load_quickresto_pending_scope_index,
+     load_quickresto_scope_index,
+     payment_type_is_applicable,
++    pending_quickresto_scope,
+     refresh_quickresto_catalog,
+@@ -1012,11 +1015,23 @@ def _list_order_rows_for_shifts(
+     return [row for row in _object_rows(client, "orders") if str(row.get("shiftId") or "") in shift_ids]
+ 
+ 
++def _scope_resolution_requires_review(scope_generation: int):
++    target_generation = int(scope_generation)
++    return or_(
++        QuickRestoShiftImport.scope_resolution_action.is_(None),
++        QuickRestoShiftImport.scope_resolution_generation.is_(None),
++        QuickRestoShiftImport.scope_resolution_generation != target_generation,
++    )
++
++
+ def _sync_previous_scope_mismatch_issue(
+     db: Session,
+     *,
+     connection: QuickRestoConnection,
+     run: QuickRestoSyncRun,
+     mismatch_external_ids: set[str],
++    scope_generation: int | None = None,
++    selected_external_venue_id: int | None = None,
+ ) -> QuickRestoImportIssue | None:
++    target_generation = int(scope_generation or connection.scope_generation or 1)
+     group_key = connection_group_key("PREVIOUS_SCOPE_MISMATCH")
+@@ -1055,5 +1070,5 @@ def _sync_previous_scope_mismatch_issue(
+             .where(
+                 QuickRestoShiftImport.connection_id == int(connection.id),
+                 QuickRestoShiftImport.external_shift_id.in_(normalized_ids),
+-                QuickRestoShiftImport.scope_resolution_action.is_(None),
++                _scope_resolution_requires_review(target_generation),
+             )
+@@ -1088,4 +1103,5 @@ def _sync_previous_scope_mismatch_issue(
+         technical_summary="Historical QuickResto imports contain shifts outside the confirmed current scope",
+         details={
+-            "selected_external_venue_id": int(connection.external_venue_id or 0) or None,
++            "selected_external_venue_id": selected_external_venue_id or int(connection.external_venue_id or 0) or None,
++            "scope_generation": target_generation,
+             "legacy_shift_count": len(normalized_ids),
+@@ -1180,4 +1196,7 @@ def _stage_quickresto_sources(
+ ) -> tuple[list[QuickRestoSourceSnapshot], bool, dict[str, Any], list[dict[str, Any]]]:
+     now = _utcnow()
++    pending_scope = pending_quickresto_scope(connection)
+     last_full = connection.last_full_reconciliation_at
+-    full_reconciliation = bool(force_full or last_full is None or _ensure_utc(last_full) <= now - timedelta(days=30))
++    full_reconciliation = bool(
++        pending_scope or force_full or last_full is None or _ensure_utc(last_full) <= now - timedelta(days=30)
++    )
+@@ -1205,20 +1224,70 @@ def _stage_quickresto_sources(
+         closed_shifts = filtered
+ 
+     scope_index = load_quickresto_scope_index(db, connection=connection)
+-    historical_import_ids = (
+-        {
+-            str(value)
+-            for value in db.execute(
+-                select(QuickRestoShiftImport.external_shift_id).where(
+-                    QuickRestoShiftImport.connection_id == int(connection.id),
+-                    QuickRestoShiftImport.scope_resolution_action.is_(None),
+-                )
+-            ).scalars()
+-        }
+-        if full_reconciliation
+-        else set()
+-    )
++    historical_scope_index = (
++        load_quickresto_pending_scope_index(db, connection=connection)
++        if pending_scope is not None
++        else scope_index
++    )
++    historical_scope_generation = int(
++        pending_scope["scope_generation"] if pending_scope is not None else connection.scope_generation or 1
++    )
++    historical_imports = (
++        list(
++            db.execute(
++                select(QuickRestoShiftImport).where(
++                    QuickRestoShiftImport.connection_id == int(connection.id),
++                    _scope_resolution_requires_review(historical_scope_generation),
++                )
++            ).scalars()
++        )
++        if full_reconciliation
++        else []
++    )
++    historical_imports_by_external_id = {str(item.external_shift_id): item for item in historical_imports}
+     historical_scope_mismatch_ids: set[str] = set()
++    for item in historical_imports:
++        if (
++            item.scope_resolution_action is not None
++            and int(item.scope_resolution_generation or 0) != historical_scope_generation
++        ):
++            # A decision belongs to the generation in which it was made. A
++            # later scope must explicitly review it again even when the shift
++            # would still be importable under the proposed scope.
++            historical_scope_mismatch_ids.add(str(item.external_shift_id))
++
++    if full_reconciliation:
++        for shift in closed_shifts:
++            external_shift_id = str(shift.get("frontId") or shift.get("_id") or "").strip()
++            if not external_shift_id or external_shift_id not in historical_imports_by_external_id:
++                continue
++            historical_decision = evaluate_quickresto_shift_scope(shift, scope=historical_scope_index)
++            if historical_decision.action != "IMPORT":
++                historical_scope_mismatch_ids.add(external_shift_id)
++
++    historical_scope_issue = None
++    if full_reconciliation:
++        historical_scope_issue = _sync_previous_scope_mismatch_issue(
++            db,
++            connection=connection,
++            run=run,
++            mismatch_external_ids=historical_scope_mismatch_ids,
++            scope_generation=historical_scope_generation,
++            selected_external_venue_id=(
++                int(pending_scope["external_venue_id"]) if pending_scope is not None else None
++            ),
++        )
++    pending_scope_activated = False
++    if pending_scope is not None and historical_scope_issue is None:
++        activate_pending_quickresto_scope(
++            db,
++            connection=connection,
++            actor_user_id=int(run.requested_by_user_id) if run.requested_by_user_id else None,
++            expected_generation=historical_scope_generation,
++        )
++        pending_scope_activated = True
++        scope_index = load_quickresto_scope_index(db, connection=connection)
++
+     scope_decisions: dict[int, Any] = {}
+     scoped_shifts: list[dict[str, Any]] = []
+     scope_counts = {
+@@ -1225,16 +1294,15 @@ def _stage_quickresto_sources(
+         "shifts_skipped_unselected_sale_place": 0,
+         "shifts_blocked_by_scope": 0,
++        "historical_scope_generation": historical_scope_generation,
++        "pending_scope_generation": int(pending_scope["scope_generation"]) if pending_scope is not None else None,
++        "pending_scope_activated": pending_scope_activated,
+     }
+     for shift in closed_shifts:
+         decision = evaluate_quickresto_shift_scope(shift, scope=scope_index)
+         external_shift_id = str(shift.get("frontId") or shift.get("_id") or "").strip()
+         if decision.action == "SKIP_OTHER_VENUE":
+             scope_counts["shifts_skipped_other_venue"] += 1
+-            if external_shift_id and external_shift_id in historical_import_ids:
+-                historical_scope_mismatch_ids.add(external_shift_id)
+             continue
+         if decision.action == "SKIP_UNSELECTED_SALE_PLACE":
+             scope_counts["shifts_skipped_unselected_sale_place"] += 1
+-            if external_shift_id and external_shift_id in historical_import_ids:
+-                historical_scope_mismatch_ids.add(external_shift_id)
+             continue
+@@ -1241,11 +1309,3 @@ def _stage_quickresto_sources(
+         else:
+             scope_counts["shifts_blocked_by_scope"] += 1
+-    historical_scope_issue = None
+-    if full_reconciliation:
+-        historical_scope_issue = _sync_previous_scope_mismatch_issue(
+-            db,
+-            connection=connection,
+-            run=run,
+-            mismatch_external_ids=historical_scope_mismatch_ids,
+-        )
+     scope_counts["historical_scope_mismatch_count"] = len(historical_scope_mismatch_ids)
+@@ -1364,12 +1424,20 @@ def _upsert_normalized_shift(
+         existing.business_date,
+         str(getattr(existing, "shift_slot", None) or "DAY").upper(),
+     )
+-    scope_resolution_cleared = existing.scope_resolution_action is not None
++    payload_changed = existing.payload_hash != normalized["payload_hash"]
++    key_changed = previous_key != next_key
++    stale_scope_resolution = bool(
++        existing.scope_resolution_action is not None
++        and int(existing.scope_resolution_generation or 0) != int(connection.scope_generation or 1)
++    )
++    scope_resolution_cleared = bool(
++        existing.scope_resolution_action is not None and (payload_changed or key_changed or stale_scope_resolution)
++    )
+     changed = (
+-        existing.payload_hash != normalized["payload_hash"]
+-        or previous_key != next_key
+-        or scope_resolution_cleared
++        payload_changed
++        or key_changed
++        or stale_scope_resolution
+     )
+     if changed:
+-        if previous_key != next_key:
++        if key_changed:
+             existing.daily_report_id = None
+@@ -1412,7 +1480,9 @@ def _rebuild_imported_report_keys(
+                     QuickRestoShiftImport.business_date == target_date,
+                     QuickRestoShiftImport.shift_slot == target_slot,
+                     or_(
+                         QuickRestoShiftImport.scope_resolution_action.is_(None),
+                         QuickRestoShiftImport.scope_resolution_action != "EXCLUDE_CURRENT",
++                        QuickRestoShiftImport.scope_resolution_generation.is_(None),
++                        QuickRestoShiftImport.scope_resolution_generation != int(connection.scope_generation or 1),
+                     ),
+                 )
+@@ -1665,3 +1735,13 @@ def reconcile_quickresto_historical_scope_issue(
+     if str(issue.status or "").upper() not in {"OPEN", "RETRY_PENDING"}:
+         db.rollback()
+         raise QuickRestoSyncError("Проблема уже обрабатывается или закрыта")
++    issue_details = issue.details_json if isinstance(issue.details_json, dict) else {}
++    target_generation = int(issue_details.get("scope_generation") or connection.scope_generation or 1)
++    pending_scope = pending_quickresto_scope(connection)
++    if pending_scope is not None:
++        if int(pending_scope["scope_generation"]) != target_generation:
++            db.rollback()
++            raise QuickRestoSyncError("Ожидающая область QuickResto изменилась. Обновите проблему и выберите решения заново.")
++    elif target_generation != int(connection.scope_generation or 1):
++        db.rollback()
++        raise QuickRestoSyncError("Версия области QuickResto изменилась. Запустите полную сверку заново.")
+@@ -1691,4 +1771,4 @@ def reconcile_quickresto_historical_scope_issue(
+                 QuickRestoShiftImport.connection_id == connection_id,
+                 QuickRestoShiftImport.id.in_(sorted(expected_ids)),
+-                QuickRestoShiftImport.scope_resolution_action.is_(None),
++                _scope_resolution_requires_review(target_generation),
+             )
+@@ -1746,4 +1826,4 @@ def reconcile_quickresto_historical_scope_issue(
+                     QuickRestoShiftImport.connection_id == connection_id,
+                     QuickRestoShiftImport.id.in_(sorted(expected_ids)),
+-                    QuickRestoShiftImport.scope_resolution_action.is_(None),
++                    _scope_resolution_requires_review(target_generation),
+                 )
+@@ -1757,13 +1837,30 @@ def reconcile_quickresto_historical_scope_issue(
+         if len(shift_imports) != len(expected_ids):
+             raise QuickRestoSyncError("По части исторических смен уже принято решение. Обновите страницу.")
+ 
++        current_pending_scope = pending_quickresto_scope(connection)
++        pending_scope_activated = False
++        if current_pending_scope is not None:
++            if int(current_pending_scope["scope_generation"]) != target_generation:
++                raise QuickRestoSyncError("Ожидающая область QuickResto изменилась. Обновите проблему.")
++            activate_pending_quickresto_scope(
++                db,
++                connection=connection,
++                actor_user_id=actor_user_id,
++                expected_generation=target_generation,
++            )
++            pending_scope_activated = True
++        elif int(connection.scope_generation or 1) != target_generation:
++            raise QuickRestoSyncError("Версия области QuickResto изменилась. Запустите полную сверку заново.")
++
+         timestamp = _utcnow()
+         affected_keys: set[tuple[date, str]] = set()
+         kept_count = 0
+         excluded_count = 0
++        decision_audit: list[dict[str, Any]] = []
+         for shift_import in shift_imports:
+             action = normalized_decisions[int(shift_import.id)]
+             affected_keys.add((shift_import.business_date, str(shift_import.shift_slot or "DAY").upper()))
++            before_report_id = int(shift_import.daily_report_id) if shift_import.daily_report_id is not None else None
+             shift_import.scope_resolution_action = action
+-            shift_import.scope_resolution_generation = int(connection.scope_generation or 1)
++            shift_import.scope_resolution_generation = target_generation
+             shift_import.scope_resolved_by_user_id = actor_user_id
+@@ -1776,4 +1873,14 @@ def reconcile_quickresto_historical_scope_issue(
+                 shift_import.daily_report_id = None
+             else:
+                 kept_count += 1
++            decision_audit.append(
++                {
++                    "shift_import_id": int(shift_import.id),
++                    "external_shift_id": str(shift_import.external_shift_id),
++                    "action": action,
++                    "business_date": shift_import.business_date.isoformat(),
++                    "shift_slot": str(shift_import.shift_slot or "DAY").upper(),
++                    "daily_report_id_before": before_report_id,
++                }
++            )
+         db.flush()
+@@ -1788,7 +1895,14 @@ def reconcile_quickresto_historical_scope_issue(
+             actor_user_id=actor_user_id,
+             affected_keys=affected_keys,
+         )
++        shift_by_id = {int(item.id): item for item in shift_imports}
++        for row in decision_audit:
++            resolved_shift = shift_by_id[int(row["shift_import_id"])]
++            row["daily_report_id_after"] = (
++                int(resolved_shift.daily_report_id) if resolved_shift.daily_report_id is not None else None
++            )
+         details = dict(issue.details_json) if isinstance(issue.details_json, dict) else {}
+         details.update(
+             {
++                "scope_generation": target_generation,
+                 "historical_decisions_kept": kept_count,
+@@ -1806,4 +1920,10 @@ def reconcile_quickresto_historical_scope_issue(
+             sync_run_id=run_id,
+             resolution_code="SHIFT_DECISIONS_APPLIED",
+             resolution_note=str(note).strip(),
++            audit_metadata={
++                "scope_generation": target_generation,
++                "pending_scope_activated": pending_scope_activated,
++                "decisions": decision_audit,
++                "reconciled_report_ids": sorted(set(report_ids)),
++            },
+         )
+@@ -1828,4 +1948,6 @@ def reconcile_quickresto_historical_scope_issue(
+         run.summary_json = {
+             "sync_mode": "HISTORICAL_SCOPE_RECONCILIATION",
+             "reconciled_issue_id": int(issue_id),
++            "scope_generation": target_generation,
++            "pending_scope_activated": pending_scope_activated,
+             "shifts_seen": len(shift_imports),
+diff --git a/backend/app/routers/venue_quickresto.py b/backend/app/routers/venue_quickresto.py
+--- a/backend/app/routers/venue_quickresto.py
++++ b/backend/app/routers/venue_quickresto.py
+@@ -47,3 +47,4 @@ from app.services.integrations.quickresto_scope import (
+     apply_quickresto_scope,
+     ensure_quickresto_scope_ready,
++    pending_quickresto_scope,
+     refresh_quickresto_catalog,
+@@ -132,4 +133,5 @@ def _serialize_connection(
+         "scope_generation": int(connection.scope_generation or 1),
+         "scope_confirmed_at": (connection.scope_confirmed_at.isoformat() if connection.scope_confirmed_at else None),
+         "scope_confirmed_by_user_id": connection.scope_confirmed_by_user_id,
++        "pending_scope": pending_quickresto_scope(connection),
+         "credentials_configured": bool(connection.api_login_encrypted and connection.api_password_encrypted),
+diff --git a/frontend/owner-quickresto.js b/frontend/owner-quickresto.js
+--- a/frontend/owner-quickresto.js
++++ b/frontend/owner-quickresto.js
+@@ -185,4 +185,4 @@ function renderScopeStores() {
+         ].filter(Boolean).join(" · ");
+         return `<label class="quickresto-scope-choice">
+-        <input type="checkbox" data-store-id="${store.external_id}"${store.is_selected ? " checked" : ""}${state.canManage ? "" : " disabled"} />
++        <input type="checkbox" data-store-id="${store.external_id}"${(store.is_pending_selected ?? store.is_selected) ? " checked" : ""}${state.canManage ? "" : " disabled"} />
+         <span><b>${esc(store.external_name)}</b><small>QuickResto #${store.external_id}${relation ? ` · ${esc(relation)}` : ""}</small></span>
+@@ -204,4 +204,5 @@ function renderScope({ preserveVenue = false } = {}) {
+   );
+   const selectedVenueId = String(
+     (preserveVenue ? el.externalVenue.value : "") ||
++      state.catalog?.pending_scope?.external_venue_id ||
+       state.catalog?.selected_external_venue_id ||
+@@ -230,6 +231,6 @@ function renderScope({ preserveVenue = false } = {}) {
+     : salePlaces.length
+       ? salePlaces
+           .map(
+             (place) => `<label class="quickresto-scope-choice">
+-              <input type="checkbox" data-sale-place-id="${place.external_id}"${place.is_selected ? " checked" : ""}${state.canManage ? "" : " disabled"} />
++              <input type="checkbox" data-sale-place-id="${place.external_id}"${(place.is_pending_selected ?? place.is_selected) ? " checked" : ""}${state.canManage ? "" : " disabled"} />
+               <span><b>${esc(place.external_name)}</b><small>Место реализации #${place.external_id}</small></span>
+@@ -251,4 +252,8 @@ function renderScope({ preserveVenue = false } = {}) {
+   } else if (status === "STALE") {
+     el.scopeHint.textContent =
+       "Справочники QuickResto изменились. Проверьте выбор и сохраните область импорта заново.";
++  } else if (state.catalog?.pending_scope) {
++    el.scopeHint.textContent =
++      `Новая область версии ${Number(state.catalog.pending_scope.scope_generation || 0)} ожидает полной исторической сверки. ` +
++      "Текущая область остаётся активной до решений по ранее импортированным сменам.";
+   } else if (status === "READY") {
+@@ -704,6 +709,29 @@ el.saveScope?.addEventListener("click", async () => {
+     renderScopeAudit();
+     await refreshAxelioCatalogs();
+     renderConnection();
+     renderMappings();
+-    toast("Область импорта сохранена", "ok");
++    if (result.scope?.historical_reconciliation_required) {
++      setBusy(el.saveScope, true, "Сверяем историю…");
++      const scan = await api(
++        `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/sync?full=true`,
++        { method: "POST" },
++      );
++      const issueId = Number(scan.run?.summary?.historical_scope_mismatch_issue_id || 0);
++      if (issueId) {
++        toast("Новая область сохранена. Нужно проверить ранее импортированные смены.", "err");
++        location.href =
++          `/owner-integration-issues.html?venue_id=${encodeURIComponent(venueId)}` +
++          `&provider=quickresto&issue_id=${encodeURIComponent(issueId)}`;
++        return;
++      }
++      await load();
++      toast(
++        scan.run?.status === "PARTIAL"
++          ? "Область активирована, но импорт требует внимания"
++          : "Новая область проверена и активирована",
++        scan.run?.status === "PARTIAL" ? "err" : "ok",
++      );
++    } else {
++      toast("Область импорта сохранена", "ok");
++    }
+   } catch (error) {
+diff --git a/frontend/owner-integration-issues.js b/frontend/owner-integration-issues.js
+--- a/frontend/owner-integration-issues.js
++++ b/frontend/owner-integration-issues.js
+@@ -350,6 +350,12 @@ function renderHistoricalScopeMismatch(issue) {
+   const canReconcile = state.canManage && issue.can_reconcile_scope === true;
++  const targetGeneration = Number(issue?.details?.scope_generation || 0);
+   const fields = shifts
+     .map((shift, index) => {
+       const shiftImportId = Number(shift.shift_import_id || 0);
+       const externalId = shift.external_shift_id || shift.external_shift_pk || index + 1;
+-      const action = String(shift.scope_resolution_action || "").toUpperCase();
++      const resolvedGeneration = Number(shift.scope_resolution_generation || 0);
++      const previousAction = String(shift.scope_resolution_action || "").toUpperCase();
++      const action = resolvedGeneration === targetGeneration ? previousAction : "";
++      const previousDecision = previousAction && resolvedGeneration && resolvedGeneration !== targetGeneration
++        ? `<div class="muted small">Предыдущее решение: ${previousAction === "EXCLUDE_CURRENT" ? "исключить" : "оставить"} · версия области ${resolvedGeneration}. Для новой версии решение нужно подтвердить заново.</div>`
++        : "";
+@@ -369,3 +375,4 @@ function renderHistoricalScopeMismatch(issue) {
+         </div>
+         <div class="muted small">${esc(period)}</div>
++        ${previousDecision}
+         <div class="integration-history-shift__choices">
+@@ -390,2 +397,2 @@ function renderHistoricalScopeMismatch(issue) {
+   return `<section class="integration-issue-resolution integration-history-resolution">
+-    <div><h3>Историческая проверка области</h3><div class="muted small mt-4">Примите отдельное решение по каждой смене. Все отчёты будут пересчитаны одной операцией: при конфликте или ручных изменениях Axelio отменит её полностью.</div></div>
++    <div><h3>Историческая проверка области${targetGeneration ? ` · версия ${targetGeneration}` : ""}</h3><div class="muted small mt-4">Примите отдельное решение по каждой смене. Решения прошлой версии области не переносятся автоматически. Все отчёты будут пересчитаны одной операцией: при конфликте или ручных изменениях Axelio отменит её полностью.</div></div>
+@@ -620,4 +627,17 @@ async function saveScopeAndRetry(button) {
+     );
+     state.catalog = scopeResult.catalog || state.catalog;
+     state.mappings = scopeResult.mappings || state.mappings;
++    if (scopeResult.scope?.historical_reconciliation_required) {
++      const scan = await api(
++        `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/sync?full=true`,
++        { method: "POST" },
++      );
++      const historicalIssueId = Number(scan.run?.summary?.historical_scope_mismatch_issue_id || 0);
++      await loadIssues();
++      if (historicalIssueId) {
++        await openIssue(historicalIssueId);
++        toast("Новая область требует пересмотра ранее импортированных смен", "err");
++        return;
++      }
++    }
+     const retryResult = await api(
+diff --git a/frontend/owner-quickresto.html b/frontend/owner-quickresto.html
+--- a/frontend/owner-quickresto.html
++++ b/frontend/owner-quickresto.html
+@@ -204,5 +204,5 @@
+   <div id="toast" class="toast"><div class="toast__text"></div></div>
+   <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+-  <script type="module" src="/owner-quickresto.js?v=20260901-qrscope2"></script>
++  <script type="module" src="/owner-quickresto.js?v=20260902-scopegeneration1"></script>
+ </body>
+ </html>
+diff --git a/frontend/owner-integration-issues.html b/frontend/owner-integration-issues.html
+--- a/frontend/owner-integration-issues.html
++++ b/frontend/owner-integration-issues.html
+@@ -5 +5 @@
+-  <link rel="stylesheet" href="/styles/pages/owner-integration-issues.css?v=20260902-scopereconcile1" />
++  <link rel="stylesheet" href="/styles/pages/owner-integration-issues.css?v=20260902-scopegeneration1" />
+@@ -55,3 +55,3 @@
+-  <script type="module" src="/owner-integration-issues.js?v=20260902-scopereconcile1"></script>
++  <script type="module" src="/owner-integration-issues.js?v=20260902-scopegeneration1"></script>
+ </body>
+ </html>
+diff --git a/frontend/style_contract_check.mjs b/frontend/style_contract_check.mjs
+--- a/frontend/style_contract_check.mjs
++++ b/frontend/style_contract_check.mjs
+@@ -113 +113 @@ const pageStyleCacheKeyOverrides = new Map([
+-  ["owner-integration-issues.html", "20260902-scopereconcile1"],
++  ["owner-integration-issues.html", "20260902-scopegeneration1"],
+@@ -120 +120 @@ const pageStyleCacheKeyOverrides = new Map([
+-  ["owner-quickresto.html", "20260901-qrscope2"],
++  ["owner-quickresto.html", "20260901-qrscope2"],
+@@ -183 +183 @@ const inlineFreeEntrypoints = new Map([
+-  ["owner-integration-issues.html", "/owner-integration-issues.js?v=20260902-scopereconcile1"],
++  ["owner-integration-issues.html", "/owner-integration-issues.js?v=20260902-scopegeneration1"],
+@@ -190 +190 @@ const inlineFreeEntrypoints = new Map([
+-  ["owner-quickresto.html", "/owner-quickresto.js?v=20260901-qrscope2"],
++  ["owner-quickresto.html", "/owner-quickresto.js?v=20260902-scopegeneration1"],
+diff --git a/backend/test/test_account_merge_fk_contract.py b/backend/test/test_account_merge_fk_contract.py
+--- a/backend/test/test_account_merge_fk_contract.py
++++ b/backend/test/test_account_merge_fk_contract.py
+@@ -86,4 +86,5 @@ EXPECTED_USER_FKS = {
+     "position_permission_templates.created_by_user_id",
+     "position_permission_templates.updated_by_user_id",
+     "quickresto_connections.created_by_user_id",
++    "quickresto_connections.pending_scope_requested_by_user_id",
+     "quickresto_connections.scope_confirmed_by_user_id",
+diff --git a/backend/test/test_migration_contract.py b/backend/test/test_migration_contract.py
+--- a/backend/test/test_migration_contract.py
++++ b/backend/test/test_migration_contract.py
+@@ -29,5 +29,6 @@ class MigrationContractTests(unittest.TestCase):
+         revision = scripts.get_revision("c9e7a5b3d1f0")
+         hardening = scripts.get_revision("d0f8b6c4e2a1")
+         reconciliation = scripts.get_revision("e2b4d6f8a1c3")
++        pending_scope = scripts.get_revision("f4c6e8a0b2d5")
+ 
+-        self.assertEqual(heads, ["e2b4d6f8a1c3"])
++        self.assertEqual(heads, ["f4c6e8a0b2d5"])
+@@ -42,2 +43,39 @@ class MigrationContractTests(unittest.TestCase):
+         self.assertIsNotNone(reconciliation)
+         self.assertEqual(reconciliation.down_revision, "d0f8b6c4e2a1")
++        self.assertIsNotNone(pending_scope)
++        self.assertEqual(pending_scope.down_revision, "e2b4d6f8a1c3")
++
++    def test_quickresto_pending_scope_migration_round_trips_on_sqlite_fixture(self):
++        with NamedTemporaryFile(suffix=".sqlite") as handle:
++            database_url = f"sqlite:///{handle.name}"
++            engine = sa.create_engine(database_url)
++            with engine.begin() as connection:
++                connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
++                connection.exec_driver_sql("CREATE TABLE quickresto_connections (id INTEGER PRIMARY KEY)")
++
++            with patch.object(settings, "database_url", database_url):
++                config = self._config()
++                command.stamp(config, "e2b4d6f8a1c3")
++                command.upgrade(config, "f4c6e8a0b2d5")
++
++                inspector = sa.inspect(engine)
++                columns = {column["name"] for column in inspector.get_columns("quickresto_connections")}
++                self.assertTrue(
++                    {
++                        "pending_external_venue_id",
++                        "pending_sale_place_ids_json",
++                        "pending_store_ids_json",
++                        "pending_scope_generation",
++                        "pending_scope_requested_at",
++                        "pending_scope_requested_by_user_id",
++                    }.issubset(columns)
++                )
++                indexes = {index["name"] for index in inspector.get_indexes("quickresto_connections")}
++                self.assertIn("ix_quickresto_connections_pending_external_venue_id", indexes)
++                self.assertIn("ix_quickresto_connections_pending_scope_requested_by_user_id", indexes)
++
++                command.downgrade(config, "e2b4d6f8a1c3")
++
++            columns = {column["name"] for column in sa.inspect(engine).get_columns("quickresto_connections")}
++            self.assertNotIn("pending_external_venue_id", columns)
++            self.assertNotIn("pending_scope_generation", columns)
+diff --git a/backend/test/test_quickresto_historical_scope_reconciliation.py b/backend/test/test_quickresto_historical_scope_reconciliation.py
+--- a/backend/test/test_quickresto_historical_scope_reconciliation.py
++++ b/backend/test/test_quickresto_historical_scope_reconciliation.py
+@@ -301,3 +301,41 @@ class QuickRestoHistoricalScopeReconciliationTests(unittest.TestCase):
+ 
+         self.assertIsNone(issue)
+         self.assertEqual(self.db.get(QuickRestoImportIssue, self.issue.id).status, "RESOLVED")
++
++    def test_recorded_decisions_must_be_reviewed_again_for_a_new_scope_generation(self):
++        reconcile_quickresto_historical_scope_issue(
++            self.db,
++            connection=self.connection,
++            issue_id=self.issue.id,
++            decisions={row.id: "KEEP_CURRENT" for row in self.shifts},
++            note="Подтверждаем решения для второй версии области.",
++            requested_by_user_id=1,
++        )
++        self.connection.scope_generation = 3
++        self.db.commit()
++        follow_up_run = QuickRestoSyncRun(
++            connection_id=self.connection.id,
++            requested_by_user_id=1,
++            trigger="TEST",
++            status="RUNNING",
++            started_at=datetime.now(timezone.utc),
++        )
++        self.db.add(follow_up_run)
++        self.db.flush()
++
++        issue = _sync_previous_scope_mismatch_issue(
++            self.db,
++            connection=self.connection,
++            run=follow_up_run,
++            mismatch_external_ids={"legacy-1", "legacy-2"},
++            scope_generation=3,
++        )
++
++        self.assertIsNotNone(issue)
++        payload = serialize_issue(issue, include_shifts=True)
++        self.assertEqual(payload["details"]["scope_generation"], 3)
++        self.assertTrue(payload["can_reconcile_scope"])
++        self.assertEqual(
++            {item["scope_resolution_generation"] for item in payload["shifts"]},
++            {2},
++        )

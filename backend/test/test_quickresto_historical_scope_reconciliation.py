@@ -303,3 +303,40 @@ class QuickRestoHistoricalScopeReconciliationTests(unittest.TestCase):
         self.assertIsNone(issue)
         self.assertEqual(self.db.get(QuickRestoImportIssue, self.issue.id).status, "RESOLVED")
 
+    def test_recorded_decisions_must_be_reviewed_again_for_a_new_scope_generation(self):
+        reconcile_quickresto_historical_scope_issue(
+            self.db,
+            connection=self.connection,
+            issue_id=self.issue.id,
+            decisions={row.id: "KEEP_CURRENT" for row in self.shifts},
+            note="Подтверждаем решения для второй версии области.",
+            requested_by_user_id=1,
+        )
+        self.connection.scope_generation = 3
+        self.db.commit()
+        follow_up_run = QuickRestoSyncRun(
+            connection_id=self.connection.id,
+            requested_by_user_id=1,
+            trigger="TEST",
+            status="RUNNING",
+            started_at=datetime.now(timezone.utc),
+        )
+        self.db.add(follow_up_run)
+        self.db.flush()
+
+        issue = _sync_previous_scope_mismatch_issue(
+            self.db,
+            connection=self.connection,
+            run=follow_up_run,
+            mismatch_external_ids={"legacy-1", "legacy-2"},
+            scope_generation=3,
+        )
+
+        self.assertIsNotNone(issue)
+        payload = serialize_issue(issue, include_shifts=True)
+        self.assertEqual(payload["details"]["scope_generation"], 3)
+        self.assertTrue(payload["can_reconcile_scope"])
+        self.assertEqual(
+            {item["scope_resolution_generation"] for item in payload["shifts"]},
+            {2},
+        )
