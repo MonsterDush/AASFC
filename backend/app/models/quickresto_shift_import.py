@@ -15,7 +15,8 @@ class QuickRestoShiftImport(Base):
         UniqueConstraint("connection_id", "external_shift_id", name="uq_quickresto_shift_import_external"),
         CheckConstraint("shift_slot IN ('DAY', 'NIGHT')", name="ck_quickresto_shift_imports_shift_slot"),
         CheckConstraint(
-            "scope_resolution_action IS NULL OR scope_resolution_action IN ('KEEP_CURRENT', 'EXCLUDE_CURRENT')",
+            "scope_resolution_action IS NULL OR "
+            "scope_resolution_action IN ('KEEP_CURRENT', 'EXCLUDE_CURRENT', 'MOVE_TO_CONNECTED')",
             name="ck_quickresto_shift_imports_scope_resolution_action",
         ),
         Index(

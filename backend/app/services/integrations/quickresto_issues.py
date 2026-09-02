@@ -530,6 +530,7 @@ def serialize_issue(
             "scope_generation",
             "historical_decisions_kept",
             "historical_decisions_excluded",
+            "historical_decisions_moved",
             "reconciled_report_ids",
         )
         if key in details

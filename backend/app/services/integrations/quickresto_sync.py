@@ -1162,7 +1162,10 @@ def _sync_previous_scope_mismatch_issue(
         item.local_closed_at = shift_import.local_closed_at
         item.item_status = "READY"
         item.error_code = "PREVIOUS_SCOPE_MISMATCH"
-        item.user_summary = "Выберите, оставить смену в текущем отчёте или исключить из этого заведения."
+        item.user_summary = (
+            "Выберите, оставить смену в текущем заведении, безопасно перенести её "
+            "в другое подключённое заведение или явно исключить."
+        )
         item.technical_summary = None
         item.updated_at = now
     for item in list(issue.shifts):
@@ -1514,9 +1517,11 @@ def _rebuild_imported_report_keys(
                     QuickRestoShiftImport.shift_slot == target_slot,
                     or_(
                         QuickRestoShiftImport.scope_resolution_action.is_(None),
-                        QuickRestoShiftImport.scope_resolution_action != "EXCLUDE_CURRENT",
                         QuickRestoShiftImport.scope_resolution_generation.is_(None),
                         QuickRestoShiftImport.scope_resolution_generation != int(connection.scope_generation or 1),
+                        ~QuickRestoShiftImport.scope_resolution_action.in_(
+                            ("EXCLUDE_CURRENT", "MOVE_TO_CONNECTED")
+                        ),
                     ),
                 )
             ).scalars()

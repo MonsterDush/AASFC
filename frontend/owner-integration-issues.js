@@ -52,6 +52,7 @@ const state = {
   selectedIssue: null,
   selectedIssueId: null,
   returnFocus: null,
+  scopePreview: null,
   mappings: { payments: [], departments: [] },
   catalog: {
     selected_external_venue_id: null,
@@ -110,6 +111,12 @@ function formatDate(value, { withTime = false } = {}) {
 
 function formatRubles(value) {
   return `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 0 }).format(Number(value || 0))} ₽`;
+}
+
+function formatMinorRubles(value) {
+  return `${new Intl.NumberFormat(currentLocale(), {
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0) / 100)} ₽`;
 }
 
 function statusLabel(value) {
@@ -368,8 +375,14 @@ function renderHistoricalScopeMismatch(issue) {
       const resolvedGeneration = Number(shift.scope_resolution_generation || 0);
       const previousAction = String(shift.scope_resolution_action || "").toUpperCase();
       const action = resolvedGeneration === targetGeneration ? previousAction : "";
+      const previousActionLabel =
+        previousAction === "EXCLUDE_CURRENT"
+          ? "исключить"
+          : previousAction === "MOVE_TO_CONNECTED"
+            ? "перенести"
+            : "оставить";
       const previousDecision = previousAction && resolvedGeneration && resolvedGeneration !== targetGeneration
-        ? `<div class="muted small">Предыдущее решение: ${previousAction === "EXCLUDE_CURRENT" ? "исключить" : "оставить"} · версия области ${resolvedGeneration}. Для новой версии решение нужно подтвердить заново.</div>`
+        ? `<div class="muted small">Предыдущее решение: ${previousActionLabel} · версия области ${resolvedGeneration}. Для новой версии решение нужно подтвердить заново.</div>`
         : "";
       const disabled = canReconcile ? "" : " disabled";
       const period = `${formatDate(shift.local_opened_at, { withTime: true })} — ${formatDate(shift.local_closed_at, { withTime: true })}`;
@@ -388,24 +401,27 @@ function renderHistoricalScopeMismatch(issue) {
         <div class="integration-history-shift__choices">
           <label><input type="radio" name="historical-shift-${shiftImportId}" value="KEEP_CURRENT"${action === "KEEP_CURRENT" ? " checked" : ""}${disabled} /><span><b>Оставить в текущем заведении</b><small>Смена останется в текущем отчёте как подтверждённая история.</small></span></label>
           <label><input type="radio" name="historical-shift-${shiftImportId}" value="EXCLUDE_CURRENT"${action === "EXCLUDE_CURRENT" ? " checked" : ""}${disabled} /><span><b>Исключить из текущего заведения</b><small>Axelio пересчитает только импортированный отчёт. Другое заведение сможет забрать смену своей синхронизацией.</small></span></label>
+          <label><input type="radio" name="historical-shift-${shiftImportId}" value="MOVE_TO_CONNECTED"${action === "MOVE_TO_CONNECTED" ? " checked" : ""}${disabled} /><span><b>Перенести в подключённое заведение</b><small>При расчёте Axelio разрешит перенос только если для смены найдено ровно одно подходящее подключение, которым вы можете управлять.</small></span></label>
         </div>
       </fieldset>`;
     })
     .join("");
   const resolvedFacts =
     Number(issue?.details?.historical_decisions_kept || 0) ||
-    Number(issue?.details?.historical_decisions_excluded || 0)
-      ? `<dl class="integration-issue-facts"><div><dt>Оставлено</dt><dd>${Number(issue.details.historical_decisions_kept || 0)}</dd></div><div><dt>Исключено</dt><dd>${Number(issue.details.historical_decisions_excluded || 0)}</dd></div></dl>`
+    Number(issue?.details?.historical_decisions_excluded || 0) ||
+    Number(issue?.details?.historical_decisions_moved || 0)
+      ? `<dl class="integration-issue-facts"><div><dt>Оставлено</dt><dd>${Number(issue.details.historical_decisions_kept || 0)}</dd></div><div><dt>Исключено</dt><dd>${Number(issue.details.historical_decisions_excluded || 0)}</dd></div><div><dt>Перенесено</dt><dd>${Number(issue.details.historical_decisions_moved || 0)}</dd></div></dl>`
       : "";
   return `<section class="integration-issue-resolution integration-history-resolution">
-    <div><h3>Историческая проверка области${targetGeneration ? ` · версия ${targetGeneration}` : ""}</h3><div class="muted small mt-4">Примите отдельное решение по каждой смене. Решения прошлой версии области не переносятся автоматически. Все отчёты будут пересчитаны одной операцией: при конфликте или ручных изменениях Axelio отменит её полностью.</div></div>
+    <div><h3>Историческая проверка области${targetGeneration ? ` · версия ${targetGeneration}` : ""}</h3><div class="muted small mt-4">Сначала рассчитайте точные изменения. Axelio покажет отчёты, выручку, ledger и ФОТ «было → станет». Финансовые данные изменятся только после отдельного подтверждения рассчитанного плана.</div></div>
     <dl class="integration-issue-facts"><div><dt>Затронуто ранее импортированных смен</dt><dd>${Number(issue?.details?.legacy_shift_count || issue?.shift_count || 0)}</dd></div></dl>
     ${resolvedFacts}
     ${fields || '<div class="integration-issue-readonly">Список исторических смен ещё не подготовлен. Запустите полную синхронизацию QuickResto.</div>'}
     ${
       canReconcile
-        ? `<label class="integration-issue-field"><span>Комментарий к решению</span><textarea id="historicalScopeNote" rows="3" minlength="3" maxlength="1000" placeholder="Почему эти смены нужно оставить или исключить"></textarea></label>
-          <button class="btn primary" type="button" data-reconcile-historical-scope>Применить решения и пересчитать отчёты</button>`
+        ? `<label class="integration-issue-field"><span>Комментарий к решению</span><textarea id="historicalScopeNote" rows="3" minlength="3" maxlength="1000" placeholder="Почему эти смены нужно оставить, исключить или перенести"></textarea></label>
+          <button class="btn primary" type="button" data-preview-historical-scope>Рассчитать изменения</button>
+          <div id="historicalScopePreview"></div>`
         : ""
     }
     ${state.canManage && ACTIVE_STATUSES.has(String(issue.status || "").toUpperCase()) && !canReconcile ? '<div class="integration-issue-readonly">Обновите проблему полной синхронизацией: для безопасного решения нужны связи со всеми импортированными сменами.</div>' : ""}
@@ -792,9 +808,9 @@ async function ignoreIssue(button) {
   }
 }
 
-async function reconcileHistoricalScope(button) {
+function collectHistoricalScopePayload() {
   const issue = state.selectedIssue;
-  if (!issue || !state.canManage || issue.can_reconcile_scope !== true) return;
+  if (!issue || !state.canManage || issue.can_reconcile_scope !== true) return null;
   const groups = [...el.issueDrawerBody.querySelectorAll("[data-historical-shift]")];
   const decisions = [];
   let firstMissing = null;
@@ -817,30 +833,129 @@ async function reconcileHistoricalScope(button) {
   if (firstMissing) {
     firstMissing.querySelector('input[type="radio"]')?.focus();
     actionHint("Выберите решение для каждой исторической смены.", true);
-    return;
+    return null;
   }
   if (!decisions.length) {
     actionHint("Нет смен, для которых можно сохранить решение.", true);
-    return;
+    return null;
   }
   if (note.length < 3) {
     noteField?.setAttribute("aria-invalid", "true");
     noteField?.focus();
     actionHint("Добавьте комментарий минимум из 3 символов.", true);
+    return null;
+  }
+  return { issue, decisions, note };
+}
+
+function clearHistoricalScopePreview() {
+  state.scopePreview = null;
+  const container = document.getElementById("historicalScopePreview");
+  if (container) container.innerHTML = "";
+}
+
+function previewReportActionLabel(value) {
+  const action = String(value || "").toUpperCase();
+  if (action === "CREATE") return "будет создан";
+  if (action === "UPDATE") return "будет пересобран";
+  if (action === "DELETE") return "будет удалён";
+  return "без изменений";
+}
+
+function renderHistoricalScopePreview(preview) {
+  const container = document.getElementById("historicalScopePreview");
+  if (!container) return;
+  const summary = preview?.summary || {};
+  const reports = Array.isArray(preview?.reports) ? preview.reports : [];
+  const payroll = Array.isArray(preview?.payroll) ? preview.payroll : [];
+  const moved = (Array.isArray(preview?.shifts) ? preview.shifts : []).filter(
+    (shift) => String(shift.action || "").toUpperCase() === "MOVE_TO_CONNECTED",
+  );
+  const reportRows = reports
+    .map((report) => {
+      const before = Number(report.before?.revenue_total || 0);
+      const after = Number(report.after?.revenue_total || 0);
+      return `<div class="itemcard integration-issue-shift"><b>${esc(formatDate(report.business_date))} · ${esc(slotLabel(report.shift_slot))} — ${esc(previewReportActionLabel(report.action))}</b><div class="muted small">Заведение #${Number(report.venue_id)} · выручка ${esc(formatRubles(before))} → ${esc(formatRubles(after))} · ledger ${esc(formatMinorRubles(report.before?.ledger_revenue_minor || 0))} → ${esc(formatMinorRubles(report.after?.ledger_revenue_minor || 0))}</div></div>`;
+    })
+    .join("");
+  const payrollRows = payroll
+    .map(
+      (row) => `<div class="muted small">ФОТ · заведение #${Number(row.venue_id)} · ${esc(row.month)}: ${esc(formatMinorRubles(row.before_total_amount_minor))} → ${esc(formatMinorRubles(row.after_total_amount_minor))}; payroll ledger: ${esc(formatMinorRubles(row.before_ledger_payroll_minor))} → ${esc(formatMinorRubles(row.after_ledger_payroll_minor))}</div>`,
+    )
+    .join("");
+  const movedRows = moved
+    .map(
+      (shift) => `<div class="muted small">Смена QuickResto #${esc(shift.external_shift_id)} → ${esc(shift.target_venue_name || `заведение #${Number(shift.target_venue_id)}`)} · ${esc(formatDate(shift.target_business_date))} · ${esc(slotLabel(shift.target_shift_slot))}</div>`,
+    )
+    .join("");
+  container.innerHTML = `<section class="integration-issue-detail-section">
+    <h3>Предпросмотр финансовых изменений</h3>
+    <dl class="integration-issue-facts">
+      <div><dt>Оставить</dt><dd>${Number(summary.shifts_kept || 0)}</dd></div>
+      <div><dt>Исключить</dt><dd>${Number(summary.shifts_excluded || 0)}</dd></div>
+      <div><dt>Перенести</dt><dd>${Number(summary.shifts_moved || 0)}</dd></div>
+      <div><dt>Изменение выручки</dt><dd>${esc(formatRubles(summary.revenue_delta || 0))}</dd></div>
+      <div><dt>Изменение ФОТ</dt><dd>${esc(formatMinorRubles(summary.payroll_delta_minor || 0))}</dd></div>
+    </dl>
+    ${movedRows}
+    ${reportRows}
+    ${payrollRows}
+    <div class="integration-issue-readonly">План действителен до ${esc(formatDate(preview.preview_expires_at, { withTime: true }))}. Перед commit backend повторно рассчитает этот же state hash. Любое изменение отчётов, смен или назначения потребует нового предпросмотра.</div>
+    <button class="btn danger" type="button" data-confirm-historical-scope>Подтвердить и применить этот план</button>
+  </section>`;
+}
+
+async function previewHistoricalScope(button) {
+  const payload = collectHistoricalScopePayload();
+  if (!payload) return;
+  setBusy(button, true, "Рассчитываем…");
+  actionHint("");
+  try {
+    const preview = await api(
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/issues/${payload.issue.id}/reconcile-scope/preview`,
+      { method: "POST", body: { decisions: payload.decisions, note: payload.note } },
+    );
+    state.scopePreview = { issueId: String(payload.issue.id), ...preview };
+    renderHistoricalScopePreview(preview);
+    actionHint("Расчёт готов. Проверьте изменения и подтвердите именно этот план.");
+  } catch (error) {
+    clearHistoricalScopePreview();
+    actionHint(errorMessage(error), true);
+    toast(errorMessage(error), "err");
+  } finally {
+    setBusy(button, false);
+  }
+}
+
+async function confirmHistoricalScope(button) {
+  const payload = collectHistoricalScopePayload();
+  const preview = state.scopePreview;
+  if (!payload) return;
+  if (!preview?.preview_token || preview.issueId !== String(payload.issue.id)) {
+    actionHint("Сначала рассчитайте актуальный предпросмотр изменений.", true);
     return;
   }
-  setBusy(button, true, "Пересчитываем отчёты…");
+  setBusy(button, true, "Применяем подтверждённый план…");
   actionHint("");
   try {
     const result = await api(
-      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/issues/${issue.id}/reconcile-scope`,
-      { method: "POST", body: { decisions, note } },
+      `/venues/${encodeURIComponent(venueId)}/integrations/quickresto/issues/${payload.issue.id}/reconcile-scope`,
+      {
+        method: "POST",
+        body: {
+          decisions: payload.decisions,
+          note: payload.note,
+          preview_token: preview.preview_token,
+        },
+      },
     );
+    state.scopePreview = null;
     closeDrawer();
     await loadIssues();
     const excluded = Number(result.run?.summary?.shifts_excluded || 0);
     const kept = Number(result.run?.summary?.shifts_kept || 0);
-    toast(`Решения сохранены: оставлено ${kept}, исключено ${excluded}`, "ok");
+    const moved = Number(result.run?.summary?.shifts_moved || 0);
+    toast(`Решения сохранены: оставлено ${kept}, исключено ${excluded}, перенесено ${moved}`, "ok");
   } catch (error) {
     actionHint(errorMessage(error), true);
     toast(errorMessage(error), "err");
@@ -918,12 +1033,15 @@ el.issueDrawer?.addEventListener("click", (event) => {
     void retryIssue(target.closest("[data-retry]"));
   else if (target?.closest("[data-ignore]"))
     void ignoreIssue(target.closest("[data-ignore]"));
-  else if (target?.closest("[data-reconcile-historical-scope]"))
-    void reconcileHistoricalScope(target.closest("[data-reconcile-historical-scope]"));
+  else if (target?.closest("[data-preview-historical-scope]"))
+    void previewHistoricalScope(target.closest("[data-preview-historical-scope]"));
+  else if (target?.closest("[data-confirm-historical-scope]"))
+    void confirmHistoricalScope(target.closest("[data-confirm-historical-scope]"));
 });
 el.issueDrawer?.addEventListener("input", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   target?.removeAttribute("aria-invalid");
+  if (target?.matches("#historicalScopeNote, [data-historical-shift] input")) clearHistoricalScopePreview();
   actionHint("");
 });
 el.issueDrawer?.addEventListener("change", (event) => {
@@ -931,6 +1049,9 @@ el.issueDrawer?.addEventListener("change", (event) => {
   if (target?.matches("[data-issue-scope-venue], [data-issue-scope-sale-place]")) {
     syncIssueScopeFields();
     actionHint("");
+  }
+  if (target?.matches("[data-historical-shift] input")) {
+    clearHistoricalScopePreview();
   }
 });
 document.addEventListener("keydown", (event) => {

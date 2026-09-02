@@ -64,10 +64,10 @@ class QuickRestoIssueResolveIn(BaseModel):
 
 class QuickRestoHistoricalShiftDecisionIn(BaseModel):
     shift_import_id: int = Field(..., gt=0)
-    action: Literal["KEEP_CURRENT", "EXCLUDE_CURRENT"]
+    action: Literal["KEEP_CURRENT", "EXCLUDE_CURRENT", "MOVE_TO_CONNECTED"]
 
 
-class QuickRestoHistoricalScopeResolveIn(BaseModel):
+class QuickRestoHistoricalScopePreviewIn(BaseModel):
     decisions: list[QuickRestoHistoricalShiftDecisionIn] = Field(..., min_length=1, max_length=5000)
     note: str = Field(..., min_length=3, max_length=1000)
 
@@ -89,3 +89,11 @@ class QuickRestoHistoricalScopeResolveIn(BaseModel):
         if len(normalized) < 3:
             raise ValueError("QuickResto scope resolution note must contain at least 3 characters")
         return normalized
+
+
+class QuickRestoHistoricalScopeConfirmIn(QuickRestoHistoricalScopePreviewIn):
+    preview_token: str = Field(..., min_length=40, max_length=8192)
+
+
+class QuickRestoHistoricalScopeResolveIn(QuickRestoHistoricalScopePreviewIn):
+    """Backward-compatible request shape for callers that only need decision validation."""

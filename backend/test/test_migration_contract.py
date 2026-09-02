@@ -31,8 +31,9 @@ class MigrationContractTests(unittest.TestCase):
         hardening = scripts.get_revision("d0f8b6c4e2a1")
         reconciliation = scripts.get_revision("e2b4d6f8a1c3")
         pending_scope = scripts.get_revision("f4c6e8a0b2d5")
+        preview_move = scripts.get_revision("a7d3e5f1c9b2")
 
-        self.assertEqual(heads, ["f4c6e8a0b2d5"])
+        self.assertEqual(heads, ["a7d3e5f1c9b2"])
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "b8d4f6a2c1e9")
         self.assertIsNotNone(hardening)
@@ -41,6 +42,8 @@ class MigrationContractTests(unittest.TestCase):
         self.assertEqual(reconciliation.down_revision, "d0f8b6c4e2a1")
         self.assertIsNotNone(pending_scope)
         self.assertEqual(pending_scope.down_revision, "e2b4d6f8a1c3")
+        self.assertIsNotNone(preview_move)
+        self.assertEqual(preview_move.down_revision, "f4c6e8a0b2d5")
 
     def test_quickresto_pending_scope_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:
@@ -76,6 +79,42 @@ class MigrationContractTests(unittest.TestCase):
             columns = {column["name"] for column in sa.inspect(engine).get_columns("quickresto_connections")}
             self.assertNotIn("pending_external_venue_id", columns)
             self.assertNotIn("pending_scope_generation", columns)
+
+    def test_quickresto_scope_move_constraint_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "CREATE TABLE quickresto_shift_imports ("
+                    "id INTEGER PRIMARY KEY, scope_resolution_action VARCHAR(24), "
+                    "CONSTRAINT ck_quickresto_shift_imports_scope_resolution_action "
+                    "CHECK (scope_resolution_action IS NULL OR "
+                    "scope_resolution_action IN ('KEEP_CURRENT', 'EXCLUDE_CURRENT')))"
+                )
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "f4c6e8a0b2d5")
+                command.upgrade(config, "a7d3e5f1c9b2")
+                constraints = {
+                    item["name"]: item["sqltext"]
+                    for item in sa.inspect(engine).get_check_constraints("quickresto_shift_imports")
+                }
+                self.assertIn(
+                    "MOVE_TO_CONNECTED",
+                    constraints["ck_quickresto_shift_imports_scope_resolution_action"],
+                )
+                command.downgrade(config, "f4c6e8a0b2d5")
+
+            constraints = {
+                item["name"]: item["sqltext"]
+                for item in sa.inspect(engine).get_check_constraints("quickresto_shift_imports")
+            }
+            self.assertNotIn(
+                "MOVE_TO_CONNECTED",
+                constraints["ck_quickresto_shift_imports_scope_resolution_action"],
+            )
 
     def test_quickresto_historical_scope_resolution_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:
