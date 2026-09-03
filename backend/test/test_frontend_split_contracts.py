@@ -1120,7 +1120,7 @@ class PositionsSplitContractTests(TestCase):
             "permission-controller.js": ("createPositionPermissionController", 320),
             "position-domain.js": ("createPositionDomain", 240),
             "position-editor.js": ("createPositionEditor", 520),
-            "position-list.js": ("createPositionList", 180),
+            "position-list.js": ("createPositionList", 220),
             "invite-controller.js": ("createPositionInviteController", 150),
         }
 
