@@ -32,8 +32,8 @@ const domBindingManifest = Array.from(
 const manifestHash = (values) => crypto.createHash("sha256").update(JSON.stringify(values)).digest("hex");
 assert.equal(apiCallManifest.length, 21);
 assert.equal(manifestHash(apiCallManifest), "e36d841fea322b74293b11c64ec20dc5c955f0bcc5a68924b1ad188c19fd18d5");
-assert.equal(domBindingManifest.length, 55);
-assert.equal(manifestHash(domBindingManifest), "ac35bc61a168dd228accbecf9a0424425cb15abe9a88eeecfb44671f68ab101a");
+assert.equal(domBindingManifest.length, 56);
+assert.equal(manifestHash(domBindingManifest), "3d7bf19e0e1a63d07e0b29a3f72489db1c31dd3316a4da5c71aa9dce29b7790e");
 
 assert.ok(mainSource.split("\n").length < 1_900, "staff-shifts.js should remain an orchestration module");
 assert.ok(moduleSource.split("\n").length < 900, "schedule export controller is too large");
