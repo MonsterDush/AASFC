@@ -33,8 +33,9 @@ class MigrationContractTests(unittest.TestCase):
         pending_scope = scripts.get_revision("f4c6e8a0b2d5")
         preview_move = scripts.get_revision("a7d3e5f1c9b2")
         interval_positions = scripts.get_revision("f6b4d2a8c1e0")
+        catalog_backfill = scripts.get_revision("b9d2e4f6a8c1")
 
-        self.assertEqual(heads, ["f6b4d2a8c1e0"])
+        self.assertEqual(heads, ["b9d2e4f6a8c1"])
 
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "b8d4f6a2c1e9")
@@ -53,6 +54,9 @@ class MigrationContractTests(unittest.TestCase):
 
         self.assertIsNotNone(interval_positions)
         self.assertEqual(interval_positions.down_revision, "a7d3e5f1c9b2")
+
+        self.assertIsNotNone(catalog_backfill)
+        self.assertEqual(catalog_backfill.down_revision, "f6b4d2a8c1e0")
 
     def test_quickresto_pending_scope_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:
