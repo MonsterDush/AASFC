@@ -15,24 +15,51 @@ const { openCreateModal, openEditModal } = editor;
 
 function buildPositionGroups() {
   const groups = new Map();
+
   const ensureGroup = (rawTitle) => {
     const title = String(rawTitle || "Без названия").trim() || "Без названия";
-    if (!groups.has(title)) groups.set(title, { title, positions: [], preset: null });
+
+    if (!groups.has(title)) {
+      groups.set(title, {
+        title,
+        positions: [],
+        catalog: null,
+        preset: null,
+      });
+    }
+
     return groups.get(title);
   };
 
   for (const preset of state.positionPresets || []) {
     if (preset?.is_active === false) continue;
+
     const group = ensureGroup(preset?.title);
-    if (!group.preset) group.preset = preset;
+
+    if (!group.preset) {
+      group.preset = preset;
+    }
   }
 
   for (const position of state.positions || []) {
     if (position?.is_active === false) continue;
-    ensureGroup(position?.title).positions.push(position);
+
+    const group = ensureGroup(position?.title);
+    const memberUserId = Number(position?.member_user_id || 0);
+
+    if (memberUserId > 0) {
+      // Реальное назначение сотрудника на должность.
+      group.positions.push(position);
+    } else if (!group.catalog) {
+      // Стабильная должность-справочник.
+      // Она нужна интервалам, но НЕ является сотрудником.
+      group.catalog = position;
+    }
   }
 
-  return Array.from(groups.values()).sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  return Array.from(groups.values()).sort((a, b) =>
+    a.title.localeCompare(b.title, "ru")
+  );
 }
 
 function employeeCountLabel(count) {
@@ -63,7 +90,7 @@ function renderPositions() {
   const memberById = new Map(state.members.map((m) => [String(m.user_id), m]));
 
   for (const group of groups) {
-    const { title, preset } = group;
+    const { title, preset, catalog } = group;
     const arr = group.positions.slice().sort((a, b) => {
       const aa = String(memberById.get(String(a.member_user_id))?.tg_username || "");
       const bb = String(memberById.get(String(b.member_user_id))?.tg_username || "");
@@ -89,20 +116,28 @@ function renderPositions() {
     if (addSameBtn) addSameBtn.onclick = () => openCreateModal({
       title,
       hint: "Добавляем ещё одного сотрудника на эту должность.",
-      position: preset || arr[0] || { title },
+      position: preset || catalog || arr[0] || { title },
     });
 
     const rows = wrap.querySelector("[data-rows]");
 
-    if (!arr.length && preset) {
+    if (!arr.length && (preset || catalog)) {
+      const source = preset || catalog;
+
       rows.innerHTML = `
         <div class="position-member-row position-member-row--empty">
           <div class="position-member-row__main">
             <div><b>Сотрудники ещё не назначены</b></div>
             <div class="position-meta-chips">
-              <span class="position-meta-chip">Профиль: ${esc(preset.pay_profile_title || "не назначен")}</span>
-              <span class="position-meta-chip">Отчёты: ${posReportsEnabled(preset) ? "да" : "нет"}</span>
-              <span class="position-meta-chip">График: ${posScheduleManage(preset) ? "да" : "нет"}</span>
+              <span class="position-meta-chip">
+                Профиль: ${esc(source.pay_profile_title || "не назначен")}
+              </span>
+              <span class="position-meta-chip">
+                Отчёты: ${posReportsEnabled(source) ? "да" : "нет"}
+              </span>
+              <span class="position-meta-chip">
+                График: ${posScheduleManage(source) ? "да" : "нет"}
+              </span>
             </div>
           </div>
         </div>
