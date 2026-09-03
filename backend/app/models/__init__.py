@@ -68,9 +68,18 @@ from .security_rate_limit import SecurityRateLimit
 from .quickresto_connection import QuickRestoConnection
 from .quickresto_payment_mapping import QuickRestoPaymentMapping
 from .quickresto_department_mapping import QuickRestoDepartmentMapping
+from .quickresto_external_venue import QuickRestoExternalVenue
+from .quickresto_sale_place_scope import QuickRestoSalePlaceScope
+from .quickresto_store_scope import QuickRestoStoreScope
 from .quickresto_sync_run import QuickRestoSyncRun
 from .quickresto_shift_import import QuickRestoShiftImport
 from .quickresto_report_import import QuickRestoReportImport
+from .quickresto_source_snapshot import QuickRestoSourceSnapshot
+from .quickresto_import_issue import QuickRestoImportIssue
+from .quickresto_import_issue_shift import QuickRestoImportIssueShift
+from .quickresto_import_issue_audit import QuickRestoImportIssueAudit
+from .quickresto_scope_audit import QuickRestoScopeAudit
+from .venue_pos_integration_selection import VenuePOSIntegrationSelection
 
 __all__ = [
     "SystemRole",
@@ -145,7 +154,16 @@ __all__ = [
     "QuickRestoConnection",
     "QuickRestoPaymentMapping",
     "QuickRestoDepartmentMapping",
+    "QuickRestoExternalVenue",
+    "QuickRestoSalePlaceScope",
+    "QuickRestoStoreScope",
     "QuickRestoSyncRun",
     "QuickRestoShiftImport",
     "QuickRestoReportImport",
+    "QuickRestoSourceSnapshot",
+    "QuickRestoImportIssue",
+    "QuickRestoImportIssueShift",
+    "QuickRestoImportIssueAudit",
+    "QuickRestoScopeAudit",
+    "VenuePOSIntegrationSelection",
 ]

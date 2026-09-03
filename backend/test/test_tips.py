@@ -283,6 +283,7 @@ class TipAllocationIntegrationTests(TestCase):
                 return_value=False,
             ),
             patch.object(venue_shifts, "load_owner_notes", return_value={}),
+            patch.object(venue_shifts, "load_member_display_names", return_value={}),
         ):
             result = venue_shifts.list_shifts(
                 5,

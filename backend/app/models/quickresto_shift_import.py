@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,11 @@ class QuickRestoShiftImport(Base):
     __table_args__ = (
         UniqueConstraint("connection_id", "external_shift_id", name="uq_quickresto_shift_import_external"),
         CheckConstraint("shift_slot IN ('DAY', 'NIGHT')", name="ck_quickresto_shift_imports_shift_slot"),
+        CheckConstraint(
+            "scope_resolution_action IS NULL OR "
+            "scope_resolution_action IN ('KEEP_CURRENT', 'EXCLUDE_CURRENT', 'MOVE_TO_CONNECTED')",
+            name="ck_quickresto_shift_imports_scope_resolution_action",
+        ),
         Index(
             "ix_quickresto_shift_imports_connection_date_slot",
             "connection_id",
@@ -37,6 +42,13 @@ class QuickRestoShiftImport(Base):
     daily_report_id: Mapped[int | None] = mapped_column(
         ForeignKey("daily_reports.id", ondelete="SET NULL"), nullable=True
     )
+    scope_resolution_action: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)
+    scope_resolution_generation: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scope_resolved_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    scope_resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scope_resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     first_imported_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )
@@ -44,3 +56,4 @@ class QuickRestoShiftImport(Base):
 
     connection = relationship("QuickRestoConnection")
     daily_report = relationship("DailyReport")
+    scope_resolved_by_user = relationship("User", foreign_keys=[scope_resolved_by_user_id])

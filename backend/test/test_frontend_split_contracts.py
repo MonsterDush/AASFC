@@ -46,7 +46,7 @@ class PageLoaderContractTests(TestCase):
             source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500, file_name)
 
-        self.assertEqual(len(html_pages), 52)
+        self.assertEqual(len(html_pages), 53)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
@@ -145,14 +145,18 @@ class QuickRestoIntegrationContractTests(TestCase):
         html = (FRONTEND / "owner-quickresto.html").read_text(encoding="utf-8")
         script = (FRONTEND / "owner-quickresto.js").read_text(encoding="utf-8")
         styles = (FRONTEND / "styles" / "pages" / "owner-quickresto.css").read_text(encoding="utf-8")
+        issues_html = (FRONTEND / "owner-integration-issues.html").read_text(encoding="utf-8")
+        issues_script = (FRONTEND / "owner-integration-issues.js").read_text(encoding="utf-8")
+        issues_styles = (FRONTEND / "styles" / "pages" / "owner-integration-issues.css").read_text(encoding="utf-8")
 
         self.assertIn('id="openIntegrations"', venue)
         self.assertIn("venue-integrations-entry hidden", venue)
-        self.assertIn("(isOwner || isAdmin) && !demoReadonly", venue)
+        self.assertIn('hasPerm(pset, "INTEGRATIONS_VIEW")', venue)
+        self.assertIn("canViewIntegrations && !demoReadonly", venue)
         self.assertIn("/owner-integrations.html?venue_id=", venue)
         self.assertIn("/styles/pages/owner-integrations.css", hub_html)
         self.assertIn("/owner-integrations.js", hub_html)
-        self.assertIn("20260828-integrations2", hub_html)
+        self.assertIn("20260901-issuesentry1", hub_html)
         self.assertIn(".integrations-provider-tab{flex-direction:column", hub_styles)
         self.assertIn("white-space:nowrap", hub_styles)
         self.assertIn('role="tablist"', hub_html)
@@ -171,7 +175,24 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn('class="quickresto-api-help"', html)
         self.assertIn("Предприятие → Настройки → Общие настройки", html)
         self.assertIn("https://quickresto.ru/support/rabota_s_bek_ofisom/enterprise/settings/", html)
-        self.assertIn("20260829-qr7", html)
+        self.assertIn("20260901-qrscope2", html)
+        self.assertIn('id="scopeSection"', html)
+        self.assertIn('id="externalVenue"', html)
+        self.assertIn('id="salePlaceOptions"', html)
+        self.assertIn('id="storeOptions"', html)
+        self.assertIn('id="mappingReadinessHint"', html)
+        self.assertIn('id="scopeAuditList"', html)
+        self.assertIn("requiredMappingsReady", script)
+        self.assertIn("mapping_readiness", script)
+        self.assertIn("source_cooking_place_ids", script)
+        self.assertIn("/integrations/quickresto/catalog/refresh", script)
+        self.assertIn("/integrations/quickresto/scope", script)
+        self.assertIn("owner-integration-issues.html?venue_id=", script)
+        self.assertIn("одновременно может быть активна только одна POS-интеграция", hub_html)
+        self.assertIn("active_pos_provider", hub_script)
+        self.assertIn('id="openQuickRestoIssues"', hub_html)
+        self.assertIn("integration.issues?.open_count", hub_script)
+        self.assertIn("owner-integration-issues.html?venue_id=", hub_script)
         self.assertIn('aria-describedby="cutoffHourHelp"', html)
         self.assertIn("Эта граница определяет дату отчёта, а не тип смены", html)
         self.assertIn("при 06:00 открытие 27 августа в 03:15", html)
@@ -182,7 +203,10 @@ class QuickRestoIntegrationContractTests(TestCase):
         self.assertIn(".quickresto-night-window__grid", styles)
         self.assertIn("grid-template-columns:minmax(0,1fr)", styles)
         self.assertIn("report_import_mode: selectedImportMode()", script)
-        self.assertIn("night_shift_split_enabled: state.venueNightShiftsEnabled", script)
+        self.assertRegex(
+            script,
+            r"night_shift_split_enabled:\s*state\.venueNightShiftsEnabled",
+        )
         self.assertIn("night_shift_start_hour:", script)
         self.assertIn("renderNightShiftSettings", script)
         self.assertIn("getPaymentMethods(venueId, { includeArchived: false })", script)
@@ -190,11 +214,40 @@ class QuickRestoIntegrationContractTests(TestCase):
             "/integrations/quickresto`)",
             "/integrations/quickresto/discover`",
             "/integrations/quickresto/mappings`",
-            "/integrations/quickresto/sync`",
+            "/integrations/quickresto/sync${suffix}`",
             "/integrations/quickresto/runs?limit=10`",
         ):
             self.assertIn(endpoint, script)
         self.assertIn('el.apiPassword.value = ""', script)
+        self.assertIn("/styles/pages/owner-integration-issues.css", issues_html)
+        self.assertIn("/owner-integration-issues.js", issues_html)
+        self.assertIn("20260902-scopegeneration1", issues_html)
+        self.assertIn("20260902-scopepreview1", issues_html)
+        self.assertIn('id="providerFilter"', issues_html)
+        self.assertIn('id="issueDate"', issues_html)
+        self.assertIn('query.set("business_date"', issues_script)
+        self.assertIn("PREVIOUS_SCOPE_MISMATCH", issues_script)
+        self.assertIn("KEEP_CURRENT", issues_script)
+        self.assertIn("EXCLUDE_CURRENT", issues_script)
+        self.assertIn("/reconcile-scope", issues_script)
+        self.assertIn("data-preview-historical-scope", issues_script)
+        self.assertIn("data-confirm-historical-scope", issues_script)
+        self.assertIn("/integrations/quickresto/issues?${query}", issues_script)
+        self.assertIn("data-save-mappings-retry", issues_script)
+        self.assertIn("data-save-scope-retry", issues_script)
+        self.assertIn("/integrations/quickresto/catalog/refresh", issues_script)
+        self.assertIn("/integrations/quickresto/scope", issues_script)
+        self.assertIn("owner-quickresto.html?venue_id=", issues_script)
+        self.assertIn(".integration-issue-drawer__panel", issues_styles)
+        self.assertIn(".integration-issues-filter-field", issues_styles)
+        self.assertIn(".integration-history-shift__choices", issues_styles)
+        english_catalog = (FRONTEND / "locales" / "en.json").read_text(encoding="utf-8")
+        for source in (
+            "Дата проблемы",
+            "Историческая проверка области",
+            "Обязательные сопоставления заполнены — импорт доступен.",
+        ):
+            self.assertIn(source, english_catalog)
 
 
 class PrimaryPageUiPolishContractTests(TestCase):
@@ -753,7 +806,7 @@ class AppFacadeSplitContractTests(TestCase):
                 consumer_count += 1
                 imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
-        self.assertEqual(consumer_count, 53)
+        self.assertEqual(consumer_count, 54)
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):

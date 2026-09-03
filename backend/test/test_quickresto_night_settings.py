@@ -49,6 +49,13 @@ class QuickRestoNightSettingsTests(unittest.TestCase):
             id=7,
             venue_id=3,
             cloud="fixture",
+            external_venue_id=501,
+            external_venue_name="Тестовое заведение",
+            external_venue_version=17,
+            scope_status="READY",
+            scope_generation=1,
+            scope_confirmed_at=None,
+            scope_confirmed_by_user_id=9,
             api_login_encrypted="encrypted",
             api_password_encrypted="encrypted",
             is_active=True,
@@ -69,6 +76,8 @@ class QuickRestoNightSettingsTests(unittest.TestCase):
         self.assertTrue(result["venue_night_shifts_enabled"])
         self.assertTrue(result["night_shift_split_enabled"])
         self.assertEqual(result["night_shift_start_hour"], 22)
+        self.assertEqual(result["external_venue_version"], 17)
+        self.assertEqual(result["scope_confirmed_by_user_id"], 9)
 
 
 if __name__ == "__main__":

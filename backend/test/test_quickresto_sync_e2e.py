@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import unittest
@@ -20,15 +20,23 @@ from app.models.daily_report_tip_allocation import DailyReportTipAllocation
 from app.models.daily_report_value import DailyReportValue
 from app.models.department import Department
 from app.models.payment_method import PaymentMethod
+from app.models.notification_job import NotificationJob
 from app.models.quickresto_connection import QuickRestoConnection
 from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_external_venue import QuickRestoExternalVenue
+from app.models.quickresto_import_issue import QuickRestoImportIssue
+from app.models.quickresto_import_issue_audit import QuickRestoImportIssueAudit
+from app.models.quickresto_import_issue_shift import QuickRestoImportIssueShift
 from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
 from app.models.quickresto_report_import import QuickRestoReportImport
 from app.models.quickresto_shift_import import QuickRestoShiftImport
+from app.models.quickresto_sale_place_scope import QuickRestoSalePlaceScope
+from app.models.quickresto_store_scope import QuickRestoStoreScope
 from app.models.quickresto_sync_run import QuickRestoSyncRun
+from app.models.quickresto_source_snapshot import QuickRestoSourceSnapshot
 from app.models.user import User
 from app.models.venue import Venue
-from app.services.integrations.quickresto_sync import QuickRestoSyncError, sync_quickresto_connection
+from app.services.integrations.quickresto_sync import sync_quickresto_connection
 
 
 TARGET_DATE = date(2030, 1, 15)
@@ -50,13 +58,36 @@ class FixtureQuickRestoClient:
     def list_all_objects(self, *, module_name, class_name):
         del module_name
         if class_name.endswith("PaymentType"):
-            return deepcopy(self.payment_types)
+            rows = deepcopy(self.payment_types)
+            for row in rows:
+                row.setdefault("allowedSalePlacesWeb", [])
+            return rows
         if class_name.endswith("DishCategory"):
             return deepcopy(self.departments)
         if class_name.endswith("Shift"):
-            return deepcopy(self.shifts)
+            rows = deepcopy(self.shifts)
+            for row in rows:
+                row.setdefault("tableScheme", {"id": 501, "name": "Тестовое заведение"})
+                row.setdefault("salePlace", {"id": 601, "title": "Основная касса"})
+                row.setdefault("createTerminalSalePlace", {"id": 601, "title": "Основная касса"})
+            return rows
         if class_name.endswith("OrderInfo"):
             return deepcopy(self.orders)
+        if class_name.endswith("TableScheme"):
+            return [{"id": 501, "name": "Тестовое заведение", "address": {}}]
+        if class_name.endswith("SalePlace"):
+            return [
+                {
+                    "id": 601,
+                    "title": "Основная касса",
+                    "tableScheme": {"id": 501},
+                    "defaultCookingPlace": {"id": 701},
+                }
+            ]
+        if class_name.endswith("CookingPlace"):
+            return [{"id": 701, "title": "Основное производство", "store": {"id": 801}}]
+        if class_name.endswith("Store"):
+            return [{"id": 801, "title": "Основной склад"}]
         raise AssertionError(f"Unexpected QuickResto class: {class_name}")
 
     def read_object(self, *, module_name, class_name, object_id):
@@ -95,11 +126,19 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 DailyReport.__table__,
                 DailyReportValue.__table__,
                 QuickRestoConnection.__table__,
+                QuickRestoExternalVenue.__table__,
+                QuickRestoSalePlaceScope.__table__,
+                QuickRestoStoreScope.__table__,
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
                 QuickRestoReportImport.__table__,
+                QuickRestoSourceSnapshot.__table__,
+                QuickRestoImportIssue.__table__,
+                QuickRestoImportIssueShift.__table__,
+                QuickRestoImportIssueAudit.__table__,
+                NotificationJob.__table__,
             ],
         )
         with Session(engine) as db:
@@ -191,8 +230,25 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 business_day_cutoff_hour=0,
                 sync_from_date=TARGET_DATE,
                 created_by_user_id=user_id,
+                external_venue_id=501,
+                external_venue_name="Тестовое заведение",
+                scope_status="READY",
             )
             db.add(connection)
+            db.flush()
+            db.add(
+                QuickRestoSalePlaceScope(
+                    connection_id=connection.id,
+                    external_id=601,
+                    external_name="Основная касса",
+                    external_venue_id=501,
+                    default_cooking_place_id=701,
+                    is_selected=True,
+                    is_confirmed=True,
+                    is_available=True,
+                    last_seen_at=datetime.now(timezone.utc),
+                )
+            )
             db.commit()
             db.refresh(connection)
             manual_mapping = QuickRestoPaymentMapping(
@@ -603,11 +659,19 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 DailyReportTipAllocation.__table__,
                 DailyReportAttachment.__table__,
                 QuickRestoConnection.__table__,
+                QuickRestoExternalVenue.__table__,
+                QuickRestoSalePlaceScope.__table__,
+                QuickRestoStoreScope.__table__,
                 QuickRestoPaymentMapping.__table__,
                 QuickRestoDepartmentMapping.__table__,
                 QuickRestoSyncRun.__table__,
                 QuickRestoShiftImport.__table__,
                 QuickRestoReportImport.__table__,
+                QuickRestoSourceSnapshot.__table__,
+                QuickRestoImportIssue.__table__,
+                QuickRestoImportIssueShift.__table__,
+                QuickRestoImportIssueAudit.__table__,
+                NotificationJob.__table__,
             ],
         )
 
@@ -627,8 +691,25 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 night_shift_start_hour=22,
                 sync_from_date=TARGET_DATE,
                 created_by_user_id=1,
+                external_venue_id=501,
+                external_venue_name="Тестовое заведение",
+                scope_status="READY",
             )
             db.add(connection)
+            db.flush()
+            db.add(
+                QuickRestoSalePlaceScope(
+                    connection_id=connection.id,
+                    external_id=601,
+                    external_name="Основная касса",
+                    external_venue_id=501,
+                    default_cooking_place_id=701,
+                    is_selected=True,
+                    is_confirmed=True,
+                    is_available=True,
+                    last_seen_at=datetime.now(timezone.utc),
+                )
+            )
             db.commit()
             db.refresh(connection)
 
@@ -665,14 +746,18 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
                 day_report.comment = "Проверено и изменено вручную"
                 connection.night_shift_split_enabled = True
                 db.commit()
-                with self.assertRaisesRegex(QuickRestoSyncError, "manual comment"):
-                    sync_quickresto_connection(
-                        db,
-                        connection=connection,
-                        requested_by_user_id=1,
-                        trigger="E2E",
-                        client=client,
-                    )
+                conflicted = sync_quickresto_connection(
+                    db,
+                    connection=connection,
+                    requested_by_user_id=1,
+                    trigger="E2E",
+                    client=client,
+                )
+                self.assertEqual(conflicted.status, "PARTIAL")
+                self.assertEqual(len(conflicted.summary_json["conflicts"]), 1)
+                issue = db.execute(select(QuickRestoImportIssue)).scalar_one()
+                self.assertEqual(issue.status, "OPEN")
+                self.assertEqual(issue.error_code, "REPORT_CONFLICT")
                 db.expire_all()
                 day_report = db.execute(
                     select(DailyReport).where(
@@ -709,5 +794,7 @@ class QuickRestoSyncIntegrationTests(unittest.TestCase):
             imported_shift = db.execute(select(QuickRestoShiftImport)).scalar_one()
             self.assertEqual(imported_shift.shift_slot, "NIGHT")
             self.assertEqual(imported_shift.daily_report_id, reports[0].id)
+            issue = db.execute(select(QuickRestoImportIssue)).scalar_one()
+            self.assertEqual(issue.status, "RESOLVED")
             delete_revenue.assert_called_once()
             reopen_sync.assert_called_once()

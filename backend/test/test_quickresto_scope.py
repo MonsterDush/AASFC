@@ -1,0 +1,495 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from datetime import date, datetime, timezone
+import unittest
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import Session
+
+from app.core.db import Base
+from app.models.daily_report import DailyReport
+from app.models.department import Department
+from app.models.payment_method import PaymentMethod
+from app.models.quickresto_connection import QuickRestoConnection
+from app.models.quickresto_department_mapping import QuickRestoDepartmentMapping
+from app.models.quickresto_external_venue import QuickRestoExternalVenue
+from app.models.quickresto_payment_mapping import QuickRestoPaymentMapping
+from app.models.quickresto_sale_place_scope import QuickRestoSalePlaceScope
+from app.models.quickresto_scope_audit import QuickRestoScopeAudit
+from app.models.quickresto_shift_import import QuickRestoShiftImport
+from app.models.quickresto_store_scope import QuickRestoStoreScope
+from app.models.user import User
+from app.models.venue import Venue
+from app.services.integrations.quickresto_scope import (
+    QuickRestoScopeConflictError,
+    QuickRestoScopeIndex,
+    apply_quickresto_scope,
+    evaluate_quickresto_shift_scope,
+    refresh_quickresto_catalog,
+    serialize_quickresto_catalog,
+)
+from app.services.integrations.quickresto_sync import refresh_quickresto_mappings
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_for_sqlite(_type, _compiler, **_kwargs):
+    return "JSON"
+
+
+class CatalogQuickRestoClient:
+    def __init__(self) -> None:
+        self.rows = {
+            "TableScheme": [
+                {"id": 101, "version": 7, "name": "Центр", "address": {"fullAddress": "Москва, Центр"}},
+                {"id": 102, "version": 8, "name": "Север", "address": {"fullAddress": "Москва, Север"}},
+            ],
+            "SalePlace": [
+                {
+                    "id": 201,
+                    "title": "Центр — касса",
+                    "tableScheme": {"id": 101},
+                    "defaultCookingPlace": {"id": 301},
+                },
+                {
+                    "id": 202,
+                    "title": "Центр — доставка",
+                    "tableScheme": {"id": 101},
+                    "defaultCookingPlace": {"id": 302},
+                },
+                {
+                    "id": 203,
+                    "title": "Север — касса",
+                    "tableScheme": {"id": 102},
+                    "defaultCookingPlace": {"id": 303},
+                },
+            ],
+            "CookingPlace": [
+                {"id": 301, "title": "Бар", "store": {"id": 401}},
+                {"id": 302, "title": "Кухня", "store": {"id": 402}},
+                {"id": 303, "title": "Север", "store": {"id": 403}},
+            ],
+            "Store": [
+                {"id": 401, "title": "Склад бара"},
+                {"id": 402, "title": "Склад кухни"},
+                {"id": 403, "title": "Склад Севера"},
+            ],
+            "PaymentType": [
+                {
+                    "id": 501,
+                    "name": "Наличные",
+                    "operationType": "payment",
+                    "allowedSalePlacesWeb": [],
+                },
+                {
+                    "id": 502,
+                    "name": "Только центр",
+                    "operationType": "payment",
+                    "allowedSalePlacesWeb": [{"id": 201}],
+                },
+                {
+                    "id": 503,
+                    "name": "Только север",
+                    "operationType": "payment",
+                    "allowedSalePlacesWeb": [{"id": 203}],
+                },
+            ],
+        }
+
+    def list_all_objects(self, *, module_name, class_name):
+        del module_name
+        key = class_name.rsplit(".", 1)[-1]
+        return deepcopy(self.rows[key])
+
+    def read_object(self, *, module_name, class_name, object_id):
+        del module_name
+        key = class_name.rsplit(".", 1)[-1]
+        return deepcopy(next(row for row in self.rows[key] if int(row["id"]) == int(object_id)))
+
+
+class SparsePaymentListQuickRestoClient(CatalogQuickRestoClient):
+    def list_all_objects(self, *, module_name, class_name):
+        if class_name.endswith("DishCategory"):
+            return []
+        rows = super().list_all_objects(module_name=module_name, class_name=class_name)
+        if class_name.endswith("PaymentType"):
+            for row in rows:
+                row.pop("allowedSalePlacesWeb", None)
+        return rows
+
+
+class QuickRestoScopeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(
+            self.engine,
+            tables=[
+                User.__table__,
+                Venue.__table__,
+                Department.__table__,
+                PaymentMethod.__table__,
+                DailyReport.__table__,
+                QuickRestoConnection.__table__,
+                QuickRestoDepartmentMapping.__table__,
+                QuickRestoExternalVenue.__table__,
+                QuickRestoSalePlaceScope.__table__,
+                QuickRestoScopeAudit.__table__,
+                QuickRestoStoreScope.__table__,
+                QuickRestoPaymentMapping.__table__,
+                QuickRestoShiftImport.__table__,
+            ],
+        )
+        self.db = Session(self.engine)
+        self.db.add(User(id=1, system_role="NONE"))
+        self.db.add(Venue(id=1, name="Axelio Центр"))
+        self.connection = QuickRestoConnection(
+            venue_id=1,
+            cloud="multi",
+            api_login_encrypted="v1:unused",
+            api_password_encrypted="v1:unused",
+            created_by_user_id=1,
+        )
+        self.db.add(self.connection)
+        self.db.commit()
+        self.db.refresh(self.connection)
+        self.client = CatalogQuickRestoClient()
+
+    def tearDown(self) -> None:
+        self.db.close()
+        self.engine.dispose()
+
+    def test_catalog_and_scope_filter_locations_stores_and_payments(self):
+        summary = refresh_quickresto_catalog(
+            self.db,
+            connection=self.connection,
+            client=self.client,
+        )
+        self.assertEqual(summary["venues_seen"], 2)
+        self.assertEqual(summary["sale_places_seen"], 3)
+        self.assertEqual(summary["stores_seen"], 3)
+        discovered = serialize_quickresto_catalog(self.db, connection=self.connection)
+        self.assertTrue(all(item["is_selected"] for item in discovered["sale_places"]))
+
+        result = apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201],
+            store_ids=[401],
+            actor_user_id=1,
+        )
+        self.assertTrue(result["changed"])
+        self.assertEqual(self.connection.external_venue_version, 7)
+        self.assertEqual(self.connection.scope_confirmed_by_user_id, 1)
+        confirmed = self.db.execute(
+            select(QuickRestoSalePlaceScope).where(
+                QuickRestoSalePlaceScope.connection_id == self.connection.id,
+                QuickRestoSalePlaceScope.external_id == 201,
+            )
+        ).scalar_one()
+        self.assertEqual(confirmed.confirmed_by_user_id, 1)
+        self.assertIsNotNone(confirmed.confirmed_at)
+        audit = self.db.execute(select(QuickRestoScopeAudit)).scalar_one()
+        self.assertEqual(audit.actor_user_id, 1)
+        self.assertEqual(audit.current_scope_json["external_venue_id"], 101)
+        self.assertEqual(result["scope_status"], "READY")
+
+        catalog = serialize_quickresto_catalog(self.db, connection=self.connection)
+        selected_places = [item["external_id"] for item in catalog["sale_places"] if item["is_selected"]]
+        selected_stores = [item["external_id"] for item in catalog["stores"] if item["is_selected"]]
+        applicable_payments = [item["external_id"] for item in catalog["payment_types"] if item["is_applicable"]]
+        self.assertEqual(selected_places, [201])
+        self.assertEqual(selected_stores, [401])
+        self.assertEqual(applicable_payments, [501, 502])
+
+    def test_mapping_refresh_reads_payment_scope_from_object_detail_when_list_is_sparse(self):
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201],
+            store_ids=[401],
+        )
+
+        refresh_quickresto_mappings(
+            self.db,
+            connection=self.connection,
+            client=SparsePaymentListQuickRestoClient(),
+        )
+
+        center_only = self.db.execute(
+            select(QuickRestoPaymentMapping).where(
+                QuickRestoPaymentMapping.connection_id == self.connection.id,
+                QuickRestoPaymentMapping.external_id == 502,
+            )
+        ).scalar_one()
+        north_only = self.db.execute(
+            select(QuickRestoPaymentMapping).where(
+                QuickRestoPaymentMapping.connection_id == self.connection.id,
+                QuickRestoPaymentMapping.external_id == 503,
+            )
+        ).scalar_one()
+
+        self.assertEqual(center_only.allowed_sale_place_ids_json, [201])
+        self.assertTrue(center_only.is_applicable)
+        self.assertEqual(north_only.allowed_sale_place_ids_json, [203])
+        self.assertFalse(north_only.is_applicable)
+
+    def test_same_cloud_venue_cannot_be_linked_twice(self):
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201],
+            store_ids=[401],
+        )
+        self.db.add(Venue(id=2, name="Axelio Дубль"))
+        duplicate = QuickRestoConnection(
+            venue_id=2,
+            cloud="multi",
+            api_login_encrypted="v1:unused",
+            api_password_encrypted="v1:unused",
+            created_by_user_id=1,
+        )
+        self.db.add(duplicate)
+        self.db.flush()
+        refresh_quickresto_catalog(self.db, connection=duplicate, client=self.client)
+
+        with self.assertRaisesRegex(QuickRestoScopeConflictError, "уже подключено"):
+            apply_quickresto_scope(
+                self.db,
+                connection=duplicate,
+                external_venue_id=101,
+                sale_place_ids=[201],
+                store_ids=[401],
+            )
+
+    def test_external_venue_change_after_import_is_staged_for_reconciliation(self):
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201],
+            store_ids=[401],
+        )
+        self.db.add(
+            QuickRestoShiftImport(
+                connection_id=self.connection.id,
+                external_shift_id="shift-1",
+                external_shift_pk=1,
+                source_version=1,
+                business_date=date(2030, 1, 15),
+                shift_slot="DAY",
+                payload_hash="a" * 64,
+                normalized_json={},
+            )
+        )
+        self.db.flush()
+
+        result = apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=102,
+            sale_place_ids=[203],
+            store_ids=[403],
+        )
+
+        self.assertTrue(result["pending"])
+        self.assertTrue(result["historical_reconciliation_required"])
+        self.assertEqual(result["scope_status"], "PENDING_RECONCILIATION")
+        self.assertEqual(result["scope_generation"], 2)
+        self.assertEqual(result["active_scope_generation"], 1)
+
+        self.assertEqual(self.connection.external_venue_id, 101)
+        self.assertEqual(self.connection.scope_generation, 1)
+        self.assertEqual(self.connection.pending_external_venue_id, 102)
+        self.assertEqual(self.connection.pending_sale_place_ids_json, [203])
+        self.assertEqual(self.connection.pending_store_ids_json, [403])
+        self.assertEqual(self.connection.pending_scope_generation, 2)
+
+        active_sale_places = set(
+            self.db.execute(
+                select(QuickRestoSalePlaceScope.external_id).where(
+                    QuickRestoSalePlaceScope.connection_id == self.connection.id,
+                    QuickRestoSalePlaceScope.is_selected.is_(True),
+                )
+            ).scalars()
+        )
+        self.assertEqual(active_sale_places, {201})
+
+    def test_sale_place_scope_change_after_import_is_staged_for_reconciliation(self):
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201, 202],
+            store_ids=[401, 402],
+        )
+        self.db.add(
+            QuickRestoShiftImport(
+                connection_id=self.connection.id,
+                external_shift_id="shift-sale-place-scope",
+                external_shift_pk=2,
+                source_version=1,
+                business_date=date(2030, 1, 16),
+                shift_slot="DAY",
+                payload_hash="b" * 64,
+                normalized_json={},
+            )
+        )
+        self.db.flush()
+
+        result = apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201],
+            store_ids=[401],
+        )
+
+        self.assertTrue(result["pending"])
+        self.assertTrue(result["historical_reconciliation_required"])
+        self.assertEqual(result["scope_status"], "PENDING_RECONCILIATION")
+        self.assertEqual(result["scope_generation"], 2)
+        self.assertEqual(result["active_scope_generation"], 1)
+
+        self.assertEqual(self.connection.external_venue_id, 101)
+        self.assertEqual(self.connection.scope_generation, 1)
+        self.assertEqual(self.connection.pending_external_venue_id, 101)
+        self.assertEqual(self.connection.pending_sale_place_ids_json, [201])
+        self.assertEqual(self.connection.pending_store_ids_json, [401])
+        self.assertEqual(self.connection.pending_scope_generation, 2)
+
+        active_sale_places = set(
+            self.db.execute(
+                select(QuickRestoSalePlaceScope.external_id).where(
+                    QuickRestoSalePlaceScope.connection_id == self.connection.id,
+                    QuickRestoSalePlaceScope.is_selected.is_(True),
+                )
+            ).scalars()
+        )
+        active_stores = set(
+            self.db.execute(
+                select(QuickRestoStoreScope.external_id).where(
+                    QuickRestoStoreScope.connection_id == self.connection.id,
+                    QuickRestoStoreScope.is_selected.is_(True),
+                )
+            ).scalars()
+        )
+        self.assertEqual(active_sale_places, {201, 202})
+        self.assertEqual(active_stores, {401, 402})
+
+    def test_shift_scope_decisions_are_explicit_and_safe(self):
+        now = datetime.now(timezone.utc)
+        scope = QuickRestoScopeIndex(
+            external_venue_id=101,
+            sale_places={
+                201: QuickRestoSalePlaceScope(
+                    connection_id=1,
+                    external_id=201,
+                    external_name="Выбрано",
+                    external_venue_id=101,
+                    is_selected=True,
+                    is_confirmed=True,
+                    is_available=True,
+                    last_seen_at=now,
+                ),
+                202: QuickRestoSalePlaceScope(
+                    connection_id=1,
+                    external_id=202,
+                    external_name="Исключено",
+                    external_venue_id=101,
+                    is_selected=False,
+                    is_confirmed=True,
+                    is_available=True,
+                    last_seen_at=now,
+                ),
+                203: QuickRestoSalePlaceScope(
+                    connection_id=1,
+                    external_id=203,
+                    external_name="Другое заведение",
+                    external_venue_id=102,
+                    is_selected=False,
+                    is_confirmed=True,
+                    is_available=True,
+                    last_seen_at=now,
+                ),
+            },
+        )
+
+        imported = evaluate_quickresto_shift_scope(
+            {"tableScheme": {"id": 101}, "salePlace": {"id": 201}},
+            scope=scope,
+        )
+        excluded = evaluate_quickresto_shift_scope(
+            {"tableScheme": {"id": 101}, "salePlace": {"id": 202}},
+            scope=scope,
+        )
+        other = evaluate_quickresto_shift_scope(
+            {"tableScheme": {"id": 102}, "salePlace": {"id": 203}},
+            scope=scope,
+        )
+        unresolved = evaluate_quickresto_shift_scope({"id": 1}, scope=scope)
+        conflict = evaluate_quickresto_shift_scope(
+            {
+                "tableScheme": {"id": 101},
+                "salePlace": {"id": 201},
+                "createTerminalSalePlace": {"id": 202},
+            },
+            scope=scope,
+        )
+
+        self.assertEqual(imported.action, "IMPORT")
+        self.assertEqual(excluded.action, "SKIP_UNSELECTED_SALE_PLACE")
+        self.assertEqual(other.action, "SKIP_OTHER_VENUE")
+        self.assertEqual(unresolved.error.error_code, "LOCATION_UNRESOLVED")
+        self.assertEqual(conflict.error.error_code, "LOCATION_SCOPE_CONFLICT")
+
+    def test_new_sale_place_after_confirmation_stays_unselected_and_requires_review(self):
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        apply_quickresto_scope(
+            self.db,
+            connection=self.connection,
+            external_venue_id=101,
+            sale_place_ids=[201],
+            store_ids=[401],
+            actor_user_id=1,
+        )
+        self.client.rows["SalePlace"].append(
+            {
+                "id": 204,
+                "title": "Центр — новая касса",
+                "tableScheme": {"id": 101},
+                "defaultCookingPlace": {"id": 301},
+            }
+        )
+        refresh_quickresto_catalog(self.db, connection=self.connection, client=self.client)
+        catalog = serialize_quickresto_catalog(self.db, connection=self.connection)
+        new_place = next(item for item in catalog["sale_places"] if item["external_id"] == 204)
+        self.assertFalse(new_place["is_selected"])
+        self.assertFalse(new_place["is_confirmed"])
+        scope = QuickRestoScopeIndex(
+            external_venue_id=101,
+            sale_places={
+                int(row.external_id): row
+                for row in self.db.execute(
+                    select(QuickRestoSalePlaceScope).where(QuickRestoSalePlaceScope.connection_id == self.connection.id)
+                ).scalars()
+            },
+        )
+        decision = evaluate_quickresto_shift_scope(
+            {"tableScheme": {"id": 101}, "salePlace": {"id": 204}},
+            scope=scope,
+        )
+        self.assertEqual(decision.action, "ISSUE")
+        self.assertEqual(decision.error.error_code, "LOCATION_SCOPE_CHANGED")
+
+
+if __name__ == "__main__":
+    unittest.main()

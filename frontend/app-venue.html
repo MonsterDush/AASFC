@@ -301,6 +301,7 @@
         let canViewExpenses = false;
         let canViewPayProfiles = false;
         let canViewPayroll = false;
+        let canViewIntegrations = false;
         let canOpenVenue = false;
         let billingStatus = "ACTIVE";
         let billingAccessMode = "FULL";
@@ -338,6 +339,7 @@
           canViewExpenses = isOwner || isAdmin || hasPerm(pset, "EXPENSE_VIEW") || hasPerm(pset, "EXPENSE_ADD");
           canViewPayProfiles = isOwner || isAdmin || hasPerm(pset, "PAY_PROFILES_VIEW") || hasPerm(pset, "PAY_PROFILES_MANAGE");
           canViewPayroll = isOwner || isAdmin || hasPerm(pset, "PAYROLL_VIEW") || hasPerm(pset, "PAYROLL_CALCULATE");
+          canViewIntegrations = isOwner || isAdmin || hasPerm(pset, "INTEGRATIONS_VIEW") || hasPerm(pset, "INTEGRATIONS_MANAGE");
 
           billingStatus = getBillingStatus(perms);
           billingAccessMode = getBillingAccessMode(perms);
@@ -349,6 +351,7 @@
             canManageIntervals = false;
             canEditVenueSettings = false;
             canManageStaff = false;
+            canViewIntegrations = false;
           }
 
           canOpenVenue = isOwner || isAdmin || hasPerm(pset, "VENUE_VIEW") || canEditVenueSettings;
@@ -1052,7 +1055,7 @@ openAdjustments.href = canManageAdjustments
           setVisible(openPayroll, canViewPayroll);
           setVisible(openDayEconomics, canViewRevenue || canViewExpenses);
           setVisible(openExpenses, canViewExpenses);
-          setVisible(openIntegrations, (isOwner || isAdmin) && !demoReadonly);
+          setVisible(openIntegrations, canViewIntegrations && !demoReadonly);
 
           if (financeCard) {
             const showFinance = [openAdjustments, openSummary, openPayProfiles, openPayroll, openDayEconomics, openExpenses, openEconomicsPlans, openEconomicsRules].some(isVisible);
