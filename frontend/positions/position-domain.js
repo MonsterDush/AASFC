@@ -122,6 +122,7 @@ function normalizePositionPresets(out) {
     const x = { ...(p || {}) };
     x.id = String(x.id || `preset-${idx + 1}`);
     x.title = String(x.title || "").trim();
+    x.venue_position_id = Number(x.venue_position_id || 0) || null;
     x.rate = Math.max(0, Math.round(Number(x.rate || 0) || 0));
     x.percent = Math.max(0, Math.min(100, Math.round(Number(x.percent || 0) || 0)));
     x.pay_profile_id = x.pay_profile_id != null && x.pay_profile_id !== "" ? Number(x.pay_profile_id) || null : null;
@@ -152,13 +153,23 @@ function positionPresetFromTemplate(title) {
   const t = String(title || "").trim();
   if (!t) return null;
 
-  const src = positionSources().find((x) => String(x.title || "").trim() === t) || { title: t };
+  const sources = positionSources();
+  const matchesTitle = (x) => String(x?.title || "").trim() === t;
+  const src =
+    sources.find((x) => matchesTitle(x) && Number(x?.venue_position_id || 0) > 0)
+    || sources.find((x) => matchesTitle(x) && !Number(x?.member_user_id || 0))
+    || sources.find(matchesTitle)
+    || { title: t };
 
   // Only permission_codes are stored in invite preset (no legacy flags).
   const permission_codes = parsePermCodes(src.permission_codes);
+  const venue_position_id = Number(
+    src.venue_position_id || (!Number(src.member_user_id || 0) ? src.id : 0),
+  ) || null;
 
   return {
     title: t,
+    venue_position_id,
     rate: Math.max(0, Math.round(Number(src.rate || 0) || 0)),
     percent: Math.max(0, Math.min(100, Math.round(Number(src.percent || 0) || 0))),
     pay_profile_id: src.pay_profile_id || null,

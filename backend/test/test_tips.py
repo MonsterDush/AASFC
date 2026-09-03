@@ -222,6 +222,7 @@ class TipAllocationIntegrationTests(TestCase):
                 title="Полная смена",
                 start_time=time(10, 0),
                 end_time=time(22, 0),
+                position_id=None,
             )
         ]
         assignments = [

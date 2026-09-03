@@ -153,6 +153,7 @@ const state = {
   me: null,
   perms: null,
   items: [],
+  positions: [],
   includeArchived: false,
   canManage: false,
 };
@@ -163,6 +164,25 @@ function sortIntervals(list) {
     const bb = `${b?.start_time || ""}|${b?.end_time || ""}|${b?.title || ""}`;
     return aa.localeCompare(bb, "ru");
   });
+}
+
+function catalogPositions() {
+  return (state.positions || [])
+    .filter((item) => item && item.is_active !== false && !Number(item.member_user_id || 0))
+    .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "ru"));
+}
+
+function positionOptions(selectedId = null, selectedTitle = "") {
+  const selected = selectedId == null ? "" : String(selectedId);
+  const items = catalogPositions();
+  const options = ['<option value="">Все должности</option>'];
+  if (selected && !items.some((item) => String(item.id) === selected)) {
+    options.push(`<option value="${esc(selected)}" selected>${esc(selectedTitle || "Должность")} · архив</option>`);
+  }
+  options.push(...items.map((item) => (
+    `<option value="${esc(item.id)}" ${String(item.id) === selected ? "selected" : ""}>${esc(item.title)}</option>`
+  )));
+  return options.join("");
 }
 
 function renderList() {
@@ -189,7 +209,12 @@ function renderList() {
           <b>${esc(item.title)}</b>
           ${item.is_active ? "" : `<span class="badge">архив</span>`}
         </div>
-        <div class="mono muted listrow__meta">${esc(formatShiftIntervalRange(item.start_time, item.end_time))} · Смен: ${Number(item.usage_count || 0)} · Шаблонов: ${Number(item.template_usage_count || 0)}</div>
+        <div class="mono muted listrow__meta">
+          ${esc(formatShiftIntervalRange(item.start_time, item.end_time))}
+          · <span>Должность</span>: ${esc(item.position_title || "Все должности")}
+          · Смен: ${Number(item.usage_count || 0)}
+          · Шаблонов: ${Number(item.template_usage_count || 0)}
+        </div>
       </div>
       <div class="row row--nowrap gap-8 shift-tool-row__actions">
         <button class="btn sm" data-edit="${item.id}">Изменить</button>
@@ -280,6 +305,10 @@ function editorForm({ mode, item }) {
         <div class="muted mb-6">Конец</div>
         <input id="f_end" class="input" type="time" value="${esc(it.end_time || "")}" />
       </div>
+      <div>
+        <div class="muted mb-6">Должность</div>
+        <select id="f_position" class="input">${positionOptions(it.position_id, it.position_title)}</select>
+      </div>
     </div>
 
     <div class="row row--end gap-8 mt-12 shift-tool-modal-actions">
@@ -302,6 +331,8 @@ function openEditor({ mode, item }) {
     const title = document.getElementById("f_title")?.value?.trim();
     const start = document.getElementById("f_start")?.value?.trim();
     const end = document.getElementById("f_end")?.value?.trim();
+    const positionRaw = document.getElementById("f_position")?.value || "";
+    const position_id = positionRaw ? Number(positionRaw) : null;
     const is_active = !!document.getElementById("f_active")?.checked;
 
     if (!title) return toast("Укажи название", "warn");
@@ -312,13 +343,13 @@ function openEditor({ mode, item }) {
       if (isEdit) {
         await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals/${encodeURIComponent(item.id)}`, {
           method: "PATCH",
-          body: { title, start_time: start, end_time: end, is_active },
+          body: { title, start_time: start, end_time: end, position_id, is_active },
         });
         toast("Интервал обновлён", "ok");
       } else {
         await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals`, {
           method: "POST",
-          body: { title, start_time: start, end_time: end, is_active },
+          body: { title, start_time: start, end_time: end, position_id, is_active },
         });
         toast("Интервал создан", "ok");
       }
@@ -331,8 +362,12 @@ function openEditor({ mode, item }) {
 }
 
 async function load() {
-  const out = await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals?include_inactive=${state.includeArchived ? 1 : 0}`);
+  const [out, positionsOut] = await Promise.all([
+    api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals?include_inactive=${state.includeArchived ? 1 : 0}`),
+    api(`/venues/${encodeURIComponent(state.venueId)}/positions`),
+  ]);
   state.items = normalizeList(out);
+  state.positions = normalizeList(positionsOut);
   renderList();
 }
 

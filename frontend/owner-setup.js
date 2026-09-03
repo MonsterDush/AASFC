@@ -744,6 +744,7 @@ function getPositionPresets() {
   return Array.isArray(raw) ? raw.map((item, idx) => ({
     id: String(item?.id || `preset-${idx + 1}`),
     title: String(item?.title || "").trim(),
+    venue_position_id: Number(item?.venue_position_id || 0) || null,
     pay_profile_id: item?.pay_profile_id ? Number(item.pay_profile_id) : null,
     pay_profile_title: String(item?.pay_profile_title || "").trim(),
     template_id: item?.template_id ? String(item.template_id) : "",
@@ -757,9 +758,63 @@ function getPositionPresets() {
 
 async function savePositionPresets(presets) {
   const meta = defaultPositionPresetMeta();
+  const previous = getPositionPresets();
+  const previousById = new Map(previous.map((item) => [String(item.id), item]));
+  const nextIds = new Set((presets || []).map((item) => String(item?.id || "")));
+  const synced = [];
+
+  for (const raw of presets || []) {
+    const presetId = String(raw?.id || "").trim();
+    const previousPreset = previousById.get(presetId) || null;
+    let venuePositionId = Number(raw?.venue_position_id || previousPreset?.venue_position_id || 0) || null;
+    const positionPayload = {
+      title: String(raw?.title || "").trim(),
+      pay_profile_id: raw?.pay_profile_id ? Number(raw.pay_profile_id) : null,
+      is_active: raw?.is_active !== false,
+      permission_codes: parsePermissionCodes(raw?.permission_codes),
+      rate: Number(raw?.rate || 0) || 0,
+      percent: Number(raw?.percent || 0) || 0,
+    };
+
+    if (!positionPayload.title) continue;
+
+    if (venuePositionId) {
+      try {
+        await api(
+          `/venues/${encodeURIComponent(state.venueId)}/positions/${encodeURIComponent(venuePositionId)}`,
+          { method: "PATCH", body: positionPayload },
+        );
+      } catch (e) {
+        if (Number(e?.status || 0) !== 404) throw e;
+        venuePositionId = null;
+      }
+    }
+
+    if (!venuePositionId) {
+      const created = await api(`/venues/${encodeURIComponent(state.venueId)}/positions`, {
+        method: "POST",
+        body: { ...positionPayload, member_user_id: null },
+      });
+      venuePositionId = Number(created?.id || 0) || null;
+    }
+
+    synced.push({
+      ...raw,
+      venue_position_id: venuePositionId,
+    });
+  }
+
+  for (const oldPreset of previous) {
+    if (!oldPreset?.venue_position_id || nextIds.has(String(oldPreset.id))) continue;
+    await api(
+      `/venues/${encodeURIComponent(state.venueId)}/positions/${encodeURIComponent(oldPreset.venue_position_id)}`,
+      { method: "DELETE" },
+    );
+  }
+
   const next = {
-    presets,
-    seq: Math.max(Number(meta.seq || 0) || 0, presets.length),
+    presets: synced,
+    seq: Math.max(Number(meta.seq || 0) || 0, synced.length),
     updated_at: new Date().toISOString(),
   };
   await api(`/venues/${encodeURIComponent(state.venueId)}/setup`, {
