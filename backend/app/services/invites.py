@@ -170,9 +170,7 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
     catalog_position_id_raw = preset.get("venue_position_id")
     try:
         catalog_position_id = (
-            int(catalog_position_id_raw)
-            if catalog_position_id_raw not in (None, "", 0, "0")
-            else None
+            int(catalog_position_id_raw) if catalog_position_id_raw not in (None, "", 0, "0") else None
         )
     except Exception:
         catalog_position_id = None
@@ -198,11 +196,7 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
             "permission_codes": catalog_position.permission_codes or json.dumps([]),
             "is_active": True,
         }
-        pay_profile_id = (
-            int(catalog_position.pay_profile_id)
-            if catalog_position.pay_profile_id is not None
-            else None
-        )
+        pay_profile_id = int(catalog_position.pay_profile_id) if catalog_position.pay_profile_id is not None else None
 
     if catalog_position is None:
         catalog_position = (

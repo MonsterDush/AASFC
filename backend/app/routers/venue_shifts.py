@@ -463,9 +463,7 @@ def list_shifts(
     if interval_ids:
         rows = db.execute(select(ShiftInterval).where(ShiftInterval.id.in_(interval_ids))).scalars().all()
         intervals = {r.id: r for r in rows}
-        required_position_ids = sorted(
-            {int(r.position_id) for r in rows if r.position_id is not None}
-        )
+        required_position_ids = sorted({int(r.position_id) for r in rows if r.position_id is not None})
         if required_position_ids:
             position_rows = db.execute(
                 select(VenuePosition.id, VenuePosition.title).where(
@@ -473,10 +471,7 @@ def list_shifts(
                     VenuePosition.id.in_(required_position_ids),
                 )
             ).all()
-            interval_position_titles = {
-                int(row.id): str(row.title or "")
-                for row in position_rows
-            }
+            interval_position_titles = {int(row.id): str(row.title or "") for row in position_rows}
 
     # preload assignments
     shift_ids = [s.id for s in shifts]
@@ -541,9 +536,7 @@ def list_shifts(
             "end_time": it.end_time.strftime("%H:%M"),
             "position_id": int(it.position_id) if it.position_id is not None else None,
             "position_title": (
-                interval_position_titles.get(int(it.position_id))
-                if it.position_id is not None
-                else None
+                interval_position_titles.get(int(it.position_id)) if it.position_id is not None else None
             ),
         }
 

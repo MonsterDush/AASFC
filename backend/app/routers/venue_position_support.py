@@ -31,11 +31,7 @@ def _normalize_position_preset_item(raw: object, *, idx: int = 0) -> dict | None
         pay_profile_id = None
     venue_position_id = raw.get("venue_position_id")
     try:
-        venue_position_id = (
-            int(venue_position_id)
-            if venue_position_id not in (None, "", 0, "0")
-            else None
-        )
+        venue_position_id = int(venue_position_id) if venue_position_id not in (None, "", 0, "0") else None
     except Exception:
         venue_position_id = None
     return {

@@ -76,17 +76,12 @@ def list_shift_intervals(
     stmt = select(ShiftInterval).where(ShiftInterval.venue_id == venue_id)
     if position_id is not None:
         _catalog_position_or_400(db, venue_id=venue_id, position_id=position_id)
-        stmt = stmt.where(
-            (ShiftInterval.position_id.is_(None))
-            | (ShiftInterval.position_id == int(position_id))
-        )
+        stmt = stmt.where((ShiftInterval.position_id.is_(None)) | (ShiftInterval.position_id == int(position_id)))
     if not include_inactive:
         stmt = stmt.where(ShiftInterval.is_active.is_(True))
 
     rows = db.execute(stmt.order_by(ShiftInterval.start_time.asc(), ShiftInterval.id.asc())).scalars().all()
-    linked_position_ids = sorted(
-        {int(row.position_id) for row in rows if row.position_id is not None}
-    )
+    linked_position_ids = sorted({int(row.position_id) for row in rows if row.position_id is not None})
     position_titles: dict[int, str] = {}
     if linked_position_ids:
         position_rows = db.execute(
@@ -95,10 +90,7 @@ def list_shift_intervals(
                 VenuePosition.id.in_(linked_position_ids),
             )
         ).all()
-        position_titles = {
-            int(row.id): str(row.title or "")
-            for row in position_rows
-        }
+        position_titles = {int(row.id): str(row.title or "") for row in position_rows}
 
     usage_rows = db.execute(
         select(Shift.interval_id, func.count(Shift.id)).where(Shift.venue_id == venue_id).group_by(Shift.interval_id)
@@ -118,11 +110,7 @@ def list_shift_intervals(
             "start_time": r.start_time.strftime("%H:%M"),
             "end_time": r.end_time.strftime("%H:%M"),
             "position_id": int(r.position_id) if r.position_id is not None else None,
-            "position_title": (
-                position_titles.get(int(r.position_id))
-                if r.position_id is not None
-                else None
-            ),
+            "position_title": (position_titles.get(int(r.position_id)) if r.position_id is not None else None),
             "is_active": bool(r.is_active),
             "usage_count": usage_by_interval.get(r.id, 0),
             "template_usage_count": template_usage_by_interval.get(r.id, 0),
