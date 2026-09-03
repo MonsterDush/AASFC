@@ -38,6 +38,46 @@ from app.services.venue_member_names import load_member_display_names, load_owne
 router = APIRouter()
 
 
+def _ensure_catalog_position(
+    db: Session,
+    *,
+    venue_id: int,
+    title: str,
+    rate: int,
+    percent: int,
+    pay_profile_id: int | None,
+    permission_codes: str | None,
+) -> VenuePosition:
+    catalog = (
+        db.execute(
+            select(VenuePosition)
+            .where(
+                VenuePosition.venue_id == int(venue_id),
+                VenuePosition.member_user_id.is_(None),
+                VenuePosition.title == str(title or "").strip(),
+            )
+            .order_by(VenuePosition.is_active.desc(), VenuePosition.id.asc())
+        )
+        .scalars()
+        .first()
+    )
+    if catalog is None:
+        catalog = VenuePosition(
+            venue_id=int(venue_id),
+            member_user_id=None,
+            title=str(title or "").strip(),
+            rate=int(rate or 0),
+            percent=int(percent or 0),
+            pay_profile_id=pay_profile_id,
+            permission_codes=permission_codes,
+            is_active=True,
+        )
+        db.add(catalog)
+    elif not catalog.is_active:
+        catalog.is_active = True
+    return catalog
+
+
 @router.get("/{venue_id}/position-presets", response_model=PositionPresetsOut)
 def list_position_presets(
     venue_id: int,
@@ -228,25 +268,31 @@ def create_position(
             raise HTTPException(status_code=400, detail="Pay profile not found in venue")
 
     title = payload.title.strip()
-    pos = None
-    if payload.member_user_id is not None:
-        pos = (
-            db.execute(
-                select(VenuePosition)
-                .where(
-                    VenuePosition.venue_id == venue_id,
-                    VenuePosition.member_user_id.is_(None),
-                    VenuePosition.is_active.is_(True),
-                    VenuePosition.title == title,
-                )
-                .order_by(VenuePosition.id.asc())
+    member_filter = (
+        VenuePosition.member_user_id.is_(None)
+        if payload.member_user_id is None
+        else VenuePosition.member_user_id == payload.member_user_id
+    )
+    pos = (
+        db.execute(
+            select(VenuePosition)
+            .where(
+                VenuePosition.venue_id == venue_id,
+                member_filter,
+                VenuePosition.title == title,
             )
-            .scalars()
-            .first()
+            .order_by(VenuePosition.is_active.desc(), VenuePosition.id.asc())
         )
+        .scalars()
+        .first()
+    )
+    created = pos is None
     if pos is None:
-        pos = VenuePosition(venue_id=venue_id)
+        pos = VenuePosition(venue_id=venue_id, member_user_id=payload.member_user_id)
         db.add(pos)
+
+    # A catalog row (member_user_id=NULL) is stable and is never "claimed"
+    # by an employee. Employee assignments are separate VenuePosition rows.
     pos.member_user_id = payload.member_user_id
     pos.title = title
     pos.rate = payload.rate
@@ -254,11 +300,29 @@ def create_position(
     pos.pay_profile_id = payload.pay_profile_id
     pos.permission_codes = json.dumps(norm_codes) if codes_provided else json.dumps([])
     pos.is_active = payload.is_active
+    if pos.member_user_id is not None and pos.is_active:
+        _ensure_catalog_position(
+            db,
+            venue_id=venue_id,
+            title=pos.title,
+            rate=pos.rate,
+            percent=pos.percent,
+            pay_profile_id=pos.pay_profile_id,
+            permission_codes=pos.permission_codes,
+        )
     db.commit()
     db.refresh(pos)
     return {
         "id": pos.id,
-        "mode": "assigned_empty" if payload.member_user_id is not None else "created_empty",
+        "mode": (
+            "created_catalog"
+            if payload.member_user_id is None and created
+            else "updated_catalog"
+            if payload.member_user_id is None
+            else "created_assignment"
+            if created
+            else "updated_assignment"
+        ),
         "pay_profile_id": int(profile.id) if profile is not None else None,
         "pay_profile_title": profile.title if profile is not None else None,
         "pay_profile_assignment_id": None,
@@ -320,7 +384,23 @@ def update_position(
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITION_PERMISSIONS_MANAGE")
 
     if payload.title is not None:
-        pos.title = payload.title.strip()
+        next_title = payload.title.strip()
+        if pos.member_user_id is None and next_title != pos.title:
+            assigned_rows = (
+                db.execute(
+                    select(VenuePosition).where(
+                        VenuePosition.venue_id == venue_id,
+                        VenuePosition.member_user_id.is_not(None),
+                        VenuePosition.is_active.is_(True),
+                        VenuePosition.title == pos.title,
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for assigned in assigned_rows:
+                assigned.title = next_title
+        pos.title = next_title
     if payload.rate is not None:
         pos.rate = payload.rate
     if payload.percent is not None:
@@ -344,6 +424,17 @@ def update_position(
         pos.pay_profile_id = payload.pay_profile_id
     elif pos.pay_profile_id is not None:
         profile = db.execute(select(PayProfile).where(PayProfile.id == pos.pay_profile_id)).scalar_one_or_none()
+
+    if pos.member_user_id is not None and pos.is_active:
+        _ensure_catalog_position(
+            db,
+            venue_id=venue_id,
+            title=pos.title,
+            rate=pos.rate,
+            percent=pos.percent,
+            pay_profile_id=pos.pay_profile_id,
+            permission_codes=pos.permission_codes,
+        )
 
     db.commit()
     db.refresh(pos)

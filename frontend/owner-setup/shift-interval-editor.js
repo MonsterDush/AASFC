@@ -16,6 +16,29 @@ export function createShiftIntervalSetupController(context) {
     }
   }
 
+  async function loadInlineShiftPositions({ force = false } = {}) {
+    const inlineState = state.inline.shift_intervals;
+    if (!force && Array.isArray(inlineState.positions)) return inlineState.positions;
+    const out = await api(`/venues/${encodeURIComponent(state.venueId)}/positions`);
+    inlineState.positions = Array.isArray(out) ? out : [];
+    return inlineState.positions;
+  }
+
+  function intervalPositionOptions(selectedId = null, selectedTitle = "") {
+    const selected = selectedId == null ? "" : String(selectedId);
+    const items = (state.inline.shift_intervals.positions || [])
+      .filter((item) => item && item.is_active !== false && !Number(item.member_user_id || 0))
+      .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "ru"));
+    const options = ['<option value="">Все должности</option>'];
+    if (selected && !items.some((item) => String(item.id) === selected)) {
+      options.push(`<option value="${esc(selected)}" selected>${esc(selectedTitle || "Должность")} · архив</option>`);
+    }
+    options.push(...items.map((item) => (
+      `<option value="${esc(item.id)}" ${String(item.id) === selected ? "selected" : ""}>${esc(item.title)}</option>`
+    )));
+    return options.join("");
+  }
+
   function renderShiftIntervalsEditor(items, currentStep) {
     const inlineState = state.inline.shift_intervals;
     const cfg = { listLabel: "Настроенные интервалы смен" };
@@ -43,7 +66,11 @@ export function createShiftIntervalSetupController(context) {
                       <b>${esc(item.title)}</b>
                       ${item.is_active === false ? '<span class="badge">архив</span>' : ''}
                     </div>
-                    <div class="setup-minirow__meta">${esc(formatShiftIntervalRange(item.start_time, item.end_time))} · Смен: ${Number(item.usage_count || 0)}</div>
+                    <div class="setup-minirow__meta">
+                      ${esc(formatShiftIntervalRange(item.start_time, item.end_time))}
+                      · <span>Должность</span>: ${esc(item.position_title || "Все должности")}
+                      · Смен: ${Number(item.usage_count || 0)}
+                    </div>
                   </div>
                   <div class="setup-minirow__actions">
                     <button class="btn sm" type="button" data-edit-interval="${esc(item.id)}">Изменить</button>
@@ -77,6 +104,10 @@ export function createShiftIntervalSetupController(context) {
                 <span>Окончание</span>
                 <input class="input" id="intervalEnd" type="time" value="${esc(editing?.end_time || '')}" />
               </label>
+              <label>
+                <span>Должность</span>
+                <select class="input" id="intervalPosition">${intervalPositionOptions(editing?.position_id, editing?.position_title)}</select>
+              </label>
             </div>
             <div class="setup-actionbar mt-12">
               <button class="btn primary" id="btnSaveIntervalInline" type="button">${editing ? 'Сохранить' : 'Создать'}</button>
@@ -97,7 +128,10 @@ export function createShiftIntervalSetupController(context) {
     const host = document.getElementById('setupInlineEditor');
     if (!host) return;
     host.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
-    const items = await loadInlineShiftIntervals();
+    const [items] = await Promise.all([
+      loadInlineShiftIntervals(),
+      loadInlineShiftPositions(),
+    ]);
     if (Number(currentStep.count || 0) !== items.filter((item) => item.is_active !== false).length) {
       await loadSetup({ preserveSelection: true });
       return;
@@ -111,7 +145,10 @@ export function createShiftIntervalSetupController(context) {
     });
 
     document.getElementById('btnReloadIntervalsInline')?.addEventListener('click', async () => {
-      await loadInlineShiftIntervals({ force: true });
+      await Promise.all([
+        loadInlineShiftIntervals({ force: true }),
+        loadInlineShiftPositions({ force: true }),
+      ]);
       await loadSetup({ preserveSelection: true });
       await mountShiftIntervalsEditor(getStepByKey('shift_intervals') || currentStep);
       toast('Список обновлён', 'ok');
@@ -126,15 +163,17 @@ export function createShiftIntervalSetupController(context) {
       const title = String(document.getElementById('intervalTitle')?.value || '').trim();
       const start_time = String(document.getElementById('intervalStart')?.value || '').trim();
       const end_time = String(document.getElementById('intervalEnd')?.value || '').trim();
+      const positionRaw = String(document.getElementById('intervalPosition')?.value || '').trim();
+      const position_id = positionRaw ? Number(positionRaw) : null;
       const is_active = String(document.getElementById('intervalActive')?.value || '1') === '1';
       if (!title) return toast('Укажи название интервала', 'err');
       if (!/^\d{2}:\d{2}$/.test(start_time)) return toast('Укажи время начала', 'err');
       if (!/^\d{2}:\d{2}$/.test(end_time)) return toast('Укажи время окончания', 'err');
       try {
         if (inlineState.editor?.id) {
-          await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: { title, start_time, end_time, is_active } });
+          await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: { title, start_time, end_time, position_id, is_active } });
         } else {
-          await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals`, { method: 'POST', body: { title, start_time, end_time, is_active } });
+          await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals`, { method: 'POST', body: { title, start_time, end_time, position_id, is_active } });
         }
         inlineState.editor = { mode: 'create', id: null };
         await loadInlineShiftIntervals({ force: true });

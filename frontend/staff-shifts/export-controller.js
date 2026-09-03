@@ -225,14 +225,16 @@ export function createStaffShiftExportController(context) {
         const assigns = Array.isArray(shift?.assignments) && shift.assignments.length ? shift.assignments : [null];
         for (const assignment of assigns) {
           const person = assignment ? displayPerson(assignment) : "Без назначения";
-          lines.push({ color, text: `${intervalTitle} — ${startLabel} — ${person}` });
+          const position = assignment?.position_title ? ` · ${assignment.position_title}` : "";
+          lines.push({ color, text: `${intervalTitle} — ${startLabel} — ${person}${position}` });
         }
         continue;
       }
 
       const myAssignment = Array.isArray(shift?.assignments) && shift.assignments.length ? shift.assignments[0] : null;
       const person = myAssignment ? displayPerson(myAssignment) : meLabel;
-      lines.push({ color, text: `${intervalTitle} — ${startLabel} — ${person}` });
+      const position = myAssignment?.position_title ? ` · ${myAssignment.position_title}` : "";
+      lines.push({ color, text: `${intervalTitle} — ${startLabel} — ${person}${position}` });
     }
 
     return lines;

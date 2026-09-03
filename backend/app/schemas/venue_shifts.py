@@ -9,6 +9,7 @@ class ShiftIntervalCreateIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     start_time: time
     end_time: time
+    position_id: int | None = Field(default=None, gt=0)
     is_active: bool = True
 
 
@@ -16,6 +17,7 @@ class ShiftIntervalUpdateIn(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=100)
     start_time: time | None = None
     end_time: time | None = None
+    position_id: int | None = Field(default=None, gt=0)
     is_active: bool | None = None
 
 

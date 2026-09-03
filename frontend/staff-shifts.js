@@ -1087,6 +1087,7 @@ const staffShiftComments = createStaffShiftCommentController({
 function renderShiftCard(s, allowEdit) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
+  const requiredPositionTitle = String(s?.interval?.position_title || "").trim();
   const shiftId = (s.id ?? s.shift_id);
   const intColor = colorForInterval(shiftIntervalId(s));
   const canComment = calendarScope !== "global";
@@ -1139,6 +1140,7 @@ function renderShiftCard(s, allowEdit) {
         <div class="shiftcard__title">
           <div class="shiftcard__line1"><span class="intchip" style="--interval-color:${escapeHtml(intColor)}"></span><b>${escapeHtml(title)}</b>${shiftIsClosed(s) ? `<span class="badge shift-done-badge">✓ закрыта</span>` : ``}</div>
           ${time ? `<div class="shiftcard__meta muted">${escapeHtml(time)}</div>` : ``}
+          ${requiredPositionTitle ? `<div class="shiftcard__meta muted"><span>Должность</span>: ${escapeHtml(requiredPositionTitle)}</div>` : ``}
         </div>
         ${allowEdit ? `<button class="btn danger sm" data-delete-shift="${shiftId}" type="button">Удалить смену</button>` : ``}
       </div>
@@ -1166,6 +1168,23 @@ function swapStatusLabel(status) {
 
 function positionMemberUserId(position) {
   return Number(position?.member_user_id ?? position?.member?.user_id ?? 0) || 0;
+}
+
+function positionTitleKey(value) {
+  return String(value || "").trim().toLocaleLowerCase("ru-RU");
+}
+
+function catalogPositionOptions(selectedId = null) {
+  const selected = selectedId == null ? "" : String(selectedId);
+  const items = positions
+    .filter((item) => item && item.is_active !== false && positionMemberUserId(item) <= 0)
+    .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "ru"));
+  return [
+    '<option value="">Все должности</option>',
+    ...items.map((item) => (
+      `<option value="${escapeHtml(item.id)}" ${String(item.id) === selected ? "selected" : ""}>${escapeHtml(item.title)}</option>`
+    )),
+  ].join("");
 }
 
 function decorateAssigneeAvailability(card, availabilityItems) {
@@ -1544,11 +1563,20 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
 
   if (sel) {
     sel.innerHTML = "";
-    const assignedPositions = positions.filter((position) => positionMemberUserId(position) > 0);
+    const requiredPositionId = Number(shift?.interval?.position_id || 0) || null;
+    const requiredPositionTitle = String(shift?.interval?.position_title || "").trim();
+    const assignedPositions = positions.filter((position) => {
+      if (positionMemberUserId(position) <= 0) return false;
+      if (!requiredPositionId) return true;
+      if (!requiredPositionTitle) return false;
+      return positionTitleKey(position?.title) === positionTitleKey(requiredPositionTitle);
+    });
     if (!assignedPositions.length) {
       const opt = document.createElement("option");
       opt.value = "";
-      opt.textContent = "Нет должностей (создай в «Должности»)";
+      opt.textContent = requiredPositionId
+        ? "Нет сотрудников с подходящей должностью"
+        : "Нет должностей (создай в «Должности»)";
       sel.appendChild(opt);
       sel.disabled = true;
       if (btnAssign) btnAssign.disabled = true;
@@ -1654,6 +1682,7 @@ function openDay(dateStr) {
           <b>Новый промежуток</b>
           <div class="grid grid2 mt-10">
             <input class="input" id="newIntTitle" placeholder="Название (например, Бар)" />
+            <select class="input" id="newIntPosition">${catalogPositionOptions()}</select>
             <div class="row mt-10">
               <input class="input" id="newIntStart" placeholder="Начало (HH:MM)" />
               <input class="input" id="newIntEnd" placeholder="Конец (HH:MM)" />
@@ -1699,7 +1728,7 @@ function openDay(dateStr) {
     for (const i of intervals) {
       const opt = document.createElement("option");
       opt.value = String(i.id);
-      opt.textContent = `${i.title} · ${formatShiftIntervalRange(i.start_time, i.end_time)}`;
+      opt.textContent = `${i.title} · ${formatShiftIntervalRange(i.start_time, i.end_time)}${i.position_title ? ` · ${i.position_title}` : ""}`;
       sel.appendChild(opt);
     }
 
@@ -1735,6 +1764,8 @@ function openDay(dateStr) {
         const title = document.getElementById("newIntTitle")?.value?.trim();
         const start = document.getElementById("newIntStart")?.value?.trim();
         const end = document.getElementById("newIntEnd")?.value?.trim();
+        const positionRaw = document.getElementById("newIntPosition")?.value || "";
+        const position_id = positionRaw ? Number(positionRaw) : null;
 
         if (!title) return toast("Укажи название", "warn");
         if (!/^\d{2}:\d{2}$/.test(start || "")) return toast("Начало в формате HH:MM", "warn");
@@ -1743,7 +1774,7 @@ function openDay(dateStr) {
         try {
           await api(`/venues/${encodeURIComponent(venueId)}/shift-intervals`, {
             method: "POST",
-            body: { title, start_time: start, end_time: end }
+            body: { title, start_time: start, end_time: end, position_id }
           });
           toast("Период создан", "ok");
           await loadContext();
