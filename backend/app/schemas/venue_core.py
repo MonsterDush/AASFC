@@ -34,6 +34,7 @@ class InviteCreateIn(BaseModel):
 class InviteDefaultPositionIn(BaseModel):
     # preset position data to apply after invite is accepted
     title: str = Field(..., min_length=1, max_length=100)
+    venue_position_id: int | None = Field(default=None, gt=0)
     rate: int = Field(0, ge=0)
     percent: int = Field(0, ge=0, le=100)
     pay_profile_id: int | None = Field(default=None, gt=0)

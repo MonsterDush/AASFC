@@ -142,6 +142,7 @@ export function createInviteSetupController(context) {
         if (out?.invite_id && selectedPreset) {
           await patchInviteDefaultPosition(state.venueId, out.invite_id, {
             title: selectedPreset.title,
+            venue_position_id: selectedPreset.venue_position_id || null,
             rate: Number(selectedPreset.rate || 0) || 0,
             percent: Number(selectedPreset.percent || 0) || 0,
             pay_profile_id: selectedPreset.pay_profile_id || null,
@@ -166,6 +167,7 @@ export function createInviteSetupController(context) {
       try {
         await patchInviteDefaultPosition(state.venueId, inviteId, selectedPreset ? {
           title: selectedPreset.title,
+          venue_position_id: selectedPreset.venue_position_id || null,
           rate: Number(selectedPreset.rate || 0) || 0,
           percent: Number(selectedPreset.percent || 0) || 0,
           pay_profile_id: selectedPreset.pay_profile_id || null,

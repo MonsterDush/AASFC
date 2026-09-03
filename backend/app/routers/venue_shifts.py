@@ -92,6 +92,46 @@ _MONTH_NAMES_RU = {
 }
 
 
+def _position_title_key(value: str | None) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _require_shift_position_match(
+    db: Session,
+    *,
+    venue_id: int,
+    shift: Shift,
+    position: VenuePosition,
+) -> None:
+    interval = db.execute(
+        select(ShiftInterval).where(
+            ShiftInterval.id == int(shift.interval_id),
+            ShiftInterval.venue_id == int(venue_id),
+        )
+    ).scalar_one_or_none()
+    if interval is None or interval.position_id is None:
+        return
+
+    required_position = db.execute(
+        select(VenuePosition).where(
+            VenuePosition.id == int(interval.position_id),
+            VenuePosition.venue_id == int(venue_id),
+            VenuePosition.member_user_id.is_(None),
+        )
+    ).scalar_one_or_none()
+    if required_position is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Должность не подходит для интервала этой смены",
+        )
+
+    if _position_title_key(required_position.title) != _position_title_key(position.title):
+        raise HTTPException(
+            status_code=409,
+            detail="Должность не подходит для интервала этой смены",
+        )
+
+
 def _month_period_bounds(month_value: str) -> tuple[date, date]:
     try:
         year_text, month_text = str(month_value or "").strip().split("-", 1)
@@ -419,9 +459,24 @@ def list_shifts(
     # preload intervals
     interval_ids = {s.interval_id for s in shifts}
     intervals = {}
+    interval_position_titles: dict[int, str] = {}
     if interval_ids:
         rows = db.execute(select(ShiftInterval).where(ShiftInterval.id.in_(interval_ids))).scalars().all()
         intervals = {r.id: r for r in rows}
+        required_position_ids = sorted(
+            {int(r.position_id) for r in rows if r.position_id is not None}
+        )
+        if required_position_ids:
+            position_rows = db.execute(
+                select(VenuePosition.id, VenuePosition.title).where(
+                    VenuePosition.venue_id == venue_id,
+                    VenuePosition.id.in_(required_position_ids),
+                )
+            ).all()
+            interval_position_titles = {
+                int(row.id): str(row.title or "")
+                for row in position_rows
+            }
 
     # preload assignments
     shift_ids = [s.id for s in shifts]
@@ -484,6 +539,12 @@ def list_shifts(
             "title": it.title,
             "start_time": it.start_time.strftime("%H:%M"),
             "end_time": it.end_time.strftime("%H:%M"),
+            "position_id": int(it.position_id) if it.position_id is not None else None,
+            "position_title": (
+                interval_position_titles.get(int(it.position_id))
+                if it.position_id is not None
+                else None
+            ),
         }
 
     # preload my assignments (so we can compute my_salary without leaking others' rates)
@@ -748,6 +809,15 @@ def get_shift(
         raise HTTPException(status_code=404, detail="Shift not found")
 
     interval = db.execute(select(ShiftInterval).where(ShiftInterval.id == obj.interval_id)).scalar_one()
+    required_position_title = None
+    if interval.position_id is not None:
+        required_position_title = db.execute(
+            select(VenuePosition.title).where(
+                VenuePosition.id == int(interval.position_id),
+                VenuePosition.venue_id == venue_id,
+            )
+        ).scalar_one_or_none()
+
     assigns = db.execute(
         select(
             ShiftAssignment.id,
@@ -783,6 +853,8 @@ def get_shift(
             "title": interval.title,
             "start_time": interval.start_time.isoformat(timespec="minutes"),
             "end_time": interval.end_time.isoformat(timespec="minutes"),
+            "position_id": int(interval.position_id) if interval.position_id is not None else None,
+            "position_title": required_position_title,
         },
         "assignments": [
             {
@@ -841,6 +913,13 @@ def add_shift_assignment(
     ).scalar_one_or_none()
     if pos is None:
         raise HTTPException(status_code=400, detail="Position not found")
+
+    _require_shift_position_match(
+        db,
+        venue_id=venue_id,
+        shift=shift,
+        position=pos,
+    )
 
     # validate member exists & active in venue
     vm = db.execute(

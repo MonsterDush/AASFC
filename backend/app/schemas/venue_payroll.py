@@ -29,6 +29,7 @@ class PositionUpdateIn(BaseModel):
 class PositionPresetOut(BaseModel):
     id: str
     title: str
+    venue_position_id: int | None = None
     rate: int = 0
     percent: int = 0
     pay_profile_id: int | None = None

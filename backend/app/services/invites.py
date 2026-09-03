@@ -152,20 +152,6 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         return
 
     title = str(preset.get("title")).strip()
-    existing_pos = (
-        db.execute(
-            select(VenuePosition)
-            .where(
-                VenuePosition.venue_id == inv.venue_id,
-                VenuePosition.member_user_id.is_(None),
-                VenuePosition.title == title,
-                VenuePosition.is_active.is_(True),
-            )
-            .order_by(VenuePosition.id.asc())
-        )
-        .scalars()
-        .first()
-    )
     data = {
         "title": title,
         "rate": int(preset.get("rate") or 0),
@@ -174,24 +160,102 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
         "is_active": True,
     }
 
-    if existing_pos is None:
-        existing_pos = VenuePosition(
-            venue_id=inv.venue_id,
-            member_user_id=user_id,
-            **data,
-        )
-        db.add(existing_pos)
-    else:
-        existing_pos.member_user_id = user_id
-        for k, v in data.items():
-            setattr(existing_pos, k, v)
-
     pay_profile_id_raw = preset.get("pay_profile_id")
     try:
         pay_profile_id = int(pay_profile_id_raw) if pay_profile_id_raw not in (None, "", 0, "0") else None
     except Exception:
         pay_profile_id = None
+
+    catalog_position = None
+    catalog_position_id_raw = preset.get("venue_position_id")
+    try:
+        catalog_position_id = (
+            int(catalog_position_id_raw)
+            if catalog_position_id_raw not in (None, "", 0, "0")
+            else None
+        )
+    except Exception:
+        catalog_position_id = None
+
+    if catalog_position_id is not None:
+        catalog_position = db.execute(
+            select(VenuePosition).where(
+                VenuePosition.id == catalog_position_id,
+                VenuePosition.venue_id == inv.venue_id,
+                VenuePosition.member_user_id.is_(None),
+            )
+        ).scalar_one_or_none()
+
+    if catalog_position is not None:
+        # A new-format invite points to the role itself. Use its current
+        # definition so renaming/editing a role does not get reverted when
+        # an older pending invite is finally accepted.
+        title = str(catalog_position.title or "").strip()
+        data = {
+            "title": title,
+            "rate": int(catalog_position.rate or 0),
+            "percent": int(catalog_position.percent or 0),
+            "permission_codes": catalog_position.permission_codes or json.dumps([]),
+            "is_active": True,
+        }
+        pay_profile_id = (
+            int(catalog_position.pay_profile_id)
+            if catalog_position.pay_profile_id is not None
+            else None
+        )
+
+    if catalog_position is None:
+        catalog_position = (
+            db.execute(
+                select(VenuePosition)
+                .where(
+                    VenuePosition.venue_id == inv.venue_id,
+                    VenuePosition.member_user_id.is_(None),
+                    VenuePosition.title == title,
+                )
+                .order_by(VenuePosition.is_active.desc(), VenuePosition.id.asc())
+            )
+            .scalars()
+            .first()
+        )
+
+    if catalog_position is None:
+        catalog_position = VenuePosition(
+            venue_id=inv.venue_id,
+            member_user_id=None,
+        )
+        db.add(catalog_position)
+
+    for k, v in data.items():
+        setattr(catalog_position, k, v)
+    catalog_position.pay_profile_id = pay_profile_id
+    catalog_position.is_active = True
+
+    existing_pos = (
+        db.execute(
+            select(VenuePosition)
+            .where(
+                VenuePosition.venue_id == inv.venue_id,
+                VenuePosition.member_user_id == user_id,
+                VenuePosition.title == title,
+            )
+            .order_by(VenuePosition.is_active.desc(), VenuePosition.id.asc())
+        )
+        .scalars()
+        .first()
+    )
+    if existing_pos is None:
+        existing_pos = VenuePosition(
+            venue_id=inv.venue_id,
+            member_user_id=user_id,
+        )
+        db.add(existing_pos)
+
+    for k, v in data.items():
+        setattr(existing_pos, k, v)
     existing_pos.pay_profile_id = pay_profile_id
+    existing_pos.is_active = True
+
     _sync_default_pay_profile_assignment(
         db, venue_id=int(inv.venue_id), user_id=int(user_id), pay_profile_id=pay_profile_id
     )

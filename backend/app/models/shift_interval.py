@@ -16,6 +16,11 @@ class ShiftInterval(Base):
 
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True)
     title: Mapped[str] = mapped_column(String(100), nullable=False)
+    position_id: Mapped[int | None] = mapped_column(
+        ForeignKey("venue_positions.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
 
     start_time: Mapped[object] = mapped_column(Time, nullable=False)
     end_time: Mapped[object] = mapped_column(Time, nullable=False)
@@ -23,3 +28,4 @@ class ShiftInterval(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     venue = relationship("Venue")
+    position = relationship("VenuePosition")
