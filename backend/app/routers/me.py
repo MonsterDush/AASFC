@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.venue_member_names import owner_display_name
+
 from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -520,10 +522,13 @@ def my_venue_members(
                 "full_name": r.full_name,
                 "short_name": r.short_name,
                 "owner_note": r.owner_note if owner_view else None,
-                "display_name": (r.owner_note if owner_view and r.owner_note else None)
-                or r.short_name
-                or r.full_name
-                or (f"@{r.tg_username}" if r.tg_username else f"user #{r.id}"),
+                "display_name": owner_display_name(
+                    owner_note=r.owner_note,
+                    short_name=r.short_name,
+                    full_name=r.full_name,
+                    tg_username=r.tg_username,
+                    user_id=r.id,
+                ),
                 "venue_role": r.venue_role,
             }
             for r in rows

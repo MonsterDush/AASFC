@@ -18,13 +18,14 @@ import {
   getDemoMonthLabel,
   mountDemoPageTour,
 } from "/app.js?v=20260820-i18nmetrika1";
+import { intervalPositionIds, intervalPositionLabel, positionMatchesInterval, availableIntervalsForMember, positionScopeEditor, readPositionScope, wirePositionScope } from "/shift-interval-scope.js?v=20260905-scopes1";
 
 import { permSetFromResponse, roleUpper, hasPerm, hasAnyPerm, hasPermPrefix } from "/permissions.js?v=20260321-miniappfix1";
 import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
 
 import { createStaffShiftExportController } from "/staff-shifts/export-controller.js?v=20260719-split1";
 import { createStaffShiftCalendarController } from "/staff-shifts/calendar-controller.js?v=20260729-overnight1";
-import { createStaffShiftCommentController } from "/staff-shifts/comment-controller.js?v=20260728-comments1";
+import { createStaffShiftCommentController } from "/staff-shifts/comment-controller.js?v=20260906-names-scopes1";
 import {
   WEEKDAYS,
   addDays,
@@ -45,7 +46,7 @@ import {
   weekTitle,
   ym,
   ymd,
-} from "/staff-shifts/helpers.js?v=20260813-assurance2";
+} from "/staff-shifts/helpers.js?v=20260906-names-scopes1";
 
 window.onerror = function (msg, src, line, col, err) {
   const text = `JS ошибка: ${msg}\n${src || ""}:${line || 0}:${col || 0}`;
@@ -1087,7 +1088,7 @@ const staffShiftComments = createStaffShiftCommentController({
 function renderShiftCard(s, allowEdit) {
   const title = shiftIntervalTitle(s);
   const time = shiftTimeLabel(s).replace("-", "–");
-  const requiredPositionTitle = String(s?.interval?.position_title || "").trim();
+  const requiredPositionTitle = intervalPositionLabel(s?.interval);
   const shiftId = (s.id ?? s.shift_id);
   const intColor = colorForInterval(shiftIntervalId(s));
   const canComment = calendarScope !== "global";
@@ -1170,22 +1171,6 @@ function positionMemberUserId(position) {
   return Number(position?.member_user_id ?? position?.member?.user_id ?? 0) || 0;
 }
 
-function positionTitleKey(value) {
-  return String(value || "").trim().toLocaleLowerCase("ru-RU");
-}
-
-function catalogPositionOptions(selectedId = null) {
-  const selected = selectedId == null ? "" : String(selectedId);
-  const items = positions
-    .filter((item) => item && item.is_active !== false && positionMemberUserId(item) <= 0)
-    .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "ru"));
-  return [
-    '<option value="">Все должности</option>',
-    ...items.map((item) => (
-      `<option value="${escapeHtml(item.id)}" ${String(item.id) === selected ? "selected" : ""}>${escapeHtml(item.title)}</option>`
-    )),
-  ].join("");
-}
 
 function decorateAssigneeAvailability(card, availabilityItems) {
   const byUser = new Map(
@@ -1553,7 +1538,7 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
         await reloadCurrentView();
         openDay(dateStr);
       } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось удалить смену", "err");
+        toast(e?.data?.detail?.message || e?.data?.detail || e?.message || "Не удалось удалить смену", "err");
       }
     };
   }
@@ -1563,18 +1548,15 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
 
   if (sel) {
     sel.innerHTML = "";
-    const requiredPositionId = Number(shift?.interval?.position_id || 0) || null;
-    const requiredPositionTitle = String(shift?.interval?.position_title || "").trim();
+
     const assignedPositions = positions.filter((position) => {
       if (positionMemberUserId(position) <= 0) return false;
-      if (!requiredPositionId) return true;
-      if (!requiredPositionTitle) return false;
-      return positionTitleKey(position?.title) === positionTitleKey(requiredPositionTitle);
+      return positionMatchesInterval(position, shift?.interval);
     });
     if (!assignedPositions.length) {
       const opt = document.createElement("option");
       opt.value = "";
-      opt.textContent = requiredPositionId
+      opt.textContent = intervalPositionIds(shift?.interval).length
         ? "Нет сотрудников с подходящей должностью"
         : "Нет должностей (создай в «Должности»)";
       sel.appendChild(opt);
@@ -1585,7 +1567,7 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
         const opt = document.createElement("option");
         opt.value = p.id;
         const mem = p.member || {};
-        const name = mem.display_name || fioInitials(mem.full_name) || mem.short_name || (mem.tg_username ? mem.tg_username.replace(/^@/, "") : "");
+        const name = displayPerson(mem);
         opt.textContent = `${p.title} · ${name || "—"}`;
         sel.appendChild(opt);
       }
@@ -1607,7 +1589,7 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
         await reloadCurrentView();
         openDay(dateStr);
       } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось назначить", "err");
+        toast(e?.data?.detail?.message || e?.data?.detail || e?.message || "Не удалось назначить", "err");
       }
     };
   }
@@ -1624,7 +1606,7 @@ function wireShiftEditor(dateStr, shift, allowEdit) {
         await reloadCurrentView();
         openDay(dateStr);
       } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось удалить", "err");
+        toast(e?.data?.detail?.message || e?.data?.detail || e?.message || "Не удалось удалить", "err");
       }
     };
   });
@@ -1673,8 +1655,14 @@ function openDay(dateStr) {
         <b>Новая смена</b>
         <div class="muted mt-6">Выбери промежуток и создай смену на этот день${nightShiftsEnabled ? ` · ${escapeHtml(shiftSlotContextLabel(dateStr, selectedShiftSlot))}` : ""}</div>
 
+        <label class="stack mt-10">Сотрудник
+          <select class="input" id="createShiftMember"><option value="">Без назначения сотрудника</option>${Array.from(new Map(positions.filter((p) => positionMemberUserId(p) > 0).map((p) => [positionMemberUserId(p), p])).values()).map((p) => `<option value="${positionMemberUserId(p)}">${escapeHtml(displayPerson(p.member))}</option>`).join("")}</select>
+        </label>
+        <label class="stack mt-10 hidden" id="createShiftPositionField">Должность на смене
+          <select class="input" id="createShiftPosition"></select>
+        </label>
         <div class="row mt-10">
-          <select class="input shift-interval-select" id="intervalSelect"></select>
+          <select class="input shift-interval-select" id="intervalSelect" aria-label="Интервал"></select>
           <button class="btn primary" id="createShiftBtn">Создать смену</button>
         </div>
 
@@ -1682,7 +1670,7 @@ function openDay(dateStr) {
           <b>Новый промежуток</b>
           <div class="grid grid2 mt-10">
             <input class="input" id="newIntTitle" placeholder="Название (например, Бар)" />
-            <select class="input" id="newIntPosition">${catalogPositionOptions()}</select>
+            ${positionScopeEditor("newIntPosition", positions, null, escapeHtml)}
             <div class="row mt-10">
               <input class="input" id="newIntStart" placeholder="Начало (HH:MM)" />
               <input class="input" id="newIntEnd" placeholder="Конец (HH:MM)" />
@@ -1698,6 +1686,7 @@ function openDay(dateStr) {
   }
 
   openModal(title, subtitle, html);
+  wirePositionScope(document.getElementById("newIntPosition"));
   wireDayAvailability(dateStr);
   document.getElementById("btnOpenAdjustments")?.addEventListener("click", () => {
     const vid = getActiveVenueId();
@@ -1723,39 +1712,45 @@ function openDay(dateStr) {
   }
 
   if (sel) {
-    sel.innerHTML = "";
-
-    for (const i of intervals) {
-      const opt = document.createElement("option");
-      opt.value = String(i.id);
-      opt.textContent = `${i.title} · ${formatShiftIntervalRange(i.start_time, i.end_time)}${i.position_title ? ` · ${i.position_title}` : ""}`;
-      sel.appendChild(opt);
-    }
-
-    const optCreate = document.createElement("option");
-    optCreate.value = "__create__";
-    optCreate.textContent = "Создать промежуток…";
-    sel.appendChild(optCreate);
-
-    if (!intervals.length) sel.value = "__create__";
-
+    const memberSelect = document.getElementById("createShiftMember");
+    const positionSelect = document.getElementById("createShiftPosition");
+    const positionField = document.getElementById("createShiftPositionField");
     const box = document.getElementById("createIntervalBox");
     const btnCancel = document.getElementById("cancelCreateInterval");
     const btnCreateInt = document.getElementById("createIntervalBtn");
 
     const syncBox = () => {
       const isCreate = sel.value === "__create__";
+      const memberId = Number(memberSelect?.value || 0);
       box?.classList.toggle("hidden", !isCreate);
-      if (createBtn) createBtn.disabled = isCreate;
+      positionField?.classList.toggle("hidden", !memberId || isCreate);
+      const interval = intervals.find((item) => String(item.id) === sel.value);
+      const matching = positions.filter((position) => positionMemberUserId(position) === memberId
+        && positionMatchesInterval(position, interval));
+      if (positionSelect) {
+        const previous = positionSelect.value;
+        positionSelect.innerHTML = matching.map((position) => `<option value="${escapeHtml(position.id)}">${escapeHtml(position.title)}</option>`).join("");
+        if (matching.some((position) => String(position.id) === previous)) positionSelect.value = previous;
+      }
+      if (createBtn) createBtn.disabled = isCreate || !interval || (!!memberId && !matching.length);
     };
-
+    const syncIntervals = () => {
+      const previous = sel.value;
+      const visible = availableIntervalsForMember(intervals, positions, memberSelect?.value);
+      sel.innerHTML = visible.map((interval) => `<option value="${escapeHtml(interval.id)}">${escapeHtml(interval.title)} · ${escapeHtml(formatShiftIntervalRange(interval.start_time, interval.end_time))} · ${escapeHtml(intervalPositionLabel(interval))}</option>`).join("");
+      if (!visible.length) sel.add(new Option("Нет подходящих интервалов", ""));
+      sel.add(new Option("Создать промежуток…", "__create__"));
+      if (visible.some((interval) => String(interval.id) === previous)) sel.value = previous;
+      syncBox();
+    };
+    if (memberSelect) memberSelect.onchange = syncIntervals;
     sel.onchange = syncBox;
-    syncBox();
+    syncIntervals();
 
     if (btnCancel) {
       btnCancel.onclick = () => {
-        if (intervals.length) sel.value = String(intervals[0].id);
-        syncBox();
+        sel.value = "";
+        syncIntervals();
       };
     }
 
@@ -1764,8 +1759,7 @@ function openDay(dateStr) {
         const title = document.getElementById("newIntTitle")?.value?.trim();
         const start = document.getElementById("newIntStart")?.value?.trim();
         const end = document.getElementById("newIntEnd")?.value?.trim();
-        const positionRaw = document.getElementById("newIntPosition")?.value || "";
-        const position_id = positionRaw ? Number(positionRaw) : null;
+        const position_ids = readPositionScope(document.getElementById("newIntPosition"));
 
         if (!title) return toast("Укажи название", "warn");
         if (!/^\d{2}:\d{2}$/.test(start || "")) return toast("Начало в формате HH:MM", "warn");
@@ -1774,14 +1768,14 @@ function openDay(dateStr) {
         try {
           await api(`/venues/${encodeURIComponent(venueId)}/shift-intervals`, {
             method: "POST",
-            body: { title, start_time: start, end_time: end, position_id }
+            body: { title, start_time: start, end_time: end, position_ids }
           });
           toast("Период создан", "ok");
           await loadContext();
           await reloadCurrentView();
           openDay(dateStr);
         } catch (e) {
-          toast(e?.data?.detail || e?.message || "Не удалось создать промежуток", "err");
+          toast(e?.data?.detail?.message || e?.data?.detail || e?.message || "Не удалось создать промежуток", "err");
         }
       };
     }
@@ -1796,13 +1790,15 @@ function openDay(dateStr) {
       try {
         await api(`/venues/${encodeURIComponent(venueId)}/shifts`, {
           method: "POST",
-          body: { date: dateStr, interval_id: Number(intervalId), shift_slot: selectedShiftSlot },
+          body: { date: dateStr, interval_id: Number(intervalId), shift_slot: selectedShiftSlot,
+            venue_position_id: document.getElementById("createShiftMember")?.value
+              ? Number(document.getElementById("createShiftPosition")?.value) : null },
         });
         toast("Смена создана", "ok");
         await reloadCurrentView();
         openDay(dateStr);
       } catch (e) {
-        toast(e?.data?.detail || e?.message || "Не удалось создать смену", "err");
+        toast(e?.data?.detail?.message || e?.data?.detail || e?.message || "Не удалось создать смену", "err");
       }
     };
   }

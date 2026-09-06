@@ -35,7 +35,8 @@ class MigrationContractTests(unittest.TestCase):
         interval_positions = scripts.get_revision("f6b4d2a8c1e0")
         catalog_backfill = scripts.get_revision("b9d2e4f6a8c1")
 
-        self.assertEqual(heads, ["b9d2e4f6a8c1"])
+        self.assertEqual(heads, ["c2f4a6b8d0e1"])
+        self.assertEqual(scripts.get_revision("c2f4a6b8d0e1").down_revision, "b9d2e4f6a8c1")
 
         self.assertIsNotNone(revision)
         self.assertEqual(revision.down_revision, "b8d4f6a2c1e9")
@@ -389,6 +390,61 @@ class MigrationContractTests(unittest.TestCase):
         self.assertIn('"payroll_payment_settings"', source)
         self.assertIn('"expense_kind"', source)
         self.assertIn('"payroll_payout_key"', source)
+
+    def test_interval_scopes_backfill_and_rollback_preserve_assigned_shifts(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            self.addCleanup(engine.dispose)
+            with engine.begin() as connection:
+                for statement in (
+                    "CREATE TABLE venue_positions (id INTEGER PRIMARY KEY, venue_id INTEGER NOT NULL, member_user_id INTEGER, title TEXT NOT NULL, is_active BOOLEAN NOT NULL)",
+                    "CREATE TABLE shift_intervals (id INTEGER PRIMARY KEY, venue_id INTEGER NOT NULL, position_id INTEGER REFERENCES venue_positions(id))",
+                    "CREATE TABLE shifts (id INTEGER PRIMARY KEY, interval_id INTEGER NOT NULL)",
+                    "CREATE TABLE shift_assignments (id INTEGER PRIMARY KEY, shift_id INTEGER NOT NULL, venue_position_id INTEGER NOT NULL)",
+                    "INSERT INTO venue_positions VALUES (10,5,NULL,'Бармен',1), (11,5,NULL,'Менеджер',1), (12,5,NULL,' бармен ',0), (20,5,2,'Бармен',1), (21,5,2,'Менеджер',1), (22,6,3,'Бармен',1)",
+                    "INSERT INTO shift_intervals VALUES (1,5,NULL), (2,5,12), (3,5,11)",
+                    "INSERT INTO shifts VALUES (1,2)",
+                    "INSERT INTO shift_assignments VALUES (1,1,21)",
+                ):
+                    connection.exec_driver_sql(statement)
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "b9d2e4f6a8c1")
+                command.upgrade(config, "c2f4a6b8d0e1")
+                with engine.connect() as connection:
+                    self.assertEqual(
+                        connection.exec_driver_sql(
+                            "SELECT id, catalog_position_id FROM venue_positions WHERE member_user_id IS NOT NULL ORDER BY id"
+                        ).all(),
+                        [(20, 10), (21, 11), (22, None)],
+                    )
+                    self.assertEqual(
+                        connection.exec_driver_sql(
+                            "SELECT * FROM shift_interval_positions ORDER BY interval_id, position_id"
+                        ).all(),
+                        [(2, 10), (2, 12), (3, 11)],
+                    )
+                    self.assertEqual(connection.exec_driver_sql("SELECT * FROM shifts").all(), [(1, 2)])
+                    self.assertEqual(connection.exec_driver_sql("SELECT * FROM shift_assignments").all(), [(1, 1, 21)])
+                with self.assertRaisesRegex(RuntimeError, "at most one allowed position"):
+                    command.downgrade(config, "b9d2e4f6a8c1")
+                self.assertIn("shift_interval_positions", sa.inspect(engine).get_table_names())
+                with engine.begin() as connection:
+                    connection.exec_driver_sql(
+                        "DELETE FROM shift_interval_positions WHERE interval_id=2 AND position_id=10"
+                    )
+                command.downgrade(config, "b9d2e4f6a8c1")
+                with engine.connect() as connection:
+                    self.assertEqual(connection.exec_driver_sql("SELECT * FROM shift_assignments").all(), [(1, 1, 21)])
+                    self.assertEqual(
+                        connection.exec_driver_sql("SELECT position_id FROM shift_intervals ORDER BY id").all(),
+                        [(None,), (12,), (11,)],
+                    )
+                self.assertNotIn(
+                    "catalog_position_id",
+                    {column["name"] for column in sa.inspect(engine).get_columns("venue_positions")},
+                )
 
     def test_multi_positions_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

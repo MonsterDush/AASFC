@@ -66,6 +66,7 @@ from app.routers.venue_reports import (
 )
 from app.routers.venue_schedule_templates import _normalize_shift_slot_for_venue, _shift_slot_label
 from app.services.venue_member_names import load_member_display_names, load_owner_notes, owner_display_name
+from app.services.shift_interval_scope import interval_scope_payloads, require_interval_position_match
 
 
 router = APIRouter()
@@ -92,44 +93,12 @@ _MONTH_NAMES_RU = {
 }
 
 
-def _position_title_key(value: str | None) -> str:
-    return str(value or "").strip().casefold()
-
-
-def _require_shift_position_match(
-    db: Session,
-    *,
-    venue_id: int,
-    shift: Shift,
-    position: VenuePosition,
-) -> None:
+def _require_shift_position_match(db: Session, *, venue_id: int, shift: Shift, position: VenuePosition) -> None:
     interval = db.execute(
-        select(ShiftInterval).where(
-            ShiftInterval.id == int(shift.interval_id),
-            ShiftInterval.venue_id == int(venue_id),
-        )
+        select(ShiftInterval).where(ShiftInterval.id == int(shift.interval_id), ShiftInterval.venue_id == int(venue_id))
     ).scalar_one_or_none()
-    if interval is None or interval.position_id is None:
-        return
-
-    required_position = db.execute(
-        select(VenuePosition).where(
-            VenuePosition.id == int(interval.position_id),
-            VenuePosition.venue_id == int(venue_id),
-            VenuePosition.member_user_id.is_(None),
-        )
-    ).scalar_one_or_none()
-    if required_position is None:
-        raise HTTPException(
-            status_code=409,
-            detail="Должность не подходит для интервала этой смены",
-        )
-
-    if _position_title_key(required_position.title) != _position_title_key(position.title):
-        raise HTTPException(
-            status_code=409,
-            detail="Должность не подходит для интервала этой смены",
-        )
+    if interval is not None:
+        require_interval_position_match(db, venue_id=venue_id, interval=interval, position=position)
 
 
 def _month_period_bounds(month_value: str) -> tuple[date, date]:
@@ -525,6 +494,8 @@ def list_shifts(
                 }
             )
 
+    interval_scopes = interval_scope_payloads(db, venue_id=venue_id, intervals=list(intervals.values()))
+
     def interval_payload(interval_id: int):
         it = intervals.get(interval_id)
         if not it:
@@ -535,6 +506,7 @@ def list_shifts(
             "start_time": it.start_time.strftime("%H:%M"),
             "end_time": it.end_time.strftime("%H:%M"),
             "position_id": int(it.position_id) if it.position_id is not None else None,
+            **interval_scopes[it.id],
             "position_title": (
                 interval_position_titles.get(int(it.position_id)) if it.position_id is not None else None
             ),
@@ -624,6 +596,26 @@ def create_shift(
     if interval is None:
         raise HTTPException(status_code=400, detail="Shift interval not found")
 
+    position = None
+    if payload.venue_position_id is not None:
+        position = db.execute(
+            select(VenuePosition)
+            .join(
+                VenueMember,
+                (VenueMember.venue_id == VenuePosition.venue_id)
+                & (VenueMember.user_id == VenuePosition.member_user_id),
+            )
+            .where(
+                VenuePosition.id == payload.venue_position_id,
+                VenuePosition.venue_id == venue_id,
+                VenuePosition.is_active.is_(True),
+                VenueMember.is_active.is_(True),
+            )
+        ).scalar_one_or_none()
+        if position is None:
+            raise HTTPException(status_code=400, detail="Member position not found in venue")
+        require_interval_position_match(db, venue_id=venue_id, interval=interval, position=position)
+
     slot = _normalize_shift_slot_for_venue(db, venue_id=venue_id, shift_slot=payload.shift_slot)
 
     obj = Shift(
@@ -637,11 +629,31 @@ def create_shift(
 
     db.add(obj)
     try:
+        db.flush()
+        if position is not None:
+            db.add(
+                ShiftAssignment(shift_id=obj.id, member_user_id=position.member_user_id, venue_position_id=position.id)
+            )
+            db.flush()
+            _rebuild_closed_report_tip_allocations_for_keys(
+                db,
+                venue_id=venue_id,
+                report_keys={(obj.date, slot)},
+            )
+            _recalculate_payroll_for_dates(
+                db,
+                venue_id=venue_id,
+                target_dates=[obj.date],
+                calculated_by_user_id=user.id,
+                trigger_reason="shift_assignment_added",
+            )
         db.commit()
+    except sa.exc.IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Shift already exists for this date, interval and slot")
     except Exception:
         db.rollback()
-        # likely unique constraint
-        raise HTTPException(status_code=409, detail="Shift already exists for this date, interval and slot")
+        raise
 
     db.refresh(obj)
     return {"id": obj.id, "shift_slot": normalize_shift_slot(getattr(obj, "shift_slot", None))}
@@ -834,6 +846,11 @@ def get_shift(
         member_user_ids=[int(row.member_user_id) for row in assigns],
     )
 
+    member_display_names = load_member_display_names(
+        db, venue_id=venue_id, member_user_ids=[int(row.member_user_id) for row in assigns]
+    )
+    scope = interval_scope_payloads(db, venue_id=venue_id, intervals=[interval])[interval.id]
+
     return {
         "id": obj.id,
         "venue_id": obj.venue_id,
@@ -848,6 +865,7 @@ def get_shift(
             "end_time": interval.end_time.isoformat(timespec="minutes"),
             "position_id": int(interval.position_id) if interval.position_id is not None else None,
             "position_title": required_position_title,
+            **scope,
         },
         "assignments": [
             {
@@ -862,7 +880,7 @@ def get_shift(
                     "short_name": r.short_name,
                     "owner_note": owner_notes.get(int(r.member_user_id)),
                     "display_name": owner_display_name(
-                        owner_note=owner_notes.get(int(r.member_user_id)),
+                        owner_note=member_display_names.get(int(r.member_user_id)),
                         short_name=r.short_name,
                         full_name=r.full_name,
                         tg_username=r.tg_username,
@@ -1100,8 +1118,9 @@ def _normalize_shift_comment_mention_ids(values: list[int] | None) -> list[int]:
     return normalized
 
 
-def _shift_comment_has_mention_token(text: str, user: User) -> bool:
+def _shift_comment_has_mention_token(text: str, user: User, *, display_name: str | None = None) -> bool:
     labels = [
+        display_name,
         _shift_comment_user_display_name(user),
         str(user.tg_username or "").lstrip("@").strip(),
     ]
@@ -1215,10 +1234,11 @@ def list_shift_comment_mentionable_members(
         venue_id=venue_id,
         exclude_user_id=int(user.id),
     )
+    names = load_member_display_names(db, venue_id=venue_id, member_user_ids=[member.id for member, _, _ in rows])
     return [
         {
             "user_id": int(member.id),
-            "display_name": _shift_comment_user_display_name(member),
+            "display_name": _shift_comment_user_brief(member, owner_note=names.get(int(member.id)))["display_name"],
             "tg_username": member.tg_username,
             "position_title": position_title,
             "venue_role": venue_role,
@@ -1265,10 +1285,9 @@ def list_shift_comments(
     rows_by_id = {int(comment.id): (comment, author) for comment, author in comment_rows}
     visible_user_ids = {int(author.id) for _comment, author in comment_rows}
     visible_user_ids.update(int(member.id) for members in mentions_by_comment.values() for member in members)
-    owner_notes = load_owner_notes(
+    owner_notes = load_member_display_names(
         db,
         venue_id=venue_id,
-        viewer=user,
         member_user_ids=visible_user_ids,
     )
     return [
@@ -1327,10 +1346,13 @@ def add_shift_comment(
     invalid_ids = [mentioned_user_id for mentioned_user_id in mention_ids if mentioned_user_id not in mentionable_users]
     if invalid_ids:
         raise HTTPException(status_code=400, detail="Некоторые упомянутые сотрудники не входят в это заведение")
+    mention_names = load_member_display_names(db, venue_id=venue_id, member_user_ids=mention_ids)
     missing_tokens = [
         mentioned_user_id
         for mentioned_user_id in mention_ids
-        if not _shift_comment_has_mention_token(text, mentionable_users[mentioned_user_id])
+        if not _shift_comment_has_mention_token(
+            text, mentionable_users[mentioned_user_id], display_name=mention_names.get(mentioned_user_id)
+        )
     ]
     if missing_tokens:
         raise HTTPException(
@@ -1363,10 +1385,9 @@ def add_shift_comment(
         user,
         mention_users=mention_users,
         parent=parent,
-        owner_notes=load_owner_notes(
+        owner_notes=load_member_display_names(
             db,
             venue_id=venue_id,
-            viewer=user,
             member_user_ids=[
                 int(user.id),
                 *[int(member.id) for member in mention_users],

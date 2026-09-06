@@ -120,38 +120,8 @@ function fmtMoneyMinor(minor) {
   }
 }
 
-function fioInitials(fullName) {
-  const parts = String(fullName || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (!parts.length) return "";
-
-  if (parts.length === 1) return parts[0];
-
-  return [
-    parts[0],
-    ...parts.slice(1).map((p) => `${p.charAt(0).toUpperCase()}.`)
-  ].join(" ");
-}
-
 function memberName(member) {
-  if (!member) return "—";
-
-  const displayName = (member.display_name || "").trim();
-  if (displayName) return displayName;
-
-  const shortName = (member.short_name || "").trim();
-  if (shortName) return shortName;
-
-  const fi = fioInitials(member.full_name);
-  if (fi) return fi;
-
-  const u = (member.tg_username || "").trim();
-  if (u) return u.startsWith("@") ? u : `@${u}`;
-
-  return member.user_id ? "Сотрудник" : "—";
+  return String(member?.display_name || "").trim() || "Сотрудник";
 }
 
 const COMPONENT_LABELS = {

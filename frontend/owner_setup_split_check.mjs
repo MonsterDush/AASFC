@@ -14,13 +14,13 @@ const controllers = [
   ["pay-profile-editor.js", "20260729-payroll1", "createPayProfileSetupController", ["mountPayProfilesEditor", "loadInlinePayProfiles"]],
   ["position-editor.js", "20260720-unified10", "createPositionSetupController", ["mountPositionsEditor"]],
   ["invite-editor.js", "20260720-unified10", "createInviteSetupController", ["mountInvitesEditor"]],
-  ["shift-interval-editor.js", "20260729-overnight1", "createShiftIntervalSetupController", ["mountShiftIntervalsEditor"]],
+  ["shift-interval-editor.js", "20260906-names-scopes1", "createShiftIntervalSetupController", ["mountShiftIntervalsEditor"]],
   ["supplier-editor.js", "20260720-unified10", "createSupplierSetupController", ["mountSuppliersEditor"]],
   ["recurring-expense-editor.js", "20260729-slotecon1", "createRecurringExpenseSetupController", ["mountRecurringExpensesEditor"]],
 ];
 
 assert.ok(mainSource.split("\n").length < 1_600, "owner-setup.js must remain an orchestration module");
-assert.match(htmlSource, /owner-setup\.js\?v=20260810-setup1/);
+assert.match(htmlSource, /owner-setup\.js\?v=20260906-names-scopes1/);
 assert.match(mainSource, /position-template-ui\.js\?v=20260726-navmore1/);
 assert.doesNotMatch(htmlSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);
 assert.doesNotMatch(mainSource, /(?:<style\b|\sstyle\s*=|\.style\b)/i);
@@ -42,8 +42,8 @@ for (const [fileName, cacheKey, factoryName, methodNames] of controllers) {
 
   const module = fileName === "shift-interval-editor.js"
     ? await import(`data:text/javascript,${encodeURIComponent(source.replace(
-      /^import\s+\{\s*formatShiftIntervalRange\s*\}\s+from\s+["'][^"']+["'];?\s*/,
-      'const formatShiftIntervalRange = (start, end) => `${start || ""} — ${end || ""}`;\n',
+      /from\s+["']\/(shift-time|shift-interval-scope)\.js\?v=[^"']+["']/g,
+      (_match, name) => `from "${pathToFileURL(path.join(frontendDir, `${name}.js`))}"`,
     ))}`)
     : await import(pathToFileURL(filePath));
   assert.equal(typeof module[factoryName], "function", `${factoryName} is not exported`);

@@ -135,6 +135,10 @@ async function login(page, { phone, role, auditAuth = false }) {
   });
   await page.waitForLoadState("domcontentloaded");
 
+  // getMe can reload the venue page once to apply the saved profile locale.
+  // Wait for its authenticated content before evaluating API calls in the page.
+  await page.locator("#list [data-open]").first().waitFor({ timeout: 20_000 });
+
   const me = await apiJson(page, "/me");
   assert.equal(me.status, 200, `${role}: /me must succeed`);
   const venues = await apiJson(page, "/me/venues");
@@ -1179,6 +1183,214 @@ async function assertPageQuality(page, budgetName, label = budgetName) {
   return { ...performance, dimensions };
 }
 
+async function verifyNamesAndIntervalScopes(page, venueId, viewport) {
+  const prefix = `/venues/${venueId}`;
+  const suffix = `${viewport.name}-${Date.now()}`;
+  const me = await expectApi(page, "/me", {}, "scope owner");
+  const members = await expectApi(
+    page,
+    `${prefix}/members`,
+    {},
+    "scope members",
+  );
+  const employee = members.members.find(
+    (member) => member.phone === staffPhone,
+  );
+  assert.ok(employee, "scope scenario needs the seeded employee");
+  const mutate = (path, method, body) =>
+    expectApi(
+      page,
+      path,
+      {
+        method,
+        body: JSON.stringify(body),
+      },
+      `scope ${method} ${path}`,
+    );
+  await mutate(`${prefix}/members/${employee.user_id}/owner-note`, "PATCH", {
+    owner_note: "Миша старший",
+  });
+  const titles = [`Бар ${suffix}`, `Зал ${suffix}`, `Менеджер ${suffix}`];
+  const assignments = [];
+  for (const [index, title] of titles.entries()) {
+    assignments.push(
+      await mutate(`${prefix}/positions`, "POST", {
+        title,
+        member_user_id: index === 2 ? me.id : employee.user_id,
+        permission_codes: ["SHIFTS_VIEW"],
+      }),
+    );
+  }
+  const positions = await expectApi(
+    page,
+    `${prefix}/positions`,
+    {},
+    "linked roles",
+  );
+  const catalogIds = assignments.map(
+    (assignment) =>
+      positions.find((position) => position.id === assignment.id)
+        .catalog_position_id,
+  );
+  assert.ok(catalogIds.every((id) => id > 0));
+  const other = await mutate(`${prefix}/shift-intervals`, "POST", {
+    title: `Только менеджер ${suffix}`,
+    start_time: "10:00",
+    end_time: "22:00",
+    position_ids: [catalogIds[2]],
+  });
+  const universal = await mutate(`${prefix}/shift-intervals`, "POST", {
+    title: `Все ${suffix}`,
+    start_time: "11:00",
+    end_time: "23:00",
+    position_ids: [],
+  });
+  await page.goto(
+    `${frontendBase}/shift-intervals.html?venue_id=${venueId}&lang=ru`,
+  );
+  await page.locator("#btnCreate").click();
+  const intervalTitle = `Бар и зал ${suffix}`;
+  await page.locator("#f_title").fill(intervalTitle);
+  await page.locator("#f_start").fill("12:00");
+  await page.locator("#f_end").fill("00:00");
+  const group = page.locator("#f_position");
+  assert.equal(await group.locator("[data-all]").isChecked(), true);
+  for (const id of catalogIds.slice(0, 2))
+    await group.locator(`[data-position-id="${id}"]`).check();
+  assert.equal(await group.locator("[data-all]").isChecked(), false);
+  const screenshotDir = path.join(repoRoot, "artifacts/names-intervals-qa");
+  fs.mkdirSync(screenshotDir, { recursive: true });
+  await page.screenshot({
+    path: path.join(screenshotDir, `interval-editor-${viewport.name}.png`),
+  });
+  await page.locator("#btnSaveEdit").click();
+  await page.locator("#editModal").waitFor({ state: "hidden" });
+  const intervals = await expectApi(
+    page,
+    `${prefix}/shift-intervals`,
+    {},
+    "saved interval scopes",
+  );
+  const interval = intervals.find((item) => item.title === intervalTitle);
+  assert.deepEqual(
+    interval.position_ids,
+    catalogIds.slice(0, 2).sort((a, b) => a - b),
+  );
+  const date = "2035-02-12";
+  const rejected = await apiJson(page, `${prefix}/shifts`, {
+    method: "POST",
+    body: JSON.stringify({
+      date,
+      interval_id: other.id,
+      venue_position_id: assignments[0].id,
+    }),
+  });
+  assert.equal(rejected.status, 409);
+  assert.equal(rejected.body.detail.code, "SHIFT_INTERVAL_POSITION_MISMATCH");
+  await page.goto(
+    `${frontendBase}/staff-shifts.html?venue_id=${venueId}&date=${date}&lang=ru`,
+  );
+  await page.locator(`.cal-cell[data-date="${date}"]`).click();
+  await page.locator(`.cal-cell[data-date="${date}"]`).click();
+  await page.locator("#btnAddShift").click();
+  const employeeSelect = page.locator("#createShiftMember");
+  await employeeSelect.selectOption(String(employee.user_id));
+  assert.equal(
+    await employeeSelect.locator("option:checked").textContent(),
+    "Миша старший",
+  );
+  let visible = await page
+    .locator("#intervalSelect option")
+    .evaluateAll((options) => options.map((option) => Number(option.value)));
+  assert.ok(visible.includes(interval.id));
+  assert.ok(visible.includes(universal.id));
+  assert.ok(!visible.includes(other.id));
+  await employeeSelect.selectOption(String(me.id));
+  visible = await page
+    .locator("#intervalSelect option")
+    .evaluateAll((options) => options.map((option) => Number(option.value)));
+  assert.ok(!visible.includes(interval.id));
+  assert.ok(visible.includes(other.id));
+  await employeeSelect.selectOption(String(employee.user_id));
+  await page.locator("#intervalSelect").selectOption(String(interval.id));
+  const roleIds = await page
+    .locator("#createShiftPosition option")
+    .evaluateAll((options) => options.map((option) => Number(option.value)));
+  assert.deepEqual(
+    roleIds.sort((a, b) => a - b),
+    assignments
+      .slice(0, 2)
+      .map((assignment) => assignment.id)
+      .sort((a, b) => a - b),
+  );
+  await page
+    .locator("#createShiftPosition")
+    .selectOption(String(assignments[1].id));
+  assert.ok(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+    ),
+    "schedule fits viewport",
+  );
+  await page.screenshot({
+    path: path.join(screenshotDir, `create-shift-${viewport.name}.png`),
+  });
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url() === `${apiBase}${prefix}/shifts` &&
+      response.request().method() === "POST",
+  );
+  await page.locator("#createShiftBtn").click();
+  const response = await saved;
+  assert.equal(response.status(), 200);
+  const shift = await response.json();
+  let detail = await expectApi(
+    page,
+    `${prefix}/shifts/${shift.id}`,
+    {},
+    "new assigned shift",
+  );
+  assert.equal(detail.assignments[0].member.display_name, "Миша старший");
+  assert.equal(detail.assignments[0].venue_position_id, assignments[1].id);
+  await mutate(`${prefix}/shift-intervals/${interval.id}`, "PATCH", {
+    position_ids: [catalogIds[2]],
+  });
+  detail = await expectApi(
+    page,
+    `${prefix}/shifts/${shift.id}`,
+    {},
+    "preserved assignment after scope change",
+  );
+  assert.equal(detail.assignments[0].venue_position_id, assignments[1].id);
+  await mutate(`${prefix}/shifts/${shift.id}`, "PATCH", {
+    interval_id: other.id,
+  });
+  detail = await expectApi(
+    page,
+    `${prefix}/shifts/${shift.id}`,
+    {},
+    "preserved assignment after interval change",
+  );
+  assert.equal(detail.assignments[0].venue_position_id, assignments[1].id);
+  await page.goto(
+    `${frontendBase}/shift-intervals.html?venue_id=${venueId}&lang=en`,
+  );
+  await page.locator("#btnCreate").click();
+  await page.getByRole("group", { name: "Available for roles" }).waitFor();
+  await page.locator("#f_position [data-position-id]").first().check();
+  await page.locator("#f_position [data-all]").check();
+  assert.equal(
+    await page.locator("#f_position [data-position-id]:checked").count(),
+    0,
+  );
+  await mutate(`${prefix}/members/${employee.user_id}/owner-note`, "PATCH", {
+    owner_note: employee.owner_note,
+  });
+  console.log(
+    `${viewport.name}: names, multiple roles, employee filtering and existing assignments passed`,
+  );
+}
+
 async function ownerScenarios(browser, viewport) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
@@ -1333,6 +1545,7 @@ async function ownerScenarios(browser, viewport) {
         `${label} day economics`,
       ),
     });
+    await verifyNamesAndIntervalScopes(page, venueId, viewport);
     assertDiagnostics();
     return { venueId, scenarios };
   } finally {

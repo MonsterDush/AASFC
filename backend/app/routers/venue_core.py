@@ -917,7 +917,9 @@ def get_members(
     return {
         "members": [
             {
-                **_serialize_user_brief(r, member_auth_map, owner_note=r.owner_note if owner_view else None),
+                **_serialize_user_brief(
+                    r, member_auth_map, owner_note=r.owner_note if owner_view else None, display_name=r.owner_note
+                ),
                 "venue_role": r.venue_role,
             }
             for r in members
