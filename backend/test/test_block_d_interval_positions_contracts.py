@@ -28,7 +28,8 @@ class BlockDIntervalPositionContractTests(TestCase):
         self.assertGreaterEqual(schemas.count("position_id: int | None = Field(default=None, gt=0)"), 2)
         self.assertIn("position_id: int | None = Query(default=None, gt=0)", router)
         self.assertIn('"position_title"', router)
-        self.assertIn("ShiftInterval.position_id.is_(None)", router)
+        self.assertIn("interval_scope_payloads", router)
+        self.assertIn("position_ids:", schemas)
 
     def test_catalog_position_is_not_consumed_by_employee_assignment(self):
         positions = read("backend/app/routers/venue_positions.py")
@@ -44,10 +45,10 @@ class BlockDIntervalPositionContractTests(TestCase):
         backend = read("backend/app/routers/venue_shifts.py")
         frontend = read("frontend/staff-shifts.js")
 
-        self.assertIn("Должность не подходит для интервала этой смены", backend)
+        self.assertIn("SHIFT_INTERVAL_POSITION_MISMATCH", read("backend/app/services/shift_interval_scope.py"))
         self.assertIn("_require_shift_position_match(", backend)
         self.assertIn("Нет сотрудников с подходящей должностью", frontend)
-        self.assertIn("positionTitleKey(position?.title) === positionTitleKey(requiredPositionTitle)", frontend)
+        self.assertIn("positionMatchesInterval(position, shift?.interval)", frontend)
 
     def test_setup_presets_materialize_real_catalog_positions(self):
         setup = read("frontend/owner-setup.js")
@@ -68,8 +69,8 @@ class BlockDIntervalPositionContractTests(TestCase):
         setup_editor = read("frontend/owner-setup/shift-interval-editor.js")
         locale = read("frontend/locales/en.json")
 
-        self.assertIn('id="f_position"', standalone)
-        self.assertIn('id="intervalPosition"', setup_editor)
+        self.assertIn('positionScopeEditor("f_position"', standalone)
+        self.assertIn('positionScopeEditor("intervalPosition"', setup_editor)
         self.assertIn('"Все должности": "All roles"', locale)
         self.assertIn(
             '"Нет сотрудников с подходящей должностью": "No employees with a matching role"',

@@ -1,0 +1,93 @@
+test_owner_note_stays_private_but_display_label_is_available (test_member_display_names_contract.MemberDisplayNamesContractTests) ... ok
+test_owner_note_is_visible_only_to_owner_and_replaces_display_name (test_multi_position_owner_notes_contracts.FourFixesDatabaseBehaviorTests) ... ok
+test_payroll_metrics_are_split_by_selected_position_profile (test_multi_position_owner_notes_contracts.FourFixesDatabaseBehaviorTests) ... ok
+test_permissions_are_unioned_across_positions (test_multi_position_owner_notes_contracts.FourFixesDatabaseBehaviorTests) ... ok
+test_removing_last_assigned_position_keeps_empty_role_template (test_multi_position_owner_notes_contracts.FourFixesDatabaseBehaviorTests) ... ok
+test_selected_shift_position_can_be_changed_for_same_employee (test_multi_position_owner_notes_contracts.FourFixesDatabaseBehaviorTests) ... ok
+test_auth_link_handlers_merge_and_reissue_cookie_in_both_directions (test_multi_position_owner_notes_contracts.FourFixesModelAndSourceContracts) ... ok
+test_frontend_exposes_empty_roles_private_notes_and_shift_role_switching (test_multi_position_owner_notes_contracts.FourFixesModelAndSourceContracts) ... ok
+test_position_model_supports_empty_and_multiple_assignments (test_multi_position_owner_notes_contracts.FourFixesModelAndSourceContracts) ... ok
+test_catalog_position_is_not_consumed_by_employee_assignment (test_block_d_interval_positions_contracts.BlockDIntervalPositionContractTests) ... ok
+test_interval_editors_and_localization_include_position (test_block_d_interval_positions_contracts.BlockDIntervalPositionContractTests) ... ok
+test_schedule_rejects_wrong_position_and_frontend_filters_candidates (test_block_d_interval_positions_contracts.BlockDIntervalPositionContractTests) ... ok
+test_setup_presets_materialize_real_catalog_positions (test_block_d_interval_positions_contracts.BlockDIntervalPositionContractTests) ... ok
+test_shift_interval_api_contract_accepts_and_returns_position (test_block_d_interval_positions_contracts.BlockDIntervalPositionContractTests) ... ok
+test_shift_interval_has_nullable_position_fk_and_migration (test_block_d_interval_positions_contracts.BlockDIntervalPositionContractTests) ... ok
+test_backfill_creates_catalog_roles_without_touching_legacy_intervals (test_catalog_position_backfill_migration.CatalogPositionBackfillMigrationTests) ... INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> f6b4d2a8c1e0
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade f6b4d2a8c1e0 -> b9d2e4f6a8c1, backfill stable catalog positions for existing venues
+ok
+test_per_unit_kpi_accepts_qty_metric_and_rate (test_payroll.PayComponentValidationTests) ... ok
+test_per_unit_kpi_rejects_wrong_unit_or_missing_rate (test_payroll.PayComponentValidationTests) ... ok
+test_percentage_kpi_accepts_ruble_metric (test_payroll.PayComponentValidationTests) ... ok
+test_percentage_kpi_requires_ruble_metric (test_payroll.PayComponentValidationTests) ... ok
+test_salary_accrual_day_is_only_metadata_for_fixed_month (test_payroll.PayComponentValidationTests) ... ok
+test_weekday_rates_are_supported_only_for_hourly_and_per_shift_components (test_payroll.PayComponentValidationTests) ... ok
+test_weekday_rates_reject_duplicate_weekdays (test_payroll.PayComponentValidationTests) ... ok
+test_calculate_component_amount_minor_for_fixed_month (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_calculate_component_amount_minor_for_hourly (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_calculate_component_amount_minor_for_kpi_bonus (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_calculate_component_amount_minor_for_per_shift (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_calculate_component_amount_minor_for_percent_department_revenue (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_calculate_component_amount_minor_for_percent_total_revenue (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_calculate_kpi_bonus_below_threshold (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_calculate_kpi_bonus_with_steps_uses_highest_matched_step (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_calculate_kpi_bonus_with_threshold (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_calculate_percentage_kpi_bonus_from_ruble_metric (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_hourly_weekday_rates_override_only_selected_days (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_interval_duration_minutes_supports_overnight_shift (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_parse_month_start_accepts_yyyy_mm (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_parse_month_start_rejects_bad_format (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_per_shift_weekday_rates_are_used_in_shift_allocations (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_per_unit_kpi_bonus_multiplies_quantity_by_rate (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_per_unit_kpi_bonus_respects_optional_threshold (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_per_unit_kpi_day_breakdown_uses_employee_scoped_values (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_per_unit_kpi_shift_allocation_follows_report_values (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_percentage_kpi_bonus_respects_optional_threshold (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_percentage_kpi_shift_allocation_follows_report_values (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_percentage_kpi_uses_only_unique_worked_report_slots (test_payroll.PayrollCalculationHelpersTests) ... ok
+test_percent_department_defaults_to_worked_dates_scope (test_payroll.PayrollPercentDecisionTests) ... ok
+test_percent_total_applies_minimum_and_cap (test_payroll.PayrollPercentDecisionTests) ... ok
+test_percent_total_with_day_plan_excess_only (test_payroll.PayrollPercentDecisionTests) ... ok
+test_percent_total_with_kpi_boost (test_payroll.PayrollPercentDecisionTests) ... ok
+test_percent_total_with_month_plan_boost_replace_all (test_payroll.PayrollPercentDecisionTests) ... ok
+test_account_merge_worked_dates_keep_component_on_its_origin_dates (test_payroll_day_breakdown.PayrollDayBreakdownHelpersTests) ... ok
+test_allocate_minor_by_keys_distributes_remainder_deterministically (test_payroll_day_breakdown.PayrollDayBreakdownHelpersTests) ... ok
+test_allocate_minor_by_keys_keeps_sign_for_negative_totals (test_payroll_day_breakdown.PayrollDayBreakdownHelpersTests) ... ok
+test_component_allocation_for_fixed_month_uses_calendar_dates (test_payroll_day_breakdown.PayrollDayBreakdownHelpersTests) ... ok
+test_component_without_account_merge_scope_keeps_legacy_allocation (test_payroll_day_breakdown.PayrollDayBreakdownHelpersTests) ... ok
+test_explicit_empty_account_merge_scope_does_not_use_other_line_dates (test_payroll_day_breakdown.PayrollDayBreakdownHelpersTests) ... ok
+test_fixed_month_allocation_shows_accrual_day_without_changing_split (test_payroll_day_breakdown.PayrollDayBreakdownHelpersTests) ... ok
+test_percentage_kpi_day_breakdown_explains_shift_scope (test_payroll_day_breakdown.PayrollDayBreakdownHelpersTests) ... ok
+test_facade_preserves_all_original_symbols_and_signatures (test_payroll_split_contracts.PayrollCalculatorSplitContractTests) ... ok
+test_modules_remain_bounded_and_facade_reexports_their_contracts (test_payroll_split_contracts.PayrollCalculatorSplitContractTests) ... ok
+test_allocation_and_per_shift_minimum_keep_exact_minor_totals (test_payroll_split_contracts.PayrollExtractedHelperBehaviorTests) ... ok
+test_latest_overlapping_assignment_is_selected_per_member (test_payroll_split_contracts.PayrollExtractedHelperBehaviorTests) ... ok
+test_steps_json_normalizes_rubles_filters_invalid_rows_and_sorts (test_payroll_split_contracts.PayrollExtractedHelperBehaviorTests) ... ok
+test_month_calculation_keeps_run_line_and_finance_entry_flow (test_payroll_split_contracts.PayrollMonthOrchestratorTests) ... ok
+test_month_recalculation_records_percent_decision_and_minimum_top_up (test_payroll_split_contracts.PayrollMonthOrchestratorTests) ... ok
+test_get_day_economics_builds_metrics_and_sections (test_day_economics.DayEconomicsServiceTests) ... ok
+test_get_day_economics_plan_falls_back_to_weekday_template (test_day_economics.DayEconomicsServiceTests) ... ok
+test_get_day_economics_without_team_keeps_per_employee_metrics_empty (test_day_economics.DayEconomicsServiceTests) ... ok
+test_combined_read_guard_keeps_all_three_checks (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_department_mutation_routes_commit_and_attach_usage (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_plan_mutation_routes_commit_and_return_service_results (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_read_route_checks_access_and_sanitizes_payload (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_remaining_read_routes_delegate_and_preserve_usage (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_rules_mutation_commits_and_returns_payload (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_service_validation_error_remains_http_400 (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_usage_helpers_preserve_effective_plan_and_department_counts (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_usage_map_aggregates_venue_and_department_sources (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_write_route_preserves_service_arguments_commit_and_usage (test_venue_economics_router.VenueEconomicsRouterBehaviorTests) ... ok
+test_all_split_router_routes_are_registered_in_venues (test_venue_economics_router.VenueEconomicsRouterContractTests) ... ok
+test_all_venue_routes_keep_original_public_manifest (test_venue_economics_router.VenueEconomicsRouterContractTests) ... ok
+test_extracted_router_owns_all_twenty_economics_routes (test_venue_economics_router.VenueEconomicsRouterContractTests) ... ok
+test_remaining_domain_routers_partition_all_native_routes (test_venue_economics_router.VenueEconomicsRouterContractTests) ... ok
+
+----------------------------------------------------------------------
+Ran 82 tests in 0.406s
+
+OK

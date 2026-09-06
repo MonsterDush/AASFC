@@ -247,6 +247,8 @@ def _apply_default_position(db: Session, *, inv: VenueInvite, user_id: int) -> N
 
     for k, v in data.items():
         setattr(existing_pos, k, v)
+    db.flush()
+    existing_pos.catalog_position_id = catalog_position.id
     existing_pos.pay_profile_id = pay_profile_id
     existing_pos.is_active = True
 

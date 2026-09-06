@@ -75,6 +75,7 @@ def _ensure_catalog_position(
         db.add(catalog)
     elif not catalog.is_active:
         catalog.is_active = True
+    db.flush()
     return catalog
 
 
@@ -143,6 +144,7 @@ def list_positions(
             VenuePosition.id,
             VenuePosition.title,
             VenuePosition.member_user_id,
+            VenuePosition.catalog_position_id,
             VenuePosition.pay_profile_id,
             VenuePosition.rate,
             VenuePosition.percent,
@@ -195,6 +197,7 @@ def list_positions(
                 "id": r.id,
                 "title": r.title,
                 "member_user_id": r.member_user_id,
+                "catalog_position_id": r.catalog_position_id,
                 "rate": r.rate,
                 "percent": r.percent,
                 "pay_profile_id": int(r.pay_profile_id) if r.pay_profile_id is not None else None,
@@ -301,7 +304,7 @@ def create_position(
     pos.permission_codes = json.dumps(norm_codes) if codes_provided else json.dumps([])
     pos.is_active = payload.is_active
     if pos.member_user_id is not None and pos.is_active:
-        _ensure_catalog_position(
+        catalog = _ensure_catalog_position(
             db,
             venue_id=venue_id,
             title=pos.title,
@@ -310,6 +313,8 @@ def create_position(
             pay_profile_id=pos.pay_profile_id,
             permission_codes=pos.permission_codes,
         )
+        if pos.catalog_position_id is None or "title" in payload.model_fields_set:
+            pos.catalog_position_id = catalog.id
     db.commit()
     db.refresh(pos)
     return {
@@ -368,7 +373,23 @@ def update_position(
             if vm is None:
                 raise HTTPException(status_code=400, detail="Member not found in venue")
 
-        pos.member_user_id = payload.member_user_id
+        if pos.member_user_id is None and payload.member_user_id is not None:
+            # Keep the catalog identity used by interval restrictions stable.
+            catalog = pos
+            pos = VenuePosition(
+                venue_id=venue_id,
+                member_user_id=payload.member_user_id,
+                catalog_position_id=catalog.id,
+                title=catalog.title,
+                rate=catalog.rate,
+                percent=catalog.percent,
+                pay_profile_id=catalog.pay_profile_id,
+                permission_codes=catalog.permission_codes,
+                is_active=catalog.is_active,
+            )
+            db.add(pos)
+        else:
+            pos.member_user_id = payload.member_user_id
 
     # Editing permission codes is a separate permission (matrix)
     codes_provided = payload.permission_codes is not None
@@ -383,6 +404,9 @@ def update_position(
     if perms_changed and not is_owner:
         require_venue_permission(db, venue_id=venue_id, user=user, permission_code="POSITION_PERMISSIONS_MANAGE")
 
+    if pos.member_user_id is None:
+        pos.catalog_position_id = None
+
     if payload.title is not None:
         next_title = payload.title.strip()
         if pos.member_user_id is None and next_title != pos.title:
@@ -392,7 +416,7 @@ def update_position(
                         VenuePosition.venue_id == venue_id,
                         VenuePosition.member_user_id.is_not(None),
                         VenuePosition.is_active.is_(True),
-                        VenuePosition.title == pos.title,
+                        VenuePosition.catalog_position_id == pos.id,
                     )
                 )
                 .scalars()
@@ -426,7 +450,7 @@ def update_position(
         profile = db.execute(select(PayProfile).where(PayProfile.id == pos.pay_profile_id)).scalar_one_or_none()
 
     if pos.member_user_id is not None and pos.is_active:
-        _ensure_catalog_position(
+        catalog = _ensure_catalog_position(
             db,
             venue_id=venue_id,
             title=pos.title,
@@ -435,6 +459,8 @@ def update_position(
             pay_profile_id=pos.pay_profile_id,
             permission_codes=pos.permission_codes,
         )
+        if pos.catalog_position_id is None or "title" in payload.model_fields_set:
+            pos.catalog_position_id = catalog.id
 
     db.commit()
     db.refresh(pos)
@@ -444,6 +470,7 @@ def update_position(
         "id": pos.id,
         "title": pos.title,
         "member_user_id": pos.member_user_id,
+        "catalog_position_id": pos.catalog_position_id,
         "rate": pos.rate,
         "percent": pos.percent,
         "pay_profile_id": int(pos.pay_profile_id) if pos.pay_profile_id is not None else None,

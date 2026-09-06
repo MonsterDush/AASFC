@@ -1,0 +1,44 @@
+{
+  "names": {
+    "shared_loader": "Миша старший",
+    "owner_shift_detail": "Миша старший",
+    "manager_shift_detail": "Михаил Иванов",
+    "fallback_without_note": "Михаил Иванов",
+    "local_after_global_rename": "Миша старший"
+  },
+  "interval_update": {
+    "patch_keeps_incompatible_assignment": true,
+    "same_assignment_validation_status": 409,
+    "error_detail": "Должность не подходит для интервала этой смены"
+  },
+  "closed_only_actuals_minor": {
+    "7": 11600000
+  },
+  "daily_plans": [
+    {
+      "target_minor": null,
+      "percent_bps": 300,
+      "amount_minor": 348000
+    },
+    {
+      "target_minor": 0,
+      "percent_bps": 500,
+      "amount_minor": 580000
+    },
+    {
+      "target_minor": 10000000,
+      "percent_bps": 500,
+      "amount_minor": 580000
+    },
+    {
+      "target_minor": 12000000,
+      "percent_bps": 300,
+      "amount_minor": 348000
+    }
+  ],
+  "snapshot_missing_tier_fields": [
+    "achievement",
+    "matched_tier",
+    "percent_tiers"
+  ]
+}

@@ -20,6 +20,7 @@ from app.routers.venue_core import (
     select,
     update,
 )
+from app.services.shift_interval_scope import interval_scope_payloads, set_interval_positions
 from app.schemas.venue_shifts import (
     ShiftIntervalCreateIn,
     ShiftIntervalUpdateIn,
@@ -59,6 +60,23 @@ def _catalog_position_or_400(
     return position
 
 
+def _requested_position_ids(db: Session, *, venue_id: int, payload, existing_ids: list[int] | None = None) -> list[int]:
+    fields = payload.model_fields_set
+    if "position_ids" in fields:
+        ids = sorted(set(payload.position_ids or []))
+        if "position_id" in fields and ids != ([payload.position_id] if payload.position_id else []):
+            raise HTTPException(status_code=422, detail="Use position_ids or position_id, not conflicting values")
+    elif "position_id" in fields:
+        ids = [payload.position_id] if payload.position_id else []
+    else:
+        return list(existing_ids or [])
+    for position_id in ids:
+        # Retain an existing archived role when unrelated fields are edited.
+        if position_id not in (existing_ids or []):
+            _catalog_position_or_400(db, venue_id=venue_id, position_id=position_id)
+    return ids
+
+
 @router.get("/{venue_id}/shift-intervals")
 def list_shift_intervals(
     venue_id: int,
@@ -76,21 +94,16 @@ def list_shift_intervals(
     stmt = select(ShiftInterval).where(ShiftInterval.venue_id == venue_id)
     if position_id is not None:
         _catalog_position_or_400(db, venue_id=venue_id, position_id=position_id)
-        stmt = stmt.where((ShiftInterval.position_id.is_(None)) | (ShiftInterval.position_id == int(position_id)))
+
     if not include_inactive:
         stmt = stmt.where(ShiftInterval.is_active.is_(True))
 
     rows = db.execute(stmt.order_by(ShiftInterval.start_time.asc(), ShiftInterval.id.asc())).scalars().all()
-    linked_position_ids = sorted({int(row.position_id) for row in rows if row.position_id is not None})
-    position_titles: dict[int, str] = {}
-    if linked_position_ids:
-        position_rows = db.execute(
-            select(VenuePosition.id, VenuePosition.title).where(
-                VenuePosition.venue_id == venue_id,
-                VenuePosition.id.in_(linked_position_ids),
-            )
-        ).all()
-        position_titles = {int(row.id): str(row.title or "") for row in position_rows}
+    scopes = interval_scope_payloads(db, venue_id=venue_id, intervals=list(rows))
+    if position_id is not None:
+        rows = [
+            row for row in rows if not scopes[row.id]["position_ids"] or position_id in scopes[row.id]["position_ids"]
+        ]
 
     usage_rows = db.execute(
         select(Shift.interval_id, func.count(Shift.id)).where(Shift.venue_id == venue_id).group_by(Shift.interval_id)
@@ -110,7 +123,8 @@ def list_shift_intervals(
             "start_time": r.start_time.strftime("%H:%M"),
             "end_time": r.end_time.strftime("%H:%M"),
             "position_id": int(r.position_id) if r.position_id is not None else None,
-            "position_title": (position_titles.get(int(r.position_id)) if r.position_id is not None else None),
+            "position_title": ", ".join(scopes[r.id]["position_titles"]) or None,
+            **scopes[r.id],
             "is_active": bool(r.is_active),
             "usage_count": usage_by_interval.get(r.id, 0),
             "template_usage_count": template_usage_by_interval.get(r.id, 0),
@@ -132,11 +146,7 @@ def create_shift_interval(
 
     title = _normalize_shift_interval_title(payload.title)
     _ensure_shift_interval_title_unique(db, venue_id=venue_id, title=title)
-    _catalog_position_or_400(
-        db,
-        venue_id=venue_id,
-        position_id=payload.position_id,
-    )
+    position_ids = _requested_position_ids(db, venue_id=venue_id, payload=payload)
 
     obj = ShiftInterval(
         venue_id=venue_id,
@@ -148,6 +158,7 @@ def create_shift_interval(
     )
     db.add(obj)
     try:
+        set_interval_positions(db, interval=obj, position_ids=position_ids)
         db.commit()
     except Exception:
         db.rollback()
@@ -173,12 +184,10 @@ def update_shift_interval(
         raise HTTPException(status_code=404, detail="Shift interval not found")
 
     fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
-    if "position_id" in fields_set:
-        _catalog_position_or_400(
-            db,
-            venue_id=venue_id,
-            position_id=payload.position_id,
-        )
+    scope_changed = bool({"position_id", "position_ids"} & fields_set)
+    if scope_changed:
+        existing_ids = interval_scope_payloads(db, venue_id=venue_id, intervals=[obj])[obj.id]["position_ids"]
+        position_ids = _requested_position_ids(db, venue_id=venue_id, payload=payload, existing_ids=existing_ids)
 
     start_changed = payload.start_time is not None and payload.start_time != obj.start_time
 
@@ -192,8 +201,8 @@ def update_shift_interval(
         obj.end_time = payload.end_time
     if payload.is_active is not None:
         obj.is_active = payload.is_active
-    if "position_id" in fields_set:
-        obj.position_id = payload.position_id
+    if scope_changed:
+        set_interval_positions(db, interval=obj, position_ids=position_ids)
 
     # If shift start time changed - allow reminders to be re-sent for future shifts.
     if start_changed:

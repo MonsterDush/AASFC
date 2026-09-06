@@ -643,7 +643,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
 
         self.assertIn("/styles/pages/owner-payroll.css?v=20260802-payrollpayments1", html)
-        self.assertIn("/owner-payroll.js?v=20260823-kpiperunit1", html)
+        self.assertIn("/owner-payroll.js?v=20260906-names-scopes1", html)
         self.assertIn('class="owner-payroll-page"', html)
         self.assertIn("payroll-bootstrap", html)
         for contract in (
@@ -919,7 +919,7 @@ class OwnerSetupSplitContractTests(TestCase):
             "shift-interval-editor.js": (
                 "createShiftIntervalSetupController",
                 "mountShiftIntervalsEditor",
-                "20260729-overnight1",
+                "20260906-names-scopes1",
             ),
             "supplier-editor.js": ("createSupplierSetupController", "mountSuppliersEditor", "20260720-unified10"),
             "recurring-expense-editor.js": (
@@ -930,7 +930,7 @@ class OwnerSetupSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260810-setup1", html)
+        self.assertIn("owner-setup.js?v=20260906-names-scopes1", html)
         self.assertIn("position-template-ui.js?v=20260726-navmore1", main)
         self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
@@ -983,8 +983,8 @@ class StaffShiftsSplitContractTests(TestCase):
         self.assertLess(len(comments.splitlines()), 700)
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
         self.assertIn("/staff-shifts/calendar-controller.js?v=20260729-overnight1", main)
-        self.assertIn("/staff-shifts/comment-controller.js?v=20260728-comments1", main)
-        self.assertIn("staff-shifts.js?v=20260811-assurance1", html)
+        self.assertIn("/staff-shifts/comment-controller.js?v=20260906-names-scopes1", main)
+        self.assertIn("staff-shifts.js?v=20260906-names-scopes1", html)
         self.assertIn("/shifts/export-metadata?", module)
         self.assertIn("/mentionable-members", comments)
         self.assertIn("reply_to_comment_id", comments)

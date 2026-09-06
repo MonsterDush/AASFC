@@ -4684,5 +4684,9 @@
   "💰 Начисления за расчётный период": "💰 Accruals for the pay period",
   "💼 ФОТ рассчитан": "Payroll calculated",
   "🛠 Импорт QuickResto ·": "🛠 QuickResto import ·",
-  "🧾 Черновые расходы ждут подтверждения": "🧾 Draft expenses awaiting confirmation"
+  "🧾 Черновые расходы ждут подтверждения": "🧾 Draft expenses awaiting confirmation",
+  "Доступно для должностей": "Available for roles",
+  "Без назначения сотрудника": "No employee assigned",
+  "Должность на смене": "Role for this shift",
+  "Нет подходящих интервалов": "No matching intervals"
 }

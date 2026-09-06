@@ -361,9 +361,27 @@ def _create_member_and_position(db: Session, *, venue: Venue, user: User, spec: 
     if not position_title:
         return None
     permission_codes = spec.get("permission_codes") or []
+    catalog = db.scalar(
+        select(VenuePosition)
+        .where(
+            VenuePosition.venue_id == int(venue.id),
+            VenuePosition.member_user_id.is_(None),
+            VenuePosition.title == str(position_title),
+        )
+        .order_by(VenuePosition.id)
+    )
+    if catalog is None:
+        catalog = VenuePosition(
+            venue_id=int(venue.id),
+            title=str(position_title),
+            permission_codes=json.dumps(permission_codes, ensure_ascii=False) if permission_codes else None,
+        )
+        db.add(catalog)
+        db.flush()
     position = VenuePosition(
         venue_id=int(venue.id),
         member_user_id=int(user.id),
+        catalog_position_id=catalog.id,
         title=str(position_title),
         rate=0,
         percent=0,
