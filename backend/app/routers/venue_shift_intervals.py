@@ -183,7 +183,7 @@ def update_shift_interval(
     if obj is None:
         raise HTTPException(status_code=404, detail="Shift interval not found")
 
-    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    fields_set = payload.model_fields_set
     scope_changed = bool({"position_id", "position_ids"} & fields_set)
     if scope_changed:
         existing_ids = interval_scope_payloads(db, venue_id=venue_id, intervals=[obj])[obj.id]["position_ids"]

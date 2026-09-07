@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime, date
 import json
+from datetime import date, datetime
+
+import sqlalchemy as sa
 from fastapi import HTTPException
 from sqlalchemy import select
-import sqlalchemy as sa
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
+
 from app.core.permission_codes import parse_permission_codes, normalize_known_permission_codes
+from app.services.payroll.percent_tier_rules import tier_dict
 from app.services.payroll.calculator import (
     BASE_SCOPE_FULL_PERIOD,
     BASE_SCOPE_WORKED_DATES,
@@ -206,7 +209,9 @@ def _sync_member_pay_profile_assignment(
 
 def _get_pay_component_or_404(db: Session, *, venue_id: int, component_id: int) -> PayComponent:
     obj = db.execute(
-        select(PayComponent).where(PayComponent.id == component_id, PayComponent.venue_id == venue_id)
+        select(PayComponent)
+        .options(selectinload(PayComponent.percent_tiers))
+        .where(PayComponent.id == component_id, PayComponent.venue_id == venue_id)
     ).scalar_one_or_none()
     if obj is None:
         raise HTTPException(status_code=404, detail="Pay component not found")
@@ -391,6 +396,7 @@ def _serialize_pay_component(component: PayComponent) -> dict:
         "effective_base_scope": effective_base_scope,
         "effective_base_scope_title": BASE_SCOPE_TITLES.get(effective_base_scope, effective_base_scope),
         "boost_enabled": bool(component.boost_enabled),
+        "percent_tiers": [tier_dict(tier) for tier in (getattr(component, "percent_tiers", []) or [])],
         "boost_percent_bps": component.boost_percent_bps,
         "boost_source_type": component.boost_source_type,
         "effective_boost_source_type": effective_boost_source_type,
@@ -650,6 +656,7 @@ def _load_pay_profile_detail(db: Session, *, venue_id: int, profile_id: int) -> 
     components = (
         db.execute(
             select(PayComponent)
+            .options(selectinload(PayComponent.percent_tiers))
             .where(PayComponent.venue_id == venue_id, PayComponent.pay_profile_id == profile_id)
             .order_by(PayComponent.sort_order.asc(), PayComponent.id.asc())
         )

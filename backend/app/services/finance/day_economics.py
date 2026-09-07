@@ -1256,6 +1256,8 @@ def upsert_department_month_plans(*, db: Session, venue_id: int, month_value: st
         revenue_plan_minor = item.get("revenue_plan_minor")
         if revenue_plan_minor is not None:
             revenue_plan_minor = int(revenue_plan_minor)
+            if revenue_plan_minor <= 0:
+                raise ValueError("План должен быть положительным или не установлен")
         notes = (item.get("notes") or "").strip() or None
         row = existing.get(dep_id)
         should_delete = revenue_plan_minor is None and notes is None
@@ -1447,6 +1449,8 @@ def upsert_department_day_plans(*, db: Session, venue_id: int, target_date: date
         revenue_plan_minor = item.get("revenue_plan_minor")
         if revenue_plan_minor is not None:
             revenue_plan_minor = int(revenue_plan_minor)
+            if revenue_plan_minor <= 0:
+                raise ValueError("План должен быть положительным или не установлен")
         notes = (item.get("notes") or "").strip() or None
         row = existing.get(dep_id)
         should_delete = revenue_plan_minor is None and notes is None

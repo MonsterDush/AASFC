@@ -1,3 +1,4 @@
+from app.services.payroll.percent_tier_rules import normalize_payload_tiers, sync_component_tiers
 from fastapi import APIRouter
 
 from app.routers.venue_core import (
@@ -169,7 +170,7 @@ def update_pay_profile(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
 
     profile = _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
-    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    fields_set = payload.model_fields_set
     if "title" in fields_set and payload.title is not None:
         profile.title = payload.title.strip()
     if "description" in fields_set:
@@ -261,7 +262,7 @@ def update_pay_profile_assignment(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
 
     assignment = _get_pay_profile_assignment_or_404(db, venue_id=venue_id, assignment_id=assignment_id)
-    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    fields_set = payload.model_fields_set
     new_start_date = payload.start_date if "start_date" in fields_set else assignment.start_date
     new_end_date = payload.end_date if "end_date" in fields_set else assignment.end_date
     if new_start_date and new_end_date and new_end_date < new_start_date:
@@ -311,6 +312,7 @@ def create_pay_component(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
     _get_pay_profile_or_404(db, venue_id=venue_id, profile_id=profile_id)
 
+    normalize_payload_tiers(payload)
     component_type = payload.component_type.strip().upper()
     if component_type not in PAY_COMPONENT_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported pay component type")
@@ -412,6 +414,7 @@ def create_pay_component(
         is_active=payload.is_active,
         updated_at=datetime.utcnow(),
     )
+    sync_component_tiers(component, payload)
     db.add(component)
     db.commit()
     return _serialize_pay_component(component)
@@ -429,7 +432,8 @@ def update_pay_component(
     _require_pay_profiles_manage(db, venue_id=venue_id, user=user)
 
     component = _get_pay_component_or_404(db, venue_id=venue_id, component_id=component_id)
-    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    normalize_payload_tiers(payload)
+    fields_set = payload.model_fields_set
     if "component_type" in fields_set and payload.component_type is not None:
         new_component_type = payload.component_type.strip().upper()
         if new_component_type not in PAY_COMPONENT_TYPES:
@@ -562,6 +566,7 @@ def update_pay_component(
         ).scalar_one_or_none()
         if kpi_metric is not None:
             kpi_metric_unit = kpi_metric.unit
+    sync_component_tiers(component, payload)
     _validate_pay_component_fields(
         component_type=component.component_type,
         amount_minor=component.amount_minor,

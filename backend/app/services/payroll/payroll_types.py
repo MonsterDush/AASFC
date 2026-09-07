@@ -43,11 +43,11 @@ BASE_SCOPE_TITLES = {
 }
 BOOST_SOURCE_TITLES = {
     BOOST_SOURCE_NONE: "без условия",
-    BOOST_SOURCE_VENUE_MONTH_PLAN: "месячный план заведения",
-    BOOST_SOURCE_VENUE_DAY_PLAN: "суточный план заведения",
-    BOOST_SOURCE_DEPARTMENT_MONTH_PLAN: "месячный план департамента",
-    BOOST_SOURCE_DEPARTMENT_DAY_PLAN: "суточный план департамента",
-    BOOST_SOURCE_KPI_METRIC: "KPI",
+    BOOST_SOURCE_VENUE_MONTH_PLAN: "план заведения на месяц",
+    BOOST_SOURCE_VENUE_DAY_PLAN: "план заведения по дням",
+    BOOST_SOURCE_DEPARTMENT_MONTH_PLAN: "план департамента на месяц",
+    BOOST_SOURCE_DEPARTMENT_DAY_PLAN: "план департамента по дням",
+    BOOST_SOURCE_KPI_METRIC: "KPI-метрика",
 }
 BOOST_RECALC_TITLES = {
     BOOST_RECALC_REPLACE_ALL: "весь объём",

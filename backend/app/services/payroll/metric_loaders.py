@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
     DailyReport,
@@ -147,6 +147,7 @@ def _load_profile_components(db: Session, *, profile_ids: list[int]) -> dict[int
     rows = (
         db.execute(
             select(PayComponent)
+            .options(selectinload(PayComponent.percent_tiers))
             .where(
                 PayComponent.pay_profile_id.in_(profile_ids),
                 PayComponent.is_active.is_(True),

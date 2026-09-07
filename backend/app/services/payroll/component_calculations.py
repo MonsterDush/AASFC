@@ -326,7 +326,7 @@ def _sum_department_revenue_by_date_minor(
 
 
 def _sum_optional_targets(values: list[int | None]) -> int | None:
-    if not values or any(value is None for value in values):
+    if not values or any(value is None or value <= 0 for value in values):
         return None
     return int(sum(int(value or 0) for value in values))
 
