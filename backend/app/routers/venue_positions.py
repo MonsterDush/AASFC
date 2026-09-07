@@ -355,7 +355,7 @@ def update_position(
     if pos is None:
         raise HTTPException(status_code=404, detail="Position not found")
 
-    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    fields_set = payload.model_fields_set
 
     # Changing or clearing member assignment is a separate permission.
     if "member_user_id" in fields_set and payload.member_user_id != pos.member_user_id:

@@ -86,6 +86,7 @@ def _build_percent_component_snapshot(component: PayComponent, decision: Payroll
         "department_title": getattr(getattr(component, "department", None), "title", None),
         "day_rows": [dict(row) for row in (decision.day_rows or [])],
     }
+    snapshot.update(getattr(decision, "tier_details", {}) or {})
     return snapshot
 
 
@@ -128,6 +129,10 @@ def _build_percent_component_decision(
     kpi_metrics: PayrollKpiMetrics,
     venue_plan_metrics: PayrollVenuePlanMetrics,
 ) -> PayrollPercentDecision:
+    if getattr(component, "percent_tiers", None) and getattr(component, "boost_enabled", False):
+        from .percent_tier_calculations import calculate_tier_decision
+
+        return calculate_tier_decision(component, metrics, revenue_metrics, kpi_metrics, venue_plan_metrics)
     component_type = str(component.component_type or "").strip().upper()
     if component_type not in {"PERCENT_TOTAL_REVENUE", "PERCENT_DEPARTMENT_REVENUE"}:
         raise ValueError(f"Unsupported percent component type: {component.component_type}")
@@ -190,7 +195,9 @@ def _build_percent_component_decision(
         if boost_source_type == BOOST_SOURCE_VENUE_MONTH_PLAN:
             boost_target_minor = venue_plan_metrics.month_revenue_target_minor
             boost_actual_minor = int(revenue_metrics.total_revenue_minor)
-            boost_applied = boost_target_minor is not None and boost_actual_minor >= boost_target_minor
+            boost_applied = (
+                boost_target_minor is not None and boost_target_minor > 0 and boost_actual_minor >= boost_target_minor
+            )
             if boost_applied:
                 excess_supported = component_type == "PERCENT_TOTAL_REVENUE" and base_scope == BASE_SCOPE_FULL_PERIOD
                 if (
@@ -218,7 +225,11 @@ def _build_percent_component_decision(
             for day, base_day_minor in sorted(base_by_date.items(), key=lambda item: item[0]):
                 actual_day_minor = int(revenue_metrics.total_revenue_by_date_minor.get(day) or 0)
                 target_day_minor = venue_plan_metrics.day_revenue_target_by_date_minor.get(day)
-                day_boost_applied = target_day_minor is not None and actual_day_minor >= int(target_day_minor or 0)
+                day_boost_applied = (
+                    target_day_minor is not None
+                    and target_day_minor > 0
+                    and actual_day_minor >= int(target_day_minor or 0)
+                )
                 day_percent_bps = regular_percent_bps
                 if day_boost_applied:
                     applied_days_count += 1
@@ -259,7 +270,9 @@ def _build_percent_component_decision(
         elif boost_source_type == BOOST_SOURCE_DEPARTMENT_MONTH_PLAN:
             boost_target_minor = _sum_department_month_target_minor(venue_plan_metrics, boost_department_ids)
             boost_actual_minor = _sum_department_revenue_minor(revenue_metrics, boost_department_ids)
-            boost_applied = boost_target_minor is not None and boost_actual_minor >= boost_target_minor
+            boost_applied = (
+                boost_target_minor is not None and boost_target_minor > 0 and boost_actual_minor >= boost_target_minor
+            )
             if boost_applied:
                 excess_supported = component_type == "PERCENT_DEPARTMENT_REVENUE" and set(department_ids) == set(
                     boost_department_ids
@@ -292,7 +305,11 @@ def _build_percent_component_decision(
             for day, base_day_minor in sorted(base_by_date.items(), key=lambda item: item[0]):
                 actual_day_minor = int(day_actuals_by_date.get(day) or 0)
                 target_day_minor = _sum_department_day_target_minor(venue_plan_metrics, boost_department_ids, day)
-                day_boost_applied = target_day_minor is not None and actual_day_minor >= int(target_day_minor or 0)
+                day_boost_applied = (
+                    target_day_minor is not None
+                    and target_day_minor > 0
+                    and actual_day_minor >= int(target_day_minor or 0)
+                )
                 day_percent_bps = regular_percent_bps
                 if day_boost_applied:
                     applied_days_count += 1

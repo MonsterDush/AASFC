@@ -19,6 +19,7 @@ import {
   mountDemoPageTour,
   trackDemoEvent,
 } from "/app.js?v=20260820-i18nmetrika1";
+import { tierBreakdown, tierDayBreakdown } from "/owner-pay-profile/percent-breakdown.js?v=20260906-tiers1";
 import { permSetFromResponse, roleUpper, hasPerm, isFinancialValuesHidden, FINANCIAL_VALUES_HIDDEN_LABEL } from "/permissions.js";
 import {
   formatComparisonRange,
@@ -225,7 +226,7 @@ function componentSnapshot(component) {
 function breakdownBadges(component) {
   const snap = componentSnapshot(component);
   const badges = [];
-  if (snap?.boost_enabled && snap?.boost_percent_bps != null) {
+  if (snap?.boost_enabled && snap?.boost_percent_bps != null && !snap?.percent_tiers?.length) {
     badges.push(`<span class="payroll-chip ${snap?.boost_applied ? 'payroll-chip--ok' : 'payroll-chip--muted'}">boost ${esc(fmtPercentBps(snap.boost_percent_bps))}${snap?.boost_applied ? ' ✓' : ''}</span>`);
   }
   if (snap?.boost_source_title) badges.push(`<span class="payroll-chip payroll-chip--muted">${esc(snap.boost_source_title)}</span>`);
@@ -239,6 +240,7 @@ function breakdownBadges(component) {
 
 function breakdownKv(component) {
   const snap = componentSnapshot(component);
+  if (snap?.calculation_version === 2) return tierBreakdown(snap, { esc, fmtMoneyMinor, fmtPercentBps });
   const rows = [];
   const push = (label, value) => {
     if (value == null || value === '') return;
@@ -325,6 +327,7 @@ function breakdownExplain(component) {
 
 function breakdownDayRows(component) {
   const snap = componentSnapshot(component);
+  if (snap?.calculation_version === 2) return tierDayBreakdown(snap, { esc, fmtMoneyMinor, fmtPercentBps, formatDateRu });
   const rows = Array.isArray(snap?.day_rows) ? snap.day_rows : [];
   if (!rows.length) return '';
   return `<div class="payroll-breakdown__dayrows">${rows.map((row) => {

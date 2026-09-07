@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from pydantic import BaseModel, Field
 
 
@@ -74,6 +75,11 @@ class PayComponentWeekdayRateIn(BaseModel):
     rate_minor: int = Field(..., ge=0)
 
 
+class PercentTierIn(BaseModel):
+    threshold_value: Decimal = Field(ge=0, max_digits=18, decimal_places=4)
+    percent_bps: int = Field(ge=0, le=2147483647)
+
+
 class PayComponentCreateIn(BaseModel):
     component_type: str = Field(..., min_length=1, max_length=40)
     title: str = Field(..., min_length=1, max_length=120)
@@ -89,6 +95,7 @@ class PayComponentCreateIn(BaseModel):
     kpi_calculation_mode: str = Field(default="FIXED", min_length=1, max_length=16)
     salary_accrual_day: int | None = Field(default=None, ge=1, le=31)
     base_scope: str | None = Field(default=None, min_length=1, max_length=24)
+    percent_tiers: list[PercentTierIn] | None = Field(default=None, max_length=100)
     boost_enabled: bool = False
     boost_percent_bps: int | None = Field(default=None, ge=0)
     boost_source_type: str | None = Field(default=None, min_length=1, max_length=40)
@@ -119,6 +126,7 @@ class PayComponentUpdateIn(BaseModel):
     kpi_calculation_mode: str | None = Field(default=None, min_length=1, max_length=16)
     salary_accrual_day: int | None = Field(default=None, ge=1, le=31)
     base_scope: str | None = Field(default=None, min_length=1, max_length=24)
+    percent_tiers: list[PercentTierIn] | None = Field(default=None, max_length=100)
     boost_enabled: bool | None = None
     boost_percent_bps: int | None = Field(default=None, ge=0)
     boost_source_type: str | None = Field(default=None, min_length=1, max_length=40)

@@ -179,7 +179,7 @@ def admin_update_position_permission_template(
     user: User = Depends(require_super_admin),
 ):
     row = _load_row(db, template_id)
-    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    fields_set = payload.model_fields_set
     if "code" in fields_set and payload.code is not None:
         code = _normalize_code(payload.code, fallback_title=row.title)
         existing = db.execute(

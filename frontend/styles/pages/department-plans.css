@@ -1,0 +1,54 @@
+.department-plans-page .container{max-width:1120px}
+.dp-filters,.dp-month-form,.dp-actions,.dp-range,.dp-table-heading{display:flex;align-items:end;gap:14px;flex-wrap:wrap}
+.dp-filters label{flex:1;min-width:180px}
+.dp-filters label:first-child{flex:2}
+.dp-tabs{display:grid;grid-template-columns:1fr 1fr;margin:20px 0;max-width:520px}
+.dp-tabs button{min-height:44px}
+.dp-panel{display:grid;gap:20px}
+.dp-panel.hidden{display:none}
+.dp-panel h2{font-size:20px;margin:0}
+.dp-panel p{line-height:1.6}
+.dp-month-form label{flex:1;max-width:500px}
+.dp-month-form input{font-size:28px;font-weight:800;min-height:58px}
+.dp-month-form .btn{min-height:58px}
+.dp-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.dp-stats strong{display:block;font-size:26px;margin-top:12px;overflow-wrap:anywhere}
+.dp-panel progress{appearance:none;width:100%;height:10px;border:none;border-radius:10px;overflow:hidden;background:var(--surface2);accent-color:var(--accent)}
+.dp-panel progress::-webkit-progress-bar{background:var(--surface2)}
+.dp-panel progress::-webkit-progress-value{background:var(--accent);border-radius:10px}
+.dp-info{border:1px solid var(--accentSoftBorder);background:var(--accentSoftBg);padding:14px;border-radius:12px;font-size:13px}
+.dp-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin:24px 0}
+.dp-week label{min-width:0;font-size:12px}
+.dp-week input{padding:12px 8px;min-width:0;font-weight:700}
+.dp-checkbox{display:flex;gap:10px;align-items:center;margin:20px 0;font-size:13px}
+.dp-checkbox input{width:18px;height:18px;flex-shrink:0}
+.dp-range{margin-top:18px}
+.dp-range.hidden{display:none}
+.dp-table-heading{justify-content:space-between;margin-bottom:18px}
+.dp-table-heading label{max-width:180px}
+.dp-date-row,.dp-date-head{display:grid;grid-template-columns:1.2fr 1.7fr 1fr .8fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
+.dp-date-head{font-size:12px;color:var(--muted)}
+.dp-date-row input{min-width:0}
+.dp-date-row .dp-day-name{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+.dp-date-row .dp-actual,.dp-date-row .dp-achievement{font-weight:700;white-space:nowrap}
+.dp-date-row.is-achieved .dp-achievement{color:var(--statusSuccessText)}
+.dp-date-row.is-dirty{background:var(--accentSoftBg)}
+.dp-help{margin-top:20px;line-height:1.6}
+.department-plans-link{display:block;text-decoration:none;color:inherit}
+@media(max-width:640px){
+  .dp-filters label{min-width:120px}
+  .dp-filters a{width:100%}
+  .dp-stats{grid-template-columns:1fr}
+  .dp-stats .itemcard{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .dp-stats strong{font-size:20px;margin:0;text-align:right}
+  .dp-week{grid-template-columns:1fr}
+  .dp-week label{display:grid;grid-template-columns:1fr 1.2fr;gap:12px;align-items:center;font-size:14px}
+  .dp-actions .btn{width:100%}
+  .dp-date-head{display:none}
+  .dp-date-row{grid-template-columns:1fr 1fr;gap:10px;padding:16px 0}
+  .dp-date-row .btn{grid-column:2;grid-row:3}
+  .dp-date-row .dp-actual::before{content:attr(data-label);display:block;font-size:11px;font-weight:400;color:var(--muted)}
+  .dp-date-row .dp-achievement::before{content:attr(data-label);display:block;font-size:11px;font-weight:400;color:var(--muted)}
+  .dp-date-row .dp-date{grid-column:1;grid-row:1}
+  .dp-month-form .btn,.dp-month-form label{width:100%;max-width:none}
+}

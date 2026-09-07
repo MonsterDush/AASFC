@@ -1,3 +1,4 @@
+import { readPercentTiers } from "./percent-tiers.js?v=20260906-tiers1";
 
 export function createPayComponentSupport({ state, esc }) {
 const COMPONENT_LABELS = {
@@ -17,11 +18,11 @@ const BASE_SCOPE_LABELS = {
 
 const BOOST_SOURCE_LABELS = {
   NONE: "без условия",
-  VENUE_MONTH_PLAN: "месячный план заведения",
-  VENUE_DAY_PLAN: "суточный план заведения",
-  DEPARTMENT_MONTH_PLAN: "месячный план департамента",
-  DEPARTMENT_DAY_PLAN: "суточный план департамента",
-  KPI_METRIC: "KPI",
+  VENUE_MONTH_PLAN: "план заведения на месяц",
+  VENUE_DAY_PLAN: "план заведения по дням",
+  DEPARTMENT_MONTH_PLAN: "план департамента на месяц",
+  DEPARTMENT_DAY_PLAN: "план департамента по дням",
+  KPI_METRIC: "KPI-метрика",
 };
 
 const BOOST_RECALC_LABELS = {
@@ -232,7 +233,7 @@ function formatPercentConfig(item) {
   if (item.boost_enabled && item.boost_percent_bps != null) {
     const sourceLabel = boostSourceLabel(effectiveBoostSourceFor(item));
     const modeLabel = boostRecalcLabel(effectiveBoostRecalcModeFor(item));
-    const boostBits = [`boost ${fmtPercentBps(item.boost_percent_bps)}`];
+    const boostBits = (item.percent_tiers || []).length ? item.percent_tiers.map((tier) => `≥ ${tier.threshold_value}${effectiveBoostSourceFor(item) === "KPI_METRIC" ? "" : "%"} → ${fmtPercentBps(tier.percent_bps)}`) : [fmtPercentBps(item.boost_percent_bps)];
     if (sourceLabel) boostBits.push(sourceLabel);
     if (modeLabel) boostBits.push(modeLabel);
     const boostDepartmentTitles = departmentTitlesForIds(selectedBoostDepartmentIdsFor(item), item.boost_department_titles);
@@ -251,11 +252,11 @@ function percentBoostOptions(selected) {
   const value = String(selected || 'NONE').toUpperCase();
   return [
     ['NONE', 'Без условия'],
-    ['VENUE_MONTH_PLAN', 'Месячный план заведения'],
-    ['VENUE_DAY_PLAN', 'Суточный план заведения'],
-    ['DEPARTMENT_MONTH_PLAN', 'Месячный план департамента'],
-    ['DEPARTMENT_DAY_PLAN', 'Суточный план департамента'],
-    ['KPI_METRIC', 'KPI'],
+    ['VENUE_MONTH_PLAN', 'План заведения на месяц'],
+    ['VENUE_DAY_PLAN', 'План заведения по дням'],
+    ['DEPARTMENT_MONTH_PLAN', 'План департамента на месяц'],
+    ['DEPARTMENT_DAY_PLAN', 'План департамента по дням'],
+    ['KPI_METRIC', 'KPI-метрика'],
   ].map(([code, title]) => `<option value="${code}" ${value === code ? 'selected' : ''}>${title}</option>`).join('');
 }
 
@@ -272,8 +273,8 @@ function baseScopeOptions(selected, componentType) {
 function boostRecalcOptions(selected) {
   const value = String(selected || 'REPLACE_ALL').toUpperCase();
   return [
-    ['REPLACE_ALL', 'Весь объём по повышенному %'],
-    ['EXCESS_ONLY', 'Только превышение по повышенному %'],
+    ['REPLACE_ALL', 'Новый процент на всю сумму'],
+    ['EXCESS_ONLY', 'Повышенный процент только на превышение'],
   ].map(([code, title]) => `<option value="${code}" ${value === code ? 'selected' : ''}>${title}</option>`).join('');
 }
 
@@ -326,7 +327,7 @@ function syncComponentConfigHint() {
   if (type === 'PERCENT_TOTAL_REVENUE' || type === 'PERCENT_DEPARTMENT_REVENUE') {
     const percentBps = parsePercentInputToBps(document.getElementById('f_percent')?.value || '') || 0;
     const boostEnabled = !!document.getElementById('f_boost_enabled')?.checked;
-    const boostBps = parsePercentInputToBps(document.getElementById('f_boost_percent')?.value || '') || 0;
+    const boostBps = readPercentTiers().at(-1)?.percent_bps || 0;
     const boostSourceType = String(document.getElementById('f_boost_source_type')?.value || 'NONE').toUpperCase();
     const recalcMode = String(document.getElementById('f_boost_recalc_mode')?.value || 'REPLACE_ALL').toUpperCase();
     const baseScope = String(document.getElementById('f_base_scope')?.value || '').toUpperCase();
@@ -358,7 +359,7 @@ function syncComponentConfigHint() {
       warnings.push('Процент считается от общей выручки, а условие повышения — по департаменту. Это допустимо, но проверь, что именно так и задумано.');
     }
     if (boostSourceType === 'KPI_METRIC' && recalcMode === 'EXCESS_ONLY') {
-      warnings.push('Для KPI режим «только превышение» всё равно считается как полный пересчёт по повышенному %.');
+      warnings.push('Для KPI выберите режим «Новый процент на всю сумму».');
     }
   }
   const parts = [];

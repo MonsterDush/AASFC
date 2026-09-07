@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
+  <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
+  <script>
+    (() => {
+      try {
+        const requested = new URLSearchParams(location.search).get("lang");
+        const stored = localStorage.getItem("axelio.lang");
+        const detected = String(requested || stored || navigator.languages?.[0] || navigator.language || "ru").toLowerCase();
+        document.documentElement.lang = detected.startsWith("en") ? "en" : "ru";
+      } catch {}
+    })();
+  </script>
+  <script type="module" src="/i18n-bootstrap.js?v=20260826-i18n12"></script>
+  <script src="/page-loader.js?v=20260823-navfix1"></script>
+  <title>Axelio · Планы департаментов</title>
+  <link rel="stylesheet" href="/styles/pages/department-plans.css?v=20260906-plans1" />
+</head>
+<body class="department-plans-page">
+  <main class="container">
+    <div class="topbar"><div class="brand"><div class="logo"></div><div class="title"><b>Планы департаментов</b><div class="muted">Настройте выручку, от которой зависит процент сотрудников</div></div></div><div class="userpill" data-userpill>…</div></div>
+    <div class="card dp-filters">
+      <label>Департамент<select id="departmentPick" aria-label="Департамент"></select></label>
+      <label>Месяц<input id="monthPick" type="month" required /></label>
+      <a class="btn ghost" id="venuePlansLink" href="/owner-economics-plans.html">Планы заведения</a>
+    </div>
+    <p id="pageStatus" role="status" class="muted">Загрузка…</p>
+    <div id="planContent" class="hidden">
+      <div class="seg dp-tabs" role="tablist" aria-label="Режим планирования">
+        <button id="monthTab" type="button" role="tab" aria-selected="true" aria-controls="monthPanel" class="active">План на месяц</button>
+        <button id="daysTab" type="button" role="tab" aria-selected="false" aria-controls="daysPanel">План по дням</button>
+      </div>
+      <section class="card dp-panel" id="monthPanel" role="tabpanel" aria-labelledby="monthTab">
+        <div><h2>План на месяц</h2><p class="muted">Один денежный план на весь выбранный месяц.</p></div>
+        <form id="monthForm" class="dp-month-form"><label>План, ₽<input id="monthValue" inputmode="decimal" placeholder="Не установлен" autocomplete="off" /></label><button class="btn primary" type="submit">Сохранить план</button></form>
+        <div class="dp-stats">
+          <div class="itemcard"><span class="muted">Фактическая выручка</span><strong id="monthActual">—</strong></div>
+          <div class="itemcard"><span class="muted">Выполнение плана</span><strong id="monthAchievement">—</strong></div>
+          <div class="itemcard"><span class="muted">Осталось до плана</span><strong id="monthRemaining">—</strong></div>
+        </div>
+        <progress id="monthProgress" max="100" value="0" aria-label="Выполнение плана"></progress>
+        <p class="dp-info">Факт учитывает только закрытые отчёты.</p>
+      </section>
+      <section class="dp-panel hidden" id="daysPanel" role="tabpanel" aria-labelledby="daysTab">
+        <div class="card">
+          <h2>Недельная схема</h2><p class="muted">Задайте план для каждого дня недели и примените к нужным датам. Пустые поля пропускаются.</p>
+          <form id="weekForm">
+            <div id="weekInputs" class="dp-week"></div>
+            <label class="dp-checkbox"><input id="overwriteExisting" type="checkbox" /> Перезаписать уже настроенные даты</label>
+            <div class="dp-actions"><button class="btn primary" type="button" id="applyMonth">Применить ко всему месяцу</button><button class="btn" type="button" id="applyWeek">Применить к этой неделе</button><button class="btn ghost" type="button" id="toggleRange" aria-expanded="false">Применить к выбранному диапазону</button></div>
+            <div class="dp-range hidden" id="rangePanel"><label>С даты<input id="rangeFrom" type="date" /></label><label>По дату<input id="rangeTo" type="date" /></label><button class="btn" id="applyRange" type="button">Применить диапазон</button></div>
+            <p class="muted" id="bulkHint" role="status"></p>
+          </form>
+        </div>
+        <div class="card"><div class="dp-table-heading"><div><h2>Планы по датам</h2><p class="muted">Любую дату можно изменить отдельно после применения схемы.</p></div><label>Неделя с датой<input id="weekAnchor" type="date" /></label></div>
+          <div class="dp-calendar" id="calendarRows"></div>
+          <p class="dp-info">Факт учитывает только закрытые отчёты. Пустой план не включает повышение процента.</p>
+        </div>
+      </section>
+      <aside class="card dp-help"><b>Как план влияет на зарплату</b><p class="muted">В профиле зарплаты выберите источник: месячный или дневной план департамента. Для дневного плана каждый день рассчитывается отдельно. Месячный план не заполняет дневные планы автоматически.</p><a class="btn ghost" id="profilesLink" href="/owner-pay-profiles.html">Настроить процент и ступени →</a></aside>
+    </div>
+  </main>
+  <div class="nav"><div class="wrap"><div id="nav"></div></div></div>
+  <div class="toast" id="toast"><div class="toast__text"></div></div>
+  <script type="module" src="/owner-department-plans.js?v=20260906-plans1"></script>
+</body>
+</html>

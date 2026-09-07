@@ -9,7 +9,7 @@ from app.schemas.finance import DailyFinanceSummaryOut, MonthlyFinanceBreakdownR
 
 class DepartmentPlanItemIn(BaseModel):
     department_id: int = Field(..., gt=0)
-    revenue_plan_minor: int | None = Field(default=None, ge=0)
+    revenue_plan_minor: int | None = Field(default=None, gt=0)
     notes: str | None = Field(default=None, max_length=1000)
 
 

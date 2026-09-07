@@ -21,8 +21,6 @@ const state = {
   monthPlan: null,
   overridePlan: null,
   templates: [],
-  departmentMonthPlans: null,
-  departmentDayPlans: null,
   copyResultHint: '—',
 };
 
@@ -99,20 +97,6 @@ function monthISO(dateStr) {
   return `${y}-${m}`;
 }
 
-function shiftISODate(dateStr, deltaDays) {
-  const d = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
-  d.setDate(d.getDate() + Number(deltaDays || 0));
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function syncDepartmentDayQuickControls() {
-  const copyInput = document.getElementById('departmentDayCopyFromDate');
-  if (copyInput) copyInput.value = shiftISODate(state.date || todayISO(), -7);
-}
-
 function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -155,58 +139,6 @@ function usageInlineText(payload, { empty = 'Пока не использует�
   const profileCount = Number(payload?.usage_profile_count || 0);
   if (!componentCount) return empty;
   return `Используется в ${componentCount} компонент(ах)${profileCount ? ` · профилей: ${profileCount}` : ''}`;
-}
-
-function departmentPlansTableHtml(prefix, payload = {}, options = {}) {
-  const rows = Array.isArray(payload?.items) ? payload.items : [];
-  const canManage = !!options.canManage;
-  if (!rows.length) return `<div class="muted">Нет активных департаментов.</div>`;
-  return `
-    <div class="dept-plan-table">
-      <div class="dept-plan-table__head">
-        <div>Департамент</div>
-        <div>План</div>
-        <div>${prefix === 'dept_month' ? 'Факт текущий' : 'Факт дня'}</div>
-        <div>${prefix === 'dept_month' ? 'Прошлый месяц' : 'Комментарий'}</div>
-      </div>
-      ${rows.map((row) => `
-        <div class="dept-plan-table__row">
-          <div>
-            <b>${esc(row.department_title || 'Департамент')}</b>
-            <div class="muted mt-6">${esc(row.department_code || '')}</div>
-            <div class="muted mt-6">${esc(usageInlineText(row))}</div>
-            <input type="hidden" name="${prefix}_department_id" value="${esc(row.department_id)}" />
-          </div>
-          <div>
-            <input ${canManage ? '' : 'disabled'} name="${prefix}_revenue_plan_minor_${row.department_id}" type="text" placeholder="0.00" value="${esc(toInputMoney(row.revenue_plan_minor))}" />
-          </div>
-          <div>
-            <b>${fmtMoneyMinor(row.actual_current_minor)}</b>
-          </div>
-          <div>
-            ${prefix === 'dept_month' ? `<b>${fmtMoneyMinor(row.actual_previous_minor)}</b>` : `<textarea ${canManage ? '' : 'disabled'} name="${prefix}_notes_${row.department_id}" rows="2" placeholder="Комментарий">${esc(row.notes || '')}</textarea>`}
-          </div>
-        </div>
-      `).join('')}
-    </div>
-    ${canManage ? `<div class="row gap-8 mt-12"><button class="btn" type="submit">Сохранить ${prefix === 'dept_month' ? 'планы месяца' : 'планы на дату'}</button></div>` : ''}
-  `;
-}
-
-function buildDepartmentPlanPayload(form, prefix) {
-  const rows = [];
-  form.querySelectorAll(`input[name="${prefix}_department_id"]`).forEach((hidden) => {
-    const depId = Number(hidden.value || 0);
-    if (!depId) return;
-    const revenueInput = form.querySelector(`[name="${prefix}_revenue_plan_minor_${depId}"]`);
-    const notesInput = form.querySelector(`[name="${prefix}_notes_${depId}"]`);
-    rows.push({
-      department_id: depId,
-      revenue_plan_minor: parseMoneyToMinor(revenueInput?.value || ''),
-      notes: notesInput ? String(notesInput.value || '').trim() || null : null,
-    });
-  });
-  return { items: rows };
 }
 
 function getVenueId() {
@@ -367,24 +299,6 @@ function renderMonthPlan(plan) {
   form.onsubmit = saveMonthPlan;
 }
 
-function renderDepartmentMonthPlans(payload) {
-  const form = document.getElementById('departmentMonthPlansForm');
-  if (!form) return;
-  form.innerHTML = departmentPlansTableHtml('dept_month', payload, { canManage: state.access.canManage });
-  setVisible(form, true);
-  form.onsubmit = saveDepartmentMonthPlans;
-}
-
-function renderDepartmentDayPlans(payload) {
-  const form = document.getElementById('departmentDayPlansForm');
-  const badge = document.getElementById('departmentDayPlansBadge');
-  if (badge) badge.textContent = payload?.date || state.date || '—';
-  if (!form) return;
-  form.innerHTML = departmentPlansTableHtml('dept_day', payload, { canManage: state.access.canManage });
-  setVisible(form, true);
-  form.onsubmit = saveDepartmentDayPlans;
-}
-
 function renderOverride(plan) {
   const hasValues = plan?.revenue_plan_minor != null || plan?.profit_plan_minor != null || plan?.revenue_per_assigned_plan_minor != null || plan?.assigned_user_target != null || !!plan?.day_kind || !!plan?.title;
   setText("overrideBadge", hasValues ? (dayKindLabel(plan?.day_kind) || "Есть план") : "Не задан");
@@ -484,25 +398,18 @@ async function loadAccess() {
 async function loadData() {
   const venueId = getVenueId();
   if (!venueId) return;
-  const [effectivePlan, overridePlan, monthPlan, templates, departmentMonthPlans, departmentDayPlans] = await Promise.all([
+  const [effectivePlan, overridePlan, monthPlan, templates] = await Promise.all([
     api(`/venues/${encodeURIComponent(venueId)}/economics/plan?date=${encodeURIComponent(state.date)}`),
     api(`/venues/${encodeURIComponent(venueId)}/economics/plan/override?date=${encodeURIComponent(state.date)}`),
     api(`/venues/${encodeURIComponent(venueId)}/economics/plan-month?month=${encodeURIComponent(state.month)}`),
     api(`/venues/${encodeURIComponent(venueId)}/economics/plan-templates`),
-    api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-month?month=${encodeURIComponent(state.month)}`),
-    api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-day?date=${encodeURIComponent(state.date)}`),
   ]);
   state.effectivePlan = effectivePlan || {};
   state.overridePlan = overridePlan || {};
   state.monthPlan = monthPlan || {};
   state.templates = Array.isArray(templates) ? templates : [];
-  state.departmentMonthPlans = departmentMonthPlans || { items: [] };
-  state.departmentDayPlans = departmentDayPlans || { items: [] };
   renderEffective(state.effectivePlan);
   renderMonthPlan(state.monthPlan);
-  renderDepartmentMonthPlans(state.departmentMonthPlans);
-  renderDepartmentDayPlans(state.departmentDayPlans);
-  syncDepartmentDayQuickControls();
   renderOverride(state.overridePlan);
   renderTemplates(state.templates);
 }
@@ -557,95 +464,6 @@ async function quickCopyMondayToWeekdays() {
   if (overwrite) overwrite.checked = true;
   syncWeekdayCopyTargets();
   await copyWeekdayTemplates({ preventDefault() {}, currentTarget: form });
-}
-
-async function saveDepartmentMonthPlans(event) {
-  event.preventDefault();
-  if (!state.access.canManage) return;
-  try {
-    const venueId = getVenueId();
-    const payload = buildDepartmentPlanPayload(event.currentTarget, 'dept_month');
-    await api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-month?month=${encodeURIComponent(state.month)}`, {
-      method: 'PUT',
-      body: payload,
-    });
-    toast('Планы департаментов на месяц сохранены', 'ok');
-    await loadData();
-  } catch (err) {
-    toast(err?.data?.detail || err.message || 'Не удалось сохранить планы департаментов', 'err');
-  }
-}
-
-async function saveDepartmentDayPlans(event) {
-  event.preventDefault();
-  if (!state.access.canManage) return;
-  try {
-    const venueId = getVenueId();
-    const payload = buildDepartmentPlanPayload(event.currentTarget, 'dept_day');
-    await api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-day?date=${encodeURIComponent(state.date)}`, {
-      method: 'PUT',
-      body: payload,
-    });
-    toast('Планы департаментов на дату сохранены', 'ok');
-    await loadData();
-  } catch (err) {
-    toast(err?.data?.detail || err.message || 'Не удалось сохранить планы департаментов на дату', 'err');
-  }
-}
-
-async function autofillDepartmentMonthPlans() {
-  if (!state.access.canManage) return;
-  try {
-    const venueId = getVenueId();
-    const result = await api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-month/autofill-from-last-month?month=${encodeURIComponent(state.month)}&overwrite=true`, { method: 'POST' });
-    toast(`Заполнено из ${result?.copied_from_month || 'прошлого месяца'}`, 'ok');
-    await loadData();
-  } catch (err) {
-    toast(err?.data?.detail || err.message || 'Не удалось заполнить планы из прошлого месяца', 'err');
-  }
-}
-
-async function distributeDepartmentMonthPlans() {
-  if (!state.access.canManage) return;
-  try {
-    const venueId = getVenueId();
-    const result = await api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-month/distribute-from-venue-plan?month=${encodeURIComponent(state.month)}&overwrite=true`, { method: 'POST' });
-    toast(`Распределено: ${fmtMoneyMinor(result?.distributed_total_minor)}`, 'ok');
-    await loadData();
-  } catch (err) {
-    toast(err?.data?.detail || err.message || 'Не удалось распределить план заведения', 'err');
-  }
-}
-
-async function copyDepartmentDayPlansFromDate() {
-  if (!state.access.canManage) return;
-  const sourceInput = document.getElementById('departmentDayCopyFromDate');
-  const sourceDate = String(sourceInput?.value || '').trim();
-  if (!sourceDate) {
-    toast('Выбери дату-источник', 'warn');
-    return;
-  }
-  try {
-    const venueId = getVenueId();
-    const result = await api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-day/copy-from-date?source_date=${encodeURIComponent(sourceDate)}&target_date=${encodeURIComponent(state.date)}&overwrite=true`, { method: 'POST' });
-    toast(`Скопировано: ${result?.copied || 0}`, 'ok');
-    await loadData();
-  } catch (err) {
-    toast(err?.data?.detail || err.message || 'Не удалось скопировать планы с даты', 'err');
-  }
-}
-
-async function autofillDepartmentDayPlansFromHistory(mode = 'SAME_WEEKDAY_AVG') {
-  if (!state.access.canManage) return;
-  try {
-    const venueId = getVenueId();
-    const result = await api(`/venues/${encodeURIComponent(venueId)}/economics/department-plan-day/autofill-from-history?target_date=${encodeURIComponent(state.date)}&mode=${encodeURIComponent(mode)}&overwrite=true&lookback_weeks=4`, { method: 'POST' });
-    const label = mode === 'PREVIOUS_WEEK' ? 'прошлой недели' : mode === 'PREVIOUS_DAY' ? 'вчера' : 'похожих дней';
-    toast(`Автозаполнено из ${label}: ${result?.copied || 0}`, 'ok');
-    await loadData();
-  } catch (err) {
-    toast(err?.data?.detail || err.message || 'Не удалось автозаполнить планы на дату', 'err');
-  }
 }
 
 async function saveMonthPlan(event) {
@@ -716,6 +534,7 @@ async function boot() {
 
   await mountNav({ activeTab: "summary" });
   await loadAccess();
+  document.getElementById("departmentPlansLink").href = `/owner-department-plans.html?venue_id=${encodeURIComponent(getActiveVenueId())}&month=${encodeURIComponent(state.month)}`;
 
   const datePick = document.getElementById("plansDatePick");
   if (datePick) {
@@ -727,7 +546,6 @@ async function boot() {
         const monthPick = document.getElementById("plansMonthPick");
         if (monthPick) monthPick.value = state.month;
       }
-      syncDepartmentDayQuickControls();
       await loadData();
     };
   }
@@ -752,16 +570,6 @@ async function boot() {
   if (copyPrevBtn) copyPrevBtn.onclick = () => { copyPreviousMonthPlan(); };
   const copyMondayBtn = document.getElementById('copyMondayToWeekdaysBtn');
   if (copyMondayBtn) copyMondayBtn.onclick = () => { quickCopyMondayToWeekdays(); };
-  const deptAutofillBtn = document.getElementById('deptAutofillMonthBtn');
-  if (deptAutofillBtn) deptAutofillBtn.onclick = () => { autofillDepartmentMonthPlans(); };
-  const deptDistributeBtn = document.getElementById('deptDistributeMonthBtn');
-  if (deptDistributeBtn) deptDistributeBtn.onclick = () => { distributeDepartmentMonthPlans(); };
-  const deptCopyDayBtn = document.getElementById('deptCopyDayBtn');
-  if (deptCopyDayBtn) deptCopyDayBtn.onclick = () => { copyDepartmentDayPlansFromDate(); };
-  const deptFillPrevWeekBtn = document.getElementById('deptFillPrevWeekBtn');
-  if (deptFillPrevWeekBtn) deptFillPrevWeekBtn.onclick = () => { autofillDepartmentDayPlansFromHistory('PREVIOUS_WEEK'); };
-  const deptFillAvgWeekdayBtn = document.getElementById('deptFillAvgWeekdayBtn');
-  if (deptFillAvgWeekdayBtn) deptFillAvgWeekdayBtn.onclick = () => { autofillDepartmentDayPlansFromHistory('SAME_WEEKDAY_AVG'); };
   const weekdayCopyForm = document.getElementById('weekdayCopyForm');
   if (weekdayCopyForm) weekdayCopyForm.addEventListener('submit', copyWeekdayTemplates);
 
