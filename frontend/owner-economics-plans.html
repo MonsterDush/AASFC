@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script defer src="/telegram-loader.js?v=20260326-tgloader1"></script>
   <link rel="stylesheet" href="/styles.css?v=20260825-i18nmodal2" />
-  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260723-polish2" />
+  <link rel="stylesheet" href="/styles/pages/finance-pages.css?v=20260908-plansnav1" />
   <script>
     (() => {
       try {
@@ -20,7 +20,7 @@
   <script src="/page-loader.js?v=20260823-navfix1"></script>
   <title>Axelio · Планы</title>
 </head>
-<body>
+<body class="owner-economics-plans-page">
   <div class="container">
     <div class="topbar">
       <div class="brand">
@@ -32,6 +32,15 @@
       </div>
       <div class="userpill" data-userpill>…</div>
     </div>
+
+    <a class="card plans-department-entry" id="departmentPlansLink" href="/owner-department-plans.html">
+      <div class="plans-department-entry__copy">
+        <span class="plans-department-entry__eyebrow">Планы по направлениям</span>
+        <span class="plans-department-entry__title">Планы департаментов</span>
+        <span class="plans-department-entry__description">Настройте отдельные цели для бара, кухни и других департаментов — на месяц, по дням недели или на конкретную дату.</span>
+      </div>
+      <span class="plans-department-entry__action">Открыть <span aria-hidden="true">→</span></span>
+    </a>
 
     <div class="card finance-toolbar">
       <div class="screen-hero">
@@ -130,11 +139,6 @@
         </div>
         <div id="planTemplatesList" class="mt-12"></div>
       </div>
-
-      <a class="itemcard mt-12 department-plans-link" id="departmentPlansLink" href="/owner-department-plans.html">
-        <b>Планы департаментов →</b>
-        <div class="muted mt-6">Месячный план, недельная схема и корректировки отдельных дат.</div>
-      </a>
 
       <div class="itemcard mt-12" id="planOverrideCard">
         <div class="section-card__head">

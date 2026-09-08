@@ -1406,6 +1406,8 @@ async function verifyNamesAndIntervalScopes(page, venueId, viewport) {
 async function verifyDepartmentPlansAndPercentTiers(page, venueId, viewport) {
   const prefix = `/venues/${venueId}`;
   const month = "2035-03";
+  const screenshotDir = path.join(repoRoot, "artifacts/plans-percent-tiers-qa");
+  fs.mkdirSync(screenshotDir, { recursive: true });
   const departments = await expectApi(
     page,
     `${prefix}/departments`,
@@ -1419,6 +1421,56 @@ async function verifyDepartmentPlansAndPercentTiers(page, venueId, viewport) {
   );
 
   await page.goto(
+    `${frontendBase}/owner-economics-plans.html?venue_id=${venueId}&month=${month}&lang=ru`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await page.locator("#departmentPlansLink").waitFor({ state: "visible" });
+  const departmentEntry = await page
+    .locator("#departmentPlansLink")
+    .evaluate((entry) => {
+      const toolbar = document.querySelector(".finance-toolbar");
+      const style = getComputedStyle(entry);
+      const rect = entry.getBoundingClientRect();
+      return {
+        beforeToolbar: Boolean(
+          toolbar &&
+          entry.compareDocumentPosition(toolbar) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+        textDecoration: style.textDecorationLine,
+        left: rect.left,
+        right: rect.right,
+        viewportWidth: document.documentElement.clientWidth,
+      };
+    });
+  assert.equal(
+    departmentEntry.beforeToolbar,
+    true,
+    "department plans entry must be above the venue plans toolbar",
+  );
+  assert.equal(
+    departmentEntry.textDecoration,
+    "none",
+    "department plans entry must render as a navigation card",
+  );
+  assert.ok(
+    departmentEntry.left >= 0 &&
+      departmentEntry.right <= departmentEntry.viewportWidth + 0.5,
+    "department plans entry must fit the viewport",
+  );
+  await assertNoHorizontalOverflow(
+    page,
+    `${viewport.name} venue plans navigation`,
+  );
+  await page.screenshot({
+    path: path.join(
+      screenshotDir,
+      `venue-plans-navigation-${viewport.name}.png`,
+    ),
+    fullPage: true,
+  });
+
+  await page.goto(
     `${frontendBase}/owner-department-plans.html?venue_id=${venueId}&department_id=${department.id}&month=${month}&mode=DAYS&lang=ru`,
     { waitUntil: "domcontentloaded" },
   );
@@ -1428,6 +1480,43 @@ async function verifyDepartmentPlansAndPercentTiers(page, venueId, viewport) {
   });
   await page.locator("#daysPanel").waitFor({ state: "visible" });
   assert.equal(await page.locator("#calendarRows [data-date]").count(), 31);
+  const assertFilterFitsViewport = async (label) => {
+    const geometry = await page.locator("#monthPick").evaluate((monthPick) => {
+      const filter = monthPick.closest(".dp-filters");
+      const inputRect = monthPick.getBoundingClientRect();
+      const filterRect = filter?.getBoundingClientRect();
+      return {
+        inputLeft: inputRect.left,
+        inputRight: inputRect.right,
+        filterLeft: filterRect?.left,
+        filterRight: filterRect?.right,
+        viewportWidth: document.documentElement.clientWidth,
+      };
+    });
+    assert.ok(
+      geometry.inputLeft >= 0 &&
+        geometry.inputRight <= geometry.viewportWidth + 0.5 &&
+        geometry.filterLeft >= 0 &&
+        geometry.filterRight <= geometry.viewportWidth + 0.5,
+      `${label}: department month filter must fit the viewport`,
+    );
+    await assertNoHorizontalOverflow(page, label);
+  };
+  await assertFilterFitsViewport(
+    `${viewport.name} owner department plans filters`,
+  );
+  if (viewport.name === "mobile") {
+    await page.setViewportSize({ width: 320, height: viewport.height });
+    await assertFilterFitsViewport("320px owner department plans filters");
+    await page.screenshot({
+      path: path.join(screenshotDir, "department-plans-mobile-320.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+  }
   const quality = await assertPageQuality(
     page,
     "owner-department-plans",
@@ -1478,8 +1567,6 @@ async function verifyDepartmentPlansAndPercentTiers(page, venueId, viewport) {
     15_500_000,
   );
 
-  const screenshotDir = path.join(repoRoot, "artifacts/plans-percent-tiers-qa");
-  fs.mkdirSync(screenshotDir, { recursive: true });
   await page.screenshot({
     path: path.join(screenshotDir, `department-plans-${viewport.name}.png`),
     fullPage: true,
