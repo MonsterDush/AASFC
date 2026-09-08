@@ -36,8 +36,9 @@
 .dp-help{margin-top:20px;line-height:1.6}
 .department-plans-link{display:block;text-decoration:none;color:inherit}
 @media(max-width:640px){
-  .dp-filters label{min-width:120px}
-  .dp-filters a{width:100%}
+  .dp-filters{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch}
+  .dp-filters label,.dp-filters label:first-child,.dp-filters a{width:100%;min-width:0;max-width:none}
+  .dp-filters input,.dp-filters select{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
   .dp-stats{grid-template-columns:1fr}
   .dp-stats .itemcard{display:flex;justify-content:space-between;align-items:center;gap:12px}
   .dp-stats strong{font-size:20px;margin:0;text-align:right}

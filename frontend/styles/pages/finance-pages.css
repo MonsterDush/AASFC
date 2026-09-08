@@ -3,6 +3,16 @@ select.finance-control{width:auto;min-width:160px}
 select.finance-control--wide{min-width:170px}
 .finance-period-segment{min-width:220px}
 .finance-choice-chip{cursor:pointer}
+.owner-economics-plans-page .plans-department-entry{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:24px;margin-bottom:14px;overflow:hidden;border-color:var(--accentSoftBorder);background:linear-gradient(135deg,var(--accentSoftBg),var(--card) 68%);color:var(--text);text-decoration:none;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.owner-economics-plans-page .plans-department-entry::before{position:absolute;inset:0 auto 0 0;width:4px;background:var(--accent);content:""}
+.owner-economics-plans-page .plans-department-entry:hover{border-color:var(--accent);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+.owner-economics-plans-page .plans-department-entry:focus-visible{outline:3px solid var(--accentSoftBorder);outline-offset:2px}
+.owner-economics-plans-page .plans-department-entry__copy{display:grid;gap:5px;min-width:0;padding-left:4px}
+.owner-economics-plans-page .plans-department-entry__eyebrow{color:var(--accent);font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.owner-economics-plans-page .plans-department-entry__title{font-size:20px;font-weight:900;line-height:1.25}
+.owner-economics-plans-page .plans-department-entry__description{max-width:760px;color:var(--muted);font-size:13px;font-weight:700;line-height:1.5}
+.owner-economics-plans-page .plans-department-entry__action{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:10px 15px;border:1px solid var(--accentSoftBorder);border-radius:12px;background:var(--accent);color:var(--accentText);font-size:13px;font-weight:900;white-space:nowrap}
+.owner-economics-plans-page .plans-department-entry__action span{font-size:18px;line-height:1}
 .finance-generation-row{padding:8px 0;border-bottom:1px solid var(--border)}
 .finance-result-value{text-align:right;white-space:nowrap}
 .finance-state-span-2{grid-column:span 2}
@@ -301,6 +311,9 @@ select.finance-control--wide{min-width:170px}
 @media (max-width:560px){
   input.finance-control,
   select.finance-control{width:100%;min-width:0}
+  .owner-economics-plans-page .plans-department-entry{grid-template-columns:1fr;gap:14px}
+  .owner-economics-plans-page .plans-department-entry__title{font-size:18px}
+  .owner-economics-plans-page .plans-department-entry__action{width:100%}
   .finance-state-span-2{grid-column:auto}
   .owner-summary-page .finance-kpis--secondary{grid-template-columns:1fr}
   .owner-summary-page .summary-kpis{gap:16px}
