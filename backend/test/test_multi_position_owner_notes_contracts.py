@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.auth import venue_permissions
+from app.models.shift_interval import ShiftIntervalPosition
 from app.models import (
     DailyReport,
     PayProfile,
@@ -79,6 +80,7 @@ class FourFixesDatabaseBehaviorTests(TestCase):
             PayProfile.__table__,
             VenuePosition.__table__,
             ShiftInterval.__table__,
+            ShiftIntervalPosition.__table__,
             Shift.__table__,
             ShiftAssignment.__table__,
             DailyReport.__table__,

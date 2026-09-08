@@ -32,8 +32,8 @@ const domBindingManifest = Array.from(
 const manifestHash = (values) => crypto.createHash("sha256").update(JSON.stringify(values)).digest("hex");
 assert.equal(apiCallManifest.length, 21);
 assert.equal(manifestHash(apiCallManifest), "e36d841fea322b74293b11c64ec20dc5c955f0bcc5a68924b1ad188c19fd18d5");
-assert.equal(domBindingManifest.length, 56);
-assert.equal(manifestHash(domBindingManifest), "3d7bf19e0e1a63d07e0b29a3f72489db1c31dd3316a4da5c71aa9dce29b7790e");
+assert.equal(domBindingManifest.length, 62);
+assert.equal(manifestHash(domBindingManifest), "c593dd7a21c2e5be19bdbb0dbffa48c2066f69399e61fa196aab5181e9046add");
 
 assert.ok(mainSource.split("\n").length < 1_920, "staff-shifts.js should remain an orchestration module");
 assert.ok(moduleSource.split("\n").length < 900, "schedule export controller is too large");
@@ -42,10 +42,10 @@ assert.ok(commentModuleSource.split("\n").length < 700, "comment controller is t
 assert.ok(helpersModuleSource.split("\n").length < 220, "staff shifts helpers are too large");
 assert.match(mainSource, /\/staff-shifts\/export-controller\.js\?v=20260719-split1/);
 assert.match(mainSource, /\/staff-shifts\/calendar-controller\.js\?v=20260729-overnight1/);
-assert.match(mainSource, /\/staff-shifts\/comment-controller\.js\?v=20260728-comments1/);
-assert.match(mainSource, /\/staff-shifts\/helpers\.js\?v=20260813-assurance2/);
-assert.match(mainSource, /import\s*\{[\s\S]*?\bfioInitials\b[\s\S]*?\}\s*from\s*["']\/staff-shifts\/helpers\.js\?v=20260813-assurance2["']/);
-assert.match(htmlSource, /staff-shifts\.js\?v=20260811-assurance1/);
+assert.match(mainSource, /\/staff-shifts\/comment-controller\.js\?v=20260906-names-scopes1/);
+assert.match(mainSource, /\/staff-shifts\/helpers\.js\?v=20260906-names-scopes1/);
+assert.match(mainSource, /import\s*\{[\s\S]*?\bfioInitials\b[\s\S]*?\}\s*from\s*["']\/staff-shifts\/helpers\.js\?v=20260906-names-scopes1["']/);
+assert.match(htmlSource, /staff-shifts\.js\?v=20260906-names-scopes1/);
 assert.match(htmlSource, /styles\/pages\/staff-shifts\.css\?v=20260811-assurance1/);
 assert.match(stylesSource, /\.staff-shifts-shell\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
 assert.match(stylesSource, /\.staff-shifts-shell>\*\{min-width:0\}/);
@@ -69,6 +69,21 @@ for (const methodName of ["openExportModal", "refreshExportPreview", "downloadEx
 }
 
 const helpersModule = await import(pathToFileURL(helpersModulePath));
+assert.equal(helpersModule.displayPerson({ display_name: "Миша старший", full_name: "Михаил Иванов" }), "Миша старший");
+assert.equal(helpersModule.pickShortName({ member: { display_name: "Миша старший", short_name: "Михаил" } }), "Миша старший");
+const scopeModule = await import(pathToFileURL(path.join(frontendDir, "shift-interval-scope.js")));
+const scopedIntervals = [{ id: 1, position_ids: [] }, { id: 2, position_ids: [10, 11] }, { id: 3, position_ids: [12] }];
+const scopedPositions = [
+  { member_user_id: 2, catalog_position_id: 10, title: "Переименованная должность" },
+  { member_user_id: 2, catalog_position_id: 11 },
+  { member_user_id: 2, catalog_position_id: 12, is_active: false },
+  { member_user_id: 3, catalog_position_id: 12 },
+];
+assert.deepEqual(scopeModule.availableIntervalsForMember(scopedIntervals, scopedPositions, 2).map((interval) => interval.id), [1, 2]);
+assert.deepEqual(scopeModule.availableIntervalsForMember(scopedIntervals, scopedPositions, 3).map((interval) => interval.id), [1, 3]);
+assert.deepEqual(scopeModule.availableIntervalsForMember(scopedIntervals, scopedPositions, null), scopedIntervals);
+assert.equal(scopeModule.positionMatchesInterval(scopedPositions[0], { position_id: 10 }), true);
+assert.equal(scopeModule.positionMatchesInterval(scopedPositions[0], { position_id: 12 }), false);
 assert.equal(helpersModule.weekTitle(new Date(2031, 6, 7)), "07.07–13.07.2031");
 assert.equal(helpersModule.timeToMin("23:45"), 1425);
 assert.equal(helpersModule.escapeHtml('<a data-x="1">'), "&lt;a data-x=&quot;1&quot;&gt;");

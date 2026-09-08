@@ -62,6 +62,7 @@ const extractedPageStyles = new Map([
   ["owner-economics-plans.html", "styles/pages/finance-pages.css"],
   ["owner-departments.html", "styles/pages/owner-catalogs.css"],
   ["owner-day-economics.html", "styles/pages/owner-economics.css"],
+  ["owner-department-plans.html", "styles/pages/department-plans.css"],
   ["owner-expense-categories.html", "styles/pages/owner-catalogs.css"],
   ["owner-economics-rules.html", "styles/pages/owner-economics.css"],
   ["owner-expenses.html", "styles/pages/finance-pages.css"],
@@ -106,9 +107,10 @@ const pageStyleCacheKeyOverrides = new Map([
   ["invites.html", "20260725-polish4"],
   ["app-adjustments.html", "20260726-polish9"],
   ["auth.html", "20260726-polish9"],
-  ["owner-economics-plans.html", "20260723-polish2"],
+  ["owner-economics-plans.html", "20260908-plansnav1"],
   ["owner-departments.html", "20260726-polish10"],
   ["owner-day-economics.html", "20260810-financepolish1"],
+  ["owner-department-plans.html", "20260908-mobilefilters1"],
   ["owner-expense-categories.html", "20260726-polish10"],
   ["owner-economics-rules.html", "20260726-polish11"],
   ["owner-expenses.html", "20260810-financepolish1"],
@@ -119,8 +121,8 @@ const pageStyleCacheKeyOverrides = new Map([
   ["owner-payroll.html", "20260802-payrollpayments1"],
   ["owner-payment-methods.html", "20260726-polish10"],
   ["owner-quickresto.html", "20260901-qrscope2"],
-  ["owner-pay-profile.html", "20260820-weekdayrates1"],
-  ["owner-pay-profiles.html", "20260820-weekdayrates1"],
+  ["owner-pay-profile.html", "20260906-tiers1"],
+  ["owner-pay-profiles.html", "20260906-tiers1"],
   ["owner-recurring-expenses.html", "20260723-polish2"],
   ["owner-setup.html", "20260725-polish3"],
   ["owner-subscription.html", "20260725-polish5"],
@@ -148,6 +150,7 @@ const inlineFreePages = [
   "auth.html",
   "owner-departments.html",
   "owner-day-economics.html",
+  "owner-department-plans.html",
   "owner-economics-plans.html",
   "owner-economics-rules.html",
   "owner-expense-categories.html",
@@ -175,7 +178,8 @@ const inlineFreeEntrypoints = new Map([
   ["app-adjustments.html", "/app-adjustments.js?v=20260726-navmore1"],
   ["owner-departments.html", "/owner-departments.js?v=20260726-navmore1"],
   ["owner-day-economics.html", "/owner-day-economics.js?v=20260810-financepolish1"],
-  ["owner-economics-plans.html", "/owner-economics-plans.js?v=20260726-navmore1"],
+  ["owner-department-plans.html", "/owner-department-plans.js?v=20260906-plans1"],
+  ["owner-economics-plans.html", "/owner-economics-plans.js?v=20260906-deptplans1"],
   ["owner-economics-rules.html", "/owner-economics-rules.js?v=20260726-navmore1"],
   ["owner-expense-categories.html", "/owner-expense-categories.js?v=20260726-navmore1"],
   ["owner-expenses.html", "/owner-expenses.js?v=20260810-financepolish1"],
@@ -183,17 +187,17 @@ const inlineFreeEntrypoints = new Map([
   ["owner-integration-issues.html", "/owner-integration-issues.js?v=20260902-scopepreview1"],
   ["owner-integrations.html", "/owner-integrations.js?v=20260901-issuesentry1"],
   ["owner-kpi.html", "/owner-kpi.js?v=20260726-navmore1"],
-  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260826-i18nvalue1"],
+  ["owner-pay-profile.html", "/owner-pay-profile.js?v=20260906-tiers1"],
   ["owner-pay-profiles.html", "/owner-pay-profiles.js?v=20260726-navmore1"],
-  ["owner-payroll.html", "/owner-payroll.js?v=20260823-kpiperunit1"],
+  ["owner-payroll.html", "/owner-payroll.js?v=20260906-tiers1"],
   ["owner-payment-methods.html", "/owner-payment-methods.js?v=20260726-navmore1"],
   ["owner-quickresto.html", "/owner-quickresto.js?v=20260902-scopegeneration1"],
   ["owner-recurring-expenses.html", "/owner-recurring-expenses.js?v=20260726-navmore1"],
-  ["owner-setup.html", "/owner-setup.js?v=20260810-setup1"],
+  ["owner-setup.html", "/owner-setup.js?v=20260906-names-scopes1"],
   ["owner-summary.html", "/owner-summary.js?v=20260825-i18nsummary1"],
   ["owner-suppliers.html", "/owner-suppliers.js?v=20260726-navmore1"],
   ["owner-turnover.html", "/owner-turnover.js?v=20260802-financeux2"],
-  ["shift-intervals.html", "/shift-intervals.js?v=20260729-overnight1"],
+  ["shift-intervals.html", "/shift-intervals.js?v=20260906-names-scopes1"],
   ["shift-schedule-templates.html", "/shift-schedule-templates.js?v=20260729-overnight1"],
   ["staff-adjustments.html", "/staff-adjustments.js?v=20260726-navmore1"],
 ]);
@@ -202,6 +206,7 @@ const inlineFreeModules = [
   "app-adjustments.js",
   "owner-departments.js",
   "owner-day-economics.js",
+  "owner-department-plans.js",
   "owner-economics-plans.js",
   "owner-economics-rules.js",
   "owner-expense-categories.js",
@@ -217,6 +222,8 @@ const inlineFreeModules = [
   "owner-pay-profile/component-controller.js",
   "owner-pay-profile/component-form.js",
   "owner-pay-profile/component-list.js",
+  "owner-pay-profile/percent-breakdown.js",
+  "owner-pay-profile/percent-tiers.js",
   "owner-pay-profile/component-support.js",
   "owner-payroll.js",
   "owner-payment-methods.js",
@@ -349,7 +356,7 @@ assert.ok(stylesManifestSource.split("\n").length < 30, "styles.css manifest une
 assert.ok(appSource.split("\n").length < 1_600, "app.js regained runtime style payloads");
 assert.ok(pageLoaderSource.split("\n").length < 180, "page-loader.js unexpectedly grew");
 
-assert.equal(htmlPageFiles.length, 53, "every frontend HTML page must use the global loader");
+assert.equal(htmlPageFiles.length, 54, "every frontend HTML page must use the global loader");
 for (const fileName of htmlPageFiles) {
   const source = fs.readFileSync(path.join(frontendDir, fileName), "utf8");
   assert.ok(
@@ -497,6 +504,7 @@ for (const [htmlFileName, pageStylePath, contracts] of [
   ["owner-payment-methods.html", "styles/pages/owner-catalogs.css", ["catalog-bootstrap", "catalog-filter", "catalog-state--empty"]],
   ["owner-suppliers.html", "styles/pages/owner-catalogs.css", ["catalog-bootstrap", "catalog-footer", "catalog-row__copy"]],
   ["owner-day-economics.html", "styles/pages/owner-economics.css", ["economics-detail-grid", "finance-page-state--denied", "owner-day-economics-page.is-loading", "economics-manage-card .section-card__actions .btn"]],
+  ["owner-department-plans.html", "styles/pages/department-plans.css", ["department-plans-page", "dp-week", "dp-date-row"]],
   ["owner-economics-rules.html", "styles/pages/owner-economics.css", ["economics-rules-presets", "economics-rules-loading", "owner-economics-rules-page.is-loading"]],
 ]) {
   const htmlSource = fs.readFileSync(path.join(frontendDir, htmlFileName), "utf8");

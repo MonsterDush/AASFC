@@ -42,6 +42,7 @@ const expectedScenarios = [
   "owner-settings",
   "owner-positions",
   "owner-day-economics",
+  "owner-department-plans",
   "staff-auth",
   "staff-shifts",
   "staff-salary",
@@ -135,6 +136,10 @@ async function login(page, { phone, role, auditAuth = false }) {
   });
   await page.waitForLoadState("domcontentloaded");
 
+  // getMe can reload the venue page once to apply the saved profile locale.
+  // Wait for its authenticated content before evaluating API calls in the page.
+  await page.locator("#list [data-open]").first().waitFor({ timeout: 20_000 });
+
   const me = await apiJson(page, "/me");
   assert.equal(me.status, 200, `${role}: /me must succeed`);
   const venues = await apiJson(page, "/me/venues");
@@ -209,6 +214,8 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   const prefix = `/venues/${venueId}`;
   const today = new Date().toISOString().slice(0, 10);
   const month = today.slice(0, 7);
+  const coverageToken = `${Date.now().toString(36)}_${process.pid}`;
+  const coverageTitle = (title) => `${title} ${coverageToken}`;
   const calls = [];
   const mutate = async (path, method, body, label, statuses = [200]) => {
     const result = await expectApi(
@@ -262,8 +269,8 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/departments`,
       "POST",
       {
-        code: "e2e_coverage_department",
-        title: "E2E Coverage Department",
+        code: `e2e_coverage_department_${coverageToken}`,
+        title: coverageTitle("E2E Coverage Department"),
         sort_order: 901,
       },
       "create department",
@@ -273,7 +280,10 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   await mutate(
     `${prefix}/departments/${departmentId}`,
     "PATCH",
-    { title: "E2E Coverage Department Updated", sort_order: 902 },
+    {
+      title: coverageTitle("E2E Coverage Department Updated"),
+      sort_order: 902,
+    },
     "update department",
   );
 
@@ -282,8 +292,8 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/payment-methods`,
       "POST",
       {
-        code: "e2e_coverage_payment",
-        title: "E2E Coverage Payment",
+        code: `e2e_coverage_payment_${coverageToken}`,
+        title: coverageTitle("E2E Coverage Payment"),
         sort_order: 901,
       },
       "create payment method",
@@ -293,7 +303,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   await mutate(
     `${prefix}/payment-methods/${paymentMethodId}`,
     "PATCH",
-    { title: "E2E Coverage Payment Updated" },
+    { title: coverageTitle("E2E Coverage Payment Updated") },
     "update payment method",
   );
   const paymentMethods = await expectApi(
@@ -315,8 +325,8 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/kpi-metrics`,
       "POST",
       {
-        code: "e2e_coverage_kpi",
-        title: "E2E Coverage KPI",
+        code: `e2e_coverage_kpi_${coverageToken}`,
+        title: coverageTitle("E2E Coverage KPI"),
         unit: "QTY",
         sort_order: 901,
       },
@@ -327,7 +337,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   await mutate(
     `${prefix}/kpi-metrics/${kpiMetricId}`,
     "PATCH",
-    { title: "E2E Coverage KPI Updated", unit: "RUB" },
+    { title: coverageTitle("E2E Coverage KPI Updated"), unit: "RUB" },
     "update KPI metric",
   );
 
@@ -336,8 +346,8 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/expense-categories`,
       "POST",
       {
-        code: "e2e_coverage_expense",
-        title: "E2E Coverage Expense",
+        code: `e2e_coverage_expense_${coverageToken}`,
+        title: coverageTitle("E2E Coverage Expense"),
         sort_order: 901,
       },
       "create expense category",
@@ -347,7 +357,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   await mutate(
     `${prefix}/expense-categories/${categoryId}`,
     "PATCH",
-    { title: "E2E Coverage Expense Updated" },
+    { title: coverageTitle("E2E Coverage Expense Updated") },
     "update expense category",
   );
 
@@ -356,7 +366,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/suppliers`,
       "POST",
       {
-        title: "E2E Coverage Supplier",
+        title: coverageTitle("E2E Coverage Supplier"),
         contact: "coverage@example.test",
         sort_order: 901,
       },
@@ -367,7 +377,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   await mutate(
     `${prefix}/suppliers/${supplierId}`,
     "PATCH",
-    { title: "E2E Coverage Supplier Updated", contact: null },
+    { title: coverageTitle("E2E Coverage Supplier Updated"), contact: null },
     "update supplier",
   );
 
@@ -376,7 +386,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/pay-profiles`,
       "POST",
       {
-        title: "E2E Coverage Pay Profile",
+        title: coverageTitle("E2E Coverage Pay Profile"),
         description: "Created by the isolated mutation smoke",
       },
       "create pay profile",
@@ -386,7 +396,10 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   await mutate(
     `${prefix}/pay-profiles/${profileId}`,
     "PATCH",
-    { title: "E2E Coverage Pay Profile Updated", description: null },
+    {
+      title: coverageTitle("E2E Coverage Pay Profile Updated"),
+      description: null,
+    },
     "update pay profile",
   );
   const componentId = requireId(
@@ -395,7 +408,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       "POST",
       {
         component_type: "SALARY_HOURLY",
-        title: "E2E Weekday Hourly Rate",
+        title: coverageTitle("E2E Weekday Hourly Rate"),
         rate_minor: 15000,
         weekday_rates: [
           { weekday: 0, rate_minor: 18000 },
@@ -410,7 +423,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
     `${prefix}/pay-components/${componentId}`,
     "PATCH",
     {
-      title: "E2E Weekday Hourly Rate Updated",
+      title: coverageTitle("E2E Weekday Hourly Rate Updated"),
       weekday_rates: [{ weekday: 6, rate_minor: 25000 }],
     },
     "update weekday pay component",
@@ -442,7 +455,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/positions`,
       "POST",
       {
-        title: "E2E Coverage Position",
+        title: coverageTitle("E2E Coverage Position"),
         member_user_id: staffUserId,
         rate: 777,
         percent: 3,
@@ -455,7 +468,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   await mutate(
     `${prefix}/positions/${positionId}`,
     "PATCH",
-    { title: "E2E Coverage Position Updated", rate: 888 },
+    { title: coverageTitle("E2E Coverage Position Updated"), rate: 888 },
     "update position",
   );
 
@@ -555,7 +568,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/recurring-expense-rules`,
       "POST",
       {
-        title: "E2E Coverage Recurring Rule",
+        title: coverageTitle("E2E Coverage Recurring Rule"),
         category_id: categoryId,
         supplier_id: supplierId,
         payment_method_id: paymentMethodId,
@@ -575,7 +588,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
     `${prefix}/recurring-expense-rules/${recurringRuleId}`,
     "PATCH",
     {
-      title: "E2E Coverage Recurring Rule Updated",
+      title: coverageTitle("E2E Coverage Recurring Rule Updated"),
       clear_supplier: true,
       clear_payment_method: true,
       clear_end_date: true,
@@ -595,7 +608,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/shift-intervals`,
       "POST",
       {
-        title: "E2E Coverage Interval",
+        title: coverageTitle("E2E Coverage Interval"),
         start_time: "10:00:00",
         end_time: "18:00:00",
       },
@@ -606,7 +619,10 @@ async function exerciseOwnerMutationSurface(page, venueId) {
   await mutate(
     `${prefix}/shift-intervals/${intervalId}`,
     "PATCH",
-    { title: "E2E Coverage Interval Updated", end_time: "19:00:00" },
+    {
+      title: coverageTitle("E2E Coverage Interval Updated"),
+      end_time: "19:00:00",
+    },
     "update shift interval",
   );
   const templateId = requireId(
@@ -614,7 +630,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       `${prefix}/shift-schedule-templates`,
       "POST",
       {
-        title: "E2E Coverage Template",
+        title: coverageTitle("E2E Coverage Template"),
         description: "isolated E2E mutation smoke",
         items: [{ weekday: 0, interval_id: intervalId, shift_slot: "DAY" }],
       },
@@ -626,7 +642,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
     `${prefix}/shift-schedule-templates/${templateId}`,
     "PATCH",
     {
-      title: "E2E Coverage Template Updated",
+      title: coverageTitle("E2E Coverage Template Updated"),
       items: [{ weekday: 1, interval_id: intervalId, shift_slot: "DAY" }],
     },
     "update shift schedule template",
@@ -653,7 +669,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
         `${prefix}/positions`,
         "POST",
         {
-          title: "E2E Coverage Owner Position",
+          title: coverageTitle("E2E Coverage Owner Position"),
           member_user_id: ownerUserId,
           rate: 0,
           percent: 0,
@@ -810,7 +826,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
       {
         invite_channel: "PHONE",
         phone: "+79995550123",
-        contact_label: "E2E Coverage Invite",
+        contact_label: coverageTitle("E2E Coverage Invite"),
         venue_role: "STAFF",
       },
       "create invite",
@@ -822,7 +838,7 @@ async function exerciseOwnerMutationSurface(page, venueId) {
     "PATCH",
     {
       default_position: {
-        title: "E2E Invite Position",
+        title: coverageTitle("E2E Invite Position"),
         rate: 900,
         percent: 4,
         permission_codes: ["SHIFTS_VIEW"],
@@ -1179,6 +1195,516 @@ async function assertPageQuality(page, budgetName, label = budgetName) {
   return { ...performance, dimensions };
 }
 
+async function verifyNamesAndIntervalScopes(page, venueId, viewport) {
+  const prefix = `/venues/${venueId}`;
+  const suffix = `${viewport.name}-${Date.now()}`;
+  const me = await expectApi(page, "/me", {}, "scope owner");
+  const members = await expectApi(
+    page,
+    `${prefix}/members`,
+    {},
+    "scope members",
+  );
+  const employee = members.members.find(
+    (member) => member.phone === staffPhone,
+  );
+  assert.ok(employee, "scope scenario needs the seeded employee");
+  const mutate = (path, method, body) =>
+    expectApi(
+      page,
+      path,
+      {
+        method,
+        body: JSON.stringify(body),
+      },
+      `scope ${method} ${path}`,
+    );
+  await mutate(`${prefix}/members/${employee.user_id}/owner-note`, "PATCH", {
+    owner_note: "Миша старший",
+  });
+  const titles = [`Бар ${suffix}`, `Зал ${suffix}`, `Менеджер ${suffix}`];
+  const assignments = [];
+  for (const [index, title] of titles.entries()) {
+    assignments.push(
+      await mutate(`${prefix}/positions`, "POST", {
+        title,
+        member_user_id: index === 2 ? me.id : employee.user_id,
+        permission_codes: ["SHIFTS_VIEW"],
+      }),
+    );
+  }
+  const positions = await expectApi(
+    page,
+    `${prefix}/positions`,
+    {},
+    "linked roles",
+  );
+  const catalogIds = assignments.map(
+    (assignment) =>
+      positions.find((position) => position.id === assignment.id)
+        .catalog_position_id,
+  );
+  assert.ok(catalogIds.every((id) => id > 0));
+  const other = await mutate(`${prefix}/shift-intervals`, "POST", {
+    title: `Только менеджер ${suffix}`,
+    start_time: "10:00",
+    end_time: "22:00",
+    position_ids: [catalogIds[2]],
+  });
+  const universal = await mutate(`${prefix}/shift-intervals`, "POST", {
+    title: `Все ${suffix}`,
+    start_time: "11:00",
+    end_time: "23:00",
+    position_ids: [],
+  });
+  await page.goto(
+    `${frontendBase}/shift-intervals.html?venue_id=${venueId}&lang=ru`,
+  );
+  await page.locator("#btnCreate").click();
+  const intervalTitle = `Бар и зал ${suffix}`;
+  await page.locator("#f_title").fill(intervalTitle);
+  await page.locator("#f_start").fill("12:00");
+  await page.locator("#f_end").fill("00:00");
+  const group = page.locator("#f_position");
+  assert.equal(await group.locator("[data-all]").isChecked(), true);
+  for (const id of catalogIds.slice(0, 2))
+    await group.locator(`[data-position-id="${id}"]`).check();
+  assert.equal(await group.locator("[data-all]").isChecked(), false);
+  const screenshotDir = path.join(repoRoot, "artifacts/names-intervals-qa");
+  fs.mkdirSync(screenshotDir, { recursive: true });
+  await page.screenshot({
+    path: path.join(screenshotDir, `interval-editor-${viewport.name}.png`),
+  });
+  await page.locator("#btnSaveEdit").click();
+  await page.locator("#editModal").waitFor({ state: "hidden" });
+  const intervals = await expectApi(
+    page,
+    `${prefix}/shift-intervals`,
+    {},
+    "saved interval scopes",
+  );
+  const interval = intervals.find((item) => item.title === intervalTitle);
+  assert.deepEqual(
+    interval.position_ids,
+    catalogIds.slice(0, 2).sort((a, b) => a - b),
+  );
+  const date = "2035-02-12";
+  const rejected = await apiJson(page, `${prefix}/shifts`, {
+    method: "POST",
+    body: JSON.stringify({
+      date,
+      interval_id: other.id,
+      venue_position_id: assignments[0].id,
+    }),
+  });
+  assert.equal(rejected.status, 409);
+  assert.equal(rejected.body.detail.code, "SHIFT_INTERVAL_POSITION_MISMATCH");
+  await page.goto(
+    `${frontendBase}/staff-shifts.html?venue_id=${venueId}&date=${date}&lang=ru`,
+  );
+  await page.locator(`.cal-cell[data-date="${date}"]`).click();
+  await page.locator(`.cal-cell[data-date="${date}"]`).click();
+  await page.locator("#btnAddShift").click();
+  const employeeSelect = page.locator("#createShiftMember");
+  await employeeSelect.selectOption(String(employee.user_id));
+  assert.equal(
+    await employeeSelect.locator("option:checked").textContent(),
+    "Миша старший",
+  );
+  let visible = await page
+    .locator("#intervalSelect option")
+    .evaluateAll((options) => options.map((option) => Number(option.value)));
+  assert.ok(visible.includes(interval.id));
+  assert.ok(visible.includes(universal.id));
+  assert.ok(!visible.includes(other.id));
+  await employeeSelect.selectOption(String(me.id));
+  visible = await page
+    .locator("#intervalSelect option")
+    .evaluateAll((options) => options.map((option) => Number(option.value)));
+  assert.ok(!visible.includes(interval.id));
+  assert.ok(visible.includes(other.id));
+  await employeeSelect.selectOption(String(employee.user_id));
+  await page.locator("#intervalSelect").selectOption(String(interval.id));
+  const roleIds = await page
+    .locator("#createShiftPosition option")
+    .evaluateAll((options) => options.map((option) => Number(option.value)));
+  assert.deepEqual(
+    roleIds.sort((a, b) => a - b),
+    assignments
+      .slice(0, 2)
+      .map((assignment) => assignment.id)
+      .sort((a, b) => a - b),
+  );
+  await page
+    .locator("#createShiftPosition")
+    .selectOption(String(assignments[1].id));
+  assert.ok(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+    ),
+    "schedule fits viewport",
+  );
+  await page.screenshot({
+    path: path.join(screenshotDir, `create-shift-${viewport.name}.png`),
+  });
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url() === `${apiBase}${prefix}/shifts` &&
+      response.request().method() === "POST",
+  );
+  await page.locator("#createShiftBtn").click();
+  const response = await saved;
+  assert.equal(response.status(), 200);
+  const shift = await response.json();
+  let detail = await expectApi(
+    page,
+    `${prefix}/shifts/${shift.id}`,
+    {},
+    "new assigned shift",
+  );
+  assert.equal(detail.assignments[0].member.display_name, "Миша старший");
+  assert.equal(detail.assignments[0].venue_position_id, assignments[1].id);
+  await mutate(`${prefix}/shift-intervals/${interval.id}`, "PATCH", {
+    position_ids: [catalogIds[2]],
+  });
+  detail = await expectApi(
+    page,
+    `${prefix}/shifts/${shift.id}`,
+    {},
+    "preserved assignment after scope change",
+  );
+  assert.equal(detail.assignments[0].venue_position_id, assignments[1].id);
+  await mutate(`${prefix}/shifts/${shift.id}`, "PATCH", {
+    interval_id: other.id,
+  });
+  detail = await expectApi(
+    page,
+    `${prefix}/shifts/${shift.id}`,
+    {},
+    "preserved assignment after interval change",
+  );
+  assert.equal(detail.assignments[0].venue_position_id, assignments[1].id);
+  await page.goto(
+    `${frontendBase}/shift-intervals.html?venue_id=${venueId}&lang=en`,
+  );
+  await page.locator("#btnCreate").click();
+  await page.getByRole("group", { name: "Available for roles" }).waitFor();
+  await page.locator("#f_position [data-position-id]").first().check();
+  await page.locator("#f_position [data-all]").check();
+  assert.equal(
+    await page.locator("#f_position [data-position-id]:checked").count(),
+    0,
+  );
+  await mutate(`${prefix}/members/${employee.user_id}/owner-note`, "PATCH", {
+    owner_note: employee.owner_note,
+  });
+  console.log(
+    `${viewport.name}: names, multiple roles, employee filtering and existing assignments passed`,
+  );
+}
+
+async function verifyDepartmentPlansAndPercentTiers(page, venueId, viewport) {
+  const prefix = `/venues/${venueId}`;
+  const month = "2035-03";
+  const screenshotDir = path.join(repoRoot, "artifacts/plans-percent-tiers-qa");
+  fs.mkdirSync(screenshotDir, { recursive: true });
+  const departments = await expectApi(
+    page,
+    `${prefix}/departments`,
+    {},
+    "department plans departments",
+  );
+  const department = departments.find((item) => item.is_active !== false);
+  assert.ok(
+    department?.id,
+    "department plans scenario needs an active department",
+  );
+
+  await page.goto(
+    `${frontendBase}/owner-economics-plans.html?venue_id=${venueId}&month=${month}&lang=ru`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await page.locator("#departmentPlansLink").waitFor({ state: "visible" });
+  const departmentEntry = await page
+    .locator("#departmentPlansLink")
+    .evaluate((entry) => {
+      const toolbar = document.querySelector(".finance-toolbar");
+      const style = getComputedStyle(entry);
+      const rect = entry.getBoundingClientRect();
+      return {
+        beforeToolbar: Boolean(
+          toolbar &&
+          entry.compareDocumentPosition(toolbar) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+        textDecoration: style.textDecorationLine,
+        left: rect.left,
+        right: rect.right,
+        viewportWidth: document.documentElement.clientWidth,
+      };
+    });
+  assert.equal(
+    departmentEntry.beforeToolbar,
+    true,
+    "department plans entry must be above the venue plans toolbar",
+  );
+  assert.equal(
+    departmentEntry.textDecoration,
+    "none",
+    "department plans entry must render as a navigation card",
+  );
+  assert.ok(
+    departmentEntry.left >= 0 &&
+      departmentEntry.right <= departmentEntry.viewportWidth + 0.5,
+    "department plans entry must fit the viewport",
+  );
+  await assertNoHorizontalOverflow(
+    page,
+    `${viewport.name} venue plans navigation`,
+  );
+  await page.screenshot({
+    path: path.join(
+      screenshotDir,
+      `venue-plans-navigation-${viewport.name}.png`,
+    ),
+    fullPage: true,
+  });
+
+  await page.goto(
+    `${frontendBase}/owner-department-plans.html?venue_id=${venueId}&department_id=${department.id}&month=${month}&mode=DAYS&lang=ru`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await page.locator("#planContent").waitFor({
+    state: "visible",
+    timeout: 20_000,
+  });
+  await page.locator("#daysPanel").waitFor({ state: "visible" });
+  assert.equal(await page.locator("#calendarRows [data-date]").count(), 31);
+  const assertFilterFitsViewport = async (label) => {
+    const geometry = await page.locator("#monthPick").evaluate((monthPick) => {
+      const filter = monthPick.closest(".dp-filters");
+      const inputRect = monthPick.getBoundingClientRect();
+      const filterRect = filter?.getBoundingClientRect();
+      return {
+        inputLeft: inputRect.left,
+        inputRight: inputRect.right,
+        filterLeft: filterRect?.left,
+        filterRight: filterRect?.right,
+        viewportWidth: document.documentElement.clientWidth,
+      };
+    });
+    assert.ok(
+      geometry.inputLeft >= 0 &&
+        geometry.inputRight <= geometry.viewportWidth + 0.5 &&
+        geometry.filterLeft >= 0 &&
+        geometry.filterRight <= geometry.viewportWidth + 0.5,
+      `${label}: department month filter must fit the viewport`,
+    );
+    await assertNoHorizontalOverflow(page, label);
+  };
+  await assertFilterFitsViewport(
+    `${viewport.name} owner department plans filters`,
+  );
+  if (viewport.name === "mobile") {
+    await page.setViewportSize({ width: 320, height: viewport.height });
+    await assertFilterFitsViewport("320px owner department plans filters");
+    await page.screenshot({
+      path: path.join(screenshotDir, "department-plans-mobile-320.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+  }
+  const quality = await assertPageQuality(
+    page,
+    "owner-department-plans",
+    `${viewport.name} owner department plans`,
+  );
+
+  const weeklyRub = [50_000, 50_000, 60_000, 60_000, 100_000, 130_000, 80_000];
+  for (const [weekday, value] of weeklyRub.entries()) {
+    await page.locator(`#weekday${weekday}`).fill(String(value));
+  }
+  const bulkSaved = page.waitForResponse(
+    (response) =>
+      response.url() === `${apiBase}${prefix}/department-plans/days/bulk` &&
+      response.request().method() === "PUT" &&
+      response.status() === 200 &&
+      !response.request().postDataJSON()?.dry_run,
+  );
+  await page.locator("#applyMonth").click();
+  await bulkSaved;
+  await page.waitForFunction(
+    () => document.querySelector("#bulkHint")?.textContent.includes("31"),
+    null,
+    { timeout: 20_000 },
+  );
+
+  const overrideDate = "2035-03-09";
+  const overrideRow = page.locator(`[data-date="${overrideDate}"]`);
+  await overrideRow.locator("input").fill("155000");
+  const daySaved = page.waitForResponse(
+    (response) =>
+      response.url() ===
+        `${apiBase}${prefix}/department-plans/${department.id}/day?date=${overrideDate}` &&
+      response.request().method() === "PUT" &&
+      response.status() === 200,
+  );
+  await overrideRow.locator("button").click();
+  await daySaved;
+  const calendar = await expectApi(
+    page,
+    `${prefix}/department-plans/${department.id}/calendar?month=${month}`,
+    {},
+    "department plans calendar after bulk and override",
+  );
+  assert.equal(calendar.revenue_plan_minor, null);
+  assert.equal(
+    calendar.days.find((item) => item.date === overrideDate)
+      ?.revenue_plan_minor,
+    15_500_000,
+  );
+
+  await page.screenshot({
+    path: path.join(screenshotDir, `department-plans-${viewport.name}.png`),
+    fullPage: true,
+  });
+
+  const suffix = `${viewport.name}-${Date.now()}`;
+  const profile = await expectApi(
+    page,
+    `${prefix}/pay-profiles`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        title: `E2E Percent Tiers ${suffix}`,
+        description: "Temporary browser verification profile",
+      }),
+    },
+    "create percent tiers profile",
+  );
+  const componentTitle = `Бар: многоступенчатый процент ${suffix}`;
+  const component = await expectApi(
+    page,
+    `${prefix}/pay-profiles/${profile.id}/components`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        component_type: "PERCENT_DEPARTMENT_REVENUE",
+        title: componentTitle,
+        percent_bps: 300,
+        department_id: department.id,
+        department_ids: [department.id],
+        base_scope: "FULL_PERIOD",
+        boost_enabled: true,
+        boost_source_type: "DEPARTMENT_MONTH_PLAN",
+        boost_recalc_mode: "REPLACE_ALL",
+        boost_department_id: department.id,
+        boost_department_ids: [department.id],
+        percent_tiers: [
+          { threshold_value: 100, percent_bps: 400 },
+          { threshold_value: 110, percent_bps: 500 },
+          { threshold_value: 120, percent_bps: 600 },
+        ],
+      }),
+    },
+    "create percent tiers component",
+  );
+
+  try {
+    await page.goto(
+      `${frontendBase}/owner-pay-profile.html?venue_id=${venueId}&profile_id=${profile.id}&lang=ru`,
+      { waitUntil: "domcontentloaded" },
+    );
+    await page.locator("#componentsList .listrow").waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+    const componentRow = page
+      .locator("#componentsList .listrow")
+      .filter({ hasText: componentTitle });
+    await componentRow.locator("button").first().click();
+    await page.locator("#editModal.open").waitFor({ state: "visible" });
+    assert.equal(
+      await page.locator("#f_tier_rows [data-percent-tier]").count(),
+      3,
+    );
+    assert.match(
+      await page.locator("#f_tier_preview").textContent(),
+      /120%.*6%/,
+    );
+    const finalRate = page
+      .locator("#f_tier_rows [data-percent-tier]")
+      .last()
+      .locator("[data-tier-percent]");
+    await finalRate.fill("6.5");
+    assert.match(
+      await page.locator("#f_tier_preview").textContent(),
+      /120%.*6\.5%/,
+    );
+    await assertNoHorizontalOverflow(
+      page,
+      `${viewport.name} percent tier editor`,
+    );
+    await page.locator("#editModal .modal__panel").evaluate((panel) => {
+      panel.scrollTop = 0;
+    });
+    await page.screenshot({
+      path: path.join(
+        screenshotDir,
+        `percent-tier-editor-${viewport.name}.png`,
+      ),
+    });
+    const componentSaved = page.waitForResponse(
+      (response) =>
+        response.url() ===
+          `${apiBase}${prefix}/pay-components/${component.id}` &&
+        response.request().method() === "PATCH" &&
+        response.status() === 200,
+    );
+    await page.locator("#btnSave").click();
+    await componentSaved;
+    await page.locator("#editModal").waitFor({ state: "hidden" });
+    const detail = await expectApi(
+      page,
+      `${prefix}/pay-profiles/${profile.id}`,
+      {},
+      "percent tiers profile after editor save",
+    );
+    const savedComponent = detail.components.find(
+      (item) => item.id === component.id,
+    );
+    assert.deepEqual(
+      savedComponent.percent_tiers.map((tier) => [
+        Number(tier.threshold_value),
+        tier.percent_bps,
+      ]),
+      [
+        [100, 400],
+        [110, 500],
+        [120, 650],
+      ],
+    );
+  } finally {
+    await expectApi(
+      page,
+      `${prefix}/pay-components/${component.id}`,
+      { method: "DELETE" },
+      "delete temporary percent tiers component",
+    );
+    await expectApi(
+      page,
+      `${prefix}/pay-profiles/${profile.id}`,
+      { method: "DELETE" },
+      "delete temporary percent tiers profile",
+    );
+  }
+  console.log(`${viewport.name}: department plans and percent tiers passed`);
+  return quality;
+}
+
 async function ownerScenarios(browser, viewport) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
@@ -1333,6 +1859,15 @@ async function ownerScenarios(browser, viewport) {
         `${label} day economics`,
       ),
     });
+    scenarios.push({
+      name: "owner-department-plans",
+      quality: await verifyDepartmentPlansAndPercentTiers(
+        page,
+        venueId,
+        viewport,
+      ),
+    });
+    await verifyNamesAndIntervalScopes(page, venueId, viewport);
     assertDiagnostics();
     return { venueId, scenarios };
   } finally {
@@ -1483,7 +2018,7 @@ try {
     assert.deepEqual(
       scenarios.map((scenario) => scenario.name),
       expectedScenarios,
-      `${viewport.name}: the complete 12-scenario suite must run`,
+      `${viewport.name}: the complete ${expectedScenarios.length}-scenario suite must run`,
     );
     matrix[viewport.name] = {
       viewport: { width: viewport.width, height: viewport.height },
@@ -1498,7 +2033,7 @@ try {
     JSON.stringify(
       {
         ok: true,
-        scenarioCount: 12,
+        scenarioCount: expectedScenarios.length,
         matrix,
         readOnlyCoverageSurfaces,
       },

@@ -46,7 +46,7 @@ class PageLoaderContractTests(TestCase):
             source = (FRONTEND / "styles" / "core" / file_name).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), 500, file_name)
 
-        self.assertEqual(len(html_pages), 53)
+        self.assertEqual(len(html_pages), 54)
         for path in html_pages:
             source = path.read_text(encoding="utf-8")
             self.assertIn("/page-loader.js?v=20260823-navfix1", source, path.name)
@@ -612,9 +612,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         for html_name, (style_path, required) in contracts.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
             styles = (FRONTEND / style_path).read_text(encoding="utf-8")
-            cache_key = (
-                "20260820-weekdayrates1" if style_path == "styles/pages/owner-pay-profile.css" else "20260726-polish9"
-            )
+            cache_key = "20260906-tiers1" if style_path == "styles/pages/owner-pay-profile.css" else "20260726-polish9"
             self.assertIn(f"/{style_path}?v={cache_key}", html, html_name)
             for contract in required:
                 self.assertTrue(contract in html or contract in styles, f"{html_name}: {contract}")
@@ -622,7 +620,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         entrypoints = {
             "app-adjustments.html": "/app-adjustments.js?v=20260726-navmore1",
             "owner-pay-profiles.html": "/owner-pay-profiles.js?v=20260726-navmore1",
-            "owner-pay-profile.html": "/owner-pay-profile.js?v=20260826-i18nvalue1",
+            "owner-pay-profile.html": "/owner-pay-profile.js?v=20260906-tiers1",
         }
         for html_name, entrypoint in entrypoints.items():
             html = (FRONTEND / html_name).read_text(encoding="utf-8")
@@ -643,7 +641,7 @@ class WorkflowPageUiPolishContractTests(TestCase):
         styles = (FRONTEND / "styles/pages/owner-payroll.css").read_text(encoding="utf-8")
 
         self.assertIn("/styles/pages/owner-payroll.css?v=20260802-payrollpayments1", html)
-        self.assertIn("/owner-payroll.js?v=20260823-kpiperunit1", html)
+        self.assertIn("/owner-payroll.js?v=20260906-tiers1", html)
         self.assertIn('class="owner-payroll-page"', html)
         self.assertIn("payroll-bootstrap", html)
         for contract in (
@@ -806,7 +804,7 @@ class AppFacadeSplitContractTests(TestCase):
                 consumer_count += 1
                 imported = {entry.strip().split(" as ", 1)[0] for entry in match.group(1).split(",") if entry.strip()}
                 self.assertTrue(imported.issubset(exported), f"{path.name}: {sorted(imported - exported)}")
-        self.assertEqual(consumer_count, 54)
+        self.assertEqual(consumer_count, 55)
 
 
 class FunctionalFrontendRegressionContractTests(TestCase):
@@ -919,7 +917,7 @@ class OwnerSetupSplitContractTests(TestCase):
             "shift-interval-editor.js": (
                 "createShiftIntervalSetupController",
                 "mountShiftIntervalsEditor",
-                "20260729-overnight1",
+                "20260906-names-scopes1",
             ),
             "supplier-editor.js": ("createSupplierSetupController", "mountSuppliersEditor", "20260720-unified10"),
             "recurring-expense-editor.js": (
@@ -930,7 +928,7 @@ class OwnerSetupSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 1_600)
-        self.assertIn("owner-setup.js?v=20260810-setup1", html)
+        self.assertIn("owner-setup.js?v=20260906-names-scopes1", html)
         self.assertIn("position-template-ui.js?v=20260726-navmore1", main)
         self.assertNotRegex(html, r"(?:<style\b|\sstyle\s*=|\.style\b)")
         self.assertNotRegex(main, r"(?:<style\b|\sstyle\s*=|\.style\b)")
@@ -983,8 +981,8 @@ class StaffShiftsSplitContractTests(TestCase):
         self.assertLess(len(comments.splitlines()), 700)
         self.assertIn("/staff-shifts/export-controller.js?v=20260719-split1", main)
         self.assertIn("/staff-shifts/calendar-controller.js?v=20260729-overnight1", main)
-        self.assertIn("/staff-shifts/comment-controller.js?v=20260728-comments1", main)
-        self.assertIn("staff-shifts.js?v=20260811-assurance1", html)
+        self.assertIn("/staff-shifts/comment-controller.js?v=20260906-names-scopes1", main)
+        self.assertIn("staff-shifts.js?v=20260906-names-scopes1", html)
         self.assertIn("/shifts/export-metadata?", module)
         self.assertIn("/mentionable-members", comments)
         self.assertIn("reply_to_comment_id", comments)
@@ -1062,13 +1060,18 @@ class OwnerPayProfileSplitContractTests(TestCase):
         }
 
         self.assertLess(len(main.splitlines()), 450)
-        self.assertIn("owner-pay-profile.js?v=20260826-i18nvalue1", html)
+        self.assertIn("owner-pay-profile.js?v=20260906-tiers1", html)
         for filename, (factory, line_limit) in modules.items():
             source = (FRONTEND / "owner-pay-profile" / filename).read_text(encoding="utf-8")
             self.assertLess(len(source.splitlines()), line_limit)
-            cache_key = "20260723-functional1" if filename == "assignment-controller.js" else "20260826-i18nvalue1"
+            cache_key = "20260723-functional1" if filename == "assignment-controller.js" else "20260906-tiers1"
             self.assertIn(f"/owner-pay-profile/{filename}?v={cache_key}", main)
             self.assertIn(f"export function {factory}", source)
+
+        tiers = (FRONTEND / "owner-pay-profile" / "percent-tiers.js").read_text(encoding="utf-8")
+        controller = (FRONTEND / "owner-pay-profile" / "component-controller.js").read_text(encoding="utf-8")
+        self.assertLess(len(tiers.splitlines()), 260)
+        self.assertIn("./percent-tiers.js?v=20260906-tiers1", controller)
 
         controller_contracts = {
             "component-controller.js": ("openComponentEditor",),

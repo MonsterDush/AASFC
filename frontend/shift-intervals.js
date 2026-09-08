@@ -10,6 +10,7 @@ import {
   getMe,
   getMyVenuePermissions,
 } from "/app.js?v=20260820-i18nmetrika1";
+import { intervalPositionLabel, positionScopeEditor, readPositionScope, wirePositionScope } from "/shift-interval-scope.js?v=20260905-scopes1";
 
 import { permSetFromResponse, roleUpper, hasPerm, isSysAdminRole, isOwnerRole } from "/permissions.js?v=20260321-miniappfix1";
 import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
@@ -172,18 +173,6 @@ function catalogPositions() {
     .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "ru"));
 }
 
-function positionOptions(selectedId = null, selectedTitle = "") {
-  const selected = selectedId == null ? "" : String(selectedId);
-  const items = catalogPositions();
-  const options = ['<option value="">Все должности</option>'];
-  if (selected && !items.some((item) => String(item.id) === selected)) {
-    options.push(`<option value="${esc(selected)}" selected>${esc(selectedTitle || "Должность")} · архив</option>`);
-  }
-  options.push(...items.map((item) => (
-    `<option value="${esc(item.id)}" ${String(item.id) === selected ? "selected" : ""}>${esc(item.title)}</option>`
-  )));
-  return options.join("");
-}
 
 function renderList() {
   const el = document.getElementById("list");
@@ -211,7 +200,7 @@ function renderList() {
         </div>
         <div class="mono muted listrow__meta">
           ${esc(formatShiftIntervalRange(item.start_time, item.end_time))}
-          · <span>Должность</span>: ${esc(item.position_title || "Все должности")}
+          · <span>Должность</span>: ${esc(intervalPositionLabel(item))}
           · Смен: ${Number(item.usage_count || 0)}
           · Шаблонов: ${Number(item.template_usage_count || 0)}
         </div>
@@ -306,8 +295,7 @@ function editorForm({ mode, item }) {
         <input id="f_end" class="input" type="time" value="${esc(it.end_time || "")}" />
       </div>
       <div>
-        <div class="muted mb-6">Должность</div>
-        <select id="f_position" class="input">${positionOptions(it.position_id, it.position_title)}</select>
+        ${positionScopeEditor("f_position", catalogPositions(), it, esc)}
       </div>
     </div>
 
@@ -326,13 +314,13 @@ function openEditor({ mode, item }) {
     bodyHtml: editorForm({ mode, item }),
   });
 
+  wirePositionScope(document.getElementById("f_position"));
   document.getElementById("btnCancelEdit")?.addEventListener("click", closeEditModal);
   document.getElementById("btnSaveEdit")?.addEventListener("click", async () => {
     const title = document.getElementById("f_title")?.value?.trim();
     const start = document.getElementById("f_start")?.value?.trim();
     const end = document.getElementById("f_end")?.value?.trim();
-    const positionRaw = document.getElementById("f_position")?.value || "";
-    const position_id = positionRaw ? Number(positionRaw) : null;
+    const position_ids = readPositionScope(document.getElementById("f_position"));
     const is_active = !!document.getElementById("f_active")?.checked;
 
     if (!title) return toast("Укажи название", "warn");
@@ -343,13 +331,13 @@ function openEditor({ mode, item }) {
       if (isEdit) {
         await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals/${encodeURIComponent(item.id)}`, {
           method: "PATCH",
-          body: { title, start_time: start, end_time: end, position_id, is_active },
+          body: { title, start_time: start, end_time: end, position_ids, is_active },
         });
         toast("Интервал обновлён", "ok");
       } else {
         await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals`, {
           method: "POST",
-          body: { title, start_time: start, end_time: end, position_id, is_active },
+          body: { title, start_time: start, end_time: end, position_ids, is_active },
         });
         toast("Интервал создан", "ok");
       }

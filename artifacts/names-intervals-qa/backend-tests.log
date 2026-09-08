@@ -1,0 +1,95 @@
+{"timestamp":"2026-09-06T02:13:51.726+00:00","level":"INFO","logger":"alembic.runtime.plugins","message":"setup plugin alembic.autogenerate.schemas","request_id":"-","environment":"development","release":"local"}
+{"timestamp":"2026-09-06T02:13:51.726+00:00","level":"INFO","logger":"alembic.runtime.plugins","message":"setup plugin alembic.autogenerate.tables","request_id":"-","environment":"development","release":"local"}
+{"timestamp":"2026-09-06T02:13:51.726+00:00","level":"INFO","logger":"alembic.runtime.plugins","message":"setup plugin alembic.autogenerate.types","request_id":"-","environment":"development","release":"local"}
+{"timestamp":"2026-09-06T02:13:51.726+00:00","level":"INFO","logger":"alembic.runtime.plugins","message":"setup plugin alembic.autogenerate.constraints","request_id":"-","environment":"development","release":"local"}
+{"timestamp":"2026-09-06T02:13:51.726+00:00","level":"INFO","logger":"alembic.runtime.plugins","message":"setup plugin alembic.autogenerate.defaults","request_id":"-","environment":"development","release":"local"}
+{"timestamp":"2026-09-06T02:13:51.726+00:00","level":"INFO","logger":"alembic.runtime.plugins","message":"setup plugin alembic.autogenerate.comments","request_id":"-","environment":"development","release":"local"}
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> f6b4d2a8c1e0
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade f6b4d2a8c1e0 -> b9d2e4f6a8c1, backfill stable catalog positions for existing venues
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> b9d2e4f6a8c1
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade b9d2e4f6a8c1 -> c2f4a6b8d0e1, Allow multiple interval roles and stable catalog links without changing assigned shifts.
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade c2f4a6b8d0e1 -> b9d2e4f6a8c1, Allow multiple interval roles and stable catalog links without changing assigned shifts.
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade c2f4a6b8d0e1 -> b9d2e4f6a8c1, Allow multiple interval roles and stable catalog links without changing assigned shifts.
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> c8e1f4a7b2d9
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade c8e1f4a7b2d9 -> d4a9f6c2b8e1, multi positions, owner notes and position pay profiles
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade d4a9f6c2b8e1 -> c8e1f4a7b2d9, multi positions, owner notes and position pay profiles
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> d0f8b6c4e2a1
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade d0f8b6c4e2a1 -> e2b4d6f8a1c3, resolve historical QuickResto scope mismatches
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade e2b4d6f8a1c3 -> d0f8b6c4e2a1, resolve historical QuickResto scope mismatches
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> a7c9e1f3b5d7
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade a7c9e1f3b5d7 -> b8d4f6a2c1e9, add durable QuickResto import issues
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade b8d4f6a2c1e9 -> a7c9e1f3b5d7, add durable QuickResto import issues
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> b8d4f6a2c1e9
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade b8d4f6a2c1e9 -> c9e7a5b3d1f0, add QuickResto multi-venue scope
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade c9e7a5b3d1f0 -> b8d4f6a2c1e9, add QuickResto multi-venue scope
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> e2b4d6f8a1c3
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade e2b4d6f8a1c3 -> f4c6e8a0b2d5, stage QuickResto scope changes before historical reconciliation
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade f4c6e8a0b2d5 -> e2b4d6f8a1c3, stage QuickResto scope changes before historical reconciliation
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> c9e7a5b3d1f0
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade c9e7a5b3d1f0 -> d0f8b6c4e2a1, harden QuickResto venue scope audit
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade d0f8b6c4e2a1 -> c9e7a5b3d1f0, harden QuickResto venue scope audit
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running stamp_revision  -> f4c6e8a0b2d5
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade f4c6e8a0b2d5 -> a7d3e5f1c9b2, allow confirmed QuickResto historical shifts to move to another connection
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade a7d3e5f1c9b2 -> f4c6e8a0b2d5, allow confirmed QuickResto historical shifts to move to another connection
+/Users/vladimirtarankov/Desktop/AASFC/axelio/backend/app/routers/venue_positions.py:358: PydanticDeprecatedSince20: The `__fields_set__` attribute is deprecated, use `model_fields_set` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+  fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+/Users/vladimirtarankov/Desktop/AASFC/axelio/backend/app/routers/venue_shift_intervals.py:186: PydanticDeprecatedSince20: The `__fields_set__` attribute is deprecated, use `model_fields_set` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+  fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+----------------------------------------------------------------------
+Ran 498 tests in 3.996s
+
+OK

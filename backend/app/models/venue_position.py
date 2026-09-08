@@ -17,6 +17,9 @@ class VenuePosition(Base):
 
     venue_id: Mapped[int] = mapped_column(ForeignKey("venues.id"), index=True)
     member_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    catalog_position_id: Mapped[int | None] = mapped_column(
+        ForeignKey("venue_positions.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     pay_profile_id: Mapped[int | None] = mapped_column(
         ForeignKey("pay_profiles.id", ondelete="SET NULL"), index=True, nullable=True
     )

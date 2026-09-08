@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -101,3 +102,26 @@ class PayComponent(Base):
     kpi_metric = relationship("KpiMetric", foreign_keys=[kpi_metric_id])
     boost_department = relationship("Department", foreign_keys=[boost_department_id])
     boost_kpi_metric = relationship("KpiMetric", foreign_keys=[boost_kpi_metric_id])
+    percent_tiers = relationship(
+        "PayComponentPercentTier",
+        back_populates="component",
+        cascade="all, delete-orphan",
+        order_by="PayComponentPercentTier.threshold_value",
+    )
+
+
+class PayComponentPercentTier(Base):
+    __tablename__ = "pay_component_percent_tiers"
+    __table_args__ = (
+        UniqueConstraint("pay_component_id", "threshold_value", name="uq_percent_tiers_component_threshold"),
+        CheckConstraint("threshold_value >= 0", name="ck_percent_tiers_threshold"),
+        CheckConstraint("percent_bps >= 0", name="ck_percent_tiers_percent"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pay_component_id: Mapped[int] = mapped_column(ForeignKey("pay_components.id", ondelete="CASCADE"), index=True)
+    threshold_value: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    percent_bps: Mapped[int] = mapped_column(Integer, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    component = relationship("PayComponent", back_populates="percent_tiers")

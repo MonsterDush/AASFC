@@ -180,13 +180,14 @@ class FrontendAssuranceContractTests(TestCase):
             "owner-settings",
             "owner-positions",
             "owner-day-economics",
+            "owner-department-plans",
             "staff-shifts",
             "staff-salary",
             "public-demo",
         ):
             self.assertIn(f'"{page}"', budgets)
 
-        self.assertIn("scenarioCount: 12", browser)
+        self.assertIn("scenarioCount: expectedScenarios.length", browser)
         self.assertIn('{ name: "desktop", width: 1440, height: 900 }', browser)
         self.assertIn('{ name: "mobile", width: 375, height: 812 }', browser)
         for scenario in (
@@ -198,6 +199,7 @@ class FrontendAssuranceContractTests(TestCase):
             "owner-settings",
             "owner-positions",
             "owner-day-economics",
+            "owner-department-plans",
             "staff-auth",
             "staff-shifts",
             "staff-salary",

@@ -285,6 +285,11 @@ class TipAllocationIntegrationTests(TestCase):
             ),
             patch.object(venue_shifts, "load_owner_notes", return_value={}),
             patch.object(venue_shifts, "load_member_display_names", return_value={}),
+            patch.object(
+                venue_shifts,
+                "interval_scope_payloads",
+                return_value={interval.id: {"position_ids": [], "position_titles": []} for interval in intervals},
+            ),
         ):
             result = venue_shifts.list_shifts(
                 5,

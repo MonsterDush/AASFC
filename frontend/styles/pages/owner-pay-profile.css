@@ -57,3 +57,8 @@
 @media (max-width:420px){
   .pay-profile-row__actions{grid-template-columns:1fr}
 }
+
+.percent-tier-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end;margin:14px 0}
+.percent-tier-row label{min-width:0}
+.percent-tier-row .btn{height:44px}
+#f_tier_preview{line-height:1.8}

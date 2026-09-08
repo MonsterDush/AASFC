@@ -13,6 +13,7 @@ from app.routers import (
     venue_catalogs,
     venue_adjustments,
     venue_core,
+    venue_department_plans,
     venue_economics,
     venue_expenses,
     venue_finance,
@@ -70,6 +71,10 @@ class VenueEconomicsRouterContractTests(TestCase):
     def test_all_venue_routes_keep_original_public_manifest(self):
         manifest = _route_manifest(venues.router)
         new_route_names = {
+            "get_department_plan_calendar",
+            "put_department_day_plans_bulk",
+            "put_department_month_plan",
+            "put_department_day_plan",
             "get_quickresto_catalog",
             "refresh_quickresto_catalog_route",
             "put_quickresto_scope",
@@ -84,6 +89,26 @@ class VenueEconomicsRouterContractTests(TestCase):
             (tuple(methods), path, name) for methods, path, name in manifest if name in new_route_names
         }
         expected_new_routes = {
+            (
+                ("GET",),
+                "/venues/{venue_id}/department-plans/{department_id}/calendar",
+                "get_department_plan_calendar",
+            ),
+            (
+                ("PUT",),
+                "/venues/{venue_id}/department-plans/days/bulk",
+                "put_department_day_plans_bulk",
+            ),
+            (
+                ("PUT",),
+                "/venues/{venue_id}/department-plans/{department_id}/month",
+                "put_department_month_plan",
+            ),
+            (
+                ("PUT",),
+                "/venues/{venue_id}/department-plans/{department_id}/day",
+                "put_department_day_plan",
+            ),
             (
                 ("GET",),
                 "/venues/{venue_id}/integrations/quickresto/catalog",
@@ -111,7 +136,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             ),
         }
 
-        self.assertEqual(len(manifest), 180)
+        self.assertEqual(len(manifest), 184)
         self.assertEqual(base_digest, EXPECTED_VENUES_ROUTE_MANIFEST_SHA256)
         self.assertEqual(actual_new_routes, expected_new_routes)
 
@@ -134,6 +159,7 @@ class VenueEconomicsRouterContractTests(TestCase):
             (venue_recurring_expenses.router, 5),
             (venue_finance_summary.router, 3),
             (venue_finance.router, 32),
+            (venue_department_plans.router, 4),
         ]
         venues_manifest = {(tuple(methods), path, name) for methods, path, name in _route_manifest(venues.router)}
 

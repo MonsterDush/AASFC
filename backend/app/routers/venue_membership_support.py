@@ -53,7 +53,9 @@ def _display_name(
     )
 
 
-def _serialize_user_brief(row, auth_map: dict[int, dict], *, owner_note: str | None = None) -> dict:
+def _serialize_user_brief(
+    row, auth_map: dict[int, dict], *, owner_note: str | None = None, display_name: str | None = None
+) -> dict:
     snap = auth_map.get(int(row.id), {"phone": None, "auth_methods": []})
     phone = snap.get("phone")
     methods = list(snap.get("auth_methods") or [])
@@ -69,7 +71,8 @@ def _serialize_user_brief(row, auth_map: dict[int, dict], *, owner_note: str | N
         "has_phone_auth": "phone" in methods,
         "has_telegram_auth": "telegram" in methods,
         "owner_note": private_note,
-        "display_name": private_note
+        "display_name": normalize_owner_note(display_name)
+        or private_note
         or _display_name(
             short_name=getattr(row, "short_name", None),
             full_name=getattr(row, "full_name", None),

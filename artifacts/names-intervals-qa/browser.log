@@ -1,0 +1,471 @@
+$ node tools/browser-e2e.mjs
+desktop: names, multiple roles, employee filtering and existing assignments passed
+mobile: names, multiple roles, employee filtering and existing assignments passed
+{
+  "ok": true,
+  "scenarioCount": 12,
+  "matrix": {
+    "desktop": {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "ownerVenueId": 1,
+      "staffVenueId": 1,
+      "scenarios": [
+        {
+          "name": "owner-auth",
+          "quality": {
+            "readyMs": 657,
+            "requests": 30,
+            "transferBytes": 355763,
+            "domNodes": 78,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "owner-venues",
+          "quality": {
+            "readyMs": 612,
+            "requests": 35,
+            "transferBytes": 367202,
+            "domNodes": 71,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "owner-summary",
+          "quality": {
+            "readyMs": 750,
+            "requests": 41,
+            "transferBytes": 468349,
+            "domNodes": 379,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "owner-expenses",
+          "quality": {
+            "readyMs": 845,
+            "requests": 46,
+            "transferBytes": 462887,
+            "domNodes": 439,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "owner-payroll",
+          "quality": {
+            "readyMs": 846,
+            "requests": 43,
+            "transferBytes": 465620,
+            "domNodes": 864,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "owner-settings",
+          "quality": {
+            "readyMs": 630,
+            "requests": 34,
+            "transferBytes": 351195,
+            "domNodes": 135,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "owner-positions",
+          "quality": {
+            "readyMs": 838,
+            "requests": 48,
+            "transferBytes": 432251,
+            "domNodes": 222,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "owner-day-economics",
+          "quality": {
+            "readyMs": 1422,
+            "requests": 41,
+            "transferBytes": 415461,
+            "domNodes": 391,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "staff-auth",
+          "quality": {
+            "readyMs": 567,
+            "requests": 29,
+            "transferBytes": 354994,
+            "domNodes": 78,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "staff-shifts",
+          "calendarCells": 42,
+          "quality": {
+            "readyMs": 754,
+            "requests": 47,
+            "transferBytes": 543281,
+            "domNodes": 341,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "staff-salary",
+          "quality": {
+            "readyMs": 1158,
+            "requests": 40,
+            "transferBytes": 436373,
+            "domNodes": 511,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        },
+        {
+          "name": "public-demo-readonly",
+          "calendarCells": 42,
+          "mutationStatus": 403,
+          "quality": {
+            "readyMs": 910,
+            "requests": 50,
+            "transferBytes": 550481,
+            "domNodes": 348,
+            "dimensions": {
+              "clientWidth": 1440,
+              "scrollWidth": 1440
+            }
+          }
+        }
+      ]
+    },
+    "mobile": {
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "ownerVenueId": 1,
+      "staffVenueId": 1,
+      "scenarios": [
+        {
+          "name": "owner-auth",
+          "quality": {
+            "readyMs": 607,
+            "requests": 29,
+            "transferBytes": 354994,
+            "domNodes": 78,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "owner-venues",
+          "quality": {
+            "readyMs": 840,
+            "requests": 35,
+            "transferBytes": 367202,
+            "domNodes": 71,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "owner-summary",
+          "quality": {
+            "readyMs": 749,
+            "requests": 41,
+            "transferBytes": 468349,
+            "domNodes": 379,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "owner-expenses",
+          "quality": {
+            "readyMs": 840,
+            "requests": 46,
+            "transferBytes": 462887,
+            "domNodes": 439,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "owner-payroll",
+          "quality": {
+            "readyMs": 845,
+            "requests": 43,
+            "transferBytes": 465620,
+            "domNodes": 864,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "owner-settings",
+          "quality": {
+            "readyMs": 837,
+            "requests": 34,
+            "transferBytes": 351195,
+            "domNodes": 135,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "owner-positions",
+          "quality": {
+            "readyMs": 833,
+            "requests": 48,
+            "transferBytes": 432251,
+            "domNodes": 276,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "owner-day-economics",
+          "quality": {
+            "readyMs": 1380,
+            "requests": 41,
+            "transferBytes": 415461,
+            "domNodes": 391,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "staff-auth",
+          "quality": {
+            "readyMs": 577,
+            "requests": 29,
+            "transferBytes": 354994,
+            "domNodes": 78,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "staff-shifts",
+          "calendarCells": 42,
+          "quality": {
+            "readyMs": 771,
+            "requests": 47,
+            "transferBytes": 543281,
+            "domNodes": 356,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "staff-salary",
+          "quality": {
+            "readyMs": 982,
+            "requests": 40,
+            "transferBytes": 436373,
+            "domNodes": 511,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        },
+        {
+          "name": "public-demo-readonly",
+          "calendarCells": 42,
+          "mutationStatus": 403,
+          "quality": {
+            "readyMs": 903,
+            "requests": 50,
+            "transferBytes": 550481,
+            "domNodes": 348,
+            "dimensions": {
+              "clientWidth": 375,
+              "scrollWidth": 375
+            }
+          }
+        }
+      ]
+    }
+  },
+  "readOnlyCoverageSurfaces": {
+    "ownerVenueId": 1,
+    "ownerPages": [
+      "/app-dashboard.html",
+      "/app-venue.html",
+      "/app-adjustments.html",
+      "/owner-departments.html",
+      "/owner-economics-plans.html",
+      "/owner-economics-rules.html",
+      "/owner-expense-categories.html",
+      "/owner-finance-ledger.html",
+      "/owner-integrations.html",
+      "/owner-kpi.html",
+      "/owner-pay-profiles.html",
+      "/owner-payment-methods.html",
+      "/owner-quickresto.html",
+      "/owner-recurring-expenses.html",
+      "/owner-turnover.html",
+      "/owner-setup.html",
+      "/owner-subscription.html",
+      "/owner-suppliers.html",
+      "/owner-tip-settings.html",
+      "/owner-turnover.html",
+      "/shift-intervals.html",
+      "/shift-schedule-templates.html",
+      "/invites.html",
+      "/profile.html"
+    ],
+    "ownerMutations": [
+      "GET /venues/1/position-presets?include_inactive=true",
+      "GET /venues/1/payroll/payment-settings?month=2026-09",
+      "GET /venues/1/payroll/recalculation-log?month=2026-09&limit=5",
+      "GET /venues/1/finance/entries/analytics?month=2026-09",
+      "GET /venues/1/finance/reconciliation?month=2026-09",
+      "GET /venues/1/economics/plan-templates",
+      "GET /venues/1/shift-intervals?include_inactive=true",
+      "GET /venues/1/shift-swap-requests",
+      "GET /position-permission-templates?include_inactive=true",
+      "POST /venues/1/departments",
+      "PATCH /venues/1/departments/10",
+      "POST /venues/1/payment-methods",
+      "PATCH /venues/1/payment-methods/13",
+      "POST /venues/1/kpi-metrics",
+      "PATCH /venues/1/kpi-metrics/10",
+      "POST /venues/1/expense-categories",
+      "PATCH /venues/1/expense-categories/16",
+      "POST /venues/1/suppliers",
+      "PATCH /venues/1/suppliers/10",
+      "POST /venues/1/pay-profiles",
+      "PATCH /venues/1/pay-profiles/10",
+      "POST /venues/1/pay-profiles/10/components",
+      "PATCH /venues/1/pay-components/22",
+      "POST /venues/1/pay-profiles/10/assignments",
+      "PATCH /venues/1/pay-profile-assignments/28",
+      "POST /venues/1/positions",
+      "PATCH /venues/1/positions/76",
+      "POST /venues/1/expenses",
+      "PATCH /venues/1/expenses/25",
+      "POST /venues/1/adjustments",
+      "PATCH /venues/1/adjustments/13",
+      "POST /venues/1/balance-adjustments",
+      "PATCH /venues/1/balance-adjustments/1",
+      "POST /venues/1/payment-method-transfers",
+      "PATCH /venues/1/payment-method-transfers/1",
+      "POST /venues/1/recurring-expense-rules",
+      "PATCH /venues/1/recurring-expense-rules/1",
+      "POST /venues/1/recurring-expense-rules/generate?month=2026-09&rule_id=1",
+      "POST /venues/1/shift-intervals",
+      "PATCH /venues/1/shift-intervals/22",
+      "POST /venues/1/shift-schedule-templates",
+      "PATCH /venues/1/shift-schedule-templates/1",
+      "POST /venues/1/shifts",
+      "PATCH /venues/1/shifts/186",
+      "PATCH /venues/1/shifts/186",
+      "POST /venues/1/shifts/186/assignments",
+      "POST /venues/1/shifts/186/comments",
+      "POST /venues/1/shifts/186/swap-requests",
+      "POST /venues/1/shift-swap-requests/1/cancel",
+      "PUT /venues/1/shift-availability/2035-01-08/DAY",
+      "DELETE /venues/1/shift-availability/2035-01-08/DAY",
+      "POST /venues/1/setup/start",
+      "PATCH /venues/1/setup",
+      "POST /venues/1/setup/skip-step",
+      "POST /venues/1/setup/reset-step",
+      "POST /venues/1/setup/complete-step",
+      "GET /venues/1/revenue/export?month=2026-09&mode=DEPARTMENTS&fmt=csv",
+      "GET /venues/1/revenue/export?month=2026-09&mode=PAYMENTS&fmt=xlsx",
+      "GET /venues/1/expenses/export?month=2026-09",
+      "GET /venues/1/summary/monthly/export?month=2026-09",
+      "GET /venues/1/payroll/export?month=2026-09",
+      "GET /venues/1/finance/entries/export?month=2026-09",
+      "POST /venues/1/invites",
+      "PATCH /venues/1/invites/1/default_position",
+      "POST /venues/1/reports?shift_slot=DAY",
+      "DELETE /venues/1/invites/1",
+      "DELETE /venues/1/shift-schedule-templates/1",
+      "DELETE /venues/1/shifts/186/assignments/1",
+      "DELETE /venues/1/shifts/186",
+      "DELETE /venues/1/shift-intervals/22",
+      "DELETE /venues/1/recurring-expense-rules/1",
+      "DELETE /venues/1/adjustments/13",
+      "DELETE /venues/1/balance-adjustments/1",
+      "DELETE /venues/1/payment-method-transfers/1",
+      "DELETE /venues/1/expenses/25",
+      "DELETE /venues/1/pay-profile-assignments/28",
+      "DELETE /venues/1/pay-components/22",
+      "DELETE /venues/1/pay-profiles/10"
+    ],
+    "adminPages": [
+      "/admin-venues.html",
+      "/admin-billing.html",
+      "/admin-demo.html",
+      "/admin-demo-analytics.html",
+      "/admin-invites.html",
+      "/admin-position-templates.html"
+    ],
+    "adminMutations": [
+      "GET /venues/1/delete-check",
+      "POST /admin/billing/promocodes",
+      "PATCH /admin/billing/promocodes/1",
+      "POST /admin/billing/promocodes/1/archive",
+      "POST /admin/venues/1/billing/extend"
+    ]
+  }
+}

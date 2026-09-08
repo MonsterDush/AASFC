@@ -56,6 +56,12 @@
       "maxTransferBytes": 1800000,
       "maxDomNodes": 2600
     },
+    "owner-department-plans": {
+      "maxReadyMs": 5000,
+      "maxRequests": 70,
+      "maxTransferBytes": 1800000,
+      "maxDomNodes": 3000
+    },
     "staff-shifts": {
       "maxReadyMs": 5000,
       "maxRequests": 65,

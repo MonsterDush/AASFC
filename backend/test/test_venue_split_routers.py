@@ -461,7 +461,7 @@ class VenueAdjustmentAndScheduleRouterTests(TestCase):
                     "_load_shift_comment_mentionable_members",
                     return_value=[(mentioned, "STAFF", "Администратор")],
                 ),
-                patch.object(venue_shifts, "load_owner_notes", return_value={}),
+                patch.object(venue_shifts, "load_member_display_names", return_value={}),
             ):
                 result = venue_shifts.add_shift_comment(
                     5,

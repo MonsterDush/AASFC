@@ -4,6 +4,7 @@ from app.routers.venue_adjustments import router as adjustments_router
 from app.routers.venue_catalogs import router as catalogs_router
 from app.routers.venue_core import router as core_router
 from app.routers.venue_economics import router as economics_router
+from app.routers.venue_department_plans import router as department_plans_router
 from app.routers.venue_finance import router as finance_router
 from app.routers.venue_membership import router as membership_router
 from app.routers.venue_pay_profiles import router as pay_profiles_router
@@ -34,4 +35,5 @@ router.include_router(shift_swaps_router, prefix="/venues", tags=["venues"])
 router.include_router(catalogs_router, prefix="/venues", tags=["venues"])
 router.include_router(finance_router, prefix="/venues", tags=["venues"])
 router.include_router(economics_router, prefix="/venues", tags=["venues"])
+router.include_router(department_plans_router, prefix="/venues", tags=["venues"])
 router.include_router(quickresto_router, prefix="/venues", tags=["integrations"])

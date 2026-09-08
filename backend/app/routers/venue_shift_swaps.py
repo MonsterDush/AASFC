@@ -30,7 +30,7 @@ from app.schemas.venue_shifts import (
     ShiftSwapDecisionIn,
 )
 from app.services.shifts.slots import normalize_shift_slot
-from app.services.venue_member_names import load_owner_notes, owner_display_name
+from app.services.venue_member_names import load_member_display_names, owner_display_name
 
 
 router = APIRouter()
@@ -71,17 +71,18 @@ def _parse_month_bounds(value: str) -> tuple[date, date]:
     return start, date(start.year, start.month, calendar.monthrange(start.year, start.month)[1])
 
 
-def _display_user(user: User | None) -> dict | None:
+def _display_user(user: User | None, *, display_name: str | None = None) -> dict | None:
     if user is None:
         return None
-    display_name = (
-        user.short_name
-        or user.full_name
-        or (f"@{user.tg_username}" if user.tg_username else f"Сотрудник #{int(user.id)}")
-    )
     return {
         "id": int(user.id),
-        "display_name": str(display_name),
+        "display_name": owner_display_name(
+            owner_note=display_name,
+            short_name=user.short_name,
+            full_name=user.full_name,
+            tg_username=user.tg_username,
+            user_id=user.id,
+        ),
         "short_name": user.short_name,
         "full_name": user.full_name,
         "tg_username": user.tg_username,
@@ -271,7 +272,9 @@ def _serialize_swap_request(
     requester: User | None,
     replacement: User | None,
     shift: Shift,
+    display_names: dict[int, str] | None = None,
 ) -> dict:
+    names = display_names or {}
     return {
         "id": int(request.id),
         "venue_id": int(request.venue_id),
@@ -280,8 +283,8 @@ def _serialize_swap_request(
         "status": request.status,
         "comment": request.comment,
         "manager_comment": request.manager_comment,
-        "requester": _display_user(requester),
-        "replacement": _display_user(replacement),
+        "requester": _display_user(requester, display_name=names.get(int(requester.id)) if requester else None),
+        "replacement": _display_user(replacement, display_name=names.get(int(replacement.id)) if replacement else None),
         "replacement_user_id": int(request.replacement_user_id) if request.replacement_user_id else None,
         "replacement_position_id": (int(request.replacement_position_id) if request.replacement_position_id else None),
         "date": shift.date.isoformat(),
@@ -333,6 +336,7 @@ def list_shift_availability(
         stmt = stmt.where(ShiftAvailability.member_user_id == int(effective_user_id))
 
     rows = db.execute(stmt.order_by(ShiftAvailability.date.asc(), ShiftAvailability.member_user_id.asc())).all()
+    names = load_member_display_names(db, venue_id=venue_id, member_user_ids=[member.id for _, member in rows])
     return {
         "items": [
             {
@@ -341,7 +345,7 @@ def list_shift_availability(
                 "shift_slot": normalize_shift_slot(item.shift_slot),
                 "status": item.status,
                 "comment": item.comment,
-                "member": _display_user(member),
+                "member": _display_user(member, display_name=names.get(int(member.id))),
             }
             for item, member in rows
         ]
@@ -471,10 +475,9 @@ def list_shift_swap_candidates(
             VenuePosition.id.asc(),
         )
     ).all()
-    owner_notes = load_owner_notes(
+    owner_notes = load_member_display_names(
         db,
         venue_id=venue_id,
-        viewer=user,
         member_user_ids=[int(position.member_user_id) for position, _member in positions],
     )
     availability_rows = db.execute(
@@ -567,6 +570,13 @@ def list_shift_swap_requests(
         start, end = _parse_month_bounds(month)
         stmt = stmt.where(Shift.date >= start, Shift.date <= end)
     rows = db.execute(stmt.order_by(ShiftSwapRequest.created_at.desc())).all()
+    names = load_member_display_names(
+        db,
+        venue_id=venue_id,
+        member_user_ids=[
+            member.id for _, _, requester, replacement in rows for member in (requester, replacement) if member
+        ],
+    )
     return {
         "items": [
             _serialize_swap_request(
@@ -574,6 +584,7 @@ def list_shift_swap_requests(
                 requester=requester,
                 replacement=replacement,
                 shift=shift,
+                display_names=names,
             )
             for request, shift, requester, replacement in rows
         ]

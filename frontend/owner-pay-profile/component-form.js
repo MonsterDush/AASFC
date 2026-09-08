@@ -174,20 +174,16 @@ function componentForm({ mode, item }) {
 
       <div class="form-section" id="f_boost_section">
         <div class="form-section__head">
-          <div class="form-section__title">Повышение процента</div>
-          <div class="form-section__subtitle">Этот блок нужен только для процентных компонентов. Повышение можно привязать к плану заведения, плану департамента или KPI.</div>
+          <div class="form-section__title">Пороги процента</div>
+          <div class="form-section__subtitle">Ступени можно привязать к плану заведения, плану департамента или KPI-метрике.</div>
         </div>
         <label class="chk" id="f_boost_enabled_wrap">
           <input type="checkbox" id="f_boost_enabled" ${boostEnabled} />
-          <span>Повышенный процент по плану / KPI</span>
+          <span>Использовать пороги</span>
         </label>
         <div id="f_boost_details" class="form-section__grid">
-          <label id="f_boost_percent_wrap">
-            <span>Повышенный процент</span>
-            <input id="f_boost_percent" inputmode="decimal" placeholder="Например, 7" value="${esc(percentInputFromBps(it.boost_percent_bps))}" />
-          </label>
           <label id="f_boost_source_wrap">
-            <span>Условие повышения</span>
+            <span>Источник порога</span>
             <select id="f_boost_source_type">${percentBoostOptions(it.boost_source_type || it.effective_boost_source_type || 'NONE')}</select>
           </label>
           ${hasDepartments ? `
@@ -208,7 +204,7 @@ function componentForm({ mode, item }) {
           </label>
           ${hasKpiMetrics ? `
           <label id="f_boost_kpi_metric_wrap">
-            <span>KPI для повышения</span>
+            <span>KPI-метрика</span>
             <select id="f_boost_kpi_metric_id">
               <option value="">Выбери KPI</option>
               ${boostKpiOptions}
@@ -218,10 +214,12 @@ function componentForm({ mode, item }) {
             <span>Номер KPI для повышения</span>
             <input id="f_boost_kpi_metric_id" inputmode="numeric" placeholder="Номер KPI" value="${esc(it.boost_kpi_metric_id ?? "")}" />
           </label>`}
-          <label id="f_boost_threshold_wrap">
-            <span id="f_boost_threshold_label">Цель KPI</span>
-            <input id="f_boost_threshold_value" inputmode="numeric" placeholder="Например: 30" value="${esc(it.boost_threshold_value ?? "")}" />
-          </label>
+        </div>
+        <div id="f_tiers">
+          <div class="form-section__title">Ступени</div><div id="f_tier_rows"></div>
+          <button type="button" class="btn ghost" id="f_add_tier">+ Добавить ступень</button>
+          <p id="f_tier_preview" class="form-inline-note" aria-live="polite"></p>
+          <a class="btn ghost" href="/owner-department-plans.html?venue_id=${esc(state.venueId)}">Планы департаментов →</a>
         </div>
         <div id="f_config_hint" class="hidden"></div>
       </div>

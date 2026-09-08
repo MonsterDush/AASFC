@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, time
-from typing import Optional
+from typing import Annotated, Optional
 from pydantic import BaseModel, Field
 
 
@@ -10,6 +10,7 @@ class ShiftIntervalCreateIn(BaseModel):
     start_time: time
     end_time: time
     position_id: int | None = Field(default=None, gt=0)
+    position_ids: list[Annotated[int, Field(gt=0)]] | None = Field(default=None, max_length=200)
     is_active: bool = True
 
 
@@ -18,10 +19,12 @@ class ShiftIntervalUpdateIn(BaseModel):
     start_time: time | None = None
     end_time: time | None = None
     position_id: int | None = Field(default=None, gt=0)
+    position_ids: list[Annotated[int, Field(gt=0)]] | None = Field(default=None, max_length=200)
     is_active: bool | None = None
 
 
 class ShiftCreateIn(BaseModel):
+    venue_position_id: int | None = Field(default=None, gt=0)
     date: date
     interval_id: int = Field(..., gt=0)
     is_active: bool = True

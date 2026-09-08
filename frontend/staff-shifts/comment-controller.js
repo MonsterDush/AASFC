@@ -1,5 +1,5 @@
 export function mentionTokenForMember(member) {
-  const displayName = String(member?.display_name || member?.tg_username || `Сотрудник ${member?.user_id || ""}`).trim();
+  const displayName = String(member?.display_name || "Сотрудник").trim();
   return `@${displayName.replace(/^@+/, "")}`;
 }
 
@@ -108,7 +108,7 @@ export function createStaffShiftCommentController(context) {
 
   function formatCommentAuthor(user) {
     if (!user) return "—";
-    return user.display_name || user.short_name || user.full_name || (user.tg_username ? `@${user.tg_username}` : "Сотрудник");
+    return user.display_name || "Сотрудник";
   }
 
   function formatCommentDate(value) {

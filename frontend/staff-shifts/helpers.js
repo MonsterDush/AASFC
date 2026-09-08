@@ -90,12 +90,6 @@ export function escapeHtml(value) {
 export function pickShortName(value) {
   const displayName = (value?.display_name || value?.member?.display_name || value?.user?.display_name || "").trim();
   if (displayName) return displayName;
-  const shortName = (value?.short_name || value?.member?.short_name || value?.user?.short_name || "").trim();
-  if (shortName) return shortName;
-  const fullName = (value?.full_name || value?.member?.full_name || value?.user?.full_name || "").trim();
-  if (fullName) return fullName.split(/\s+/)[0];
-  const username = (value?.tg_username || value?.member_username || value?.user_username || value?.user?.tg_username || value?.username || "").trim();
-  if (username) return username.replace(/^@/, "");
   const userId = value?.member_user_id ?? value?.user_id ?? value?.user?.id;
   return userId ? "Сотрудник" : "—";
 }
@@ -110,17 +104,7 @@ export function fioInitials(fullName) {
 }
 
 export function displayPerson(value) {
-  const displayName = (value?.display_name || value?.member?.display_name || "").trim();
-  if (displayName) return displayName;
-  const fullName = (value?.full_name || value?.member?.full_name || "").trim();
-  const initials = fioInitials(fullName);
-  if (initials) return initials;
-  const shortName = (value?.short_name || value?.member?.short_name || "").trim();
-  if (shortName) return shortName;
-  const username = (value?.tg_username || value?.member?.tg_username || "").trim();
-  if (username) return username.startsWith("@") ? username : `@${username}`;
-  const userId = value?.member_user_id ?? value?.user_id ?? value?.user?.id;
-  return userId ? "Сотрудник" : "—";
+  return String(value?.display_name || value?.member?.display_name || "").trim() || "Сотрудник";
 }
 
 export function normalizeList(value) {

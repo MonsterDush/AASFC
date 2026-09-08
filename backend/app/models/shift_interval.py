@@ -29,3 +29,12 @@ class ShiftInterval(Base):
 
     venue = relationship("Venue")
     position = relationship("VenuePosition")
+
+
+class ShiftIntervalPosition(Base):
+    __tablename__ = "shift_interval_positions"
+
+    interval_id: Mapped[int] = mapped_column(ForeignKey("shift_intervals.id", ondelete="CASCADE"), primary_key=True)
+    position_id: Mapped[int] = mapped_column(
+        ForeignKey("venue_positions.id", ondelete="CASCADE"), primary_key=True, index=True
+    )

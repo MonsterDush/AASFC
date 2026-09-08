@@ -127,13 +127,20 @@ def apply_payroll_owner_display_names(
         viewer=viewer,
         member_user_ids=[int(line.get("member_user_id") or 0) for line in lines],
     )
+    display_names = load_member_display_names(
+        db,
+        venue_id=venue_id,
+        member_user_ids=[
+            int(line.get("member_user_id") or (line.get("member") or {}).get("user_id") or 0) for line in lines
+        ],
+    )
     for line in lines:
         member = line.get("member") or {}
         member_user_id = int(line.get("member_user_id") or member.get("user_id") or 0)
         owner_note = notes.get(member_user_id)
         member["owner_note"] = owner_note
         member["display_name"] = owner_display_name(
-            owner_note=owner_note,
+            owner_note=display_names.get(member_user_id),
             short_name=member.get("short_name"),
             full_name=member.get("full_name"),
             tg_username=member.get("tg_username"),

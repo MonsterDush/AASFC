@@ -1,3 +1,4 @@
+import { intervalPositionLabel, positionScopeEditor, readPositionScope, wirePositionScope } from "/shift-interval-scope.js?v=20260905-scopes1";
 import { formatShiftIntervalRange } from "/shift-time.js?v=20260729-overnight1";
 
 export function createShiftIntervalSetupController(context) {
@@ -24,20 +25,6 @@ export function createShiftIntervalSetupController(context) {
     return inlineState.positions;
   }
 
-  function intervalPositionOptions(selectedId = null, selectedTitle = "") {
-    const selected = selectedId == null ? "" : String(selectedId);
-    const items = (state.inline.shift_intervals.positions || [])
-      .filter((item) => item && item.is_active !== false && !Number(item.member_user_id || 0))
-      .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "ru"));
-    const options = ['<option value="">Все должности</option>'];
-    if (selected && !items.some((item) => String(item.id) === selected)) {
-      options.push(`<option value="${esc(selected)}" selected>${esc(selectedTitle || "Должность")} · архив</option>`);
-    }
-    options.push(...items.map((item) => (
-      `<option value="${esc(item.id)}" ${String(item.id) === selected ? "selected" : ""}>${esc(item.title)}</option>`
-    )));
-    return options.join("");
-  }
 
   function renderShiftIntervalsEditor(items, currentStep) {
     const inlineState = state.inline.shift_intervals;
@@ -68,7 +55,7 @@ export function createShiftIntervalSetupController(context) {
                     </div>
                     <div class="setup-minirow__meta">
                       ${esc(formatShiftIntervalRange(item.start_time, item.end_time))}
-                      · <span>Должность</span>: ${esc(item.position_title || "Все должности")}
+                      · <span>Должность</span>: ${esc(intervalPositionLabel(item))}
                       · Смен: ${Number(item.usage_count || 0)}
                     </div>
                   </div>
@@ -104,10 +91,7 @@ export function createShiftIntervalSetupController(context) {
                 <span>Окончание</span>
                 <input class="input" id="intervalEnd" type="time" value="${esc(editing?.end_time || '')}" />
               </label>
-              <label>
-                <span>Должность</span>
-                <select class="input" id="intervalPosition">${intervalPositionOptions(editing?.position_id, editing?.position_title)}</select>
-              </label>
+              ${positionScopeEditor("intervalPosition", inlineState.positions || [], editing, esc)}
             </div>
             <div class="setup-actionbar mt-12">
               <button class="btn primary" id="btnSaveIntervalInline" type="button">${editing ? 'Сохранить' : 'Создать'}</button>
@@ -138,6 +122,7 @@ export function createShiftIntervalSetupController(context) {
     }
     host.innerHTML = renderShiftIntervalsEditor(items, getStepByKey('shift_intervals') || currentStep);
     const inlineState = state.inline.shift_intervals;
+    wirePositionScope(document.getElementById('intervalPosition'));
 
     document.getElementById('inlineShowArchivedIntervals')?.addEventListener('change', async (e) => {
       inlineState.showArchived = !!e.target?.checked;
@@ -163,17 +148,16 @@ export function createShiftIntervalSetupController(context) {
       const title = String(document.getElementById('intervalTitle')?.value || '').trim();
       const start_time = String(document.getElementById('intervalStart')?.value || '').trim();
       const end_time = String(document.getElementById('intervalEnd')?.value || '').trim();
-      const positionRaw = String(document.getElementById('intervalPosition')?.value || '').trim();
-      const position_id = positionRaw ? Number(positionRaw) : null;
+      const position_ids = readPositionScope(document.getElementById('intervalPosition'));
       const is_active = String(document.getElementById('intervalActive')?.value || '1') === '1';
       if (!title) return toast('Укажи название интервала', 'err');
       if (!/^\d{2}:\d{2}$/.test(start_time)) return toast('Укажи время начала', 'err');
       if (!/^\d{2}:\d{2}$/.test(end_time)) return toast('Укажи время окончания', 'err');
       try {
         if (inlineState.editor?.id) {
-          await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: { title, start_time, end_time, position_id, is_active } });
+          await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals/${encodeURIComponent(inlineState.editor.id)}`, { method: 'PATCH', body: { title, start_time, end_time, position_ids, is_active } });
         } else {
-          await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals`, { method: 'POST', body: { title, start_time, end_time, position_id, is_active } });
+          await api(`/venues/${encodeURIComponent(state.venueId)}/shift-intervals`, { method: 'POST', body: { title, start_time, end_time, position_ids, is_active } });
         }
         inlineState.editor = { mode: 'create', id: null };
         await loadInlineShiftIntervals({ force: true });
