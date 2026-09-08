@@ -1,0 +1,31 @@
+from app.integrations.canonical.models import (
+    POSEmployee,
+    POSEmployeeMapping,
+    POSOrder,
+    POSOrderDiscount,
+    POSOrderEvent,
+    POSOrderItem,
+    POSPayment,
+    POSProduct,
+    POSProductGroup,
+    POSProductPrice,
+    POSRefund,
+    POSTerminal,
+    POSVenue,
+)
+
+__all__ = [
+    "POSEmployee",
+    "POSEmployeeMapping",
+    "POSOrder",
+    "POSOrderDiscount",
+    "POSOrderEvent",
+    "POSOrderItem",
+    "POSPayment",
+    "POSProduct",
+    "POSProductGroup",
+    "POSProductPrice",
+    "POSRefund",
+    "POSTerminal",
+    "POSVenue",
+]

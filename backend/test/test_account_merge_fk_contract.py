@@ -85,6 +85,7 @@ DIRECT_REASSIGN_USER_FKS = {
     "penalties.member_user_id",
     "position_permission_templates.created_by_user_id",
     "position_permission_templates.updated_by_user_id",
+    "pos_employee_mappings.confirmed_by_user_id",
     "quickresto_connections.created_by_user_id",
     "quickresto_connections.pending_scope_requested_by_user_id",
     "quickresto_connections.scope_confirmed_by_user_id",

@@ -11,6 +11,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 
 from app.core.config import settings
+from app.core.db import Base
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -22,7 +23,7 @@ class MigrationContractTests(unittest.TestCase):
         config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
         return config
 
-    def test_quickresto_multi_venue_scope_extends_the_single_current_head(self):
+    def test_pos_foundation_extends_the_single_current_head(self):
         config = self._config()
         scripts = ScriptDirectory.from_config(config)
 
@@ -35,7 +36,8 @@ class MigrationContractTests(unittest.TestCase):
         interval_positions = scripts.get_revision("f6b4d2a8c1e0")
         catalog_backfill = scripts.get_revision("b9d2e4f6a8c1")
 
-        self.assertEqual(heads, ["d3e5f7a9b1c2"])
+        self.assertEqual(heads, ["e4f6a8c0b2d7"])
+        self.assertEqual(scripts.get_revision("e4f6a8c0b2d7").down_revision, "d3e5f7a9b1c2")
         self.assertEqual(scripts.get_revision("d3e5f7a9b1c2").down_revision, "c2f4a6b8d0e1")
         self.assertEqual(scripts.get_revision("c2f4a6b8d0e1").down_revision, "b9d2e4f6a8c1")
 
@@ -59,6 +61,84 @@ class MigrationContractTests(unittest.TestCase):
 
         self.assertIsNotNone(catalog_backfill)
         self.assertEqual(catalog_backfill.down_revision, "f6b4d2a8c1e0")
+
+    def test_pos_foundation_migration_round_trips_on_sqlite_fixture(self):
+        with NamedTemporaryFile(suffix=".sqlite") as handle:
+            database_url = f"sqlite:///{handle.name}"
+            engine = sa.create_engine(database_url)
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("CREATE TABLE venues (id INTEGER PRIMARY KEY, name VARCHAR(200))")
+                connection.exec_driver_sql("CREATE TABLE venue_members (id INTEGER PRIMARY KEY)")
+                connection.exec_driver_sql("INSERT INTO venues (id, name) VALUES (1, 'Test venue')")
+
+            with patch.object(settings, "database_url", database_url):
+                config = self._config()
+                command.stamp(config, "d3e5f7a9b1c2")
+                command.upgrade(config, "e4f6a8c0b2d7")
+
+                inspector = sa.inspect(engine)
+                self.assertIn("timezone", {column["name"] for column in inspector.get_columns("venues")})
+                with engine.connect() as connection:
+                    timezone = connection.exec_driver_sql("SELECT timezone FROM venues WHERE id = 1").scalar_one()
+                self.assertEqual(timezone, "Europe/Moscow")
+                expected_tables = {
+                    "integration_capability_states",
+                    "integration_connections",
+                    "integration_raw_objects",
+                    "pos_employee_mappings",
+                    "pos_employees",
+                    "pos_order_discounts",
+                    "pos_order_events",
+                    "pos_order_items",
+                    "pos_orders",
+                    "pos_payments",
+                    "pos_product_groups",
+                    "pos_product_prices",
+                    "pos_products",
+                    "pos_refunds",
+                    "pos_terminals",
+                    "pos_venues",
+                }
+                self.assertTrue(expected_tables.issubset(set(inspector.get_table_names())))
+                for table_name in expected_tables:
+                    model_table = Base.metadata.tables[table_name]
+                    self.assertEqual(
+                        {column.name for column in model_table.columns},
+                        {column["name"] for column in inspector.get_columns(table_name)},
+                        f"Migration columns must match the {table_name} model",
+                    )
+                    self.assertEqual(
+                        {index.name for index in model_table.indexes},
+                        {index["name"] for index in inspector.get_indexes(table_name)},
+                        f"Migration indexes must match the {table_name} model",
+                    )
+                    expected_unique = {
+                        constraint.name
+                        for constraint in model_table.constraints
+                        if isinstance(constraint, sa.UniqueConstraint)
+                    }
+                    self.assertEqual(
+                        expected_unique,
+                        {item["name"] for item in inspector.get_unique_constraints(table_name)},
+                        f"Migration unique constraints must match the {table_name} model",
+                    )
+                    expected_checks = {
+                        constraint.name
+                        for constraint in model_table.constraints
+                        if isinstance(constraint, sa.CheckConstraint)
+                    }
+                    self.assertEqual(
+                        expected_checks,
+                        {item["name"] for item in inspector.get_check_constraints(table_name)},
+                        f"Migration check constraints must match the {table_name} model",
+                    )
+
+                command.downgrade(config, "d3e5f7a9b1c2")
+
+            inspector = sa.inspect(engine)
+            self.assertTrue(expected_tables.isdisjoint(set(inspector.get_table_names())))
+            self.assertNotIn("timezone", {column["name"] for column in inspector.get_columns("venues")})
 
     def test_quickresto_pending_scope_migration_round_trips_on_sqlite_fixture(self):
         with NamedTemporaryFile(suffix=".sqlite") as handle:

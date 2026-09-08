@@ -80,6 +80,24 @@ from .quickresto_import_issue_shift import QuickRestoImportIssueShift
 from .quickresto_import_issue_audit import QuickRestoImportIssueAudit
 from .quickresto_scope_audit import QuickRestoScopeAudit
 from .venue_pos_integration_selection import VenuePOSIntegrationSelection
+from .integration_connection import IntegrationConnection
+from .integration_capability_state import IntegrationCapabilityState
+from .integration_raw_object import IntegrationRawObject
+from .pos_canonical import (
+    POSEmployee,
+    POSEmployeeMapping,
+    POSOrder,
+    POSOrderDiscount,
+    POSOrderEvent,
+    POSOrderItem,
+    POSPayment,
+    POSProduct,
+    POSProductGroup,
+    POSProductPrice,
+    POSRefund,
+    POSTerminal,
+    POSVenue,
+)
 
 __all__ = [
     "SystemRole",
@@ -166,4 +184,20 @@ __all__ = [
     "QuickRestoImportIssueAudit",
     "QuickRestoScopeAudit",
     "VenuePOSIntegrationSelection",
+    "IntegrationConnection",
+    "IntegrationCapabilityState",
+    "IntegrationRawObject",
+    "POSVenue",
+    "POSTerminal",
+    "POSOrder",
+    "POSOrderItem",
+    "POSOrderEvent",
+    "POSPayment",
+    "POSOrderDiscount",
+    "POSEmployee",
+    "POSEmployeeMapping",
+    "POSProduct",
+    "POSProductGroup",
+    "POSProductPrice",
+    "POSRefund",
 ]
